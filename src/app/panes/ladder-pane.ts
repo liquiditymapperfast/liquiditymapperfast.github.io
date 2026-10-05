@@ -134,9 +134,9 @@ export class LadderPane {
   #buildControls(): void {
     const s = () => this.store.state;
     const title = document.createElement('strong'); title.textContent = 'Order Book';
-    this.#booksButton.textContent = 'Books'; setTip(this.#booksButton, 'Choose which venues get their own book (Single mode)');
+    this.#booksButton.className = 'books-btn'; this.#booksButton.textContent = 'Books'; setTip(this.#booksButton, 'Choose which venues get their own book (Single mode)');
     this.#booksButton.onclick = () => { this.#panel = togglePanel(this.#booksButton, { title: 'Order books', width: 340, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#buildBooks(tools, body)); };
-    const recenter = document.createElement('button'); recenter.textContent = 'Recenter'; recenter.onclick = () => this.recenter();
+    const recenter = document.createElement('button'); recenter.className = 'recenter-btn'; recenter.textContent = 'Recenter'; recenter.onclick = () => this.recenter();
     const group = this.#select('Group', [['auto', 'Auto'], ...GROUPS.map(g => [String(g), String(g)] as [string, string])], () => String(s().grouping), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
     setTip(group, 'Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.');
     this.#autoOption = group.querySelector('option[value="auto"]');

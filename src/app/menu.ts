@@ -1,5 +1,7 @@
 import { el } from './dom.ts';
 import { closePanel } from './ui.ts';
+import { isPhone, onLayoutMode } from './device.ts';
+import { scrimFor } from './sheet.ts';
 
 export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[] }
 export interface MenuHandlers {
@@ -29,28 +31,32 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   });
   document.body.append(root);
   const place = (): void => {
+    // On a phone the stylesheet makes the menu a bottom sheet.
+    if (isPhone()) { root.style.top = ''; root.style.left = ''; root.style.maxHeight = ''; return; }
     const a = anchor.getBoundingClientRect(), w = root.offsetWidth, height = root.offsetHeight;
     const below = window.innerHeight - a.bottom - 8, up = below < height && a.top > below;
     root.style.top = `${Math.max(8, up ? a.top - 4 - height : a.bottom + 4)}px`;
     root.style.left = `${Math.min(Math.max(8, align === 'right' ? a.right - w : a.left), window.innerWidth - w - 8)}px`;
     root.style.maxHeight = `${Math.max(160, up ? a.top - 12 : below)}px`;
   };
-  const onPointer = (event: PointerEvent): void => { const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) close(); };
+  const onPointer = (event: PointerEvent): void => { if (isPhone()) return; const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) close(); };
+  const scrim = scrimFor(root, 69, () => close());
   const onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') { event.preventDefault(); close(); anchor.focus(); return; }
     const at = rows.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); rows[(Math.max(0, at) + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus(); }
     else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); rows[event.key === 'Home' ? 0 : rows.length - 1]?.focus(); }
   };
+  const stopMode = onLayoutMode(() => { scrim.sync(); place(); });
   function close(): void {
     if (closed) return;
-    closed = true;
-    root.remove(); anchor.classList.remove('open');
+    closed = true; stopMode();
+    root.remove(); scrim.remove(); anchor.classList.remove('open');
     document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', place);
     if (!done) handlers.onPreview(null);
   }
   root.onpointerleave = () => handlers.onPreview(null);
-  anchor.classList.add('open'); place();
+  anchor.classList.add('open'); scrim.sync(); place();
   document.addEventListener('pointerdown', onPointer, true); document.addEventListener('keydown', onKey, true); window.addEventListener('resize', place);
   rows[Math.max(0, items.findIndex(item => item.id === current))]?.focus({ preventScroll: true });
   return { close };

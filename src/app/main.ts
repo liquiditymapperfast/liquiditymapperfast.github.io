@@ -8,12 +8,15 @@ import { applyTheme } from './theme.ts';
 import { Sounds } from './sound/sounds.ts';
 import { Toolbar } from './toolbar.ts';
 import { installTips } from './tip.ts';
-import { HeatPane, gutter } from './panes/heat-pane.ts';
+import { HeatPane, gutter, setCompactGutters } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
 import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
+import { Dock } from './dock.ts';
+import { startDevice, isPhone, onLayoutMode } from './device.ts';
 import './styles.css';
+import './mobile.css';
 
 /** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */
 async function serverAnswers(): Promise<boolean> {
@@ -36,6 +39,8 @@ async function chooseSource(params: URLSearchParams): Promise<DataSource> {
 
 async function main(): Promise<void> {
   const app = document.getElementById('app')!;
+  startDevice();
+  setCompactGutters(isPhone());
   const store = new Store(initialState());
   applyTheme(store.state.theme);
   installTips();
@@ -49,7 +54,8 @@ async function main(): Promise<void> {
   const chart = document.createElement('div'); chart.className = 'chart-col';
   const side = document.createElement('div'); side.className = 'side-col';
   main.append(chart, side);
-  app.append(toolbar.root, main);
+  const dock = new Dock(main);
+  app.append(toolbar.root, main, dock.root);
 
   const heat = new HeatPane(chart, store, hub, kernels);
   const bars = new BarStatsPane(chart, store, heat.view, heat);
@@ -88,11 +94,14 @@ async function main(): Promise<void> {
     e.preventDefault(); void import('./screenshot/editor.ts').then(m => m.startScreenshot());
   });
 
+  // The profile column and axis are narrower on a phone; everything that aligns to them has to redraw when that changes.
+  onLayoutMode(() => { setCompactGutters(isPhone()); layout(); heat.invalidate(); lower(); toolbar.sync(store.state, heat.window); });
   const layout = () => {
     const s = store.state;
     document.documentElement.style.setProperty('--gutter', `${gutter(s)}px`);
     depth.root.hidden = !s.show.depth; oi.root.hidden = !s.show.oi; lt.root.hidden = !s.show.lt; bars.root.hidden = !s.show.footprint;
     arrange.rebuild();
+    dock.sync(s.show);
   };
 
   store.subscribe((state, changed) => {

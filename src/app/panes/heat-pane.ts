@@ -16,13 +16,16 @@ import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
+import { isPhone } from '../device.ts';
 
 /** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
 /** A recording younger than this gets the faded placeholder to its left. */
 const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
-export const AXIS_W = 64;
-export const PROFILE_W = 128;
+/** Width of the price axis and of the profile column. A phone gives them less, so the map keeps most of the screen (see `setCompactGutters`). */
+export let AXIS_W = 64;
+export let PROFILE_W = 128;
+export function setCompactGutters(compact: boolean): void { AXIS_W = compact ? 58 : 64; PROFILE_W = compact ? 84 : 128; }
 const TIME_H = 22;
 
 const TIME_STEPS = [60e3, 300e3, 900e3, 1800e3, 3600e3, 7200e3, 14400e3, 43200e3, 86400e3, 172800e3, 604800e3];
@@ -322,20 +325,27 @@ export class HeatPane {
     const name = state.marketId.replace(':', ' · ');
     const borrowed = state.seriesInstrument && state.seriesInstrument !== state.marketId ? `  ·  candles from ${state.seriesInstrument.replace(':', ' · ')}` : '';
     const title = `${name}  ${state.timeframe}${borrowed}`;
-    let detail = '', up = true;
+    // On a phone the plate has to fit the plot beside a narrow profile: whole prices, and the volume on the title's line.
+    const phone = isPhone(), px = (value: number): string => phone && value >= 1000 ? fmtPrice(value, 1) : fmtPrice(value);
+    let detail = '', tail = '', up = true;
     if (c) {
       up = c[4] >= c[1];
       const at = state.candles.indexOf(c), found = this.#volumeAnalysis(state).found, z = found.sigma[at], unusual = state.highlight.on && found.flag[at] === 1;
-      detail = `O ${fmtPrice(c[1])}  H ${fmtPrice(c[2])}  L ${fmtPrice(c[3])}  C ${fmtPrice(c[4])}  Vol ${usd(c[5])}${unusual && Number.isFinite(z) ? `  (${z!.toFixed(1)}σ above its baseline)` : ''}`;
+      if (phone) { detail = `O ${px(c[1])}  H ${px(c[2])}  L ${px(c[3])}  C ${px(c[4])}`; tail = `Vol ${usd(c[5])}`; }
+      else detail = `O ${fmtPrice(c[1])}  H ${fmtPrice(c[2])}  L ${fmtPrice(c[3])}  C ${fmtPrice(c[4])}  Vol ${usd(c[5])}${unusual && Number.isFinite(z) ? `  (${z!.toFixed(1)}σ above its baseline)` : ''}`;
     }
     // A translucent plate keeps the text readable over bright heat.
-    ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif'; const titleW = ctx.measureText(title).width;
-    ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; const detailW = detail ? ctx.measureText(detail).width : 0;
-    ctx.globalAlpha = 0.82; ctx.fillStyle = p.panel; ctx.beginPath(); ctx.roundRect(6, 6, Math.max(titleW, detailW) + 14, detail ? 36 : 22, 6); ctx.fill(); ctx.globalAlpha = 1;
+    const shownTitle = phone ? `${name}  ${state.timeframe}` : title;
+    ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif'; const titleW = ctx.measureText(shownTitle).width;
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; const detailW = detail ? ctx.measureText(detail).width : 0, tailW = tail ? ctx.measureText(tail).width + 10 : 0;
+    const note = phone && borrowed ? borrowed.replace(/^s*·s*/, '') : '', noteW = note ? ctx.measureText(note).width : 0;
+    ctx.globalAlpha = 0.82; ctx.fillStyle = p.panel; ctx.beginPath(); ctx.roundRect(6, 6, Math.max(titleW + tailW, detailW, noteW) + 14, (detail ? 36 : 22) + (note ? 14 : 0), 6); ctx.fill(); ctx.globalAlpha = 1;
     ctx.textAlign = 'left'; ctx.fillStyle = p.text; ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(title, 12, 16);
-    if (detail) { ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = up ? p.candleUp : p.candleDown; ctx.fillText(detail, 12, 32); }
+    ctx.fillText(shownTitle, 12, 16);
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    if (tail) { ctx.fillStyle = p.muted; ctx.fillText(tail, 12 + titleW + 10, 16); }
+    if (detail) { ctx.fillStyle = up ? p.candleUp : p.candleDown; ctx.fillText(detail, 12, 32); }
+    if (note) { ctx.fillStyle = p.muted; ctx.fillText(note, 12, 46); }
   }
 
   /**
@@ -359,12 +369,15 @@ export class HeatPane {
     const since = this.hub.recordedSince, v = this.view;
     if (!(since > v.t0 && since < v.t1)) return;
     const x = Math.round(v.xOf(since, pw)) + 0.5, young = this.#placeholder() !== null;
-    const label = young && x > 330 ? 'Grey: the current book copied back, not recorded history. Depth is recorded while this page is open' : `depth recorded from ${clock(since)}`;
+    const label = young && x > 330 ? 'Grey: the current book copied back, not recorded history. Depth is recorded while this page is open'
+      : young && x >= 215 ? `Grey: copied back · recorded from ${clock(since)}` : `depth recorded from ${clock(since)}`;
+    // On a phone the legend plate takes the top-left corner of the map, so the note sits beneath it.
+    const top = isPhone() ? 50 : 6;
     ctx.save();
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.setLineDash([2, 4]);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = p.muted; ctx.globalAlpha = 0.85; ctx.textBaseline = 'top';
-    if (x >= ctx.measureText(label).width + 12) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, 6); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, 6); }
+    if (x >= ctx.measureText(label).width + 12) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, top); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, top); }
     ctx.restore();
   }
 
@@ -521,7 +534,7 @@ export class HeatPane {
       if (a > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.ask; ctx.fillRect(x0, y0, Math.max(1, a / maxLevel * width), hgt); }
     }
     ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, PROFILE_W - 1, 28); ctx.globalAlpha = 1;
-    ctx.fillStyle = p.muted; ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = p.muted; ctx.font = `${isPhone() ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText(`LEVEL MAX ${usd(maxLevel)}`, x0 + 4, 4); ctx.fillText(`CUM MAX ${usd(maxCum)}`, x0 + 4, 16);
     this.#profileBox = null;
     this.#paintProfileMirror(ctx, state, g, cum, step, x0, ph);

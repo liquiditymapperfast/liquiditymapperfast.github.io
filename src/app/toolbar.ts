@@ -20,6 +20,8 @@ import { buildSoundPanel } from './sound/panel.ts';
 import type { Sounds } from './sound/sounds.ts';
 import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
+import { isPhone, layoutMode, onLayoutMode, type LayoutMode } from './device.ts';
+import { openSheet, type Sheet } from './sheet.ts';
 
 /** How a timeframe is said in a tooltip. */
 const TIMEFRAME_NAMES: Readonly<Record<string, string>> = { '1m': '1-minute', '5m': '5-minute', '15m': '15-minute', '30m': '30-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'Daily' };
@@ -60,6 +62,16 @@ export class Toolbar {
   #source = el('select', { tip: 'Heatmap source' });
   #theme = el('button', { class: 'theme-btn', tip: 'Theme: hover to preview, click to keep' });
   #status = el('span', { class: 'status', tip: 'Connection to the data source: live when frames are arriving.' });
+  #brand = el('span', { class: 'brand', textContent: 'LiquidityMapperFast' });
+  #venuesButton: HTMLElement | null = null;
+  #heatctl = el('span', { class: 'heatctl' });
+  /** The colour ramp and the contrast slider under it: one unit, so the Settings sheet can give it a row of its own. */
+  #heatScale = el('span', { class: 'scale' });
+  #heatHelp = helpButton('heatmap');
+  #spacer = el('span', { class: 'spacer' });
+  /** Phone only: the button that opens Settings, where every control that does not fit the top bar lives. */
+  #more = el('button', { type: 'button', class: 'more-btn', ariaLabel: 'Settings', tip: 'Settings: panels, heatmap colouring, venues, sound, theme and the guide.' });
+  #sheet: Sheet | null = null;
   #recenter = el('button', { textContent: 'Recenter', tip: 'Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).' });
   onRecenter: () => void = () => {};
   /** Preview a theme without keeping it (`null` puts the saved one back). */
@@ -104,18 +116,77 @@ export class Toolbar {
       this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, tip: `${v.name}: ${VPN_HINT}` })));
     });
     const venues = el('button', { textContent: 'Venues', tip: 'Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct(), () => this.onVenuesApplied()) });
-    this.root.append(
-      el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
-      el('span', { class: 'heatctl' }, helpButton('heatmap'), this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
-      this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#install.root, this.#guide, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
+    this.#heatScale.append(this.#heat.legend, this.#heat.contrast);
+    this.#fillHeatControls();
+    this.#more.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
+    this.#more.onclick = () => this.#toggleSheet();
+    const shoot = this.#shot.onclick;
+    // The screenshot is of the page, so Settings must be out of the picture before it is taken.
+    this.#shot.onclick = event => { if (!this.#sheet) { shoot?.call(this.#shot, event); return; } this.#sheet.close(); requestAnimationFrame(() => requestAnimationFrame(() => { shoot?.call(this.#shot, event); })); };
+    this.#venuesButton = venues;
+    this.#arrange(layoutMode());
+    onLayoutMode(mode => this.#arrange(mode));
+  }
+
+  /**
+   * Put every control where the current arrangement wants it. The desktop is one wrapping row in its original order; a phone keeps
+   * market, timeframe, status and Settings in a two-row top bar and moves the rest into the Settings sheet, grouped by purpose.
+   * The same elements move in both directions, so their handlers and state survive a rotation or a window resize.
+   */
+  /** The heatmap colour controls as the desktop toolbar has them, in one group. */
+  #fillHeatControls(): void { this.#heatctl.replaceChildren(this.#heatHelp, this.#heat.style, this.#heatScale, this.#heat.auto, this.#heat.smooth); }
+
+  #arrange(mode: LayoutMode): void {
+    if (mode === 'desktop') {
+      this.#sheet?.close();
+      this.#fillHeatControls();
+      this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
+        this.#heatctl, this.#scope, this.#chips, this.#blocked, this.#recenter, this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
+      return;
+    }
+    this.root.replaceChildren(
+      el('div', { class: 'tb-row tb-main' }, this.#brand, this.#market, this.#spacer, this.#status, this.#more),
+      el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter),
+      this.#notice.root);
+  }
+
+  #toggleSheet(): void {
+    if (this.#sheet) { this.#sheet.close(); return; }
+    // Settings is a list of labelled rows, each control the same element the desktop toolbar holds (see #arrange).
+    const field = (label: string, control: HTMLElement, stacked = false): HTMLElement => el('div', { class: stacked ? 'sheet-field stack' : 'sheet-field' }, el('span', { class: 'sheet-label', textContent: label }), control);
+    const section = (title: string, children: HTMLElement[], action?: HTMLElement): HTMLElement =>
+      el('section', { class: 'sheet-sec' }, el('div', { class: 'sheet-sec-head' }, el('h4', { textContent: title }), ...(action ? [action] : [])), ...children);
+    // The sheet's own heading says "Venues", so the button beside it says what it does.
+    this.#venuesButton!.textContent = 'Choose…';
+    this.#sheet = openSheet('Settings', body => {
+      this.#heatctl.replaceChildren();
+      body.append(
+        section('Tools', [el('div', { class: 'sheet-tiles' }, this.#guide, this.#shot, this.#author, this.#install.root)]),
+        section('Show', [this.#toggles, el('p', { class: 'sheet-note', textContent: 'Depth, OI, LT and Footprint each add a tab to the bar under the map.' })]),
+        section('Heatmap', [
+          field('Layer', this.#layer), field('Source', this.#source), field('Colours', this.#heat.style),
+          field('Contrast', this.#heatScale, true), field('Colour range', this.#heat.auto), field('Smoothing', this.#heat.smooth)], helpButton('heatmap')),
+        section('Venues', [field('Markets', this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
+        section('Alerts', [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#soundButton)]),
+        section('Appearance', [field('Theme', this.#theme)]));
+    }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesButton!.textContent = 'Venues'; });
+    this.#more.classList.add('open');
   }
 
   /** Update controls from state; `window` is the USD range currently mapped onto the colour ramp. Only touches DOM that changed, so open dropdowns and clicks survive 4 Hz data frames. */
   sync(state: AppState, window: { lo: number; hi: number }): void {
     const instruments = state.markets.filter(m => m.instrumentId);
-    const marketKey = instruments.map(m => m.instrumentId).join(',');
+    const short = isPhone(), marketKey = instruments.map(m => m.instrumentId).join(',') + (short ? '|short' : '');
     if (this.#market.dataset.key !== marketKey) {
-      this.#market.replaceChildren(...instruments.map(m => new Option(`${venueLabel(m.instrumentId ?? '')} · ${m.symbol ?? m.instrumentId} · ${m.marketType ?? ''}`, m.instrumentId)));
+      // The phone's top bar has room for about two dozen characters, so "perpetual" becomes "perp".
+      const label = (m: (typeof instruments)[number]): string => {
+        const venue = venueLabel(m.instrumentId ?? ''), symbol = String(m.symbol ?? m.instrumentId);
+        if (!short) return `${venue} · ${symbol} · ${m.marketType ?? ''}`;
+        // A symbol that already says "PERP" needs no type after it.
+        const type = m.marketType === 'perpetual' ? (/perp/i.test(symbol) ? '' : 'perp') : m.marketType ?? '';
+        return [venue, symbol, type].filter(Boolean).join(' ');
+      };
+      this.#market.replaceChildren(...instruments.map(m => new Option(label(m), m.instrumentId)));
       this.#market.dataset.key = marketKey;
     }
     setValue(this.#market, state.marketId);
@@ -142,9 +213,11 @@ export class Toolbar {
     const live = state.connected ? 'live' : 'down';
     if (this.#status.dataset.state !== live) this.#status.dataset.state = live;
     const books = state.levels?.books ?? [];
-    const sourceKey = books.map(b => b.id).join(',');
+    const sourceKey = books.map(b => b.id).join(',') + (short ? '|short' : '');
     if (this.#source.dataset.key !== sourceKey) {
-      this.#source.replaceChildren(new Option('Heatmap: aggregated', 'aggregated'), ...books.map(b => new Option(`Heatmap: ${venueLabel(b.id)}`, b.id)));
+      // The phone's Settings already says "Heatmap" above this choice.
+      const prefix = short ? '' : 'Heatmap: ';
+      this.#source.replaceChildren(new Option(`${prefix}${short ? 'Aggregated' : 'aggregated'}`, 'aggregated'), ...books.map(b => new Option(`${prefix}${venueLabel(b.id)}`, b.id)));
       this.#source.dataset.key = sourceKey;
     }
     setValue(this.#source, books.some(b => b.id === state.heatmapSource) ? state.heatmapSource : 'aggregated');

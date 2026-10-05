@@ -45,6 +45,8 @@ export function applyTheme(name: string): Palette {
     bid: palette.bid, 'bid-soft': palette.bidSoft, ask: palette.ask, 'ask-soft': palette.askSoft, ui: palette.ui };
   for (const [key, value] of Object.entries(vars)) root.style.setProperty(`--${key}`, value);
   root.dataset.theme = palette.dark ? 'dark' : 'light';
+  // The browser's own bars (the phone's status bar, the address bar) take the page's colour.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette.bg);
   return palette;
 }
 export function rgb(hex: string): [number, number, number] {

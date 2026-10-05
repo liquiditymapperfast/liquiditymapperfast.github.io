@@ -1,4 +1,5 @@
 import { setTip } from './tip.ts';
+import { isPhone } from './device.ts';
 /** Resizable, reorderable layout: splitters between panes, persisted in localStorage. */
 interface Saved { sideW?: number; heights?: Record<string, number>; order?: string[] }
 const KEY = 'hlm-layout-v2';
@@ -37,6 +38,8 @@ export class Layout {
   #height(pane: LayoutPane): number { return pane.root.getBoundingClientRect().height; }
   #setHeight(pane: LayoutPane, h: number): void { pane.root.style.flex = `0 0 ${Math.round(Math.max(pane.min ?? 70, h))}px`; }
   #persist(): void {
+    // A phone arranges panes by tab, not by drag: what it measures must not overwrite the sizes chosen on a desktop.
+    if (isPhone()) return;
     const heights: Record<string, number> = {};
     for (const p of this.#panes) if (p.height !== undefined && !p.root.hidden) heights[p.id] = Math.round(this.#height(p));
     write({ sideW: this.#sideWidth(), heights: { ...this.#saved.heights, ...heights }, order: this.#panes.map(p => p.id) });

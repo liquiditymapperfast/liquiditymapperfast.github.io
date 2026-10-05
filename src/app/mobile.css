@@ -1,0 +1,220 @@
+/*
+ * The phone and touch arrangement. The desktop stylesheet (styles.css) is untouched by this file except where a rule here is scoped to a
+ * layout: everything keys off <html data-layout="phone | phone-landscape | desktop"> (device.ts decides it once), and the touch
+ * refinements that tablets share key off (pointer: coarse).
+ *
+ *   phone            top bar (2 rows) / map / the chosen pane / tab bar
+ *   phone-landscape  one-row top bar / map | the chosen pane | a rail of tabs
+ */
+
+/* ---- every touch screen ---------------------------------------------------------------------------------------------------------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+body { overscroll-behavior: none; }
+@media (pointer: coarse) {
+  /* Pinch still zooms the page where nothing on it handles the gesture; only the double-tap-to-zoom delay goes. */
+  html { touch-action: manipulation; }
+  /* A finger on a chart is a pan, a pinch or a long press, never a scroll, a selection or the browser's image menu. */
+  canvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .toolbar, .dock, .sheet, .panel-head, .pane-head, .seg, .chip, button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* Below 16px, iOS zooms the page in when a field takes focus. */
+  :root input:not([type=range], [type=checkbox], [type=radio]), :root textarea { font-size: 16px; }
+}
+
+/* ---- both phone arrangements ----------------------------------------------------------------------------------------------------- */
+html[data-layout^="phone"] { --tap: 44px; --safe-t: env(safe-area-inset-top); --safe-b: env(safe-area-inset-bottom); }
+html[data-layout^="phone"] .toolbar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; min-height: 0; padding: var(--safe-t) 0 0; }
+.tb-row { display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+.tb-main { min-height: 46px; }
+.tb-time { min-height: 44px; padding-bottom: 6px; }
+html[data-layout^="phone"] .toolbar :is(button, select) { min-height: 38px; border-radius: 10px; padding: 0 12px; }
+html[data-layout^="phone"] .toolbar .brand { font-size: 0; margin: 0; flex: none; }
+html[data-layout^="phone"] .toolbar .brand::before { content: "LMF"; font-size: 15px; font-weight: 800; letter-spacing: .04em; }
+html[data-layout^="phone"] .toolbar .market { flex: 0 1 auto; min-width: 0; max-width: 100%; font-size: 15px; font-weight: 600; text-overflow: ellipsis; padding-right: 4px; }
+html[data-layout^="phone"] .toolbar .spacer { flex: 1 1 0; min-width: 0; }
+html[data-layout^="phone"] .toolbar .status { flex: none; font-size: 0; display: inline-grid; place-items: center; width: 28px; height: 38px; }
+html[data-layout^="phone"] .toolbar .status::before { width: 10px; height: 10px; margin: 0; }
+.more-btn { display: none; }
+html[data-layout^="phone"] .more-btn { display: inline-grid; place-items: center; flex: none; width: 44px; padding: 0; }
+html[data-layout^="phone"] .tb-time .seg { flex: 1 1 0; min-width: 0; }
+html[data-layout^="phone"] .tb-time .seg button { flex: 1 1 0; min-width: 0; padding: 0; border-radius: 0; }
+html[data-layout^="phone"] .tb-time .seg button:first-child { border-radius: 10px 0 0 10px; }
+html[data-layout^="phone"] .tb-time .seg button:last-child { border-radius: 0 10px 10px 0; }
+/* Recenter is a symbol in the bar: the word would not fit beside seven timeframes. */
+html[data-layout^="phone"] .tb-time > button { flex: none; width: 44px; padding: 0; font-size: 0; display: inline-grid; place-items: center; }
+html[data-layout^="phone"] .tb-time > button::before { content: ""; width: 20px; height: 20px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
+html[data-layout^="phone"] .toolbar .notice { margin: 0 10px 6px; flex: 0 0 auto; }
+
+/* The map above, one pane at a time below it (or beside it): the two columns of the desktop dissolve into one list of panes. */
+html[data-layout^="phone"] main { display: flex; flex-direction: column; min-height: 0; }
+html[data-layout^="phone"] .chart-col, html[data-layout^="phone"] .side-col { display: contents; }
+html[data-layout^="phone"] .splitter, html[data-layout^="phone"] .grip { display: none; }
+html[data-layout^="phone"] .pane.heat { order: 0; flex: 1 1 0; min-height: 140px; }
+html[data-layout^="phone"] .chart-col > .pane:not(.heat), html[data-layout^="phone"] .side-col > .pane { display: none; order: 2; }
+html[data-layout^="phone"] main[data-tab="book"] .pane.ladder:not([hidden]),
+html[data-layout^="phone"] main[data-tab="depth"] .pane.depth:not([hidden]),
+html[data-layout^="phone"] main[data-tab="oi"] .pane.oi:not([hidden]),
+html[data-layout^="phone"] main[data-tab="lt"] .pane.lt:not([hidden]),
+html[data-layout^="phone"] main[data-tab="stats"] .pane.bars:not([hidden]) { display: flex; flex: 0 0 var(--dock-size, 40%) !important; min-height: 0 !important; }
+
+/* The handle between the map and the pane: a sheet-style pill that drags to resize. */
+.dock-grip { display: none; }
+html[data-layout^="phone"] main:not([data-tab="map"]) > .dock-grip { display: grid; place-items: center; order: 1; flex: 0 0 20px; position: relative; z-index: 6; background: var(--panel); border-top: 1px solid var(--line); touch-action: none; cursor: row-resize; }
+.dock-grip::before { content: ""; position: absolute; inset: -12px 0; }
+.dock-grip i { width: 40px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text) 26%, transparent); transition: background .12s, width .12s; }
+.dock-grip.active i { background: var(--ui); width: 56px; }
+
+/* ---- the tab bar ----------------------------------------------------------------------------------------------------------------- */
+.dock { display: none; }
+html[data-layout^="phone"] .dock { display: flex; background: var(--panel); border-top: 1px solid var(--line); }
+.dock-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 5px 2px 4px; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; line-height: 1.1; }
+.dock-tab[hidden] { display: none; }
+.dock-tab svg { width: 22px; height: 22px; flex: none; }
+.dock-tab.on { background: transparent; color: var(--text); box-shadow: inset 0 3px 0 var(--ui); }
+.dock-tab.on svg { color: var(--ui); }
+html[data-layout="phone"] .dock { padding: 0 0 var(--safe-b); }
+
+/* ---- landscape ------------------------------------------------------------------------------------------------------------------- */
+html[data-layout="phone-landscape"] #app { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); }
+html[data-layout="phone-landscape"] .toolbar { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 8px; padding: var(--safe-t) 8px 0; }
+html[data-layout="phone-landscape"] .tb-row { display: contents; }
+html[data-layout="phone-landscape"] .toolbar :is(button, select) { min-height: 36px; }
+html[data-layout="phone-landscape"] .toolbar > *, html[data-layout="phone-landscape"] .tb-row > * { margin-top: 4px; margin-bottom: 4px; }
+html[data-layout="phone-landscape"] .toolbar .brand { order: 0; }
+html[data-layout="phone-landscape"] .toolbar .market { order: 1; flex: 1 1 170px; }
+html[data-layout="phone-landscape"] .tb-time .seg { order: 2; flex: 0 1 330px; }
+html[data-layout="phone-landscape"] .tb-time > button { order: 3; }
+html[data-layout="phone-landscape"] .toolbar .spacer { display: none; }
+html[data-layout="phone-landscape"] .toolbar .status { order: 4; }
+html[data-layout="phone-landscape"] .more-btn { order: 5; }
+html[data-layout="phone-landscape"] .toolbar .notice { order: 6; flex: 1 0 100%; margin: 0 0 4px; }
+html[data-layout="phone-landscape"] main { grid-column: 1; grid-row: 2; }
+html[data-layout="phone-landscape"] main:not([data-tab="map"]) { display: grid; grid-template-columns: minmax(0, 1fr) 20px var(--dock-size, 44%); grid-template-rows: minmax(0, 1fr); }
+html[data-layout="phone-landscape"] main:not([data-tab="map"]) .pane.heat { grid-column: 1; grid-row: 1; }
+html[data-layout="phone-landscape"] main:not([data-tab="map"]) > .dock-grip { display: grid; grid-column: 2; grid-row: 1; flex: none; border-top: 0; border-left: 1px solid var(--line); cursor: col-resize; }
+html[data-layout="phone-landscape"] .dock-grip i { width: 4px; height: 40px; }
+html[data-layout="phone-landscape"] .dock-grip.active i { width: 4px; height: 56px; }
+html[data-layout="phone-landscape"] .dock-grip::before { inset: 0 -12px; }
+html[data-layout="phone-landscape"] main[data-tab="book"] .pane.ladder:not([hidden]),
+html[data-layout="phone-landscape"] main[data-tab="depth"] .pane.depth:not([hidden]),
+html[data-layout="phone-landscape"] main[data-tab="oi"] .pane.oi:not([hidden]),
+html[data-layout="phone-landscape"] main[data-tab="lt"] .pane.lt:not([hidden]),
+html[data-layout="phone-landscape"] main[data-tab="stats"] .pane.bars:not([hidden]) { display: flex; grid-column: 3; grid-row: 1; flex: none !important; }
+html[data-layout="phone-landscape"] .dock { grid-column: 2; grid-row: 2; flex-direction: column; justify-content: flex-start; width: 60px; border-top: 0; border-left: 1px solid var(--line); padding-right: env(safe-area-inset-right); overflow-y: auto; }
+html[data-layout="phone-landscape"] .dock-tab { flex: 0 0 auto; min-height: 56px; box-shadow: none; }
+html[data-layout="phone-landscape"] .dock-tab.on { box-shadow: inset -3px 0 0 var(--ui); }
+
+/* ---- the headers of the panes in the tab bar's pane ------------------------------------------------------------------------------ */
+html[data-layout^="phone"] .pane-head { min-height: 42px; padding: 3px 8px 3px 12px; gap: 2px 8px; }
+html[data-layout^="phone"] .pane-head strong { font-size: 13px; }
+html[data-layout^="phone"] .pane-head .readout { order: 9; flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding-bottom: 3px; }
+/* The label text is for a mouse, where there is room for it; here the control says what it is. */
+/* A control's name is a small caption above it: there is no room beside it, and "Auto · 100" alone does not say what it sets. */
+html[data-layout^="phone"] .pane-head .ctl { display: flex; flex-direction: column; align-items: stretch; gap: 1px; font-size: 9.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; line-height: 1.1; }
+html[data-layout^="phone"] .pane-head .ctl select { font-size: 14px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text); }
+html[data-layout^="phone"] .pane-head .ctl:has(input[type=checkbox]) { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text); }
+html[data-layout^="phone"] .pane-head .ctl input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
+html[data-layout^="phone"] .pane-head :is(select, button:not(.help)) { font-size: 14px; min-height: 32px; padding: 0 8px; border-radius: 9px; }
+html[data-layout^="phone"] .pane-head button.help { width: 22px; height: 22px; margin: 0 2px; font-size: 12px; line-height: 20px; }
+/* The Order Book's own header: the tab already says "Book", and its three choices share one row. */
+html[data-layout^="phone"] .pane.ladder .pane-head { flex-wrap: nowrap; padding-left: 8px; }
+html[data-layout^="phone"] .pane.ladder .pane-head strong, html[data-layout^="phone"] .pane.ladder .recenter-btn { display: none; }
+html[data-layout^="phone"] .pane.ladder .pane-head .ctl { flex: 1 1 auto; min-width: 0; margin-left: 0; }
+html[data-layout^="phone"] .pane.ladder .pane-head .ctl select { width: 100%; min-width: 0; text-overflow: ellipsis; padding: 0 2px 0 8px; }
+html[data-layout^="phone"] .pane.ladder .pane-head { gap: 6px; }
+/* Narrow ladder (a portrait phone, or the half of a landscape one): the three choices get the room the help mark would take, and a size down. */
+html[data-layout^="phone"] .pane.ladder { container: ladder / inline-size; }
+@container ladder (max-width: 420px) {
+  .pane-head { gap: 4px; padding-left: 6px; padding-right: 6px; }
+  .pane-head button.help { display: none; }
+  .pane-head .ctl select { font-size: 13px; padding: 0 2px 0 6px; }
+}
+
+/* ---- the Settings sheet and every floating panel become bottom sheets ------------------------------------------------------------- */
+.sheet-scrim { position: fixed; inset: 0; z-index: 54; background: rgba(8, 10, 14, 0); transition: background .22s ease-out; }
+.sheet-scrim.in { background: rgba(8, 10, 14, .46); }
+.sheet, html[data-layout^="phone"] .panel, html[data-layout^="phone"] .menu {
+  position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-width: 640px; margin: 0 auto;
+  border-radius: 18px 18px 0 0; border: 1px solid var(--line); border-bottom: 0; background: var(--panel); color: var(--text);
+  box-shadow: 0 -14px 44px rgba(0, 0, 0, .3); padding-bottom: env(safe-area-inset-bottom);
+}
+.sheet { z-index: 55; display: flex; flex-direction: column; max-height: min(92dvh, 780px); transform: translateY(105%); transition: transform .26s cubic-bezier(.2, .85, .2, 1); }
+.sheet.in { transform: none; }
+.sheet-head { position: relative; display: flex; align-items: center; gap: 8px; padding: 18px 8px 6px 18px; touch-action: none; cursor: grab; }
+.sheet-grab { position: absolute; left: 50%; top: 7px; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: color-mix(in srgb, var(--text) 24%, transparent); }
+.sheet-head h3 { margin: 0; flex: 1; font-size: 18px; letter-spacing: .005em; }
+.sheet-x, .panel-x { width: 40px; height: 40px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); font-size: 24px; line-height: 1; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 18px 22px; -webkit-overflow-scrolling: touch; }
+.sheet-sec { padding-top: 16px; }
+.sheet-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; min-height: 28px; }
+.sheet-sec-head h4 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.sheet-sec-head button { min-height: 34px; padding: 0 14px; border-radius: 9px; font-size: 13px; }
+.sheet-sec-head button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 13px; line-height: 24px; }
+.sheet-body :is(button, select) { min-height: var(--tap); font-size: 15px; border-radius: 12px; padding: 0 14px; }
+.sheet select { text-overflow: ellipsis; }
+.sheet-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 8px; }
+.sheet-tiles > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.sheet-field { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 52px; border-top: 1px solid var(--line); }
+.sheet-sec-head + .sheet-field { border-top: 0; }
+.sheet-label { flex: 1 1 auto; font-size: 15px; }
+.sheet-field > :not(.sheet-label) { flex: 0 1 62%; min-width: 0; }
+.sheet-field > button { flex: 0 0 auto; min-width: 96px; }
+.sheet-field.stack { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 10px 0 12px; }
+.sheet-field.stack > :not(.sheet-label) { flex: none; }
+.sheet-field.stack .sheet-label { flex: none; }
+.sheet .seg.toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.sheet .seg.toggles button { border-radius: 12px; margin: 0; padding: 0 6px; }
+/* A switched-on pane is tinted rather than filled black: these are settings, not the primary actions the desktop's inverted buttons suit. */
+.sheet .seg.toggles button.on { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); color: var(--text); font-weight: 650; }
+.sheet .seg.toggles button.on::before { content: "✓ "; color: var(--ui); }
+.sheet .seg.scope { display: flex; width: 100%; }
+.sheet .seg.scope button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
+.sheet .seg.scope button:first-child { border-radius: 12px 0 0 12px; margin-left: 0; } .sheet .seg.scope button:last-child { border-radius: 0 12px 12px 0; }
+.sheet .scale { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.sheet .legend { height: 20px; }
+.sheet .legend i { font-size: 11px; }
+.sheet .scale input[type=range] { height: 32px; }
+.sheet-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.sheet-chips .chips { gap: 8px; }
+.sheet .chip { min-height: 38px; display: inline-flex; align-items: center; padding: 0 15px; font-size: 14px; border-radius: 999px; }
+.sheet .theme-btn { justify-content: center; }
+.sheet .icon-btn::after { content: attr(aria-label); font-size: 15px; }
+.sheet .sound-btn { padding-left: 32px; }
+.sheet .sound-btn::before { left: 15px; }
+.sheet-note { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+
+html[data-layout^="phone"] .panel { z-index: 60; max-height: min(88dvh, 780px); animation: sheet-up .24s cubic-bezier(.2, .85, .2, 1); }
+html[data-layout^="phone"] .panel-head { padding: 14px 8px 6px 18px; }
+html[data-layout^="phone"] .panel-head h3 { font-size: 18px; }
+html[data-layout^="phone"] .panel-body { overscroll-behavior: contain; padding-bottom: 16px; }
+html[data-layout^="phone"] .panel :is(button, select, input[type=number]) { min-height: 40px; }
+html[data-layout^="phone"] .panel .opt, html[data-layout^="phone"] .panel .field { padding-top: 9px; padding-bottom: 9px; }
+html[data-layout^="phone"] .panel .field > select, html[data-layout^="phone"] .panel .field > input[type=number] { width: 140px; }
+html[data-layout^="phone"] .panel .slider { width: 150px; }
+html[data-layout^="phone"] .panel .slider input { height: 30px; }
+html[data-layout^="phone"] .panel .switch { width: 48px; height: 30px; }
+html[data-layout^="phone"] .panel .switch i::after { top: 3px; left: 3px; width: 24px; height: 24px; }
+html[data-layout^="phone"] .panel .switch input:checked + i::after { transform: translateX(18px); }
+html[data-layout^="phone"] .panel .opt input[type=checkbox], html[data-layout^="phone"] .panel .tier-name input { width: 20px; height: 20px; }
+html[data-layout^="phone"] .panel .opt { grid-template-columns: 24px 1fr; }
+html[data-layout^="phone"] .panel .grip { width: 30px; height: 36px; }
+html[data-layout^="phone"] .panel .srow { grid-template-columns: 32px 18px minmax(0, 1fr) 38px; padding: 5px 6px; }
+html[data-layout^="phone"] .panel .srow .x { width: 36px; height: 34px; }
+html[data-layout^="phone"] .menu { z-index: 70; min-width: 0; max-height: min(72dvh, 600px); padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); animation: sheet-up .2s ease-out; }
+html[data-layout^="phone"] .menu-item { min-height: 50px; font-size: 16px; padding: 0 14px; border-radius: 11px; }
+.sheet-scrim.light.in { background: rgba(8, 10, 14, .34); }
+@keyframes sheet-up { from { transform: translateY(40%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Dialogs: the venue picker and the guide fit a phone's width. */
+html[data-layout^="phone"] dialog.venues { width: calc(100vw - 24px); max-width: 520px; max-height: 90dvh; overflow: auto; padding: 16px; }
+html[data-layout^="phone"] .venue-list { grid-template-columns: 1fr 1fr; gap: 2px 10px; }
+html[data-layout^="phone"] .venue-list label { min-height: 42px; }
+html[data-layout^="phone"] dialog.venues .row { flex-wrap: wrap; justify-content: stretch; }
+html[data-layout^="phone"] dialog.venues .row button { flex: 1 1 auto; min-height: 44px; white-space: nowrap; border-radius: 11px; }
+html[data-layout^="phone"] dialog.guide { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; border: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet-scrim { transition: none; }
+  html[data-layout^="phone"] .panel, html[data-layout^="phone"] .menu { animation: none; }
+}

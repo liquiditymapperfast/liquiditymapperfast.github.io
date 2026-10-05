@@ -1,4 +1,6 @@
 import { el } from './dom.ts';
+import { isPhone, onLayoutMode } from './device.ts';
+import { scrimFor } from './sheet.ts';
 
 /**
  * One panel for every settings popover (bar stats, highlights, sounds, ...): a header, optional sticky tools, a scrolling body, and
@@ -36,10 +38,12 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
   const root = el('div', { class: 'panel', role: 'dialog' }, head, tools, body);
   root.setAttribute('aria-label', options.title);
   const width = options.width ?? 380;
-  root.style.width = `${Math.min(width, window.innerWidth - 16)}px`;
   document.body.append(root);
 
   const reposition = (): void => {
+    // On a phone the stylesheet makes every panel a bottom sheet, so no inline position or size may be left behind to fight it.
+    if (isPhone()) { root.style.top = ''; root.style.left = ''; root.style.width = ''; root.style.maxHeight = ''; return; }
+    root.style.width = `${Math.min(width, window.innerWidth - 16)}px`;
     const a = anchor.getBoundingClientRect();
     const below = window.innerHeight - a.bottom - 12, above = a.top - 12, up = below < 300 && above > below;
     const room = Math.max(180, Math.min(window.innerHeight - 24, up ? above : below));
@@ -49,9 +53,12 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
     const left = (options.align ?? 'left') === 'right' ? a.right - w : a.left;
     root.style.top = `${Math.max(8, top)}px`; root.style.left = `${Math.min(Math.max(8, left), window.innerWidth - w - 8)}px`;
   };
-  const onPointer = (event: PointerEvent): void => { const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) panel.close(); };
+  // On a phone the scrim closes the panel; elsewhere a press outside it does.
+  const onPointer = (event: PointerEvent): void => { if (isPhone()) return; const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) panel.close(); };
+  const scrim = scrimFor(root, 59, () => panel.close());
   const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') panel.close(); };
-  const onResize = (): void => reposition();
+  const onResize = (): void => { scrim.sync(); reposition(); };
+  const stopMode = onLayoutMode(onResize);
   const panel: Panel = {
     root, tools, body, anchor,
     render(next) {
@@ -63,13 +70,13 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
     reposition,
     close() {
       if (current !== panel) return;
-      current = null; root.remove(); anchor.classList.remove('open');
-      document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
+      current = null; root.remove(); scrim.remove(); anchor.classList.remove('open');
+      document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize); stopMode();
       options.onClose?.();
     },
   };
   closeButton.onclick = () => panel.close();
-  current = panel; anchor.classList.add('open');
+  current = panel; anchor.classList.add('open'); scrim.sync();
   panel.render(build);
   document.addEventListener('pointerdown', onPointer, true); document.addEventListener('keydown', onKey, true); window.addEventListener('resize', onResize);
   return panel;
