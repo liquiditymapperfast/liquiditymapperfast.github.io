@@ -54,6 +54,13 @@ main { --side-w: 420px; display: grid; grid-template-columns: minmax(0, 1fr) 6px
 .pane.heat canvas:last-child { cursor: crosshair; touch-action: none; }
 /* The pulse layer sits above the overlay so a trap's cells glow over the footprint, and lets every pointer event through to it. */
 .pane.heat canvas.pulse { z-index: 1; pointer-events: none; }
+/* Recenter acts on the map, so it sits in the map's top-right corner, left of the profile column. */
+.pane.heat .map-recenter { position: absolute; z-index: 3; top: 8px; right: calc(var(--gutter, 192px) + 8px); display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: 13px;
+  background: color-mix(in srgb, var(--panel) 86%, transparent); font-size: 11px; color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, .14); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.pane.heat .map-recenter::before { content: ""; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
+.pane.heat .map-recenter:hover { background: var(--panel); }
 .pane.ladder { flex: 1 1 auto; }
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 
@@ -80,7 +87,7 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .splitter.v { cursor: col-resize; touch-action: none; }
 .splitter.h { cursor: row-resize; height: 6px; touch-action: none; }
 .splitter::after { content: ""; position: absolute; inset: -3px; }
-.grip { cursor: grab; color: var(--muted); user-select: none; margin-right: -4px; font-size: 14px; line-height: 1; }
+.grip { cursor: grab; touch-action: none; color: var(--muted); user-select: none; margin-right: -4px; font-size: 14px; line-height: 1; }
 .pane.moving { box-shadow: inset 0 0 0 2px var(--muted); }
 .ladder-scroll { flex: 1 1 auto; min-height: 0; overflow-x: auto; overflow-y: hidden; }
 .ladder-scroll canvas { display: block; }
@@ -140,6 +147,7 @@ dialog.shot::backdrop { background: transparent; }
 .shot-primary:hover { background: #7ab8ff !important; }
 .shot-close:hover:not(:disabled) { background: rgba(255, 69, 58, .85); color: #fff; }
 .shot-text { position: absolute; min-width: 140px; padding: 0 3px; margin: 0; border: 1px dashed rgba(255, 255, 255, .8); border-radius: 3px; background: rgba(0, 0, 0, .18); outline: none; text-shadow: 0 0 3px rgba(0, 0, 0, .55); }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 400; max-width: min(92vw, 460px); padding: 11px 16px; border-radius: 12px; background: var(--text); color: var(--bg); font-size: 13px; line-height: 1.4; box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
 .shot-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 9px 16px; border-radius: 999px; background: rgba(22, 25, 31, .95); color: #f2f4f7; font-size: 12.5px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); z-index: 500; animation: shot-toast 2.4s ease both; }
 @keyframes shot-toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 

@@ -243,6 +243,7 @@ export class HeatPane {
       if (mark && (mark < p0 + span * 0.1 || mark > p1 - span * 0.1)) { const mid = mark - span / 2; this.view.p0 = mid; this.view.p1 = mid + span; this.#rasteredKey = ''; }
     }
     this.#positionGl();
+    this.root.style.setProperty('--gutter', `${gutter(state)}px`);
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view);
     this.#stepFootprint(state);
@@ -396,7 +397,9 @@ export class HeatPane {
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = p.muted; ctx.globalAlpha = 0.85; ctx.textBaseline = 'top';
     // The legend plate takes the top-left corner of the map: a note that would run under it goes beneath it instead.
     const w = ctx.measureText(label).width, right = x >= w + 12, left = right ? x - 6 - w : x + 6, box = this.#legendBox;
-    const top = left < box.right + 8 ? box.bottom + 6 : 6;
+    let top = left < box.right + 8 ? box.bottom + 6 : 6;
+    // Recenter sits in the top-right corner of the map on the full toolbar: the note does not run under it.
+    if (top < 40 && this.root.querySelector('.map-recenter') && (right ? x - 6 : x + 6 + w) > pw - 124) top = 40;
     if (right) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, top); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, top); }
     ctx.restore();
   }

@@ -1,4 +1,5 @@
 import { el } from './dom.ts';
+import { lazy } from './lazy.ts';
 import { note, togglePanel } from './ui.ts';
 
 /**
@@ -103,7 +104,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
 };
 
 /** Open the guide at a section. It is loaded on demand, so the page does not carry it until it is wanted. */
-export const showGuide = (section?: string): void => { void import('./guide/guide.ts').then(m => m.openGuide(section)); };
+export const showGuide = (section?: string): void => { void lazy(() => import('./guide/guide.ts')).then(m => m?.openGuide(section)); };
 
 /** A small "?" button that opens the explanation of `id`; the panel closes with Esc, a click elsewhere, or the same button. */
 export function helpButton(id: HelpId): HTMLButtonElement {

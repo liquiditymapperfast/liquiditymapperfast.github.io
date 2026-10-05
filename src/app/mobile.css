@@ -34,7 +34,7 @@ html[data-bar="compact"] .tb-bar { display: flex; align-items: center; gap: 0 8p
 html[data-bar="compact"] .tb-row { display: contents; }
 html[data-bar="compact"] .toolbar :is(button, select) { min-height: 38px; border-radius: 10px; padding: 0 12px; }
 html[data-bar="compact"] .toolbar .brand { order: 0; flex: none; margin-right: 4px; }
-html[data-bar="compact"] .toolbar .market { order: 1; flex: 1 1 auto; min-width: 100px; max-width: 320px; font-size: 15px; font-weight: 600; text-overflow: ellipsis; padding-right: 4px; }
+html[data-bar="compact"] .toolbar .market { order: 1; flex: 1 1 auto; min-width: 100px; max-width: 320px; font-size: 16px; font-weight: 600; text-overflow: ellipsis; padding-right: 4px; }
 html[data-bar="compact"] .tb-time .seg { order: 2; flex: 0 1 340px; min-width: 240px; }
 html[data-bar="compact"] .tb-time .seg button { flex: 1 1 0; min-width: 0; padding: 0; border-radius: 0; }
 html[data-bar="compact"] .tb-time .seg button:first-child { border-radius: 10px 0 0 10px; }
@@ -89,7 +89,8 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
 .sheet-sec-head button { min-height: 34px; padding: 0 14px; border-radius: 9px; font-size: 13px; }
 .sheet-sec-head button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 13px; line-height: 24px; }
 .sheet-body :is(button, select) { min-height: var(--tap); font-size: 15px; border-radius: 12px; padding: 0 14px; }
-.sheet select { text-overflow: ellipsis; }
+/* 16px is the size below which an iPhone zooms the page in when a field takes focus; the page's own picker normally stops that from happening, and this is the backstop. */
+.sheet select { text-overflow: ellipsis; font-size: 16px; }
 .sheet-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 8px; }
 .sheet-tiles > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .sheet-field { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 52px; border-top: 1px solid var(--line); }

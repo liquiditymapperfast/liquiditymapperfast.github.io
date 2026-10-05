@@ -6,6 +6,7 @@ import type { VenueEntry } from './source.ts';
 import { usd } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
+import { lazy } from './lazy.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
@@ -50,7 +51,7 @@ export class Toolbar {
   readonly #notice = new VenueNotice();
   readonly #install = new InstallButton();
   #guide = el('button', { type: 'button', class: 'guide-btn', textContent: 'Guide', tip: 'A ten-minute tour of what everything is and how to use it, with moving pictures. Every button also explains itself on hover.', onclick: () => { showGuide(); } });
-  #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: 'Screenshot', tip: 'Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.', onclick: () => { void import('./screenshot/editor.ts').then(m => m.startScreenshot()); } });
+  #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: 'Screenshot', tip: 'Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.', onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: 'Author', tip: 'Who made this, and where to find the code. Free, no sign-ups, open source.' });
   #scope = el('div', { class: 'seg scope', tip: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
   #soundButton = el('button', { class: 'sound-btn', textContent: 'Sound', tip: 'Sound notifications' });
@@ -82,6 +83,8 @@ export class Toolbar {
   /** Phone only: the button that opens Settings, where every control that does not fit the top bar lives. */
   #more = el('button', { type: 'button', class: 'more-btn', ariaLabel: 'Settings', tip: 'Settings: panels, heatmap colouring, venues, sound, theme and the guide.' });
   #sheet: Sheet | null = null;
+  /** Where Recenter lives on the full toolbar's screens: in a corner of the map it acts on, not among the venues (null until the map exists). */
+  #mapHost: HTMLElement | null = null;
   /** Settings' "Keep screen on" switch (only where the browser can hold the screen awake). */
   #awake = el('input', { type: 'checkbox' });
   #recenter = el('button', { textContent: 'Recenter', tip: 'Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).' });
@@ -147,12 +150,18 @@ export class Toolbar {
   /** The heatmap colour controls as the desktop toolbar has them, in one group. */
   #fillHeatControls(): void { this.#heatctl.replaceChildren(this.#heatHelp, this.#heat.style, this.#heatScale, this.#heat.auto, this.#heat.smooth); }
 
+  /** Put Recenter in a corner of the map `host` (on the full toolbar; the compact bar keeps it beside the timeframes). */
+  placeRecenter(host: HTMLElement): void { this.#mapHost = host; this.#arrange(); }
+
   #arrange(): void {
+    this.#recenter.classList.toggle('map-recenter', !compactBar() && this.#mapHost !== null);
     if (!compactBar()) {
       this.#sheet?.close();
       this.#fillHeatControls();
+      const inCorner = this.#mapHost !== null;
+      if (inCorner) this.#mapHost!.prepend(this.#recenter);
       this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
-        this.#heatctl, this.#scope, this.#chips, this.#blocked, this.#recenter, this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
+        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
       return;
     }
     this.root.replaceChildren(

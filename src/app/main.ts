@@ -9,6 +9,7 @@ import { Sounds } from './sound/sounds.ts';
 import { Toolbar } from './toolbar.ts';
 import { installTips } from './tip.ts';
 import { installTouchSelects } from './touch-select.ts';
+import { lazy } from './lazy.ts';
 import { ScreenWake } from './wake.ts';
 import { HeatPane, gutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
   app.append(toolbar.root, main, dock.root);
 
   const heat = new HeatPane(chart, store, hub, kernels);
+  toolbar.placeRecenter(heat.root);
   const bars = new BarStatsPane(chart, store, heat.view, heat);
   const depth = new DepthPane(chart, store, heat.view, hub);
   const oi = new OiPane(chart, store, heat.view);
@@ -88,7 +90,7 @@ async function main(): Promise<void> {
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
   // An address like #guide/mirror opens the guide there.
-  const fromAddress = (): void => { if (/^#guide/.test(location.hash)) void import('./guide/guide.ts').then(m => m.openFromAddress()); };
+  const fromAddress = (): void => { if (/^#guide/.test(location.hash)) void lazy(() => import('./guide/guide.ts')).then(m => m?.openFromAddress()); };
   fromAddress(); window.addEventListener('hashchange', fromAddress);
 
   // S takes a screenshot (not while typing in a field or when a modifier is held).
@@ -96,7 +98,7 @@ async function main(): Promise<void> {
     if (e.key.toLowerCase() !== 's' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) || document.querySelector('dialog[open]')) return;
-    e.preventDefault(); void import('./screenshot/editor.ts').then(m => m.startScreenshot());
+    e.preventDefault(); void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot());
   });
 
   // The profile column and axis are narrower on a phone; everything that aligns to them has to redraw when that changes.
