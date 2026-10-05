@@ -54,7 +54,7 @@ export async function openVenueDialog(venues: VenueControl, selectionProduct: ()
     };
     timer = window.setInterval(() => void refresh(), 2000);
     dialog.replaceChildren(el('h3', { textContent: 'Order book venues' }), list, note,
-      el('div', { class: 'row' }, el('button', { textContent: 'Recommended', title: catalog.recommendedKnown ? 'The largest venues with deep, fresh order books (the first-run set)' : 'Needs a server restarted on this version', onclick: recommend, disabled: !catalog.recommendedKnown }),
+      el('div', { class: 'row' }, el('button', { textContent: 'Recommended', tip: catalog.recommendedKnown ? 'The largest venues with deep, fresh order books (the first-run set)' : 'Needs a server restarted on this version', onclick: recommend, disabled: !catalog.recommendedKnown }),
         el('button', { textContent: 'Select all', onclick: () => setAll(true) }), el('button', { textContent: 'None', onclick: () => setAll(false) }), apply, close));
   } catch (error) { dialog.replaceChildren(el('p', { textContent: `Venue catalogue unavailable: ${error instanceof Error ? error.message : String(error)}` }), close); }
 }

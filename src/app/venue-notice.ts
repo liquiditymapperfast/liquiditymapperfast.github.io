@@ -30,7 +30,7 @@ export class VenueNotice {
 
   constructor() {
     this.root.append(el('span', { class: 'notice-mark', textContent: '⊘', ariaHidden: 'true' }), this.#text,
-      el('button', { class: 'notice-close', textContent: '×', title: 'Dismiss', ariaLabel: 'Dismiss', onclick: () => { this.#dismissed = this.#key; this.root.hidden = true; } }));
+      el('button', { class: 'notice-close', textContent: '×', tip: 'Dismiss', ariaLabel: 'Dismiss', onclick: () => { this.#dismissed = this.#key; this.root.hidden = true; } }));
   }
 
   #key = '';

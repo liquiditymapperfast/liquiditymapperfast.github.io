@@ -90,6 +90,15 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
   box-shadow: 0 18px 44px rgba(0, 0, 0, .30), 0 2px 8px rgba(0, 0, 0, .14); font-size: 12px; }
 .panel-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .panel-head h3 { margin: 0; flex: 1; font-size: 13px; font-weight: 650; letter-spacing: .005em; }
+/* Tooltips (tip.ts): one box in the top layer for the whole page. */
+.tip { position: fixed; inset: auto; margin: 0; max-width: 300px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--text); color: var(--bg); font-size: 11.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0, 0, 0, .22); white-space: pre-line; pointer-events: none; opacity: 0; transition: opacity .12s ease-out; z-index: 200; }
+.tip.on { opacity: 1; }
+.tip:not(:popover-open):not(.on) { display: none; }
+/* The small "?" that explains a part of the page. */
+button.help { width: 16px; height: 16px; padding: 0; margin: 0 6px 0 3px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 10px/14px ui-sans-serif, system-ui, sans-serif; text-align: center; vertical-align: middle; flex: 0 0 auto; }
+button.help:hover, button.help.open { color: var(--bg); background: var(--text); border-color: var(--text); }
+.help-body .lead { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }
+.help-body .more { margin-top: 10px; align-self: flex-start; }
 .panel-x { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; border-radius: 6px; }
 .panel-x:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
 .panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }

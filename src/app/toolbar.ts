@@ -5,6 +5,8 @@ import { VPN_HINT, VenueNotice, blockedVenues } from './venue-notice.ts';
 import { usd } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
+import { setTip } from './tip.ts';
+import { HELP, helpButton, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
@@ -17,6 +19,8 @@ import type { Sounds } from './sound/sounds.ts';
 import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
 
+/** How a timeframe is said in a tooltip. */
+const TIMEFRAME_NAMES: Readonly<Record<string, string>> = { '1m': '1-minute', '5m': '5-minute', '15m': '15-minute', '30m': '30-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'Daily' };
 const LAYERS: [Layer, string][] = [['liquidity', 'Liquidity'], ['liquidation', 'Liquidation'], ['stopLoss', 'Stop loss'], ['takeProfit', 'Take profit']];
 /** What the dropdown says next to a layer that cannot be chosen yet. */
 const UPCOMING = 'upcoming';
@@ -27,30 +31,30 @@ function setValue(control: HTMLSelectElement | HTMLInputElement, value: string):
 /** Top bar: market, timeframe, layer, pane toggles, heatmap colour, venues, theme. */
 export class Toolbar {
   readonly root = el('header', { class: 'toolbar' });
-  #market = el('select', { class: 'market' });
+  #market = el('select', { class: 'market', tip: "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here." });
   #timeframes = el('div', { class: 'seg' });
-  #layer = el('select');
+  #layer = el('select', { tip: 'Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).' });
   #toggles = el('div', { class: 'seg toggles' });
   #chips = el('div', { class: 'chips' });
   /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */
   #blocked = el('div', { class: 'chips blocked-chips' });
   readonly #notice = new VenueNotice();
-  #scope = el('div', { class: 'seg scope', title: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
-  #soundButton = el('button', { class: 'sound-btn', textContent: 'Sound', title: 'Sound notifications' });
+  #scope = el('div', { class: 'seg scope', tip: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
+  #soundButton = el('button', { class: 'sound-btn', textContent: 'Sound', tip: 'Sound notifications' });
   #soundPanel: Panel | null = null;
   #sounds: Sounds | null = null;
-  #highlights = el('button', { textContent: 'Highlights', title: 'What stands out: unusual volume, open-interest changes and depth imbalance' });
+  #highlights = el('button', { textContent: 'Highlights', tip: 'What stands out: unusual volume, open-interest changes and depth imbalance' });
   #heat = {
-    style: el('select', { title: 'Heatmap colouring' }),
+    style: el('select', { tip: `Heatmap colouring. ${HEAT_STYLES.map(s => `${s.label}: ${s.title}.`).join(' ')}` }),
     lo: el('i'), hi: el('i'), legend: el('span', { class: 'legend' }),
-    contrast: el('input', { type: 'range', min: '0', max: '100', step: '1', title: 'Contrast: right reveals thinner liquidity, left keeps only the biggest walls. Double-click to reset.' }),
-    smooth: el('select', { title: 'Vertical smoothing when price rows get thin (zoomed out): Auto smooths with a ~5 px Gaussian below 15 px per row, as Bookmap does, so far walls stay visible; Off draws every row exactly.' }),
-    auto: el('button', { textContent: 'Auto', title: 'Auto: the colour window follows the data (recomputed on recenter, market change, zoom and every 10 s). Off: it stays where it is.' }),
+    contrast: el('input', { type: 'range', min: '0', max: '100', step: '1', tip: 'Contrast: right reveals thinner liquidity, left keeps only the biggest walls. Double-click to reset.' }),
+    smooth: el('select', { tip: 'Vertical smoothing when price rows get thin (zoomed out): Auto smooths with a ~5 px Gaussian below 15 px per row, as Bookmap does, so far walls stay visible; Off draws every row exactly.' }),
+    auto: el('button', { textContent: 'Auto', tip: 'Auto: the colour window follows the data (recomputed on recenter, market change, zoom and every 10 s). Off: it stays where it is.' }),
   };
-  #source = el('select', { title: 'Heatmap source' });
-  #theme = el('button', { class: 'theme-btn', title: 'Theme: hover to preview, click to keep' });
-  #status = el('span', { class: 'status' });
-  #recenter = el('button', { textContent: 'Recenter' });
+  #source = el('select', { tip: 'Heatmap source' });
+  #theme = el('button', { class: 'theme-btn', tip: 'Theme: hover to preview, click to keep' });
+  #status = el('span', { class: 'status', tip: 'Connection to the data source: live when frames are arriving.' });
+  #recenter = el('button', { textContent: 'Recenter', tip: 'Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).' });
   onRecenter: () => void = () => {};
   /** Preview a theme without keeping it (`null` puts the saved one back). */
   onPreviewTheme: (id: string | null) => void = () => {};
@@ -60,7 +64,7 @@ export class Toolbar {
 
   constructor(private store: Store, private venueControl: VenueControl) {
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
-    for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, onclick: () => this.store.set({ timeframe: tf }) }));
+    for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, tip: `${TIMEFRAME_NAMES[tf] ?? tf} candles. The footprint, the bar stats and the open-interest bars follow this too.`, onclick: () => this.store.set({ timeframe: tf }) }));
     for (const [id, label] of LAYERS) {
       const available = AVAILABLE_LAYERS.includes(id), option = new Option(available ? label : `${label} · ${UPCOMING}`, id);
       option.disabled = !available;
@@ -68,7 +72,7 @@ export class Toolbar {
     }
     this.#layer.onchange = () => this.store.set({ layer: this.#layer.value as Layer });
     for (const [key, label] of [['profile', 'Profile'], ['depth', 'Depth'], ['oi', 'OI'], ['candles', 'Candles'], ['footprint', 'Footprint'], ['lt', 'LT'], ['mirror', 'Mirror'], ['volume', 'Volume'], ['bubbles', 'Trades']] as const)
-      this.#toggles.append(el('button', { textContent: label, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) }));
+      this.#toggles.append(el('button', { textContent: label, tip: HELP[key === 'bubbles' ? 'bubbles' : key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) }));
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
@@ -76,7 +80,7 @@ export class Toolbar {
       this.#soundPanel = togglePanel(this.#soundButton, { title: 'Sounds', width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build);
     };
     this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: 'Highlights', width: 380, align: 'left' }, (tools, body) => this.#buildHighlights(tools, body)); };
-    for (const style of HEAT_STYLES) this.#heat.style.append(Object.assign(new Option(style.label, style.id), { title: style.title }));
+    for (const style of HEAT_STYLES) this.#heat.style.append(new Option(style.label, style.id));
     this.#heat.style.onchange = () => this.store.set({ heat: { ...this.store.state.heat, style: this.#heat.style.value as HeatStyleId } });
     this.#heat.contrast.oninput = () => this.store.set({ heat: { ...this.store.state.heat, contrast: Number(this.#heat.contrast.value) } });
     this.#heat.contrast.ondblclick = () => this.store.set({ heat: { ...this.store.state.heat, contrast: 50 } });
@@ -89,12 +93,12 @@ export class Toolbar {
     this.#recenter.onclick = () => this.onRecenter();
     this.venueControl.watch?.(entries => {
       this.#notice.update(entries);
-      this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, title: `${v.name}: ${VPN_HINT}` })));
+      this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, tip: `${v.name}: ${VPN_HINT}` })));
     });
-    const venues = el('button', { textContent: 'Venues', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct(), () => this.onVenuesApplied()) });
+    const venues = el('button', { textContent: 'Venues', tip: 'Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct(), () => this.onVenuesApplied()) });
     this.root.append(
       el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
-      el('span', { class: 'heatctl' }, this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
+      el('span', { class: 'heatctl' }, helpButton('heatmap'), this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
       this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#theme, this.#status, this.#notice.root);
   }
 
@@ -122,7 +126,7 @@ export class Toolbar {
     const soundState = !state.sounds.on ? 'off' : state.soundState !== 'running' ? 'locked' : 'on';
     if (this.#soundButton.dataset.state !== soundState) {
       this.#soundButton.dataset.state = soundState;
-      this.#soundButton.title = soundState === 'off' ? 'Sound notifications: off' : soundState === 'locked' ? 'Sound is on but the browser keeps audio locked until you click or press a key on the page' : 'Sound notifications: on';
+      setTip(this.#soundButton, soundState === 'off' ? 'Sound notifications: off' : soundState === 'locked' ? 'Sound is on but the browser keeps audio locked until you click or press a key on the page' : 'Sound notifications: on');
       this.#soundPanel?.reposition();
     }
     this.#soundButton.classList.toggle('flash', state.lastSound > 0 && Date.now() - state.lastSound < 600);
@@ -139,21 +143,21 @@ export class Toolbar {
     const venues = [...new Set(books.map(b => b.venue))];
     const scoped = (v: string) => books.some(b => b.venue === v && inScope(state.scope, state.markets, b.id));
     const counts = scopeCounts(state);
-    [...this.#scope.children].forEach((b, i) => { const [value] = SCOPE_OPTIONS[i]!; b.classList.toggle('on', state.scope === value); (b as HTMLElement).title = value === 'all' ? 'Every enabled venue' : `${value === 'spot' ? 'Spot' : 'Perpetual'} venues only (${counts[value]} enabled)`; });
+    [...this.#scope.children].forEach((b, i) => { const [value] = SCOPE_OPTIONS[i]!; b.classList.toggle('on', state.scope === value); setTip(b as HTMLElement, value === 'all' ? 'Every enabled venue' : `${value === 'spot' ? 'Spot' : 'Perpetual'} venues only (${counts[value]} enabled)`); });
     this.#scope.classList.toggle('inert', state.heatmapSource !== 'aggregated');
     const chipKey = venues.map(v => v + (state.disabledVenues.includes(v) ? '-' : '+') + (scoped(v) ? 's' : 'x')).join(',');
     if (this.#chips.dataset.key !== chipKey) {
       this.#chips.dataset.key = chipKey;
-      this.#chips.replaceChildren(...venues.map(v => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), title: 'Show / hide this venue',
+      this.#chips.replaceChildren(...venues.map(v => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), tip: 'Show / hide this venue',
         onclick: () => { const off = this.store.state.disabledVenues; this.store.set({ disabledVenues: off.includes(v) ? off.filter(x => x !== v) : [...off, v] }); } })));
     }
-    this.#scope.title = state.heatmapSource === 'aggregated' ? 'Which markets the liquidity views draw (a filter on the enabled venues; it never switches one on or off)' : 'The heatmap shows a single venue, so this filter only affects the profile, depth, ladder and LT';
+    setTip(this.#scope, state.heatmapSource === 'aggregated' ? 'Which markets the liquidity views draw (a filter on the enabled venues; it never switches one on or off)' : 'The heatmap shows a single venue, so this filter only affects the profile, depth, ladder and LT');
     // Tooltips carry each venue's book reach, so a thin book on the map is explained by its feed.
     venues.forEach((v, i) => {
       const cov = coverage(books.find(b => b.venue === v), state.mark.price);
       const title = cov ? `${venueLabel(v)}: ${cov.levels} levels, reaches ${Math.round(cov.bp / 2)} bp each side. Click to show / hide.` : 'Show / hide this venue';
       const chip = this.#chips.children[i] as HTMLElement | undefined;
-      if (chip && chip.title !== title) chip.title = title;
+      if (chip && chip.dataset.tip !== title) setTip(chip, title);
     });
   }
 

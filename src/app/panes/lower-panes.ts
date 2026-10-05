@@ -1,4 +1,6 @@
 import { PALETTES } from '../theme.ts';
+import { setTip } from '../tip.ts';
+import { helpButton } from '../help.ts';
 import { TIMEFRAMES, type Hub } from '../hub.ts';
 import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar } from '../store.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
@@ -75,6 +77,7 @@ export class DepthPane extends TimePane {
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'depth');
     this.head.innerHTML = '<strong>Depth</strong><span class="readout"></span>';
+    this.head.querySelector('strong')!.after(helpButton('depthPane'));
     const label = document.createElement('label'); label.className = 'ctl'; label.append('Range');
     const select = document.createElement('select');
     for (const r of [0.01, 0.02, 0.05, 0.1, 0.2]) select.append(new Option(`${r * 100}%`, String(r)));
@@ -147,6 +150,7 @@ export class OiPane extends TimePane {
   constructor(host: HTMLElement, store: Store, view: View) {
     super(host, store, view, 'oi');
     this.head.innerHTML = '<strong>Open Interest</strong><span class="readout"></span>';
+    this.head.querySelector('strong')!.after(helpButton('oiPane'));
   }
   #analysis(oi: readonly OiBar[], highlight: HighlightOptions) {
     const key = `${highlight.mult}|${highlight.length}`;
@@ -237,11 +241,12 @@ export class LtPane extends TimePane {
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'lt');
     this.head.innerHTML = '<strong>Liquidity Tracker</strong><span class="readout"></span>';
-    this.head.querySelector('strong')!.title = "Weighted USD liquidity near the touch of the aggregated book of the enabled venues. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders.";
+    this.head.querySelector('strong')!.after(helpButton('ltPane'));
+    setTip(this.head.querySelector('strong')!, "Weighted USD liquidity near the touch of the aggregated book of the enabled venues. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders.");
     const lt = () => this.store.state.lt;
     const patch = (change: Partial<AppState['lt']>) => this.store.set({ lt: { ...lt(), ...change } });
     const select = (label: string, title: string, options: [string, string][], get: () => string, set: (value: string) => void) => {
-      const wrap = document.createElement('label'); wrap.className = 'ctl'; wrap.title = title; wrap.append(label);
+      const wrap = document.createElement('label'); wrap.className = 'ctl'; setTip(wrap, title); wrap.append(label);
       const control = document.createElement('select');
       for (const [value, text] of options) control.append(new Option(text, value));
       control.value = get(); control.onchange = () => set(control.value);
@@ -252,7 +257,7 @@ export class LtPane extends TimePane {
     select('Half-life', "Distance from the touch, in basis points of price, at which a level's weight halves", HALF_LIVES.map(v => [String(v), `${v} bp`]), () => String(lt().halfLifeBp), v => patch({ halfLifeBp: Number(v) }));
     select('Min', 'Ignore price bins smaller than this', MIN_SIZES.map(v => size(v, 'any', '≥')), () => String(lt().minUsd), v => patch({ minUsd: Number(v) }));
     select('Max', 'Ignore price bins larger than this', MAX_SIZES.map(v => size(v, 'no cap', '≤')), () => String(lt().maxUsd), v => patch({ maxUsd: Number(v) }));
-    const avg = document.createElement('label'); avg.className = 'ctl'; avg.title = 'Divide by the summed weights of the non-empty levels, as if each had size 1';
+    const avg = document.createElement('label'); avg.className = 'ctl'; setTip(avg, 'Divide by the summed weights of the non-empty levels, as if each had size 1');
     const box = document.createElement('input'); box.type = 'checkbox'; box.checked = lt().average; box.onchange = () => patch({ average: box.checked });
     avg.append(box, 'Per level'); this.head.append(avg);
     this.#sync.push(() => { if (box.checked !== lt().average) box.checked = lt().average; });
@@ -335,7 +340,8 @@ export class BarStatsPane extends TimePane {
   constructor(host: HTMLElement, store: Store, view: View, private heat: HeatPane) {
     super(host, store, view, 'bars');
     this.head.innerHTML = '<strong>Bar stats</strong><span class="readout"></span>';
-    this.#button.textContent = 'Stats'; this.#button.title = 'Choose, order and configure the statistics shown for each candle';
+    this.head.querySelector('strong')!.after(helpButton('barStats'));
+    this.#button.textContent = 'Stats'; setTip(this.#button, 'Choose, order and configure the statistics shown for each candle');
     this.#button.onclick = () => { this.#panel = togglePanel(this.#button, { title: 'Bar stats', width: 440, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#build(tools, body)); };
     this.head.append(this.#button);
   }

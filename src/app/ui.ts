@@ -30,7 +30,7 @@ export const closePanel = (): void => current?.close();
 
 export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (tools: HTMLElement, body: HTMLElement) => void): Panel {
   current?.close();
-  const closeButton = el('button', { class: 'panel-x', textContent: '×', title: 'Close (Esc)', type: 'button' });
+  const closeButton = el('button', { class: 'panel-x', textContent: '×', tip: 'Close (Esc)', type: 'button' });
   const head = el('div', { class: 'panel-head' }, el('h3', { textContent: options.title }), closeButton);
   const tools = el('div', { class: 'panel-tools' }), body = el('div', { class: 'panel-body' });
   const root = el('div', { class: 'panel', role: 'dialog' }, head, tools, body);
@@ -89,13 +89,13 @@ export const note = (text: string): HTMLElement => el('p', { class: 'panel-note'
 /** A checkbox with a name and, below it, what it means. The whole row is the click target. */
 export function checkRow(name: string, description: string, checked: boolean, onChange: (checked: boolean) => void): HTMLElement {
   const box = el('input', { type: 'checkbox', checked }); box.onchange = () => onChange(box.checked);
-  return el('label', { class: 'opt', title: description }, box, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description }));
+  return el('label', { class: 'opt', tip: description }, box, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description }));
 }
 
 /** An on/off switch with a name and description to its left. */
 export function switchRow(name: string, description: string, checked: boolean, onChange: (checked: boolean) => void): HTMLElement {
   const box = el('input', { type: 'checkbox', checked }); box.onchange = () => onChange(box.checked);
-  return el('label', { class: 'field', title: description },
+  return el('label', { class: 'field', tip: description },
     el('span', { class: 'label' }, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description })),
     el('span', { class: 'switch' }, box, el('i')));
 }
@@ -105,7 +105,7 @@ export function rangeRow(name: string, description: string, o: { min: number; ma
   const out = el('output', { textContent: format(o.value) });
   const input = el('input', { type: 'range', min: String(o.min), max: String(o.max), step: String(o.step), value: String(o.value) });
   input.oninput = () => { const v = Number(input.value); out.textContent = format(v); onInput(v); };
-  return el('label', { class: 'field', title: description },
+  return el('label', { class: 'field', tip: description },
     el('span', { class: 'label' }, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description })),
     el('span', { class: 'slider' }, input, out));
 }
@@ -114,7 +114,7 @@ export function selectRow(name: string, description: string, options: readonly [
   const select = el('select');
   for (const [v, label] of options) select.append(new Option(label, v));
   select.value = value; select.onchange = () => onChange(select.value);
-  return el('label', { class: 'field', title: description },
+  return el('label', { class: 'field', tip: description },
     el('span', { class: 'label' }, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description })), select);
 }
 
@@ -122,7 +122,7 @@ export function numberRow(name: string, description: string, o: { min: number; s
   const input = el('input', { type: 'number', min: String(o.min), step: String(o.step), value: String(o.value) });
   if (o.max !== undefined) input.max = String(o.max);
   input.onchange = () => { const v = Number(input.value); if (Number.isFinite(v)) onChange(Math.min(o.max ?? Infinity, Math.max(o.min, v))); };
-  return el('label', { class: 'field', title: description },
+  return el('label', { class: 'field', tip: description },
     el('span', { class: 'label' }, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description })), input);
 }
 
@@ -133,7 +133,7 @@ export function segmented(options: readonly [value: string, label: string][], va
   return group;
 }
 
-export const button = (label: string, onclick: () => void, title = ''): HTMLButtonElement => el('button', { type: 'button', textContent: label, title, onclick });
+export const button = (label: string, onclick: () => void, title = ''): HTMLButtonElement => el('button', { type: 'button', textContent: label, tip: title, onclick });
 
 // ---- reorderable list ----------------------------------------------------------------------------------------------
 
@@ -152,11 +152,11 @@ export function sortableList(items: readonly SortItem[], onReorder: (ids: string
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`.sortable [data-id="${CSS.escape(refocus)}"] .grip`)?.focus());
   };
   items.forEach((item, index) => {
-    const grip = el('button', { type: 'button', class: 'grip', title: 'Drag to reorder, or press the up and down arrow keys' });
+    const grip = el('button', { type: 'button', class: 'grip', tip: 'Drag to reorder, or press the up and down arrow keys' });
     grip.setAttribute('aria-label', `Move ${item.label}: drag, or press the up and down arrow keys`);
-    const remove = el('button', { type: 'button', class: 'x', textContent: '×', title: `Hide ${item.label}`, onclick: () => onRemove(item.id) });
+    const remove = el('button', { type: 'button', class: 'x', textContent: '×', tip: `Hide ${item.label}`, onclick: () => onRemove(item.id) });
     remove.setAttribute('aria-label', `Hide ${item.label}`);
-    const row = el('div', { class: 'srow', title: item.title ?? '', role: 'listitem' }, grip, el('span', { class: 'idx', textContent: String(index + 1) }), el('b', { textContent: item.label }), remove);
+    const row = el('div', { class: 'srow', tip: item.title ?? '', role: 'listitem' }, grip, el('span', { class: 'idx', textContent: String(index + 1) }), el('b', { textContent: item.label }), remove);
     row.dataset.id = item.id;
     grip.onkeydown = event => {
       if (event.key === 'ArrowUp' && index > 0) { event.preventDefault(); commit(index, index - 1, item.id); }

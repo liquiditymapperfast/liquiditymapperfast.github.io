@@ -25,9 +25,9 @@ export function buildSoundPanel(store: Store, sounds: Sounds, rerender: () => vo
   body.append(heading('Large trades'));
   body.append(note('A sweep that fills on several venues within a quarter of a second counts as one trade. Buys rise in pitch and sells fall; a bigger tier adds notes and loudness. A trade belongs to the highest tier it reaches, and sounds only if that tier is on.'));
   s.tiers.forEach((tier, index) => {
-    const amount = el('input', { type: 'number', min: String(MIN_TIER_USD), step: '10000', value: String(tier.usd), title: `Smallest trade in this tier, USD notional (at least ${formatUsd(MIN_TIER_USD)})` });
+    const amount = el('input', { type: 'number', min: String(MIN_TIER_USD), step: '10000', value: String(tier.usd), tip: `Smallest trade in this tier, USD notional (at least ${formatUsd(MIN_TIER_USD)})` });
     amount.onchange = () => { const v = Number(amount.value); if (Number.isFinite(v)) setTier(tier.id, { usd: v }); };
-    const on = el('input', { type: 'checkbox', checked: tier.on, title: `${tier.on ? 'Mute' : 'Sound'} the ${tier.name} tier` }); on.onchange = () => setTier(tier.id, { on: on.checked });
+    const on = el('input', { type: 'checkbox', checked: tier.on, tip: `${tier.on ? 'Mute' : 'Sound'} the ${tier.name} tier` }); on.onchange = () => setTier(tier.id, { on: on.checked });
     body.append(el('div', { class: 'tier-row' },
       el('label', { class: 'tier-name' }, on, el('span', { class: 'name', textContent: tier.name }), el('span', { class: 'desc', textContent: `${index + 1} note${index ? 's' : ''}` })),
       el('label', { class: 'tier-usd' }, el('span', { class: 'muted', textContent: '≥ $' }), amount),

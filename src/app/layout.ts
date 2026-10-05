@@ -1,3 +1,4 @@
+import { setTip } from './tip.ts';
 /** Resizable, reorderable layout: splitters between panes, persisted in localStorage. */
 interface Saved { sideW?: number; heights?: Record<string, number>; order?: string[] }
 const KEY = 'hlm-layout-v2';
@@ -23,7 +24,7 @@ export class Layout {
       if (pane.head) this.#grip(pane);
     }
     // Column splitter between the chart and side columns.
-    const column = document.createElement('div'); column.className = 'splitter v'; column.title = 'Drag to resize';
+    const column = document.createElement('div'); column.className = 'splitter v'; setTip(column, 'Drag to resize');
     this.main.insertBefore(column, this.side);
     this.#setSideWidth(this.#saved.sideW ?? 420);
     this.#drag(column, (dx) => this.#setSideWidth(startSide - dx), () => { startSide = this.#sideWidth(); }, () => this.#persist());
@@ -61,7 +62,7 @@ export class Layout {
     visible.forEach((below, i) => {
       if (i === 0) return;
       const above = visible[i - 1]!;
-      const bar = document.createElement('div'); bar.className = 'splitter h'; bar.title = 'Drag to resize';
+      const bar = document.createElement('div'); bar.className = 'splitter h'; setTip(bar, 'Drag to resize');
       this.chart.insertBefore(bar, below.root); this.#splitters.push(bar);
       let aboveStart = 0, belowStart = 0;
       this.#drag(bar, null, () => { aboveStart = this.#height(above); belowStart = this.#height(below); }, () => this.#persist(), dy => {
@@ -81,7 +82,7 @@ export class Layout {
 
   /** Header grip that reorders fixed panes by dragging over their neighbours. */
   #grip(pane: LayoutPane): void {
-    const grip = document.createElement('span'); grip.className = 'grip'; grip.title = 'Drag to move this pane'; grip.textContent = '⠿';
+    const grip = document.createElement('span'); grip.className = 'grip'; setTip(grip, 'Drag to move this pane'); grip.textContent = '⠿';
     pane.head!.prepend(grip);
     grip.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;

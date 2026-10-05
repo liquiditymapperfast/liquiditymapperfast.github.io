@@ -11,3 +11,8 @@ build/
 
 # Reference screenshots stay on this machine (not in git, not in history)
 example_images/
+
+# Private research (the offline validation study of the trapped-traders cue): scripts, results and notes stay out of git
+Research_Files/
+Research_Results/
+Research_Findings.md

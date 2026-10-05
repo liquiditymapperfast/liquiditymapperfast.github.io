@@ -1,6 +1,8 @@
 import { venueLabel } from '../venues.ts';
 import { activeIds, kindOf } from '../scope.ts';
 import { el } from '../dom.ts';
+import { setTip } from '../tip.ts';
+import { helpButton } from '../help.ts';
 import { button, checkRow, note, togglePanel, type Panel } from '../ui.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES } from '../theme.ts';
@@ -132,13 +134,13 @@ export class LadderPane {
   #buildControls(): void {
     const s = () => this.store.state;
     const title = document.createElement('strong'); title.textContent = 'Order Book';
-    this.#booksButton.textContent = 'Books'; this.#booksButton.title = 'Choose which venues get their own book (Single mode)';
+    this.#booksButton.textContent = 'Books'; setTip(this.#booksButton, 'Choose which venues get their own book (Single mode)');
     this.#booksButton.onclick = () => { this.#panel = togglePanel(this.#booksButton, { title: 'Order books', width: 340, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#buildBooks(tools, body)); };
     const recenter = document.createElement('button'); recenter.textContent = 'Recenter'; recenter.onclick = () => this.recenter();
     const group = this.#select('Group', [['auto', 'Auto'], ...GROUPS.map(g => [String(g), String(g)] as [string, string])], () => String(s().grouping), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
-    group.title = 'Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.';
+    setTip(group, 'Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.');
     this.#autoOption = group.querySelector('option[value="auto"]');
-    this.controls.append(title,
+    this.controls.append(title, helpButton('orderBook'),
       this.#select('Mode', [['aggregated', 'Aggregated'], ['single', 'Single'], ['compact', 'Compact']], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
       group,
       this.#select('Show', [['both', 'Levels + cum'], ['levels', 'Levels'], ['cumulative', 'Cumulative']], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] })),
