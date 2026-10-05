@@ -287,17 +287,24 @@ export interface BrowserVenue {
   id: string; name: string; kind: 'perp' | 'spot';
   /** Part of the set a first visit starts with. */
   recommended: boolean;
+  /**
+   * A small public REST request that answers when the venue serves this visitor. Exchanges that restrict a country refuse here too (an
+   * HTTP error status, or a reply the browser withholds), which is how an unreachable venue is told apart from one that is only slow.
+   */
+  probe: { url: string; init?: { method: string; headers: Record<string, string>; body: string } };
   /** The book connector first, then any feed that only carries trades. */
   make(): { book: BookConnector; feeds: BookConnector[] };
 }
 
+const POST_JSON = { method: 'POST', headers: { 'content-type': 'application/json' } } as const;
+
 export const BROWSER_VENUES: readonly BrowserVenue[] = [
-  { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, make: () => ({ book: new BinancePerpConnector(), feeds: [new BinancePerpTrades()] }) },
-  { id: 'bybit', name: 'Bybit', kind: 'perp', recommended: true, make: () => ({ book: new BybitConnector(), feeds: [] }) },
-  { id: 'okx', name: 'OKX', kind: 'perp', recommended: true, make: () => ({ book: new OkxConnector(), feeds: [] }) },
-  { id: 'bitget', name: 'Bitget', kind: 'perp', recommended: true, make: () => ({ book: new BitgetConnector(), feeds: [] }) },
-  { id: 'hyperliquid', name: 'Hyperliquid', kind: 'perp', recommended: true, make: () => ({ book: new HyperliquidConnector(), feeds: [] }) },
-  { id: 'deribit', name: 'Deribit', kind: 'perp', recommended: true, make: () => ({ book: new DeribitConnector(), feeds: [] }) },
-  { id: 'binancespot', name: 'Binance spot', kind: 'spot', recommended: true, make: () => ({ book: new BinanceSpotConnector(), feeds: [new BinanceSpotTrades()] }) },
-  { id: 'coinbase', name: 'Coinbase', kind: 'spot', recommended: true, make: () => ({ book: new CoinbaseConnector(), feeds: [] }) },
+  { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, probe: { url: 'https://fapi.binance.com/fapi/v1/ping' }, make: () => ({ book: new BinancePerpConnector(), feeds: [new BinancePerpTrades()] }) },
+  { id: 'bybit', name: 'Bybit', kind: 'perp', recommended: true, probe: { url: 'https://api.bybit.com/v5/market/time' }, make: () => ({ book: new BybitConnector(), feeds: [] }) },
+  { id: 'okx', name: 'OKX', kind: 'perp', recommended: true, probe: { url: 'https://www.okx.com/api/v5/public/time' }, make: () => ({ book: new OkxConnector(), feeds: [] }) },
+  { id: 'bitget', name: 'Bitget', kind: 'perp', recommended: true, probe: { url: 'https://api.bitget.com/api/v2/public/time' }, make: () => ({ book: new BitgetConnector(), feeds: [] }) },
+  { id: 'hyperliquid', name: 'Hyperliquid', kind: 'perp', recommended: true, probe: { url: 'https://api.hyperliquid.xyz/info', init: { ...POST_JSON, body: JSON.stringify({ type: 'l2Book', coin: 'BTC' }) } }, make: () => ({ book: new HyperliquidConnector(), feeds: [] }) },
+  { id: 'deribit', name: 'Deribit', kind: 'perp', recommended: true, probe: { url: 'https://www.deribit.com/api/v2/public/get_time' }, make: () => ({ book: new DeribitConnector(), feeds: [] }) },
+  { id: 'binancespot', name: 'Binance spot', kind: 'spot', recommended: true, probe: { url: 'https://api.binance.com/api/v3/ping' }, make: () => ({ book: new BinanceSpotConnector(), feeds: [new BinanceSpotTrades()] }) },
+  { id: 'coinbase', name: 'Coinbase', kind: 'spot', recommended: true, probe: { url: 'https://api.exchange.coinbase.com/time' }, make: () => ({ book: new CoinbaseConnector(), feeds: [] }) },
 ];
