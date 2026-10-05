@@ -221,11 +221,14 @@ export class CoinbaseConnector extends BookConnector {
 
 // ---- Deribit ------------------------------------------------------------------------------------------------------------------------
 
-/** Deribit BTC-PERPETUAL: amounts are USD (10 per contract), the grouped top-20 book arrives whole every 100 ms. */
+/** Deribit BTC-PERPETUAL: amounts are USD (10 per contract), and the book arrives whole every 100 ms as 20 bands a side grouped by $10 (the server's setting). */
 export class DeribitConnector extends BookConnector {
   readonly id = 'deribit'; readonly name = 'Deribit'; readonly symbol = 'BTC-PERPETUAL'; readonly quote = 'USD'; readonly marketType = 'perpetual' as const;
+  protected override readonly coarse = true;
+  /** A grouped level is named by the middle of its $10 band. */
+  protected override band(price: number) { return { lo: price - 5, hi: price + 5 }; }
   protected url() { return 'wss://www.deribit.com/ws/api/v2'; }
-  protected open(send: (p: unknown) => void) { send({ jsonrpc: '2.0', id: 1, method: 'public/subscribe', params: { channels: ['book.BTC-PERPETUAL.none.20.100ms', 'trades.BTC-PERPETUAL.100ms'] } }); }
+  protected open(send: (p: unknown) => void) { send({ jsonrpc: '2.0', id: 1, method: 'public/subscribe', params: { channels: ['book.BTC-PERPETUAL.10.20.100ms', 'trades.BTC-PERPETUAL.100ms'] } }); }
   protected override usdOf(_price: number, size: number) { return size; }
   onMessage(text: string) {
     const m = this.record(JSON.parse(text)); const params = this.record(m?.params); if (!params) return;
@@ -246,14 +249,16 @@ export class DeribitConnector extends BookConnector {
 
 // ---- Hyperliquid --------------------------------------------------------------------------------------------------------------------
 
-/** Hyperliquid BTC perpetual: l2Book at two significant figures (20 aggregated bands a side, each named by its lower edge) and trades. */
+/** Hyperliquid BTC perpetual: l2Book at three significant figures (20 aggregated bands a side of about $100, each named by its lower edge) and trades. */
+/** The server's setting (HL_BOOK_NSIG_FIGS defaults to 3): bands about $100 wide at this price. */
+const HL_SIG_FIGS = 3;
 export class HyperliquidConnector extends BookConnector {
   readonly id = 'hyperliquid'; readonly name = 'Hyperliquid'; readonly symbol = 'BTC-PERP'; readonly quote = 'USD'; readonly marketType = 'perpetual' as const;
   protected override readonly coarse = true;
-  protected override band(price: number) { try { const b = hyperliquidGroupingBoundsDecimal(price, 2); return { lo: b.lower, hi: b.upper }; } catch { return { lo: price, hi: price }; } }
+  protected override band(price: number) { try { const b = hyperliquidGroupingBoundsDecimal(price, HL_SIG_FIGS); return { lo: b.lower, hi: b.upper }; } catch { return { lo: price, hi: price }; } }
   protected url() { return 'wss://api.hyperliquid.xyz/ws'; }
   protected open(send: (p: unknown) => void) {
-    send({ method: 'subscribe', subscription: { type: 'l2Book', coin: 'BTC', nSigFigs: 2 } });
+    send({ method: 'subscribe', subscription: { type: 'l2Book', coin: 'BTC', nSigFigs: HL_SIG_FIGS } });
     send({ method: 'subscribe', subscription: { type: 'trades', coin: 'BTC' } });
   }
   override keepalive() { return { everyMs: 30_000, frame: () => ({ method: 'ping' }) }; }
