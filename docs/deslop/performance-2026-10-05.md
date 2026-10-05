@@ -102,5 +102,20 @@ the GPU number is a ceiling), page idle after 30 s warm-up, eight default venues
 | browser + utility | 2.1 % | |
 
 So the engine and the raster worker together take about 19 % of a core, close to what the server used for the same venues (about 17 %). The main thread, which draws, is nearly idle.
+### On a phone (2026-10-06)
+
+The same page in Chrome emulating a phone (390 x 844, device pixel ratio 3, touch, an iPhone user agent), `?persist=0`, eight default venues live, the 1h chart, 30 s windows after a 15 s warm-up, over CDP with `Performance.getMetrics` and `Network.webSocketFrameReceived` on the page and on the engine worker (the page's own CPU never leaves the main thread except the worker, which has no `Performance` domain, so its CPU is not in these numbers). Software GL again, so GPU time says nothing.
+
+| | Main thread | Frames |
+| --- | --- | --- |
+| No slowdown, DPR 3 | 2.7 % of a core | 1792 rAF frames, median 16.7 ms, none over 18 ms |
+| 4x CPU slowdown, DPR 3 | 12.7 % | 1793 frames, p95 16.8 ms, none over 50 ms |
+| 4x slowdown, DPR 2 | 13.8 % | one frame of 150 ms in 1784 |
+| 4x slowdown, Book tab open | 13.0 % | one frame of 33 ms |
+
+The device pixel ratio makes no measurable difference to the main thread (the canvases are filled by the GPU), so the 2D canvases keep the real ratio for crisp text and only the heatmap's WebGL canvas is capped at 2 on a touch screen (the cells are blocks of colour). The slowdown multiplies the main-thread time by about four, as it should; nothing here is near a frame.
+
+The cost that matters on a phone is the data: 1.5 MB in 30 s (49.6 KB/s, 75.8 WebSocket frames/s) in the first run and 46.6 to 74 KB/s in the others, which is 165 to 260 MB an hour with the default venues. The guide says so, and that fewer venues cost proportionally less.
+
 A possible-trap pulse (the glow on a live trap's cells, redrawn about 20 times a second only while one is in view) added 1.5 percentage points of a core to the main thread in the same headless setup (9.0 % pulsing against 7.5 % with it panned away, 15 s each), and stops completely when the candle leaves the view or motion is reduced. Recordings in IndexedDB add a transaction every half second and structured-cloned reads once at start; they were not measured separately. Retention is 24 hours (the server keeps seven days),
 which at the 47 KB per minute of columns measured above is about 68 MB for the depth columns; the footprint maps and large-trade lists after a full day were not measured.

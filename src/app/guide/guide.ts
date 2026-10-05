@@ -1,4 +1,5 @@
 import { el } from '../dom.ts';
+import { isCoarse } from '../device.ts';
 import { SECTIONS, readingMinutes, type Block, type Section } from './content.ts';
 import { createFigure } from './figures.ts';
 import { parseInline } from './markup.ts';
@@ -46,7 +47,7 @@ export function openGuide(section?: string): void {
   const figures: { dispose(): void }[] = [];
   const dialog = el('dialog', { class: 'guide', ariaLabel: 'Guide' });
   const closeButton = el('button', { type: 'button', class: 'guide-x', textContent: '×', tip: 'Close the guide (Esc)', ariaLabel: 'Close the guide' });
-  const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: 'Guide' }), el('span', { class: 'sub', textContent: `About ${readingMinutes()} minutes to read. Pictures move: hover, pause or scrub them.` })), closeButton);
+  const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: 'Guide' }), el('span', { class: 'sub', textContent: `About ${readingMinutes()} minutes to read. Pictures move: ${isCoarse() ? 'tap to look closer, pause or scrub them' : 'hover, pause or scrub them'}.` })), closeButton);
   const toc = el('nav', { class: 'guide-toc', ariaLabel: 'Contents' });
   const select = el('select', { class: 'guide-jump', ariaLabel: 'Jump to a section' });
   const scroller = el('div', { class: 'guide-scroll' }), article = el('article', { class: 'guide-article' });
@@ -58,7 +59,7 @@ export function openGuide(section?: string): void {
     links.set(section.id, a); toc.append(a);
     select.append(new Option(`${i + 1}. ${section.title}`, section.id));
   });
-  article.append(el('footer', { class: 'guide-end' }, el('p', { textContent: 'That is the whole page. Everything else is a hover away: every button explains itself, and the ? beside a pane says what it is.' }),
+  article.append(el('footer', { class: 'guide-end' }, el('p', { textContent: `That is the whole page. Everything else is ${isCoarse() ? 'a long press' : 'a hover'} away: every button explains itself, and the ? beside a pane says what it is.` }),
     el('button', { type: 'button', textContent: 'Back to the top', onclick: () => scroller.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' }) })));
   scroller.append(article);
   dialog.append(head, el('div', { class: 'guide-body' }, toc, scroller));

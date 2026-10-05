@@ -20,7 +20,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'LiquidityMapperFast shows you where the orders are. An exchange keeps a list of everyone waiting to buy below the price and everyone waiting to sell above it: the **order book**. This page reads that list from the largest exchanges, adds them together and draws it as a map that moves with the price. Where a lot of size is waiting, the map lights up. Those are the **walls** that price tends to react to.' },
       { t: 'p', text: 'It is free: nothing to sign up for, open source, and no server of its own. Your browser connects to the exchanges directly, and nothing you do here is sent anywhere.' },
-      { t: 'fig', id: 'anatomy', caption: 'The page at a glance. Hover a part to see what it is.' },
+      { t: 'fig', id: 'anatomy', caption: 'The page at a glance. Point at a part (hover with a mouse, tap on a touch screen) to see what it is.' },
       { t: 'list', items: [
         '**The chart**: price runs up the side, time runs left to right. The candles show what price did; the coloured map behind them is the order book through time.',
         '**The profile**, the bars at the right edge of the chart, is the order book right now.',
@@ -64,13 +64,23 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'moving', title: 'Moving around',
     blocks: [
-      { t: 'p', text: 'Everything is done with the mouse, and nothing needs a click first. Whatever is under the pointer stays where it is while the rest zooms around it.' },
+      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. Whatever is under the pointer stays where it is while the rest zooms around it.' },
       { t: 'keys', rows: [
         ['[[Wheel]]', 'Zoom the **price** axis around the pointer'],
         ['[[Shift]] + [[Wheel]]', 'Zoom the **time** axis around the pointer'],
         ['Drag', 'Pan both ways. With [[Shift]], pan time only'],
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['Double-click, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
+      ] },
+      { t: 'p', text: 'On a **phone or tablet** the map sits on top and the bar at the bottom picks the pane under it (beside it when the phone is on its side): the order book, depth, open interest, the tracker or the statistics. Drag the handle between them to resize it; **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:' },
+      { t: 'keys', rows: [
+        ['**Drag**', 'Pan both ways. It carries on a little after you lift'],
+        ['**Pinch**', 'Sideways zooms **time**, up and down zooms **price**, a diagonal pinch does both; what is under each finger stays under it'],
+        ['**Tap**', 'Pins the crosshair and its readout above your finger. Tap again, or drag, to let go'],
+        ['**Hold, then drag**', 'Slides the crosshair along without moving the map'],
+        ['**Double-tap**', 'Back to the live edge, price range fitted'],
+        ['**Drag an axis**', 'Along the price or time scale to zoom it'],
+        ['**Hold a button**', 'Shows what it does, without pressing it'],
       ] },
       { t: 'fig', id: 'zoom-price', caption: 'Wheel: the price under the pointer stays put while the scale around it changes.' },
       { t: 'fig', id: 'zoom-time', caption: 'Shift + Wheel: the same for time. Candles get wider and the footprint appears.' },
@@ -90,7 +100,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: 'The ladder on the right is the same book as rows. Each row is a price step; the coloured cells are the exchanges, one column each (BIN, BYB, OKX and so on); the bar at the right is the combined size, with the running total behind it.' },
       { t: 'list', items: [
         '**Mode**: *Aggregated* adds the exchanges together, *Single* gives each its own book, *Compact* squeezes them.',
-        '**Group** is the price step per row. Scroll over the book, or drag its price column, to zoom it; drag the book to move it; double-click to reset.',
+        '**Group** is the price step per row. Scroll over the book, pinch it, or drag its price column, to zoom it; drag the book to move it; double-click or double-tap to reset.',
         '**Show** picks levels, the cumulative total, or both.',
       ] },
     ],
@@ -100,7 +110,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'Mirror answers one question: *is there more on this side of the price, or the other?* Point at a price in the profile or the order book. The band between the price and your pointer is outlined, and so is the equal band on the other side. A box adds up both and says which is bigger. Move outward and watch the balance change with distance.' },
       { t: 'fig', id: 'mirror', caption: 'The pointer moves away from the price. The box compares the two bands as they grow.' },
-      { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, so the **Mirror** button in the toolbar changes nothing you can see until you point at the profile or the order book. If hovering stops showing the box, check that button: its state is saved between visits.' },
+      { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, so the **Mirror** button in the toolbar changes nothing you can see until you point at the profile or the order book. If hovering stops showing the box, check that button: its state is saved between visits. On a touch screen, tap the profile or the order book to pin the box there, and tap again to let go.' },
     ],
   },
   {
@@ -112,7 +122,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'trades', title: 'Trades and sound',
     blocks: [
-      { t: 'p', text: 'Large trades appear as **bubbles** at the price and time they happened: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.' },
+      { t: 'p', text: 'Large trades appear as **bubbles** at the price and time they happened: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover or tap one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.' },
       { t: 'p', text: '**Sound** turns trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.' },
     ],
   },
@@ -160,8 +170,8 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'tools', title: 'Screenshot, themes and install',
     blocks: [
-      { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click a pane to take all of it. Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG. Every tool has a key, shown in its tooltip.' },
-      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click to keep it. **Install** appears when your browser can install this page as an app with its own window and icon; other browsers offer it in their menu (“Install app”, “Add to Dock”).' },
+      { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click or tap a pane to take all of it. Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG, and on a phone the share arrow opens the phone\'s own share sheet. Every tool has a key, shown in its tooltip.' },
+      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app with its own window and icon; other browsers offer it in their menu (“Install app”, “Add to Dock”). An iPhone or iPad has no prompt: choose Share, then Add to Home Screen (the button says so).' },
       { t: 'keys', rows: [
         ['[[S]]', 'Screenshot'],
         ['[[R]], [[Home]]', 'Back to the live edge'],
@@ -176,6 +186,7 @@ export const SECTIONS: readonly Section[] = [
         '**This is not advice**, and it places no orders. It is a way to look at what the order books are doing.',
         '**The map is not the whole market.** It shows the exchanges you switched on, and hidden or split orders are not visible.',
         '**A fresh page is shallow far from the price.** Binance\'s depth snapshot reaches only about 0.16% from the price and farther levels appear as they change, so the far side fills in over some minutes.',
+        '**A phone only records while the page is open and awake.** A sleeping screen, or another app in front, leaves a gap in the map; **Keep screen on** in Settings holds it awake. With the default eight exchanges the page reads about 50 to 75 KB of exchange data a second, which is 175 to 260 MB an hour: on a mobile connection, switch some off in **Venues**.',
         '**Nothing leaves your machine.** The page talks to the exchanges and to nobody else. Recordings live in your browser; clearing the site\'s data erases them.',
         '**If something looks wrong**: check the connection status at the top right, look for a dashed “unavailable” tag, try Recenter, and if hovering shows nothing, check the Mirror button.',
       ] },

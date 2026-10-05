@@ -1,5 +1,6 @@
 import { buildLut } from '../heatmap/lut.ts';
 import { el } from '../dom.ts';
+import { isCoarse } from '../device.ts';
 import type { FigureId } from './content.ts';
 
 /**
@@ -366,7 +367,8 @@ export function createFigure(id: FigureId, caption: string): { root: HTMLElement
   const canvas = el('canvas', { class: 'fig-canvas', role: 'img', ariaLabel: caption });
   const play = el('button', { type: 'button', class: 'fig-play', tip: 'Pause or play', ariaLabel: 'Pause or play' });
   const scrub = el('input', { type: 'range', class: 'fig-scrub', min: '0', max: '1000', value: String(Math.round(scene.rest * 1000)), tip: 'Drag to scrub through the animation', ariaLabel: 'Scrub the animation' });
-  const hover = el('div', { class: 'fig-hover', textContent: scene.describe ? 'Move the pointer over the picture.' : '' });
+  const hint = isCoarse() ? 'Tap the picture to see what each part is.' : 'Move the pointer over the picture.';
+  const hover = el('div', { class: 'fig-hover', textContent: scene.describe ? hint : '' });
   const root = el('figure', { class: 'fig' }, canvas, el('div', { class: 'fig-bar' }, play, scrub), el('figcaption', { textContent: caption }), ...(scene.describe ? [hover] : []));
   let playing = !reduced(), visible = false, u = scene.rest, last = 0, frame = 0, ptr: { x: number; y: number } | null = null, size = { w: 0, h: 0 };
   let disposed = false;
@@ -382,7 +384,7 @@ export function createFigure(id: FigureId, caption: string): { root: HTMLElement
     scene.draw(g, size.w, size.h, u, readTheme(), ptr);
     scrub.value = String(Math.round(u * 1000));
     play.textContent = playing ? '❚❚' : '▶';
-    if (scene.describe) hover.textContent = ptr ? scene.describe(size.w, size.h, ptr.x, ptr.y) ?? 'Move the pointer over the picture.' : 'Move the pointer over the picture.';
+    if (scene.describe) hover.textContent = ptr ? scene.describe(size.w, size.h, ptr.x, ptr.y) ?? hint : hint;
   };
   const tick = (now: number): void => {
     frame = 0; if (disposed || !visible) return;
@@ -397,7 +399,15 @@ export function createFigure(id: FigureId, caption: string): { root: HTMLElement
   play.onclick = () => { playing = !playing; if (playing) start(); else paint(); };
   scrub.oninput = () => { playing = false; u = Number(scrub.value) / 1000; paint(); };
   canvas.addEventListener('pointermove', e => { const r = canvas.getBoundingClientRect(); ptr = scene.describe ? { x: e.clientX - r.left, y: e.clientY - r.top } : null; if (!playing) paint(); });
-  canvas.addEventListener('pointerleave', () => { ptr = null; if (!playing) paint(); });
+  // A finger has no hover: a tap describes that spot and keeps it (the picture holds still), and a tap on the same spot lets go.
+  canvas.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch' || !scene.describe) return;
+    const r = canvas.getBoundingClientRect(), at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    ptr = ptr && Math.hypot(ptr.x - at.x, ptr.y - at.y) < 14 ? null : at;
+    if (!ptr) { last = 0; start(); }
+    paint();
+  });
+  canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; ptr = null; if (!playing) paint(); });
   const watcher = new IntersectionObserver(entries => { visible = entries.some(e => e.isIntersecting); if (visible) { paint(); if (playing) start(); } }, { rootMargin: '80px' });
   watcher.observe(root);
   const resize = new ResizeObserver(() => { if (visible) paint(); });

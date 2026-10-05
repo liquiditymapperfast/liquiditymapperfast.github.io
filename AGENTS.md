@@ -35,6 +35,14 @@ The earlier byte-accounting "admission/lease/grant/reservation" machinery was me
 
 Measure with an isolated, visible-state headless Chrome over CDP. A tab reporting `visibilityState: hidden` has throttled timers and rAF; its numbers are meaningless. Use the real GPU path for WebGL timings (software GL says nothing about GPU frame time).
 
+## Phones and tablets
+
+- Two attributes on `<html>` (`src/app/device.ts`, tested in `tests/app-device.test.mts`) drive the touch arrangement: `data-layout` (`phone`, `phone-landscape`, `desktop`: how the panes are arranged) and `data-bar` (`compact`, `full`: how the controls are). Put mobile CSS in `src/app/mobile.css` under one of them (or `(pointer: coarse)`), never in a user-agent test, and keep the desktop rules in `styles.css` unchanged. Script that must differ reads `isPhone()` / `compactBar()` / `isCoarse()` from the same module.
+- A phone must not write the desktop's saved layout (`hlm-layout-v2`): `Layout.#persist` returns early when `isPhone()`. The dock's own sizes use `hlm-dock-size`.
+- Touch gestures come from the pure recogniser in `src/app/touch.ts` (tested with a fake clock); panes bind it with `bindTouch` and leave mouse and pen to their existing handlers. A pinch is reported per axis (`axisPinchScale`).
+- Test by emulation: Chrome over CDP with `Emulation.setDeviceMetricsOverride { mobile: true, deviceScaleFactor: 3 }`, `Emulation.setTouchEmulationEnabled`, `Input.dispatchTouchEvent`, and `Emulation.setCPUThrottlingRate` for a slow phone. Check portrait, landscape (844 x 390), a small phone (360 x 640) and a tablet (820 x 1180 and 1180 x 820). It is Chrome, not Safari; say so when reporting.
+- Never let a floating panel, menu or dropdown rely on `position` computed from its anchor on a touch screen: they are bottom sheets there (`ui.ts`, `menu.ts`, `sheet.ts`).
+
 ## Running and verifying
 
 - `npm run dev` builds and starts the live server on `http://127.0.0.1:8787` (a page it serves uses it as its data source); `npm run dev:client` runs the page alone, reading the exchanges from the browser; `npm run build:site` builds the static site; `npm run dev:fixture` runs offline. Before starting or restarting a local service, inspect existing process and port ownership; test on a spare `PORT` rather than stopping someone else's server.

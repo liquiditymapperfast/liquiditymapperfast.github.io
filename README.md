@@ -48,6 +48,22 @@ The chips are the venues that have a book on the map. A venue that was chosen bu
 
 On a young recording the empty left of the heatmap is filled with the current book in grey (darker grey for bigger walls) so the map reads from the first second; grey is never history, and real colour starts at the dashed line.
 
+## Phones and tablets
+
+The page is arranged for the screen it is on. `src/app/device.ts` decides once, never from the user agent, and puts two attributes on `<html>` that `src/app/mobile.css` reads:
+
+| Attribute | Values | Meaning |
+| --- | --- | --- |
+| `data-layout` | `phone`, `phone-landscape`, `desktop` | How the panes are arranged. A window up to 640 px wide, or a touch screen held upright up to 900 px (a tablet in portrait), is `phone`; a touch screen held sideways and up to 520 px tall is `phone-landscape`; everything else, a tablet held sideways included, is `desktop` |
+| `data-bar` | `compact`, `full` | How the controls are arranged. `compact` on every phone arrangement and on any touch-first screen |
+
+- **Phone (portrait):** a two-row top bar (market, status and Settings above; timeframes and recentre below), the map, one pane at a time under it, and a tab bar (Map, Book, Depth, OI, LT, Stats; a tab exists while its switch is on in Settings). Tapping the open tab, or **Map**, gives the chart the whole screen. The handle between the map and the pane resizes it (remembered per tab and orientation; a double tap resets it). **Landscape:** one top row, the pane beside the map, the tabs as a rail along the edge. The panes are the same elements the desktop arranges as a column, so nothing is rebuilt when the tab changes (`src/app/dock.ts`), and a phone never writes the desktop's saved pane sizes.
+- **Settings** (the **⋯** button) is a bottom sheet of labelled rows holding every control that does not fit the bar: the pane switches, the heatmap colours and contrast, the venues, Highlights, Sound, the theme, Keep screen on, and Guide, Screenshot, Author and Install. Panels and menus become bottom sheets with a scrim; a dropdown opens the page's own menu (`src/app/touch-select.ts`) in the chosen theme instead of the system's list, and nothing makes an iPhone zoom in.
+- **Gestures** (`src/app/touch.ts` recognises them from pointer positions; the recogniser is pure and tested): drag pans and carries on after the lift; pinch zooms time with the horizontal separation of the fingers and price with the vertical one, about the midpoint, so what is under each finger stays under it; dragging along an axis zooms it; tap pins the crosshair and its readout above the finger (tap again, or drag, to let go); holding then dragging scrubs it; double-tap recentres. The panes under the map share the time axis, so a drag or pinch there moves the map's time; the order book scrolls, pinches to zoom its grouping, pins Mirror on a tap and resets on a double tap. Holding any control shows its tooltip without pressing it.
+- **Screenshot** works by finger (larger handles, buttons that wrap, a Share button where the browser has a share sheet). **Keep screen on** uses the Screen Wake Lock API, because a sleeping screen stops the recording. **Install:** Chrome and Edge give a prompt; iPhone and iPad get an Add to Home Screen explanation.
+- **Cost:** with the default eight venues the page receives about 47 to 74 KB/s of exchange data (165 to 260 MB an hour); on a 4x CPU slowdown the main thread uses about 13 % of a core with every frame on time (`docs/deslop/performance-2026-10-05.md`). The heatmap canvas is capped at 2 device pixels per CSS pixel on touch screens.
+- **Testing:** the layouts are exercised in Chrome with a phone's size, touch events and device pixel ratio over CDP (`Emulation.setDeviceMetricsOverride` with `mobile: true`, `Input.dispatchTouchEvent`). That is Chrome, not Safari: the first real-device check is the published site over HTTPS (a LAN address over plain HTTP loses Web Locks and the clipboard).
+
 ## How it works
 
 ```

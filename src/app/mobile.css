@@ -19,6 +19,8 @@ body { overscroll-behavior: none; }
   /* A finger on a chart is a pan, a pinch or a long press, never a scroll, a selection or the browser's image menu. */
   canvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .toolbar, .dock, .sheet, .panel-head, .pane-head, .seg, .chip, button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* The guide's pictures are to look at, not to work: a finger that starts on one still scrolls the page. */
+  .fig-canvas { touch-action: pan-y; }
   /* Below 16px, iOS zooms the page in when a field takes focus. */
   :root input:not([type=range], [type=checkbox], [type=radio]), :root textarea { font-size: 16px; }
 }
@@ -155,6 +157,17 @@ html[data-bar="compact"] .venue-list label { min-height: 42px; }
 html[data-bar="compact"] dialog.venues .row { flex-wrap: wrap; justify-content: stretch; }
 html[data-bar="compact"] dialog.venues .row button { flex: 1 1 auto; min-height: 44px; white-space: nowrap; border-radius: 11px; }
 html[data-layout^="phone"] dialog.guide { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; border: 0; }
+/* In the guide the title and the close button share a row, the section menu has the next one to itself, and a table of moves reads top to bottom. */
+html[data-layout^="phone"] .guide-head { flex-wrap: wrap; gap: 4px 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; }
+html[data-layout^="phone"] .guide-head > div { flex: 1 1 0; min-width: 0; }
+html[data-layout^="phone"] .guide-head .sub { display: block; font-size: 12px; line-height: 1.35; }
+html[data-layout^="phone"] .guide-x { width: 42px; height: 42px; font-size: 28px; }
+html[data-layout^="phone"] .guide-jump { order: 3; flex: 1 1 100%; max-width: none; min-height: 44px; font-size: 15px; border-radius: 11px; }
+html[data-layout^="phone"] .guide-article { padding: 0 16px; }
+html[data-layout^="phone"] table.keys, html[data-layout^="phone"] table.keys tbody { display: block; }
+html[data-layout^="phone"] table.keys tr { display: block; padding: 9px 0; border-bottom: 1px solid var(--line); }
+html[data-layout^="phone"] table.keys td { display: block; padding: 0; border: 0; width: auto; white-space: normal; }
+html[data-layout^="phone"] table.keys td:first-child { width: auto; font-weight: 600; margin-bottom: 3px; }
 
 /* ---- the phone's panes: the map above, one pane at a time below it (or beside it) ------------------------------------------------- */
 /* The two columns of the desktop dissolve into one list of panes. */

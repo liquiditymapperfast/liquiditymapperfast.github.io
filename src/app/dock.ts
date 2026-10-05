@@ -117,7 +117,7 @@ export class Dock {
       if (event.button !== 0) return;
       event.preventDefault();
       const now = event.timeStamp;
-      if (now - lastTap < 320) { delete this.#sizes[this.#key()]; this.#persist(); this.#size(); lastTap = 0; return; }
+      if (now - lastTap < 350) { delete this.#sizes[this.#key()]; this.#persist(); this.#size(); lastTap = 0; return; }
       lastTap = now;
       this.grip.setPointerCapture(event.pointerId); this.grip.classList.add('active');
       const axis = this.#axis(), rect = this.main.getBoundingClientRect();

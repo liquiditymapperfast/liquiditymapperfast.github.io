@@ -2,6 +2,7 @@ import { HeatGL, type HeatStyle } from '../heatmap/gl.ts';
 import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow } from '../heatmap/window.ts';
 import { candleSpan } from '../candle-span.ts';
+import { isCoarse } from '../device.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
 import type { Kernels } from '../kernels.ts';
@@ -160,7 +161,8 @@ export class HeatPane {
   }
   #positionGl(): void {
     this.#glCanvas.style.width = `${this.plotW}px`; this.#glCanvas.style.height = `${this.plotH}px`;
-    this.gl.resize(this.plotW, this.plotH, this.#dpr);
+    // The heatmap is blocks of colour, so a finger's screen (3 device pixels to a CSS pixel) gains nothing from filling every one of them; the browser scales a 2x canvas up.
+    this.gl.resize(this.plotW, this.plotH, isCoarse() ? Math.min(this.#dpr, 2) : this.#dpr);
   }
 
   /** Frame the most recent candles, centred on the mark. */
