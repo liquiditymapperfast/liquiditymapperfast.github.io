@@ -24,16 +24,14 @@ uniform vec4 tex;    // t0, t1, p0, p1 covered by the texture
 uniform vec4 range;  // min, max, opacity, mode (0 = size ramp, 1 = two hues)
 uniform vec3 bidC, bidS, askC, askS;
 uniform vec4 fill;   // boundary and sample time (ms from the view origin), enabled, unused
+uniform vec3 fillRgb; // the grey the backfilled levels are drawn in
 void main() {
   float t = mix(view.x, view.y, uv.x);
-  // Before the first recorded column there is no history. With the fill on, the book of that first column is shown there, faded and
-  // hatched, so the map reads at once; it is a picture of the current book, not data, and only this shader ever sees it.
-  float k = 1.0;
-  if (fill.z > 0.5 && t < fill.x) {
-    float near = clamp((t - view.x) / max(fill.x - view.x, 1.0), 0.0, 1.0);
-    k = (0.3 + 0.35 * near) * (mod(gl_FragCoord.x + gl_FragCoord.y, 10.0) < 5.0 ? 1.0 : 0.7);
-    t = fill.y;
-  }
+  // Before the first recorded column there is no history. With the fill on, the current book is drawn there in grey instead of colour:
+  // the same sizes on the same scale (a bigger wall is a darker grey), but never a colour, so what is real and what is backfilled cannot
+  // be mistaken for each other. It is a picture, not data, and only this shader ever sees it.
+  bool back = fill.z > 0.5 && t < fill.x;
+  if (back) t = fill.y;
   float p = mix(view.z, view.w, uv.y);
   vec2 q = vec2((t - tex.x) / (tex.y - tex.x), (p - tex.z) / (tex.w - tex.z));
   if (q.x < 0.0 || q.x >= 1.0 || q.y < 0.0 || q.y >= 1.0) discard;
@@ -46,14 +44,16 @@ void main() {
     float lo = log(max(range.x, 1.0)), hi = log(max(range.y, range.x * 1.0001 + 1.0));
     float s = (log(total) - lo) / max(hi - lo, 1e-6);
     if (s <= 0.0) discard;
-    color = vec4(texture(lut, vec2(clamp(s, 0.0, 1.0), 0.5)).rgb, smoothstep(0.0, 0.06, s) * range.z * k);
+    if (back) { color = vec4(fillRgb, (0.16 + 0.74 * clamp(s, 0.0, 1.0)) * smoothstep(0.0, 0.06, s) * range.z); return; }
+    color = vec4(texture(lut, vec2(clamp(s, 0.0, 1.0), 0.5)).rgb, smoothstep(0.0, 0.06, s) * range.z);
     return;
   }
   bool isAsk = v.g > v.r;
   float a = clamp((max(v.r, v.g) - range.x) / max(range.y - range.x, 1e-6), 0.0, 1.0);
   if (a <= 0.0) discard;
   vec3 c = mix(isAsk ? askS : bidS, isAsk ? askC : bidC, a);
-  color = vec4(c, pow(a, 0.75) * range.z * k);
+  if (back) { color = vec4(fillRgb, (0.16 + 0.74 * a) * range.z); return; }
+  color = vec4(c, pow(a, 0.75) * range.z);
 }`;
 
 /** Draws a bid/ask USD grid texture as a colour-mapped heatmap. */
@@ -80,7 +80,7 @@ export class HeatGL {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'program link failed');
     this.#program = program;
-    for (const name of ['grid', 'lut', 'view', 'tex', 'range', 'bidC', 'bidS', 'askC', 'askS', 'fill']) this.#loc[name] = gl.getUniformLocation(program, name);
+    for (const name of ['grid', 'lut', 'view', 'tex', 'range', 'bidC', 'bidS', 'askC', 'askS', 'fill', 'fillRgb']) this.#loc[name] = gl.getUniformLocation(program, name);
     this.#texture = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.#texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -122,8 +122,8 @@ export class HeatGL {
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
-  /** `fill`: draw the book of the first recorded column (`sample`) before `boundary`, both in epoch ms, as a faded placeholder. */
-  draw(view: Bounds, style: HeatStyle, fill?: { boundary: number; sample: number } | null): void {
+  /** `fill`: before `boundary` (epoch ms) draw the book at `sample` in the grey `rgb`, as a placeholder for history that was never recorded. */
+  draw(view: Bounds, style: HeatStyle, fill?: { boundary: number; sample: number; rgb: [number, number, number] } | null): void {
     const { gl } = this;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -138,6 +138,7 @@ export class HeatGL {
     gl.uniform4f(l.tex!, b.t0 - view.t0, b.t1 - view.t0, b.p0 - view.p0, b.p1 - view.p0);
     gl.uniform4f(l.range!, style.min, style.max, style.opacity, style.mode === 'bookmap' ? 0 : 1);
     gl.uniform4f(l.fill!, fill ? fill.boundary - view.t0 : 0, fill ? fill.sample - view.t0 : 0, fill ? 1 : 0, 0);
+    gl.uniform3fv(l.fillRgb!, fill ? fill.rgb : [0.5, 0.5, 0.5]);
     gl.uniform3fv(l.bidC!, style.bid); gl.uniform3fv(l.bidS!, style.bidSoft);
     gl.uniform3fv(l.askC!, style.ask); gl.uniform3fv(l.askS!, style.askSoft);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

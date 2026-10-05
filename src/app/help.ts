@@ -68,7 +68,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: 'The heatmap', guide: 'heatmap',
     tip: 'Each coloured cell is liquidity resting at a price at a moment: warmer and brighter means more.',
     body: ['Colour shows size on a log scale, so a few huge walls do not hide everything else. The Contrast slider moves the colour window: right shows thinner liquidity, left keeps only the biggest walls. Auto keeps the window following the data.',
-      'It is recorded while this page is open: there is no way to fetch what the order books looked like in the past, so the map starts at the moment you opened the page and grows to the right (a faded fill shows the current book before that).'],
+      'It is recorded while this page is open: there is no way to fetch what the order books looked like in the past, so the map starts at the moment you opened the page and grows to the right (until it has filled the screen, grey shows the current book copied back: the darker the grey, the bigger the wall, but it is not history).'],
   },
   depthPane: {
     title: 'Depth pane', guide: 'lower-panes',

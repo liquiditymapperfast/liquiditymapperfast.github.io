@@ -341,14 +341,14 @@ export class HeatPane {
   /**
    * A young recording leaves most of the map empty, and the stripe that has been recorded so far can be a few pixels wide, so where the
    * liquidity is does not show. While the recording is under two hours old and the live edge is on screen, the current book
-   * is drawn faded and hatched back to the left edge (it is not history: the label says so). Looking at the past, or an
+   * is drawn in grey back to the left edge, darker for bigger walls (it is not history: the colour and the label say so). Looking at the past, or an
    * old recording, never gets it.
    */
-  #placeholder(): { boundary: number; sample: number } | null {
+  #placeholder(): { boundary: number; sample: number; rgb: [number, number, number] } | null {
     const since = this.hub.recordedSince, v = this.view, now = Date.now();
     if (!(since > v.t0) || since >= v.t1 || now - since > PLACEHOLDER_MAX_AGE_MS || v.t1 < now - 60_000) return null;
     // The column to copy is the current minute's: it holds every venue's book as it is now, where the first minute may hold only the venues that had connected by then.
-    return { boundary: since, sample: Math.max(since + 15_000, Math.floor(now / 60_000) * 60_000 + 15_000) };
+    return { boundary: since, sample: Math.max(since + 15_000, Math.floor(now / 60_000) * 60_000 + 15_000), rgb: rgb(this.#palette.muted) };
   }
 
   /**
@@ -359,7 +359,7 @@ export class HeatPane {
     const since = this.hub.recordedSince, v = this.view;
     if (!(since > v.t0 && since < v.t1)) return;
     const x = Math.round(v.xOf(since, pw)) + 0.5, young = this.#placeholder() !== null;
-    const label = young && x > 330 ? 'No history yet: this is the current book, faded. Depth is recorded while this page is open' : `depth recorded from ${clock(since)}`;
+    const label = young && x > 330 ? 'Grey: the current book copied back, not recorded history. Depth is recorded while this page is open' : `depth recorded from ${clock(since)}`;
     ctx.save();
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.setLineDash([2, 4]);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
