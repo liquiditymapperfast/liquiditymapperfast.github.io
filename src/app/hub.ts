@@ -45,6 +45,8 @@ export class Hub {
   recordedSince = 0;
   /** Instrument with candle history to fall back to when the selected market has none. */
   #reference = '';
+  /** Instruments with an open-interest series to fall back to, best first. */
+  #oiReferences: string[] = [];
 
   constructor(readonly store: Store, readonly source: DataSource) {
     this.worker = new Worker(new URL('./worker/raster.worker.ts', import.meta.url), { type: 'module' });
@@ -72,7 +74,7 @@ export class Hub {
     const boot = await this.source.bootstrap();
     const marketId = this.store.state.marketId || boot.markInstrumentId || boot.markets[0]?.instrumentId || '';
     this.#noteRecorded(boot.recorded);
-    this.#reference = boot.markInstrumentId;
+    this.#reference = boot.markInstrumentId; this.#oiReferences = boot.oiReferences ?? [];
     this.store.set({ markets: boot.markets, marketId, mark: { price: boot.markPrice, asOf: boot.asOf }, layers: boot.layers ?? {} });
     await this.#ready;
     this.source.connect({
@@ -99,7 +101,10 @@ export class Hub {
   #tick(tick: TickMessage): void {
     const { state } = this.store;
     const patch: Parameters<Store['set']>[0] = {};
-    if (tick.instrumentId === state.marketId || !state.marketId) patch.mark = { price: tick.price, asOf: tick.asOf };
+    // A source that knows every live price (the browser) gives the market on screen its own; otherwise only the reference instrument moves the mark.
+    const own = tick.prices?.[state.marketId];
+    if (own !== undefined) patch.mark = { price: own, asOf: tick.asOf };
+    else if (tick.instrumentId === state.marketId || !state.marketId || !(state.mark.price > 0)) patch.mark = { price: tick.price, asOf: tick.asOf };
     const live = tick.candles[state.seriesInstrument || state.marketId];
     if (live && state.candles.length) patch.candles = mergeLive(state.candles, live, TIMEFRAMES[state.timeframe] ?? 3_600_000);
     this.store.set(patch);
@@ -129,7 +134,7 @@ export class Hub {
     const own = seriesInstrument || marketId; if (!own) return;
     const key = `${own}|${timeframe}`; this.#oiKey = key;
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, now = Date.now(), from = now - 500 * tf, to = now + tf;
-    const ids = [...new Set([own, this.#reference, 'binance:BTCUSDT'].filter(Boolean))];
+    const ids = [...new Set([own, this.#reference, ...this.#oiReferences].filter(Boolean))];
     const candidates: OiCandidate[] = [];
     for (const inst of ids) {
       const bars = await this.source.oi(inst, timeframe, from, to).catch(() => []);

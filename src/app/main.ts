@@ -1,5 +1,6 @@
 import { Hub } from './hub.ts';
 import { ServerSource } from './server-source.ts';
+import { BrowserSource } from './browser-source.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
 import { Store, initialState } from './store.ts';
@@ -18,7 +19,11 @@ async function main(): Promise<void> {
   const store = new Store(initialState());
   applyTheme(store.state.theme);
   const kernels = await loadKernels();
-  const source: DataSource = new ServerSource();
+  // The exchanges are read straight from this browser unless the page is asked for a local server (`?source=server`).
+  const params = new URLSearchParams(location.search);
+  const source: DataSource = params.get('source') === 'server'
+    ? new ServerSource()
+    : new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0' });
   const hub = new Hub(store, source);
 
   const toolbar = new Toolbar(store, source.venues);

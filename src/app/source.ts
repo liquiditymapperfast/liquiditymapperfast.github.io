@@ -7,8 +7,14 @@ import type { CandleRow, LayerLevel, Market, OiBar } from './store.ts';
 export interface BootstrapState {
   asOf: number; now: number; dataMode: string; markPrice: number; markInstrumentId: string;
   markets: Market[]; layers: Record<string, LayerLevel[]>; steps: Record<string, number>; recorded: Record<string, { first: number; last: number }>; columnMs: number; timeframes: string[];
+  /** Instruments with an open-interest series, best first: the page falls back to them when the market on screen has none. */
+  oiReferences: string[];
 }
-export interface TickMessage { t: 'tick'; price: number; instrumentId: string; asOf: number; candles: Record<string, [number, number, number, number, number, number]> }
+export interface TickMessage {
+  t: 'tick'; price: number; instrumentId: string; asOf: number; candles: Record<string, [number, number, number, number, number, number]>;
+  /** The price of every live instrument, when the source knows them all (the browser does; a server sends only the reference). */
+  prices?: Record<string, number>;
+}
 export interface LayersMessage { t: 'layers'; layers: Record<string, LayerLevel[]> }
 export interface PrintsMessage { t: 'prints'; items: unknown[] }
 export interface LiveHandlers {
@@ -29,6 +35,8 @@ export interface VenueEntry {
   recommended: boolean; selected: boolean;
   /** Short text next to the name: live, connecting, off, a failure reason. */
   status: string;
+  /** What `status` says, for styling: a venue that refuses this location is told apart from one that is only failing. */
+  state?: 'live' | 'connecting' | 'off' | 'error' | 'blocked' | 'upcoming';
 }
 export interface VenueCatalog {
   venues: VenueEntry[];
@@ -41,6 +49,8 @@ export interface VenueControl {
   catalog(): Promise<VenueCatalog>;
   /** Make exactly `selected` the running venues. `product` is the market the selection is anchored on (the server needs one). */
   apply(selected: readonly string[], product: string): Promise<void>;
+  /** Be told whenever any venue's state changes; returns how to stop. Sources that cannot push simply leave it out. */
+  watch?(listener: (venues: VenueEntry[]) => void): () => void;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { connectLive, getBootstrap, getCandles, getColumns, getFootprint, getOi, getPrints } from './net.ts';
-import type { DataSource, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
+import type { BootstrapState, DataSource, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
 
 interface FeedCatalog { maxSelected: number; selectedVenues: string[]; venues: { id: string; name: string; supported: boolean; default?: boolean; status: string }[] }
 interface ExtraVenueInfo { id: string; name: string; enabled: boolean; default?: boolean; state: string; lastError: string | null; reconnects: number }
@@ -51,7 +51,8 @@ class ServerVenues implements VenueControl {
 export class ServerSource implements DataSource {
   readonly kind = 'server' as const;
   readonly venues = new ServerVenues();
-  bootstrap = getBootstrap;
+  /** The server's answer, plus the open-interest reference the page used to assume. */
+  bootstrap = async (): Promise<BootstrapState> => { const boot = await getBootstrap(); return { ...boot, oiReferences: boot.oiReferences ?? ['binance:BTCUSDT'] }; };
   connect: DataSource['connect'] = handlers => connectLive(handlers);
   candles = getCandles;
   oi = getOi;
