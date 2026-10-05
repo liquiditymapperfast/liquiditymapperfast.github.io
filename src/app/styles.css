@@ -95,6 +95,21 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .tip.on { opacity: 1; }
 .tip:not(:popover-open):not(.on) { display: none; }
 /* The small "?" that explains a part of the page. */
+.author-body { display: flex; flex-direction: column; gap: 10px; }
+.author-card { display: flex; align-items: center; gap: 12px; }
+.author-card strong { font-size: 15px; }
+.author-card p { margin: 2px 0 0; color: var(--muted); }
+.avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--text); color: var(--bg); font: 700 20px/1 ui-sans-serif, system-ui, sans-serif; flex: 0 0 auto; }
+.author-body .lead { margin: 4px 0 0; font-size: 13px; line-height: 1.5; }
+.author-body .fine { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.author-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.author-link { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); text-decoration: none; }
+.author-link:hover { border-color: var(--text); }
+.author-link b { font-size: 13px; }
+.author-link span { color: var(--muted); font-size: 11px; }
+button.install { border-color: var(--ui); color: var(--ui); font-weight: 600; }
+button.install:hover { background: var(--ui); color: var(--bg); border-color: var(--ui); }
+button.install[hidden] { display: none; }
 button.help { width: 16px; height: 16px; padding: 0; margin: 0 6px 0 3px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 10px/14px ui-sans-serif, system-ui, sans-serif; text-align: center; vertical-align: middle; flex: 0 0 auto; }
 button.help:hover, button.help.open { color: var(--bg); background: var(--text); border-color: var(--text); }
 .help-body .lead { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }

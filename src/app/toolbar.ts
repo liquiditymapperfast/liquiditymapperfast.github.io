@@ -6,6 +6,8 @@ import { usd } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
 import { setTip } from './tip.ts';
+import { InstallButton } from './install.ts';
+import { toggleAuthor } from './author.ts';
 import { HELP, helpButton, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
@@ -39,6 +41,8 @@ export class Toolbar {
   /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */
   #blocked = el('div', { class: 'chips blocked-chips' });
   readonly #notice = new VenueNotice();
+  readonly #install = new InstallButton();
+  #author = el('button', { type: 'button', textContent: 'Author', tip: 'Who made this, and where to find the code. Free, no sign-ups, open source.' });
   #scope = el('div', { class: 'seg scope', tip: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
   #soundButton = el('button', { class: 'sound-btn', textContent: 'Sound', tip: 'Sound notifications' });
   #soundPanel: Panel | null = null;
@@ -91,6 +95,7 @@ export class Toolbar {
     this.#source.onchange = () => this.store.set({ heatmapSource: this.#source.value });
     this.#theme.onclick = () => this.#openThemes();
     this.#recenter.onclick = () => this.onRecenter();
+    this.#author.onclick = () => { toggleAuthor(this.#author); };
     this.venueControl.watch?.(entries => {
       this.#notice.update(entries);
       this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, tip: `${v.name}: ${VPN_HINT}` })));
@@ -99,7 +104,7 @@ export class Toolbar {
     this.root.append(
       el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
       el('span', { class: 'heatctl' }, helpButton('heatmap'), this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
-      this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#theme, this.#status, this.#notice.root);
+      this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#install.root, this.#author, this.#theme, this.#status, this.#notice.root);
   }
 
   /** Update controls from state; `window` is the USD range currently mapped onto the colour ramp. Only touches DOM that changed, so open dropdowns and clicks survive 4 Hz data frames. */
