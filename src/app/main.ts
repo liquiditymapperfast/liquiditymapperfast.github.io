@@ -1,4 +1,6 @@
 import { Hub } from './hub.ts';
+import { ServerSource } from './server-source.ts';
+import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
 import { Store, initialState } from './store.ts';
 import { applyTheme } from './theme.ts';
@@ -16,9 +18,10 @@ async function main(): Promise<void> {
   const store = new Store(initialState());
   applyTheme(store.state.theme);
   const kernels = await loadKernels();
-  const hub = new Hub(store);
+  const source: DataSource = new ServerSource();
+  const hub = new Hub(store, source);
 
-  const toolbar = new Toolbar(store);
+  const toolbar = new Toolbar(store, source.venues);
   const main = document.createElement('main');
   const chart = document.createElement('div'); chart.className = 'chart-col';
   const side = document.createElement('div'); side.className = 'side-col';

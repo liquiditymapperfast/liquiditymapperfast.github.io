@@ -1,27 +1,17 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { fromWire, type Print } from './prints.ts';
-import { decodeColumns, decodeLevels, type ColumnsFrame, type LevelsFrame } from './wire.ts';
-import type { CandleRow, LayerLevel, Market, OiBar } from './store.ts';
-
-export interface BootstrapState {
-  asOf: number; now: number; dataMode: string; markPrice: number; markInstrumentId: string;
-  markets: Market[]; layers: Record<string, LayerLevel[]>; steps: Record<string, number>; recorded: Record<string, { first: number; last: number }>; columnMs: number; timeframes: string[];
-}
-export interface TickMessage { t: 'tick'; price: number; instrumentId: string; asOf: number; candles: Record<string, [number, number, number, number, number, number]> }
-export interface LayersMessage { t: 'layers'; layers: Record<string, LayerLevel[]> }
-export interface PrintsMessage { t: 'prints'; items: unknown[] }
-export interface LiveHandlers {
-  /** `failures` counts the connections lost since the last one that worked; `host` is the server being tried. */
-  onOpen(): void; onClose(failures: number, host: string): void;
-  onLevels(frame: LevelsFrame): void; onTick(tick: TickMessage): void; onLayers(message: LayersMessage): void;
-  /** New large trades, as wire rows (check each with `fromWire`). */
-  onPrints(items: unknown[]): void;
-}
+import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
+import type { CandleRow, OiBar } from './store.ts';
+import type { BootstrapState, FootprintResponse, LayersMessage, LiveHandlers, PrintsMessage, TickMessage } from './source.ts';
 
 async function request(path: string): Promise<Response> {
   const response = await fetch(path, { cache: 'no-store' });
   if (!response.ok) throw new Error(`${path} failed: ${response.status}`);
   return response;
+}
+/** Recorded history for one instrument and window, as the footprint draws it. */
+export async function getFootprint(inst: string, tf: string, from: number, to: number, rowStep: number): Promise<FootprintResponse> {
+  return (await request(`/api/v2/footprint?inst=${encodeURIComponent(inst)}&tf=${tf}&from=${Math.floor(from)}&to=${Math.ceil(to)}&rows=${rowStep}`)).json() as Promise<FootprintResponse>;
 }
 export const getBootstrap = async (): Promise<BootstrapState> => (await request('/api/v2/state')).json();
 export async function getCandles(inst: string, tf: string, from: number, to: number): Promise<CandleRow[]> {

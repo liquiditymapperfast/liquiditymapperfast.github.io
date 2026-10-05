@@ -1,4 +1,5 @@
-import { connectLive, connectionStatus, getBootstrap, getCandles, getColumns, getOi, getPrints, type TickMessage } from './net.ts';
+import { connectionStatus } from './net.ts';
+import type { DataSource, FootprintResponse, TickMessage } from './source.ts';
 import { PrintBook, fromWire, type Print } from './prints.ts';
 import type { Store, CandleRow } from './store.ts';
 import type { WorkerIn, WorkerOut, RasterStats } from './worker/raster.worker.ts';
@@ -43,7 +44,7 @@ export class Hub {
   /** Instrument with candle history to fall back to when the selected market has none. */
   #reference = '';
 
-  constructor(readonly store: Store) {
+  constructor(readonly store: Store, readonly source: DataSource) {
     this.worker = new Worker(new URL('./worker/raster.worker.ts', import.meta.url), { type: 'module' });
     this.#ready = new Promise(resolve => {
       this.worker.onmessage = (event: MessageEvent<WorkerOut>) => {
@@ -65,13 +66,13 @@ export class Hub {
   #post(message: WorkerIn, transfer: Transferable[] = []): void { this.worker.postMessage(message, transfer); }
 
   async start(): Promise<void> {
-    const boot = await getBootstrap();
+    const boot = await this.source.bootstrap();
     const marketId = this.store.state.marketId || boot.markInstrumentId || boot.markets[0]?.instrumentId || '';
     this.#noteRecorded(boot.recorded);
     this.#reference = boot.markInstrumentId;
     this.store.set({ markets: boot.markets, marketId, mark: { price: boot.markPrice, asOf: boot.asOf }, layers: boot.layers ?? {} });
     await this.#ready;
-    connectLive({
+    this.source.connect({
       onOpen: () => { this.#printsWindow = null; this.store.set({ connected: true, status: 'live' }); },
       onClose: (failures, host) => this.store.set({ connected: false, status: connectionStatus(failures, host) }),
       onLevels: frame => {
@@ -102,15 +103,15 @@ export class Hub {
   }
 
   async loadSeries(force = false): Promise<void> {
-    void getBootstrap().then(boot => this.#noteRecorded(boot.recorded), () => {});
+    void this.source.bootstrap().then(boot => this.#noteRecorded(boot.recorded), () => {});
     const { marketId, timeframe } = this.store.state;
     const key = `${marketId}|${timeframe}`;
     if (!marketId || (!force && key === this.#series)) return;
     this.#series = key;
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, now = Date.now();
     let seriesInstrument = marketId;
-    let candles = await getCandles(marketId, timeframe, now - 500 * tf, now + tf);
-    if (!candles.length && this.#reference && this.#reference !== marketId) { seriesInstrument = this.#reference; candles = await getCandles(seriesInstrument, timeframe, now - 500 * tf, now + tf); }
+    let candles = await this.source.candles(marketId, timeframe, now - 500 * tf, now + tf);
+    if (!candles.length && this.#reference && this.#reference !== marketId) { seriesInstrument = this.#reference; candles = await this.source.candles(seriesInstrument, timeframe, now - 500 * tf, now + tf); }
     if (key !== this.#series) return;
     this.store.set({ candles: candles as CandleRow[], seriesInstrument });
     await this.loadOi();
@@ -128,7 +129,7 @@ export class Hub {
     const ids = [...new Set([own, this.#reference, 'binance:BTCUSDT'].filter(Boolean))];
     const candidates: OiCandidate[] = [];
     for (const inst of ids) {
-      const bars = await getOi(inst, timeframe, from, to).catch(() => []);
+      const bars = await this.source.oi(inst, timeframe, from, to).catch(() => []);
       candidates.push({ inst, bars });
       if (!weakOi(bars, now, tf)) break;
     }
@@ -144,7 +145,7 @@ export class Hub {
     if (have && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now())) return;
     const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE));
     this.#printsLoading = true;
-    getPrints(from, to).then(rows => { this.prints.add(rows); this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+    this.source.prints(from, to).then(rows => { this.prints.add(rows); this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
   }
 
   /** Make sure recorded columns cover `view` (with margin) at a resolution suited to `widthPx`. */
@@ -159,7 +160,7 @@ export class Hub {
     this.#columnsLoading = true;
     try {
       const from = view.t0 - span * 0.5, to = Math.min(Date.now() + MINUTE, view.t1 + span * 0.5);
-      const frame = await getColumns(ids, from, to, stepMs);
+      const frame = await this.source.columns(ids, from, to, stepMs);
       this.#columns = { key, from, to: view.t1 + span * 0.5, stepMs };
       // The instruments are views onto a few fetch buffers that nothing on this thread reads again: hand the buffers over instead of copying tens of MB.
       const buffers = new Set<ArrayBuffer>();
@@ -169,6 +170,9 @@ export class Hub {
       this.onColumns();
     } finally { this.#columnsLoading = false; }
   }
+
+  /** Executions per candle for a window (the footprint). */
+  footprint(inst: string, tf: string, from: number, to: number, rowStep: number): Promise<FootprintResponse> { return this.source.footprint(inst, tf, from, to, rowStep); }
 
   /** Depth (USD within +-range of mid) per pixel column over [t0, t1]. */
   depth(enabled: string[], t0: number, t1: number, w: number, range: number, mids: Float64Array): Promise<{ bid: Float32Array; ask: Float32Array }> {

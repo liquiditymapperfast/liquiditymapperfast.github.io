@@ -5,6 +5,7 @@ import { usd } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
 import { openVenueDialog } from './venue-dialog.ts';
+import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
 import { SCOPE_OPTIONS, inScope, scopeCounts } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
@@ -49,7 +50,7 @@ export class Toolbar {
   onPreviewTheme: (id: string | null) => void = () => {};
   onSelectMarket: (id: string) => void = () => {};
 
-  constructor(private store: Store) {
+  constructor(private store: Store, private venueControl: VenueControl) {
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
     for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, onclick: () => this.store.set({ timeframe: tf }) }));
     for (const [id, label] of LAYERS) this.#layer.append(new Option(label, id));
@@ -74,7 +75,7 @@ export class Toolbar {
     this.#source.onchange = () => this.store.set({ heatmapSource: this.#source.value });
     this.#theme.onclick = () => this.#openThemes();
     this.#recenter.onclick = () => this.onRecenter();
-    const venues = el('button', { textContent: 'Venues', onclick: () => void openVenueDialog(() => this.#selectionProduct()) });
+    const venues = el('button', { textContent: 'Venues', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct()) });
     this.root.append(
       el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
       el('span', { class: 'heatctl' }, this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
