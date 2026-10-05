@@ -43,7 +43,7 @@ export class Toolbar {
   readonly #notice = new VenueNotice();
   readonly #install = new InstallButton();
   #guide = el('button', { type: 'button', class: 'guide-btn', textContent: 'Guide', tip: 'A ten-minute tour of what everything is and how to use it, with moving pictures. Every button also explains itself on hover.', onclick: () => { showGuide(); } });
-  #shot = el('button', { type: 'button', textContent: 'Screenshot', tip: 'Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.', onclick: () => { void import('./screenshot/editor.ts').then(m => m.startScreenshot()); } });
+  #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: 'Screenshot', tip: 'Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.', onclick: () => { void import('./screenshot/editor.ts').then(m => m.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: 'Author', tip: 'Who made this, and where to find the code. Free, no sign-ups, open source.' });
   #scope = el('div', { class: 'seg scope', tip: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
   #soundButton = el('button', { class: 'sound-btn', textContent: 'Sound', tip: 'Sound notifications' });
@@ -98,6 +98,7 @@ export class Toolbar {
     this.#theme.onclick = () => this.#openThemes();
     this.#recenter.onclick = () => this.onRecenter();
     this.#author.onclick = () => { toggleAuthor(this.#author); };
+    this.#shot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z"/><circle cx="12" cy="13.4" r="3.3"/></svg>';
     this.venueControl.watch?.(entries => {
       this.#notice.update(entries);
       this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, tip: `${v.name}: ${VPN_HINT}` })));

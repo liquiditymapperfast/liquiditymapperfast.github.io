@@ -192,6 +192,7 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } }
 
+button.icon-btn { display: inline-grid; place-items: center; padding: 3px 7px; }
 button.install { border-color: var(--ui); color: var(--ui); font-weight: 600; }
 button.install:hover { background: var(--ui); color: var(--bg); border-color: var(--ui); }
 button.install[hidden] { display: none; }
