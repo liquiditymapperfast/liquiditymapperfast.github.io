@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arrowHead, clampRect, fileName, hitHandle, inside, rectFrom, resizeRect, snapAngle, squareTo, toolbarPlacement, worthKeeping, type Shape } from '../src/app/screenshot/shapes.ts';
+import { arrowHead, clampRect, fileName, hitHandle, inside, markPlacement, markText, rectFrom, resizeRect, snapAngle, squareTo, toolbarPlacement, worthKeeping, type Shape } from '../src/app/screenshot/shapes.ts';
 import { splitTop } from '../src/app/screenshot/capture.ts';
 
 const screen = { w: 1200, h: 800 };
@@ -79,4 +79,18 @@ test('shift keeps a rectangle square and a line on a multiple of 45 degrees', ()
 test('commas inside a function do not split a CSS value', () => {
   assert.deepEqual(splitTop('to right, rgb(1, 2, 3) 0%, rgba(4, 5, 6, 0.5) 100%'), ['to right', 'rgb(1, 2, 3) 0%', 'rgba(4, 5, 6, 0.5) 100%']);
   assert.deepEqual(splitTop(''), []);
+});
+
+test('the corner mark says the address without its scheme, in the bottom-right corner of a picture that has room for it', () => {
+  assert.equal(markText('https://liquiditymapperfast.github.io/'), 'liquiditymapperfast.github.io');
+  assert.equal(markText('http://localhost:8787'), 'localhost:8787');
+  const at = markPlacement({ w: 800, h: 500 }, 150)!;
+  assert.deepEqual(at, { x: 800 - 8 - 164, y: 500 - 8 - 18, w: 164, h: 18 });
+  assert.ok(at.x + at.w <= 800 - 8 && at.y + at.h <= 500 - 8, 'inside the picture, a margin from the edge');
+});
+
+test('a picture too small to carry the mark without covering what is in it gets none', () => {
+  assert.equal(markPlacement({ w: 200, h: 500 }, 150), null, 'too narrow');
+  assert.equal(markPlacement({ w: 800, h: 50 }, 150), null, 'too short');
+  assert.ok(markPlacement({ w: 400, h: 200 }, 150));
 });

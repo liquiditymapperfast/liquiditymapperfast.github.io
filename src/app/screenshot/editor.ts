@@ -1,8 +1,10 @@
 import { el } from '../dom.ts';
 import { isCoarse } from '../device.ts';
+import { AUTHOR } from '../author.ts';
+import { setTip } from '../tip.ts';
 import { capturePage, type Snapshot } from './capture.ts';
 import {
-  COLORS, CURSORS, WIDTHS, clampRect, drawShape, fileName, hitHandle, inside, rectFrom, resizeRect, textSize, toolbarPlacement, worthKeeping,
+  COLORS, CURSORS, WIDTHS, clampRect, drawShape, fileName, hitHandle, inside, markText, paintMark, rectFrom, resizeRect, textSize, toolbarPlacement, worthKeeping,
   HANDLES, handlePoint, snapAngle, squareTo, type Handle, type Pt, type Rect, type Shape, type Tool,
 } from './shapes.ts';
 
@@ -13,7 +15,7 @@ import {
  * key. The picture is made by `capture.ts` from the page itself, so nothing is asked of the browser and nothing leaves the machine.
  */
 
-const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'share' | 'close', string>> = {
+const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'share' | 'link' | 'close', string>> = {
   move: '<path d="M5 3l14 8-6 1.5L10.5 19z"/>',
   pen: '<path d="M4 20l1-4L16.5 4.5a2 2 0 013 3L8 19z"/><path d="M14.5 6.5l3 3"/>',
   line: '<path d="M5 19L19 5"/>',
@@ -27,6 +29,7 @@ const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'share' 
   redo: '<path d="M15 7l5 5-5 5"/><path d="M20 12H10a5 5 0 000 10h3"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>',
   save: '<path d="M12 4v11M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+  link: '<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
   share: '<path d="M12 15V4M8 8l4-4 4 4"/><path d="M6 12v6a2 2 0 002 2h8a2 2 0 002-2v-6"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
 };
@@ -84,6 +87,9 @@ function openEditor(snap: Snapshot): { close(): void } {
   }
 
   let sel: Rect | null = null;
+  // A small mark with the page's address in a corner of the picture, on unless it was switched off (and that is remembered).
+  const MARK_KEY = 'hlm-shot-mark', address = markText(AUTHOR.site);
+  let withMark = (() => { try { return window.localStorage.getItem(MARK_KEY) !== 'off'; } catch { return true; } })();
   let tool: Tool = 'move', color = COLORS[0]!, width = WIDTHS[1]!, strength = 12;
   const shapes: Shape[] = [], redo: Shape[] = [];
   let draft: Shape | null = null, effectFrom: Pt = { x: 0, y: 0 };
@@ -126,6 +132,7 @@ function openEditor(snap: Snapshot): { close(): void } {
     ctx.save(); ctx.beginPath(); ctx.rect(area.x * scale, area.y * scale, area.w * scale, area.h * scale); ctx.clip();
     for (const shape of draft ? [...shapes, draft] : shapes) drawShape(ctx, shape, snap.canvas, scale);
     ctx.restore();
+    if (withMark) { ctx.save(); ctx.scale(scale, scale); paintMark(ctx, area, address); ctx.restore(); }
     ctx.save(); ctx.scale(scale, scale);
     // A dark line under a white dashed one reads on any background.
     ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.strokeRect(area.x - 0.5, area.y - 0.5, area.w + 1, area.h + 1);
@@ -156,10 +163,11 @@ function openEditor(snap: Snapshot): { close(): void } {
   const strengthGroup = group(el('span', { class: 'shot-label', textContent: 'Strength' }), strengthInput);
   const undoButton = iconButton('undo', 'Undo (Ctrl+Z)', () => undo()), redoButton = iconButton('redo', 'Redo (Ctrl+Shift+Z)', () => redoShape());
   const copyButton = el('button', { type: 'button', class: 'shot-primary', tip: 'Copy the picture to the clipboard (Enter)', onclick: () => void copy() }); copyButton.innerHTML = `${icon('copy')}<span>Copy</span>`;
+  const markButton = iconButton('link', '', () => { withMark = !withMark; try { window.localStorage.setItem(MARK_KEY, withMark ? 'on' : 'off'); } catch { /* storage unavailable */ } syncBar(); redraw(); });
   const saveButton = iconButton('save', 'Save as a PNG file (Ctrl+S)', () => void save()), closeButton = iconButton('close', 'Cancel (Esc)', () => close(), 'shot-close');
   // A phone shares a picture through its own sheet (Messages, Photos, Files...); that is better than a download no one can find there.
   const shareButton = canShareFiles() ? iconButton('share', 'Share the picture with another app', () => void share()) : null;
-  bar.append(tools, colors, widths, strengthGroup, group(undoButton, redoButton), group(copyButton, ...(shareButton ? [shareButton] : []), saveButton, closeButton));
+  bar.append(tools, colors, widths, strengthGroup, group(undoButton, redoButton), group(markButton, copyButton, ...(shareButton ? [shareButton] : []), saveButton, closeButton));
 
   const syncBar = (): void => {
     for (const [t, b] of toolButtons) b.classList.toggle('on', t === tool);
@@ -167,6 +175,9 @@ function openEditor(snap: Snapshot): { close(): void } {
     const draws = tool !== 'move' && tool !== 'pixelate' && tool !== 'blur', effect = tool === 'pixelate' || tool === 'blur';
     colors.hidden = !draws; widths.hidden = !draws; strengthGroup.hidden = !effect;
     undoButton.disabled = shapes.length === 0; redoButton.disabled = redo.length === 0;
+    markButton.classList.toggle('on', withMark);
+    setTip(markButton, withMark ? `Put ${address} in a corner of the picture (on): click to leave it out` : `Leave the address out of the picture (off): click to put ${address} in a corner`);
+    markButton.setAttribute('aria-pressed', String(withMark)); markButton.setAttribute('aria-label', `Address in a corner of the picture: ${withMark ? 'on' : 'off'}`);
     stage.style.cursor = sel ? (tool === 'move' ? 'default' : tool === 'text' ? 'text' : 'crosshair') : 'crosshair';
     place();
   };
@@ -188,6 +199,7 @@ function openEditor(snap: Snapshot): { close(): void } {
     o.save(); o.translate(-sel.x * scale, -sel.y * scale);
     for (const shape of shapes) drawShape(o, shape, snap.canvas, scale);
     o.restore();
+    if (withMark) { o.save(); o.scale(scale, scale); paintMark(o, { x: 0, y: 0, w: sel.w, h: sel.h }, address); o.restore(); }
     return out;
   };
   const blob = (): Promise<Blob | null> => new Promise(resolve => { const out = render(); if (!out) resolve(null); else out.toBlob(b => resolve(b), 'image/png'); });

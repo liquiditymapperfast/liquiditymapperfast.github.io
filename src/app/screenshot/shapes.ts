@@ -159,3 +159,29 @@ export function fileName(when: Date): string {
   const p = (n: number): string => String(n).padStart(2, '0');
   return `liquiditymapperfast-${when.getFullYear()}-${p(when.getMonth() + 1)}-${p(when.getDate())}-${p(when.getHours())}${p(when.getMinutes())}-${p(when.getSeconds())}.png`;
 }
+
+/** The address as a picture's corner mark says it: no scheme and no trailing slash. */
+export const markText = (url: string): string => url.replace(/^[a-z]+:\/\//i, '').replace(/\/$/, '');
+
+/**
+ * Where the small mark that says where a picture came from goes: the bottom-right corner, a few pixels in. Nothing goes on a picture too
+ * small to carry it without covering what is in it.
+ */
+export function markPlacement(picture: { w: number; h: number }, textWidth: number, height = 18, margin = 8, pad = 7): Rect | null {
+  const w = textWidth + pad * 2;
+  if (picture.w < w + margin * 2 + 40 || picture.h < height + margin * 2 + 30) return null;
+  return { x: picture.w - margin - w, y: picture.h - margin - height, w, h: height };
+}
+
+/** Paint the corner mark over `area` (in the context's own units): a dim pill with the address in it. */
+export function paintMark(ctx: CanvasRenderingContext2D, area: Rect, text: string): void {
+  ctx.save();
+  ctx.font = '600 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+  const at = markPlacement({ w: area.w, h: area.h }, ctx.measureText(text).width);
+  if (at) {
+    const x = area.x + at.x, y = area.y + at.y;
+    ctx.fillStyle = 'rgba(12, 14, 18, 0.62)'; ctx.beginPath(); ctx.roundRect(x, y, at.w, at.h, at.h / 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.94)'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText(text, x + 7, y + at.h / 2 + 0.5);
+  }
+  ctx.restore();
+}
