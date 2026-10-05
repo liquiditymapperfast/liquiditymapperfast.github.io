@@ -22,7 +22,8 @@
     "build:tools": "tsc -p tsconfig.tools.json",
     "build:wasm": "npm run build:tools && node build/tools/scripts/build-wasm.mjs",
     "test:wasm": "cargo test --manifest-path crates/hlm-kernels/Cargo.toml",
-    "report:venues": "npm run build:tools && node build/tools/scripts/venue-report.mjs"
+    "report:venues": "npm run build:tools && node build/tools/scripts/venue-report.mjs",
+    "parity": "npm run build:tools && node build/tools/scripts/parity.mjs"
   },
   "dependencies": {
     "vite": "^6.0.7",
