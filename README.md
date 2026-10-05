@@ -1,5 +1,7 @@
 # LiquidityMapperFast
 
+**Open it: https://liquiditymapperfast.github.io/** — free, no sign-up, MIT licence. The **Guide** button inside explains everything in about ten minutes.
+
 A market-map workbench for one asset across many venues. It runs entirely in the browser: the page reads the exchanges' public feeds itself, in a Web Worker, so it works from any static host (GitHub Pages included) with no server. A local server remains as an optional source with a week of recorded history. The workbench draws a liquidity heatmap built from recorded order-book depth, a price profile, an aggregated order-book ladder, depth and open-interest panes, and a footprint of executed volume. The look follows the reference screenshots in `example_images/` (a local folder, not in git); a right-hand profile column and an OI row complete it.
 
 The default venues are the largest ones whose public order book is also deep, fresh and reliable: Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit perpetuals, plus Coinbase and Binance spot (`docs/deslop/venue-defaults-2026-10-05.md` has the measurements and the rule; Gate.io and MEXC are big by volume but publish only a few levels). **In the browser** the Venues picker offers exactly these eight (each has a connector in `src/shared/venues.ts`) and the choice is kept in this browser's localStorage. **With the local server** the picker offers 26 (the 20 feed venues plus Binance spot, Binance US, HitBTC, Poloniex, BitMart and Bitunix, which run on small self-contained connectors) and up to 32 feed venues can be enabled; its Recommended button ticks the default set, and nothing changes until Apply. The choice is saved beside the history database (`v2-feed-venues.json` for the feed venues, `v2-venues.json` for the connector venues) and restored when the server restarts, so an existing install keeps its venues until Recommended is applied; on the first run the recommended venues are selected (`HLM_DEFAULT_VENUES=all` selects every supported venue and starts every connector, `HLM_DEFAULT_VENUES=configured` keeps the venues set by the `*_ENABLED` flags and starts no connector venue instead). A fresh start needs about 30 s before market metadata allows the selection to apply. Everything reads public exchange feeds from your own machine (the browser, or the local server); no order is placed and nothing is sent to any service of ours. Optional HyperTracker credentials stay on the server, which is why those layers are listed as upcoming in the browser-only page.
@@ -139,3 +141,7 @@ Light, Latte, Dark, Darker, Midnight, Mocha, Colour-blind safe and Terminal. Mid
 ## Performance and history of this codebase
 
 The previous implementation spent most of its CPU on memory accounting (client frame time 133 ms under interaction, server 90 % busy in byte estimation, history responses rejected by a 761 MB estimate). The measurements, method and what replaced it are in [docs/deslop/baseline-2026-10-04.md](./docs/deslop/baseline-2026-10-04.md). Agent and contributor rules, including the Rust/WASM policy, are in [AGENTS.md](./AGENTS.md).
+
+## Licence
+
+MIT, see [LICENSE](./LICENSE). Free to use, change and share.

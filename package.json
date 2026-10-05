@@ -2,6 +2,10 @@
   "name": "liquidity-mapper-fast",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "author": "Karl",
+  "homepage": "https://liquiditymapperfast.github.io/",
+  "repository": { "type": "git", "url": "git+https://github.com/liquiditymapperfast/liquiditymapperfast.github.io.git" },
   "type": "module",
   "engines": {
     "node": ">=22.5"

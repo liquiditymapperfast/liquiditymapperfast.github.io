@@ -1,13 +1,13 @@
 import { el } from './dom.ts';
 import { togglePanel, type Panel } from './ui.ts';
 
-/** Where the author and the code can be found. The GitHub address names the account until the repository has its own page. */
+/** Where the author and the code can be found. */
 export const AUTHOR = Object.freeze({
   name: 'Karl',
   line: 'I love building things.',
   x: 'https://x.com/karlbooklover',
   xHandle: '@karlbooklover',
-  github: 'https://github.com/liquiditymapperfast',
+  github: 'https://github.com/liquiditymapperfast/liquiditymapperfast.github.io',
 });
 
 function link(href: string, label: string, detail: string): HTMLAnchorElement {
