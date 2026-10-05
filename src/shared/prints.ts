@@ -1,5 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
-import type { TradeLike } from './footprint.mts';
+import type { TradeLike } from './footprint.ts';
 
 /** One large executed trade, in the compact form sent to the browser: [time ms, instrument id, 'buy' | 'sell', price, USD notional]. */
 export interface Print { t: number; id: string; side: 'buy' | 'sell'; price: number; usd: number }
@@ -11,6 +10,16 @@ const RETENTION_MS = 7 * 24 * 3_600_000;
 /** Newest prints held in memory (older ones stay in SQLite). */
 const MEMORY_MAX = 20_000;
 const SEEN_MAX = 30_000;
+
+/** Where large trades outlive the process (SQLite on the server, IndexedDB in the browser); loading is synchronous, saving may be queued. */
+export interface PrintStore {
+  /** The newest `limit` prints since `since`, oldest first. */
+  load(since: number, limit: number): Print[];
+  save(rows: Print[], expireBefore: number): void;
+  /** Prints older than what memory holds, when the store can answer. */
+  query?(from: number, to: number, minUsd: number, limit: number): Print[];
+  close(): void;
+}
 
 export const toWire = (p: Print): WirePrint => [p.t, p.id, p.side, p.price, p.usd];
 
@@ -24,16 +33,12 @@ export class PrintStream {
   /** Prints loaded from disk by their content, so a trade the feed repeats after a restart is not counted twice. */
   readonly #stored = new Set<string>();
   readonly #fresh: Print[] = [];
-  readonly #db: DatabaseSync | null;
+  readonly #store: PrintStore | null;
   #unsaved: Print[] = [];
 
-  constructor(dbPath: string | null = null, private now: () => number = Date.now) {
-    this.#db = dbPath ? new DatabaseSync(dbPath) : null;
-    if (this.#db) {
-      this.#db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS prints (t INTEGER NOT NULL, inst TEXT NOT NULL, side TEXT NOT NULL, price REAL NOT NULL, usd REAL NOT NULL); CREATE INDEX IF NOT EXISTS prints_t ON prints(t);');
-      const rows = this.#db.prepare('SELECT t, inst, side, price, usd FROM prints WHERE t >= ? ORDER BY t DESC LIMIT ?').all(now() - RETENTION_MS, MEMORY_MAX) as { t: number; inst: string; side: string; price: number; usd: number }[];
-      for (const row of rows.reverse()) if (row.side === 'buy' || row.side === 'sell') { this.#recent.push({ t: row.t, id: row.inst, side: row.side, price: row.price, usd: row.usd }); this.#stored.add(`${row.inst}|${row.t}|${row.price}|${row.usd}`); }
-    }
+  constructor(store: PrintStore | null = null, protected now: () => number = Date.now) {
+    this.#store = store;
+    if (store) for (const row of store.load(now() - RETENTION_MS, MEMORY_MAX)) { this.#recent.push(row); this.#stored.add(`${row.id}|${row.t}|${row.price}|${row.usd}`); }
   }
 
   /** Take trades from the live feed; returns the prints that are new and large enough, oldest first. */
@@ -69,24 +74,15 @@ export class PrintStream {
   query(from: number, to: number, minUsd = PRINT_FLOOR_USD, limit = 5_000): Print[] {
     const out: Print[] = [];
     const memoryStart = this.#recent[0]?.t ?? Infinity;
-    if (this.#db && from < memoryStart) {
-      const rows = this.#db.prepare('SELECT t, inst, side, price, usd FROM prints WHERE t >= ? AND t < ? AND usd >= ? ORDER BY t ASC LIMIT ?').all(from, Math.min(to, memoryStart), minUsd, limit) as { t: number; inst: string; side: string; price: number; usd: number }[];
-      for (const row of rows) if (row.side === 'buy' || row.side === 'sell') out.push({ t: row.t, id: row.inst, side: row.side, price: row.price, usd: row.usd });
-    }
+    if (this.#store?.query && from < memoryStart) out.push(...this.#store.query(from, Math.min(to, memoryStart), minUsd, limit));
     for (const p of this.#recent) if (p.t >= from && p.t < to && p.usd >= minUsd) out.push(p);
     return out.length > limit ? out.slice(out.length - limit) : out;
   }
 
   /** Write what has not been saved and drop expired rows. */
   flush(): void {
-    const db = this.#db; if (!db) { this.#unsaved = []; return; }
-    const insert = db.prepare('INSERT INTO prints (t, inst, side, price, usd) VALUES (?, ?, ?, ?, ?)');
-    db.exec('BEGIN');
-    try {
-      for (const p of this.#unsaved) insert.run(p.t, p.id, p.side, p.price, p.usd);
-      db.prepare('DELETE FROM prints WHERE t < ?').run(this.now() - RETENTION_MS);
-      db.exec('COMMIT'); this.#unsaved = [];
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    const store = this.#store; if (!store) { this.#unsaved = []; return; }
+    store.save(this.#unsaved, this.now() - RETENTION_MS); this.#unsaved = [];
   }
-  close(): void { this.flush(); this.#db?.close(); }
+  close(): void { this.flush(); this.#store?.close(); }
 }

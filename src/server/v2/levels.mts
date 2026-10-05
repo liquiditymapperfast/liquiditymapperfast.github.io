@@ -1,25 +1,11 @@
 import { baseSizeUsdRate, usdBookLevels } from '../../core/book-valuation.mts';
 import { hyperliquidGroupingBoundsDecimal } from '../../analytics/hyperliquid-bounds.mts';
 import { gridStepFor } from '../../shared/grid.ts';
-import { mergeByDistance } from './merge.mts';
+import { mergeByDistance } from '../../shared/merge.ts';
+import type { SideLevels, ValuedBook } from '../../shared/levels.ts';
 
-/** One side of a venue book in USD, with the price band each level represents. */
-export interface SideLevels {
-  /** Band lower edge, upper edge and USD notional per level (parallel arrays). */
-  lo: Float64Array;
-  hi: Float64Array;
-  usd: Float64Array;
-}
-export interface ValuedBook {
-  instrumentId: string;
-  venue: string;
-  /** Provider timestamp when known, otherwise receipt time. */
-  timestamp: number;
-  /** True when levels are aggregated provider bands rather than native ticks. */
-  coarse: boolean;
-  bids: SideLevels;
-  asks: SideLevels;
-}
+export { MAX_CROSSED_BP, crossedByBp, type SideLevels, type ValuedBook } from '../../shared/levels.ts';
+
 interface BookLike {
   bids?: readonly unknown[] | null;
   asks?: readonly unknown[] | null;
@@ -105,22 +91,6 @@ export function valueBook(instrumentId: string, book: BookLike | null | undefine
   const pack = (side: { lo: number[]; hi: number[]; usd: number[] }): SideLevels =>
     side.usd.length === 0 ? empty() : { lo: Float64Array.from(side.lo), hi: Float64Array.from(side.hi), usd: Float64Array.from(side.usd) };
   return finish(instrumentId, book, market, now, step, coarse, pack(sides.bid), pack(sides.ask));
-}
-
-/** A single venue's book crossed by more than this many basis points is a feed fault, not a market state. */
-export const MAX_CROSSED_BP = 5;
-
-/**
- * How far the best bid sits above the best ask, in basis points (0 when the book is not crossed or a side is empty). It reads the extremes,
- * so the order a venue sends its levels in does not matter. Aggregated provider bands overlap at the touch by construction, so they are
- * not judged.
- */
-export function crossedByBp(book: Pick<ValuedBook, 'bids' | 'asks' | 'coarse'>): number {
-  if (book.coarse || !book.bids.usd.length || !book.asks.usd.length) return 0;
-  let bid = -Infinity, ask = Infinity;
-  for (const price of book.bids.hi) if (price > bid) bid = price;
-  for (const price of book.asks.lo) if (price < ask) ask = price;
-  return bid > ask ? (bid - ask) / ((bid + ask) / 2) * 1e4 : 0;
 }
 
 /** Merge far levels (point books only) and stamp the result. */

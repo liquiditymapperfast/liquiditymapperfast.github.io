@@ -1,4 +1,4 @@
-import type { SideLevels } from './levels.mts';
+import type { SideLevels } from './levels.ts';
 
 /**
  * Far levels are merged into buckets that widen with distance from the mark, so a deep book costs hundreds of levels rather than

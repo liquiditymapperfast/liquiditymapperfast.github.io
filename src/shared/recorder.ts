@@ -1,5 +1,5 @@
-import type { ValuedBook, SideLevels } from './levels.mts';
-import { gridStepFor } from '../../shared/grid.ts';
+import type { ValuedBook, SideLevels } from './levels.ts';
+import { gridStepFor } from './grid.ts';
 
 export const COLUMN_MS = 60_000;
 export const SAMPLE_MS = 5_000;
@@ -23,7 +23,7 @@ export interface ColumnStore {
 }
 interface Pending { t: number; n: number; step: number; bid: Map<number, number>; ask: Map<number, number> }
 
-export { gridStepFor } from '../../shared/grid.ts';
+export { gridStepFor } from './grid.ts';
 
 /** Spread each level's USD across the grid bins its price band overlaps, proportionally to overlap. */
 export function accumulateSide(side: SideLevels, step: number, into: Map<number, number>): void {

@@ -1,5 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
-import { gridStepFor } from '../../shared/grid.ts';
+import { gridStepFor } from './grid.ts';
 
 const MINUTE = 60_000;
 const RETENTION_MS = 7 * 24 * 3_600_000;
@@ -21,28 +20,32 @@ export interface FootprintBar { t: number; rows: FootprintRow[]; buyUsd: number;
 
 type Bins = Map<number, [number, number]>;
 
+/** One recorded minute of one instrument as it is stored: rows are [bin, buyUsd, sellUsd]. */
+export interface FootprintMinuteRow { inst: string; t: number; step: number; bins: [number, number, number][]; stats: TradeStats | null }
+/** Where recorded minutes outlive the process (SQLite on the server, IndexedDB in the browser); loading is synchronous, saving may be queued. */
+export interface FootprintStore {
+  load(since: number): Iterable<FootprintMinuteRow>;
+  save(rows: FootprintMinuteRow[], expireBefore: number): void;
+  close(): void;
+}
+
 /** Per-instrument, per-minute taker buy/sell USD by price row. */
 export class FootprintRecorder {
   readonly #minutes = new Map<string, Map<number, Bins>>();
   readonly #stats = new Map<string, Map<number, TradeStats>>();
   readonly #steps = new Map<string, number>();
   readonly #seen = new Map<string, Set<string>>();
-  readonly #db: DatabaseSync | null;
+  readonly #store: FootprintStore | null;
   /** Minutes changed since they were last written, as `instrument|minute`. */
   readonly #dirty = new Set<string>();
 
-  constructor(dbPath: string | null = null, private now: () => number = Date.now) {
-    this.#db = dbPath ? new DatabaseSync(dbPath) : null;
-    if (this.#db) {
-      this.#db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS footprint_minutes (inst TEXT NOT NULL, t INTEGER NOT NULL, step REAL NOT NULL, rows TEXT NOT NULL, PRIMARY KEY (inst, t));`);
-      // Databases written before trade stats existed gain the column; their old minutes simply have none.
-      if (!(this.#db.prepare('PRAGMA table_info(footprint_minutes)').all() as { name: string }[]).some(column => column.name === 'stats')) this.#db.exec('ALTER TABLE footprint_minutes ADD COLUMN stats TEXT');
-      for (const row of this.#db.prepare('SELECT inst, t, step, rows, stats FROM footprint_minutes WHERE t >= ?').all(now() - RETENTION_MS) as { inst: string; t: number; step: number; rows: string; stats: string | null }[]) {
+  constructor(store: FootprintStore | null = null, protected now: () => number = Date.now) {
+    this.#store = store;
+    if (store) {
+      for (const row of store.load(now() - RETENTION_MS)) {
         this.#steps.set(row.inst, row.step);
-        const stats = parseStats(row.stats); if (stats) this.#minuteStats(row.inst).set(row.t, stats);
-        const bins: Bins = new Map();
-        for (const [bin, buy, sell] of JSON.parse(row.rows) as [number, number, number][]) bins.set(bin, [buy, sell]);
-        this.#minute(row.inst).set(row.t, bins);
+        if (row.stats) this.#minuteStats(row.inst).set(row.t, row.stats);
+        this.#minute(row.inst).set(row.t, new Map(row.bins.map(([bin, buy, sell]) => [bin, [buy, sell] as [number, number]])));
       }
     }
   }
@@ -85,24 +88,19 @@ export class FootprintRecorder {
     const cutoff = this.now() - RETENTION_MS, open = Math.floor(this.now() / MINUTE) * MINUTE;
     for (const minutes of this.#minutes.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
     for (const minutes of this.#stats.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
-    const db = this.#db;
-    if (!db) { for (const key of [...this.#dirty]) if (Number(key.slice(key.lastIndexOf('|') + 1)) < open) this.#dirty.delete(key); return; }
-    const insert = db.prepare('INSERT OR REPLACE INTO footprint_minutes (inst, t, step, rows, stats) VALUES (?, ?, ?, ?, ?)');
-    db.exec('BEGIN');
-    try {
-      for (const key of [...this.#dirty]) {
-        const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
-        if (t >= open) continue;
-        const bins = this.#minutes.get(id)?.get(t);
-        const stats = this.#stats.get(id)?.get(t);
-        if (bins) insert.run(id, t, this.#steps.get(id)!, JSON.stringify([...bins].map(([bin, [buy, sell]]) => [bin, buy, sell])), stats ? JSON.stringify([stats.buyN, stats.sellN, stats.buy, stats.sell]) : null);
-        this.#dirty.delete(key);
-      }
-      db.prepare('DELETE FROM footprint_minutes WHERE t < ?').run(cutoff);
-      db.exec('COMMIT');
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    const store = this.#store;
+    if (!store) { for (const key of [...this.#dirty]) if (Number(key.slice(key.lastIndexOf('|') + 1)) < open) this.#dirty.delete(key); return; }
+    const rows: FootprintMinuteRow[] = [];
+    for (const key of [...this.#dirty]) {
+      const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
+      if (t >= open) continue;
+      const bins = this.#minutes.get(id)?.get(t);
+      if (bins) rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell]]) => [bin, buy, sell] as [number, number, number]), stats: this.#stats.get(id)?.get(t) ?? null });
+      this.#dirty.delete(key);
+    }
+    store.save(rows, cutoff);
   }
-  close(): void { this.flush(); this.#db?.close(); }
+  close(): void { this.flush(); this.#store?.close(); }
 
   /** Bars of `tfMs` over [from, to), rows merged to `rowStep` (rounded to a multiple of the recorded step). */
   query(id: string, from: number, to: number, tfMs: number, rowStep: number): { step: number; fine: number; bars: FootprintBar[] } {
@@ -131,7 +129,8 @@ export class FootprintRecorder {
   }
 }
 
-function parseStats(text: string | null): TradeStats | null {
+/** Stats as stored (`[buyN, sellN, buy, sell]` as JSON text): the object when every field is valid, else null. */
+export function parseStats(text: string | null): TradeStats | null {
   if (!text) return null;
   try {
     const [buyN, sellN, buy, sell] = JSON.parse(text) as [number, number, number[], number[]];
