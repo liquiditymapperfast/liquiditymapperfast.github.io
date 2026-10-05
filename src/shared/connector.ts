@@ -3,8 +3,18 @@ import { gridStepFor } from './grid.ts';
 import { mergeByDistance } from './merge.ts';
 
 export type ConnectorState = 'stopped' | 'connecting' | 'live' | 'error';
-/** `lastError` clears once the venue is live again; `lastFailure` keeps the reason for the most recent reconnect. */
-export interface ConnectorStatus { state: ConnectorState; lastError: string | null; lastFailure: string | null; lastUpdate: number; reconnects: number }
+/**
+ * `lastError` clears once the venue is live again; `lastFailure` keeps the reason for the most recent reconnect. `everLive` says the venue
+ * has delivered data at least once since it was started, and `failures` counts the connections lost since it last did: a venue that has
+ * never been live and keeps failing while others are fine is probably unreachable from here.
+ */
+export interface ConnectorStatus { state: ConnectorState; lastError: string | null; lastFailure: string | null; lastUpdate: number; reconnects: number; everLive: boolean; failures: number }
+
+/** One executed trade, normalised: `side` is the taker's side, `amount` is in base coin and `notionalUsd` in USD (or the USD stable). */
+export interface TradeEvent { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price: number; amount: number; notionalUsd: number; t: number }
+
+/** Books with at least this many levels are re-valued no more often than the interval below (the recorder samples every 5 s). */
+const DEEP_BOOK_LEVELS = 2_000, DEEP_BOOK_INTERVAL_MS = 1_000;
 
 const MAX_LEVELS = 3_000;
 /** Default silence after which a feed is treated as dead; thin markets override it (a quiet book is not a broken one). */
@@ -30,6 +40,11 @@ export abstract class BookConnector {
   lastFailure: string | null = null;
   lastUpdate = 0;
   reconnects = 0;
+  /** Delivered data at least once since start, and connections lost since it last did. */
+  everLive = false;
+  failures = 0;
+  /** Receives every trade the venue sends on this socket; set by whoever records them. */
+  onTrade: (trade: TradeEvent) => void = () => {};
   #socket: WebSocket | null = null;
   #ping: ReturnType<typeof setInterval> | null = null;
   #pending: unknown = null;
@@ -37,7 +52,7 @@ export abstract class BookConnector {
   #retry: ReturnType<typeof setTimeout> | null = null;
   #watchdog: ReturnType<typeof setInterval> | null = null;
   #attempt = 0;
-  #version = 0; #cachedVersion = -1; #cached: ValuedBook | null = null;
+  #version = 0; #cachedVersion = -1; #cached: ValuedBook | null = null; #cachedAt = 0;
 
   get instrumentId(): string { return `${this.id}:${this.symbol}`; }
   protected abstract url(): string;
@@ -59,7 +74,15 @@ export abstract class BookConnector {
   /** Application-level keepalive for venues that close idle sockets (WebSocket ping frames are answered by the runtime). */
   keepalive(): { everyMs: number; frame: () => unknown } | null { return null; }
 
-  status(): ConnectorStatus { return { state: this.state, lastError: this.lastError, lastFailure: this.lastFailure, lastUpdate: this.lastUpdate, reconnects: this.reconnects }; }
+  /** USD value of `size` resting at `price`: base-coin sizes by default; venues that size in contracts or in USD override. */
+  protected usdOf(price: number, size: number): number { return price * size; }
+  /** Venues that publish aggregated price bands rather than ticks name the band a level belongs to ([lo, hi)); those books are never merged. */
+  protected readonly coarse: boolean = false;
+  protected band(_price: number): { lo: number; hi: number } { return { lo: _price, hi: _price }; }
+  /** Report a trade parsed from this venue's frames. */
+  protected emitTrade(trade: Omit<TradeEvent, 'instrumentId'>): void { this.onTrade({ instrumentId: this.instrumentId, ...trade }); }
+
+  status(): ConnectorStatus { return { state: this.state, lastError: this.lastError, lastFailure: this.lastFailure, lastUpdate: this.lastUpdate, reconnects: this.reconnects, everLive: this.everLive, failures: this.failures }; }
 
   start(): void {
     if (this.state !== 'stopped') return;
@@ -75,12 +98,13 @@ export abstract class BookConnector {
   }
   /** Drop the book and reconnect (sequence gap, bad frame, silence). */
   fail(reason: string): void {
+    this.failures++;
     this.lastError = reason; this.lastFailure = reason; this.reset(); this.#stopPing(); this.#dropPending();
     const socket = this.#socket; this.#socket = null; try { socket?.close(); } catch { /* already closed */ }
     this.#scheduleReconnect();
   }
   protected reset(): void { this.bids.clear(); this.asks.clear(); this.#version++; }
-  protected touch(): void { this.lastUpdate = Date.now(); this.#version++; if (this.state === 'connecting') { this.state = 'live'; this.#attempt = 0; this.lastError = null; } }
+  protected touch(): void { this.lastUpdate = Date.now(); this.#version++; if (this.state === 'connecting') { this.state = 'live'; this.#attempt = 0; this.lastError = null; this.everLive = true; this.failures = 0; } }
   protected replace(side: Map<number, number>, levels: [number, number][]): void { side.clear(); for (const [p, q] of levels) if (q > 0) side.set(p, q); }
   protected apply(side: Map<number, number>, levels: [number, number][]): void { for (const [p, q] of levels) { if (q > 0) side.set(p, q); else side.delete(p); } }
   protected rows = rows;
@@ -91,7 +115,7 @@ export abstract class BookConnector {
     try {
       const socket = new WebSocket(this.url()); socket.binaryType = 'arraybuffer'; this.#socket = socket;
       socket.onopen = () => {
-        const send = (payload: unknown) => socket.send(JSON.stringify(payload));
+        const send = (payload: unknown) => socket.send(typeof payload === 'string' ? payload : JSON.stringify(payload)); // a string is sent as it is (Bitget's "ping")
         this.open(send);
         const ka = this.keepalive();
         if (ka) { this.#stopPing(); this.#ping = setInterval(() => { try { send(ka.frame()); } catch { /* socket closing; onclose handles it */ } }, ka.everyMs); this.#ping.unref?.(); }
@@ -123,20 +147,27 @@ export abstract class BookConnector {
   }
 
   /** The current book in USD (price x base size, all venues here quote in USD or a USD stable), or null when not fresh and uncrossed. */
-  valued(now: number): ValuedBook | null {
+  valued(now: number, gridStep?: number): ValuedBook | null {
     if (this.state !== 'live' || now - this.lastUpdate > this.silenceMs() + 10_000) return null;
     if (this.#cachedVersion === this.#version) return this.#cached;
-    this.#cachedVersion = this.#version;
+    // A deep book changes on nearly every tick and costs a pass over every level; the map and ladder move slowly, so it is re-valued at most once a second.
+    if (this.#cached && this.bids.size + this.asks.size >= DEEP_BOOK_LEVELS && now - this.#cachedAt < DEEP_BOOK_INTERVAL_MS) return this.#cached;
+    this.#cachedVersion = this.#version; this.#cachedAt = now;
     const side = (map: Map<number, number>, descending: boolean): SideLevels => {
       const prices = [...map.keys()].sort((a, b) => descending ? b - a : a - b);
-      const lo = new Float64Array(prices.length), usd = new Float64Array(prices.length);
-      prices.forEach((p, i) => { lo[i] = p; usd[i] = p * map.get(p)!; });
-      return { lo, hi: lo, usd };
+      const lo = new Float64Array(prices.length), hi = this.coarse ? new Float64Array(prices.length) : lo, usd = new Float64Array(prices.length);
+      prices.forEach((p, i) => { const b = this.coarse ? this.band(p) : null; lo[i] = b ? b.lo : p; if (b) hi[i] = b.hi; usd[i] = this.usdOf(p, map.get(p)!); });
+      return { lo, hi, usd };
     };
     let bids = side(this.bids, true), asks = side(this.asks, false);
+    if (this.coarse) {
+      if (!bids.usd.length || !asks.usd.length) { this.#cached = null; return null; }
+      this.#cached = { instrumentId: this.instrumentId, venue: this.id, timestamp: this.lastUpdate, coarse: true, bids, asks };
+      return this.#cached;
+    }
     if (bids.usd.length && asks.usd.length && bids.lo[0]! < asks.lo[0]!) {
       // Far levels merge into buckets that widen with distance, so a deep book keeps its range inside the level cap.
-      const mid = (bids.lo[0]! + asks.lo[0]!) / 2, step = gridStepFor(mid);
+      const mid = (bids.lo[0]! + asks.lo[0]!) / 2, step = gridStep && gridStep > 0 ? gridStep : gridStepFor(mid);
       bids = mergeByDistance(bids, mid, step, true); asks = mergeByDistance(asks, mid, step, false);
     }
     const cap = (s: SideLevels): SideLevels => s.usd.length <= MAX_LEVELS ? s : { lo: s.lo.subarray(0, MAX_LEVELS), hi: s.lo.subarray(0, MAX_LEVELS), usd: s.usd.subarray(0, MAX_LEVELS) };
