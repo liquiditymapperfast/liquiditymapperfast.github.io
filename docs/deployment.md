@@ -1,12 +1,12 @@
 # Putting it on the web
 
-Today the app is local by design: the server listens on `127.0.0.1`, connects to the exchanges' public feeds from your machine, records to a local SQLite file and serves the page that reads it. This note covers what changes when the page is public (GitHub Pages, a VPS), and what can and cannot be protected.
+The page runs in two ways. **Browser-only** (the default on a static host): each visitor's browser connects to the exchanges' public feeds itself, so nothing needs hosting but the files. **With the local server**: the server holds the sockets, records a week of history to SQLite and serves the page. This note covers publishing the page (GitHub Pages), what changes if a server is made public, and what can and cannot be protected.
 
-## GitHub Pages: possible, with a server elsewhere or with none
+## GitHub Pages: no server needed
 
-GitHub Pages serves static files. The client (`dist/`: one HTML file, one script, one worker, one `.wasm`, one stylesheet) is exactly that and hosts fine. The **server cannot**: it holds the exchange WebSockets, the recorder and the SQLite history, and streams to the page over `/api/v2/ws`. A Pages site therefore needs a server somewhere else, and the page must be told where. Today every URL is relative (`/api/v2/...`, `ws://<this host>/api/v2/ws`), so a Pages build needs one small change: an API base address read from a `<meta>` tag or a query parameter. It is a 20-line change; it is not made yet because nothing here decides where the server will live.
+GitHub Pages serves static files, and the page needs nothing else: `npm run build:site` writes `dist/` (one HTML file, two scripts, two workers' worth of code, one `.wasm`, one stylesheet) with relative URLs, so it works from the site root or from a project path such as `/<repository>/`. `.github/workflows/pages.yml` builds and deploys it once the repository is on GitHub and Pages is set to "GitHub Actions" (nothing runs before that, and nothing has been pushed). Pages serves it over HTTPS, which Web Locks need.
 
-Recommended shape:
+A server stays optional. If one is wanted anyway (a long recorded history for everyone, or the bandwidth-heavy local features), the recommended shape is:
 
 | Piece | Where | Notes |
 | --- | --- | --- |
@@ -16,9 +16,9 @@ Recommended shape:
 
 **Do not run it on the VPS that hosts the trading bots.** That machine holds exchange keys; a public market-data service on it widens what an attacker can reach for no gain. A separate VPS of the smallest class is enough for the data plane (measured: about 80 % of one core at 26 venues, 238 MB; the recommended eight venues need far less).
 
-## Browser-only mode: no server at all
+## Browser-only mode: implemented
 
-The alternative to hosting a server is to let each visitor's browser connect to the exchanges itself, as aggr.trade does. That is possible here. Measured on 2026-10-05 from a headless Chrome page on a foreign origin (`http://127.0.0.1:<port>`, not github.io, which no exchange was seen to treat differently), 9 s per feed:
+Each visitor's browser connects to the exchanges itself, as aggr.trade does. Measured on 2026-10-05 from a headless Chrome page on a foreign origin (`http://127.0.0.1:<port>`, not github.io, which no exchange was seen to treat differently), 9 s per feed:
 
 | Feed | Result |
 | --- | --- |
@@ -26,16 +26,21 @@ The alternative to hosting a server is to let each visitor's browser connect to 
 | Hyperliquid trades | delivered |
 | REST with CORS: Binance depth snapshots (spot, perpetual), klines, open-interest history; Bybit klines and open interest; OKX and Bitget candles; Coinbase book snapshot; Deribit order book; Hyperliquid `info` POST | all answered 200 and were readable from the page |
 
-WebSockets are not subject to CORS, and these venues' public REST endpoints send CORS headers. A Pages-hosted client would therefore need no server, no bandwidth bill and no market-data licence of its own (each visitor consumes the feeds directly), and the request guard above would not apply.
+WebSockets are not subject to CORS, and these venues' public REST endpoints send CORS headers, with one exception found while building it: **Deribit's `get_tradingview_chart_data` sends none**, so its candles are read over Deribit's JSON-RPC WebSocket instead (the same method; `src/shared/history.ts`). A Pages-hosted client therefore needs no server, no bandwidth bill and no market-data licence of its own (each visitor consumes the feeds directly), and the request guard below does not apply.
 
-What it takes and what it loses:
+How it is built:
 
-- **A browser data source.** The client today reads one server API (`/api/v2/state`, the binary `/api/v2/ws` frames and the history endpoints). The adapters (`src/adapters/`), the valuation and merge (`src/server/v2/levels.mts`, `merge.mts`) and the recorder are plain TypeScript and can run in a Web Worker; the live-feed manager (3 400 lines, Node sockets, REST resync for Binance sequencing, checksum sessions) has to be rewritten as a slimmer browser feed layer for the eight default venues. The server stays as the other source behind the same interface: the page uses it when it exists (local use, full history) and the browser source when it does not (Pages).
-- **History.** Candles and open interest come back immediately from the REST endpoints above. The heatmap, footprint and trade bubbles are built from what the tab has seen: they start empty and fill while the page is open (a recorder in IndexedDB can keep them between visits, but a background tab is throttled, so it records in gaps). A hosted recorder remains possible later as an optional history service.
-- **Cannot move to the browser:** the HyperTracker layers (liquidation, stop loss, take profit), whose key must stay secret; they would be absent or labelled mock.
-- **Per-visitor limits.** Binance refuses some countries (the same as for the server today); each visitor's CPU does the book maintenance (the server uses about 17 % of a core for the eight venues, so a worker handles it on a desktop; phones are out of scope).
+- `src/shared/` holds the pure data plane both sources share: connectors (`connector.ts`, `venues.ts`), distance merge, the depth/footprint/print recorders with injectable stores, candle and open-interest history (`history.ts`) and the `Engine` (`engine.ts`) that ties them together. The server's `.mts` files wrap the same code with SQLite stores.
+- `src/app/browser/feeds.worker.ts` hosts the engine on its own thread; `src/app/browser-source.ts` is the page's side of it behind the same `DataSource` interface the server source implements. `src/app/browser/idb.ts` keeps 24 hours of recordings in IndexedDB, written by the one tab holding the `lmf-recorder` Web Lock.
+- `npm run parity -- [seconds] [port]` compares the browser connectors with a running server's books and executions venue by venue.
 
-Suggested order: (1) the data-source interface with the current server behind it; (2) live-only browser source for Binance spot and perpetual, Coinbase and Bybit with REST candles and open interest; (3) the remaining venues; (4) the IndexedDB recorder.
+What it loses relative to the server:
+
+- **Eight venues, not twenty-six.** Only the recommended set has a browser connector; the other connectors stay with the server.
+- **History.** Candles and open interest come from the venues' REST endpoints at once (Binance has 30 days of open-interest history; Hyperliquid's open interest builds up from samples taken while the page is open). The heatmap, footprint and trade bubbles are built from what the tab has seen: they start empty and fill while the page is open, and IndexedDB keeps 24 hours between visits (a background tab records, but a throttled one may record with gaps). The heatmap draws a dashed line where recording began. A hosted recorder remains possible later as an optional history service.
+- **HyperTracker layers** (liquidation, stop loss, take profit) need a key that must stay secret, so the layer dropdown lists them as upcoming.
+- **Countries.** Binance and some others refuse some countries. A venue that never connects, keeps failing and fails a plain REST request while others work is shown as unavailable from the visitor's location, with a banner saying a VPN set to another country may enable it (verified by pointing the Binance hosts at a closed port in Chrome). The signal is only what the page can observe; an exchange does not say why it refuses.
+- **Per-visitor cost.** Each visitor's CPU does the book maintenance; measured numbers are in `docs/deslop/` (phones are out of scope).
 
 ## What has to be true before it is public
 

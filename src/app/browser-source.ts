@@ -9,8 +9,8 @@ import type { CandleRow, OiBar } from './store.ts';
 
 /** Where a person's venue choice is kept between visits. */
 const SELECTION_KEY = 'lmf.venues';
-/** How long the first bootstrap waits for some venue to come up, so the page opens on a market that has data. */
-const FIRST_LIVE_MS = 4_000;
+/** How long the first bootstrap waits for a venue with a price, so the page opens on a market that has data. */
+const FIRST_PRICE_MS = 4_000;
 /** The words shown beside a venue that refuses this visitor's location. */
 export const BLOCKED_TEXT = 'unavailable from your location — a VPN may help';
 
@@ -44,7 +44,6 @@ export class BrowserSource implements DataSource, VenueControl {
   readonly #ready: Promise<void>;
   readonly #calls = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
   readonly #watchers = new Set<(venues: VenueEntry[]) => void>();
-  readonly #firstLive: Promise<void>;
   #handlers: LiveHandlers | null = null;
   #next = 0;
   #statuses: VenueStatus[] = [];
@@ -57,9 +56,8 @@ export class BrowserSource implements DataSource, VenueControl {
 
   constructor(worker: Worker, { persist = true }: { persist?: boolean } = {}) {
     this.#worker = worker;
-    let ready!: () => void, live!: () => void, known!: () => void;
+    let ready!: () => void, known!: () => void;
     this.#ready = new Promise<void>(resolve => { ready = resolve; });
-    this.#firstLive = new Promise<void>(resolve => { live = resolve; });
     this.#statusKnown = new Promise<void>(resolve => { known = resolve; });
     worker.onmessage = (event: MessageEvent<FeedsOut>) => {
       const message = event.data;
@@ -74,7 +72,6 @@ export class BrowserSource implements DataSource, VenueControl {
         case 'prints': this.#handlers?.onPrints(message.items.map(toWire)); break;
         case 'status':
           this.#statuses = message.venues; known();
-          if (message.venues.some(v => v.state === 'live')) live();
           for (const watcher of this.#watchers) watcher(message.venues.map(toEntry));
           break;
         case 'recording': this.recording = message.recording; break;
@@ -102,9 +99,14 @@ export class BrowserSource implements DataSource, VenueControl {
 
   async bootstrap(): Promise<BootstrapState> {
     await this.#ready;
-    // Only the first call waits: later ones come from the series loader and must not stall.
-    if (!this.#waited) { this.#waited = true; await Promise.race([this.#firstLive, new Promise<void>(resolve => setTimeout(resolve, FIRST_LIVE_MS))]); }
-    const boot = await this.#call({ method: 'bootstrap' });
+    let boot = await this.#call({ method: 'bootstrap' });
+    // Only the first call waits (later ones come from the series loader and must not stall). A venue is live before it has a price, and a
+    // blocked or slow one never does, so the page waits for the first one that has a price and opens on that market.
+    if (!this.#waited) {
+      this.#waited = true;
+      const deadline = Date.now() + FIRST_PRICE_MS;
+      while (!boot.markInstrumentId && Date.now() < deadline) { await new Promise<void>(resolve => setTimeout(resolve, 250)); boot = await this.#call({ method: 'bootstrap' }); }
+    }
     return { ...boot, dataMode: 'browser', layers: {} };
   }
 

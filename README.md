@@ -1,6 +1,6 @@
 # LiquidityMapperFast
 
-A local market-map workbench for one asset across many venues: a liquidity heatmap built from recorded order-book depth, a price profile, an aggregated order-book ladder, depth and open-interest panes, and a footprint of executed volume. The look follows the reference screenshots in `example_images/` (a local folder, not in git); a right-hand profile column and an OI row complete it.
+A market-map workbench for one asset across many venues. It runs entirely in the browser: the page reads the exchanges' public feeds itself, in a Web Worker, so it works from any static host (GitHub Pages included) with no server. A local server remains as an optional source with a week of recorded history. The workbench draws a liquidity heatmap built from recorded order-book depth, a price profile, an aggregated order-book ladder, depth and open-interest panes, and a footprint of executed volume. The look follows the reference screenshots in `example_images/` (a local folder, not in git); a right-hand profile column and an OI row complete it.
 
 The default venues are the largest ones whose public order book is also deep, fresh and reliable: Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit perpetuals, plus Coinbase and Binance spot (`docs/deslop/venue-defaults-2026-10-05.md` has the measurements and the rule; Gate.io and MEXC are big by volume but publish only a few levels). The Venues picker offers 26 (the 20 feed venues plus Binance spot, Binance US, HitBTC, Poloniex, BitMart and Bitunix, which run on small self-contained connectors) and up to 32 feed venues can be enabled; its Recommended button ticks the default set, and nothing changes until Apply. The choice is saved beside the history database (`v2-feed-venues.json` for the feed venues, `v2-venues.json` for the connector venues) and restored when the server restarts, so an existing install keeps its venues until Recommended is applied; on the first run the recommended venues are selected (`HLM_DEFAULT_VENUES=all` selects every supported venue and starts every connector, `HLM_DEFAULT_VENUES=configured` keeps the venues set by the `*_ENABLED` flags and starts no connector venue instead). A fresh start needs about 30 s before market metadata allows the selection to apply. Everything runs locally against public exchange feeds; nothing is placed, hosted or sent anywhere. Optional HyperTracker credentials stay on the server.
 
@@ -9,9 +9,14 @@ The default venues are the largest ones whose public order book is also deep, fr
 ```powershell
 cd C:\dev\Python\Hivemind\Hivemind\HyperLiquidMap
 npm install
-npm run dev          # build + live public feeds on http://127.0.0.1:8787
-npm run dev:fixture  # offline demo feeds
+npm run dev:client   # the page alone, reading the exchanges from your browser: http://localhost:5173
+npm run build:site   # typecheck + the static site in dist/ (HLM_SOURCEMAP=off leaves out source maps)
+npm run preview:site # serve dist/ to look at it
+npm run dev          # build + local server with a week of recorded history on http://127.0.0.1:8787
+npm run dev:fixture  # the server with offline demo feeds
 ```
+
+**Which source the page uses.** A static host has no server behind it, so the page reads the exchanges itself (`src/app/browser-source.ts`, the engine in `src/shared/engine.ts` running in `src/app/browser/feeds.worker.ts`). Served by the local server, the page finds `api/v2/state` on its own origin and uses the server instead, with its recorded history. `?source=browser` or `?source=server` forces one; `?persist=0` stops a browser session from keeping recordings. The browser keeps the last 24 hours of recorded depth, executions and large trades in IndexedDB, written by one tab at a time (a Web Lock), and the heatmap marks where its recording begins: a page can only record while it is open. See `docs/deployment.md` for publishing.
 
 `PORT`, `HISTORY_DB` (SQLite; the depth recorder writes `depth-v2.sqlite` beside it) and `QUOTA_FILE` choose where state lives. To try a change without disturbing a running instance, start a second server on another `PORT` with its own `HISTORY_DB`. The server answers only requests addressed to `localhost` or an IP address and, for a browser, only from its own page, so another website you visit cannot drive it (`HLM_ALLOWED_HOSTS=name1,name2` adds public names for a deliberate deployment; `docs/deployment.md` covers going public, GitHub Pages and what can be protected). `HLM_SOURCEMAP=off` leaves source maps out of a published build.
 
@@ -31,7 +36,9 @@ npm run dev:fixture  # offline demo feeds
 | Hover (profile column or order book) | Mirror: the band from the mark to the pointer and the equally wide band on the other side are framed with border lines in each side's colour and labelled with their cumulative size and distance, the rest dims, and a box says what each band holds and which side has more ("Opposite side has 1.13x more"); move outward to watch the balance change. In Single mode the order book compares within the hovered venue's book. The chart itself shows no comparison. Toggle with Mirror |
 | Hover | Shared time cursor across chart, depth and OI; price and liquidity readout on the chart |
 
-The toolbar selects the market, timeframe (1m–1d), layer (Liquidity, Liquidation, Stop loss, Take profit), heatmap source (aggregated or one venue), Spot / Perp / Both, per-venue visibility chips, heatmap colour (Size ramp or two-hue Sides style, a legend showing the USD range with one Contrast slider, Auto, Smooth auto / off), the Profile / Depth / OI / Candles / Footprint / LT / Mirror / Volume / Trades toggles, Highlights, Sound and the theme menu (hover a theme to preview it, click to keep it). The ladder offers Aggregated, Single and Compact modes, a grouping step and Levels / Cumulative / both. Liquidation, stop-loss and take-profit layers come from HyperTracker; without credentials they are labelled mock data.
+The toolbar selects the market, timeframe (1m–1d), layer (Liquidity, Liquidation, Stop loss, Take profit), heatmap source (aggregated or one venue), Spot / Perp / Both, per-venue visibility chips, heatmap colour (Size ramp or two-hue Sides style, a legend showing the USD range with one Contrast slider, Auto, Smooth auto / off), the Profile / Depth / OI / Candles / Footprint / LT / Mirror / Volume / Trades toggles, Highlights, Sound and the theme menu (hover a theme to preview it, click to keep it). The ladder offers Aggregated, Single and Compact modes, a grouping step and Levels / Cumulative / both. The Liquidation, Stop loss and Take profit layers are listed as upcoming (disabled): they need HyperTracker data, which a static page cannot hold a key for.
+
+A venue that never connects, keeps failing and fails a plain request while others work is shown as unavailable from the visitor's location: a dashed chip, a dismissible banner and a status in the Venues dialog say that a VPN set to another country may enable it.
 
 ## How it works
 

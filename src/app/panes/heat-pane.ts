@@ -15,7 +15,10 @@ import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
+import { TrapData, trapText, type Trap } from '../traps.ts';
 
+/** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
+const TRAP_COLOR = '#f5a524';
 export const AXIS_W = 64;
 export const PROFILE_W = 128;
 const TIME_H = 22;
@@ -64,6 +67,12 @@ export class HeatPane {
   #zoomDrag: { x: number; y: number; view: Bounds } | null = null;
   #wasLoaded = false;
   #footprint = new FootprintData();
+  /** Possible trapped buyers and sellers on closed candles, found at a row step that does not depend on the zoom. */
+  #traps = new TrapData();
+  /** The pulsing layer: a canvas of its own above the overlay, redrawn a few times a second only while a trap is in view. */
+  readonly #pulse = document.createElement('canvas');
+  #pulseRects: { x: number; y: number; w: number; h: number; active: boolean }[] = [];
+  #pulseFrame = 0; #pulseDrawn = 0;
   #lod = new FootprintLod();
   #lodFrame: LodFrame = { barAlpha: 0, sellBuyAlpha: 0, needsFrame: false, heatmapOpacity: 1, narrowing: 0 };
   #volume: VolumeAnalysis | null = null;
@@ -76,7 +85,8 @@ export class HeatPane {
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private kernels: Kernels) {
     this.root.className = 'pane heat';
-    this.root.append(this.#glCanvas, this.overlay);
+    this.#pulse.className = 'pulse';
+    this.root.append(this.#glCanvas, this.#pulse, this.overlay);
     host.append(this.root);
     this.gl = new HeatGL(this.#glCanvas);
     this.#ctx = this.overlay.getContext('2d')!;
@@ -123,6 +133,8 @@ export class HeatPane {
     this.#w = Math.max(1, Math.floor(rect.width)); this.#h = Math.max(1, Math.floor(rect.height)); this.#dpr = window.devicePixelRatio || 1;
     this.overlay.width = Math.round(this.#w * this.#dpr); this.overlay.height = Math.round(this.#h * this.#dpr);
     this.overlay.style.width = `${this.#w}px`; this.overlay.style.height = `${this.#h}px`;
+    this.#pulse.width = this.overlay.width; this.#pulse.height = this.overlay.height;
+    this.#pulse.style.width = this.overlay.style.width; this.#pulse.style.height = this.overlay.style.height;
     this.#positionGl();
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
@@ -229,6 +241,10 @@ export class HeatPane {
     const rowH = rowStep > 0 ? Math.abs(v.yOf(0, ph) - v.yOf(rowStep, ph)) : 0;
     const factor = visibilityFactor(state.candles, tfMs, v, pw, ph, rowH || 1, rowStep || 1);
     this.#lodFrame = this.#lod.step(now, { enabled: true, hasData: this.#footprint.bars.size > 0, widthCss: pw * tfMs / (v.t1 - v.t0), rowHeightCss: rowH, factor });
+    // A trap needs the candles and the footprint to be the same market's; a chart showing a reference series instead says nothing about this market's flow.
+    if (this.#lodFrame.barAlpha > 0.05 && state.seriesInstrument === state.marketId) {
+      this.#traps.ensure({ inst: state.marketId, tf: state.timeframe, tfMs, candles: state.candles, fine, view: v, load: (inst, tf, from, to, rows) => this.hub.footprint(inst, tf, from, to, rows), onLoad: () => this.invalidate() });
+    } else this.#traps.clear();
     if (this.#lodFrame.needsFrame) this.invalidate();
   }
 
@@ -252,7 +268,9 @@ export class HeatPane {
     this.#paintHistoryStart(ctx, pw, ph, p);
     this.#paintLayers(ctx, state, pw, ph);
     this.#paintVolume(ctx, state, pw, ph, this.#lodFrame.narrowing);
-    if (state.show.footprint) paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p);
+    this.#pulseRects = [];
+    if (state.show.footprint) paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks());
+    this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
     // mark line
@@ -530,6 +548,7 @@ export class HeatPane {
     ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const axisX = this.#w - AXIS_W;
     if (ownY && y >= 0 && y <= ph) { ctx.fillStyle = p.text; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(fmtPrice(hv.price!), axisX + 6, y); }
+    let trapHit: Trap | null = null;
     const hit = ownY && inX ? this.#bubbleAt(x, y) : null;
     if (hit) { // a large trade under the pointer: say what it was
       const { print } = hit, venue = venueLabel(print.id), symbol = print.id.split(':').slice(1).join(':');
@@ -540,6 +559,8 @@ export class HeatPane {
       ctx.strokeStyle = print.side === 'buy' ? p.bid : p.ask; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1); ctx.lineWidth = 1;
       ctx.textAlign = 'left'; lines.forEach((line, i) => { ctx.fillStyle = i === 0 ? (print.side === 'buy' ? p.bid : p.ask) : p.text; ctx.fillText(line, bx + 8, by + 12 + i * 15); });
       ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    } else if (ownY && inX && (trapHit = this.#trapUnder(x, hv.t, hv.price!, pw))) {
+      this.#paintTrapPopup(ctx, trapHit, x, y, pw, ph);
     } else if (ownY && inX && state.layer === 'liquidity') {
       const cell = this.valueAt(hv.t, hv.price!);
       const source = cell ? this.#sourceOf(hv.t, hv.price!, cell.ask > cell.bid ? 'ask' : 'bid') : '';
@@ -548,6 +569,70 @@ export class HeatPane {
       ctx.fillStyle = p.text; ctx.globalAlpha = 0.92; ctx.fillRect(bx, by, tw, 20); ctx.globalAlpha = 1; ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(text, bx + 7, by + 10);
     }
     if (inX) { ctx.fillStyle = p.text; ctx.fillRect(x - 40, ph + 2, 80, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.fillText(clock(hv.t, true), x, ph + 11); }
+  }
+
+  /** The rows of flagged candles that the footprint should mark: the wick's imbalanced cells on the trapped side. */
+  #trapMarks(): { wants(barT: number, mid: number, side: 'buy' | 'sell'): boolean; add(x: number, y: number, w: number, h: number, barT: number): void } | undefined {
+    if (!this.#traps.traps.length || this.#lodFrame.barAlpha < 0.3) return undefined;
+    return {
+      wants: (barT, mid, side) => this.#traps.on(barT).some(t => t.side === 'buyers' ? side === 'buy' && mid >= t.zoneLow && mid <= t.zoneHigh : side === 'sell' && mid >= t.zoneLow && mid <= t.zoneHigh),
+      add: (x, y, w, h, barT) => { this.#pulseRects.push({ x, y, w, h, active: this.#traps.on(barT).some(t => t.state === 'active') }); },
+    };
+  }
+
+  /** The trap whose wick is under the pointer in the footprint's rows, if any (and only while the footprint is clearly visible). */
+  #trapUnder(x: number, t: number, price: number, pw: number): Trap | null {
+    if (this.#lodFrame.barAlpha < 0.3 || !this.#traps.traps.length) return null;
+    const tfMs = TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000, start = Math.floor(t / tfMs) * tfMs;
+    const slot = pw * tfMs / (this.view.t1 - this.view.t0), left = this.view.xOf(start, pw) + footprintLayout(slot).colLeft;
+    if (x < left) return null;
+    return this.#traps.on(start).find(trap => price >= trap.zoneLow && price <= trap.zoneHigh) ?? null;
+  }
+
+  #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number): void {
+    const p = this.#palette, maxWidth = 280, lines: string[] = [];
+    ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+    for (const text of trapText(trap)) {
+      let line = '';
+      for (const word of text.split(' ')) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; } else line = next; }
+      lines.push(line);
+    }
+    const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 18, th = lines.length * 15 + 10;
+    const bx = x + 14 + tw > pw ? x - 14 - tw : x + 14, by = Math.min(ph - th - 4, Math.max(4, y - th / 2));
+    ctx.fillStyle = p.panel; ctx.globalAlpha = 0.97; ctx.fillRect(bx, by, tw, th); ctx.globalAlpha = 1;
+    ctx.strokeStyle = TRAP_COLOR; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1); ctx.lineWidth = 1;
+    ctx.textAlign = 'left'; lines.forEach((line, i) => { ctx.fillStyle = i === 0 ? TRAP_COLOR : p.text; ctx.fillText(line, bx + 9, by + 13 + i * 15); });
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  }
+
+  /** Redraw the pulse layer now, and keep it going (about 20 frames a second, slowly breathing) while a trap that is still live is in view. */
+  #startPulse(): void {
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.#drawPulse(performance.now(), reduced);
+    if (this.#pulseFrame || reduced || !this.#pulseRects.some(r => r.active)) return;
+    const tick = (time: number): void => {
+      this.#pulseFrame = 0;
+      if (document.hidden || !this.#pulseRects.some(r => r.active)) return;
+      if (time - this.#pulseDrawn >= 50) this.#drawPulse(time, false);
+      this.#pulseFrame = requestAnimationFrame(tick);
+    };
+    this.#pulseFrame = requestAnimationFrame(tick);
+  }
+  #drawPulse(time: number, still: boolean): void {
+    const ctx = this.#pulse.getContext('2d')!, pw = this.plotW, ph = this.plotH;
+    this.#pulseDrawn = time;
+    ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
+    ctx.clearRect(0, 0, this.#w, this.#h);
+    if (!this.#pulseRects.length) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+    // A 2.4 s breath between a faint and a clear glow; a trap that is no longer live (old, or price came back) is a still, faint outline.
+    const breath = still ? 0.5 : 0.5 + 0.5 * Math.sin(time / 2400 * Math.PI * 2);
+    for (const r of this.#pulseRects) {
+      const alpha = r.active ? 0.12 + 0.3 * breath : 0.1;
+      ctx.fillStyle = `rgba(245, 165, 36, ${alpha})`; ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
+      ctx.strokeStyle = `rgba(245, 165, 36, ${r.active ? 0.35 + 0.5 * breath : 0.3})`; ctx.lineWidth = 1.2; ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1);
+    }
+    ctx.restore();
   }
 
   /** The drawn bubble nearest the pointer, if the pointer is on it (a few pixels of slack for the small ones). */

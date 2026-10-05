@@ -8,7 +8,12 @@ import type { FootprintResponse } from '../source.ts';
 type Row = [number, number, number];
 /** Trade counts and USD by size bucket (see SIZE_BUCKET_LABELS); only present for bars whose executions were recorded with stats. */
 export interface TradeStats { buyN: number; sellN: number; buy: number[]; sell: number[] }
-export interface Bar { t: number; rows: Row[]; buyUsd: number; sellUsd: number; stats?: TradeStats }
+export interface Bar {
+  t: number; rows: Row[]; buyUsd: number; sellUsd: number;
+  /** Recorded minutes inside the bar; a candle seen only in part has fewer than its length. Absent from servers that predate it. */
+  minutes?: number;
+  stats?: TradeStats;
+}
 
 /** Trade stats from the wire: eight finite non-negative size buckets per side and integer counts, else none (the bar then has no trade statistics). */
 export function validStats(value: unknown): TradeStats | undefined {
@@ -161,8 +166,11 @@ export function volText(value: number): string {
   return value.toFixed(0);
 }
 
-/** Draw the per-row footprint to the right of each candle: sell (left) and buy (right) volume, with a bar behind rows where one side dominates. */
-export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintData, lod: LodFrame, tf: string, view: View, pw: number, ph: number, p: Palette): void {
+/** Asks which drawn rows to mark (a possible trap's cells) and receives their rectangles. */
+export interface RowMarks { wants(barT: number, mid: number, side: 'buy' | 'sell'): boolean; add(x: number, y: number, w: number, h: number, barT: number): void }
+
+/** Draw the per-row footprint to the right of each candle: sell (left) and buy (right) volume, with a bar behind rows where one side dominates. `marks` collects the rectangles of the rows it asks for. */
+export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintData, lod: LodFrame, tf: string, view: View, pw: number, ph: number, p: Palette, marks?: RowMarks): void {
   const tfMs = TIMEFRAMES[tf] ?? 3_600_000, step = data.step;
   if (!(step > 0) || lod.barAlpha <= 0.005) return;
   const slot = pw * tfMs / (view.t1 - view.t0), rowPx = Math.abs(view.yOf(0, ph) - view.yOf(step, ph)), layout = footprintLayout(slot);
@@ -180,7 +188,9 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintDat
       const side = imbalance(buy, sell);
       if (side) {
         ctx.globalAlpha = (p.dark ? 0.9 : 0.62) * lod.barAlpha; ctx.fillStyle = side === 'buy' ? p.candleUp : p.candleDown;
-        ctx.fillRect(left, yTop, Math.max(2, Math.min(layout.colWidth, layout.colWidth * Math.max(buy, sell) / maxSide)), h);
+        const barWidth = Math.max(2, Math.min(layout.colWidth, layout.colWidth * Math.max(buy, sell) / maxSide));
+        ctx.fillRect(left, yTop, barWidth, h);
+        if (marks?.wants(bar.t, low + step / 2, side)) marks.add(left, yTop, barWidth, h, bar.t);
       }
       if (lod.sellBuyAlpha > 0.01) {
         ctx.globalAlpha = lod.sellBuyAlpha; ctx.fillStyle = textColor;

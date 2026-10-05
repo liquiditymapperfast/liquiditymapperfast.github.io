@@ -16,7 +16,13 @@ export const sizeBucket = (usd: number): number => { let bucket = 0; for (let i 
 export interface TradeStats { buyN: number; sellN: number; buy: number[]; sell: number[] }
 const emptyStats = (): TradeStats => ({ buyN: 0, sellN: 0, buy: new Array<number>(SIZE_EDGES.length).fill(0), sell: new Array<number>(SIZE_EDGES.length).fill(0) });
 
-export interface FootprintBar { t: number; rows: FootprintRow[]; buyUsd: number; sellUsd: number; /** Present only when every recorded minute of the bar carried trade stats. */ stats?: TradeStats }
+export interface FootprintBar {
+  t: number; rows: FootprintRow[]; buyUsd: number; sellUsd: number;
+  /** How many of the bar's minutes were recorded, so a reader can tell a whole candle from one seen only in part. */
+  minutes: number;
+  /** Present only when every recorded minute of the bar carried trade stats. */
+  stats?: TradeStats;
+}
 
 type Bins = Map<number, [number, number]>;
 
@@ -126,7 +132,7 @@ export class FootprintRecorder {
     return { step, fine, bars: [...bars].sort((a, b) => a[0] - b[0]).map(([t, rows]) => {
       const list = [...rows].sort((a, b) => a[0] - b[0]).map(([row, [buy, sell]]): FootprintRow => [row * step, buy, sell]);
       const acc = barStats.get(t);
-      return { t, rows: list, buyUsd: list.reduce((s, r) => s + r[1], 0), sellUsd: list.reduce((s, r) => s + r[2], 0), ...(acc && acc.withStats === acc.minutes ? { stats: acc.stats } : {}) };
+      return { t, rows: list, buyUsd: list.reduce((s, r) => s + r[1], 0), sellUsd: list.reduce((s, r) => s + r[2], 0), minutes: acc?.minutes ?? 0, ...(acc && acc.withStats === acc.minutes ? { stats: acc.stats } : {}) };
     }) };
   }
 }

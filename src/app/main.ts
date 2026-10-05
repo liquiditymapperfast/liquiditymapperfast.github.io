@@ -14,16 +14,32 @@ import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
 import './styles.css';
 
+/** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */
+async function serverAnswers(): Promise<boolean> {
+  try {
+    const response = await fetch('api/v2/state', { signal: AbortSignal.timeout(1_500), cache: 'no-store' });
+    return response.ok && (response.headers.get('content-type') ?? '').includes('json');
+  } catch { return false; }
+}
+
+/**
+ * Where the data comes from. A static host (GitHub Pages, any file server) has no server behind it, so the page reads the exchanges
+ * itself in a worker. Served by the local server, the page uses that server and its recorded history instead. `?source=browser` or
+ * `?source=server` chooses explicitly (`?persist=0` keeps a browser-source session from saving recordings).
+ */
+async function chooseSource(params: URLSearchParams): Promise<DataSource> {
+  const wanted = params.get('source');
+  if (wanted === 'server' || (wanted !== 'browser' && await serverAnswers())) return new ServerSource();
+  return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0' });
+}
+
 async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   const store = new Store(initialState());
   applyTheme(store.state.theme);
   const kernels = await loadKernels();
-  // The exchanges are read straight from this browser unless the page is asked for a local server (`?source=server`).
   const params = new URLSearchParams(location.search);
-  const source: DataSource = params.get('source') === 'server'
-    ? new ServerSource()
-    : new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0' });
+  const source = await chooseSource(params);
   const hub = new Hub(store, source);
 
   const toolbar = new Toolbar(store, source.venues);
@@ -50,6 +66,7 @@ async function main(): Promise<void> {
   heat.onFrame = lower; heat.onView = lower;
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
+  toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
   const sounds = new Sounds(store); toolbar.attachSounds(sounds); sounds.start();
   hub.onPrints = fresh => sounds.feed(fresh);
   hub.onPrintsChanged = () => heat.invalidate();

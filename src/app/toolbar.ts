@@ -55,6 +55,8 @@ export class Toolbar {
   /** Preview a theme without keeping it (`null` puts the saved one back). */
   onPreviewTheme: (id: string | null) => void = () => {};
   onSelectMarket: (id: string) => void = () => {};
+  /** The person applied a venue selection (a server brings the new feeds up some seconds later). */
+  onVenuesApplied: () => void = () => {};
 
   constructor(private store: Store, private venueControl: VenueControl) {
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
@@ -89,7 +91,7 @@ export class Toolbar {
       this.#notice.update(entries);
       this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, title: `${v.name}: ${VPN_HINT}` })));
     });
-    const venues = el('button', { textContent: 'Venues', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct()) });
+    const venues = el('button', { textContent: 'Venues', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct(), () => this.onVenuesApplied()) });
     this.root.append(
       el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
       el('span', { class: 'heatctl' }, this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),

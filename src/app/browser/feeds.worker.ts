@@ -45,6 +45,8 @@ async function init(selected: string[] | null, persist: boolean): Promise<void> 
   if (persist && typeof indexedDB !== 'undefined') {
     try { recordings = await withTimeout(openRecordings(Date.now() - BROWSER_RETENTION_MS, () => recording, error => console.warn('recordings are no longer being saved:', error)), 5_000, 'opening the recordings'); }
     catch (error) { console.warn('recordings are not kept this session:', error); }
+    // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
+    void navigator.storage?.persist?.().catch(() => false);
     claimRecorder();
   }
   const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null });

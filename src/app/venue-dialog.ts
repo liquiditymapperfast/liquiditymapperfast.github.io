@@ -7,7 +7,7 @@ interface Row { entry: VenueEntry; status: string; label: HTMLElement; box: HTML
  * Venue picker. The dialog is built once and only its text is updated afterwards, so it stays open while the status of each
  * venue refreshes; it closes only on Close or Escape. What running a selection means is the data source's business.
  */
-export async function openVenueDialog(venues: VenueControl, selectionProduct: () => string): Promise<void> {
+export async function openVenueDialog(venues: VenueControl, selectionProduct: () => string, onApplied: () => void = () => {}): Promise<void> {
   const dialog = el('dialog', { class: 'venues' });
   dialog.append(el('h3', { textContent: 'Order book venues' }), el('p', { class: 'muted', textContent: 'Loading…' }));
   document.body.append(dialog); dialog.showModal();
@@ -37,7 +37,7 @@ export async function openVenueDialog(venues: VenueControl, selectionProduct: ()
       apply.disabled = true; note.textContent = 'Applying… venues connect in the background; status updates below.';
       try {
         await venues.apply(rows.filter(r => r.box.checked).map(r => r.entry.id), selectionProduct());
-        count(); note.textContent += ' Applied.';
+        count(); note.textContent += ' Applied.'; onApplied();
       } catch (error) { note.textContent = error instanceof Error ? error.message : String(error); }
       apply.disabled = false;
     };

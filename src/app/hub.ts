@@ -77,6 +77,9 @@ export class Hub {
     this.#reference = boot.markInstrumentId; this.#oiReferences = boot.oiReferences ?? [];
     this.store.set({ markets: boot.markets, marketId, mark: { price: boot.markPrice, asOf: boot.asOf }, layers: boot.layers ?? {} });
     await this.#ready;
+    // A source that says when venues change (the browser) keeps the market list current without being asked.
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    this.source.venues.watch?.(() => { clearTimeout(pending); pending = setTimeout(() => void this.refreshMarkets(), 300); });
     this.source.connect({
       onOpen: () => { this.#printsWindow = null; this.store.set({ connected: true, status: 'live' }); },
       onClose: (failures, host) => this.store.set({ connected: false, status: connectionStatus(failures, host) }),
@@ -96,6 +99,17 @@ export class Hub {
   #noteRecorded(recorded: Record<string, { first: number }> | undefined): void {
     const firsts = Object.values(recorded ?? {}).map(r => r.first);
     this.recordedSince = firsts.length ? Math.min(...firsts) : 0;
+  }
+
+  /** Re-read the market list after venues were switched on or off, and leave a market that is gone for the reference one. */
+  async refreshMarkets(): Promise<void> {
+    const boot = await this.source.bootstrap().catch(() => null);
+    if (!boot) return;
+    const key = (list: readonly { instrumentId?: string }[]): string => list.map(m => m.instrumentId).join(',');
+    const { markets, marketId } = this.store.state;
+    if (key(boot.markets) === key(markets)) return;
+    const gone = marketId !== '' && !boot.markets.some(m => m.instrumentId === marketId);
+    this.store.set({ markets: boot.markets, ...(gone ? { marketId: boot.markInstrumentId || boot.markets[0]?.instrumentId || '' } : {}) });
   }
 
   #tick(tick: TickMessage): void {

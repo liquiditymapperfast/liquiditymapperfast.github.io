@@ -50,6 +50,8 @@ main { --side-w: 420px; display: grid; grid-template-columns: minmax(0, 1fr) 6px
 .pane.heat { flex: 1 1 auto; min-height: 240px; overflow: hidden; }
 .pane.heat canvas { position: absolute; left: 0; top: 0; }
 .pane.heat canvas:last-child { cursor: crosshair; touch-action: none; }
+/* The pulse layer sits above the overlay so a trap's cells glow over the footprint, and lets every pointer event through to it. */
+.pane.heat canvas.pulse { z-index: 1; pointer-events: none; }
 .pane.ladder { flex: 1 1 auto; }
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 

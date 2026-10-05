@@ -262,3 +262,15 @@ test('stopping the engine stops every connector', () => {
   assert.ok([...fakes.values()].every(f => f.state === 'stopped'));
   assert.deepEqual(engine.selected, []);
 });
+
+test('an empty first pass does not delay the first sample, and a live venue not yet sampled is reported as recording from this minute', () => {
+  const t = Date.now(), minute = Math.floor(t / 60_000) * 60_000;
+  const { engine, fakes } = setup(['binance'], { now: () => t });
+  engine.select(['binance']);
+  engine.step();
+  assert.deepEqual(engine.bootstrap().recorded, {}, 'nothing is live, so nothing is claimed');
+  fakes.get('binance')!.book(100, 101);
+  assert.deepEqual(engine.bootstrap().recorded, { 'binance:BTCUSDT': { first: minute, last: minute } });
+  engine.step();
+  assert.equal(engine.recorder.coverage()['binance:BTCUSDT']?.first, minute, 'the very next pass recorded it');
+});

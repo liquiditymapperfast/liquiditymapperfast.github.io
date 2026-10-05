@@ -181,7 +181,8 @@ export class Engine {
   /** One pass: value the books, record, and tell the page what changed. */
   step(now = this.#now()): void {
     const books = this.#value(now);
-    if (now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); }
+    // A pass with no book yet must not use up the sample interval, or the first real sample waits five seconds.
+    if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); }
     if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); }
     if (now - this.#lastPrune >= PRUNE_MS) { this.#lastPrune = now; this.recorder.prune(now); }
     this.#pollOi(now);
@@ -261,7 +262,10 @@ export class Engine {
     const now = this.#now(), reference = this.#reference(now);
     const markets = [...this.#runs.values()].map(({ book: c }): EngineMarket => ({ id: c.instrumentId, instrumentId: c.instrumentId, venue: c.id, exchange: c.id, symbol: c.symbol, nativeSymbol: c.symbol, base: c.base, quote: c.quote, marketType: c.marketType, quantityUnit: 'base', isFree: true }));
     const oiReferences = markets.filter(m => OI_SAMPLE_VENUES.includes(m.venue)).sort((a, b) => OI_SAMPLE_VENUES.indexOf(a.venue) - OI_SAMPLE_VENUES.indexOf(b.venue)).map(m => m.instrumentId);
-    return { asOf: now, now, markPrice: reference?.price ?? 0, markInstrumentId: reference?.instrumentId ?? '', markets, steps: Object.fromEntries(this.recorder.steps), recorded: this.recorder.coverage(), columnMs: COLUMN_MS, timeframes: Object.keys(TIMEFRAMES), oiReferences };
+    // A live venue that has not been sampled yet is about to be: say that recording starts this minute rather than that nothing is recorded.
+    const recorded = this.recorder.coverage(), minute = Math.floor(now / COLUMN_MS) * COLUMN_MS;
+    for (const run of this.#runs.values()) if (run.book.state === 'live' && !recorded[run.book.instrumentId]) recorded[run.book.instrumentId] = { first: minute, last: minute };
+    return { asOf: now, now, markPrice: reference?.price ?? 0, markInstrumentId: reference?.instrumentId ?? '', markets, steps: Object.fromEntries(this.recorder.steps), recorded, columnMs: COLUMN_MS, timeframes: Object.keys(TIMEFRAMES), oiReferences };
   }
 
   columns(ids: readonly string[], from: number, to: number, stepMs: number): ColumnsFrame {

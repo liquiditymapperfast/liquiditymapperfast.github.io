@@ -37,7 +37,7 @@ Measure with an isolated, visible-state headless Chrome over CDP. A tab reportin
 
 ## Running and verifying
 
-- `npm run dev` builds and starts the live server on `http://127.0.0.1:8787`; `npm run dev:fixture` runs offline. Before starting or restarting a local service, inspect existing process and port ownership; test on a spare `PORT` rather than stopping someone else's server.
+- `npm run dev` builds and starts the live server on `http://127.0.0.1:8787` (a page it serves uses it as its data source); `npm run dev:client` runs the page alone, reading the exchanges from the browser; `npm run build:site` builds the static site; `npm run dev:fixture` runs offline. Before starting or restarting a local service, inspect existing process and port ownership; test on a spare `PORT` rather than stopping someone else's server.
 - `npm test` builds and runs the Node suite; `npm run typecheck` runs the three strict projects; `npm run build` does both plus the Vite bundle.
 - Visual inspection: compare against `example_images/` (a local folder that is not in git: reference screenshots for the heatmap, order book and footprint, plus `bookmap.PNG`, the Bookmap reference for the colour ramp and the Liquidity Tracker row). Heatmap, profile, ladder and footprint spacing, intensity and grouping follow those screenshots.
 - All implementation and evidence artifacts belong in this repository. `Aggr_Trade` is a read-only reference.
