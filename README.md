@@ -70,6 +70,10 @@ exchange feeds ─▶ LiveFeedManager ─▶ reducers (src/server/http.mts) ─�
 
 With the Footprint toggle on and the chart zoomed in, each candle slides to the left of its slot as a solid candle and the rows of executed volume appear to its right (design after the footprint screenshots in `example_images/`). A row prints sell volume (market sells hitting bids) then buy volume (buys lifting asks) in compact form (13.4M, 407.0k). A bar anchored at the column's left edge appears only where one side is at least 1.15 times the other; it is red for sellers and green for buyers and sized by the larger side against the largest in view. The heatmap dims behind it and the footprint fades in and out with zoom (thresholds in `FOOTPRINT_POLICY`). Below the chart the Bar stats strip prints per-candle statistics aligned to the candle slots (see below).
 
+### Possible trapped buyers and sellers
+
+On a closed candle whose wick holds more net aggressive buying (or selling) than any equally tall stretch of the rest of the candle, and that then closed at least one ATR beyond the aggressors' average entry, the wick's imbalanced cells are outlined in amber and, for twelve candles, slowly pulse (still, not pulsing, with reduced motion or once price closes back through the entry). Hovering them says what was found and what is not known. It is a fact about the candle, labelled "possible": the pattern has not been tested as a predictor. It judges only settled candles whose footprint is complete, at a row step that does not change with the zoom, and needs the candles and footprint of the same market. `docs/trapped-traders.md` has the rule, the firing rates behind its defaults, the ways it can mislead and what a proper study would take.
+
 ### Bar stats
 
 The strip shows volume, delta and cumulative delta by default. The **Stats** button in its header opens a panel to choose any of the following, reorder them by dragging a row by its dots (or focus the dots and press the up / down arrow keys), hide them with ×, or apply a preset (Default, All, None); the strip grows one row per statistic, and choice, order and options persist in the browser.

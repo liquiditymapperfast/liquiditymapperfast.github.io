@@ -88,3 +88,19 @@ Main thread under 30 s of interaction (profile, unminified build to see names), 
   rasters, but the kernel is deliberately stateless, and the cache would help only when the view does not change.
 * Deep far-book history grows with time; per-column storage is now bounded by the floor, which is the lever to turn if disk or memory matter more than faint
   far levels.
+
+## The browser-only page (2026-10-05, later)
+
+No server: the engine (connectors, valuation, recording, history requests) runs in a Web Worker next to the raster worker. Measured with headless Chrome on this machine (software GL, so
+the GPU number is a ceiling), page idle after 30 s warm-up, eight default venues live, the 1h chart, no footprint, 63 s window, `?persist=0`:
+
+| Process | CPU (share of one core) | Working set |
+| --- | --- | --- |
+| renderer (main thread + feeds worker + raster worker) | 23.9 % | 301 MB |
+| of which main thread tasks | 4.7 % (script 2.3 %) | JS heap 4 MB |
+| GPU process | 8.4 % | 157 MB |
+| browser + utility | 2.1 % | |
+
+So the engine and the raster worker together take about 19 % of a core, close to what the server used for the same venues (about 17 %). The main thread, which draws, is nearly idle.
+Recordings in IndexedDB add a transaction every half second and structured-cloned reads once at start; they were not measured separately. Retention is 24 hours (the server keeps seven days),
+which at the 47 KB per minute of columns measured above is about 68 MB for the depth columns; the footprint maps and large-trade lists after a full day were not measured.
