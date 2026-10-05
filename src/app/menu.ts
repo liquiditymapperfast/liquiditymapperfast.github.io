@@ -1,6 +1,6 @@
 import { el } from './dom.ts';
 import { closePanel } from './ui.ts';
-import { isPhone, onLayoutMode } from './device.ts';
+import { compactBar, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
 
 export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[]; /** Shown but not choosable. */ disabled?: boolean }
@@ -39,14 +39,14 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   document.body.append(root);
   const place = (): void => {
     // On a phone the stylesheet makes the menu a bottom sheet.
-    if (isPhone()) { root.style.top = ''; root.style.left = ''; root.style.maxHeight = ''; return; }
+    if (compactBar()) { root.style.top = ''; root.style.left = ''; root.style.maxHeight = ''; return; }
     const a = anchor.getBoundingClientRect(), w = root.offsetWidth, height = root.offsetHeight;
     const below = window.innerHeight - a.bottom - 8, up = below < height && a.top > below;
     root.style.top = `${Math.max(8, up ? a.top - 4 - height : a.bottom + 4)}px`;
     root.style.left = `${Math.min(Math.max(8, align === 'right' ? a.right - w : a.left), window.innerWidth - w - 8)}px`;
     root.style.maxHeight = `${Math.max(160, up ? a.top - 12 : below)}px`;
   };
-  const onPointer = (event: PointerEvent): void => { if (isPhone()) return; const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) close(); };
+  const onPointer = (event: PointerEvent): void => { if (compactBar()) return; const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) close(); };
   const scrim = scrimFor(root, 69, () => close());
   const onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') { event.preventDefault(); close(); anchor.focus(); return; }

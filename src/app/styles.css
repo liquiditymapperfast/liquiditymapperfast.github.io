@@ -35,6 +35,7 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .chip.scoped-out { opacity: .38; }
 /* A venue this location cannot reach: not a toggle, so it looks like a plain tag with a dashed edge. */
 .chip.blocked { color: var(--muted); border: 1px dashed var(--line); cursor: help; }
+.chip.blocked.faulty { border-color: color-mix(in srgb, var(--ask) 55%, var(--line)); color: var(--ask); }
 .blocked-chips:empty { display: none; }
 .toolbar .notice { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid color-mix(in srgb, var(--ask) 45%, var(--line)); background: color-mix(in srgb, var(--ask) 12%, var(--panel)); }
 .toolbar .notice[hidden] { display: none; }
@@ -109,7 +110,7 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .author-link b { font-size: 13px; }
 .author-link span { color: var(--muted); font-size: 11px; }
 /* Screenshot (screenshot/editor.ts): a frozen copy of the page under a dim layer, and one floating toolbar. */
-dialog.shot { position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; overflow: hidden; color: #f2f4f7; font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+dialog.shot { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; overflow: hidden; color: #f2f4f7; font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 dialog.shot::backdrop { background: transparent; }
 .shot-stage { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
 .shot-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; pointer-events: none; text-align: center; text-shadow: 0 2px 18px rgba(0, 0, 0, .55); }
@@ -199,6 +200,7 @@ button.install:hover { background: var(--ui); color: var(--bg); border-color: va
 button.install[hidden] { display: none; }
 button.help { width: 16px; height: 16px; padding: 0; margin: 0 6px 0 3px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 10px/14px ui-sans-serif, system-ui, sans-serif; text-align: center; vertical-align: middle; flex: 0 0 auto; }
 button.help:hover, button.help.open { color: var(--bg); background: var(--text); border-color: var(--text); }
+ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.45; }
 .help-body .lead { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }
 .help-body .more { margin-top: 10px; align-self: flex-start; }
 .panel-x { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; border-radius: 6px; }

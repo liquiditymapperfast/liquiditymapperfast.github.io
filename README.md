@@ -42,6 +42,8 @@ The toolbar selects the market, timeframe (1m–1d), layer (Liquidity, Liquidati
 
 A venue that never connects, keeps failing and fails a plain request while others work is shown as unavailable from the visitor's location: a dashed chip, a dismissible banner and a status in the Venues dialog say that a VPN set to another country may enable it.
 
+The chips are the venues that have a book on the map. A venue that was chosen but has none gets a dashed chip of its own, so it never just disappears from the toolbar: a red-tinted one (warning mark) for a venue that is failing or, on a server, left off the map because its book is crossed (a feed fault: "book crossed by 123 bp"), a grey one (ellipsis) for one that has been connecting for more than 20 s. Hovering it says why. A server cannot push these changes, so the page asks it every 10 s.
+
 **Help is built in.** Every control has a tooltip (`src/app/tip.ts`), and a **?** beside each pane explains it (`src/app/help.ts` holds the text both use). The **Guide** button opens a ten-minute tour with a contents list and moving pictures (`src/app/guide/`; an address like `#guide/mirror` opens it at a section). **Screenshot** (or `S`) freezes the page, lets you drag a region or click a pane, draw on it, pixelate or blur anything private, then copy or save a PNG (`src/app/screenshot/`; it draws the page itself, so nothing is asked of the browser). **Install** appears when the browser can install the page as an app, and **Author** says who made it.
 
 On a young recording the empty left of the heatmap is filled with the current book in grey (darker grey for bigger walls) so the map reads from the first second; grey is never history, and real colour starts at the dashed line.
@@ -69,7 +71,7 @@ exchange feeds ─▶ LiveFeedManager ─▶ reducers (src/server/http.mts) ─�
 ## Heatmap colour and the Liquidity Tracker
 
 - **Size style** (default, after Bookmap): one sequential colour ramp encodes size on a log scale; bid or ask is implied by position relative to the mark. Cells below the window stay background. **Sides style** uses two hues by side on a linear window.
-- **Contrast** is one slider: it slides the colour window along the size axis (right shows thinner liquidity, left keeps only the biggest walls; double-click resets). The window comes from the 15th and 96th percentiles of the non-empty cells (Bookmap's auto-contrast defaults); in Auto it is recomputed on recentering, a market or venue change, a 2x zoom and every 10 s, so colours do not drift while you pan. Auto off freezes it.
+- **Contrast** is one slider (-100 to 100, 50 = the baseline): it slides the colour window along the size axis (right shows thinner liquidity, left keeps only the biggest walls, and the far left tones even those down, which is what many venues added together need, because their walls are huge; double-click resets). The window moves by up to three quarters of its own width to the right and 2.25 widths to the left (`src/app/heatmap/window.ts`). The window comes from the 15th and 96th percentiles of the non-empty cells (Bookmap's auto-contrast defaults); in Auto it is recomputed on recentering, a market or venue change, a 2x zoom and every 10 s, so colours do not drift while you pan. Auto off freezes it.
 - **LT row** (optional, toolbar toggle): LT-Bid and LT-Ask are the USD size on each side of the aggregated enabled venues, weighted by 2^(-d / half-life) with d the distance in basis points from that side's touch (Bookmap's exponentially decaying weights; basis points rather than ticks so venues with different tick sizes agree). Options: half-life, min / max bin size, per-level average, lines or imbalance view. It is computed in the raster worker from the recorded minute columns plus the live column, so changing a setting recomputes the whole visible history at once (`src/app/lt.ts`, unit-tested).
 
 ## Footprint
@@ -107,7 +109,7 @@ One rule decides it everywhere: a value stands out when it exceeds the mean plus
 
 ## Spot, perpetual or both
 
-The Spot / Perp / Both control filters the enabled venues for the heatmap, profile, aggregated ladder, depth, LT and mirror. It never switches a venue on or off (chips that fall outside the filter are dimmed), it says so when it selects nothing, and executions (footprint, bubbles) are not filtered. Spot books show the walls that stand out far from the price; Binance spot (5000-level snapshot plus the diff stream) and Coinbase (full book) are the deep ones.
+The Spot / Perp / Both control filters the enabled venues for the heatmap, profile, aggregated ladder, depth, LT and mirror. It never switches a venue on or off (chips that fall outside the filter are dimmed; a click on a dimmed chip shows that venue, which means the filter goes back to Both and the venue is switched on), it says so when it selects nothing, and executions (footprint, bubbles) are not filtered. Spot books show the walls that stand out far from the price; Binance spot (5000-level snapshot plus the diff stream) and Coinbase (full book) are the deep ones.
 
 ## Far liquidity
 

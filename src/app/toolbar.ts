@@ -1,7 +1,8 @@
 import { TIMEFRAMES } from './hub.ts';
 import { PALETTES, THEME_ORDER } from './theme.ts';
 import { AVAILABLE_LAYERS, type Store, type AppState, type Layer } from './store.ts';
-import { VPN_HINT, VenueNotice, blockedVenues } from './venue-notice.ts';
+import { VPN_HINT, VenueNotice, blockedVenues, idleText, idleVenues } from './venue-notice.ts';
+import type { VenueEntry } from './source.ts';
 import { usd } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
@@ -12,7 +13,7 @@ import { HELP, helpButton, showGuide, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
-import { SCOPE_OPTIONS, inScope, scopeCounts } from './scope.ts';
+import { SCOPE_OPTIONS, chipClick, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
 import { rangeRow, switchRow, note, togglePanel } from './ui.ts';
 import { openMenu } from './menu.ts';
@@ -20,12 +21,16 @@ import { buildSoundPanel } from './sound/panel.ts';
 import type { Sounds } from './sound/sounds.ts';
 import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
-import { isPhone, layoutMode, onLayoutMode, type LayoutMode } from './device.ts';
+import { CONTRAST } from './heatmap/window.ts';
+import { compactBar, onLayoutMode } from './device.ts';
 import { openSheet, type Sheet } from './sheet.ts';
+import { wakeLockSupported } from './wake.ts';
 
 /** How a timeframe is said in a tooltip. */
 const TIMEFRAME_NAMES: Readonly<Record<string, string>> = { '1m': '1-minute', '5m': '5-minute', '15m': '15-minute', '30m': '30-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'Daily' };
 const LAYERS: [Layer, string][] = [['liquidity', 'Liquidity'], ['liquidation', 'Liquidation'], ['stopLoss', 'Stop loss'], ['takeProfit', 'Take profit']];
+/** A chosen venue that has no book for this long gets a chip saying so (a start-up that is merely slow does not). */
+const IDLE_GRACE_MS = 20_000;
 /** What the dropdown says next to a layer that cannot be chosen yet. */
 const UPCOMING = 'upcoming';
 
@@ -55,7 +60,7 @@ export class Toolbar {
   #heat = {
     style: el('select', { ariaLabel: 'Colours', tip: `Heatmap colouring. ${HEAT_STYLES.map(s => `${s.label}: ${s.title}.`).join(' ')}` }),
     lo: el('i'), hi: el('i'), legend: el('span', { class: 'legend' }),
-    contrast: el('input', { type: 'range', min: '0', max: '100', step: '1', tip: 'Contrast: right reveals thinner liquidity, left keeps only the biggest walls. Double-click to reset.' }),
+    contrast: el('input', { type: 'range', min: String(CONTRAST.min), max: String(CONTRAST.max), step: '1', tip: 'Contrast: right reveals thinner liquidity, left keeps only the biggest walls, and the far left tones even those down. Double-click to reset.' }),
     smooth: el('select', { ariaLabel: 'Smoothing', tip: 'Vertical smoothing when price rows get thin (zoomed out): Auto smooths with a ~5 px Gaussian below 15 px per row, as Bookmap does, so far walls stay visible; Off draws every row exactly.' }),
     auto: el('button', { textContent: 'Auto', tip: 'Auto: the colour window follows the data (recomputed on recenter, market change, zoom and every 10 s). Off: it stays where it is.' }),
   };
@@ -64,6 +69,11 @@ export class Toolbar {
   #status = el('span', { class: 'status', tip: 'Connection to the data source: live when frames are arriving.' });
   #brand = el('span', { class: 'brand', textContent: 'LiquidityMapperFast' });
   #venuesButton: HTMLElement | null = null;
+  /** The venues the source last reported, and the ones with a book on the map (chips for chosen venues that have none say why). */
+  #entries: readonly VenueEntry[] = [];
+  #drawn: ReadonlySet<string> = new Set();
+  #idleSince = new Map<string, number>();
+  #idleKey = '';
   #heatctl = el('span', { class: 'heatctl' });
   /** The colour ramp and the contrast slider under it: one unit, so the Settings sheet can give it a row of its own. */
   #heatScale = el('span', { class: 'scale' });
@@ -72,6 +82,8 @@ export class Toolbar {
   /** Phone only: the button that opens Settings, where every control that does not fit the top bar lives. */
   #more = el('button', { type: 'button', class: 'more-btn', ariaLabel: 'Settings', tip: 'Settings: panels, heatmap colouring, venues, sound, theme and the guide.' });
   #sheet: Sheet | null = null;
+  /** Settings' "Keep screen on" switch (only where the browser can hold the screen awake). */
+  #awake = el('input', { type: 'checkbox' });
   #recenter = el('button', { textContent: 'Recenter', tip: 'Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).' });
   onRecenter: () => void = () => {};
   /** Preview a theme without keeping it (`null` puts the saved one back). */
@@ -101,7 +113,7 @@ export class Toolbar {
     for (const style of HEAT_STYLES) this.#heat.style.append(new Option(style.label, style.id));
     this.#heat.style.onchange = () => this.store.set({ heat: { ...this.store.state.heat, style: this.#heat.style.value as HeatStyleId } });
     this.#heat.contrast.oninput = () => this.store.set({ heat: { ...this.store.state.heat, contrast: Number(this.#heat.contrast.value) } });
-    this.#heat.contrast.ondblclick = () => this.store.set({ heat: { ...this.store.state.heat, contrast: 50 } });
+    this.#heat.contrast.ondblclick = () => this.store.set({ heat: { ...this.store.state.heat, contrast: CONTRAST.neutral } });
     for (const [value, label] of [['auto', 'Smooth: auto'], ['off', 'Smooth: off']] as const) this.#heat.smooth.append(new Option(label, value));
     this.#heat.smooth.onchange = () => this.store.set({ heat: { ...this.store.state.heat, smooth: this.#heat.smooth.value as 'auto' | 'off' } });
     this.#heat.auto.onclick = () => this.store.set({ heat: { ...this.store.state.heat, auto: !this.store.state.heat.auto } });
@@ -111,33 +123,32 @@ export class Toolbar {
     this.#recenter.onclick = () => this.onRecenter();
     this.#author.onclick = () => { toggleAuthor(this.#author); };
     this.#shot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z"/><circle cx="12" cy="13.4" r="3.3"/></svg>';
-    this.venueControl.watch?.(entries => {
-      this.#notice.update(entries);
-      this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, tip: `${v.name}: ${VPN_HINT}` })));
-    });
+    this.venueControl.watch?.(entries => { this.#entries = entries; this.#notice.update(entries); this.#showIdle(this.#drawn); });
     const venues = el('button', { textContent: 'Venues', tip: 'Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct(), () => this.onVenuesApplied()) });
     this.#heatScale.append(this.#heat.legend, this.#heat.contrast);
     this.#fillHeatControls();
     this.#more.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
     this.#more.onclick = () => this.#toggleSheet();
+    this.#awake.onchange = () => this.store.set({ keepAwake: this.#awake.checked });
     const shoot = this.#shot.onclick;
     // The screenshot is of the page, so Settings must be out of the picture before it is taken.
     this.#shot.onclick = event => { if (!this.#sheet) { shoot?.call(this.#shot, event); return; } this.#sheet.close(); requestAnimationFrame(() => requestAnimationFrame(() => { shoot?.call(this.#shot, event); })); };
     this.#venuesButton = venues;
-    this.#arrange(layoutMode());
-    onLayoutMode(mode => this.#arrange(mode));
+    this.#arrange();
+    onLayoutMode(() => { this.#arrange(); });
   }
 
   /**
-   * Put every control where the current arrangement wants it. The desktop is one wrapping row in its original order; a phone keeps
-   * market, timeframe, status and Settings in a two-row top bar and moves the rest into the Settings sheet, grouped by purpose.
-   * The same elements move in both directions, so their handlers and state survive a rotation or a window resize.
+   * Put every control where the current arrangement wants it. The full toolbar is one wrapping row in its original order; the compact
+   * one (a phone, or any screen a finger drives) keeps market, timeframe, status and Settings in a slim top bar and moves the rest into
+   * the Settings sheet, grouped by purpose. The same elements move in both directions, so their handlers and state survive a rotation
+   * or a window resize.
    */
   /** The heatmap colour controls as the desktop toolbar has them, in one group. */
   #fillHeatControls(): void { this.#heatctl.replaceChildren(this.#heatHelp, this.#heat.style, this.#heatScale, this.#heat.auto, this.#heat.smooth); }
 
-  #arrange(mode: LayoutMode): void {
-    if (mode === 'desktop') {
+  #arrange(): void {
+    if (!compactBar()) {
       this.#sheet?.close();
       this.#fillHeatControls();
       this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
@@ -145,8 +156,9 @@ export class Toolbar {
       return;
     }
     this.root.replaceChildren(
-      el('div', { class: 'tb-row tb-main' }, this.#brand, this.#market, this.#spacer, this.#status, this.#more),
-      el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter),
+      el('div', { class: 'tb-bar' },
+        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#market, this.#spacer, this.#status, this.#more),
+        el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter)),
       this.#notice.root);
   }
 
@@ -168,7 +180,8 @@ export class Toolbar {
           field('Contrast', this.#heatScale, true), field('Colour range', this.#heat.auto), field('Smoothing', this.#heat.smooth)], helpButton('heatmap')),
         section('Venues', [field('Markets', this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
         section('Alerts', [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#soundButton)]),
-        section('Appearance', [field('Theme', this.#theme)]));
+        section('Appearance', [field('Theme', this.#theme),
+          ...(wakeLockSupported() ? [field('Keep screen on', el('label', { class: 'switch', tip: 'Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.' }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesButton!.textContent = 'Venues'; });
     this.#more.classList.add('open');
   }
@@ -176,7 +189,7 @@ export class Toolbar {
   /** Update controls from state; `window` is the USD range currently mapped onto the colour ramp. Only touches DOM that changed, so open dropdowns and clicks survive 4 Hz data frames. */
   sync(state: AppState, window: { lo: number; hi: number }): void {
     const instruments = state.markets.filter(m => m.instrumentId);
-    const short = isPhone(), marketKey = instruments.map(m => m.instrumentId).join(',') + (short ? '|short' : '');
+    const short = compactBar(), marketKey = instruments.map(m => m.instrumentId).join(',') + (short ? '|short' : '');
     if (this.#market.dataset.key !== marketKey) {
       // The phone's top bar has room for about two dozen characters, so "perpetual" becomes "perp".
       const label = (m: (typeof instruments)[number]): string => {
@@ -194,6 +207,7 @@ export class Toolbar {
     setValue(this.#layer, state.layer);
     [...this.#toggles.children].forEach((b, i) => b.classList.toggle('on', state.show[(['profile', 'depth', 'oi', 'candles', 'footprint', 'lt', 'mirror', 'volume', 'bubbles'] as const)[i]!]));
     this.#heat.auto.classList.toggle('on', state.heat.auto);
+    if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));
     const legendKey = `${state.heat.style}|${state.theme}`;
@@ -222,7 +236,8 @@ export class Toolbar {
     }
     setValue(this.#source, books.some(b => b.id === state.heatmapSource) ? state.heatmapSource : 'aggregated');
     const venues = [...new Set(books.map(b => b.venue))];
-    const scoped = (v: string) => books.some(b => b.venue === v && inScope(state.scope, state.markets, b.id));
+    this.#drawn = new Set(venues); this.#showIdle(this.#drawn);
+    const scoped = (v: string) => !scopedOut(state, v);
     const counts = scopeCounts(state);
     [...this.#scope.children].forEach((b, i) => { const [value] = SCOPE_OPTIONS[i]!; b.classList.toggle('on', state.scope === value); setTip(b as HTMLElement, value === 'all' ? 'Every enabled venue' : `${value === 'spot' ? 'Spot' : 'Perpetual'} venues only (${counts[value]} enabled)`); });
     this.#scope.classList.toggle('inert', state.heatmapSource !== 'aggregated');
@@ -230,16 +245,36 @@ export class Toolbar {
     if (this.#chips.dataset.key !== chipKey) {
       this.#chips.dataset.key = chipKey;
       this.#chips.replaceChildren(...venues.map(v => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), tip: 'Show / hide this venue',
-        onclick: () => { const off = this.store.state.disabledVenues; this.store.set({ disabledVenues: off.includes(v) ? off.filter(x => x !== v) : [...off, v] }); } })));
+        onclick: () => this.store.set(chipClick(this.store.state, v)) })));
     }
     setTip(this.#scope, state.heatmapSource === 'aggregated' ? 'Which markets the liquidity views draw (a filter on the enabled venues; it never switches one on or off)' : 'The heatmap shows a single venue, so this filter only affects the profile, depth, ladder and LT');
     // Tooltips carry each venue's book reach, so a thin book on the map is explained by its feed.
     venues.forEach((v, i) => {
       const cov = coverage(books.find(b => b.venue === v), state.mark.price);
-      const title = cov ? `${venueLabel(v)}: ${cov.levels} levels, reaches ${Math.round(cov.bp / 2)} bp each side. Click to show / hide.` : 'Show / hide this venue';
+      const kind = kindOf(state.markets, books.find(b => b.venue === v)?.id ?? '');
+      const title = !scoped(v)
+        ? `${venueLabel(v)} is ${kind === 'spot' ? 'a spot' : kind === 'perp' ? 'a perpetual' : 'an unclassified'} venue, so the ${state.scope === 'spot' ? 'Spot' : 'Perp'} filter hides it. Click to show it: the filter goes back to Both.`
+        : cov ? `${venueLabel(v)}: ${cov.levels} levels, reaches ${Math.round(cov.bp / 2)} bp each side. Click to show / hide.` : 'Show / hide this venue';
       const chip = this.#chips.children[i] as HTMLElement | undefined;
       if (chip && chip.dataset.tip !== title) setTip(chip, title);
     });
+  }
+
+  /**
+   * Chips beside the venue chips for the venues a person chose that are not on the map: refused by this location, failing, left off the
+   * map as faulty, or (after a short wait, so a normal start does not flicker) still connecting.
+   */
+  #showIdle(drawn: ReadonlySet<string>): void {
+    const now = Date.now(), idle = idleVenues(this.#entries, drawn);
+    for (const id of [...this.#idleSince.keys()]) if (!idle.some(v => v.id === id)) this.#idleSince.delete(id);
+    for (const v of idle) if (!this.#idleSince.has(v.id)) this.#idleSince.set(v.id, now);
+    const shown = idle.filter(v => v.kind === 'faulty' || now - (this.#idleSince.get(v.id) ?? now) >= IDLE_GRACE_MS);
+    const blocked = blockedVenues(this.#entries), key = blocked.map(v => v.id).join(',') + '|' + shown.map(v => `${v.id}:${v.kind}:${v.status}`).join(',');
+    if (key === this.#idleKey) return;
+    this.#idleKey = key;
+    this.#blocked.replaceChildren(
+      ...blocked.map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, tip: `${v.name}: ${VPN_HINT}` })),
+      ...shown.map(v => el('span', { class: v.kind === 'faulty' ? 'chip blocked faulty' : 'chip blocked', textContent: `${v.kind === 'faulty' ? '⚠' : '…'} ${v.name}`, tip: idleText(v) })));
   }
 
   /** The sound engine the Sounds panel controls. */

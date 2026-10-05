@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activeIds, emptyScopeMessage, inScope, kindOf, scopeCounts } from '../src/app/scope.ts';
+import { activeIds, chipClick, emptyScopeMessage, inScope, kindOf, scopeCounts, scopedOut } from '../src/app/scope.ts';
 import type { AppState, Market } from '../src/app/store.ts';
 import type { LiveBook } from '../src/app/wire.ts';
 
@@ -34,4 +34,21 @@ test('counts and the empty-view message describe what the filter leaves', () => 
   assert.match(emptyScopeMessage(onlyPerps)!, /No spot venues are enabled/);
   assert.equal(emptyScopeMessage({ ...onlyPerps, scope: 'all' }), null, 'Both never reports an empty filter');
   assert.equal(emptyScopeMessage({ ...onlyPerps, levels: null }), null, 'nothing is loaded yet, so there is nothing to blame on the filter');
+});
+
+test('a venue the filter hides is dimmed, and a click on its chip shows it instead of flipping a switch nobody can see', () => {
+  const spot = state('spot');
+  assert.equal(scopedOut(spot, 'binance'), true, 'a perpetual venue under Spot');
+  assert.equal(scopedOut(spot, 'coinbase'), false);
+  assert.equal(scopedOut(spot, 'mystery'), true, 'a venue the market list does not classify is hidden by Spot and Perp, shown by Both');
+  assert.equal(scopedOut(state('all'), 'mystery'), false);
+  assert.equal(scopedOut(spot, 'nowhere'), true, 'a venue with no book at all has nothing in the filter');
+  // dimmed and enabled: the click shows it
+  assert.deepEqual(chipClick(spot, 'binance'), { disabledVenues: [], scope: 'all' });
+  // dimmed and switched off: the click switches it on as well
+  assert.deepEqual(chipClick(state('spot', ['binance', 'kraken']), 'binance'), { disabledVenues: ['kraken'], scope: 'all' });
+  // not dimmed: an ordinary switch, and the filter is left alone
+  assert.deepEqual(chipClick(spot, 'coinbase'), { disabledVenues: ['coinbase'] });
+  assert.deepEqual(chipClick(state('spot', ['coinbase']), 'coinbase'), { disabledVenues: [] });
+  assert.deepEqual(chipClick(state('all'), 'bybit'), { disabledVenues: ['bybit'] });
 });

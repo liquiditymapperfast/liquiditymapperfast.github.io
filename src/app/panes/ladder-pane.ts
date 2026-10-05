@@ -41,7 +41,8 @@ export class LadderPane {
   #panel: Panel | null = null;
   #idsKey = '';
   #hover: { x: number; y: number } | null = null;
-  #notches = new WheelNotches();
+  /** A mouse click is a notch; a touchpad's small deltas make one per 40 px, at most one per 90 ms (see WheelNotches). */
+  #notches = new WheelNotches(100, 250, 30, 40, 90);
   /** Touch: where a finger pinned the mirror comparison, the pinch in progress, and the fling after a lift. */
   #pinned: Pt | null = null;
   #pinch: { step: number; price: number; row: number } | null = null;

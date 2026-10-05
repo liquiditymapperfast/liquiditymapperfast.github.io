@@ -1,4 +1,5 @@
 import { el } from '../dom.ts';
+import { isCoarse } from '../device.ts';
 import { capturePage, type Snapshot } from './capture.ts';
 import {
   COLORS, CURSORS, WIDTHS, clampRect, drawShape, fileName, hitHandle, inside, rectFrom, resizeRect, textSize, toolbarPlacement, worthKeeping,
@@ -12,7 +13,7 @@ import {
  * key. The picture is made by `capture.ts` from the page itself, so nothing is asked of the browser and nothing leaves the machine.
  */
 
-const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'close', string>> = {
+const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'share' | 'close', string>> = {
   move: '<path d="M5 3l14 8-6 1.5L10.5 19z"/>',
   pen: '<path d="M4 20l1-4L16.5 4.5a2 2 0 013 3L8 19z"/><path d="M14.5 6.5l3 3"/>',
   line: '<path d="M5 19L19 5"/>',
@@ -26,6 +27,7 @@ const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'close',
   redo: '<path d="M15 7l5 5-5 5"/><path d="M20 12H10a5 5 0 000 10h3"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>',
   save: '<path d="M12 4v11M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+  share: '<path d="M12 15V4M8 8l4-4 4 4"/><path d="M6 12v6a2 2 0 002 2h8a2 2 0 002-2v-6"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
 };
 const icon = (name: keyof typeof ICONS): string => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -42,6 +44,12 @@ const TOOLS: { tool: Tool; label: string; key: string; hint: string }[] = [
   { tool: 'blur', label: 'Blur', key: 'B', hint: 'Drag over anything that should not be shared: it turns into a soft blur' },
 ];
 
+/** Whether this browser can hand a picture to the system's share sheet, and a finger is what is pointing (a desktop has the clipboard and a download). */
+function canShareFiles(): boolean {
+  if (!isCoarse() || typeof navigator === 'undefined' || typeof navigator.canShare !== 'function' || typeof navigator.share !== 'function') return false;
+  try { return navigator.canShare({ files: [new File([new Blob()], 'a.png', { type: 'image/png' })] }); } catch { return false; }
+}
+
 let active: { close(): void } | null = null;
 
 /** Freeze the page and start the selection. Calling it while it is open closes it. */
@@ -57,7 +65,10 @@ function openEditor(snap: Snapshot): { close(): void } {
   const stage = el('canvas', { class: 'shot-stage' });
   stage.width = Math.round(W * scale); stage.height = Math.round(H * scale);
   stage.style.width = `${W}px`; stage.style.height = `${H}px`;
-  const hint = el('div', { class: 'shot-hint' }, el('strong', { textContent: 'Select an area' }), el('span', { textContent: 'Drag to choose a region · click a pane to take all of it · Esc to cancel' }));
+  // A finger drags and taps; a mouse drags and clicks and has Esc. The handles and the hit area around them are larger under a finger.
+  const touch = isCoarse(), handleSize = touch ? 15 : 9, handleReach = touch ? 26 : 9;
+  const hint = el('div', { class: 'shot-hint' }, el('strong', { textContent: 'Select an area' }),
+    el('span', { textContent: touch ? 'Drag to choose a region · tap a pane to take all of it' : 'Drag to choose a region · click a pane to take all of it · Esc to cancel' }));
   const bar = el('div', { class: 'shot-bar', hidden: true, role: 'toolbar', ariaLabel: 'Screenshot tools' });
   dialog.append(stage, hint, bar);
   document.body.append(dialog);
@@ -124,7 +135,7 @@ function openEditor(snap: Snapshot): { close(): void } {
     ctx.fillStyle = 'rgba(12,14,18,.9)'; rounded(area.x, ly, lw, 20, 5); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(label, area.x + 7, ly + 10.5);
     if (sel && tool === 'move') {
-      for (const h of HANDLES) { const q = handlePoint(sel, h); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2; rounded(q.x - 4.5, q.y - 4.5, 9, 9, 2); ctx.fill(); ctx.stroke(); }
+      for (const h of HANDLES) { const q = handlePoint(sel, h); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2; rounded(q.x - handleSize / 2, q.y - handleSize / 2, handleSize, handleSize, 3); ctx.fill(); ctx.stroke(); }
     }
     ctx.restore();
   };
@@ -146,7 +157,9 @@ function openEditor(snap: Snapshot): { close(): void } {
   const undoButton = iconButton('undo', 'Undo (Ctrl+Z)', () => undo()), redoButton = iconButton('redo', 'Redo (Ctrl+Shift+Z)', () => redoShape());
   const copyButton = el('button', { type: 'button', class: 'shot-primary', tip: 'Copy the picture to the clipboard (Enter)', onclick: () => void copy() }); copyButton.innerHTML = `${icon('copy')}<span>Copy</span>`;
   const saveButton = iconButton('save', 'Save as a PNG file (Ctrl+S)', () => void save()), closeButton = iconButton('close', 'Cancel (Esc)', () => close(), 'shot-close');
-  bar.append(tools, colors, widths, strengthGroup, group(undoButton, redoButton), group(copyButton, saveButton, closeButton));
+  // A phone shares a picture through its own sheet (Messages, Photos, Files...); that is better than a download no one can find there.
+  const shareButton = canShareFiles() ? iconButton('share', 'Share the picture with another app', () => void share()) : null;
+  bar.append(tools, colors, widths, strengthGroup, group(undoButton, redoButton), group(copyButton, ...(shareButton ? [shareButton] : []), saveButton, closeButton));
 
   const syncBar = (): void => {
     for (const [t, b] of toolButtons) b.classList.toggle('on', t === tool);
@@ -194,12 +207,23 @@ function openEditor(snap: Snapshot): { close(): void } {
       const data = await pending; if (data) { download(data); close(); toast('Could not copy here, so it was saved as a file'); }
     }
   }
+  async function share(): Promise<void> {
+    commitText();
+    const data = await blob(); if (!data) return;
+    try {
+      await navigator.share({ files: [new File([data], fileName(new Date()), { type: 'image/png' })], title: 'LiquidityMapperFast' });
+      close(); toast('Shared');
+    } catch (error) {
+      // Dismissing the share sheet is not a failure: the picture stays open for another try.
+      if (!(error instanceof DOMException && error.name === 'AbortError')) { download(data); close(); toast('Could not share here, so it was saved as a file'); }
+    }
+  }
   async function save(): Promise<void> { commitText(); const data = await blob(); if (data) { download(data); close(); toast('Saved'); } }
   function undo(): void { commitText(); const s = shapes.pop(); if (s) { redo.push(s); syncBar(); redraw(); } }
   function redoShape(): void { const s = redo.pop(); if (s) { shapes.push(s); syncBar(); redraw(); } }
   function close(): void {
     if (closed) return; closed = true; active = null;
-    document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', close);
+    document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
     if (frame) cancelAnimationFrame(frame);
     textBox?.remove(); dialog.close(); dialog.remove();
   }
@@ -254,7 +278,7 @@ function openEditor(snap: Snapshot): { close(): void } {
     }
     stage.setPointerCapture(e.pointerId);
     if (sel) {
-      const handle = hitHandle(sel, p);
+      const handle = hitHandle(sel, p, handleReach);
       if (handle) { drag = { kind: 'resize', handle }; return; }
       if (inside(sel, p)) { drag = { kind: 'move', from: p, start: { ...sel } }; return; }
     }
@@ -264,7 +288,7 @@ function openEditor(snap: Snapshot): { close(): void } {
     const p = local(e); hover = p;
     if (!drag) {
       if (!sel) { hoverTarget = targetAt(p); hint.style.opacity = hoverTarget ? '0' : ''; }
-      else if (tool === 'move') { const h = hitHandle(sel, p); stage.style.cursor = h ? CURSORS[h] : inside(sel, p) ? 'move' : 'crosshair'; }
+      else if (tool === 'move') { const h = hitHandle(sel, p, handleReach); stage.style.cursor = h ? CURSORS[h] : inside(sel, p) ? 'move' : 'crosshair'; }
       redraw(); return;
     }
     if (drag.kind === 'new') { hint.hidden = true; redraw(); }
@@ -307,7 +331,9 @@ function openEditor(snap: Snapshot): { close(): void } {
   }
   dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
   document.addEventListener('keydown', onKey, true);
-  window.addEventListener('resize', close);
+  // The frozen picture is of the window as it was: a different width (a rotation) makes it wrong, but a phone's address bar sliding away only changes the height a little.
+  const onResize = (): void => { if (Math.abs(window.innerWidth - W) > 1 || Math.abs(window.innerHeight - H) > 120) close(); };
+  window.addEventListener('resize', onResize);
   syncBar(); paint();
   return { close };
 }

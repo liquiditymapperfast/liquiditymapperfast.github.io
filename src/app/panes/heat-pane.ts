@@ -1,5 +1,7 @@
 import { HeatGL, type HeatStyle } from '../heatmap/gl.ts';
 import { buildLut } from '../heatmap/lut.ts';
+import { colourWindow } from '../heatmap/window.ts';
+import { candleSpan } from '../candle-span.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
 import type { Kernels } from '../kernels.ts';
@@ -16,7 +18,6 @@ import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
-import { isPhone } from '../device.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 
 /** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
@@ -28,6 +29,14 @@ export let AXIS_W = 64;
 export let PROFILE_W = 128;
 export function setCompactGutters(compact: boolean): void { AXIS_W = compact ? 58 : 64; PROFILE_W = compact ? 84 : 128; }
 const TIME_H = 22;
+
+/** A plot narrower than this (a phone, a split screen) gets the compact legend, whole-dollar prices and a shorter history note. */
+const NARROW_PLOT = 420;
+/** A map pane narrower than this gets the narrow price axis and profile column. */
+const COMPACT_PANE = 520;
+
+/** A candle still forming gets its usual body for the part of its slot it covers, but never thinner than a sliver that can be seen. */
+const formingBody = (slotPx: number): number => Math.max(3, Math.min(slotPx * 0.72, 40));
 
 const TIME_STEPS = [60e3, 300e3, 900e3, 1800e3, 3600e3, 7200e3, 14400e3, 43200e3, 86400e3, 172800e3, 604800e3];
 
@@ -90,6 +99,8 @@ export class HeatPane {
   #sourcesAsked = '';
   /** Where a finger pinned the crosshair (the map's own coordinates), and the gesture in progress. */
   #pin: Pt | null = null;
+  /** The corner of the legend plate as the last frame drew it, so the history note can keep clear of it. */
+  #legendBox = { right: 340, bottom: 42 };
   #panKind: 'map' | 'price' | 'time' | null = null;
   #axisDrag: { view: Bounds; x: number; y: number } | null = null;
   #pinch: { view: Bounds; t: number; p: number } | null = null;
@@ -117,12 +128,7 @@ export class HeatPane {
   get footprintData(): FootprintData { return this.#footprint; }
 
   /** USD window currently mapped onto the colour ramp: the percentile baseline shifted by the contrast slider. */
-  get window(): { lo: number; hi: number } {
-    const b = this.#baseline, contrast = this.store.state.heat.contrast;
-    if (!b) return { lo: 1, hi: 2 };
-    const shift = -((contrast - 50) / 50) * Math.log(b.hi / b.lo) * 0.75;
-    return { lo: b.lo * Math.exp(shift), hi: b.hi * Math.exp(shift) };
-  }
+  get window(): { lo: number; hi: number } { return colourWindow(this.#baseline, this.store.state.heat.contrast); }
 
   #updateBaseline(): void {
     const s = this.stats, auto = this.store.state.heat.auto;
@@ -143,6 +149,8 @@ export class HeatPane {
   #resize(): void {
     const rect = this.root.getBoundingClientRect();
     this.#w = Math.max(1, Math.floor(rect.width)); this.#h = Math.max(1, Math.floor(rect.height)); this.#dpr = window.devicePixelRatio || 1;
+    // A narrow map (a phone, or half of a landscape one) gives the axis and the profile less room, so the plot keeps most of it.
+    setCompactGutters(this.#w < COMPACT_PANE);
     this.overlay.width = Math.round(this.#w * this.#dpr); this.overlay.height = Math.round(this.#h * this.#dpr);
     this.overlay.style.width = `${this.#w}px`; this.overlay.style.height = `${this.#h}px`;
     this.#pulse.width = this.overlay.width; this.#pulse.height = this.overlay.height;
@@ -333,7 +341,7 @@ export class HeatPane {
     const borrowed = state.seriesInstrument && state.seriesInstrument !== state.marketId ? `  ·  candles from ${state.seriesInstrument.replace(':', ' · ')}` : '';
     const title = `${name}  ${state.timeframe}${borrowed}`;
     // On a phone the plate has to fit the plot beside a narrow profile: whole prices, and the volume on the title's line.
-    const phone = isPhone(), px = (value: number): string => phone && value >= 1000 ? fmtPrice(value, 1) : fmtPrice(value);
+    const phone = this.plotW < NARROW_PLOT, px = (value: number): string => phone && value >= 1000 ? fmtPrice(value, 1) : fmtPrice(value);
     let detail = '', tail = '', up = true;
     if (c) {
       up = c[4] >= c[1];
@@ -346,7 +354,9 @@ export class HeatPane {
     ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif'; const titleW = ctx.measureText(shownTitle).width;
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; const detailW = detail ? ctx.measureText(detail).width : 0, tailW = tail ? ctx.measureText(tail).width + 10 : 0;
     const note = phone && borrowed ? borrowed.replace(/^s*·s*/, '') : '', noteW = note ? ctx.measureText(note).width : 0;
-    ctx.globalAlpha = 0.82; ctx.fillStyle = p.panel; ctx.beginPath(); ctx.roundRect(6, 6, Math.max(titleW + tailW, detailW, noteW) + 14, (detail ? 36 : 22) + (note ? 14 : 0), 6); ctx.fill(); ctx.globalAlpha = 1;
+    const plateW = Math.max(titleW + tailW, detailW, noteW) + 14, plateH = (detail ? 36 : 22) + (note ? 14 : 0);
+    this.#legendBox = { right: 6 + plateW, bottom: 6 + plateH };
+    ctx.globalAlpha = 0.82; ctx.fillStyle = p.panel; ctx.beginPath(); ctx.roundRect(6, 6, plateW, plateH, 6); ctx.fill(); ctx.globalAlpha = 1;
     ctx.textAlign = 'left'; ctx.fillStyle = p.text; ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
     ctx.fillText(shownTitle, 12, 16);
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
@@ -378,13 +388,14 @@ export class HeatPane {
     const x = Math.round(v.xOf(since, pw)) + 0.5, young = this.#placeholder() !== null;
     const label = young && x > 330 ? 'Grey: the current book copied back, not recorded history. Depth is recorded while this page is open'
       : young && x >= 215 ? `Grey: copied back · recorded from ${clock(since)}` : `depth recorded from ${clock(since)}`;
-    // On a phone the legend plate takes the top-left corner of the map, so the note sits beneath it.
-    const top = isPhone() ? 50 : 6;
     ctx.save();
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.setLineDash([2, 4]);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = p.muted; ctx.globalAlpha = 0.85; ctx.textBaseline = 'top';
-    if (x >= ctx.measureText(label).width + 12) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, top); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, top); }
+    // The legend plate takes the top-left corner of the map: a note that would run under it goes beneath it instead.
+    const w = ctx.measureText(label).width, right = x >= w + 12, left = right ? x - 6 - w : x + 6, box = this.#legendBox;
+    const top = left < box.right + 8 ? box.bottom + 6 : 6;
+    if (right) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, top); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, top); }
     ctx.restore();
   }
 
@@ -423,7 +434,7 @@ export class HeatPane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, v = this.view, p = this.#palette;
     const slot = Math.max(1, pw * tf / (v.t1 - v.t0)), layout = footprintLayout(slot);
     const normal = Math.max(1, Math.min(slot * 0.72, 40)), body = Math.max(1, (normal + (Math.max(1, layout.body) - normal) * narrowing));
-    const { found } = this.#volumeAnalysis(state), emphasise = state.highlight.on;
+    const { found } = this.#volumeAnalysis(state), emphasise = state.highlight.on, now = Date.now();
     const bandH = Math.max(34, Math.min(ph * 0.17, 150)), floor = ph - 1;
     let max = 0;
     for (const c of state.candles) if (c[0] + tf >= v.t0 && c[0] <= v.t1) max = Math.max(max, c[5]);
@@ -436,11 +447,14 @@ export class HeatPane {
     for (let i = 0; i < state.candles.length; i++) {
       const c = state.candles[i]!; if (c[0] + tf < v.t0 || c[0] > v.t1) continue;
       const hot = emphasise && found.flag[i] === 1, color = c[4] >= c[1] ? p.candleUp : p.candleDown;
-      const xClassic = v.xOf(c[0] + tf / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing;
-      if (hot) { ctx.globalAlpha = 0.07; ctx.fillStyle = color; ctx.fillRect(x - Math.max(slot, body) / 2, 0, Math.max(slot, body), ph - bandH - 6); }
+      // The candle still forming is drawn over the part of its slot that has happened (see candleSpan), like its candle above.
+      const span = candleSpan(c[0], tf, now), slotMs = span.to - span.from, slotC = span.forming ? Math.max(1, pw * slotMs / (v.t1 - v.t0)) : slot;
+      const sliver = formingBody(slotC), bodyC = span.forming ? Math.max(1, sliver + (Math.max(1, layout.body) - sliver) * narrowing) : body;
+      const xClassic = v.xOf(span.from + slotMs / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing;
+      if (hot) { ctx.globalAlpha = 0.07; ctx.fillStyle = color; ctx.fillRect(x - Math.max(slotC, bodyC) / 2, 0, Math.max(slotC, bodyC), ph - bandH - 6); }
       const h = Math.max(1, c[5] / max * bandH);
-      ctx.globalAlpha = !emphasise ? 0.6 : hot ? 1 : 0.4; ctx.fillStyle = color; ctx.fillRect(x - body / 2, floor - h, body, h);
-      if (hot) { ctx.globalAlpha = 0.9; ctx.fillStyle = p.dark ? '#ffffff' : '#14171c'; ctx.fillRect(x - body / 2, floor - h - 1.5, body, 1.5); }
+      ctx.globalAlpha = !emphasise ? 0.6 : hot ? 1 : 0.4; ctx.fillStyle = color; ctx.fillRect(x - bodyC / 2, floor - h, bodyC, h);
+      if (hot) { ctx.globalAlpha = 0.9; ctx.fillStyle = p.dark ? '#ffffff' : '#14171c'; ctx.fillRect(x - bodyC / 2, floor - h - 1.5, bodyC, 1.5); }
     }
     if (emphasise) { // the threshold a bar has to clear to stand out
       ctx.globalAlpha = 0.7; ctx.strokeStyle = p.muted; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath();
@@ -491,14 +505,18 @@ export class HeatPane {
     const bar = Math.max(1, pw * tf / (v.t1 - v.t0));
     // With the footprint on, the candle slides to the left of its slot and keeps a solid body, the row column takes the rest.
     const layout = footprintLayout(bar), normal = Math.max(1, Math.min(bar * 0.72, 40));
-    const body = normal + (Math.max(1, layout.body) - normal) * narrowing;
+    const bodyAll = normal + (Math.max(1, layout.body) - normal) * narrowing, now = Date.now();
     const volume = this.#volumeAnalysis(state), hot = (i: number) => state.highlight.on && volume.found.flag[i] === 1;
     // A contrasting halo/outline keeps candles legible over both pink and green heat; it fades out over the dimmed footprint view.
     const edge = p.dark ? 'rgba(255,255,255,0.92)' : 'rgba(18,20,24,0.92)', halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)', outline = 1 - 0.85 * narrowing;
     for (let ci = 0; ci < state.candles.length; ci++) {
       const c = state.candles[ci]!;
       if (c[0] + tf < v.t0 || c[0] > v.t1) continue;
-      const xClassic = v.xOf(c[0] + tf / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing, up = c[4] >= c[1];
+      // The candle still forming is drawn over the part of its slot that has happened (see candleSpan), so its own trade bubbles sit on it.
+      const span = candleSpan(c[0], tf, now), slotMs = span.to - span.from;
+      const sliver = formingBody(Math.max(1, pw * slotMs / (v.t1 - v.t0)));
+      const body = span.forming ? sliver + (Math.max(1, layout.body) - sliver) * narrowing : bodyAll;
+      const xClassic = v.xOf(span.from + slotMs / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing, up = c[4] >= c[1];
       const color = up ? p.candleUp : p.candleDown;
       const yh = v.yOf(c[2], ph), yl = v.yOf(c[3], ph), yo = v.yOf(c[1], ph), yc = v.yOf(c[4], ph), cx = Math.round(x) + 0.5;
       const top = Math.min(yo, yc), height = Math.max(1.5, Math.abs(yc - yo));
@@ -541,7 +559,7 @@ export class HeatPane {
       if (a > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.ask; ctx.fillRect(x0, y0, Math.max(1, a / maxLevel * width), hgt); }
     }
     ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, PROFILE_W - 1, 28); ctx.globalAlpha = 1;
-    ctx.fillStyle = p.muted; ctx.font = `${isPhone() ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = p.muted; ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText(`LEVEL MAX ${usd(maxLevel)}`, x0 + 4, 4); ctx.fillText(`CUM MAX ${usd(maxCum)}`, x0 + 4, 16);
     this.#profileBox = null;
     this.#paintProfileMirror(ctx, state, g, cum, step, x0, ph);
@@ -637,7 +655,7 @@ export class HeatPane {
   #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number, touch = false): void {
     const p = this.#palette, maxWidth = 280, lines: string[] = [];
     ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
-    for (const text of trapText(trap)) {
+    for (const text of trapText(trap, { market: this.store.state.marketId, timeframe: this.store.state.timeframe })) {
       let line = '';
       for (const word of text.split(' ')) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; } else line = next; }
       lines.push(line);

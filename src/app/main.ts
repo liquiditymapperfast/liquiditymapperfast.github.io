@@ -9,13 +9,14 @@ import { Sounds } from './sound/sounds.ts';
 import { Toolbar } from './toolbar.ts';
 import { installTips } from './tip.ts';
 import { installTouchSelects } from './touch-select.ts';
-import { HeatPane, gutter, setCompactGutters } from './panes/heat-pane.ts';
+import { ScreenWake } from './wake.ts';
+import { HeatPane, gutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
 import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
 import { Dock } from './dock.ts';
-import { startDevice, isPhone, onLayoutMode } from './device.ts';
+import { startDevice, onLayoutMode } from './device.ts';
 import './styles.css';
 import './mobile.css';
 
@@ -41,7 +42,6 @@ async function chooseSource(params: URLSearchParams): Promise<DataSource> {
 async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   startDevice();
-  setCompactGutters(isPhone());
   const store = new Store(initialState());
   applyTheme(store.state.theme);
   installTips();
@@ -50,6 +50,7 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const source = await chooseSource(params);
   const hub = new Hub(store, source);
+  const wake = new ScreenWake(); wake.set(store.state.keepAwake);
 
   const toolbar = new Toolbar(store, source.venues);
   const main = document.createElement('main');
@@ -99,7 +100,7 @@ async function main(): Promise<void> {
   });
 
   // The profile column and axis are narrower on a phone; everything that aligns to them has to redraw when that changes.
-  onLayoutMode(() => { setCompactGutters(isPhone()); layout(); heat.invalidate(); lower(); toolbar.sync(store.state, heat.window); });
+  onLayoutMode(() => { layout(); heat.invalidate(); lower(); toolbar.sync(store.state, heat.window); });
   const layout = () => {
     const s = store.state;
     document.documentElement.style.setProperty('--gutter', `${gutter(s)}px`);
@@ -109,6 +110,7 @@ async function main(): Promise<void> {
   };
 
   store.subscribe((state, changed) => {
+    if (changed.has('keepAwake')) wake.set(state.keepAwake);
     if (changed.has('theme')) { applyTheme(state.theme); for (const p of [heat, ladder, depth, oi, lt, bars]) p.setPalette(state.theme); }
     if (changed.has('show')) layout();
     if (changed.has('marketId') || changed.has('timeframe')) void hub.loadSeries(true).then(() => { heat.fit(); lower(); });

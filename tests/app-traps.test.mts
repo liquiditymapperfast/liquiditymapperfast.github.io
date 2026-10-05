@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRAP_PARAMS, canonicalStep, detectSide, scanTraps, trapText, typicalDelta, typicalRange } from '../src/app/traps.ts';
+import { TRAP_PARAMS, canonicalStep, detectSide, scanTraps, trapText, trapVerdict, typicalDelta, typicalRange } from '../src/app/traps.ts';
 import type { Bar } from '../src/app/panes/footprint.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -126,6 +126,20 @@ test('the pop-up states the facts and what is not known', () => {
   assert.match(text[1]!, /net aggressive buying in the upper wick/);
   assert.match(text[2]!, /closed .* ATR below/);
   assert.match(text.join(' '), /underwater/);
-  assert.equal(text.at(-1), 'Untested pattern, not a forecast.');
+  assert.equal(text.at(-1), 'Not validated for this market and timeframe. Not a forecast.', 'with no market to speak of, it claims nothing');
   assert.match(trapText({ ...trap, state: 'reclaimed' }).join(' '), /closed back through/);
+});
+
+test('the pop-up says what the offline study found only where the study looked', () => {
+  const tested = trapVerdict({ market: 'binance:BTCUSDT', timeframe: '15m' });
+  assert.match(tested, /^Tested on Binance BTCUSDT perpetual history: no reliable direction/);
+  assert.match(tested, /revisited somewhat less often than look-alike candles/);
+  assert.match(tested, /Not a forecast\.$/);
+  for (const scope of [{ market: 'binance:BTCUSDT', timeframe: '5m' }, { market: 'binance:BTCUSDT', timeframe: '1h' }, { market: 'hyperliquid:BTC-PERP', timeframe: '15m' },
+    { market: 'binance:BTCUSDT:spot', timeframe: '15m' }, undefined])
+    assert.equal(trapVerdict(scope), 'Not validated for this market and timeframe. Not a forecast.', JSON.stringify(scope));
+  const setup = history(24), t = T0 + 24 * TF;
+  const trap = scan({ candle: buyersCandle(t), bar: bar(t, trappedBuyerRows()) }, setup)[0]!;
+  assert.equal(trapText(trap, { market: 'binance:BTCUSDT', timeframe: '15m' }).at(-1), tested);
+  assert.doesNotMatch(trapText(trap).join(' '), /Untested/, 'the old wording is gone');
 });

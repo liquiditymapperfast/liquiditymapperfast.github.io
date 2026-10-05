@@ -52,3 +52,22 @@ test('wheel deltas become whole notches: a click is one, a trackpad adds up, a p
   assert.equal(flip.add(-60, 20), 0, 'reversing drops what had built up the other way');
   assert.equal(flip.add(-60, 30), -1);
 });
+
+test('a touchpad swipe too gentle for a hundred pixels still zooms, and a flick cannot throw the zoom to the end of the list', () => {
+  const gentle = new WheelNotches(100, 250, 30, 40, 90); let total = 0, t = 0;
+  for (const d of [2, 3, 5, 7, 9, 8, 6, 4, 3, 2]) total += gentle.add(d, t += 16);   // 49 px in all
+  assert.equal(total, 1, 'one notch for a swipe of about fifty pixels');
+  const flick = new WheelNotches(100, 250, 30, 40, 90); let notches = 0; t = 0;
+  for (let i = 0; i < 60; i++) notches += flick.add(20, t += 8);                      // 1200 px in about half a second
+  assert.ok(notches >= 3 && notches <= 6, `about one notch per 90 ms, not thirty: ${notches}`);
+  const back = new WheelNotches(100, 250, 30, 40, 90); back.add(20, 0); back.add(20, 10); back.add(20, 20);
+  assert.ok(back.add(-20, 30) <= 0 && back.add(-30, 40) <= 0, 'turning round never gives a notch the old way');
+});
+
+test('a mouse wheel is unaffected by the touchpad settings: every click is a notch, as fast as they come', () => {
+  const wheel = new WheelNotches(100, 250, 30, 40, 90); let total = 0, t = 0;
+  for (let i = 0; i < 6; i++) total += wheel.add(100, t += 20);
+  assert.equal(total, 6);
+  const plain = new WheelNotches();
+  assert.equal(plain.add(10, 0) + plain.add(10, 10) + plain.add(10, 20), 0, 'with the defaults a device that sends small deltas still needs a hundred pixels');
+});

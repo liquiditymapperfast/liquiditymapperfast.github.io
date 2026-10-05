@@ -1,5 +1,5 @@
 import { el } from './dom.ts';
-import { isPhone, onLayoutMode } from './device.ts';
+import { compactBar, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
 
 /**
@@ -42,7 +42,7 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
 
   const reposition = (): void => {
     // On a phone the stylesheet makes every panel a bottom sheet, so no inline position or size may be left behind to fight it.
-    if (isPhone()) { root.style.top = ''; root.style.left = ''; root.style.width = ''; root.style.maxHeight = ''; return; }
+    if (compactBar()) { root.style.top = ''; root.style.left = ''; root.style.width = ''; root.style.maxHeight = ''; return; }
     root.style.width = `${Math.min(width, window.innerWidth - 16)}px`;
     const a = anchor.getBoundingClientRect();
     const below = window.innerHeight - a.bottom - 12, above = a.top - 12, up = below < 300 && above > below;
@@ -55,7 +55,7 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
   };
   // On a phone the scrim closes the panel; elsewhere a press outside it does.
   const onPointer = (event: PointerEvent): void => {
-    if (isPhone()) return;
+    if (compactBar()) return;
     const t = event.target as Node;
     // A menu opened from a control inside the panel (a dropdown) is part of it.
     if (!root.contains(t) && !anchor.contains(t) && !(t instanceof Element && t.closest('.menu'))) panel.close();

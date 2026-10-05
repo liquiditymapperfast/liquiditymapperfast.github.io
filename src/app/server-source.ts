@@ -1,5 +1,6 @@
 import { connectLive, getBootstrap, getCandles, getColumns, getFootprint, getOi, getPrints } from './net.ts';
 import type { BootstrapState, DataSource, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
+import { stateOfStatus } from './venue-notice.ts';
 
 interface FeedCatalog { maxSelected: number; selectedVenues: string[]; venues: { id: string; name: string; supported: boolean; default?: boolean; status: string }[] }
 interface ExtraVenueInfo { id: string; name: string; enabled: boolean; default?: boolean; state: string; lastError: string | null; reconnects: number }
@@ -10,6 +11,9 @@ function extraStatus(v: ExtraVenueInfo): string {
   if (v.state !== 'live') return v.lastError ? `${v.state}: ${v.lastError}` : v.state;
   return v.reconnects > 0 ? `live, ${v.reconnects} reconnects` : 'live';
 }
+
+/** How often the page asks the server which of the chosen venues are not drawing. */
+const VENUE_POLL_MS = 10_000;
 
 const json = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, { cache: 'no-store', ...init });
@@ -27,12 +31,20 @@ class ServerVenues implements VenueControl {
     const [feed, extra] = await Promise.all([json<FeedCatalog>('/api/orderbooks/venues'), json<ExtraCatalog>('/api/v2/venues')]);
     this.#feed = new Set(feed.venues.map(v => v.id)); this.#selectedFeed = new Set(feed.selectedVenues);
     const venues: VenueEntry[] = [
-      ...feed.venues.map(v => ({ id: v.id, name: v.name, supported: v.supported, recommended: v.default === true, selected: this.#selectedFeed.has(v.id), status: v.status })),
-      ...extra.venues.map(v => ({ id: v.id, name: v.name, supported: true, recommended: v.default === true, selected: v.enabled, status: extraStatus(v) })),
+      ...feed.venues.map(v => ({ id: v.id, name: v.name, supported: v.supported, recommended: v.default === true, selected: this.#selectedFeed.has(v.id), status: v.status, state: stateOfStatus(v.status) })),
+      ...extra.venues.map(v => ({ id: v.id, name: v.name, supported: true, recommended: v.default === true, selected: v.enabled, status: extraStatus(v), state: stateOfStatus(extraStatus(v)) })),
     ];
     // An older server marks only the four venues it used to start (and no connector venue) as default, which is not the recommended set:
     // the current server always says it for the connector venues too, so that is what the Recommended button waits for.
     return { venues, limit: feed.maxSelected, recommendedKnown: extra.venues.some(v => typeof v.default === 'boolean') };
+  }
+
+  /** A server cannot push venue changes, so the page asks now and then: a venue that is chosen but has no book gets a chip that says why. */
+  watch(listener: (venues: VenueEntry[]) => void): () => void {
+    let stopped = false;
+    const poll = (): void => { void this.catalog().then(catalog => { if (!stopped) listener(catalog.venues); }, () => { /* the dialog says when the catalogue is unavailable; the chips just wait */ }); };
+    const timer = window.setInterval(poll, VENUE_POLL_MS); window.setTimeout(poll, 4_000);
+    return () => { stopped = true; window.clearInterval(timer); };
   }
 
   async apply(selected: readonly string[], product: string): Promise<void> {

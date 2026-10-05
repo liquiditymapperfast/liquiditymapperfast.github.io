@@ -1,5 +1,5 @@
 import { el } from './dom.ts';
-import { isPhone, onLayoutMode } from './device.ts';
+import { compactBar, onLayoutMode } from './device.ts';
 
 /**
  * A bottom sheet for a phone: slides up over the page, dims what is behind it, and goes away on the scrim, the close button, Escape,
@@ -23,7 +23,7 @@ export function scrimFor(root: HTMLElement, z: number, close: () => void): { syn
   const scrim = el('div', { class: 'sheet-scrim in light' });
   scrim.style.zIndex = String(z);
   scrim.addEventListener('click', close);
-  return { sync() { if (isPhone()) { if (!scrim.isConnected) root.before(scrim); } else scrim.remove(); }, remove() { scrim.remove(); } };
+  return { sync() { if (compactBar()) { if (!scrim.isConnected) root.before(scrim); } else scrim.remove(); }, remove() { scrim.remove(); } };
 }
 let current: Sheet | null = null;
 export const openedSheet = (): Sheet | null => current;
@@ -48,7 +48,7 @@ export function openSheet(title: string, build: (body: HTMLElement) => void, onC
     if (document.querySelector('.panel, .menu, dialog[open]')) return;
     sheet.close();
   };
-  const stopMode = onLayoutMode(mode => { if (mode === 'desktop') sheet.close(); });
+  const stopMode = onLayoutMode(() => { if (!compactBar()) sheet.close(); });
   const sheet: Sheet = {
     root, body,
     close() {

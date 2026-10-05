@@ -15,7 +15,7 @@ import { DEFAULT_BINANCE_OI_POLL_MS, DEFAULT_REFRESH_MS } from '../core/constant
 import { normalizeHistoryPath, startupFailureRecord } from './startup-diagnostics.mts';
 import { installV2, type V2Handle } from './v2/api.mts';
 import { restoreFeedSelection, saveFeedSelection } from './feed-selection-store.mts';
-import { ORDERBOOK_VENUE_MAX_SELECTED } from '../core/orderbook-venue-controls.mts';
+import { ORDERBOOK_VENUE_MAX_SELECTED, orderbookVenueStatus } from '../core/orderbook-venue-controls.mts';
 
 type ServerApp = ReturnType<typeof createLocalServer>;
 function failureFields(error: unknown): Record<string, unknown> { return error != null && typeof error === 'object' ? error as Record<string, unknown> : {}; }
@@ -177,10 +177,8 @@ try {
           const depthStates = [...activeFeeds.specs].filter(([, spec]) => spec.venue === venue.id
             && (spec.publicDepth || spec.channel === 'l2Book' || spec.channel === 'depth'))
             .map(([id]) => statuses[id]?.state).filter((value): value is string => typeof value === 'string');
-          const status = !selectedVenues.includes(venue.id) ? 'available'
-            : depthStates.includes('live') ? 'live' : depthStates[0] ?? statuses[venue.id + '-depth']?.state ?? 'connecting';
-          const fault = degraded?.get(venue.id);
-          return { ...venue, status: fault ? `${status}, ${fault}` : status };
+          // A degraded venue's reason is free text from the feed, so it is bounded here: an over-long one must not make the whole catalogue invalid.
+          return { ...venue, status: orderbookVenueStatus({ selected: selectedVenues.includes(venue.id), depthStates, fallback: statuses[venue.id + '-depth']?.state, fault: degraded?.get(venue.id) }) };
         }) };
       },
       selectOrderbooks,

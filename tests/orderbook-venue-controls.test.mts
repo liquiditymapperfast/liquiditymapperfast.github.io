@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readOrderbookVenueCatalog, validateOrderbookVenueChoice, ORDERBOOK_VENUE_MAX_SELECTED } from '../src/core/orderbook-venue-controls.mts';
+import { readOrderbookVenueCatalog, validateOrderbookVenueChoice, orderbookVenueStatus, boundedText, ORDERBOOK_VENUE_MAX_SELECTED, ORDERBOOK_VENUE_STATUS_MAX } from '../src/core/orderbook-venue-controls.mts';
 import { readBoundedJsonResponse } from '../src/core/bounded-json-response.mts';
 import { publicOrderbookVenueCatalog } from '../src/server/public-orderbook-selection.mts';
 import { VENUE_REGISTRY } from '../src/domain/venue-registry.mts';
@@ -41,4 +41,28 @@ test('catalog validation rejects false limits, unbounded text, duplicate IDs and
     { venues: [{ ...valid.venues[0], name: 'x'.repeat(81) }] }, { venues: [{ ...valid.venues[0], supported: 'true' }] }])
     assert.throws(() => readOrderbookVenueCatalog({ ...valid, ...patch }));
   assert.throws(() => readOrderbookVenueCatalog({ ok: false, error: 'unavailable' }), /unavailable/);
+});
+
+test('the reason a venue is degraded is carried in its status, and however long it is the catalogue stays valid', () => {
+  const crossed = 'book crossed by 123 bp, left off the map';
+  assert.equal(orderbookVenueStatus({ selected: true, depthStates: ['live'], fault: crossed }), `live, ${crossed}`);
+  assert.ok(`live, ${crossed}`.length > 40, 'the case that used to make the whole catalogue throw');
+  const value = catalog();
+  value.venues[1]!.status = orderbookVenueStatus({ selected: true, depthStates: ['live'], fault: crossed });
+  assert.equal(readOrderbookVenueCatalog(value).venues[1]!.status, `live, ${crossed}`, 'it now fits the bound as it is');
+  const long = orderbookVenueStatus({ selected: true, depthStates: ['live'], fault: 'x'.repeat(500) });
+  assert.ok(long.length <= ORDERBOOK_VENUE_STATUS_MAX && long.endsWith('…'), long);
+  value.venues[2]!.status = long;
+  assert.doesNotThrow(() => readOrderbookVenueCatalog(value), 'a runaway reason is cut, not rejected');
+});
+
+test('a venue status names where its depth feed is, and is never empty', () => {
+  assert.equal(orderbookVenueStatus({ selected: false, depthStates: ['live'] }), 'available', 'a venue that is not selected is only available');
+  assert.equal(orderbookVenueStatus({ selected: true, depthStates: ['reconnecting', 'live'] }), 'live');
+  assert.equal(orderbookVenueStatus({ selected: true, depthStates: ['reconnecting'] }), 'reconnecting');
+  assert.equal(orderbookVenueStatus({ selected: true, depthStates: [], fallback: 'unavailable' }), 'unavailable');
+  assert.equal(orderbookVenueStatus({ selected: true, depthStates: [] }), 'connecting');
+  assert.equal(orderbookVenueStatus({ selected: true, depthStates: ['live'], fault: '   ' }), 'live', 'a blank reason adds nothing');
+  assert.equal(boundedText('  a  \n b ', 10), 'a b', 'whitespace is tidied');
+  assert.equal(boundedText('abcdef', 4), 'abc…');
 });

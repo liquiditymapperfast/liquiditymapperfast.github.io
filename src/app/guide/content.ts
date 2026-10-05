@@ -41,7 +41,7 @@ export const SECTIONS: readonly Section[] = [
         '**Above the price are asks** (sellers waiting), **below are bids** (buyers waiting). The default *Size* style implies the side from the position; *Sides* colours asks pink and bids green.',
         '**A wall that appears or vanishes** means somebody changed their mind. The map records those changes, which one snapshot of the book cannot.',
       ] },
-      { t: 'fig', id: 'colours', caption: 'The Contrast slider slides the colour window along the size axis. Right shows thinner liquidity; left keeps only the biggest walls.' },
+      { t: 'fig', id: 'colours', caption: 'The Contrast slider slides the colour window along the size axis. Right shows thinner liquidity; left keeps only the biggest walls, and the far left pales even those.' },
       { t: 'p', text: '**Auto** keeps that window following the data (it is recomputed when you recentre, change market, zoom, and every ten seconds), so colours do not drift while you pan. **Smooth** blurs the map vertically when price rows get thin, so distant walls stay visible when you zoom out.' },
       { t: 'note', kind: 'warn', text: 'A wall is an intention, not a fact. Orders can be cancelled at any moment, and some are placed to be seen. The map shows what is resting, never what will trade.' },
     ],
@@ -144,7 +144,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: 'The map combines up to eight exchanges: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Coinbase and Binance. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.' },
       { t: 'list', items: [
         '**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.',
-        'The **chips** show or hide one exchange\'s contribution without stopping its feed.',
+        'The **chips** show or hide one exchange\'s contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.',
         'The **Heatmap** selector shows a single exchange\'s own map instead of the combined one.',
         'The **market** selector chooses whose candles, footprint and open interest the chart uses.',
       ] },

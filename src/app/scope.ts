@@ -34,6 +34,22 @@ export function scopeCounts(state: ScopeState): Record<Kind, number> {
   return out;
 }
 
+/** Whether the Spot / Perp filter hides a venue: none of its books is inside the filter, so its chip is dimmed. */
+export function scopedOut(state: ScopeState, venue: string): boolean {
+  return !(state.levels?.books ?? []).some(b => b.venue === venue && inScope(state.scope, state.markets, b.id));
+}
+
+/**
+ * What a click on a venue's chip changes. A chip is a switch for a venue, but a dimmed one is a venue the filter is hiding, and switching
+ * it on or off would change nothing anyone can see; a click on one means "show it", so the filter goes back to Both and the venue is
+ * switched on. Any other chip switches its venue on or off.
+ */
+export function chipClick(state: ScopeState, venue: string): { disabledVenues: string[]; scope?: Scope } {
+  const off = state.disabledVenues;
+  if (scopedOut(state, venue)) return { disabledVenues: off.filter(id => id !== venue), scope: 'all' };
+  return { disabledVenues: off.includes(venue) ? off.filter(id => id !== venue) : [...off, venue] };
+}
+
 /** Message for an empty view, or null when the filter leaves something to draw. */
 export function emptyScopeMessage(state: ScopeState): string | null {
   if (state.scope === 'all' || !state.levels?.books.length || activeBooks(state).length) return null;

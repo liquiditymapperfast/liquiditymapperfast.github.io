@@ -34,13 +34,18 @@ export function offsetKeepingPrice(o: { mark: number; step: number; rows: number
 
 /**
  * Turns wheel deltas (pixels) into whole zoom notches: one click of a mouse wheel is one notch, and a trackpad's stream of small deltas
- * adds up to one per `size` pixels. The first event after a pause counts at once when it is a deliberate click, and turning the wheel
- * the other way starts over, so the book never lags behind the hand.
+ * adds up to one per `fine` pixels (`size` for a device that never sends small ones). The first event after a pause counts at once when
+ * it is a deliberate click, and turning the wheel the other way starts over, so the book never lags behind the hand.
+ *
+ * A precision touchpad sends a few pixels at a time, so a gentle swipe may total well under a hundred: `fine` is what makes that one
+ * notch rather than none. A flick can total thousands, so with `gapMs` set the small deltas make at most one notch per `gapMs`,
+ * and what is left over waits (up to two notches' worth) instead of throwing the zoom from one end of the list to the other.
  */
 export class WheelNotches {
   #sum = 0;
   #at = -Infinity;
-  constructor(private readonly size = 100, private readonly idleMs = 250, private readonly click = 30) {}
+  #last = -Infinity;
+  constructor(private readonly size = 100, private readonly idleMs = 250, private readonly click = 30, private readonly fine = size, private readonly gapMs = 0) {}
 
   /** Feed one event's vertical delta at `now` (ms); returns the notches to apply, positive for scrolling down. */
   add(delta: number, now: number): number {
@@ -48,10 +53,22 @@ export class WheelNotches {
     const fresh = now - this.#at > this.idleMs;
     this.#at = now;
     if (fresh || Math.sign(delta) !== Math.sign(this.#sum)) this.#sum = 0;
-    if (fresh && Math.abs(delta) >= this.click) return Math.sign(delta);
-    this.#sum += delta;
+    if (fresh && Math.abs(delta) >= this.click) { this.#last = now; return Math.sign(delta); }
+    const small = Math.abs(delta) < this.click;
+    // Small deltas are weighed up so that `fine` of them make a notch; the sum is kept in the units of `size` either way.
+    this.#sum += delta * (small ? this.size / this.fine : 1);
+    if (small && this.gapMs > 0) {
+      this.#sum = Math.max(-2 * this.size, Math.min(2 * this.size, this.#sum));
+      if (now - this.#last < this.gapMs) return 0;
+      const notch = Math.trunc(this.#sum / this.size) || 0;
+      if (!notch) return 0;
+      const one = Math.sign(notch);
+      this.#sum -= one * this.size; this.#last = now;
+      return one;
+    }
     const notches = Math.trunc(this.#sum / this.size) || 0; // `|| 0` keeps a fraction of a notch from reading as -0
     this.#sum -= notches * this.size;
+    if (notches) this.#last = now;
     return notches;
   }
 }

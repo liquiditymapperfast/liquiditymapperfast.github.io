@@ -185,8 +185,19 @@ export function scanTraps({ candles, bars, step, tfMs, now, from, to, params = T
   return found;
 }
 
+/**
+ * What the offline study found (docs/trapped-traders.md): the cue was tested on Binance BTCUSDT perpetual history only, and only at 15m
+ * did anything survive (its levels were revisited somewhat less often than look-alike candles' were), with no direction to rely on.
+ * Anywhere else it has not been looked at, and the pop-up says so rather than implying the result carries over.
+ */
+export function trapVerdict(scope?: { market: string; timeframe: string }): string {
+  return scope?.market === 'binance:BTCUSDT' && scope.timeframe === '15m'
+    ? 'Tested on Binance BTCUSDT perpetual history: no reliable direction; at 15m these levels were revisited somewhat less often than look-alike candles. Not a forecast.'
+    : 'Not validated for this market and timeframe. Not a forecast.';
+}
+
 /** What the pop-up says (lines, shortest first), written as facts about the candle plus the one thing this cannot know. */
-export function trapText(trap: Trap): string[] {
+export function trapText(trap: Trap, scope?: { market: string; timeframe: string }): string[] {
   const buyers = trap.side === 'buyers', multiple = trap.multiple >= 10 ? trap.multiple.toFixed(0) : trap.multiple.toFixed(1);
   const lines = [
     buyers ? 'Possible trapped buyers' : 'Possible trapped sellers',
@@ -194,7 +205,7 @@ export function trapText(trap: Trap): string[] {
     `average ${buyers ? 'entry' : 'sale'} ${fmtPrice(trap.entry)}; the candle closed ${trap.excursion.toFixed(1)} ATR ${buyers ? 'below' : 'above'}`,
   ];
   lines.push(trap.state === 'reclaimed' ? 'Price has since closed back through that level.' : `If they still hold, they are ${buyers ? 'underwater' : 'losing'}.`);
-  lines.push('Untested pattern, not a forecast.');
+  lines.push(trapVerdict(scope));
   return lines;
 }
 
