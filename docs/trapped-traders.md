@@ -31,6 +31,13 @@ Notation for the upper wick (the lower wick mirrors it with the sides swapped). 
 
 **What it will not flag:** a candle seen only in part (the first after the page opened, or after a feed gap), a market whose chart is showing another market's candles, and the 1d timeframe (the footprint is only kept for a day in the browser and a week on the server, too little to form the baseline; 4h needs the server's week).
 
+## When a flag can appear
+
+- **Markets.** Footprints are recorded for Binance perpetual and Hyperliquid on the server (also dYdX and Aster), and for every running venue in the browser; a trap can only appear on a market that has a footprint, and only while the chart is showing that market's own candles.
+- **Warm-up.** A flag needs the candle itself plus at least 12 earlier candles with complete footprints. A browser page that has just opened therefore needs about 65 minutes open at 5m, about 3 h 15 min at 15m and about 13 h at 1h (4h and 1d cannot work in the browser, which keeps 24 hours); a server that has been recording for a week has all of them. A quiet chart in the first hours is not a bug. Baselining from Binance klines (taker-buy volume) would remove the wait and is the first follow-up.
+- **Server version.** The server must send each bar's recorded-minute count (`minutes`, added with this feature). A server started before that never reports complete candles, so nothing is flagged until it is restarted.
+- **Time.** A candle is judged 15 s after it closes, so the newest flag lags the chart by a quarter of a minute.
+
 ## Firing rate and the default
 
 Chosen from a pre-registered 27-configuration grid (w in 1/4, 1/3, 1/2; k in 0.5, 1, 2; u in 0.25, 0.5, 1) **by how often it fires and nothing else**: no outcome was looked at. On 21.4 h of recorded Binance perpetual footprints (2026-10-04 15:18 to 2026-10-05 12:39 UTC; 218 eligible 5m candles, 64 eligible 15m candles, 5 eligible 1h candles):

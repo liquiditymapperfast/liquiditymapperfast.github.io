@@ -102,5 +102,5 @@ the GPU number is a ceiling), page idle after 30 s warm-up, eight default venues
 | browser + utility | 2.1 % | |
 
 So the engine and the raster worker together take about 19 % of a core, close to what the server used for the same venues (about 17 %). The main thread, which draws, is nearly idle.
-Recordings in IndexedDB add a transaction every half second and structured-cloned reads once at start; they were not measured separately. Retention is 24 hours (the server keeps seven days),
+A possible-trap pulse (the glow on a live trap's cells, redrawn about 20 times a second only while one is in view) added 1.5 percentage points of a core to the main thread in the same headless setup (9.0 % pulsing against 7.5 % with it panned away, 15 s each), and stops completely when the candle leaves the view or motion is reduced. Recordings in IndexedDB add a transaction every half second and structured-cloned reads once at start; they were not measured separately. Retention is 24 hours (the server keeps seven days),
 which at the 47 KB per minute of columns measured above is about 68 MB for the depth columns; the footprint maps and large-trade lists after a full day were not measured.

@@ -4,7 +4,8 @@
  *   npm run parity -- [seconds] [port]
  *
  * It starts the browser venues (src/shared/venues.ts) in this process, attaches to a running server's /api/v2/ws, and every two seconds
- * compares each venue's book: best bid and ask, and the USD resting within 0.2 % of the mid on each side. Large trades (25k USD and more)
+ * compares each venue's book: best bid and ask, and the USD resting within 0.1 % of the mid on each side (inside the reach of Binance's 1000-level
+ * perpetual snapshot, about 0.16 % at BTC's tick: farther out a freshly started engine legitimately holds less than a server that has run for hours). Large trades (25k USD and more)
  * recorded by both are matched by instrument, time, price and size, and their sides must agree. Read-only on both ends.
  */
 import { decodeLevels, type LiveBook, type SideArrays } from '../src/app/wire.ts';
@@ -13,7 +14,7 @@ import type { BookConnector, TradeEvent } from '../src/shared/connector.ts';
 import { PRINT_FLOOR_USD } from '../src/shared/prints.ts';
 
 const seconds = Number(process.argv[2] ?? 120), port = Number(process.argv[3] ?? 8787);
-const WINDOW = 0.002;
+const WINDOW = 0.001;
 
 const touch = (b: { bids: SideArrays; asks: SideArrays }) => ({ bid: b.bids.hi.reduce((m, v) => Math.max(m, v), -Infinity), ask: b.asks.lo.reduce((m, v) => Math.min(m, v), Infinity) });
 function usdWithin(side: SideArrays, mid: number, isBid: boolean): number {
@@ -75,7 +76,7 @@ for (const connector of connectors) connector.stop();
 socket.close();
 
 const pct = (v: number) => Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : '–';
-console.log('\n| Venue | Samples | Missing | Best bid off (bp, median) | Best ask off (bp, median) | USD ±0.2 % bids, browser/server | asks |');
+console.log('\n| Venue | Samples | Missing | Best bid off (bp, median) | Best ask off (bp, median) | USD ±0.1 % bids, browser/server | asks |');
 console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
 let failed = false;
 for (const [id, t] of [...tallies].sort((x, y) => x[0].localeCompare(y[0]))) {
