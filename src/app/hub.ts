@@ -3,6 +3,7 @@ import type { DataSource, FootprintResponse, TickMessage } from './source.ts';
 import { PrintBook, fromWire, type Print } from './prints.ts';
 import type { Store, CandleRow } from './store.ts';
 import type { WorkerIn, WorkerOut, RasterStats } from './worker/raster.worker.ts';
+import type { CellShare } from './cell-sources.ts';
 import type { Bounds } from './view.ts';
 import type { LtParams, LtSeries } from './lt.ts';
 import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
@@ -33,6 +34,7 @@ export class Hub {
   onRaster: (result: RasterResult) => void = () => {};
   #depthWaiters = new Map<number, (r: { bid: Float32Array; ask: Float32Array }) => void>();
   #ltWaiters = new Map<number, (r: LtSeries) => void>();
+  #cellWaiters = new Map<number, (items: CellShare[]) => void>();
   /** Bumped whenever new recorded columns reach the worker, so derived series know to recompute. */
   columnsVersion = 0;
   /** Step of the recorded columns the worker currently holds. */
@@ -52,6 +54,7 @@ export class Hub {
         if (message.type === 'ready') resolve();
         else if (message.type === 'error') console.error('raster worker:', message.message);
         else if (message.type === 'lt') { this.#ltWaiters.get(message.id)?.({ times: message.times, bid: message.bid, ask: message.ask }); this.#ltWaiters.delete(message.id); }
+        else if (message.type === 'cell') { this.#cellWaiters.get(message.id)?.(message.items); this.#cellWaiters.delete(message.id); }
         else if (message.type === 'depth') { this.#depthWaiters.get(message.id)?.({ bid: message.bid, ask: message.ask }); this.#depthWaiters.delete(message.id); }
         else {
           const bounds = this.#inflight.get(message.id);
@@ -178,6 +181,12 @@ export class Hub {
   depth(enabled: string[], t0: number, t1: number, w: number, range: number, mids: Float64Array): Promise<{ bid: Float32Array; ask: Float32Array }> {
     const id = ++this.#rasterId + 1_000_000;
     return new Promise(resolve => { this.#depthWaiters.set(id, resolve); this.#post({ type: 'depth', id, enabled, t0, t1, w, range, mids }); });
+  }
+
+  /** What each enabled instrument holds in the map cell [t0, t1) x [p0, p1). */
+  cell(enabled: string[], t0: number, t1: number, p0: number, p1: number): Promise<CellShare[]> {
+    const id = ++this.#rasterId + 3_000_000;
+    return new Promise(resolve => { this.#cellWaiters.set(id, resolve); this.#post({ type: 'cell', id, enabled, t0, t1, p0, p1 }); });
   }
 
   /** Liquidity Tracker series over [t0, t1] for the enabled instruments. */

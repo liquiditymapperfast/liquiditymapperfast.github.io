@@ -2,6 +2,7 @@ import { loadKernels, type Kernels } from '../kernels.ts';
 import { gridStepFor } from '../../shared/grid.ts';
 import type { ColumnSet, LiveBook } from '../wire.ts';
 import { ltSeries, type LtParams, type LtStore } from '../lt.ts';
+import { shareInCell, type CellShare } from '../cell-sources.ts';
 
 /** A set of recorded or live columns for one instrument, flat for the raster kernel. */
 interface Store { step: number; times: Float64Array; counts: Uint32Array; bins: Int32Array; bid: Float32Array; ask: Float32Array }
@@ -11,7 +12,9 @@ export type WorkerIn =
   | { type: 'live'; books: LiveBook[]; now: number }
   | { type: 'raster'; id: number; enabled: string[]; t0: number; t1: number; p0: number; p1: number; w: number; h: number; smooth: boolean }
   | { type: 'depth'; id: number; enabled: string[]; t0: number; t1: number; w: number; range: number; mids: Float64Array }
-  | { type: 'lt'; id: number; enabled: string[]; t0: number; t1: number; params: LtParams };
+  | { type: 'lt'; id: number; enabled: string[]; t0: number; t1: number; params: LtParams }
+  | { type: 'cell'; id: number; enabled: string[]; t0: number; t1: number; p0: number; p1: number };
+export type { CellShare };
 /** Quantiles of the non-empty cells (bid + ask USD): p15 is the black cutoff, p96 the white point, as in Bookmap's auto-contrast defaults. */
 export interface RasterStats { p15: number; p50: number; p96: number; max: number; /** Where the raster's time went, in ms: building the column list, the kernel, the blur, the quantiles. */ ms?: { prep: number; kernel: number; blur: number; quant: number } }
 export type WorkerOut =
@@ -19,6 +22,7 @@ export type WorkerOut =
   | { type: 'raster'; id: number; w: number; h: number; data: Float32Array; stats: RasterStats; busyMs: number }
   | { type: 'depth'; id: number; w: number; bid: Float32Array; ask: Float32Array }
   | { type: 'lt'; id: number; times: Float64Array; bid: Float32Array; ask: Float32Array }
+  | { type: 'cell'; id: number; items: CellShare[] }
   | { type: 'error'; message: string };
 
 const COLUMN_MS = 60_000;
@@ -149,6 +153,19 @@ function depth(message: Extract<WorkerIn, { type: 'depth' }>): void {
   scope.postMessage({ type: 'depth', id: message.id, w, bid, ask }, [bid.buffer, ask.buffer]);
 }
 
+/** Which instruments make up one cell of the map, so the popup can say where the liquidity under the pointer comes from. */
+function cell(message: Extract<WorkerIn, { type: 'cell' }>): void {
+  const useLive = recordedStepMs === COLUMN_MS, items: CellShare[] = [];
+  for (const id of message.enabled) {
+    const rec = recorded.get(id), lv = useLive ? live.get(id) : undefined;
+    const r = rec ? shareInCell(rec, recordedStepMs, message.t0, message.t1, message.p0, message.p1, lv?.minute) : { bid: 0, ask: 0 };
+    const l = lv ? shareInCell(lv, COLUMN_MS, message.t0, message.t1, message.p0, message.p1) : { bid: 0, ask: 0 };
+    const bid = r.bid + l.bid, ask = r.ask + l.ask;
+    if (bid > 0 || ask > 0) items.push({ id, bid, ask });
+  }
+  scope.postMessage({ type: 'cell', id: message.id, items });
+}
+
 /** Liquidity Tracker over the aggregated recorded columns, with the live column replacing its own minute. */
 function lt(message: Extract<WorkerIn, { type: 'lt' }>): void {
   const useLive = recordedStepMs === COLUMN_MS;
@@ -183,6 +200,7 @@ scope.onmessage = event => {
       }
     } else if (message.type === 'depth') depth(message);
     else if (message.type === 'lt') lt(message);
+    else if (message.type === 'cell') cell(message);
     else raster(message);
   } catch (error) { scope.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); }
 };

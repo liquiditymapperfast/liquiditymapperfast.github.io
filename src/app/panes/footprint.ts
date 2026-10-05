@@ -80,6 +80,12 @@ export function visibilityFactor(candles: readonly CandleRow[], tfMs: number, vi
   return clamp01(visible * (0.3 + 0.7 * maxCoverage));
 }
 
+/** Share of the heatmap that is still shown when the footprint has reached `barAlpha`: all of it with the footprint absent, none once the footprint is dominant (from about three quarters in), eased so it does not snap. */
+export function heatmapShare(barAlpha: number): number {
+  const t = clamp01(barAlpha / 0.75);
+  return 1 - t * t * (3 - 2 * t);
+}
+
 export interface LodFrame { barAlpha: number; sellBuyAlpha: number; needsFrame: boolean; heatmapOpacity: number; narrowing: number }
 
 /** Footprint level-of-detail state: eligibility gates with hysteresis plus the two fade tweens. */
@@ -106,7 +112,7 @@ export class FootprintLod {
     this.#sbTw = retarget(this.#sbTw, this.#sellBuy ? 1 : 0, now);
     const barAlpha = clamp01(sample(this.#barTw, now));
     const moving = [this.#barTw, this.#sbTw].some(t => t.from !== t.target && now < t.start + p.fadeMs);
-    return { barAlpha, sellBuyAlpha: clamp01(sample(this.#sbTw, now)), needsFrame: moving, heatmapOpacity: 1 - 0.8 * barAlpha, narrowing: Math.max(barAlpha, sample(this.#sbTw, now)) };
+    return { barAlpha, sellBuyAlpha: clamp01(sample(this.#sbTw, now)), needsFrame: moving, heatmapOpacity: heatmapShare(barAlpha), narrowing: Math.max(barAlpha, sample(this.#sbTw, now)) };
   }
 }
 

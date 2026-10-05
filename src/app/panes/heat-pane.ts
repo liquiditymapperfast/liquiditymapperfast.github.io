@@ -11,6 +11,7 @@ import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage } from '../scope.ts';
 import { bubbleRadius, topPrints, type Print } from '../prints.ts';
 import { venueLabel } from '../venues.ts';
+import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
@@ -69,6 +70,9 @@ export class HeatPane {
   /** Bubbles drawn in the last frame, for hover. */
   #bubbles: { x: number; y: number; r: number; print: Print }[] = [];
   #grid: { data: Float32Array; w: number; h: number; bounds: Bounds } | null = null;
+  /** Where the liquidity under the pointer comes from: asked of the worker once per map cell and kept while the pointer stays in it. */
+  #sources: { key: string; text: string } | null = null;
+  #sourcesAsked = '';
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private kernels: Kernels) {
     this.root.className = 'pane heat';
@@ -208,7 +212,8 @@ export class HeatPane {
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view);
     this.#stepFootprint(state);
-    if (state.layer === 'liquidity') this.gl.draw(this.view, this.#style()); else this.gl.clear();
+    // Under a dominant footprint the heatmap is gone altogether, so there is nothing to draw.
+    if (state.layer === 'liquidity' && this.#lodFrame.heatmapOpacity > 0.003) this.gl.draw(this.view, this.#style()); else this.gl.clear();
     this.#paintOverlay(state);
     this.onFrame();
   }
@@ -520,7 +525,8 @@ export class HeatPane {
       ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     } else if (ownY && inX && state.layer === 'liquidity') {
       const cell = this.valueAt(hv.t, hv.price!);
-      const text = cell ? `${fmtPrice(hv.price!)}  ${cell.ask > cell.bid ? 'ask' : 'bid'} $${usd(Math.max(cell.bid, cell.ask))}` : fmtPrice(hv.price!);
+      const source = cell ? this.#sourceOf(hv.t, hv.price!, cell.ask > cell.bid ? 'ask' : 'bid') : '';
+      const text = cell ? `${fmtPrice(hv.price!)}  ${cell.ask > cell.bid ? 'ask' : 'bid'} $${usd(Math.max(cell.bid, cell.ask))}${source ? '  ' + source : ''}` : fmtPrice(hv.price!);
       const tw = ctx.measureText(text).width + 14, bx = x + 12 + tw > pw ? x - 12 - tw : x + 12, by = Math.min(ph - 22, Math.max(4, y - 24));
       ctx.fillStyle = p.text; ctx.globalAlpha = 0.92; ctx.fillRect(bx, by, tw, 20); ctx.globalAlpha = 1; ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(text, bx + 7, by + 10);
     }
@@ -532,6 +538,26 @@ export class HeatPane {
     let best: { r: number; print: Print } | null = null, bestD = Infinity;
     for (const b of this.#bubbles) { const d = Math.hypot(b.x - x, b.y - y); if (d <= b.r + 3 && d < bestD) { best = b; bestD = d; } }
     return best;
+  }
+
+  /**
+   * The venue behind the liquidity in the cell under (t, price) on `side`: "@binance-spot" when it is nearly all one venue (90 % or
+   * more), otherwise the largest with its share and how many others share the cell. Empty until the worker has answered.
+   */
+  #sourceOf(t: number, price: number, side: 'bid' | 'ask'): string {
+    const g = this.#grid; if (!g) return '';
+    const b = g.bounds, dt = (b.t1 - b.t0) / g.w, dp = (b.p1 - b.p0) / g.h;
+    const x = Math.floor((t - b.t0) / dt), y = Math.floor((price - b.p0) / dp);
+    if (x < 0 || y < 0 || x >= g.w || y >= g.h) return '';
+    const ids = this.#enabledIds(), key = `${b.t0}|${b.p0}|${g.w}|${g.h}|${x}|${y}|${side}|${ids.length}`;
+    if (this.#sources?.key === key) return this.#sources.text;
+    if (this.#sourcesAsked !== key) {
+      this.#sourcesAsked = key;
+      void this.hub.cell(ids, b.t0 + x * dt, b.t0 + (x + 1) * dt, b.p0 + y * dp, b.p0 + (y + 1) * dp).then(items => {
+        this.#sources = { key, text: describeSources(items, side) }; this.invalidate();
+      });
+    }
+    return '';
   }
 
   /** Bid/ask USD of the rasterised cell under (t, price), or null outside the texture. */

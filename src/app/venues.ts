@@ -5,6 +5,9 @@ const NAMES: Readonly<Record<string, string>> = {
   hitbtc: 'HitBTC', htx: 'HTX', hyperliquid: 'Hyperliquid', kraken: 'Kraken', kucoin: 'KuCoin', mexc: 'MEXC', okx: 'OKX', phemex: 'Phemex', poloniex: 'Poloniex', whitebit: 'WhiteBIT',
 };
 
+/** A short handle for a venue in popups: "binance-spot", "hyperliquid". */
+export function venueSlug(id: string): string { return venueLabel(id).toLowerCase().replace(/\s+/g, '-'); }
+
 export function venueLabel(id: string): string {
   const venue = id.split(':')[0]!;
   return NAMES[venue] ?? venue.replace(/^./, c => c.toUpperCase());

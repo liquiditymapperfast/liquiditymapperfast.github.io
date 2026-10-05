@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMBALANCE_RATIO, footprintLayout, imbalance, readBar, validStats, volText, type Bar } from '../src/app/panes/footprint.ts';
+import { IMBALANCE_RATIO, footprintLayout, heatmapShare, imbalance, readBar, validStats, volText, type Bar } from '../src/app/panes/footprint.ts';
 
 test('a row gets a bar only when one side dominates, on the dominant side', () => {
   assert.equal(imbalance(5.9e6, 13.4e6), 'sell', 'left number (sell) larger');
@@ -43,4 +43,13 @@ test('trade stats from the wire are checked: eight finite non-negative buckets a
   assert.deepEqual(readBar({ ...bar, stats: good }).stats, good);
   assert.equal('stats' in readBar({ ...bar, stats: { ...good, buy: [1] } }), false, 'invalid stats are removed, the bar stays');
   assert.deepEqual(readBar(bar), bar);
+});
+
+test('the heatmap fades out completely once the footprint is dominant, and not before it shows', () => {
+  assert.equal(heatmapShare(0), 1, 'no footprint, whole heatmap');
+  assert.ok(heatmapShare(0.3) < 1 && heatmapShare(0.3) > 0.4, 'it fades gradually while the footprint comes in');
+  assert.equal(heatmapShare(0.75), 0, 'dominant footprint: no residue of the heatmap');
+  assert.equal(heatmapShare(1), 0);
+  let last = 1;
+  for (let a = 0; a <= 1; a += 0.05) { const s = heatmapShare(a); assert.ok(s <= last + 1e-12, 'never brightens as the footprint grows'); last = s; }
 });
