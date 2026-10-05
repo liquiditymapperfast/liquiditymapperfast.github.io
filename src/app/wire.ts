@@ -1,4 +1,6 @@
 /** Decoders for the v2 binary frames (see src/server/v2/wire.mts for the layout). */
+import type { ColumnSet, ColumnsFrame } from '../shared/columns.ts';
+export type { ColumnSet, ColumnsFrame };
 type PartKind = 'f64' | 'f32' | 'i32';
 interface PartSpec { kind: PartKind; offset: number; length: number }
 interface FrameHeader { type: string; parts: PartSpec[] }
@@ -6,12 +8,6 @@ interface FrameHeader { type: string; parts: PartSpec[] }
 export interface SideArrays { lo: Float64Array; hi: Float64Array; usd: Float64Array }
 export interface LiveBook { id: string; venue: string; timestamp: number; coarse: boolean; bids: SideArrays; asks: SideArrays }
 export interface LevelsFrame { asOf: number; books: LiveBook[] }
-export interface ColumnSet {
-  id: string; step: number;
-  times: number[]; counts: number[]; samples: number[];
-  bins: Int32Array; bid: Float32Array; ask: Float32Array;
-}
-export interface ColumnsFrame { from: number; to: number; stepMs: number; instruments: ColumnSet[] }
 
 function open(buffer: ArrayBuffer): { header: FrameHeader & Record<string, unknown>; part(index: number): Float64Array | Float32Array | Int32Array } {
   const view = new DataView(buffer);

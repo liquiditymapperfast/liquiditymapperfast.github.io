@@ -39,10 +39,12 @@ export class FootprintRecorder {
   /** Minutes changed since they were last written, as `instrument|minute`. */
   readonly #dirty = new Set<string>();
 
-  constructor(store: FootprintStore | null = null, protected now: () => number = Date.now) {
-    this.#store = store;
+  readonly #retentionMs: number;
+
+  constructor(store: FootprintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS) {
+    this.#store = store; this.#retentionMs = retentionMs;
     if (store) {
-      for (const row of store.load(now() - RETENTION_MS)) {
+      for (const row of store.load(now() - retentionMs)) {
         this.#steps.set(row.inst, row.step);
         if (row.stats) this.#minuteStats(row.inst).set(row.t, row.stats);
         this.#minute(row.inst).set(row.t, new Map(row.bins.map(([bin, buy, sell]) => [bin, [buy, sell] as [number, number]])));
@@ -85,7 +87,7 @@ export class FootprintRecorder {
 
   /** Persist changed minutes older than the open one and drop expired minutes. */
   flush(): void {
-    const cutoff = this.now() - RETENTION_MS, open = Math.floor(this.now() / MINUTE) * MINUTE;
+    const cutoff = this.now() - this.#retentionMs, open = Math.floor(this.now() / MINUTE) * MINUTE;
     for (const minutes of this.#minutes.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
     for (const minutes of this.#stats.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
     const store = this.#store;

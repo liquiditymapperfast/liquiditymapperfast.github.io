@@ -96,8 +96,10 @@ export async function fetchCandles(instrumentId: string, tfMs: number, from: num
   return aggregateCandles([...rows.values()].filter(r => r.start >= from - tfMs && r.start <= to), tfMs);
 }
 
-/** Venues with an open-interest history this module can read, and what to call their live sample. */
+/** Venues with an open-interest history this module can read. */
 export const OI_VENUES: readonly string[] = ['binance'];
+/** Venues whose live open interest can be sampled (Hyperliquid has no history, so its bars build up while the page is open). */
+export const OI_SAMPLE_VENUES: readonly string[] = ['binance', 'hyperliquid'];
 
 /** Open-interest periods Binance serves, in ms. */
 const BINANCE_OI_PERIODS: Readonly<Record<number, string>> = { 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1d' };

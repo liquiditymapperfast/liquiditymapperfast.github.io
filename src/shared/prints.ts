@@ -34,11 +34,12 @@ export class PrintStream {
   readonly #stored = new Set<string>();
   readonly #fresh: Print[] = [];
   readonly #store: PrintStore | null;
+  readonly #retentionMs: number;
   #unsaved: Print[] = [];
 
-  constructor(store: PrintStore | null = null, protected now: () => number = Date.now) {
-    this.#store = store;
-    if (store) for (const row of store.load(now() - RETENTION_MS, MEMORY_MAX)) { this.#recent.push(row); this.#stored.add(`${row.id}|${row.t}|${row.price}|${row.usd}`); }
+  constructor(store: PrintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS) {
+    this.#store = store; this.#retentionMs = retentionMs;
+    if (store) for (const row of store.load(now() - retentionMs, MEMORY_MAX)) { this.#recent.push(row); this.#stored.add(`${row.id}|${row.t}|${row.price}|${row.usd}`); }
   }
 
   /** Take trades from the live feed; returns the prints that are new and large enough, oldest first. */
@@ -82,7 +83,7 @@ export class PrintStream {
   /** Write what has not been saved and drop expired rows. */
   flush(): void {
     const store = this.#store; if (!store) { this.#unsaved = []; return; }
-    store.save(this.#unsaved, this.now() - RETENTION_MS); this.#unsaved = [];
+    store.save(this.#unsaved, this.now() - this.#retentionMs); this.#unsaved = [];
   }
   close(): void { this.flush(); this.#store?.close(); }
 }

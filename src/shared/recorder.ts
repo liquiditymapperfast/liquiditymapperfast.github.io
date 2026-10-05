@@ -70,6 +70,8 @@ export interface RecorderOptions {
   now?: () => number;
   /** Grid step per instrument; chosen from the first valid price and then kept for the retention window. */
   steps?: Map<string, number>;
+  /** How long minutes are kept (a week by default; the browser keeps a day). */
+  retentionMs?: number;
 }
 
 /** Records per-instrument minute columns from periodic book samples. */
@@ -79,11 +81,12 @@ export class DepthRecorder {
   readonly #pending = new Map<string, Pending>();
   readonly #store: ColumnStore | null;
   readonly #now: () => number;
+  readonly #retentionMs: number;
 
-  constructor({ store = null, now = Date.now, steps = new Map() }: RecorderOptions = {}) {
-    this.#store = store; this.#now = now; this.steps = steps;
+  constructor({ store = null, now = Date.now, steps = new Map(), retentionMs = RETENTION_MS }: RecorderOptions = {}) {
+    this.#store = store; this.#now = now; this.steps = steps; this.#retentionMs = retentionMs;
     if (store) {
-      for (const { instrumentId, column, step } of store.load(now() - RETENTION_MS)) {
+      for (const { instrumentId, column, step } of store.load(now() - retentionMs)) {
         this.#list(instrumentId).push(column);
         if (!this.steps.has(instrumentId)) this.steps.set(instrumentId, step);
       }
@@ -137,7 +140,7 @@ export class DepthRecorder {
   flush(): void { for (const [id, pending] of [...this.#pending]) this.#commit(id, pending); }
 
   prune(now = this.#now()): void {
-    const cutoff = now - RETENTION_MS;
+    const cutoff = now - this.#retentionMs;
     for (const list of this.columns.values()) { let drop = 0; while (drop < list.length && list[drop]!.t < cutoff) drop++; if (drop) list.splice(0, drop); }
     this.#store?.prune(cutoff);
   }
