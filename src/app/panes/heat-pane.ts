@@ -17,6 +17,7 @@ import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
 import { isPhone } from '../device.ts';
+import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 
 /** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -87,6 +88,12 @@ export class HeatPane {
   /** Where the liquidity under the pointer comes from: asked of the worker once per map cell and kept while the pointer stays in it. */
   #sources: { key: string; text: string } | null = null;
   #sourcesAsked = '';
+  /** Where a finger pinned the crosshair (the map's own coordinates), and the gesture in progress. */
+  #pin: Pt | null = null;
+  #panKind: 'map' | 'price' | 'time' | null = null;
+  #axisDrag: { view: Bounds; x: number; y: number } | null = null;
+  #pinch: { view: Bounds; t: number; p: number } | null = null;
+  #fling = 0;
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private kernels: Kernels) {
     this.root.className = 'pane heat';
@@ -578,23 +585,32 @@ export class HeatPane {
     const axisX = this.#w - AXIS_W;
     if (ownY && y >= 0 && y <= ph) { ctx.fillStyle = p.text; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(fmtPrice(hv.price!), axisX + 6, y); }
     let trapHit: Trap | null = null;
+    const touch = hv.touch === true;
+    // Beside a mouse pointer a readout sits to one side; above a finger, so the hand does not cover it.
+    const above = (bw: number, bh: number, clearance: number): { bx: number; by: number } => {
+      const top = y - clearance - bh;
+      return { bx: Math.max(4, Math.min(pw - bw - 4, x - bw / 2)), by: top >= 4 ? top : Math.min(ph - bh - 4, y + clearance) };
+    };
+    if (touch && ownY && inX && y >= 0 && y <= ph) { ctx.strokeStyle = p.text; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
     const hit = ownY && inX ? this.#bubbleAt(x, y) : null;
     if (hit) { // a large trade under the pointer: say what it was
       const { print } = hit, venue = venueLabel(print.id), symbol = print.id.split(':').slice(1).join(':');
       const lines = [`${print.side === 'buy' ? 'BUY' : 'SELL'}  $${usd(print.usd)}`, `${venue} ${symbol}`, `${fmtPrice(print.price)}  ${clock(print.t, true)}:${String(new Date(print.t).getSeconds()).padStart(2, '0')}`];
       ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 16, th = lines.length * 15 + 8;
-      const bx = x + hit.r + 10 + tw > pw ? x - hit.r - 10 - tw : x + hit.r + 10, by = Math.min(ph - th - 4, Math.max(4, y - th / 2));
+      const side = { bx: x + hit.r + 10 + tw > pw ? x - hit.r - 10 - tw : x + hit.r + 10, by: Math.min(ph - th - 4, Math.max(4, y - th / 2)) };
+      const { bx, by } = touch ? above(tw, th, hit.r + 22) : side;
       ctx.fillStyle = p.panel; ctx.globalAlpha = 0.96; ctx.fillRect(bx, by, tw, th); ctx.globalAlpha = 1;
       ctx.strokeStyle = print.side === 'buy' ? p.bid : p.ask; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1); ctx.lineWidth = 1;
       ctx.textAlign = 'left'; lines.forEach((line, i) => { ctx.fillStyle = i === 0 ? (print.side === 'buy' ? p.bid : p.ask) : p.text; ctx.fillText(line, bx + 8, by + 12 + i * 15); });
       ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     } else if (ownY && inX && (trapHit = this.#trapUnder(x, hv.t, hv.price!, pw))) {
-      this.#paintTrapPopup(ctx, trapHit, x, y, pw, ph);
+      this.#paintTrapPopup(ctx, trapHit, x, y, pw, ph, touch);
     } else if (ownY && inX && state.layer === 'liquidity') {
       const cell = this.valueAt(hv.t, hv.price!);
       const source = cell ? this.#sourceOf(hv.t, hv.price!, cell.ask > cell.bid ? 'ask' : 'bid') : '';
       const text = cell ? `${fmtPrice(hv.price!)}  ${cell.ask > cell.bid ? 'ask' : 'bid'} $${usd(Math.max(cell.bid, cell.ask))}${source ? '  ' + source : ''}` : fmtPrice(hv.price!);
-      const tw = ctx.measureText(text).width + 14, bx = x + 12 + tw > pw ? x - 12 - tw : x + 12, by = Math.min(ph - 22, Math.max(4, y - 24));
+      const tw = ctx.measureText(text).width + 14, side = { bx: x + 12 + tw > pw ? x - 12 - tw : x + 12, by: Math.min(ph - 22, Math.max(4, y - 24)) };
+      const { bx, by } = touch ? above(tw, 20, 24) : side;
       ctx.fillStyle = p.text; ctx.globalAlpha = 0.92; ctx.fillRect(bx, by, tw, 20); ctx.globalAlpha = 1; ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(text, bx + 7, by + 10);
     }
     if (inX) { ctx.fillStyle = p.text; ctx.fillRect(x - 40, ph + 2, 80, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.fillText(clock(hv.t, true), x, ph + 11); }
@@ -618,7 +634,7 @@ export class HeatPane {
     return this.#traps.on(start).find(trap => price >= trap.zoneLow && price <= trap.zoneHigh) ?? null;
   }
 
-  #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number): void {
+  #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number, touch = false): void {
     const p = this.#palette, maxWidth = 280, lines: string[] = [];
     ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
     for (const text of trapText(trap)) {
@@ -627,7 +643,8 @@ export class HeatPane {
       lines.push(line);
     }
     const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 18, th = lines.length * 15 + 10;
-    const bx = x + 14 + tw > pw ? x - 14 - tw : x + 14, by = Math.min(ph - th - 4, Math.max(4, y - th / 2));
+    let bx = x + 14 + tw > pw ? x - 14 - tw : x + 14, by = Math.min(ph - th - 4, Math.max(4, y - th / 2));
+    if (touch) { bx = Math.max(4, Math.min(pw - tw - 4, x - tw / 2)); by = y - 26 - th >= 4 ? y - 26 - th : Math.min(ph - th - 4, y + 26); }
     ctx.fillStyle = p.panel; ctx.globalAlpha = 0.97; ctx.fillRect(bx, by, tw, th); ctx.globalAlpha = 1;
     ctx.strokeStyle = TRAP_COLOR; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1); ctx.lineWidth = 1;
     ctx.textAlign = 'left'; lines.forEach((line, i) => { ctx.fillStyle = i === 0 ? TRAP_COLOR : p.text; ctx.fillText(line, bx + 9, by + 13 + i * 15); });
@@ -700,6 +717,138 @@ export class HeatPane {
     return { bid: g.data[i]!, ask: g.data[i + 1]! };
   }
 
+  // ---- touch ----------------------------------------------------------------------------------------------------------------------
+
+  /**
+   * One finger: a tap pins the crosshair and its readouts where it landed (tapping the pin again, or panning, lets it go); holding
+   * and then dragging scrubs the crosshair along; a plain drag pans, and keeps going after the lift. A drag that starts on the price
+   * axis zooms the price scale, and one on the time axis zooms time. Two fingers pinch: the horizontal separation scales time and the
+   * vertical one scales price, about the midpoint, so what is under each finger stays under it. A double tap recentres.
+   */
+  #touchHandlers(): GestureHandlers {
+    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return {
+      down: () => this.#stopFling(),
+      tap: p => { if (this.#pinActive() && Math.hypot(this.#pin!.x - p.x, this.#pin!.y - p.y) < 28) this.#unpin(); else this.#pinAt(p); },
+      doubleTap: () => { this.#unpin(); this.fit(); },
+      // A short tick under the finger says the hold registered (where the browser allows it: it wants the page to have been used first).
+      hold: p => { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(8); this.#pinAt(p); },
+      holdMove: p => this.#pinAt(p),
+      panStart: p => {
+        this.#unpin();
+        this.#panKind = p.y > this.plotH ? 'time' : p.x > this.#w - AXIS_W ? 'price' : 'map';
+        this.#axisDrag = this.#panKind === 'map' ? null : { view: this.view.clone(), x: 0, y: 0 };
+      },
+      pan: d => this.#touchPan(d),
+      panEnd: v => {
+        const kind = this.#panKind; this.#panKind = null; this.#axisDrag = null;
+        if (kind === 'map' && v && !reducedMotion && Math.hypot(v.x, v.y) > 0.08) this.#startFling(v);
+      },
+      pinchStart: info => this.#pinchBegin(info),
+      pinch: info => this.#pinchTo(info),
+      pinchEnd: () => { this.#pinch = null; },
+      cancel: () => { this.#panKind = null; this.#axisDrag = null; this.#pinch = null; },
+    };
+  }
+
+  /** The handlers the panes under the map use for the time axis they share: dragging pans it, pinching zooms it, a double tap recentres. */
+  timeGestures(): Pick<GestureHandlers, 'down' | 'panStart' | 'pan' | 'panEnd' | 'pinchStart' | 'pinch' | 'pinchEnd' | 'doubleTap' | 'cancel'> {
+    const base = this.#touchHandlers();
+    // Only time is shared: a finger's height in a lower pane says nothing about price, so it is flattened out of the pinch.
+    const flat = (i: PinchInfo): PinchInfo => ({ ...i, mid: { x: i.mid.x, y: 0 }, startMid: { x: i.startMid.x, y: 0 }, start: { ...i.start, dy: 0 } });
+    return {
+      down: base.down,
+      panStart: () => { this.#unpin(); this.#panKind = 'map'; this.#axisDrag = null; },
+      pan: d => this.#touchPan({ x: d.x, y: 0 }),
+      panEnd: v => { this.#panKind = null; if (v && Math.abs(v.x) > 0.08) this.#startFling({ x: v.x, y: 0 }); },
+      pinchStart: info => this.#pinchBegin(flat(info)),
+      pinch: info => this.#pinchTo(flat(info)),
+      pinchEnd: base.pinchEnd,
+      doubleTap: () => { this.#unpin(); this.fit(); },
+      cancel: base.cancel,
+    };
+  }
+
+  /** Whether a finger's pin is what is on show now (a tap on a pane under the map replaces it with its own). */
+  #pinActive(): boolean { const hv = this.store.state.hover; return this.#pin !== null && (this.#profileHover !== null || (hv?.touch === true && hv.source === 'heat')); }
+  /** Drop the pinned crosshair (and the profile comparison), if any. */
+  #unpin(): void {
+    if (!this.#pin && !this.#profileHover) return;
+    this.#pin = null; this.#profileHover = null;
+    if (this.store.state.hover?.touch) this.store.set({ hover: null });
+    this.invalidate();
+  }
+  /** Pin the crosshair at `p`: on the map it is the usual crosshair with its readouts, on the profile column the Mirror comparison, anywhere else nothing. */
+  #pinAt(p: Pt): void {
+    const pw = this.plotW, ph = this.plotH, v = this.view;
+    this.#pin = p;
+    if (p.x >= 0 && p.x <= pw && p.y >= 0 && p.y <= ph) {
+      this.#profileHover = null;
+      this.store.set({ hover: { t: v.tOf(p.x, pw), price: v.pOf(p.y, ph), y: p.y, source: 'heat', touch: true } });
+    } else if (p.x > pw && p.x <= pw + PROFILE_W && p.y >= 0 && p.y <= ph) {
+      this.#profileHover = { y: p.y }; this.store.set({ hover: null });
+    } else { this.#pin = null; this.#profileHover = null; this.store.set({ hover: null }); }
+    this.invalidate();
+  }
+
+  #touchPan(d: Pt): void {
+    const pw = this.plotW, ph = this.plotH, kind = this.#panKind;
+    if (kind === 'map') {
+      this.view.pan(d.x, d.y, pw, ph);
+      this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+      return;
+    }
+    const z = this.#axisDrag; if (!z) return;
+    z.x += d.x; z.y += d.y;
+    const v0 = z.view;
+    if (kind === 'price') {
+      // Drag down to zoom out, up to zoom in, about the middle of the scale (the same sense as the right-button drag).
+      const mid = (v0.p0 + v0.p1) / 2, span = Math.max((v0.p1 - v0.p0) * Math.exp(z.y * 0.006), 1e-6);
+      this.view.set({ ...v0, p0: mid - span / 2, p1: mid + span / 2 });
+    } else {
+      const mid = (v0.t0 + v0.t1) / 2, span = Math.max(30_000, (v0.t1 - v0.t0) * Math.exp(-z.x * 0.006));
+      this.view.set({ ...v0, t0: mid - span / 2, t1: mid + span / 2 });
+    }
+    this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
+  #pinchBegin(info: PinchInfo): void {
+    this.#unpin(); this.#stopFling();
+    const pw = this.plotW, ph = this.plotH, v = this.view;
+    const mx = Math.max(0, Math.min(pw, info.mid.x)), my = Math.max(0, Math.min(ph, info.mid.y));
+    this.#pinch = { view: v.clone(), t: v.tOf(mx, pw), p: v.pOf(my, ph) };
+  }
+  #pinchTo(info: PinchInfo): void {
+    const z = this.#pinch; if (!z) return;
+    const pw = this.plotW, ph = this.plotH, v0 = z.view;
+    const sx = axisPinchScale(info.start.dx, info.now.dx), sy = axisPinchScale(info.start.dy, info.now.dy);
+    const mark = this.store.state.mark.price || (v0.p0 + v0.p1) / 2;
+    const clamp = (x: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, x));
+    const tSpan = clamp((v0.t1 - v0.t0) / sx, 30_000, 400 * 86_400_000), pSpan = clamp((v0.p1 - v0.p0) / sy, mark * 1e-4, mark * 2);
+    const mx = clamp(info.mid.x, 0, pw), my = clamp(info.mid.y, 0, ph);
+    const t0 = z.t - mx / pw * tSpan, p1 = z.p + my / ph * pSpan;
+    this.view.set({ t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 });
+    // Moving the two fingers together is a pan as well: after a real move the view no longer follows the live edge on its own.
+    if (Math.hypot(info.mid.x - info.startMid.x, info.mid.y - info.startMid.y) > 12 && this.store.state.followLive) this.store.set({ followLive: false });
+    this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
+  /** Carry on panning after the finger lifts, slowing to a stop (about a quarter of a second per e-fold of speed). */
+  #startFling(v: Pt): void {
+    this.#stopFling();
+    const limit = (x: number): number => Math.max(-4, Math.min(4, x));
+    let vx = limit(v.x), vy = limit(v.y), last = performance.now();
+    const step = (now: number): void => {
+      const dt = Math.min(48, now - last); last = now;
+      this.view.pan(vx * dt, vy * dt, this.plotW, this.plotH);
+      this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+      const decay = Math.exp(-dt / 260); vx *= decay; vy *= decay;
+      this.#fling = Math.hypot(vx, vy) < 0.02 || document.hidden ? 0 : requestAnimationFrame(step);
+    };
+    this.#fling = requestAnimationFrame(step);
+  }
+  #stopFling(): void { if (this.#fling) { cancelAnimationFrame(this.#fling); this.#fling = 0; } }
+
   #bindInput(): void {
     const el = this.overlay;
     const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
@@ -712,12 +861,14 @@ export class HeatPane {
     }, { passive: false });
     el.addEventListener('contextmenu', e => e.preventDefault());
     el.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
       if (e.button === 2) { this.#zoomDrag = { x, y, view: this.view.clone() }; el.setPointerCapture(e.pointerId); return; }
       if (e.button !== 0) return;
       this.#drag = { x, y, shift: e.shiftKey }; el.setPointerCapture(e.pointerId);
     });
     el.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
@@ -739,9 +890,10 @@ export class HeatPane {
       this.#profileHover = !this.#drag && x > this.plotW && x <= this.plotW + PROFILE_W && y >= 0 && y <= this.plotH ? { y } : null;
       this.invalidate();
     });
-    el.addEventListener('pointerup', e => { this.#drag = null; this.#zoomDrag = null; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
-    el.addEventListener('pointerleave', () => { this.#profileHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
+    el.addEventListener('pointerup', e => { if (e.pointerType === 'touch') return; this.#drag = null; this.#zoomDrag = null; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#profileHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
     el.addEventListener('dblclick', () => this.fit());
+    bindTouch(el, new GestureRecognizer(this.#touchHandlers()));
     window.addEventListener('keydown', e => { if ((e.key === 'r' || e.key === 'Home') && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLSelectElement)) this.fit(); });
   }
 }

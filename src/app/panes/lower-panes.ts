@@ -14,6 +14,7 @@ import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
 import type { LtSeries } from '../lt.ts';
+import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 
 /** A canvas pane whose x axis is the main chart's time axis. */
 abstract class TimePane {
@@ -24,19 +25,57 @@ abstract class TimePane {
   protected w = 0; protected h = 0; protected dpr = 1;
   protected palette = PALETTES.light!;
   #frame = 0;
+  /** What the map does with a gesture on the time axis these panes share with it (set by `useTimeGestures`). */
+  #time: ReturnType<HeatPane['timeGestures']> | null = null;
+  #pinned: Pt | null = null;
+  #source: 'depth' | 'oi' | 'lt' | 'bars';
 
   constructor(host: HTMLElement, protected store: Store, protected view: View, cls: string) {
     this.root.className = `pane ${cls}`; this.head.className = 'pane-head';
     this.root.append(this.head, this.canvas); host.append(this.root);
     this.ctx = this.canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.canvas);
-    const source = cls as 'depth' | 'oi' | 'lt' | 'bars';
+    const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars';
     this.canvas.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
       const r = this.canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       if (x < 0 || x > this.plotW) { this.store.set({ hover: null }); return; }
       this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: null, y, source } });
     });
-    this.canvas.addEventListener('pointerleave', () => this.store.set({ hover: null }));
+    this.canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') this.store.set({ hover: null }); });
+    bindTouch(this.canvas, new GestureRecognizer(this.#touchHandlers()));
+  }
+
+  /** Let the panes' finger gestures move the map's time axis (called once the map exists). */
+  useTimeGestures(time: ReturnType<HeatPane['timeGestures']>): void { this.#time = time; }
+
+  /**
+   * A tap pins the readout at that time (tap it again to let it go), holding and dragging scrubs it, and dragging or pinching moves
+   * the time axis the panes share with the map. Everything else about the finger is the map's business, so it is handed over.
+   */
+  #touchHandlers(): GestureHandlers {
+    const pin = (p: Pt): void => {
+      if (p.x < 0 || p.x > this.plotW) { this.#unpin(); return; }
+      this.#pinned = p;
+      this.store.set({ hover: { t: this.view.tOf(p.x, this.plotW), price: null, y: p.y, source: this.#source, touch: true } });
+    };
+    return {
+      down: p => this.#time?.down?.(p),
+      tap: p => { if (this.#pinned && Math.hypot(this.#pinned.x - p.x, this.#pinned.y - p.y) < 28) this.#unpin(); else pin(p); },
+      doubleTap: p => { this.#unpin(); this.#time?.doubleTap?.(p); },
+      hold: pin, holdMove: pin,
+      panStart: p => { this.#unpin(); this.#time?.panStart?.(p); },
+      pan: (d, p, v) => this.#time?.pan?.(d, p, v),
+      panEnd: v => this.#time?.panEnd?.(v),
+      pinchStart: info => { this.#unpin(); this.#time?.pinchStart?.(info); },
+      pinch: info => this.#time?.pinch?.(info),
+      pinchEnd: () => this.#time?.pinchEnd?.(),
+      cancel: () => this.#time?.cancel?.(),
+    };
+  }
+  #unpin(): void {
+    this.#pinned = null;
+    if (this.store.state.hover?.touch) this.store.set({ hover: null });
   }
   /** Header element, the grip target for drag-reordering. */
   get header(): HTMLElement { return this.head; }

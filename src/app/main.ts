@@ -71,6 +71,8 @@ async function main(): Promise<void> {
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
   ]);
   const lower = () => { depth.invalidate(); oi.invalidate(); lt.invalidate(); bars.invalidate(); };
+  // A finger on a pane under the map moves the time axis it shares with the map.
+  for (const pane of [depth, oi, lt, bars]) pane.useTimeGestures(heat.timeGestures());
   heat.onFrame = lower; heat.onView = lower;
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   toolbar.onSelectMarket = id => store.set({ marketId: id });

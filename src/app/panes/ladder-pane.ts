@@ -11,6 +11,7 @@ import { price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
 import { coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance, liquidityWithin, type Grouped } from './levels-data.ts';
 import { GROUPS, WheelNotches, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
+import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
 
 const ROW_H = 17;
@@ -41,6 +42,10 @@ export class LadderPane {
   #idsKey = '';
   #hover: { x: number; y: number } | null = null;
   #notches = new WheelNotches();
+  /** Touch: where a finger pinned the mirror comparison, the pinch in progress, and the fling after a lift. */
+  #pinned: Pt | null = null;
+  #pinch: { step: number; price: number; row: number } | null = null;
+  #fling = 0;
   /** What the last frame drew, which gestures are read against (step 0 until a frame has data). */
   #layout = { step: 0, rows: 0, head: 0, colW: 0, mark: 0 };
   /** A pointer drag in progress: the book moving with the pointer, or the price column zooming about the price it started on. */
@@ -86,23 +91,87 @@ export class LadderPane {
       if (notches) this.#zoomTo(stepBy(this.#layout.step, notches), this.#rowAt(local(e).y));
     }, { passive: false });
     c.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || !(this.#layout.step > 0)) return;
+      if (e.pointerType === 'touch' || e.button !== 0 || !(this.#layout.step > 0)) return;
       const { x, y } = local(e), row = this.#rowAt(y);
       this.#drag = this.#onAxis(x) ? { kind: 'zoom', y, step: this.#layout.step, price: this.#priceAt(row), row } : { kind: 'pan', y, offset: this.#offsetRows };
       c.setPointerCapture(e.pointerId); this.#hover = null; this.#cursor(x); this.invalidate();
     });
     c.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
       const { x, y } = local(e), drag = this.#drag;
       if (drag?.kind === 'zoom') this.#zoomTo(stepBy(drag.step, Math.trunc((y - drag.y) / AXIS_DRAG_PX)), drag.row, drag.price); // up zooms in, down out
       else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((y - drag.y) / ROW_H); this.invalidate(); }
       else this.#hover = { x, y };
       this.#cursor(x); this.invalidate();
     });
-    const release = (e: PointerEvent) => { this.#drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); this.#cursor(local(e).x); this.invalidate(); };
+    const release = (e: PointerEvent) => { if (e.pointerType === 'touch') return; this.#drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); this.#cursor(local(e).x); this.invalidate(); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
-    c.addEventListener('pointerleave', () => { this.#hover = null; this.invalidate(); });
-    c.addEventListener('dblclick', () => { this.#offsetRows = 0; this.store.set({ grouping: 'auto' }); this.invalidate(); });
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.invalidate(); });
+    c.addEventListener('dblclick', () => this.#reset());
+    bindTouch(c, new GestureRecognizer(this.#touchHandlers()));
   }
+
+  /** Put the book back on the mark at the automatic grouping. */
+  #reset(): void { this.#offsetRows = 0; this.store.set({ grouping: 'auto' }); this.invalidate(); }
+
+  /**
+   * A finger: tap pins the mirror comparison on a row (tap it again to let it go), holding and dragging scrubs it, dragging moves the
+   * book (or zooms it, from the price column) and keeps going after the lift, pinching zooms the grouping about the fingers, and a
+   * double tap puts the book back.
+   */
+  #touchHandlers(): GestureHandlers {
+    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const pin = (p: Pt): void => { this.#pinned = p; this.#hover = { x: p.x, y: p.y }; this.invalidate(); };
+    const unpin = (): void => { this.#pinned = null; this.#hover = null; this.invalidate(); };
+    return {
+      down: () => this.#stopFling(),
+      tap: p => { if (this.#pinned && Math.hypot(this.#pinned.x - p.x, this.#pinned.y - p.y) < 28) unpin(); else pin(p); },
+      doubleTap: () => { unpin(); this.#reset(); },
+      hold: pin, holdMove: pin,
+      panStart: p => {
+        unpin();
+        if (!(this.#layout.step > 0)) return;
+        const row = this.#rowAt(p.y);
+        this.#drag = this.#onAxis(p.x) ? { kind: 'zoom', y: p.y, step: this.#layout.step, price: this.#priceAt(row), row } : { kind: 'pan', y: p.y, offset: this.#offsetRows };
+      },
+      pan: (_d, p) => {
+        const drag = this.#drag;
+        if (drag?.kind === 'zoom') this.#zoomTo(stepBy(drag.step, Math.trunc((p.y - drag.y) / AXIS_DRAG_PX)), drag.row, drag.price);
+        else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((p.y - drag.y) / ROW_H); this.invalidate(); }
+      },
+      panEnd: v => {
+        const was = this.#drag; this.#drag = null; this.invalidate();
+        if (was?.kind === 'pan' && v && !reducedMotion && Math.abs(v.y) > 0.08) this.#startFling(v.y);
+      },
+      pinchStart: info => {
+        unpin(); this.#stopFling(); this.#drag = null;
+        if (!(this.#layout.step > 0)) return;
+        const row = this.#rowAt(info.mid.y);
+        this.#pinch = { step: this.#layout.step, price: this.#priceAt(row), row };
+      },
+      pinch: info => {
+        const z = this.#pinch; if (!z) return;
+        // Fingers spreading apart is zooming in, which is a finer step; about one step for each 1.6x the separation changes.
+        const notches = -Math.round(Math.log2(axisPinchScale(info.start.dy, info.now.dy)) * 1.6);
+        this.#zoomTo(stepBy(z.step, notches), z.row, z.price);
+      },
+      pinchEnd: () => { this.#pinch = null; },
+      cancel: () => { this.#drag = null; this.#pinch = null; },
+    };
+  }
+  #startFling(vy: number): void {
+    this.#stopFling();
+    let v = Math.max(-4, Math.min(4, vy)) / ROW_H, last = performance.now(), carry = 0;
+    const step = (now: number): void => {
+      const dt = Math.min(48, now - last); last = now;
+      carry += v * dt; const rows = Math.trunc(carry); carry -= rows;
+      if (rows) { this.#offsetRows += rows; this.invalidate(); }
+      v *= Math.exp(-dt / 260);
+      this.#fling = Math.abs(v) * ROW_H < 0.02 || document.hidden ? 0 : requestAnimationFrame(step);
+    };
+    this.#fling = requestAnimationFrame(step);
+  }
+  #stopFling(): void { if (this.#fling) { cancelAnimationFrame(this.#fling); this.#fling = 0; } }
 
   /** Whether canvas column `x` is on the price column of a book (the zoom handle). */
   #onAxis(x: number): boolean { const { colW } = this.#layout; return colW > 0 && x % colW < AXIS_W; }
@@ -192,6 +261,9 @@ export class LadderPane {
       this.#canvas.width = Math.round(width * this.#dpr); this.#canvas.height = Math.round(this.#h * this.#dpr);
     }
     this.#canvas.style.width = `${width}px`; this.#canvas.style.height = `${this.#h}px`;
+    // Single mode puts several books side by side: a sideways swipe scrolls them (the browser's job), up and down stays ours.
+    const touchAction = width > this.#w + 1 ? 'pan-x' : 'none';
+    if (this.#canvas.style.touchAction !== touchAction) this.#canvas.style.touchAction = touchAction;
   }
 
   #render(): void {
