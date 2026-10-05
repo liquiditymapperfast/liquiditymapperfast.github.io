@@ -76,6 +76,14 @@ async function main(): Promise<void> {
   toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars]) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
+  // S takes a screenshot (not while typing in a field or when a modifier is held).
+  window.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() !== 's' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) || document.querySelector('dialog[open]')) return;
+    e.preventDefault(); void import('./screenshot/editor.ts').then(m => m.startScreenshot());
+  });
+
   const layout = () => {
     const s = store.state;
     document.documentElement.style.setProperty('--gutter', `${gutter(s)}px`);

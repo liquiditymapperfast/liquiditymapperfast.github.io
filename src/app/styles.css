@@ -107,6 +107,39 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .author-link:hover { border-color: var(--text); }
 .author-link b { font-size: 13px; }
 .author-link span { color: var(--muted); font-size: 11px; }
+/* Screenshot (screenshot/editor.ts): a frozen copy of the page under a dim layer, and one floating toolbar. */
+dialog.shot { position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; overflow: hidden; color: #f2f4f7; font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+dialog.shot::backdrop { background: transparent; }
+.shot-stage { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
+.shot-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; pointer-events: none; text-align: center; text-shadow: 0 2px 18px rgba(0, 0, 0, .55); }
+.shot-hint[hidden] { display: none; }
+.shot-hint strong { font-size: clamp(28px, 4.4vw, 58px); font-weight: 700; letter-spacing: .01em; color: #fff; }
+.shot-hint span { font-size: 13px; color: rgba(255, 255, 255, .78); }
+.shot-bar { position: absolute; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; max-width: calc(100vw - 16px); padding: 6px; border-radius: 14px; background: rgba(22, 25, 31, .94); border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 14px 40px rgba(0, 0, 0, .45); backdrop-filter: blur(12px); }
+.shot-bar[hidden] { display: none; }
+.shot-group { display: flex; align-items: center; gap: 2px; padding: 0 6px; border-left: 1px solid rgba(255, 255, 255, .12); }
+.shot-group:first-child { border-left: 0; padding-left: 0; }
+.shot-group[hidden] { display: none; }
+.shot-label { color: rgba(255, 255, 255, .6); font-size: 11px; margin-right: 6px; }
+.shot-bar input[type=range] { width: 96px; accent-color: #4da3ff; }
+.shot-bar button { font: inherit; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.shot-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 9px; color: #e6e9ee; }
+.shot-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+.shot-btn.on { background: #4da3ff; color: #06101f; }
+.shot-btn:disabled { opacity: .3; cursor: default; }
+.shot-dot { width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.shot-dot::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 1px rgba(255, 255, 255, .35) inset; }
+.shot-dot.on { box-shadow: 0 0 0 2px #4da3ff; }
+.shot-width { width: 26px; height: 26px; padding: 0; border-radius: 8px; display: grid; place-items: center; }
+.shot-width::before { content: ""; width: var(--w); height: var(--w); border-radius: 50%; background: #e6e9ee; }
+.shot-width:hover { background: rgba(255, 255, 255, .12); }
+.shot-width.on { background: rgba(77, 163, 255, .35); }
+.shot-primary { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px 0 10px; border-radius: 9px; background: #4da3ff !important; color: #06101f !important; font-weight: 650 !important; }
+.shot-primary:hover { background: #7ab8ff !important; }
+.shot-close:hover:not(:disabled) { background: rgba(255, 69, 58, .85); color: #fff; }
+.shot-text { position: absolute; min-width: 140px; padding: 0 3px; margin: 0; border: 1px dashed rgba(255, 255, 255, .8); border-radius: 3px; background: rgba(0, 0, 0, .18); outline: none; text-shadow: 0 0 3px rgba(0, 0, 0, .55); }
+.shot-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 9px 16px; border-radius: 999px; background: rgba(22, 25, 31, .95); color: #f2f4f7; font-size: 12.5px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); z-index: 500; animation: shot-toast 2.4s ease both; }
+@keyframes shot-toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 button.install { border-color: var(--ui); color: var(--ui); font-weight: 600; }
 button.install:hover { background: var(--ui); color: var(--bg); border-color: var(--ui); }
 button.install[hidden] { display: none; }
