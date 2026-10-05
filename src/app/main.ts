@@ -8,6 +8,7 @@ import { applyTheme } from './theme.ts';
 import { Sounds } from './sound/sounds.ts';
 import { Toolbar } from './toolbar.ts';
 import { installTips } from './tip.ts';
+import { installTouchSelects } from './touch-select.ts';
 import { HeatPane, gutter, setCompactGutters } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
   const store = new Store(initialState());
   applyTheme(store.state.theme);
   installTips();
+  installTouchSelects();
   const kernels = await loadKernels();
   const params = new URLSearchParams(location.search);
   const source = await chooseSource(params);

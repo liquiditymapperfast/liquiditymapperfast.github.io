@@ -54,7 +54,12 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
     root.style.top = `${Math.max(8, top)}px`; root.style.left = `${Math.min(Math.max(8, left), window.innerWidth - w - 8)}px`;
   };
   // On a phone the scrim closes the panel; elsewhere a press outside it does.
-  const onPointer = (event: PointerEvent): void => { if (isPhone()) return; const t = event.target as Node; if (!root.contains(t) && !anchor.contains(t)) panel.close(); };
+  const onPointer = (event: PointerEvent): void => {
+    if (isPhone()) return;
+    const t = event.target as Node;
+    // A menu opened from a control inside the panel (a dropdown) is part of it.
+    if (!root.contains(t) && !anchor.contains(t) && !(t instanceof Element && t.closest('.menu'))) panel.close();
+  };
   const scrim = scrimFor(root, 59, () => panel.close());
   const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') panel.close(); };
   const onResize = (): void => { scrim.sync(); reposition(); };

@@ -203,6 +203,7 @@ html[data-layout^="phone"] .panel .srow { grid-template-columns: 32px 18px minma
 html[data-layout^="phone"] .panel .srow .x { width: 36px; height: 34px; }
 html[data-layout^="phone"] .menu { z-index: 70; min-width: 0; max-height: min(72dvh, 600px); padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); animation: sheet-up .2s ease-out; }
 html[data-layout^="phone"] .menu-item { min-height: 50px; font-size: 16px; padding: 0 14px; border-radius: 11px; }
+html[data-layout^="phone"] .menu-title { display: block; padding: 10px 14px 8px; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 .sheet-scrim.light.in { background: rgba(8, 10, 14, .34); }
 @keyframes sheet-up { from { transform: translateY(40%); opacity: 0; } to { transform: none; opacity: 1; } }
 

@@ -3,7 +3,13 @@ import { closePanel } from './ui.ts';
 import { isPhone, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
 
-export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[] }
+export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[]; /** Shown but not choosable. */ disabled?: boolean }
+export interface MenuOptions {
+  /** A heading for the menu where it is a sheet (a phone). */
+  title?: string;
+  /** Leave an open panel alone: the menu belongs to a control inside it. */
+  keepPanel?: boolean;
+}
 export interface MenuHandlers {
   /** The pointer or keyboard is on an item (`id`), or has left the menu without choosing (`null`). */
   onPreview(id: string | null): void;
@@ -14,14 +20,15 @@ export interface MenuHandlers {
  * A list of choices that previews each one while the pointer or the arrow keys are on it and keeps the choice on click or Enter.
  * Leaving the menu, Escape, or a click elsewhere puts things back as they were.
  */
-export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], current: string, handlers: MenuHandlers, align: 'left' | 'right' = 'right'): { close(): void } {
-  closePanel();
+export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], current: string, handlers: MenuHandlers, align: 'left' | 'right' = 'right', options: MenuOptions = {}): { close(): void } {
+  if (!options.keepPanel) closePanel();
   let done = false, closed = false;
   const root = el('div', { class: 'menu', role: 'listbox' });
+  if (options.title) root.append(el('div', { class: 'menu-title', textContent: options.title }));
   const rows = items.map(item => {
-    const swatch = el('span', { class: 'swatch' }, ...(item.swatch ?? []).map(color => { const dot = el('i'); dot.style.background = color; return dot; }));
     const isCurrent = item.id === current;
-    const row = el('button', { type: 'button', class: isCurrent ? 'menu-item current' : 'menu-item', role: 'option' }, swatch, el('span', { class: 'label', textContent: item.label }), el('span', { class: 'tick', textContent: isCurrent ? '✓' : '' }));
+    const swatch = item.swatch ? [el('span', { class: 'swatch' }, ...item.swatch.map(color => { const dot = el('i'); dot.style.background = color; return dot; }))] : [];
+    const row = el('button', { type: 'button', class: (isCurrent ? 'menu-item current' : 'menu-item') + (swatch.length ? '' : ' plain'), role: 'option', disabled: item.disabled === true }, ...swatch, el('span', { class: 'label', textContent: item.label }), el('span', { class: 'tick', textContent: isCurrent ? '✓' : '' }));
     row.setAttribute('aria-selected', String(isCurrent)); row.dataset.id = item.id;
     row.onpointerenter = () => handlers.onPreview(item.id);
     row.onfocus = () => handlers.onPreview(item.id);

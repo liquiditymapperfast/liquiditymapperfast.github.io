@@ -245,6 +245,9 @@ button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
 .menu-item { display: grid; grid-template-columns: auto minmax(0, 1fr) 14px; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: transparent; text-align: left; font-size: 12px; cursor: pointer; }
 .menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--text) 8%, transparent); outline: none; }
 .menu-item.current .label { font-weight: 650; }
+.menu-item.plain { grid-template-columns: minmax(0, 1fr) 14px; }
+.menu-item:disabled { opacity: .45; cursor: default; }
+.menu-title { display: none; }
 .menu-item .tick { color: var(--ui); font-weight: 700; }
 .swatch { display: inline-flex; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 5px; overflow: hidden; }
 .swatch i { display: block; width: 11px; height: 16px; }

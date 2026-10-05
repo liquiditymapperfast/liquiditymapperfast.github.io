@@ -35,9 +35,9 @@ function setValue(control: HTMLSelectElement | HTMLInputElement, value: string):
 /** Top bar: market, timeframe, layer, pane toggles, heatmap colour, venues, theme. */
 export class Toolbar {
   readonly root = el('header', { class: 'toolbar' });
-  #market = el('select', { class: 'market', tip: "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here." });
+  #market = el('select', { class: 'market', ariaLabel: 'Market', tip: "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here." });
   #timeframes = el('div', { class: 'seg' });
-  #layer = el('select', { tip: 'Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).' });
+  #layer = el('select', { ariaLabel: 'Layer', tip: 'Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).' });
   #toggles = el('div', { class: 'seg toggles' });
   #chips = el('div', { class: 'chips' });
   /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */
@@ -53,13 +53,13 @@ export class Toolbar {
   #sounds: Sounds | null = null;
   #highlights = el('button', { textContent: 'Highlights', tip: 'What stands out: unusual volume, open-interest changes and depth imbalance' });
   #heat = {
-    style: el('select', { tip: `Heatmap colouring. ${HEAT_STYLES.map(s => `${s.label}: ${s.title}.`).join(' ')}` }),
+    style: el('select', { ariaLabel: 'Colours', tip: `Heatmap colouring. ${HEAT_STYLES.map(s => `${s.label}: ${s.title}.`).join(' ')}` }),
     lo: el('i'), hi: el('i'), legend: el('span', { class: 'legend' }),
     contrast: el('input', { type: 'range', min: '0', max: '100', step: '1', tip: 'Contrast: right reveals thinner liquidity, left keeps only the biggest walls. Double-click to reset.' }),
-    smooth: el('select', { tip: 'Vertical smoothing when price rows get thin (zoomed out): Auto smooths with a ~5 px Gaussian below 15 px per row, as Bookmap does, so far walls stay visible; Off draws every row exactly.' }),
+    smooth: el('select', { ariaLabel: 'Smoothing', tip: 'Vertical smoothing when price rows get thin (zoomed out): Auto smooths with a ~5 px Gaussian below 15 px per row, as Bookmap does, so far walls stay visible; Off draws every row exactly.' }),
     auto: el('button', { textContent: 'Auto', tip: 'Auto: the colour window follows the data (recomputed on recenter, market change, zoom and every 10 s). Off: it stays where it is.' }),
   };
-  #source = el('select', { tip: 'Heatmap source' });
+  #source = el('select', { ariaLabel: 'Source', tip: 'Heatmap source' });
   #theme = el('button', { class: 'theme-btn', tip: 'Theme: hover to preview, click to keep' });
   #status = el('span', { class: 'status', tip: 'Connection to the data source: live when frames are arriving.' });
   #brand = el('span', { class: 'brand', textContent: 'LiquidityMapperFast' });
