@@ -76,6 +76,10 @@ async function main(): Promise<void> {
   toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars]) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
+  // An address like #guide/mirror opens the guide there.
+  const fromAddress = (): void => { if (/^#guide/.test(location.hash)) void import('./guide/guide.ts').then(m => m.openFromAddress()); };
+  fromAddress(); window.addEventListener('hashchange', fromAddress);
+
   // S takes a screenshot (not while typing in a field or when a modifier is held).
   window.addEventListener('keydown', e => {
     if (e.key.toLowerCase() !== 's' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;

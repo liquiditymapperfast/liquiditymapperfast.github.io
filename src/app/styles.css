@@ -140,6 +140,58 @@ dialog.shot::backdrop { background: transparent; }
 .shot-text { position: absolute; min-width: 140px; padding: 0 3px; margin: 0; border: 1px dashed rgba(255, 255, 255, .8); border-radius: 3px; background: rgba(0, 0, 0, .18); outline: none; text-shadow: 0 0 3px rgba(0, 0, 0, .55); }
 .shot-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 9px 16px; border-radius: 999px; background: rgba(22, 25, 31, .95); color: #f2f4f7; font-size: 12.5px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); z-index: 500; animation: shot-toast 2.4s ease both; }
 @keyframes shot-toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+
+/* The guide (guide/guide.ts): contents on the left, text and moving pictures on the right. */
+button.guide-btn { border-color: var(--text); font-weight: 600; }
+dialog.guide { width: min(1180px, 96vw); height: min(860px, 93vh); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); overflow: hidden; box-shadow: 0 30px 80px rgba(0, 0, 0, .4); }
+dialog.guide[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+dialog.guide::backdrop { background: rgba(8, 10, 14, .5); backdrop-filter: blur(3px); }
+.guide-head { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.guide-head h1 { margin: 0; font-size: 18px; letter-spacing: .01em; }
+.guide-head .sub { color: var(--muted); font-size: 12px; }
+.guide-head > div { flex: 1; min-width: 0; }
+.guide-x { width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 0; background: transparent; font-size: 22px; line-height: 1; color: var(--muted); }
+.guide-x:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
+.guide-jump { display: none; max-width: 52vw; }
+.guide-body { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
+.guide-toc { display: flex; flex-direction: column; gap: 1px; padding: 12px 10px 20px; border-right: 1px solid var(--line); overflow-y: auto; scrollbar-width: thin; }
+.guide-link { display: flex; gap: 9px; align-items: baseline; padding: 7px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; font-size: 12.5px; line-height: 1.3; }
+.guide-link .num, .guide-section h2 .num { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 10.5px; font-weight: 650; color: var(--muted); }
+.guide-link:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
+.guide-link.on { background: color-mix(in srgb, var(--ui) 14%, transparent); color: var(--text); font-weight: 600; }
+.guide-link.on .num { background: var(--ui); color: #fff; }
+.guide-scroll { overflow-y: auto; scroll-behavior: auto; scrollbar-width: thin; padding: 6px 0 60px; }
+.guide-article { max-width: 780px; margin: 0 auto; padding: 0 36px; }
+.guide-section { padding-top: 26px; }
+.guide-section h2 { display: flex; align-items: center; gap: 11px; margin: 0 0 12px; font-size: 22px; letter-spacing: -.005em; }
+.guide-section h2 .num { width: 26px; height: 26px; font-size: 12px; background: var(--text); color: var(--bg); }
+.guide-section p, .guide-section li { font-size: 14px; line-height: 1.68; }
+.guide-section p { margin: 0 0 12px; }
+.guide-section ul { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 7px; }
+.guide-section kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: color-mix(in srgb, var(--text) 5%, var(--panel)); font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
+.guide-section code { padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--text) 7%, transparent); font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.guide-section .note { display: block; margin: 14px 0; padding: 11px 14px; border-left: 3px solid var(--ui); border-radius: 0 9px 9px 0; background: color-mix(in srgb, var(--ui) 8%, transparent); font-size: 13px; line-height: 1.6; }
+.guide-section .note.warn { border-left-color: #f5a524; background: color-mix(in srgb, #f5a524 11%, transparent); }
+.guide-section .note b { display: block; margin-bottom: 2px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+table.keys { width: 100%; margin: 4px 0 16px; border-collapse: collapse; font-size: 13.5px; }
+table.keys td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.keys td:first-child { width: 34%; white-space: nowrap; }
+.fig { margin: 18px 0 20px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
+.fig-canvas { display: block; width: 100%; background: var(--bg); }
+.fig-bar { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+.fig-play { width: 30px; height: 24px; padding: 0; border-radius: 6px; font-size: 10px; flex: 0 0 auto; }
+.fig-scrub { flex: 1; height: 4px; accent-color: var(--ui); }
+.fig figcaption { padding: 9px 14px 11px; color: var(--muted); font-size: 12.5px; line-height: 1.5; border-top: 1px solid var(--line); }
+.fig-hover { min-height: 38px; padding: 0 14px 10px; font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.guide-end { margin-top: 36px; padding: 18px 0; border-top: 1px solid var(--line); color: var(--muted); }
+@media (max-width: 860px) {
+  .guide-body { grid-template-columns: minmax(0, 1fr); }
+  .guide-toc { display: none; }
+  .guide-jump { display: block; }
+  .guide-article { padding: 0 18px; }
+}
+@media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } }
+
 button.install { border-color: var(--ui); color: var(--ui); font-weight: 600; }
 button.install:hover { background: var(--ui); color: var(--bg); border-color: var(--ui); }
 button.install[hidden] { display: none; }

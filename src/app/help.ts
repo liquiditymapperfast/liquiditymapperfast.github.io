@@ -102,10 +102,8 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
 };
 
-let openGuide: (section?: string) => void = () => {};
-/** The guide registers itself here so a "?" panel can open it at a section without importing it (it is loaded on demand). */
-export function setGuideOpener(open: (section?: string) => void): void { openGuide = open; }
-export const showGuide = (section?: string): void => openGuide(section);
+/** Open the guide at a section. It is loaded on demand, so the page does not carry it until it is wanted. */
+export const showGuide = (section?: string): void => { void import('./guide/guide.ts').then(m => m.openGuide(section)); };
 
 /** A small "?" button that opens the explanation of `id`; the panel closes with Esc, a click elsewhere, or the same button. */
 export function helpButton(id: HelpId): HTMLButtonElement {

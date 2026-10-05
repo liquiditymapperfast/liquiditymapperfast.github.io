@@ -8,7 +8,7 @@ import { el } from './dom.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
-import { HELP, helpButton, type HelpId } from './help.ts';
+import { HELP, helpButton, showGuide, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
@@ -42,6 +42,7 @@ export class Toolbar {
   #blocked = el('div', { class: 'chips blocked-chips' });
   readonly #notice = new VenueNotice();
   readonly #install = new InstallButton();
+  #guide = el('button', { type: 'button', class: 'guide-btn', textContent: 'Guide', tip: 'A ten-minute tour of what everything is and how to use it, with moving pictures. Every button also explains itself on hover.', onclick: () => { showGuide(); } });
   #shot = el('button', { type: 'button', textContent: 'Screenshot', tip: 'Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.', onclick: () => { void import('./screenshot/editor.ts').then(m => m.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: 'Author', tip: 'Who made this, and where to find the code. Free, no sign-ups, open source.' });
   #scope = el('div', { class: 'seg scope', tip: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
@@ -105,7 +106,7 @@ export class Toolbar {
     this.root.append(
       el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
       el('span', { class: 'heatctl' }, helpButton('heatmap'), this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
-      this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#install.root, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
+      this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#install.root, this.#guide, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
   }
 
   /** Update controls from state; `window` is the USD range currently mapped onto the colour ramp. Only touches DOM that changed, so open dropdowns and clicks survive 4 Hz data frames. */
