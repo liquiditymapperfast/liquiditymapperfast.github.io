@@ -42,6 +42,10 @@ The toolbar selects the market, timeframe (1m–1d), layer (Liquidity, Liquidati
 
 A venue that never connects, keeps failing and fails a plain request while others work is shown as unavailable from the visitor's location: a dashed chip, a dismissible banner and a status in the Venues dialog say that a VPN set to another country may enable it.
 
+**Help is built in.** Every control has a tooltip (`src/app/tip.ts`), and a **?** beside each pane explains it (`src/app/help.ts` holds the text both use). The **Guide** button opens a ten-minute tour with a contents list and moving pictures (`src/app/guide/`; an address like `#guide/mirror` opens it at a section). **Screenshot** (or `S`) freezes the page, lets you drag a region or click a pane, draw on it, pixelate or blur anything private, then copy or save a PNG (`src/app/screenshot/`; it draws the page itself, so nothing is asked of the browser). **Install** appears when the browser can install the page as an app, and **Author** says who made it.
+
+On a young recording the empty left of the heatmap is filled with the current book in grey (darker grey for bigger walls) so the map reads from the first second; grey is never history, and real colour starts at the dashed line.
+
 ## How it works
 
 ```

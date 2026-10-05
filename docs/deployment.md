@@ -2,6 +2,10 @@
 
 The page runs in two ways. **Browser-only** (the default on a static host): each visitor's browser connects to the exchanges' public feeds itself, so nothing needs hosting but the files. **With the local server**: the server holds the sockets, records a week of history to SQLite and serves the page. This note covers publishing the page (GitHub Pages), what changes if a server is made public, and what can and cannot be protected.
 
+## Where it is published
+
+The page is at **https://liquiditymapperfast.github.io/**, built and deployed by `.github/workflows/pages.yml` from `master` of github.com/liquiditymapperfast/liquiditymapperfast.github.io. Setting it up took four steps, all done once: create the repository under the account (a repository named `<account>.github.io` is served at the account's root), set Settings → Pages → Source to **GitHub Actions**, push `master` (the workflow runs on every push to it), and wait for the `Pages` run to finish. Commits are authored with the account's GitHub no-reply address, so no personal email is in the public history. Git Credential Manager remembers one GitHub login per host: pushing as a second account needs the remote written with that username (`https://<account>@github.com/...`) so it asks for that account's sign-in instead of reusing the other one.
+
 ## GitHub Pages: no server needed
 
 GitHub Pages serves static files, and the page needs nothing else: `npm run build:site` writes `dist/` (one HTML file, two scripts, two workers' worth of code, one `.wasm`, one stylesheet) with relative URLs, so it works from the site root or from a project path such as `/<repository>/`. `.github/workflows/pages.yml` builds and deploys it once the repository is on GitHub and Pages is set to "GitHub Actions" (nothing runs before that, and nothing has been pushed). Pages serves it over HTTPS, which Web Locks need.
