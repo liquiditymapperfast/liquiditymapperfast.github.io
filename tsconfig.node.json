@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "rootDir": "src",
+    "outDir": "build/node",
+    "sourceMap": true,
+    "noEmitOnError": true,
+    "rewriteRelativeImportExtensions": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/server/**/*.mts",
+    "src/server/**/*.d.ts",
+    "src/core/**/*.mts",
+    "src/adapters/**/*.mts",
+    "src/analytics/**/*.ts",
+    "src/analytics/**/*.mts",
+    "src/domain/**/*.ts",
+    "src/domain/**/*.mts",
+    "src/shared/**/*.ts"
+  ]
+}

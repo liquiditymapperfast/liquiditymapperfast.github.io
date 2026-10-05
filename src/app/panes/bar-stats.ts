@@ -1,0 +1,161 @@
+import { volText, type Bar } from './footprint.ts';
+import type { CandleRow, OiBar } from '../store.ts';
+import { price as fmtPrice } from '../format.ts';
+import type { StatOptions } from '../stat-options.ts';
+
+/**
+ * Per-candle statistics shown under the footprint. Each definition computes one number per bar from the executions recorded for
+ * that bar (buy and sell USD by price row, trade counts and size buckets), the candle and the open-interest bar of the same
+ * period. The strip shows the stats the user enabled, in the order chosen; adding a statistic means adding one entry here.
+ */
+export type { StatOptions } from '../stat-options.ts';
+export { DEFAULT_STAT_OPTIONS } from '../stat-options.ts';
+
+/** Size buckets as recorded by the server (notional USD lower edges). */
+export const SIZE_BUCKET_LABELS: readonly string[] = ['< $25K', '$25K-50K', '$50K-100K', '$100K-250K', '$250K-500K', '$500K-1M', '$1M-5M', '$5M+'];
+
+export interface StatInput {
+  /** Bars oldest first; stats that accumulate (cvd) sum over exactly these. */
+  bars: readonly Bar[];
+  /** Price step of the loaded rows. */
+  step: number;
+  candles: ReadonlyMap<number, CandleRow>;
+  oi: ReadonlyMap<number, OiBar>;
+  options: StatOptions;
+}
+export type StatScale = 'sequential' | 'diverging' | 'plain';
+export type StatGroup = 'volume' | 'footprint' | 'trades' | 'market';
+export interface StatDef {
+  id: string;
+  label: string;
+  group: StatGroup;
+  /** One line shown as a tooltip and in the configuration list. */
+  title: string;
+  /** sequential: pale to strong by magnitude; diverging: red / green by sign around `center`; plain: no colour scale. */
+  scale: StatScale;
+  /** Value the diverging scale is centred on (0 unless the stat is a share around 50 %). */
+  center?: number;
+  format: (value: number) => string;
+  /** One value per bar, in the order of `input.bars`; null when it cannot be computed for that bar. */
+  compute: (input: StatInput) => (number | null)[];
+}
+
+export const GROUP_TITLES: Readonly<Record<StatGroup, string>> = {
+  volume: 'Volume', footprint: 'Footprint rows', trades: 'Trades (recorded since the server started recording them)', market: 'Candle and open interest',
+};
+
+export const signedVol = (value: number): string => (value < 0 ? '-' : '') + volText(Math.abs(value));
+const signedPct = (value: number): string => `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
+const total = (bar: Bar): number => bar.buyUsd + bar.sellUsd;
+const count = (value: number): string => String(Math.round(value));
+
+export interface Imbalance { low: number; side: 'buy' | 'sell' }
+
+/**
+ * Diagonal imbalances, as footprint charts compute them: sell volume at a level against buy volume one row higher, and buy
+ * volume at a level against sell volume one row lower. (Not the same-row 1.15x rule that tints the footprint cells.)
+ */
+export function diagonalImbalances(rows: Bar['rows'], step: number, options: Pick<StatOptions, 'imbRatio' | 'imbMinUsd'>): Imbalance[] {
+  const at = new Map<number, [number, number]>();
+  for (const [low, buy, sell] of rows) at.set(Math.round(low / step), [buy, sell]);
+  const found: Imbalance[] = [];
+  for (const [low, buy, sell] of rows) {
+    const index = Math.round(low / step), above = at.get(index + 1), below = at.get(index - 1);
+    if (above && above[0] > 0 && sell >= options.imbRatio * above[0] && sell >= options.imbMinUsd && sell > 0) found.push({ low, side: 'sell' });
+    if (below && below[1] > 0 && buy >= options.imbRatio * below[1] && buy >= options.imbMinUsd && buy > 0) found.push({ low, side: 'buy' });
+  }
+  return found;
+}
+
+/** Number of runs of at least `n` adjacent rows flagged on the same side. */
+export function stackedRuns(found: readonly Imbalance[], step: number, n: number): number {
+  let runs = 0;
+  for (const side of ['buy', 'sell'] as const) {
+    const indices = found.filter(f => f.side === side).map(f => Math.round(f.low / step)).sort((a, b) => a - b);
+    let run = 0, previous = Number.NaN;
+    for (const index of indices) { run = index === previous + 1 ? run + 1 : 1; if (run === n) runs++; previous = index; }
+  }
+  return runs;
+}
+
+const tradeStat = (id: string, label: string, title: string, scale: StatScale, format: (v: number) => string, pick: (stats: NonNullable<Bar['stats']>, input: StatInput, bar: Bar) => number | null): StatDef =>
+  ({ id, label, group: 'trades', title, scale, format, compute: input => input.bars.map(bar => bar.stats ? pick(bar.stats, input, bar) : null) });
+const sumBuckets = (values: readonly number[], from: number, to: number): number => values.slice(from, to + 1).reduce((a, b) => a + b, 0);
+const sizeDelta = (stats: NonNullable<Bar['stats']>, from: number, to: number): number => sumBuckets(stats.buy, from, to) - sumBuckets(stats.sell, from, to);
+const retail = (o: StatOptions): [number, number] => [0, o.retailMax];
+const whales = (o: StatOptions): [number, number] => [o.whaleMin, 7];
+const running = (values: (number | null)[]): (number | null)[] => { let run = 0; return values.map(v => v === null ? null : (run += v)); };
+
+export const BAR_STATS: readonly StatDef[] = [
+  { id: 'vol', label: 'vol', group: 'volume', title: 'Executed volume of the bar (USD, buy + sell)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(total) },
+  { id: 'delta', label: 'delta', group: 'volume', title: 'Buy minus sell volume of the bar (USD)', scale: 'diverging', format: signedVol, compute: ({ bars }) => bars.map(bar => bar.buyUsd - bar.sellUsd) },
+  { id: 'cvd', label: 'cvd', group: 'volume', title: 'Cumulative delta: running sum of delta over the bars loaded for the view', scale: 'diverging', format: signedVol,
+    compute: ({ bars }) => { let run = 0; return bars.map(bar => (run += bar.buyUsd - bar.sellUsd)); } },
+  { id: 'deltaPct', label: 'delta %', group: 'volume', title: 'Delta as a share of the bar\'s volume (+100 % all buying, -100 % all selling)', scale: 'diverging', format: signedPct,
+    compute: ({ bars }) => bars.map(bar => total(bar) > 0 ? (bar.buyUsd - bar.sellUsd) / total(bar) * 100 : null) },
+  { id: 'buyVol', label: 'buy vol', group: 'volume', title: 'Volume bought at the ask (market buys, USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.buyUsd) },
+  { id: 'sellVol', label: 'sell vol', group: 'volume', title: 'Volume sold at the bid (market sells, USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.sellUsd) },
+  { id: 'maxBuy', label: 'max buy', group: 'footprint', title: 'Largest single price row of market buys in the bar (USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.rows.reduce((m, r) => Math.max(m, r[1]), 0)) },
+  { id: 'maxSell', label: 'max sell', group: 'footprint', title: 'Largest single price row of market sells in the bar (USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.rows.reduce((m, r) => Math.max(m, r[2]), 0)) },
+  { id: 'poc', label: 'poc', group: 'footprint', title: 'Point of control: the price row with the most executed volume in the bar', scale: 'plain', format: value => fmtPrice(value),
+    compute: ({ bars, step }) => bars.map(bar => { let best = -1, price: number | null = null; for (const [low, buy, sell] of bar.rows) if (buy + sell > best) { best = buy + sell; price = low + step / 2; } return price; }) },
+  { id: 'imbalances', label: 'imb #', group: 'footprint', title: 'Diagonal imbalances: levels where sells (or buys) are at least the configured ratio times the opposite volume one row away', scale: 'sequential', format: count,
+    compute: ({ bars, step, options }) => bars.map(bar => diagonalImbalances(bar.rows, step, options).length) },
+  { id: 'stacked', label: 'stacked', group: 'footprint', title: 'Stacked imbalances: runs of the configured number of adjacent imbalanced rows on one side', scale: 'sequential', format: count,
+    compute: ({ bars, step, options }) => bars.map(bar => stackedRuns(diagonalImbalances(bar.rows, step, options), step, options.stackedN)) },
+  tradeStat('trades', 'trades', 'Number of trades in the bar', 'sequential', count, stats => stats.buyN + stats.sellN),
+  tradeStat('buys', 'buys', 'Number of market buys in the bar', 'sequential', count, stats => stats.buyN),
+  tradeStat('sells', 'sells', 'Number of market sells in the bar', 'sequential', count, stats => stats.sellN),
+  tradeStat('avgTrade', 'avg trade', 'Average trade size: volume divided by the number of trades (USD)', 'sequential', volText, stats => stats.buyN + stats.sellN > 0 ? (sumBuckets(stats.buy, 0, 7) + sumBuckets(stats.sell, 0, 7)) / (stats.buyN + stats.sellN) : null),
+  tradeStat('deltaRetail', 'delta retail', 'Delta of trades up to the retail size bucket (set in the options)', 'diverging', signedVol, (stats, input) => sizeDelta(stats, ...retail(input.options))),
+  tradeStat('deltaWhales', 'delta whales', 'Delta of trades from the whale size bucket upward (set in the options)', 'diverging', signedVol, (stats, input) => sizeDelta(stats, ...whales(input.options))),
+  { id: 'cvdRetail', label: 'cvd retail', group: 'trades', title: 'Cumulative delta of retail-size trades over the bars loaded', scale: 'diverging', format: signedVol,
+    compute: input => running(input.bars.map(bar => bar.stats ? sizeDelta(bar.stats, ...retail(input.options)) : null)) },
+  { id: 'cvdWhales', label: 'cvd whales', group: 'trades', title: 'Cumulative delta of whale-size trades over the bars loaded', scale: 'diverging', format: signedVol,
+    compute: input => running(input.bars.map(bar => bar.stats ? sizeDelta(bar.stats, ...whales(input.options)) : null)) },
+  { id: 'range', label: 'range', group: 'market', title: 'High minus low of the candle', scale: 'sequential', format: value => fmtPrice(value),
+    compute: ({ bars, candles }) => bars.map(bar => { const c = candles.get(bar.t); return c ? c[2] - c[3] : null; }) },
+  { id: 'oiChange', label: 'oi chg', group: 'market', title: 'Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options', scale: 'diverging', format: signedVol,
+    compute: ({ bars, oi, candles, options }) => bars.map(bar => { const o = oi.get(bar.t); if (!o) return null; const change = o[4] - o[1]; if (options.oiUnits === 'base') return change; const c = candles.get(bar.t); return c ? change * c[4] : null; }) },
+];
+
+/** Starting selections offered by the presets. */
+export const PRESETS: Readonly<Record<'default' | 'all' | 'none', readonly string[]>> = {
+  default: ['vol', 'delta', 'cvd'],
+  all: BAR_STATS.map(def => def.id),
+  none: [],
+};
+
+const byId = new Map(BAR_STATS.map(def => [def.id, def]));
+export const statDef = (id: string): StatDef | undefined => byId.get(id);
+
+/** The enabled definitions in the configured order, ignoring unknown ids and duplicates. */
+export function enabledStats(ids: readonly string[]): StatDef[] {
+  const seen = new Set<string>(), out: StatDef[] = [];
+  for (const id of ids) { const def = byId.get(id); if (def && !seen.has(id)) { seen.add(id); out.push(def); } }
+  return out;
+}
+
+/**
+ * Colour scale of one row: deviations from the stat's centre mapped on a log scale between the visible 2nd and 99th percentile,
+ * so one outlier bar does not flatten the row. Returns null when there is nothing to scale.
+ */
+export function rowScale(def: StatDef, values: readonly (number | null | undefined)[]): { lo: number; hi: number } | null {
+  if (def.scale === 'plain') return null;
+  const deviations: number[] = [];
+  for (const value of values) if (value !== null && value !== undefined) { const d = Math.abs(value - (def.center ?? 0)); if (d > 0) deviations.push(d); }
+  if (!deviations.length) return null;
+  deviations.sort((a, b) => a - b);
+  const at = (q: number) => deviations[Math.min(deviations.length - 1, Math.floor(q * deviations.length))]!;
+  const hi = at(0.99), lo = Math.max(at(0.02), hi / 4096);
+  return { lo, hi };
+}
+
+/** Strength 0..1 of a value on its row's scale: 0 at or below the 2nd percentile, 1 at or above the 99th. */
+export function strength(def: StatDef, value: number, scale: { lo: number; hi: number } | null): number {
+  if (def.scale === 'plain' || !scale) return 0;
+  const d = Math.abs(value - (def.center ?? 0));
+  if (d <= scale.lo) return 0;
+  if (d >= scale.hi || !(scale.hi > scale.lo)) return 1;
+  return (Math.log(d) - Math.log(scale.lo)) / (Math.log(scale.hi) - Math.log(scale.lo));
+}

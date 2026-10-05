@@ -1,0 +1,35 @@
+{
+  "name": "liquidity-mapper-fast",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "dev": "npm run build && node build/tools/scripts/start-live.mjs",
+    "dev:live": "npm run build && node build/tools/scripts/start-live.mjs",
+    "dev:fixture": "npm run build && node build/tools/scripts/start-fixture.mjs",
+    "ui": "vite --config vite.config.mts",
+    "server": "npm run build:node && node build/node/server/main.mjs",
+    "start": "npm run build && node build/tools/scripts/start-live.mjs",
+    "test": "npm run build:node && npm run build:tools && node --test build/tools/tests/*.test.mjs",
+    "smoke:binance:spot:gap": "npm run build:tools && node build/tools/scripts/binance-spot-live-gap-recovery-smoke.mjs",
+    "smoke:binance:usdm:gap": "npm run build:tools && node build/tools/scripts/binance-spot-live-gap-recovery-smoke.mjs --market-type=perpetual",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build": "npm run typecheck && npm run build:node && npm run build:tools && vite build --config vite.config.mts",
+    "build:tools": "tsc -p tsconfig.tools.json",
+    "build:wasm": "npm run build:tools && node build/tools/scripts/build-wasm.mjs",
+    "test:wasm": "cargo test --manifest-path crates/hlm-kernels/Cargo.toml",
+    "report:venues": "npm run build:tools && node build/tools/scripts/venue-report.mjs"
+  },
+  "dependencies": {
+    "vite": "^6.0.7",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

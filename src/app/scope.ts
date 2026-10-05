@@ -1,0 +1,41 @@
+import type { AppState, Market, Scope } from './store.ts';
+import type { LiveBook } from './wire.ts';
+
+export const SCOPE_OPTIONS: readonly (readonly [Scope, string])[] = [['all', 'Both'], ['spot', 'Spot'], ['perp', 'Perp']];
+
+export type Kind = 'spot' | 'perp';
+const kinds = new WeakMap<readonly Market[], Map<string, Kind>>();
+
+/** Whether an instrument is a spot or a perpetual market (null when the market list does not say). */
+export function kindOf(markets: readonly Market[], id: string): Kind | null {
+  let map = kinds.get(markets);
+  if (!map) {
+    map = new Map();
+    for (const m of markets) { const key = m.instrumentId ?? m.id; if (key) map.set(key, m.marketType === 'spot' ? 'spot' : m.marketType === 'perpetual' ? 'perp' : undefined as never); }
+    kinds.set(markets, map);
+  }
+  return map.get(id) ?? null;
+}
+
+export const inScope = (scope: Scope, markets: readonly Market[], id: string): boolean => scope === 'all' || kindOf(markets, id) === scope;
+
+type ScopeState = Pick<AppState, 'levels' | 'disabledVenues' | 'scope' | 'markets'>;
+
+/** Books the liquidity views draw: enabled venues (the chips) that also match the Spot / Perp / Both filter. */
+export function activeBooks(state: ScopeState): LiveBook[] {
+  return (state.levels?.books ?? []).filter(b => !state.disabledVenues.includes(b.venue) && inScope(state.scope, state.markets, b.id));
+}
+export const activeIds = (state: ScopeState): string[] => activeBooks(state).map(b => b.id);
+
+/** Enabled venue books per kind, for the toolbar (a filter that selects nothing says so). */
+export function scopeCounts(state: ScopeState): Record<Kind, number> {
+  const out: Record<Kind, number> = { spot: 0, perp: 0 };
+  for (const b of state.levels?.books ?? []) { if (state.disabledVenues.includes(b.venue)) continue; const kind = kindOf(state.markets, b.id); if (kind) out[kind]++; }
+  return out;
+}
+
+/** Message for an empty view, or null when the filter leaves something to draw. */
+export function emptyScopeMessage(state: ScopeState): string | null {
+  if (state.scope === 'all' || !state.levels?.books.length || activeBooks(state).length) return null;
+  return `No ${state.scope === 'spot' ? 'spot' : 'perpetual'} venues are enabled. Choose Both, or switch a ${state.scope === 'spot' ? 'spot' : 'perpetual'} venue on.`;
+}

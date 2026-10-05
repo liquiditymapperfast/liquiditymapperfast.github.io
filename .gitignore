@@ -1,0 +1,13 @@
+node_modules/
+dist/
+data/*.sqlite*
+data/runtime/
+.env
+.env.*
+!.env.example
+*.local
+build/
+.tmp/
+
+# Reference screenshots stay on this machine (not in git, not in history)
+example_images/
