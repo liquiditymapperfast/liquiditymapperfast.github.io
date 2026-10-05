@@ -5,7 +5,11 @@ import { aggregateCandles, aggregateOi, withLiveOi, type Candle, type CandleRow,
  * candles for the chart and open interest for the pane. Everything is BTC.
  */
 
-/** Fetch one URL and parse its JSON; the browser passes `fetch`, tests pass a fake. */
+/**
+ * Fetch one URL and parse its JSON; the browser passes `fetch`, tests pass a fake. A `wss://` URL is a request over a short-lived
+ * WebSocket: `init.body` is sent as the first message and the first reply is the answer (Deribit's candle endpoint sends no CORS
+ * headers, so a page cannot read it over HTTP, but its JSON-RPC socket serves the same method).
+ */
 export type Fetcher = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<unknown>;
 
 const num = (value: unknown): number => Number(value);
@@ -50,7 +54,8 @@ const SPECS: Readonly<Record<string, CandleSpec>> = {
   deribit: {
     intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 86_400_000: '1D' }, limit: 1000,
     page: async (i, ms, end, get) => {
-      const d = at(await get(`https://www.deribit.com/api/v2/public/get_tradingview_chart_data?instrument_name=BTC-PERPETUAL&resolution=${i}&start_timestamp=${end - 999 * ms}&end_timestamp=${end}`), 'result');
+      const request = { jsonrpc: '2.0', id: 1, method: 'public/get_tradingview_chart_data', params: { instrument_name: 'BTC-PERPETUAL', resolution: i, start_timestamp: end - 999 * ms, end_timestamp: end } };
+      const d = at(await get('wss://www.deribit.com/ws/api/v2', { method: 'RPC', headers: {}, body: JSON.stringify(request) }), 'result');
       return list(at(d, 'ticks')).map((t, k) => row(t, at(d, 'open', k), at(d, 'high', k), at(d, 'low', k), at(d, 'close', k), at(d, 'volume', k)));
     },
   },

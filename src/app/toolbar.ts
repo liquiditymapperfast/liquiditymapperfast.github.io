@@ -1,6 +1,7 @@
 import { TIMEFRAMES } from './hub.ts';
 import { PALETTES, THEME_ORDER } from './theme.ts';
-import type { Store, AppState, Layer } from './store.ts';
+import { AVAILABLE_LAYERS, type Store, type AppState, type Layer } from './store.ts';
+import { VPN_HINT, VenueNotice, blockedVenues } from './venue-notice.ts';
 import { usd } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
@@ -17,6 +18,8 @@ import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
 
 const LAYERS: [Layer, string][] = [['liquidity', 'Liquidity'], ['liquidation', 'Liquidation'], ['stopLoss', 'Stop loss'], ['takeProfit', 'Take profit']];
+/** What the dropdown says next to a layer that cannot be chosen yet. */
+const UPCOMING = 'upcoming';
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
@@ -29,6 +32,9 @@ export class Toolbar {
   #layer = el('select');
   #toggles = el('div', { class: 'seg toggles' });
   #chips = el('div', { class: 'chips' });
+  /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */
+  #blocked = el('div', { class: 'chips blocked-chips' });
+  readonly #notice = new VenueNotice();
   #scope = el('div', { class: 'seg scope', title: 'Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.' });
   #soundButton = el('button', { class: 'sound-btn', textContent: 'Sound', title: 'Sound notifications' });
   #soundPanel: Panel | null = null;
@@ -53,7 +59,11 @@ export class Toolbar {
   constructor(private store: Store, private venueControl: VenueControl) {
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
     for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, onclick: () => this.store.set({ timeframe: tf }) }));
-    for (const [id, label] of LAYERS) this.#layer.append(new Option(label, id));
+    for (const [id, label] of LAYERS) {
+      const available = AVAILABLE_LAYERS.includes(id), option = new Option(available ? label : `${label} · ${UPCOMING}`, id);
+      option.disabled = !available;
+      this.#layer.append(option);
+    }
     this.#layer.onchange = () => this.store.set({ layer: this.#layer.value as Layer });
     for (const [key, label] of [['profile', 'Profile'], ['depth', 'Depth'], ['oi', 'OI'], ['candles', 'Candles'], ['footprint', 'Footprint'], ['lt', 'LT'], ['mirror', 'Mirror'], ['volume', 'Volume'], ['bubbles', 'Trades']] as const)
       this.#toggles.append(el('button', { textContent: label, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) }));
@@ -75,11 +85,15 @@ export class Toolbar {
     this.#source.onchange = () => this.store.set({ heatmapSource: this.#source.value });
     this.#theme.onclick = () => this.#openThemes();
     this.#recenter.onclick = () => this.onRecenter();
+    this.venueControl.watch?.(entries => {
+      this.#notice.update(entries);
+      this.#blocked.replaceChildren(...blockedVenues(entries).map(v => el('span', { class: 'chip blocked', textContent: `⊘ ${v.name}`, title: `${v.name}: ${VPN_HINT}` })));
+    });
     const venues = el('button', { textContent: 'Venues', onclick: () => void openVenueDialog(this.venueControl, () => this.#selectionProduct()) });
     this.root.append(
       el('span', { class: 'brand', textContent: 'LiquidityMapperFast' }), this.#market, venues, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
       el('span', { class: 'heatctl' }, this.#heat.style, el('span', { class: 'scale' }, this.#heat.legend, this.#heat.contrast), this.#heat.auto, this.#heat.smooth),
-      this.#scope, this.#chips, this.#recenter, el('span', { class: 'spacer' }), this.#theme, this.#status);
+      this.#scope, this.#chips, this.#blocked, this.#recenter, el('span', { class: 'spacer' }), this.#theme, this.#status, this.#notice.root);
   }
 
   /** Update controls from state; `window` is the USD range currently mapped onto the colour ramp. Only touches DOM that changed, so open dropdowns and clicks survive 4 Hz data frames. */

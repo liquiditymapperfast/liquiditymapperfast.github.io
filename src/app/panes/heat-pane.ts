@@ -3,7 +3,7 @@ import { buildLut } from '../heatmap/lut.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
 import type { Kernels } from '../kernels.ts';
-import { PALETTES, rgb } from '../theme.ts';
+import { PALETTES, rgb, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
@@ -249,6 +249,7 @@ export class HeatPane {
     const market = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId);
     paintWatermark(ctx, p, pw, ph, [market?.base && market.quote ? `${market.base}/${market.quote}` : '', state.timeframe].filter(Boolean).join(' · '));
     this.mirror = null;
+    this.#paintHistoryStart(ctx, pw, ph, p);
     this.#paintLayers(ctx, state, pw, ph);
     this.#paintVolume(ctx, state, pw, ph, this.#lodFrame.narrowing);
     if (state.show.footprint) paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p);
@@ -315,6 +316,22 @@ export class HeatPane {
     ctx.fillText(title, 12, 16);
     if (detail) { ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = up ? p.candleUp : p.candleDown; ctx.fillText(detail, 12, 32); }
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  }
+
+  /**
+   * Where the recorded depth begins, when that is inside the view: a page that reads the exchanges itself records only while it is
+   * open, so the map to the left of this line is empty by nature and the line says so rather than leaving it to look broken.
+   */
+  #paintHistoryStart(ctx: CanvasRenderingContext2D, pw: number, ph: number, p: Palette): void {
+    const since = this.hub.recordedSince, v = this.view;
+    if (!(since > v.t0 && since < v.t1)) return;
+    const x = Math.round(v.xOf(since, pw)) + 0.5, label = `depth recorded from ${clock(since)}`;
+    ctx.save();
+    ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = p.muted; ctx.globalAlpha = 0.85; ctx.textBaseline = 'top';
+    if (x >= ctx.measureText(label).width + 12) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, 6); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, 6); }
+    ctx.restore();
   }
 
   #paintLayers(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {

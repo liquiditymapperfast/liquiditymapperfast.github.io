@@ -21,7 +21,7 @@ export async function openVenueDialog(venues: VenueControl, selectionProduct: ()
     const note = el('p', { class: 'muted' });
     for (const entry of catalog.venues) {
       const box = el('input', { type: 'checkbox', checked: entry.selected, disabled: !entry.supported });
-      const label = el('span', { class: 'muted', textContent: entry.status });
+      const label = el('span', { class: entry.state === 'blocked' ? 'muted blocked' : 'muted', textContent: entry.status });
       box.onchange = () => count();
       rows.push({ entry, status: entry.status, label, box });
       list.append(el('label', {}, box, entry.name, label));
@@ -44,8 +44,12 @@ export async function openVenueDialog(venues: VenueControl, selectionProduct: ()
 
     const refresh = async () => {
       try {
-        const status = new Map((await venues.catalog()).venues.map(v => [v.id, v.status] as const));
-        for (const row of rows) { const text = status.get(row.entry.id) ?? row.status; if (row.label.textContent !== text) row.label.textContent = text; }
+        const status = new Map((await venues.catalog()).venues.map(v => [v.id, v] as const));
+        for (const row of rows) {
+          const now = status.get(row.entry.id), text = now?.status ?? row.status;
+          if (row.label.textContent !== text) row.label.textContent = text;
+          row.label.classList.toggle('blocked', now?.state === 'blocked');
+        }
       } catch { /* the next tick retries */ }
     };
     timer = window.setInterval(() => void refresh(), 2000);

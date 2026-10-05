@@ -69,6 +69,18 @@ test('OKX volume is read in coin, not contracts, and Coinbase rows are reordered
   assert.deepEqual(coinbase[0]!.slice(0, 6), [T0, 10, 12, 9, 11, 3]);
 });
 
+test('Deribit candles go over its WebSocket, because its HTTP chart endpoint cannot be read from a page', async () => {
+  let seen: { url: string; request: { method: string; params: { resolution: string } } } | undefined;
+  const rows = await fetchCandles('deribit:BTC-PERPETUAL', HOUR, T0, T0 + HOUR, async (url, init) => {
+    seen = { url, request: JSON.parse(init!.body!) };
+    return { result: { ticks: [T0], open: [10], high: [12], low: [9], close: [11], volume: [4] } };
+  });
+  assert.ok(seen!.url.startsWith('wss://www.deribit.com/'));
+  assert.equal(seen!.request.method, 'public/get_tradingview_chart_data');
+  assert.equal(seen!.request.params.resolution, '60');
+  assert.deepEqual(rows[0]!.slice(0, 6), [T0, 10, 12, 9, 11, 4]);
+});
+
 test('Hyperliquid candles are asked for with a POST body', async () => {
   let seen: { method?: string; body?: string } | undefined;
   const rows = await fetchCandles('hyperliquid:BTC-PERP', MINUTE, T0, T0 + MINUTE, async (_url, init) => { seen = init; return [{ t: T0, o: '10', h: '12', l: '9', c: '11', v: '4' }]; });

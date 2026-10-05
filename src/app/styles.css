@@ -32,6 +32,13 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .chip { padding: 1px 8px; border-radius: 999px; font-size: 11px; }
 .chip.off { color: var(--muted); text-decoration: line-through; background: transparent; }
 .chip.scoped-out { opacity: .38; }
+/* A venue this location cannot reach: not a toggle, so it looks like a plain tag with a dashed edge. */
+.chip.blocked { color: var(--muted); border: 1px dashed var(--line); cursor: help; }
+.blocked-chips:empty { display: none; }
+.toolbar .notice { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid color-mix(in srgb, var(--ask) 45%, var(--line)); background: color-mix(in srgb, var(--ask) 12%, var(--panel)); }
+.toolbar .notice[hidden] { display: none; }
+.toolbar .notice-close { margin-left: auto; padding: 0 8px; line-height: 1.4; }
+.venue-list .blocked { color: var(--ask); }
 .seg.scope.inert { opacity: .6; }
 .seg.scope button.on { background: var(--ui); border-color: var(--ui); color: #fff; }
 

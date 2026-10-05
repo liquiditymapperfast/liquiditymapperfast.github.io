@@ -66,7 +66,21 @@ interface Run {
   probe: { ok: boolean | null; at: number; pending: boolean };
 }
 
+/** One request and its first reply over a WebSocket (see `Fetcher`). */
+function socketRequest(url: string, body: string, timeoutMs: number): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    let settled = false;
+    const timer = setTimeout(() => settle(() => reject(new Error('the socket request timed out'))), timeoutMs);
+    const settle = (finish: () => void): void => { if (settled) return; settled = true; clearTimeout(timer); try { socket.close(); } catch { /* already closed */ } finish(); };
+    socket.onopen = () => socket.send(body);
+    socket.onmessage = event => settle(() => { try { resolve(JSON.parse(String(event.data))); } catch (error) { reject(error); } });
+    socket.onerror = () => settle(() => reject(new Error('the socket request failed')));
+    socket.onclose = () => settle(() => reject(new Error('the socket closed before it answered')));
+  });
+}
 const defaultGet: Fetcher = async (url, init) => {
+  if (url.startsWith('wss://')) return socketRequest(url, init?.body ?? '', 15_000);
   const response = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();

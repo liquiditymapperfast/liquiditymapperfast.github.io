@@ -8,6 +8,8 @@ import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts
 import type { EngineState } from './sound/engine.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
+/** Layers that can be chosen today. The others are announced in the dropdown as upcoming and need a data source that is not connected yet. */
+export const AVAILABLE_LAYERS: readonly Layer[] = ['liquidity'];
 export type LadderMode = 'aggregated' | 'single' | 'compact';
 export type LadderShow = 'levels' | 'cumulative' | 'both';
 /** Which kind of market the liquidity views draw: spot books, perpetual books, or every enabled venue. */
@@ -96,6 +98,8 @@ export function initialState(): AppState {
   state.heat = { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto', ...saved.heat };
   state.lt = { ...LT_DEFAULTS, view: 'lines', ...saved.lt };
   state.theme = resolveThemeId(state.theme);
+  // A layer saved before it was withdrawn would otherwise open on an empty chart.
+  if (!AVAILABLE_LAYERS.includes(state.layer)) state.layer = 'liquidity';
   state.barStatOptions = { ...DEFAULT_STAT_OPTIONS, ...saved.barStatOptions };
   state.barStats = Array.isArray(saved.barStats) ? saved.barStats.filter((id): id is string => typeof id === 'string') : [...DEFAULT_BAR_STATS];
   return state;

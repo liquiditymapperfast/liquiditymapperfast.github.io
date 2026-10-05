@@ -37,5 +37,5 @@ export function buildSoundPanel(store: Store, sounds: Sounds, rerender: () => vo
 
   body.append(heading('Candles'));
   body.append(switchRow('Chime on unusual volume', 'One soft chime when a candle closes with unusually large volume (the sensitivity is set in Highlights).', s.barChime, barChime => set({ barChime })));
-  body.append(note('Liquidation sounds are not offered: the feeds here carry no real liquidation events (the liquidation layer is mock data without credentials).'));
+  body.append(note('Liquidation sounds are not offered: the public feeds used here carry no liquidation events.'));
 }
