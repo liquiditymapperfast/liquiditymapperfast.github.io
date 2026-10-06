@@ -44,9 +44,10 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .seg.scope.inert { opacity: .6; }
 .seg.scope button.on { background: var(--ui); border-color: var(--ui); color: #fff; }
 
-main { --side-w: 420px; display: grid; grid-template-columns: minmax(0, 1fr) 6px var(--side-w); min-height: 0; }
+main { --side-w: 420px; --flow-w: 300px; display: grid; grid-template-columns: var(--flow-w) 6px minmax(0, 1fr) 6px var(--side-w); min-height: 0; }
 .chart-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.side-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.side-col, .flow-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.side-col[hidden], .flow-col[hidden], .splitter[hidden] { display: none; }
 .pane { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
 .pane[hidden] { display: none; }
 .pane.heat { flex: 1 1 auto; min-height: 240px; overflow: hidden; }
@@ -62,6 +63,12 @@ main { --side-w: 420px; display: grid; grid-template-columns: minmax(0, 1fr) 6px
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
 .pane.heat .map-recenter:hover { background: var(--panel); }
 .pane.ladder { flex: 1 1 auto; }
+.pane.cvd { flex: 1 1 auto; }
+.cvd-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+.cvd-wrap canvas { position: absolute; left: 0; top: 0; display: block; }
+.pane.cvd .cvd-span-select { display: none; }
+.pane.cvd .pane-head .cvd-gear { margin-left: auto; }
+.pane.cvd .pane-head .help { margin-left: 4px; }
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 
 .pane-head { display: flex; align-items: center; gap: 10px; min-height: 26px; padding: 2px 10px; flex: 0 0 auto; flex-wrap: wrap; border-bottom: 1px solid var(--line); font-size: 11px; }

@@ -1,6 +1,7 @@
 import { connectionStatus } from './net.ts';
 import type { DataSource, FootprintResponse, TickMessage } from './source.ts';
 import { PrintBook, fromWire, type Print } from './prints.ts';
+import { FlowBook } from './flow-book.ts';
 import type { Store, CandleRow } from './store.ts';
 import type { WorkerIn, WorkerOut, RasterStats } from './worker/raster.worker.ts';
 import type { CellShare } from './cell-sources.ts';
@@ -30,6 +31,11 @@ export class Hub {
   onPrints: (fresh: Print[]) => void = () => {};
   /** Called when the print book changed, so the chart can redraw its bubbles. */
   onPrintsChanged: () => void = () => {};
+  /** Taker flow per second for every instrument that has traded: the CVD column reads it, and sounds read what it just got. */
+  readonly flow = new FlowBook();
+  /** Called when the flow book changed (new seconds or history), about once a second. */
+  onFlowChanged: () => void = () => {};
+  #flowLoading = false;
   #printsWindow: { t0: number; t1: number } | null = null;
   #printsLoading = false;
   onRaster: (result: RasterResult) => void = () => {};
@@ -90,6 +96,7 @@ export class Hub {
       },
       onTick: tick => this.#tick(tick),
       onLayers: message => this.store.set({ layers: message.layers }),
+      onFlow: items => { this.flow.apply(items); this.onFlowChanged(); },
       onPrints: items => {
         const fresh = this.prints.add(items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; }));
         if (fresh.length) { this.onPrints(fresh); this.onPrintsChanged(); }
@@ -169,6 +176,25 @@ export class Hub {
     const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE));
     this.#printsLoading = true;
     this.source.prints(from, to).then(rows => { this.prints.add(rows); this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+  }
+
+  /**
+   * Make sure the flow book holds history reaching back to `from` for these instruments (a server answers a bounded number per request, so
+   * a long list is asked in parts). Safe to call every frame: it is a no-op once everything asked for is here, or while a request runs.
+   */
+  async ensureFlow(ids: readonly string[], from: number): Promise<void> {
+    if (this.#flowLoading) return;
+    const need = this.flow.missing(ids, from);
+    if (!need.length) return;
+    this.#flowLoading = true; this.flow.begin(need);
+    try {
+      const to = Date.now() + MINUTE;
+      for (let i = 0; i < need.length; i += 40) {
+        const part = need.slice(i, i + 40);
+        try { this.flow.load(await this.source.flow(part, from, to), part, from); } catch { this.flow.fail(part); }
+      }
+      this.onFlowChanged();
+    } finally { this.#flowLoading = false; }
   }
 
   /** Make sure recorded columns cover `view` (with margin) at a resolution suited to `widthPx`. */

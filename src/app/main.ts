@@ -6,6 +6,7 @@ import { loadKernels } from './kernels.ts';
 import { Store, initialState } from './store.ts';
 import { applyTheme } from './theme.ts';
 import { Sounds } from './sound/sounds.ts';
+import { Alerts } from './sound/alerts.ts';
 import { Toolbar } from './toolbar.ts';
 import { installTips } from './tip.ts';
 import { installTouchSelects } from './touch-select.ts';
@@ -13,6 +14,7 @@ import { lazy } from './lazy.ts';
 import { ScreenWake } from './wake.ts';
 import { HeatPane, gutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
+import { CvdPane } from './panes/cvd-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
 import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
@@ -59,7 +61,9 @@ async function main(): Promise<void> {
   const main = document.createElement('main');
   const chart = document.createElement('div'); chart.className = 'chart-col';
   const side = document.createElement('div'); side.className = 'side-col';
-  main.append(chart, side);
+  // The flow column (taker flow, active liquidity) sits left of the map, the order book (passive liquidity) right of it.
+  const flowCol = document.createElement('div'); flowCol.className = 'flow-col';
+  main.append(flowCol, chart, side);
   const dock = new Dock(main);
   app.append(toolbar.root, main, dock.root);
 
@@ -70,14 +74,16 @@ async function main(): Promise<void> {
   const oi = new OiPane(chart, store, heat.view);
   const lt = new LtPane(chart, store, heat.view, hub);
   const ladder = new LadderPane(side, store, kernels);
+  const cvd = new CvdPane(flowCol, store, hub, heat.view);
   const arrange = new Layout(main, chart, side, [
     { id: 'heat', root: heat.root, min: 240 },
     { id: 'bars', root: bars.root, height: 84, min: 56, head: bars.header },
     { id: 'depth', root: depth.root, height: 132, min: 70, head: depth.header },
     { id: 'oi', root: oi.root, height: 150, min: 60, head: oi.header },
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
-  ]);
-  const lower = () => { depth.invalidate(); oi.invalidate(); lt.invalidate(); bars.invalidate(); };
+  ], flowCol);
+  const lower = () => { depth.invalidate(); oi.invalidate(); lt.invalidate(); bars.invalidate(); if (store.state.cvd.span === 'map') cvd.invalidate(); };
+  hub.onFlowChanged = () => cvd.invalidate();
   // A finger on a pane under the map moves the time axis it shares with the map.
   for (const pane of [depth, oi, lt, bars]) pane.useTimeGestures(heat.timeGestures());
   heat.onFrame = lower; heat.onView = lower;
@@ -85,10 +91,13 @@ async function main(): Promise<void> {
   toolbar.onSelectMarket = id => store.set({ marketId: id });
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
   const sounds = new Sounds(store); toolbar.attachSounds(sounds); sounds.start();
+  // Sounds the panels may make about what happens in them (flow bursts, walls, the balance, candle closes); the bursts are also marked on the flow column.
+  const alerts = new Alerts(store, hub.flow, sounds.engine); toolbar.attachAlerts(alerts); alerts.start();
+  alerts.onChange = () => cvd.invalidate(); cvd.events = alerts.bursts;
   hub.onPrints = fresh => sounds.feed(fresh);
   hub.onPrintsChanged = () => heat.invalidate();
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
-  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars]) p.setPalette(name); toolbar.previewTheme(name); };
+  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
   // An address like #guide/mirror opens the guide there.
@@ -109,16 +118,22 @@ async function main(): Promise<void> {
     const s = store.state;
     document.documentElement.style.setProperty('--gutter', `${gutter(s)}px`);
     depth.root.hidden = !s.show.depth; oi.root.hidden = !s.show.oi; lt.root.hidden = !s.show.lt; bars.root.hidden = !s.show.footprint;
+    // The two side panels vanish and return at once: nothing is rebuilt, a hidden column is simply not laid out.
+    cvd.root.hidden = !s.show.cvd; ladder.root.hidden = !s.show.book;
+    arrange.columns({ flow: s.show.cvd, book: s.show.book });
     arrange.rebuild();
+    if (s.show.cvd) cvd.invalidate(); if (s.show.book) ladder.invalidate();
     dock.sync(s.show);
   };
 
   store.subscribe((state, changed) => {
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
-    if (changed.has('theme')) { applyTheme(state.theme); for (const p of [heat, ladder, depth, oi, lt, bars]) p.setPalette(state.theme); }
+    if (changed.has('theme')) { applyTheme(state.theme); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(state.theme); }
+    if (changed.has('cvd')) cvd.refresh();
     if (changed.has('show')) layout();
     if (changed.has('marketId') || changed.has('timeframe')) void hub.loadSeries(true).then(() => { heat.fit(); lower(); });
-    if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); }
+    if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.invalidate(); }
+    if (changed.has('markets')) cvd.invalidate();
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('levels')) { ladder.invalidate(); ladder.syncVenues(); heat.invalidate(); }
@@ -132,7 +147,7 @@ async function main(): Promise<void> {
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
-  for (const p of [heat, ladder, depth, oi, lt, bars]) p.setPalette(store.state.theme);
+  for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(store.state.theme);
   layout(); ladder.syncControls(); lt.refresh();
   arrange.setPaneHeight('bars', 12 + Math.max(1, enabledStats(store.state.barStats).length) * 24);
   toolbar.sync(store.state, heat.window);
@@ -142,7 +157,7 @@ async function main(): Promise<void> {
   window.setInterval(() => { void hub.loadSeries(true); }, 60_000);
   // OI is sampled about once a minute on the server; asking more often than that keeps the newest bar from lagging by a whole refresh.
   window.setInterval(() => { void hub.loadOi(); }, 20_000);
-  (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, sounds };
+  (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, cvd, sounds, alerts };
 }
 
 main().catch(error => {

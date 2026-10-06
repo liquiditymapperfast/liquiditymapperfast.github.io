@@ -10,14 +10,16 @@ import { t } from './i18n.ts';
  * A tab exists only while its pane is switched on in Settings (Footprint is what brings the bar-stats pane, "Stats").
  * A handle between the map and the pane resizes it, and the size is remembered per tab and orientation.
  */
-export type DockTab = 'map' | 'book' | 'depth' | 'oi' | 'lt' | 'stats';
+export type DockTab = 'map' | 'flow' | 'book' | 'depth' | 'oi' | 'lt' | 'stats';
 
 interface TabSpec { id: DockTab; label: string; tip: string; icon: string; /** The `show` switch that must be on; absent when the pane is always available. */ needs?: keyof AppState['show'] }
 const svg = (body: string): string => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 export const DOCK_TABS: readonly TabSpec[] = [
   { id: 'map', label: t('Map'), tip: t('The heatmap alone, at full size.'),
     icon: svg('<rect x="3.5" y="4" width="17" height="4.4" rx="1.2" fill="currentColor" fill-opacity=".28"/><rect x="3.5" y="10" width="17" height="4.4" rx="1.2" fill="currentColor" fill-opacity=".6"/><rect x="3.5" y="16" width="17" height="4.4" rx="1.2" fill="currentColor" fill-opacity=".16"/>') },
-  { id: 'book', label: t('Book'), tip: t('The order book ladder: every price level, with the size resting at each venue.'),
+  { id: 'flow', label: t('Flow'), tip: t('Taker flow: what each exchange bought and sold at market, spot and perpetual, biggest first.'), needs: 'cvd',
+    icon: svg('<path d="M3.5 17c3-1 4-8 7-8s3 5 5 5 3-8 5-8"/><path d="M3.5 20h17"/>') },
+  { id: 'book', label: t('Book'), tip: t('The order book ladder: every price level, with the size resting at each venue.'), needs: 'book',
     icon: svg('<path d="M4 6.5h9M4 11h13M4 15.5h7M4 20h11"/>') },
   { id: 'depth', label: t('Depth'), tip: t('Total bid and ask liquidity near the price, over time.'), needs: 'depth',
     icon: svg('<path d="M3.5 20V15h5V10.5h5V7h7"/><path d="M3.5 20h17"/>') },
@@ -45,8 +47,8 @@ export const resolveTab = (wanted: DockTab, show: AppState['show']): DockTab => 
  * or the pixels the person dragged it to. The result is a CSS length for `--dock-size`.
  */
 export const DEFAULT_SHARE: Readonly<Record<Axis, Readonly<Record<Exclude<DockTab, 'map'>, number>>>> = {
-  portrait: { book: 0.46, depth: 0.38, oi: 0.38, lt: 0.38, stats: 0.3 },
-  landscape: { book: 0.46, depth: 0.42, oi: 0.42, lt: 0.42, stats: 0.38 },
+  portrait: { flow: 0.5, book: 0.46, depth: 0.38, oi: 0.38, lt: 0.38, stats: 0.3 },
+  landscape: { flow: 0.46, book: 0.46, depth: 0.42, oi: 0.42, lt: 0.42, stats: 0.38 },
 };
 export const clampSize = (px: number, available: number, axis: Axis): number => Math.round(Math.max(axis === 'portrait' ? 120 : 220, Math.min(available - (axis === 'portrait' ? 150 : 200), px)));
 

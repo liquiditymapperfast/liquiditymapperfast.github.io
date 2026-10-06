@@ -7,7 +7,7 @@ import { t } from './i18n.ts';
  * What each part of the page is, in two sizes: a one-sentence tooltip (`tip`) and a short explanation (`body`) behind a "?" button,
  * with the section of the guide that goes further. Tooltips, "?" panels and the guide all read from here so they cannot disagree.
  */
-export type HelpId = 'profile' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook';
+export type HelpId = 'profile' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book';
 
 export interface HelpTopic {
   title: string;
@@ -95,6 +95,17 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     tip: t('One row of numbers per statistic under each candle: volume, delta (buys minus sells), cumulative delta and more. Click Stats to choose.'),
     body: [t('Each row is one statistic, one cell per candle, shaded by size. The defaults are volume, delta (buy volume minus sell volume) and cvd (the running sum of delta).'),
       t('Press Stats to add statistics such as the point of control, stacked imbalances or trades by size. These come from the executions recorded while the page was open, so they start empty and fill with time.')],
+  },
+  cvd: {
+    title: t('Flow'), guide: 'flow',
+    tip: t('The taker-flow column left of the map: for every exchange, how much was bought and sold at market over time (cumulative volume delta), spot in blue and perpetual in amber, biggest exchanges first. The top row adds them all.'),
+    body: [t('Passive liquidity (the heatmap and the book) is what traders have placed and may pull; flow is what they have actually done. A line rising means buyers are lifting offers faster than sellers are hitting bids.'),
+      t('Rows are ranked by volume over the window you choose and re-ranked now and then. Every line has its own scale, so compare shapes, not heights. The labels are on the left so that the ends of the lines stay clear. Hover a row for its numbers; the gear sets how many exchanges, how tall each row is and when the order changes.')],
+  },
+  book: {
+    title: t('Order book'), guide: 'order-book',
+    tip: t('Show or hide the order book column at the right of the map.'),
+    body: [],
   },
   orderBook: {
     title: t('Order book'), guide: 'order-book',

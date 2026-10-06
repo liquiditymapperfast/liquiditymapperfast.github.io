@@ -20,6 +20,7 @@ import { rangeRow, switchRow, note, togglePanel } from './ui.ts';
 import { openMenu } from './menu.ts';
 import { buildSoundPanel } from './sound/panel.ts';
 import type { Sounds } from './sound/sounds.ts';
+import type { Alerts } from './sound/alerts.ts';
 import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
 import { CONTRAST } from './heatmap/window.ts';
@@ -44,6 +45,9 @@ const IDLE_GRACE_MS = 20_000;
 /** What the dropdown says next to a layer that cannot be chosen yet. */
 const UPCOMING = 'upcoming';
 
+/** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['bubbles', t('Trades')]];
+
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
 
@@ -66,6 +70,7 @@ export class Toolbar {
   #soundButton = el('button', { class: 'sound-btn', textContent: t('Sound'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
   #sounds: Sounds | null = null;
+  #alerts: Alerts | null = null;
   #highlights = el('button', { textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
   #heat = {
     style: el('select', { ariaLabel: t('Colours'), tip: `${t('Heatmap colouring.')} ${HEAT_STYLES.map(s => `${s.label}: ${s.title}.`).join(' ')}` }),
@@ -115,12 +120,12 @@ export class Toolbar {
       this.#layer.append(option);
     }
     this.#layer.onchange = () => this.store.set({ layer: this.#layer.value as Layer });
-    for (const [key, label] of [['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['bubbles', t('Trades')]] as const)
+    for (const [key, label] of PANE_TOGGLES)
       this.#toggles.append(el('button', { textContent: label, tip: HELP[key === 'bubbles' ? 'bubbles' : key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) }));
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildSoundPanel(this.store, sounds, () => this.#soundPanel?.render(build), tools, body);
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildSoundPanel(this.store, sounds, () => this.#soundPanel?.render(build), tools, body, this.#alerts);
       this.#soundPanel = togglePanel(this.#soundButton, { title: t('Sounds'), width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build);
     };
     this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => this.#buildHighlights(tools, body)); };
@@ -227,7 +232,7 @@ export class Toolbar {
     setValue(this.#market, state.marketId);
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
-    [...this.#toggles.children].forEach((b, i) => b.classList.toggle('on', state.show[(['profile', 'depth', 'oi', 'candles', 'footprint', 'lt', 'mirror', 'volume', 'bubbles'] as const)[i]!]));
+    [...this.#toggles.children].forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
     this.#heat.auto.classList.toggle('on', state.heat.auto);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
@@ -301,6 +306,7 @@ export class Toolbar {
 
   /** The sound engine the Sounds panel controls. */
   attachSounds(sounds: Sounds): void { this.#sounds = sounds; }
+  attachAlerts(alerts: Alerts): void { this.#alerts = alerts; }
 
   /** Redraw the parts of the toolbar that depend on the palette (the legend ramp) for a previewed theme. */
   previewTheme(id: string): void {

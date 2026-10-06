@@ -173,10 +173,11 @@ html[data-layout^="phone"] table.keys td:first-child { width: auto; font-weight:
 /* ---- the phone's panes: the map above, one pane at a time below it (or beside it) ------------------------------------------------- */
 /* The two columns of the desktop dissolve into one list of panes. */
 html[data-layout^="phone"] main { display: flex; flex-direction: column; min-height: 0; }
-html[data-layout^="phone"] .chart-col, html[data-layout^="phone"] .side-col { display: contents; }
+html[data-layout^="phone"] .chart-col, html[data-layout^="phone"] .side-col, html[data-layout^="phone"] .flow-col { display: contents; }
 html[data-layout^="phone"] .splitter, html[data-layout^="phone"] .grip { display: none; }
 html[data-layout^="phone"] .pane.heat { order: 0; flex: 1 1 0; min-height: 140px; }
-html[data-layout^="phone"] .chart-col > .pane:not(.heat), html[data-layout^="phone"] .side-col > .pane { display: none; order: 2; }
+html[data-layout^="phone"] .chart-col > .pane:not(.heat), html[data-layout^="phone"] .side-col > .pane, html[data-layout^="phone"] .flow-col > .pane { display: none; order: 2; }
+html[data-layout^="phone"] main[data-tab="flow"] .pane.cvd:not([hidden]),
 html[data-layout^="phone"] main[data-tab="book"] .pane.ladder:not([hidden]),
 html[data-layout^="phone"] main[data-tab="depth"] .pane.depth:not([hidden]),
 html[data-layout^="phone"] main[data-tab="oi"] .pane.oi:not([hidden]),
@@ -210,6 +211,7 @@ html[data-layout="phone-landscape"] main:not([data-tab="map"]) > .dock-grip { di
 html[data-layout="phone-landscape"] .dock-grip i { width: 4px; height: 40px; }
 html[data-layout="phone-landscape"] .dock-grip.active i { width: 4px; height: 56px; }
 html[data-layout="phone-landscape"] .dock-grip::before { inset: 0 -12px; }
+html[data-layout="phone-landscape"] main[data-tab="flow"] .pane.cvd:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="book"] .pane.ladder:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="depth"] .pane.depth:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="oi"] .pane.oi:not([hidden]),
@@ -222,6 +224,9 @@ html[data-layout="phone-landscape"] .dock-tab.on { box-shadow: inset -3px 0 0 va
 /* The headers of the panes. */
 html[data-layout^="phone"] .pane-head { min-height: 42px; padding: 3px 8px 3px 12px; gap: 2px 8px; }
 html[data-layout^="phone"] .pane-head strong { font-size: 13px; }
+/* The flow column's span buttons become a menu on a phone. */
+html[data-layout^="phone"] .pane.cvd .cvd-seg { display: none; }
+html[data-layout^="phone"] .pane.cvd .cvd-span-select { display: inline-block; }
 html[data-layout^="phone"] .pane-head .readout { order: 9; flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding-bottom: 3px; }
 /* A control's name is a small caption above it: there is no room beside it, and "Auto · 100" alone does not say what it sets. */
 html[data-layout^="phone"] .pane-head .ctl { display: flex; flex-direction: column; align-items: stretch; gap: 1px; font-size: 9.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; line-height: 1.1; }

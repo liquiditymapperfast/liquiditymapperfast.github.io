@@ -2,7 +2,7 @@ import { setTip } from './tip.ts';
 import { isPhone } from './device.ts';
 import { t } from './i18n.ts';
 /** Resizable, reorderable layout: splitters between panes, persisted in localStorage. */
-interface Saved { sideW?: number; heights?: Record<string, number>; order?: string[] }
+interface Saved { sideW?: number; flowW?: number; heights?: Record<string, number>; order?: string[] }
 const KEY = 'hlm-layout-v2';
 
 function read(): Saved { try { return JSON.parse(window.localStorage.getItem(KEY) ?? '{}') as Saved; } catch { return {}; } }
@@ -14,8 +14,11 @@ export class Layout {
   #saved = read();
   #panes: LayoutPane[];
   readonly #splitters: HTMLElement[] = [];
+  /** The vertical splitters: between the flow column and the map, and between the map and the book. */
+  #flowSplit: HTMLElement | null = null;
+  #sideSplit: HTMLElement;
 
-  constructor(private main: HTMLElement, private chart: HTMLElement, private side: HTMLElement, panes: LayoutPane[]) {
+  constructor(private main: HTMLElement, private chart: HTMLElement, private side: HTMLElement, panes: LayoutPane[], private flow: HTMLElement | null = null) {
     this.#panes = panes;
     // Restore pane order and heights.
     const order = this.#saved.order?.filter(id => panes.some(p => p.id === id)) ?? [];
@@ -28,12 +31,23 @@ export class Layout {
     // Column splitter between the chart and side columns.
     const column = document.createElement('div'); column.className = 'splitter v'; setTip(column, t('Drag to resize'));
     this.main.insertBefore(column, this.side);
+    this.#sideSplit = column;
     this.#setSideWidth(this.#saved.sideW ?? 420);
     this.#drag(column, (dx) => this.#setSideWidth(startSide - dx), () => { startSide = this.#sideWidth(); }, () => this.#persist());
     let startSide = this.#sideWidth();
+    if (this.flow) {
+      const left = document.createElement('div'); left.className = 'splitter v'; setTip(left, t('Drag to resize'));
+      this.main.insertBefore(left, this.chart);
+      this.#flowSplit = left;
+      this.#setFlowWidth(this.#saved.flowW ?? 300);
+      this.#drag(left, (dx) => this.#setFlowWidth(startFlow + dx), () => { startFlow = this.#flowWidth(); }, () => this.#persist());
+      var startFlow = this.#flowWidth();
+    }
     this.rebuild();
   }
 
+  #flowWidth(): number { return parseFloat(getComputedStyle(this.main).getPropertyValue('--flow-w')) || 300; }
+  #setFlowWidth(w: number): void { this.main.style.setProperty('--flow-w', `${Math.round(Math.max(200, Math.min(window.innerWidth * 0.5, w)))}px`); }
   #sideWidth(): number { return parseFloat(getComputedStyle(this.main).getPropertyValue('--side-w')) || 420; }
   #setSideWidth(w: number): void { this.main.style.setProperty('--side-w', `${Math.round(Math.max(260, Math.min(window.innerWidth * 0.7, w)))}px`); }
   #height(pane: LayoutPane): number { return pane.root.getBoundingClientRect().height; }
@@ -43,7 +57,7 @@ export class Layout {
     if (isPhone()) return;
     const heights: Record<string, number> = {};
     for (const p of this.#panes) if (p.height !== undefined && !p.root.hidden) heights[p.id] = Math.round(this.#height(p));
-    write({ sideW: this.#sideWidth(), heights: { ...this.#saved.heights, ...heights }, order: this.#panes.map(p => p.id) });
+    write({ sideW: this.#sideWidth(), flowW: this.flow ? this.#flowWidth() : this.#saved.flowW, heights: { ...this.#saved.heights, ...heights }, order: this.#panes.map(p => p.id) });
     this.#saved = read();
   }
 
@@ -57,6 +71,22 @@ export class Layout {
       const onUp = () => { handle.classList.remove('active'); handle.removeEventListener('pointermove', onMove); handle.removeEventListener('pointerup', onUp); handle.removeEventListener('pointercancel', onUp); end(); };
       handle.addEventListener('pointermove', onMove); handle.addEventListener('pointerup', onUp); handle.addEventListener('pointercancel', onUp);
     });
+  }
+
+  /**
+   * Show or hide the two side columns (the flow column left of the map and the book right of it) and give the grid the columns that are left.
+   * Hiding is instant: nothing is rebuilt, a column and its splitter just stop being laid out.
+   */
+  columns(show: { flow: boolean; book: boolean }): void {
+    const flow = show.flow && this.flow !== null, book = show.book;
+    if (this.flow) this.flow.hidden = !flow;
+    if (this.#flowSplit) this.#flowSplit.hidden = !flow;
+    this.side.hidden = !book; this.#sideSplit.hidden = !book;
+    const tracks: string[] = [];
+    if (flow) tracks.push('var(--flow-w)', '6px');
+    tracks.push('minmax(0,1fr)');
+    if (book) tracks.push('6px', 'var(--side-w)');
+    this.main.style.gridTemplateColumns = tracks.join(' ');
   }
 
   /** Recreate the horizontal splitters between visible panes (call after panes are shown, hidden or reordered). */

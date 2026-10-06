@@ -6,6 +6,7 @@ import { resolveThemeId } from './theme.ts';
 import { DEFAULT_STAT_OPTIONS, type StatOptions } from './stat-options.ts';
 import { DEFAULT_HIGHLIGHT, readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
+import { CVD_DEFAULTS, readCvd, type CvdSettings } from './cvd/settings.ts';
 import type { EngineState } from './sound/engine.ts';
 import { t } from './i18n.ts';
 
@@ -22,6 +23,9 @@ export type CandleRow = [number, number, number, number, number, number, number?
 /** [start, open, high, low, close] */
 export type OiBar = [number, number, number, number, number];
 export interface LayerLevel { id: string; side: string; price: number; notionalUsd: number; active?: boolean; amount?: number }
+
+/** Which panes are on the first time. */
+export const DEFAULT_SHOW: AppState['show'] = { profile: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
 
 /** Statistics shown by default in the bar-stats strip (ids from panes/bar-stats.ts). */
 export const DEFAULT_BAR_STATS: readonly string[] = ['vol', 'delta', 'cvd'];
@@ -42,7 +46,9 @@ export interface AppState {
   oi: OiBar[];
   /** Instrument the OI bars belong to (the market's own, or a reference perp when the market has no OI history). */
   oiInstrument: string;
-  show: { profile: boolean; depth: boolean; oi: boolean; candles: boolean; footprint: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean };
+  show: { profile: boolean; depth: boolean; oi: boolean; candles: boolean; footprint: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean; /** The taker-flow (CVD) column left of the map, and the order book column right of it. */ cvd: boolean; book: boolean };
+  /** The CVD column's settings. */
+  cvd: CvdSettings;
   /** What counts as standing out (anomalous volume, OI change, ...), shared by every pane. */
   highlight: HighlightOptions;
   /** Sound notifications: master switch, volume, which trades count and the size tiers. */
@@ -83,7 +89,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeframe', 'layer', 'show', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -93,12 +99,13 @@ export function initialState(): AppState {
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
-    show: { profile: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true }, highlight: { ...DEFAULT_HIGHLIGHT }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
+    show: { ...DEFAULT_SHOW }, cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
     theme: 'light', followLive: true, keepAwake: false, hover: null, ...saved,
   };
   // Saved objects may predate newer keys: keep the defaults for anything they lack.
-  state.show = { profile: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, ...saved.show };
+  state.show = { ...DEFAULT_SHOW, ...saved.show };
+  state.cvd = readCvd(saved.cvd);
   state.sounds = readSounds(saved.sounds);
   state.highlight = readHighlight(saved.highlight);
   state.scope = saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all';
