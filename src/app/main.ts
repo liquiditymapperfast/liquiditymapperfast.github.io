@@ -89,7 +89,7 @@ async function main(): Promise<void> {
     { id: 'oi', root: oi.root, height: 150, min: 60, head: oi.header },
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
   ], flowCol);
-  const lower = () => { depth.invalidate(); oi.invalidate(); lt.invalidate(); bars.invalidate(); if (store.state.cvd.span === 'map') cvd.invalidate(); };
+  const lower = () => { depth.invalidate(); oi.invalidate(); lt.invalidate(); bars.invalidate(); cvd.followMap(); };
   hub.onFlowChanged = () => cvd.invalidate();
   // A finger on a pane under the map moves the time axis it shares with the map.
   for (const pane of [depth, oi, lt, bars]) pane.useTimeGestures(heat.timeGestures());

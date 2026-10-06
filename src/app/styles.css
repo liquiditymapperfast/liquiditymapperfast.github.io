@@ -106,7 +106,7 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .splitter.v { cursor: col-resize; touch-action: none; }
 .splitter.h { cursor: row-resize; height: 6px; touch-action: none; }
 .splitter::after { content: ""; position: absolute; inset: -3px; }
-.grip { cursor: grab; touch-action: none; color: var(--muted); user-select: none; margin-right: -4px; font-size: 14px; line-height: 1; }
+.grip { cursor: grab; touch-action: none; color: var(--muted); user-select: none; margin-right: -4px; font-size: 14px; line-height: 1; position: relative; z-index: 6; /* above a splitter's wider touch zone, which would otherwise take the touch */ }
 .pane.moving { box-shadow: inset 0 0 0 2px var(--muted); }
 .ladder-scroll { flex: 1 1 auto; min-height: 0; overflow-x: auto; overflow-y: hidden; }
 .ladder-scroll canvas { display: block; }

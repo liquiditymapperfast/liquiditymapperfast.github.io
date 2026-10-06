@@ -58,6 +58,8 @@ export class CvdPane {
   #scroll = 0;
   #hover: { x: number; y: number } | null = null;
   #gutter = GUTTER_MIN;
+  /** The window the last frame drew, for `followMap`. */
+  #drawn: { t0: number; t1: number } | null = null;
   #empty: string | null = null;
   #spanButtons = new Map<CvdSpan, HTMLButtonElement>();
   #spanSelect = el('select', { class: 'cvd-span-select', ariaLabel: t('Time span') });
@@ -81,6 +83,16 @@ export class CvdPane {
   get header(): HTMLElement { return this.controls; }
   setPalette(name: string): void { this.#palette = PALETTES[name] ?? PALETTES.light!; this.invalidate(); }
   invalidate(): void { if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#render(); }); }
+  /**
+   * The map's view changed (it does on every frame while it follows the market, and while the pointer moves over it): with the Map span the column
+   * follows it, but only redraws when the window has moved by a pixel of its own plot, so a hover on the map costs the column nothing.
+   */
+  followMap(): void {
+    if (this.store.state.cvd.span !== 'map' || this.root.hidden) return;
+    const drawn = this.#drawn, pixel = (this.view.t1 - this.view.t0) / Math.max(1, this.#model?.columns ?? 200);
+    if (drawn && Math.abs(this.view.t0 - drawn.t0) < pixel && Math.abs(this.view.t1 - drawn.t1) < pixel) return;
+    this.invalidate();
+  }
   /** The settings changed (or the person asked for a fresh ranking). */
   refresh(): void { this.#ranker.reset(); this.#syncControls(); this.#modelKey = ''; this.invalidate(); }
   dispose(): void { window.clearInterval(this.#timer); }
@@ -215,6 +227,7 @@ export class CvdPane {
       this.#modelKey = key;
     }
     const model = this.#model;
+    this.#drawn = { t0: this.view.t0, t1: this.view.t1 };
     this.#empty = emptyScopeMessage(s) ?? (!model.rows.length ? (ids.length ? t('Waiting for trades…') : t('No venues are enabled.')) : null);
     const layout = rowHeights(cfg.heights, this.#h, model.rows.map(r => r.share), { minRow: MIN_ROW, minAgg: MIN_AGG, price: PRICE_H });
     this.#layout = layout;

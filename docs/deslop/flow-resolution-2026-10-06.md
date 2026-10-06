@@ -28,3 +28,17 @@ grows it, which is a class of bug this does not justify at a worst case of 8 ms 
 a pixel, not on every pointer move). So there is no kernel and one implementation of the scan, with its tests in `tests/shared-flow.test.mts`.
 
 If a day of data at 40 or more lanes ever shows up in a profile, the next step is a min/max pyramid (a coarse level for long spans), not WebAssembly.
+
+## What the column costs the page (measured 2026-10-06)
+
+Headless Chrome 1700 x 950, the browser source (every venue), 10 lanes of flow, the same session with the column switched off and on, main-thread time as a share of wall time
+(`Performance.getMetrics`, `TaskDuration`):
+
+| | column off | column on | cost |
+|---|---|---|---|
+| idle, 20 s (Map span) | 6.7 % | 7.8 % | +1.0 point |
+| idle, 24 h span | 6.7 % | 7.5 % | +0.7 point |
+| pointer scrubbing the map, 10 s | 37.9 % | 39.3 % | +1.3 points |
+
+The first version redrew the column on every map frame (+4.5 points while scrubbing); it now redraws only when the map's window has moved by one pixel of the column's own plot
+(`CvdPane.followMap`), and a hover on the map costs it nothing. Layout work is unchanged (no DOM is written per frame; the column is one canvas).
