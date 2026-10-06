@@ -8,7 +8,7 @@ const asPrint = (row: { t: number; inst: string; side: string; price: number; us
 type Row = { t: number; inst: string; side: string; price: number; usd: number };
 
 /** Large trades in the history database. */
-class SqlitePrintStore implements PrintStore {
+export class SqlitePrintStore implements PrintStore {
   readonly #db: DatabaseSync;
   constructor(dbPath: string) {
     this.#db = new DatabaseSync(dbPath);
@@ -19,8 +19,9 @@ class SqlitePrintStore implements PrintStore {
     return rows.reverse().flatMap(row => asPrint(row) ?? []);
   }
   query(from: number, to: number, minUsd: number, limit: number): Print[] {
-    const rows = this.#db.prepare('SELECT t, inst, side, price, usd FROM prints WHERE t >= ? AND t < ? AND usd >= ? ORDER BY t ASC LIMIT ?').all(from, to, minUsd, limit) as Row[];
-    return rows.flatMap(row => asPrint(row) ?? []);
+    // The newest matches are the ones kept when there are more than `limit` (the stream's contract): select from the newest end, then put them back in order.
+    const rows = this.#db.prepare('SELECT t, inst, side, price, usd FROM prints WHERE t >= ? AND t < ? AND usd >= ? ORDER BY t DESC, rowid DESC LIMIT ?').all(from, to, minUsd, limit) as Row[];
+    return rows.reverse().flatMap(row => asPrint(row) ?? []);
   }
   save(rows: Print[], expireBefore: number): void {
     const db = this.#db, insert = db.prepare('INSERT INTO prints (t, inst, side, price, usd) VALUES (?, ?, ?, ?, ?)');

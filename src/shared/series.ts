@@ -1,13 +1,22 @@
 /** Candle and open-interest series aggregated to a display timeframe. Compact array-of-arrays wire form. */
-export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
+/** Timeframe name to length in ms. It has no prototype, so a name that merely sounds like an object method ("constructor") is not a timeframe. */
+export const TIMEFRAMES: Readonly<Record<string, number>> = Object.freeze(Object.assign(Object.create(null) as Record<string, number>, { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 }));
+/** The length of the timeframe named `name`, or null when there is none (whatever the name is: a request can say anything). */
+export const timeframeMs = (name: unknown): number | null => typeof name === 'string' && Object.hasOwn(TIMEFRAMES, name) ? TIMEFRAMES[name]! : null;
 
 export interface CandleRow { start: number; open: number; high: number; low: number; close: number; volume?: number }
 /** [start, open, high, low, close, volume, sourceRows] */
 export type Candle = [number, number, number, number, number, number, number];
 
+/**
+ * Candles of `tfMs` built from smaller ones. A minute that appears more than once (history and a live copy, or two pages that overlap) counts
+ * once, as the row that came last: summing its volume again would double it.
+ */
 export function aggregateCandles(rows: Iterable<CandleRow>, tfMs: number): Candle[] {
   const buckets = new Map<number, Candle & { first: number; last: number }>();
-  for (const row of rows) {
+  const once = new Map<number, CandleRow>();
+  for (const row of rows) if (Number.isFinite(row.start)) once.set(row.start, row);
+  for (const row of [...once.values()].sort((a, b) => a.start - b.start)) {
     const { start, open, high, low, close } = row;
     if (![start, open, high, low, close].every(Number.isFinite)) continue;
     const key = Math.floor(start / tfMs) * tfMs;

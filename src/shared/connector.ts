@@ -19,6 +19,8 @@ const DEEP_BOOK_LEVELS = 2_000, DEEP_BOOK_INTERVAL_MS = 1_000;
 const MAX_LEVELS = 3_000;
 /** Default silence after which a feed is treated as dead; thin markets override it (a quiet book is not a broken one). */
 const SILENCE_MS = 20_000;
+/** How long a new connection may take to deliver its first data (the snapshot arrives on subscribing, so this is generous) before it is dropped and tried again. */
+const STARTUP_MS = 30_000;
 
 const num = (value: unknown): number => Number(value);
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -52,6 +54,8 @@ export abstract class BookConnector {
   #retry: ReturnType<typeof setTimeout> | null = null;
   #watchdog: ReturnType<typeof setInterval> | null = null;
   #attempt = 0;
+  /** Bumped whenever a connection ends or a new one starts, so what an old connection left in flight (a REST snapshot, an open event) can tell it is stale. */
+  #generation = 0; #connectAt = 0;
   #version = 0; #cachedVersion = -1; #cached: ValuedBook | null = null; #cachedAt = 0;
 
   get instrumentId(): string { return `${this.id}:${this.symbol}`; }
@@ -69,6 +73,10 @@ export abstract class BookConnector {
 
   /** How long the feed may stay silent before it is reconnected; the book is withheld a little after that. */
   protected silenceMs(): number { return SILENCE_MS; }
+  /** How long a new connection may stay without its first data before it is reconnected. */
+  protected startupMs(): number { return STARTUP_MS; }
+  /** The connection this is (a counter that changes whenever one ends or begins): work started for an older one must not touch this one. */
+  protected get generation(): number { return this.#generation; }
   /** Venues that resend the whole book many times a second only need the newest frame handled once per interval (0 = handle every frame). */
   protected coalesceMs(): number { return 0; }
   /** Application-level keepalive for venues that close idle sockets (WebSocket ping frames are answered by the runtime). */
@@ -87,18 +95,26 @@ export abstract class BookConnector {
   start(): void {
     if (this.state !== 'stopped') return;
     this.#connect();
-    this.#watchdog = setInterval(() => { if (this.state === 'live' && Date.now() - this.lastUpdate > this.silenceMs()) this.fail(`no data for ${Math.round(this.silenceMs() / 1000)} s`); }, 5_000);
+    this.#watchdog = setInterval(() => this.check(), 5_000);
     this.#watchdog.unref?.();
   }
+  /**
+   * One look at the feed: a live one that has gone quiet, or a new one that has not delivered its first data in time (an open socket whose
+   * subscription was never answered stays "connecting" for ever otherwise), is dropped and reconnected. Public so a test can say what time it is.
+   */
+  check(now: number = Date.now()): void {
+    if (this.state === 'live' && now - this.lastUpdate > this.silenceMs()) this.fail(`no data for ${Math.round(this.silenceMs() / 1000)} s`);
+    else if (this.state === 'connecting' && this.#socket !== null && now - this.#connectAt > this.startupMs()) this.fail(`no data ${Math.round(this.startupMs() / 1000)} s after connecting`);
+  }
   stop(): void {
-    this.state = 'stopped'; this.reset(); this.#stopPing(); this.#dropPending();
+    this.state = 'stopped'; this.#generation++; this.reset(); this.#stopPing(); this.#dropPending();
     if (this.#retry) clearTimeout(this.#retry); this.#retry = null;
     if (this.#watchdog) clearInterval(this.#watchdog); this.#watchdog = null;
     const socket = this.#socket; this.#socket = null; try { socket?.close(); } catch { /* already closed */ }
   }
   /** Drop the book and reconnect (sequence gap, bad frame, silence). */
   fail(reason: string): void {
-    this.failures++;
+    this.failures++; this.#generation++;
     this.lastError = reason; this.lastFailure = reason; this.reset(); this.#stopPing(); this.#dropPending();
     const socket = this.#socket; this.#socket = null; try { socket?.close(); } catch { /* already closed */ }
     this.#scheduleReconnect();
@@ -111,10 +127,11 @@ export abstract class BookConnector {
   protected record = record;
 
   #connect(): void {
-    this.state = 'connecting';
+    this.state = 'connecting'; this.#connectAt = Date.now(); this.#generation++;
     try {
       const socket = new WebSocket(this.url()); socket.binaryType = 'arraybuffer'; this.#socket = socket;
       socket.onopen = () => {
+        if (this.#socket !== socket) return; // the connection was stopped or replaced while it was opening: it must not subscribe now
         const send = (payload: unknown) => socket.send(typeof payload === 'string' ? payload : JSON.stringify(payload)); // a string is sent as it is (Bitget's "ping")
         this.open(send);
         const ka = this.keepalive();
@@ -238,18 +255,24 @@ export abstract class BinanceDiffDepthConnector extends BookConnector {
   protected abstract readonly restBase: string;
   /** Levels requested with the REST snapshot (the venue's maximum is 5000). */
   protected readonly snapshotLimit: number = 1000;
-  #lastUpdateId = 0; #prevU = 0; #synced = false; #buffer: Record<string, unknown>[] = []; #loading = false;
+  #lastUpdateId = 0; #prevU = 0; #synced = false; #buffer: Record<string, unknown>[] = [];
+  /** The connection a snapshot request is in flight for (-1: none), so one connection asks once and a retired one's answer is not taken for the next one's. */
+  #loadingFor = -1;
   protected url() { return `${this.wsBase}/ws/${this.symbol.toLowerCase()}@depth@100ms`; }
   protected open() { void this.#snapshot(); }
   async #snapshot(): Promise<void> {
-    if (this.#loading) return; this.#loading = true;
+    const generation = this.generation;
+    if (this.#loadingFor === generation) return; this.#loadingFor = generation;
     try {
       const response = await fetch(`${this.restBase}/api/v3/depth?symbol=${this.symbol}&limit=${this.snapshotLimit}`, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error(`snapshot HTTP ${response.status}`);
       const body = this.record(await response.json()); if (!body) throw new Error('snapshot not an object');
+      // An answer for a connection that has since ended or been replaced is not this one's snapshot: seeding it would put the new
+      // connection on a book from another moment and call it live.
+      if (generation !== this.generation) return;
       this.seed(num(body.lastUpdateId), this.rows(body.bids), this.rows(body.asks));
-    } catch (error) { this.fail(`snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 160)); }
-    finally { this.#loading = false; }
+    } catch (error) { if (generation === this.generation) this.fail(`snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 160)); }
+    finally { if (this.#loadingFor === generation) this.#loadingFor = -1; }
   }
   /** Install the REST snapshot and replay any diff events buffered while it loaded. */
   seed(lastUpdateId: number, bids: [number, number][], asks: [number, number][]): void {
@@ -263,13 +286,17 @@ export abstract class BinanceDiffDepthConnector extends BookConnector {
     if (!this.#lastUpdateId) { this.#buffer.push(e); if (this.#buffer.length > 5_000) this.fail('snapshot never arrived'); return; }
     this.#event(e);
   }
+  /**
+   * Binance's procedure: drop what the snapshot (or an earlier event) already covers, require the next range to contain the update after the
+   * last applied one, and resynchronise on a gap. A range that overlaps what was applied is applied again (levels carry absolute
+   * quantities, so that is harmless) and one that is wholly behind it is ignored: neither is a reason to throw the book away.
+   */
   #event(e: Record<string, unknown>) {
     const U = num(e.U), u = num(e.u);
-    if (u <= this.#lastUpdateId) return;
-    if (!this.#synced) {
-      if (U > this.#lastUpdateId + 1) { this.fail(`snapshot behind stream (${this.#lastUpdateId} < ${U})`); return; }
-      this.#synced = true;
-    } else if (U !== this.#prevU + 1) { this.fail(`sequence gap ${this.#prevU} -> ${U}`); return; }
+    const applied = this.#synced ? this.#prevU : this.#lastUpdateId;
+    if (u <= applied) return;
+    if (U > applied + 1) { this.fail(this.#synced ? `sequence gap ${applied} -> ${U}` : `snapshot behind stream (${applied} < ${U})`); return; }
+    this.#synced = true;
     this.#prevU = u; this.apply(this.bids, this.rows(e.b)); this.apply(this.asks, this.rows(e.a)); this.touch();
   }
   protected override reset() { super.reset(); this.#lastUpdateId = 0; this.#prevU = 0; this.#synced = false; this.#buffer = []; }

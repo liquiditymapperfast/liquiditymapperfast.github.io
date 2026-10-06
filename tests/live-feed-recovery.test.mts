@@ -17,7 +17,7 @@ class FakeSocket implements LiveFeedSocket {
 
 interface Rig { manager: LiveFeedManager; logs: string[]; failNext: () => void; hangRest: (on: boolean) => void }
 
-function rig(overrides: { startTimeoutMs?: number } = {}): Rig {
+function rig(overrides: { startTimeoutMs?: number; startWatchdogMs?: number } = {}): Rig {
   const logs: string[] = [];
   let armed = false, gate: Promise<void> = Promise.resolve(), open: () => void = () => {};
   const manager = new LiveFeedManager({
@@ -26,7 +26,7 @@ function rig(overrides: { startTimeoutMs?: number } = {}): Rig {
     // While the gate is closed every request waits, as one waits on a dead connection; opening it lets them all finish.
     restTransport: { request: async () => { await gate; return {}; } },
     oiPollMs: 0, reconnectBaseMs: 20, reconnectMaxMs: 60, transportIdleMs: 0,
-    startTimeoutMs: overrides.startTimeoutMs,
+    startTimeoutMs: overrides.startTimeoutMs, startWatchdogMs: overrides.startWatchdogMs,
     log: message => logs.push(message),
     // The first status of the Hyperliquid metadata request throws once: an error out of the middle of start(), after the old feeds are gone.
     onStatus: (status: LiveFeedStatusEvent) => { if (armed && status.id === 'hl-metadata') { armed = false; throw new Error('boom in the middle of start'); } },
@@ -140,4 +140,19 @@ test('stop() cancels a pending recovery', async () => {
   assert.equal(manager.startDiagnostics().recoveryPending, false);
   await new Promise(resolve => setTimeout(resolve, 150));
   assert.equal(manager.feeds.size, 0, 'no feed reopens after stop()');
+});
+
+test('the watchdog is running while the very first start is still waiting, so a hung first start is abandoned too', async () => {
+  // A normal start takes about 300 ms in this rig, so the timeout has to be well over that or the restarted attempt is itself judged too slow, again and again.
+  const { manager, hangRest } = rig({ startTimeoutMs: 600, startWatchdogMs: 25 });
+  hangRest(true);
+  const stuck = manager.start(config).catch(() => 'cancelled');
+  // No call to checkLiveness here: the manager's own timer has to notice that the start has run too long.
+  await until('the watchdog to restart the hung start', () => manager.startDiagnostics().recoveries >= 1, 2_000);
+  assert.equal(manager.startDiagnostics().lastRecovery?.reason, 'start timed out');
+  hangRest(false);
+  await until('feeds to open once the requests answer', () => manager.feeds.size > 0 && manager.startDiagnostics().lastStart?.ok === true);
+  assert.equal(manager.startDiagnostics().recoveries, 1, 'one restart, not a chase of ever newer ones');
+  await stuck;
+  manager.stop();
 });

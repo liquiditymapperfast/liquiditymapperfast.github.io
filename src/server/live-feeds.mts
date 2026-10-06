@@ -645,13 +645,16 @@ export class LiveFeedManager {
     this.#startInFlight = token;
     this.#pendingOptions = options;
     try {
-      const status = await this.#startNow(options);
+      const run = this.#startNow(options);
+      // Supervision begins with the attempt, not when it ends: a metadata request that never answers is exactly the start the watchdog is for
+      // (`running` is set by then: #startNow runs up to its first await before it returns).
+      this.#armWatchdog();
+      const status = await run;
       // A newer start() while this one ran owns the outcome.
       if (this.configurationGeneration === before + 1) {
         this.#goodOptions = options; this.#recoveryAttempt = 0;
         this.#lastStart = { at: began, ms: this.now() - began, ok: true };
       }
-      this.#armWatchdog();
       return status;
     } catch (error) {
       const message = String(feedError(error).message ?? error);
