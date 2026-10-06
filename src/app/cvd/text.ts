@@ -33,13 +33,17 @@ export function rowLabel(row: FamilyRow, window: string, height: number, showQui
   return [head, lanes.length === 1 ? lanes[0]! : { text: lanes.map(l => l.text).join(' '), tone: 'text' }];
 }
 
-/** The label of the aggregate row: every exchange together, and each kind's delta over the window. */
-export function aggregateLabel(model: CvdModel, height: number): LabelLine[] {
+/**
+ * The label of the aggregate row: every exchange together, and each kind's delta over the window. With the Spot or Perp filter on it says
+ * which kind these are and how many exchanges the filter leaves out, so a short list is not mistaken for a missing one.
+ */
+export function aggregateLabel(model: CvdModel, height: number, filter?: { kind: Kind; hidden: number }): LabelLine[] {
   const name = windowName(model.rankSec);
-  const head: LabelLine = { text: t('ALL VENUES'), tone: 'text', bold: true };
+  const head: LabelLine = { text: !filter ? t('ALL VENUES') : filter.kind === 'spot' ? t('ALL SPOT VENUES') : t('ALL PERP VENUES'), tone: 'text', bold: true };
   const lanes: LabelLine[] = ([['spot', model.spot], ['perp', model.perp]] as const).flatMap(([kind, line]) => line ? [{ text: `${letter(kind)} ${signedUsd(line.delta)}`, tone: 'text' as const, dot: kind }] : []);
   const total = (model.spot?.delta ?? 0) + (model.perp?.delta ?? 0), foot: LabelLine = { text: `Δ${name} ${signedUsd(total)}`, tone: 'muted' };
-  return height >= 80 ? [head, ...lanes, foot] : [head, ...lanes].slice(0, Math.max(2, Math.floor((height - 6) / 12)));
+  const hidden: LabelLine[] = filter && filter.hidden > 0 ? [{ text: t('{n} filtered out', { n: filter.hidden }), tone: 'muted' }] : [];
+  return height >= 80 ? [head, ...lanes, foot, ...hidden].slice(0, Math.max(3, Math.floor((height - 6) / 12))) : [head, ...lanes].slice(0, Math.max(2, Math.floor((height - 6) / 12)));
 }
 
 const lanePhrase = (kind: Kind): string => kind === 'spot' ? t('Spot') : t('Perp');

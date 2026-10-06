@@ -5,7 +5,7 @@ import { Ranker } from '../src/app/cvd/rank.ts';
 import { buildModel, type CvdModel } from '../src/app/cvd/model.ts';
 import { CVD_DEFAULTS, readCvd } from '../src/app/cvd/settings.ts';
 import { aggregateHover, aggregateLabel, divergence, rowHover, rowLabel, signedUsd, windowName } from '../src/app/cvd/text.ts';
-import { laneColors } from '../src/app/cvd/colors.ts';
+import { hueGap, hueOf, laneColors } from '../src/app/cvd/colors.ts';
 import { PALETTES, contrastRatio } from '../src/app/theme.ts';
 
 const NOW = Date.UTC(2026, 9, 6, 12, 30, 0);
@@ -179,4 +179,32 @@ test('lane colours stand 3:1 clear of the panel on every theme and are distinct'
     assert.ok(contrastRatio(c.perp, palette.panel) >= 3 - 1e-9, `${id} perp ${contrastRatio(c.perp, palette.panel)}`);
     assert.notEqual(c.spot, c.perp);
   }
+});
+
+test('lane colours are the same blue and amber on every theme, except where a theme\'s buy and sell colours are near them', () => {
+  const spots = new Map<string, string>();
+  for (const [id, palette] of Object.entries(PALETTES)) {
+    const c = laneColors(palette);
+    spots.set(id, c.spot);
+    for (const line of [c.spot, c.perp]) for (const direction of [palette.bid, palette.ask, palette.candleUp, palette.candleDown]) {
+      const a = hueOf(line), b = hueOf(direction);
+      if (a !== null && b !== null) assert.ok(hueGap(a, b) >= 25, `${id}: a lane line (${line}) must not look like the theme's buy or sell (${direction}), ${hueGap(a, b).toFixed(0)} degrees apart`);
+    }
+    const spotHue = hueOf(c.spot)!, perpHue = hueOf(c.perp)!;
+    assert.ok(hueGap(spotHue, perpHue) >= 60, `${id}: spot and perpetual are two different hues`);
+  }
+  const blues = [...spots].filter(([id]) => id !== 'colorblind').map(([, color]) => hueOf(color)!);
+  assert.ok(blues.every(h => hueGap(h, hueOf('#3d8bfd')!) < 12), 'blue, give or take the nudge toward the text colour that contrast asks for');
+  assert.ok(hueGap(hueOf(spots.get('colorblind')!)!, hueOf('#3d8bfd')!) > 60, 'the colour-blind theme has a hue that is not its buy colour');
+});
+
+test('the aggregate label says which kind it is and how many exchanges the filter leaves out', () => {
+  const { book, ids } = market();
+  const m = model(book, ids);
+  assert.equal(aggregateLabel(m, 100)[0]!.text, 'ALL VENUES');
+  const spot = aggregateLabel(m, 120, { kind: 'spot', hidden: 6 });
+  assert.equal(spot[0]!.text, 'ALL SPOT VENUES'); assert.equal(spot.at(-1)!.text, '6 filtered out'); assert.equal(spot.at(-1)!.tone, 'muted');
+  assert.equal(aggregateLabel(m, 120, { kind: 'perp', hidden: 0 })[0]!.text, 'ALL PERP VENUES');
+  assert.ok(!aggregateLabel(m, 120, { kind: 'perp', hidden: 0 }).some(l => /hidden/.test(l.text)), 'nothing hidden, nothing said');
+  assert.ok(aggregateLabel(m, 60, { kind: 'spot', hidden: 6 }).length <= 4, 'a short row keeps to its height');
 });

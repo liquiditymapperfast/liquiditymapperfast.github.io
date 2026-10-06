@@ -125,6 +125,8 @@ A candle's net ΔOI > 0 could be new longs on the push *or* new shorts on the re
 
 Measuring from t_entry rather than t_open keeps a long ranging phase before a late spike out of the push leg.
 
+> **Erratum (2026-10-06, review of the shipped detector).** The "Reclassify" row below claims more than open interest can show. Net ΔOI < 0 during buy-dominant flow says that positions closed on net in the window; it does not say that the aggressive buyers in the wick were the ones closing, because opening and closing happen on both sides at once and one equation cannot attribute them (see the second bullet of 2.1). Nothing here has been tested as a predictor either. The app therefore does not reclassify on open interest (`docs/trapped-traders.md`, "Next"): open interest may be shown as aligned, same-venue measured context, and the flag keeps its name. The table is kept as the agent wrote it.
+
 **Regimes for a buy-dominant upper wick that closes far lower:**
 
 | ΔOI_U | ΔOI_D | Reading | Label |

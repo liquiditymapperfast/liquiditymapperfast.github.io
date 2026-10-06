@@ -1,16 +1,18 @@
-# Possible trapped buyers and sellers (footprint)
+# Rejected aggressive buying and selling (footprint)
+
+(Called "possible trapped buyers and sellers" until 2026-10-06. The name claimed more than the rule measures: it says nothing about who still holds a position, so it now describes only the flow and the price.)
 
 When the footprint is on, a closed candle whose wick holds more net aggressive buying (or selling) than any equally tall stretch of the rest of the candle, and that then closed far from where those aggressors bought, gets its imbalanced wick cells outlined and slowly pulsing in amber. Hovering them says so:
 
-> **Possible trapped buyers** — $4.1M net aggressive buying in the upper wick, 2.3x a typical candle's net delta; average entry 86,640; the candle closed 1.2 ATR below. If they still hold, they are underwater. Not validated for this market and timeframe. Not a forecast.
+> **Rejected aggressive buying** — $10M net aggressive buying in the upper wick, 9.8x a typical candle's net delta. Wick volume: $13.2M bought and $3.2M sold at market (61% net); 96% of the candle's volume. Estimated average aggressor price 107.5; the candle closed 1.2 ATR below. Not validated for this market and timeframe. Not a forecast.
 
 Code: `src/app/traps.ts` (detector, pure functions; `tests/app-traps.test.mts`), the pulse layer and pop-up in `src/app/panes/heat-pane.ts`, the cell hook in `paintFootprint`. The research behind it, with evidence grades, is `docs/research/trapped-traders-report-2026-10-05.md` (written by a research agent; its URLs and figures have not been checked by hand).
 
 ## What it claims and what it does not
 
-**Claims:** a fact about a closed candle (where the net aggressive flow was and how far price then went from it), labelled "possible".
+**Claims:** a fact about a closed candle: where the net aggressive flow was, how one-sided the wick was (what was bought and sold in it, and its share of the candle's volume), and how far price then closed from the estimated average aggressor price (each row counts at its middle, so it is an estimate). A later close back through that price is a price event and nothing more: falling or rising positions are not inferred.
 
-**Does not claim:** that the pattern predicts anything (the offline study below found no reliable direction). No peer-reviewed or out-of-sample test of "net aggressive buying in the wick of a candle that closes far lower predicts adverse follow-through for those buyers" was found; the schools of footprint practice disagree about this exact picture (trapped buyers vs. "poor high, price returns"), and some retracement after aggressive buying is the normal expectation (transient price impact). The cue stays "possible" until a study (below) says otherwise.
+**Does not claim:** that anybody is trapped or underwater, or that the pattern predicts anything (the offline study below found no reliable direction). No peer-reviewed or out-of-sample test of "net aggressive buying in the wick of a candle that closes far lower predicts adverse follow-through for those buyers" was found; the schools of footprint practice disagree about this exact picture (trapped buyers vs. "poor high, price returns"), and some retracement after aggressive buying is the normal expectation (transient price impact). The cue stays "possible" until a study (below) says otherwise.
 
 ## The rule (per closed candle, at a canonical row step)
 
@@ -22,14 +24,16 @@ Notation for the upper wick (the lower wick mirrors it with the sides swapped). 
 | Concentration | `D_Z > 0` and `D_Z >=` the net delta of every block of the same number of rows below `T` (all of the rest, if shorter than the wick) | none |
 | Magnitude | `D_Z >= k x M`, `M` = median absolute net delta of the previous up to 72 candles (at least 12 with complete footprints) | k = 1 |
 | Adverse close | `(entry - close) / ATR >= u`, `entry` = buy-VWAP of the rows in `Z` | u = 1 |
-| Complete candle | at least 90 % of the candle's minutes were recorded | |
-| Settled | judged 15 s after close (late prints), never while forming | |
+| Complete candle | the footprint holds between 90 % and 110 % of the volume the exchange reports for the candle itself (USD over each row's price, so in the asset's units) | |
+| Settled | judged 15 s after close (late prints), never while forming; the answer is kept a minute after that | |
 
 **Zoom independence.** The footprint the chart draws is grouped to a zoom-dependent row height. Detection loads its own copy at a canonical step (the finest recorded step times a power of two, so a typical candle spans at most 64 rows) and caches nothing from the display grouping, so a flag does not appear or vanish when the chart is zoomed. The display only decides which drawn rows pulse.
 
 **State.** *Active* (pulses): a trap within 12 candles that no later candle has closed back through (a later close at or above the entry for buyers). *Reclaimed*: price closed back through; a faint still outline. *Static*: older than 12 candles, still outlined faintly. Reduced-motion users get the still outline.
 
-**What it will not flag:** a candle seen only in part (the first after the page opened, or after a feed gap), a market whose chart is showing another market's candles, and the 1d timeframe (the footprint is only kept for a day in the browser and a week on the server, too little to form the baseline; 4h needs the server's week).
+**Completeness is measured against the exchange, not against trading.** The first version counted minutes in which a trade was seen, so five trades in five different minutes made a five-minute footprint "complete". A candle is now complete only when the footprint's own volume reconciles with the candle's volume: a partly seen candle (the page opened mid-candle, a feed gap) falls short, a quiet minute does not (the exchange's figure is quiet there too), and a footprint in other units or of another market falls outside the band. A market whose candle volume is not in the asset's units (contracts, quote currency) therefore reads "not enough recorded data" instead of passing by luck.
+
+**What it will not flag:** a candle seen only in part, a market whose chart is showing another market's candles, and the 1d timeframe (the footprint is only kept for a day in the browser and a week on the server, too little to form the baseline; 4h needs the server's week).
 
 ## What the offline study found (2026-10-05)
 
@@ -49,16 +53,26 @@ Before any stronger wording, the cue was tested offline. The design was written 
 
 So the pop-up says what was tested and nothing more (`trapVerdict` in `src/app/traps.ts`): on Binance BTCUSDT perpetual at 15m, "no reliable direction; these levels were revisited somewhat less often than look-alike candles"; anywhere else, "Not validated for this market and timeframe". The pulse was not made more prominent.
 
-Two things the study found that are still open:
+Two things the study found:
 
-1. **A flag can change after the fact.** `TRAP_PARAMS.freezeMs` is not used, and the window is re-scanned at the current row step every few seconds, so 1.2 to 2.7 % of flags flip when a candle is judged again 12 bars later. Freezing each candle's step at its close plus a minute would fix it.
-2. **Binance open-interest timestamps changed meaning on 2024-03-04**: from then on the value stamped T is the snapshot at T + 5 min, so an as-of join leaks five minutes of the future, and the archive holds samples where open interest is exactly 0. Check the live source for both before building the open-interest refinement below.
+1. **A flag could change after the fact** (fixed 2026-10-06, see "Decisions are made once"). The window used to be re-scanned at a row step chosen from the latest volatility, so 1.2 to 2.7 % of flags flipped when a candle was judged again 12 bars later.
+2. **Binance open-interest timestamps changed meaning on 2024-03-04** (still open): from then on the value stamped T is the snapshot at T + 5 min, so an as-of join leaks five minutes of the future, and the archive holds samples where open interest is exactly 0. Check the live source for both before building the open-interest refinement below.
+
+## Decisions are made once
+
+Each candle is decided from what was known at its close, and the decision is kept (`TrapData` in `src/app/traps.ts`, version `TRAP_VERSION`):
+
+- **The grid is the candle's own.** Its row step comes from the typical range of the candles *before* it, not from the latest volatility, so what the market did afterwards cannot move it. A window with candles of different volatility is loaded once per distinct step.
+- **Final after a minute.** A candle that has settled and is a minute older keeps its answer for the session, a flag or a "nothing" alike; zooming, a different finest step or a volatile hour later does not change it. A decision from another detector version is made again.
+- **Three kinds of "no".** *None* (the candle was complete, was compared, nothing met the rule), *not enough recorded data* (the footprint does not cover the candle, or there is no volume to check it against) and *still collecting the history to compare with* (not enough earlier candles or earlier complete footprints). The chart's header says which one the candle under the pointer has, so a candle with no flag is never confused with a candle that could not be judged. Only the first kind is final: the other two are tried again as more is recorded.
+- **Stale answers are dropped.** A footprint response that arrives after the market, timeframe or window was given up (a generation counter) is ignored instead of restoring flags the chart no longer shows.
+- **What is kept.** The decision records the grid, the share of the candle's volume the footprint held, and the version; the flags carry what the wick bought and sold and its share of the candle's volume.
 
 ## When a flag can appear
 
 - **Markets.** Footprints are recorded for Binance perpetual and Hyperliquid on the server (also dYdX and Aster), and for every running venue in the browser; a trap can only appear on a market that has a footprint, and only while the chart is showing that market's own candles.
 - **Warm-up.** A flag needs the candle itself plus at least 12 earlier candles with complete footprints. A browser page that has just opened therefore needs about 65 minutes open at 5m, about 3 h 15 min at 15m and about 13 h at 1h (4h and 1d cannot work in the browser, which keeps 24 hours); a server that has been recording for a week has all of them. A quiet chart in the first hours is not a bug. Baselining from Binance klines (taker-buy volume) would remove the wait and is the first follow-up.
-- **Server version.** The server must send each bar's recorded-minute count (`minutes`, added with this feature). A server started before that never reports complete candles, so nothing is flagged until it is restarted.
+- **Candle volume.** A candle without a volume figure cannot be checked and reads "not enough recorded data".
 - **Time.** A candle is judged 15 s after it closes, so the newest flag lags the chart by a quarter of a minute.
 
 ## Firing rate and the default
@@ -81,6 +95,7 @@ The whole grid ranged from 0.5 % to 14.7 % (5m). At half an ATR the cue would fi
 
 ## Next
 
-- **v1.1, open interest.** For a Binance perpetual footprint at 15m and above, split the candle into the push and the rejection with 1m candles and the 5-minute open-interest history, and reclassify "buying while OI fell" as a short-covering spike (the most valuable OI piece). Mandatory "pending" (latest candle) and "not resolvable" (1-3m candles) states; other venues show OI as context only. Open interest in the browser engine already comes from Binance REST (30 days) and live samples.
+- **Open interest: measured context only, no relabelling.** The research report proposed reclassifying "buying while OI fell" as a short-covering spike. That is not supported: aggregate open interest falling says positions closed on net, not that the aggressive buyers in the wick were the ones closing (opening and closing happen on both sides at once), and no test has shown that the reading predicts anything. If open interest is shown it is the aligned same-venue figure for the candle (and only where its timestamps are known to be aligned), beside the flag and never changing its name. See the erratum under section 2.2 of the research report.
+- **A time-ordered experiment (hypothesis, not started).** Whether it matters that the buying came on the push and the rejection came after could be tested on fresh chronological data: split each flagged candle into the push and the rejection with 1m candles, compare the forward move and the revisit of the average aggressor price against shape-matched controls and a permutation null that re-runs the whole detector, with the holdout touched once. Until then the pop-up claims nothing about it.
 - **Baseline from klines.** Binance klines carry taker-buy volume, so a candle's net delta is available over the whole kline history; that would let 1h and 4h work from the first minute in the browser. Not done: it needs the candle series extended in both sources.
 - **(Done: see above.) A study before any stronger wording.** Rebuild footprints from Binance USD-M `aggTrades` and 5-minute `metrics` (data.binance.vision; large downloads), chronological design / validation / frozen holdout, shape-matched controls plus a permutation null that re-runs the whole detector, a primary endpoint of the 4-bar forward move against the trapped side in ATRs and a co-primary of revisiting the entry within 12 bars (the two theories predict opposite signs), and an effect worth showing of at least 0.1 ATR with a confidence interval excluding zero in a majority of yearly folds (`docs/research/...` section 4 has the design and power numbers). Not started.

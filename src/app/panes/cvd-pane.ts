@@ -3,13 +3,14 @@ import { el } from '../dom.ts';
 import { helpButton } from '../help.ts';
 import { clock, price as fmtPrice } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
-import { emptyScopeMessage, kindOf } from '../scope.ts';
+import { emptyScopeMessage, kindOf, type Kind } from '../scope.ts';
 import { flowIds, pinChoices, priceFlowId } from '../cvd/ids.ts';
+import { buildFamilies } from '../cvd/families.ts';
 import { flowWindow } from '../cvd/window.ts';
 import { MAX_PINNED } from '../cvd/settings.ts';
 import { venueLabel } from '../venues.ts';
 import { selectRow, switchRow, numberRow, togglePanel, note, heading } from '../ui.ts';
-import type { Store } from '../store.ts';
+import type { AppState, Store } from '../store.ts';
 import type { Hub } from '../hub.ts';
 import type { View } from '../view.ts';
 import { Ranker } from '../cvd/rank.ts';
@@ -35,7 +36,9 @@ const SPAN_LABELS: Record<CvdSpan, string> = { map: t('Map'), '5m': '5m', '15m':
 /** What the last frame drew, for the checks that look at the pane without reading its pixels. */
 export interface CvdSnapshot { rows: string[]; scroll: number; maxScroll: number; heights: { agg: number; price: number; rows: number[] }; spanMs: number; columns: number; empty: string | null; gutter: number;
   /** Where the price strip's price comes from (an instrument's recorded seconds, or null for candle closes), how many of its columns are filled and how many different prices they hold, and when the flow began if the window reaches before it. */
-  price: { id: string | null; filled: number; distinct: number }; since: number | null }
+  price: { id: string | null; filled: number; distinct: number }; since: number | null;
+  /** The x of the line drawn for the pointer of another pane (null when there is none), and the time the pointer of this one has shared. */
+  sharedX: number | null; sharedTime: number | null }
 
 const fit = (ctx: CanvasRenderingContext2D, text: string, width: number): string => {
   if (ctx.measureText(text).width <= width) return text;
@@ -71,6 +74,8 @@ export class CvdPane {
   /** The window the last frame drew, for `followMap`. */
   #drawn: { t0: number; t1: number } | null = null;
   #empty: string | null = null;
+  /** Where the plot was drawn, and where the line for another pane's pointer was (null: none), so a pointer elsewhere redraws only when that line moves. */
+  #plot = { x: 0, w: 0 }; #sharedX: number | null = null;
   #spanButtons = new Map<CvdSpan, HTMLButtonElement>();
   #spanSelect = el('select', { class: 'cvd-span-select', ariaLabel: t('Time span') });
   #gear = el('button', { type: 'button', class: 'icon-btn cvd-gear', ariaLabel: t('Settings'), tip: t('How the column ranks and draws the exchanges.') });
@@ -103,6 +108,30 @@ export class CvdPane {
     if (drawn && Math.abs(this.view.t0 - drawn.t0) < pixel && Math.abs(this.view.t1 - drawn.t1) < pixel) return;
     this.invalidate();
   }
+  /**
+   * The pointer of another pane moved (the map, or one of the panes under it): the column draws a vertical line at the same moment, and
+   * redraws only when that line would move to another pixel (or appear, or go).
+   */
+  syncHover(): void {
+    const x = this.#sharedLineX();
+    if (x === this.#sharedX) return;
+    this.#sharedX = x; this.invalidate();
+  }
+  /** The x of the line for another pane's pointer in the plot as last drawn, or null when it points at no moment this column shows. */
+  #sharedLineX(): number | null {
+    const hv = this.store.state.hover, m = this.#model;
+    if (!hv || hv.source === 'cvd' || !m || !(m.t1 > m.t0) || hv.t < m.t0 || hv.t > m.t1) return null;
+    return Math.round(this.#plot.x + (hv.t - m.t0) / (m.t1 - m.t0) * this.#plot.w);
+  }
+  /** Tell the other panes which moment the pointer is on (their own lines follow it), once per column; and take it back when the pointer goes. */
+  #shareTime(x: number | null): void {
+    const m = this.#model, hover = this.store.state.hover;
+    if (x === null || !m || x < this.#plot.x || x > this.#plot.x + this.#plot.w) { if (hover?.source === 'cvd') this.store.set({ hover: null }); return; }
+    const col = Math.max(0, Math.min(m.columns - 1, Math.floor((x - this.#plot.x) / this.#plot.w * m.columns))), time = m.t0 + (col + 0.5) / m.columns * (m.t1 - m.t0);
+    if (hover?.source === 'cvd' && hover.t === time) return;
+    this.store.set({ hover: { t: time, price: null, y: 0, source: 'cvd' } });
+  }
+
   /** The settings changed (or the person asked for a fresh ranking). */
   refresh(): void { this.#ranker.reset(); this.#syncControls(); this.#modelKey = ''; this.invalidate(); }
   dispose(): void { window.clearInterval(this.#timer); }
@@ -111,7 +140,7 @@ export class CvdPane {
   get snapshot(): CvdSnapshot {
     const layout = this.#layout, model = this.#model;
     return { rows: model?.rows.map(r => r.key) ?? [], scroll: this.#scroll, maxScroll: layout ? maxScroll(layout, this.#h) : 0, heights: layout ? { agg: layout.agg, price: layout.price, rows: layout.rows } : { agg: 0, price: 0, rows: [] },
-      spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter, price: this.#priceStats(), since: this.#since };
+      spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter, price: this.#priceStats(), since: this.#since, sharedX: this.#sharedX, sharedTime: this.store.state.hover?.source === 'cvd' ? this.store.state.hover.t : null };
   }
   get model(): CvdModel | null { return this.#model; }
   #priceStats(): { id: string | null; filled: number; distinct: number } {
@@ -202,11 +231,12 @@ export class CvdPane {
       if (drag && this.#layout && maxScroll(this.#layout, this.#h) > 0 && (e.pointerType === 'touch' || Math.abs(y - drag.y) > 4)) this.#scrollTo(drag.scroll - (y - drag.y));
       else if (!drag || e.pointerType !== 'touch') this.#hover = { x, y };
       c.style.cursor = drag && Math.abs(y - drag.y) > 4 ? 'grabbing' : 'crosshair';
+      if (e.pointerType !== 'touch') this.#shareTime(x);
       this.invalidate();
     });
     const release = (e: PointerEvent) => { drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); if (e.pointerType === 'touch') this.#hover = null; c.style.cursor = 'crosshair'; this.invalidate(); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
-    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.invalidate(); });
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.#shareTime(null); this.invalidate(); });
     c.addEventListener('dblclick', () => { this.#scroll = 0; this.invalidate(); });
     c.style.cursor = 'crosshair'; c.style.touchAction = 'pan-x';
   }
@@ -277,6 +307,7 @@ export class CvdPane {
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.clearRect(0, 0, this.#w, this.#h);
     const colors = laneColors(p), plot = { x: this.#gutter, w: plotW };
+    this.#plot = plot;
     const window = windowName(model.rankSec);
     // The venue rows scroll under the aggregate and the price strip, so they are drawn first and the strip over them.
     const top = layout.agg + layout.price;
@@ -289,12 +320,14 @@ export class CvdPane {
     });
     ctx.restore();
     ctx.fillStyle = p.panel; ctx.fillRect(0, 0, this.#w, top);
-    this.#paintRow(ctx, p, colors, plot, 0, layout.agg, [model.spot, model.perp].filter((l): l is LaneLine => l !== null), aggregateLabel(model, layout.agg), '', cfg.rebase);
+    this.#paintRow(ctx, p, colors, plot, 0, layout.agg, [model.spot, model.perp].filter((l): l is LaneLine => l !== null), aggregateLabel(model, layout.agg, this.#filterNote(s)), '', cfg.rebase);
     this.#paintPrice(ctx, p, plot, layout.agg, layout.price, model);
     if (this.#since !== null) this.#paintSince(ctx, p, plot, this.#since);
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.moveTo(0, top + 0.5); ctx.lineTo(this.#w, top + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
     if (maxScroll(layout, this.#h) > 0) this.#paintScrollbar(ctx, p, layout);
     if (this.#empty) { ctx.fillStyle = p.muted; ctx.font = `12px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(this.#empty, this.#w / 2, Math.min(this.#h - 20, top + 36)); }
+    this.#sharedX = this.#sharedLineX();
+    if (this.#sharedX !== null) { ctx.save(); ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.moveTo(this.#sharedX + 0.5, 0); ctx.lineTo(this.#sharedX + 0.5, this.#h); ctx.stroke(); ctx.restore(); }
     this.#paintHover(ctx, p, model, layout, plot, window);
   }
 
@@ -397,6 +430,16 @@ export class CvdPane {
       ctx.stroke(); ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  /**
+   * With the Spot or Perp filter on: which kind this is, and how many exchanges with flow it leaves out (null with the filter off). Spot is
+   * two venues (Coinbase and Binance) and perpetuals are the rest, so "only two of my eight" is the filter at work, not a missing row.
+   */
+  #filterNote(s: AppState): { kind: Kind; hidden: number } | undefined {
+    if (s.scope === 'all') return undefined;
+    const withFlow = (id: string): boolean => this.hub.flow.get(id)?.empty === false, count = (state: AppState): number => buildFamilies(flowIds(state, this.hub.flow.ids).filter(withFlow), id => kindOf(s.markets, id)).length;
+    return { kind: s.scope, hidden: Math.max(0, count({ ...s, scope: 'all' }) - count(s)) };
   }
 
   /** The price strip's columns: the market's recorded seconds where it has them, the candle closes and marks for what came before (or all of it, when it has none). */

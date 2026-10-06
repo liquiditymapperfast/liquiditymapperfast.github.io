@@ -92,7 +92,7 @@ export interface AppState {
    * Shared cursor: `t` is authoritative; each pane converts it to its own x. `price` is only set by the heatmap. `touch` marks a hover
    * that a finger pinned (it stays until the next tap or drag, and its readouts sit above the finger).
    */
-  hover: { t: number; price: number | null; y: number; source: 'heat' | 'depth' | 'oi' | 'lt' | 'bars'; touch?: boolean } | null;
+  hover: { t: number; price: number | null; y: number; source: 'heat' | 'depth' | 'oi' | 'lt' | 'bars' | 'cvd'; touch?: boolean } | null;
 }
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;

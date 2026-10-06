@@ -349,9 +349,9 @@ const footprint: Scene = {
     if (trap > 0.01) {
       const pulse = 0.5 + 0.5 * Math.sin(u * Math.PI * 2 * 7);
       for (let r = 9; r <= 11; r++) { const { buy } = FOOT_ROWS[r]!, y = yRow(r), len = Math.max(3, colW * buy / maxSide * 0.78); g.fillStyle = `rgba(245, 165, 36, ${(0.15 + 0.3 * pulse) * trap})`; g.fillRect(colL - 1, y, len + 2, rowH); g.strokeStyle = `rgba(245, 165, 36, ${(0.4 + 0.5 * pulse) * trap})`; g.strokeRect(colL - 0.5, y + 0.5, len + 1, rowH - 1); }
-      g.globalAlpha = trap; note(g, 'Possible trapped buyers', left + slotW - 10, yRow(7) + rowH / 2, th, 'right', '#f5a524', 12.5, 700); note(g, 'net buying in the wick, then a close far below', left + slotW - 10, yRow(7) + rowH / 2 + 18, th, 'right', th.muted, 11); g.globalAlpha = 1;
+      g.globalAlpha = trap; note(g, 'Rejected aggressive buying', left + slotW - 10, yRow(7) + rowH / 2, th, 'right', '#f5a524', 12.5, 700); note(g, 'net buying in the wick, then a close far below', left + slotW - 10, yRow(7) + rowH / 2 + 18, th, 'right', th.muted, 11); g.globalAlpha = 1;
     }
-    badge(g, zoom < 0.5 ? 'Zoomed out' : numbers < 0.8 ? 'Zooming in…' : bars < 0.8 ? 'Sell | Buy volume per price' : trap < 0.8 ? 'Bars: one side at least 15% bigger' : 'Possible trap', 10, 4, th, 1);
+    badge(g, zoom < 0.5 ? 'Zoomed out' : numbers < 0.8 ? 'Zooming in…' : bars < 0.8 ? 'Sell | Buy volume per price' : trap < 0.8 ? 'Bars: one side at least 15% bigger' : 'Rejected buying', 10, 4, th, 1);
     note(g, 'sell', colL + 42, h - 8, th, 'right', th.muted, 10); note(g, 'buy', colL + 50, h - 8, th, 'left', th.muted, 10);
   },
 };

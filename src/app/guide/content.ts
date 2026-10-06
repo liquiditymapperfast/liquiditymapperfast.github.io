@@ -146,9 +146,9 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'Zoom into the time axis until each candle is wide and the **footprint** appears. At every price inside the candle it shows how much traded **at the bid** (sellers hitting it, the left number) and **at the ask** (buyers lifting it, the right number). A bar marks a row where one side was at least 15% bigger. The heatmap fades as the footprint takes over: both answer the same question at different scales.' },
       { t: 'p', text: '**Delta** is buys minus sells. A candle that rose on mostly sellers\' volume is more fragile than one that rose on buyers\'. The strip under the chart (**Bar stats**) shows one number per candle, by default volume, delta and cumulative delta (cvd). **Stats** adds more.' },
-      { t: 'p', text: '**Possible trapped buyers or sellers.** When a candle\'s wick holds more net aggressive buying than any equally tall slice of the rest of the candle, and the candle then closed at least one average range below where those buyers paid, the wick\'s busiest cells glow amber and slowly pulse. Hover them for the numbers. A lower wick works the same way for sellers.' },
-      { t: 'fig', id: 'footprint', caption: 'Zooming in reveals the rows, then the imbalances, then a candle with a possible trap.' },
-      { t: 'note', kind: 'warn', text: 'This is a fact about a closed candle, labelled “possible”. It needs a complete footprint (about an hour of recording at 5 minutes, longer at slower timeframes), and nobody has shown that it predicts anything. Treat it as a place to look, never as a signal.' },
+      { t: 'p', text: '**Rejected aggressive buying or selling.** When a candle\'s wick holds more net aggressive buying than any equally tall slice of the rest of the candle, and the candle then closed at least one average range below where those buyers paid, the wick\'s busiest cells glow amber and slowly pulse. Hover them for the numbers. A lower wick works the same way for sellers.' },
+      { t: 'fig', id: 'footprint', caption: 'Zooming in reveals the rows, then the imbalances, then a candle with rejected buying.' },
+      { t: 'note', kind: 'warn', text: 'This describes a closed candle and says nothing about who holds what. It needs a footprint that holds the candle\'s whole volume (about an hour of recording at 5 minutes, longer at slower timeframes), and nobody has shown that it predicts anything. Treat it as a place to look, never as a signal.' },
     ],
   },
   {

@@ -19,12 +19,12 @@ import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
-import { TrapData, trapText, type Trap } from '../traps.ts';
+import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
 import { t } from '../i18n.ts';
 
-/** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
+/** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
 /** A recording younger than this gets the faded placeholder to its left. */
 const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
@@ -88,7 +88,7 @@ export class HeatPane {
   #zoomDrag: { x: number; y: number; view: Bounds } | null = null;
   #wasLoaded = false;
   #footprint = new FootprintData();
-  /** Possible trapped buyers and sellers on closed candles, found at a row step that does not depend on the zoom. */
+  /** Rejected aggressive buying and selling on closed candles, decided once per candle on a row step that does not depend on the zoom. */
   #traps = new TrapData();
   /** The pulsing layer: a canvas of its own above the overlay, redrawn a few times a second only while a trap is in view. */
   readonly #pulse = document.createElement('canvas');
@@ -358,7 +358,12 @@ export class HeatPane {
       up = c[4] >= c[1];
       const at = state.candles.indexOf(c), found = this.#volumeAnalysis(state).found, z = found.sigma[at], unusual = state.highlight.on && found.flag[at] === 1;
       if (phone) { detail = `O ${px(c[1])}  H ${px(c[2])}  L ${px(c[3])}  C ${px(c[4])}`; tail = `${t('Vol')} ${usd(c[5])}`; }
-      else detail = `O ${fmtPrice(c[1])}  H ${fmtPrice(c[2])}  L ${fmtPrice(c[3])}  C ${fmtPrice(c[4])}  ${t('Vol')} ${usd(c[5])}${unusual && Number.isFinite(z) ? `  ${t('({z}σ above its baseline)', { z: z!.toFixed(1) })}` : ''}`;
+      else {
+        detail = `O ${fmtPrice(c[1])}  H ${fmtPrice(c[2])}  L ${fmtPrice(c[3])}  C ${fmtPrice(c[4])}  ${t('Vol')} ${usd(c[5])}${unusual && Number.isFinite(z) ? `  ${t('({z}σ above its baseline)', { z: z!.toFixed(1) })}` : ''}`;
+        // With the footprint on, the candle under the pointer says what its check found, or why it has none: no event and no data are different things.
+        const check = hovered && state.show.footprint && this.#lodFrame.barAlpha >= 0.3 ? trapStatusText(this.#traps.decisionOf(hovered[0])) : null;
+        if (check) { ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; const extended = `${detail}  ·  ${check}`; if (ctx.measureText(extended).width < this.plotW - 40) detail = extended; }
+      }
     }
     // A translucent plate keeps the text readable over bright heat.
     const shownTitle = phone ? `${name}  ${state.timeframe}` : title;

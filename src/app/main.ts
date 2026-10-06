@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     if (changed.has('barStatOptions') && !changed.has('barStats')) bars.refresh();
     if (changed.has('barStats')) { arrange.setPaneHeight('bars', 12 + Math.max(1, enabledStats(state.barStats).length) * 24); bars.refresh(); }
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
-    if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); }
+    if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.syncHover(); }
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
