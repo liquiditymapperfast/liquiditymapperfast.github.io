@@ -651,5 +651,19 @@
  "Showing the biggest {shown} of {total} exchanges.": "Показаны {shown} крупнейших бирж из {total}.",
  "Show all": "Показать все",
  "No trades in this window: {names}.": "Нет сделок в этом окне: {names}.",
- "Not on the map yet (no order book): {names}.": "Пока нет на карте (нет стакана заявок): {names}."
+ "Not on the map yet (no order book): {names}.": "Пока нет на карте (нет стакана заявок): {names}.",
+ "Local": "Местное",
+ "Time zone": "Часовой пояс",
+ "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "Время показано в UTC. Нажмите, чтобы показать его по времени компьютера ({zone}).",
+ "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "Время показано по времени компьютера ({zone}). Нажмите, чтобы показать его в UTC.",
+ "Saved by the server": "Сохраняет сервер",
+ "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "Сервер записывает тепловую карту, поток и футпринт, пока работает, независимо от того, открыта ли эта страница.",
+ "Saving in this tab": "Сохраняет эта вкладка",
+ "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "Поток, футпринт и крупные сделки сохраняются в этом браузере, поэтому остаются после перезагрузки страницы или перезапуска.",
+ "Saved by another tab": "Сохраняет другая вкладка",
+ "Another tab of this page is saving the recordings; this tab reads what it saves.": "Другая вкладка этой страницы сохраняет записи; эта вкладка читает то, что она сохраняет.",
+ "Not saved": "Не сохраняется",
+ "This session keeps its recordings in memory only (saving is off, or this browser does not allow it): they are gone when the page closes.": "В этом сеансе записи хранятся только в памяти (сохранение выключено или браузер его не разрешает): при закрытии страницы они пропадут.",
+ "Saving stopped": "Сохранение остановлено",
+ "The browser stopped storing the recordings (its storage may be full or refused): until the page is reloaded they are kept in memory only.": "Браузер перестал сохранять записи (хранилище, возможно, заполнено или недоступно): до перезагрузки страницы они остаются только в памяти."
 }

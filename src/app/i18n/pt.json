@@ -647,5 +647,19 @@
  "Showing the biggest {shown} of {total} exchanges.": "Mostrando as {shown} maiores de {total} exchanges.",
  "Show all": "Mostrar todas",
  "No trades in this window: {names}.": "Sem negociações nesta janela: {names}.",
- "Not on the map yet (no order book): {names}.": "Ainda não estão no mapa (sem livro de ofertas): {names}."
+ "Not on the map yet (no order book): {names}.": "Ainda não estão no mapa (sem livro de ofertas): {names}.",
+ "Local": "Local",
+ "Time zone": "Fuso horário",
+ "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "As horas são mostradas em UTC. Um clique as mostra no horário do computador ({zone}).",
+ "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "As horas são mostradas no horário do computador ({zone}). Um clique as mostra em UTC.",
+ "Saved by the server": "Salvo pelo servidor",
+ "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "O servidor grava o mapa de calor, o fluxo e o footprint enquanto está rodando, com esta página aberta ou não.",
+ "Saving in this tab": "Salvando nesta aba",
+ "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "O fluxo, o footprint e as negociações grandes são salvos neste navegador, então continuam aqui depois de recarregar ou reiniciar.",
+ "Saved by another tab": "Salvo por outra aba",
+ "Another tab of this page is saving the recordings; this tab reads what it saves.": "Outra aba desta página está salvando as gravações; esta lê o que ela salva.",
+ "Not saved": "Não salvo",
+ "This session keeps its recordings in memory only (saving is off, or this browser does not allow it): they are gone when the page closes.": "Esta sessão guarda as gravações apenas na memória (o salvamento está desativado ou este navegador não permite): elas somem quando a página é fechada.",
+ "Saving stopped": "Salvamento interrompido",
+ "The browser stopped storing the recordings (its storage may be full or refused): until the page is reloaded they are kept in memory only.": "O navegador parou de armazenar as gravações (o armazenamento pode estar cheio ou ter sido recusado): até a página ser recarregada, elas ficam apenas na memória."
 }

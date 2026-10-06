@@ -2,6 +2,7 @@ import { el } from '../dom.ts';
 import { isCoarse } from '../device.ts';
 import { AUTHOR } from '../author.ts';
 import { setTip } from '../tip.ts';
+import { timeZone } from '../format.ts';
 import { capturePage, type Snapshot } from './capture.ts';
 import {
   COLORS, CURSORS, WIDTHS, clampRect, drawShape, fileName, hitHandle, inside, markText, paintMark, rectFrom, resizeRect, textSize, toolbarPlacement, worthKeeping,
@@ -207,7 +208,7 @@ function openEditor(snap: Snapshot): { close(): void } {
   };
   const blob = (): Promise<Blob | null> => new Promise(resolve => { const out = render(); if (!out) resolve(null); else out.toBlob(b => resolve(b), 'image/png'); });
   const download = (data: Blob): void => {
-    const url = URL.createObjectURL(data), a = el('a', { href: url, download: fileName(new Date()) });
+    const url = URL.createObjectURL(data), a = el('a', { href: url, download: fileName(new Date(), timeZone() === 'utc') });
     document.body.append(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 4000);
   };
   async function copy(): Promise<void> {
@@ -226,7 +227,7 @@ function openEditor(snap: Snapshot): { close(): void } {
     commitText();
     const data = await blob(); if (!data) return;
     try {
-      await navigator.share({ files: [new File([data], fileName(new Date()), { type: 'image/png' })], title: 'LiquidityMapperFast' });
+      await navigator.share({ files: [new File([data], fileName(new Date(), timeZone() === 'utc'), { type: 'image/png' })], title: 'LiquidityMapperFast' });
       close(); toast(t('Shared'));
     } catch (error) {
       // Dismissing the share sheet is not a failure: the picture stays open for another try.

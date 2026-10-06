@@ -4,7 +4,7 @@ import { TIMEFRAMES } from '../shared/series.ts';
 import { toWire } from '../shared/prints.ts';
 import type { FeedsIn, FeedsOut, RpcCall, RpcResult } from './browser/protocol.ts';
 import type { Print } from './prints.ts';
-import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, TickMessage, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
+import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, SavingState, TickMessage, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
 import { t } from './i18n.ts';
@@ -59,6 +59,9 @@ export class BrowserSource implements DataSource, VenueControl {
   #failure: Error | null = null;
   /** Whether this tab is the one saving recordings, and whether anything is saved at all. */
   recording = false; persisted = false;
+  /** This tab's storage stopped working: nothing it records is kept from here on. */
+  storageFailed = false;
+  #readyAt = 0;
 
   constructor(worker: Worker, { persist = true }: { persist?: boolean } = {}) {
     this.#worker = worker;
@@ -74,7 +77,7 @@ export class BrowserSource implements DataSource, VenueControl {
     worker.onmessage = (event: MessageEvent<FeedsOut>) => {
       const message = event.data;
       switch (message.type) {
-        case 'ready': this.#started = true; this.persisted = message.persisted; ready(); break;
+        case 'ready': this.#started = true; this.persisted = message.persisted; this.#readyAt = Date.now(); ready(); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
@@ -88,7 +91,7 @@ export class BrowserSource implements DataSource, VenueControl {
           this.#statuses = message.venues; known();
           for (const watcher of this.#watchers) watcher(message.venues.map(toEntry));
           break;
-        case 'recording': this.recording = message.recording; break;
+        case 'recording': this.recording = message.recording; if (message.failed) this.storageFailed = true; break;
         case 'rpc': {
           const call = this.#calls.get(message.id); this.#calls.delete(message.id);
           if (message.error !== undefined) call?.reject(new Error(message.error)); else call?.resolve(message.result);
@@ -106,6 +109,18 @@ export class BrowserSource implements DataSource, VenueControl {
     this.#post({ type: 'init', selected: savedSelection(), persist });
     // Recordings still queued are written as the page goes away.
     addEventListener('pagehide', () => this.#post({ type: 'flush' }));
+  }
+
+  /**
+   * What becomes of what this tab records, for the status bar. A moment after the worker is ready it may not have been given the recorder
+   * role yet (the role is asked for as the engine starts), and that moment is not the same as another tab holding it.
+   */
+  saving(now: number): SavingState {
+    if (!this.#started) return 'starting';
+    if (!this.persisted) return 'memory';
+    if (this.storageFailed) return 'failed';
+    if (this.recording) return 'here';
+    return now - this.#readyAt < 3_000 ? 'starting' : 'other';
   }
 
   #fail: (error: Error) => void = () => {};

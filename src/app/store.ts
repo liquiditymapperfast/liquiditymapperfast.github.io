@@ -1,4 +1,5 @@
 import type { LevelsFrame } from './wire.ts';
+import type { TimeZone } from './format.ts';
 import type { HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
 import { LT_DEFAULTS, type LtParams } from './lt.ts';
@@ -88,6 +89,8 @@ export interface AppState {
   followLive: boolean;
   /** Keep the screen on while the page is open (a phone's screen sleeping stops the recording). */
   keepAwake: boolean;
+  /** The clock the page's times are on: the computer's own, or UTC. */
+  timeZone: TimeZone;
   /**
    * Shared cursor: `t` is authoritative; each pane converts it to its own x. `price` is only set by the heatmap. `touch` marks a hover
    * that a finger pinned (it stays until the next tap or drag, and its readouts sit above the finger).
@@ -97,7 +100,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -109,7 +112,7 @@ export function initialState(): AppState {
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
     show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
-    theme: 'light', followLive: true, keepAwake: false, hover: null, ...saved,
+    theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, ...saved,
   };
   // Saved objects may predate newer keys: keep the defaults for anything they lack.
   state.show = { ...defaultShow(), ...saved.show };
@@ -117,6 +120,7 @@ export function initialState(): AppState {
   state.sounds = readSounds(saved.sounds);
   state.highlight = readHighlight(saved.highlight);
   state.scope = saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all';
+  state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';
   state.heat = { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto', ...saved.heat };
   state.heat.contrast = clampContrast(state.heat.contrast);
   state.lt = { ...LT_DEFAULTS, view: 'lines', ...saved.lt };

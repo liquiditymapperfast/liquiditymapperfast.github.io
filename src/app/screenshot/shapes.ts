@@ -154,10 +154,12 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape, base: Can
   ctx.restore();
 }
 
-/** `liquiditymapperfast-2026-10-05-1432-07.png` */
-export function fileName(when: Date): string {
+/** `liquiditymapperfast-2026-10-05-1432-07.png`, on the computer's clock or, with `utc`, on UTC (the clock the page's axis is on). */
+export function fileName(when: Date, utc = false): string {
   const p = (n: number): string => String(n).padStart(2, '0');
-  return `liquiditymapperfast-${when.getFullYear()}-${p(when.getMonth() + 1)}-${p(when.getDate())}-${p(when.getHours())}${p(when.getMinutes())}-${p(when.getSeconds())}.png`;
+  const [y, mo, d, h, mi, s] = utc ? [when.getUTCFullYear(), when.getUTCMonth(), when.getUTCDate(), when.getUTCHours(), when.getUTCMinutes(), when.getUTCSeconds()]
+    : [when.getFullYear(), when.getMonth(), when.getDate(), when.getHours(), when.getMinutes(), when.getSeconds()];
+  return `liquiditymapperfast-${y}-${p(mo! + 1)}-${p(d!)}-${p(h!)}${p(mi!)}-${p(s!)}.png`;
 }
 
 /** The address as a picture's corner mark says it: no scheme and no trailing slash. */

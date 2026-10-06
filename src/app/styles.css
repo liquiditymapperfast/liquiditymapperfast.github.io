@@ -27,6 +27,8 @@ html[data-layout="desktop"] .statusbar { display: flex; }
 .statusbar .status-conn[data-state="live"]::before { background: var(--bid); }
 .statusbar .status-venues[data-state="some"], .statusbar .status-mark[data-state="stale"] { color: var(--ask); }
 .statusbar .status-venues[data-state="none"] { color: var(--ask); font-weight: 600; }
+.statusbar .status-save[data-state="off"], .statusbar .status-save[data-state="failed"] { color: var(--ask); }
+.statusbar .status-save[data-state="failed"] { font-weight: 600; }
 .statusbar .status-controls { display: inline-flex; align-items: center; gap: 6px; }
 .statusbar .status-controls button { padding: 0 6px; min-height: 20px; font-size: 11px; }
 .chip.more-chip { color: var(--muted); border-style: dashed; }

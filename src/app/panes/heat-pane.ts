@@ -8,7 +8,7 @@ import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
-import { clock, price as fmtPrice, usd } from '../format.ts';
+import { clock, dayOfMonth, price as fmtPrice, usd, zoneName, zoneOffsetMs } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
@@ -47,7 +47,7 @@ const TIME_STEPS = [60e3, 300e3, 900e3, 1800e3, 3600e3, 7200e3, 14400e3, 43200e3
 export function timeTicks(t0: number, t1: number, widthPx: number, minPx = 96): number[] {
   const want = (t1 - t0) * minPx / Math.max(1, widthPx);
   const step = TIME_STEPS.find(s => s >= want) ?? TIME_STEPS[TIME_STEPS.length - 1]!;
-  const offset = new Date(t0).getTimezoneOffset() * 60_000;
+  const offset = -zoneOffsetMs(t0);
   const out: number[] = [];
   for (let t = Math.ceil((t0 - offset) / step) * step + offset; t <= t1; t += step) out.push(t);
   return out;
@@ -329,10 +329,12 @@ export class HeatPane {
     let lastDay = -1;
     for (const t of ticks) {
       const x = v.xOf(t, pw); if (x < 24 || x > pw - 24) continue;
-      const d = new Date(t), day = d.getDate();
-      ctx.fillText(day !== lastDay && (t % 86_400_000 === 0 || ticks.length < 3 || lastDay === -1) ? clock(t, true) : clock(t), x, ph + TIME_H / 2);
+      const day = dayOfMonth(t);
+      ctx.fillText(day !== lastDay && ((t + zoneOffsetMs(t)) % 86_400_000 === 0 || ticks.length < 3 || lastDay === -1) ? clock(t, true) : clock(t), x, ph + TIME_H / 2);
       lastDay = day;
     }
+    // Which clock the labels are on, under the price axis where no tick label goes (a screenshot says it too).
+    ctx.textAlign = 'right'; ctx.fillText(zoneName(), w - 6, ph + TIME_H / 2); ctx.textAlign = 'center';
     this.#paintLegend(ctx, state);
     if (!this.#wasLoaded && state.levels) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('Collecting depth history…'), 12, 50); }
     const emptyScope = heatmapSourceOf(state) === 'aggregated' ? emptyScopeMessage(state) : null;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from '../src/app/chips.ts';
-import { STALE_PRICE_MS, age, statusInfo, venueSummary } from '../src/app/statusbar.ts';
+import { STALE_PRICE_MS, age, savingInfo, statusInfo, venueSummary } from '../src/app/statusbar.ts';
 import type { VenueEntry } from '../src/app/source.ts';
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => `v${i}`);
@@ -50,4 +50,20 @@ test('the status says whether the data flows, how many venues are live, how old 
   assert.equal(statusInfo({ ...state, mark: { price: 0, asOf: 0 } }, [], 0, 'browser', now).mark, null);
   assert.equal(statusInfo(state, [], 0, 'browser', now).venues, null);
   assert.ok(STALE_PRICE_MS >= 10_000);
+});
+
+test('the status says what becomes of the recordings, and nothing while that is not known yet', () => {
+  const now = 1_800_000_000_000, state = { status: 'live', connected: true, mark: { price: 86_263.9, asOf: now - 2_000 }, marketId: 'x' };
+  assert.equal(statusInfo(state, [], 0, 'browser', now).saving, null, 'the default is not knowing yet');
+  assert.equal(savingInfo('starting'), null);
+  const words = (kind: Parameters<typeof savingInfo>[0]) => savingInfo(kind)!;
+  assert.deepEqual([words('here').text, words('here').state], ['Saving in this tab', 'ok']);
+  assert.deepEqual([words('other').text, words('other').state], ['Saved by another tab', 'other']);
+  assert.deepEqual([words('memory').text, words('memory').state], ['Not saved', 'off']);
+  assert.deepEqual([words('failed').text, words('failed').state], ['Saving stopped', 'failed']);
+  assert.deepEqual([words('server').text, words('server').state], ['Saved by the server', 'ok']);
+  assert.match(words('server').tip, /whether or not this page is open/, 'the server records without the page');
+  assert.match(words('memory').tip, /gone when the page closes/);
+  assert.match(words('failed').tip, /reloaded/);
+  assert.deepEqual(statusInfo(state, [], 0, 'server', now, 'server').saving, savingInfo('server'));
 });

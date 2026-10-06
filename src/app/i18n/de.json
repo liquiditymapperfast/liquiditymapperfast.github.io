@@ -643,5 +643,19 @@
  "Showing the biggest {shown} of {total} exchanges.": "Die {shown} größten von {total} Börsen werden angezeigt.",
  "Show all": "Alle zeigen",
  "No trades in this window: {names}.": "Keine Trades in diesem Fenster: {names}.",
- "Not on the map yet (no order book): {names}.": "Noch nicht auf der Karte (kein Orderbuch): {names}."
+ "Not on the map yet (no order book): {names}.": "Noch nicht auf der Karte (kein Orderbuch): {names}.",
+ "Local": "Lokal",
+ "Time zone": "Zeitzone",
+ "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "Die Zeiten werden in UTC angezeigt. Ein Klick zeigt sie in der Zeit des Computers ({zone}).",
+ "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "Die Zeiten werden in der Zeit des Computers ({zone}) angezeigt. Ein Klick zeigt sie in UTC.",
+ "Saved by the server": "Vom Server gespeichert",
+ "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "Der Server zeichnet Heatmap, Flow und Footprint auf, solange er läuft – ob diese Seite offen ist oder nicht.",
+ "Saving in this tab": "Speichert in diesem Tab",
+ "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "Flow, Footprint und große Trades werden in diesem Browser gespeichert und sind nach einem Neuladen oder Neustart noch da.",
+ "Saved by another tab": "Von einem anderen Tab gespeichert",
+ "Another tab of this page is saving the recordings; this tab reads what it saves.": "Ein anderer Tab dieser Seite speichert die Aufzeichnungen; dieser Tab liest, was er speichert.",
+ "Not saved": "Nicht gespeichert",
+ "This session keeps its recordings in memory only (saving is off, or this browser does not allow it): they are gone when the page closes.": "Diese Sitzung hält ihre Aufzeichnungen nur im Arbeitsspeicher (das Speichern ist aus oder dieser Browser erlaubt es nicht): sie sind weg, sobald die Seite geschlossen wird.",
+ "Saving stopped": "Speichern gestoppt",
+ "The browser stopped storing the recordings (its storage may be full or refused): until the page is reloaded they are kept in memory only.": "Der Browser speichert die Aufzeichnungen nicht mehr (sein Speicher ist womöglich voll oder wurde verweigert): bis die Seite neu geladen wird, liegen sie nur im Arbeitsspeicher."
 }

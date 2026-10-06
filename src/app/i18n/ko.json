@@ -631,5 +631,19 @@
  "Showing the biggest {shown} of {total} exchanges.": "거래소 {total}곳 중 가장 큰 {shown}곳을 표시 중입니다.",
  "Show all": "모두 표시",
  "No trades in this window: {names}.": "이 구간에 체결 없음: {names}",
- "Not on the map yet (no order book): {names}.": "아직 지도에 없음 (호가창 없음): {names}"
+ "Not on the map yet (no order book): {names}.": "아직 지도에 없음 (호가창 없음): {names}",
+ "Local": "로컬",
+ "Time zone": "시간대",
+ "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "시간이 UTC로 표시됩니다. 클릭하면 컴퓨터의 시간({zone})으로 표시합니다.",
+ "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "시간이 컴퓨터의 시간({zone})으로 표시됩니다. 클릭하면 UTC로 표시합니다.",
+ "Saved by the server": "서버가 저장",
+ "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "서버는 실행되는 동안 이 페이지가 열려 있든 아니든 히트맵, 플로우, 풋프린트를 기록합니다.",
+ "Saving in this tab": "이 탭에서 저장 중",
+ "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "플로우, 풋프린트, 대형 체결은 이 브라우저에 저장되므로 새로고침이나 재시작 후에도 남아 있습니다.",
+ "Saved by another tab": "다른 탭이 저장",
+ "Another tab of this page is saving the recordings; this tab reads what it saves.": "이 페이지의 다른 탭이 기록을 저장하고 있습니다. 이 탭은 그 탭이 저장한 내용을 읽습니다.",
+ "Not saved": "저장 안 됨",
+ "This session keeps its recordings in memory only (saving is off, or this browser does not allow it): they are gone when the page closes.": "이 세션은 기록을 메모리에만 보관합니다(저장이 꺼져 있거나 이 브라우저가 허용하지 않습니다). 페이지를 닫으면 사라집니다.",
+ "Saving stopped": "저장 중단됨",
+ "The browser stopped storing the recordings (its storage may be full or refused): until the page is reloaded they are kept in memory only.": "브라우저가 기록 저장을 멈췄습니다(저장 공간이 가득 찼거나 거부되었을 수 있습니다). 페이지를 다시 불러올 때까지 기록은 메모리에만 보관됩니다."
 }

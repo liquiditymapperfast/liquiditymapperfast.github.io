@@ -36,6 +36,6 @@ export type FeedsOut =
   | { type: 'prints'; items: Print[] }
   | { type: 'flow'; items: FlowUpdate[] }
   | { type: 'status'; venues: VenueStatus[] }
-  /** Whether this tab is the one writing recordings (another tab may hold that role). */
-  | { type: 'recording'; recording: boolean }
+  /** Whether this tab is the one writing recordings (another tab may hold that role); `failed`: its storage stopped working, so it will not be. */
+  | { type: 'recording'; recording: boolean; failed?: boolean }
   | { type: 'rpc'; id: number; result?: unknown; error?: string };

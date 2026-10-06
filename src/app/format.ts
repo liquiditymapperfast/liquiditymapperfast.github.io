@@ -12,21 +12,52 @@ export function price(value: number, step = 0): string {
   return fixedFormat(decimals).format(value);
 }
 const two = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The clock the page's times are on: the computer's own, or UTC (the one the exchanges' candles and most other charts keep). One setting for
+ * the whole page, read by everything that writes a time or places a tick on a time axis.
+ */
+export type TimeZone = 'local' | 'utc';
+let zone: TimeZone = 'local';
+export function setTimeZone(next: TimeZone): void { zone = next === 'utc' ? 'utc' : 'local'; }
+export const timeZone = (): TimeZone => zone;
+/** Milliseconds to add to a time to get the wall clock of the zone at that moment (nothing for UTC; an hour more or less across a clock change). */
+export const zoneOffsetMs = (t: number, which: TimeZone = zone): number => which === 'utc' ? 0 : -new Date(t).getTimezoneOffset() * 60_000;
+/** A time moved onto the zone's wall clock, so that its UTC fields (`getUTCHours` and the rest) read as the clock on the wall. */
+const onWall = (t: number): Date => new Date(t + zoneOffsetMs(t));
+/** The day of the month `t` falls on, on the zone's clock. */
+export const dayOfMonth = (t: number): number => onWall(t).getUTCDate();
+
+const names = new Map<string, string>();
+/** The short name of a zone for a label: "UTC", or the computer's own ("GMT+2", "CEST", "EDT": whatever its language calls it). */
+export function zoneName(which: TimeZone = zone, at = Date.now()): string {
+  if (which === 'utc') return 'UTC';
+  const key = `${language()}|${Math.floor(at / 3_600_000)}`;
+  let name = names.get(key);
+  if (name === undefined) {
+    try { name = new Intl.DateTimeFormat(language(), { timeZoneName: 'short' }).formatToParts(new Date(at)).find(part => part.type === 'timeZoneName')?.value ?? ''; } catch { name = ''; }
+    if (names.size > 50) names.clear();
+    names.set(key, name);
+  }
+  return name || t('Local');
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const dayFormats = new Map<string, Intl.DateTimeFormat>();
-/** "Oct 5" in English, and the date as the language writes it ("5. Okt.", "10月5日") in the others. */
-function monthDay(d: Date): string {
+/** "Oct 5" in English, and the date as the language writes it ("5. Okt.", "10月5日") in the others; `wall` is a time moved onto the zone's clock. */
+function monthDay(wall: Date): string {
   const code = language();
-  if (code === 'en') return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  if (code === 'en') return `${MONTHS[wall.getUTCMonth()]} ${wall.getUTCDate()}`;
   let format = dayFormats.get(code);
-  if (!format) { format = new Intl.DateTimeFormat(code, { month: 'short', day: 'numeric' }); dayFormats.set(code, format); }
-  return format.format(d);
+  if (!format) { format = new Intl.DateTimeFormat(code, { month: 'short', day: 'numeric', timeZone: 'UTC' }); dayFormats.set(code, format); }
+  return format.format(wall);
 }
 export function clock(t: number, withDate = false): string {
-  const d = new Date(t);
-  const time = `${two(d.getHours())}:${two(d.getMinutes())}`;
+  const d = onWall(t);
+  const time = `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
   return withDate ? `${monthDay(d)} ${time}` : time;
 }
+
 export function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return s < 90 ? t('{n}s ago', { n: s }) : s < 5400 ? t('{n}m ago', { n: Math.round(s / 60) }) : s < 129600 ? t('{n}h ago', { n: Math.round(s / 3600) }) : t('{n}d ago', { n: Math.round(s / 86400) });

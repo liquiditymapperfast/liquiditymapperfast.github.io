@@ -57,6 +57,12 @@ export interface VenueControl {
 }
 
 /**
+ * What becomes of what the page records: the server keeps it, or this browser does (this tab holds the recorder role, or another tab does),
+ * or nothing is kept (saving is off, the browser does not allow it, or it stopped working). `starting`: not known yet.
+ */
+export type SavingState = 'server' | 'here' | 'other' | 'memory' | 'failed' | 'starting';
+
+/**
  * Where the data comes from. The page only talks to this: a local server (`ServerSource`) or the exchanges directly from the
  * browser (`BrowserSource`). Both produce the same frames, series and history, so nothing above this line knows which it is.
  */
@@ -73,4 +79,6 @@ export interface DataSource {
   flow(ids: string[], from: number, to: number): Promise<FlowFrame>;
   footprint(inst: string, tf: string, from: number, to: number, rowStep: number): Promise<FootprintResponse>;
   readonly venues: VenueControl;
+  /** What becomes of the recordings, at `now`; a source whose recordings are kept elsewhere (the server) leaves it out. */
+  saving?(now: number): SavingState;
 }

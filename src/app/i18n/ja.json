@@ -631,5 +631,19 @@
  "Showing the biggest {shown} of {total} exchanges.": "{total} 取引所のうち上位 {shown} を表示中。",
  "Show all": "すべて表示",
  "No trades in this window: {names}.": "この期間に約定なし: {names}",
- "Not on the map yet (no order book): {names}.": "まだマップにありません（オーダーブックなし）: {names}"
+ "Not on the map yet (no order book): {names}.": "まだマップにありません（オーダーブックなし）: {names}",
+ "Local": "ローカル",
+ "Time zone": "タイムゾーン",
+ "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "時刻は UTC で表示されています。クリックすると、コンピューターの時刻（{zone}）で表示します。",
+ "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "時刻はコンピューターの時刻（{zone}）で表示されています。クリックすると UTC で表示します。",
+ "Saved by the server": "サーバーが保存",
+ "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "サーバーは動いている間、このページが開いているかどうかに関係なく、ヒートマップ、フロー、フットプリントを記録します。",
+ "Saving in this tab": "このタブで保存中",
+ "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "フロー、フットプリント、大口約定はこのブラウザに保存されるので、再読み込みや再起動の後も残ります。",
+ "Saved by another tab": "別のタブが保存",
+ "Another tab of this page is saving the recordings; this tab reads what it saves.": "同じページの別のタブが記録を保存しています。このタブはその保存内容を読み込みます。",
+ "Not saved": "保存されていません",
+ "This session keeps its recordings in memory only (saving is off, or this browser does not allow it): they are gone when the page closes.": "このセッションの記録はメモリ上にのみ保持されます（保存がオフか、このブラウザが許可していません）。ページを閉じると消えます。",
+ "Saving stopped": "保存が停止しました",
+ "The browser stopped storing the recordings (its storage may be full or refused): until the page is reloaded they are kept in memory only.": "ブラウザが記録の保存をやめました（保存領域がいっぱいか、拒否された可能性があります）。ページを再読み込みするまで、記録はメモリ上にのみ保持されます。"
 }

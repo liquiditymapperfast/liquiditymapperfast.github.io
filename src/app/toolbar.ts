@@ -3,7 +3,7 @@ import { PALETTES, THEME_ORDER } from './theme.ts';
 import { AVAILABLE_LAYERS, type Store, type AppState, type Layer } from './store.ts';
 import { VPN_HINT, VenueNotice, blockedVenues, idleText, idleVenues } from './venue-notice.ts';
 import type { VenueEntry } from './source.ts';
-import { usd } from './format.ts';
+import { usd, zoneName } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
 import { lazy } from './lazy.ts';
@@ -86,6 +86,8 @@ export class Toolbar {
   #source = el('select', { ariaLabel: t('Source'), tip: t('Heatmap source') });
   #theme = el('button', { class: 'theme-btn', tip: t('Theme: hover to preview, click to keep') });
   /** The page's language: the code of the one in use, and a menu of the others (a language is chosen before the page is built, so choosing one reloads it). */
+  /** Which clock the page's times are on: UTC, or the computer's own. */
+  #zone = el('button', { class: 'zone-btn' });
   #language = el('button', { class: 'language-btn', ariaLabel: t('Language'), tip: t('Language: the page uses the language of your browser unless you choose another here') }, el('span', { textContent: language().toUpperCase() }));
   #status = el('span', { class: 'status', tip: t('Connection to the data source: live when frames are arriving.') });
   #brand = el('span', { class: 'brand', textContent: 'LiquidityMapperFast' });
@@ -144,6 +146,7 @@ export class Toolbar {
     this.#source.onchange = () => this.store.set({ heatmapSource: this.#source.value });
     this.#theme.onclick = () => this.#openThemes();
     this.#language.onclick = () => this.#openLanguages();
+    this.#zone.onclick = () => this.store.set({ timeZone: this.store.state.timeZone === 'utc' ? 'local' : 'utc' });
     this.#recenter.onclick = () => this.onRecenter();
     this.#author.onclick = () => { toggleAuthor(this.#author); };
     this.#shot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z"/><circle cx="12" cy="13.4" r="3.3"/></svg>';
@@ -186,9 +189,9 @@ export class Toolbar {
       if (inCorner) this.#mapHost!.prepend(this.#recenter);
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
-      host?.replaceChildren(this.#language, this.#theme);
+      host?.replaceChildren(this.#zone, this.#language, this.#theme);
       this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
-        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#language, this.#theme, this.#status]), this.#notice.root);
+        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root);
       return;
     }
     this.root.replaceChildren(
@@ -216,7 +219,7 @@ export class Toolbar {
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
         section(t('Venues'), [field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
         section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#soundButton)]),
-        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme),
+        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zone),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesButton!.textContent = t('Venues'); });
     this.#more.classList.add('open');
@@ -253,6 +256,7 @@ export class Toolbar {
     if (this.#heat.lo.textContent !== lo) this.#heat.lo.textContent = lo;
     if (this.#heat.hi.textContent !== hi) this.#heat.hi.textContent = hi;
     this.#showTheme(state.theme);
+    this.#showZone(state.timeZone);
     const soundState = !state.sounds.on ? 'off' : state.soundState !== 'running' ? 'locked' : 'on';
     if (this.#soundButton.dataset.state !== soundState) {
       this.#soundButton.dataset.state = soundState;
@@ -350,6 +354,15 @@ export class Toolbar {
     this.#theme.dataset.theme = id;
     const swatch = el('span', { class: 'swatch' }, ...[p.bg, p.panel, p.bid, p.ask].map(color => { const dot = el('i'); dot.style.background = color; return dot; }));
     this.#theme.replaceChildren(swatch, el('span', { textContent: p.label }));
+  }
+  /** The zone button says the clock the page is on, and what a click does (the name of the computer's own zone is part of it). */
+  #showZone(zone: AppState['timeZone']): void {
+    if (this.#zone.dataset.zone === zone) return;
+    this.#zone.dataset.zone = zone;
+    this.#zone.textContent = zone === 'utc' ? 'UTC' : t('Local');
+    setTip(this.#zone, zone === 'utc'
+      ? t('Times are shown in UTC. Click to show them in your computer\'s time ({zone}).', { zone: zoneName('local') })
+      : t('Times are shown in your computer\'s time ({zone}). Click to show them in UTC.', { zone: zoneName('local') }));
   }
   /** Choose the page's language, or let the browser's preference decide. The page is then built again in it. */
   #openLanguages(): void {

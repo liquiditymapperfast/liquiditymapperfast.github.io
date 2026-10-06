@@ -9,6 +9,7 @@ import { Sounds } from './sound/sounds.ts';
 import { Alerts } from './sound/alerts.ts';
 import { Toolbar } from './toolbar.ts';
 import { StatusBar } from './statusbar.ts';
+import { setTimeZone } from './format.ts';
 import { installTips } from './tip.ts';
 import { installTouchSelects } from './touch-select.ts';
 import { lazy } from './lazy.ts';
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   startDevice();
   const store = new Store(initialState());
+  setTimeZone(store.state.timeZone);
   applyTheme(store.state.theme);
   installTips();
   installTouchSelects();
@@ -71,7 +73,7 @@ async function main(): Promise<void> {
   app.append(toolbar.root, main, dock.root, statusbar.root);
   toolbar.hostStatusControls(statusbar.controls);
   source.venues.watch?.(entries => statusbar.setVenues(entries));
-  const showStatus = (): void => statusbar.update(store.state, hub.recordedSince);
+  const showStatus = (): void => statusbar.update(store.state, hub.recordedSince, source.kind === 'server' ? 'server' : source.saving?.(Date.now()) ?? 'starting');
   window.setInterval(showStatus, 1000);
 
   const heat = new HeatPane(chart, store, hub, kernels);
@@ -135,6 +137,8 @@ async function main(): Promise<void> {
 
   store.subscribe((state, changed) => {
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
+    // Every time on the page is written from the one setting: say it changed, and have what shows times draw again.
+    if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }
     if (changed.has('theme')) { applyTheme(state.theme); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(state.theme); }
     if (changed.has('cvd')) cvd.refresh();
     if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
@@ -152,7 +156,7 @@ async function main(): Promise<void> {
     if (changed.has('barStats')) { arrange.setPaneHeight('bars', 12 + Math.max(1, enabledStats(state.barStats).length) * 24); bars.refresh(); }
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.syncHover(); }
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(store.state.theme);

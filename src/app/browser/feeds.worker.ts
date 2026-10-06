@@ -55,7 +55,9 @@ function claimRecorder(): void {
 function stopRecording(): void {
   storageFailed = true;
   giveUpRecorder?.(); giveUpRecorder = null;
-  if (recording) { recording = false; post({ type: 'recording', recording: false }); }
+  recording = false;
+  // Said whether or not this tab held the role: a tab waiting in line for it must not be taken for one whose turn has not come.
+  post({ type: 'recording', recording: false, failed: true });
 }
 
 async function init(selected: string[] | null, persist: boolean): Promise<void> {

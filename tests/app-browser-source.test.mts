@@ -53,3 +53,21 @@ test('an error in a worker that was running fails what was outstanding, and the 
     assert.deepEqual(await later, []);
   });
 });
+
+test('the source says what becomes of the recordings of this tab: not known yet, here, with another tab, nowhere, or no longer', () => {
+  const later = Date.now() + 60_000;
+  const { worker, source } = make();
+  assert.equal(source.saving(later), 'starting', 'before the worker is ready');
+  say(worker, { type: 'ready', persisted: true });
+  assert.equal(source.saving(Date.now()), 'starting', 'ready, but the recorder role is asked for as the engine starts and takes a moment');
+  assert.equal(source.saving(later), 'other', 'a minute on, still without the role: another tab has it');
+  say(worker, { type: 'recording', recording: true });
+  assert.equal(source.saving(later), 'here');
+  say(worker, { type: 'recording', recording: false });
+  assert.equal(source.saving(later), 'other', 'the role was handed to another tab');
+  say(worker, { type: 'recording', recording: false, failed: true });
+  assert.equal(source.saving(later), 'failed', 'its storage stopped, which is not another tab having the role');
+  const memory = make();
+  say(memory.worker, { type: 'ready', persisted: false });
+  assert.equal(memory.source.saving(later), 'memory', 'nothing is kept: saving is off or the browser does not allow it');
+});
