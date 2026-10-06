@@ -43,10 +43,18 @@ export type FlowUpdate = [string, number, number, number, number?];
 export interface FlowSeriesFrame { id: string; t0: number; buy: Float32Array; sell: Float32Array; px?: Float32Array }
 export interface FlowFrame { from: number; to: number; instruments: FlowSeriesFrame[] }
 
-/** The volume-weighted price of second `index` of a minute's bins: its USD over its base quantity, or 0 when nothing with a price traded in it. */
+/**
+ * A minute's bins: USD bought in each of its 60 seconds, USD sold, and the base quantity traded. A minute that holds USD with no known
+ * price (restored from a store that kept none, or a trade that came without one) has 60 more: that USD, which stays out of the price.
+ */
+const BINS = 180, BINS_WITH_UNPRICED = 240;
+
+/** The volume-weighted price of second `index` of a minute's bins: its priced USD over its base quantity, or 0 when nothing with a price traded in it. */
 function priceOf(bins: Float64Array, index: number): number {
   const qty = bins[120 + index]!;
-  return qty > 0 ? (bins[index]! + bins[60 + index]!) / qty : 0;
+  if (!(qty > 0)) return 0;
+  const priced = bins[index]! + bins[60 + index]! - (bins.length > BINS ? bins[BINS + index]! : 0);
+  return priced > 0 ? priced / qty : 0;
 }
 
 /** Per-instrument, per-second taker buy and sell USD, and the volume-weighted price of each second. */
@@ -67,9 +75,11 @@ export class FlowRecorder {
     this.#store = store; this.#memoryMs = memoryMs; this.#storeMs = storeMs;
     if (store) for (const row of store.load(now() - memoryMs)) {
       if (row.buy.length !== 60 || row.sell.length !== 60) continue;
-      const bins = new Float64Array(180); bins.set(row.buy, 0); bins.set(row.sell, 60);
+      const priced = row.px?.length === 60, bins = new Float64Array(priced ? BINS : BINS_WITH_UNPRICED); bins.set(row.buy, 0); bins.set(row.sell, 60);
       // The quantity is what the price is worked back from, so a trade that arrives late for a minute read from the store still averages in.
-      if (row.px?.length === 60) for (let i = 0; i < 60; i++) { const p = row.px[i]!; if (p > 0) bins[120 + i] = (bins[i]! + bins[60 + i]!) / p; }
+      if (priced) for (let i = 0; i < 60; i++) { const p = row.px![i]!; if (p > 0) bins[120 + i] = (bins[i]! + bins[60 + i]!) / p; }
+      // A minute recorded before prices were kept has none to work back from: all of its USD is unpriced, so a late trade's price is its own, not a blend with that.
+      else for (let i = 0; i < 60; i++) bins[BINS + i] = bins[i]! + bins[60 + i]!;
       this.#of(row.inst).set(row.t, bins);
     }
   }
@@ -95,9 +105,10 @@ export class FlowRecorder {
       if (seen.size > SEEN_MAX) { const keep = [...seen].slice(-SEEN_MAX / 3); seen.clear(); for (const k of keep) seen.add(k); }
       const minute = Math.floor(t / MINUTE) * MINUTE, second = Math.floor((t - minute) / FLOW_SEC);
       const minutes = this.#of(id);
-      let bins = minutes.get(minute); if (!bins) { bins = new Float64Array(180); minutes.set(minute, bins); }
+      let bins = minutes.get(minute); if (!bins) { bins = new Float64Array(BINS); minutes.set(minute, bins); }
+      if (!(price > 0) && bins.length === BINS) { const wider = new Float64Array(BINS_WITH_UNPRICED); wider.set(bins); minutes.set(minute, wider); bins = wider; }
       bins[(side === 'buy' ? 0 : 60) + second]! += usd;
-      if (price > 0) bins[120 + second]! += usd / price;
+      if (price > 0) bins[120 + second]! += usd / price; else bins[BINS + second]! += usd;
       this.#dirty.add(`${id}|${minute}`);
       let changed = this.#changed.get(id); if (!changed) { changed = new Set(); this.#changed.set(id, changed); }
       changed.add(minute + second * FLOW_SEC);
@@ -121,23 +132,27 @@ export class FlowRecorder {
     return out;
   }
 
-  /** Persist changed minutes older than the open one and drop what memory no longer keeps. */
-  flush(): void {
+  /**
+   * Persist changed minutes older than the open one and drop what memory no longer keeps. With `final` (the process or the page is going
+   * away) the open minute is written too, as far as it has got: a restart reads it back and carries on adding to it. It stays marked as
+   * changed, so if the recorder goes on, the next flush after the minute has ended writes it again, whole. A minute leaves the changed set
+   * only once the store has taken it, so a store that failed is tried again.
+   */
+  flush(final = false): void {
     const now = this.now(), cutoff = now - this.#memoryMs, open = Math.floor(now / MINUTE) * MINUTE;
     for (const minutes of this.#minutes.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
-    const store = this.#store;
-    if (!store) { for (const key of [...this.#dirty]) if (Number(key.slice(key.lastIndexOf('|') + 1)) < open) this.#dirty.delete(key); return; }
-    const rows: FlowMinuteRow[] = [];
+    const store = this.#store, rows: FlowMinuteRow[] = [], settled: string[] = [];
     for (const key of [...this.#dirty]) {
       const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
-      if (t >= open) continue;
+      if (t >= open && !(final && store)) continue;
       const bins = this.#minutes.get(id)?.get(t);
-      if (bins) rows.push({ inst: id, t, buy: Float32Array.from(bins.subarray(0, 60)), sell: Float32Array.from(bins.subarray(60, 120)), px: Float32Array.from({ length: 60 }, (_, i) => priceOf(bins, i)) });
-      this.#dirty.delete(key);
+      if (bins && store) rows.push({ inst: id, t, buy: Float32Array.from(bins.subarray(0, 60)), sell: Float32Array.from(bins.subarray(60, 120)), px: Float32Array.from({ length: 60 }, (_, i) => priceOf(bins, i)) });
+      if (t < open) settled.push(key);
     }
-    store.save(rows, now - this.#storeMs);
+    store?.save(rows, now - this.#storeMs);
+    for (const key of settled) this.#dirty.delete(key);
   }
-  close(): void { this.flush(); this.#store?.close(); }
+  close(): void { this.flush(true); this.#store?.close(); }
 
   /** The newest second's start with data for `id` (ms), or 0. */
   lastSecond(id: string): number {

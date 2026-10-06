@@ -206,7 +206,7 @@ export class Engine {
   }
 
   /** Write everything not yet saved, including the minute still open (the page is going away). */
-  flush(): void { this.recorder.flush(); this.footprints.flush(); this.printStream.flush(); this.flows.flush(); }
+  flush(): void { this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); }
 
   #value(now: number): ValuedBook[] {
     const out: ValuedBook[] = [];

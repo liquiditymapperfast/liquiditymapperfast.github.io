@@ -26,6 +26,12 @@ export interface FootprintBar {
 
 type Bins = Map<number, [number, number]>;
 
+/**
+ * The row a price falls in. A price that is a whole number of steps is a boundary and belongs to the row above it, but the division can come
+ * out a hair under the whole number (100.3 / 0.1), which would put it in the row below: a part in 10^12 is forgiven.
+ */
+const binOf = (price: number, step: number): number => Math.floor(price / step * (1 + 1e-12));
+
 /** One recorded minute of one instrument as it is stored: rows are [bin, buyUsd, sellUsd]. */
 export interface FootprintMinuteRow { inst: string; t: number; step: number; bins: [number, number, number][]; stats: TradeStats | null }
 /** Where recorded minutes outlive the process (SQLite on the server, IndexedDB in the browser); loading is synchronous, saving may be queued. */
@@ -79,36 +85,45 @@ export class FootprintRecorder {
       if (!step) { step = gridStepFor(price) / FINE_DIV; this.#steps.set(id, step); }
       const minute = Math.floor(t / MINUTE) * MINUTE;
       const minutes = this.#minute(id);
-      let bins = minutes.get(minute); if (!bins) { bins = new Map(); minutes.set(minute, bins); }
-      const bin = Math.floor(price / step);
+      let bins = minutes.get(minute); const restored = bins !== undefined;
+      if (!bins) { bins = new Map(); minutes.set(minute, bins); }
+      const bin = binOf(price, step);
       const cell = bins.get(bin) ?? [0, 0];
       cell[side === 'buy' ? 0 : 1] += usd; bins.set(bin, cell);
-      const stats = this.#minuteStats(id), minuteStats = stats.get(minute) ?? emptyStats(); stats.set(minute, minuteStats);
-      if (side === 'buy') { minuteStats.buyN++; minuteStats.buy[sizeBucket(usd)]! += usd; } else { minuteStats.sellN++; minuteStats.sell[sizeBucket(usd)]! += usd; }
+      // A minute that was restored without statistics (recorded before they were kept) stays without: counting only the trades that arrive
+      // now would give it statistics that cover a fraction of its volume, and a bar would be passed off as complete on them.
+      const stats = this.#minuteStats(id);
+      if (!restored || stats.has(minute)) {
+        const minuteStats = stats.get(minute) ?? emptyStats(); stats.set(minute, minuteStats);
+        if (side === 'buy') { minuteStats.buyN++; minuteStats.buy[sizeBucket(usd)]! += usd; } else { minuteStats.sellN++; minuteStats.sell[sizeBucket(usd)]! += usd; }
+      }
       this.#dirty.add(`${id}|${minute}`);
       accepted++;
     }
     return accepted;
   }
 
-  /** Persist changed minutes older than the open one and drop expired minutes. */
-  flush(): void {
+  /**
+   * Persist changed minutes older than the open one and drop expired minutes. With `final` (the process or the page is going away) the open
+   * minute is written too, as far as it has got: a restart reads it back and carries on adding to it. It stays marked as changed, so the next
+   * flush after the minute has ended writes it again, whole. A minute leaves the changed set only once the store has taken it.
+   */
+  flush(final = false): void {
     const cutoff = this.now() - this.#retentionMs, open = Math.floor(this.now() / MINUTE) * MINUTE;
     for (const minutes of this.#minutes.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
     for (const minutes of this.#stats.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
-    const store = this.#store;
-    if (!store) { for (const key of [...this.#dirty]) if (Number(key.slice(key.lastIndexOf('|') + 1)) < open) this.#dirty.delete(key); return; }
-    const rows: FootprintMinuteRow[] = [];
+    const store = this.#store, rows: FootprintMinuteRow[] = [], settled: string[] = [];
     for (const key of [...this.#dirty]) {
       const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
-      if (t >= open) continue;
+      if (t >= open && !(final && store)) continue;
       const bins = this.#minutes.get(id)?.get(t);
-      if (bins) rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell]]) => [bin, buy, sell] as [number, number, number]), stats: this.#stats.get(id)?.get(t) ?? null });
-      this.#dirty.delete(key);
+      if (bins && store) rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell]]) => [bin, buy, sell] as [number, number, number]), stats: this.#stats.get(id)?.get(t) ?? null });
+      if (t < open) settled.push(key);
     }
-    store.save(rows, cutoff);
+    store?.save(rows, cutoff);
+    for (const key of settled) this.#dirty.delete(key);
   }
-  close(): void { this.flush(); this.#store?.close(); }
+  close(): void { this.flush(true); this.#store?.close(); }
 
   /** Bars of `tfMs` over [from, to), rows merged to `rowStep` (rounded to a multiple of the recorded step). */
   query(id: string, from: number, to: number, tfMs: number, rowStep: number): { step: number; fine: number; bars: FootprintBar[] } {

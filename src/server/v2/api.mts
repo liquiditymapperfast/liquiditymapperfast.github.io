@@ -89,6 +89,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   /** Which books were on the map when the levels were last published, so one that ages out is published as gone. */
   let lastMembers = '';
   let lastFault = 0;
+  /** Say that something failed, at most every ten seconds. */
+  const fault = (what: string, error: unknown): void => { const now = Date.now(); if (now - lastFault >= 10_000) { lastFault = now; console.error(what, error); } };
 
   const marketOf = (id: string) => app.state.markets?.find(m => (m.instrumentId ?? m.id) === id) ?? null;
   const refreshBooks = (now: number) => {
@@ -143,7 +145,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     prints.ingest(app.state.trades ?? []);
     flow.ingest(app.state.trades ?? []);
     if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}).map(id => id.split(':')[0]!), ...extra.enabledIds])); }
-    if (now - lastFlush >= 30_000) { lastFlush = now; footprint.flush(); prints.flush(); flow.flush(); }
+    // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
+    if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, flow]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
     const fresh = prints.takeFresh();
     // Taken whether or not anyone listens, so the changed seconds do not pile up while nobody is connected.
@@ -164,10 +167,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
   // One failed pass must not end the process (an exception out of a timer is fatal): say so, at most every ten seconds, and go on.
   const loop = setInterval(() => {
-    try { tick(); } catch (error) {
-      const now = Date.now();
-      if (now - lastFault >= 10_000) { lastFault = now; console.error('v2 loop pass failed; carrying on:', error); }
-    }
+    try { tick(); } catch (error) { fault('v2 loop pass failed; carrying on:', error); }
   }, liveMs);
   loop.unref();
 
@@ -292,7 +292,10 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     close() {
       clearInterval(loop); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
-      recorder.flush(); store?.close(); footprint.close(); prints.close(); flow.close(); flowSources.close(); extra.close();
+      // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes are written here).
+      for (const part of [() => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => flowSources.close(), () => extra.close()]) {
+        try { part(); } catch (error) { console.error('v2 shutdown:', error); }
+      }
     },
   };
 }

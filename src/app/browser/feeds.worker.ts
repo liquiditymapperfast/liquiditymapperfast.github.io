@@ -33,21 +33,40 @@ let recordings: Recordings | null = null;
 /** Whether this tab holds the role of writing recordings. */
 let recording = false;
 
-/** Only one tab records: the lock is held for as long as this worker lives, and the next waiting tab takes over when it ends. */
+/** Lets go of the recorder role (set while this worker holds it). */
+let giveUpRecorder: (() => void) | null = null;
+/** Set when this tab's storage has stopped working: it takes no recorder role from then on, even one it was already waiting in line for. */
+let storageFailed = false;
+
+/**
+ * Only one tab records: the lock is held for as long as this worker lives, and the next waiting tab takes over when it ends. A tab asks
+ * for it only when it can write (see `init`), and gives it up when its storage stops working, so a tab that cannot record never keeps one
+ * that can from it.
+ */
 function claimRecorder(): void {
   const locks = (navigator as Navigator & { locks?: LockManager }).locks;
   const grant = (): void => { recording = true; post({ type: 'recording', recording: true }); };
   if (!locks) { grant(); return; }
-  void locks.request('lmf-recorder', () => { grant(); return new Promise<never>(() => {}); }).catch(() => grant());
+  void locks.request('lmf-recorder', () => {
+    if (storageFailed) return undefined;   // the lock is handed straight on
+    grant(); return new Promise<void>(resolve => { giveUpRecorder = resolve; });
+  }).catch(() => { if (!storageFailed) grant(); });
+}
+function stopRecording(): void {
+  storageFailed = true;
+  giveUpRecorder?.(); giveUpRecorder = null;
+  if (recording) { recording = false; post({ type: 'recording', recording: false }); }
 }
 
 async function init(selected: string[] | null, persist: boolean): Promise<void> {
   if (persist && typeof indexedDB !== 'undefined') {
-    try { recordings = await withTimeout(openRecordings(Date.now() - BROWSER_RETENTION_MS, () => recording, error => console.warn('recordings are no longer being saved:', error)), 5_000, 'opening the recordings'); }
+    try { recordings = await withTimeout(openRecordings(Date.now() - BROWSER_RETENTION_MS, () => recording, error => { console.warn('recordings are no longer being saved:', error); stopRecording(); }), 5_000, 'opening the recordings'); }
     catch (error) { console.warn('recordings are not kept this session:', error); }
-    // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
-    void navigator.storage?.persist?.().catch(() => false);
-    claimRecorder();
+    if (recordings) {
+      // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
+      void navigator.storage?.persist?.().catch(() => false);
+      claimRecorder();
+    }
   }
   const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null });
   next.onLevels = (books, asOf) => post({ type: 'levels', frame: frameOf(books, asOf) });
@@ -81,7 +100,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
 
 scope.onmessage = event => {
   const message = event.data;
-  if (message.type === 'init') { void init(message.selected, message.persist); return; }
+  if (message.type === 'init') { init(message.selected, message.persist).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
   if (!engine) { if (message.type === 'rpc') post({ type: 'rpc', id: message.id, error: 'the engine has not started' }); return; }
   if (message.type === 'select') engine.select(message.selected);
   else if (message.type === 'flush') { engine.flush(); void recordings?.flush(); }

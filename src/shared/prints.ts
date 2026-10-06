@@ -80,10 +80,13 @@ export class PrintStream {
     return out.length > limit ? out.slice(out.length - limit) : out;
   }
 
-  /** Write what has not been saved and drop expired rows. */
+  /** Write what has not been saved and drop expired rows, from memory as well as from the store. */
   flush(): void {
+    const cutoff = this.now() - this.#retentionMs;
+    let expired = 0; while (expired < this.#recent.length && this.#recent[expired]!.t < cutoff) expired++;
+    if (expired) this.#recent.splice(0, expired);
     const store = this.#store; if (!store) { this.#unsaved = []; return; }
-    store.save(this.#unsaved, this.now() - this.#retentionMs); this.#unsaved = [];
+    store.save(this.#unsaved, cutoff); this.#unsaved = [];
   }
   close(): void { this.flush(); this.#store?.close(); }
 }

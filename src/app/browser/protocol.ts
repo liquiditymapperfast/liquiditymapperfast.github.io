@@ -29,6 +29,8 @@ export type FeedsIn =
 
 export type FeedsOut =
   | { type: 'ready'; persisted: boolean }
+  /** The engine could not be started: nothing will be answered, so the page should say so instead of waiting. */
+  | { type: 'failed'; error: string }
   | { type: 'levels'; frame: LevelsFrame }
   | { type: 'tick'; tick: EngineTick }
   | { type: 'prints'; items: Print[] }

@@ -53,18 +53,29 @@ export class BrowserSource implements DataSource, VenueControl {
   #levels: LevelsFrame | null = null;
   #tick: TickMessage | null = null;
   #waited = false;
+  /** Set once the worker has said it is ready: an error before that means it never started, one after it only means something threw. */
+  #started = false;
+  /** Why the worker cannot be used (it never started): every request fails with this, at once. */
+  #failure: Error | null = null;
   /** Whether this tab is the one saving recordings, and whether anything is saved at all. */
   recording = false; persisted = false;
 
   constructor(worker: Worker, { persist = true }: { persist?: boolean } = {}) {
     this.#worker = worker;
-    let ready!: () => void, known!: () => void;
-    this.#ready = new Promise<void>(resolve => { ready = resolve; });
-    this.#statusKnown = new Promise<void>(resolve => { known = resolve; });
+    let ready!: () => void, known!: () => void, failReady!: (error: Error) => void, failKnown!: (error: Error) => void;
+    this.#ready = new Promise<void>((resolve, reject) => { ready = resolve; failReady = reject; });
+    this.#statusKnown = new Promise<void>((resolve, reject) => { known = resolve; failKnown = reject; });
+    // Whoever waits on these is told; these two handlers only keep a rejection nobody was waiting for yet from being reported as unhandled.
+    this.#ready.catch(() => {}); this.#statusKnown.catch(() => {});
+    this.#fail = error => {
+      if (this.#failure) return;
+      this.#failure = error; failReady(error); failKnown(error); this.#rejectCalls(error);
+    };
     worker.onmessage = (event: MessageEvent<FeedsOut>) => {
       const message = event.data;
       switch (message.type) {
-        case 'ready': this.persisted = message.persisted; ready(); break;
+        case 'ready': this.#started = true; this.persisted = message.persisted; ready(); break;
+        case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
           const { tick } = message;
@@ -85,15 +96,25 @@ export class BrowserSource implements DataSource, VenueControl {
         }
       }
     };
-    worker.onerror = event => { this.#handlers?.onClose(1, t('the browser engine')); console.error('feeds worker:', event.message); };
+    worker.onerror = event => {
+      this.#handlers?.onClose(1, t('the browser engine')); console.error('feeds worker:', event.message);
+      const error = new Error(event.message || t('the browser engine'));
+      // A worker that never started will answer nothing; one that did start has only had something throw, and may well go on: what was
+      // outstanding is failed either way (it may never be answered), and only the first case closes the door.
+      if (this.#started) this.#rejectCalls(error); else this.#fail(error);
+    };
     this.#post({ type: 'init', selected: savedSelection(), persist });
     // Recordings still queued are written as the page goes away.
     addEventListener('pagehide', () => this.#post({ type: 'flush' }));
   }
 
+  #fail: (error: Error) => void = () => {};
+  #rejectCalls(error: Error): void { const calls = [...this.#calls.values()]; this.#calls.clear(); for (const call of calls) call.reject(error); }
   #post(message: FeedsIn): void { this.#worker.postMessage(message); }
   #call<M extends RpcCall['method']>(call: Extract<RpcCall, { method: M }>): Promise<RpcResult[M]> {
+    if (this.#failure) return Promise.reject(this.#failure);
     return this.#ready.then(() => new Promise<RpcResult[M]>((resolve, reject) => {
+      if (this.#failure) { reject(this.#failure); return; }
       const id = ++this.#next;
       this.#calls.set(id, { resolve: resolve as (value: unknown) => void, reject });
       this.#post({ type: 'rpc', id, ...call });

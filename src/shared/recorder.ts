@@ -6,6 +6,8 @@ export const SAMPLE_MS = 5_000;
 /** Books older than this at sample time are treated as unobserved (a gap), never carried forward. */
 export const STALE_MS = 45_000;
 export const RETENTION_MS = 7 * 24 * 3_600_000;
+/** Columns a failing store has not taken that are kept for another try; past this a dead store costs no more memory. */
+const UNSAVED_MAX = 5_000;
 
 /** One minute of one instrument on the shared price grid: mean USD per bin over observed samples. */
 export interface Column {
@@ -79,6 +81,10 @@ export class DepthRecorder {
   readonly columns = new Map<string, Column[]>();
   readonly steps: Map<string, number>;
   readonly #pending = new Map<string, Pending>();
+  /** Columns the store did not take, oldest first; they are offered again with the next one. */
+  #unsaved: { id: string; column: Column; step: number }[] = [];
+  /** How many times the store has refused a column, and why the last time (for a status line; the recorder itself goes on). */
+  saveFailures = 0; lastSaveError = '';
   readonly #store: ColumnStore | null;
   readonly #now: () => number;
   readonly #retentionMs: number;
@@ -109,12 +115,27 @@ export class DepthRecorder {
       }
       let pending = this.#pending.get(book.instrumentId);
       if (pending && pending.t !== minute) { this.#commit(book.instrumentId, pending); pending = undefined; }
-      if (!pending) { pending = { t: minute, n: 0, step, bid: new Map(), ask: new Map() }; this.#pending.set(book.instrumentId, pending); }
+      if (!pending) { pending = this.#reopen(book.instrumentId, minute) ?? { t: minute, n: 0, step, bid: new Map(), ask: new Map() }; this.#pending.set(book.instrumentId, pending); }
       accumulateSide(book.bids, step, pending.bid);
       accumulateSide(book.asks, step, pending.ask);
       pending.n += 1;
     }
     for (const [id, pending] of this.#pending) if (pending.t < minute) this.#commit(id, pending);
+  }
+
+  /**
+   * The minute that is about to be sampled, when a column for it was already committed (read back from the store after a restart within
+   * the minute, or written when a page went away and then came back): taken off the list and made accumulating again, with its samples
+   * counted, so the ones that follow average in with them instead of being thrown away at the next commit.
+   */
+  #reopen(id: string, minute: number): Pending | null {
+    const list = this.columns.get(id), last = list?.[list.length - 1];
+    if (!list || !last || last.t !== minute || !(last.n > 0)) return null;
+    list.pop();
+    const pending: Pending = { t: minute, n: last.n, step: this.steps.get(id)!, bid: new Map(), ask: new Map() };
+    // A column holds the mean over its samples, an open minute the sum.
+    for (let i = 0; i < last.bins.length; i++) { pending.bid.set(last.bins[i]!, last.bid[i]! * last.n); pending.ask.set(last.bins[i]!, last.ask[i]! * last.n); }
+    return pending;
   }
 
   #commit(id: string, pending: Pending): void {
@@ -125,7 +146,23 @@ export class DepthRecorder {
     const last = list[list.length - 1];
     if (last && last.t >= column.t) return;
     list.push(column);
-    this.#store?.save(id, column, pending.step);
+    this.#persist(id, column, pending.step);
+  }
+
+  /** Offer the store this column and any it refused before; a store that fails keeps them for the next try and does not stop the sampling. */
+  #persist(id: string, column: Column, step: number): void {
+    const store = this.#store; if (!store) return;
+    this.#unsaved.push({ id, column, step });
+    let done = 0;
+    try { for (; done < this.#unsaved.length; done++) { const item = this.#unsaved[done]!; store.save(item.id, item.column, item.step); } }
+    catch (error) {
+      const first = this.saveFailures === 0 || this.lastSaveError === '';
+      this.saveFailures++; this.lastSaveError = error instanceof Error ? error.message : String(error);
+      if (first) console.warn('recordings are not being saved:', error);
+    }
+    this.#unsaved = this.#unsaved.slice(done);
+    if (this.#unsaved.length === 0) this.lastSaveError = '';
+    else if (this.#unsaved.length > UNSAVED_MAX) this.#unsaved = this.#unsaved.slice(-UNSAVED_MAX);
   }
 
   /** First and last recorded minute per instrument, including the open minute. */
