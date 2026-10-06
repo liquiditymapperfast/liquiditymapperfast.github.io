@@ -1,6 +1,7 @@
 import { el } from './dom.ts';
 import { layoutMode, onLayoutMode } from './device.ts';
 import type { AppState } from './store.ts';
+import { t } from './i18n.ts';
 
 /**
  * The phone's tab bar. The map is always on screen; the bar picks which one other pane sits beside it (below in portrait, to the right
@@ -14,17 +15,17 @@ export type DockTab = 'map' | 'book' | 'depth' | 'oi' | 'lt' | 'stats';
 interface TabSpec { id: DockTab; label: string; tip: string; icon: string; /** The `show` switch that must be on; absent when the pane is always available. */ needs?: keyof AppState['show'] }
 const svg = (body: string): string => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 export const DOCK_TABS: readonly TabSpec[] = [
-  { id: 'map', label: 'Map', tip: 'The heatmap alone, at full size.',
+  { id: 'map', label: t('Map'), tip: t('The heatmap alone, at full size.'),
     icon: svg('<rect x="3.5" y="4" width="17" height="4.4" rx="1.2" fill="currentColor" fill-opacity=".28"/><rect x="3.5" y="10" width="17" height="4.4" rx="1.2" fill="currentColor" fill-opacity=".6"/><rect x="3.5" y="16" width="17" height="4.4" rx="1.2" fill="currentColor" fill-opacity=".16"/>') },
-  { id: 'book', label: 'Book', tip: 'The order book ladder: every price level, with the size resting at each venue.',
+  { id: 'book', label: t('Book'), tip: t('The order book ladder: every price level, with the size resting at each venue.'),
     icon: svg('<path d="M4 6.5h9M4 11h13M4 15.5h7M4 20h11"/>') },
-  { id: 'depth', label: 'Depth', tip: 'Total bid and ask liquidity near the price, over time.', needs: 'depth',
+  { id: 'depth', label: t('Depth'), tip: t('Total bid and ask liquidity near the price, over time.'), needs: 'depth',
     icon: svg('<path d="M3.5 20V15h5V10.5h5V7h7"/><path d="M3.5 20h17"/>') },
-  { id: 'oi', label: 'OI', tip: 'Open interest and how it changes with each candle.', needs: 'oi',
+  { id: 'oi', label: 'OI', tip: t('Open interest and how it changes with each candle.'), needs: 'oi',
     icon: svg('<path d="M5 20v-4M10 20v-7M15 20v-5M20 20v-9"/><path d="M4 9l5-3 5 2 6-4"/>') },
-  { id: 'lt', label: 'LT', tip: 'The Liquidity Tracker: bid and ask liquidity near the price as two lines.', needs: 'lt',
+  { id: 'lt', label: 'LT', tip: t('The Liquidity Tracker: bid and ask liquidity near the price as two lines.'), needs: 'lt',
     icon: svg('<path d="M3.5 9c3-4 5 4 8 0s5-2 9-2"/><path d="M3.5 17c3-4 5 4 8 0s5-2 9-2"/>') },
-  { id: 'stats', label: 'Stats', tip: 'Statistics for each candle, beneath the footprint.', needs: 'footprint',
+  { id: 'stats', label: t('Stats'), tip: t('Statistics for each candle, beneath the footprint.'), needs: 'footprint',
     icon: svg('<path d="M5 20V11M12 20V5M19 20V13"/>') },
 ];
 
@@ -50,9 +51,9 @@ export const DEFAULT_SHARE: Readonly<Record<Axis, Readonly<Record<Exclude<DockTa
 export const clampSize = (px: number, available: number, axis: Axis): number => Math.round(Math.max(axis === 'portrait' ? 120 : 220, Math.min(available - (axis === 'portrait' ? 150 : 200), px)));
 
 export class Dock {
-  readonly root = el('nav', { class: 'dock', role: 'tablist', ariaLabel: 'Panels' });
+  readonly root = el('nav', { class: 'dock', role: 'tablist', ariaLabel: t('Panels') });
   /** The handle between the map and the pane; `<main>` holds it so the stylesheet can place it between them. */
-  readonly grip = el('div', { class: 'dock-grip', role: 'separator', ariaLabel: 'Resize the panel', tip: 'Drag to resize the panel. Double-tap to reset it.' }, el('i'));
+  readonly grip = el('div', { class: 'dock-grip', role: 'separator', ariaLabel: t('Resize the panel'), tip: t('Drag to resize the panel. Double-tap to reset it.') }, el('i'));
   #wanted: DockTab = read();
   #tab: DockTab = 'map';
   #buttons = new Map<DockTab, HTMLButtonElement>();

@@ -1,4 +1,5 @@
 import type { Bounds } from '../view.ts';
+import { t } from '../i18n.ts';
 
 export interface HeatStyle {
   bid: [number, number, number]; bidSoft: [number, number, number];
@@ -68,17 +69,17 @@ export class HeatGL {
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, alpha: true, antialias: false, preserveDrawingBuffer: true });
-    if (!gl) throw new Error('WebGL2 is required for the heatmap');
+    if (!gl) throw new Error(t('WebGL2 is required for the heatmap'));
     this.gl = gl;
     const compile = (type: number, source: string) => {
       const shader = gl.createShader(type)!; gl.shaderSource(shader, source); gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'shader compile failed');
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? t('shader compile failed'));
       return shader;
     };
     const program = gl.createProgram()!;
     gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT)); gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'program link failed');
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? t('program link failed'));
     this.#program = program;
     for (const name of ['grid', 'lut', 'view', 'tex', 'range', 'bidC', 'bidS', 'askC', 'askS', 'fill', 'fillRgb']) this.#loc[name] = gl.getUniformLocation(program, name);
     this.#texture = gl.createTexture()!;

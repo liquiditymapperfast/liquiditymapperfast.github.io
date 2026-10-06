@@ -1,8 +1,9 @@
 import { el } from './dom.ts';
 import type { VenueEntry } from './source.ts';
+import { language, t } from './i18n.ts';
 
 /** What a venue chip or row says when the exchange refuses this visitor's location. */
-export const VPN_HINT = 'unavailable from your location — a VPN set to another country may enable it';
+export const VPN_HINT = t('unavailable from your location — a VPN set to another country may enable it');
 
 /** The venues a person chose that their location cannot reach. */
 export function blockedVenues(venues: readonly VenueEntry[]): VenueEntry[] { return venues.filter(v => v.selected && v.state === 'blocked'); }
@@ -36,20 +37,23 @@ export function idleVenues(venues: readonly VenueEntry[], drawn: ReadonlySet<str
 
 /** The sentence a chip for an idle venue says on hover. */
 export function idleText(v: IdleVenue): string {
-  if (/crossed/i.test(v.status)) return `${v.name}: ${v.status}. A crossed book is a fault in the exchange feed, so it stays off the map until the book is consistent again.`;
-  return v.kind === 'faulty' ? `${v.name}: ${v.status}. It is not on the map.` : `${v.name} is still connecting (${v.status}), so it is not on the map yet.`;
+  if (/crossed/i.test(v.status)) return t('{venue}: {status}. A crossed book is a fault in the exchange feed, so it stays off the map until the book is consistent again.', { venue: v.name, status: v.status });
+  return v.kind === 'faulty' ? t('{venue}: {status}. It is not on the map.', { venue: v.name, status: v.status }) : t('{venue} is still connecting ({status}), so it is not on the map yet.', { venue: v.name, status: v.status });
 }
 
 /** "Binance", "Binance and Bybit", "Binance, Bybit and OKX". */
 export function nameList(names: readonly string[]): string {
-  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  if (names.length <= 1) return names[0] ?? '';
+  // English keeps its plain "A, B and C"; the others write a list their own way.
+  return language() === 'en' ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : new Intl.ListFormat(language(), { style: 'long', type: 'conjunction' }).format(names);
 }
 
 /** The sentence for the banner, or null when every chosen venue is reachable. */
 export function noticeText(blocked: readonly VenueEntry[]): string | null {
   if (!blocked.length) return null;
   const many = blocked.length > 1;
-  return `${nameList(blocked.map(v => v.name))} ${many ? 'are' : 'is'} unavailable from your location. A VPN set to another country may enable ${many ? 'them' : 'it'}.`;
+  const names = nameList(blocked.map(v => v.name));
+  return many ? t('{names} are unavailable from your location. A VPN set to another country may enable them.', { names }) : t('{names} is unavailable from your location. A VPN set to another country may enable it.', { names });
 }
 
 /**
@@ -63,7 +67,7 @@ export class VenueNotice {
 
   constructor() {
     this.root.append(el('span', { class: 'notice-mark', textContent: '⊘', ariaHidden: 'true' }), this.#text,
-      el('button', { class: 'notice-close', textContent: '×', tip: 'Dismiss', ariaLabel: 'Dismiss', onclick: () => { this.#dismissed = this.#key; this.root.hidden = true; } }));
+      el('button', { class: 'notice-close', textContent: '×', tip: t('Dismiss'), ariaLabel: t('Dismiss'), onclick: () => { this.#dismissed = this.#key; this.root.hidden = true; } }));
   }
 
   #key = '';

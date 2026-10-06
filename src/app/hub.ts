@@ -7,6 +7,7 @@ import type { CellShare } from './cell-sources.ts';
 import type { Bounds } from './view.ts';
 import type { LtParams, LtSeries } from './lt.ts';
 import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
+import { t } from './i18n.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -81,7 +82,7 @@ export class Hub {
     let pending: ReturnType<typeof setTimeout> | undefined;
     this.source.venues.watch?.(() => { clearTimeout(pending); pending = setTimeout(() => void this.refreshMarkets(), 300); });
     this.source.connect({
-      onOpen: () => { this.#printsWindow = null; this.store.set({ connected: true, status: 'live' }); },
+      onOpen: () => { this.#printsWindow = null; this.store.set({ connected: true, status: t('live') }); },
       onClose: (failures, host) => this.store.set({ connected: false, status: connectionStatus(failures, host) }),
       onLevels: frame => {
         this.store.set({ levels: frame });

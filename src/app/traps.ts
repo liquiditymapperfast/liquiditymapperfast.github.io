@@ -1,6 +1,7 @@
 import type { Bar } from './panes/footprint.ts';
 import type { CandleRow } from './store.ts';
 import { price as fmtPrice, usd } from './format.ts';
+import { t } from './i18n.ts';
 
 /**
  * Possibly trapped buyers or sellers on a closed candle, from the candle and its footprint alone.
@@ -192,19 +193,19 @@ export function scanTraps({ candles, bars, step, tfMs, now, from, to, params = T
  */
 export function trapVerdict(scope?: { market: string; timeframe: string }): string {
   return scope?.market === 'binance:BTCUSDT' && scope.timeframe === '15m'
-    ? 'Tested on Binance BTCUSDT perpetual history: no reliable direction; at 15m these levels were revisited somewhat less often than look-alike candles. Not a forecast.'
-    : 'Not validated for this market and timeframe. Not a forecast.';
+    ? t('Tested on Binance BTCUSDT perpetual history: no reliable direction; at 15m these levels were revisited somewhat less often than look-alike candles. Not a forecast.')
+    : t('Not validated for this market and timeframe. Not a forecast.');
 }
 
 /** What the pop-up says (lines, shortest first), written as facts about the candle plus the one thing this cannot know. */
 export function trapText(trap: Trap, scope?: { market: string; timeframe: string }): string[] {
   const buyers = trap.side === 'buyers', multiple = trap.multiple >= 10 ? trap.multiple.toFixed(0) : trap.multiple.toFixed(1);
   const lines = [
-    buyers ? 'Possible trapped buyers' : 'Possible trapped sellers',
-    `$${usd(trap.zoneDelta)} net aggressive ${buyers ? 'buying in the upper wick' : 'selling in the lower wick'}, ${multiple}x a typical candle's net delta`,
-    `average ${buyers ? 'entry' : 'sale'} ${fmtPrice(trap.entry)}; the candle closed ${trap.excursion.toFixed(1)} ATR ${buyers ? 'below' : 'above'}`,
+    buyers ? t('Possible trapped buyers') : t('Possible trapped sellers'),
+    buyers ? t("${amount} net aggressive buying in the upper wick, {multiple}x a typical candle's net delta", { amount: usd(trap.zoneDelta), multiple }) : t("${amount} net aggressive selling in the lower wick, {multiple}x a typical candle's net delta", { amount: usd(trap.zoneDelta), multiple }),
+    buyers ? t('average entry {price}; the candle closed {atr} ATR below', { price: fmtPrice(trap.entry), atr: trap.excursion.toFixed(1) }) : t('average sale {price}; the candle closed {atr} ATR above', { price: fmtPrice(trap.entry), atr: trap.excursion.toFixed(1) }),
   ];
-  lines.push(trap.state === 'reclaimed' ? 'Price has since closed back through that level.' : `If they still hold, they are ${buyers ? 'underwater' : 'losing'}.`);
+  lines.push(trap.state === 'reclaimed' ? t('Price has since closed back through that level.') : buyers ? t('If they still hold, they are underwater.') : t('If they still hold, they are losing.'));
   lines.push(trapVerdict(scope));
   return lines;
 }

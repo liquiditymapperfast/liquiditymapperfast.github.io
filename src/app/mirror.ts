@@ -1,5 +1,6 @@
 import type { Palette } from './theme.ts';
 import { price as fmtPrice, usd } from './format.ts';
+import { t } from './i18n.ts';
 
 /**
  * Mirror hover: pointing at a price highlights the band from the mid to that price and the equally wide band on the other
@@ -41,7 +42,7 @@ export function mirrorStats(mid: number, price: number, aboveUsd: number, belowU
 }
 
 export function ratioText(ratio: number): string {
-  if (!Number.isFinite(ratio)) return 'all of it';
+  if (!Number.isFinite(ratio)) return t('all of it');
   return `${ratio >= 10 ? ratio.toFixed(1) : ratio.toFixed(2)}x`;
 }
 
@@ -54,14 +55,14 @@ export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string
   const thisColor = stats.hoveredSide, oppColor = stats.hoveredSide === 'above' ? 'below' : 'above';
   const lines: MirrorLine[] = [];
   if (title) lines.push({ text: title, bold: true });
-  lines.push({ text: `±${fmtPrice(stats.distance)} (${stats.distanceBp < 10 ? stats.distanceBp.toFixed(1) : Math.round(stats.distanceBp)} bp) from ${fmtPrice(stats.mid)}`, color: 'muted' });
-  lines.push({ text: `${thisName} (this side)  $${usd(stats.hovered)}`, color: thisColor });
-  lines.push({ text: `${oppName} (opposite)  $${usd(stats.opposite)}`, color: oppColor });
-  if (stats.dominant === 'none') lines.push({ text: 'No liquidity in this range', color: 'muted' });
-  else if (stats.dominant === 'balanced') lines.push({ text: 'Balanced', color: 'text', bold: true });
-  else if (stats.dominant === 'this') lines.push({ text: Number.isFinite(stats.ratio) ? `This side has ${ratioText(stats.ratio)} more` : 'Only this side has liquidity', color: thisColor, bold: true });
-  else lines.push({ text: Number.isFinite(stats.ratio) ? `Opposite side has ${ratioText(stats.ratio)} more` : 'Only the opposite side has liquidity', color: oppColor, bold: true });
-  if (stats.clipped) lines.push({ text: 'part of the range is outside the data', color: 'muted' });
+  lines.push({ text: t('±{distance} ({bp} bp) from {mid}', { distance: fmtPrice(stats.distance), bp: stats.distanceBp < 10 ? stats.distanceBp.toFixed(1) : Math.round(stats.distanceBp), mid: fmtPrice(stats.mid) }), color: 'muted' });
+  lines.push({ text: t('{side} (this side)  ${value}', { side: thisName, value: usd(stats.hovered) }), color: thisColor });
+  lines.push({ text: t('{side} (opposite)  ${value}', { side: oppName, value: usd(stats.opposite) }), color: oppColor });
+  if (stats.dominant === 'none') lines.push({ text: t('No liquidity in this range'), color: 'muted' });
+  else if (stats.dominant === 'balanced') lines.push({ text: t('Balanced'), color: 'text', bold: true });
+  else if (stats.dominant === 'this') lines.push({ text: Number.isFinite(stats.ratio) ? t('This side has {ratio} more', { ratio: ratioText(stats.ratio) }) : t('Only this side has liquidity'), color: thisColor, bold: true });
+  else lines.push({ text: Number.isFinite(stats.ratio) ? t('Opposite side has {ratio} more', { ratio: ratioText(stats.ratio) }) : t('Only the opposite side has liquidity'), color: oppColor, bold: true });
+  if (stats.clipped) lines.push({ text: t('part of the range is outside the data'), color: 'muted' });
   return lines;
 }
 

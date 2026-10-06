@@ -20,6 +20,7 @@ import { Dock } from './dock.ts';
 import { startDevice, onLayoutMode } from './device.ts';
 import './styles.css';
 import './mobile.css';
+import { t } from './i18n.ts';
 
 /** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */
 async function serverAnswers(): Promise<boolean> {
@@ -146,8 +147,8 @@ async function main(): Promise<void> {
 main().catch(error => {
   console.error(error);
   const message = error instanceof Error ? error.message : String(error);
-  const hint = /api\/v2/.test(message) ? '\n\nThe server is running an older build without the v2 data plane. Restart it (npm run dev) and reload.'
-    : /fetch|network/i.test(message) ? `\n\nNo answer from ${location.host}. Is the server running (npm run dev), and is this the port it listens on?`
-    : / 403\b/.test(message) ? `\n\nThe server refused ${location.host}: it answers localhost and IP addresses only. Open it as http://localhost:${location.port || 80}, or list this name in HLM_ALLOWED_HOSTS.` : '';
-  document.body.append(Object.assign(document.createElement('pre'), { className: 'fatal', textContent: `Failed to start: ${message}${hint}` }));
+  const hint = /api\/v2/.test(message) ? t('The server is running an older build without the v2 data plane. Restart it (npm run dev) and reload.')
+    : /fetch|network/i.test(message) ? t('No answer from {host}. Is the server running (npm run dev), and is this the port it listens on?', { host: location.host })
+    : / 403\b/.test(message) ? t('The server refused {host}: it answers localhost and IP addresses only. Open it as http://localhost:{port}, or list this name in HLM_ALLOWED_HOSTS.', { host: location.host, port: location.port || 80 }) : '';
+  document.body.append(Object.assign(document.createElement('pre'), { className: 'fatal', textContent: t('Failed to start: {message}', { message }) + (hint ? `\n\n${hint}` : '') }));
 });

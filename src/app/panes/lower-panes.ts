@@ -16,6 +16,7 @@ import { button, checkRow, heading, note, numberRow, selectRow, sortableList, to
 import type { LtSeries } from '../lt.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { candleSpan } from '../candle-span.ts';
+import { t, tn } from '../i18n.ts';
 
 /** A canvas pane whose x axis is the main chart's time axis. */
 abstract class TimePane {
@@ -116,9 +117,9 @@ export class DepthPane extends TimePane {
   #key = ''; #busy = false;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'depth');
-    this.head.innerHTML = '<strong>Depth</strong><span class="readout"></span>';
+    this.head.innerHTML = `<strong>${t('Depth')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('depthPane'));
-    const label = document.createElement('label'); label.className = 'ctl'; label.append('Range');
+    const label = document.createElement('label'); label.className = 'ctl'; label.append(t('Range'));
     const select = document.createElement('select');
     for (const r of [0.01, 0.02, 0.05, 0.1, 0.2]) select.append(new Option(`${r * 100}%`, String(r)));
     select.value = String(this.#range); select.onchange = () => { this.#range = Number(select.value); this.#key = ''; this.invalidate(); };
@@ -148,11 +149,11 @@ export class DepthPane extends TimePane {
     }
     const s = this.#series;
     const readout = this.head.querySelector('.readout');
-    if (!s) { ctx.fillStyle = p.muted; ctx.fillText('Depth history is collecting…', 12, ph / 2); return; }
+    if (!s) { ctx.fillStyle = p.muted; ctx.fillText(t('Depth history is collecting…'), 12, ph / 2); return; }
     let max = 1, lastB = 0, lastA = 0;
     for (let x = 0; x < s.w; x++) { max = Math.max(max, s.bid[x]!, s.ask[x]!); if (s.bid[x]! > 0 || s.ask[x]! > 0) { lastB = s.bid[x]!; lastA = s.ask[x]!; } }
     const lastTotal = lastB + lastA, lastImbalance = lastTotal > 0 ? (lastB - lastA) / lastTotal : 0;
-    const dominant = Math.abs(lastImbalance) < 0.005 ? '' : ` <b class="${lastImbalance > 0 ? 'bid' : 'ask'}">${lastImbalance > 0 ? 'bids' : 'asks'} +${(Math.abs(lastImbalance) * 100).toFixed(1)}%</b>`;
+    const dominant = Math.abs(lastImbalance) < 0.005 ? '' : ` <b class="${lastImbalance > 0 ? 'bid' : 'ask'}">${lastImbalance > 0 ? t('bids') : t('asks')} +${(Math.abs(lastImbalance) * 100).toFixed(1)}%</b>`;
     if (readout) readout.innerHTML = `A <b class="ask">${usd(lastA)}</b> B <b class="bid">${usd(lastB)}</b> Δ <b>${usd(lastB - lastA)}</b>${dominant}`;
     const mid = ph / 2, half = ph / 2 - 6, cue = state.highlight.on;
     const xOf = (t: number) => v.xOf(t, pw);
@@ -189,7 +190,7 @@ export class OiPane extends TimePane {
   #cache: { oi: readonly OiBar[]; key: string; delta: Float64Array; flag: Uint8Array; sigma: Float64Array } | null = null;
   constructor(host: HTMLElement, store: Store, view: View) {
     super(host, store, view, 'oi');
-    this.head.innerHTML = '<strong>Open Interest</strong><span class="readout"></span>';
+    this.head.innerHTML = `<strong>${t('Open Interest')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('oiPane'));
   }
   #analysis(oi: readonly OiBar[], highlight: HighlightOptions) {
@@ -206,11 +207,11 @@ export class OiPane extends TimePane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = state.oi, highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
     const say = (html: string) => { if (readout) readout.innerHTML = html; };
-    if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText('No open-interest history for this market yet.', 12, ph / 2); say(''); return; }
+    if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
     const analysis = this.#analysis(oi, highlight);
     const visible: number[] = [];
     for (let i = 0; i < oi.length; i++) if (oi[i]![0] + tf >= v.t0 && oi[i]![0] <= v.t1) visible.push(i);
-    if (!visible.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText('No open-interest samples in view.', 12, ph / 2); say(''); return; }
+    if (!visible.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('No open-interest samples in view.'), 12, ph / 2); say(''); return; }
     // Geometry: the level on top, the change below (when the pane is tall enough to hold both).
     const split = ph >= 84, lineBottom = split ? Math.round(ph * 0.6) : ph - 6, bandTop = lineBottom + 12, bandBottom = ph - 5, mid = (bandTop + bandBottom) / 2, half = (bandBottom - bandTop) / 2;
     let lo = Infinity, hi = -Infinity, maxDelta = 0;
@@ -264,9 +265,9 @@ export class OiPane extends TimePane {
     const bar = oi[shown]!, d = shown > 0 ? analysis.delta[shown]! : 0, flagged = highlight.on && analysis.flag[shown] === 1;
     const age = Date.now() - lastBar[0], stale = age > Math.max(3 * tf, 3 * 60_000);
     const sign = d > 0 ? '+' : d < 0 ? '−' : '';
-    const source = state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? ` <span class="muted">from ${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}</span>` : '';
+    const source = state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? ` <span class="muted">${t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` })}</span>` : '';
     const sigma = flagged && Number.isFinite(analysis.sigma[shown]) ? ` <span class="muted">${analysis.sigma[shown]!.toFixed(1)}σ</span>` : '';
-    say(`base <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${sigma}${source}${stale ? ` <span class="ask">last sample ${Math.round(age / 60_000)} min ago</span>` : ''}`);
+    say(`${t('base')} <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${sigma}${source}${stale ? ` <span class="ask">${t('last sample {n} min ago', { n: Math.round(age / 60_000) })}</span>` : ''}`);
   }
 }
 
@@ -282,9 +283,9 @@ export class LtPane extends TimePane {
   #sync: (() => void)[] = [];
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'lt');
-    this.head.innerHTML = '<strong>Liquidity Tracker</strong><span class="readout"></span>';
+    this.head.innerHTML = `<strong>${t('Liquidity Tracker')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('ltPane'));
-    setTip(this.head.querySelector('strong')!, "Weighted USD liquidity near the touch of the aggregated book of the enabled venues. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders.");
+    setTip(this.head.querySelector('strong')!, t("Weighted USD liquidity near the touch of the aggregated book of the enabled venues. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders."));
     const lt = () => this.store.state.lt;
     const patch = (change: Partial<AppState['lt']>) => this.store.set({ lt: { ...lt(), ...change } });
     const select = (label: string, title: string, options: [string, string][], get: () => string, set: (value: string) => void) => {
@@ -296,14 +297,14 @@ export class LtPane extends TimePane {
       this.#sync.push(() => { if (control.value !== get()) control.value = get(); });
     };
     const size = (v: number, none: string, sign: string): [string, string] => [String(v), v === 0 ? none : `${sign} $${v >= 1e6 ? v / 1e6 + 'M' : v / 1e3 + 'k'}`];
-    select('Half-life', "Distance from the touch, in basis points of price, at which a level's weight halves", HALF_LIVES.map(v => [String(v), `${v} bp`]), () => String(lt().halfLifeBp), v => patch({ halfLifeBp: Number(v) }));
-    select('Min', 'Ignore price bins smaller than this', MIN_SIZES.map(v => size(v, 'any', '≥')), () => String(lt().minUsd), v => patch({ minUsd: Number(v) }));
-    select('Max', 'Ignore price bins larger than this', MAX_SIZES.map(v => size(v, 'no cap', '≤')), () => String(lt().maxUsd), v => patch({ maxUsd: Number(v) }));
-    const avg = document.createElement('label'); avg.className = 'ctl'; setTip(avg, 'Divide by the summed weights of the non-empty levels, as if each had size 1');
+    select(t('Half-life'), t("Distance from the touch, in basis points of price, at which a level's weight halves"), HALF_LIVES.map(v => [String(v), `${v} bp`]), () => String(lt().halfLifeBp), v => patch({ halfLifeBp: Number(v) }));
+    select(t('Min'), t('Ignore price bins smaller than this'), MIN_SIZES.map(v => size(v, t('any'), '≥')), () => String(lt().minUsd), v => patch({ minUsd: Number(v) }));
+    select(t('Max'), t('Ignore price bins larger than this'), MAX_SIZES.map(v => size(v, t('no cap'), '≤')), () => String(lt().maxUsd), v => patch({ maxUsd: Number(v) }));
+    const avg = document.createElement('label'); avg.className = 'ctl'; setTip(avg, t('Divide by the summed weights of the non-empty levels, as if each had size 1'));
     const box = document.createElement('input'); box.type = 'checkbox'; box.checked = lt().average; box.onchange = () => patch({ average: box.checked });
-    avg.append(box, 'Per level'); this.head.append(avg);
+    avg.append(box, t('Per level')); this.head.append(avg);
     this.#sync.push(() => { if (box.checked !== lt().average) box.checked = lt().average; });
-    select('View', 'Bid and ask lines, or the imbalance (bid - ask) / (bid + ask)', [['lines', 'Bid & ask'], ['imbalance', 'Imbalance']], () => lt().view, v => patch({ view: v as AppState['lt']['view'] }));
+    select(t('View'), t('Bid and ask lines, or the imbalance (bid - ask) / (bid + ask)'), [['lines', t('Bid & ask')], ['imbalance', t('Imbalance')]], () => lt().view, v => patch({ view: v as AppState['lt']['view'] }));
   }
   /** Recompute on the next draw and reflect persisted settings in the controls. */
   refresh(): void { this.#key = ''; for (const sync of this.#sync) sync(); this.invalidate(); }
@@ -322,7 +323,7 @@ export class LtPane extends TimePane {
       void this.hub.lt(ids, t0, t1, params).then(r => { this.#series = { ...r, stepMs: this.hub.columnStepMs }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
     }
     const s = this.#series, readout = this.head.querySelector('.readout')!;
-    if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText('Liquidity tracker is collecting…', 12, ph / 2); readout.textContent = ''; return; }
+    if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); readout.textContent = ''; return; }
     const n = s.times.length, step = s.stepMs, xOf = (t: number) => v.xOf(t + step / 2, pw), gap = step * 2.5;
     let max = 0;
     for (let i = 0; i < n; i++) if (s.times[i]! + step >= v.t0 && s.times[i]! <= v.t1) max = Math.max(max, s.bid[i]!, s.ask[i]!);
@@ -366,7 +367,7 @@ export class LtPane extends TimePane {
     let at = n - 1;
     if (state.hover) { at = 0; for (let i = 0; i < n; i++) if (s.times[i]! <= state.hover.t) at = i; }
     const b = s.bid[at]!, a = s.ask[at]!, total = b + a;
-    readout.innerHTML = `Bid <b class="bid">${usd(b)}</b> Ask <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> imb <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${ids.length} venues`;
+    readout.innerHTML = `${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${tn(ids.length, '{n} venue', '{n} venues')}`;
   }
 }
 
@@ -381,10 +382,10 @@ export class BarStatsPane extends TimePane {
   #panel: Panel | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private heat: HeatPane) {
     super(host, store, view, 'bars');
-    this.head.innerHTML = '<strong>Bar stats</strong><span class="readout"></span>';
+    this.head.innerHTML = `<strong>${t('Bar stats')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('barStats'));
-    this.#button.textContent = 'Stats'; setTip(this.#button, 'Choose, order and configure the statistics shown for each candle');
-    this.#button.onclick = () => { this.#panel = togglePanel(this.#button, { title: 'Bar stats', width: 440, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#build(tools, body)); };
+    this.#button.textContent = t('Stats'); setTip(this.#button, t('Choose, order and configure the statistics shown for each candle'));
+    this.#button.onclick = () => { this.#panel = togglePanel(this.#button, { title: t('Bar stats'), width: 440, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#build(tools, body)); };
     this.head.append(this.#button);
   }
   /** Redraw after the configuration changed and keep an open panel in step. */
@@ -396,13 +397,13 @@ export class BarStatsPane extends TimePane {
     const setStats = (ids: string[]) => this.store.set({ barStats: ids });
     const setOptions = (change: Partial<StatOptions>) => this.store.set({ barStatOptions: { ...this.store.state.barStatOptions, ...change } });
 
-    for (const [label, ids] of [['Default', PRESETS.default], ['All', PRESETS.all], ['None', PRESETS.none]] as const) tools.append(button(label, () => setStats([...ids])));
-    tools.append(el('span', { class: 'muted', textContent: `${chosen.length} of ${BAR_STATS.length} shown` }));
+    for (const [label, ids] of [[t('Default'), PRESETS.default], [t('All'), PRESETS.all], [t('None'), PRESETS.none]] as const) tools.append(button(label, () => setStats([...ids])));
+    tools.append(el('span', { class: 'muted', textContent: t('{shown} of {total} shown', { shown: chosen.length, total: BAR_STATS.length }) }));
 
-    body.append(heading('Shown, in order'));
-    if (!chosen.length) body.append(note('Nothing selected: tick statistics below to add them.'));
+    body.append(heading(t('Shown, in order')));
+    if (!chosen.length) body.append(note(t('Nothing selected: tick statistics below to add them.')));
     else {
-      body.append(note('The strip shows them top to bottom in this order. Drag a row by its dots to reorder it (or focus the dots and press the up and down arrow keys); × hides it.'));
+      body.append(note(t('The strip shows them top to bottom in this order. Drag a row by its dots to reorder it (or focus the dots and press the up and down arrow keys); × hides it.')));
       body.append(sortableList(chosen.map(id => { const def = statDef(id)!; return { id, label: def.label, title: def.title }; }), setStats, id => setStats(chosen.filter(x => x !== id))));
     }
 
@@ -412,18 +413,18 @@ export class BarStatsPane extends TimePane {
         body.append(checkRow(def.label, def.title, chosen.includes(def.id), on => setStats(on ? [...chosen, def.id] : chosen.filter(id => id !== def.id))));
     }
 
-    body.append(heading('Options'));
+    body.append(heading(t('Options')));
     body.append(
-      selectRow('Cells', 'Filled cells are shaded by magnitude (log scale between the visible 2nd and 99th percentile); text only is coloured by sign', [['filled', 'Filled'], ['text', 'Text only']], options.cells, v => setOptions({ cells: v as StatOptions['cells'] })),
-      selectRow('OI change in', "Open-interest change in base coin (the series' own unit) or as USD (change times the bar's close)", [['base', 'Base coin'], ['usd', 'USD']], options.oiUnits, v => setOptions({ oiUnits: v as StatOptions['oiUnits'] })),
-      numberRow('Imbalance ratio', 'A level counts as imbalanced when its volume is at least this many times the opposite volume one row away', { min: 1, step: 0.5, value: options.imbRatio }, v => setOptions({ imbRatio: v })),
-      numberRow('Imbalance min USD', 'Ignore imbalanced levels smaller than this', { min: 0, step: 1000, value: options.imbMinUsd }, v => setOptions({ imbMinUsd: v })),
-      numberRow('Stacked rows', 'Adjacent imbalanced rows on one side that count as a stack', { min: 2, step: 1, value: options.stackedN }, v => setOptions({ stackedN: Math.round(v) })),
+      selectRow(t('Cells'), t('Filled cells are shaded by magnitude (log scale between the visible 2nd and 99th percentile); text only is coloured by sign'), [['filled', t('Filled')], ['text', t('Text only')]], options.cells, v => setOptions({ cells: v as StatOptions['cells'] })),
+      selectRow(t('OI change in'), t("Open-interest change in base coin (the series' own unit) or as USD (change times the bar's close)"), [['base', t('Base coin')], ['usd', 'USD']], options.oiUnits, v => setOptions({ oiUnits: v as StatOptions['oiUnits'] })),
+      numberRow(t('Imbalance ratio'), t('A level counts as imbalanced when its volume is at least this many times the opposite volume one row away'), { min: 1, step: 0.5, value: options.imbRatio }, v => setOptions({ imbRatio: v })),
+      numberRow(t('Imbalance min USD'), t('Ignore imbalanced levels smaller than this'), { min: 0, step: 1000, value: options.imbMinUsd }, v => setOptions({ imbMinUsd: v })),
+      numberRow(t('Stacked rows'), t('Adjacent imbalanced rows on one side that count as a stack'), { min: 2, step: 1, value: options.stackedN }, v => setOptions({ stackedN: Math.round(v) })),
     );
     const buckets = SIZE_BUCKET_LABELS.map((label, i): [string, string] => [String(i), label]);
     body.append(
-      selectRow('Retail up to', 'Trades in this size bucket and below are retail (delta retail, cvd retail)', buckets, String(options.retailMax), v => { const r = Number(v); setOptions({ retailMax: r, whaleMin: Math.max(options.whaleMin, Math.min(7, r + 1)) }); }),
-      selectRow('Whales from', 'Trades in this size bucket and above are whales (delta whales, cvd whales)', buckets, String(options.whaleMin), v => { const w = Number(v); setOptions({ whaleMin: w, retailMax: Math.min(options.retailMax, Math.max(0, w - 1)) }); }),
+      selectRow(t('Retail up to'), t('Trades in this size bucket and below are retail (delta retail, cvd retail)'), buckets, String(options.retailMax), v => { const r = Number(v); setOptions({ retailMax: r, whaleMin: Math.max(options.whaleMin, Math.min(7, r + 1)) }); }),
+      selectRow(t('Whales from'), t('Trades in this size bucket and above are whales (delta whales, cvd whales)'), buckets, String(options.whaleMin), v => { const w = Number(v); setOptions({ whaleMin: w, retailMax: Math.min(options.retailMax, Math.max(0, w - 1)) }); }),
     );
   }
 
@@ -431,14 +432,14 @@ export class BarStatsPane extends TimePane {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state;
     const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000, defs = enabledStats(state.barStats), options = state.barStatOptions;
     const readout = this.head.querySelector('.readout');
-    if (readout) readout.textContent = `${defs.length} stat${defs.length === 1 ? '' : 's'} · cvd sums the bars loaded for the view`;
-    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText('No statistics selected: use Stats to add some.', 12, ph / 2); return; }
+    if (readout) readout.textContent = tn(defs.length, '{n} stat · cvd sums the bars loaded for the view', '{n} stats · cvd sums the bars loaded for the view');
+    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use Stats to add some.'), 12, ph / 2); return; }
     const data = this.heat.footprintData, all = [...data.bars.values()].sort((a, b) => a.t - b.t);
-    if (!all.length) { ctx.fillStyle = p.muted; ctx.fillText('Bar stats appear once the footprint has executions for the visible candles.', 12, ph / 2); return; }
+    if (!all.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Bar stats appear once the footprint has executions for the visible candles.'), 12, ph / 2); return; }
     const input = { bars: all, step: data.step, options, candles: new Map(state.candles.map(c => [c[0], c] as const)), oi: new Map(state.oi.map(b => [b[0], b] as const)) };
     const slot = pw * tfMs / (v.t1 - v.t0), top = 3, rowH = Math.max(15, (ph - 6) / defs.length), filled = options.cells === 'filled';
     const visible = all.map((bar, i) => i).filter(i => all[i]!.t + tfMs >= v.t0 && all[i]!.t <= v.t1);
-    if (!visible.length) { ctx.fillStyle = p.muted; ctx.fillText('No executions recorded for the candles in view.', 12, ph / 2); return; }
+    if (!visible.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No executions recorded for the candles in view.'), 12, ph / 2); return; }
     ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     defs.forEach((def, rowIndex) => {
       const values = def.compute(input), scale = rowScale(def, visible.map(i => values[i]));

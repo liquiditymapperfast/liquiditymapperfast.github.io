@@ -1,5 +1,6 @@
 import { el } from './dom.ts';
 import { togglePanel } from './ui.ts';
+import { t } from './i18n.ts';
 
 /**
  * "Install": offers to install the page as an app (its own window, an icon on the desktop or dock) when the browser says it can.
@@ -26,8 +27,8 @@ if (typeof window !== 'undefined') {
 
 export class InstallButton {
   readonly root = el('button', {
-    type: 'button', class: 'install', textContent: 'Install', hidden: true,
-    tip: 'Install this page as an app: it opens in its own window, starts from your desktop or dock, and keeps the depth it has recorded. Free, nothing to sign up for.',
+    type: 'button', class: 'install', textContent: t('Install'), hidden: true,
+    tip: t('Install this page as an app: it opens in its own window, starts from your desktop or dock, and keeps the depth it has recorded. Free, nothing to sign up for.'),
     onclick: () => { void this.#install(); },
   });
 
@@ -39,14 +40,14 @@ export class InstallButton {
   async #install(): Promise<void> {
     const event = pending;
     if (!event?.prompt) {
-      if (manualInstall()) togglePanel(this.root, { title: 'Add to Home Screen', width: 340, align: 'right' }, (_tools, body) => {
+      if (manualInstall()) togglePanel(this.root, { title: t('Add to Home Screen'), width: 340, align: 'right' }, (_tools, body) => {
         body.append(
-          el('p', { class: 'lead', textContent: 'On an iPhone or iPad the page is installed from the Share menu:' }),
+          el('p', { class: 'lead', textContent: t('On an iPhone or iPad the page is installed from the Share menu:') }),
           el('ol', { class: 'steps' },
-            el('li', { textContent: 'Tap the Share button (the square with an arrow pointing up) in the browser\'s bar.' }),
-            el('li', { textContent: 'Scroll the list and choose Add to Home Screen.' }),
-            el('li', { textContent: 'Tap Add. It then opens full screen from its own icon, like an app.' })),
-          el('p', { class: 'panel-note', textContent: 'Nothing is downloaded or signed up for: it is the same page.' }));
+            el('li', { textContent: t('Tap the Share button (the square with an arrow pointing up) in the browser\'s bar.') }),
+            el('li', { textContent: t('Scroll the list and choose Add to Home Screen.') }),
+            el('li', { textContent: t('Tap Add. It then opens full screen from its own icon, like an app.') })),
+          el('p', { class: 'panel-note', textContent: t('Nothing is downloaded or signed up for: it is the same page.') }));
       });
       return;
     }

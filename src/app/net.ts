@@ -3,6 +3,7 @@ import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
 import type { BootstrapState, FootprintResponse, LayersMessage, LiveHandlers, PrintsMessage, TickMessage } from './source.ts';
+import { t } from './i18n.ts';
 
 async function request(path: string): Promise<Response> {
   const response = await fetch(path, { cache: 'no-store' });
@@ -41,7 +42,7 @@ export async function getColumns(ids: string[], from: number, to: number, stepMs
 }
 
 /** The toolbar's text while there is no live connection: a plain "reconnecting" at first, then the address that is not answering. */
-export const connectionStatus = (failures: number, host: string): string => failures < 3 ? 'reconnecting' : `no answer from ${host} (retry ${failures})`;
+export const connectionStatus = (failures: number, host: string): string => failures < 3 ? t('reconnecting') : t('no answer from {host} (retry {n})', { host, n: failures });
 
 /**
  * Live socket with capped exponential reconnect. Binary frames are levels; text frames are ticks, layers, prints and a heartbeat every few

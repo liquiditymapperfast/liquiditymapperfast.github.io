@@ -20,6 +20,7 @@ import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
+import { t } from '../i18n.ts';
 
 /** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -325,7 +326,7 @@ export class HeatPane {
       lastDay = day;
     }
     this.#paintLegend(ctx, state);
-    if (!this.#wasLoaded && state.levels) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText('Collecting depth history…', 12, 50); }
+    if (!this.#wasLoaded && state.levels) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('Collecting depth history…'), 12, 50); }
     const emptyScope = state.heatmapSource === 'aggregated' ? emptyScopeMessage(state) : null;
     if (emptyScope) { // the filter selected nothing: say so instead of drawing a blank map
       ctx.font = '600 13px ui-sans-serif, system-ui, sans-serif'; const width = ctx.measureText(emptyScope).width + 28;
@@ -341,7 +342,7 @@ export class HeatPane {
     const hovered = state.hover ? state.candles.find(c => state.hover!.t >= c[0] && state.hover!.t < c[0] + tf) : undefined;
     const c = hovered ?? state.candles[state.candles.length - 1];
     const name = state.marketId.replace(':', ' · ');
-    const borrowed = state.seriesInstrument && state.seriesInstrument !== state.marketId ? `  ·  candles from ${state.seriesInstrument.replace(':', ' · ')}` : '';
+    const borrowed = state.seriesInstrument && state.seriesInstrument !== state.marketId ? `  ·  ${t('candles from {instrument}', { instrument: state.seriesInstrument.replace(':', ' · ') })}` : '';
     const title = `${name}  ${state.timeframe}${borrowed}`;
     // On a phone the plate has to fit the plot beside a narrow profile: whole prices, and the volume on the title's line.
     const phone = this.plotW < NARROW_PLOT, px = (value: number): string => phone && value >= 1000 ? fmtPrice(value, 1) : fmtPrice(value);
@@ -349,8 +350,8 @@ export class HeatPane {
     if (c) {
       up = c[4] >= c[1];
       const at = state.candles.indexOf(c), found = this.#volumeAnalysis(state).found, z = found.sigma[at], unusual = state.highlight.on && found.flag[at] === 1;
-      if (phone) { detail = `O ${px(c[1])}  H ${px(c[2])}  L ${px(c[3])}  C ${px(c[4])}`; tail = `Vol ${usd(c[5])}`; }
-      else detail = `O ${fmtPrice(c[1])}  H ${fmtPrice(c[2])}  L ${fmtPrice(c[3])}  C ${fmtPrice(c[4])}  Vol ${usd(c[5])}${unusual && Number.isFinite(z) ? `  (${z!.toFixed(1)}σ above its baseline)` : ''}`;
+      if (phone) { detail = `O ${px(c[1])}  H ${px(c[2])}  L ${px(c[3])}  C ${px(c[4])}`; tail = `${t('Vol')} ${usd(c[5])}`; }
+      else detail = `O ${fmtPrice(c[1])}  H ${fmtPrice(c[2])}  L ${fmtPrice(c[3])}  C ${fmtPrice(c[4])}  ${t('Vol')} ${usd(c[5])}${unusual && Number.isFinite(z) ? `  ${t('({z}σ above its baseline)', { z: z!.toFixed(1) })}` : ''}`;
     }
     // A translucent plate keeps the text readable over bright heat.
     const shownTitle = phone ? `${name}  ${state.timeframe}` : title;
@@ -389,8 +390,8 @@ export class HeatPane {
     const since = this.hub.recordedSince, v = this.view;
     if (!(since > v.t0 && since < v.t1)) return;
     const x = Math.round(v.xOf(since, pw)) + 0.5, young = this.#placeholder() !== null;
-    const label = young && x > 330 ? 'Grey: the current book copied back, not recorded history. Depth is recorded while this page is open'
-      : young && x >= 215 ? `Grey: copied back · recorded from ${clock(since)}` : `depth recorded from ${clock(since)}`;
+    const label = young && x > 330 ? t('Grey: the current book copied back, not recorded history. Depth is recorded while this page is open')
+      : young && x >= 215 ? t('Grey: copied back · recorded from {time}', { time: clock(since) }) : t('depth recorded from {time}', { time: clock(since) });
     ctx.save();
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.setLineDash([2, 4]);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
@@ -565,7 +566,7 @@ export class HeatPane {
     }
     ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, PROFILE_W - 1, 28); ctx.globalAlpha = 1;
     ctx.fillStyle = p.muted; ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(`LEVEL MAX ${usd(maxLevel)}`, x0 + 4, 4); ctx.fillText(`CUM MAX ${usd(maxCum)}`, x0 + 4, 16);
+    ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 4); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 16);
     this.#profileBox = null;
     this.#paintProfileMirror(ctx, state, g, cum, step, x0, ph);
     ctx.restore(); ctx.textBaseline = 'middle';
@@ -593,7 +594,7 @@ export class HeatPane {
     const top = v.yOf((g.bin0 + Math.max(hb, mb) + 1) * step, ph), bottom = v.yOf((g.bin0 + Math.min(hb, mb)) * step, ph), pct = percentText(stats);
     dimOutside(ctx, x0, PROFILE_W, 0, ph, top, bottom, p.panel, 0.6);
     paintBand(ctx, p, x0, PROFILE_W, { y: top, color: p.ask, label: `${usd(stats.aboveUsd)} · ${pct}` }, { y: bottom, color: p.bid, label: `${usd(stats.belowUsd)} · ${pct}` }, { y0: 0, y1: ph });
-    this.#profileBox = { lines: mirrorLines(stats, { above: 'Asks', below: 'Bids' }), y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
+    this.#profileBox = { lines: mirrorLines(stats, { above: t('Asks'), below: t('Bids') }), y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
   }
 
   #paintCrosshair(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {

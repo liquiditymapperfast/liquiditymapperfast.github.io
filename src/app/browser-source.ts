@@ -6,13 +6,14 @@ import type { Print } from './prints.ts';
 import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, TickMessage, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
+import { t } from './i18n.ts';
 
 /** Where a person's venue choice is kept between visits. */
 const SELECTION_KEY = 'lmf.venues';
 /** How long the first bootstrap waits for a venue with a price, so the page opens on a market that has data. */
 const FIRST_PRICE_MS = 4_000;
 /** The words shown beside a venue that refuses this visitor's location. */
-export const BLOCKED_TEXT = 'unavailable from your location — a VPN may help';
+export const BLOCKED_TEXT = t('unavailable from your location — a VPN may help');
 
 function savedSelection(): string[] | null {
   try {
@@ -24,11 +25,11 @@ function saveSelection(selected: readonly string[]): void { try { localStorage.s
 
 function statusText(venue: VenueStatus): string {
   switch (venue.state) {
-    case 'live': return venue.detail ? `live — ${venue.detail}` : 'live';
-    case 'connecting': return 'connecting…';
-    case 'off': return 'off';
+    case 'live': return venue.detail ? t('live — {detail}', { detail: venue.detail }) : t('live');
+    case 'connecting': return t('connecting…');
+    case 'off': return t('off');
     case 'blocked': return BLOCKED_TEXT;
-    case 'error': return venue.detail || 'connection failed';
+    case 'error': return venue.detail || t('connection failed');
   }
 }
 export const toEntry = (venue: VenueStatus): VenueEntry => ({ id: venue.id, name: venue.name, supported: true, recommended: venue.recommended, selected: venue.selected, status: statusText(venue), state: venue.state });
@@ -82,7 +83,7 @@ export class BrowserSource implements DataSource, VenueControl {
         }
       }
     };
-    worker.onerror = event => { this.#handlers?.onClose(1, 'the browser engine'); console.error('feeds worker:', event.message); };
+    worker.onerror = event => { this.#handlers?.onClose(1, t('the browser engine')); console.error('feeds worker:', event.message); };
     this.#post({ type: 'init', selected: savedSelection(), persist });
     // Recordings still queued are written as the page goes away.
     addEventListener('pagehide', () => this.#post({ type: 'flush' }));

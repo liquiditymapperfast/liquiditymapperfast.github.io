@@ -1,4 +1,5 @@
 import { el } from './dom.ts';
+import { t } from './i18n.ts';
 
 /**
  * Parts of the page that are fetched when they are first used (the guide, the screenshot tool). A site that is updated while a page is
@@ -25,7 +26,7 @@ export function lazy<T>(load: () => Promise<T>): Promise<T | null> {
       const last = Number(window.sessionStorage.getItem(KEY) ?? 0), now = Date.now();
       if (mayReload(now, last)) { window.sessionStorage.setItem(KEY, String(now)); window.location.reload(); return null; }
     } catch { /* storage unavailable: just say so */ }
-    notify('This page was updated while it was open, or a file could not be loaded. Reload the page to continue.');
+    notify(t('This page was updated while it was open, or a file could not be loaded. Reload the page to continue.'));
     return null;
   });
 }

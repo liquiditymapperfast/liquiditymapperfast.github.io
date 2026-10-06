@@ -1,3 +1,4 @@
+import { language, t } from './i18n.ts';
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 export const usd = (value: number): string => !Number.isFinite(value) ? '–' : value === 0 ? '0' : Math.abs(value) < 1000 ? value.toFixed(0) : compact.format(value);
 
@@ -12,12 +13,21 @@ export function price(value: number, step = 0): string {
 }
 const two = (n: number) => String(n).padStart(2, '0');
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+/** "Oct 5" in English, and the date as the language writes it ("5. Okt.", "10月5日") in the others. */
+function monthDay(d: Date): string {
+  const code = language();
+  if (code === 'en') return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  let format = dayFormats.get(code);
+  if (!format) { format = new Intl.DateTimeFormat(code, { month: 'short', day: 'numeric' }); dayFormats.set(code, format); }
+  return format.format(d);
+}
 export function clock(t: number, withDate = false): string {
   const d = new Date(t);
   const time = `${two(d.getHours())}:${two(d.getMinutes())}`;
-  return withDate ? `${MONTHS[d.getMonth()]} ${d.getDate()} ${time}` : time;
+  return withDate ? `${monthDay(d)} ${time}` : time;
 }
 export function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
-  return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : s < 129600 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
+  return s < 90 ? t('{n}s ago', { n: s }) : s < 5400 ? t('{n}m ago', { n: Math.round(s / 60) }) : s < 129600 ? t('{n}h ago', { n: Math.round(s / 3600) }) : t('{n}d ago', { n: Math.round(s / 86400) });
 }

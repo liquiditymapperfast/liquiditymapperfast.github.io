@@ -7,6 +7,7 @@ import {
   COLORS, CURSORS, WIDTHS, clampRect, drawShape, fileName, hitHandle, inside, markText, paintMark, rectFrom, resizeRect, textSize, toolbarPlacement, worthKeeping,
   HANDLES, handlePoint, snapAngle, squareTo, type Handle, type Pt, type Rect, type Shape, type Tool,
 } from './shapes.ts';
+import { t } from '../i18n.ts';
 
 /**
  * Screenshot: the page freezes under a dim layer reading "Select an area". Drag to choose a region (or click a pane to take it whole),
@@ -36,15 +37,15 @@ const ICONS: Readonly<Record<Tool | 'undo' | 'redo' | 'copy' | 'save' | 'share' 
 const icon = (name: keyof typeof ICONS): string => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
 const TOOLS: { tool: Tool; label: string; key: string; hint: string }[] = [
-  { tool: 'move', label: 'Move and resize', key: 'V', hint: 'Drag the selection to move it, or its handles to resize it' },
-  { tool: 'pen', label: 'Pen', key: 'P', hint: 'Draw freehand' },
-  { tool: 'line', label: 'Line', key: 'L', hint: 'Drag to draw a straight line' },
-  { tool: 'arrow', label: 'Arrow', key: 'A', hint: 'Drag from the tail to the point' },
-  { tool: 'rect', label: 'Rectangle', key: 'R', hint: 'Drag to outline an area' },
-  { tool: 'marker', label: 'Highlighter', key: 'H', hint: 'Draw over something to highlight it' },
-  { tool: 'text', label: 'Text', key: 'T', hint: 'Click where the text should go; Enter to place it' },
-  { tool: 'pixelate', label: 'Pixelate', key: 'X', hint: 'Drag over anything that should not be shared: it turns into blocks' },
-  { tool: 'blur', label: 'Blur', key: 'B', hint: 'Drag over anything that should not be shared: it turns into a soft blur' },
+  { tool: 'move', label: t('Move and resize'), key: 'V', hint: t('Drag the selection to move it, or its handles to resize it') },
+  { tool: 'pen', label: t('Pen'), key: 'P', hint: t('Draw freehand') },
+  { tool: 'line', label: t('Line'), key: 'L', hint: t('Drag to draw a straight line') },
+  { tool: 'arrow', label: t('Arrow'), key: 'A', hint: t('Drag from the tail to the point') },
+  { tool: 'rect', label: t('Rectangle'), key: 'R', hint: t('Drag to outline an area') },
+  { tool: 'marker', label: t('Highlighter'), key: 'H', hint: t('Draw over something to highlight it') },
+  { tool: 'text', label: t('Text'), key: 'T', hint: t('Click where the text should go; Enter to place it') },
+  { tool: 'pixelate', label: t('Pixelate'), key: 'X', hint: t('Drag over anything that should not be shared: it turns into blocks') },
+  { tool: 'blur', label: t('Blur'), key: 'B', hint: t('Drag over anything that should not be shared: it turns into a soft blur') },
 ];
 
 /** Whether this browser can hand a picture to the system's share sheet, and a finger is what is pointing (a desktop has the clipboard and a download). */
@@ -64,15 +65,15 @@ export function startScreenshot(): void {
 
 function openEditor(snap: Snapshot): { close(): void } {
   const W = snap.width, H = snap.height, scale = snap.scale;
-  const dialog = el('dialog', { class: 'shot', ariaLabel: 'Screenshot' });
+  const dialog = el('dialog', { class: 'shot', ariaLabel: t('Screenshot') });
   const stage = el('canvas', { class: 'shot-stage' });
   stage.width = Math.round(W * scale); stage.height = Math.round(H * scale);
   stage.style.width = `${W}px`; stage.style.height = `${H}px`;
   // A finger drags and taps; a mouse drags and clicks and has Esc. The handles and the hit area around them are larger under a finger.
   const touch = isCoarse(), handleSize = touch ? 15 : 9, handleReach = touch ? 26 : 9;
-  const hint = el('div', { class: 'shot-hint' }, el('strong', { textContent: 'Select an area' }),
-    el('span', { textContent: touch ? 'Drag to choose a region · tap a pane to take all of it' : 'Drag to choose a region · click a pane to take all of it · Esc to cancel' }));
-  const bar = el('div', { class: 'shot-bar', hidden: true, role: 'toolbar', ariaLabel: 'Screenshot tools' });
+  const hint = el('div', { class: 'shot-hint' }, el('strong', { textContent: t('Select an area') }),
+    el('span', { textContent: touch ? t('Drag to choose a region · tap a pane to take all of it') : t('Drag to choose a region · click a pane to take all of it · Esc to cancel') }));
+  const bar = el('div', { class: 'shot-bar', hidden: true, role: 'toolbar', ariaLabel: t('Screenshot tools') });
   dialog.append(stage, hint, bar);
   document.body.append(dialog);
   dialog.showModal();
@@ -80,7 +81,7 @@ function openEditor(snap: Snapshot): { close(): void } {
 
   // The panes that can be taken whole, found now while the page is as it was captured.
   const snapTargets: { rect: Rect; label: string }[] = [];
-  for (const [selector, label] of [['.pane.heat', 'chart'], ['.pane.depth', 'Depth'], ['.pane.oi', 'Open interest'], ['.pane.lt', 'Liquidity Tracker'], ['.pane.bars', 'Bar stats'], ['.side-col', 'order book'], ['.toolbar', 'toolbar']] as const) {
+  for (const [selector, label] of [['.pane.heat', t('Click to take the chart')], ['.pane.depth', t('Click to take Depth')], ['.pane.oi', t('Click to take Open interest')], ['.pane.lt', t('Click to take the Liquidity Tracker')], ['.pane.bars', t('Click to take Bar stats')], ['.side-col', t('Click to take the order book')], ['.toolbar', t('Click to take the toolbar')]] as const) {
     const node = document.querySelector(selector) as HTMLElement | null; if (!node || node.hidden) continue;
     const r = node.getBoundingClientRect();
     if (r.width > 40 && r.height > 20) snapTargets.push({ rect: { x: r.left, y: r.top, w: r.width, h: r.height }, label });
@@ -118,7 +119,7 @@ function openEditor(snap: Snapshot): { close(): void } {
         const r = hoverTarget.rect;
         ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.drawImage(snap.canvas, 0, 0, W, H); ctx.restore();
         ctx.strokeStyle = '#4da3ff'; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-        const text = `Click to take the ${hoverTarget.label}`; ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
+        const text = hoverTarget.label; ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
         const tw = ctx.measureText(text).width + 16, bx = Math.min(Math.max(r.x + 8, 4), W - tw - 4), by = Math.max(r.y + 8, 4);
         ctx.fillStyle = '#4da3ff'; rounded(bx, by, tw, 22, 6); ctx.fill();
         ctx.fillStyle = '#06101f'; ctx.textBaseline = 'middle'; ctx.fillText(text, bx + 8, by + 11.5);
@@ -157,16 +158,16 @@ function openEditor(snap: Snapshot): { close(): void } {
   };
   for (const t of TOOLS) { const b = iconButton(t.tool, `${t.label} (${t.key}) — ${t.hint}`, () => chooseTool(t.tool)); toolButtons.set(t.tool, b); }
   const tools = group(...[...toolButtons.values()]);
-  const colors = group(...COLORS.map(c => { const b = el('button', { type: 'button', class: 'shot-dot', tip: `Colour ${c}`, ariaLabel: `Colour ${c}`, onclick: () => { color = c; syncBar(); redraw(); } }); b.style.setProperty('--dot', c); colorDots.push(b); return b; }));
-  const widths = group(...WIDTHS.map((w, i) => { const b = el('button', { type: 'button', class: 'shot-width', tip: `${['Thin', 'Medium', 'Thick'][i]} stroke`, ariaLabel: `${['Thin', 'Medium', 'Thick'][i]} stroke`, onclick: () => { width = w; syncBar(); } }); b.style.setProperty('--w', `${2 + i * 2.5}px`); widthDots.push(b); return b; }));
-  const strengthInput = el('input', { type: 'range', min: '4', max: '40', step: '1', value: String(strength), tip: 'How strong the effect is', ariaLabel: 'Effect strength', oninput: () => { strength = Number(strengthInput.value); } });
-  const strengthGroup = group(el('span', { class: 'shot-label', textContent: 'Strength' }), strengthInput);
-  const undoButton = iconButton('undo', 'Undo (Ctrl+Z)', () => undo()), redoButton = iconButton('redo', 'Redo (Ctrl+Shift+Z)', () => redoShape());
-  const copyButton = el('button', { type: 'button', class: 'shot-primary', tip: 'Copy the picture to the clipboard (Enter)', onclick: () => void copy() }); copyButton.innerHTML = `${icon('copy')}<span>Copy</span>`;
+  const colors = group(...COLORS.map(c => { const b = el('button', { type: 'button', class: 'shot-dot', tip: t('Colour {c}', { c }), ariaLabel: t('Colour {c}', { c }), onclick: () => { color = c; syncBar(); redraw(); } }); b.style.setProperty('--dot', c); colorDots.push(b); return b; }));
+  const widths = group(...WIDTHS.map((w, i) => { const b = el('button', { type: 'button', class: 'shot-width', tip: [t('Thin stroke'), t('Medium stroke'), t('Thick stroke')][i]!, ariaLabel: [t('Thin stroke'), t('Medium stroke'), t('Thick stroke')][i]!, onclick: () => { width = w; syncBar(); } }); b.style.setProperty('--w', `${2 + i * 2.5}px`); widthDots.push(b); return b; }));
+  const strengthInput = el('input', { type: 'range', min: '4', max: '40', step: '1', value: String(strength), tip: t('How strong the effect is'), ariaLabel: t('Effect strength'), oninput: () => { strength = Number(strengthInput.value); } });
+  const strengthGroup = group(el('span', { class: 'shot-label', textContent: t('Strength') }), strengthInput);
+  const undoButton = iconButton('undo', t('Undo (Ctrl+Z)'), () => undo()), redoButton = iconButton('redo', t('Redo (Ctrl+Shift+Z)'), () => redoShape());
+  const copyButton = el('button', { type: 'button', class: 'shot-primary', tip: t('Copy the picture to the clipboard (Enter)'), onclick: () => void copy() }); copyButton.innerHTML = `${icon('copy')}<span>${t('Copy')}</span>`;
   const markButton = iconButton('link', '', () => { withMark = !withMark; try { window.localStorage.setItem(MARK_KEY, withMark ? 'on' : 'off'); } catch { /* storage unavailable */ } syncBar(); redraw(); });
-  const saveButton = iconButton('save', 'Save as a PNG file (Ctrl+S)', () => void save()), closeButton = iconButton('close', 'Cancel (Esc)', () => close(), 'shot-close');
+  const saveButton = iconButton('save', t('Save as a PNG file (Ctrl+S)'), () => void save()), closeButton = iconButton('close', t('Cancel (Esc)'), () => close(), 'shot-close');
   // A phone shares a picture through its own sheet (Messages, Photos, Files...); that is better than a download no one can find there.
-  const shareButton = canShareFiles() ? iconButton('share', 'Share the picture with another app', () => void share()) : null;
+  const shareButton = canShareFiles() ? iconButton('share', t('Share the picture with another app'), () => void share()) : null;
   bar.append(tools, colors, widths, strengthGroup, group(undoButton, redoButton), group(markButton, copyButton, ...(shareButton ? [shareButton] : []), saveButton, closeButton));
 
   const syncBar = (): void => {
@@ -176,8 +177,8 @@ function openEditor(snap: Snapshot): { close(): void } {
     colors.hidden = !draws; widths.hidden = !draws; strengthGroup.hidden = !effect;
     undoButton.disabled = shapes.length === 0; redoButton.disabled = redo.length === 0;
     markButton.classList.toggle('on', withMark);
-    setTip(markButton, withMark ? `Put ${address} in a corner of the picture (on): click to leave it out` : `Leave the address out of the picture (off): click to put ${address} in a corner`);
-    markButton.setAttribute('aria-pressed', String(withMark)); markButton.setAttribute('aria-label', `Address in a corner of the picture: ${withMark ? 'on' : 'off'}`);
+    setTip(markButton, withMark ? t('Put {address} in a corner of the picture (on): click to leave it out', { address }) : t('Leave the address out of the picture (off): click to put {address} in a corner', { address }));
+    markButton.setAttribute('aria-pressed', String(withMark)); markButton.setAttribute('aria-label', withMark ? t('Address in a corner of the picture: on') : t('Address in a corner of the picture: off'));
     stage.style.cursor = sel ? (tool === 'move' ? 'default' : tool === 'text' ? 'text' : 'crosshair') : 'crosshair';
     place();
   };
@@ -213,10 +214,10 @@ function openEditor(snap: Snapshot): { close(): void } {
     const pending = blob();
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': pending.then(b => b ?? Promise.reject(new Error('no picture'))) })]);
-      close(); toast('Copied to the clipboard');
+      close(); toast(t('Copied to the clipboard'));
     } catch {
       // No clipboard permission (or a context without one): the picture must not be lost, so it is saved instead.
-      const data = await pending; if (data) { download(data); close(); toast('Could not copy here, so it was saved as a file'); }
+      const data = await pending; if (data) { download(data); close(); toast(t('Could not copy here, so it was saved as a file')); }
     }
   }
   async function share(): Promise<void> {
@@ -224,13 +225,13 @@ function openEditor(snap: Snapshot): { close(): void } {
     const data = await blob(); if (!data) return;
     try {
       await navigator.share({ files: [new File([data], fileName(new Date()), { type: 'image/png' })], title: 'LiquidityMapperFast' });
-      close(); toast('Shared');
+      close(); toast(t('Shared'));
     } catch (error) {
       // Dismissing the share sheet is not a failure: the picture stays open for another try.
-      if (!(error instanceof DOMException && error.name === 'AbortError')) { download(data); close(); toast('Could not share here, so it was saved as a file'); }
+      if (!(error instanceof DOMException && error.name === 'AbortError')) { download(data); close(); toast(t('Could not share here, so it was saved as a file')); }
     }
   }
-  async function save(): Promise<void> { commitText(); const data = await blob(); if (data) { download(data); close(); toast('Saved'); } }
+  async function save(): Promise<void> { commitText(); const data = await blob(); if (data) { download(data); close(); toast(t('Saved')); } }
   function undo(): void { commitText(); const s = shapes.pop(); if (s) { redo.push(s); syncBar(); redraw(); } }
   function redoShape(): void { const s = redo.pop(); if (s) { shapes.push(s); syncBar(); redraw(); } }
   function close(): void {
@@ -243,7 +244,7 @@ function openEditor(snap: Snapshot): { close(): void } {
   // ---- text -------------------------------------------------------------------------------------------------------------------------
   const startText = (at: Pt): void => {
     commitText();
-    const size = textSize(width), input = el('input', { type: 'text', class: 'shot-text', ariaLabel: 'Text to place', spellcheck: false });
+    const size = textSize(width), input = el('input', { type: 'text', class: 'shot-text', ariaLabel: t('Text to place'), spellcheck: false });
     input.style.left = `${at.x}px`; input.style.top = `${at.y}px`; input.style.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`; input.style.color = color; input.style.height = `${Math.round(size * 1.3)}px`;
     input.dataset.size = String(size); input.dataset.color = color;
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commitText(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); textBox?.remove(); textBox = null; } e.stopPropagation(); });

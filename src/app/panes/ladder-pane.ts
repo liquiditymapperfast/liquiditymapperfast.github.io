@@ -13,6 +13,7 @@ import { coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance
 import { GROUPS, WheelNotches, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
+import { t } from '../i18n.ts';
 
 const ROW_H = 17;
 const HEAD_H = 20;
@@ -203,17 +204,17 @@ export class LadderPane {
   }
   #buildControls(): void {
     const s = () => this.store.state;
-    const title = document.createElement('strong'); title.textContent = 'Order Book';
-    this.#booksButton.className = 'books-btn'; this.#booksButton.textContent = 'Books'; setTip(this.#booksButton, 'Choose which venues get their own book (Single mode)');
-    this.#booksButton.onclick = () => { this.#panel = togglePanel(this.#booksButton, { title: 'Order books', width: 340, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#buildBooks(tools, body)); };
-    const recenter = document.createElement('button'); recenter.className = 'recenter-btn'; recenter.textContent = 'Recenter'; recenter.onclick = () => this.recenter();
-    const group = this.#select('Group', [['auto', 'Auto'], ...GROUPS.map(g => [String(g), String(g)] as [string, string])], () => String(s().grouping), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
-    setTip(group, 'Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.');
+    const title = document.createElement('strong'); title.textContent = t('Order Book');
+    this.#booksButton.className = 'books-btn'; this.#booksButton.textContent = t('Books'); setTip(this.#booksButton, t('Choose which venues get their own book (Single mode)'));
+    this.#booksButton.onclick = () => { this.#panel = togglePanel(this.#booksButton, { title: t('Order books'), width: 340, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#buildBooks(tools, body)); };
+    const recenter = document.createElement('button'); recenter.className = 'recenter-btn'; recenter.textContent = t('Recenter'); recenter.onclick = () => this.recenter();
+    const group = this.#select(t('Group'), [['auto', t('Auto')], ...GROUPS.map(g => [String(g), String(g)] as [string, string])], () => String(s().grouping), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
+    setTip(group, t('Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.'));
     this.#autoOption = group.querySelector('option[value="auto"]');
     this.controls.append(title, helpButton('orderBook'),
-      this.#select('Mode', [['aggregated', 'Aggregated'], ['single', 'Single'], ['compact', 'Compact']], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
+      this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
       group,
-      this.#select('Show', [['both', 'Levels + cum'], ['levels', 'Levels'], ['cumulative', 'Cumulative']], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] })),
+      this.#select(t('Show'), [['both', t('Levels + cum')], ['levels', t('Levels')], ['cumulative', t('Cumulative')]], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] })),
       this.#booksButton, recenter);
     this.syncVenues();
   }
@@ -238,11 +239,11 @@ export class LadderPane {
   #buildBooks(tools: HTMLElement, body: HTMLElement): void {
     const state = this.store.state, ids = (state.levels?.books ?? []).map(book => book.id), shown = new Set(this.#singleIds(state));
     const choose = (wanted: string[]): void => this.store.set({ ladderVenues: wanted });
-    tools.append(button('All', () => choose([]), 'Every enabled venue gets a book'),
-      button('Spot', () => choose(ids.filter(id => kindOf(state.markets, id) === 'spot')), 'Only spot venues'),
-      button('Perp', () => choose(ids.filter(id => kindOf(state.markets, id) === 'perp')), 'Only perpetual venues'),
-      el('span', { class: 'muted', textContent: `${shown.size} of ${ids.length} shown` }));
-    body.append(note('Single mode draws one book per venue side by side. Pick which venues get a column.'));
+    tools.append(button(t('All'), () => choose([]), t('Every enabled venue gets a book')),
+      button(t('Spot'), () => choose(ids.filter(id => kindOf(state.markets, id) === 'spot')), t('Only spot venues')),
+      button(t('Perp'), () => choose(ids.filter(id => kindOf(state.markets, id) === 'perp')), t('Only perpetual venues')),
+      el('span', { class: 'muted', textContent: t('{shown} of {total} shown', { shown: shown.size, total: ids.length }) }));
+    body.append(note(t('Single mode draws one book per venue side by side. Pick which venues get a column.')));
     for (const id of ids) {
       const kind = kindOf(state.markets, id);
       body.append(checkRow(venueLabel(id), `${id.split(':').slice(1).join(':')}${kind ? ` · ${kind === 'spot' ? 'spot' : 'perpetual'}` : ''}`, shown.has(id), on => {
@@ -278,7 +279,7 @@ export class LadderPane {
     const ctx = this.#ctx, h = this.#h;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0); ctx.clearRect(0, 0, width, h);
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textBaseline = 'middle';
-    if (!frame || !(mark > 0) || width < 80) { ctx.fillStyle = p.muted; ctx.fillText('Waiting for order book…', 12, 20); return; }
+    if (!frame || !(mark > 0) || width < 80) { ctx.fillStyle = p.muted; ctx.fillText(t('Waiting for order book…'), 12, 20); return; }
     const ids = state.ladderMode === 'single' ? books : activeIds(state);
     const cells = state.ladderMode === 'aggregated' && ids.length > 1;
     const cellW = cells ? Math.max(CELL_MIN, Math.min(CELL_MAX, Math.floor((width - PRICE_W - USD_W - 8 - MIN_BAR_W) / ids.length))) : 0;
@@ -287,7 +288,7 @@ export class LadderPane {
     const rows = Math.max(6, Math.floor((h - head) / ROW_H));
     const step = state.grouping === 'auto' ? niceStep(mark * 0.012, rows / 2) : state.grouping;
     this.#layout = { step, rows, head, colW: width / columns, mark };
-    if (this.#autoOption) { const text = state.grouping === 'auto' ? `Auto · ${step}` : 'Auto'; if (this.#autoOption.text !== text) this.#autoOption.text = text; }
+    if (this.#autoOption) { const text = state.grouping === 'auto' ? `${t('Auto')} · ${step}` : t('Auto'); if (this.#autoOption.text !== text) this.#autoOption.text = text; }
     const centerBin = Math.floor(mark / step) + this.#offsetRows;
     const p0 = (centerBin - rows / 2) * step, p1 = (centerBin + rows / 2 + 1) * step;
     const g = groupLevels(this.kernels, frame, ids, step, p0, p1);
@@ -324,7 +325,7 @@ export class LadderPane {
     const bandTop = head + rowOf(Math.max(hb, mb)) * ROW_H, bandBottom = head + (rowOf(Math.min(hb, mb)) + 1) * ROW_H, pct = percentText(stats);
     dimOutside(ctx, o.x, o.w, head, head + rows * ROW_H, bandTop, bandBottom, p.bg, 0.55);
     paintBand(ctx, p, o.x, o.w, { y: bandTop, color: p.ask, label: `${usd(stats.aboveUsd)} · ${pct}` }, { y: bandBottom, color: p.bid, label: `${usd(stats.belowUsd)} · ${pct}` }, { y0: head, y1: head + rows * ROW_H });
-    paintMirrorBox(ctx, mirrorLines(stats, { above: 'Asks', below: 'Bids' }, o.title || undefined), hv.x, hv.y, { x0: o.x, y0: head, x1: o.x + o.w, y1: head + rows * ROW_H }, p,
+    paintMirrorBox(ctx, mirrorLines(stats, { above: t('Asks'), below: t('Bids') }, o.title || undefined), hv.x, hv.y, { x0: o.x, y0: head, x1: o.x + o.w, y1: head + rows * ROW_H }, p,
       c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'muted' ? p.muted : p.text, stats.hoveredSide === 'above' ? 'down' : 'up');
   }
 
@@ -373,8 +374,8 @@ export class LadderPane {
     ctx.globalAlpha = dominantBid ? 0.35 : 0.85; ctx.fillStyle = p.ask; ctx.fillRect(split, top, right - split, h);
     ctx.globalAlpha = 1; ctx.fillStyle = p.bg; ctx.fillRect(split - 0.5, top, 1, h);
     ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillStyle = p.dark ? '#ffffff' : '#14171c';
-    ctx.textAlign = 'left'; if (split - left > 70) ctx.fillText(`bids ${Math.round(share * 100)}%`, left + 5, top + h / 2 + 0.5);
-    ctx.textAlign = 'right'; if (right - split > 70) ctx.fillText(`${Math.round((1 - share) * 100)}% asks`, right - 5, top + h / 2 + 0.5);
+    ctx.textAlign = 'left'; if (split - left > 70) ctx.fillText(t('bids {pct}%', { pct: Math.round(share * 100) }), left + 5, top + h / 2 + 0.5);
+    ctx.textAlign = 'right'; if (right - split > 70) ctx.fillText(t('{pct}% asks', { pct: Math.round((1 - share) * 100) }), right - 5, top + h / 2 + 0.5);
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
   }
 
@@ -391,7 +392,7 @@ export class LadderPane {
     if (o.title) { ctx.fillStyle = p.text; ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillText(o.title, x0 + 6, head / 2); ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillStyle = p.muted; }
     else {
       const line = head - HEAD_H / 2;
-      ctx.fillText('PRICE', x0 + 6, line); ctx.textAlign = 'right'; ctx.fillText('LEVEL USD', x0 + priceW + usdW, line);
+      ctx.fillText(t('PRICE'), x0 + 6, line); ctx.textAlign = 'right'; ctx.fillText(t('LEVEL USD'), x0 + priceW + usdW, line);
       if (cellIds) {
         ctx.textAlign = 'left';
         if (cw >= 20) cellIds.forEach((id, k) => ctx.fillText(venueLabel(id).slice(0, 3).toUpperCase(), x0 + priceW + usdW + 10 + k * cw, line));
@@ -402,7 +403,7 @@ export class LadderPane {
           ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
         }
       }
-      ctx.textAlign = 'left'; ctx.fillText(state.ladderShow === 'levels' ? 'DEPTH' : 'DEPTH + CUM', barX, line);
+      ctx.textAlign = 'left'; ctx.fillText(state.ladderShow === 'levels' ? t('DEPTH') : t('DEPTH + CUM'), barX, line);
     }
     let maxLevel = 1; const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1);
     for (let i = 0; i < g.nBins; i++) maxLevel = Math.max(maxLevel, g.totalBid[i]!, g.totalAsk[i]!);
@@ -442,6 +443,6 @@ export class LadderPane {
     }
     this.#paintMirror(ctx, state, g, cum, o, o.head, rows);
     // The scale label shares the header row with the DEPTH label, so it only appears when the bar column is wide enough for both.
-    if (o.title || barW >= 170) { ctx.fillStyle = p.muted; ctx.textAlign = 'right'; ctx.fillText(`MAX ${usd(maxLevel)}`, x0 + w - 6, head - HEAD_H / 2); }
+    if (o.title || barW >= 170) { ctx.fillStyle = p.muted; ctx.textAlign = 'right'; ctx.fillText(t('MAX {value}', { value: usd(maxLevel) }), x0 + w - 6, head - HEAD_H / 2); }
   }
 }

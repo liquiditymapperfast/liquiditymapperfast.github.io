@@ -1,7 +1,8 @@
 import type { AppState, Market, Scope } from './store.ts';
 import type { LiveBook } from './wire.ts';
+import { t } from './i18n.ts';
 
-export const SCOPE_OPTIONS: readonly (readonly [Scope, string])[] = [['all', 'Both'], ['spot', 'Spot'], ['perp', 'Perp']];
+export const SCOPE_OPTIONS: readonly (readonly [Scope, string])[] = [['all', t('Both')], ['spot', t('Spot')], ['perp', t('Perp')]];
 
 export type Kind = 'spot' | 'perp';
 const kinds = new WeakMap<readonly Market[], Map<string, Kind>>();
@@ -53,5 +54,5 @@ export function chipClick(state: ScopeState, venue: string): { disabledVenues: s
 /** Message for an empty view, or null when the filter leaves something to draw. */
 export function emptyScopeMessage(state: ScopeState): string | null {
   if (state.scope === 'all' || !state.levels?.books.length || activeBooks(state).length) return null;
-  return `No ${state.scope === 'spot' ? 'spot' : 'perpetual'} venues are enabled. Choose Both, or switch a ${state.scope === 'spot' ? 'spot' : 'perpetual'} venue on.`;
+  return state.scope === 'spot' ? t('No spot venues are enabled. Choose Both, or switch a spot venue on.') : t('No perpetual venues are enabled. Choose Both, or switch a perpetual venue on.');
 }

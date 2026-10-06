@@ -1,5 +1,6 @@
 import { el } from './dom.ts';
 import { compactBar, onLayoutMode } from './device.ts';
+import { t } from './i18n.ts';
 
 /**
  * A bottom sheet for a phone: slides up over the page, dims what is behind it, and goes away on the scrim, the close button, Escape,
@@ -32,7 +33,7 @@ export const closeSheet = (): void => current?.close();
 export function openSheet(title: string, build: (body: HTMLElement) => void, onClose?: () => void): Sheet {
   current?.close();
   const scrim = el('div', { class: 'sheet-scrim' });
-  const closeButton = el('button', { type: 'button', class: 'sheet-x', textContent: '×', ariaLabel: 'Close' });
+  const closeButton = el('button', { type: 'button', class: 'sheet-x', textContent: '×', ariaLabel: t('Close') });
   const head = el('div', { class: 'sheet-head' }, el('span', { class: 'sheet-grab' }), el('h3', { textContent: title }), closeButton);
   const body = el('div', { class: 'sheet-body' });
   const root = el('div', { class: 'sheet', role: 'dialog' }, head, body);

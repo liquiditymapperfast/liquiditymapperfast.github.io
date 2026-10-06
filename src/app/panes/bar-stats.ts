@@ -2,6 +2,7 @@ import { volText, type Bar } from './footprint.ts';
 import type { CandleRow, OiBar } from '../store.ts';
 import { price as fmtPrice } from '../format.ts';
 import type { StatOptions } from '../stat-options.ts';
+import { t } from '../i18n.ts';
 
 /**
  * Per-candle statistics shown under the footprint. Each definition computes one number per bar from the executions recorded for
@@ -41,7 +42,7 @@ export interface StatDef {
 }
 
 export const GROUP_TITLES: Readonly<Record<StatGroup, string>> = {
-  volume: 'Volume', footprint: 'Footprint rows', trades: 'Trades (recorded since the server started recording them)', market: 'Candle and open interest',
+  volume: t('Volume'), footprint: t('Footprint rows'), trades: t('Trades (recorded since the server started recording them)'), market: 'Candle and open interest',
 };
 
 export const signedVol = (value: number): string => (value < 0 ? '-' : '') + volText(Math.abs(value));
@@ -87,35 +88,35 @@ const whales = (o: StatOptions): [number, number] => [o.whaleMin, 7];
 const running = (values: (number | null)[]): (number | null)[] => { let run = 0; return values.map(v => v === null ? null : (run += v)); };
 
 export const BAR_STATS: readonly StatDef[] = [
-  { id: 'vol', label: 'vol', group: 'volume', title: 'Executed volume of the bar (USD, buy + sell)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(total) },
-  { id: 'delta', label: 'delta', group: 'volume', title: 'Buy minus sell volume of the bar (USD)', scale: 'diverging', format: signedVol, compute: ({ bars }) => bars.map(bar => bar.buyUsd - bar.sellUsd) },
-  { id: 'cvd', label: 'cvd', group: 'volume', title: 'Cumulative delta: running sum of delta over the bars loaded for the view', scale: 'diverging', format: signedVol,
+  { id: 'vol', label: 'vol', group: 'volume', title: t('Executed volume of the bar (USD, buy + sell)'), scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(total) },
+  { id: 'delta', label: 'delta', group: 'volume', title: t('Buy minus sell volume of the bar (USD)'), scale: 'diverging', format: signedVol, compute: ({ bars }) => bars.map(bar => bar.buyUsd - bar.sellUsd) },
+  { id: 'cvd', label: 'cvd', group: 'volume', title: t('Cumulative delta: running sum of delta over the bars loaded for the view'), scale: 'diverging', format: signedVol,
     compute: ({ bars }) => { let run = 0; return bars.map(bar => (run += bar.buyUsd - bar.sellUsd)); } },
-  { id: 'deltaPct', label: 'delta %', group: 'volume', title: 'Delta as a share of the bar\'s volume (+100 % all buying, -100 % all selling)', scale: 'diverging', format: signedPct,
+  { id: 'deltaPct', label: t('delta %'), group: 'volume', title: t('Delta as a share of the bar\'s volume (+100 % all buying, -100 % all selling)'), scale: 'diverging', format: signedPct,
     compute: ({ bars }) => bars.map(bar => total(bar) > 0 ? (bar.buyUsd - bar.sellUsd) / total(bar) * 100 : null) },
-  { id: 'buyVol', label: 'buy vol', group: 'volume', title: 'Volume bought at the ask (market buys, USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.buyUsd) },
-  { id: 'sellVol', label: 'sell vol', group: 'volume', title: 'Volume sold at the bid (market sells, USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.sellUsd) },
-  { id: 'maxBuy', label: 'max buy', group: 'footprint', title: 'Largest single price row of market buys in the bar (USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.rows.reduce((m, r) => Math.max(m, r[1]), 0)) },
-  { id: 'maxSell', label: 'max sell', group: 'footprint', title: 'Largest single price row of market sells in the bar (USD)', scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.rows.reduce((m, r) => Math.max(m, r[2]), 0)) },
-  { id: 'poc', label: 'poc', group: 'footprint', title: 'Point of control: the price row with the most executed volume in the bar', scale: 'plain', format: value => fmtPrice(value),
+  { id: 'buyVol', label: t('buy vol'), group: 'volume', title: t('Volume bought at the ask (market buys, USD)'), scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.buyUsd) },
+  { id: 'sellVol', label: t('sell vol'), group: 'volume', title: t('Volume sold at the bid (market sells, USD)'), scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.sellUsd) },
+  { id: 'maxBuy', label: t('max buy'), group: 'footprint', title: t('Largest single price row of market buys in the bar (USD)'), scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.rows.reduce((m, r) => Math.max(m, r[1]), 0)) },
+  { id: 'maxSell', label: t('max sell'), group: 'footprint', title: t('Largest single price row of market sells in the bar (USD)'), scale: 'sequential', format: volText, compute: ({ bars }) => bars.map(bar => bar.rows.reduce((m, r) => Math.max(m, r[2]), 0)) },
+  { id: 'poc', label: 'poc', group: 'footprint', title: t('Point of control: the price row with the most executed volume in the bar'), scale: 'plain', format: value => fmtPrice(value),
     compute: ({ bars, step }) => bars.map(bar => { let best = -1, price: number | null = null; for (const [low, buy, sell] of bar.rows) if (buy + sell > best) { best = buy + sell; price = low + step / 2; } return price; }) },
-  { id: 'imbalances', label: 'imb #', group: 'footprint', title: 'Diagonal imbalances: levels where sells (or buys) are at least the configured ratio times the opposite volume one row away', scale: 'sequential', format: count,
+  { id: 'imbalances', label: t('imb #'), group: 'footprint', title: t('Diagonal imbalances: levels where sells (or buys) are at least the configured ratio times the opposite volume one row away'), scale: 'sequential', format: count,
     compute: ({ bars, step, options }) => bars.map(bar => diagonalImbalances(bar.rows, step, options).length) },
-  { id: 'stacked', label: 'stacked', group: 'footprint', title: 'Stacked imbalances: runs of the configured number of adjacent imbalanced rows on one side', scale: 'sequential', format: count,
+  { id: 'stacked', label: 'stacked', group: 'footprint', title: t('Stacked imbalances: runs of the configured number of adjacent imbalanced rows on one side'), scale: 'sequential', format: count,
     compute: ({ bars, step, options }) => bars.map(bar => stackedRuns(diagonalImbalances(bar.rows, step, options), step, options.stackedN)) },
-  tradeStat('trades', 'trades', 'Number of trades in the bar', 'sequential', count, stats => stats.buyN + stats.sellN),
-  tradeStat('buys', 'buys', 'Number of market buys in the bar', 'sequential', count, stats => stats.buyN),
-  tradeStat('sells', 'sells', 'Number of market sells in the bar', 'sequential', count, stats => stats.sellN),
-  tradeStat('avgTrade', 'avg trade', 'Average trade size: volume divided by the number of trades (USD)', 'sequential', volText, stats => stats.buyN + stats.sellN > 0 ? (sumBuckets(stats.buy, 0, 7) + sumBuckets(stats.sell, 0, 7)) / (stats.buyN + stats.sellN) : null),
-  tradeStat('deltaRetail', 'delta retail', 'Delta of trades up to the retail size bucket (set in the options)', 'diverging', signedVol, (stats, input) => sizeDelta(stats, ...retail(input.options))),
-  tradeStat('deltaWhales', 'delta whales', 'Delta of trades from the whale size bucket upward (set in the options)', 'diverging', signedVol, (stats, input) => sizeDelta(stats, ...whales(input.options))),
-  { id: 'cvdRetail', label: 'cvd retail', group: 'trades', title: 'Cumulative delta of retail-size trades over the bars loaded', scale: 'diverging', format: signedVol,
+  tradeStat('trades', 'trades', t('Number of trades in the bar'), 'sequential', count, stats => stats.buyN + stats.sellN),
+  tradeStat('buys', 'buys', t('Number of market buys in the bar'), 'sequential', count, stats => stats.buyN),
+  tradeStat('sells', 'sells', t('Number of market sells in the bar'), 'sequential', count, stats => stats.sellN),
+  tradeStat('avgTrade', t('avg trade'), t('Average trade size: volume divided by the number of trades (USD)'), 'sequential', volText, stats => stats.buyN + stats.sellN > 0 ? (sumBuckets(stats.buy, 0, 7) + sumBuckets(stats.sell, 0, 7)) / (stats.buyN + stats.sellN) : null),
+  tradeStat('deltaRetail', t('delta retail'), t('Delta of trades up to the retail size bucket (set in the options)'), 'diverging', signedVol, (stats, input) => sizeDelta(stats, ...retail(input.options))),
+  tradeStat('deltaWhales', t('delta whales'), t('Delta of trades from the whale size bucket upward (set in the options)'), 'diverging', signedVol, (stats, input) => sizeDelta(stats, ...whales(input.options))),
+  { id: 'cvdRetail', label: t('cvd retail'), group: 'trades', title: t('Cumulative delta of retail-size trades over the bars loaded'), scale: 'diverging', format: signedVol,
     compute: input => running(input.bars.map(bar => bar.stats ? sizeDelta(bar.stats, ...retail(input.options)) : null)) },
-  { id: 'cvdWhales', label: 'cvd whales', group: 'trades', title: 'Cumulative delta of whale-size trades over the bars loaded', scale: 'diverging', format: signedVol,
+  { id: 'cvdWhales', label: t('cvd whales'), group: 'trades', title: t('Cumulative delta of whale-size trades over the bars loaded'), scale: 'diverging', format: signedVol,
     compute: input => running(input.bars.map(bar => bar.stats ? sizeDelta(bar.stats, ...whales(input.options)) : null)) },
-  { id: 'range', label: 'range', group: 'market', title: 'High minus low of the candle', scale: 'sequential', format: value => fmtPrice(value),
+  { id: 'range', label: 'range', group: 'market', title: t('High minus low of the candle'), scale: 'sequential', format: value => fmtPrice(value),
     compute: ({ bars, candles }) => bars.map(bar => { const c = candles.get(bar.t); return c ? c[2] - c[3] : null; }) },
-  { id: 'oiChange', label: 'oi chg', group: 'market', title: 'Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options', scale: 'diverging', format: signedVol,
+  { id: 'oiChange', label: t('oi chg'), group: 'market', title: t('Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options'), scale: 'diverging', format: signedVol,
     compute: ({ bars, oi, candles, options }) => bars.map(bar => { const o = oi.get(bar.t); if (!o) return null; const change = o[4] - o[1]; if (options.oiUnits === 'base') return change; const c = candles.get(bar.t); return c ? change * c[4] : null; }) },
 ];
 

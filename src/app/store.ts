@@ -7,6 +7,7 @@ import { DEFAULT_STAT_OPTIONS, type StatOptions } from './stat-options.ts';
 import { DEFAULT_HIGHLIGHT, readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
 import type { EngineState } from './sound/engine.ts';
+import { t } from './i18n.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
 /** Layers that can be chosen today. The others are announced in the dropdown as upcoming and need a data source that is not connected yet. */
@@ -90,7 +91,7 @@ function readSaved(): Partial<AppState> {
 export function initialState(): AppState {
   const saved = readSaved();
   const state: AppState = {
-    connected: false, status: 'connecting', markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
+    connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
     show: { profile: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true }, highlight: { ...DEFAULT_HIGHLIGHT }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
