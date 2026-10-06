@@ -14,11 +14,15 @@ A browser's own translation works on request, on the text in the page. It does n
 
 ## What is not translated
 
-The long text of the guide (its own chrome is, and the top of it says so), a server's status words that code reads (`stateOfStatus`), venue names, the names of the sound tiers, and the abbreviations OI, LT, CVD and the like.
+A server's status words that code reads (`stateOfStatus`), venue names, the names of the sound tiers, the keyboard keys in the guide's key caps (only the mouse wheel is named in the language), and the abbreviations OI, LT, CVD and the like.
+
+## The guide
+
+The guide is translated too, apart from the page's words so that a page that never opens it never downloads them: `src/app/guide/i18n/<code>.json` maps each English text of the guide (sections, captions, key rows, and every word its pictures draw through `tg('...')` in `figures.ts`) to the language's text, and `guide.ts` fetches the one for the page's language when the guide opens (English is the text in the source). `npm run i18n:guide -- ko > src/app/guide/i18n/ko.json` writes the template. A guide text keeps its inline markup (`**bold**`, `*italic*`, `` `code` ``, `[[Key]]`), and `tests/app-guide-i18n.test.mts` fails on a missing or extra text, a lost mark or placeholder, a translated key cap other than the wheel, or a pack that is mostly English. Names of buttons and panes in a guide text use the page's own word for them (the page's pack says what the Mirror button is called in that language).
 
 ## Adding a language
 
-1. `npm run i18n:template -- ko > src/app/i18n/ko.json` writes every text, in English, with the plural forms that language needs.
+1. `npm run i18n:template -- ko > src/app/i18n/ko.json` writes every text, in English, with the plural forms that language needs; `npm run i18n:guide -- ko > src/app/guide/i18n/ko.json` does the same for the guide.
 2. Translate the values. Keep every `{placeholder}` exactly; use no `<`, `>` or HTML entities (some texts are set as HTML); keep a word short where it sits in a tight place: the dock tabs, the toggles in Settings, and the book's `DEPTH + CUM` header (about 13 characters at most).
 3. Add `{ code: 'ko', name: '한국어' }` to `LANGUAGES` in `src/app/i18n.ts` (the name is the language in itself).
 4. `npm test`. `tests/app-i18n-packs.test.mts` fails until the pack has every text and no text the page no longer asks for, every placeholder, no markup and the plural forms.

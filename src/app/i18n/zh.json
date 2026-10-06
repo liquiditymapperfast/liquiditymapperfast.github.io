@@ -34,7 +34,6 @@
  "Close the guide": "关闭指南",
  "About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.": "大约需要阅读 {n} 分钟。图片会动：点按可放大查看、暂停或拖动进度。",
  "About {n} minutes to read. Pictures move: hover, pause or scrub them.": "大约需要阅读 {n} 分钟。图片会动：悬停、暂停或拖动进度。",
- "The text of the guide is in English for now.": "指南的正文暂时只有英文。",
  "Contents": "目录",
  "Jump to a section": "跳转到某一节",
  "That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.": "整个页面就是这些。其余一切都只需长按：每个按钮都会自己说明，面板旁边的 ? 会告诉你它是什么。",
@@ -614,5 +613,12 @@
  "No rejected aggressive flow": "没有被拒绝的主动流",
  "Not enough recorded data to check": "已记录的数据不足，无法检查",
  "Still collecting the history to compare with": "仍在收集用于比较的历史",
- "{n} filtered out": "已筛除 {n} 个"
+ "{n} filtered out": "已筛除 {n} 个",
+ "Pause or play": "暂停或播放",
+ "Drag to scrub through the animation": "拖动以浏览动画",
+ "Scrub the animation": "浏览动画",
+ "Tap the picture to see what each part is.": "点按图片查看每个部分是什么。",
+ "Move the pointer over the picture.": "将指针移到图片上。",
+ "Keep in mind": "请注意",
+ "Tip": "提示"
 }

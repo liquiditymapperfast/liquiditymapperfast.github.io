@@ -34,7 +34,6 @@
  "Close the guide": "ガイドを閉じる",
  "About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.": "読む時間は約 {n} 分です。図は動きます：タップで拡大、一時停止、スクラブができます。",
  "About {n} minutes to read. Pictures move: hover, pause or scrub them.": "読む時間は約 {n} 分です。図は動きます：ホバー、一時停止、スクラブができます。",
- "The text of the guide is in English for now.": "ガイドの本文は、いまのところ英語です。",
  "Contents": "目次",
  "Jump to a section": "セクションへ移動",
  "That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.": "ページはこれで全部です。それ以外はすべて長押し一つで分かります。どのボタンも自分で説明し、パネルの横の ? がそれが何かを教えます。",
@@ -614,5 +613,12 @@
  "No rejected aggressive flow": "拒否された積極的なフローなし",
  "Not enough recorded data to check": "確認に足る記録データがありません",
  "Still collecting the history to compare with": "比較用の履歴をまだ収集中です",
- "{n} filtered out": "{n} 件を除外"
+ "{n} filtered out": "{n} 件を除外",
+ "Pause or play": "一時停止または再生",
+ "Drag to scrub through the animation": "ドラッグしてアニメーションをスクラブ",
+ "Scrub the animation": "アニメーションをスクラブ",
+ "Tap the picture to see what each part is.": "画像をタップすると各部分の説明が表示されます。",
+ "Move the pointer over the picture.": "画像の上にポインターを動かしてください。",
+ "Keep in mind": "注意",
+ "Tip": "ヒント"
 }

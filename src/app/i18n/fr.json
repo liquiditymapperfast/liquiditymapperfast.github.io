@@ -34,7 +34,6 @@
  "Close the guide": "Fermer le guide",
  "About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.": "Environ {n} minutes de lecture. Les images bougent : touchez pour regarder de plus près, mettre en pause ou parcourir.",
  "About {n} minutes to read. Pictures move: hover, pause or scrub them.": "Environ {n} minutes de lecture. Les images bougent : survolez, mettez en pause ou parcourez-les.",
- "The text of the guide is in English for now.": "Le texte du guide est pour l'instant en anglais.",
  "Contents": "Sommaire",
  "Jump to a section": "Aller à une section",
  "That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.": "C'est toute la page. Tout le reste est à un appui long : chaque bouton s'explique lui-même, et le ? à côté d'un panneau dit ce que c'est.",
@@ -630,5 +629,12 @@
  "No rejected aggressive flow": "Aucun flux agressif rejeté",
  "Not enough recorded data to check": "Pas assez de données enregistrées pour vérifier",
  "Still collecting the history to compare with": "L’historique de comparaison est encore en cours de collecte",
- "{n} filtered out": "{n} filtrées"
+ "{n} filtered out": "{n} filtrées",
+ "Pause or play": "Pause ou lecture",
+ "Drag to scrub through the animation": "Faites glisser pour parcourir l’animation",
+ "Scrub the animation": "Parcourir l’animation",
+ "Tap the picture to see what each part is.": "Touchez l’image pour voir ce qu’est chaque partie.",
+ "Move the pointer over the picture.": "Passez le pointeur sur l’image.",
+ "Keep in mind": "À garder en tête",
+ "Tip": "Astuce"
 }

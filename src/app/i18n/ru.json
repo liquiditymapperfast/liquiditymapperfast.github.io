@@ -34,7 +34,6 @@
  "Close the guide": "Закрыть руководство",
  "About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.": "Примерно {n} мин чтения. Картинки движутся: коснитесь, чтобы присмотреться, поставить на паузу или промотать.",
  "About {n} minutes to read. Pictures move: hover, pause or scrub them.": "Примерно {n} мин чтения. Картинки движутся: наведите курсор, поставьте на паузу или промотайте.",
- "The text of the guide is in English for now.": "Текст руководства пока на английском.",
  "Contents": "Содержание",
  "Jump to a section": "Перейти к разделу",
  "That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.": "Это вся страница. Всё остальное — в одном долгом нажатии: каждая кнопка объясняет себя сама, а ? рядом с панелью говорит, что это.",
@@ -634,5 +633,12 @@
  "No rejected aggressive flow": "Отвергнутого агрессивного потока нет",
  "Not enough recorded data to check": "Записанных данных недостаточно для проверки",
  "Still collecting the history to compare with": "История для сравнения ещё накапливается",
- "{n} filtered out": "{n} отфильтровано"
+ "{n} filtered out": "{n} отфильтровано",
+ "Pause or play": "Пауза или воспроизведение",
+ "Drag to scrub through the animation": "Перетащите, чтобы перемотать анимацию",
+ "Scrub the animation": "Перемотать анимацию",
+ "Tap the picture to see what each part is.": "Коснитесь картинки, чтобы узнать, что это за часть.",
+ "Move the pointer over the picture.": "Наведите указатель на картинку.",
+ "Keep in mind": "Учтите",
+ "Tip": "Совет"
 }

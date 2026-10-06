@@ -1,7 +1,10 @@
 import { buildLut } from '../heatmap/lut.ts';
 import { el } from '../dom.ts';
 import { isCoarse } from '../device.ts';
+import { t } from '../i18n.ts';
+import { laneColorsFor } from '../cvd/colors.ts';
 import type { FigureId } from './content.ts';
+import { tg } from './words.ts';
 
 /**
  * The guide's animated figures. Each is a small scene drawn on a canvas from the page's own colours and colour ramp, looping while it is
@@ -153,15 +156,16 @@ function note(g: Ctx, text: string, x: number, y: number, th: Theme, align: Canv
 // ---- the scenes ----------------------------------------------------------------------------------------------------------------------
 
 const REGIONS = (w: number, h: number): { id: string; box: Box; title: string; text: string }[] => {
-  const top = 28, chartH = Math.round((h - top - 12) * 0.62), lowerH = Math.round((h - top - 12 - chartH - 8) / 2);
-  const chartW = Math.round(w * 0.64);
+  const top = 28, flowW = Math.round(w * 0.17), left = 6 + flowW + 6, usable = w - left, chartH = Math.round((h - top - 12) * 0.62), lowerH = Math.round((h - top - 12 - chartH - 8) / 2);
+  const chartW = Math.round(usable * 0.62), profileW = Math.round(usable * 0.08), bookX = left + chartW + profileW + 44;
   return [
-    { id: 'toolbar', box: { x: 6, y: 4, w: w - 12, h: 20 }, title: 'Toolbar', text: 'The toolbar: market, timeframe, which panes to show, colours, exchanges, Screenshot and Guide.' },
-    { id: 'chart', box: { x: 6, y: top, w: chartW, h: chartH }, title: 'The chart', text: 'The chart: candles show what price did, and the coloured map behind them is the order book through time. Warmer means more size waiting at that price.' },
-    { id: 'profile', box: { x: 6 + chartW, y: top, w: Math.round(w * 0.08), h: chartH }, title: 'Profile', text: 'The profile: the order book right now, one bar per price. Pink above the price are asks (sellers), green below are bids (buyers).' },
-    { id: 'depth', box: { x: 6, y: top + chartH + 8, w: chartW + Math.round(w * 0.08), h: lowerH }, title: 'Depth', text: 'The Depth pane: total bid and ask liquidity near the price, over time.' },
-    { id: 'oi', box: { x: 6, y: top + chartH + 16 + lowerH, w: chartW + Math.round(w * 0.08), h: lowerH }, title: 'Open interest', text: 'The Open Interest pane: how many contracts are open, and how that changes with each candle.' },
-    { id: 'book', box: { x: 6 + chartW + Math.round(w * 0.08) + 44, y: top, w: w - (6 + chartW + Math.round(w * 0.08) + 44) - 6, h: h - top - 6 }, title: 'Order book', text: 'The order book ladder: every price with the size resting there, one column per exchange and a bar for the combined size.' },
+    { id: 'toolbar', box: { x: 6, y: 4, w: w - 12, h: 20 }, title: tg('Toolbar'), text: tg('The toolbar: market, timeframe, which panes to show, colours, exchanges, Screenshot and Guide.') },
+    { id: 'flow', box: { x: 6, y: top, w: flowW, h: h - top - 6 }, title: tg('Flow column'), text: tg('The flow column: what each exchange bought and sold at market, spot in blue and perpetual in amber, the biggest exchange first.') },
+    { id: 'chart', box: { x: left, y: top, w: chartW, h: chartH }, title: tg('The chart'), text: tg('The chart: candles show what price did, and the coloured map behind them is the order book through time. Warmer means more size waiting at that price.') },
+    { id: 'profile', box: { x: left + chartW, y: top, w: profileW, h: chartH }, title: tg('Profile'), text: tg('The profile: the order book right now, one bar per price. Pink above the price are asks (sellers), green below are bids (buyers).') },
+    { id: 'depth', box: { x: left, y: top + chartH + 8, w: chartW + profileW, h: lowerH }, title: tg('Depth'), text: tg('The Depth pane: total bid and ask liquidity near the price, over time.') },
+    { id: 'oi', box: { x: left, y: top + chartH + 16 + lowerH, w: chartW + profileW, h: lowerH }, title: tg('Open interest'), text: tg('The Open Interest pane: how many contracts are open, and how that changes with each candle.') },
+    { id: 'book', box: { x: bookX, y: top, w: w - bookX - 6, h: h - top - 6 }, title: tg('Order book'), text: tg('The order book ladder: every price with the size resting there, one column per exchange and a bar for the combined size.') },
   ];
 };
 
@@ -172,13 +176,14 @@ const anatomy: Scene = {
     g.fillStyle = th.bg; g.fillRect(0, 0, w, h);
     // toolbar strip
     g.fillStyle = th.panel; g.fillRect(by.toolbar!.x, by.toolbar!.y, by.toolbar!.w, by.toolbar!.h); g.strokeStyle = th.line; g.strokeRect(by.toolbar!.x + 0.5, by.toolbar!.y + 0.5, by.toolbar!.w - 1, by.toolbar!.h - 1);
-    let x = by.toolbar!.x + 8; for (const label of ['BTC', '1h', 'Profile', 'Depth', 'OI', 'Footprint', 'Mirror', 'Trades']) { font(g, 10, 600); const tw = g.measureText(label).width + 10; g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.text : th.line; g.beginPath(); g.roundRect(x, by.toolbar!.y + 4, tw, 12, 3); g.fill(); g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.bg : th.muted; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(label, x + 5, by.toolbar!.y + 10.5); x += tw + 5; }
+    let x = by.toolbar!.x + 8; for (const label of ['BTC', '1h', 'Profile', 'Depth', 'OI', 'Footprint', 'Mirror', 'Trades']) { const shown = t(label); font(g, 10, 600); const tw = g.measureText(shown).width + 10; g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.text : th.line; g.beginPath(); g.roundRect(x, by.toolbar!.y + 4, tw, 12, 3); g.fill(); g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.bg : th.muted; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(shown, x + 5, by.toolbar!.y + 10.5); x += tw + 5; }
     const live = 0.84 + 0.05 * Math.sin(u * Math.PI * 2);
     const d: Dom = { t0: 0, t1: 1, p0: MARK - 1250, p1: MARK + 1250 };
+    miniFlow(g, by.flow!, th);
     chart(g, by.chart!, d, th, { axis: false });
     profile(g, by.profile!, d, th, live);
     // depth + OI
-    for (const id of ['depth', 'oi'] as const) { const b = by[id]!; g.fillStyle = th.panel; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = th.line; g.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1); note(g, id === 'depth' ? 'Depth' : 'Open interest', b.x + 6, b.y + 9, th, 'left', th.text, 10, 650); }
+    for (const id of ['depth', 'oi'] as const) { const b = by[id]!; g.fillStyle = th.panel; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = th.line; g.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1); note(g, id === 'depth' ? t('Depth') : t('Open interest'), b.x + 6, b.y + 9, th, 'left', th.text, 10, 650); }
     { const b = by.depth!; for (let i = 0; i < 46; i++) { const bx = b.x + 8 + i * ((b.w - 16) / 46), hh = (b.h - 20) / 2 * (0.5 + 0.4 * Math.sin(i * 0.6) * Math.cos(i * 0.21)); g.fillStyle = th.ask; g.globalAlpha = 0.7; g.fillRect(bx, b.y + b.h / 2 + 4 - hh, 4, hh); g.fillStyle = th.bid; g.fillRect(bx, b.y + b.h / 2 + 4, 4, hh * 0.9); g.globalAlpha = 1; } }
     { const b = by.oi!; g.strokeStyle = th.text; g.lineWidth = 1.5; g.beginPath(); for (let i = 0; i <= 60; i++) { const px = b.x + 8 + i * ((b.w - 16) / 60), py = b.y + b.h - 8 - (b.h - 22) * (0.45 + 0.3 * Math.sin(i * 0.12) + 0.12 * Math.sin(i * 0.5)); i ? g.lineTo(px, py) : g.moveTo(px, py); } g.stroke(); g.lineWidth = 1; }
     // order book ladder
@@ -207,11 +212,11 @@ const colours: Scene = {
     const bar: Box = { x: 8, y: h - 62, w: w - 16, h: 16 };
     for (let i = 0; i < bar.w; i++) { g.fillStyle = ramp(th, i / bar.w); g.fillRect(bar.x + i, bar.y, 1, bar.h); }
     g.strokeStyle = th.text; g.lineWidth = 2; g.strokeRect(bar.x + clamp(lo) * bar.w, bar.y - 3, clamp(hi - clamp(lo)) * bar.w, bar.h + 6); g.lineWidth = 1;
-    note(g, 'small', bar.x, bar.y + 28, th); note(g, 'large', bar.x + bar.w, bar.y + 28, th, 'right');
-    note(g, slide < 0.3 ? 'Window low: thin liquidity gets a colour' : slide > 0.7 ? 'Window high: only the biggest walls stay coloured' : 'The window slides along the size axis', w / 2, bar.y + 28, th, 'center', th.text, 11.5, 600);
+    note(g, tg('small'), bar.x, bar.y + 28, th); note(g, tg('large'), bar.x + bar.w, bar.y + 28, th, 'right');
+    note(g, slide < 0.3 ? tg('Window low: thin liquidity gets a colour') : slide > 0.7 ? tg('Window high: only the biggest walls stay coloured') : tg('The window slides along the size axis'), w / 2, bar.y + 28, th, 'center', th.text, 11.5, 600);
     // the slider
     const sx = 16, sw = 120; g.strokeStyle = th.line; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.moveTo(sx, h - 10); g.lineTo(sx + sw, h - 10); g.stroke(); g.fillStyle = th.ui; g.beginPath(); g.arc(sx + sw * (1 - slide), h - 10, 6, 0, Math.PI * 2); g.fill(); g.lineCap = 'butt'; g.lineWidth = 1;
-    note(g, 'Contrast', sx + sw + 14, h - 10, th);
+    note(g, tg('Contrast'), sx + sw + 14, h - 10, th);
   },
 };
 
@@ -236,11 +241,11 @@ const recording: Scene = {
     g.strokeStyle = th.line; g.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
     const my = yOf(b, d, MARK); g.strokeStyle = th.ask; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(b.x, my + 0.5); g.lineTo(b.x + b.w, my + 0.5); g.stroke();
     g.strokeStyle = th.text; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(sx + 0.5, b.y); g.lineTo(sx + 0.5, b.y + b.h); g.stroke(); g.setLineDash([]);
-    note(g, 'Page open for', 10, 12, th, 'left', th.muted, 11); note(g, `${Math.round(e)} min`, 88, 12, th, 'left', th.text, 12, 700);
-    if (since > 0.3) note(g, 'Grey: the current book, copied back', b.x + since * b.w * 0.5, b.y + 14, th, 'center', th.text, 11, 600);
-    if (since < 0.7) note(g, 'Colour: recorded while the page was open', Math.max(b.x + 150, sx + (b.x + b.w - sx) / 2), b.y + b.h - 12, th, 'center', th.text, 11, 600);
-    if (e < 6) note(g, 'depth recorded from here', Math.min(sx + 8, b.x + b.w - 130), b.y - 8, th, 'left', th.text, 10);
-    note(g, 'now', b.x + b.w, b.y + b.h + 12, th, 'right'); note(g, '75 min ago', b.x, b.y + b.h + 12, th, 'left');
+    note(g, tg('Page open for'), 10, 12, th, 'left', th.muted, 11); note(g, tg('{n} min', { n: Math.round(e) }), 88, 12, th, 'left', th.text, 12, 700);
+    if (since > 0.3) note(g, tg('Grey: the current book, copied back'), b.x + since * b.w * 0.5, b.y + 14, th, 'center', th.text, 11, 600);
+    if (since < 0.7) note(g, tg('Colour: recorded while the page was open'), Math.max(b.x + 150, sx + (b.x + b.w - sx) / 2), b.y + b.h - 12, th, 'center', th.text, 11, 600);
+    if (e < 6) note(g, tg('depth recorded from here'), Math.min(sx + 8, b.x + b.w - 130), b.y - 8, th, 'left', th.text, 10);
+    note(g, tg('now'), b.x + b.w, b.y + b.h + 12, th, 'right'); note(g, tg('{n} min ago', { n: 75 }), b.x, b.y + b.h + 12, th, 'left');
   },
 };
 
@@ -262,9 +267,9 @@ function zoomScene(axis: 'price' | 'time'): Scene {
       // The wheel on the chart zooms time; on the price scale, at the right, it zooms price.
       if (axis === 'price') pointer(g, b.x + b.w + 34, b.y + 0.3 * b.h, th); else pointer(g, b.x + 0.5 * b.w, b.y + 0.3 * b.h, th);
       const lit = k > 0.04 && k < 0.96 ? 1 : 0;
-      badge(g, axis === 'price' ? 'Wheel on the price scale' : 'Wheel on the chart', b.x + 10, b.y + 10, th, lit);
+      badge(g, axis === 'price' ? tg('Wheel on the price scale') : tg('Wheel on the chart'), b.x + 10, b.y + 10, th, lit);
       mouseIcon(g, b.x + b.w - 40, b.y + 10, th, Math.sin(u * Math.PI * 4) * 0.5 + 0.5);
-      note(g, axis === 'price' ? (k > 0.5 ? 'Scrolling forward: zoom in' : 'Scrolling back: zoom out') : (k > 0.5 ? 'Scrolling forward: wider candles' : 'Scrolling back: more time'), b.x + 14, b.y + b.h - 16, th, 'left', th.text, 11, 600, true);
+      note(g, axis === 'price' ? (k > 0.5 ? tg('Scrolling forward: zoom in') : tg('Scrolling back: zoom out')) : (k > 0.5 ? tg('Scrolling forward: wider candles') : tg('Scrolling back: more time')), b.x + 14, b.y + b.h - 16, th, 'left', th.text, 11, 600, true);
     },
   };
 }
@@ -283,8 +288,8 @@ const pan: Scene = {
     const cx = mix(sx, ex, k), cy = mix(sy, ey, k);
     if (k > 0.02) { g.strokeStyle = th.ui; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(sx, sy); g.lineTo(cx, cy); g.stroke(); g.setLineDash([]); g.lineWidth = 1; }
     pointer(g, cx, cy, th, k > 0.02 && k < 0.98);
-    badge(g, 'Drag', b.x + 10, b.y + 10, th, k > 0.02 && k < 0.98 ? 1 : 0);
-    note(g, 'Following the live edge stops; Recenter brings it back', b.x + 14, b.y + b.h - 16, th, 'left', th.text, 11, 600, true);
+    badge(g, tg('Drag'), b.x + 10, b.y + 10, th, k > 0.02 && k < 0.98 ? 1 : 0);
+    note(g, tg('Following the live edge stops; Recenter brings it back'), b.x + 14, b.y + b.h - 16, th, 'left', th.text, 11, 600, true);
   },
 };
 
@@ -310,14 +315,128 @@ const mirror: Scene = {
     // the box
     const bx = prof.x + prof.w + 22, bw = w - bx - 10, ratio = Math.max(asks, bids) / Math.max(1, Math.min(asks, bids));
     g.fillStyle = th.panel; g.strokeStyle = th.line; g.beginPath(); g.roundRect(bx, 40, bw, 150, 8); g.fill(); g.stroke();
-    note(g, `±$${priceText(dist)}  from the price`, bx + 12, 58, th, 'left', th.muted, 11);
-    note(g, `Asks (this side)  ${money(asks)}`, bx + 12, 84, th, 'left', th.ask, 12.5, 650);
-    note(g, `Bids (opposite)  ${money(bids)}`, bx + 12, 108, th, 'left', th.bid, 12.5, 650);
-    const verdict = asks <= 0 && bids <= 0 ? 'No liquidity in this range' : ratio < 1.05 ? 'Balanced' : `${asks > bids ? 'Asks' : 'Bids'} have ${ratio.toFixed(2)}x more`;
+    note(g, tg('±${price}  from the price', { price: priceText(dist) }), bx + 12, 58, th, 'left', th.muted, 11);
+    note(g, tg('Asks (this side)  {amount}', { amount: money(asks) }), bx + 12, 84, th, 'left', th.ask, 12.5, 650);
+    note(g, tg('Bids (opposite)  {amount}', { amount: money(bids) }), bx + 12, 108, th, 'left', th.bid, 12.5, 650);
+    const verdict = asks <= 0 && bids <= 0 ? tg('No liquidity in this range') : ratio < 1.05 ? tg('Balanced') : asks > bids ? tg('Asks have {ratio}x more', { ratio: ratio.toFixed(2) }) : tg('Bids have {ratio}x more', { ratio: ratio.toFixed(2) });
     note(g, verdict, bx + 12, 140, th, 'left', asks > bids * 1.05 ? th.ask : bids > asks * 1.05 ? th.bid : th.text, 13, 700);
-    note(g, 'Move outward: the balance changes', bx + 12, 168, th, 'left', th.muted, 10.5);
-    badge(g, 'Hover', bx, 206, th, 1);
-    note(g, 'in the profile or the order book', bx + 62, 217, th, 'left', th.muted, 11);
+    note(g, tg('Move outward: the balance changes'), bx + 12, 168, th, 'left', th.muted, 10.5);
+    badge(g, tg('Hover'), bx, 206, th, 1);
+    note(g, tg('in the profile or the order book'), bx + 62, 217, th, 'left', th.muted, 11);
+  },
+};
+
+// ---- the flow column ---------------------------------------------------------------------------------------------------------------
+
+const PHI = (1 + Math.sqrt(5)) / 2, FLOW_N = 120;
+/** A made-up running delta: a wandering line of `n` points that starts at 0, with a drift and a rhythm of its own. */
+const wander = (seed: number, n: number, drift: number, scale = 1): number[] => {
+  const out: number[] = []; let v = 0;
+  for (let i = 0; i < n; i++) { out.push(v * scale); v += drift + 0.55 * Math.sin(i * 0.23 + seed) + 0.4 * Math.sin(i * 0.071 * (1 + seed % 3) + seed * 2.1) + 0.25 * Math.sin(i * 0.9 + seed * 5); }
+  return out;
+};
+/** Rows of the picture: the aggregate on top, then three exchanges; each has a spot line, a perpetual line, or both. */
+const FLOW_ROWS: { name: string | null; spot: number[] | null; perp: number[] | null }[] = [
+  { name: null, spot: wander(1.3, FLOW_N, 0.05, 2.2), perp: wander(4.1, FLOW_N, -0.02, 2.6) },
+  { name: '#1 BINANCE', spot: wander(2.2, FLOW_N, 0.08), perp: wander(7.7, FLOW_N, 0.01, 1.2) },
+  { name: '#2 OKX', spot: null, perp: wander(5.4, FLOW_N, -0.04) },
+  { name: '#3 COINBASE', spot: wander(9.2, FLOW_N, 0.03), perp: null },
+];
+const PRICE_LINE = wander(3.7, FLOW_N, 0.01, 0.8);
+/** Where a line rises fastest over `span` points, and where it makes its biggest single step. */
+const steepest = (line: number[], span: number): number => { let best = 0, at = 0; for (let i = 0; i + span < line.length; i++) { const rise = line[i + span]! - line[i]!; if (rise > best) { best = rise; at = i; } } return at; };
+const biggestStep = (line: number[]): number => { let best = 0, at = 1; for (let i = 1; i < line.length; i++) { const step = Math.abs(line[i]! - line[i - 1]!); if (step > best) { best = step; at = i; } } return at; };
+const signedM = (v: number): string => `${v < 0 ? '−' : '+'}$${Math.abs(v).toFixed(1)}M`;
+
+/** The page's flow column in small: a few rows of blue and amber lines, for the picture of the whole page. */
+function miniFlow(g: Ctx, b: Box, th: Theme): void {
+  const colors = laneColorsFor({ panel: th.panel, text: th.text, bid: th.bid, ask: th.ask, candleUp: th.bid, candleDown: th.ask });
+  g.fillStyle = th.panel; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = th.line; g.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+  const weights = [PHI, 1, 1 / PHI, 1 / PHI ** 2], total = weights.reduce((a, c) => a + c, 0), room = b.h - 14;
+  let y = b.y + 4;
+  FLOW_ROWS.forEach((row, r) => {
+    const rh = room * weights[r]! / total;
+    for (const [line, color] of [[row.spot, colors.spot], [row.perp, colors.perp]] as const) {
+      if (!line) continue;
+      const lo = Math.min(0, ...line), hi = Math.max(0, ...line), span = hi - lo || 1;
+      g.strokeStyle = color; g.lineWidth = 1.2; g.beginPath();
+      for (let i = 0; i < FLOW_N; i += 3) { const px = b.x + 6 + (i / (FLOW_N - 1)) * (b.w - 12), py = y + 3 + (rh - 6) - (line[i]! - lo) / span * (rh - 6); i ? g.lineTo(px, py) : g.moveTo(px, py); }
+      g.stroke(); g.lineWidth = 1;
+    }
+    y += rh; g.strokeStyle = th.line; g.beginPath(); g.moveTo(b.x, Math.round(y) + 0.5); g.lineTo(b.x + b.w, Math.round(y) + 0.5); g.stroke();
+  });
+}
+
+const flow: Scene = {
+  duration: 14000, rest: 0.9, height: 360,
+  draw(g, w, h, u, th) {
+    g.fillStyle = th.bg; g.fillRect(0, 0, w, h);
+    const colors = laneColorsFor({ panel: th.panel, text: th.text, bid: th.bid, ask: th.ask, candleUp: th.bid, candleDown: th.ask });
+    const withMap = w >= 520, colW = withMap ? Math.round(Math.min(w * 0.56, 430)) : w - 16, gutter = Math.min(104, Math.round(colW * 0.3)), plot = { x: 8 + gutter, w: colW - gutter - 18 };
+    const priceH = 32, room = h - 16 - priceH, weights = [PHI, 1, 1 / PHI, 1 / PHI ** 2], total = weights.reduce((a, c) => a + c, 0);
+    g.fillStyle = th.panel; g.fillRect(8, 8, colW, h - 16); g.strokeStyle = th.line; g.strokeRect(8.5, 8.5, colW - 1, h - 17);
+    const grow = smooth((u - 0.04) / 0.5), n = Math.max(2, Math.round(grow * FLOW_N)), X = (i: number): number => plot.x + i / (FLOW_N - 1) * plot.w;
+    const rise = steepest(FLOW_ROWS[1]!.spot!, 18), burst = biggestStep(FLOW_ROWS[2]!.perp!);
+    let y = 8;
+    const callouts: (() => void)[] = [];
+    FLOW_ROWS.forEach((row, r) => {
+      const rh = room * weights[r]! / total, top = y + 7, ih = rh - 14;
+      // the lines, each on its own scale, from zero at the left edge
+      const all = [row.spot, row.perp].filter((l): l is number[] => l !== null), lo = Math.min(0, ...all.map(l => Math.min(...l))), hi = Math.max(0, ...all.map(l => Math.max(...l))), pad = (hi - lo) * 0.1;
+      const Y = (v: number): number => top + ih - (v - (lo - pad)) / (hi - lo + 2 * pad) * ih;
+      g.strokeStyle = th.line; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(plot.x, Math.round(Y(0)) + 0.5); g.lineTo(plot.x + plot.w, Math.round(Y(0)) + 0.5); g.stroke(); g.setLineDash([]);
+      for (const [line, color] of [[row.spot, colors.spot], [row.perp, colors.perp]] as const) {
+        if (!line) continue;
+        g.strokeStyle = color; g.lineWidth = 1.7; g.lineJoin = 'round'; g.beginPath();
+        for (let i = 0; i < n; i++) i ? g.lineTo(X(i), Y(line[i]!)) : g.moveTo(X(i), Y(line[i]!));
+        g.stroke(); g.lineWidth = 1;
+        g.fillStyle = color; g.beginPath(); g.arc(X(n - 1), Y(line[n - 1]!), 3, 0, Math.PI * 2); g.fill();
+      }
+      // the label, on the left, clear of the lines
+      const label = row.name ?? t('ALL VENUES'), lines: [string, string | null][] = [[label, null]];
+      if (row.spot) lines.push([`${t('S')} ${signedM(row.spot[n - 1]!)}`, colors.spot]);
+      if (row.perp) lines.push([`${t('P')} ${signedM(row.perp[n - 1]!)}`, colors.perp]);
+      const first = y + (rh - lines.length * 13) / 2 + 7;
+      lines.forEach(([text, dot], i) => {
+        const ly = first + i * 13; let lx = 14;
+        if (dot) { g.fillStyle = dot; g.beginPath(); g.arc(lx + 3, ly, 3, 0, Math.PI * 2); g.fill(); lx += 11; }
+        font(g, i ? 10 : 10.5, i ? 400 : 700); g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = th.text; g.fillText(text, lx, ly);
+      });
+      y += rh; g.strokeStyle = th.line; g.beginPath(); g.moveTo(8, Math.round(y) + 0.5); g.lineTo(8 + colW, Math.round(y) + 0.5); g.stroke();
+      if (r === 0) {
+        // the price, one point a second, under the aggregate
+        const lowP = Math.min(...PRICE_LINE), spanP = Math.max(...PRICE_LINE) - lowP || 1;
+        g.strokeStyle = th.text; g.globalAlpha = 0.85; g.lineWidth = 1.3; g.beginPath();
+        for (let i = 0; i < n; i++) { const py = y + priceH - 6 - (PRICE_LINE[i]! - lowP) / spanP * (priceH - 12); i ? g.lineTo(X(i), py) : g.moveTo(X(i), py); }
+        g.stroke(); g.globalAlpha = 1; g.lineWidth = 1;
+        font(g, 10.5, 700); g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = th.text; g.fillText(t('PRICE'), 14, y + priceH / 2);
+        y += priceH; g.strokeStyle = th.line; g.beginPath(); g.moveTo(8, Math.round(y) + 0.5); g.lineTo(8 + colW, Math.round(y) + 0.5); g.stroke();
+      }
+      // what to look at, one thing after another
+      if (r === 0 && u < 0.56) callouts.push(() => note(g, tg('Buys minus sells at market, added up over time'), plot.x + 4, 22, th, 'left', th.text, 11, 600, true));
+      if (r === 1 && u >= 0.56 && u < 0.72) callouts.push(() => {
+        g.strokeStyle = colors.spot; g.lineWidth = 4; g.globalAlpha = 0.35; g.beginPath(); for (let i = rise; i <= rise + 18; i++) i > rise ? g.lineTo(X(i), Y(row.spot![i]!)) : g.moveTo(X(i), Y(row.spot![i]!)); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1;
+        note(g, tg('Rising: buyers lift offers faster than sellers hit bids'), plot.x + plot.w, top + 8, th, 'right', th.text, 11, 600, true);
+      });
+      if (r === 2 && u >= 0.72 && u < 0.86) callouts.push(() => {
+        const bx = X(burst), by = Y(row.perp![burst]!), pulse = 0.5 + 0.5 * Math.sin(u * Math.PI * 2 * 9), up = row.perp![burst]! > row.perp![burst - 1]!;
+        g.fillStyle = colors.perp; g.globalAlpha = 0.6 + 0.4 * pulse; g.beginPath(); g.moveTo(bx, by + (up ? -9 : 9)); g.lineTo(bx - 4.5, by + (up ? -2 : 2)); g.lineTo(bx + 4.5, by + (up ? -2 : 2)); g.closePath(); g.fill(); g.globalAlpha = 1;
+        note(g, tg('A burst of flow'), plot.x + plot.w, top + 6, th, 'right', th.text, 11, 600, true);
+      });
+    });
+    for (const draw of callouts) draw();
+    // the shared time cursor: the same moment on every row and on the map
+    const cursor = smooth((u - 0.86) / 0.12), frac = mix(0.3, 0.78, cursor), shared = u >= 0.86;
+    if (withMap) {
+      const mb: Box = { x: colW + 24, y: 8, w: w - colW - 32, h: Math.round((h - 24) * 0.7) }, d: Dom = { t0: 0, t1: 1, p0: MARK - 1250, p1: MARK + 1250 };
+      chart(g, mb, d, th, { axis: false, timeGrid: false });
+      note(g, tg('Map'), mb.x + 8, mb.y + 12, th, 'left', th.text, 11, 600, true);
+      if (shared) {
+        const cx = mb.x + frac * mb.w; g.strokeStyle = th.text; g.globalAlpha = 0.75; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(cx + 0.5, mb.y); g.lineTo(cx + 0.5, mb.y + mb.h); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+        note(g, tg('The same moment on the map'), mb.x + mb.w / 2, mb.y + mb.h + 22, th, 'center', th.text, 11, 600, true);
+      }
+    }
+    if (shared) { const cx = plot.x + frac * plot.w; g.strokeStyle = th.text; g.globalAlpha = 0.75; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(cx + 0.5, 8); g.lineTo(cx + 0.5, h - 8); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; pointer(g, cx, h * 0.62, th); }
   },
 };
 
@@ -349,14 +468,14 @@ const footprint: Scene = {
     if (trap > 0.01) {
       const pulse = 0.5 + 0.5 * Math.sin(u * Math.PI * 2 * 7);
       for (let r = 9; r <= 11; r++) { const { buy } = FOOT_ROWS[r]!, y = yRow(r), len = Math.max(3, colW * buy / maxSide * 0.78); g.fillStyle = `rgba(245, 165, 36, ${(0.15 + 0.3 * pulse) * trap})`; g.fillRect(colL - 1, y, len + 2, rowH); g.strokeStyle = `rgba(245, 165, 36, ${(0.4 + 0.5 * pulse) * trap})`; g.strokeRect(colL - 0.5, y + 0.5, len + 1, rowH - 1); }
-      g.globalAlpha = trap; note(g, 'Rejected aggressive buying', left + slotW - 10, yRow(7) + rowH / 2, th, 'right', '#f5a524', 12.5, 700); note(g, 'net buying in the wick, then a close far below', left + slotW - 10, yRow(7) + rowH / 2 + 18, th, 'right', th.muted, 11); g.globalAlpha = 1;
+      g.globalAlpha = trap; note(g, tg('Rejected aggressive buying'), left + slotW - 10, yRow(7) + rowH / 2, th, 'right', '#f5a524', 12.5, 700); note(g, tg('net buying in the wick, then a close far below'), left + slotW - 10, yRow(7) + rowH / 2 + 18, th, 'right', th.muted, 11); g.globalAlpha = 1;
     }
-    badge(g, zoom < 0.5 ? 'Zoomed out' : numbers < 0.8 ? 'Zooming in…' : bars < 0.8 ? 'Sell | Buy volume per price' : trap < 0.8 ? 'Bars: one side at least 15% bigger' : 'Rejected buying', 10, 4, th, 1);
-    note(g, 'sell', colL + 42, h - 8, th, 'right', th.muted, 10); note(g, 'buy', colL + 50, h - 8, th, 'left', th.muted, 10);
+    badge(g, zoom < 0.5 ? tg('Zoomed out') : numbers < 0.8 ? tg('Zooming in…') : bars < 0.8 ? tg('Sell | Buy volume per price') : trap < 0.8 ? tg('Bars: one side at least 15% bigger') : tg('Rejected buying'), 10, 4, th, 1);
+    note(g, tg('sell'), colL + 42, h - 8, th, 'right', th.muted, 10); note(g, tg('buy'), colL + 50, h - 8, th, 'left', th.muted, 10);
   },
 };
 
-export const SCENES: Readonly<Record<FigureId, Scene>> = { anatomy, colours, recording, 'zoom-price': zoomScene('price'), 'zoom-time': zoomScene('time'), pan, mirror, footprint };
+export const SCENES: Readonly<Record<FigureId, Scene>> = { anatomy, colours, recording, 'zoom-price': zoomScene('price'), 'zoom-time': zoomScene('time'), pan, flow, mirror, footprint };
 
 // ---- the widget ----------------------------------------------------------------------------------------------------------------------
 
@@ -366,9 +485,9 @@ const reduced = (): boolean => typeof matchMedia === 'function' && matchMedia('(
 export function createFigure(id: FigureId, caption: string): { root: HTMLElement; dispose(): void } {
   const scene = SCENES[id];
   const canvas = el('canvas', { class: 'fig-canvas', role: 'img', ariaLabel: caption });
-  const play = el('button', { type: 'button', class: 'fig-play', tip: 'Pause or play', ariaLabel: 'Pause or play' });
-  const scrub = el('input', { type: 'range', class: 'fig-scrub', min: '0', max: '1000', value: String(Math.round(scene.rest * 1000)), tip: 'Drag to scrub through the animation', ariaLabel: 'Scrub the animation' });
-  const hint = isCoarse() ? 'Tap the picture to see what each part is.' : 'Move the pointer over the picture.';
+  const play = el('button', { type: 'button', class: 'fig-play', tip: t('Pause or play'), ariaLabel: t('Pause or play') });
+  const scrub = el('input', { type: 'range', class: 'fig-scrub', min: '0', max: '1000', value: String(Math.round(scene.rest * 1000)), tip: t('Drag to scrub through the animation'), ariaLabel: t('Scrub the animation') });
+  const hint = isCoarse() ? t('Tap the picture to see what each part is.') : t('Move the pointer over the picture.');
   const hover = el('div', { class: 'fig-hover', textContent: scene.describe ? hint : '' });
   const root = el('figure', { class: 'fig' }, canvas, el('div', { class: 'fig-bar' }, play, scrub), el('figcaption', { textContent: caption }), ...(scene.describe ? [hover] : []));
   let playing = !reduced(), visible = false, u = scene.rest, last = 0, frame = 0, ptr: { x: number; y: number } | null = null, size = { w: 0, h: 0 };

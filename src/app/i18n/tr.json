@@ -34,7 +34,6 @@
  "Close the guide": "Kılavuzu kapat",
  "About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.": "Okuması yaklaşık {n} dakika. Resimler hareket eder: yakından bakmak, duraklatmak veya gezmek için dokunun.",
  "About {n} minutes to read. Pictures move: hover, pause or scrub them.": "Okuması yaklaşık {n} dakika. Resimler hareket eder: üzerine gelin, duraklatın veya gezin.",
- "The text of the guide is in English for now.": "Kılavuzun metni şimdilik İngilizce.",
  "Contents": "İçindekiler",
  "Jump to a section": "Bir bölüme git",
  "That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.": "Sayfanın tamamı bu. Geri kalan her şey uzun bir basışla ulaşılabilir: her düğme kendini açıklar ve bir panelin yanındaki ? ne olduğunu söyler.",
@@ -626,5 +625,12 @@
  "No rejected aggressive flow": "Reddedilen agresif akış yok",
  "Not enough recorded data to check": "Kontrol için yeterli kayıtlı veri yok",
  "Still collecting the history to compare with": "Karşılaştırılacak geçmiş hâlâ toplanıyor",
- "{n} filtered out": "{n} filtrelendi"
+ "{n} filtered out": "{n} filtrelendi",
+ "Pause or play": "Duraklat veya oynat",
+ "Drag to scrub through the animation": "Animasyonda gezinmek için sürükleyin",
+ "Scrub the animation": "Animasyonda gezin",
+ "Tap the picture to see what each part is.": "Her bölümün ne olduğunu görmek için görsele dokunun.",
+ "Move the pointer over the picture.": "İşaretçiyi görselin üzerinde gezdirin.",
+ "Keep in mind": "Unutmayın",
+ "Tip": "İpucu"
 }

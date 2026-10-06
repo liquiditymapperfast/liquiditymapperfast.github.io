@@ -34,7 +34,6 @@
  "Close the guide": "가이드 닫기",
  "About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.": "읽는 데 약 {n}분 걸립니다. 그림이 움직입니다: 탭하면 자세히 보거나, 일시 정지하거나, 탐색할 수 있습니다.",
  "About {n} minutes to read. Pictures move: hover, pause or scrub them.": "읽는 데 약 {n}분 걸립니다. 그림이 움직입니다: 마우스를 올리거나, 일시 정지하거나, 탐색할 수 있습니다.",
- "The text of the guide is in English for now.": "가이드 본문은 아직 영어로만 제공됩니다.",
  "Contents": "목차",
  "Jump to a section": "섹션으로 이동",
  "That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.": "이 페이지는 이게 전부입니다. 나머지는 길게 누르는 것만으로 알 수 있습니다. 모든 버튼이 스스로 설명하며, 패널 옆의 ?가 그것이 무엇인지 알려 줍니다.",
@@ -614,5 +613,12 @@
  "No rejected aggressive flow": "거부된 공격적 흐름 없음",
  "Not enough recorded data to check": "확인하기에 기록된 데이터가 부족합니다",
  "Still collecting the history to compare with": "비교할 이력을 아직 수집하는 중입니다",
- "{n} filtered out": "{n}개 필터링됨"
+ "{n} filtered out": "{n}개 필터링됨",
+ "Pause or play": "일시정지 또는 재생",
+ "Drag to scrub through the animation": "드래그하여 애니메이션 탐색",
+ "Scrub the animation": "애니메이션 탐색",
+ "Tap the picture to see what each part is.": "그림을 탭하면 각 부분이 무엇인지 볼 수 있습니다.",
+ "Move the pointer over the picture.": "포인터를 그림 위로 움직이세요.",
+ "Keep in mind": "유의하세요",
+ "Tip": "팁"
 }

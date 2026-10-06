@@ -3,7 +3,7 @@
  * Figures are named animations drawn by `figures.ts`. The aim is a page that can be read in ten to fifteen minutes and leaves the reader
  * with a working picture of what each part is for; anything deeper lives in the "?" panels, which share their text with the tooltips.
  */
-export type FigureId = 'anatomy' | 'colours' | 'recording' | 'zoom-price' | 'zoom-time' | 'pan' | 'mirror' | 'footprint';
+export type FigureId = 'anatomy' | 'colours' | 'recording' | 'zoom-price' | 'zoom-time' | 'pan' | 'flow' | 'mirror' | 'footprint';
 
 export type Block =
   | { t: 'p'; text: string }
@@ -18,12 +18,13 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'start', title: 'Start here',
     blocks: [
-      { t: 'p', text: 'LiquidityMapperFast shows you where the orders are. An exchange keeps a list of everyone waiting to buy below the price and everyone waiting to sell above it: the **order book**. This page reads that list from the largest exchanges, adds them together and draws it as a map that moves with the price. Where a lot of size is waiting, the map lights up. Those are the **walls** that price tends to react to.' },
+      { t: 'p', text: 'LiquidityMapperFast shows you where the orders are. An exchange keeps a list of everyone waiting to buy below the price and everyone waiting to sell above it: the **order book**. This page reads that list from the largest exchanges, adds them together and draws it as a map that moves with the price. Where a lot of size is waiting, the map lights up: those are the **walls** price tends to react to.' },
       { t: 'p', text: 'It is free: nothing to sign up for, open source, and no server of its own. Your browser connects to the exchanges directly, and nothing you do here is sent anywhere.' },
       { t: 'fig', id: 'anatomy', caption: 'The page at a glance. Point at a part (hover with a mouse, tap on a touch screen) to see what it is.' },
       { t: 'list', items: [
         '**The chart**: price runs up the side, time runs left to right. The candles show what price did; the coloured map behind them is the order book through time.',
         '**The profile**, the bars at the right edge of the chart, is the order book right now.',
+        '**The flow column** at the far left shows what traders did, exchange by exchange.',
         '**The order book** on the far right is the same book as a ladder of prices.',
         '**The panes underneath** (Depth, Open Interest, Liquidity Tracker, Bar stats) share the chart\'s time axis.',
         '**The toolbar** at the top chooses what to show and how.',
@@ -42,7 +43,7 @@ export const SECTIONS: readonly Section[] = [
         '**A wall that appears or vanishes** means somebody changed their mind. The map records those changes, which one snapshot of the book cannot.',
       ] },
       { t: 'fig', id: 'colours', caption: 'The Contrast slider slides the colour window along the size axis. Right shows thinner liquidity; left keeps only the biggest walls, and the far left pales even those.' },
-      { t: 'p', text: '**Auto** keeps that window following the data (it is recomputed when you recentre, change market, zoom, and every ten seconds), so colours do not drift while you pan. **Smooth** blurs the map vertically when price rows get thin, so distant walls stay visible when you zoom out.' },
+      { t: 'p', text: '**Auto** keeps that window following the data, so colours do not drift while you pan. **Smooth** blurs the map vertically when price rows get thin, so distant walls stay visible when you zoom out.' },
       { t: 'note', kind: 'warn', text: 'A wall is an intention, not a fact. Orders can be cancelled at any moment, and some are placed to be seen. The map shows what is resting, never what will trade.' },
     ],
   },
@@ -53,12 +54,11 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: 'So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. To make the map readable from the first second, the part before the stripe is filled in **grey**: today\'s book copied back in time, on the same scale (a darker grey is a bigger wall). Grey is never history. It only shows where the walls are now. Real colour starts at the dashed line, and the grey shrinks as recorded data takes its place.' },
       { t: 'fig', id: 'recording', caption: 'A first visit, sped up. Grey is the current book copied back; colour is what was recorded while the page was open.' },
       { t: 'list', items: [
-        'The page keeps the last **24 hours** of what it recorded in your browser, so coming back continues the map. It records only while a page is open, so time with the page closed leaves a gap.',
+        'The page keeps the last **24 hours** it recorded in your browser, so coming back continues the map. Time with the page closed leaves a gap.',
         'Only **one tab records** at a time; another tab shows the live data and the recording so far.',
-        '**Candles and open interest are different**: they come from each exchange\'s own history, so they are there at once (Binance has 30 days of open interest; Hyperliquid\'s builds up while the page is open).',
+        '**Candles and open interest are different**: they come from each exchange\'s own history, so they are there at once.',
         'The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.',
       ] },
-      { t: 'note', kind: 'tip', text: 'A page left open in a background tab keeps recording, though browsers slow hidden tabs and a long-hidden one may record with small gaps.' },
     ],
   },
   {
@@ -73,7 +73,7 @@ export const SECTIONS: readonly Section[] = [
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['Double-click, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
       ] },
-      { t: 'p', text: 'On a **phone or tablet** the map sits on top and the bar at the bottom picks the pane under it (beside it when the phone is on its side): the order book, depth, open interest, the tracker or the statistics. Drag the handle between them to resize it; **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:' },
+      { t: 'p', text: 'On a **phone or tablet** the map sits on top and the bar at the bottom picks the pane under it (beside it when the phone is on its side): the order book, depth, open interest, the tracker or the statistics. **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:' },
       { t: 'keys', rows: [
         ['**Drag**', 'Pan both ways. It carries on a little after you lift'],
         ['**Pinch**', 'Sideways zooms **time**, up and down zooms **price**, a diagonal pinch does both; what is under each finger stays under it'],
@@ -81,7 +81,6 @@ export const SECTIONS: readonly Section[] = [
         ['**Hold, then drag**', 'Slides the crosshair along without moving the map'],
         ['**Double-tap**', 'Back to the live edge, price range fitted'],
         ['**Drag an axis**', 'Along the price or time scale to zoom it'],
-        ['**Hold a button**', 'Shows what it does, without pressing it'],
       ] },
       { t: 'fig', id: 'zoom-price', caption: 'Wheel on the price scale: the current price stays put while the scale around it changes.' },
       { t: 'fig', id: 'zoom-time', caption: 'Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.' },
@@ -109,14 +108,15 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'flow', title: 'The flow column',
     blocks: [
-      { t: 'p', text: 'The column left of the map is the active half of the picture: the heatmap and the book show what traders **placed**; this shows what they **did**, exchange by exchange.' },
-      { t: 'p', text: 'Each row\'s two lines are cumulative volume delta (market buys minus market sells): **blue is spot, amber is perpetual**. A rising line means buyers are lifting offers faster than sellers hit bids. The top row adds all exchanges; the price is under it.' },
+      { t: 'p', text: 'The heatmap and the book show what traders **placed**. The column left of the map shows what they **did**, exchange by exchange.' },
+      { t: 'p', text: 'Each row has two lines of cumulative volume delta (market buys minus market sells): **blue is spot, amber is perpetual**, in every theme. A rising line means buyers are lifting offers faster than sellers hit bids. The top row adds every exchange; the strip under it is the price, a point a second, from the same trades.' },
+      { t: 'fig', id: 'flow', caption: 'The lines grow as trades arrive. Pointing at the column marks the same moment on the map, and the other way round.' },
       { t: 'list', items: [
-        'Labels sit on the **left**, clear of the line ends: rank, exchange, net flow, share of volume, `!5m` when quiet.',
-        'Each line has its own scale: compare shapes, not heights. **Map, 5m ... 24h** sets the span; the gear sets the rows shown, their heights and the re-ranking.',
-        'Hover a row for its numbers.',
+        'Rows are ranked by volume. Labels sit on the **left**: rank, exchange, net flow, share, and `!5m` when quiet. Every line has its own scale, so compare shapes, not heights.',
+        '**Map, 5m ... 24h** sets the span. Map follows the chart, and starts where recording did when that was later (it says so). The gear sets the rows, their heights, **Keep listed** (pin any exchanges you follow) and the sound.',
+        '**Spot / Perp** filters the column too. Spot is only Coinbase and Binance, so the top row says how many exchanges the filter leaves out.',
       ] },
-      { t: 'note', text: '**Flow** and **Book** in the toolbar hide or show the side columns. On the local server only exchanges with a trade feed there count; `?source=browser` counts all.' },
+      { t: 'note', text: '**Flow** and **Book** in the toolbar hide or show the side columns. Only exchanges with a trade feed count.' },
     ],
   },
   {
@@ -186,7 +186,7 @@ export const SECTIONS: readonly Section[] = [
     id: 'tools', title: 'Screenshot, themes and install',
     blocks: [
       { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click or tap a pane to take all of it (the top bar takes the whole page). Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG, and on a phone the share arrow opens the phone\'s own share sheet.' },
-      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app with its own window and icon; other browsers offer it in their menu. An iPhone or iPad has no prompt: choose Share, then Add to Home Screen (the button says so).' },
+      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app; an iPhone or iPad has no prompt: choose Share, then Add to Home Screen.' },
       { t: 'keys', rows: [
         ['[[S]]', 'Screenshot'],
         ['[[R]], [[Home]]', 'Back to the live edge'],
@@ -200,10 +200,10 @@ export const SECTIONS: readonly Section[] = [
       { t: 'list', items: [
         '**This is not advice**, and it places no orders. It is a way to look at what the order books are doing.',
         '**The map is not the whole market.** It shows the exchanges you switched on, and hidden or split orders are not visible.',
-        '**A fresh page is shallow far from the price.** Binance\'s depth snapshot reaches only about 0.16% from the price and farther levels appear as they change, so the far side fills in over some minutes.',
-        '**A phone only records while the page is open and awake.** A sleeping screen, or another app in front, leaves a gap in the map; **Keep screen on** in Settings holds it awake. With the default eight exchanges the page reads about 50 to 75 KB of exchange data a second, which is 175 to 260 MB an hour: on a mobile connection, switch some off in **Venues**.',
+        '**A fresh page is shallow far from the price.** The far side fills in over some minutes.',
+        '**A phone only records while the page is open and awake.** A sleeping screen leaves a gap in the map; **Keep screen on** in Settings holds it awake. With eight exchanges the page reads 175 to 260 MB an hour: on a mobile connection, switch some off in **Venues**.',
         '**Nothing leaves your machine.** The page talks to the exchanges and to nobody else. Recordings live in your browser; clearing the site\'s data erases them.',
-        '**If something looks wrong**: check the connection status at the top right, look for a dashed “unavailable” tag, try Recenter, and if hovering shows nothing, check the Mirror button.',
+        '**If something looks wrong**: check the connection status at the top right, try Recenter, and if hovering shows nothing, check the Mirror button.',
       ] },
     ],
   },

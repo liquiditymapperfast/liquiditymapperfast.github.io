@@ -31,7 +31,8 @@
     "test:wasm": "cargo test --manifest-path crates/hlm-kernels/Cargo.toml",
     "report:venues": "npm run build:tools && node build/tools/scripts/venue-report.mjs",
     "parity": "npm run build:tools && node build/tools/scripts/parity.mjs",
-    "i18n:template": "npm run build:tools && node build/tools/scripts/i18n-keys.mjs"
+    "i18n:template": "npm run build:tools && node build/tools/scripts/i18n-keys.mjs",
+    "i18n:guide": "npm run build:tools && node build/tools/scripts/i18n-guide.mjs"
   },
   "dependencies": {
     "vite": "^6.0.7",

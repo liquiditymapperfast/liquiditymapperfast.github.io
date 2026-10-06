@@ -29,23 +29,29 @@ export function hueOf(hex: string): number | null {
 export const hueGap = (a: number, b: number): number => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
 
 /** Whether `color` is near the hue of the theme's buy or sell colour. */
-export function nearDirection(color: string, p: Pick<Palette, 'bid' | 'ask' | 'candleUp' | 'candleDown'>): boolean {
+export function nearDirection(color: string, p: LaneTheme): boolean {
   const h = hueOf(color); if (h === null) return false;
   return [p.bid, p.ask, p.candleUp, p.candleDown].some(other => { const o = hueOf(other); return o !== null && hueGap(h, o) < NEAR; });
 }
 
-function legible(color: string, p: Palette): string {
+/** The parts of a theme the lane colours depend on (the guide's pictures have these without being a whole palette). */
+export type LaneTheme = Pick<Palette, 'panel' | 'text' | 'bid' | 'ask' | 'candleUp' | 'candleDown'>;
+
+function legible(color: string, p: LaneTheme): string {
   let amount = 0, tone = color;
   while (amount < 1 && contrastRatio(tone, p.panel) < 3) { amount = Math.min(1, amount + 0.05); tone = mixHex(color, p.text, amount); }
   return tone;
 }
 
+/** The two line colours (and their quiet tones) for a theme. */
+export function laneColorsFor(p: LaneTheme): LaneColors {
+  const alt = nearDirection(SPOT, p) || nearDirection(PERP, p);
+  const spot = legible(alt ? SPOT_ALT : SPOT, p), perp = legible(alt ? PERP_ALT : PERP, p);
+  return { spot, perp, spotQuiet: mixHex(spot, p.panel, 0.6), perpQuiet: mixHex(perp, p.panel, 0.6) };
+}
+
 export function laneColors(p: Palette): LaneColors {
   let c = cache.get(p);
-  if (!c) {
-    const alt = nearDirection(SPOT, p) || nearDirection(PERP, p);
-    const spot = legible(alt ? SPOT_ALT : SPOT, p), perp = legible(alt ? PERP_ALT : PERP, p);
-    c = { spot, perp, spotQuiet: mixHex(spot, p.panel, 0.6), perpQuiet: mixHex(perp, p.panel, 0.6) }; cache.set(p, c);
-  }
+  if (!c) { c = laneColorsFor(p); cache.set(p, c); }
   return c;
 }
