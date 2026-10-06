@@ -6,6 +6,7 @@ import { PHI, locateRow, maxScroll, rowHeights } from '../src/app/cvd/layout.ts'
 import { BURST_DEFAULTS, burst } from '../src/app/cvd/burst.ts';
 import { FlowSeries } from '../src/shared/flow.ts';
 import { PriceTrack } from '../src/app/cvd/price.ts';
+import { defaultShow } from '../src/app/store.ts';
 
 const kinds: Record<string, 'spot' | 'perp'> = { 'binance:BTCUSDT': 'perp', 'binancespot:BTCUSDT': 'spot', 'coinbase:BTC-USD': 'spot', 'hyperliquid:BTC-PERP': 'perp', 'okx:BTC-USDT-SWAP': 'perp', 'okx:BTC-USDT': 'spot', 'okx:BTC-USD-SWAP': 'perp' };
 const kindOf = (id: string) => kinds[id] ?? null;
@@ -168,4 +169,9 @@ test('the price track follows candle closes, then marks, and a column holds the 
   track.load([[T + 180_000, 90, 91, 89, 90.5]], T + 240_000);
   assert.equal(track.at(T + 239_999), 90.5, 'history replaced; marks newer than its last candle would stay');
   assert.ok(Number.isNaN(new PriceTrack().columns(0, 10, 2).min));
+});
+
+test('a first visit starts with the flow column on a wide window or a phone (which has a tab), and without it on a medium one', () => {
+  assert.deepEqual([390, 640, 820, 1180, 1499, 1500, 1920, 3440].map(w => defaultShow(w).cvd), [true, true, false, false, false, true, true, true]);
+  assert.ok([390, 1180, 1920].every(w => defaultShow(w).book), 'the book is on everywhere');
 });

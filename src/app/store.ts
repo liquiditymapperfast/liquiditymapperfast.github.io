@@ -26,6 +26,14 @@ export interface LayerLevel { id: string; side: string; price: number; notionalU
 
 /** Which panes are on the first time. */
 export const DEFAULT_SHOW: AppState['show'] = { profile: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
+/**
+ * The panes a first visit starts with. The flow column and the book each take a few hundred pixels beside the map, so on a window that is wide enough
+ * for the map to stay readable with both (a phone has its tabs instead) they start on; a medium window (a tablet held sideways, a small laptop)
+ * starts with the book only, and Flow is one click in the top bar.
+ */
+export function defaultShow(width: number = typeof window === 'undefined' ? 1920 : window.innerWidth): AppState['show'] {
+  return { ...DEFAULT_SHOW, cvd: width <= 640 || width >= 1500 };
+}
 
 /** Statistics shown by default in the bar-stats strip (ids from panes/bar-stats.ts). */
 export const DEFAULT_BAR_STATS: readonly string[] = ['vol', 'delta', 'cvd'];
@@ -99,12 +107,12 @@ export function initialState(): AppState {
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
-    show: { ...DEFAULT_SHOW }, cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
+    show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
     theme: 'light', followLive: true, keepAwake: false, hover: null, ...saved,
   };
   // Saved objects may predate newer keys: keep the defaults for anything they lack.
-  state.show = { ...DEFAULT_SHOW, ...saved.show };
+  state.show = { ...defaultShow(), ...saved.show };
   state.cvd = readCvd(saved.cvd);
   state.sounds = readSounds(saved.sounds);
   state.highlight = readHighlight(saved.highlight);
