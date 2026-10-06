@@ -102,7 +102,8 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 /* Tooltips (tip.ts): one box in the top layer for the whole page. */
 /* The card the panes too short for a canvas box use (hovercard.ts): the same box as infobox.ts draws, with the same measures. */
 .hovercard { position: fixed; inset: 0 auto auto 0; margin: 0; width: max-content; max-width: 280px; padding: 4px 8px 4px; overflow: visible; border: 1px solid var(--muted); background: var(--panel); color: var(--text); font: 11px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 2px 2px 0 rgba(0, 0, 0, .2); pointer-events: none; }
-.hovercard:not(:popover-open):not(.on) { display: none; }
+/* Hidden until it is shown: by its own class, because a browser without :popover-open would drop a rule that names it and leave an empty box on the page. */
+.hovercard:not(.on) { display: none; }
 .hovercard .hc-row { display: flex; justify-content: space-between; gap: 14px; }
 .hovercard .hc-label { color: var(--muted); }
 .hovercard .hc-value { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; white-space: nowrap; }

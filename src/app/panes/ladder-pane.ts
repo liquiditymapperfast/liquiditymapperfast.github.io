@@ -352,7 +352,9 @@ export class LadderPane {
   #paintCell(ctx: CanvasRenderingContext2D, cell: { lines: InfoLine[]; x: number; y: number; w: number; h: number }, o: { x: number; w: number; head: number }, rows: number): void {
     const hv = this.#hover, p = this.#palette; if (!hv) return;
     ctx.save(); ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.95; ctx.strokeRect(Math.round(cell.x) + 0.5, Math.round(cell.y) + 0.5, Math.max(1, Math.round(cell.w) - 1), Math.max(1, Math.round(cell.h) - 1)); ctx.restore();
-    paintInfoBox(ctx, cell.lines, hv.x, hv.y, { x0: o.x, y0: o.head, x1: o.x + o.w, y1: o.head + rows * ROW_H }, p);
+    // Beside a mouse pointer the box stands to one side; above a finger, so the hand does not cover it.
+    const touch = this.#pinned !== null;
+    paintInfoBox(ctx, cell.lines, hv.x, touch ? hv.y - 18 : hv.y, { x0: o.x, y0: o.head, x1: o.x + o.w, y1: o.head + rows * ROW_H }, p, { placement: touch ? 'up' : 'center' });
   }
 
   /** Mirror hover: highlight the rows from the mark to the hovered row and the same number of rows on the other side, dim the rest, and compare the cumulative liquidity of the two bands. */
