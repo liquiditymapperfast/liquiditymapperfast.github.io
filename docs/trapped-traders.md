@@ -33,6 +33,15 @@ Notation for the upper wick (the lower wick mirrors it with the sides swapped). 
 
 **Completeness is measured against the exchange, not against trading.** The first version counted minutes in which a trade was seen, so five trades in five different minutes made a five-minute footprint "complete". A candle is now complete only when the footprint's own volume reconciles with the candle's volume: a partly seen candle (the page opened mid-candle, a feed gap) falls short, a quiet minute does not (the exchange's figure is quiet there too), and a footprint in other units or of another market falls outside the band. A market whose candle volume is not in the asset's units (contracts, quote currency) therefore reads "not enough recorded data" instead of passing by luck.
 
+**Does the band fit real recordings?** Checked 2026-10-06 against the running server (read-only requests, about 80 minutes of recording, settled candles only, the share being the footprint's volume over the candle's volume):
+
+| Market | Timeframe | Candles | In band (0.9 to 1.1) | Median | Outside |
+| --- | --- | --- | --- | --- | --- |
+| Binance perpetual | 1m / 5m / 15m | 94 / 19 / 6 | 99 % / 95 % / 83 % | 1.000 | the first candle after the recording began (0.19 to 0.57) |
+| Hyperliquid perpetual | 1m / 5m / 15m | 94 / 19 / 6 | 98 % / 95 % / 83 % | 1.000 | the first candle (0.28 to 0.80), and one 1m candle at 1.17 |
+
+So a recorded candle reconciles to within a fraction of a percent, the band is not what makes candles read "not enough recorded data" (the partly seen first one is), and the 15m percentages are one candle in six. The units of other venues' candle volume were not checked (the server records footprints only for the markets above); a market whose volume is in contracts or in the quote currency will read "not enough recorded data", which is the intended failure.
+
 **What it will not flag:** a candle seen only in part, a market whose chart is showing another market's candles, and the 1d timeframe (the footprint is only kept for a day in the browser and a week on the server, too little to form the baseline; 4h needs the server's week).
 
 ## What the offline study found (2026-10-05)

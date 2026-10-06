@@ -68,3 +68,17 @@ A server that predates the change answers frames without `px` and the page then 
 
 Memory: the recorder's bins went from 120 to 180 doubles a minute (the quantity), +50 %. A day and a half of one instrument is 2160 minutes: 2.07 MB before, 3.11 MB now, so 27
 instruments are about 84 MB (56 MB before) and the 48-instrument cap about 149 MB (100 MB before). The page's ring adds 0.5 MB per instrument it holds.
+
+## The shared time cursor costs nothing measurable (2026-10-06)
+
+Pointing at the map or at another pane now draws a vertical line at the same moment on the flow column (and the column's own pointer is shared back through `store.hover`, `source: 'cvd'`),
+so the column repaints when that line moves a pixel (`CvdPane.syncHover`; the model is not rebuilt). Measured as the earlier cost was: headless Chrome 1700 x 950, the browser
+source, the pointer scrubbing the map for 10 s, the column switched off and on alternately four times each after a warm-up (`Performance.getMetrics`, `TaskDuration` over wall time):
+
+| | runs | mean |
+|---|---|---|
+| column off | 21.4, 21.8, 18.3, 18.7 | 20.1 % (sd 1.6) |
+| column on | 22.1, 17.8, 20.8, 17.9 | 19.6 % (sd 1.9) |
+
+The difference (-0.4 points) is inside the noise of the runs, so the shared line adds less than about 2 points of a core while scrubbing, against the +1.3 measured before it
+existed. (A first, single run, started while another script was running, read 20.8 % off and 16.7 % on: an order effect, which is why the alternating runs above were made.)

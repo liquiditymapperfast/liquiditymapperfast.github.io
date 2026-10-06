@@ -649,7 +649,7 @@ export class HeatPane {
     if (inX) { ctx.fillStyle = p.text; ctx.fillRect(x - 40, ph + 2, 80, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.fillText(clock(hv.t, true), x, ph + 11); }
   }
 
-  /** The rows of flagged candles that the footprint should mark: the wick's imbalanced cells on the trapped side. */
+  /** The rows of flagged candles that the footprint should mark: the wick's imbalanced cells on the flagged side. */
   #trapMarks(): { wants(barT: number, mid: number, side: 'buy' | 'sell'): boolean; add(x: number, y: number, w: number, h: number, barT: number): void } | undefined {
     if (!this.#traps.traps.length || this.#lodFrame.barAlpha < 0.3) return undefined;
     return {
@@ -898,11 +898,14 @@ export class HeatPane {
   /** Whether (`x`, `y`) is on the price scale, the column at the right edge that carries the prices (the profile column beside it is not the scale). */
   #onScale(x: number, y: number): boolean { return y >= 0 && y <= this.plotH && x >= this.#w - AXIS_W; }
 
+  /** The price the span limits are a share of: the current price, or the middle of the view before there is one. */
+  #priceRef(mark: number): number { return mark > 0 ? mark : Math.max(1e-9, Math.abs(this.view.p0 + this.view.p1) / 2); }
+
   /** The price scale is being dragged: `y` pixels below where it began zooms out by exp(0.006 per pixel), holding the price where the drag took hold. */
   #dragScale(y: number): void {
     const z = this.#scaleDrag; if (!z) return;
-    const v0 = z.view, ph = this.plotH, mark = this.store.state.mark.price || 1;
-    const factor = limitFactor(Math.exp((y - z.y) * 0.006), v0.p1 - v0.p0, mark * PRICE_SPAN_SHARE.min, mark * PRICE_SPAN_SHARE.max);
+    const v0 = z.view, ph = this.plotH, ref = this.#priceRef(this.store.state.mark.price);
+    const factor = limitFactor(Math.exp((y - z.y) * 0.006), v0.p1 - v0.p0, ref * PRICE_SPAN_SHARE.min, ref * PRICE_SPAN_SHARE.max);
     const anchor = v0.p0 + (1 - z.hold / ph) * (v0.p1 - v0.p0), span = (v0.p1 - v0.p0) * factor, p1 = anchor + z.hold / ph * span;
     this.view.set({ ...v0, p0: p1 - span, p1 });
     this.#rasteredKey = ''; this.onView(); this.invalidate();
@@ -921,7 +924,7 @@ export class HeatPane {
       const raw = Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY * lines), 240) * 0.0016);
       const axis = wheelAxis(regionAt(x, y, pw, ph), e.shiftKey), mark = state.mark.price;
       if (axis === 'price') {
-        const factor = limitFactor(raw, v.p1 - v.p0, (mark || 1) * PRICE_SPAN_SHARE.min, (mark || 1) * PRICE_SPAN_SHARE.max);
+        const ref = this.#priceRef(mark), factor = limitFactor(raw, v.p1 - v.p0, ref * PRICE_SPAN_SHARE.min, ref * PRICE_SPAN_SHARE.max);
         v.zoomPrice(factor, holdPixel({ axis, pointer: y, size: ph, alt: e.altKey, follow: state.followLive, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }), ph);
       } else {
         const factor = limitFactor(raw, v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);

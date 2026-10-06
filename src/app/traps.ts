@@ -135,7 +135,7 @@ export function typicalDelta(facts: ReadonlyMap<number, BarFacts>, t: number, tf
 
 /**
  * Judge one closed candle for one side. `rows` are [price low, buy USD, sell USD] at `step`. Prices are mirrored for the lower wick so a
- * single implementation covers both: the "upper wick" below is the wick on the side the aggressors were trapped on.
+ * single implementation covers both: the "upper wick" below is the wick on the side the aggressors traded in.
  */
 export function detectSide(side: TrapSide, candle: CandleRow, rows: readonly [number, number, number][], step: number, atr: number, baseline: number, params: TrapParams = TRAP_PARAMS): Trap | null {
   const dir = side === 'buyers' ? 1 : -1;
@@ -151,16 +151,16 @@ export function detectSide(side: TrapSide, candle: CandleRow, rows: readonly [nu
   // Row index in mirrored coordinates (a row [low, low + step) becomes [-low - step, -low), whose low edge index is -idx - 1).
   const index = (rowLow: number): number => dir > 0 ? Math.round(rowLow / step) : -Math.round(rowLow / step) - 1;
   const mid = (idx: number): number => (idx + 0.5) * step;
-  let zoneDelta = 0, trapped = 0, trappedPrice = 0, zoneBuy = 0, zoneSell = 0, barGross = 0;
+  let zoneDelta = 0, aggressors = 0, aggressorPrice = 0, zoneBuy = 0, zoneSell = 0, barGross = 0;
   const below = new Map<number, number>();
   let lowest = Infinity;
   for (const [rowLow, buy, sell] of rows) {
     const idx = index(rowLow), delta = dir > 0 ? buy - sell : sell - buy, aggressor = dir > 0 ? buy : sell;
     barGross += buy + sell;
-    if (mid(idx) >= top) { zoneDelta += delta; trapped += aggressor; trappedPrice += aggressor * mid(idx); zoneBuy += buy; zoneSell += sell; }
+    if (mid(idx) >= top) { zoneDelta += delta; aggressors += aggressor; aggressorPrice += aggressor * mid(idx); zoneBuy += buy; zoneSell += sell; }
     else { below.set(idx, (below.get(idx) ?? 0) + delta); lowest = Math.min(lowest, idx); }
   }
-  if (!(zoneDelta > 0) || !(trapped > 0)) return null;
+  if (!(zoneDelta > 0) || !(aggressors > 0)) return null;
   // F1: the wick out-bought every equally tall stretch of the rest of the candle (or all of it, when the rest is shorter than the wick).
   const highest = Math.ceil(top / step - 0.5) - 1;
   let reference = 0;
@@ -178,7 +178,7 @@ export function detectSide(side: TrapSide, candle: CandleRow, rows: readonly [nu
   }
   if (zoneDelta < reference) return null;
   if (!(baseline > 0) || zoneDelta < params.deltaMultiple * baseline) return null;
-  const entry = dir * (trappedPrice / trapped), excursion = dir * (entry - close) / atr;
+  const entry = dir * (aggressorPrice / aggressors), excursion = dir * (entry - close) / atr;
   if (excursion < params.excursion) return null;
   const zoneEdge = dir * top;
   return { t, side, zoneLow: dir > 0 ? zoneEdge : low, zoneHigh: dir > 0 ? high : zoneEdge, zoneDelta, multiple: zoneDelta / baseline, zoneBuy, zoneSell, barGross, entry, excursion, close, state: 'static' };

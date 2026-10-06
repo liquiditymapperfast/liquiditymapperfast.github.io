@@ -169,7 +169,7 @@ export function volText(value: number): string {
   return value.toFixed(0);
 }
 
-/** Asks which drawn rows to mark (a possible trap's cells) and receives their rectangles. */
+/** Asks which drawn rows to mark (the cells of a flagged candle) and receives their rectangles. */
 export interface RowMarks { wants(barT: number, mid: number, side: 'buy' | 'sell'): boolean; add(x: number, y: number, w: number, h: number, barT: number): void }
 
 /** Draw the per-row footprint to the right of each candle: sell (left) and buy (right) volume, with a bar behind rows where one side dominates. `marks` collects the rectangles of the rows it asks for. */
