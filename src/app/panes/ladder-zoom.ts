@@ -33,7 +33,7 @@ export function offsetKeepingPrice(o: { mark: number; step: number; rows: number
 }
 
 /**
- * Turns wheel deltas (pixels) into whole zoom notches: one click of a mouse wheel is one notch, and a trackpad's stream of small deltas
+ * Turns wheel deltas (pixels) into whole zoom notches: one click of a mouse wheel is one notch (whatever size the browser reports it in), and a trackpad's stream of small deltas
  * adds up to one per `fine` pixels (`size` for a device that never sends small ones). The first event after a pause counts at once when
  * it is a deliberate click, and turning the wheel the other way starts over, so the book never lags behind the hand.
  *
@@ -45,7 +45,9 @@ export class WheelNotches {
   #sum = 0;
   #at = -Infinity;
   #last = -Infinity;
-  constructor(private readonly size = 100, private readonly idleMs = 250, private readonly click = 30, private readonly fine = size, private readonly gapMs = 0) {}
+  /** How big one click of this wheel is: browsers send 100, but 80 or 66.7 at 125 % or 150 % scaling, so it is learned from the events. */
+  #unit: number;
+  constructor(private readonly size = 100, private readonly idleMs = 250, private readonly click = 30, private readonly fine = size, private readonly gapMs = 0) { this.#unit = size; }
 
   /** Feed one event's vertical delta at `now` (ms); returns the notches to apply, positive for scrolling down. */
   add(delta: number, now: number): number {
@@ -53,8 +55,15 @@ export class WheelNotches {
     const fresh = now - this.#at > this.idleMs;
     this.#at = now;
     if (fresh || Math.sign(delta) !== Math.sign(this.#sum)) this.#sum = 0;
-    if (fresh && Math.abs(delta) >= this.click) { this.#last = now; return Math.sign(delta); }
-    const small = Math.abs(delta) < this.click;
+    const abs = Math.abs(delta);
+    if (abs >= this.click) {
+      // A click of a mouse wheel: its size is whatever single clicks have been (a lone event near the usual size is a click; a bigger one is
+      // several merged into one), and every click is a notch however the display is scaled.
+      if (abs >= 0.45 * this.size && abs <= 1.3 * this.size) this.#unit = abs;
+      this.#sum = 0; this.#last = now;
+      return Math.sign(delta) * Math.max(1, Math.round(abs / this.#unit));
+    }
+    const small = abs < this.click;
     // Small deltas are weighed up so that `fine` of them make a notch; the sum is kept in the units of `size` either way.
     this.#sum += delta * (small ? this.size / this.fine : 1);
     if (small && this.gapMs > 0) {

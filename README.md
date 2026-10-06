@@ -28,12 +28,12 @@ npm run dev:fixture  # the server with offline demo feeds
 
 | Gesture | Effect |
 | --- | --- |
-| Wheel | Zoom the price axis about the pointer |
+| Wheel | Zoom the price axis about the current price while the map follows the market (so it swells and shrinks around the price instead of sliding); Alt + wheel zooms about the pointer, and so does the wheel on a map you have moved by hand |
 | Shift + wheel | Zoom the time axis about the pointer |
 | Drag / Shift+drag | Pan both axes / time only |
 | Double-click, `R`, `Home`, Recenter | Return to the live edge |
 | Right-drag | Right / up zoom the time / price axis in; left / down zoom out |
-| Order book: wheel, drag the price column, drag the book, double-click | The wheel zooms the book about the pointer by changing the price step per row (the Group select follows; Auto shows the step it is using); dragging the price column up zooms in and down zooms out; dragging the book moves it; double-click returns to Auto and the mark. Shift + wheel still scrolls Single mode sideways |
+| Order book: wheel, drag the price column, drag the book, double-click | The wheel zooms the book about the current price (Alt + wheel, or a book you have scrolled off the price, zooms about the pointer) by changing the price step per row (the Group select follows; Auto shows the step it is using); dragging the price column up zooms in and down zooms out; dragging the book moves it; double-click returns to Auto and the mark. Shift + wheel still scrolls Single mode sideways |
 | Splitters, pane grips | Resize the order-book column and the lower panes; drag a pane's grip to reorder; sizes persist |
 | Hover (profile column or order book) | Mirror: the band from the mark to the pointer and the equally wide band on the other side are framed with border lines in each side's colour and labelled with their cumulative size and distance, the rest dims, and a box says what each band holds and which side has more ("Opposite side has 1.13x more"); move outward to watch the balance change. In Single mode the order book compares within the hovered venue's book. The chart itself shows no comparison. Toggle with Mirror |
 | Hover | Shared time cursor across chart, depth and OI; price and liquidity readout on the chart |

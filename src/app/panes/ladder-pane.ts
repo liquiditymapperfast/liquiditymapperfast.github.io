@@ -81,7 +81,7 @@ export class LadderPane {
   recenter(): void { this.#offsetRows = 0; this.invalidate(); }
 
   /**
-   * The wheel zooms (the grouping steps finer or coarser about the price under the pointer, like the chart's price axis), dragging the
+   * The wheel zooms (the grouping steps finer or coarser about the current price, or about the pointer with Alt or once the book is scrolled), dragging the
    * book moves it, dragging the price column zooms, and a double-click puts both back.
    */
   #bindInput(): void {
@@ -92,7 +92,9 @@ export class LadderPane {
       e.preventDefault();
       const lines = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? this.#h : 1, pinch = e.ctrlKey ? 8 : 1;
       const notches = this.#notches.add(e.deltaY * lines * pinch, e.timeStamp);
-      if (notches) this.#zoomTo(stepBy(this.#layout.step, notches), this.#rowAt(local(e).y));
+      // Zooming holds the current price where it is, so the book swells and shrinks around it instead of sliding past; once the book has been
+      // scrolled off the mark (or with Alt held) it zooms about the pointer instead.
+      if (notches) { const l = this.#layout, centred = this.#offsetRows === 0 && !e.altKey && l.mark > 0; this.#zoomTo(stepBy(l.step, notches), centred ? Math.floor(l.rows / 2) : this.#rowAt(local(e).y), centred ? l.mark : undefined); }
     }, { passive: false });
     c.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch' || e.button !== 0 || !(this.#layout.step > 0)) return;

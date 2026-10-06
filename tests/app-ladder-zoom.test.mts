@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GROUPS, WheelNotches, offsetKeepingPrice, priceAtRow, stepBy } from '../src/app/panes/ladder-zoom.ts';
+import { View } from '../src/app/view.ts';
 
 test('the zoom steps are strictly increasing so that finer and coarser are unambiguous', () => {
   for (let i = 1; i < GROUPS.length; i++) assert.ok(GROUPS[i]! > GROUPS[i - 1]!);
@@ -49,8 +50,9 @@ test('wheel deltas become whole notches: a click is one, a trackpad adds up, a p
   assert.equal(small.add(40, 0), 1, 'a deliberate click of a small wheel counts straight away');
   assert.equal(small.add(0, 10), 0); assert.equal(new WheelNotches().add(3, 0), 0, 'a tiny first delta does not');
   const flip = new WheelNotches(); flip.add(8, 0); flip.add(8, 10);
-  assert.equal(flip.add(-60, 20), 0, 'reversing drops what had built up the other way');
-  assert.equal(flip.add(-60, 30), -1);
+  let back = 0;
+  for (let i = 0; i < 5; i++) back += flip.add(-20, 20 + i * 10);
+  assert.equal(back, -1, 'reversing drops what had built up the other way: five small steps back make exactly one notch');
 });
 
 test('a touchpad swipe too gentle for a hundred pixels still zooms, and a flick cannot throw the zoom to the end of the list', () => {
@@ -70,4 +72,53 @@ test('a mouse wheel is unaffected by the touchpad settings: every click is a not
   assert.equal(total, 6);
   const plain = new WheelNotches();
   assert.equal(plain.add(10, 0) + plain.add(10, 10) + plain.add(10, 20), 0, 'with the defaults a device that sends small deltas still needs a hundred pixels');
+});
+
+test('a mouse wheel is one notch per click at every display scale, in a burst or alone, and merged clicks count as several', () => {
+  // Chrome on Windows reports a click as 100 at 100 %, and smaller at larger display scaling or browser zoom.
+  for (const unit of [100, 120, 80, 66.67, 53.33]) {
+    const w = new WheelNotches(100, 250, 30, 40, 90);
+    assert.equal(w.add(unit, 0), 1, `a lone click of ${unit} after a pause`);
+    let total = 0, t = 1000;
+    for (let i = 0; i < 6; i++) total += w.add(unit, t += 40);
+    assert.equal(total, 6, `six clicks of ${unit} 40 ms apart are six notches, not ${total}`);
+    total = 0;
+    for (let i = 0; i < 4; i++) total += w.add(-unit, t += 40);
+    assert.equal(total, -4, `turning the wheel back gives ${total}`);
+    assert.equal(w.add(-unit, t + 2000), -1, 'and a click after a pause');
+  }
+  // The browser may fold clicks that arrive in one frame into one event.
+  const merged = new WheelNotches(100, 250, 30, 40, 90);
+  assert.equal(merged.add(200, 0), 2); assert.equal(merged.add(300, 500), 3); assert.equal(merged.add(-200, 1000), -2);
+  const scaled = new WheelNotches(100, 250, 30, 40, 90);
+  scaled.add(80, 0);
+  assert.equal(scaled.add(160, 400), 2, 'two clicks of 80 in one event once the click size is known');
+  assert.equal(scaled.add(240, 800), 3);
+  // A gentle touchpad is untouched by all this: small deltas still add up to a notch per 40 px.
+  const pad = new WheelNotches(100, 250, 30, 40, 90); let n = 0, at = 0;
+  for (let i = 0; i < 8; i++) n += pad.add(5, at += 16);
+  assert.equal(n, 1);
+});
+
+test('zooming about the current price leaves the book centred on it at every step, so the zoom swells the book instead of sliding it', () => {
+  const rows = 40, row = Math.floor(rows / 2);
+  for (const mark of [85_794, 100_003.4, 61_250.05, 99_999.9]) for (const from of [5, 50, 250]) for (const to of GROUPS) {
+    assert.equal(offsetKeepingPrice({ mark, step: to, rows, row, price: mark }), 0, `mark ${mark} stays on the middle row when grouped by ${to} (from ${from})`);
+  }
+  // About a pointer high in the book the same zoom moves the mark off the middle: that is what the pointer anchor is for.
+  const price = priceAtRow({ mark: 85_794, step: 50, offsetRows: 0, rows, row: 5 });
+  assert.notEqual(offsetKeepingPrice({ mark: 85_794, step: 5, rows, row: 5, price }), 0);
+});
+
+test('the map zooms its price axis about the current price when asked to: the price stays on the same row however far it is zoomed', () => {
+  const v = new View({ t0: 0, t1: 1000, p0: 83_000, p1: 88_000 }), mark = 85_794, height = 600;
+  const row = v.yOf(mark, height);
+  for (const factor of [0.5, 0.5, 0.8, 1.7, 3, 0.2]) {
+    v.zoomPrice(factor, v.yOf(mark, height), height);
+    assert.ok(Math.abs(v.yOf(mark, height) - row) < 1e-6, `after x${factor} the mark is still ${row.toFixed(1)} px down, not ${v.yOf(mark, height).toFixed(1)}`);
+  }
+  // About a point away from the mark the mark moves, which is what zooming about the pointer does.
+  const w = new View({ t0: 0, t1: 1000, p0: 83_000, p1: 88_000 });
+  w.zoomPrice(0.5, 100, height);
+  assert.ok(Math.abs(w.yOf(mark, height) - row) > 5);
 });

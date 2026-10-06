@@ -894,7 +894,14 @@ export class HeatPane {
     el.addEventListener('wheel', e => {
       e.preventDefault();
       const { x, y } = local(e), factor = Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 240) * 0.0016);
-      if (e.shiftKey) this.view.zoomTime(factor, Math.min(x, this.plotW), this.plotW); else this.view.zoomPrice(factor, Math.min(y, this.plotH), this.plotH);
+      if (e.shiftKey) this.view.zoomTime(factor, Math.min(x, this.plotW), this.plotW);
+      else {
+        // While the map follows the market the price axis zooms about the current price, so the map swells and shrinks around it instead of
+        // sliding; Alt (or a map that has been moved by hand) zooms about the pointer.
+        const mark = this.store.state.mark.price, markY = this.view.yOf(mark, this.plotH);
+        const about = this.store.state.followLive && !e.altKey && mark > 0 && markY >= 0 && markY <= this.plotH ? markY : Math.min(y, this.plotH);
+        this.view.zoomPrice(factor, about, this.plotH);
+      }
       this.#liveMargin = this.view.t1 - Date.now(); this.onView(); this.invalidate();
     }, { passive: false });
     el.addEventListener('contextmenu', e => e.preventDefault());
