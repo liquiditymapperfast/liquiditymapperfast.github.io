@@ -14,8 +14,10 @@ Permanent non-TypeScript exceptions: generated build output (`dist/`, `build/`),
 | `src/core/`, `src/analytics/`, `src/domain/` | Pure helpers and contracts used by the server. |
 | `src/server/` | Local server: live feed manager, reducers (`http.mts`), history (SQLite), HyperTracker provider. |
 | `src/server/v2/` | The data plane the UI uses: valued levels, depth recorder, footprint recorder, binary wire, `/api/v2/*` and `/api/v2/ws`. Installed in front of the legacy dispatcher by `installV2`. |
-| `src/shared/` | Code shared by server and browser (grid step). |
+| `src/shared/` | Code shared by server and browser (grid step, the flow recorder and series in `flow.ts`). |
 | `src/app/` | Browser client (no framework): store, hub (data loading), raster worker, WebGL2 heatmap, panes, `ui.ts` (the shared settings panel and its row builders), `menu.ts` (previewing menu), `anomaly.ts` (the one rule for what stands out), `scope.ts` (spot / perp filter), `sound/` (rules, engine, orchestrator, panel). |
+| `src/app/cvd/` | The flow column's pure parts (families, ranking, row heights, hit tests, bursts, price track, words); `panes/cvd-pane.ts` is its canvas. |
+| `src/app/sound/` | Sound settings, the trade tiers, the panel alerts (`alerts.ts`, detectors in `alert-rules.ts`). |
 | `crates/hlm-kernels/` | Rust/WASM compute kernels. |
 | `tests/`, `scripts/` | Node tests (`node --test`) and operational scripts. |
 

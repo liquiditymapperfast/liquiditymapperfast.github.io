@@ -106,6 +106,19 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
+    id: 'flow', title: 'The flow column',
+    blocks: [
+      { t: 'p', text: 'The column left of the map is the active half of the picture: the heatmap and the book show what traders **placed**; this shows what they **did**, exchange by exchange.' },
+      { t: 'p', text: 'Each row\'s two lines are cumulative volume delta (market buys minus market sells): **blue is spot, amber is perpetual**. A rising line means buyers are lifting offers faster than sellers hit bids. The top row adds all exchanges; the price is under it.' },
+      { t: 'list', items: [
+        'Labels sit on the **left**, clear of the line ends: rank, exchange, net flow, share of volume, `!5m` when quiet.',
+        'Each line has its own scale: compare shapes, not heights. **Map, 5m ... 24h** sets the span; the gear sets the rows shown, their heights and the re-ranking.',
+        'Hover a row for its numbers.',
+      ] },
+      { t: 'note', text: '**Flow** and **Book** in the toolbar hide or show the side columns. On the local server only exchanges with a trade feed there count; `?source=browser` counts all.' },
+    ],
+  },
+  {
     id: 'mirror', title: 'Mirror: which side has more?',
     blocks: [
       { t: 'p', text: 'Mirror answers one question: *is there more on this side of the price, or the other?* Point at a price in the profile or the order book. The band between the price and your pointer is outlined, and so is the equal band on the other side. A box adds up both and says which is bigger. Move outward and watch the balance change with distance.' },
@@ -124,6 +137,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'Large trades appear as **bubbles** at the price and time they happened: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover or tap one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.' },
       { t: 'p', text: '**Sound** turns trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.' },
+      { t: 'p', text: 'Under **Per panel** in the Sounds panel, each pane can sound one rare event (a flow burst, a big-delta candle, a wall, the book tipping, an unusual open-interest change). All off until chosen.' },
     ],
   },
   {

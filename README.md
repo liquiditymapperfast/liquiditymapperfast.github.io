@@ -69,6 +69,8 @@ The page is arranged for the screen it is on. `src/app/device.ts` decides once, 
 
 ## How it works
 
+**Resilience.** `LiveFeedManager.start()` retires the old feeds before its metadata requests, so a failure in between used to leave a running server with no feed at all (`docs/deslop/feed-recovery-2026-10-06.md`). A failed start now schedules a recovery with the last configuration that finished, a watchdog restarts a start that hangs or a manager with no feed, and `/api/diagnostics` reports `feedManager`.
+
 ```
 exchange feeds ─▶ LiveFeedManager ─▶ reducers (src/server/http.mts) ─▶ state
                                                                          │
@@ -126,6 +128,28 @@ One rule decides it everywhere: a value stands out when it exceeds the mean plus
 - **Open interest** is drawn as a level: a step line carried forward from each sample, a dashed continuation to the newest candle, dots at real samples, and below it the change between samples with unusually large changes at full strength. If the market has no OI history (only Binance and Hyperliquid report it) a reference perp's series stands in, labelled. It refreshes every 20 s and says how old the newest sample is.
 - **Trades** (toggle Trades) puts bubbles on the chart at the time and price of each large trade (at least $25k), sized by notional, coloured by the side that took liquidity, only the biggest few hundred in view, with a glow for whale-size trades.
 
+## The flow column
+
+The column left of the map is aggr.trade's cumulative volume delta, laid out for this page: for every exchange, what was bought at market minus what was sold at market, added up over time, **blue for spot and amber for perpetual** whichever way the money moved. The heatmap and the book are passive liquidity (what traders placed and may pull); this is active liquidity (what they did).
+
+- **Rows.** An aggregate row on top (every spot lane added, every perpetual lane added), a price strip under it, then one row per exchange, ranked by gross volume over the ranking window (15 min, 1 h or 24 h) and re-ranked every few minutes so rows do not jump (or never, with Re-rank off). The ranking is strict about the count: an exchange with no volume does not fill a place, and Hyperliquid can be pinned to the last place. A venue and its spot twin (`binance`, `binancespot`) are one exchange. An exchange with no trade in the last five completed minutes is flagged `!5m`.
+- **Labels are on the left**, in their own gutter, so nothing is laid over the ends of the lines on the right (the usual fault of CVD displays): `#rank EXCHANGE`, each lane's net flow over the ranking window with a dot in the lane's colour, then the exchange's share of all volume. Every line has its own vertical scale (compare shapes, not heights) and starts at zero at the left edge (a setting draws the running total since the history began instead).
+- **Heights** follow the golden ratio (each rank is 1/φ of the one above, never below a readable minimum), the exchange's volume share, or are equal; the top row is always the tallest, and what does not fit scrolls (wheel or drag) under the pinned aggregate and price rows. Hover a row for a box: the lanes' running delta at the pointer, their net flow and buys against sells over the ranking window, the share. Hover the aggregate: spot and perpetuals moving apart (both sides over $2M and opposite) is said in words.
+- **Time span:** Map (the map's own span, so it follows the map) or the last 5 min, 15 min, 1 h, 4 h or 24 h. All of them are drawn from one series at one-second resolution.
+- **Toggles.** Flow and Book in the top bar show or hide the two side columns at once (nothing is rebuilt); on a phone Flow is a dock tab. Settings live behind the gear in the column's header.
+
+How it is built:
+
+| Piece | Where |
+| --- | --- |
+| Per-second taker buy/sell per instrument (`FlowRecorder`), minutes of 60 + 60 Float32 in SQLite (server, 7 days) or IndexedDB (browser, 24 h), 36 h in memory | `src/shared/flow.ts`, `src/server/v2/flow.mts`, `src/app/browser/idb.ts` |
+| The page's per-instrument ring of running sums (`FlowSeries`: delta and gross as Float64 prefix sums over 2^17 s, so any window's delta, volume and share are two reads; a late or repeated second adds its difference to the later sums) | `src/shared/flow.ts`, `src/app/flow-book.ts` |
+| Wire: `/api/v2/flow?inst=a,b&from&to` (binary: JSON header + Float32 buy/sell seconds), `{t:'flow', items}` on the socket once a second (absolute totals of the seconds that changed), the same two in the browser worker's protocol | `src/server/v2/api.mts`, `src/app/net.ts`, `src/app/browser/` |
+| Grouping, ranking with a held order, row heights, hit tests, bursts, the words | `src/app/cvd/` (pure; `tests/app-cvd*.test.mts`) |
+| The canvas, pointer and controls | `src/app/panes/cvd-pane.ts` |
+
+Trades reach the recorder from every connector (the browser source runs the exchanges itself, so every venue it runs counts) and, on the server, from the feed manager (Hyperliquid, Binance) and the extra venues (`ExtraVenues.onTrade`). The manager has no trade feed for Bybit, OKX, Bitget, Deribit or Coinbase, so a page served by the server shows those as depth only: open it with `?source=browser` to count every venue. Why the scan is JavaScript and not WebAssembly: `docs/deslop/flow-resolution-2026-10-06.md` (measured).
+
 ## Spot, perpetual or both
 
 The Spot / Perp / Both control filters the enabled venues for the heatmap, profile, aggregated ladder, depth, LT and mirror. It never switches a venue on or off (chips that fall outside the filter are dimmed; a click on a dimmed chip shows that venue, which means the filter goes back to Both and the venue is switched on), it says so when it selects nothing, and executions (footprint, bubbles) are not filtered. Spot books show the walls that stand out far from the price; Binance spot (5000-level snapshot plus the diff stream) and Coinbase (full book) are the deep ones.
@@ -148,6 +172,8 @@ The server keeps every venue trade of $25k or more (deduplicated, SQLite, one we
 - One AudioContext with a compressor, at most eight voices (extra notes are dropped, not queued), scheduled on the audio clock. Browsers keep audio locked until a click or key press, so the button shows an amber dot until then. Trades that arrive more than 2.5 s late (a throttled background tab catching up) are ignored.
 - Options: volume, which venues count (all / spot / perp), a Test button per tier and side, and an optional chime when a candle closes on unusual volume. There is no liquidation sound: the feeds carry no real liquidation events.
 - The decisions are recorded in `window.__hlm.sounds.log` so they can be tested without listening.
+
+**Per panel.** Beyond trades, each pane can make one sound about something rare in it (Sounds panel, *Per panel*; `src/app/sound/alerts.ts`, the detectors in `alert-rules.ts` and `cvd/burst.ts`, all off by default): a **burst of taker flow** (an exchange's delta over 10 s is more than the chosen number of standard deviations from its own 30-minute norm, and at least a minimum; also marked on the flow column), a candle closing with a **big net delta** across the enabled venues, a **wall** (a level of at least a size, summed across venues in a 2 bp bin within 1 % of the price) appearing or being pulled without the price having come to it, the **balance tipping** (bids against asks within 1 %, with hysteresis), and an **unusual open-interest change** at a candle close (Highlights' rule). Nothing sounds from history, from the first ten seconds of a book, or within its cool-down, and no more than four sounds play in ten seconds. Buying rises and selling falls; each panel has its own register and wave. The decisions are in `window.__hlm.alerts.log`.
 
 ## Themes
 
