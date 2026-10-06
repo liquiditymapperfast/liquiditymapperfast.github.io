@@ -28,8 +28,9 @@ npm run dev:fixture  # the server with offline demo feeds
 
 | Gesture | Effect |
 | --- | --- |
-| Wheel | Zoom the price axis about the current price while the map follows the market (so it swells and shrinks around the price instead of sliding); Alt + wheel zooms about the pointer, and so does the wheel on a map you have moved by hand |
-| Shift + wheel | Zoom the time axis about the pointer |
+| Wheel on the chart | Zoom the time axis about the live edge while the map follows the market (so it swells and shrinks around now instead of sliding); about the pointer with Alt, or on a map you have moved by hand |
+| Wheel or drag on the price scale | Zoom the price axis about the current price while it is on the map (the pointer turns to a resize arrow over the scale; the wheel over the profile column beside it zooms price too); drag up zooms in, down zooms out; Alt + wheel zooms about the pointer |
+| Shift + wheel | Zoom the other axis (price on the chart, time on the price scale) |
 | Drag / Shift+drag | Pan both axes / time only |
 | Double-click, `R`, `Home`, Recenter | Return to the live edge |
 | Right-drag | Right / up zoom the time / price axis in; left / down zoom out |
@@ -49,7 +50,7 @@ A venue that never connects, keeps failing and fails a plain request while other
 
 The chips are the venues that have a book on the map. A venue that was chosen but has none gets a dashed chip of its own, so it never just disappears from the toolbar: a red-tinted one (warning mark) for a venue that is failing or, on a server, left off the map because its book is crossed (a feed fault: "book crossed by 123 bp"), a grey one (ellipsis) for one that has been connecting for more than 20 s. Hovering it says why. A server cannot push these changes, so the page asks it every 10 s.
 
-**Help is built in.** Every control has a tooltip (`src/app/tip.ts`), and a **?** beside each pane explains it (`src/app/help.ts` holds the text both use). The **Guide** button opens a ten-minute tour with a contents list and moving pictures (`src/app/guide/`; an address like `#guide/mirror` opens it at a section). **Screenshot** (or `S`) freezes the page, lets you drag a region or click a pane, draw on it, pixelate or blur anything private, then copy or save a PNG (`src/app/screenshot/`; it draws the page itself, so nothing is asked of the browser). **Install** appears when the browser can install the page as an app, and **Author** says who made it.
+**Help is built in.** Every control has a tooltip (`src/app/tip.ts`), and a **?** beside each pane explains it (`src/app/help.ts` holds the text both use). The **Guide** button opens a ten-minute tour with a contents list and moving pictures (`src/app/guide/`; an address like `#guide/mirror` opens it at a section). **Screenshot** (or `S`) freezes the page, lets you drag a region or click a pane (the top bar takes the whole page, every open pane and the flow column included), draw on it, pixelate or blur anything private, then copy or save a PNG (`src/app/screenshot/`; it draws the page itself, so nothing is asked of the browser). **Install** appears when the browser can install the page as an app, and **Author** says who made it.
 
 On a young recording the empty left of the heatmap is filled with the current book in grey (darker grey for bigger walls) so the map reads from the first second; grey is never history, and real colour starts at the dashed line.
 

@@ -324,7 +324,6 @@
  "Click to take the Liquidity Tracker": "点击以截取 Liquidity Tracker",
  "Click to take Bar stats": "点击以截取柱统计",
  "Click to take the order book": "点击以截取订单簿",
- "Click to take the toolbar": "点击以截取工具栏",
  "Colour {c}": "颜色 {c}",
  "Thin stroke": "细线",
  "Medium stroke": "中等线",
@@ -534,8 +533,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "每隔几分钟按成交量重新排列各行。关闭则保持第一次的排列，直到你在此更改某项设置。",
  "Re-rank every (minutes)": "重新排序间隔（分钟）",
  "How often the order may change; the numbers beside the rows are always current.": "顺序多久可以改变一次；各行旁的数字始终是最新的。",
- "Keep Hyperliquid listed": "始终列出 Hyperliquid",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "即使 Hyperliquid 不在最大的几家之中，也显示在最后一位。",
  "Flag quiet exchanges": "标记不活跃的交易所",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "用 !5m 标记最近五分钟（已完成）内没有成交的交易所。",
  "Start each line at zero": "每条线从零开始",
@@ -606,5 +603,10 @@
  "Hide every venue": "隐藏所有交易所",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "标签是开关：关闭的交易所保留其订单簿，但不参与地图、订单簿和资金流栏。",
  "Hidden by the Spot / Perp filter": "被现货 / 永续筛选隐藏",
- "Show on the map": "在地图上显示"
+ "Show on the map": "在地图上显示",
+ "Keep listed": "保持列出",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "即使不在最大的交易所之列也保留在列表中的交易所，它们排在最后。",
+ "No exchanges yet.": "暂无交易所。",
+ "Click to take the flow column": "点击截取资金流栏",
+ "Click to take the whole page": "点击截取整个页面"
 }

@@ -332,7 +332,6 @@
  "Click to take the Liquidity Tracker": "Cliquer pour prendre le Liquidity Tracker",
  "Click to take Bar stats": "Cliquer pour prendre les Stats des barres",
  "Click to take the order book": "Cliquer pour prendre le carnet d'ordres",
- "Click to take the toolbar": "Cliquer pour prendre la barre d'outils",
  "Colour {c}": "Couleur {c}",
  "Thin stroke": "Trait fin",
  "Medium stroke": "Trait moyen",
@@ -550,8 +549,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Reclasse les lignes par volume toutes les quelques minutes. Désactivé garde la première disposition jusqu'à ce que vous changiez quelque chose ici.",
  "Re-rank every (minutes)": "Reclasser toutes les (minutes)",
  "How often the order may change; the numbers beside the rows are always current.": "À quelle fréquence l'ordre peut changer ; les chiffres à côté des lignes sont toujours à jour.",
- "Keep Hyperliquid listed": "Garder Hyperliquid dans la liste",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Affiche Hyperliquid même s'il n'est pas parmi les plus grands, à la dernière place.",
  "Flag quiet exchanges": "Signaler les plateformes calmes",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Marque d'un !5m une plateforme qui n'a rien échangé ces cinq dernières minutes complètes.",
  "Start each line at zero": "Partir de zéro pour chaque ligne",
@@ -622,5 +619,10 @@
  "Hide every venue": "Masquer toutes les plateformes",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "Les puces sont des interrupteurs : une plateforme désactivée garde son carnet mais est écartée de la carte, du carnet et de la colonne de flux.",
  "Hidden by the Spot / Perp filter": "Masquée par le filtre Spot / Perp",
- "Show on the map": "Afficher sur la carte"
+ "Show on the map": "Afficher sur la carte",
+ "Keep listed": "Garder dans la liste",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Bourses qui restent dans la liste même si elles ne sont pas parmi les plus grandes. Elles prennent les dernières places.",
+ "No exchanges yet.": "Aucune bourse pour le moment.",
+ "Click to take the flow column": "Cliquer pour capturer la colonne de flux",
+ "Click to take the whole page": "Cliquer pour capturer toute la page"
 }

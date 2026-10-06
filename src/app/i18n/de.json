@@ -330,7 +330,6 @@
  "Click to take the Liquidity Tracker": "Klicken, um den Liquidity Tracker aufzunehmen",
  "Click to take Bar stats": "Klicken, um die Balken-Stats aufzunehmen",
  "Click to take the order book": "Klicken, um das Orderbuch aufzunehmen",
- "Click to take the toolbar": "Klicken, um die Werkzeugleiste aufzunehmen",
  "Colour {c}": "Farbe {c}",
  "Thin stroke": "Dünner Strich",
  "Medium stroke": "Mittlerer Strich",
@@ -546,8 +545,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Ordnet die Zeilen alle paar Minuten nach Volumen neu. Aus behält die erste Anordnung, bis du hier etwas änderst.",
  "Re-rank every (minutes)": "Neu ordnen alle (Minuten)",
  "How often the order may change; the numbers beside the rows are always current.": "Wie oft sich die Reihenfolge ändern darf; die Zahlen neben den Zeilen sind immer aktuell.",
- "Keep Hyperliquid listed": "Hyperliquid immer anzeigen",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Zeigt Hyperliquid auch dann, wenn es nicht zu den größten gehört, auf dem letzten Platz.",
  "Flag quiet exchanges": "Ruhige Börsen markieren",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Markiert eine Börse, die in den letzten fünf abgeschlossenen Minuten nicht gehandelt hat, mit !5m.",
  "Start each line at zero": "Jede Linie bei null beginnen",
@@ -618,5 +615,10 @@
  "Hide every venue": "Jede Börse ausblenden",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "Chips sind Schalter: eine ausgeschaltete Börse behält ihr Orderbuch, wird aber aus Karte, Orderbuch und Flow-Spalte herausgelassen.",
  "Hidden by the Spot / Perp filter": "Durch den Spot-/Perp-Filter ausgeblendet",
- "Show on the map": "Auf der Karte zeigen"
+ "Show on the map": "Auf der Karte zeigen",
+ "Keep listed": "Immer anzeigen",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Börsen, die in der Liste bleiben, auch wenn sie nicht zu den größten gehören. Sie nehmen die letzten Plätze ein.",
+ "No exchanges yet.": "Noch keine Börsen.",
+ "Click to take the flow column": "Klicken, um die Flow-Spalte aufzunehmen",
+ "Click to take the whole page": "Klicken, um die ganze Seite aufzunehmen"
 }

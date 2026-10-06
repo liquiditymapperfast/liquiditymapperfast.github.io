@@ -21,6 +21,7 @@ import { FootprintData, FootprintLod, footprintLayout, paintFootprint, rowCellAt
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
+import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
 import { t } from '../i18n.ts';
 
 /** The warning colour of a possible trap: amber reads on every theme and is neither side's colour. */
@@ -109,6 +110,8 @@ export class HeatPane {
   #panKind: 'map' | 'price' | 'time' | null = null;
   #axisDrag: { view: Bounds; x: number; y: number } | null = null;
   #pinch: { view: Bounds; t: number; p: number } | null = null;
+  /** A mouse drag on the price scale: the view when it began, where the pointer was, and the price it holds still. */
+  #scaleDrag: { y: number; view: Bounds; hold: number } | null = null;
   #fling = 0;
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private kernels: Kernels) {
@@ -887,22 +890,39 @@ export class HeatPane {
   }
   #stopFling(): void { if (this.#fling) { cancelAnimationFrame(this.#fling); this.#fling = 0; } }
 
+  /** Whether (`x`, `y`) is on the price scale, the column at the right edge that carries the prices (the profile column beside it is not the scale). */
+  #onScale(x: number, y: number): boolean { return y >= 0 && y <= this.plotH && x >= this.#w - AXIS_W; }
+
+  /** The price scale is being dragged: `y` pixels below where it began zooms out by exp(0.006 per pixel), holding the price where the drag took hold. */
+  #dragScale(y: number): void {
+    const z = this.#scaleDrag; if (!z) return;
+    const v0 = z.view, ph = this.plotH, mark = this.store.state.mark.price || 1;
+    const factor = limitFactor(Math.exp((y - z.y) * 0.006), v0.p1 - v0.p0, mark * PRICE_SPAN_SHARE.min, mark * PRICE_SPAN_SHARE.max);
+    const anchor = v0.p0 + (1 - z.hold / ph) * (v0.p1 - v0.p0), span = (v0.p1 - v0.p0) * factor, p1 = anchor + z.hold / ph * span;
+    this.view.set({ ...v0, p0: p1 - span, p1 });
+    this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
   #bindInput(): void {
     const el = this.overlay;
     const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     const touched = () => { this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate(); };
+    // The wheel on the chart zooms time and on the price scale zooms price (Shift swaps them). Each holds still what is being watched: the
+    // current price, or the live edge while the map follows the market, so the map swells and shrinks around it instead of sliding.
     el.addEventListener('wheel', e => {
       e.preventDefault();
-      const { x, y } = local(e), factor = Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 240) * 0.0016);
-      if (e.shiftKey) this.view.zoomTime(factor, Math.min(x, this.plotW), this.plotW);
-      else {
-        // While the map follows the market the price axis zooms about the current price, so the map swells and shrinks around it instead of
-        // sliding; Alt (or a map that has been moved by hand) zooms about the pointer.
-        const mark = this.store.state.mark.price, markY = this.view.yOf(mark, this.plotH);
-        const about = this.store.state.followLive && !e.altKey && mark > 0 && markY >= 0 && markY <= this.plotH ? markY : Math.min(y, this.plotH);
-        this.view.zoomPrice(factor, about, this.plotH);
+      const { x, y } = local(e), pw = this.plotW, ph = this.plotH, v = this.view, state = this.store.state;
+      const lines = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? ph : 1;
+      const raw = Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY * lines), 240) * 0.0016);
+      const axis = wheelAxis(regionAt(x, y, pw, ph), e.shiftKey), mark = state.mark.price;
+      if (axis === 'price') {
+        const factor = limitFactor(raw, v.p1 - v.p0, (mark || 1) * PRICE_SPAN_SHARE.min, (mark || 1) * PRICE_SPAN_SHARE.max);
+        v.zoomPrice(factor, holdPixel({ axis, pointer: y, size: ph, alt: e.altKey, follow: state.followLive, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }), ph);
+      } else {
+        const factor = limitFactor(raw, v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);
+        v.zoomTime(factor, holdPixel({ axis, pointer: x, size: pw, alt: e.altKey, follow: state.followLive, mark, markPixel: 0, nowPixel: v.xOf(Date.now(), pw) }), pw);
       }
-      this.#liveMargin = this.view.t1 - Date.now(); this.onView(); this.invalidate();
+      this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
     }, { passive: false });
     el.addEventListener('contextmenu', e => e.preventDefault());
     el.addEventListener('pointerdown', e => {
@@ -910,11 +930,19 @@ export class HeatPane {
       const { x, y } = local(e);
       if (e.button === 2) { this.#zoomDrag = { x, y, view: this.view.clone() }; el.setPointerCapture(e.pointerId); return; }
       if (e.button !== 0) return;
+      if (this.#onScale(x, y)) {
+        // Dragging the price scale zooms it (up zooms in, down zooms out) about the current price, or the price under the pointer when that is off the map.
+        const v = this.view, ph = this.plotH, mark = this.store.state.mark.price;
+        this.#scaleDrag = { y, view: v.clone(), hold: holdPixel({ axis: 'price', pointer: y, size: ph, alt: false, follow: false, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }) };
+        el.setPointerCapture(e.pointerId); el.style.cursor = 'ns-resize'; return;
+      }
       this.#drag = { x, y, shift: e.shiftKey }; el.setPointerCapture(e.pointerId);
     });
     el.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
+      if (this.#scaleDrag) { this.#dragScale(y); return; }
+      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
         const z = this.#zoomDrag, k = 0.006, pw = this.plotW, ph = this.plotH;
@@ -935,8 +963,8 @@ export class HeatPane {
       this.#profileHover = !this.#drag && x > this.plotW && x <= this.plotW + PROFILE_W && y >= 0 && y <= this.plotH ? { y } : null;
       this.invalidate();
     });
-    el.addEventListener('pointerup', e => { if (e.pointerType === 'touch') return; this.#drag = null; this.#zoomDrag = null; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
-    el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#profileHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
+    el.addEventListener('pointerup', e => { if (e.pointerType === 'touch') return; this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; el.style.cursor = this.#onScale(local(e).x, local(e).y) ? 'ns-resize' : ''; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
     el.addEventListener('dblclick', () => this.fit());
     bindTouch(el, new GestureRecognizer(this.#touchHandlers()));
     window.addEventListener('keydown', e => { if ((e.key === 'r' || e.key === 'Home') && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLSelectElement)) this.fit(); });

@@ -64,10 +64,11 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'moving', title: 'Moving around',
     blocks: [
-      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. Whatever is under the pointer stays where it is while the rest zooms around it.' },
+      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.' },
       { t: 'keys', rows: [
-        ['[[Wheel]]', 'Zoom the **price** axis around the pointer'],
-        ['[[Shift]] + [[Wheel]]', 'Zoom the **time** axis around the pointer'],
+        ['[[Wheel]] on the chart', 'Zoom the **time** axis'],
+        ['[[Wheel]] or drag on the price scale', 'Zoom the **price** axis (drag up zooms in, down zooms out)'],
+        ['[[Shift]] + [[Wheel]]', 'Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer'],
         ['Drag', 'Pan both ways. With [[Shift]], pan time only'],
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['Double-click, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
@@ -82,8 +83,8 @@ export const SECTIONS: readonly Section[] = [
         ['**Drag an axis**', 'Along the price or time scale to zoom it'],
         ['**Hold a button**', 'Shows what it does, without pressing it'],
       ] },
-      { t: 'fig', id: 'zoom-price', caption: 'Wheel: the price under the pointer stays put while the scale around it changes.' },
-      { t: 'fig', id: 'zoom-time', caption: 'Shift + Wheel: the same for time. Candles get wider and the footprint appears.' },
+      { t: 'fig', id: 'zoom-price', caption: 'Wheel on the price scale: the current price stays put while the scale around it changes.' },
+      { t: 'fig', id: 'zoom-time', caption: 'Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.' },
       { t: 'fig', id: 'pan', caption: 'Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.' },
       { t: 'p', text: 'The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes, and the grip (⠿) in a pane\'s header to reorder it. Sizes are remembered.' },
     ],
@@ -129,7 +130,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'chart', title: 'Candles and volume',
     blocks: [
-      { t: 'p', text: 'Each candle is one period of price: the thin line is the full range, the body runs from open to close, green when price rose and red when it fell. The buttons at the top (1m to 1d) set the length of a candle, and the footprint, bar stats and open-interest bars follow it. **Volume** bars sit along the bottom, and unusually large ones are drawn stronger. Turn **Candles** off to see just the map and the trades.' },
+      { t: 'p', text: 'Each candle is one period of price: the thin line is the full range, the body runs from open to close, green when price rose and red when it fell. The buttons at the top (1m to 1d) set the length of a candle, and the footprint, bar stats and open-interest bars follow it. **Volume** bars sit along the bottom, and unusually large ones are drawn stronger.' },
     ],
   },
   {
@@ -184,8 +185,8 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'tools', title: 'Screenshot, themes and install',
     blocks: [
-      { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click or tap a pane to take all of it. Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG, and on a phone the share arrow opens the phone\'s own share sheet. Every tool has a key, shown in its tooltip.' },
-      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app with its own window and icon; other browsers offer it in their menu (“Install app”, “Add to Dock”). An iPhone or iPad has no prompt: choose Share, then Add to Home Screen (the button says so).' },
+      { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click or tap a pane to take all of it (the top bar takes the whole page). Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG, and on a phone the share arrow opens the phone\'s own share sheet.' },
+      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app with its own window and icon; other browsers offer it in their menu. An iPhone or iPad has no prompt: choose Share, then Add to Home Screen (the button says so).' },
       { t: 'keys', rows: [
         ['[[S]]', 'Screenshot'],
         ['[[R]], [[Home]]', 'Back to the live edge'],
@@ -204,7 +205,6 @@ export const SECTIONS: readonly Section[] = [
         '**Nothing leaves your machine.** The page talks to the exchanges and to nobody else. Recordings live in your browser; clearing the site\'s data erases them.',
         '**If something looks wrong**: check the connection status at the top right, look for a dashed “unavailable” tag, try Recenter, and if hovering shows nothing, check the Mirror button.',
       ] },
-      { t: 'p', text: 'It is a free personal project, open source, built in free time. **Author** says who made it and where to find them.' },
     ],
   },
 ];

@@ -332,7 +332,6 @@
  "Click to take the Liquidity Tracker": "Clicca per catturare il Liquidity Tracker",
  "Click to take Bar stats": "Clicca per catturare le Statistiche barre",
  "Click to take the order book": "Clicca per catturare il libro degli ordini",
- "Click to take the toolbar": "Clicca per catturare la barra degli strumenti",
  "Colour {c}": "Colore {c}",
  "Thin stroke": "Tratto sottile",
  "Medium stroke": "Tratto medio",
@@ -550,8 +549,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Riordina le righe per volume ogni pochi minuti. Disattivato mantiene la prima disposizione finché non cambi qualcosa qui.",
  "Re-rank every (minutes)": "Riordina ogni (minuti)",
  "How often the order may change; the numbers beside the rows are always current.": "Quanto spesso può cambiare l'ordine; le cifre accanto alle righe sono sempre aggiornate.",
- "Keep Hyperliquid listed": "Tieni Hyperliquid in elenco",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Mostra Hyperliquid anche quando non è tra i più grandi, all'ultimo posto.",
  "Flag quiet exchanges": "Segnala gli exchange fermi",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Contrassegna con !5m un exchange che non ha scambiato negli ultimi cinque minuti completi.",
  "Start each line at zero": "Parti da zero con ogni linea",
@@ -622,5 +619,10 @@
  "Hide every venue": "Nascondi ogni exchange",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "I chip sono interruttori: un exchange disattivato mantiene il suo libro ma resta fuori da mappa, libro e colonna del flusso.",
  "Hidden by the Spot / Perp filter": "Nascosto dal filtro Spot / Perp",
- "Show on the map": "Mostra sulla mappa"
+ "Show on the map": "Mostra sulla mappa",
+ "Keep listed": "Tieni in elenco",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Exchange che restano nell’elenco anche se non sono tra i più grandi. Occupano gli ultimi posti.",
+ "No exchanges yet.": "Ancora nessun exchange.",
+ "Click to take the flow column": "Clic per catturare la colonna del flusso",
+ "Click to take the whole page": "Clic per catturare l’intera pagina"
 }

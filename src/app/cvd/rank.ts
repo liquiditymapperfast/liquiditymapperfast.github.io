@@ -15,24 +15,24 @@ export interface RankInput { family: Family; spot: number; perp: number; quiet: 
 export interface RankOptions {
   /** How many families to show; `null` shows every family that has volume. */
   top: number | null;
-  /** A family that stays in the list whatever its rank (Hyperliquid is the one people ask for). */
-  pin?: string | null;
+  /** Families that stay in the list whatever their rank (the ones a person chose to keep). */
+  pin?: readonly string[];
 }
 
 /**
- * Order families by gross volume, biggest first. Strict about the count: a family with no volume does not fill an empty place, and a
- * pinned family takes the last place when it is not in the top N, so the list never grows past N.
+ * Order families by gross volume, biggest first. Strict about the count: a family with no volume does not fill an empty place, and the
+ * pinned families that are not in the top N take the last places, so the list never grows past N (with more pins than places, the
+ * biggest pinned ones stay). The order is still by volume: a pinned family outside the top N is smaller than every one inside it.
  */
-export function rankFamilies(inputs: readonly RankInput[], { top, pin = null }: RankOptions): Ranked[] {
+export function rankFamilies(inputs: readonly RankInput[], { top, pin = [] }: RankOptions): Ranked[] {
   const withVolume = inputs.filter(i => i.spot + i.perp > 0);
   const total = withVolume.reduce((sum, i) => sum + i.spot + i.perp, 0);
   const all: Ranked[] = withVolume.map(i => ({ family: i.family, spot: i.spot, perp: i.perp, gross: i.spot + i.perp, share: total > 0 ? (i.spot + i.perp) / total : 0, quiet: i.quiet }))
     .sort((a, b) => b.gross - a.gross || (a.family.key < b.family.key ? -1 : 1));
   if (top === null || all.length <= top) return all;
-  const kept = all.slice(0, top);
-  const pinned = pin ? all.find(r => r.family.key === pin) : undefined;
-  if (pinned && !kept.includes(pinned) && top > 0) kept[top - 1] = pinned;
-  return kept;
+  const pins = new Set(pin), keep = new Set<Ranked>(all.filter(r => pins.has(r.family.key)).slice(0, top));
+  for (const r of all) { if (keep.size >= top) break; keep.add(r); }
+  return all.filter(r => keep.has(r));
 }
 
 /**

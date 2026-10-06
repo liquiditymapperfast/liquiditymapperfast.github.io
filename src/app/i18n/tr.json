@@ -330,7 +330,6 @@
  "Click to take the Liquidity Tracker": "Liquidity Tracker'ı almak için tıklayın",
  "Click to take Bar stats": "Çubuk istatistiklerini almak için tıklayın",
  "Click to take the order book": "Emir defterini almak için tıklayın",
- "Click to take the toolbar": "Araç çubuğunu almak için tıklayın",
  "Colour {c}": "Renk {c}",
  "Thin stroke": "İnce çizgi",
  "Medium stroke": "Orta çizgi",
@@ -546,8 +545,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Satırları birkaç dakikada bir hacme göre yeniden sıralar. Kapalıyken ilk düzen, burada bir şey değiştirene kadar korunur.",
  "Re-rank every (minutes)": "Yeniden sıralama aralığı (dakika)",
  "How often the order may change; the numbers beside the rows are always current.": "Sıranın ne sıklıkla değişebileceği; satırların yanındaki rakamlar her zaman günceldir.",
- "Keep Hyperliquid listed": "Hyperliquid listede kalsın",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Hyperliquid en büyükler arasında olmasa bile son sırada gösterilir.",
  "Flag quiet exchanges": "Sessiz borsaları işaretle",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Son beş tamamlanmış dakikada işlem yapmamış bir borsayı !5m ile işaretler.",
  "Start each line at zero": "Her çizgiyi sıfırdan başlat",
@@ -618,5 +615,10 @@
  "Hide every venue": "Her borsayı gizle",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "Çipler anahtardır: kapalı bir borsa defterini korur ama haritadan, defterden ve akış sütunundan çıkarılır.",
  "Hidden by the Spot / Perp filter": "Spot / Perp filtresiyle gizli",
- "Show on the map": "Haritada göster"
+ "Show on the map": "Haritada göster",
+ "Keep listed": "Listede tut",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "En büyükler arasında olmasalar bile listede kalan borsalar. Son sıraları alırlar.",
+ "No exchanges yet.": "Henüz borsa yok.",
+ "Click to take the flow column": "Akış sütununu almak için tıklayın",
+ "Click to take the whole page": "Sayfanın tamamını almak için tıklayın"
 }

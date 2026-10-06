@@ -50,8 +50,10 @@ test('the top N is strict, the rest are counted as hidden, and a pinned exchange
   const { book, ids } = market();
   const two = model(book, ids, { settings: { ...CVD_DEFAULTS, top: 3 } });
   assert.deepEqual(two.rows.map(r => r.key), ['binance', 'bybit', 'coinbase']); assert.equal(two.hidden, 1);
-  const pinned = model(book, ids, { settings: { ...CVD_DEFAULTS, top: 3, pinHyperliquid: true }, ranker: new Ranker() });
+  const pinned = model(book, ids, { settings: { ...CVD_DEFAULTS, top: 3, pinned: ['hyperliquid'] }, ranker: new Ranker() });
   assert.deepEqual(pinned.rows.map(r => r.key), ['binance', 'bybit', 'hyperliquid']);
+  const other = model(book, ids, { settings: { ...CVD_DEFAULTS, top: 3, pinned: ['coinbase', 'hyperliquid'] }, ranker: new Ranker() });
+  assert.deepEqual(other.rows.map(r => r.key), ['binance', 'coinbase', 'hyperliquid'], 'any exchange can be the pin, and several at once');
   assert.equal(model(book, ids, { settings: { ...CVD_DEFAULTS, top: 0 } }).rows.length, 4, 'top 0 shows every exchange that traded');
 });
 
@@ -160,8 +162,12 @@ test('hover text names the exchange, the lanes and what they did, and a divergen
 
 test('settings read from storage field by field and never come out invalid', () => {
   assert.deepEqual(readCvd(undefined), CVD_DEFAULTS); assert.deepEqual(readCvd('nonsense'), CVD_DEFAULTS);
-  const s = readCvd({ span: '4h', rank: '24h', top: 2, heights: 'equal', auto: false, refreshMin: 500, pinHyperliquid: true, quietFlag: 'yes', rebase: false, extra: 1 });
-  assert.deepEqual(s, { span: '4h', rank: '24h', top: 3, heights: 'equal', auto: false, refreshMin: 60, pinHyperliquid: true, quietFlag: true, rebase: false });
+  const s = readCvd({ span: '4h', rank: '24h', top: 2, heights: 'equal', auto: false, refreshMin: 500, pinned: ['kraken', 'kraken', 7, '', 'okx'], quietFlag: 'yes', rebase: false, extra: 1 });
+  assert.deepEqual(s, { span: '4h', rank: '24h', top: 3, heights: 'equal', auto: false, refreshMin: 60, pinned: ['kraken', 'okx'], quietFlag: true, rebase: false });
+  assert.deepEqual(readCvd({ pinHyperliquid: true }).pinned, ['hyperliquid'], 'a save from before the list kept Hyperliquid pinned');
+  assert.deepEqual(readCvd({ pinHyperliquid: true, pinned: ['okx'] }).pinned, ['okx'], 'the list wins over the old switch');
+  assert.deepEqual(readCvd({ pinned: 'okx' }).pinned, [], 'not a list');
+  assert.equal(readCvd({ pinned: Array.from({ length: 80 }, (_, i) => `v${i}`) }).pinned.length, 32, 'bounded');
   assert.equal(readCvd({ top: 0 }).top, 0, 'zero means every exchange');
   assert.equal(readCvd({ span: '7d', rank: '5m', heights: 'tall', top: NaN }).span, 'map');
 });

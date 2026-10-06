@@ -77,7 +77,7 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
     quiet: settings.quietFlag && quiet((a, b) => family.lanes.reduce((sum, lane) => sum + flow.get(lane.id)!.gross(a, b), 0), now),
   }));
   const top = settings.top > 0 ? settings.top : null;
-  const fresh = rankFamilies(inputs, { top, pin: settings.pinHyperliquid ? 'hyperliquid' : null });
+  const fresh = rankFamilies(inputs, { top, pin: settings.pinned });
   const held = ranker.apply(now, fresh);
   const rows: FamilyRow[] = held.map((r, i) => ({
     key: r.family.key, rank: i + 1, share: r.share, gross: r.gross, quiet: r.quiet,

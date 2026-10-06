@@ -324,7 +324,6 @@
  "Click to take the Liquidity Tracker": "클릭하여 Liquidity Tracker 캡처",
  "Click to take Bar stats": "클릭하여 바 통계 캡처",
  "Click to take the order book": "클릭하여 호가창 캡처",
- "Click to take the toolbar": "클릭하여 도구 모음 캡처",
  "Colour {c}": "색 {c}",
  "Thin stroke": "가는 선",
  "Medium stroke": "보통 선",
@@ -534,8 +533,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "몇 분마다 거래량으로 행을 다시 정렬합니다. 끄면 여기서 무언가를 바꿀 때까지 처음 배치를 유지합니다.",
  "Re-rank every (minutes)": "다시 정렬 간격(분)",
  "How often the order may change; the numbers beside the rows are always current.": "순서가 바뀔 수 있는 빈도. 행 옆의 숫자는 항상 최신입니다.",
- "Keep Hyperliquid listed": "Hyperliquid 계속 표시",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Hyperliquid가 상위에 없더라도 마지막 자리에 표시합니다.",
  "Flag quiet exchanges": "조용한 거래소 표시",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "최근 5분(완료된 분) 동안 체결이 없는 거래소에 !5m을 표시합니다.",
  "Start each line at zero": "각 선을 0에서 시작",
@@ -606,5 +603,10 @@
  "Hide every venue": "모든 거래소 숨기기",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "칩은 스위치입니다. 꺼진 거래소는 호가창을 유지하지만 지도, 호가창, 플로우 열에서는 제외됩니다.",
  "Hidden by the Spot / Perp filter": "현물 / 무기한 필터로 숨김",
- "Show on the map": "지도에 표시"
+ "Show on the map": "지도에 표시",
+ "Keep listed": "목록에 유지",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "규모가 큰 순서에 들지 않아도 목록에 남겨 두는 거래소입니다. 마지막 자리를 차지합니다.",
+ "No exchanges yet.": "아직 거래소가 없습니다.",
+ "Click to take the flow column": "클릭하여 플로우 열 캡처",
+ "Click to take the whole page": "클릭하여 페이지 전체 캡처"
 }

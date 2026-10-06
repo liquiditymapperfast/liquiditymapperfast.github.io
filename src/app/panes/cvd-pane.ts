@@ -4,7 +4,9 @@ import { helpButton } from '../help.ts';
 import { clock, price as fmtPrice } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { emptyScopeMessage, kindOf } from '../scope.ts';
-import { flowIds } from '../cvd/ids.ts';
+import { flowIds, pinChoices } from '../cvd/ids.ts';
+import { MAX_PINNED } from '../cvd/settings.ts';
+import { venueLabel } from '../venues.ts';
 import { selectRow, switchRow, numberRow, togglePanel, note, heading } from '../ui.ts';
 import type { Store } from '../store.ts';
 import type { Hub } from '../hub.ts';
@@ -138,13 +140,31 @@ export class CvdPane {
       selectRow(t('Row heights'), t('Golden: each rank is a little over half as tall as the one above it. Volume: as tall as its share of the volume. Equal: all the same. The top row is always the tallest.'), HEIGHT_MODES.map(m => [m, m === 'golden' ? t('Golden ratio') : m === 'volume' ? t('By volume') : t('Equal')] as [string, string]), c.heights, v => this.#set({ heights: v as CvdSettings['heights'] })),
       switchRow(t('Re-rank automatically'), t('Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.'), c.auto, v => { this.#set({ auto: v }); }),
       numberRow(t('Re-rank every (minutes)'), t('How often the order may change; the numbers beside the rows are always current.'), { min: 1, step: 1, max: 60, value: c.refreshMin }, v => this.#set({ refreshMin: v })),
-      switchRow(t('Keep Hyperliquid listed'), t('Show Hyperliquid even when it is not among the biggest, in the last place.'), c.pinHyperliquid, v => this.#set({ pinHyperliquid: v })),
+      this.#pinPicker(c.pinned),
       switchRow(t('Flag quiet exchanges'), t('Mark an exchange that has not traded in the last five completed minutes with !5m.'), c.quietFlag, v => this.#set({ quietFlag: v })),
       switchRow(t('Start each line at zero'), t('Draw every line from zero at the left edge, so rows can be compared. Off draws the running total since the history began.'), c.rebase, v => this.#set({ rebase: v })),
       note(t('Blue is spot and amber is perpetual, whichever way the money moved. Numbers carry the sign.')),
       heading(t('Sound')),
       panelSwitchRow(this.store, 'flow'),
     );
+  }
+
+  /** The exchanges that stay in the list whatever their rank: one toggle each, so a person pins whichever they follow. */
+  #pinPicker(pinned: readonly string[]): HTMLElement {
+    const chips = el('div', { class: 'chips pin-chips' });
+    const choices = pinChoices(this.store.state, this.hub.flow.ids, pinned);
+    for (const key of choices) {
+      const on = pinned.includes(key);
+      const chip = el('button', { type: 'button', class: `chip pin-chip${on ? ' on' : ''}`, textContent: venueLabel(key), onclick: () => {
+        const now = this.store.state.cvd.pinned, next = now.includes(key) ? now.filter(k => k !== key) : [...now, key].slice(0, MAX_PINNED);
+        chip.classList.toggle('on', next.includes(key)); chip.setAttribute('aria-pressed', String(next.includes(key)));
+        this.#set({ pinned: next });
+      } });
+      chip.setAttribute('aria-pressed', String(on)); chips.append(chip);
+    }
+    if (!choices.length) chips.append(el('span', { class: 'desc', textContent: t('No exchanges yet.') }));
+    return el('div', { class: 'field pin-field', tip: t('Exchanges that stay in the list even when they are not among the biggest. They take the last places.') },
+      el('span', { class: 'label' }, el('span', { class: 'name', textContent: t('Keep listed') }), el('span', { class: 'desc', textContent: t('Exchanges that stay in the list even when they are not among the biggest. They take the last places.') })), chips);
   }
 
   // ---- pointer --------------------------------------------------------------------------------------------------------------------
@@ -224,7 +244,7 @@ export class CvdPane {
 
     this.#gutter = Math.max(GUTTER_MIN, Math.min(GUTTER_MAX, Math.round(this.#w * 0.34)));
     const plotW = Math.max(20, this.#w - this.#gutter - PAD), columns = Math.max(24, Math.min(900, Math.floor(plotW)));
-    const key = [this.hub.flow.version, columns, Math.floor(t0 / Math.max(1000, spanMs / columns)), Math.floor(now / 1000), cfg.span, cfg.rank, cfg.top, cfg.heights, cfg.auto, cfg.refreshMin, cfg.pinHyperliquid, cfg.quietFlag, cfg.rebase, s.scope, s.disabledVenues.join(','), ids.length, this.#price.length].join('|');
+    const key = [this.hub.flow.version, columns, Math.floor(t0 / Math.max(1000, spanMs / columns)), Math.floor(now / 1000), cfg.span, cfg.rank, cfg.top, cfg.heights, cfg.auto, cfg.refreshMin, cfg.pinned.join(','), cfg.quietFlag, cfg.rebase, s.scope, s.disabledVenues.join(','), ids.length, this.#price.length].join('|');
     if (key !== this.#modelKey || !this.#model) {
       this.#model = buildModel({ flow: this.hub.flow, ids, kindOf: id => kindOf(s.markets, id), t0, t1, columns, now, settings: cfg, ranker: this.#ranker });
       this.#modelKey = key;

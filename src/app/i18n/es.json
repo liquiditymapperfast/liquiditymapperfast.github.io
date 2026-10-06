@@ -332,7 +332,6 @@
  "Click to take the Liquidity Tracker": "Clic para tomar el Liquidity Tracker",
  "Click to take Bar stats": "Clic para tomar las Estadísticas de barra",
  "Click to take the order book": "Clic para tomar el libro de órdenes",
- "Click to take the toolbar": "Clic para tomar la barra de herramientas",
  "Colour {c}": "Color {c}",
  "Thin stroke": "Trazo fino",
  "Medium stroke": "Trazo medio",
@@ -550,8 +549,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Reordena las filas por volumen cada pocos minutos. Desactivado mantiene la primera disposición hasta que cambies algo aquí.",
  "Re-rank every (minutes)": "Reordenar cada (minutos)",
  "How often the order may change; the numbers beside the rows are always current.": "Cada cuánto puede cambiar el orden; las cifras junto a las filas siempre están al día.",
- "Keep Hyperliquid listed": "Mantener Hyperliquid en la lista",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Muestra Hyperliquid aunque no esté entre las mayores, en el último puesto.",
  "Flag quiet exchanges": "Marcar bolsas inactivas",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Marca con !5m una bolsa que no ha operado en los últimos cinco minutos completos.",
  "Start each line at zero": "Empezar cada línea en cero",
@@ -622,5 +619,10 @@
  "Hide every venue": "Ocultar todas las bolsas",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "Los chips son interruptores: una bolsa desactivada conserva su libro pero queda fuera del mapa, del libro y de la columna de flujo.",
  "Hidden by the Spot / Perp filter": "Oculta por el filtro Spot / Perp",
- "Show on the map": "Mostrar en el mapa"
+ "Show on the map": "Mostrar en el mapa",
+ "Keep listed": "Mantener en la lista",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Bolsas que permanecen en la lista aunque no estén entre las mayores. Ocupan los últimos puestos.",
+ "No exchanges yet.": "Aún no hay bolsas.",
+ "Click to take the flow column": "Clic para capturar la columna de flujo",
+ "Click to take the whole page": "Clic para capturar toda la página"
 }

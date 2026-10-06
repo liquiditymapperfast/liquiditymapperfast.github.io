@@ -272,6 +272,8 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .panel .switch input:focus-visible + i { outline: 2px solid var(--ui); outline-offset: 2px; }
 .panel .seg button { padding: 3px 10px; }
 .panel .seg button.on { background: var(--ui); border-color: var(--ui); color: #fff; }
+.panel .pin-field { grid-template-columns: minmax(0, 1fr); row-gap: 6px; align-items: start; }
+.panel .pin-chip.on { background: var(--ui); border-color: var(--ui); color: #fff; }
 button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
 .panel .sortable { display: grid; gap: 3px; margin-top: 8px; }
 .panel .srow { display: grid; grid-template-columns: 18px 16px minmax(0, 1fr) 26px; align-items: center; gap: 6px; padding: 4px 6px 4px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); transition: transform .14s ease, box-shadow .14s ease, border-color .14s; }

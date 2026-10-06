@@ -18,18 +18,27 @@ export interface CvdSettings {
   heights: HeightMode;
   /** Re-rank every `refreshMin` minutes (off: the first layout stays). */
   auto: boolean; refreshMin: number;
-  /** Keep Hyperliquid in the list even when it is not among the biggest. */
-  pinHyperliquid: boolean;
+  /** Exchanges (family keys such as `hyperliquid`, `binance`) kept in the list even when they are not among the biggest; they take the last places. */
+  pinned: string[];
   /** Flag an exchange that has not traded in the last five completed minutes. */
   quietFlag: boolean;
   /** Draw each line from zero at the left edge (off: the running total since the history began). */
   rebase: boolean;
 }
 
-export const CVD_DEFAULTS: Readonly<CvdSettings> = { span: 'map', rank: '1h', top: 8, heights: 'golden', auto: true, refreshMin: 1, pinHyperliquid: false, quietFlag: true, rebase: true };
+export const CVD_DEFAULTS: Readonly<CvdSettings> = { span: 'map', rank: '1h', top: 8, heights: 'golden', auto: true, refreshMin: 1, pinned: [], quietFlag: true, rebase: true };
+
+/** The most exchanges that can be pinned (there are about twenty venues; this is a bound on what a damaged save can hold). */
+export const MAX_PINNED = 32;
 
 const oneOf = <T extends string>(list: readonly T[], value: unknown, fallback: T): T => list.includes(value as T) ? value as T : fallback;
 const bounded = (value: unknown, min: number, max: number, fallback: number): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
+
+/** The pinned list: strings only, no repeats, no more than `MAX_PINNED`. A save from before the list existed had one switch, for Hyperliquid. */
+function readPinned(s: Record<string, unknown>): string[] {
+  if (Array.isArray(s.pinned)) return [...new Set(s.pinned.filter((k): k is string => typeof k === 'string' && k.length > 0 && k.length <= 40))].slice(0, MAX_PINNED);
+  return s.pinHyperliquid === true ? ['hyperliquid'] : [];
+}
 
 /** Settings from storage, field by field: whatever is missing or not valid falls back to the default. */
 export function readCvd(saved: unknown): CvdSettings {
@@ -39,7 +48,7 @@ export function readCvd(saved: unknown): CvdSettings {
     span: oneOf(CVD_SPANS, s.span, d.span), rank: oneOf(RANK_WINDOWS, s.rank, d.rank), top: top > 0 && top < 3 ? 3 : top,
     heights: oneOf(HEIGHT_MODES, s.heights, d.heights),
     auto: typeof s.auto === 'boolean' ? s.auto : d.auto, refreshMin: bounded(s.refreshMin, 1, 60, d.refreshMin),
-    pinHyperliquid: typeof s.pinHyperliquid === 'boolean' ? s.pinHyperliquid : d.pinHyperliquid,
+    pinned: readPinned(s),
     quietFlag: typeof s.quietFlag === 'boolean' ? s.quietFlag : d.quietFlag,
     rebase: typeof s.rebase === 'boolean' ? s.rebase : d.rebase,
   };

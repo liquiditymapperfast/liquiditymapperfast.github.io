@@ -324,7 +324,6 @@
  "Click to take the Liquidity Tracker": "クリックして Liquidity Tracker を撮影",
  "Click to take Bar stats": "クリックしてバー統計を撮影",
  "Click to take the order book": "クリックしてオーダーブックを撮影",
- "Click to take the toolbar": "クリックしてツールバーを撮影",
  "Colour {c}": "色 {c}",
  "Thin stroke": "細い線",
  "Medium stroke": "中くらいの線",
@@ -534,8 +533,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "数分ごとに出来高で行を並べ替えます。オフにすると、ここで何かを変更するまで最初の並びを保ちます。",
  "Re-rank every (minutes)": "並べ替えの間隔（分）",
  "How often the order may change; the numbers beside the rows are always current.": "順位が変わりうる頻度。行の横の数値は常に最新です。",
- "Keep Hyperliquid listed": "Hyperliquid を常に表示",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Hyperliquid が上位でなくても、最後の位置に表示します。",
  "Flag quiet exchanges": "静かな取引所に印をつける",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "直近5分間（確定済み）に約定のない取引所に !5m を付けます。",
  "Start each line at zero": "各線をゼロから始める",
@@ -606,5 +603,10 @@
  "Hide every venue": "すべての取引所を非表示",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "チップはスイッチです：オフの取引所は板を保持しますが、マップ、板、フロー列からは除外されます。",
  "Hidden by the Spot / Perp filter": "現物 / 無期限フィルターで非表示",
- "Show on the map": "マップに表示"
+ "Show on the map": "マップに表示",
+ "Keep listed": "常に表示",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "大きい順の上位に入っていなくても一覧に残す取引所。最後の位置に並びます。",
+ "No exchanges yet.": "まだ取引所がありません。",
+ "Click to take the flow column": "クリックでフロー列を撮影",
+ "Click to take the whole page": "クリックでページ全体を撮影"
 }

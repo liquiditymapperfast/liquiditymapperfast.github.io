@@ -35,9 +35,19 @@ test('ranking is by gross volume, strict about the count, and leaves out a famil
 
 test('a pinned family takes the last place when it is outside the top N, and the list stays N long', () => {
   const inputs = [input('a', 50, 0), input('b', 40, 0), input('c', 30, 0), input('hyperliquid', 1, 0)];
-  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: 'hyperliquid' }).map(r => r.family.key), ['a', 'b', 'hyperliquid']);
-  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: 'a' }).map(r => r.family.key), ['a', 'b', 'c'], 'already in');
-  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: 'nobody' }).map(r => r.family.key), ['a', 'b', 'c']);
+  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: ['hyperliquid'] }).map(r => r.family.key), ['a', 'b', 'hyperliquid']);
+  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: ['a'] }).map(r => r.family.key), ['a', 'b', 'c'], 'already in');
+  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: ['nobody'] }).map(r => r.family.key), ['a', 'b', 'c']);
+  assert.deepEqual(rankFamilies(inputs, { top: 3 }).map(r => r.family.key), ['a', 'b', 'c'], 'no pins');
+});
+
+test('any exchanges can be pinned: they displace the smallest of the rest, the order stays by volume, and the list stays N long', () => {
+  const inputs = [input('a', 50, 0), input('b', 40, 0), input('c', 30, 0), input('d', 20, 0), input('e', 10, 0), input('f', 1, 0)];
+  assert.deepEqual(rankFamilies(inputs, { top: 4, pin: ['e', 'f'] }).map(r => r.family.key), ['a', 'b', 'e', 'f'], 'two pins take the last two places');
+  assert.deepEqual(rankFamilies(inputs, { top: 4, pin: ['f', 'a'] }).map(r => r.family.key), ['a', 'b', 'c', 'f'], 'a pin already in the top keeps its place and costs none');
+  assert.deepEqual(rankFamilies(inputs, { top: 3, pin: ['f', 'e', 'd', 'c'] }).map(r => r.family.key), ['c', 'd', 'e'], 'more pins than places: the biggest pinned ones stay');
+  assert.deepEqual(rankFamilies(inputs, { top: null, pin: ['f'] }).length, 6, 'with no limit everything shows');
+  assert.deepEqual(rankFamilies([input('a', 5, 0), input('z', 0, 0)], { top: 3, pin: ['z'] }).map(r => r.family.key), ['a'], 'a pinned exchange with no volume has nothing to show');
 });
 
 test('the ranker holds the order for the refresh interval but shows current numbers, and drops a family that vanished', () => {

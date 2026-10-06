@@ -332,7 +332,6 @@
  "Click to take the Liquidity Tracker": "Clique para capturar o Liquidity Tracker",
  "Click to take Bar stats": "Clique para capturar as Estatísticas de barra",
  "Click to take the order book": "Clique para capturar o livro de ofertas",
- "Click to take the toolbar": "Clique para capturar a barra de ferramentas",
  "Colour {c}": "Cor {c}",
  "Thin stroke": "Traço fino",
  "Medium stroke": "Traço médio",
@@ -550,8 +549,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Reordena as linhas por volume a cada poucos minutos. Desligado mantém o primeiro arranjo até você mudar algo aqui.",
  "Re-rank every (minutes)": "Reordenar a cada (minutos)",
  "How often the order may change; the numbers beside the rows are always current.": "Com que frequência a ordem pode mudar; os números ao lado das linhas estão sempre atualizados.",
- "Keep Hyperliquid listed": "Manter a Hyperliquid na lista",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Mostra a Hyperliquid mesmo quando não está entre as maiores, na última posição.",
  "Flag quiet exchanges": "Sinalizar exchanges paradas",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Marca com !5m uma exchange que não negociou nos últimos cinco minutos completos.",
  "Start each line at zero": "Começar cada linha em zero",
@@ -622,5 +619,10 @@
  "Hide every venue": "Ocultar todas as exchanges",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "Os chips são interruptores: uma exchange desativada mantém seu livro mas fica fora do mapa, do livro e da coluna de fluxo.",
  "Hidden by the Spot / Perp filter": "Oculta pelo filtro Spot / Perp",
- "Show on the map": "Mostrar no mapa"
+ "Show on the map": "Mostrar no mapa",
+ "Keep listed": "Manter na lista",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Corretoras que permanecem na lista mesmo que não estejam entre as maiores. Ocupam os últimos lugares.",
+ "No exchanges yet.": "Ainda não há corretoras.",
+ "Click to take the flow column": "Clique para capturar a coluna de fluxo",
+ "Click to take the whole page": "Clique para capturar a página inteira"
 }

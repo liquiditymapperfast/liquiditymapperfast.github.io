@@ -334,7 +334,6 @@
  "Click to take the Liquidity Tracker": "Нажмите, чтобы взять Liquidity Tracker",
  "Click to take Bar stats": "Нажмите, чтобы взять «Статистику баров»",
  "Click to take the order book": "Нажмите, чтобы взять стакан заявок",
- "Click to take the toolbar": "Нажмите, чтобы взять панель инструментов",
  "Colour {c}": "Цвет {c}",
  "Thin stroke": "Тонкая линия",
  "Medium stroke": "Средняя линия",
@@ -554,8 +553,6 @@
  "Re-order the rows by volume every few minutes. Off keeps the first layout until you change something here.": "Пересортировывает строки по объёму раз в несколько минут. Выключено — первая раскладка сохраняется, пока вы что-то не измените здесь.",
  "Re-rank every (minutes)": "Пересортировывать каждые (минуты)",
  "How often the order may change; the numbers beside the rows are always current.": "Как часто может меняться порядок; числа рядом со строками всегда актуальны.",
- "Keep Hyperliquid listed": "Оставлять Hyperliquid в списке",
- "Show Hyperliquid even when it is not among the biggest, in the last place.": "Показывать Hyperliquid, даже если он не среди крупнейших, на последнем месте.",
  "Flag quiet exchanges": "Отмечать тихие биржи",
  "Mark an exchange that has not traded in the last five completed minutes with !5m.": "Помечать !5m биржу, на которой не было сделок за последние пять завершённых минут.",
  "Start each line at zero": "Начинать каждую линию с нуля",
@@ -626,5 +623,10 @@
  "Hide every venue": "Скрыть все биржи",
  "Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.": "Чипы — переключатели: выключенная биржа сохраняет свой стакан, но исключается из карты, стакана и колонки потока.",
  "Hidden by the Spot / Perp filter": "Скрыта фильтром Спот / Перп",
- "Show on the map": "Показать на карте"
+ "Show on the map": "Показать на карте",
+ "Keep listed": "Оставлять в списке",
+ "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Биржи, которые остаются в списке, даже если они не среди крупнейших. Они занимают последние места.",
+ "No exchanges yet.": "Бирж пока нет.",
+ "Click to take the flow column": "Нажмите, чтобы снять колонку потока",
+ "Click to take the whole page": "Нажмите, чтобы снять всю страницу"
 }
