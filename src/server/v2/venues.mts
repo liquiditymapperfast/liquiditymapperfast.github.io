@@ -54,6 +54,7 @@ export class ExtraVenues {
     return [...this.#all.values()].map(c => ({ id: c.id, name: c.name, instrumentId: c.instrumentId, symbol: c.symbol, quote: c.quote, marketType: c.marketType, enabled: this.#enabled.has(c.id), default: this.#defaults.has(c.id), ...c.status() }));
   }
   get enabledCount(): number { return this.#enabled.size; }
+  get enabledIds(): string[] { return [...this.#enabled]; }
 
   /** Start newly enabled connectors, stop the rest, and remember the choice. Unknown ids are ignored. */
   setEnabled(ids: readonly string[], persist = true): void {

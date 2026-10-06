@@ -10,6 +10,7 @@ import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
+import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
@@ -55,16 +56,19 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   // The connector venues carry their own trades: the flow column, the footprint and the large-trade bubbles count them like the feed manager's.
-  extra.onTrade(trade => {
+  const takeTrade = (trade: import('../../shared/connector.ts').TradeEvent): void => {
     const row = [{ instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t }];
     footprint.ingest(row); prints.ingest(row); flow.ingest(row);
-  });
+  };
+  extra.onTrade(takeTrade);
+  // Exchanges the feed manager has depth for but no trade feed: their trades come from the browser engine's connectors (see flow-sources.mts).
+  const flowSources = new FlowSources(takeTrade);
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   const valued = new Map<string, { key: string; book: ValuedBook | null; at: number }>();
   /** Instruments whose book is crossed (a feed fault), so they are valued as nothing rather than drawn as false walls. */
   const degraded = new Map<string, string>();
   let levelsDirty = true;
-  let lastSample = 0, lastPrune = 0, lastFlush = 0, lastBeat = 0, lastFlowPush = 0;
+  let lastSample = 0, lastPrune = 0, lastFlush = 0, lastBeat = 0, lastFlowPush = 0, lastSources = 0;
   let lastTick = '', lastLayers = '';
 
   const marketOf = (id: string) => app.state.markets?.find(m => (m.instrumentId ?? m.id) === id) ?? null;
@@ -115,6 +119,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     footprint.ingest(app.state.trades ?? []);
     prints.ingest(app.state.trades ?? []);
     flow.ingest(app.state.trades ?? []);
+    if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}).map(id => id.split(':')[0]!), ...extra.enabledIds])); }
     if (now - lastFlush >= 30_000) { lastFlush = now; footprint.flush(); prints.flush(); flow.flush(); }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
     const fresh = prints.takeFresh();
@@ -235,7 +240,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     close() {
       clearInterval(loop); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
-      recorder.flush(); store?.close(); footprint.close(); prints.close(); flow.close(); extra.close();
+      recorder.flush(); store?.close(); footprint.close(); prints.close(); flow.close(); flowSources.close(); extra.close();
     },
   };
 }
