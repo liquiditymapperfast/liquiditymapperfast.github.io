@@ -49,10 +49,11 @@ async function init(selected: string[] | null, persist: boolean): Promise<void> 
     void navigator.storage?.persist?.().catch(() => false);
     claimRecorder();
   }
-  const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null });
+  const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null });
   next.onLevels = (books, asOf) => post({ type: 'levels', frame: frameOf(books, asOf) });
   next.onTick = tick => post({ type: 'tick', tick });
   next.onPrints = (items: Print[]) => post({ type: 'prints', items });
+  next.onFlow = items => post({ type: 'flow', items });
   next.onStatus = venues => post({ type: 'status', venues });
   next.select(selected ?? BROWSER_VENUES.filter(v => v.recommended).map(v => v.id));
   next.start();
@@ -69,6 +70,10 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
     }
     case 'footprint': return { result: run.footprint(call.inst, call.tfMs, call.from, call.to, call.rowStep), transfer: [] };
     case 'prints': return { result: run.prints(call.from, call.to), transfer: [] };
+    case 'flow': {
+      const frame = run.flow(call.ids, call.from, call.to);
+      return { result: frame, transfer: frame.instruments.flatMap(series => [series.buy.buffer as ArrayBuffer, series.sell.buffer as ArrayBuffer]) };
+    }
     case 'candles': return { result: await run.candles(call.inst, call.tfMs, call.from, call.to), transfer: [] };
     case 'oi': return { result: await run.oi(call.inst, call.tfMs, call.from, call.to), transfer: [] };
   }

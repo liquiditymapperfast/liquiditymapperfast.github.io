@@ -9,6 +9,7 @@ import { DepthRecorder, COLUMN_MS, SAMPLE_MS, STALE_MS } from './recorder.mts';
 import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
+import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
@@ -17,12 +18,14 @@ import { TIMEFRAMES, aggregateCandles, aggregateOi, withLiveOi, type CandleRow, 
 type App = ReturnType<typeof createLocalServer>;
 export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number }
 export interface V2Handle {
-  recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
+  recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; flow: FlowRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
   /** Venues (the part of an instrument id before the colon) whose book is being left off the map, with the reason. */
   degradedVenues(): Map<string, string>;
 }
 
 const MAX_COLUMN_SPAN_MS = 8 * 24 * 3_600_000;
+/** The most flow history one request may ask for: what the recorder keeps in memory, and a few thousand seconds per instrument cost 8 bytes each. */
+const MAX_FLOW_SPAN_MS = 36 * 3_600_000, MAX_FLOW_INSTRUMENTS = 40;
 /** A client whose unsent backlog passes this is dropped rather than buffered without bound; levels frames are skipped past a lower mark. */
 const MAX_CLIENT_BACKLOG_BYTES = 16_000_000, LEVELS_SKIP_BYTES = 4_000_000;
 /** The live socket says something at least this often, so a client can tell a quiet server from a dead connection. */
@@ -50,12 +53,13 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const extra = new ExtraVenues(persist ? path.join(dataDir, 'v2-venues.json') : null, undefined, !persist || defaults === 'configured' ? false : defaults === 'all' ? true : RECOMMENDED_EXTRA_VENUES);
   const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   const valued = new Map<string, { key: string; book: ValuedBook | null; at: number }>();
   /** Instruments whose book is crossed (a feed fault), so they are valued as nothing rather than drawn as false walls. */
   const degraded = new Map<string, string>();
   let levelsDirty = true;
-  let lastSample = 0, lastPrune = 0, lastFlush = 0, lastBeat = 0;
+  let lastSample = 0, lastPrune = 0, lastFlush = 0, lastBeat = 0, lastFlowPush = 0;
   let lastTick = '', lastLayers = '';
 
   const marketOf = (id: string) => app.state.markets?.find(m => (m.instrumentId ?? m.id) === id) ?? null;
@@ -105,12 +109,17 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (now - lastSample >= SAMPLE_MS) { lastSample = now; recorder.sample(liveBooks(now), now); }
     footprint.ingest(app.state.trades ?? []);
     prints.ingest(app.state.trades ?? []);
-    if (now - lastFlush >= 30_000) { lastFlush = now; footprint.flush(); prints.flush(); }
+    flow.ingest(app.state.trades ?? []);
+    if (now - lastFlush >= 30_000) { lastFlush = now; footprint.flush(); prints.flush(); flow.flush(); }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
     const fresh = prints.takeFresh();
+    // Taken whether or not anyone listens, so the changed seconds do not pile up while nobody is connected.
+    const flowItems = now - lastFlowPush >= FLOW_SEC ? flow.take() : [];
+    if (flowItems.length || now - lastFlowPush >= FLOW_SEC) lastFlowPush = now;
     if (wss.clients.size === 0) return;
     if (now - lastBeat >= heartbeatMs) { lastBeat = now; broadcast(JSON.stringify({ t: 'hb', now })); }
     if (fresh.length) broadcast(JSON.stringify({ t: 'prints', items: fresh.map(toWire) }));
+    if (flowItems.length) broadcast(JSON.stringify({ t: 'flow', items: flowItems }));
     if (levelsDirty) {
       levelsDirty = false;
       broadcast(encodeLevels(liveBooks(now), now), { binary: true }, LEVELS_SKIP_BYTES);
@@ -174,6 +183,11 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     const min = Math.max(PRINT_FLOOR_USD, num(url.searchParams.get('min'), PRINT_FLOOR_USD));
     sendJson(res, { floor: PRINT_FLOOR_USD, prints: prints.query(from, to, min, Math.min(5_000, num(url.searchParams.get('limit'), 5_000))).map(toWire) });
   };
+  const flowRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean).slice(0, MAX_FLOW_INSTRUMENTS);
+    const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_FLOW_SPAN_MS);
+    sendBinary(res, Buffer.from(encodeFlowFrame(flow.frame(ids, from, to))));
+  };
   const venuesRoute = (res: ServerResponse) => sendJson(res, { venues: extra.list() });
   const venuesSet = (req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = []; let size = 0;
@@ -195,7 +209,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
 
   return {
-    recorder, footprint, prints, extra,
+    recorder, footprint, prints, flow, extra,
     degradedVenues() { return new Map([...degraded].map(([id, reason]) => [id.split(':')[0]!, reason])); },
     handle(req, res) {
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -208,6 +222,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
         case '/api/v2/oi': oi(url, res); return true;
         case '/api/v2/footprint': footprintRoute(url, res); return true;
         case '/api/v2/prints': printsRoute(url, res); return true;
+        case '/api/v2/flow': flowRoute(url, res); return true;
         case '/api/v2/venues': venuesRoute(res); return true;
         default: return false;
       }
@@ -215,7 +230,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     close() {
       clearInterval(loop); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
-      recorder.flush(); store?.close(); footprint.close(); prints.close(); extra.close();
+      recorder.flush(); store?.close(); footprint.close(); prints.close(); flow.close(); extra.close();
     },
   };
 }

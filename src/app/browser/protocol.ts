@@ -1,6 +1,7 @@
 import type { EngineBootstrap, EngineTick, FootprintAnswer, VenueStatus } from '../../shared/engine.ts';
 import type { Candle, OiBar } from '../../shared/series.ts';
 import type { Print } from '../../shared/prints.ts';
+import type { FlowFrame, FlowUpdate } from '../../shared/flow.ts';
 import type { ColumnsFrame } from '../../shared/columns.ts';
 import type { LevelsFrame } from '../wire.ts';
 
@@ -10,11 +11,12 @@ export type RpcCall =
   | { method: 'columns'; ids: string[]; from: number; to: number; stepMs: number }
   | { method: 'footprint'; inst: string; tfMs: number; from: number; to: number; rowStep: number }
   | { method: 'prints'; from: number; to: number }
+  | { method: 'flow'; ids: string[]; from: number; to: number }
   | { method: 'candles'; inst: string; tfMs: number; from: number; to: number }
   | { method: 'oi'; inst: string; tfMs: number; from: number; to: number };
 
 export interface RpcResult {
-  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; candles: Candle[]; oi: OiBar[];
+  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; flow: FlowFrame; candles: Candle[]; oi: OiBar[];
 }
 
 export type FeedsIn =
@@ -30,6 +32,7 @@ export type FeedsOut =
   | { type: 'levels'; frame: LevelsFrame }
   | { type: 'tick'; tick: EngineTick }
   | { type: 'prints'; items: Print[] }
+  | { type: 'flow'; items: FlowUpdate[] }
   | { type: 'status'; venues: VenueStatus[] }
   /** Whether this tab is the one writing recordings (another tab may hold that role). */
   | { type: 'recording'; recording: boolean }

@@ -1,4 +1,5 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
+import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
 import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
@@ -27,6 +28,11 @@ export async function getPrints(from: number, to: number): Promise<Print[]> {
 export async function getOi(inst: string, tf: string, from: number, to: number): Promise<OiBar[]> {
   const body = await (await request(`/api/v2/oi?inst=${encodeURIComponent(inst)}&tf=${tf}&from=${from}&to=${to}`)).json() as { bars: OiBar[] };
   return body.bars;
+}
+/** Taker flow per second for the instruments, as the server records it. */
+export async function getFlow(ids: string[], from: number, to: number): Promise<FlowFrame> {
+  if (!ids.length) return { from, to, instruments: [] };
+  return decodeFlowFrame(await (await request(`/api/v2/flow?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}`)).arrayBuffer());
 }
 /** Recorded columns for any number of instruments: the server serves a bounded number per request, so longer lists are split and merged. */
 export async function getColumns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
@@ -65,6 +71,7 @@ export function connectLive(handlers: LiveHandlers, { silenceMs = 20_000, pollMs
           if (message.t === 'hb') beats = true;
           else if (message.t === 'tick') handlers.onTick(message as TickMessage); else if (message.t === 'layers') handlers.onLayers(message as LayersMessage);
           else if (message.t === 'prints' && Array.isArray((message as PrintsMessage).items)) handlers.onPrints((message as PrintsMessage).items);
+          else if (message.t === 'flow' && Array.isArray((message as { items?: unknown }).items)) handlers.onFlow?.((message as unknown as { items: FlowUpdate[] }).items);
         } else handlers.onLevels(decodeLevels(event.data as ArrayBuffer));
       } catch (error) { console.error('live frame rejected', error); }
     };

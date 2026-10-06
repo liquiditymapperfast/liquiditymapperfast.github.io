@@ -274,3 +274,26 @@ test('an empty first pass does not delay the first sample, and a live venue not 
   engine.step();
   assert.equal(engine.recorder.coverage()['binance:BTCUSDT']?.first, minute, 'the very next pass recorded it');
 });
+
+test('taker flow is recorded per second, announced about once a second, and answered as a frame', () => {
+  let now = Date.now();
+  const { engine, fakes } = setup(['binance'], { now: () => now });
+  const announced: [string, number, number, number][][] = [];
+  engine.onFlow = items => announced.push(items);
+  engine.select(['binance']);
+  const fake = fakes.get('binance')!; fake.book(99, 101);
+  fake.trade({ tradeId: 'a', side: 'buy', price: 100, amount: 10, t: now });
+  fake.trade({ tradeId: 'b', side: 'sell', price: 100, amount: 4, t: now });
+  fake.trade({ tradeId: 'a', side: 'buy', price: 100, amount: 10, t: now });          // a replay
+  engine.step(now);
+  assert.equal(announced.length, 1);
+  const second = Math.floor(now / 1000) * 1000;
+  assert.deepEqual(announced[0], [[fake.instrumentId, second, 1_000, 400]], 'one entry: the totals of the second, the replay not counted');
+  engine.step(now + 300);
+  assert.equal(announced.length, 1, 'nothing changed and a second has not passed');
+  now += 1_500; fake.trade({ tradeId: 'c', side: 'buy', price: 100, amount: 1, t: now }); engine.step(now);
+  assert.equal(announced.length, 2);
+  const frame = engine.flow([fake.instrumentId], now - 60_000, now + 1_000);
+  const series = frame.instruments[0]!;
+  assert.equal(series.buy.reduce((a, b) => a + b, 0), 1_100); assert.equal(series.sell.reduce((a, b) => a + b, 0), 400);
+});

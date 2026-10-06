@@ -1,4 +1,5 @@
 import type { Print } from './prints.ts';
+import type { FlowFrame, FlowUpdate } from '../shared/flow.ts';
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { Bar } from './panes/footprint.ts';
 import type { CandleRow, LayerLevel, Market, OiBar } from './store.ts';
@@ -23,6 +24,8 @@ export interface LiveHandlers {
   onLevels(frame: LevelsFrame): void; onTick(tick: TickMessage): void; onLayers(message: LayersMessage): void;
   /** New large trades, as wire rows (check each with `fromWire`). */
   onPrints(items: unknown[]): void;
+  /** Taker flow per second for the seconds that changed (about once a second): each replaces what the page had for that second. */
+  onFlow?(items: FlowUpdate[]): void;
 }
 
 /** Executions per candle for a window, as the footprint draws them. */
@@ -66,6 +69,8 @@ export interface DataSource {
   /** Large trades in [from, to), oldest first. */
   prints(from: number, to: number): Promise<Print[]>;
   columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame>;
+  /** Taker buys and sells per second for each instrument over [from, to), from its first recorded minute in that range. */
+  flow(ids: string[], from: number, to: number): Promise<FlowFrame>;
   footprint(inst: string, tf: string, from: number, to: number, rowStep: number): Promise<FootprintResponse>;
   readonly venues: VenueControl;
 }

@@ -2,6 +2,7 @@ import type { ValuedBook } from './levels.ts';
 import { COLUMN_MS, DepthRecorder, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
 import { FootprintRecorder, type FootprintStore } from './footprint.ts';
 import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
+import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
 import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, type Fetcher } from './history.ts';
 import { BROWSER_VENUES, type BrowserVenue } from './venues.ts';
@@ -55,7 +56,7 @@ export interface EngineOptions {
   get?: Fetcher;
   /** Whether a venue's reachability request was answered; the engine only uses it to explain a venue that never comes up. */
   ping?: (url: string, init?: { method: string; headers: Record<string, string>; body: string }) => Promise<boolean>;
-  columns?: ColumnStore | null; footprint?: FootprintStore | null; prints?: PrintStore | null;
+  columns?: ColumnStore | null; footprint?: FootprintStore | null; prints?: PrintStore | null; flow?: FlowStore | null;
   retentionMs?: number;
 }
 
@@ -104,11 +105,15 @@ export class Engine {
   readonly recorder: DepthRecorder;
   readonly footprints: FootprintRecorder;
   readonly printStream: PrintStream;
+  /** Taker buys and sells per instrument per second (the CVD column). */
+  readonly flows: FlowRecorder;
   /** Called with the books that changed since the last call (the full current set), about four times a second at most. */
   onLevels: (books: ValuedBook[], asOf: number) => void = () => {};
   onTick: (tick: EngineTick) => void = () => {};
   /** Large trades that are new. */
   onPrints: (fresh: Print[]) => void = () => {};
+  /** The seconds whose taker flow changed, with their totals so far; about once a second. */
+  onFlow: (items: FlowUpdate[]) => void = () => {};
   /** The picker's rows, whenever any of them changed. */
   onStatus: (venues: VenueStatus[]) => void = () => {};
 
@@ -123,15 +128,16 @@ export class Engine {
   readonly #oiLive = new Map<string, OiRow[]>();
   readonly #oiAsked = new Map<string, number>();
   readonly #oiCache = new Map<string, { at: number; rows: Promise<OiRow[]> }>();
-  #lastSample = 0; #lastFlush = 0; #lastPrune = 0;
+  #lastSample = 0; #lastFlush = 0; #lastPrune = 0; #lastFlowPush = 0;
   #lastTick = ''; #lastStatus = '';
   #timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor({ venues = BROWSER_VENUES, now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
+  constructor({ venues = BROWSER_VENUES, now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
     this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping;
     this.recorder = new DepthRecorder({ store: columns, now, retentionMs });
     this.footprints = new FootprintRecorder(footprint, now, retentionMs);
     this.printStream = new PrintStream(prints, now, retentionMs);
+    this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
   }
 
   // ---- Venues ---------------------------------------------------------------------------------------------------------------------
@@ -183,7 +189,8 @@ export class Engine {
     const books = this.#value(now);
     // A pass with no book yet must not use up the sample interval, or the first real sample waits five seconds.
     if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); }
-    if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); }
+    if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.flows.flush(); }
+    if (now - this.#lastFlowPush >= FLOW_SEC) { this.#lastFlowPush = now; const items = this.flows.take(); if (items.length) this.onFlow(items); }
     if (now - this.#lastPrune >= PRUNE_MS) { this.#lastPrune = now; this.recorder.prune(now); }
     this.#pollOi(now);
     this.#probe(now);
@@ -199,7 +206,7 @@ export class Engine {
   }
 
   /** Write everything not yet saved, including the minute still open (the page is going away). */
-  flush(): void { this.recorder.flush(); this.footprints.flush(); this.printStream.flush(); }
+  flush(): void { this.recorder.flush(); this.footprints.flush(); this.printStream.flush(); this.flows.flush(); }
 
   #value(now: number): ValuedBook[] {
     const out: ValuedBook[] = [];
@@ -221,6 +228,7 @@ export class Engine {
   readonly #trade = (trade: TradeEvent): void => {
     const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
     this.printStream.ingest([row]);
+    this.flows.ingest([row]);
     // A trade seen before (a feed that replays after a reconnect) is in the footprint already, and must not count twice in the candle either.
     if (this.footprints.ingest([row]) === 0) return;
     const now = this.#now();
@@ -274,6 +282,9 @@ export class Engine {
   }
 
   footprint(instrumentId: string, tfMs: number, from: number, to: number, rowStep: number): FootprintAnswer { return this.footprints.query(instrumentId, from, to, tfMs, rowStep); }
+
+  /** Taker flow per second for each instrument over [from, to), from its first recorded minute in that range. */
+  flow(ids: readonly string[], from: number, to: number): FlowFrame { return this.flows.frame(ids, from, to); }
 
   prints(from: number, to: number, minUsd = PRINT_FLOOR_USD, limit = 5_000): Print[] { return this.printStream.query(from, to, Math.max(PRINT_FLOOR_USD, minUsd), limit); }
 

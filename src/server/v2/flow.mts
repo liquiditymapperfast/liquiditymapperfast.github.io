@@ -1,0 +1,39 @@
+import { DatabaseSync } from 'node:sqlite';
+import { FlowRecorder as FlowCore, type FlowMinuteRow, type FlowStore } from '../../shared/flow.ts';
+
+export { FLOW_SEC, encodeFlowFrame, type FlowFrame, type FlowUpdate } from '../../shared/flow.ts';
+
+/** Recorded flow minutes in the history database: one row per instrument-minute, the 60 buy seconds then the 60 sell seconds as Float32. */
+class SqliteFlowStore implements FlowStore {
+  readonly #db: DatabaseSync;
+  constructor(dbPath: string) {
+    this.#db = new DatabaseSync(dbPath);
+    this.#db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS flow_minutes (inst TEXT NOT NULL, t INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (inst, t));');
+  }
+  *load(since: number): Iterable<FlowMinuteRow> {
+    for (const row of this.#db.prepare('SELECT inst, t, data FROM flow_minutes WHERE t >= ?').all(since) as { inst: string; t: number; data: Uint8Array }[]) {
+      if (row.data.byteLength !== 480) continue;
+      const copy = row.data.slice().buffer;
+      yield { inst: row.inst, t: row.t, buy: new Float32Array(copy, 0, 60), sell: new Float32Array(copy, 240, 60) };
+    }
+  }
+  save(rows: FlowMinuteRow[], expireBefore: number): void {
+    const db = this.#db, insert = db.prepare('INSERT OR REPLACE INTO flow_minutes (inst, t, data) VALUES (?, ?, ?)');
+    db.exec('BEGIN');
+    try {
+      for (const row of rows) {
+        const data = new Uint8Array(480);
+        data.set(new Uint8Array(row.buy.buffer, row.buy.byteOffset, 240), 0); data.set(new Uint8Array(row.sell.buffer, row.sell.byteOffset, 240), 240);
+        insert.run(row.inst, row.t, data);
+      }
+      db.prepare('DELETE FROM flow_minutes WHERE t < ?').run(expireBefore);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+  }
+  close(): void { this.#db.close(); }
+}
+
+/** Per-second taker flow persisted in SQLite (`dbPath`), or kept in memory when there is none. */
+export class FlowRecorder extends FlowCore {
+  constructor(dbPath: string | null = null, now: () => number = Date.now) { super(dbPath ? new SqliteFlowStore(dbPath) : null, now); }
+}

@@ -1,4 +1,5 @@
 import type { VenueStatus } from '../shared/engine.ts';
+import type { FlowFrame } from '../shared/flow.ts';
 import { TIMEFRAMES } from '../shared/series.ts';
 import { toWire } from '../shared/prints.ts';
 import type { FeedsIn, FeedsOut, RpcCall, RpcResult } from './browser/protocol.ts';
@@ -71,6 +72,7 @@ export class BrowserSource implements DataSource, VenueControl {
           this.#handlers?.onTick(this.#tick); break;
         }
         case 'prints': this.#handlers?.onPrints(message.items.map(toWire)); break;
+        case 'flow': this.#handlers?.onFlow?.(message.items); break;
         case 'status':
           this.#statuses = message.venues; known();
           for (const watcher of this.#watchers) watcher(message.venues.map(toEntry));
@@ -126,6 +128,7 @@ export class BrowserSource implements DataSource, VenueControl {
   async oi(inst: string, tf: string, from: number, to: number): Promise<OiBar[]> { return this.#call({ method: 'oi', inst, tfMs: TIMEFRAMES[tf] ?? 3_600_000, from, to }); }
   async prints(from: number, to: number): Promise<Print[]> { return this.#call({ method: 'prints', from, to }); }
   async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> { return this.#call({ method: 'columns', ids, from, to, stepMs }); }
+  async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
   async footprint(inst: string, tf: string, from: number, to: number, rowStep: number): Promise<FootprintResponse> {
     return this.#call({ method: 'footprint', inst, tfMs: TIMEFRAMES[tf] ?? 3_600_000, from, to, rowStep });
   }
