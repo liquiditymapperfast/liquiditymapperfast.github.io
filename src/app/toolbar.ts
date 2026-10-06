@@ -26,6 +26,7 @@ import { CONTRAST } from './heatmap/window.ts';
 import { compactBar, onLayoutMode } from './device.ts';
 import { openSheet, type Sheet } from './sheet.ts';
 import { wakeLockSupported } from './wake.ts';
+import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from './i18n.ts';
 import { t, tn } from './i18n.ts';
 
 /** How a timeframe is said in a tooltip. */
@@ -75,6 +76,8 @@ export class Toolbar {
   };
   #source = el('select', { ariaLabel: t('Source'), tip: t('Heatmap source') });
   #theme = el('button', { class: 'theme-btn', tip: t('Theme: hover to preview, click to keep') });
+  /** The page's language: the code of the one in use, and a menu of the others (a language is chosen before the page is built, so choosing one reloads it). */
+  #language = el('button', { class: 'language-btn', ariaLabel: t('Language'), tip: t('Language: the page uses the language of your browser unless you choose another here') }, el('span', { textContent: language().toUpperCase() }));
   #status = el('span', { class: 'status', tip: t('Connection to the data source: live when frames are arriving.') });
   #brand = el('span', { class: 'brand', textContent: 'LiquidityMapperFast' });
   #venuesButton: HTMLElement | null = null;
@@ -131,6 +134,7 @@ export class Toolbar {
     this.#heat.legend.append(this.#heat.lo, this.#heat.hi);
     this.#source.onchange = () => this.store.set({ heatmapSource: this.#source.value });
     this.#theme.onclick = () => this.#openThemes();
+    this.#language.onclick = () => this.#openLanguages();
     this.#recenter.onclick = () => this.onRecenter();
     this.#author.onclick = () => { toggleAuthor(this.#author); };
     this.#shot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z"/><circle cx="12" cy="13.4" r="3.3"/></svg>';
@@ -169,7 +173,7 @@ export class Toolbar {
       const inCorner = this.#mapHost !== null;
       if (inCorner) this.#mapHost!.prepend(this.#recenter);
       this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
-        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, this.#theme, this.#status, this.#notice.root);
+        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, this.#language, this.#theme, this.#status, this.#notice.root);
       return;
     }
     this.root.replaceChildren(
@@ -197,7 +201,7 @@ export class Toolbar {
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
         section(t('Venues'), [field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
         section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#soundButton)]),
-        section(t('Appearance'), [field(t('Theme'), this.#theme),
+        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesButton!.textContent = t('Venues'); });
     this.#more.classList.add('open');
@@ -248,7 +252,7 @@ export class Toolbar {
     const sourceKey = books.map(b => b.id).join(',') + (short ? '|short' : '');
     if (this.#source.dataset.key !== sourceKey) {
       // The phone's Settings already says "Heatmap" above this choice.
-      const prefix = short ? '' : t('Heatmap: ');
+      const prefix = short ? '' : `${t('Heatmap:')} `;
       this.#source.replaceChildren(new Option(`${prefix}${short ? t('Aggregated') : t('aggregated')}`, 'aggregated'), ...books.map(b => new Option(`${prefix}${venueLabel(b.id)}`, b.id)));
       this.#source.dataset.key = sourceKey;
     }
@@ -310,6 +314,23 @@ export class Toolbar {
     const swatch = el('span', { class: 'swatch' }, ...[p.bg, p.panel, p.bid, p.ask].map(color => { const dot = el('i'); dot.style.background = color; return dot; }));
     this.#theme.replaceChildren(swatch, el('span', { textContent: p.label }));
   }
+  /** Choose the page's language, or let the browser's preference decide. The page is then built again in it. */
+  #openLanguages(): void {
+    const saved = savedLanguage(), codes = LANGUAGES.map(l => l.code);
+    const browser = LANGUAGES.find(l => l.code === pickLanguage(navigator.languages?.length ? navigator.languages : [navigator.language], codes))?.name ?? LANGUAGES[0]!.name;
+    const items = [{ id: 'auto', label: `${t('Automatic')} · ${browser}` }, ...LANGUAGES.map(l => ({ id: l.code, label: l.name }))];
+    openMenu(this.#language, items, saved, {
+      onPreview: () => {},
+      onSelect: id => {
+        if (id === saved) return;
+        saveLanguage(id);
+        // An address that names a language (?lang=) would override what was just chosen, so it goes.
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('lang')) { url.searchParams.delete('lang'); window.location.replace(url); } else window.location.reload();
+      },
+    }, 'right', { title: t('Language') });
+  }
+
   #openThemes(): void {
     const items = THEME_ORDER.map(id => { const p = PALETTES[id]!; return { id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; });
     openMenu(this.#theme, items, this.store.state.theme, { onPreview: id => this.onPreviewTheme(id), onSelect: id => this.store.set({ theme: id }) });

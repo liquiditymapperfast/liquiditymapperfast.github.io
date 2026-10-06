@@ -3,7 +3,7 @@ import { isCoarse } from '../device.ts';
 import { SECTIONS, readingMinutes, type Block, type Section } from './content.ts';
 import { createFigure } from './figures.ts';
 import { parseInline } from './markup.ts';
-import { t } from '../i18n.ts';
+import { language, t } from '../i18n.ts';
 
 /**
  * The guide: a modal with the table of contents on the left and the text on the right, opened by the Guide button, by a "?" panel's link
@@ -46,11 +46,11 @@ function renderSection(section: Section, index: number, figures: { dispose(): vo
 export function openGuide(section?: string): void {
   if (open) { if (section) open.scrollTo(section); return; }
   const figures: { dispose(): void }[] = [];
-  const dialog = el('dialog', { class: 'guide', ariaLabel: 'Guide' });
+  const dialog = el('dialog', { class: 'guide', ariaLabel: t('Guide') });
   const closeButton = el('button', { type: 'button', class: 'guide-x', tip: t('Close the guide (Esc)'), ariaLabel: t('Close the guide') });
-  const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: 'Guide' }), el('span', { class: 'sub', textContent: `About ${readingMinutes()} minutes to read. Pictures move: ${isCoarse() ? 'tap to look closer, pause or scrub them' : 'hover, pause or scrub them'}.` })), closeButton);
-  const toc = el('nav', { class: 'guide-toc', ariaLabel: 'Contents' });
-  const select = el('select', { class: 'guide-jump', ariaLabel: 'Jump to a section' });
+  const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: t('Guide') }), el('span', { class: 'sub', textContent: (isCoarse() ? t('About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.', { n: readingMinutes() }) : t('About {n} minutes to read. Pictures move: hover, pause or scrub them.', { n: readingMinutes() })) + (language() === 'en' ? '' : ' ' + t('The text of the guide is in English for now.')) })), closeButton);
+  const toc = el('nav', { class: 'guide-toc', ariaLabel: t('Contents') });
+  const select = el('select', { class: 'guide-jump', ariaLabel: t('Jump to a section') });
   const scroller = el('div', { class: 'guide-scroll' }), article = el('article', { class: 'guide-article' });
   const links = new Map<string, HTMLAnchorElement>();
   SECTIONS.forEach((section, i) => {
@@ -60,8 +60,8 @@ export function openGuide(section?: string): void {
     links.set(section.id, a); toc.append(a);
     select.append(new Option(`${i + 1}. ${section.title}`, section.id));
   });
-  article.append(el('footer', { class: 'guide-end' }, el('p', { textContent: `That is the whole page. Everything else is ${isCoarse() ? 'a long press' : 'a hover'} away: every button explains itself, and the ? beside a pane says what it is.` }),
-    el('button', { type: 'button', textContent: 'Back to the top', onclick: () => scroller.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' }) })));
+  article.append(el('footer', { class: 'guide-end' }, el('p', { textContent: isCoarse() ? t('That is the whole page. Everything else is a long press away: every button explains itself, and the ? beside a pane says what it is.') : t('That is the whole page. Everything else is a hover away: every button explains itself, and the ? beside a pane says what it is.') }),
+    el('button', { type: 'button', textContent: t('Back to the top'), onclick: () => scroller.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' }) })));
   scroller.append(article);
   dialog.append(head, el('div', { class: 'guide-body' }, toc, scroller));
   document.body.append(dialog);
