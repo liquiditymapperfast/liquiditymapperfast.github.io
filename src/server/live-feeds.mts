@@ -256,6 +256,11 @@ export interface LiveFeedOptions {
   heartbeatSchedule?: (callback: () => unknown, delay: number) => FeedTimer; heartbeatCancel?: (timer: FeedTimer) => void;
   reconnectBaseMs?: number; reconnectMaxMs?: number; oiPollMs?: number; oiHistoryPeriod?: string; oiHistoryLimit?: number; candleInterval?: string; candleHistoryLimit?: number;
   restRetryPolicies?: Record<string, Partial<RestRetryPolicy>>; restRandom?: () => number; transportPolicies?: VenuePolicyOverrides; transportBudget?: VenueTransportBudget | null; transportNow?: () => number; transportIdleMs?: number;
+  /** How often the liveness check runs (0: off, the default; the server turns it on). */
+  startWatchdogMs?: number;
+  /** How long one start() may run before the watchdog abandons it and starts again. */
+  startTimeoutMs?: number;
+  log?: (message: string) => void;
 }
 export interface LiveFeedStartOptions extends AdapterOptions {
   hlNativeCoin?: string; binanceSymbol?: string; binanceMarketType?: string; binanceFamily?: 'usdm' | 'coinm'; bybitCategory?: 'linear' | 'spot' | 'inverse'; okxMarketType?: 'perpetual' | 'spot'; bitgetMarketType?: 'perpetual' | 'spot'; candleInterval?: string; hlBookNsigFigs?: unknown; hlBookMantissa?: unknown; hlBookResolutions?: unknown;
@@ -507,6 +512,9 @@ function hyperliquidBookResolutions({ hlBookResolutions, hlBookNsigFigs = 2, hlB
  * unless networkEnabled=true and a transportFactory/restTransport are supplied.
  * Socket messages are normalized into the Stage 2 contracts before callbacks.
  */
+/** The recovery and watchdog timers must not keep a process alive that has nothing else to do. */
+function unrefTimer(timer: unknown) { if (timer !== null && typeof timer === 'object' && typeof (timer as { unref?: unknown }).unref === 'function') (timer as { unref: () => void }).unref(); }
+
 export class LiveFeedManager {
   declare networkEnabled: boolean;
   declare transportFactory: LiveFeedOptions['transportFactory']; declare restTransport: LiveFeedRestTransport | null;
@@ -516,6 +524,15 @@ export class LiveFeedManager {
   declare heartbeatSchedule: NonNullable<LiveFeedOptions['heartbeatSchedule']>; declare heartbeatCancel: NonNullable<LiveFeedOptions['heartbeatCancel']>;
   declare reconnectBaseMs: number; declare reconnectMaxMs: number; declare oiPollMs: number; declare oiHistoryPeriod: string; declare oiHistoryLimit: number; declare candleInterval: string; declare candleHistoryLimit: number;
   declare transportPolicies: VenuePolicyOverrides; declare transportNow: () => number; declare transportBudget: VenueTransportBudget; declare transportIdleMs: number;
+  declare startWatchdogMs: number; declare startTimeoutMs: number;
+  #log: (message: string) => void;
+  /** The configuration of the last start() that finished: what a recovery brings back. */
+  #goodOptions: LiveFeedStartOptions | null = null;
+  #pendingOptions: LiveFeedStartOptions | null = null;
+  #startInFlight: { at: number } | null = null;
+  #lastStart: { at: number; ms: number; ok: boolean; error?: string } | null = null;
+  #recoveryTimer: FeedTimer | null = null; #recoveryAttempt = 0; #recoveries = 0; #lastRecovery: { at: number; reason: string } | null = null;
+  #watchdogTimer: FeedTimer | null = null; #deadChecks = 0;
   #operationScope = new LiveFeedOperationScope();
   declare running: boolean; declare specs: Map<string, LiveFeedSpec>; declare feeds: Map<string, LiveFeed>; declare bookSequences: Map<string, unknown>; declare depthBuffers: Map<string, LiveNormalizedMessage[]>; declare depthBridgePending: Map<string, boolean>; declare resyncing: Map<string, BinanceResyncToken>;
   declare retainedDiagnosticsCache: LiveFeedDiagnostics | null; declare oiTimer: FeedTimer | null; declare sessionCounter: number; declare feedGenerations: Map<string, number>; declare heartbeatTimers: Map<string, FeedTimer>; declare configurationGeneration: number;
@@ -551,6 +568,9 @@ export class LiveFeedManager {
     transportBudget = null,
     transportNow = () => Date.now(),
     transportIdleMs = 15 * 60_000,
+    startWatchdogMs = 0,
+    startTimeoutMs = 180_000,
+    log = () => {},
   }: LiveFeedOptions = {}) {
     this.networkEnabled = networkEnabled;
     this.transportFactory = transportFactory;
@@ -577,6 +597,9 @@ export class LiveFeedManager {
     this.transportNow = transportNow;
     this.transportBudget = transportBudget ?? new VenueTransportBudget({ policies: this.transportPolicies, now: transportNow });
     this.transportIdleMs = Math.max(0, Number(transportIdleMs) || 0);
+    this.startWatchdogMs = Math.max(0, Number(startWatchdogMs) || 0);
+    this.startTimeoutMs = Math.max(1, Number(startTimeoutMs) || 180_000);
+    this.#log = log;
     this.running = false;
     this.specs = new Map();
     this.feeds = new Map();
@@ -610,7 +633,103 @@ export class LiveFeedManager {
     return new Map(this.#lastPrices);
   }
 
-  async start({ coin = 'BTC', hlNativeCoin, binanceFamily = 'usdm', binanceSymbol = binanceFamily === 'coinm' ? 'BTCUSD_PERP' : 'BTCUSDT', binanceMarketType = 'perpetual', bybitCategory = 'linear', okxMarketType = 'perpetual', bitgetMarketType = 'perpetual', bybitEnabled = false, bybitSymbol = null, okxEnabled = false, okxSymbol = null, bitgetEnabled = false, bitgetSymbol = null, gateioEnabled = false, gateioSymbol = null, deribitEnabled = false, deribitSymbol = null, coinbaseEnabled = false, coinbaseSymbol = null, krakenEnabled = false, krakenSymbol = null, kucoinEnabled = false, kucoinSymbol = null, mexcEnabled = false, mexcSymbol = null, htxEnabled = false, htxSymbol = null, bitfinexEnabled = false, bitfinexSymbol = null, bitmexEnabled = false, bitmexSymbol = null, cryptocomEnabled = false, cryptocomSymbol = null, bitstampEnabled = false, bitstampSymbol = null, whitebitEnabled = false, whitebitSymbol = null, phemexEnabled = false, phemexSymbol = null, dydxEnabled = false, dydxSymbol = null, asterEnabled = false, asterSymbol = null, selectedOrderbookVenues, referenceBackfill = true, candleInterval = this.candleInterval, hlBookNsigFigs = 2, hlBookMantissa = null, hlBookResolutions = null }: LiveFeedStartOptions = {}) {
+  /**
+   * Apply a configuration. start() retires every old feed first and opens the new ones only after its metadata
+   * requests, so an error thrown in between used to leave a running manager with no feed at all and nothing to
+   * reopen one. A failure now schedules a recovery (the last configuration that finished starting, with a candle
+   * backfill) and still rejects, so the caller hears about it.
+   */
+  async start(options: LiveFeedStartOptions = {}) {
+    if (this.#recoveryTimer !== null) { this.cancel(this.#recoveryTimer); this.#recoveryTimer = null; }
+    const before = this.configurationGeneration, began = this.now(), token = { at: began };
+    this.#startInFlight = token;
+    this.#pendingOptions = options;
+    try {
+      const status = await this.#startNow(options);
+      // A newer start() while this one ran owns the outcome.
+      if (this.configurationGeneration === before + 1) {
+        this.#goodOptions = options; this.#recoveryAttempt = 0;
+        this.#lastStart = { at: began, ms: this.now() - began, ok: true };
+      }
+      this.#armWatchdog();
+      return status;
+    } catch (error) {
+      const message = String(feedError(error).message ?? error);
+      // Only an error after the configuration changed (the old feeds are retired) needs a recovery, and a missing transport never mends itself.
+      if (this.configurationGeneration === before + 1) {
+        this.#lastStart = { at: began, ms: this.now() - began, ok: false, error: message.slice(0, 200) };
+        this.#log(`feed start failed: ${message}`);
+        if (this.networkEnabled && this.transportFactory) { this.#armRecovery(`start failed: ${message}`); this.#armWatchdog(); }
+      }
+      throw error;
+    } finally {
+      if (this.#startInFlight === token) this.#startInFlight = null;
+    }
+  }
+
+  #armRecovery(reason: string) {
+    if (!this.running || this.#recoveryTimer !== null) return;
+    const attempt = ++this.#recoveryAttempt;
+    const delay = reconnectDelay(attempt, { baseMs: this.reconnectBaseMs, maxMs: Math.max(this.reconnectMaxMs, Math.min(300_000, this.reconnectMaxMs * 10)) });
+    const generation = this.configurationGeneration;
+    this.#log(`feeds will restart in ${Math.round(delay / 1000)} s (${reason})`);
+    this.#recoveryTimer = this.schedule(async () => {
+      this.#recoveryTimer = null;
+      if (!this.running || this.configurationGeneration !== generation) return;
+      const options = this.#goodOptions ?? this.#pendingOptions ?? {};
+      this.#recoveries += 1; this.#lastRecovery = { at: this.now(), reason };
+      try { await this.start({ ...options, referenceBackfill: true }); this.#log('feeds restarted'); }
+      catch { /* start() has armed the next attempt */ }
+    }, delay);
+    unrefTimer(this.#recoveryTimer);
+  }
+
+  /**
+   * Called on a timer once a start has been requested. A start that has run too long is abandoned for a fresh one,
+   * and a manager that has specs but no feed (the state a failed start leaves) is restarted after two checks.
+   */
+  checkLiveness() {
+    if (!this.running || !this.networkEnabled) { this.#deadChecks = 0; return; }
+    const inFlight = this.#startInFlight;
+    if (inFlight) {
+      if (this.now() - inFlight.at > this.startTimeoutMs) {
+        this.#log(`feed start has run for more than ${Math.round(this.startTimeoutMs / 1000)} s; starting again`);
+        this.#recoverNow('start timed out');
+      }
+      return;
+    }
+    if (this.#recoveryTimer !== null) return;
+    this.#deadChecks = this.specs.size > 0 && this.feeds.size === 0 ? this.#deadChecks + 1 : 0;
+    if (this.#deadChecks >= 2) { this.#deadChecks = 0; this.#armRecovery('no feed is open'); }
+  }
+
+  #recoverNow(reason: string) {
+    const options = this.#goodOptions ?? this.#pendingOptions ?? {};
+    this.#recoveries += 1; this.#lastRecovery = { at: this.now(), reason };
+    this.start({ ...options, referenceBackfill: true }).catch(() => { /* start() has armed the next attempt */ });
+  }
+
+  #armWatchdog() {
+    if (!(this.startWatchdogMs > 0) || this.#watchdogTimer !== null || !this.running) return;
+    const tick = () => {
+      this.#watchdogTimer = null;
+      if (!this.running) return;
+      try { this.checkLiveness(); } finally { this.#watchdogTimer = this.schedule(tick, this.startWatchdogMs); unrefTimer(this.#watchdogTimer); }
+    };
+    this.#watchdogTimer = this.schedule(tick, this.startWatchdogMs);
+    unrefTimer(this.#watchdogTimer);
+  }
+
+  /** What the last starts did, for the diagnostics route. */
+  startDiagnostics() {
+    return {
+      running: this.running, feeds: this.feeds.size, specs: this.specs.size,
+      startingForMs: this.#startInFlight ? this.now() - this.#startInFlight.at : null,
+      lastStart: this.#lastStart, recoveryPending: this.#recoveryTimer !== null, recoveries: this.#recoveries, lastRecovery: this.#lastRecovery,
+    };
+  }
+
+  async #startNow({ coin = 'BTC', hlNativeCoin, binanceFamily = 'usdm', binanceSymbol = binanceFamily === 'coinm' ? 'BTCUSD_PERP' : 'BTCUSDT', binanceMarketType = 'perpetual', bybitCategory = 'linear', okxMarketType = 'perpetual', bitgetMarketType = 'perpetual', bybitEnabled = false, bybitSymbol = null, okxEnabled = false, okxSymbol = null, bitgetEnabled = false, bitgetSymbol = null, gateioEnabled = false, gateioSymbol = null, deribitEnabled = false, deribitSymbol = null, coinbaseEnabled = false, coinbaseSymbol = null, krakenEnabled = false, krakenSymbol = null, kucoinEnabled = false, kucoinSymbol = null, mexcEnabled = false, mexcSymbol = null, htxEnabled = false, htxSymbol = null, bitfinexEnabled = false, bitfinexSymbol = null, bitmexEnabled = false, bitmexSymbol = null, cryptocomEnabled = false, cryptocomSymbol = null, bitstampEnabled = false, bitstampSymbol = null, whitebitEnabled = false, whitebitSymbol = null, phemexEnabled = false, phemexSymbol = null, dydxEnabled = false, dydxSymbol = null, asterEnabled = false, asterSymbol = null, selectedOrderbookVenues, referenceBackfill = true, candleInterval = this.candleInterval, hlBookNsigFigs = 2, hlBookMantissa = null, hlBookResolutions = null }: LiveFeedStartOptions = {}) {
     if (typeof referenceBackfill !== 'boolean') throw new TypeError('referenceBackfill must be boolean');
     const selectedDepthVenues = selectedOrderbooks(selectedOrderbookVenues);
     this.candleInterval = assertNativeCandleInterval(candleInterval);
@@ -979,6 +1098,8 @@ export class LiveFeedManager {
     this.running = false;
     this.configurationGeneration += 1;
     this.#operationScope.cancel();
+    if (this.#recoveryTimer !== null) { this.cancel(this.#recoveryTimer); this.#recoveryTimer = null; }
+    if (this.#watchdogTimer !== null) { this.cancel(this.#watchdogTimer); this.#watchdogTimer = null; }
     this.#setStatus('active-book-set', { activeBookSets: {} });
     if (this.oiTimer !== null) { this.cancel(this.oiTimer); this.oiTimer = null; }
     for (const [id, feed] of this.feeds) {

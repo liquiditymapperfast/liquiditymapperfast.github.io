@@ -35,6 +35,8 @@ The earlier byte-accounting "admission/lease/grant/reservation" machinery was me
 
 Measure with an isolated, visible-state headless Chrome over CDP. A tab reporting `visibilityState: hidden` has throttled timers and rAF; its numbers are meaningless. Use the real GPU path for WebGL timings (software GL says nothing about GPU frame time).
 
+- A feed restart must never leave the server without feeds. `LiveFeedManager.start()` retires every old feed before its metadata requests, so an error in between used to leave a running manager with no feed and nothing to reopen one (12 hours of frozen candles and seven stopped venues, 2026-10-06; `docs/deslop/feed-recovery-2026-10-06.md`). `start()` now schedules a recovery with the last configuration that finished, a watchdog (`checkLiveness`) catches a start that hangs or a manager with specs and no feed, and `/api/diagnostics` reports `feedManager`. Keep new work between retire and open inside that guard, and keep recovery and watchdog timers `unref`ed.
+
 ## Phones and tablets
 
 - Two attributes on `<html>` (`src/app/device.ts`, tested in `tests/app-device.test.mts`) drive the touch arrangement: `data-layout` (`phone`, `phone-landscape`, `desktop`: how the panes are arranged) and `data-bar` (`compact`, `full`: how the controls are). Put mobile CSS in `src/app/mobile.css` under one of them (or `(pointer: coarse)`), never in a user-agent test, and keep the desktop rules in `styles.css` unchanged. Script that must differ reads `isPhone()` / `compactBar()` / `isCoarse()` from the same module.

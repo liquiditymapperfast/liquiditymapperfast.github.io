@@ -913,7 +913,7 @@ async function route(req: IncomingMessage, res: ServerResponse, state: RuntimeSt
     const delay = services.metrics?.eventLoop;
     return json(res, { ok: true, pid: process.pid, uptimeSec: Math.round(process.uptime()), rssBytes: process.memoryUsage().rss,
       eventLoopDelayMs: delay ? { p50: delay.percentile(50) / 1e6, p95: delay.percentile(95) / 1e6, p99: delay.percentile(99) / 1e6, max: delay.max / 1e6 } : null,
-      appliedMessages: services.metrics?.appliedMessages ?? 0, statuses: state.statuses, quota: quota.snapshot() });
+      appliedMessages: services.metrics?.appliedMessages ?? 0, feedManager: services.retainedProviders?.feeds?.startDiagnostics?.() ?? null, statuses: state.statuses, quota: quota.snapshot() });
   }
   if (req.method === 'GET' && url.pathname === '/api/status') return json(res, { venues: state.statuses, quota: quota.snapshot() });
   if (req.method === 'GET' && url.pathname === '/api/stream') {

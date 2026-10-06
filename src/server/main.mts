@@ -122,6 +122,9 @@ try {
     oiHistoryPeriod: process.env.OI_HISTORY_PERIOD ?? '5m',
     oiHistoryLimit: Number(process.env.OI_HISTORY_LIMIT ?? 500),
     candleInterval: process.env.CANDLE_INTERVAL ?? '1m',
+    // A start that fails or hangs after retiring the old feeds is retried (live-feeds.mts), and a manager with no feed is noticed within a minute.
+    startWatchdogMs: Number(process.env.FEED_WATCHDOG_MS ?? 30_000),
+    log: message => console.warn('[feeds] ' + message),
     retainedAdmission: runningApp.admitRetainedMutation,
     onMessage: ({ venue, message, retainedMutation }) => runningApp.applyMessage(message, venue, { retainedMutation }),
     onTradeBatch: ({ venue, messages }) => runningApp.applyTradeBatch(messages, venue),

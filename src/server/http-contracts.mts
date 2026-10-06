@@ -46,6 +46,8 @@ export interface FeedOwner {
   retainedDiagnostics?: (options?: { cached?: boolean; allowStale?: boolean }) => RetainedOwnerMeasurement;
   reclaimRetainedRam?: (options: { targetBytes: number }) => unknown;
   refreshActiveBookSets?: () => unknown;
+  /** What the last feed starts did (see LiveFeedManager.startDiagnostics). */
+  startDiagnostics?: () => unknown;
 }
 export interface RetainedProviders {
   feeds?: FeedOwner | null; queues?: Set<ServerQueue>; processMemory?: ProcessMemoryMonitor; retainedBudget?: RetainedBudgetCoordinator;
