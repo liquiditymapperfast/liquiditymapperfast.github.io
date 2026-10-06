@@ -42,15 +42,32 @@ export function buildSoundPanel(store: Store, sounds: Sounds, rerender: () => vo
   body.append(heading(t('Candles')));
   body.append(switchRow(t('Chime on unusual volume'), t('One soft chime when a candle closes with unusually large volume (the sensitivity is set in Highlights).'), s.barChime, barChime => set({ barChime })));
   body.append(note(t('Liquidation sounds are not offered: the public feeds used here carry no liquidation events.')));
-  if (alerts) panelSounds(store, s.panels, alerts, set, body);
+  if (alerts) panelSounds(store, s.panels, alerts, set, body, rerender);
 }
+
+/** The panel sounds that can also be switched on in the pane they are about. */
+export type PanelSwitch = 'flow' | 'bars' | 'depth';
+const SWITCH_TEXT: Record<PanelSwitch, { name: string; tip: string }> = {
+  flow: { name: t('Burst of taker flow'), tip: t('An exchange bought or sold far more at market in ten seconds than it usually does. High, two-note sweep. The burst is also marked on the column.') },
+  bars: { name: t('Candle closes with a big delta'), tip: t('When a candle closes, the net taker flow of every enabled venue over it was at least this much. Mid, two-note triangle.') },
+  depth: { name: t('The balance tips'), tip: t('Within 1% of the price, the bids outweigh the asks (or the other way round) by more than this share. It sounds once and again only after the book has come back. Three steps.') },
+};
+export const panelSwitchOn = (store: Store, which: PanelSwitch): boolean => which === 'flow' ? store.state.sounds.panels.flow.burst : which === 'bars' ? store.state.sounds.panels.bars.delta : store.state.sounds.panels.depth.imbalance;
+export function setPanelSwitch(store: Store, which: PanelSwitch, on: boolean): void {
+  const p = store.state.sounds.panels;
+  const panels = which === 'flow' ? { ...p, flow: { ...p.flow, burst: on } } : which === 'bars' ? { ...p, bars: { ...p.bars, delta: on } } : { ...p, depth: { ...p.depth, imbalance: on } };
+  store.set({ sounds: readSounds({ ...store.state.sounds, panels }) });
+}
+/** The same switch as in the Sounds panel, for the pane's own settings: both read and write `sounds.panels`, so they never disagree. */
+export const panelSwitchRow = (store: Store, which: PanelSwitch, onChange: () => void = () => {}): HTMLElement =>
+  switchRow(SWITCH_TEXT[which].name, SWITCH_TEXT[which].tip, panelSwitchOn(store, which), on => { setPanelSwitch(store, which, on); onChange(); });
 
 /**
  * The sounds a panel may make about what is happening in it. A sound is for something rare and discrete that is worth looking up from
  * another screen for; a level or a trend that is on screen all the time is not. Each is off until chosen, has its own cool-down, and the
  * four loudest moments in ten seconds are all that can sound.
  */
-function panelSounds(store: Store, p: PanelSounds, alerts: Alerts, set: (change: Partial<SoundSettings>) => void, body: HTMLElement): void {
+function panelSounds(store: Store, p: PanelSounds, alerts: Alerts, set: (change: Partial<SoundSettings>) => void, body: HTMLElement, rerender: () => void): void {
   const change = <K extends keyof PanelSounds>(panel: K, patch: Partial<PanelSounds[K]>): void => set({ panels: { ...store.state.sounds.panels, [panel]: { ...store.state.sounds.panels[panel], ...patch } } });
   const tests = (kind: Parameters<Alerts['test']>[0], both = true): HTMLElement => el('div', { class: 'tier-test' },
     ...(both ? [button(t('▲ Buy'), () => alerts.test(kind, 'buy'), t('Hear this sound for buying')), button(t('▼ Sell'), () => alerts.test(kind, 'sell'), t('Hear this sound for selling'))] : [button(t('Test'), () => alerts.test(kind, null), t('Hear this sound'))]));
@@ -59,13 +76,13 @@ function panelSounds(store: Store, p: PanelSounds, alerts: Alerts, set: (change:
   body.append(note(t('Each panel can make its own sound about something rare that happens in it. Everything here is off until you choose it, obeys the switch and volume above, and no more than four sounds can play in ten seconds. Rising notes mean buying, falling notes mean selling.')));
 
   body.append(heading(t('Flow column')),
-    switchRow(t('Burst of taker flow'), t('An exchange bought or sold far more at market in ten seconds than it usually does. High, two-note sweep. The burst is also marked on the column.'), p.flow.burst, burst => change('flow', { burst })),
+    panelSwitchRow(store, 'flow', () => rerender()),
     numberRow(t('Smallest burst (USD)'), t('Ignore bursts smaller than this, however unusual they are for a quiet exchange.'), { min: 100_000, step: 100_000, value: p.flow.usd }, usd => change('flow', { usd })),
     numberRow(t('Sensitivity (deviations)'), t('How far outside its own normal an exchange must go: 2 is touchy, 4 is the default, 8 is only the extreme.'), { min: 2, max: 10, step: 0.5, value: p.flow.sensitivity }, sensitivity => change('flow', { sensitivity })),
     tests('flow-burst'));
 
   body.append(heading(t('Bar stats and footprint')),
-    switchRow(t('Candle closes with a big delta'), t('When a candle closes, the net taker flow of every enabled venue over it was at least this much. Mid, two-note triangle.'), p.bars.delta, delta => change('bars', { delta })),
+    panelSwitchRow(store, 'bars', () => rerender()),
     numberRow(t('Smallest delta (USD)'), t('Net buys minus sells over the candle that just closed.'), { min: 100_000, step: 500_000, value: p.bars.usd }, usd => change('bars', { usd })),
     tests('bar-delta'));
 
@@ -75,7 +92,7 @@ function panelSounds(store: Store, p: PanelSounds, alerts: Alerts, set: (change:
     tests('wall-appeared'));
 
   body.append(heading(t('Depth and Liquidity Tracker')),
-    switchRow(t('The balance tips'), t('Within 1% of the price, the bids outweigh the asks (or the other way round) by more than this share. It sounds once and again only after the book has come back. Three steps.'), p.depth.imbalance, imbalance => change('depth', { imbalance })),
+    panelSwitchRow(store, 'depth', () => rerender()),
     numberRow(t('Tips at (%)'), t('(bids - asks) / (bids + asks), in percent.'), { min: 30, max: 95, step: 5, value: p.depth.pct }, pct => change('depth', { pct })),
     tests('imbalance'));
 

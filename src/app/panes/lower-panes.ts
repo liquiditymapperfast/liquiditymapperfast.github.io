@@ -17,6 +17,7 @@ import { button, checkRow, heading, note, numberRow, selectRow, sortableList, to
 import type { LtSeries } from '../lt.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { candleSpan } from '../candle-span.ts';
+import { panelSwitchRow, panelSwitchOn, setPanelSwitch } from '../sound/panel.ts';
 import { t, tn } from '../i18n.ts';
 
 /**
@@ -318,6 +319,11 @@ export class LtPane extends TimePane {
     const avg = document.createElement('label'); avg.className = 'ctl'; setTip(avg, t('Divide by the summed weights of the non-empty levels, as if each had size 1'));
     const box = document.createElement('input'); box.type = 'checkbox'; box.checked = lt().average; box.onchange = () => patch({ average: box.checked });
     avg.append(box, t('Per level')); this.head.append(avg);
+    // The balance tipping can sound (the threshold and the volume are in the Sounds panel).
+    const bell = document.createElement('label'); bell.className = 'ctl'; const bellBox = document.createElement('input'); bellBox.type = 'checkbox';
+    bellBox.onchange = () => setPanelSwitch(this.store, 'depth', bellBox.checked);
+    bell.append(bellBox, t('Sound')); setTip(bell, t('Within 1% of the price, the bids outweigh the asks (or the other way round) by more than this share. It sounds once and again only after the book has come back. Three steps.')); this.head.append(bell);
+    this.#sync.push(() => { bellBox.checked = panelSwitchOn(this.store, 'depth'); });
     this.#sync.push(() => { if (box.checked !== lt().average) box.checked = lt().average; });
     select(t('View'), t('Bid and ask lines, or the imbalance (bid - ask) / (bid + ask)'), [['lines', t('Bid & ask')], ['imbalance', t('Imbalance')]], () => lt().view, v => patch({ view: v as AppState['lt']['view'] }));
   }
@@ -418,6 +424,7 @@ export class BarStatsPane extends TimePane {
     for (const [label, ids] of [[t('Default'), PRESETS.default], [t('All'), PRESETS.all], [t('None'), PRESETS.none]] as const) tools.append(button(label, () => setStats([...ids])));
     tools.append(el('span', { class: 'muted', textContent: t('{shown} of {total} shown', { shown: chosen.length, total: BAR_STATS.length }) }));
 
+    body.append(heading(t('Sound')), panelSwitchRow(this.store, 'bars'));
     body.append(heading(t('Shown, in order')));
     if (!chosen.length) body.append(note(t('Nothing selected: tick statistics below to add them.')));
     else {

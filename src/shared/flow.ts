@@ -17,7 +17,8 @@ export const FLOW_MEMORY_MS = 36 * 3_600_000;
 /** How long a store keeps them. */
 export const FLOW_STORE_MS = 7 * 24 * 3_600_000;
 const SEEN_MAX = 30_000;
-const MAX_INSTRUMENTS = 128;
+/** At most this many instruments are recorded (a day and a half of one is about 2 MB, so the recorder stays under ~100 MB however many markets exist). */
+const MAX_INSTRUMENTS = 48;
 /** The page's ring: 2^17 seconds, a little over 36 hours. */
 export const FLOW_RING = 1 << 17;
 const MASK = FLOW_RING - 1;

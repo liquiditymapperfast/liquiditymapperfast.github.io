@@ -5,7 +5,7 @@ import { clock, price as fmtPrice } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { emptyScopeMessage, kindOf } from '../scope.ts';
 import { flowIds } from '../cvd/ids.ts';
-import { selectRow, switchRow, numberRow, togglePanel, note } from '../ui.ts';
+import { selectRow, switchRow, numberRow, togglePanel, note, heading } from '../ui.ts';
 import type { Store } from '../store.ts';
 import type { Hub } from '../hub.ts';
 import type { View } from '../view.ts';
@@ -17,6 +17,7 @@ import { aggregateHover, aggregateLabel, rowHover, rowLabel, windowName, type La
 import { laneColors, type LaneColors } from '../cvd/colors.ts';
 import { PriceTrack } from '../cvd/price.ts';
 import type { BurstEvent } from '../cvd/burst.ts';
+import { panelSwitchRow } from '../sound/panel.ts';
 import { t } from '../i18n.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -141,6 +142,8 @@ export class CvdPane {
       switchRow(t('Flag quiet exchanges'), t('Mark an exchange that has not traded in the last five completed minutes with !5m.'), c.quietFlag, v => this.#set({ quietFlag: v })),
       switchRow(t('Start each line at zero'), t('Draw every line from zero at the left edge, so rows can be compared. Off draws the running total since the history began.'), c.rebase, v => this.#set({ rebase: v })),
       note(t('Blue is spot and amber is perpetual, whichever way the money moved. Numbers carry the sign.')),
+      heading(t('Sound')),
+      panelSwitchRow(this.store, 'flow'),
     );
   }
 

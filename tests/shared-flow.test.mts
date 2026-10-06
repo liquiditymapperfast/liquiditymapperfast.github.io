@@ -198,3 +198,12 @@ test('a frame survives its bytes, including a header that needs padding and a vi
   assert.throws(() => decodeFlowFrame(new Uint8Array(2)), /too short/);
   assert.deepEqual(decodeFlowFrame(encodeFlowFrame({ from: 0, to: 0, instruments: [] })).instruments, []);
 });
+
+test('an instrument past the limit is not recorded and is counted, so memory stays bounded', () => {
+  const r = new FlowRecorder(null, () => T0 + 5_000);
+  for (let i = 0; i < 48; i++) r.ingest([trade(`i${i}`, '1', 'buy', 1, T0)]);
+  assert.equal(r.instruments.length, 48);
+  assert.equal(r.ingest([trade('one-too-many', '1', 'buy', 1, T0)]), 0);
+  assert.equal(r.dropped, 1);
+  assert.equal(r.ingest([trade('i3', '2', 'sell', 1, T0)]), 1, 'an instrument already recorded still takes trades');
+});
