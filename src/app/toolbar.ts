@@ -14,7 +14,7 @@ import { HELP, helpButton, showGuide, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
-import { SCOPE_OPTIONS, chipClick, kindOf, scopeCounts, scopedOut } from './scope.ts';
+import { SCOPE_OPTIONS, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
 import { rangeRow, switchRow, note, togglePanel, checkRow, heading } from './ui.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
@@ -271,13 +271,14 @@ export class Toolbar {
       this.#source.replaceChildren(new Option(`${prefix}${short ? t('Aggregated') : t('aggregated')}`, 'aggregated'), ...books.map(b => new Option(`${prefix}${venueLabel(b.id)}`, b.id)));
       this.#source.dataset.key = sourceKey;
     }
-    setValue(this.#source, books.some(b => b.id === state.heatmapSource) ? state.heatmapSource : 'aggregated');
+    const shown = heatmapSourceOf(state);
+    setValue(this.#source, shown);
     const venues = [...new Set(books.map(b => b.venue))];
     this.#drawn = new Set(venues); this.#showIdle(this.#drawn);
     const scoped = (v: string) => !scopedOut(state, v);
     const counts = scopeCounts(state);
     [...this.#scope.children].forEach((b, i) => { const [value] = SCOPE_OPTIONS[i]!; b.classList.toggle('on', state.scope === value); setTip(b as HTMLElement, value === 'all' ? t('Every enabled venue') : (value === 'spot' ? t('Spot venues only ({n} enabled)', { n: counts[value] }) : t('Perpetual venues only ({n} enabled)', { n: counts[value] }))); });
-    this.#scope.classList.toggle('inert', state.heatmapSource !== 'aggregated');
+    this.#scope.classList.toggle('inert', shown !== 'aggregated');
     // The full bar shows a handful of chips and puts the rest in a menu; the phone's Settings sheet has room for every one.
     const plan = chipPlan(venues, compactBar() ? Infinity : INLINE_CHIPS);
     const chipOf = (v: string): HTMLElement => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), tip: t('Show / hide this venue'),
@@ -289,7 +290,7 @@ export class Toolbar {
       this.#chips.replaceChildren(...plan.shown.map(chipOf), ...more);
       this.#venueMenu?.render((tools, body) => this.#buildVenueMenu(tools, body, venues));
     }
-    setTip(this.#scope, state.heatmapSource === 'aggregated' ? t('Which markets the liquidity views draw (a filter on the enabled venues; it never switches one on or off)') : t('The heatmap shows a single venue, so this filter only affects the profile, depth, ladder and LT'));
+    setTip(this.#scope, shown === 'aggregated' ? t('Which markets the liquidity views draw (a filter on the enabled venues; it never switches one on or off)') : t('The heatmap shows a single venue, so this filter only affects the profile, depth, ladder and LT'));
     // Tooltips carry each venue's book reach, so a thin book on the map is explained by its feed.
     plan.shown.forEach((v, i) => {
       const cov = coverage(books.find(b => b.venue === v), state.mark.price);

@@ -92,27 +92,35 @@ export function readSounds(saved: unknown): SoundSettings {
   };
 }
 
-/** One sweep: the prints of one side that landed within the coalescing window, across venues. */
-export interface SoundEvent { side: 'buy' | 'sell'; usd: number; n: number; venues: number; largest: number; firstT: number }
+/** One sweep: the prints of one side that landed within the coalescing window, across venues. `queuedAt` is when its first print was taken in (the caller's clock). */
+export interface SoundEvent { side: 'buy' | 'sell'; usd: number; n: number; venues: number; largest: number; firstT: number; queuedAt: number }
+type Group = { first: number; usd: number; n: number; venues: Set<string>; largest: number; firstT: number };
 
 /**
  * Merges the fills of one aggressive order that arrive on several venues (or as several fills) into one event, so a sweep is one sound.
- * A group closes `windowMs` after its first print.
+ * A group closes `windowMs` after its first print, by the clock the prints are added with: a drain that comes late (a tab whose timers
+ * were throttled) does not stretch it, so fills further apart than the window are never one event.
  */
 export class Coalescer {
-  #groups = new Map<'buy' | 'sell', { first: number; usd: number; n: number; venues: Set<string>; largest: number; firstT: number }>();
+  #groups = new Map<'buy' | 'sell', Group>();
+  /** Groups that were already over when the next print of their side arrived: kept, complete, for the next drain. */
+  #closed: SoundEvent[] = [];
   constructor(private windowMs = 250) {}
+  static #event(side: 'buy' | 'sell', g: Group): SoundEvent { return { side, usd: g.usd, n: g.n, venues: g.venues.size, largest: g.largest, firstT: g.firstT, queuedAt: g.first }; }
   add(print: Print, now: number): void {
     let g = this.#groups.get(print.side);
+    if (g && now - g.first >= this.windowMs) { this.#closed.push(Coalescer.#event(print.side, g)); this.#groups.delete(print.side); g = undefined; }
     if (!g) { g = { first: now, usd: 0, n: 0, venues: new Set(), largest: 0, firstT: print.t }; this.#groups.set(print.side, g); }
     g.usd += print.usd; g.n++; g.venues.add(print.id.split(':')[0]!); g.largest = Math.max(g.largest, print.usd); g.firstT = Math.min(g.firstT, print.t);
   }
-  /** Events whose window has elapsed (all of them with `force`). */
+  /** Events whose window has elapsed (all of them with `force`), oldest first. */
   drain(now: number, force = false): SoundEvent[] {
-    const out: SoundEvent[] = [];
-    for (const [side, g] of this.#groups) if (force || now - g.first >= this.windowMs) { out.push({ side, usd: g.usd, n: g.n, venues: g.venues.size, largest: g.largest, firstT: g.firstT }); this.#groups.delete(side); }
+    const out = this.#closed.splice(0);
+    for (const [side, g] of this.#groups) if (force || now - g.first >= this.windowMs) { out.push(Coalescer.#event(side, g)); this.#groups.delete(side); }
     return out;
   }
+  /** Forget everything waiting (the sounds were switched off). */
+  clear(): void { this.#groups.clear(); this.#closed.length = 0; }
 }
 
 /** The tier a size belongs to: the highest threshold it reaches (null below the first). */

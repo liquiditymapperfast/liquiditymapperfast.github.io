@@ -8,6 +8,7 @@ import { flowIds } from '../cvd/ids.ts';
 import { familyKey, venueOfInstrument } from '../cvd/families.ts';
 import { activeIds, kindOf } from '../scope.ts';
 import { anomalies } from '../anomaly.ts';
+import { oiDeltas } from '../oi-change.ts';
 import { signedUsd } from '../cvd/text.ts';
 import { venueLabel } from '../venues.ts';
 import type { BurstEvent } from '../cvd/burst.ts';
@@ -25,6 +26,11 @@ export interface Player { play(notes: readonly Note[], force?: boolean): boolean
 const FLOW_COOLDOWN_MS = 90_000, WALL_COOLDOWN_MS = 30_000, IMBALANCE_COOLDOWN_MS = 300_000, BOOK_EVERY_MS = 2_000;
 /** A reading older than this is history (a tab catching up after being asleep): it does not sound. */
 const FRESH_MS = 4_000;
+/** A candle that closed longer ago than this is not news: it was loaded, or the tab slept through it. (A new candle shows when its first tick arrives, a few seconds after the close.) */
+export const BAR_FRESH_MS = 30_000;
+/** The longest candle whose whole flow is asked for and summed (the page's flow history reaches back a day). */
+const BAR_HISTORY_MAX_MS = 24 * 3_600_000;
+const MINUTE = 60_000;
 const MAX_BURSTS = 300;
 
 /**
@@ -42,10 +48,16 @@ export class Alerts {
   readonly #walls = new WallWatch();
   readonly #balance = new ImbalanceWatch();
   #lastBook = 0; #lastBar = 0; #lastOi = 0;
+  /** Which market and timeframe the candles (and the open-interest bars) being watched belong to: another one starts from scratch. */
+  #barKey = ''; #oiKey = '';
   #timer: number | undefined;
   onChange: () => void = () => {};
 
-  constructor(private host: AlertsHost, private flow: FlowBook, private player: Player, private clock: () => number = Date.now) {}
+  /**
+   * `ensure` asks for the flow history of instruments from a time on (the page's `ensureFlow`): the sum over a whole candle needs the whole
+   * of it, and the flow column that normally asks for history may be hidden. Without it only what the flow book already holds can be summed.
+   */
+  constructor(private host: AlertsHost, private flow: FlowBook, private player: Player, private clock: () => number = Date.now, private ensure?: (ids: readonly string[], from: number) => void) {}
 
   start(): void { if (this.#timer === undefined) this.#timer = window.setInterval(() => this.tick(this.clock()), 1000); }
   stop(): void { if (this.#timer !== undefined) window.clearInterval(this.#timer); this.#timer = undefined; }
@@ -95,8 +107,10 @@ export class Alerts {
     const s = this.#s, panels = s.sounds.panels, mark = s.mark.price;
     if (!panels.book.wall && !panels.depth.imbalance) { this.#walls.reset(); return; }
     if (!s.levels || !(mark > 0) || now - s.levels.asOf > FRESH_MS) return;
-    const bins = bookBins(s.levels, new Set(activeIds(s)), mark, 0.01);
-    for (const signal of this.#walls.update(now, bins, mark, panels.book.usd)) {
+    const active = new Set(activeIds(s)), bins = bookBins(s.levels, active, mark, 0.01);
+    // The books the bins are made of: when that set changes (a venue chip, a venue that dropped out of the feed) the walls start over.
+    const context = s.levels.books.filter(book => active.has(book.id)).map(book => book.id).sort().join(',');
+    for (const signal of this.#walls.update(now, bins, mark, panels.book.usd, context)) {
       if (!panels.book.wall) continue;
       const word = signal.kind === 'appeared' ? t('wall appeared') : t('wall pulled');
       this.#fire(now, 'book', signal.kind === 'appeared' ? 'wall-appeared' : 'wall-pulled', signal.side, `${signal.side === 'buy' ? t('Bid') : t('Ask')} ${word}: $${Math.round(signal.usd / 1e5) / 10}M`, `wall:${signal.side}:${signal.kind}`, WALL_COOLDOWN_MS);
@@ -110,25 +124,50 @@ export class Alerts {
   #bars(now: number): void {
     const s = this.#s, candles = s.candles, rule = s.sounds.panels.bars;
     if (candles.length < 2) return;
-    const newest = candles[candles.length - 1]![0];
+    const key = `${s.seriesInstrument || s.marketId}|${s.timeframe}`;
+    if (key !== this.#barKey) { this.#barKey = key; this.#lastBar = 0; }
+    const tf = TIMEFRAMES[s.timeframe] ?? 3_600_000, newest = candles[candles.length - 1]![0];
+    const ids = flowIds(s, this.flow.ids);
+    // The flow of the candle that is open is asked for now, so that when it closes the whole of it is here (with the flow column hidden nothing else asks).
+    if (rule.delta && tf <= BAR_HISTORY_MAX_MS) this.ensure?.(ids, newest);
     if (newest === this.#lastBar) return;
-    const first = this.#lastBar === 0; this.#lastBar = newest;
-    if (first || !rule.delta) return;                       // the first load is history
-    const tf = TIMEFRAMES[s.timeframe] ?? 3_600_000, start = candles[candles.length - 2]![0], startSec = Math.floor(start / 1000), endSec = Math.floor((start + tf) / 1000) - 1;
+    const previous = this.#lastBar; this.#lastBar = newest;
+    if (previous === 0 || !rule.delta) return;              // the first load is history
+    const start = candles[candles.length - 2]![0], end = start + tf;
+    // A fresh, continuous close: the bar that was the newest has just closed (not a candle that was loaded, not one that closed while the tab slept, not a gap in what is loaded).
+    if (start !== previous || now - end > BAR_FRESH_MS || tf > BAR_HISTORY_MAX_MS) return;
+    if (!this.#whole(ids, start, tf)) return;
+    const startSec = Math.floor(start / 1000), endSec = Math.floor(end / 1000) - 1;
     let delta = 0;
-    for (const id of flowIds(s, this.flow.ids)) delta += this.flow.get(id)?.delta(startSec, endSec) ?? 0;
+    for (const id of ids) delta += this.flow.get(id)?.delta(startSec, endSec) ?? 0;
     if (Math.abs(delta) < rule.usd) return;
     this.#fire(now, 'bars', 'bar-delta', delta > 0 ? 'buy' : 'sell', t('{timeframe} candle closed with {delta} of net taker flow', { timeframe: s.timeframe, delta: signedUsd(delta) }), 'bar-delta', 1_000);
+  }
+
+  /**
+   * Whether the flow book holds the whole of the candle from `start`: history from that time on has been asked for and has come, and the
+   * recordings reach back that far (flow that begins part-way through the candle would be summed as if it were all of it).
+   */
+  #whole(ids: readonly string[], start: number, tf: number): boolean {
+    if (!ids.length) return false;
+    if (this.ensure && this.flow.missing(ids, start).length) return false;
+    let earliest = Infinity;
+    for (const id of ids) { const first = this.flow.get(id)?.span?.first; if (first !== undefined && first < earliest) earliest = first; }
+    return earliest * 1000 <= start + Math.min(MINUTE, tf / 20);
   }
 
   #oi(now: number): void {
     const s = this.#s, bars = s.oi;
     if (bars.length < 14) return;
+    const key = `${s.oiInstrument}|${s.timeframe}`;
+    if (key !== this.#oiKey) { this.#oiKey = key; this.#lastOi = 0; }
     const newest = bars[bars.length - 1]![0];
     if (newest === this.#lastOi) return;
-    const first = this.#lastOi === 0; this.#lastOi = newest;
-    if (first || !s.sounds.panels.oi.jump || !s.highlight.on) return;
-    const changes = Float64Array.from(bars, b => Math.abs(b[4] - b[1])), closed = bars.length - 2;
+    const previous = this.#lastOi; this.#lastOi = newest;
+    if (previous === 0 || !s.sounds.panels.oi.jump || !s.highlight.on) return;
+    const tf = TIMEFRAMES[s.timeframe] ?? 3_600_000, closed = bars.length - 2;
+    if (bars[closed]![0] !== previous || now - (previous + tf) > BAR_FRESH_MS) return;           // a fresh, continuous close, as for the flow
+    const changes = oiDeltas(bars).map(Math.abs);
     if (anomalies(changes, s.highlight).flag[closed] !== 1) return;
     this.#fire(now, 'oi', 'oi-jump', null, t('Open interest changed unusually in the candle that just closed'), 'oi-jump', 1_000);
   }

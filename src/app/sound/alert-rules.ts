@@ -73,26 +73,44 @@ export class WallWatch {
   #start = -1;
   #armed = { buy: false, sell: false };
   #stood: { buy: (Wall & { since: number }) | null; sell: (Wall & { since: number }) | null } = { buy: null, sell: null };
+  /** What the bins were made of last time (the books they came from): a change in it is not a change in the book. */
+  #context = '';
+  #last = -1;
 
-  reset(): void { this.#start = -1; this.#armed = { buy: false, sell: false }; this.#stood = { buy: null, sell: null }; }
+  reset(): void { this.#start = -1; this.#armed = { buy: false, sell: false }; this.#stood = { buy: null, sell: null }; this.#context = ''; this.#last = -1; }
 
-  update(now: number, bins: BookBins, mark: number, minUsd: number): WallSignal[] {
+  /**
+   * `context` names what the bins are made of (which books, and which instrument's price): when it changes, a venue was switched on or
+   * off or one dropped out of the feed, and what looks like a wall coming or going is the set of books changing. Everything is forgotten
+   * and the warm-up starts again, so nothing is called appeared or pulled on that account. The same goes for a look that comes long after the
+   * one before (nothing was observed in between: a wall that went in that time was not seen going).
+   */
+  update(now: number, bins: BookBins, mark: number, minUsd: number, context = ''): WallSignal[] {
+    if (context !== this.#context || (this.#last >= 0 && now - this.#last > 10_000)) { const known = this.#start >= 0; this.reset(); this.#context = context; if (known) this.#start = now; }
+    this.#last = now;
     if (this.#start < 0) this.#start = now;
     const warm = now - this.#start >= 10_000, top = biggest(bins), out: WallSignal[] = [];
     for (const [side, wall, map] of [['buy', top.bid, bins.bid], ['sell', top.ask, bins.ask]] as const) {
       const stood = this.#stood[side];
+      // The wall that has been standing is judged where it stood, whatever else the book holds: a bigger one elsewhere does not hide its going.
+      if (stood && now - stood.since >= 5_000) {
+        const here = map.get(Math.floor(stood.price / bins.bin)) ?? 0;
+        if (here < stood.usd * 0.3) {
+          // Gone from where it stood. It was pulled only if the price did not come to it: a market that reached it (within 4 bp) or passed through it traded it away.
+          const crossed = side === 'buy' ? mark <= stood.price : mark >= stood.price, reached = Math.abs(mark - stood.price) / stood.price <= 0.0004;
+          if (warm && !crossed && !reached) out.push({ kind: 'pulled', side, price: stood.price, usd: stood.usd });
+          this.#stood[side] = null;
+        }
+      }
+      const standing = this.#stood[side];
       if (wall && wall.usd >= minUsd) {
         if (this.#armed[side] && warm) { out.push({ kind: 'appeared', side, price: wall.price, usd: wall.usd }); this.#armed[side] = false; this.#stood[side] = { ...wall, since: now }; }
-        else if (!stood && !this.#armed[side]) this.#stood[side] = { ...wall, since: now };
-        else if (stood && Math.abs(wall.price - stood.price) <= bins.bin * 3) this.#stood[side] = { price: wall.price, usd: wall.usd, since: stood.since };
+        else if (!standing && !this.#armed[side]) this.#stood[side] = { ...wall, since: now };
+        else if (standing && Math.abs(wall.price - standing.price) <= bins.bin * 3) this.#stood[side] = { price: wall.price, usd: wall.usd, since: standing.since };
         continue;
       }
       if (!wall || wall.usd < minUsd * 0.6) this.#armed[side] = true;
-      if (stood && now - stood.since >= 5_000) {
-        const here = map.get(Math.floor(stood.price / bins.bin)) ?? 0, reached = Math.abs(mark - stood.price) / stood.price <= 0.0004;
-        if (here < stood.usd * 0.3 && !reached) out.push({ kind: 'pulled', side, price: stood.price, usd: stood.usd });
-        this.#stood[side] = null;
-      } else if (stood && !wall) this.#stood[side] = null;
+      if (standing && !wall) this.#stood[side] = null;
     }
     return out;
   }

@@ -28,6 +28,16 @@ export function activeBooks(state: ScopeState): LiveBook[] {
 }
 export const activeIds = (state: ScopeState): string[] => activeBooks(state).map(b => b.id);
 
+/**
+ * What the heatmap is showing: the venue that was chosen to be shown alone, or the aggregate. A venue with no book on the map right now
+ * (switched off, or dropped out of the feed) cannot be shown alone, so the aggregate is shown meanwhile and the choice stands for when its
+ * book is back: the dropdown, the filter beside it and the map all go by this one answer.
+ */
+export function heatmapSourceOf(state: Pick<AppState, 'heatmapSource' | 'levels'>): string {
+  if (state.heatmapSource === 'aggregated' || !state.levels) return state.heatmapSource;
+  return state.levels.books.some(book => book.id === state.heatmapSource) ? state.heatmapSource : 'aggregated';
+}
+
 /** Enabled venue books per kind, for the toolbar (a filter that selects nothing says so). */
 export function scopeCounts(state: ScopeState): Record<Kind, number> {
   const out: Record<Kind, number> = { spot: 0, perp: 0 };

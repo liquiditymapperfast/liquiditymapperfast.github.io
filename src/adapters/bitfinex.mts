@@ -11,8 +11,10 @@ export const BITFINEX_PUBLIC_WS_URL = 'wss://api-pub.bitfinex.com/ws/2';
 export const BITFINEX_CHECKSUM_FLAG = 131072;
 
 function pair(value: unknown) {
-  const text = requireSymbol(value).replaceAll('/', '').replaceAll('-', '').replaceAll('_', '');
-  const normalized = text.startsWith('T') ? text.slice(1) : text;
+  const raw = String(value ?? '').trim();
+  const text = requireSymbol(raw).replaceAll('/', '').replaceAll('-', '').replaceAll('_', '');
+  // Bitfinex writes a trading pair with a lower-case t in front ("tBTCUSD"). A capital T is a letter of the symbol: TRXUSD and TONUSD begin with one.
+  const normalized = /^t[A-Z0-9]/.test(raw) ? text.slice(1) : text;
   if (!/^[A-Z0-9]{4,20}$/.test(normalized)) throw new TypeError('Invalid Bitfinex trading pair');
   return `t${normalized}`;
 }

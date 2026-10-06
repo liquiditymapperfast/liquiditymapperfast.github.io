@@ -11,7 +11,7 @@ import { View, niceStep, type Bounds } from '../view.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
-import { activeIds, emptyScopeMessage } from '../scope.ts';
+import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
 import { bubbleRadius, topPrints, type Print } from '../prints.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
@@ -208,7 +208,8 @@ export class HeatPane {
   #enabledIds(): string[] {
     const state = this.store.state;
     if (!state.levels) return [];
-    if (state.heatmapSource !== 'aggregated') return [state.heatmapSource];
+    const source = heatmapSourceOf(state);
+    if (source !== 'aggregated') return [source];
     return activeIds(state);
   }
 
@@ -334,7 +335,7 @@ export class HeatPane {
     }
     this.#paintLegend(ctx, state);
     if (!this.#wasLoaded && state.levels) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('Collecting depth history…'), 12, 50); }
-    const emptyScope = state.heatmapSource === 'aggregated' ? emptyScopeMessage(state) : null;
+    const emptyScope = heatmapSourceOf(state) === 'aggregated' ? emptyScopeMessage(state) : null;
     if (emptyScope) { // the filter selected nothing: say so instead of drawing a blank map
       ctx.font = '600 13px ui-sans-serif, system-ui, sans-serif'; const width = ctx.measureText(emptyScope).width + 28;
       ctx.fillStyle = p.panel; ctx.globalAlpha = 0.92; ctx.fillRect(pw / 2 - width / 2, ph / 2 - 20, width, 40); ctx.globalAlpha = 1;

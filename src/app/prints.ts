@@ -15,26 +15,38 @@ const keyOf = (p: Print): string => `${p.t}|${p.id}|${p.price}|${p.usd}`;
 
 /**
  * Large trades held for drawing, oldest first, without duplicates (a window fetched from history and the live stream overlap).
- * Bounded: the oldest are dropped past `max`.
+ * Bounded: past `max` the oldest are dropped, except those in the window of history that was last asked for (`keep`): it is what is being
+ * looked at, and a window that was fetched only to be trimmed away at once would be marked as covered and never fetched again.
  */
 export class PrintBook {
   items: Print[] = [];
   #keys = new Set<string>();
+  #keep: { from: number; to: number } | null = null;
   /** Bumped whenever the contents change, so a painter can tell its cache is stale. */
   version = 0;
   constructor(private max = 20_000) {}
 
-  /** Add prints; returns the ones that were new. */
-  add(prints: Iterable<Print>): Print[] {
+  /** Add prints; returns the ones that were new. `keep` is the window of history these were fetched for. */
+  add(prints: Iterable<Print>, keep?: { from: number; to: number }): Print[] {
+    if (keep) this.#keep = keep;
     const fresh: Print[] = [];
     for (const p of prints) { const key = keyOf(p); if (this.#keys.has(key)) continue; this.#keys.add(key); fresh.push(p); }
     if (!fresh.length) return fresh;
     const last = this.items[this.items.length - 1];
     fresh.sort((a, b) => a.t - b.t);
     if (last && fresh[0]!.t < last.t) { this.items = [...this.items, ...fresh].sort((a, b) => a.t - b.t); } else this.items.push(...fresh);
-    if (this.items.length > this.max) { for (const gone of this.items.splice(0, this.items.length - this.max)) this.#keys.delete(keyOf(gone)); }
+    if (this.items.length > this.max) this.#trim();
     this.version++;
     return fresh;
+  }
+
+  /** Drop what is over `max`: the oldest first, and what is in the kept window last (only when the window alone is more than the book holds). */
+  #trim(): void {
+    const over = this.items.length - this.max, keep = this.#keep, gone = new Set<Print>();
+    for (const p of this.items) { if (gone.size >= over) break; if (!keep || p.t < keep.from || p.t >= keep.to) gone.add(p); }
+    for (const p of this.items) { if (gone.size >= over) break; gone.add(p); }
+    this.items = this.items.filter(p => !gone.has(p));
+    for (const p of gone) this.#keys.delete(keyOf(p));
   }
 }
 
@@ -56,8 +68,12 @@ export function topPrints(items: readonly Print[], t0: number, t1: number, p0: n
   // The size of the limit-th largest print, found with a native typed-array sort rather than a comparator sort of objects.
   const sizes = Float64Array.from(inside, p => p.usd).sort();
   const cut = sizes[sizes.length - limit]!;
-  const kept = inside.filter(p => p.usd >= cut);
-  return kept.length > limit ? kept.slice(kept.length - limit) : kept;   // among equal sizes the newest stay
+  // Every print bigger than that size stays. The places left go to those exactly as big, the newest of them first: they tie for the last
+  // places, and a bigger print must never lose its place to a tie because it is older.
+  let room = limit; for (const p of inside) if (p.usd > cut) room--;
+  const ties = new Set<Print>();
+  for (let i = inside.length - 1; i >= 0 && room > 0; i--) if (inside[i]!.usd === cut) { ties.add(inside[i]!); room--; }
+  return inside.filter(p => p.usd > cut || ties.has(p));
 }
 
 /** Bubble radius in px: grows with the square root of the size, never smaller than a dot nor larger than `max`. */

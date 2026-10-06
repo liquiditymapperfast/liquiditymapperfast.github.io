@@ -152,7 +152,7 @@
  "Cumulative delta of whale-size trades over the bars loaded": "불러온 바 전체에 걸친 고래 크기 체결의 누적 델타",
  "High minus low of the candle": "캔들의 고가 − 저가",
  "oi chg": "미결제 변화",
- "Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options": "바 동안의 미결제약정 변화 (미결제 바의 종가 − 시가). 옵션에서 USD 또는 기준 코인",
+ "Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options": "바 동안의 미결제약정 변화 (이 바의 종가 − 이전 바의 종가). 옵션에서 USD 또는 기준 코인",
  "Candle": "캔들",
  "Value": "값",
  "Candle before": "이전 캔들",
@@ -620,5 +620,8 @@
  "Tap the picture to see what each part is.": "그림을 탭하면 각 부분이 무엇인지 볼 수 있습니다.",
  "Move the pointer over the picture.": "포인터를 그림 위로 움직이세요.",
  "Keep in mind": "유의하세요",
- "Tip": "팁"
+ "Tip": "팁",
+ "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "가격 주변의 선택한 범위 안에 대기 중인 유동성을 활성화된 모든 거래소에서 합산한 값입니다.",
+ "Open interest at the end of the candle, and how far it moved since the end of the one before.": "캔들이 끝났을 때의 미결제약정과, 이전 캔들이 끝난 뒤 얼마나 움직였는지입니다.",
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "터치 근처의 가중 유동성. 레벨은 터치에서는 전부 반영하고 반감기만큼 멀어질 때마다 절반이 됩니다."
 }

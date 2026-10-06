@@ -152,7 +152,7 @@
  "Cumulative delta of whale-size trades over the bars loaded": "読み込んだバー全体でのクジラサイズの約定の累積デルタ",
  "High minus low of the candle": "ローソク足の高値 − 安値",
  "oi chg": "建玉変化",
- "Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options": "バー内の建玉の変化（建玉バーの終値 − 始値）。オプションで USD または基軸コイン",
+ "Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options": "バー内の建玉の変化（このバーの終値 − 前のバーの終値）。オプションで USD または基軸コイン",
  "Candle": "ローソク足",
  "Value": "値",
  "Candle before": "前のローソク足",
@@ -620,5 +620,8 @@
  "Tap the picture to see what each part is.": "画像をタップすると各部分の説明が表示されます。",
  "Move the pointer over the picture.": "画像の上にポインターを動かしてください。",
  "Keep in mind": "注意",
- "Tip": "ヒント"
+ "Tip": "ヒント",
+ "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "価格の周囲、選んだ範囲内に並んでいる流動性を、有効な取引所すべてで合計した値です。",
+ "Open interest at the end of the candle, and how far it moved since the end of the one before.": "ローソク足の終わりの建玉と、前のローソク足の終わりからの変化量です。",
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "タッチ付近の重み付き流動性。レベルはタッチでは満額で数え、半減期ぶん離れるごとに半分になります。"
 }

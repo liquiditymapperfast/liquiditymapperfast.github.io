@@ -130,16 +130,28 @@ export class FootprintData {
   step = 0; fine = 0;
   bars = new Map<number, Bar>();
   #key = ''; #loadedAt = 0; #busy = false;
+  /** The market and timeframe the bars belong to, and the number of the request whose answer counts. */
+  #context = ''; #request = 0;
 
   /** Start a refresh when the window, row size or timeframe changed or the data is older than 5 s. */
   ensure(inst: string, tf: string, view: Bounds, rowStep: number, load: (inst: string, tf: string, from: number, to: number, rowStep: number) => Promise<FootprintResponse>, onLoad: () => void): void {
     const tfMs = TIMEFRAMES[tf] ?? 3_600_000;
-    const key = `${inst}|${tf}|${rowStep}|${Math.floor(view.t0 / tfMs)}|${Math.floor(view.t1 / tfMs)}`;
+    // Rows of another market or timeframe are not rows of this one, whatever the window: they go now, rather than being drawn until the new
+    // ones come (or for good, if they never do). A request still out for the old context is left to finish, and its answer is ignored.
+    const context = `${inst}|${tf}`;
+    if (context !== this.#context) { this.#context = context; this.bars = new Map(); this.step = 0; this.fine = 0; this.#key = ''; this.#busy = false; }
+    const key = `${context}|${rowStep}|${Math.floor(view.t0 / tfMs)}|${Math.floor(view.t1 / tfMs)}`;
     if (this.#busy || (key === this.#key && performance.now() - this.#loadedAt < 5_000)) return;
     this.#busy = true; this.#key = key;
+    const request = ++this.#request;
     load(inst, tf, view.t0 - tfMs, view.t1 + tfMs, rowStep).then(body => {
+      if (request !== this.#request) return;
       this.step = body.step; this.fine = body.fine; this.bars = new Map(body.bars.map(bar => [bar.t, readBar(bar)])); this.#loadedAt = performance.now(); onLoad();
-    }).catch(error => console.error('footprint load failed', error)).finally(() => { this.#busy = false; });
+    }).catch(error => {
+      if (request !== this.#request) return;
+      // Asked again in five seconds, not on every frame.
+      console.error('footprint load failed', error); this.#loadedAt = performance.now();
+    }).finally(() => { if (request === this.#request) this.#busy = false; });
   }
 }
 

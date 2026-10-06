@@ -9,7 +9,7 @@ import { PALETTES } from '../theme.ts';
 import { niceStep } from '../view.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
-import { coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance, liquidityWithin, type Grouped } from './levels-data.ts';
+import { beyondCover, coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance, liquidityInView, type Cover, type Grouped } from './levels-data.ts';
 import { GROUPS, WheelNotches, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
@@ -315,7 +315,7 @@ export class LadderPane {
    * level, and the USD column or a plain bar says the whole level. Null over the price column, empty space and the cumulative area.
    */
   #cellUnder(state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>,
-    o: { x: number; w: number; title: string; cells: string[] | null; head: number; cover: { lo: number; hi: number } | null; centerBin: number; rows: number; markBin: number; mark: number; step: number },
+    o: { x: number; w: number; title: string; cells: string[] | null; head: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number },
     k: { priceW: number; usdW: number; cw: number; barX: number; barW: number; maxLevel: number }): { lines: InfoLine[]; x: number; y: number; w: number; h: number } | null {
     const hv = this.#hover; if (!hv || this.#drag) return null;
     const { x: x0, w, rows, markBin, step, centerBin, head } = o;
@@ -323,7 +323,7 @@ export class LadderPane {
     const r = Math.floor((hv.y - head) / ROW_H), bin = centerBin + Math.floor(rows / 2) - r - g.bin0;
     if (bin < 0 || bin >= g.nBins) return null;
     const rowLo = (g.bin0 + bin) * step;
-    if (o.cover && (rowLo + step <= o.cover.lo || rowLo >= o.cover.hi)) return null;
+    if (o.cover && beyondCover(o.cover, rowLo, step)) return null;
     const bid = g.totalBid[bin]!, ask = g.totalAsk[bin]!, isAsk = bin > markBin || (bin === markBin && ask > bid), size = isAsk ? ask : bid;
     if (!(size > 0)) return null;
     const y = head + r * ROW_H, ids = o.cells, at = (i: number): number => (isAsk ? g.ask[i] : g.bid[i])?.[bin] ?? 0;
@@ -388,7 +388,7 @@ export class LadderPane {
    * side's colour along its edge, behind the level bars. It stops where a venue's feed stops reaching (those rows are shaded).
    */
   #paintCumulative(ctx: CanvasRenderingContext2D, g: Grouped, cum: ReturnType<typeof cumulative>,
-    o: { head: number; rows: number; centerBin: number; markBin: number; step: number; cover: { lo: number; hi: number } | null }, barX: number, barW: number, maxCum: number, weight: (bin: number, bidSide: boolean) => number): void {
+    o: { head: number; rows: number; centerBin: number; markBin: number; step: number; cover: Cover | null }, barX: number, barW: number, maxCum: number, weight: (bin: number, bidSide: boolean) => number): void {
     const p = this.#palette, { head, rows, centerBin, markBin, step } = o, half = Math.floor(rows / 2);
     const markAsk = (g.totalAsk[markBin] ?? 0) > (g.totalBid[markBin] ?? 0);
     const outline = (up: boolean, startBin: number, color: string, values: Float32Array) => {
@@ -397,7 +397,7 @@ export class LadderPane {
         const r = centerBin + half - g.bin0 - bin;
         if (r < 0 || r >= rows) break;
         const rowLo = (g.bin0 + bin) * step;
-        if (o.cover && (rowLo + step <= o.cover.lo || rowLo >= o.cover.hi)) break;
+        if (o.cover && beyondCover(o.cover, rowLo, step)) break;
         const y = head + r * ROW_H;
         steps.push([barX + values[bin]! / maxCum * barW, up ? y + ROW_H : y, up ? y : y + ROW_H, bin]);
       }
@@ -419,9 +419,10 @@ export class LadderPane {
    * A slim bar under the header: the cumulative bid and ask liquidity within the visible range, as shares of their sum, so which side
    * is more dominant (and by how much) reads at a glance. The strength of each row below follows the same comparison at its own distance.
    */
-  #paintBalance(ctx: CanvasRenderingContext2D, g: Grouped, cum: ReturnType<typeof cumulative>, o: { head: number; balanceH: number; rows: number; markBin: number }, x0: number, w: number): void {
+  #paintBalance(ctx: CanvasRenderingContext2D, g: Grouped, cum: ReturnType<typeof cumulative>, o: { head: number; balanceH: number; rows: number; centerBin: number; markBin: number }, x0: number, w: number): void {
     const p = this.#palette, top = o.head - o.balanceH + 1, h = o.balanceH - 3;
-    const { bid, ask } = liquidityWithin(g, cum, o.markBin, Math.floor(o.rows / 2));
+    // The rows that are on screen: the top row is the highest bin shown. Scrolled away from the mark they are not the rows around it.
+    const hiBin = o.centerBin + Math.floor(o.rows / 2) - g.bin0, { bid, ask } = liquidityInView(g, o.markBin, hiBin - o.rows + 1, hiBin);
     const total = bid + ask; if (!(total > 0)) return;
     const share = bid / total, split = x0 + 6 + (w - 12) * share, left = x0 + 6, right = x0 + w - 6, dominantBid = share >= 0.5;
     ctx.globalAlpha = dominantBid ? 0.85 : 0.35; ctx.fillStyle = p.bid; ctx.fillRect(left, top, split - left, h);
@@ -434,7 +435,7 @@ export class LadderPane {
   }
 
   #drawBook(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped,
-    o: { x: number; w: number; title: string; cells: string[] | null; cellW: number; head: number; balanceH: number; cover: { lo: number; hi: number } | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
+    o: { x: number; w: number; title: string; cells: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
     const p = this.#palette, { x: x0, w, rows, markBin, step, centerBin } = o;
     const cum = cumulative(g, o.mark);
     const dominance = state.highlight.on ? imbalanceByDistance(g, cum, markBin) : null;
@@ -468,7 +469,7 @@ export class LadderPane {
       if (bin < 0 || bin >= g.nBins) continue;
       const y = o.head + r * ROW_H, mid = y + ROW_H / 2;
       const rowLo = (g.bin0 + bin) * step;
-      if (o.cover && (rowLo + step <= o.cover.lo || rowLo >= o.cover.hi)) {
+      if (o.cover && beyondCover(o.cover, rowLo, step)) {
         // Beyond what this venue's feed reaches: shade the row instead of showing a misleading empty book.
         ctx.globalAlpha = 0.5; ctx.fillStyle = p.line; ctx.fillRect(x0, y, w, ROW_H); ctx.globalAlpha = 1;
         ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(fmtPrice(rowLo, step), x0 + 6, mid);

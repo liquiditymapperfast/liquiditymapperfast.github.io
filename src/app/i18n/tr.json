@@ -152,7 +152,7 @@
  "Cumulative delta of whale-size trades over the bars loaded": "Yüklenen çubuklar boyunca balina büyüklüğündeki işlemlerin birikimli deltası",
  "High minus low of the candle": "Mumun en yükseği eksi en düşüğü",
  "oi chg": "AP değ.",
- "Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options": "Çubuk boyunca açık pozisyon değişimi (AP çubuğunun kapanışı eksi açılışı); seçeneklerde USD veya baz coin",
+ "Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options": "Çubuk boyunca açık pozisyon değişimi (kapanışı eksi önceki çubuğun kapanışı); seçeneklerde USD veya baz coin",
  "Candle": "Mum",
  "Value": "Değer",
  "Candle before": "Önceki mum",
@@ -632,5 +632,8 @@
  "Tap the picture to see what each part is.": "Her bölümün ne olduğunu görmek için görsele dokunun.",
  "Move the pointer over the picture.": "İşaretçiyi görselin üzerinde gezdirin.",
  "Keep in mind": "Unutmayın",
- "Tip": "İpucu"
+ "Tip": "İpucu",
+ "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Fiyatın çevresindeki seçili aralıkta bekleyen likidite, etkin tüm borsalarda toplanmıştır.",
+ "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Mumun sonundaki açık pozisyon ve bir önceki mumun sonundan bu yana ne kadar değiştiği.",
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Temasa yakın ağırlıklı likidite: bir seviye temasta tam sayılır, uzaklaştıkça her yarı ömürde yarıya iner."
 }

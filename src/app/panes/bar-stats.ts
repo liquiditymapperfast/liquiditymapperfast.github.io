@@ -4,6 +4,7 @@ import { price as fmtPrice } from '../format.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { t } from '../i18n.ts';
 import type { InfoLine } from '../infobox.ts';
+import { oiDeltaByTime } from '../oi-change.ts';
 
 /**
  * Per-candle statistics shown under the footprint. Each definition computes one number per bar from the executions recorded for
@@ -117,8 +118,8 @@ export const BAR_STATS: readonly StatDef[] = [
     compute: input => running(input.bars.map(bar => bar.stats ? sizeDelta(bar.stats, ...whales(input.options)) : null)) },
   { id: 'range', label: 'range', group: 'market', title: t('High minus low of the candle'), scale: 'sequential', format: value => fmtPrice(value),
     compute: ({ bars, candles }) => bars.map(bar => { const c = candles.get(bar.t); return c ? c[2] - c[3] : null; }) },
-  { id: 'oiChange', label: t('oi chg'), group: 'market', title: t('Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options'), scale: 'diverging', format: signedVol,
-    compute: ({ bars, oi, candles, options }) => bars.map(bar => { const o = oi.get(bar.t); if (!o) return null; const change = o[4] - o[1]; if (options.oiUnits === 'base') return change; const c = candles.get(bar.t); return c ? change * c[4] : null; }) },
+  { id: 'oiChange', label: t('oi chg'), group: 'market', title: t('Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options'), scale: 'diverging', format: signedVol,
+    compute: ({ bars, oi, candles, options }) => { const delta = oiDeltaByTime(oi.values()); return bars.map(bar => { const change = delta.get(bar.t); if (change === undefined) return null; if (options.oiUnits === 'base') return change; const c = candles.get(bar.t); return c ? change * c[4] : null; }); } },
 ];
 
 /** Starting selections offered by the presets. */

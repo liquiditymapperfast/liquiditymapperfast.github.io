@@ -152,7 +152,7 @@
  "Cumulative delta of whale-size trades over the bars loaded": "Delta acumulado das operações de tamanho de baleia sobre as barras carregadas",
  "High minus low of the candle": "Máxima menos mínima da vela",
  "oi chg": "var. OI",
- "Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options": "Variação do open interest ao longo da barra (fechamento menos abertura da barra de OI); USD ou moeda base nas opções",
+ "Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options": "Variação do open interest ao longo da barra (seu fechamento menos o fechamento da barra anterior); USD ou moeda base nas opções",
  "Candle": "Vela",
  "Value": "Valor",
  "Candle before": "Vela anterior",
@@ -636,5 +636,8 @@
  "Tap the picture to see what each part is.": "Toque na imagem para ver o que é cada parte.",
  "Move the pointer over the picture.": "Mova o ponteiro sobre a imagem.",
  "Keep in mind": "Tenha em mente",
- "Tip": "Dica"
+ "Tip": "Dica",
+ "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Liquidez em espera dentro do intervalo escolhido em torno do preço, somada em todas as exchanges ativadas.",
+ "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Open interest no fim da vela e quanto ele se moveu desde o fim da anterior.",
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Liquidez perto do toque, ponderada: um nível conta por inteiro no toque e pela metade a cada meia-vida de distância."
 }

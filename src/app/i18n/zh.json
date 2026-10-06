@@ -152,7 +152,7 @@
  "Cumulative delta of whale-size trades over the bars loaded": "已加载的柱上巨鲸大小成交的累计 delta",
  "High minus low of the candle": "K 线的最高价减最低价",
  "oi chg": "持仓变化",
- "Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options": "该柱期间持仓量的变化（持仓柱的收盘减开盘）；在选项中选美元或基础币",
+ "Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options": "该柱期间持仓量的变化（本柱收盘减前一柱收盘）；在选项中选美元或基础币",
  "Candle": "K 线",
  "Value": "数值",
  "Candle before": "前一根 K 线",
@@ -620,5 +620,8 @@
  "Tap the picture to see what each part is.": "点按图片查看每个部分是什么。",
  "Move the pointer over the picture.": "将指针移到图片上。",
  "Keep in mind": "请注意",
- "Tip": "提示"
+ "Tip": "提示",
+ "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "价格附近所选范围内的挂单流动性，已汇总所有已启用的交易所。",
+ "Open interest at the end of the candle, and how far it moved since the end of the one before.": "该 K 线收盘时的持仓量，以及自上一根 K 线收盘以来的变化量。",
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "贴价处附近的加权流动性：价位在贴价处按全额计，每远离一个半衰期，权重减半。"
 }

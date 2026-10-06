@@ -3,6 +3,7 @@ import { gridStepFor } from '../../shared/grid.ts';
 import type { ColumnSet, LiveBook } from '../wire.ts';
 import { ltSeries, type LtParams, type LtStore } from '../lt.ts';
 import { shareInCell, type CellShare } from '../cell-sources.ts';
+import { dropAbsent } from './membership.ts';
 
 /** A set of recorded or live columns for one instrument, flat for the raster kernel. */
 interface Store { step: number; times: Float64Array; counts: Uint32Array; bins: Int32Array; bid: Float32Array; ask: Float32Array }
@@ -188,6 +189,7 @@ scope.onmessage = event => {
       recorded = new Map(message.instruments.map(set => [set.id, toStore(set)]));
       for (const set of message.instruments) if (set.step > 0) steps.set(set.id, set.step);
     } else if (message.type === 'live') {
+      dropAbsent(live, message.books.map(book => book.id));
       for (const book of message.books) {
         let step = steps.get(book.id);
         if (!step) {

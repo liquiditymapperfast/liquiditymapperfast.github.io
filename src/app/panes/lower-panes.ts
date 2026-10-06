@@ -3,6 +3,7 @@ import { setTip } from '../tip.ts';
 import { helpButton } from '../help.ts';
 import { TIMEFRAMES, type Hub } from '../hub.ts';
 import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar } from '../store.ts';
+import { oiDeltas } from '../oi-change.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { venueLabel } from '../venues.ts';
 import { activeIds, emptyScopeMessage } from '../scope.ts';
@@ -11,6 +12,8 @@ import { clock, price as fmtPrice, usd } from '../format.ts';
 import { gutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
 import { BAR_STATS, GROUP_TITLES, PRESETS, SIZE_BUCKET_LABELS, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
 import { HoverCard } from '../hovercard.ts';
+import type { InfoLine } from '../infobox.ts';
+import { barAt, columnAt, depthCardLines, imbalanceFlags, ltCardLines, oiCardLines, oiTail, slotAt } from './pane-cards.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
@@ -131,6 +134,9 @@ export class DepthPane extends TimePane {
   #range = 0.2;
   #series: { t0: number; t1: number; w: number; bid: Float32Array; ask: Float32Array } | null = null;
   #key = ''; #busy = false;
+  /** The pane is too short for a popup drawn on it, so what the pointer is over is said in a page element. */
+  #card = new HoverCard();
+  #lines: InfoLine[] | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'depth');
     this.head.innerHTML = `<strong>${t('Depth')}</strong><span class="readout"></span>`;
@@ -143,6 +149,13 @@ export class DepthPane extends TimePane {
   }
   refresh(): void { this.#key = ''; this.invalidate(); }
   protected draw(): void {
+    this.#lines = null;
+    this.#paint();
+    const at = this.pointer;
+    if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
+  }
+  protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h;
     const state = this.store.state;
     const ids = activeIds(state);
@@ -171,25 +184,39 @@ export class DepthPane extends TimePane {
     const lastTotal = lastB + lastA, lastImbalance = lastTotal > 0 ? (lastB - lastA) / lastTotal : 0;
     const dominant = Math.abs(lastImbalance) < 0.005 ? '' : ` <b class="${lastImbalance > 0 ? 'bid' : 'ask'}">${lastImbalance > 0 ? t('bids') : t('asks')} +${(Math.abs(lastImbalance) * 100).toFixed(1)}%</b>`;
     setHtml(readout, `A <b class="ask">${usd(lastA)}</b> B <b class="bid">${usd(lastB)}</b> Δ <b>${usd(lastB - lastA)}</b>${dominant}`);
+    const hv = state.hover;
+    if (hv && this.pointer) {
+      const at = columnAt(s.t0, s.t1, s.w, hv.t);
+      if (at >= 0 && (s.bid[at]! > 0 || s.ask[at]! > 0)) {
+        const here = s.bid[at]! + s.ask[at]!;
+        let rank = 1, of = 0;
+        for (let x = 0; x < s.w; x++) { const total = s.bid[x]! + s.ask[x]!; if (total > 0) { of++; if (total > here) rank++; } }
+        this.#lines = depthCardLines({ time: s.t0 + at / s.w * (s.t1 - s.t0), bid: s.bid[at]!, ask: s.ask[at]!, range: this.#range, rank, of });
+      }
+    }
     const mid = ph / 2, half = ph / 2 - 6, cue = state.highlight.on;
     const xOf = (t: number) => v.xOf(t, pw);
+    // Which columns stand out is the page's one rule (Highlights: how many deviations, over how many bars before); the rest recedes.
+    const columnsPerBar = s.w * (TIMEFRAMES[state.timeframe] ?? 3_600_000) / Math.max(1, s.t1 - s.t0);
+    const unusual = cue ? imbalanceFlags(s.bid, s.ask, state.highlight, columnsPerBar) : null;
     for (let x = 0; x < s.w; x++) {
       const t = s.t0 + x / s.w * (s.t1 - s.t0), t2 = s.t0 + (x + 1) / s.w * (s.t1 - s.t0);
       const x0 = xOf(t), x1 = xOf(t2);
       const b = s.bid[x]!, a = s.ask[x]!;
-      // The side with more liquidity is drawn brighter and the other dimmer, in proportion to the imbalance (no flip, so it does not flicker).
-      const total = b + a, imbalance = total > 0 ? (b - a) / total : 0, strength = Math.min(1, Math.abs(imbalance) / 0.3);
+      // The side with more liquidity is drawn brighter and the other dimmer, in proportion to the imbalance (no flip, so it does not flicker);
+      // a column the rule flags goes to full strength, and the others show the gap only up to part of it.
+      const total = b + a, imbalance = total > 0 ? (b - a) / total : 0, flagged = unusual?.[x] === 1, strength = flagged ? 1 : Math.min(1, Math.abs(imbalance) / 0.3) * 0.4;
       const bidAlpha = !cue ? 0.55 : 0.5 + (imbalance > 0 ? 0.45 : -0.28) * strength, askAlpha = !cue ? 0.55 : 0.5 + (imbalance < 0 ? 0.45 : -0.28) * strength;
       // Asks above the line and bids below it, as they sit on the chart and in the order book.
       if (a > 0) {
         const height = a / max * half;
         ctx.fillStyle = p.ask; ctx.globalAlpha = askAlpha; ctx.fillRect(x0, mid - height, x1 - x0 + 0.6, height);
-        if (cue && imbalance < 0 && strength > 0.5) { ctx.globalAlpha = 1; ctx.fillRect(x0, mid - height, x1 - x0 + 0.6, 1.5); }
+        if (flagged && imbalance < 0) { ctx.globalAlpha = 1; ctx.fillRect(x0, mid - height, x1 - x0 + 0.6, 1.5); }
       }
       if (b > 0) {
         const height = b / max * half;
         ctx.fillStyle = p.bid; ctx.globalAlpha = bidAlpha; ctx.fillRect(x0, mid, x1 - x0 + 0.6, height);
-        if (cue && imbalance > 0 && strength > 0.5) { ctx.globalAlpha = 1; ctx.fillRect(x0, mid + height - 1.5, x1 - x0 + 0.6, 1.5); }
+        if (flagged && imbalance > 0) { ctx.globalAlpha = 1; ctx.fillRect(x0, mid + height - 1.5, x1 - x0 + 0.6, 1.5); }
       }
     }
     ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, mid + 0.5); ctx.lineTo(pw, mid + 0.5); ctx.stroke();
@@ -204,6 +231,8 @@ export class DepthPane extends TimePane {
  */
 export class OiPane extends TimePane {
   #cache: { oi: readonly OiBar[]; key: string; delta: Float64Array; flag: Uint8Array; sigma: Float64Array } | null = null;
+  #card = new HoverCard();
+  #lines: InfoLine[] | null = null;
   constructor(host: HTMLElement, store: Store, view: View) {
     super(host, store, view, 'oi');
     this.head.innerHTML = `<strong>${t('Open Interest')}</strong><span class="readout"></span>`;
@@ -212,13 +241,19 @@ export class OiPane extends TimePane {
   #analysis(oi: readonly OiBar[], highlight: HighlightOptions) {
     const key = `${highlight.mult}|${highlight.length}`;
     if (this.#cache && this.#cache.oi === oi && this.#cache.key === key) return this.#cache;
-    const delta = new Float64Array(oi.length), size = new Float64Array(oi.length);
-    for (let i = 1; i < oi.length; i++) { delta[i] = oi[i]![4] - oi[i - 1]![4]; size[i] = Math.abs(delta[i]!); }
+    const delta = oiDeltas(oi), size = delta.map(Math.abs);
     const found = anomalies(size, highlight);
     this.#cache = { oi, key, delta, flag: found.flag, sigma: found.sigma };
     return this.#cache;
   }
   protected draw(): void {
+    this.#lines = null;
+    this.#paint();
+    const at = this.pointer;
+    if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
+  }
+  protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state: AppState = this.store.state;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = state.oi, highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
@@ -263,10 +298,13 @@ export class OiPane extends TimePane {
     }
     // Level: soft area, step line, dashed continuation, sample dots.
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
-    line(first, last); ctx.lineTo(xSampled, y(lastBar[4])); ctx.lineTo(xSampled, lineBottom); ctx.lineTo(xc(first), lineBottom); ctx.closePath();
+    // The line holds the last sample on screen. It ends at the newest sample's centre only when that sample is the one on screen; looking at
+    // the past it carries its level to the edge of the view, and the newest value (which is somewhere to the right) is not joined to it.
+    const tail = oiTail(oi.length, last, xSampled, pw), endY = y(oi[last]![4]);
+    line(first, last); ctx.lineTo(tail.x, endY); ctx.lineTo(tail.x, lineBottom); ctx.lineTo(xc(first), lineBottom); ctx.closePath();
     ctx.globalAlpha = 0.09; ctx.fillStyle = p.accent; ctx.fill(); ctx.globalAlpha = 1;
-    ctx.lineWidth = 1.6; ctx.strokeStyle = p.accent; line(first, last); ctx.lineTo(xSampled, y(lastBar[4])); ctx.stroke();
-    if (xEnd > xSampled + 2) { ctx.globalAlpha = 0.55; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(xSampled, y(lastBar[4])); ctx.lineTo(xEnd, y(lastBar[4])); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+    ctx.lineWidth = 1.6; ctx.strokeStyle = p.accent; line(first, last); ctx.lineTo(tail.x, endY); ctx.stroke();
+    if (tail.live && xEnd > xSampled + 2) { ctx.globalAlpha = 0.55; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(xSampled, y(lastBar[4])); ctx.lineTo(xEnd, y(lastBar[4])); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
     ctx.lineWidth = 1;
     const spacing = visible.length > 1 ? (xc(visible[visible.length - 1]!) - xc(visible[0]!)) / (visible.length - 1) : 99;
     if (spacing >= 9) { ctx.fillStyle = p.accent; for (const i of visible) { ctx.beginPath(); ctx.arc(xc(i), y(oi[i]![4]), 2.4, 0, Math.PI * 2); ctx.fill(); } }
@@ -283,6 +321,17 @@ export class OiPane extends TimePane {
     const sign = d > 0 ? '+' : d < 0 ? '−' : '';
     const source = state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? ` <span class="muted">${t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` })}</span>` : '';
     const sigma = flagged && Number.isFinite(analysis.sigma[shown]) ? ` <span class="muted">${analysis.sigma[shown]!.toFixed(1)}σ</span>` : '';
+    const over = hover && this.pointer ? barAt(oi, tf, hover.t) : -1;
+    if (over >= 0) {
+      const there = oi[over]!, seen = visible.filter(i => i > 0), change = over > 0 ? analysis.delta[over]! : null, size = change === null ? 0 : Math.abs(change);
+      this.#lines = oiCardLines({
+        time: there[0], level: there[4], change, before: over > 1 ? analysis.delta[over - 1]! : null,
+        rank: change === null || !seen.length ? null : 1 + seen.filter(i => Math.abs(analysis.delta[i]!) > size).length, of: seen.length,
+        sigma: highlight.on && analysis.flag[over] === 1 && Number.isFinite(analysis.sigma[over]) ? analysis.sigma[over]! : null,
+        source: state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` }) : null,
+        staleMin: over === oi.length - 1 && stale ? Math.round(age / 60_000) : null,
+      });
+    }
     say(`${t('base')} <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${sigma}${source}${stale ? ` <span class="ask">${t('last sample {n} min ago', { n: Math.round(age / 60_000) })}</span>` : ''}`);
   }
 }
@@ -297,6 +346,8 @@ export class LtPane extends TimePane {
   #series: (LtSeries & { stepMs: number }) | null = null;
   #key = ''; #busy = false; #lastAt = 0;
   #sync: (() => void)[] = [];
+  #card = new HoverCard();
+  #lines: InfoLine[] | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'lt');
     this.head.innerHTML = `<strong>${t('Liquidity Tracker')}</strong><span class="readout"></span>`;
@@ -331,6 +382,13 @@ export class LtPane extends TimePane {
   refresh(): void { this.#key = ''; for (const sync of this.#sync) sync(); this.invalidate(); }
 
   protected draw(): void {
+    this.#lines = null;
+    this.#paint();
+    const at = this.pointer;
+    if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
+  }
+  protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, lt = state.lt;
     const ids = activeIds(state);
     const emptyScope = emptyScopeMessage(state);
@@ -389,6 +447,8 @@ export class LtPane extends TimePane {
     if (state.hover) { at = 0; for (let i = 0; i < n; i++) if (s.times[i]! <= state.hover.t) at = i; }
     const b = s.bid[at]!, a = s.ask[at]!, total = b + a;
     setHtml(readout, `${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${tn(ids.length, '{n} venue', '{n} venues')}`);
+    const over = state.hover && this.pointer ? slotAt(s.times, step, state.hover.t) : -1;
+    if (over >= 0) this.#lines = ltCardLines({ time: s.times[over]!, bid: s.bid[over]!, ask: s.ask[over]!, halfLifeBp: lt.halfLifeBp, venues: ids.length });
   }
 }
 

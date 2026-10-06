@@ -152,7 +152,7 @@
  "Cumulative delta of whale-size trades over the bars loaded": "Накопленная дельта сделок размера китов по загруженным барам",
  "High minus low of the candle": "Максимум минус минимум свечи",
  "oi chg": "изм. ОИ",
- "Open-interest change over the bar (close minus open of the OI bar); USD or base coin in the options": "Изменение открытого интереса за бар (закрытие минус открытие бара ОИ); USD или базовая монета в параметрах",
+ "Open-interest change over the bar (its close minus the close of the bar before); USD or base coin in the options": "Изменение открытого интереса за бар (его закрытие минус закрытие предыдущего бара); USD или базовая монета в параметрах",
  "Candle": "Свеча",
  "Value": "Значение",
  "Candle before": "Предыдущая свеча",
@@ -640,5 +640,8 @@
  "Tap the picture to see what each part is.": "Коснитесь картинки, чтобы узнать, что это за часть.",
  "Move the pointer over the picture.": "Наведите указатель на картинку.",
  "Keep in mind": "Учтите",
- "Tip": "Совет"
+ "Tip": "Совет",
+ "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Ожидающая ликвидность в выбранном диапазоне вокруг цены, сложенная по всем включённым биржам.",
+ "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Открытый интерес на конец свечи и насколько он изменился с конца предыдущей.",
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Взвешенная ликвидность возле касания: уровень учитывается полностью у касания и вдвое меньше за каждый период полураспада удаления."
 }

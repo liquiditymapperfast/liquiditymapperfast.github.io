@@ -63,8 +63,14 @@ test('trade stats exist only for bars recorded with them and size buckets split 
 
 test('candle and open-interest stats read the bar of the same period, in the unit chosen', () => {
   assert.deepEqual(compute('range'), [13, null, 10]);
-  assert.deepEqual(compute('oiChange'), [5, null, -3], 'base coin by default');
-  assert.deepEqual(compute('oiChange', { oiUnits: 'usd' }), [5 * 105, null, -3 * 116], 'change times the bar close');
+  assert.deepEqual(compute('oiChange'), [null, null, -3], 'base coin by default; the first bar has no bar before it to be compared with');
+  assert.deepEqual(compute('oiChange', { oiUnits: 'usd' }), [null, null, -3 * 116], 'change times the bar close');
+});
+
+test('open-interest change is the step from the close of the bar before, so a bar holding one reading still shows that it moved', () => {
+  const points = new Map<number, OiBar>([[0, [0, 100, 100, 100, 100]], [MIN, [MIN, 250, 250, 250, 250]]]);   // one reading per bar: open = close
+  const found = statDef('oiChange')!.compute({ bars: bars.slice(0, 2), step: 5, candles, oi: points, options: { ...DEFAULT_STAT_OPTIONS } });
+  assert.deepEqual(found, [null, 150], 'the pane shows 150 here; close minus open was 0');
 });
 
 test('configuration helpers: presets, order, unknown ids', () => {

@@ -40,15 +40,30 @@ export function groupLevels(kernels: Kernels, frame: LevelsFrame, ids: string[],
   return { ids: books.map(book => book.id), step, bin0, nBins, bid, ask, totalBid, totalAsk };
 }
 
+/** What a venue's book reaches: its lowest and highest price, and whether the highest is a single price (`hiPoint`) or the end of a band. */
+export interface Cover { lo: number; hi: number; hiPoint?: boolean }
+
 /** The price range a venue's book actually reaches, so a feed limit reads as "no data" rather than an empty book. */
-export function coverage(book: LevelsFrame['books'][number] | undefined, mark: number): { lo: number; hi: number; bp: number; levels: number } | null {
+export function coverage(book: LevelsFrame['books'][number] | undefined, mark: number): (Cover & { bp: number; levels: number }) | null {
   if (!book || !(mark > 0) || book.bids.usd.length + book.asks.usd.length === 0) return null;
   let lo = Infinity, hi = -Infinity;
   for (const v of book.bids.lo) if (v < lo) lo = v;
   for (const v of book.asks.hi) if (v > hi) hi = v;
   if (!Number.isFinite(lo)) lo = mark;
   if (!Number.isFinite(hi)) hi = mark;
-  return { lo, hi, bp: Math.round((hi - lo) / mark * 1e4), levels: book.bids.usd.length + book.asks.usd.length };
+  // A level that is one price (lo = hi) sits at its price; a band (several prices merged) stops short of its upper edge.
+  let hiPoint = false;
+  for (let i = 0; i < book.asks.hi.length; i++) if (book.asks.hi[i] === hi && book.asks.lo[i]! >= hi) { hiPoint = true; break; }
+  return { lo, hi, hiPoint, bp: Math.round((hi - lo) / mark * 1e4), levels: book.bids.usd.length + book.asks.usd.length };
+}
+
+/**
+ * Whether the row [rowLo, rowLo + step) of the ladder lies beyond what a venue's book reaches. A row ends before the lowest price when it
+ * stops at or below it; the highest price is inside the row that starts at or below it when it is a single price (a level of the book at
+ * exactly that price), and outside the row that starts at it when it is the end of a band.
+ */
+export function beyondCover(cover: Cover, rowLo: number, step: number): boolean {
+  return rowLo + step <= cover.lo || (cover.hiPoint ? rowLo > cover.hi : rowLo >= cover.hi);
 }
 
 /** Cumulative USD walking away from the mark: bids downward, asks upward; the mark's own bin counts for both sides. */
@@ -79,6 +94,19 @@ export function imbalanceByDistance(grouped: Pick<Grouped, 'nBins'>, cum: Cumula
     out[i] = total > 0 ? (b - a) / total : 0;
   }
   return out;
+}
+
+/**
+ * Bid and ask liquidity in the bins from `loBin` to `hiBin` (both included, kept to the grid): the bids at and below the mark's bin, the asks
+ * at and above it, the mark's own bin counting for both. This is what is on screen when the ladder is scrolled away from the mark.
+ */
+export function liquidityInView(grouped: Pick<Grouped, 'nBins' | 'totalBid' | 'totalAsk'>, markBin: number, loBin: number, hiBin: number): { bid: number; ask: number } {
+  let bid = 0, ask = 0;
+  for (let bin = Math.max(0, loBin); bin <= Math.min(grouped.nBins - 1, hiBin); bin++) {
+    if (bin <= markBin) bid += grouped.totalBid[bin]!;
+    if (bin >= markBin) ask += grouped.totalAsk[bin]!;
+  }
+  return { bid, ask };
 }
 
 /** Cumulative bid and ask liquidity within `rows` rows of the mark (what the balance bar shows). */

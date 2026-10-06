@@ -2,7 +2,7 @@ import type { FlowSeries } from '../../shared/flow.ts';
 import type { FlowBook } from '../flow-book.ts';
 import type { Kind } from '../scope.ts';
 import { buildFamilies, type Family } from './families.ts';
-import { Ranker, quiet, rankFamilies, type RankInput } from './rank.ts';
+import { Ranker, pickTop, quiet, rankAll, type RankInput } from './rank.ts';
 import { RANK_MS, type CvdSettings } from './settings.ts';
 
 /** One line of the column: a lane's running delta over the window, a value per pixel column. */
@@ -77,13 +77,13 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
     quiet: settings.quietFlag && quiet((a, b) => family.lanes.reduce((sum, lane) => sum + flow.get(lane.id)!.gross(a, b), 0), now),
   }));
   const top = settings.top > 0 ? settings.top : null;
-  const fresh = rankFamilies(inputs, { top, pin: settings.pinned });
-  const held = ranker.apply(now, fresh);
+  const everyone = rankAll(inputs), fresh = pickTop(everyone, { top, pin: settings.pinned });
+  const held = ranker.apply(now, fresh, everyone);
   const rows: FamilyRow[] = held.map((r, i) => ({
     key: r.family.key, rank: i + 1, share: r.share, gross: r.gross, quiet: r.quiet,
     lanes: [...r.family.lanes].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'spot' ? -1 : 1)).map(lane => laneLine(lane.id, lane.kind, flow.get(lane.id)!, common)),
   }));
-  const volumeFamilies = inputs.filter(i => i.spot + i.perp > 0).length;
+  const volumeFamilies = everyone.length;
 
   const aggregate = (kind: Kind): LaneLine | null => {
     const lanes = families.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => flow.get(l.id)!);

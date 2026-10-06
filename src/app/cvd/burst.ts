@@ -29,8 +29,11 @@ export function burst(series: FlowSeries, nowSec: number, options: BurstOptions 
     const d = series.delta(start, end); sum += d; sumSq += d * d; n++;
   }
   if (n < 12) return null;
-  const mean = sum / n, sd = Math.sqrt(Math.max(0, sumSq / n - mean * mean));
-  // A silent baseline has no deviation to measure against: the minimum alone decides, with an infinite z that the caller shows as such.
-  const z = sd > 0 ? (delta - mean) / sd : Math.sign(delta) * Infinity;
+  const mean = sum / n, sd = Math.sqrt(Math.max(0, sumSq / n - mean * mean)), residual = delta - mean;
+  // A baseline that never varied (windows of exactly the same delta, most often none at all) has no deviation to measure against, so the
+  // distance from its mean decides, with an infinite z that the caller shows as such: far enough from it to be worth a mention is a burst,
+  // and the very amount it always has is not (that used to be one too).
+  const flat = sd <= Math.abs(mean) * 1e-9;
+  const z = flat ? (Math.abs(residual) >= minUsd ? Math.sign(residual) * Infinity : 0) : residual / sd;
   return Math.abs(z) >= k ? { delta, z, windowSec } : null;
 }

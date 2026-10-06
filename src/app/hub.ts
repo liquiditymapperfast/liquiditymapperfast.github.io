@@ -25,6 +25,12 @@ export class Hub {
   #columnsLoading = false;
   #series = '';
   #oiKey = '';
+  /** Counts the requests for the series and for open interest, so an answer can tell whether it is still the one wanted (the key names the context, not the request). */
+  #seriesGen = 0; #oiGen = 0;
+  /** The live candles of the latest tick, so an answer that arrives after them can be brought up to date with them. */
+  #liveCandles: TickMessage['candles'] = {};
+  /** The live minutes folded into the display candle, when it spans more than one. */
+  readonly #liveTrack: { current: LiveTrack | null } = { current: null };
   /** Large trades for the bubbles: history for the window on screen plus everything the live stream has delivered. */
   readonly prints = new PrintBook();
   /** Called with each batch of new large trades from the live stream (for sounds). */
@@ -37,6 +43,8 @@ export class Hub {
   onFlowChanged: () => void = () => {};
   #flowLoading = false;
   #printsWindow: { t0: number; t1: number } | null = null;
+  /** The live stream has closed at least once since it last opened, so the next open is a reconnection. */
+  #dropped = false;
   #printsLoading = false;
   onRaster: (result: RasterResult) => void = () => {};
   #depthWaiters = new Map<number, (r: { bid: Float32Array; ask: Float32Array }) => void>();
@@ -88,8 +96,13 @@ export class Hub {
     let pending: ReturnType<typeof setTimeout> | undefined;
     this.source.venues.watch?.(() => { clearTimeout(pending); pending = setTimeout(() => void this.refreshMarkets(), 300); });
     this.source.connect({
-      onOpen: () => { this.#printsWindow = null; this.store.set({ connected: true, status: t('live') }); },
-      onClose: (failures, host) => this.store.set({ connected: false, status: connectionStatus(failures, host) }),
+      onOpen: () => {
+        this.#printsWindow = null;
+        // What the stream said while it was down is in the recordings and not in the book: ask for the history again (the first open has nothing to repair).
+        if (this.#dropped) { this.#dropped = false; this.flow.invalidate(); }
+        this.store.set({ connected: true, status: t('live') });
+      },
+      onClose: (failures, host) => { this.#dropped = true; this.store.set({ connected: false, status: connectionStatus(failures, host) }); },
       onLevels: frame => {
         this.store.set({ levels: frame });
         this.#post({ type: 'live', books: frame.books, now: Date.now() });
@@ -123,12 +136,16 @@ export class Hub {
   #tick(tick: TickMessage): void {
     const { state } = this.store;
     const patch: Parameters<Store['set']>[0] = {};
-    // A source that knows every live price (the browser) gives the market on screen its own; otherwise only the reference instrument moves the mark.
-    const own = tick.prices?.[state.marketId];
+    this.#liveCandles = tick.candles;
+    // A source that knows every live price (the browser) gives the market on screen its own; otherwise only the reference instrument moves the mark,
+    // and a market that is not the reference is moved by its own live candle (its close is its latest price) while that is fresh.
+    const own = tick.prices?.[state.marketId], selected = tick.candles[state.marketId];
     if (own !== undefined) patch.mark = { price: own, asOf: tick.asOf };
     else if (tick.instrumentId === state.marketId || !state.marketId || !(state.mark.price > 0)) patch.mark = { price: tick.price, asOf: tick.asOf };
+    else if (selected && selected[4] > 0 && tick.asOf - selected[0] <= 2 * MINUTE) patch.mark = { price: selected[4], asOf: tick.asOf };
     const live = tick.candles[state.seriesInstrument || state.marketId];
-    if (live && state.candles.length) patch.candles = mergeLive(state.candles, live, TIMEFRAMES[state.timeframe] ?? 3_600_000);
+    // A market with no history yet starts its series from the live candle: waiting for history that is not coming leaves the chart empty.
+    if (live) patch.candles = mergeLive(state.candles, live, TIMEFRAMES[state.timeframe] ?? 3_600_000, this.#liveTrack);
     this.store.set(patch);
   }
 
@@ -138,12 +155,17 @@ export class Hub {
     const key = `${marketId}|${timeframe}`;
     if (!marketId || (!force && key === this.#series)) return;
     this.#series = key;
+    const generation = ++this.#seriesGen;
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, now = Date.now();
     let seriesInstrument = marketId;
     let candles = await this.source.candles(marketId, timeframe, now - 500 * tf, now + tf);
     if (!candles.length && this.#reference && this.#reference !== marketId) { seriesInstrument = this.#reference; candles = await this.source.candles(seriesInstrument, timeframe, now - 500 * tf, now + tf); }
-    if (key !== this.#series) return;
-    this.store.set({ candles: candles as CandleRow[], seriesInstrument });
+    // Only the newest request may answer: an older one for the same context (a forced reload, a quick change and back) would put the series as it was then over what a newer one has set.
+    if (key !== this.#series || generation !== this.#seriesGen) return;
+    // What the live stream said while the request was out is newer than the answer: it goes on top, and the live minutes are counted afresh against it.
+    this.#liveTrack.current = null;
+    const live = this.#liveCandles[seriesInstrument];
+    this.store.set({ candles: live ? mergeLive(candles as CandleRow[], live, tf, this.#liveTrack) : candles as CandleRow[], seriesInstrument });
     await this.loadOi();
   }
 
@@ -155,6 +177,7 @@ export class Hub {
     const { marketId, seriesInstrument, timeframe } = this.store.state;
     const own = seriesInstrument || marketId; if (!own) return;
     const key = `${own}|${timeframe}`; this.#oiKey = key;
+    const generation = ++this.#oiGen;
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, now = Date.now(), from = now - 500 * tf, to = now + tf;
     const ids = [...new Set([own, this.#reference, ...this.#oiReferences].filter(Boolean))];
     const candidates: OiCandidate[] = [];
@@ -163,7 +186,7 @@ export class Hub {
       candidates.push({ inst, bars });
       if (!weakOi(bars, now, tf)) break;
     }
-    if (this.#oiKey !== key) return;
+    if (this.#oiKey !== key || generation !== this.#oiGen) return;
     const chosen = pickOi(candidates, now, tf);
     if (chosen) this.store.set({ oi: chosen.bars, oiInstrument: chosen.inst });
   }
@@ -175,7 +198,7 @@ export class Hub {
     if (have && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now())) return;
     const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE));
     this.#printsLoading = true;
-    this.source.prints(from, to).then(rows => { this.prints.add(rows); this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+    this.source.prints(from, to).then(rows => { this.prints.add(rows, { from, to }); this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
   }
 
   /**
@@ -254,15 +277,28 @@ export class Hub {
   }
 }
 
-/** Fold a live 1m candle into the display-timeframe series. */
-export function mergeLive(candles: CandleRow[], live: [number, number, number, number, number, number], tfMs: number): CandleRow[] {
+/** The live minutes folded into one display candle that spans several: what the candle held before the first of them, and each minute's latest volume. */
+export interface LiveTrack { bucket: number; base: number; minutes: Map<number, number> }
+
+/**
+ * Fold a live 1m candle into the display-timeframe series. A display candle of several minutes gets the volume of all of them, not of the
+ * biggest: with `track` (kept by the caller, and emptied when the series is loaded again) each live minute's latest volume is remembered and
+ * they are added to what the candle held when the first of them was seen, less the part of that minute the candle already had.
+ */
+export function mergeLive(candles: CandleRow[], live: [number, number, number, number, number, number], tfMs: number, track?: { current: LiveTrack | null }): CandleRow[] {
   const [start, open, high, low, close, volume] = live;
   const bucket = Math.floor(start / tfMs) * tfMs;
   const last = candles[candles.length - 1];
-  if (last && last[0] === bucket) {
-    const next: CandleRow = [bucket, last[1], Math.max(last[2], high), Math.min(last[3], low), close, Math.max(last[5], volume), last[6]];
-    return [...candles.slice(0, -1), next];
-  }
   if (last && bucket < last[0]) return candles;
-  return [...candles, [bucket, open, high, low, close, volume, 1]];
+  const same = last !== undefined && last[0] === bucket;
+  let total: number;
+  if (tfMs <= MINUTE || !track) total = same ? Math.max(last![5], volume) : volume;
+  else {
+    let seen = track.current;
+    if (!seen || seen.bucket !== bucket) { seen = { bucket, base: same ? Math.max(0, last![5] - volume) : 0, minutes: new Map() }; track.current = seen; }
+    seen.minutes.set(start, volume);
+    total = seen.base; for (const minute of seen.minutes.values()) total += minute;
+  }
+  if (same) return [...candles.slice(0, -1), [bucket, last![1], Math.max(last![2], high), Math.min(last![3], low), close, total, last![6]]];
+  return [...candles, [bucket, open, high, low, close, total, 1]];
 }

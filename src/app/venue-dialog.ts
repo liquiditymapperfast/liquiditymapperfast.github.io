@@ -53,6 +53,8 @@ export async function openVenueDialog(venues: VenueControl, selectionProduct: ()
         }
       } catch { /* the next tick retries */ }
     };
+    // Closed while the catalogue was on its way: its close handler had no timer to stop yet, so one started now would poll for ever.
+    if (!dialog.isConnected) return;
     timer = window.setInterval(() => void refresh(), 2000);
     dialog.replaceChildren(el('h3', { textContent: t('Order book venues') }), list, note,
       el('div', { class: 'row' }, el('button', { textContent: t('Recommended'), tip: catalog.recommendedKnown ? t('The largest venues with deep, fresh order books (the first-run set)') : t('Needs a server restarted on this version'), onclick: recommend, disabled: !catalog.recommendedKnown }),

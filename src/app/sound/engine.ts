@@ -16,6 +16,8 @@ export class SoundEngine {
   /** Notes dropped because too many were already sounding. */
   dropped = 0;
   #volume = 1;
+  /** Called when the browser suspends or resumes the audio context by itself (a hidden tab, a device change), so the page can show it. */
+  onStateChange: () => void = () => {};
 
   get state(): EngineState {
     if (typeof AudioContext === 'undefined') return 'unsupported';
@@ -29,6 +31,7 @@ export class SoundEngine {
     if (typeof AudioContext === 'undefined') return 'unsupported';
     if (!this.#ctx) {
       this.#ctx = new AudioContext({ latencyHint: 'interactive' });
+      this.#ctx.onstatechange = () => this.onStateChange();
       const compressor = this.#ctx.createDynamicsCompressor();
       compressor.threshold.value = -18; compressor.knee.value = 12; compressor.ratio.value = 6; compressor.attack.value = 0.003; compressor.release.value = 0.2;
       this.#master = this.#ctx.createGain(); this.#master.gain.value = this.#volume;
