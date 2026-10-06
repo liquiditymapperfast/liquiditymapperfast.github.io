@@ -43,6 +43,13 @@ Measure with an isolated, visible-state headless Chrome over CDP. A tab reportin
 - Test by emulation: Chrome over CDP with `Emulation.setDeviceMetricsOverride { mobile: true, deviceScaleFactor: 3 }`, `Emulation.setTouchEmulationEnabled`, `Input.dispatchTouchEvent`, and `Emulation.setCPUThrottlingRate` for a slow phone. Check portrait, landscape (844 x 390), a small phone (360 x 640) and a tablet (820 x 1180 and 1180 x 820). It is Chrome, not Safari; say so when reporting.
 - Never let a floating panel, menu or dropdown rely on `position` computed from its anchor on a touch screen: they are bottom sheets there (`ui.ts`, `menu.ts`, `sheet.ts`).
 
+## Words and look
+
+- Every sentence a person reads goes through `t('...')` (or `tn(n, 'one', 'other')` for a count) from `src/app/i18n.ts`; English is the key and `{braces}` mark values. `tests/app-i18n-packs.test.mts` fails on a text left outside `t()` and on a pack missing it, so add the text to all ten packs in `src/app/i18n/` (`npm run i18n:template -- xx` shows what a pack needs). `boot.ts` loads the language before `main.ts`, so top-level `t()` is fine in the page's own modules, but code that runs in a worker must not rely on it. Status text that code parses (`stateOfStatus`) stays English. Details: `docs/languages.md`.
+- The window language (shapes, edges, title bars, hard shadows) is `src/app/chrome.css`; its tones come from `chromeFor` in `theme.ts` (never hard-code an edge or face colour, and keep `BEVEL` the one dial). No `backdrop-filter`, blurred shadow or pill shape: they are the costly ones over canvases. Glyphs on buttons are drawn (CSS masks or bars), not typed.
+- Canvas popups go through `infobox.ts` (`paintInfoBox`), page-element ones through `hovercard.ts` (for panes too short to hold a box); build their lines in plain functions so tests need no canvas.
+- Do not write the DOM on every pointer move unless the value changed: assigning the text a node already has still invalidates style and layout. Header readouts use `setHtml` / `setText`, which write only on change. Measure with CDP `Performance.getMetrics` (see `docs/deslop/performance-2026-10-05.md`).
+
 ## Running and verifying
 
 - `npm run dev` builds and starts the live server on `http://127.0.0.1:8787` (a page it serves uses it as its data source); `npm run dev:client` runs the page alone, reading the exchanges from the browser; `npm run build:site` builds the static site; `npm run dev:fixture` runs offline. Before starting or restarting a local service, inspect existing process and port ownership; test on a spare `PORT` rather than stopping someone else's server.

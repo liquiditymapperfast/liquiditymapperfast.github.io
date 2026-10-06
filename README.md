@@ -37,6 +37,9 @@ npm run dev:fixture  # the server with offline demo feeds
 | Splitters, pane grips | Resize the order-book column and the lower panes; drag a pane's grip to reorder; sizes persist |
 | Hover (profile column or order book) | Mirror: the band from the mark to the pointer and the equally wide band on the other side are framed with border lines in each side's colour and labelled with their cumulative size and distance, the rest dims, and a box says what each band holds and which side has more ("Opposite side has 1.13x more"); move outward to watch the balance change. In Single mode the order book compares within the hovered venue's book. The chart itself shows no comparison. Toggle with Mirror |
 | Hover | Shared time cursor across chart, depth and OI; price and liquidity readout on the chart |
+| Hover (order-book cell or bar) | A box says that venue's size, its share of the level, its rank at the price and its distance from the mark; over the USD column or a plain bar it says the whole level with the venues behind it. The Mirror's box steps aside while the pointer is directly on one (its band stays) and returns anywhere else |
+| Hover (footprint row) | The row is boxed and a card gives its price span, what was sold and bought, the delta, which side was heavier and by how much, its share of the candle, whether it is the point of control, and the candle's own volume and delta (a trade bubble or a trapped-traders pop-up takes precedence) |
+| Hover (bar-stats cell) | The cell is boxed and its candle's column and its row are tinted; a card says the statistic, the candle, the value, the candle before, where it ranks among the candles in view, whether it was flagged unusual, and what the statistic means |
 
 The toolbar selects the market, timeframe (1m–1d), layer (Liquidity, Liquidation, Stop loss, Take profit), heatmap source (aggregated or one venue), Spot / Perp / Both, per-venue visibility chips, heatmap colour (Size ramp or two-hue Sides style, a legend showing the USD range with one Contrast slider, Auto, Smooth auto / off), the Profile / Depth / OI / Candles / Footprint / LT / Mirror / Volume / Trades toggles, Highlights, Sound and the theme menu (hover a theme to preview it, click to keep it). The ladder offers Aggregated, Single and Compact modes, a grouping step and Levels / Cumulative / both. The Liquidation, Stop loss and Take profit layers are listed as upcoming (disabled): they need HyperTracker data, which a static page cannot hold a key for.
 
@@ -149,6 +152,14 @@ The server keeps every venue trade of $25k or more (deduplicated, SQLite, one we
 ## Themes
 
 Light, Latte, Dark, Darker, Midnight, Mocha, Colour-blind safe and Terminal. Midnight follows Tokyo Night and Mocha / Latte follow Catppuccin; Colour-blind safe uses the Okabe-Ito blue and orange. A test enforces text contrast of 7:1, muted text 4.5:1 and 3:1 for accents and the buy / sell colours on both background and panel. Saved choices from earlier ids still resolve.
+
+## Look
+
+One window language across the page (`src/app/chrome.css`, loaded last): square corners, one crisp outline, raised controls lit from the top left and pressed ones the other way round, windows with a title bar and a hard shadow, the black-filled "on" state, and glyphs that are drawn rather than typed (the close crosses, the `?` marks, the language globe) so they sit in the middle of their box whatever the font. The tones are derived per theme in `src/app/theme.ts` (`chromeFor`, tested for edge visibility and text legibility) and `BEVEL` there dials the whole style back (0 is flat). Soft shadows, pill shapes and blur are not used: they cost the most to paint over canvases that repaint all the time.
+
+## Languages
+
+English, Spanish, German, French, Portuguese, Italian, Russian, Turkish, Chinese, Japanese and Korean, chosen from the browser's preference, `?lang=xx`, or the Language button. See `docs/languages.md` for how it works, why the browser's own translation is not enough, what is not translated and how to add one. The packs were written by an AI assistant and have not been reviewed by native speakers.
 
 ## Limits
 

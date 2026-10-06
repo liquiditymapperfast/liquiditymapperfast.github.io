@@ -119,3 +119,22 @@ The cost that matters on a phone is the data: 1.5 MB in 30 s (49.6 KB/s, 75.8 We
 
 A possible-trap pulse (the glow on a live trap's cells, redrawn about 20 times a second only while one is in view) added 1.5 percentage points of a core to the main thread in the same headless setup (9.0 % pulsing against 7.5 % with it panned away, 15 s each), and stops completely when the candle leaves the view or motion is reduced. Recordings in IndexedDB add a transaction every half second and structured-cloned reads once at start; they were not measured separately. Retention is 24 hours (the server keeps seven days),
 which at the 47 KB per minute of columns measured above is about 68 MB for the depth columns; the footprint maps and large-trade lists after a full day were not measured.
+
+### Redundant DOM writes on hover (2026-10-06)
+
+Every pointer move redrew five panes, and four of them (Depth, Open Interest, Liquidity Tracker, Bar stats) re-assigned their header readout's `innerHTML` or `textContent` with the text it already had. That re-parses the node and invalidates style and layout, so the page did layout work on every hover and, at 4 Hz, while idle. The heat pane also set its `--gutter` variable on every frame. Readouts now go through `setHtml` / `setText` (written only when the text changes), `--gutter` is cached, and the hover card caches its measured size per content.
+
+Measured with CDP `Performance.getMetrics` (headless Chrome, 1600 x 950, software GL, `?persist=0`, 1m timeframe with the footprint on, 20 s warm-up, 10 or 30 s windows; the pointer moved about 30 times a second over each pane):
+
+| | Before | After the write fixes | After the restyle |
+| --- | --- | --- | --- |
+| Idle, 30 s: layouts / style recalcs | 376 / 748 | 8 / 128 | 4 / 124 |
+| Idle: main thread busy (task time) | 8.0 % | 5.7 % | 3.9 % |
+| Scrubbing the map, 10 s: layouts / style recalcs | 602 / 1236 | 23 / 63 | 25 / 65 |
+| Scrubbing the map: main thread busy | 38.7 % | 28.5 % | 19.2 % |
+| Scrubbing the order book: main thread busy | 17.1 % | 13.8 % | 10.4 % |
+| Scrubbing the bar-stats strip: layouts / busy | 602 / 28.9 % | 26 / 21.4 % | 28 / 13.0 % |
+
+The layout and style-recalc counts are the fix's doing and are the same before and after the restyle. The further fall in busy time after the restyle comes from taking the blur (`backdrop-filter` over the map) and the soft shadows out of the repaint path, but these runs were made at different times on a machine that was also doing other work, so the size of that second step is not precise.
+
+What remains while scrubbing the map is script time (about 13 % of a core after the restyle): the heat pane redraws its overlay canvas on each move.

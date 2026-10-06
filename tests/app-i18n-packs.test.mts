@@ -4,42 +4,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { LANGUAGES, type Entry } from '../src/app/i18n.ts';
+import { appRoot, keysInSource, sources, template } from '../scripts/i18n-keys.mts';
 
-const root = path.resolve(process.cwd(), 'src', 'app');
-const packsDir = path.join(root, 'i18n');
+const packsDir = path.join(appRoot, 'i18n');
 
 /** Files that carry the page's words: everything but the guide's long text, the language machinery, workers and brand tables. */
 const SKIPPED = /^(format\.ts|guide\/|venues\.ts|i18n|boot\.ts|worker\/|wire\.ts|watermark\.ts|theme\.ts$|browser\/feeds)/;
-function sources(): { rel: string; file: string }[] {
-  const out: { rel: string; file: string }[] = [];
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(file);
-      else if (/\.ts$/.test(entry.name) && !/\.d\.ts$/.test(entry.name)) out.push({ rel: path.relative(root, file).replace(/\\/g, '/'), file });
-    }
-  };
-  walk(root);
-  return out;
-}
 
-/** Every English text the page asks to have translated, from the calls to t() and tn() in the source (and the guide's own chrome). */
-function keysInSource(): Set<string> {
-  const keys = new Set<string>();
-  for (const { file, rel } of sources()) {
-    if (/^(i18n|boot\.ts)/.test(rel)) continue;
-    const sf = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
-    const literal = (node: ts.Node | undefined): string | null => node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : null;
-    (function visit(node: ts.Node): void {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        if (node.expression.text === 't') { const key = literal(node.arguments[0]); if (key !== null) keys.add(key); }
-        else if (node.expression.text === 'tn') { const key = literal(node.arguments[2]); if (key !== null) keys.add(key); }
-      }
-      ts.forEachChild(node, visit);
-    })(sf);
-  }
-  return keys;
-}
+/** Every English text the page asks to have translated (the calls to t() and tn() in the source, the guide's own chrome included). */
+const keysInPage = (): Set<string> => new Set(keysInSource().keys());
 
 const placeholders = (text: string): string[] => [...text.matchAll(/\{(\w+)\}/g)].map(m => m[1]!).sort();
 const forms = (entry: Entry): string[] => typeof entry === 'string' ? [entry] : Object.values(entry).filter((v): v is string => typeof v === 'string');
@@ -52,7 +25,7 @@ function packs(): Map<string, Record<string, Entry>> {
 }
 
 test('the page has words to translate, and every one of them is a plain English sentence', () => {
-  const keys = keysInSource();
+  const keys = keysInPage();
   assert.ok(keys.size > 350, `only ${keys.size} texts found`);
   for (const key of keys) {
     assert.ok(!/<|>/.test(key), `markup in a key: ${key}`);
@@ -67,7 +40,7 @@ test('every language the page lists has a pack, and every pack belongs to a list
 });
 
 test('a pack has no text the page no longer asks for, and says every placeholder the English does', () => {
-  const keys = keysInSource();
+  const keys = keysInPage();
   for (const [code, pack] of packs()) {
     for (const [key, entry] of Object.entries(pack)) {
       assert.ok(keys.has(key), `${code}: "${key}" is not in the page any more`);
@@ -82,7 +55,7 @@ test('a pack has no text the page no longer asks for, and says every placeholder
 });
 
 test('every pack says every text the page asks for (the guide\'s long text is the one thing still in English)', () => {
-  const keys = keysInSource();
+  const keys = keysInPage();
   for (const [code, pack] of packs()) {
     const missing = [...keys].filter(key => !(key in pack));
     assert.deepEqual(missing.slice(0, 8), [], `${code} lacks ${missing.length} of ${keys.size}`);
@@ -90,7 +63,7 @@ test('every pack says every text the page asks for (the guide\'s long text is th
 });
 
 test('a count that changes the wording has the forms its language needs', () => {
-  const keys = keysInSource();
+  const keys = keysInPage();
   for (const [code, pack] of packs()) {
     const needed = new Intl.PluralRules(code).resolvedOptions().pluralCategories;
     for (const [key, entry] of Object.entries(pack)) {
@@ -145,4 +118,16 @@ const ALLOWED = new Set<string>();
 test('no text a person reads is left outside t() (add a new sentence to the page the way the others are: t(\'...\'))', () => {
   const left = untranslated().filter(line => !ALLOWED.has(line));
   assert.deepEqual(left, []);
+});
+
+test('the template for a new language has every text, and a form for each way that language counts', () => {
+  const keys = keysInPage();
+  for (const code of ['ru', 'ja', 'es']) {
+    const pack = template(code);
+    assert.deepEqual(Object.keys(pack).sort(), [...keys].sort(), code);
+    const counted = pack['{n} notes'];
+    const forms = new Intl.PluralRules(code).resolvedOptions().pluralCategories;
+    if (forms.length > 1) { assert.ok(typeof counted === 'object'); assert.deepEqual(Object.keys(counted as object).sort(), [...forms].sort(), code); assert.equal((counted as Record<string, string>).one, '{n} note'); }
+    else assert.equal(counted, '{n} notes', `${code} counts one way: a plain text`);
+  }
 });
