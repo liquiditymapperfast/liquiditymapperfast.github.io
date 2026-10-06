@@ -635,5 +635,13 @@
  "Tip": "Tipp",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Wartende Liquidität im gewählten Bereich um den Preis, über alle aktivierten Börsen addiert.",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Open Interest am Ende der Kerze und wie weit er sich seit dem Ende der vorherigen bewegt hat.",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Liquidität nahe am Touch, gewichtet: Ein Niveau zählt am Touch voll und mit jeder Halbwertszeit Abstand nur halb so viel."
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Liquidität nahe am Touch, gewichtet: Ein Niveau zählt am Touch voll und mit jeder Halbwertszeit Abstand nur halb so viel.",
+ "Hidden by the {kind} filter: {names}.": "Durch den {kind}-Filter ausgeblendet: {names}.",
+ "Show both": "Beide zeigen",
+ "Switched off: {names}.": "Ausgeschaltet: {names}.",
+ "Turn on": "Einschalten",
+ "Showing the biggest {shown} of {total} exchanges.": "Die {shown} größten von {total} Börsen werden angezeigt.",
+ "Show all": "Alle zeigen",
+ "No trades in this window: {names}.": "Keine Trades in diesem Fenster: {names}.",
+ "Not on the map yet (no order book): {names}.": "Noch nicht auf der Karte (kein Orderbuch): {names}."
 }

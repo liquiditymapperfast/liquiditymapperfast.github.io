@@ -623,5 +623,13 @@
  "Tip": "提示",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "价格附近所选范围内的挂单流动性，已汇总所有已启用的交易所。",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "该 K 线收盘时的持仓量，以及自上一根 K 线收盘以来的变化量。",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "贴价处附近的加权流动性：价位在贴价处按全额计，每远离一个半衰期，权重减半。"
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "贴价处附近的加权流动性：价位在贴价处按全额计，每远离一个半衰期，权重减半。",
+ "Hidden by the {kind} filter: {names}.": "已被{kind}筛选隐藏：{names}",
+ "Show both": "显示两者",
+ "Switched off: {names}.": "已关闭：{names}",
+ "Turn on": "开启",
+ "Showing the biggest {shown} of {total} exchanges.": "显示 {total} 家交易所中最大的 {shown} 家。",
+ "Show all": "全部显示",
+ "No trades in this window: {names}.": "此窗口内没有成交：{names}",
+ "Not on the map yet (no order book): {names}.": "尚未出现在地图上（没有订单簿）：{names}"
 }

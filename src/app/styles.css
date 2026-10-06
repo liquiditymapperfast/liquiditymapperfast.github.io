@@ -77,6 +77,12 @@ main { --side-w: 420px; --flow-w: 300px; display: grid; grid-template-columns: v
 .pane.ladder { flex: 1 1 auto; }
 .pane.cvd { flex: 1 1 auto; }
 .cvd-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+/* Why an exchange that has flow is not a row (the Spot / Perp filter, a switched-off chip, the row limit...), with a button that undoes it. */
+.cvd-notice { flex: 0 0 auto; display: flex; flex-direction: column; gap: 3px; padding: 4px 8px 5px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--muted); font: 11px/15px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.cvd-notice[hidden] { display: none; }
+.cvd-notice-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cvd-notice-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.cvd-notice-btn { flex: 0 0 auto; white-space: nowrap; }
 .cvd-wrap canvas { position: absolute; left: 0; top: 0; display: block; }
 .pane.cvd .cvd-span-select { display: none; }
 .pane.cvd .pane-head .cvd-gear { margin-left: auto; }

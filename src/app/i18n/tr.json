@@ -635,5 +635,13 @@
  "Tip": "İpucu",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Fiyatın çevresindeki seçili aralıkta bekleyen likidite, etkin tüm borsalarda toplanmıştır.",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Mumun sonundaki açık pozisyon ve bir önceki mumun sonundan bu yana ne kadar değiştiği.",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Temasa yakın ağırlıklı likidite: bir seviye temasta tam sayılır, uzaklaştıkça her yarı ömürde yarıya iner."
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Temasa yakın ağırlıklı likidite: bir seviye temasta tam sayılır, uzaklaştıkça her yarı ömürde yarıya iner.",
+ "Hidden by the {kind} filter: {names}.": "{kind} filtresiyle gizlendi: {names}.",
+ "Show both": "İkisini de göster",
+ "Switched off: {names}.": "Kapalı: {names}.",
+ "Turn on": "Aç",
+ "Showing the biggest {shown} of {total} exchanges.": "{total} borsanın en büyük {shown} tanesi gösteriliyor.",
+ "Show all": "Hepsini göster",
+ "No trades in this window: {names}.": "Bu pencerede işlem yok: {names}.",
+ "Not on the map yet (no order book): {names}.": "Henüz haritada yok (emir defteri yok): {names}."
 }

@@ -16,6 +16,17 @@ export function flowIds(state: Pick<AppState, 'markets' | 'disabledVenues' | 'sc
 }
 
 /**
+ * Every instrument whose flow the page asks the server for: all the markets it knows, not only the ones the filter and the chips let
+ * through. What is on screen is chosen from this later; asking for all of it is what lets the column say which exchanges it is leaving
+ * out (their flow is there to be counted) and lets a click on "Show both" draw them with their history at once.
+ */
+export function flowLoadIds(state: Pick<AppState, 'markets'>, withFlow: readonly string[]): string[] {
+  const known = new Set<string>(withFlow);
+  for (const m of state.markets) { const id = m.instrumentId ?? m.id; if (id) known.add(id); }
+  return [...known];
+}
+
+/**
  * The exchanges a person can pin: every one the page knows (a market on it, or flow recorded for it, whether or not its chip is on)
  * and every one already pinned, so a pin on an exchange that is gone can still be taken off. Sorted by name.
  */

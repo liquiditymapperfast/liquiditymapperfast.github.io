@@ -643,5 +643,13 @@
  "Tip": "Совет",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Ожидающая ликвидность в выбранном диапазоне вокруг цены, сложенная по всем включённым биржам.",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Открытый интерес на конец свечи и насколько он изменился с конца предыдущей.",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Взвешенная ликвидность возле касания: уровень учитывается полностью у касания и вдвое меньше за каждый период полураспада удаления."
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Взвешенная ликвидность возле касания: уровень учитывается полностью у касания и вдвое меньше за каждый период полураспада удаления.",
+ "Hidden by the {kind} filter: {names}.": "Скрыты фильтром «{kind}»: {names}.",
+ "Show both": "Показать обе",
+ "Switched off: {names}.": "Выключены: {names}.",
+ "Turn on": "Включить",
+ "Showing the biggest {shown} of {total} exchanges.": "Показаны {shown} крупнейших бирж из {total}.",
+ "Show all": "Показать все",
+ "No trades in this window: {names}.": "Нет сделок в этом окне: {names}.",
+ "Not on the map yet (no order book): {names}.": "Пока нет на карте (нет стакана заявок): {names}."
 }

@@ -4,7 +4,8 @@ import { helpButton } from '../help.ts';
 import { clock, price as fmtPrice } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { emptyScopeMessage, kindOf, type Kind } from '../scope.ts';
-import { flowIds, pinChoices, priceFlowId } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds, pinChoices, priceFlowId } from '../cvd/ids.ts';
+import { explainMissing, noticeRows, type NoticeAction } from '../cvd/missing.ts';
 import { buildFamilies } from '../cvd/families.ts';
 import { flowWindow } from '../cvd/window.ts';
 import { MAX_PINNED } from '../cvd/settings.ts';
@@ -37,6 +38,8 @@ const SPAN_LABELS: Record<CvdSpan, string> = { map: t('Map'), '5m': '5m', '15m':
 export interface CvdSnapshot { rows: string[]; scroll: number; maxScroll: number; heights: { agg: number; price: number; rows: number[] }; spanMs: number; columns: number; empty: string | null; gutter: number;
   /** Where the price strip's price comes from (an instrument's recorded seconds, or null for candle closes), how many of its columns are filled and how many different prices they hold, and when the flow began if the window reaches before it. */
   price: { id: string | null; filled: number; distinct: number }; since: number | null;
+  /** The lines of the notice above the rows (why an exchange with flow is not shown), empty when every exchange is. */
+  notice: string[];
   /** The x of the line drawn for the pointer of another pane (null when there is none), and the time the pointer of this one has shared. */
   sharedX: number | null; sharedTime: number | null }
 
@@ -55,6 +58,9 @@ export class CvdPane {
   readonly root = el('section', { class: 'pane cvd' });
   readonly controls = el('div', { class: 'pane-head' });
   #wrap = el('div', { class: 'cvd-wrap' });
+  /** Says why an exchange that has flow is not among the rows (the filter, a switched-off chip, the row limit...), with a button to undo it. */
+  #notice = el('div', { class: 'cvd-notice', role: 'status', hidden: true });
+  #noticeKey = ''; #noticeRows: string[] = [];
   #canvas = document.createElement('canvas');
   #ctx: CanvasRenderingContext2D;
   #w = 0; #h = 0; #dpr = 1; #frame = 0;
@@ -84,7 +90,7 @@ export class CvdPane {
   #timer = 0;
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private view: View) {
-    this.root.append(this.controls, this.#wrap);
+    this.root.append(this.controls, this.#notice, this.#wrap);
     this.#wrap.append(this.#canvas);
     host.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!;
@@ -140,7 +146,7 @@ export class CvdPane {
   get snapshot(): CvdSnapshot {
     const layout = this.#layout, model = this.#model;
     return { rows: model?.rows.map(r => r.key) ?? [], scroll: this.#scroll, maxScroll: layout ? maxScroll(layout, this.#h) : 0, heights: layout ? { agg: layout.agg, price: layout.price, rows: layout.rows } : { agg: 0, price: 0, rows: [] },
-      spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter, price: this.#priceStats(), since: this.#since, sharedX: this.#sharedX, sharedTime: this.store.state.hover?.source === 'cvd' ? this.store.state.hover.t : null };
+      spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter, price: this.#priceStats(), since: this.#since, notice: this.#noticeRows, sharedX: this.#sharedX, sharedTime: this.store.state.hover?.source === 'cvd' ? this.store.state.hover.t : null };
   }
   get model(): CvdModel | null { return this.#model; }
   #priceStats(): { id: string | null; filled: number; distinct: number } {
@@ -281,7 +287,8 @@ export class CvdPane {
     // The price comes from the recorded seconds of the market on screen when it has them (the same trades as the flow, a second at a time).
     const priceId = priceFlowId([s.seriesInstrument, s.marketId], id => this.hub.flow.has(id));
     const reach = Math.max(spanMs, RANK_MS[cfg.rank], 3_600_000);
-    void this.hub.ensureFlow(priceId && !ids.includes(priceId) ? [...ids, priceId] : ids, Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000));
+    const loadIds = flowLoadIds(s, this.hub.flow.ids);
+    void this.hub.ensureFlow(priceId && !loadIds.includes(priceId) ? [...loadIds, priceId] : loadIds, Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000));
     let earliest = Infinity;
     for (const id of ids) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 < earliest) earliest = first * 1000; }
     const win = flowWindow({ span: cfg.span, mapT0: this.view.t0, mapT1: this.view.t1, now, earliest }), { t0, t1 } = win;
@@ -300,6 +307,7 @@ export class CvdPane {
     const model = this.#model;
     this.#drawn = { t0: this.view.t0, t1: this.view.t1 };
     this.#empty = emptyScopeMessage(s) ?? (!model.rows.length ? (ids.length ? t('Waiting for trades…') : t('No venues are enabled.')) : null);
+    this.#updateNotice(model, s);
     const layout = rowHeights(cfg.heights, this.#h, model.rows.map(r => r.share), { minRow: MIN_ROW, minAgg: MIN_AGG, price: PRICE_H });
     this.#layout = layout;
     this.#scroll = Math.max(0, Math.min(maxScroll(layout, this.#h), this.#scroll));
@@ -430,6 +438,29 @@ export class CvdPane {
       ctx.stroke(); ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  /** The notice above the rows: written again only when what it says changes (a node is not touched otherwise). */
+  #updateNotice(model: CvdModel, s: AppState): void {
+    const flow = this.hub.flow, withFlow = flow.ids.filter(id => flow.get(id)?.empty === false), winStart = model.nowSec - model.rankSec + 1;
+    const missing = explainMissing(s, withFlow, new Set(model.rows.map(r => r.key)), id => flow.get(id)?.gross(winStart, model.nowSec) ?? 0);
+    const rows = noticeRows(missing, venueLabel, model.rows.length, s.scope === 'spot' ? 'spot' : 'perp');
+    const key = rows.map(r => `${r.text}\u0001${r.action?.label ?? ''}`).join('\u0002');
+    if (key === this.#noticeKey) return;
+    this.#noticeKey = key; this.#noticeRows = rows.map(r => r.text);
+    this.#notice.hidden = rows.length === 0;
+    this.#notice.replaceChildren(...rows.map(row => {
+      const children: (Node | string)[] = [el('span', { class: 'cvd-notice-text', textContent: row.text, tip: row.full })];
+      if (row.action) { const { label, run } = row.action; children.push(el('button', { type: 'button', class: 'chip cvd-notice-btn', textContent: label, onclick: () => this.#runNotice(run) })); }
+      return el('div', { class: 'cvd-notice-row' }, ...children);
+    }));
+  }
+  /** What a notice's button does: undo the thing that hides the exchanges, and make the list again now, not at the next re-rank. */
+  #runNotice(action: NoticeAction): void {
+    if (action.kind === 'both') this.store.set({ scope: 'all' });
+    else if (action.kind === 'on') this.store.set({ disabledVenues: this.store.state.disabledVenues.filter(v => !action.venues.includes(v)) });
+    else { this.#set({ top: 0 }); return; }
+    this.refresh();
   }
 
   /**

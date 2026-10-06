@@ -623,5 +623,13 @@
  "Tip": "팁",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "가격 주변의 선택한 범위 안에 대기 중인 유동성을 활성화된 모든 거래소에서 합산한 값입니다.",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "캔들이 끝났을 때의 미결제약정과, 이전 캔들이 끝난 뒤 얼마나 움직였는지입니다.",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "터치 근처의 가중 유동성. 레벨은 터치에서는 전부 반영하고 반감기만큼 멀어질 때마다 절반이 됩니다."
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "터치 근처의 가중 유동성. 레벨은 터치에서는 전부 반영하고 반감기만큼 멀어질 때마다 절반이 됩니다.",
+ "Hidden by the {kind} filter: {names}.": "{kind} 필터로 숨겨짐: {names}",
+ "Show both": "둘 다 표시",
+ "Switched off: {names}.": "꺼짐: {names}",
+ "Turn on": "켜기",
+ "Showing the biggest {shown} of {total} exchanges.": "거래소 {total}곳 중 가장 큰 {shown}곳을 표시 중입니다.",
+ "Show all": "모두 표시",
+ "No trades in this window: {names}.": "이 구간에 체결 없음: {names}",
+ "Not on the map yet (no order book): {names}.": "아직 지도에 없음 (호가창 없음): {names}"
 }

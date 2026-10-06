@@ -639,5 +639,13 @@
  "Tip": "Dica",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "Liquidez em espera dentro do intervalo escolhido em torno do preço, somada em todas as exchanges ativadas.",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "Open interest no fim da vela e quanto ele se moveu desde o fim da anterior.",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Liquidez perto do toque, ponderada: um nível conta por inteiro no toque e pela metade a cada meia-vida de distância."
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "Liquidez perto do toque, ponderada: um nível conta por inteiro no toque e pela metade a cada meia-vida de distância.",
+ "Hidden by the {kind} filter: {names}.": "Ocultas pelo filtro {kind}: {names}.",
+ "Show both": "Mostrar ambos",
+ "Switched off: {names}.": "Desativadas: {names}.",
+ "Turn on": "Ativar",
+ "Showing the biggest {shown} of {total} exchanges.": "Mostrando as {shown} maiores de {total} exchanges.",
+ "Show all": "Mostrar todas",
+ "No trades in this window: {names}.": "Sem negociações nesta janela: {names}.",
+ "Not on the map yet (no order book): {names}.": "Ainda não estão no mapa (sem livro de ofertas): {names}."
 }

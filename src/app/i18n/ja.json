@@ -623,5 +623,13 @@
  "Tip": "ヒント",
  "Resting liquidity within the chosen range of the price, added up over the enabled venues.": "価格の周囲、選んだ範囲内に並んでいる流動性を、有効な取引所すべてで合計した値です。",
  "Open interest at the end of the candle, and how far it moved since the end of the one before.": "ローソク足の終わりの建玉と、前のローソク足の終わりからの変化量です。",
- "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "タッチ付近の重み付き流動性。レベルはタッチでは満額で数え、半減期ぶん離れるごとに半分になります。"
+ "Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.": "タッチ付近の重み付き流動性。レベルはタッチでは満額で数え、半減期ぶん離れるごとに半分になります。",
+ "Hidden by the {kind} filter: {names}.": "{kind}フィルターで非表示: {names}",
+ "Show both": "両方を表示",
+ "Switched off: {names}.": "オフ: {names}",
+ "Turn on": "オンにする",
+ "Showing the biggest {shown} of {total} exchanges.": "{total} 取引所のうち上位 {shown} を表示中。",
+ "Show all": "すべて表示",
+ "No trades in this window: {names}.": "この期間に約定なし: {names}",
+ "Not on the map yet (no order book): {names}.": "まだマップにありません（オーダーブックなし）: {names}"
 }
