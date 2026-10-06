@@ -4,7 +4,8 @@ import { helpButton } from '../help.ts';
 import { clock, price as fmtPrice } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { emptyScopeMessage, kindOf } from '../scope.ts';
-import { flowIds, pinChoices } from '../cvd/ids.ts';
+import { flowIds, pinChoices, priceFlowId } from '../cvd/ids.ts';
+import { flowWindow } from '../cvd/window.ts';
 import { MAX_PINNED } from '../cvd/settings.ts';
 import { venueLabel } from '../venues.ts';
 import { selectRow, switchRow, numberRow, togglePanel, note, heading } from '../ui.ts';
@@ -17,7 +18,7 @@ import { HEIGHT_MODES, locateRow, maxScroll, rowHeights, type RowLayout } from '
 import { CVD_SPANS, CVD_SPAN_MS, RANK_MS, RANK_WINDOWS, type CvdSettings, type CvdSpan, type RankWindow } from '../cvd/settings.ts';
 import { aggregateHover, aggregateLabel, rowHover, rowLabel, windowName, type LabelLine } from '../cvd/text.ts';
 import { laneColors, type LaneColors } from '../cvd/colors.ts';
-import { PriceTrack } from '../cvd/price.ts';
+import { PriceTrack, type PriceColumns } from '../cvd/price.ts';
 import type { BurstEvent } from '../cvd/burst.ts';
 import { panelSwitchRow } from '../sound/panel.ts';
 import { t } from '../i18n.ts';
@@ -32,7 +33,9 @@ const HISTORY_CAP_MS = 24 * 3_600_000;
 const SPAN_LABELS: Record<CvdSpan, string> = { map: t('Map'), '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '24h': '24h' };
 
 /** What the last frame drew, for the checks that look at the pane without reading its pixels. */
-export interface CvdSnapshot { rows: string[]; scroll: number; maxScroll: number; heights: { agg: number; price: number; rows: number[] }; spanMs: number; columns: number; empty: string | null; gutter: number }
+export interface CvdSnapshot { rows: string[]; scroll: number; maxScroll: number; heights: { agg: number; price: number; rows: number[] }; spanMs: number; columns: number; empty: string | null; gutter: number;
+  /** Where the price strip's price comes from (an instrument's recorded seconds, or null for candle closes), how many of its columns are filled and how many different prices they hold, and when the flow began if the window reaches before it. */
+  price: { id: string | null; filled: number; distinct: number }; since: number | null }
 
 const fit = (ctx: CanvasRenderingContext2D, text: string, width: number): string => {
   if (ctx.measureText(text).width <= width) return text;
@@ -56,6 +59,10 @@ export class CvdPane {
   #ranker = new Ranker();
   #price = new PriceTrack();
   #priceFor = ''; #priceAt = 0; #priceLoading = false;
+  /** The price strip's columns and the instrument whose recorded seconds gave them (null: candle closes and marks), as the last model was built. */
+  #priceCols: PriceColumns | null = null; #priceId: string | null = null;
+  /** When the flow began, if the window starts before it (shown as a note on the aggregate row). */
+  #since: number | null = null;
   #model: CvdModel | null = null; #modelKey = '';
   #layout: RowLayout | null = null;
   #scroll = 0;
@@ -104,9 +111,14 @@ export class CvdPane {
   get snapshot(): CvdSnapshot {
     const layout = this.#layout, model = this.#model;
     return { rows: model?.rows.map(r => r.key) ?? [], scroll: this.#scroll, maxScroll: layout ? maxScroll(layout, this.#h) : 0, heights: layout ? { agg: layout.agg, price: layout.price, rows: layout.rows } : { agg: 0, price: 0, rows: [] },
-      spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter };
+      spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter, price: this.#priceStats(), since: this.#since };
   }
   get model(): CvdModel | null { return this.#model; }
+  #priceStats(): { id: string | null; filled: number; distinct: number } {
+    const last = this.#priceCols?.last, seen = new Set<number>();
+    if (last) for (const v of last) if (v === v) seen.add(v);
+    return { id: this.#priceId, filled: last ? last.reduce((n, v) => n + (v === v ? 1 : 0), 0) : 0, distinct: seen.size };
+  }
 
   // ---- controls -------------------------------------------------------------------------------------------------------------------
 
@@ -235,18 +247,24 @@ export class CvdPane {
     const s = this.store.state, cfg = s.cvd, now = Date.now(), p = this.#palette, ctx = this.#ctx;
     this.#ranker.refreshMs = cfg.refreshMin * 60_000; this.#ranker.auto = cfg.auto;
     const spanMs = cfg.span === 'map' ? Math.max(60_000, this.view.t1 - this.view.t0) : CVD_SPAN_MS[cfg.span];
-    const t1 = cfg.span === 'map' ? this.view.t1 : now, t0 = t1 - spanMs;
     const ids = flowIds(s, this.hub.flow.ids);
+    // The price comes from the recorded seconds of the market on screen when it has them (the same trades as the flow, a second at a time).
+    const priceId = priceFlowId([s.seriesInstrument, s.marketId], id => this.hub.flow.has(id));
     const reach = Math.max(spanMs, RANK_MS[cfg.rank], 3_600_000);
-    void this.hub.ensureFlow(ids, Math.max(now - HISTORY_CAP_MS, Math.min(now, t1) - reach - 60_000));
+    void this.hub.ensureFlow(priceId && !ids.includes(priceId) ? [...ids, priceId] : ids, Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000));
+    let earliest = Infinity;
+    for (const id of ids) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 < earliest) earliest = first * 1000; }
+    const win = flowWindow({ span: cfg.span, mapT0: this.view.t0, mapT1: this.view.t1, now, earliest }), { t0, t1 } = win;
+    this.#since = win.since;
     this.#loadPrice(now, t0);
     if (s.mark.price > 0) this.#price.add(now, s.mark.price);
 
     this.#gutter = Math.max(GUTTER_MIN, Math.min(GUTTER_MAX, Math.round(this.#w * 0.34)));
     const plotW = Math.max(20, this.#w - this.#gutter - PAD), columns = Math.max(24, Math.min(900, Math.floor(plotW)));
-    const key = [this.hub.flow.version, columns, Math.floor(t0 / Math.max(1000, spanMs / columns)), Math.floor(now / 1000), cfg.span, cfg.rank, cfg.top, cfg.heights, cfg.auto, cfg.refreshMin, cfg.pinned.join(','), cfg.quietFlag, cfg.rebase, s.scope, s.disabledVenues.join(','), ids.length, this.#price.length].join('|');
+    const key = [this.hub.flow.version, columns, Math.floor(t0 / Math.max(1000, spanMs / columns)), Math.floor(now / 1000), cfg.span, cfg.rank, cfg.top, cfg.heights, cfg.auto, cfg.refreshMin, cfg.pinned.join(','), cfg.quietFlag, cfg.rebase, s.scope, s.disabledVenues.join(','), ids.length, this.#price.length, priceId ?? ''].join('|');
     if (key !== this.#modelKey || !this.#model) {
       this.#model = buildModel({ flow: this.hub.flow, ids, kindOf: id => kindOf(s.markets, id), t0, t1, columns, now, settings: cfg, ranker: this.#ranker });
+      this.#priceId = priceId; this.#priceCols = this.#priceColumns(this.#model);
       this.#modelKey = key;
     }
     const model = this.#model;
@@ -273,6 +291,7 @@ export class CvdPane {
     ctx.fillStyle = p.panel; ctx.fillRect(0, 0, this.#w, top);
     this.#paintRow(ctx, p, colors, plot, 0, layout.agg, [model.spot, model.perp].filter((l): l is LaneLine => l !== null), aggregateLabel(model, layout.agg), '', cfg.rebase);
     this.#paintPrice(ctx, p, plot, layout.agg, layout.price, model);
+    if (this.#since !== null) this.#paintSince(ctx, p, plot, this.#since);
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.moveTo(0, top + 0.5); ctx.lineTo(this.#w, top + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
     if (maxScroll(layout, this.#h) > 0) this.#paintScrollbar(ctx, p, layout);
     if (this.#empty) { ctx.fillStyle = p.muted; ctx.font = `12px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(this.#empty, this.#w / 2, Math.min(this.#h - 20, top + 36)); }
@@ -360,7 +379,7 @@ export class CvdPane {
   }
 
   #paintPrice(ctx: CanvasRenderingContext2D, p: Palette, plot: { x: number; w: number }, y: number, h: number, model: CvdModel): void {
-    const columns = model.columns, cols = this.#price.columns(model.t0, model.t1, columns);
+    const columns = model.columns, cols = this.#priceCols ?? this.#price.columns(model.t0, model.t1, columns);
     ctx.save(); ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y + h) - 0.5); ctx.lineTo(this.#w, Math.round(y + h) - 0.5); ctx.stroke();
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     const last = this.store.state.mark.price, ly = y + h / 2;
@@ -377,6 +396,33 @@ export class CvdPane {
       }
       ctx.stroke(); ctx.globalAlpha = 1;
     }
+    ctx.restore();
+  }
+
+  /** The price strip's columns: the market's recorded seconds where it has them, the candle closes and marks for what came before (or all of it, when it has none). */
+  #priceColumns(model: CvdModel): PriceColumns {
+    const columns = model.columns, track = this.#price.columns(model.t0, model.t1, columns), series = this.#priceId ? this.hub.flow.get(this.#priceId) : undefined;
+    if (!series || series.empty) return track;
+    const from = Math.floor(model.t0 / 1000), to = Math.max(from + 1, Math.ceil(model.t1 / 1000)), last = new Float64Array(columns);
+    series.priceColumns(from, to, columns, last);
+    let min = Infinity, max = -Infinity;
+    for (let c = 0; c < columns; c++) {
+      const v = last[c]! === last[c]! ? last[c]! : track.last[c]!; last[c] = v;
+      if (v === v) { if (v < min) min = v; if (v > max) max = v; }
+    }
+    return { last, ...(min <= max ? { min, max } : { min: NaN, max: NaN }) };
+  }
+  /** The price at `time` (ms), from the same source as the strip. */
+  #priceAtTime(time: number): number {
+    const series = this.#priceId ? this.hub.flow.get(this.#priceId) : undefined, v = series && !series.empty ? series.priceAt(Math.floor(time / 1000)) : NaN;
+    return v === v ? v : this.#price.at(time);
+  }
+
+  /** "Flow recorded since 13:54", muted, at the left of the aggregate row: the window reaches back before the recording began. */
+  #paintSince(ctx: CanvasRenderingContext2D, p: Palette, plot: { x: number; w: number }, since: number): void {
+    const startOfToday = new Date().setHours(0, 0, 0, 0);
+    ctx.save(); ctx.font = `10px ${SANS}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(fit(ctx, t('Flow recorded since {time}', { time: clock(since, since < startOfToday) }), plot.w - 12), plot.x + 6, 5);
     ctx.restore();
   }
 
@@ -401,7 +447,7 @@ export class CvdPane {
     ctx.restore();
     let lines: InfoLine[];
     if (hit.kind === 'agg') lines = aggregateHover(model, col, time, window);
-    else if (hit.kind === 'price') { const v = this.#price.at(time); lines = [{ text: t('Price'), bold: true }, { text: clock(time, true), color: 'muted' }, { label: t('Price here'), text: Number.isFinite(v) ? fmtPrice(v) : '–', rule: true }]; }
+    else if (hit.kind === 'price') { const v = this.#priceAtTime(time); lines = [{ text: t('Price'), bold: true }, { text: clock(time, true), color: 'muted' }, { label: t('Price here'), text: Number.isFinite(v) ? fmtPrice(v) : '–', rule: true }]; }
     else lines = rowHover(model.rows[hit.index]!, col, time, window);
     paintInfoBox(ctx, lines, hover.x, hover.y, { x0: 0, y0: 0, x1: this.#w, y1: this.#h }, p, { placement: 'down' });
   }

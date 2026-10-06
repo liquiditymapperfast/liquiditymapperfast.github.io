@@ -181,6 +181,25 @@ test('the price track follows candle closes, then marks, and a column holds the 
   assert.ok(Number.isNaN(new PriceTrack().columns(0, 10, 2).min));
 });
 
+test('reloading the minute candles does not flatten the live marks into minute steps', () => {
+  const T = 1_800_000_000_000, track = new PriceTrack(), now = T + 150_000;
+  for (let s = 100; s <= 150; s++) track.add(T + s * 1000, 100 + s / 10);       // a mark a second for the last 50 s
+  const candles = [[T, 100, 101, 99, 100.5], [T + 60_000, 100.5, 103, 100, 102], [T + 120_000, 102, 104, 101, 111.5]];
+  track.load(candles, now);                                                    // the candle still open closes "now" at 111.5
+  assert.equal(track.at(T + 130_000), 113, 'a second inside the last minute still has its own mark');
+  assert.equal(track.at(T + 131_000), 113.1);
+  assert.equal(track.at(T + 99_999), 100.5, 'before the marks began, the candle closes carry');
+  const flat = new Set<number>(); for (let s = 125; s <= 149; s++) flat.add(track.at(T + s * 1000));
+  assert.equal(flat.size, 25, 'twenty-five seconds, twenty-five different prices');
+  track.load(candles, now + 1_000);                                            // and a reload a minute later changes nothing it should not
+  assert.equal(track.at(T + 140_000), 114);
+  // a tab that slept: the candles are newer than the last mark, and the later of the two wins
+  const slept = new PriceTrack(); slept.add(T + 10_000, 100); slept.add(T + 11_000, 100.1);
+  slept.load([[T, 100, 101, 99, 100.2], [T + 60_000, 100.2, 105, 100, 104.4]], T + 130_000);
+  assert.equal(slept.at(T + 11_500), 100.1); assert.equal(slept.at(T + 119_999), 104.4, 'the minute that closed while the page slept is newer than the last mark');
+  slept.clear(); assert.ok(Number.isNaN(slept.at(T + 119_999)) && slept.length === 0, 'another instrument: nothing carries over');
+});
+
 test('a first visit starts with the flow column on a wide window or a phone (which has a tab), and without it on a medium one', () => {
   assert.deepEqual([390, 640, 820, 1180, 1499, 1500, 1920, 3440].map(w => defaultShow(w).cvd), [true, true, false, false, false, true, true, true]);
   assert.ok([390, 1180, 1920].every(w => defaultShow(w).book), 'the book is on everywhere');

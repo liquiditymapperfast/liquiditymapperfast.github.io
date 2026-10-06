@@ -620,5 +620,6 @@
  "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "En büyükler arasında olmasalar bile listede kalan borsalar. Son sıraları alırlar.",
  "No exchanges yet.": "Henüz borsa yok.",
  "Click to take the flow column": "Akış sütununu almak için tıklayın",
- "Click to take the whole page": "Sayfanın tamamını almak için tıklayın"
+ "Click to take the whole page": "Sayfanın tamamını almak için tıklayın",
+ "Flow recorded since {time}": "Akış {time} saatinden beri kaydediliyor"
 }

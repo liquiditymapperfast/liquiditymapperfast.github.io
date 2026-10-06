@@ -42,3 +42,29 @@ Headless Chrome 1700 x 950, the browser source (every venue), 10 lanes of flow, 
 
 The first version redrew the column on every map frame (+4.5 points while scrubbing); it now redraws only when the map's window has moved by one pixel of the column's own plot
 (`CvdPane.followMap`), and a hover on the map costs it nothing. Layout work is unchanged (no DOM is written per frame; the column is one canvas).
+
+## A price a second, and what the Map span showed (2026-10-06, later)
+
+Two things looked wrong in the first screenshots of the column, and one of them was a bug.
+
+**The flat Map line was mostly the future.** The map runs about 8 % of its span past *now*, and in Map mode the column took the map's window as it was, so the right 15 columns
+held nothing but the last value repeated; the minutes of flow a freshly started server had recorded then shared one or two 16-minute columns of a 53-hour map (a vertical jump
+and a flat run). The Map span now ends at *now*, starts where the flow starts when that is later (never under a minute long), and says "Flow recorded since 14:10"; a span chosen
+by hand keeps its length and gets the note. The rules are `cvd/window.ts` (`tests/app-cvd-window.test.mts`).
+
+**The price steps were a bug in `PriceTrack.load`.** The candle still open is stamped at *now*, and the old `load` kept only marks newer than its last candle, so every candle
+reload (once a minute) turned the live per-second marks into minute closes. Candle closes and marks are now kept apart and the later of the two wins at any moment
+(`tests/app-cvd.test.mts`: "reloading the minute candles does not flatten the live marks").
+
+**A price for every second, from the same trades as the flow.** The recorder keeps, per instrument and second, the base quantity next to the buy and sell USD, so a second's price
+is its volume-weighted price (USD over quantity: order-independent, and a replayed trade is already ignored by the seen-set). It is written with the minute, pushed with each second
+(`[inst, second, buy, sell, price]`), sent in frames (a `px` flag per instrument in the header, so a frame without prices still decodes), kept by the page in a ring beside the delta
+sums, and read forward from the last second that traded (at most two hours back); a second with no trade has none, never 0. The strip uses it where the market on screen has
+recorded seconds and falls back to candle closes and marks before them (or entirely, for a market the recorder does not hold, such as Binance's `:spot` id, which maps to the flow
+feeds' `binancespot:`).
+
+Compatibility: SQLite rows are 720 bytes (buys, sells, prices); a 480-byte row from before loads with no prices (`tests/v2-flow.test.mts`). IndexedDB rows gain an optional `px`.
+A server that predates the change answers frames without `px` and the page then uses candles.
+
+Memory: the recorder's bins went from 120 to 180 doubles a minute (the quantity), +50 %. A day and a half of one instrument is 2160 minutes: 2.07 MB before, 3.11 MB now, so 27
+instruments are about 84 MB (56 MB before) and the 48-instrument cap about 149 MB (100 MB before). The page's ring adds 0.5 MB per instrument it holds.

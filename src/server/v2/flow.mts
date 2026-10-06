@@ -3,7 +3,10 @@ import { FlowRecorder as FlowCore, type FlowMinuteRow, type FlowStore } from '..
 
 export { FLOW_SEC, encodeFlowFrame, type FlowFrame, type FlowUpdate } from '../../shared/flow.ts';
 
-/** Recorded flow minutes in the history database: one row per instrument-minute, the 60 buy seconds then the 60 sell seconds as Float32. */
+/**
+ * Recorded flow minutes in the history database: one row per instrument-minute, the 60 buy seconds then the 60 sell seconds as Float32,
+ * then the 60 price seconds (480 bytes, a row from before prices were kept, has no prices; 720 bytes has).
+ */
 class SqliteFlowStore implements FlowStore {
   readonly #db: DatabaseSync;
   constructor(dbPath: string) {
@@ -12,9 +15,9 @@ class SqliteFlowStore implements FlowStore {
   }
   *load(since: number): Iterable<FlowMinuteRow> {
     for (const row of this.#db.prepare('SELECT inst, t, data FROM flow_minutes WHERE t >= ?').all(since) as { inst: string; t: number; data: Uint8Array }[]) {
-      if (row.data.byteLength !== 480) continue;
+      if (row.data.byteLength !== 480 && row.data.byteLength !== 720) continue;
       const copy = row.data.slice().buffer;
-      yield { inst: row.inst, t: row.t, buy: new Float32Array(copy, 0, 60), sell: new Float32Array(copy, 240, 60) };
+      yield { inst: row.inst, t: row.t, buy: new Float32Array(copy, 0, 60), sell: new Float32Array(copy, 240, 60), ...(row.data.byteLength === 720 ? { px: new Float32Array(copy, 480, 60) } : {}) };
     }
   }
   save(rows: FlowMinuteRow[], expireBefore: number): void {
@@ -22,8 +25,9 @@ class SqliteFlowStore implements FlowStore {
     db.exec('BEGIN');
     try {
       for (const row of rows) {
-        const data = new Uint8Array(480);
+        const data = new Uint8Array(720);
         data.set(new Uint8Array(row.buy.buffer, row.buy.byteOffset, 240), 0); data.set(new Uint8Array(row.sell.buffer, row.sell.byteOffset, 240), 240);
+        if (row.px) data.set(new Uint8Array(row.px.buffer, row.px.byteOffset, 240), 480);
         insert.run(row.inst, row.t, data);
       }
       db.prepare('DELETE FROM flow_minutes WHERE t < ?').run(expireBefore);

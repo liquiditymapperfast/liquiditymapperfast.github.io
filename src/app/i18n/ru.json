@@ -628,5 +628,6 @@
  "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Биржи, которые остаются в списке, даже если они не среди крупнейших. Они занимают последние места.",
  "No exchanges yet.": "Бирж пока нет.",
  "Click to take the flow column": "Нажмите, чтобы снять колонку потока",
- "Click to take the whole page": "Нажмите, чтобы снять всю страницу"
+ "Click to take the whole page": "Нажмите, чтобы снять всю страницу",
+ "Flow recorded since {time}": "Поток записывается с {time}"
 }

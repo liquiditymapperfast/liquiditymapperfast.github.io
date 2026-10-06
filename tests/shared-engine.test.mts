@@ -6,6 +6,7 @@ import type { BrowserVenue } from '../src/shared/venues.ts';
 import type { ValuedBook } from '../src/shared/levels.ts';
 import type { Print } from '../src/shared/prints.ts';
 import { SAMPLE_MS } from '../src/shared/recorder.ts';
+import type { FlowUpdate } from '../src/shared/flow.ts';
 
 /** A connector with no socket: the test says when it is live and what its book holds. */
 class Fake extends BookConnector {
@@ -278,7 +279,7 @@ test('an empty first pass does not delay the first sample, and a live venue not 
 test('taker flow is recorded per second, announced about once a second, and answered as a frame', () => {
   let now = Date.now();
   const { engine, fakes } = setup(['binance'], { now: () => now });
-  const announced: [string, number, number, number][][] = [];
+  const announced: FlowUpdate[][] = [];
   engine.onFlow = items => announced.push(items);
   engine.select(['binance']);
   const fake = fakes.get('binance')!; fake.book(99, 101);
@@ -288,7 +289,7 @@ test('taker flow is recorded per second, announced about once a second, and answ
   engine.step(now);
   assert.equal(announced.length, 1);
   const second = Math.floor(now / 1000) * 1000;
-  assert.deepEqual(announced[0], [[fake.instrumentId, second, 1_000, 400]], 'one entry: the totals of the second, the replay not counted');
+  assert.deepEqual(announced[0], [[fake.instrumentId, second, 1_000, 400, 100]], 'one entry: the totals of the second and its price, the replay not counted');
   engine.step(now + 300);
   assert.equal(announced.length, 1, 'nothing changed and a second has not passed');
   now += 1_500; fake.trade({ tradeId: 'c', side: 'buy', price: 100, amount: 1, t: now }); engine.step(now);

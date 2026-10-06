@@ -608,5 +608,6 @@
  "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "大きい順の上位に入っていなくても一覧に残す取引所。最後の位置に並びます。",
  "No exchanges yet.": "まだ取引所がありません。",
  "Click to take the flow column": "クリックでフロー列を撮影",
- "Click to take the whole page": "クリックでページ全体を撮影"
+ "Click to take the whole page": "クリックでページ全体を撮影",
+ "Flow recorded since {time}": "フローは {time} から記録"
 }

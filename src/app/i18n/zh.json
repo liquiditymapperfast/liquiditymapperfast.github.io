@@ -608,5 +608,6 @@
  "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "即使不在最大的交易所之列也保留在列表中的交易所，它们排在最后。",
  "No exchanges yet.": "暂无交易所。",
  "Click to take the flow column": "点击截取资金流栏",
- "Click to take the whole page": "点击截取整个页面"
+ "Click to take the whole page": "点击截取整个页面",
+ "Flow recorded since {time}": "资金流自 {time} 起记录"
 }

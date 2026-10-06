@@ -96,7 +96,7 @@ export async function openRecordings(since: number, canWrite: () => boolean, onE
   };
   const flow: FlowStore = {
     load: () => flowRows,
-    save: (rows, expireBefore) => enqueue(tx => { const store = tx.objectStore('flow'); for (const row of rows) store.put({ inst: row.inst, t: row.t, buy: own(row.buy), sell: own(row.sell) } satisfies FlowMinuteRow); prune(tx, 'flow', expireBefore); }),
+    save: (rows, expireBefore) => enqueue(tx => { const store = tx.objectStore('flow'); for (const row of rows) store.put({ inst: row.inst, t: row.t, buy: own(row.buy), sell: own(row.sell), ...(row.px ? { px: own(row.px) } : {}) } satisfies FlowMinuteRow); prune(tx, 'flow', expireBefore); }),
     close: () => {},
   };
   return {

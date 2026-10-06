@@ -17,7 +17,7 @@ test('the recorder sums taker buys and sells per second and counts a trade once'
   const r = new FlowRecorder(null, () => T0 + 5_000);
   assert.equal(r.ingest([trade('a', '1', 'buy', 1_000, T0 + 100), trade('a', '2', 'sell', 400, T0 + 900), trade('a', '3', 'buy', 50, T0 + 1_200)]), 3);
   assert.equal(r.ingest([trade('a', '1', 'buy', 1_000, T0 + 100)]), 0, 'a replayed trade id is not counted again');
-  assert.deepEqual(r.take(), [['a', T0, 1_000, 400], ['a', T0 + 1_000, 50, 0]]);
+  assert.deepEqual(r.take(), [['a', T0, 1_000, 400, 100_000], ['a', T0 + 1_000, 50, 0, 100_000]]);
   assert.deepEqual(r.take(), [], 'nothing changed since the last look');
 });
 
@@ -25,7 +25,10 @@ test('a late trade changes a second already reported and is reported again with 
   const r = new FlowRecorder(null, () => T0 + 10_000);
   r.ingest([trade('a', '1', 'buy', 1_000, T0 + 2_100)]); r.take();
   r.ingest([trade('a', '2', 'sell', 300, T0 + 2_900), trade('a', '3', 'buy', 5, T0 + 800)]);
-  assert.deepEqual(r.take(), [['a', T0, 5, 0], ['a', T0 + 2_000, 1_000, 300]]);
+  const [early, later] = r.take();
+  assert.deepEqual(early, ['a', T0, 5, 0, 100_000]);
+  assert.deepEqual(later!.slice(0, 4), ['a', T0 + 2_000, 1_000, 300]);
+  assert.ok(Math.abs(later![4]! - 100_000) < 1e-6, 'a price is a quotient: equal to rounding');
 });
 
 test('seconds and minutes land on their own index, across a minute boundary', () => {
@@ -206,4 +209,87 @@ test('an instrument past the limit is not recorded and is counted, so memory sta
   assert.equal(r.ingest([trade('one-too-many', '1', 'buy', 1, T0)]), 0);
   assert.equal(r.dropped, 1);
   assert.equal(r.ingest([trade('i3', '2', 'sell', 1, T0)]), 1, 'an instrument already recorded still takes trades');
+});
+
+// ---- the price of each second ---------------------------------------------------------------------------------------------------------
+
+const at = (id: string, key: string, side: 'buy' | 'sell', usd: number, price: number, t: number) => ({ instrumentId: id, tradeId: key, side, price, notionalUsd: usd, sourceTimestamp: t });
+
+test('a second\'s price is volume-weighted over its trades, buys and sells alike, and a second with no trade has none', () => {
+  const r = new FlowRecorder(null, () => T0 + 10_000);
+  // 1000 USD at 100 is 10 units and 1000 USD at 200 is 5: 2000 USD over 15 units.
+  r.ingest([at('a', '1', 'buy', 1_000, 100, T0 + 100), at('a', '2', 'sell', 1_000, 200, T0 + 400), at('a', '3', 'buy', 10, 50, T0 + 3_000)]);
+  const [first, second] = r.take();
+  assert.ok(Math.abs(first![4]! - 2_000 / 15) < 1e-9, `volume-weighted, not the last or the mean: ${first![4]}`);
+  assert.equal(second![4], 50);
+  const frame = r.frame(['a'], T0, T0 + MIN).instruments[0]!;
+  assert.ok(frame.px instanceof Float32Array && frame.px.length === 60);
+  assert.ok(Math.abs(frame.px![0]! - 2_000 / 15) < 1e-4); assert.equal(frame.px![1], 0, 'nothing traded in second 1'); assert.equal(frame.px![3], 50);
+  r.ingest([at('a', '4', 'buy', 100, 0, T0 + 5_000)]);                       // a trade with no usable price counts as volume, not as a price
+  const [priceless] = r.take();
+  assert.deepEqual(priceless!.slice(2), [100, 0, 0]);
+});
+
+test('prices are written with the minute and come back with it, and a late trade still averages in', () => {
+  const store = new MemoryStore();
+  let now = T0 + 30_000;
+  const first = new FlowRecorder(store, () => now);
+  first.ingest([at('a', '1', 'buy', 1_000, 100, T0 + 100)]);
+  now = T0 + 2 * MIN; first.flush();
+  const row = store.rows.get(`a|${T0}`)!;
+  assert.equal(row.px![0], 100); assert.equal(row.px![1], 0);
+  const again = new FlowRecorder(store, () => now);
+  again.ingest([at('a', '2', 'sell', 1_000, 200, T0 + 200)]);                // arrives late, for the minute that was read back
+  const [update] = again.take();
+  assert.ok(Math.abs(update![4]! - 2_000 / 15) < 1e-4, 'the quantity was worked back from the stored price');
+});
+
+test('a minute stored before prices were kept loads with none, and its seconds have no price', () => {
+  const store = new MemoryStore();
+  store.rows.set(`a|${T0}`, { inst: 'a', t: T0, buy: Float32Array.from({ length: 60 }, (_, i) => i === 3 ? 500 : 0), sell: new Float32Array(60) });
+  const r = new FlowRecorder(store, () => T0 + 2 * MIN);
+  const s = r.frame(['a'], T0, T0 + MIN).instruments[0]!;
+  assert.equal(s.buy[3], 500); assert.ok(s.px!.every(v => v === 0));
+});
+
+test('the page\'s series reads the price forward from the last second that traded, and NaN before one did', () => {
+  const s = new FlowSeries(), base = Math.floor(T0 / 1000);
+  s.set(base + 2, 100, 0, 101); s.set(base + 3, 0, 0, 0); s.set(base + 6, 50, 0, 105);
+  assert.ok(Number.isNaN(s.priceAt(base + 1)), 'before the series');
+  assert.equal(s.priceAt(base + 2), 101); assert.equal(s.priceAt(base + 3), 101, 'no trade: the price carries');
+  assert.equal(s.priceAt(base + 5), 101); assert.equal(s.priceAt(base + 6), 105); assert.equal(s.priceAt(base + 600), 105, 'past the newest second: the last price');
+  const out = new Float64Array(8);
+  s.priceColumns(base, base + 8, 8, out);
+  assert.deepEqual([...out].map(v => Number.isNaN(v) ? 'none' : v), ['none', 'none', 101, 101, 101, 101, 105, 105]);
+  s.priceColumns(base + 2, base + 10, 2, out);                                  // slices of four seconds
+  assert.deepEqual([out[0], out[1]], [101, 105]);
+  s.set(base + 4, 10, 0, 103);                                                  // a late second changes what follows it until the next price
+  assert.equal(s.priceAt(base + 5), 103); assert.equal(s.priceAt(base + 6), 105);
+  // a series that holds no price at all
+  const none = new FlowSeries(); none.set(base, 1, 0); assert.ok(Number.isNaN(none.priceAt(base)));
+  none.priceColumns(base, base + 4, 2, out); assert.ok(Number.isNaN(out[0]) && Number.isNaN(out[1]));
+});
+
+test('load gives the same prices as setting second by second, and a series loaded without prices has none', () => {
+  const base = Math.floor(T0 / 1000), buy = [5, 0, 7, 0], sell = [0, 0, 1, 2], px = [100, 0, 102, 0];
+  const a = new FlowSeries(), b = new FlowSeries(), c = new FlowSeries();
+  a.load(base, buy, sell, px);
+  for (let i = 0; i < 4; i++) b.set(base + i, buy[i]!, sell[i]!, px[i]!);
+  c.load(base, buy, sell);
+  for (let i = 0; i < 6; i++) { assert.equal(a.priceAt(base + i), b.priceAt(base + i)); assert.ok(Number.isNaN(c.priceAt(base + i))); }
+  assert.equal(a.priceAt(base + 1), 100); assert.equal(a.priceAt(base + 3), 102);
+});
+
+test('a frame carries its prices through the bytes, and one from a source that keeps none still reads', () => {
+  const frame: FlowFrame = { from: T0, to: T0 + MIN, instruments: [
+    { id: 'priced', t0: T0, buy: Float32Array.of(1, 2, 3), sell: Float32Array.of(4, 5, 6), px: Float32Array.of(100.5, 0, 101.25) },
+    { id: 'plain', t0: T0, buy: Float32Array.of(7, 8), sell: Float32Array.of(9, 10) },
+    { id: 'priced2', t0: T0, buy: Float32Array.of(1), sell: Float32Array.of(2), px: Float32Array.of(7) },
+  ] };
+  const back = decodeFlowFrame(encodeFlowFrame(frame));
+  assert.deepEqual(back.instruments.map(i => [i.id, [...i.buy], [...i.sell], i.px ? [...i.px] : null]), [
+    ['priced', [1, 2, 3], [4, 5, 6], [100.5, 0, 101.25]], ['plain', [7, 8], [9, 10], null], ['priced2', [1], [2], [7]],
+  ]);
+  const bytes = encodeFlowFrame(frame);
+  assert.throws(() => decodeFlowFrame(bytes.subarray(0, bytes.length - 4)), /cut off/, 'a price array that is cut off is an error too');
 });

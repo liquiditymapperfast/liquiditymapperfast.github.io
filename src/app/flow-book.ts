@@ -26,9 +26,9 @@ export class FlowBook {
     }
     this.version++;
   }
-  #put([id, t, buy, sell]: FlowUpdate): void {
+  #put([id, t, buy, sell, px]: FlowUpdate): void {
     let series = this.#series.get(id); if (!series) { series = new FlowSeries(); this.#series.set(id, series); }
-    series.set(Math.floor(t / 1000), buy, sell);
+    series.set(Math.floor(t / 1000), buy, sell, px ?? 0);
   }
 
   /** Which of `ids` still need history reaching back to `from` (never asked, or asked from later). */
@@ -40,7 +40,7 @@ export class FlowBook {
   load(frame: FlowFrame, ids: readonly string[], from: number): void {
     for (const s of frame.instruments) {
       let series = this.#series.get(s.id); if (!series) { series = new FlowSeries(); this.#series.set(s.id, series); }
-      series.load(Math.floor(s.t0 / 1000), s.buy, s.sell);
+      series.load(Math.floor(s.t0 / 1000), s.buy, s.sell, s.px);
     }
     for (const id of ids) {
       this.#from.set(id, from);

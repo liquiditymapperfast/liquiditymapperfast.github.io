@@ -1,7 +1,8 @@
 import type { TradeLike } from './footprint.ts';
 
 /**
- * Taker flow at one-second resolution: how many USD were bought and sold at market, per instrument, per second.
+ * Taker flow at one-second resolution: how many USD were bought and sold at market, per instrument, per second, and the volume-weighted
+ * price the trades of that second were done at (the same trades, so the price strip and the flow lines share every second).
  * Two halves share this file because they share the layout:
  *
  *  - `FlowRecorder` sits next to the footprint recorder (server or browser worker), turns trades into per-second sums, keeps whole
@@ -22,24 +23,35 @@ const MAX_INSTRUMENTS = 48;
 /** The page's ring: 2^17 seconds, a little over 36 hours. */
 export const FLOW_RING = 1 << 17;
 const MASK = FLOW_RING - 1;
+/** How far back (seconds) a price is read from a second in which nothing traded. */
+const PRICE_REACH = 7_200;
 
-/** One recorded minute of one instrument: USD bought at market and sold at market in each of its 60 seconds. */
-export interface FlowMinuteRow { inst: string; t: number; buy: Float32Array; sell: Float32Array }
+/**
+ * One recorded minute of one instrument: USD bought at market and sold at market in each of its 60 seconds, and the volume-weighted price of
+ * each second (0 where nothing traded). `px` is absent in minutes recorded before prices were kept.
+ */
+export interface FlowMinuteRow { inst: string; t: number; buy: Float32Array; sell: Float32Array; px?: Float32Array }
 /** Where recorded minutes outlive the process (SQLite on the server, IndexedDB in the browser); loading is synchronous, saving may be queued. */
 export interface FlowStore {
   load(since: number): Iterable<FlowMinuteRow>;
   save(rows: FlowMinuteRow[], expireBefore: number): void;
   close(): void;
 }
-/** One second's totals as they are pushed to the page: [instrument, second start (ms), buy USD, sell USD]. They replace what the page had for that second. */
-export type FlowUpdate = [string, number, number, number];
-/** A run of seconds of one instrument, `t0` the start (ms) of the first. */
-export interface FlowSeriesFrame { id: string; t0: number; buy: Float32Array; sell: Float32Array }
+/** One second's totals as they are pushed to the page: [instrument, second start (ms), buy USD, sell USD, volume-weighted price (0 or absent: no trade)]. They replace what the page had for that second. */
+export type FlowUpdate = [string, number, number, number, number?];
+/** A run of seconds of one instrument, `t0` the start (ms) of the first; `px` is the price of each second (0: none), absent from a source that keeps none. */
+export interface FlowSeriesFrame { id: string; t0: number; buy: Float32Array; sell: Float32Array; px?: Float32Array }
 export interface FlowFrame { from: number; to: number; instruments: FlowSeriesFrame[] }
 
-/** Per-instrument, per-second taker buy and sell USD. */
+/** The volume-weighted price of second `index` of a minute's bins: its USD over its base quantity, or 0 when nothing with a price traded in it. */
+function priceOf(bins: Float64Array, index: number): number {
+  const qty = bins[120 + index]!;
+  return qty > 0 ? (bins[index]! + bins[60 + index]!) / qty : 0;
+}
+
+/** Per-instrument, per-second taker buy and sell USD, and the volume-weighted price of each second. */
 export class FlowRecorder {
-  /** inst -> minute start -> [buy of second 0..59, sell of second 0..59] */
+  /** inst -> minute start -> [buy of second 0..59, sell of second 0..59, base quantity of second 0..59] (a second's price is its USD over its quantity) */
   readonly #minutes = new Map<string, Map<number, Float64Array>>();
   readonly #seen = new Map<string, Set<string>>();
   readonly #dirty = new Set<string>();
@@ -55,7 +67,9 @@ export class FlowRecorder {
     this.#store = store; this.#memoryMs = memoryMs; this.#storeMs = storeMs;
     if (store) for (const row of store.load(now() - memoryMs)) {
       if (row.buy.length !== 60 || row.sell.length !== 60) continue;
-      const bins = new Float64Array(120); bins.set(row.buy, 0); bins.set(row.sell, 60);
+      const bins = new Float64Array(180); bins.set(row.buy, 0); bins.set(row.sell, 60);
+      // The quantity is what the price is worked back from, so a trade that arrives late for a minute read from the store still averages in.
+      if (row.px?.length === 60) for (let i = 0; i < 60; i++) { const p = row.px[i]!; if (p > 0) bins[120 + i] = (bins[i]! + bins[60 + i]!) / p; }
       this.#of(row.inst).set(row.t, bins);
     }
   }
@@ -81,8 +95,9 @@ export class FlowRecorder {
       if (seen.size > SEEN_MAX) { const keep = [...seen].slice(-SEEN_MAX / 3); seen.clear(); for (const k of keep) seen.add(k); }
       const minute = Math.floor(t / MINUTE) * MINUTE, second = Math.floor((t - minute) / FLOW_SEC);
       const minutes = this.#of(id);
-      let bins = minutes.get(minute); if (!bins) { bins = new Float64Array(120); minutes.set(minute, bins); }
+      let bins = minutes.get(minute); if (!bins) { bins = new Float64Array(180); minutes.set(minute, bins); }
       bins[(side === 'buy' ? 0 : 60) + second]! += usd;
+      if (price > 0) bins[120 + second]! += usd / price;
       this.#dirty.add(`${id}|${minute}`);
       let changed = this.#changed.get(id); if (!changed) { changed = new Set(); this.#changed.set(id, changed); }
       changed.add(minute + second * FLOW_SEC);
@@ -99,7 +114,7 @@ export class FlowRecorder {
       for (const second of [...seconds].sort((a, b) => a - b)) {
         const minute = Math.floor(second / MINUTE) * MINUTE, bins = minutes?.get(minute); if (!bins) continue;
         const index = (second - minute) / FLOW_SEC;
-        out.push([id, second, bins[index]!, bins[60 + index]!]);
+        out.push([id, second, bins[index]!, bins[60 + index]!, priceOf(bins, index)]);
       }
     }
     this.#changed.clear();
@@ -117,7 +132,7 @@ export class FlowRecorder {
       const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
       if (t >= open) continue;
       const bins = this.#minutes.get(id)?.get(t);
-      if (bins) rows.push({ inst: id, t, buy: Float32Array.from(bins.subarray(0, 60)), sell: Float32Array.from(bins.subarray(60, 120)) });
+      if (bins) rows.push({ inst: id, t, buy: Float32Array.from(bins.subarray(0, 60)), sell: Float32Array.from(bins.subarray(60, 120)), px: Float32Array.from({ length: 60 }, (_, i) => priceOf(bins, i)) });
       this.#dirty.delete(key);
     }
     store.save(rows, now - this.#storeMs);
@@ -143,13 +158,13 @@ export class FlowRecorder {
       let first = Infinity;
       for (const t of minutes.keys()) if (t >= start && t < end && t < first) first = t;
       if (!Number.isFinite(first)) continue;
-      const n = (end - first) / FLOW_SEC, buy = new Float32Array(n), sell = new Float32Array(n);
+      const n = (end - first) / FLOW_SEC, buy = new Float32Array(n), sell = new Float32Array(n), px = new Float32Array(n);
       for (const [t, bins] of minutes) {
         if (t < first || t >= end) continue;
         const at = (t - first) / FLOW_SEC;
-        for (let i = 0; i < 60; i++) { buy[at + i] = bins[i]!; sell[at + i] = bins[60 + i]!; }
+        for (let i = 0; i < 60; i++) { buy[at + i] = bins[i]!; sell[at + i] = bins[60 + i]!; px[at + i] = priceOf(bins, i); }
       }
-      instruments.push({ id, t0: first, buy, sell });
+      instruments.push({ id, t0: first, buy, sell, px });
     }
     return { from: start, to: end, instruments };
   }
@@ -175,6 +190,8 @@ export class FlowRecorder {
 export class FlowSeries {
   readonly #delta = new Float64Array(FLOW_RING);
   readonly #gross = new Float64Array(FLOW_RING);
+  /** The volume-weighted price of each second, 0 where nothing traded in it (a price is read forward from the last second that has one). */
+  readonly #px = new Float32Array(FLOW_RING);
   #first = 0; #last = -1;
   #baseDelta = 0; #baseGross = 0;
   /** Seconds that were too old to place. */
@@ -186,8 +203,8 @@ export class FlowSeries {
 
   clear(): void { this.#first = 0; this.#last = -1; this.#baseDelta = 0; this.#baseGross = 0; }
 
-  /** Replace the whole series with `buy` and `sell`, one entry per second from `t0Sec`. */
-  load(t0Sec: number, buy: ArrayLike<number>, sell: ArrayLike<number>): void {
+  /** Replace the whole series with `buy` and `sell` (and `px`, when there are prices), one entry per second from `t0Sec`. */
+  load(t0Sec: number, buy: ArrayLike<number>, sell: ArrayLike<number>, px?: ArrayLike<number>): void {
     this.clear();
     const n = Math.min(buy.length, sell.length);
     if (n === 0) return;
@@ -197,15 +214,15 @@ export class FlowSeries {
     for (let i = 0; i < n; i++) {
       const b = buy[i]!, s = sell[i]!;
       d += b - s; g += b + s;
-      if (i < skip) { this.#baseDelta = d; this.#baseGross = g; } else { const at = (t0Sec + i) & MASK; this.#delta[at] = d; this.#gross[at] = g; }
+      if (i < skip) { this.#baseDelta = d; this.#baseGross = g; } else { const at = (t0Sec + i) & MASK; this.#delta[at] = d; this.#gross[at] = g; this.#px[at] = px?.[i] ?? 0; }
     }
     this.#first = t0Sec + skip; this.#last = t0Sec + n - 1;
   }
 
-  /** Set the totals of whole second `sec`. Returns false when the second is older than the ring holds. */
-  set(sec: number, buy: number, sell: number): boolean {
+  /** Set the totals (and the price, 0 for none) of whole second `sec`. Returns false when the second is older than the ring holds. */
+  set(sec: number, buy: number, sell: number, px = 0): boolean {
     const d = buy - sell, g = buy + sell;
-    if (this.empty) { this.#first = sec; this.#last = sec; this.#baseDelta = 0; this.#baseGross = 0; this.#delta[sec & MASK] = d; this.#gross[sec & MASK] = g; return true; }
+    if (this.empty) { this.#first = sec; this.#last = sec; this.#baseDelta = 0; this.#baseGross = 0; this.#delta[sec & MASK] = d; this.#gross[sec & MASK] = g; this.#px[sec & MASK] = px; return true; }
     if (sec > this.#last) {
       const carryD = this.#delta[this.#last & MASK]!, carryG = this.#gross[this.#last & MASK]!;
       if (sec - this.#last >= FLOW_RING) {
@@ -215,13 +232,14 @@ export class FlowSeries {
         // Forget what the new seconds will take the room of before they are written over it.
         const keep = Math.max(this.#first, sec - FLOW_RING + 1);
         if (keep > this.#first) { this.#baseDelta = this.#delta[(keep - 1) & MASK]!; this.#baseGross = this.#gross[(keep - 1) & MASK]!; this.#first = keep; }
-        for (let s = this.#last + 1; s < sec; s++) { this.#delta[s & MASK] = carryD; this.#gross[s & MASK] = carryG; }
+        for (let s = this.#last + 1; s < sec; s++) { this.#delta[s & MASK] = carryD; this.#gross[s & MASK] = carryG; this.#px[s & MASK] = 0; }
       }
-      this.#delta[sec & MASK] = carryD + d; this.#gross[sec & MASK] = carryG + g;
+      this.#delta[sec & MASK] = carryD + d; this.#gross[sec & MASK] = carryG + g; this.#px[sec & MASK] = px;
       this.#last = sec;
       return true;
     }
     if (sec < this.#first) { this.tooOld++; return false; }
+    this.#px[sec & MASK] = px;
     const prevD = sec === this.#first ? this.#baseDelta : this.#delta[(sec - 1) & MASK]!, prevG = sec === this.#first ? this.#baseGross : this.#gross[(sec - 1) & MASK]!;
     const dd = d - (this.#delta[sec & MASK]! - prevD), dg = g - (this.#gross[sec & MASK]! - prevG);
     if (dd === 0 && dg === 0) return true;
@@ -244,6 +262,33 @@ export class FlowSeries {
   gross(from: number, to: number): number { return to < from ? 0 : this.cumGross(to) - this.cumGross(from - 1); }
   buy(from: number, to: number): number { return (this.gross(from, to) + this.delta(from, to)) / 2; }
   sell(from: number, to: number): number { return (this.gross(from, to) - this.delta(from, to)) / 2; }
+
+  /**
+   * The price at the end of second `sec`: that of the last second at or before it in which something traded (read back at most two hours),
+   * or NaN when there is none (before the series, or no trade with a price yet).
+   */
+  priceAt(sec: number): number {
+    if (this.empty || sec < this.#first) return NaN;
+    const stop = Math.max(this.#first, Math.min(sec, this.#last) - PRICE_REACH);
+    for (let s = Math.min(sec, this.#last); s >= stop; s--) { const v = this.#px[s & MASK]!; if (v > 0) return v; }
+    return NaN;
+  }
+
+  /**
+   * The price for a plot: for each of `columns` equal slices of seconds [from, to), the price at the end of the slice (NaN where there is
+   * none yet), in the slices `decimate` uses. One pass over the seconds, so a day is cheap.
+   */
+  priceColumns(from: number, to: number, columns: number, out: Float64Array): void {
+    const span = to - from;
+    let known = this.priceAt(from - 1), cursor = from;
+    for (let c = 0; c < columns; c++) {
+      const a = from + Math.floor(span * c / columns), b = Math.max(a + 1, from + Math.floor(span * (c + 1) / columns)), end = b - 1;
+      if (this.empty || end < this.#first) { out[c] = NaN; cursor = Math.max(cursor, b); continue; }
+      for (let s = Math.max(cursor, this.#first, a); s <= Math.min(end, this.#last); s++) { const v = this.#px[s & MASK]!; if (v > 0) known = v; }
+      cursor = Math.max(cursor, b);
+      out[c] = known;
+    }
+  }
 
   /**
    * The running delta for a plot: for each of `columns` equal slices of seconds [from, to), the lowest, the highest and the last value of
@@ -272,16 +317,16 @@ export class FlowSeries {
 
 /**
  * A frame as bytes, for the server's answer: a u32 header length, the header as JSON padded to a multiple of 4 bytes, then each
- * instrument's buy and sell seconds as Float32 (little endian), in the header's order.
+ * instrument's buy and sell seconds as Float32 (little endian), and its price seconds when the header says `px`, in the header's order.
  */
 export function encodeFlowFrame(frame: FlowFrame): Uint8Array {
-  const head = new TextEncoder().encode(JSON.stringify({ from: frame.from, to: frame.to, instruments: frame.instruments.map(i => ({ id: i.id, t0: i.t0, n: i.buy.length })) }));
-  const pad = (4 - (4 + head.length) % 4) % 4, body = frame.instruments.reduce((sum, i) => sum + i.buy.length * 8, 0);
+  const head = new TextEncoder().encode(JSON.stringify({ from: frame.from, to: frame.to, instruments: frame.instruments.map(i => ({ id: i.id, t0: i.t0, n: i.buy.length, ...(i.px ? { px: 1 } : {}) })) }));
+  const pad = (4 - (4 + head.length) % 4) % 4, body = frame.instruments.reduce((sum, i) => sum + i.buy.length * (i.px ? 12 : 8), 0);
   const out = new Uint8Array(4 + head.length + pad + body), view = new DataView(out.buffer);
   view.setUint32(0, head.length, true); out.set(head, 4);
   let at = 4 + head.length + pad;
   for (const i of frame.instruments) {
-    for (const array of [i.buy, i.sell]) { out.set(new Uint8Array(array.buffer, array.byteOffset, array.byteLength), at); at += array.byteLength; }
+    for (const array of i.px ? [i.buy, i.sell, i.px] : [i.buy, i.sell]) { out.set(new Uint8Array(array.buffer, array.byteOffset, array.byteLength), at); at += array.byteLength; }
   }
   return out;
 }
@@ -294,13 +339,14 @@ export function decodeFlowFrame(input: ArrayBuffer | Uint8Array): FlowFrame {
   if (bytes.byteLength < 4) throw new Error('flow frame is too short');
   const view = new DataView(buffer, base, bytes.byteLength), headLength = view.getUint32(0, true);
   if (4 + headLength > bytes.byteLength) throw new Error('flow frame header is cut off');
-  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, base + 4, headLength))) as { from: number; to: number; instruments: { id: string; t0: number; n: number }[] };
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, base + 4, headLength))) as { from: number; to: number; instruments: { id: string; t0: number; n: number; px?: number }[] };
   let at = base + 4 + headLength + (4 - (4 + headLength) % 4) % 4;
   const instruments: FlowSeriesFrame[] = [];
-  for (const { id, t0, n } of header.instruments) {
-    if (!Number.isInteger(n) || n < 0 || at + n * 8 > base + bytes.byteLength) throw new Error('flow frame data is cut off');
-    instruments.push({ id, t0, buy: new Float32Array(buffer, at, n), sell: new Float32Array(buffer, at + n * 4, n) });
-    at += n * 8;
+  for (const { id, t0, n, px } of header.instruments) {
+    const arrays = px ? 3 : 2;
+    if (!Number.isInteger(n) || n < 0 || at + n * 4 * arrays > base + bytes.byteLength) throw new Error('flow frame data is cut off');
+    instruments.push({ id, t0, buy: new Float32Array(buffer, at, n), sell: new Float32Array(buffer, at + n * 4, n), ...(px ? { px: new Float32Array(buffer, at + n * 8, n) } : {}) });
+    at += n * 4 * arrays;
   }
   return { from: header.from, to: header.to, instruments };
 }

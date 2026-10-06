@@ -624,5 +624,6 @@
  "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "Corretoras que permanecem na lista mesmo que não estejam entre as maiores. Ocupam os últimos lugares.",
  "No exchanges yet.": "Ainda não há corretoras.",
  "Click to take the flow column": "Clique para capturar a coluna de fluxo",
- "Click to take the whole page": "Clique para capturar a página inteira"
+ "Click to take the whole page": "Clique para capturar a página inteira",
+ "Flow recorded since {time}": "Fluxo registrado desde as {time}"
 }

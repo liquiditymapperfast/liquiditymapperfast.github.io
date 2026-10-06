@@ -608,5 +608,6 @@
  "Exchanges that stay in the list even when they are not among the biggest. They take the last places.": "규모가 큰 순서에 들지 않아도 목록에 남겨 두는 거래소입니다. 마지막 자리를 차지합니다.",
  "No exchanges yet.": "아직 거래소가 없습니다.",
  "Click to take the flow column": "클릭하여 플로우 열 캡처",
- "Click to take the whole page": "클릭하여 페이지 전체 캡처"
+ "Click to take the whole page": "클릭하여 페이지 전체 캡처",
+ "Flow recorded since {time}": "플로우 기록 시작: {time}"
 }
