@@ -1,4 +1,5 @@
 import type { LevelsFrame } from '../wire.ts';
+import { gridStepFor } from '../../shared/grid.ts';
 
 /**
  * The decisions behind the panel sounds, with no audio and no DOM: each is a small state machine fed a reading at a time, so a test
@@ -34,8 +35,13 @@ export class RateCap {
 /** Resting liquidity of the books in `ids`, per price bin, on each side of `mark`, out to `pct` (a fraction) from it. */
 export interface BookBins { bin: number; bid: Map<number, number>; ask: Map<number, number>; bidTotal: number; askTotal: number }
 
-export function bookBins(frame: LevelsFrame | null, ids: ReadonlySet<string>, mark: number, pct: number, binBp = 2): BookBins {
-  const bin = Math.max(1e-9, mark * binBp / 10_000), out: BookBins = { bin, bid: new Map(), ask: new Map(), bidTotal: 0, askTotal: 0 };
+/**
+ * A bin is one step of the 1-2-5 price grid (about 2 bp of the mark, 20 dollars at 100,000). It is a step of that grid and not a fixed
+ * fraction of the mark so that it stays the same while the mark moves a little: bins that are 20.002 wide one second and 20.0 the next
+ * put the same level in a different bin, and what looks like a wall going is the grid moving.
+ */
+export function bookBins(frame: LevelsFrame | null, ids: ReadonlySet<string>, mark: number, pct: number): BookBins {
+  const bin = gridStepFor(mark), out: BookBins = { bin, bid: new Map(), ask: new Map(), bidTotal: 0, askTotal: 0 };
   if (!frame || !(mark > 0)) return out;
   const lo = mark * (1 - pct), hi = mark * (1 + pct);
   for (const book of frame.books) {
@@ -75,18 +81,21 @@ export class WallWatch {
   #stood: { buy: (Wall & { since: number }) | null; sell: (Wall & { since: number }) | null } = { buy: null, sell: null };
   /** What the bins were made of last time (the books they came from): a change in it is not a change in the book. */
   #context = '';
+  /** The width of the bins last time: walls are remembered by the bin they stood in, so another width is another grid. */
+  #bin = 0;
   #last = -1;
 
-  reset(): void { this.#start = -1; this.#armed = { buy: false, sell: false }; this.#stood = { buy: null, sell: null }; this.#context = ''; this.#last = -1; }
+  reset(): void { this.#start = -1; this.#armed = { buy: false, sell: false }; this.#stood = { buy: null, sell: null }; this.#context = ''; this.#bin = 0; this.#last = -1; }
 
   /**
    * `context` names what the bins are made of (which books, and which instrument's price): when it changes, a venue was switched on or
    * off or one dropped out of the feed, and what looks like a wall coming or going is the set of books changing. Everything is forgotten
    * and the warm-up starts again, so nothing is called appeared or pulled on that account. The same goes for a look that comes long after the
-   * one before (nothing was observed in between: a wall that went in that time was not seen going).
+   * one before (nothing was observed in between: a wall that went in that time was not seen going), and for bins of another width (the mark
+   * crossed a step of the grid: the same level is in another bin).
    */
   update(now: number, bins: BookBins, mark: number, minUsd: number, context = ''): WallSignal[] {
-    if (context !== this.#context || (this.#last >= 0 && now - this.#last > 10_000)) { const known = this.#start >= 0; this.reset(); this.#context = context; if (known) this.#start = now; }
+    if (context !== this.#context || bins.bin !== this.#bin || (this.#last >= 0 && now - this.#last > 10_000)) { const known = this.#start >= 0; this.reset(); this.#context = context; this.#bin = bins.bin; if (known) this.#start = now; }
     this.#last = now;
     if (this.#start < 0) this.#start = now;
     const warm = now - this.#start >= 10_000, top = biggest(bins), out: WallSignal[] = [];

@@ -55,6 +55,8 @@ export class ExtraVenues {
   }
   get enabledCount(): number { return this.#enabled.size; }
   get enabledIds(): string[] { return [...this.#enabled]; }
+  /** The instruments of the venues that are switched on (what their books are of). */
+  get enabledInstrumentIds(): string[] { return [...this.#enabled].map(id => this.#all.get(id)!.instrumentId); }
 
   /** Start newly enabled connectors, stop the rest, and remember the choice. Unknown ids are ignored. */
   setEnabled(ids: readonly string[], persist = true): void {

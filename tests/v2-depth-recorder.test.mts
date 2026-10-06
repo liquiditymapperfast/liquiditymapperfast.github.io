@@ -222,16 +222,17 @@ test('footprint records trade counts and size buckets, reports them for complete
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('live OI samples newer than the stored bars are added, so a window reaching into history still ends at the present', () => {
+test('live OI samples from the newest stored bar on are added, so a window reaching into history still ends at the present', () => {
   const MIN = 60_000, base = 1_000 * MIN;
   const stored = [{ start: base, open: 10, high: 11, low: 9, close: 10 }, { start: base + MIN, open: 10, high: 12, low: 10, close: 12 }];
-  const live = [{ base: 11, observationTimestamp: base + MIN + 30_000 }, { base: 13, observationTimestamp: base + 2 * MIN + 5_000 }, { base: 14, observationTimestamp: base + 3 * MIN }];
-  const rows = withLiveOi(stored, live, MIN);
-  assert.equal(rows.length, 4, 'the sample inside the last stored bar is already part of that bar');
+  const live = [{ base: 12, observationTimestamp: base + MIN + 30_000 }, { base: 13, observationTimestamp: base + 2 * MIN + 5_000 }, { base: 14, observationTimestamp: base + 3 * MIN }];
+  const rows = withLiveOi(stored, live);
+  assert.equal(rows.length, 5, 'the sample inside the last stored bar comes too: that bar may hold only the first of its minute\'s samples');
   assert.deepEqual(aggregateOi(rows, MIN).map(b => b[0] - base), [0, MIN, 2 * MIN, 3 * MIN]);
+  assert.deepEqual(aggregateOi(rows, MIN)[1], [base + MIN, 10, 12, 10, 12], 'and a sample the bar already holds changes nothing in it');
   assert.deepEqual(aggregateOi(rows, MIN).at(-1), [base + 3 * MIN, 14, 14, 14, 14]);
-  assert.deepEqual(withLiveOi([], live, MIN), live, 'with nothing stored every live sample is used');
-  assert.deepEqual(withLiveOi(stored, [], MIN), stored);
+  assert.deepEqual(withLiveOi([], live), live, 'with nothing stored every live sample is used');
+  assert.deepEqual(withLiveOi(stored, []), stored);
 });
 
 test('the plain-book fast path values a book exactly as the general path does, and defers to it for anything unusual', () => {

@@ -715,9 +715,11 @@ export class LiveFeedManager {
   #armWatchdog() {
     if (!(this.startWatchdogMs > 0) || this.#watchdogTimer !== null || !this.running) return;
     const tick = () => {
-      this.#watchdogTimer = null;
+      this.#watchdogTimer = null;                          // this timer has fired
       if (!this.running) return;
-      try { this.checkLiveness(); } finally { this.#watchdogTimer = this.schedule(tick, this.startWatchdogMs); unrefTimer(this.#watchdogTimer); }
+      // A recovery inside this check calls start(), which arms the watchdog itself. This function is the only place a timer is made, and it
+      // makes none while one is pending, so the check asks for the next one after it and never beside it.
+      try { this.checkLiveness(); } finally { this.#armWatchdog(); }
     };
     this.#watchdogTimer = this.schedule(tick, this.startWatchdogMs);
     unrefTimer(this.#watchdogTimer);

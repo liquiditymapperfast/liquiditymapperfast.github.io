@@ -27,29 +27,29 @@ test('a venue with a book on the server gets its trade socket, one that the feed
   const bybit = venue('bybit'), spot = venue('binancespot', true), binance = venue('binance'), hl = venue('hyperliquid');
   const seen: TradeEvent[] = [];
   const sources = new FlowSources(t => seen.push(t), () => now, [bybit, spot, binance, hl]);
-  sources.sync(new Set(['bybit', 'binancespot', 'binance', 'hyperliquid', 'nobody']));
+  sources.sync(new Set(['bybit:BTCUSDT', 'binancespot:BTCUSDT', 'binance:BTCUSDT', 'hyperliquid:BTCUSDT', 'nobody:BTCUSDT']));
   assert.deepEqual(sources.active.sort(), ['binancespot', 'bybit']);
   assert.equal(binance.made.length + hl.made.length, 0, 'their trades come from the feed manager');
   assert.equal(bybit.made[0]!.starts, 1, 'the book connector carries the trades');
   assert.equal(spot.made[0]!.starts, 0, 'the spot book is the extra venue\'s, not started here'); assert.equal(spot.made[1]!.starts, 1);
   bybit.made[0]!.say('t1'); spot.made[1]!.say('s1');
   assert.deepEqual(seen.map(t => t.tradeId), ['t1', 's1']);
-  sources.sync(new Set(['bybit', 'binancespot']));
+  sources.sync(new Set(['bybit:BTCUSDT', 'binancespot:BTCUSDT']));
   assert.equal(bybit.made.length, 1, 'already running: not made again');
 });
 
 test('a venue that is no longer wanted keeps its socket for a minute and goes after it; one that comes back in time is not reconnected', () => {
   let now = 0;
   const a = venue('okx'), b = venue('coinbase'), sources = new FlowSources(() => {}, () => now, [a, b]);
-  sources.sync(new Set(['okx', 'coinbase']));
-  now = 10_000; sources.sync(new Set(['okx']));
-  now = 69_000; sources.sync(new Set(['okx']));
+  sources.sync(new Set(['okx:BTCUSDT', 'coinbase:BTCUSDT']));
+  now = 10_000; sources.sync(new Set(['okx:BTCUSDT']));
+  now = 69_000; sources.sync(new Set(['okx:BTCUSDT']));
   assert.deepEqual(sources.active.sort(), ['coinbase', 'okx'], 'under a minute: still there');
-  now = 71_000; sources.sync(new Set(['okx']));
+  now = 71_000; sources.sync(new Set(['okx:BTCUSDT']));
   assert.deepEqual(sources.active, ['okx']); assert.equal(b.made[0]!.stops, 1);
-  now = 80_000; sources.sync(new Set(['okx', 'coinbase']));
+  now = 80_000; sources.sync(new Set(['okx:BTCUSDT', 'coinbase:BTCUSDT']));
   assert.equal(b.made.length, 2, 'a new connector after it was stopped');
-  now = 90_000; sources.sync(new Set(['okx'])); now = 120_000; sources.sync(new Set(['okx', 'coinbase']));
+  now = 90_000; sources.sync(new Set(['okx:BTCUSDT'])); now = 120_000; sources.sync(new Set(['okx:BTCUSDT', 'coinbase:BTCUSDT']));
   assert.equal(b.made.length, 2, 'wanted again before the minute was up: kept');
   sources.close();
   assert.deepEqual(sources.active, []); assert.equal(a.made[0]!.stops, 1);

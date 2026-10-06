@@ -24,6 +24,8 @@ export class Hub {
   #columns: { key: string; from: number; to: number; stepMs: number } | null = null;
   #columnsLoading = false;
   #series = '';
+  /** What the candles on screen are of (the context asked for, and the instrument that answered), or null when they are of nothing that can be told. */
+  #loaded: { key: string; instrument: string } | null = null;
   #oiKey = '';
   /** Counts the requests for the series and for open interest, so an answer can tell whether it is still the one wanted (the key names the context, not the request). */
   #seriesGen = 0; #oiGen = 0;
@@ -45,6 +47,8 @@ export class Hub {
   #printsWindow: { t0: number; t1: number } | null = null;
   /** The live stream has closed at least once since it last opened, so the next open is a reconnection. */
   #dropped = false;
+  /** Counts the times the live stream opened or closed: a history answer can tell whether it was asked for before the stream broke. */
+  #connection = 0;
   #printsLoading = false;
   onRaster: (result: RasterResult) => void = () => {};
   #depthWaiters = new Map<number, (r: { bid: Float32Array; ask: Float32Array }) => void>();
@@ -97,12 +101,12 @@ export class Hub {
     this.source.venues.watch?.(() => { clearTimeout(pending); pending = setTimeout(() => void this.refreshMarkets(), 300); });
     this.source.connect({
       onOpen: () => {
-        this.#printsWindow = null;
+        this.#connection++; this.#printsWindow = null;
         // What the stream said while it was down is in the recordings and not in the book: ask for the history again (the first open has nothing to repair).
         if (this.#dropped) { this.#dropped = false; this.flow.invalidate(); }
         this.store.set({ connected: true, status: t('live') });
       },
-      onClose: (failures, host) => { this.#dropped = true; this.store.set({ connected: false, status: connectionStatus(failures, host) }); },
+      onClose: (failures, host) => { this.#connection++; this.#dropped = true; this.store.set({ connected: false, status: connectionStatus(failures, host) }); },
       onLevels: frame => {
         this.store.set({ levels: frame });
         this.#post({ type: 'live', books: frame.books, now: Date.now() });
@@ -156,16 +160,34 @@ export class Hub {
     if (!marketId || (!force && key === this.#series)) return;
     this.#series = key;
     const generation = ++this.#seriesGen;
+    // Open interest that is still on its way for the context just left must not land in this one.
+    this.#oiGen++; this.#oiKey = '';
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, now = Date.now();
     let seriesInstrument = marketId;
-    let candles = await this.source.candles(marketId, timeframe, now - 500 * tf, now + tf);
-    if (!candles.length && this.#reference && this.#reference !== marketId) { seriesInstrument = this.#reference; candles = await this.source.candles(seriesInstrument, timeframe, now - 500 * tf, now + tf); }
+    let candles: CandleRow[];
+    try {
+      candles = await this.source.candles(marketId, timeframe, now - 500 * tf, now + tf);
+      if (!candles.length && this.#reference && this.#reference !== marketId) { seriesInstrument = this.#reference; candles = await this.source.candles(seriesInstrument, timeframe, now - 500 * tf, now + tf); }
+    } catch (error) {
+      if (key === this.#series && generation === this.#seriesGen) {
+        // A refresh of what is on screen that fails leaves it as it is; candles of another timeframe or market are not left standing under this label.
+        if (this.#loaded?.key !== key) { this.store.set({ candles: [], seriesInstrument: marketId }); this.#loaded = null; }
+        this.#series = this.#loaded?.key ?? '';
+      }
+      throw error;
+    }
     // Only the newest request may answer: an older one for the same context (a forced reload, a quick change and back) would put the series as it was then over what a newer one has set.
     if (key !== this.#series || generation !== this.#seriesGen) return;
-    // What the live stream said while the request was out is newer than the answer: it goes on top, and the live minutes are counted afresh against it.
-    this.#liveTrack.current = null;
-    const live = this.#liveCandles[seriesInstrument];
-    this.store.set({ candles: live ? mergeLive(candles as CandleRow[], live, tf, this.#liveTrack) : candles as CandleRow[], seriesInstrument });
+    // A reload of what is on screen keeps what the stream has added to the open candle since the snapshot was taken, and goes on counting its minutes.
+    const again = this.#loaded?.key === key && this.#loaded.instrument === seriesInstrument;
+    if (!again) this.#liveTrack.current = null;
+    candles = keepGrowth(candles, again ? this.store.state.candles : [], this.#liveTrack.current);
+    // Within a candle the stream and the snapshot cannot be put in order (the last tick may be older or newer than the moment the snapshot was taken), and the next tick settles it:
+    // the live candle goes on top only where nothing in the snapshot can be later than it, a candle the snapshot does not have yet.
+    const live = this.#liveCandles[seriesInstrument], last = candles[candles.length - 1];
+    const opens = live !== undefined && (!last || Math.floor(live[0] / tf) * tf > last[0]);
+    this.#loaded = { key, instrument: seriesInstrument };
+    this.store.set({ candles: opens ? mergeLive(candles, live, tf, this.#liveTrack) : candles, seriesInstrument });
     await this.loadOi();
   }
 
@@ -198,7 +220,9 @@ export class Hub {
     if (have && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now())) return;
     const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE));
     this.#printsLoading = true;
-    this.source.prints(from, to).then(rows => { this.prints.add(rows, { from, to }); this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+    const connection = this.#connection;
+    // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
+    this.source.prints(from, to).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
   }
 
   /**
@@ -281,9 +305,27 @@ export class Hub {
 export interface LiveTrack { bucket: number; base: number; minutes: Map<number, number> }
 
 /**
+ * The open candle of a series that is loaded again, with what the page already had of it. Its volume and its range only grow, so a
+ * snapshot that is a few seconds behind the live stream cannot lower them; its close is the snapshot's (which of the two is later cannot
+ * be told, and the next tick settles it). The live track goes on from the volume that comes back, not from the snapshot's.
+ */
+export function keepGrowth(loaded: CandleRow[], shown: readonly CandleRow[], track: LiveTrack | null): CandleRow[] {
+  const last = loaded[loaded.length - 1], was = shown[shown.length - 1];
+  if (!last || !was || was[0] !== last[0]) return loaded;
+  const volume = Math.max(last[5], was[5]), high = Math.max(last[2], was[2]), low = Math.min(last[3], was[3]);
+  if (track && track.bucket === last[0]) {
+    let counted = track.base; for (const minute of track.minutes.values()) counted += minute;
+    if (volume > counted) track.base += volume - counted;
+  }
+  if (volume === last[5] && high === last[2] && low === last[3]) return loaded;
+  return [...loaded.slice(0, -1), [last[0], last[1], high, low, last[4], volume, last[6]]];
+}
+
+/**
  * Fold a live 1m candle into the display-timeframe series. A display candle of several minutes gets the volume of all of them, not of the
- * biggest: with `track` (kept by the caller, and emptied when the series is loaded again) each live minute's latest volume is remembered and
- * they are added to what the candle held when the first of them was seen, less the part of that minute the candle already had.
+ * biggest: with `track` (kept by the caller, and emptied when the series is for another market or timeframe) each live minute's latest volume
+ * is remembered and added to what the candle held when the first of them was seen, less the part of that minute it already had.
+ * A minute's volume does not go back down (a feed that reconnects in the middle of it starts counting again from what it sees).
  */
 export function mergeLive(candles: CandleRow[], live: [number, number, number, number, number, number], tfMs: number, track?: { current: LiveTrack | null }): CandleRow[] {
   const [start, open, high, low, close, volume] = live;
@@ -296,7 +338,7 @@ export function mergeLive(candles: CandleRow[], live: [number, number, number, n
   else {
     let seen = track.current;
     if (!seen || seen.bucket !== bucket) { seen = { bucket, base: same ? Math.max(0, last![5] - volume) : 0, minutes: new Map() }; track.current = seen; }
-    seen.minutes.set(start, volume);
+    seen.minutes.set(start, Math.max(seen.minutes.get(start) ?? 0, volume));
     total = seen.base; for (const minute of seen.minutes.values()) total += minute;
   }
   if (same) return [...candles.slice(0, -1), [bucket, last![1], Math.max(last![2], high), Math.min(last![3], low), close, total, last![6]]];

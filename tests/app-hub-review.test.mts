@@ -76,7 +76,7 @@ test('a live candle of a coarser timeframe is the sum of its minutes, not the bi
   assert.equal(mergeLive([[0, 1, 1, 1, 1, 5, 1]], [0, 1, 1, 1, 1, 7], MIN, { current: null })[0]![5], 7);
 });
 
-test('an older request for the series does not put its answer over a newer one, and the live candle seen meanwhile is kept', async () => {
+test('an older request for the series does not put its answer over a newer one, and a live candle that opens a candle the answer lacks is kept', async () => {
   const { hub, store, source, handlers } = await rig({ marketId: 'ref:BTC', timeframe: '1h', seriesInstrument: 'ref:BTC', candles: [] });
   const row = (close: number): CandleRow => [10 * HOUR, 1, 1, 1, close, 1, 1];
   void hub.loadSeries(true);                                                              // asked first
@@ -84,9 +84,9 @@ test('an older request for the series does not put its answer over a newer one, 
   void hub.loadSeries(true);                                                              // asked again, by a forced reload
   await turn();
   assert.equal(source.asked.length, 2);
-  handlers().onTick(tick({ candles: { 'ref:BTC': [10 * HOUR + 5 * MIN, 1, 1, 1, 300, 1] } }));
+  handlers().onTick(tick({ candles: { 'ref:BTC': [11 * HOUR + 5 * MIN, 1, 1, 1, 300, 1] } }));          // the next hour has begun: the answer cannot have it
   source.asked[1]!.resolve([row(200)]); await turn();
-  assert.equal(store.state.candles.at(-1)![4], 300, 'the newer answer, brought up to date with the live candle');
+  assert.deepEqual(store.state.candles.map(c => [c[0], c[4]]), [[10 * HOUR, 200], [11 * HOUR, 300]], 'the newer answer, with the candle the stream opened after it');
   source.asked[0]!.resolve([row(100)]); await turn();
   assert.equal(store.state.candles.at(-1)![4], 300, 'the older answer arrives last and rewinds nothing (it set the close back to 100)');
 });

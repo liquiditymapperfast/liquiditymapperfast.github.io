@@ -75,7 +75,13 @@ export class PrintStream {
   query(from: number, to: number, minUsd = PRINT_FLOOR_USD, limit = 5_000): Print[] {
     const out: Print[] = [];
     const memoryStart = this.#recent[0]?.t ?? Infinity;
-    if (this.#store?.query && from < memoryStart) out.push(...this.#store.query(from, Math.min(to, memoryStart), minUsd, limit));
+    if (this.#store?.query && from <= memoryStart) {
+      // The store is asked through the millisecond memory begins at: prints share milliseconds, and the ones memory dropped from it
+      // are not in memory. The ones it kept are, so they are left out of what the store answers.
+      const kept = new Set<string>();
+      for (const p of this.#recent) { if (p.t > memoryStart) break; kept.add(`${p.id}|${p.t}|${p.price}|${p.usd}`); }
+      for (const p of this.#store.query(from, Math.min(to, memoryStart + 1), minUsd, limit)) if (!kept.has(`${p.id}|${p.t}|${p.price}|${p.usd}`)) out.push(p);
+    }
     for (const p of this.#recent) if (p.t >= from && p.t < to && p.usd >= minUsd) out.push(p);
     return out.length > limit ? out.slice(out.length - limit) : out;
   }

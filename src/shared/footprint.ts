@@ -26,6 +26,9 @@ export interface FootprintBar {
 
 type Bins = Map<number, [number, number]>;
 
+/** A copy of a minute's statistics, whole: a row waits in a queue (the browser's) while a late trade may still change the minute, and the row must stay what it was when it was queued. */
+const copyStats = (stats: TradeStats | undefined): TradeStats | null => stats ? { buyN: stats.buyN, sellN: stats.sellN, buy: [...stats.buy], sell: [...stats.sell] } : null;
+
 /**
  * The row a price falls in. A price that is a whole number of steps is a boundary and belongs to the row above it, but the division can come
  * out a hair under the whole number (100.3 / 0.1), which would put it in the row below: a part in 10^12 is forgiven.
@@ -117,7 +120,7 @@ export class FootprintRecorder {
       const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
       if (t >= open && !(final && store)) continue;
       const bins = this.#minutes.get(id)?.get(t);
-      if (bins && store) rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell]]) => [bin, buy, sell] as [number, number, number]), stats: this.#stats.get(id)?.get(t) ?? null });
+      if (bins && store) rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell]]) => [bin, buy, sell] as [number, number, number]), stats: copyStats(this.#stats.get(id)?.get(t)) });
       if (t < open) settled.push(key);
     }
     store?.save(rows, cutoff);

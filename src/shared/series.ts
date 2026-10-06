@@ -58,13 +58,14 @@ export function aggregateOi(rows: Iterable<OiRow>, tfMs: number): OiBar[] {
 }
 
 /**
- * Stored OI bars plus the live samples that arrived after the newest stored bar. Persistence can lag or be suspended (a history store
- * over its size budget stops writing), so the newest data may exist only in memory; a window that reaches back into stored history must
- * not hide it.
+ * Stored OI bars plus the live samples from the start of the newest stored bar on. Persistence can lag or be suspended (a history store
+ * over its size budget stops writing), so the newest data may exist only in memory, and the newest stored bar may hold only the first
+ * of its minute's samples: a window that reaches back into stored history must not hide what came after. A sample that bar already
+ * holds only repeats it (the bar's own row sorts before the samples of its minute).
  */
-export function withLiveOi(stored: readonly OiRow[], live: readonly OiRow[], bucketMs = 60_000): OiRow[] {
+export function withLiveOi(stored: readonly OiRow[], live: readonly OiRow[]): OiRow[] {
   let newest = -Infinity;
-  for (const row of stored) { const t = Number(row.start); if (Number.isFinite(t)) newest = Math.max(newest, t + bucketMs); }
+  for (const row of stored) { const t = Number(row.start); if (Number.isFinite(t)) newest = Math.max(newest, t); }
   const fresh = live.filter(sample => { const t = Number(sample.observationTimestamp ?? sample.sourceTimestamp ?? sample.receivedAt); return Number.isFinite(t) && t >= newest; });
   return [...stored, ...fresh];
 }

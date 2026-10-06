@@ -9,6 +9,14 @@ import { t } from '../i18n.ts';
  * and which column of each series the pointer is over. Plain functions with no canvas and no DOM, so they are tested alone.
  */
 
+/**
+ * What a Depth request was made for. The recorded columns that arrive later are part of it: an answer made from the columns that were here
+ * before them is not the answer for the ones that came, and a view that stays where it is would otherwise keep it.
+ */
+export function depthKey(ids: readonly string[], t0: number, t1: number, plotW: number, range: number, columnsVersion: number): string {
+  return `${ids.join(',')}|${Math.round(t0)}|${Math.round(t1)}|${plotW}|${range}|${columnsVersion}`;
+}
+
 /** The column of `count` equal columns over [t0, t1) that `time` falls in, or -1 outside it. */
 export function columnAt(t0: number, t1: number, count: number, time: number): number {
   if (!(t1 > t0) || !(count > 0) || !(time >= t0) || !(time < t1)) return -1;

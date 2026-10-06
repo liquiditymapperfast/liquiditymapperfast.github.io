@@ -13,7 +13,7 @@ import { gutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
 import { BAR_STATS, GROUP_TITLES, PRESETS, SIZE_BUCKET_LABELS, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { barAt, columnAt, depthCardLines, imbalanceFlags, ltCardLines, oiCardLines, oiTail, slotAt } from './pane-cards.ts';
+import { barAt, columnAt, depthCardLines, depthKey, imbalanceFlags, ltCardLines, oiCardLines, oiTail, slotAt } from './pane-cards.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
@@ -161,7 +161,7 @@ export class DepthPane extends TimePane {
     const ids = activeIds(state);
     const emptyScope = emptyScopeMessage(state);
     if (emptyScope) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
-    const key = `${ids.join(',')}|${Math.round(v.t0)}|${Math.round(v.t1)}|${pw}|${this.#range}`;
+    const key = depthKey(ids, v.t0, v.t1, pw, this.#range, this.hub.columnsVersion);
     if (key !== this.#key && !this.#busy && ids.length) {
       this.#key = key; this.#busy = true;
       const w = Math.min(1200, Math.max(60, Math.floor(pw / 2)));

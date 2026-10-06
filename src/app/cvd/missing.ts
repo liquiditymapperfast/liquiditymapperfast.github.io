@@ -19,7 +19,7 @@ type State = Pick<AppState, 'markets' | 'disabledVenues' | 'scope' | 'levels'>;
  * to undo: the filter, then the chip, then the missing book.
  */
 export function explainMissing(state: State, withFlow: readonly string[], shown: ReadonlySet<string>, volume: (id: string) => number): Missing[] {
-  const drawn = state.levels?.books.length ? new Set(state.levels.books.map(book => book.venue)) : null;
+  const drawn = state.levels ? new Set(state.levels.books.map(book => book.venue)) : null;
   const families = new Map<string, string[]>();
   for (const id of withFlow) { const key = familyKey(venueOfInstrument(id)), list = families.get(key); if (list) list.push(id); else families.set(key, [id]); }
   const out: Missing[] = [];

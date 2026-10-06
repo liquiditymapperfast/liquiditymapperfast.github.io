@@ -129,7 +129,7 @@ test('a full-candle delta is announced only for a candle that closed just now, w
   const waiting = alertsRig(() => now, (ids, from) => { asked.push([ids, from]); });
   feedSeconds(waiting.flow, T0, 3_600, 60_000, 0);
   waiting.state.candles = before; waiting.alerts.tick(now - 2_000);
-  assert.deepEqual(asked.at(-1), [['a:BTC'], T0], 'the flow of the open candle is requested from its start, whether or not the column is shown');
+  assert.deepEqual(asked.at(-1), [['a:BTC'], T0 - 5 * 60_000], 'the flow of the open candle is requested from a little before its start (to tell a quiet exchange from a late one), whether or not the column is shown');
   waiting.state.candles = after; waiting.alerts.tick(now);
   assert.equal(waiting.player.played.length, 0, 'it was never loaded from the start of the candle');
 

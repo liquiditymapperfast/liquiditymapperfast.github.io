@@ -31,6 +31,8 @@ export const BAR_FRESH_MS = 30_000;
 /** The longest candle whose whole flow is asked for and summed (the page's flow history reaches back a day). */
 const BAR_HISTORY_MAX_MS = 24 * 3_600_000;
 const MINUTE = 60_000;
+/** An exchange that traded in the five minutes before a candle began was recording when it began, and one whose flow starts later may only have started recording then. */
+const BAR_LOOKBACK_MS = 5 * MINUTE;
 const MAX_BURSTS = 300;
 
 /**
@@ -129,7 +131,7 @@ export class Alerts {
     const tf = TIMEFRAMES[s.timeframe] ?? 3_600_000, newest = candles[candles.length - 1]![0];
     const ids = flowIds(s, this.flow.ids);
     // The flow of the candle that is open is asked for now, so that when it closes the whole of it is here (with the flow column hidden nothing else asks).
-    if (rule.delta && tf <= BAR_HISTORY_MAX_MS) this.ensure?.(ids, newest);
+    if (rule.delta && tf <= BAR_HISTORY_MAX_MS) this.ensure?.(ids, newest - BAR_LOOKBACK_MS);
     if (newest === this.#lastBar) return;
     const previous = this.#lastBar; this.#lastBar = newest;
     if (previous === 0 || !rule.delta) return;              // the first load is history
@@ -145,15 +147,23 @@ export class Alerts {
   }
 
   /**
-   * Whether the flow book holds the whole of the candle from `start`: history from that time on has been asked for and has come, and the
-   * recordings reach back that far (flow that begins part-way through the candle would be summed as if it were all of it).
+   * Whether the flow book holds the whole of the candle from `start`, for every exchange that has flow in it: the history has been asked for
+   * and has come, and each of them was recording when the candle began. An exchange whose flow starts later (it connected late, or was
+   * switched on part-way through) is counted for only a part of the candle however full the others are, and a sum with part of an
+   * exchange in it is not the candle's delta. The minutes asked for before the candle are what show an exchange that was recording and
+   * only quiet at the start; one that moved nothing in the candle has nothing to miss.
    */
   #whole(ids: readonly string[], start: number, tf: number): boolean {
     if (!ids.length) return false;
-    if (this.ensure && this.flow.missing(ids, start).length) return false;
-    let earliest = Infinity;
-    for (const id of ids) { const first = this.flow.get(id)?.span?.first; if (first !== undefined && first < earliest) earliest = first; }
-    return earliest * 1000 <= start + Math.min(MINUTE, tf / 20);
+    if (this.ensure && this.flow.missing(ids, start - BAR_LOOKBACK_MS).length) return false;
+    const startSec = Math.floor(start / 1000), endSec = Math.floor((start + tf) / 1000) - 1, late = start + Math.min(MINUTE, tf / 20);
+    for (const id of ids) {
+      const series = this.flow.get(id);
+      if (!series || !(series.gross(startSec, endSec) > 0)) continue;
+      const first = series.span?.first;
+      if (first === undefined || first * 1000 > late) return false;
+    }
+    return true;
   }
 
   #oi(now: number): void {

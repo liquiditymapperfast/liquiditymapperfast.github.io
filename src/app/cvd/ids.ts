@@ -11,7 +11,8 @@ export function flowIds(state: Pick<AppState, 'markets' | 'disabledVenues' | 'sc
   const known = new Set<string>(withFlow);
   for (const m of state.markets) { const id = m.instrumentId ?? m.id; if (id) known.add(id); }
   // A venue with no book on the map (not chosen, or left off as faulty) is not counted, however much of its flow was recorded earlier.
-  const drawn = state.levels?.books.length ? new Set(state.levels.books.map(b => b.venue)) : null;
+  // No frame yet means nothing is known (every market stands); a frame that lists no books means nothing is on the map (the last book expired).
+  const drawn = state.levels ? new Set(state.levels.books.map(b => b.venue)) : null;
   return [...known].filter(id => !state.disabledVenues.includes(venueOfInstrument(id)) && (drawn === null || drawn.has(venueOfInstrument(id))) && inScope(state.scope, state.markets, id));
 }
 

@@ -144,7 +144,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     footprint.ingest(app.state.trades ?? []);
     prints.ingest(app.state.trades ?? []);
     flow.ingest(app.state.trades ?? []);
-    if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}).map(id => id.split(':')[0]!), ...extra.enabledIds])); }
+    if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); }
     // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
     if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, flow]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }

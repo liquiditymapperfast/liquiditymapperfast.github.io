@@ -44,18 +44,23 @@ export class BinancePerpTrades extends BinanceTrades {
 /** Binance USD-M perpetual: the diff-depth stream chained on the previous update id (\`pu\`), synchronised with a REST snapshot. */
 export class BinancePerpConnector extends BookConnector {
   readonly id = 'binance'; readonly name = 'Binance'; readonly symbol = 'BTCUSDT'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
-  #lastUpdateId = 0; #prevU = 0; #synced = false; #buffer: Record<string, unknown>[] = []; #loading = false;
+  #lastUpdateId = 0; #prevU = 0; #synced = false; #buffer: Record<string, unknown>[] = [];
+  /** The connection a snapshot request is in flight for (-1: none), so one connection asks once and a retired one's answer is not taken for the next one's (as in the spot connector). */
+  #loadingFor = -1;
   protected url() { return 'wss://fstream.binance.com/public/ws/btcusdt@depth@100ms'; }
   protected open() { void this.#snapshot(); }
   async #snapshot(): Promise<void> {
-    if (this.#loading) return; this.#loading = true;
+    const generation = this.generation;
+    if (this.#loadingFor === generation) return; this.#loadingFor = generation;
     try {
       const response = await fetch('https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=1000', { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error(`snapshot HTTP ${response.status}`);
       const body = this.record(await response.json()); if (!body) throw new Error('snapshot not an object');
+      // An answer for a connection that has since ended or been replaced would put the new one on a book from another moment and call it live.
+      if (generation !== this.generation) return;
       this.seed(num(body.lastUpdateId), this.rows(body.bids), this.rows(body.asks));
-    } catch (error) { this.fail(`snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 160)); }
-    finally { this.#loading = false; }
+    } catch (error) { if (generation === this.generation) this.fail(`snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 160)); }
+    finally { if (this.#loadingFor === generation) this.#loadingFor = -1; }
   }
   /** Install the REST snapshot and replay the diff events buffered while it loaded. */
   seed(lastUpdateId: number, bids: [number, number][], asks: [number, number][]): void {
