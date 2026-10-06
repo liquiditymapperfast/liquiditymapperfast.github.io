@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { BookConnector, CONNECTOR_FACTORIES, type ConnectorStatus } from './connectors.mts';
+import type { TradeEvent } from '../../shared/connector.ts';
 import type { ValuedBook } from './levels.mts';
 
 export interface ExtraVenue extends ConnectorStatus {
@@ -45,6 +46,9 @@ export class ExtraVenues {
     } catch { /* unreadable preference file: fall back to the default */ }
     if (!restored && this.#defaults.size) this.setEnabled([...this.#defaults], false);
   }
+
+  /** Hand every executed trade of every connector venue (whether it is switched on now or later) to `listener`. */
+  onTrade(listener: (trade: TradeEvent) => void): void { for (const connector of this.#all.values()) connector.onTrade = listener; }
 
   list(): ExtraVenue[] {
     return [...this.#all.values()].map(c => ({ id: c.id, name: c.name, instrumentId: c.instrumentId, symbol: c.symbol, quote: c.quote, marketType: c.marketType, enabled: this.#enabled.has(c.id), default: this.#defaults.has(c.id), ...c.status() }));

@@ -54,6 +54,11 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  // The connector venues carry their own trades: the flow column, the footprint and the large-trade bubbles count them like the feed manager's.
+  extra.onTrade(trade => {
+    const row = [{ instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t }];
+    footprint.ingest(row); prints.ingest(row); flow.ingest(row);
+  });
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   const valued = new Map<string, { key: string; book: ValuedBook | null; at: number }>();
   /** Instruments whose book is crossed (a feed fault), so they are valued as nothing rather than drawn as false walls. */

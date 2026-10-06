@@ -8,6 +8,7 @@ import { applyTheme } from './theme.ts';
 import { Sounds } from './sound/sounds.ts';
 import { Alerts } from './sound/alerts.ts';
 import { Toolbar } from './toolbar.ts';
+import { StatusBar } from './statusbar.ts';
 import { installTips } from './tip.ts';
 import { installTouchSelects } from './touch-select.ts';
 import { lazy } from './lazy.ts';
@@ -65,7 +66,13 @@ async function main(): Promise<void> {
   const flowCol = document.createElement('div'); flowCol.className = 'flow-col';
   main.append(flowCol, chart, side);
   const dock = new Dock(main);
-  app.append(toolbar.root, main, dock.root);
+  // The bar along the bottom (desktop only): connection, venues live, price age, recording, data source, language and theme.
+  const statusbar = new StatusBar(source.kind);
+  app.append(toolbar.root, main, dock.root, statusbar.root);
+  toolbar.hostStatusControls(statusbar.controls);
+  source.venues.watch?.(entries => statusbar.setVenues(entries));
+  const showStatus = (): void => statusbar.update(store.state, hub.recordedSince);
+  window.setInterval(showStatus, 1000);
 
   const heat = new HeatPane(chart, store, hub, kernels);
   toolbar.placeRecenter(heat.root);
@@ -130,6 +137,7 @@ async function main(): Promise<void> {
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
     if (changed.has('theme')) { applyTheme(state.theme); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(state.theme); }
     if (changed.has('cvd')) cvd.refresh();
+    if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
     if (changed.has('show')) layout();
     if (changed.has('marketId') || changed.has('timeframe')) void hub.loadSeries(true).then(() => { heat.fit(); lower(); });
     if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.invalidate(); }

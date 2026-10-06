@@ -16,7 +16,8 @@ import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
 import { SCOPE_OPTIONS, chipClick, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
-import { rangeRow, switchRow, note, togglePanel } from './ui.ts';
+import { rangeRow, switchRow, note, togglePanel, checkRow, heading } from './ui.ts';
+import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
 import { openMenu } from './menu.ts';
 import { buildSoundPanel } from './sound/panel.ts';
 import type { Sounds } from './sound/sounds.ts';
@@ -70,6 +71,9 @@ export class Toolbar {
   #soundButton = el('button', { class: 'sound-btn', textContent: t('Sound'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
   #sounds: Sounds | null = null;
+  /** Where the language and theme buttons live on a desktop screen (the status bar), or null. */
+  #statusHost: HTMLElement | null = null;
+  #venueMenu: Panel | null = null;
   #alerts: Alerts | null = null;
   #highlights = el('button', { textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
   #heat = {
@@ -167,6 +171,9 @@ export class Toolbar {
   /** The heatmap colour controls as the desktop toolbar has them, in one group. */
   #fillHeatControls(): void { this.#heatctl.replaceChildren(this.#heatHelp, this.#heat.style, this.#heatScale, this.#heat.auto, this.#heat.smooth); }
 
+  /** The desktop status bar takes the language and theme buttons (and the connection text) from the top bar. */
+  hostStatusControls(host: HTMLElement): void { this.#statusHost = host; this.#arrange(); }
+
   /** Put Recenter in a corner of the map `host` (on the full toolbar; the compact bar keeps it beside the timeframes). */
   placeRecenter(host: HTMLElement): void { this.#mapHost = host; this.#arrange(); }
 
@@ -177,8 +184,11 @@ export class Toolbar {
       this.#fillHeatControls();
       const inCorner = this.#mapHost !== null;
       if (inCorner) this.#mapHost!.prepend(this.#recenter);
+      const host = this.#statusHost;
+      // With a status bar the connection state and the language and theme buttons live there.
+      host?.replaceChildren(this.#language, this.#theme);
       this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
-        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, this.#language, this.#theme, this.#status, this.#notice.root);
+        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#language, this.#theme, this.#status]), this.#notice.root);
       return;
     }
     this.root.replaceChildren(
@@ -268,15 +278,20 @@ export class Toolbar {
     const counts = scopeCounts(state);
     [...this.#scope.children].forEach((b, i) => { const [value] = SCOPE_OPTIONS[i]!; b.classList.toggle('on', state.scope === value); setTip(b as HTMLElement, value === 'all' ? t('Every enabled venue') : (value === 'spot' ? t('Spot venues only ({n} enabled)', { n: counts[value] }) : t('Perpetual venues only ({n} enabled)', { n: counts[value] }))); });
     this.#scope.classList.toggle('inert', state.heatmapSource !== 'aggregated');
-    const chipKey = venues.map(v => v + (state.disabledVenues.includes(v) ? '-' : '+') + (scoped(v) ? 's' : 'x')).join(',');
+    // The full bar shows a handful of chips and puts the rest in a menu; the phone's Settings sheet has room for every one.
+    const plan = chipPlan(venues, compactBar() ? Infinity : INLINE_CHIPS);
+    const chipOf = (v: string): HTMLElement => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), tip: t('Show / hide this venue'),
+      onclick: () => this.store.set(chipClick(this.store.state, v)) });
+    const chipKey = venues.map(v => v + (state.disabledVenues.includes(v) ? '-' : '+') + (scoped(v) ? 's' : 'x')).join(',') + '|' + plan.shown.length;
     if (this.#chips.dataset.key !== chipKey) {
       this.#chips.dataset.key = chipKey;
-      this.#chips.replaceChildren(...venues.map(v => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), tip: t('Show / hide this venue'),
-        onclick: () => this.store.set(chipClick(this.store.state, v)) })));
+      const more = plan.more.length ? [el('button', { class: 'chip more-chip', textContent: `+${plan.more.length}`, tip: t('{n} more venues: click to show or hide each one', { n: plan.more.length }), onclick: event => this.#openVenueMenu(event.currentTarget as HTMLElement, venues) })] : [];
+      this.#chips.replaceChildren(...plan.shown.map(chipOf), ...more);
+      this.#venueMenu?.render((tools, body) => this.#buildVenueMenu(tools, body, venues));
     }
     setTip(this.#scope, state.heatmapSource === 'aggregated' ? t('Which markets the liquidity views draw (a filter on the enabled venues; it never switches one on or off)') : t('The heatmap shows a single venue, so this filter only affects the profile, depth, ladder and LT'));
     // Tooltips carry each venue's book reach, so a thin book on the map is explained by its feed.
-    venues.forEach((v, i) => {
+    plan.shown.forEach((v, i) => {
       const cov = coverage(books.find(b => b.venue === v), state.mark.price);
       const kind = kindOf(state.markets, books.find(b => b.venue === v)?.id ?? '');
       const title = !scoped(v)
@@ -285,6 +300,21 @@ export class Toolbar {
       const chip = this.#chips.children[i] as HTMLElement | undefined;
       if (chip && chip.dataset.tip !== title) setTip(chip, title);
     });
+  }
+
+  /** Every venue that has a book, grouped by exchange, each a switch: what the chips do, for all of them at once. */
+  #openVenueMenu(anchor: HTMLElement, venues: readonly string[]): void {
+    this.#venueMenu = togglePanel(anchor, { title: t('Venues on the map'), width: 300, align: 'left', onClose: () => { this.#venueMenu = null; } }, (tools, body) => this.#buildVenueMenu(tools, body, venues));
+  }
+  #buildVenueMenu(tools: HTMLElement, body: HTMLElement, venues: readonly string[]): void {
+    tools.replaceChildren(
+      el('button', { type: 'button', textContent: t('All on'), tip: t('Show every venue'), onclick: () => this.store.set({ disabledVenues: [] }) }),
+      el('button', { type: 'button', textContent: t('All off'), tip: t('Hide every venue'), onclick: () => this.store.set({ disabledVenues: [...venues] }) }));
+    body.replaceChildren(note(t('Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.')));
+    for (const group of exchangeGroups(venues)) {
+      body.append(heading(venueLabel(group.key)));
+      for (const v of group.venues) body.append(checkRow(venueLabel(v), scopedOut(this.store.state, v) ? t('Hidden by the Spot / Perp filter') : t('Show on the map'), !this.store.state.disabledVenues.includes(v), () => { this.store.set(chipClick(this.store.state, v)); }));
+    }
   }
 
   /**

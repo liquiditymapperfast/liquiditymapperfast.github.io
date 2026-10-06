@@ -238,3 +238,18 @@ test('a fresh install starts every connector venue when asked to, a saved choice
     assert.equal(new ExtraVenues(null, { a: () => new Fake() }, false).enabledCount, 0, 'tests and memory-only servers keep them off');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('the trades of every connector venue are handed to one listener, wherever they come from', () => {
+  class Trading extends PoloniexConnector {
+    override start() { this.state = 'connecting'; }
+    override stop() { this.state = 'stopped'; }
+    say(id: string) { this.emitTrade({ tradeId: id, side: 'buy', price: 100_000, amount: 0.5, notionalUsd: 50_000, t: 1_800_000_000_000 }); }
+  }
+  const made: Trading[] = [];
+  const venues = new ExtraVenues(null, { poloniex: () => { const c = new Trading(); made.push(c); return c; } });
+  const seen: string[] = [];
+  venues.onTrade(trade => seen.push(`${trade.instrumentId}|${trade.tradeId}|${trade.side}|${trade.notionalUsd}`));
+  made[0]!.say('t1');
+  assert.deepEqual(seen, ['poloniex:BTC_USDT|t1|buy|50000'], 'set before the venue is switched on');
+  venues.close();
+});
