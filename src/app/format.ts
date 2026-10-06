@@ -27,6 +27,9 @@ export const zoneOffsetMs = (t: number, which: TimeZone = zone): number => which
 const onWall = (t: number): Date => new Date(t + zoneOffsetMs(t));
 /** The day of the month `t` falls on, on the zone's clock. */
 export const dayOfMonth = (t: number): number => onWall(t).getUTCDate();
+const DAY = 86_400_000;
+/** The start of the day `t` falls in, on the zone's clock (to the hour on the days the clocks change). */
+export const startOfDay = (t: number): number => t - (((t + zoneOffsetMs(t)) % DAY) + DAY) % DAY;
 
 const names = new Map<string, string>();
 /** The short name of a zone for a label: "UTC", or the computer's own ("GMT+2", "CEST", "EDT": whatever its language calls it). */

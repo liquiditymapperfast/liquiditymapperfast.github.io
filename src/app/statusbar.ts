@@ -26,7 +26,7 @@ export interface SavingInfo { text: string; tip: string; state: 'ok' | 'other' |
 /** The words for what becomes of the recordings (nothing to say while it is not known yet). */
 export function savingInfo(saving: SavingState): SavingInfo | null {
   switch (saving) {
-    case 'server': return { text: t('Saved by the server'), tip: t('The server records the heatmap, flow and footprint while it runs, whether or not this page is open.'), state: 'ok' };
+    case 'server': return { text: t('Recorded by the server'), tip: t('The server records the heatmap, flow and footprint while it runs, whether or not this page is open.'), state: 'ok' };
     case 'here': return { text: t('Saving in this tab'), tip: t('Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.'), state: 'ok' };
     case 'other': return { text: t('Saved by another tab'), tip: t('Another tab of this page is saving the recordings; this tab reads what it saves.'), state: 'other' };
     case 'memory': return { text: t('Not saved'), tip: t('This session keeps its recordings in memory only (saving is off, or this browser does not allow it): they are gone when the page closes.'), state: 'off' };

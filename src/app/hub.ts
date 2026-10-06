@@ -170,8 +170,8 @@ export class Hub {
       if (!candles.length && this.#reference && this.#reference !== marketId) { seriesInstrument = this.#reference; candles = await this.source.candles(seriesInstrument, timeframe, now - 500 * tf, now + tf); }
     } catch (error) {
       if (key === this.#series && generation === this.#seriesGen) {
-        // A refresh of what is on screen that fails leaves it as it is; candles of another timeframe or market are not left standing under this label.
-        if (this.#loaded?.key !== key) { this.store.set({ candles: [], seriesInstrument: marketId }); this.#loaded = null; }
+        // A refresh of what is on screen that fails leaves it as it is; candles (and open interest) of another timeframe or market are not left standing under this label.
+        if (this.#loaded?.key !== key) { this.store.set({ candles: [], seriesInstrument: marketId, oi: [], oiInstrument: '' }); this.#loaded = null; }
         this.#series = this.#loaded?.key ?? '';
       }
       throw error;
@@ -181,13 +181,14 @@ export class Hub {
     // A reload of what is on screen keeps what the stream has added to the open candle since the snapshot was taken, and goes on counting its minutes.
     const again = this.#loaded?.key === key && this.#loaded.instrument === seriesInstrument;
     if (!again) this.#liveTrack.current = null;
-    candles = keepGrowth(candles, again ? this.store.state.candles : [], this.#liveTrack.current);
+    candles = keepGrowth(candles, again ? this.store.state.candles : [], this.#liveTrack.current, tf, Date.now());
     // Within a candle the stream and the snapshot cannot be put in order (the last tick may be older or newer than the moment the snapshot was taken), and the next tick settles it:
     // the live candle goes on top only where nothing in the snapshot can be later than it, a candle the snapshot does not have yet.
     const live = this.#liveCandles[seriesInstrument], last = candles[candles.length - 1];
     const opens = live !== undefined && (!last || Math.floor(live[0] / tf) * tf > last[0]);
     this.#loaded = { key, instrument: seriesInstrument };
-    this.store.set({ candles: opens ? mergeLive(candles, live, tf, this.#liveTrack) : candles, seriesInstrument });
+    // Open interest belongs to the candles it was loaded for: another timeframe's or market's bars are not shown under these while theirs are on their way.
+    this.store.set({ candles: opens ? mergeLive(candles, live, tf, this.#liveTrack) : candles, seriesInstrument, ...(again ? {} : { oi: [], oiInstrument: '' }) });
     await this.loadOi();
   }
 
@@ -308,14 +309,22 @@ export interface LiveTrack { bucket: number; base: number; minutes: Map<number, 
  * The open candle of a series that is loaded again, with what the page already had of it. Its volume and its range only grow, so a
  * snapshot that is a few seconds behind the live stream cannot lower them; its close is the snapshot's (which of the two is later cannot
  * be told, and the next tick settles it). The live track goes on from the volume that comes back, not from the snapshot's.
+ *
+ * A snapshot that is ahead of the stream has, beyond what the track counted, mostly what the minute that is open did since its last tick.
+ * That goes on that minute and not on the base: the next tick brings the minute's whole volume (not an increment) and the larger of the
+ * two stands, so the stream catches up with the snapshot without adding to it. On the base it would be counted twice, at every reload.
  */
-export function keepGrowth(loaded: CandleRow[], shown: readonly CandleRow[], track: LiveTrack | null): CandleRow[] {
+export function keepGrowth(loaded: CandleRow[], shown: readonly CandleRow[], track: LiveTrack | null, tfMs: number, now: number): CandleRow[] {
   const last = loaded[loaded.length - 1], was = shown[shown.length - 1];
   if (!last || !was || was[0] !== last[0]) return loaded;
   const volume = Math.max(last[5], was[5]), high = Math.max(last[2], was[2]), low = Math.min(last[3], was[3]);
   if (track && track.bucket === last[0]) {
-    let counted = track.base; for (const minute of track.minutes.values()) counted += minute;
-    if (volume > counted) track.base += volume - counted;
+    let counted = 0; for (const minute of track.minutes.values()) counted += minute;
+    counted += track.base;
+    if (volume > counted) {
+      const open = Math.min(Math.max(Math.floor(now / MINUTE) * MINUTE, track.bucket), track.bucket + Math.max(MINUTE, tfMs) - MINUTE);
+      track.minutes.set(open, (track.minutes.get(open) ?? 0) + volume - counted);
+    }
   }
   if (volume === last[5] && high === last[2] && low === last[3]) return loaded;
   return [...loaded.slice(0, -1), [last[0], last[1], high, low, last[4], volume, last[6]]];

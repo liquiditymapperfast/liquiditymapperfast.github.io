@@ -85,6 +85,29 @@ test('a series that is loaded again keeps what the live stream added to the open
   assert.equal(store.state.candles.at(-1)![5], 121, 'and the count goes on from 120, not from the snapshot\'s 105');
 });
 
+test('a snapshot that is ahead of the stream is counted once: the next tick brings the whole volume of the minute, not an increment', async t => {
+  const B = Math.floor(BASE / (5 * MIN)) * (5 * MIN), now = B + 3 * MIN + 20_000;
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const { hub, store, source, handlers } = await rig({ marketId: 'ref:BTC', timeframe: '5m', seriesInstrument: 'ref:BTC', candles: [] });
+  void hub.loadSeries(true); await turn();
+  await answer(source, [B, 1, 1, 1, 1, 100, 1]);
+  handlers().onTick(tick({ asOf: now, candles: { 'ref:BTC': [B + 3 * MIN, 1, 1, 1, 1, 10] } }));
+  handlers().onTick(tick({ asOf: now + 500, candles: { 'ref:BTC': [B + 3 * MIN, 1, 1, 1, 1, 30] } }));   // 90 before the live minute and 30 in it
+  assert.equal(store.state.candles.at(-1)![5], 120);
+  void hub.loadSeries(true); await turn();
+  await answer(source, [B, 1, 1, 1, 1, 125, 1]);                                                         // the snapshot has 5 more than the last tick said: the minute went on
+  assert.equal(store.state.candles.at(-1)![5], 125);
+  handlers().onTick(tick({ asOf: now + 1_000, candles: { 'ref:BTC': [B + 3 * MIN, 1, 1, 1, 1, 35] } }));  // and now the stream says so: the minute has 35
+  assert.equal(store.state.candles.at(-1)![5], 125, 'the 5 are in the snapshot and in the tick: counted twice they make 130');
+  handlers().onTick(tick({ asOf: now + 1_500, candles: { 'ref:BTC': [B + 3 * MIN, 1, 1, 1, 1, 40] } }));
+  assert.equal(store.state.candles.at(-1)![5], 130, 'and it goes on from there');
+  // the same again, and the minute after
+  void hub.loadSeries(true); await turn();
+  await answer(source, [B, 1, 1, 1, 1, 133, 1]);
+  handlers().onTick(tick({ asOf: now + 2_000, candles: { 'ref:BTC': [B + 3 * MIN, 1, 1, 1, 1, 43] } }));
+  assert.equal(store.state.candles.at(-1)![5], 133, 'every reload that finds the snapshot ahead is counted once, not added to the ones before');
+});
+
 test('the same holds for a one minute series, and the snapshot of another timeframe is not taken for the one on screen', async t => {
   const M = BASE; t.mock.timers.enable({ apis: ['Date'], now: M + 20_000 });
   const { hub, store, source } = await rig({ marketId: 'ref:BTC', timeframe: '1m', seriesInstrument: 'ref:BTC', candles: [] });
@@ -115,6 +138,25 @@ test('an open-interest answer for the timeframe that was just left does not fill
   assert.deepEqual(store.state.oi, [], 'one hour bars are not the five minute view\'s');
   source.candleCalls[0]!.reject(new Error('the venue did not answer')); await failed;
   assert.equal(store.state.candles.length, 0, 'one hour candles are not left standing under the five minute label');
+});
+
+test('open interest goes with the candles it belongs to: another timeframe takes it away, also when that one fails to load, and a refresh of the same series keeps it', async () => {
+  const { hub, store, source } = await rig({ marketId: 'ref:BTC', timeframe: '1h', seriesInstrument: 'ref:BTC', candles: [] });
+  source.auto.set('1h', [[BASE, 1, 1, 1, 1, 5, 1]]); source.auto.set('5m', [[BASE, 1, 1, 1, 1, 5, 1]]);
+  void hub.loadSeries(true); await turn(); await turn();
+  source.oiCalls.at(-1)!.resolve([[BASE, 1, 1, 1, 1]]); await turn(); await turn();
+  assert.equal(store.state.oi.length, 1, 'the one hour bars are here');
+  void hub.loadSeries(true); await turn(); await turn();                                                 // the minute's refresh of the same series
+  assert.equal(store.state.oi.length, 1, 'a refresh does not blank the pane while it waits for the same bars again');
+  store.set({ timeframe: '5m' });
+  void hub.loadSeries(); await turn(); await turn();                                                     // the five minute candles are here, their open interest is not
+  assert.deepEqual(store.state.oi, [], 'one hour bars are not the five minute view, whatever it is still waiting for');
+  source.oiCalls.at(-1)!.resolve([[BASE, 2, 2, 2, 2]]); await turn(); await turn();
+  assert.equal(store.state.oi.length, 1, 'its own bars take their place when they come');
+  store.set({ timeframe: '15m' });                                                                       // a timeframe whose candles cannot be had
+  const failed = hub.loadSeries().catch(() => 'failed'); await turn();
+  source.candleCalls.at(-1)!.reject(new Error('the venue did not answer')); await failed;
+  assert.deepEqual([store.state.candles.length, store.state.oi.length, store.state.oiInstrument], [0, 0, ''], 'neither the candles nor the open interest of the five minute view stay under the fifteen minute label');
 });
 
 // ---- 9: print history from before a reconnection ----------------------------------------------------------------------------------------------------

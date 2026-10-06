@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clock, dayOfMonth, setTimeZone, timeZone, zoneName, zoneOffsetMs, type TimeZone } from '../src/app/format.ts';
+import { clock, dayOfMonth, setTimeZone, startOfDay, timeZone, zoneName, zoneOffsetMs, type TimeZone } from '../src/app/format.ts';
 import { timeTicks } from '../src/app/panes/heat-pane.ts';
 import { fileName } from '../src/app/screenshot/shapes.ts';
 
@@ -30,6 +30,20 @@ test('UTC writes the UTC clock and the computer\'s own writes its wall clock, by
   });
   assert.equal(zoneName('utc'), 'UTC', 'the name of a zone can be asked for without switching to it');
   setTimeZone('bogus' as never); assert.equal(timeZone(), 'local', 'a saved value that is neither is the computer\'s clock');
+});
+
+test('a day starts at midnight on the clock the page is on', () => {
+  on('utc', () => {
+    assert.equal(startOfDay(LATE), Date.UTC(2026, 9, 6), '23:30 UTC on the 6th is in the day that began at 00:00 UTC on the 6th');
+    assert.equal(startOfDay(Date.UTC(2026, 9, 6)), Date.UTC(2026, 9, 6), 'midnight itself');
+    assert.equal(startOfDay(Date.UTC(2026, 9, 6) - 1), Date.UTC(2026, 9, 5), 'a millisecond before it is the day before');
+  });
+  on('local', () => {
+    const midnight = startOfDay(LATE), d = new Date(midnight);
+    assert.ok(midnight <= LATE && LATE - midnight < 25 * 3_600_000, 'at most a day (and the hour a clock change adds) back');
+    assert.equal(clock(midnight), '00:00', 'on the clock of the computer it is a midnight');
+    assert.equal(d.getHours(), 0);
+  });
 });
 
 test('the time axis puts its ticks on the clock the labels are written in', () => {

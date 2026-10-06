@@ -652,7 +652,7 @@
  "Time zone": "Fuseau horaire",
  "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "Les heures sont affichées en UTC. Un clic les affiche à l'heure de l'ordinateur ({zone}).",
  "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "Les heures sont affichées à l'heure de l'ordinateur ({zone}). Un clic les affiche en UTC.",
- "Saved by the server": "Sauvegardé par le serveur",
+ "Recorded by the server": "Enregistré par le serveur",
  "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "Le serveur enregistre la heatmap, le flux et le footprint tant qu'il tourne, que cette page soit ouverte ou non.",
  "Saving in this tab": "Sauvegarde dans cet onglet",
  "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "Le flux, le footprint et les gros trades sont sauvegardés dans ce navigateur : ils sont encore là après un rechargement ou un redémarrage.",

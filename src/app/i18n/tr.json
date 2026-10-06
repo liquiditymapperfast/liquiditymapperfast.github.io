@@ -648,7 +648,7 @@
  "Time zone": "Saat dilimi",
  "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "Saatler UTC olarak gösteriliyor. Tıklayınca bilgisayarın saatiyle ({zone}) gösterilir.",
  "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "Saatler bilgisayarın saatiyle ({zone}) gösteriliyor. Tıklayınca UTC olarak gösterilir.",
- "Saved by the server": "Sunucu kaydediyor",
+ "Recorded by the server": "Sunucu kaydediyor",
  "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "Sunucu, çalıştığı sürece, bu sayfa açık olsun ya da olmasın, ısı haritasını, akışı ve footprint'i kaydeder.",
  "Saving in this tab": "Bu sekme kaydediyor",
  "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "Akış, footprint ve büyük işlemler bu tarayıcıda saklanır; sayfa yenilense ya da tarayıcı yeniden başlatılsa da burada kalır.",

@@ -61,7 +61,7 @@ test('the status says what becomes of the recordings, and nothing while that is 
   assert.deepEqual([words('other').text, words('other').state], ['Saved by another tab', 'other']);
   assert.deepEqual([words('memory').text, words('memory').state], ['Not saved', 'off']);
   assert.deepEqual([words('failed').text, words('failed').state], ['Saving stopped', 'failed']);
-  assert.deepEqual([words('server').text, words('server').state], ['Saved by the server', 'ok']);
+  assert.deepEqual([words('server').text, words('server').state], ['Recorded by the server', 'ok']);
   assert.match(words('server').tip, /whether or not this page is open/, 'the server records without the page');
   assert.match(words('memory').tip, /gone when the page closes/);
   assert.match(words('failed').tip, /reloaded/);

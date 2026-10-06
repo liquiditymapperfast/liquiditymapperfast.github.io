@@ -656,7 +656,7 @@
  "Time zone": "Часовой пояс",
  "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "Время показано в UTC. Нажмите, чтобы показать его по времени компьютера ({zone}).",
  "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "Время показано по времени компьютера ({zone}). Нажмите, чтобы показать его в UTC.",
- "Saved by the server": "Сохраняет сервер",
+ "Recorded by the server": "Записывает сервер",
  "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "Сервер записывает тепловую карту, поток и футпринт, пока работает, независимо от того, открыта ли эта страница.",
  "Saving in this tab": "Сохраняет эта вкладка",
  "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "Поток, футпринт и крупные сделки сохраняются в этом браузере, поэтому остаются после перезагрузки страницы или перезапуска.",

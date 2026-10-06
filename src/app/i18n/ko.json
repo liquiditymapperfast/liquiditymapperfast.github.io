@@ -636,7 +636,7 @@
  "Time zone": "시간대",
  "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "시간이 UTC로 표시됩니다. 클릭하면 컴퓨터의 시간({zone})으로 표시합니다.",
  "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "시간이 컴퓨터의 시간({zone})으로 표시됩니다. 클릭하면 UTC로 표시합니다.",
- "Saved by the server": "서버가 저장",
+ "Recorded by the server": "서버가 기록",
  "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "서버는 실행되는 동안 이 페이지가 열려 있든 아니든 히트맵, 플로우, 풋프린트를 기록합니다.",
  "Saving in this tab": "이 탭에서 저장 중",
  "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "플로우, 풋프린트, 대형 체결은 이 브라우저에 저장되므로 새로고침이나 재시작 후에도 남아 있습니다.",

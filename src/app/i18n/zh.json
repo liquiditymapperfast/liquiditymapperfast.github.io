@@ -636,7 +636,7 @@
  "Time zone": "时区",
  "Times are shown in UTC. Click to show them in your computer's time ({zone}).": "时间以 UTC 显示。点击后改为显示电脑的本地时间（{zone}）。",
  "Times are shown in your computer's time ({zone}). Click to show them in UTC.": "时间以电脑的本地时间（{zone}）显示。点击后改为显示 UTC。",
- "Saved by the server": "由服务器保存",
+ "Recorded by the server": "由服务器记录",
  "The server records the heatmap, flow and footprint while it runs, whether or not this page is open.": "服务器在运行期间会记录热力图、资金流和足迹图，无论此页面是否打开。",
  "Saving in this tab": "由此标签页保存",
  "Flow, footprint and large trades are saved in this browser, so they are still here after a reload or a restart.": "资金流、足迹图和大额成交保存在此浏览器中，因此刷新或重启后仍然存在。",

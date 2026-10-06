@@ -1,7 +1,7 @@
 import { PALETTES, type Palette } from '../theme.ts';
 import { el } from '../dom.ts';
 import { helpButton } from '../help.ts';
-import { clock, price as fmtPrice } from '../format.ts';
+import { clock, price as fmtPrice, startOfDay } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { emptyScopeMessage, kindOf, type Kind } from '../scope.ts';
 import { flowIds, flowLoadIds, pinChoices, priceFlowId } from '../cvd/ids.ts';
@@ -494,7 +494,7 @@ export class CvdPane {
 
   /** "Flow recorded since 13:54", muted, at the left of the aggregate row: the window reaches back before the recording began. */
   #paintSince(ctx: CanvasRenderingContext2D, p: Palette, plot: { x: number; w: number }, since: number): void {
-    const startOfToday = new Date().setHours(0, 0, 0, 0);
+    const startOfToday = startOfDay(Date.now());
     ctx.save(); ctx.font = `10px ${SANS}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText(fit(ctx, t('Flow recorded since {time}', { time: clock(since, since < startOfToday) }), plot.w - 12), plot.x + 6, 5);
     ctx.restore();
