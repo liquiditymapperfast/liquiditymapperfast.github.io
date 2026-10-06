@@ -18,6 +18,8 @@ export function placeCard(x: number, y: number, size: { w: number; h: number }, 
 export class HoverCard {
   readonly root: HTMLElement;
   #key = ''; #on = false;
+  /** The card's size, read when what it says changes (reading it is a layout, and the pointer moves far more often than the text does). */
+  #size: { w: number; h: number } | null = null;
   #popover: boolean;
 
   constructor(doc: Document = document) {
@@ -31,8 +33,9 @@ export class HoverCard {
   /** Show `lines` for a pointer at viewport position (x, y). */
   show(lines: readonly InfoLine[], x: number, y: number): void {
     const key = lines.map(l => `${l.label ?? ''}\u0001${l.text}\u0001${l.color ?? ''}${l.bold ? 'b' : ''}${l.rule ? 'r' : ''}`).join('\u0002');
+    let measure = false;
     if (key !== this.#key) {
-      this.#key = key;
+      this.#key = key; measure = true;
       this.root.replaceChildren(...lines.map(line => {
         const cls = ['hc-line', `c-${line.color ?? 'text'}`, ...(line.bold ? ['bold'] : []), ...(line.rule ? ['rule'] : [])];
         return line.label !== undefined
@@ -40,8 +43,9 @@ export class HoverCard {
           : el('div', { class: cls.join(' '), textContent: line.text });
       }));
     }
-    if (!this.#on) { this.#on = true; if (this.#popover && !this.root.matches(':popover-open')) this.root.showPopover(); this.root.classList.add('on'); }
-    const at = placeCard(x, y, { w: this.root.offsetWidth, h: this.root.offsetHeight }, { w: document.documentElement.clientWidth, h: document.documentElement.clientHeight });
+    if (!this.#on) { this.#on = true; measure = true; if (this.#popover && !this.root.matches(':popover-open')) this.root.showPopover(); this.root.classList.add('on'); }
+    if (measure || !this.#size) this.#size = { w: this.root.offsetWidth, h: this.root.offsetHeight };
+    const at = placeCard(x, y, this.#size, { w: document.documentElement.clientWidth, h: document.documentElement.clientHeight });
     this.root.style.transform = `translate(${Math.round(at.left)}px, ${Math.round(at.top)}px)`;
   }
 

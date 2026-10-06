@@ -1,0 +1,116 @@
+/*
+ * The page's window language: square corners, one crisp outline, raised things lit from the top left and pressed things the other way
+ * round, windows with a title bar and a hard shadow, and the black-filled "on" state the controls already had. It is the look of
+ * software that was built to stay open all day: plain, exact, and the same everywhere.
+ *
+ * The tones are the variables theme.ts derives from each palette (--edge, --hi, --lo, --face, --title, --well, --shadow); the values
+ * below are the light theme's, only so that the first paint has them. BEVEL in theme.ts dials the whole style back. Loaded last, so
+ * it settles the cascade for everything above it; shapes and surfaces are decided here, sizes and arrangements in styles.css and mobile.css.
+ */
+:root {
+  --radius: 2px;
+  --edge: #88898c; --hi: #ffffff; --lo: #cdcdce; --face: #f6f6f6; --title: #f5f5f5; --well: #ffffff; --bar: #1b1d21; --bar-text: #ffffff; --shadow: rgba(0, 0, 0, 0.22);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- controls: raised, and pressed when held ------------------------------------------------------------------------------------ */
+button, select {
+  border-color: var(--edge); border-radius: var(--radius); background: var(--face);
+  box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo);
+}
+button:hover, select:hover { border-color: var(--text); }
+button:active:not(:disabled):not(.on), button.open:not(.on) { box-shadow: inset 1px 1px 0 var(--lo), inset -1px -1px 0 var(--hi); }
+button.on { box-shadow: none; }
+button.open { border-color: var(--text); }
+/* The keyboard's place, drawn inside the control the way it always was on a desk. */
+:is(button, select, summary):focus-visible { outline: 1px dotted var(--text); outline-offset: -4px; }
+.seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.chip { border-radius: var(--radius); }
+input[type="number"], input[type="text"] {
+  border: 1px solid var(--edge); border-radius: var(--radius); background: var(--well); color: var(--text);
+  box-shadow: inset 1px 1px 0 var(--lo), inset -1px -1px 0 var(--hi);
+}
+
+/* ---- bars: the toolbar and the pane headers are etched strips ------------------------------------------------------------------- */
+.toolbar { background: var(--face); border-bottom-color: var(--edge); box-shadow: inset 0 -1px 0 var(--hi); }
+.pane-head { background: var(--title); border-bottom-color: var(--edge); box-shadow: inset 0 1px 0 var(--hi); }
+.pane-head strong { letter-spacing: .01em; }
+.splitter { background: var(--face); }
+.splitter.h { height: 5px; flex-basis: 5px; border-top: 1px solid var(--hi); border-bottom: 1px solid var(--edge); }
+.splitter.v { border-left: 1px solid var(--hi); border-right: 1px solid var(--edge); }
+.splitter:hover, .splitter.active { background: var(--edge); }
+
+/* ---- windows: a title bar in the page's own colours reversed, a square outline, a hard shadow ------------------------------------ */
+.panel, .menu, dialog.venues {
+  border: 1px solid var(--edge); border-radius: var(--radius); box-shadow: 3px 3px 0 var(--shadow);
+}
+.panel-head { gap: 6px; padding: 3px 4px 3px 10px; min-height: 26px; background: var(--bar); color: var(--bar-text); border-bottom: 1px solid var(--edge); }
+.panel-head h3 { font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.panel-x { width: 20px; height: 20px; --cross: 8px; --weight: 1.6px; }
+/* Every close button is the same square, raised, with a drawn cross: the window's, the guide's, a notice's, a list row's, a sheet's. */
+:is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x) {
+  border: 1px solid var(--edge); border-radius: var(--radius); background: var(--face); color: var(--text);
+  box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo);
+}
+:is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x):hover { background: var(--face); color: var(--text); border-color: var(--text); }
+:is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x):active { box-shadow: inset 1px 1px 0 var(--lo), inset -1px -1px 0 var(--hi); }
+.panel .srow .x:hover { color: var(--ask); }
+/* Flat by design, so the raised look of a button does not reach them: a menu row, a tab, a tool in a floating bar, a drag handle. */
+.menu-item, .dock-tab, .shot-bar button, .panel .grip { box-shadow: none; }
+.panel-tools { background: var(--face); }
+.menu { padding: 2px; }
+.menu-item { border-radius: 0; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--bar); color: var(--bar-text); }
+.menu-item:hover .tick, .menu-item:focus-visible .tick { color: var(--bar-text); }
+.menu-item:focus-visible { outline: 1px dotted var(--bar-text); outline-offset: -3px; }
+
+/* ---- the tooltip: still the page's colours reversed, now square with a hard shadow ---------------------------------------------- */
+.tip { border-radius: 0; border-color: var(--text); padding: 4px 8px; font-size: 11px; line-height: 1.4; box-shadow: 2px 2px 0 var(--shadow); }
+
+/* ---- glyphs that are drawn, not typed: they sit in the middle of their box whatever the font ---------------------------------- */
+button.help {
+  position: relative; width: 16px; height: 16px; margin: 0 6px 0 3px; border-radius: var(--radius); border: 1px solid var(--edge); background: var(--face); color: var(--text); font-size: 0; line-height: 0;
+  box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo);
+}
+button.help::before {
+  content: ""; position: absolute; inset: 2px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.2 8.6a3.9 3.9 0 1 1 5.9 3.3c-1.3.8-2.1 1.5-2.1 3'/%3E%3Cpath d='M12 19.6h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.2 8.6a3.9 3.9 0 1 1 5.9 3.3c-1.3.8-2.1 1.5-2.1 3'/%3E%3Cpath d='M12 19.6h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+button.help:hover, button.help.open { color: var(--bg); background: var(--text); border-color: var(--text); }
+.theme-btn::after { content: ""; flex: none; width: 0; height: 0; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; margin-left: 2px; }
+
+/* ---- over the map: nothing that blurs or softens what is painted underneath, which repaints all the time ------------------------ */
+.pane.heat .map-recenter {
+  border-radius: var(--radius); background: var(--face); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo), 2px 2px 0 var(--shadow);
+}
+.pane.heat .map-recenter:hover { background: var(--face); border-color: var(--text); }
+
+/* ---- the rest of the page, in the same shapes ------------------------------------------------------------------------------------ */
+/* A switch: a sunken square track and a raised square knob. */
+:is(.panel, .sheet) .switch i { border-radius: var(--radius); background: var(--well); box-shadow: inset 0 0 0 1px var(--edge); }
+:is(.panel, .sheet) .switch input:checked + i { background: var(--ui); box-shadow: inset 0 0 0 1px var(--edge); }
+:is(.panel, .sheet) .switch i::after { border-radius: var(--radius); background: var(--face); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo), 0 0 0 1px var(--edge); }
+/* Numbers that label things are squares, not discs. */
+.guide-link .num, .guide-section h2 .num { border-radius: var(--radius); }
+/* The sheets a phone uses are windows too: the same title bar. */
+.sheet-head { background: var(--bar); color: var(--bar-text); }
+.sheet-head h3 { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.sheet-grab { background: color-mix(in srgb, var(--bar-text) 45%, transparent); }
+.sheet, html[data-bar="compact"] .panel, html[data-bar="compact"] .menu { border-color: var(--edge); }
+/* The guide and the picture tool keep their own dark and light surfaces but take the shapes. */
+dialog.guide { border: 1px solid var(--edge); }
+dialog.guide::backdrop { background: rgba(8, 10, 14, .55); }
+.guide-head { background: var(--title); border-bottom: 1px solid var(--edge); }
+.fig { border-color: var(--edge); }
+/* The language button: a drawn globe and the language's code. */
+.language-btn { display: inline-flex; align-items: center; gap: 6px; }
+.language-btn::before {
+  content: ""; flex: none; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3c3.2 3 3.2 15 0 18M12 3c-3.2 3-3.2 15 0 18'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3c3.2 3 3.2 15 0 18M12 3c-3.2 3-3.2 15 0 18'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.language-btn::after { content: ""; flex: none; width: 0; height: 0; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; margin-left: 2px; }
+.sheet .language-btn { justify-content: center; }

@@ -19,6 +19,14 @@ import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../
 import { candleSpan } from '../candle-span.ts';
 import { t, tn } from '../i18n.ts';
 
+/**
+ * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
+ * invalidates style and layout, so a node is written only when what it says changes.
+ */
+const written = new WeakMap<Element, string>();
+const setHtml = (node: Element | null, html: string): void => { if (!node || written.get(node) === html) return; written.set(node, html); node.innerHTML = html; };
+const setText = (node: Element | null, text: string): void => { if (!node || written.get(node) === text) return; written.set(node, text); node.textContent = text; };
+
 /** A canvas pane whose x axis is the main chart's time axis. */
 abstract class TimePane {
   readonly root = document.createElement('section');
@@ -97,7 +105,7 @@ abstract class TimePane {
   #prepare(): void {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.#grid(); this.draw(); this.#crosshair(); }
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.#grid(); this.draw(); this.#crosshair(); } else this.undrawn();
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -114,6 +122,8 @@ abstract class TimePane {
     ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h); ctx.stroke(); ctx.setLineDash([]);
   }
   protected abstract draw(): void;
+  /** The pane was asked to draw but cannot (it is hidden, or has no size): let go of anything it put outside its canvas. */
+  protected undrawn(): void {}
 }
 
 export class DepthPane extends TimePane {
@@ -159,7 +169,7 @@ export class DepthPane extends TimePane {
     for (let x = 0; x < s.w; x++) { max = Math.max(max, s.bid[x]!, s.ask[x]!); if (s.bid[x]! > 0 || s.ask[x]! > 0) { lastB = s.bid[x]!; lastA = s.ask[x]!; } }
     const lastTotal = lastB + lastA, lastImbalance = lastTotal > 0 ? (lastB - lastA) / lastTotal : 0;
     const dominant = Math.abs(lastImbalance) < 0.005 ? '' : ` <b class="${lastImbalance > 0 ? 'bid' : 'ask'}">${lastImbalance > 0 ? t('bids') : t('asks')} +${(Math.abs(lastImbalance) * 100).toFixed(1)}%</b>`;
-    if (readout) readout.innerHTML = `A <b class="ask">${usd(lastA)}</b> B <b class="bid">${usd(lastB)}</b> Δ <b>${usd(lastB - lastA)}</b>${dominant}`;
+    setHtml(readout, `A <b class="ask">${usd(lastA)}</b> B <b class="bid">${usd(lastB)}</b> Δ <b>${usd(lastB - lastA)}</b>${dominant}`);
     const mid = ph / 2, half = ph / 2 - 6, cue = state.highlight.on;
     const xOf = (t: number) => v.xOf(t, pw);
     for (let x = 0; x < s.w; x++) {
@@ -211,7 +221,7 @@ export class OiPane extends TimePane {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state: AppState = this.store.state;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = state.oi, highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
-    const say = (html: string) => { if (readout) readout.innerHTML = html; };
+    const say = (html: string): void => setHtml(readout, html);
     if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
     const analysis = this.#analysis(oi, highlight);
     const visible: number[] = [];
@@ -328,7 +338,7 @@ export class LtPane extends TimePane {
       void this.hub.lt(ids, t0, t1, params).then(r => { this.#series = { ...r, stepMs: this.hub.columnStepMs }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
     }
     const s = this.#series, readout = this.head.querySelector('.readout')!;
-    if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); readout.textContent = ''; return; }
+    if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); setText(readout, ''); return; }
     const n = s.times.length, step = s.stepMs, xOf = (t: number) => v.xOf(t + step / 2, pw), gap = step * 2.5;
     let max = 0;
     for (let i = 0; i < n; i++) if (s.times[i]! + step >= v.t0 && s.times[i]! <= v.t1) max = Math.max(max, s.bid[i]!, s.ask[i]!);
@@ -372,7 +382,7 @@ export class LtPane extends TimePane {
     let at = n - 1;
     if (state.hover) { at = 0; for (let i = 0; i < n; i++) if (s.times[i]! <= state.hover.t) at = i; }
     const b = s.bid[at]!, a = s.ask[at]!, total = b + a;
-    readout.innerHTML = `${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${tn(ids.length, '{n} venue', '{n} venues')}`;
+    setHtml(readout, `${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${tn(ids.length, '{n} venue', '{n} venues')}`);
   }
 }
 
@@ -443,11 +453,13 @@ export class BarStatsPane extends TimePane {
     if (this.#cell && at) this.#card.show(statCellLines(this.#cell), at.x, at.y); else this.#card.hide();
   }
 
+  protected override undrawn(): void { this.#cell = null; this.#card.hide(); }
+
   #strip(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state;
     const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000, defs = enabledStats(state.barStats), options = state.barStatOptions;
     const readout = this.head.querySelector('.readout');
-    if (readout) readout.textContent = tn(defs.length, '{n} stat · cvd sums the bars loaded for the view', '{n} stats · cvd sums the bars loaded for the view');
+    setText(readout, tn(defs.length, '{n} stat · cvd sums the bars loaded for the view', '{n} stats · cvd sums the bars loaded for the view'));
     if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use Stats to add some.'), 12, ph / 2); return; }
     const data = this.heat.footprintData, all = [...data.bars.values()].sort((a, b) => a.t - b.t);
     if (!all.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Bar stats appear once the footprint has executions for the visible candles.'), 12, ph / 2); return; }

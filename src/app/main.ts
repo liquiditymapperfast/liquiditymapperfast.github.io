@@ -20,6 +20,7 @@ import { Dock } from './dock.ts';
 import { startDevice, onLayoutMode } from './device.ts';
 import './styles.css';
 import './mobile.css';
+import './chrome.css';
 import { t } from './i18n.ts';
 
 /** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */

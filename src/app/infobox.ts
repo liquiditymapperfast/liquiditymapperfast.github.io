@@ -1,4 +1,4 @@
-import type { Palette } from './theme.ts';
+import { chromeFor, type Chrome, type Palette } from './theme.ts';
 
 /**
  * The small box drawn on a canvas beside the pointer to say what is under it: the Mirror comparison, a footprint row, a bar statistic,
@@ -51,7 +51,13 @@ export function layoutInfo(measure: (text: string, bold: boolean, kind: InfoKind
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const fontOf = (bold: boolean, kind: InfoKind): string => `${bold ? '600 ' : ''}11px ${kind === 'value' ? MONO : SANS}`;
 
+/** The theme's edge and shadow tones for a palette, worked out once. */
+const chromes = new WeakMap<Palette, Chrome>();
+const chromeOf = (p: Palette): Chrome => { let c = chromes.get(p); if (!c) { c = chromeFor(p); chromes.set(p, c); } return c; };
+
 export interface InfoOptions {
+  /** How far the box stands off the pointer sideways, where something under it (a bubble) is wider than the usual 14 px. */
+  gap?: number;
   /** Where the box goes against the pointer: centred on its height, or extending down or up from it (clear of whatever is beside it). */
   placement?: 'center' | 'down' | 'up';
   /** The colour for each kind of line, where the caller's palette differs from the default (above = ask, below = bid, buy and sell = the candle colours). */
@@ -67,15 +73,17 @@ export function paintInfoBox(ctx: CanvasRenderingContext2D, lines: readonly Info
   ctx.save(); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   const { rows, width: w, height: h } = layoutInfo((text, bold, kind) => { ctx.font = fontOf(bold, kind); return ctx.measureText(text).width; }, lines);
   const { pad, lineH } = INFO;
-  let bx = x + 14; if (bx + w > bounds.x1) bx = x - 14 - w;
+  const gap = options.gap ?? 14;
+  let bx = x + gap; if (bx + w > bounds.x1) bx = x - gap - w;
   bx = Math.max(bounds.x0 + 2, Math.min(bx, bounds.x1 - w - 2));
   const placement = options.placement ?? 'center';
   const wanted = placement === 'down' ? y + 14 : placement === 'up' ? y - 14 - h : y - h / 2;
   const by = Math.max(bounds.y0 + 2, Math.min(wanted, bounds.y1 - h - 2));
   // A hard 2 px shadow, as a tooltip has on an old desktop: cheaper to draw than a blur and it keeps the edge crisp.
-  ctx.globalAlpha = p.dark ? 0.55 : 0.2; ctx.fillStyle = '#000'; ctx.fillRect(bx + 2, by + 2, w, h);
+  const chrome = chromeOf(p);
+  ctx.fillStyle = chrome.shadow; ctx.fillRect(bx + 2, by + 2, w, h);
   ctx.globalAlpha = 0.97; ctx.fillStyle = p.panel; ctx.fillRect(bx, by, w, h);
-  ctx.globalAlpha = 1; ctx.strokeStyle = options.edge ?? p.muted; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, w - 1, h - 1);
+  ctx.globalAlpha = 1; ctx.strokeStyle = options.edge ?? chrome.edge; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, w - 1, h - 1);
   let top = by + pad / 2;
   for (const row of rows) {
     if (row.rule) { ctx.globalAlpha = 0.5; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(bx + pad, Math.round(top + 2) + 0.5); ctx.lineTo(bx + w - pad, Math.round(top + 2) + 0.5); ctx.stroke(); ctx.globalAlpha = 1; top += INFO.rule; }

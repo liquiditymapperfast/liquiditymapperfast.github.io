@@ -18,7 +18,7 @@ import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FootprintData, FootprintLod, footprintLayout, paintFootprint, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
-import { paintInfoBox } from '../infobox.ts';
+import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { t } from '../i18n.ts';
@@ -67,6 +67,8 @@ export class HeatPane {
   mirror: MirrorStats | null = null;
   #profileHover: { y: number } | null = null;
   #profileBox: { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null = null;
+  /** The last value given to --gutter on the pane, so a frame that changes nothing writes nothing. */
+  #gutterCss = '';
   onStats: () => void = () => {};
   onView: () => void = () => {};
   onFrame: () => void = () => {};
@@ -245,7 +247,8 @@ export class HeatPane {
       if (mark && (mark < p0 + span * 0.1 || mark > p1 - span * 0.1)) { const mid = mark - span / 2; this.view.p0 = mid; this.view.p1 = mid + span; this.#rasteredKey = ''; }
     }
     this.#positionGl();
-    this.root.style.setProperty('--gutter', `${gutter(state)}px`);
+    const gutterCss = `${gutter(state)}px`;
+    if (this.#gutterCss !== gutterCss) { this.#gutterCss = gutterCss; this.root.style.setProperty('--gutter', gutterCss); }
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view);
     this.#stepFootprint(state);
@@ -611,34 +614,29 @@ export class HeatPane {
     if (ownY && y >= 0 && y <= ph) { ctx.fillStyle = p.text; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(fmtPrice(hv.price!), axisX + 6, y); }
     let trapHit: Trap | null = null, rowHit: ReturnType<HeatPane['footprintCellUnder']> = null;
     const touch = hv.touch === true;
-    // Beside a mouse pointer a readout sits to one side; above a finger, so the hand does not cover it.
-    const above = (bw: number, bh: number, clearance: number): { bx: number; by: number } => {
-      const top = y - clearance - bh;
-      return { bx: Math.max(4, Math.min(pw - bw - 4, x - bw / 2)), by: top >= 4 ? top : Math.min(ph - bh - 4, y + clearance) };
-    };
     if (touch && ownY && inX && y >= 0 && y <= ph) { ctx.strokeStyle = p.text; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
     const hit = ownY && inX ? this.#bubbleAt(x, y) : null;
     if (hit) { // a large trade under the pointer: say what it was
-      const { print } = hit, venue = venueLabel(print.id), symbol = print.id.split(':').slice(1).join(':');
-      const lines = [`${print.side === 'buy' ? 'BUY' : 'SELL'}  $${usd(print.usd)}`, `${venue} ${symbol}`, `${fmtPrice(print.price)}  ${clock(print.t, true)}:${String(new Date(print.t).getSeconds()).padStart(2, '0')}`];
-      ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 16, th = lines.length * 15 + 8;
-      const side = { bx: x + hit.r + 10 + tw > pw ? x - hit.r - 10 - tw : x + hit.r + 10, by: Math.min(ph - th - 4, Math.max(4, y - th / 2)) };
-      const { bx, by } = touch ? above(tw, th, hit.r + 22) : side;
-      ctx.fillStyle = p.panel; ctx.globalAlpha = 0.96; ctx.fillRect(bx, by, tw, th); ctx.globalAlpha = 1;
-      ctx.strokeStyle = print.side === 'buy' ? p.bid : p.ask; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1); ctx.lineWidth = 1;
-      ctx.textAlign = 'left'; lines.forEach((line, i) => { ctx.fillStyle = i === 0 ? (print.side === 'buy' ? p.bid : p.ask) : p.text; ctx.fillText(line, bx + 8, by + 12 + i * 15); });
-      ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+      const { print } = hit, venue = venueLabel(print.id), symbol = print.id.split(':').slice(1).join(':'), buy = print.side === 'buy';
+      const lines: InfoLine[] = [
+        { text: `${buy ? t('BUY') : t('SELL')}  $${usd(print.usd)}`, bold: true, color: buy ? 'buy' : 'sell' },
+        { label: t('Venue'), text: `${venue} ${symbol}` },
+        { label: t('Price'), text: fmtPrice(print.price) },
+        { label: t('Time'), text: `${clock(print.t, true)}:${String(new Date(print.t).getSeconds()).padStart(2, '0')}` },
+      ];
+      // Beside a mouse pointer the box stands clear of the bubble; above a finger, so the hand does not cover it.
+      paintInfoBox(ctx, lines, x, touch ? y - hit.r - 8 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: buy ? p.candleUp : p.candleDown, gap: hit.r + 10, placement: touch ? 'up' : 'center' });
     } else if (ownY && inX && (trapHit = this.#trapUnder(x, hv.t, hv.price!, pw))) {
       this.#paintTrapPopup(ctx, trapHit, x, y, pw, ph, touch);
     } else if (ownY && inX && (rowHit = this.#footprintUnder(x, hv.t, hv.price!, pw))) {
       this.#paintFootprintPopup(ctx, rowHit, x, y, pw, ph, touch);
     } else if (ownY && inX && state.layer === 'liquidity') {
       const cell = this.valueAt(hv.t, hv.price!);
-      const source = cell ? this.#sourceOf(hv.t, hv.price!, cell.ask > cell.bid ? 'ask' : 'bid') : '';
-      const text = cell ? `${fmtPrice(hv.price!)}  ${cell.ask > cell.bid ? 'ask' : 'bid'} $${usd(Math.max(cell.bid, cell.ask))}${source ? '  ' + source : ''}` : fmtPrice(hv.price!);
-      const tw = ctx.measureText(text).width + 14, side = { bx: x + 12 + tw > pw ? x - 12 - tw : x + 12, by: Math.min(ph - 22, Math.max(4, y - 24)) };
-      const { bx, by } = touch ? above(tw, 20, 24) : side;
-      ctx.fillStyle = p.text; ctx.globalAlpha = 0.92; ctx.fillRect(bx, by, tw, 20); ctx.globalAlpha = 1; ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(text, bx + 7, by + 10);
+      const side = cell && cell.ask > cell.bid ? 'ask' : 'bid', source = cell ? this.#sourceOf(hv.t, hv.price!, side) : '';
+      const lines: InfoLine[] = [{ label: t('Price'), text: fmtPrice(hv.price!) }];
+      if (cell) lines.push({ label: side === 'ask' ? t('Ask') : t('Bid'), text: `$${usd(Math.max(cell.bid, cell.ask))}`, color: side === 'ask' ? 'above' : 'below', bold: true });
+      if (source) lines.push({ label: t('Source'), text: source });
+      paintInfoBox(ctx, lines, x, touch ? y - 24 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
     }
     if (inX) { ctx.fillStyle = p.text; ctx.fillRect(x - 40, ph + 2, 80, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.fillText(clock(hv.t, true), x, ph + 11); }
   }
@@ -685,20 +683,10 @@ export class HeatPane {
   }
 
   #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number, touch = false): void {
-    const p = this.#palette, maxWidth = 280, lines: string[] = [];
-    ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
-    for (const text of trapText(trap, { market: this.store.state.marketId, timeframe: this.store.state.timeframe })) {
-      let line = '';
-      for (const word of text.split(' ')) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; } else line = next; }
-      lines.push(line);
-    }
-    const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 18, th = lines.length * 15 + 10;
-    let bx = x + 14 + tw > pw ? x - 14 - tw : x + 14, by = Math.min(ph - th - 4, Math.max(4, y - th / 2));
-    if (touch) { bx = Math.max(4, Math.min(pw - tw - 4, x - tw / 2)); by = y - 26 - th >= 4 ? y - 26 - th : Math.min(ph - th - 4, y + 26); }
-    ctx.fillStyle = p.panel; ctx.globalAlpha = 0.97; ctx.fillRect(bx, by, tw, th); ctx.globalAlpha = 1;
-    ctx.strokeStyle = TRAP_COLOR; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1); ctx.lineWidth = 1;
-    ctx.textAlign = 'left'; lines.forEach((line, i) => { ctx.fillStyle = i === 0 ? TRAP_COLOR : p.text; ctx.fillText(line, bx + 9, by + 13 + i * 15); });
-    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    const p = this.#palette;
+    const texts = trapText(trap, { market: this.store.state.marketId, timeframe: this.store.state.timeframe });
+    const lines: InfoLine[] = texts.map((text, i) => i === 0 ? { text, bold: true, color: 'above' } : { text, wrap: true });
+    paintInfoBox(ctx, lines, x, touch ? y - 26 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: TRAP_COLOR, placement: touch ? 'up' : 'center', pick: c => c === 'above' ? TRAP_COLOR : c === 'muted' ? p.muted : p.text });
   }
 
   /** Redraw the pulse layer now, and keep it going (about 20 frames a second, slowly breathing) while a trap that is still live is in view. */

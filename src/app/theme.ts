@@ -39,11 +39,73 @@ export function resolveThemeId(name: unknown): string {
   const id = typeof name === 'string' ? THEME_ALIASES[name] ?? name : '';
   return id in PALETTES ? id : 'light';
 }
+/** `a` moved `amount` (0 to 1) of the way to `b`, both as #rrggbb. */
+export function mixHex(a: string, b: string, amount: number): string {
+  const [ar, ag, ab] = rgb(a), [br, bg, bb] = rgb(b), k = Math.max(0, Math.min(1, amount));
+  const channel = (x: number, y: number): string => Math.round((x * (1 - k) + y * k) * 255).toString(16).padStart(2, '0');
+  return `#${channel(ar, br)}${channel(ag, bg)}${channel(ab, bb)}`;
+}
+
+/**
+ * How strong the raised and sunken edges of the page are: 1 is the full look, 0 is flat. Every edge, face and shadow below is
+ * computed from it, so this is the one number that dials the whole style back.
+ */
+export const BEVEL = 1;
+
+/** The tones that give controls and windows their edges, derived from a palette so every theme has them. */
+export interface Chrome {
+  /** The 1px outline of a control, a window, a menu: strong enough to see (3:1 against the panel). */
+  edge: string;
+  /** The lit edge (top and left) and the shaded edge (bottom and right) of something raised; swapped for something pressed. */
+  hi: string; lo: string;
+  /** What a button is made of, a title bar is made of, and what a field's inside is made of (the sunken well). */
+  face: string; title: string; well: string;
+  /** A window's title bar and the lit row of a menu, and the text on them: the page's colours reversed on a light theme, a mid tone of the text colour on a dark one (a bright bar on a dark window glares). */
+  bar: string; barText: string;
+  /** The hard shadow under a window or a menu. */
+  shadow: string;
+}
+
+const channelLight = (c: number): number => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+const lightness = (hex: string): number => { const [r, g, b] = rgb(hex); return 0.2126 * channelLight(r) + 0.7152 * channelLight(g) + 0.0722 * channelLight(b); };
+/** WCAG contrast ratio between two #rrggbb colours. */
+export function contrastRatio(a: string, b: string): number { const [hi, lo] = [lightness(a), lightness(b)].sort((x, y) => y - x) as [number, number]; return (hi + 0.05) / (lo + 0.05); }
+
+/** `from` moved toward `to` by at least `start`, and further until it stands at least `ratio` apart from `from` (a palette whose text is soft needs more of it). */
+function outline(from: string, to: string, start: number, ratio: number): string {
+  let amount = start, tone = mixHex(from, to, amount);
+  while (amount < 1 && contrastRatio(tone, from) < ratio) { amount = Math.min(1, amount + 0.04); tone = mixHex(from, to, amount); }
+  return tone;
+}
+
+/** A surface `amount` of the way from the panel to `to`, eased back as far as it takes for the palette's muted text to stay readable on it. */
+function surface(p: Palette, to: string, amount: number): string {
+  let a = amount, tone = mixHex(p.panel, to, a);
+  while (a > 0 && contrastRatio(p.muted, tone) < 4.55) { a = Math.max(0, a - 0.005); tone = mixHex(p.panel, to, a); }
+  return tone;
+}
+
+/** A dark theme's title bar: part of the way from the panel to the text colour, eased back until the text stays well readable on it. */
+function darkBar(p: Palette): string {
+  let a = 0.26, tone = mixHex(p.panel, p.text, a);
+  while (a > 0.04 && contrastRatio(p.text, tone) < 7.3) { a -= 0.02; tone = mixHex(p.panel, p.text, a); }
+  return tone;
+}
+
+export function chromeFor(p: Palette, strength: number = BEVEL): Chrome {
+  const s = Math.max(0, Math.min(1, strength));
+  return p.dark
+    ? { edge: outline(p.panel, p.text, 0.3 + 0.1 * s, 3.1), hi: mixHex(p.panel, '#ffffff', 0.16 * s), lo: mixHex(p.panel, '#000000', 0.55 * s), face: surface(p, '#ffffff', 0.04 * s),
+      title: surface(p, '#ffffff', 0.08 * s), well: mixHex(p.bg, '#000000', 0.3), bar: darkBar(p), barText: p.text, shadow: `rgba(0, 0, 0, ${(0.55 * s).toFixed(2)})` }
+    : { edge: outline(p.panel, p.text, 0.32 + 0.2 * s, 3.1), hi: mixHex(p.panel, '#ffffff', s), lo: mixHex(p.panel, p.text, 0.22 * s), face: surface(p, p.text, 0.04 * s),
+      title: surface(p, p.text, 0.08 * s), well: mixHex(p.panel, '#ffffff', 0.7), bar: p.text, barText: p.bg, shadow: `rgba(0, 0, 0, ${(0.22 * s).toFixed(2)})` };
+}
+
 export function applyTheme(name: string): Palette {
   const palette = PALETTES[resolveThemeId(name)]!;
   const root = document.documentElement;
   const vars: Record<string, string> = { bg: palette.bg, panel: palette.panel, text: palette.text, muted: palette.muted, line: palette.line, accent: palette.accent,
-    bid: palette.bid, 'bid-soft': palette.bidSoft, ask: palette.ask, 'ask-soft': palette.askSoft, ui: palette.ui };
+    bid: palette.bid, 'bid-soft': palette.bidSoft, ask: palette.ask, 'ask-soft': palette.askSoft, ui: palette.ui, 'candle-up': palette.candleUp, 'candle-down': palette.candleDown, ...chromeFor(palette) };
   for (const [key, value] of Object.entries(vars)) root.style.setProperty(`--${key}`, value);
   root.dataset.theme = palette.dark ? 'dark' : 'light';
   // The browser's own bars (the phone's status bar, the address bar) take the page's colour.

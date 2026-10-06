@@ -32,13 +32,13 @@ html[data-bar="compact"] { --tap: 44px; --safe-t: env(safe-area-inset-top); --sa
 html[data-bar="compact"] .toolbar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; min-height: 0; padding: var(--safe-t) 0 0; }
 html[data-bar="compact"] .tb-bar { display: flex; align-items: center; gap: 0 8px; padding: 4px 8px; }
 html[data-bar="compact"] .tb-row { display: contents; }
-html[data-bar="compact"] .toolbar :is(button, select) { min-height: 38px; border-radius: 10px; padding: 0 12px; }
+html[data-bar="compact"] .toolbar :is(button, select) { min-height: 38px; border-radius: var(--radius); padding: 0 12px; }
 html[data-bar="compact"] .toolbar .brand { order: 0; flex: none; margin-right: 4px; }
 html[data-bar="compact"] .toolbar .market { order: 1; flex: 1 1 auto; min-width: 100px; max-width: 320px; font-size: 16px; font-weight: 600; text-overflow: ellipsis; padding-right: 4px; }
 html[data-bar="compact"] .tb-time .seg { order: 2; flex: 0 1 340px; min-width: 240px; }
 html[data-bar="compact"] .tb-time .seg button { flex: 1 1 0; min-width: 0; padding: 0; border-radius: 0; }
-html[data-bar="compact"] .tb-time .seg button:first-child { border-radius: 10px 0 0 10px; }
-html[data-bar="compact"] .tb-time .seg button:last-child { border-radius: 0 10px 10px 0; }
+html[data-bar="compact"] .tb-time .seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+html[data-bar="compact"] .tb-time .seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 html[data-bar="compact"] .tb-time > button { order: 3; }
 html[data-bar="compact"] .toolbar .spacer { order: 4; flex: 1 1 0; min-width: 0; }
 html[data-bar="compact"] .toolbar .status { order: 5; flex: none; font-size: 0; display: inline-grid; place-items: center; width: 28px; height: 38px; }
@@ -73,8 +73,8 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
 .sheet-scrim.light.in { background: rgba(8, 10, 14, .34); }
 .sheet, html[data-bar="compact"] .panel, html[data-bar="compact"] .menu {
   position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-width: 640px; margin: 0 auto;
-  border-radius: 18px 18px 0 0; border: 1px solid var(--line); border-bottom: 0; background: var(--panel); color: var(--text);
-  box-shadow: 0 -14px 44px rgba(0, 0, 0, .3); padding-bottom: env(safe-area-inset-bottom);
+  border-radius: var(--radius) var(--radius) 0 0; border: 1px solid var(--line); border-bottom: 0; background: var(--panel); color: var(--text);
+  box-shadow: 0 -3px 0 var(--shadow); padding-bottom: env(safe-area-inset-bottom);
 }
 .sheet { z-index: 55; display: flex; flex-direction: column; max-height: min(92dvh, 780px); transform: translateY(105%); transition: transform .26s cubic-bezier(.2, .85, .2, 1); }
 .sheet.in { transform: none; }
@@ -86,9 +86,9 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
 .sheet-sec { padding-top: 16px; }
 .sheet-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; min-height: 28px; }
 .sheet-sec-head h4 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
-.sheet-sec-head button { min-height: 34px; padding: 0 14px; border-radius: 9px; font-size: 13px; }
+.sheet-sec-head button { min-height: 34px; padding: 0 14px; border-radius: var(--radius); font-size: 13px; }
 .sheet-sec-head button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 13px; line-height: 24px; }
-.sheet-body :is(button, select) { min-height: var(--tap); font-size: 15px; border-radius: 12px; padding: 0 14px; }
+.sheet-body :is(button, select) { min-height: var(--tap); font-size: 15px; border-radius: var(--radius); padding: 0 14px; }
 /* 16px is the size below which an iPhone zooms the page in when a field takes focus; the page's own picker normally stops that from happening, and this is the backstop. */
 .sheet select { text-overflow: ellipsis; font-size: 16px; }
 .sheet-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 8px; }
@@ -102,28 +102,28 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
 .sheet-field.stack > :not(.sheet-label) { flex: none; }
 .sheet-field.stack .sheet-label { flex: none; }
 .sheet .seg.toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
-.sheet .seg.toggles button { border-radius: 12px; margin: 0; padding: 0 6px; }
+.sheet .seg.toggles button { border-radius: var(--radius); margin: 0; padding: 0 6px; }
 /* A switched-on pane is tinted rather than filled black: these are settings, not the primary actions the desktop's inverted buttons suit. */
 .sheet .seg.toggles button.on { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); color: var(--text); font-weight: 650; }
 .sheet .seg.toggles button.on::before { content: "✓ "; color: var(--ui); }
 .sheet .seg.scope { display: flex; width: 100%; }
 .sheet .seg.scope button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
-.sheet .seg.scope button:first-child { border-radius: 12px 0 0 12px; margin-left: 0; } .sheet .seg.scope button:last-child { border-radius: 0 12px 12px 0; }
+.sheet .seg.scope button:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; } .sheet .seg.scope button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .sheet .scale { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .sheet .legend { height: 20px; }
 .sheet .legend i { font-size: 11px; }
 .sheet .scale input[type=range] { height: 32px; }
 .sheet-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
 .sheet-chips .chips { gap: 8px; }
-.sheet .chip { min-height: 38px; display: inline-flex; align-items: center; padding: 0 15px; font-size: 14px; border-radius: 999px; }
+.sheet .chip { min-height: 38px; display: inline-flex; align-items: center; padding: 0 15px; font-size: 14px; border-radius: var(--radius); }
 .sheet .theme-btn { justify-content: center; }
 .sheet .icon-btn::after { content: attr(aria-label); font-size: 15px; }
 .sheet .sound-btn { padding-left: 32px; }
 .sheet .sound-btn::before { left: 15px; }
 .sheet .switch { position: relative; width: 50px; height: 30px; flex: none; }
 .sheet .switch input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
-.sheet .switch i { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 22%, transparent); transition: background .15s; }
-.sheet .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: transform .15s; }
+.sheet .switch i { position: absolute; inset: 0; border-radius: var(--radius); background: color-mix(in srgb, var(--text) 22%, transparent); transition: background .15s; }
+.sheet .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 3px 3px 0 var(--shadow); transition: transform .15s; }
 .sheet .switch input:checked + i { background: var(--ui); }
 .sheet .switch input:checked + i::after { transform: translateX(20px); }
 .sheet-field > .switch { flex: none; }
@@ -147,7 +147,7 @@ html[data-bar="compact"] .panel .grip { width: 30px; height: 36px; }
 html[data-bar="compact"] .panel .srow { grid-template-columns: 32px 18px minmax(0, 1fr) 38px; padding: 5px 6px; }
 html[data-bar="compact"] .panel .srow .x { width: 36px; height: 34px; }
 html[data-bar="compact"] .menu { z-index: 70; min-width: 0; max-height: min(72dvh, 600px); padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); animation: sheet-up .2s ease-out; }
-html[data-bar="compact"] .menu-item { min-height: 50px; font-size: 16px; padding: 0 14px; border-radius: 11px; }
+html[data-bar="compact"] .menu-item { min-height: 50px; font-size: 16px; padding: 0 14px; border-radius: var(--radius); }
 html[data-bar="compact"] .menu-title { display: block; padding: 10px 14px 8px; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 @keyframes sheet-up { from { transform: translateY(40%); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -156,14 +156,14 @@ html[data-bar="compact"] dialog.venues { width: calc(100vw - 24px); max-width: 5
 html[data-bar="compact"] .venue-list { grid-template-columns: 1fr 1fr; gap: 2px 10px; }
 html[data-bar="compact"] .venue-list label { min-height: 42px; }
 html[data-bar="compact"] dialog.venues .row { flex-wrap: wrap; justify-content: stretch; }
-html[data-bar="compact"] dialog.venues .row button { flex: 1 1 auto; min-height: 44px; white-space: nowrap; border-radius: 11px; }
+html[data-bar="compact"] dialog.venues .row button { flex: 1 1 auto; min-height: 44px; white-space: nowrap; border-radius: var(--radius); }
 html[data-layout^="phone"] dialog.guide { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; border: 0; }
 /* In the guide the title and the close button share a row, the section menu has the next one to itself, and a table of moves reads top to bottom. */
 html[data-layout^="phone"] .guide-head { flex-wrap: wrap; gap: 4px 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; }
 html[data-layout^="phone"] .guide-head > div { flex: 1 1 0; min-width: 0; }
 html[data-layout^="phone"] .guide-head .sub { display: block; font-size: 12px; line-height: 1.35; }
 html[data-layout^="phone"] .guide-x { width: 42px; height: 42px; --cross: 16px; --weight: 2px; }
-html[data-layout^="phone"] .guide-jump { order: 3; flex: 1 1 100%; max-width: none; min-height: 44px; font-size: 15px; border-radius: 11px; }
+html[data-layout^="phone"] .guide-jump { order: 3; flex: 1 1 100%; max-width: none; min-height: 44px; font-size: 15px; border-radius: var(--radius); }
 html[data-layout^="phone"] .guide-article { padding: 0 16px; }
 html[data-layout^="phone"] table.keys, html[data-layout^="phone"] table.keys tbody { display: block; }
 html[data-layout^="phone"] table.keys tr { display: block; padding: 9px 0; border-bottom: 1px solid var(--line); }
@@ -228,7 +228,7 @@ html[data-layout^="phone"] .pane-head .ctl { display: flex; flex-direction: colu
 html[data-layout^="phone"] .pane-head .ctl select { font-size: 14px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text); }
 html[data-layout^="phone"] .pane-head .ctl:has(input[type=checkbox]) { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text); }
 html[data-layout^="phone"] .pane-head .ctl input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
-html[data-layout^="phone"] .pane-head :is(select, button:not(.help)) { font-size: 14px; min-height: 32px; padding: 0 8px; border-radius: 9px; }
+html[data-layout^="phone"] .pane-head :is(select, button:not(.help)) { font-size: 14px; min-height: 32px; padding: 0 8px; border-radius: var(--radius); }
 html[data-layout^="phone"] .pane-head button.help { width: 22px; height: 22px; margin: 0 2px; font-size: 12px; line-height: 20px; }
 /* The Order Book's own header: the tab already says "Book", and its three choices share one row. */
 html[data-layout^="phone"] .pane.ladder .pane-head { flex-wrap: nowrap; padding-left: 8px; gap: 6px; }
@@ -251,7 +251,7 @@ html[data-layout^="phone"] .pane.ladder { container: ladder / inline-size; }
   html[data-layout="desktop"] .splitter::after { inset: -10px; }
   html[data-layout="desktop"] .grip { font-size: 20px; padding: 8px 6px; margin: -8px -2px -8px -8px; }
   html[data-layout="desktop"] .pane-head { min-height: 42px; gap: 4px 10px; }
-  html[data-layout="desktop"] .pane-head :is(select, button:not(.help)) { font-size: 13px; min-height: 32px; padding: 0 10px; border-radius: 9px; }
+  html[data-layout="desktop"] .pane-head :is(select, button:not(.help)) { font-size: 13px; min-height: 32px; padding: 0 10px; border-radius: var(--radius); }
   html[data-layout="desktop"] .pane-head button.help { width: 24px; height: 24px; font-size: 12px; line-height: 22px; }
   html[data-layout="desktop"] .pane-head .ctl input[type=checkbox] { width: 20px; height: 20px; }
 }
