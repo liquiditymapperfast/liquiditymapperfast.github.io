@@ -105,7 +105,7 @@ abstract class TimePane {
   #prepare(): void {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.#grid(); this.draw(); this.#crosshair(); } else this.undrawn();
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.#grid(); this.draw(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -122,7 +122,7 @@ abstract class TimePane {
     ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h); ctx.stroke(); ctx.setLineDash([]);
   }
   protected abstract draw(): void;
-  /** The pane was asked to draw but cannot (it is hidden, or has no size): let go of anything it put outside its canvas. */
+  /** The pane was asked to draw but cannot (it is hidden, or has no size): let go of anything it put outside its canvas. A pin it holds is released first (and only its own, so a pin on another pane stays), or the card would come back at the same spot the next time the tab is shown. */
   protected undrawn(): void {}
 }
 
