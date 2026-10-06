@@ -81,7 +81,7 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
 .sheet-head { position: relative; display: flex; align-items: center; gap: 8px; padding: 18px 8px 6px 18px; touch-action: none; cursor: grab; }
 .sheet-grab { position: absolute; left: 50%; top: 7px; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: color-mix(in srgb, var(--text) 24%, transparent); }
 .sheet-head h3 { margin: 0; flex: 1; font-size: 18px; letter-spacing: .005em; }
-.sheet-x, .panel-x { width: 40px; height: 40px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); font-size: 24px; line-height: 1; }
+.sheet-x, html[data-bar="compact"] .panel-x { width: 40px; height: 40px; min-height: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); --cross: 15px; --weight: 2px; }
 .sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 18px 22px; -webkit-overflow-scrolling: touch; }
 .sheet-sec { padding-top: 16px; }
 .sheet-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; min-height: 28px; }
@@ -162,7 +162,7 @@ html[data-layout^="phone"] dialog.guide { width: 100vw; height: 100dvh; max-widt
 html[data-layout^="phone"] .guide-head { flex-wrap: wrap; gap: 4px 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; }
 html[data-layout^="phone"] .guide-head > div { flex: 1 1 0; min-width: 0; }
 html[data-layout^="phone"] .guide-head .sub { display: block; font-size: 12px; line-height: 1.35; }
-html[data-layout^="phone"] .guide-x { width: 42px; height: 42px; font-size: 28px; }
+html[data-layout^="phone"] .guide-x { width: 42px; height: 42px; --cross: 16px; --weight: 2px; }
 html[data-layout^="phone"] .guide-jump { order: 3; flex: 1 1 100%; max-width: none; min-height: 44px; font-size: 15px; border-radius: 11px; }
 html[data-layout^="phone"] .guide-article { padding: 0 16px; }
 html[data-layout^="phone"] table.keys, html[data-layout^="phone"] table.keys tbody { display: block; }

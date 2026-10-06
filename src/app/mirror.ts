@@ -1,6 +1,7 @@
 import type { Palette } from './theme.ts';
 import { price as fmtPrice, usd } from './format.ts';
 import { t } from './i18n.ts';
+import { paintInfoBox, type InfoColor, type InfoLine } from './infobox.ts';
 
 /**
  * Mirror hover: pointing at a price highlights the band from the mid to that price and the equally wide band on the other
@@ -47,7 +48,7 @@ export function ratioText(ratio: number): string {
 }
 
 export interface SideNames { above: string; below: string }
-export interface MirrorLine { text: string; color?: 'above' | 'below' | 'muted' | 'text'; bold?: boolean }
+export type MirrorLine = InfoLine;
 
 /** The text printed beside the pointer. */
 export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string): MirrorLine[] {
@@ -66,25 +67,10 @@ export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string
   return lines;
 }
 
-/** Draw `lines` in a panel beside (x, y), kept inside `bounds`. `placement` extends the panel down or up from y (toward the inside of a band, clear of its edge labels) instead of centring it. */
+/** Draw `lines` in a box beside (x, y), kept inside `bounds`. `placement` extends the box down or up from y (toward the inside of a band, clear of its edge labels) instead of centring it. */
 export function paintMirrorBox(ctx: CanvasRenderingContext2D, lines: MirrorLine[], x: number, y: number, bounds: { x0: number; y0: number; x1: number; y1: number }, p: Palette,
-  pick: (color: NonNullable<MirrorLine['color']>) => string, placement: 'center' | 'down' | 'up' = 'center'): void {
-  ctx.save(); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-  const lineH = 16, pad = 8;
-  let width = 0;
-  for (const line of lines) { ctx.font = `${line.bold ? '600 ' : ''}11px ui-sans-serif, system-ui, sans-serif`; width = Math.max(width, ctx.measureText(line.text).width); }
-  const w = width + pad * 2, h = lines.length * lineH + pad;
-  let bx = x + 14; if (bx + w > bounds.x1) bx = x - 14 - w;
-  bx = Math.max(bounds.x0 + 2, Math.min(bx, bounds.x1 - w - 2));
-  const wanted = placement === 'down' ? y + 14 : placement === 'up' ? y - 14 - h : y - h / 2;
-  const by = Math.max(bounds.y0 + 2, Math.min(wanted, bounds.y1 - h - 2));
-  ctx.globalAlpha = 0.96; ctx.fillStyle = p.panel; ctx.fillRect(bx, by, w, h);
-  ctx.globalAlpha = 1; ctx.strokeStyle = p.muted; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, w - 1, h - 1);
-  lines.forEach((line, i) => {
-    ctx.font = `${line.bold ? '600 ' : ''}11px ui-sans-serif, system-ui, sans-serif`;
-    ctx.fillStyle = pick(line.color ?? 'text'); ctx.fillText(line.text, bx + pad, by + pad / 2 + lineH * (i + 0.5));
-  });
-  ctx.restore();
+  pick: (color: InfoColor) => string, placement: 'center' | 'down' | 'up' = 'center'): void {
+  paintInfoBox(ctx, lines, x, y, bounds, p, { pick, placement });
 }
 
 /** Shade everything in [y0, y1) outside the highlighted band [bandTop, bandBottom] so the inner layers stand out. */

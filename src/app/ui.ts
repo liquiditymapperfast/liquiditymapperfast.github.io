@@ -33,7 +33,7 @@ export const closePanel = (): void => current?.close();
 
 export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (tools: HTMLElement, body: HTMLElement) => void): Panel {
   current?.close();
-  const closeButton = el('button', { class: 'panel-x', textContent: '×', tip: t('Close (Esc)'), type: 'button' });
+  const closeButton = el('button', { class: 'panel-x', tip: t('Close (Esc)'), ariaLabel: t('Close'), type: 'button' });
   const head = el('div', { class: 'panel-head' }, el('h3', { textContent: options.title }), closeButton);
   const tools = el('div', { class: 'panel-tools' }), body = el('div', { class: 'panel-body' });
   const root = el('div', { class: 'panel', role: 'dialog' }, head, tools, body);
@@ -167,7 +167,7 @@ export function sortableList(items: readonly SortItem[], onReorder: (ids: string
   items.forEach((item, index) => {
     const grip = el('button', { type: 'button', class: 'grip', tip: t('Drag to reorder, or press the up and down arrow keys') });
     grip.setAttribute('aria-label', t('Move {item}: drag, or press the up and down arrow keys', { item: item.label }));
-    const remove = el('button', { type: 'button', class: 'x', textContent: '×', tip: t('Hide {item}', { item: item.label }), onclick: () => onRemove(item.id) });
+    const remove = el('button', { type: 'button', class: 'x', tip: t('Hide {item}', { item: item.label }), onclick: () => onRemove(item.id) });
     remove.setAttribute('aria-label', t('Hide {item}', { item: item.label }));
     const row = el('div', { class: 'srow', tip: item.title ?? '', role: 'listitem' }, grip, el('span', { class: 'idx', textContent: String(index + 1) }), el('b', { textContent: item.label }), remove);
     row.dataset.id = item.id;

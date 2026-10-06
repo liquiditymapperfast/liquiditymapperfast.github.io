@@ -39,7 +39,7 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .blocked-chips:empty { display: none; }
 .toolbar .notice { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid color-mix(in srgb, var(--ask) 45%, var(--line)); background: color-mix(in srgb, var(--ask) 12%, var(--panel)); }
 .toolbar .notice[hidden] { display: none; }
-.toolbar .notice-close { margin-left: auto; padding: 0 8px; line-height: 1.4; }
+.toolbar .notice-close { margin-left: auto; width: 24px; height: 22px; --cross: 9px; }
 .venue-list .blocked { color: var(--ask); }
 .seg.scope.inert { opacity: .6; }
 .seg.scope button.on { background: var(--ui); border-color: var(--ui); color: #fff; }
@@ -100,6 +100,16 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .panel-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .panel-head h3 { margin: 0; flex: 1; font-size: 13px; font-weight: 650; letter-spacing: .005em; }
 /* Tooltips (tip.ts): one box in the top layer for the whole page. */
+/* The card the panes too short for a canvas box use (hovercard.ts): the same box as infobox.ts draws, with the same measures. */
+.hovercard { position: fixed; inset: 0 auto auto 0; margin: 0; width: max-content; max-width: 280px; padding: 4px 8px 4px; overflow: visible; border: 1px solid var(--muted); background: var(--panel); color: var(--text); font: 11px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 2px 2px 0 rgba(0, 0, 0, .2); pointer-events: none; }
+.hovercard:not(:popover-open):not(.on) { display: none; }
+.hovercard .hc-row { display: flex; justify-content: space-between; gap: 14px; }
+.hovercard .hc-label { color: var(--muted); }
+.hovercard .hc-value { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; white-space: nowrap; }
+.hovercard .bold { font-weight: 600; }
+.hovercard .rule { margin-top: 3px; padding-top: 4px; border-top: 1px solid var(--line); }
+.hovercard .c-above { color: var(--ask); } .hovercard .c-below { color: var(--bid); } .hovercard .c-buy { color: var(--candleUp); } .hovercard .c-sell { color: var(--candleDown); } .hovercard .c-muted { color: var(--muted); }
+.hovercard .c-above .hc-label, .hovercard .c-below .hc-label, .hovercard .c-buy .hc-label, .hovercard .c-sell .hc-label, .hovercard .c-muted .hc-label { color: var(--muted); }
 .tip { position: fixed; inset: auto; margin: 0; max-width: 300px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--text); color: var(--bg); font-size: 11.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0, 0, 0, .22); white-space: pre-line; pointer-events: none; opacity: 0; transition: opacity .12s ease-out; z-index: 200; }
 .tip.on { opacity: 1; }
 .tip:not(:popover-open):not(.on) { display: none; }
@@ -160,7 +170,7 @@ dialog.guide::backdrop { background: rgba(8, 10, 14, .5); backdrop-filter: blur(
 .guide-head h1 { margin: 0; font-size: 18px; letter-spacing: .01em; }
 .guide-head .sub { color: var(--muted); font-size: 12px; }
 .guide-head > div { flex: 1; min-width: 0; }
-.guide-x { width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 0; background: transparent; font-size: 22px; line-height: 1; color: var(--muted); }
+.guide-x { width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; color: var(--muted); --cross: 14px; --weight: 1.8px; }
 .guide-x:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
 .guide-jump { display: none; max-width: 52vw; }
 .guide-body { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
@@ -211,7 +221,11 @@ button.help:hover, button.help.open { color: var(--bg); background: var(--text);
 ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.45; }
 .help-body .lead { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }
 .help-body .more { margin-top: 10px; align-self: flex-start; }
-.panel-x { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; border-radius: 6px; }
+/* The cross on a close button is two bars, not a typed ×: a font puts that character wherever its own metrics say, which is rarely the middle of the button. */
+:is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x) { position: relative; padding: 0; font-size: 0; line-height: 0; --cross: 10px; --weight: 1.6px; }
+:is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x)::before, :is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x)::after { content: ""; position: absolute; left: 50%; top: 50%; width: var(--cross); height: var(--weight); margin: calc(var(--weight) / -2) 0 0 calc(var(--cross) / -2); border-radius: 1px; background: currentColor; transform: rotate(45deg); }
+:is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x)::after { transform: rotate(-45deg); }
+.panel-x { width: 24px; height: 24px; border: 0; background: transparent; color: var(--muted); border-radius: 6px; }
 .panel-x:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
 .panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .panel-tools[hidden] { display: none; }
@@ -248,7 +262,7 @@ button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
 .panel .grip { width: 18px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent radial-gradient(circle, color-mix(in srgb, var(--text) 62%, transparent) 1.5px, transparent 1.9px) center / 6px 6px repeat space; background-origin: content-box; background-clip: content-box; padding: 3px 4px; cursor: grab; touch-action: none; }
 .panel .grip:hover { background-color: color-mix(in srgb, var(--text) 8%, transparent); }
 .panel .grip:focus-visible { outline: 2px solid var(--ui); outline-offset: 1px; }
-.panel .srow .x { width: 24px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; border-radius: 5px; }
+.panel .srow .x { width: 24px; height: 22px; border: 0; background: transparent; color: var(--muted); border-radius: 5px; --cross: 9px; }
 .panel .srow .x:hover { background: color-mix(in srgb, var(--ask) 14%, transparent); color: var(--ask); }
 .menu { position: fixed; z-index: 70; display: flex; flex-direction: column; min-width: 220px; padding: 4px; overflow-y: auto; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 18px 44px rgba(0, 0, 0, .30), 0 2px 8px rgba(0, 0, 0, .14); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }

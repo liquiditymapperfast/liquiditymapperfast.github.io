@@ -7,9 +7,10 @@ import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { venueLabel } from '../venues.ts';
 import { activeIds, emptyScopeMessage } from '../scope.ts';
 import type { View } from '../view.ts';
-import { price as fmtPrice, usd } from '../format.ts';
+import { clock, price as fmtPrice, usd } from '../format.ts';
 import { gutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
-import { BAR_STATS, GROUP_TITLES, PRESETS, SIZE_BUCKET_LABELS, enabledStats, rowScale, statDef, strength, type StatGroup } from './bar-stats.ts';
+import { BAR_STATS, GROUP_TITLES, PRESETS, SIZE_BUCKET_LABELS, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
+import { HoverCard } from '../hovercard.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
@@ -31,6 +32,8 @@ abstract class TimePane {
   #time: ReturnType<HeatPane['timeGestures']> | null = null;
   #pinned: Pt | null = null;
   #source: 'depth' | 'oi' | 'lt' | 'bars';
+  /** Where the pointer (or the pinned finger) is, in the page, for a popup that is a page element rather than canvas drawing. */
+  protected pointer: { x: number; y: number } | null = null;
 
   constructor(host: HTMLElement, protected store: Store, protected view: View, cls: string) {
     this.root.className = `pane ${cls}`; this.head.className = 'pane-head';
@@ -41,10 +44,11 @@ abstract class TimePane {
     this.canvas.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const r = this.canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      this.pointer = { x: e.clientX, y: e.clientY };
       if (x < 0 || x > this.plotW) { this.store.set({ hover: null }); return; }
       this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: null, y, source } });
     });
-    this.canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') this.store.set({ hover: null }); });
+    this.canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') { this.pointer = null; this.store.set({ hover: null }); } });
     bindTouch(this.canvas, new GestureRecognizer(this.#touchHandlers()));
   }
 
@@ -59,6 +63,7 @@ abstract class TimePane {
     const pin = (p: Pt): void => {
       if (p.x < 0 || p.x > this.plotW) { this.#unpin(); return; }
       this.#pinned = p;
+      const box = this.canvas.getBoundingClientRect(); this.pointer = { x: box.left + p.x, y: box.top + p.y };
       this.store.set({ hover: { t: this.view.tOf(p.x, this.plotW), price: null, y: p.y, source: this.#source, touch: true } });
     };
     return {
@@ -378,6 +383,9 @@ const hexMix = (a: string, b: string, t: number): string => {
 };
 /** Strip under the chart with the enabled per-candle statistics, aligned to the candle slots (footprint on); the Stats button chooses, orders and configures them. */
 export class BarStatsPane extends TimePane {
+  /** The strip is too short for a popup drawn on it, so the cell's popup is a page element. */
+  #card = new HoverCard();
+  #cell: StatCell | null = null;
   #button = document.createElement('button');
   #panel: Panel | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private heat: HeatPane) {
@@ -429,6 +437,13 @@ export class BarStatsPane extends TimePane {
   }
 
   protected draw(): void {
+    this.#cell = null;
+    this.#strip();
+    const at = this.pointer;
+    if (this.#cell && at) this.#card.show(statCellLines(this.#cell), at.x, at.y); else this.#card.hide();
+  }
+
+  #strip(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state;
     const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000, defs = enabledStats(state.barStats), options = state.barStatOptions;
     const readout = this.head.querySelector('.readout');
@@ -440,10 +455,24 @@ export class BarStatsPane extends TimePane {
     const slot = pw * tfMs / (v.t1 - v.t0), top = 3, rowH = Math.max(15, (ph - 6) / defs.length), filled = options.cells === 'filled';
     const visible = all.map((bar, i) => i).filter(i => all[i]!.t + tfMs >= v.t0 && all[i]!.t <= v.t1);
     if (!visible.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No executions recorded for the candles in view.'), 12, ph / 2); return; }
+    // Under the pointer: the candle (any pane's pointer says which, the time axis being shared) and, from this pane's own pointer, the row.
+    const hv = state.hover, hoverIdx = hv ? all.findIndex(bar => hv.t >= bar.t && hv.t < bar.t + tfMs) : -1;
+    const hoverRow = hv && hv.source === 'bars' ? Math.floor((hv.y - top) / rowH) : -1;
+    let hoverCell: StatCell | null = null;
     ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     defs.forEach((def, rowIndex) => {
       const values = def.compute(input), scale = rowScale(def, visible.map(i => values[i]));
-      const unusual = state.highlight.on && def.scale !== 'plain' ? anomalies(Float64Array.from(values, value => value === null || value === undefined ? NaN : Math.abs(value)), state.highlight).flag : null;
+      const found = state.highlight.on && def.scale !== 'plain' ? anomalies(Float64Array.from(values, value => value === null || value === undefined ? NaN : Math.abs(value)), state.highlight) : null, unusual = found?.flag ?? null;
+      const mine = hoverIdx >= 0 && rowIndex === hoverRow ? values[hoverIdx] : undefined;
+      if (hoverIdx >= 0 && rowIndex === hoverRow && mine !== null && mine !== undefined) {
+        const before = all[hoverIdx - 1], previous = before && before.t === all[hoverIdx]!.t - tfMs ? values[hoverIdx - 1] : null;
+        const seen = visible.map(i => values[i]).filter((x): x is number => x !== null && x !== undefined), rank = (x: number) => def.scale === 'diverging' ? Math.abs(x) : x;
+        hoverCell = {
+          label: def.label, title: def.title, value: def.format(mine), tone: def.scale === 'diverging' ? (mine - (def.center ?? 0) >= 0 ? 'buy' : 'sell') : 'text', time: clock(all[hoverIdx]!.t, true),
+          previous: previous === null || previous === undefined ? null : def.format(previous), rank: 1 + seen.filter(x => rank(x) > rank(mine)).length, of: seen.length,
+          sigma: unusual?.[hoverIdx] && found ? found.sigma[hoverIdx] ?? null : null,
+        };
+      }
       const y = top + rowIndex * rowH;
       if (!filled) { ctx.globalAlpha = 0.5; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y + rowH - 1) + 0.5); ctx.lineTo(pw, Math.round(y + rowH - 1) + 0.5); ctx.stroke(); ctx.globalAlpha = 1; }
       for (const i of visible) {
@@ -467,6 +496,18 @@ export class BarStatsPane extends TimePane {
         }
       }
     });
+    // The cell under the pointer: its column and row tinted, the cell itself boxed, and a popup beside the pointer.
+    if (hoverIdx >= 0) {
+      const x = v.xOf(all[hoverIdx]!.t, pw), w = Math.max(1, slot - 1), gridH = defs.length * rowH;
+      ctx.save(); ctx.fillStyle = p.text; ctx.globalAlpha = p.dark ? 0.12 : 0.08; ctx.fillRect(x, top, w, gridH);
+      if (hoverRow >= 0 && hoverRow < defs.length) {
+        const y = top + hoverRow * rowH;
+        ctx.fillRect(0, y, pw, rowH - 1);
+        ctx.globalAlpha = 1; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.max(1, Math.round(w) - 1), Math.round(rowH) - 2);
+      } else { ctx.globalAlpha = 0.5; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x) + 0.5, top + 0.5, Math.max(1, Math.round(w) - 1), gridH - 1); }
+      ctx.restore();
+      this.#cell = hoverCell;
+    }
     ctx.textAlign = 'left'; ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
     defs.forEach((def, i) => { const y = top + i * rowH, w = ctx.measureText(def.label).width + 10; ctx.globalAlpha = 0.88; ctx.fillStyle = p.panel; ctx.fillRect(2, y + 2, w, rowH - 5); ctx.globalAlpha = 1; ctx.fillStyle = p.muted; ctx.fillText(def.label, 6, y + (rowH - 1) / 2); });
   }

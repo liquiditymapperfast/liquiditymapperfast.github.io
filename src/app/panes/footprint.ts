@@ -4,6 +4,9 @@ import type { Bounds } from '../view.ts';
 import { View } from '../view.ts';
 import type { CandleRow } from '../store.ts';
 import type { FootprintResponse } from '../source.ts';
+import type { InfoLine } from '../infobox.ts';
+import { price as fmtPrice, clock } from '../format.ts';
+import { t } from '../i18n.ts';
 
 type Row = [number, number, number];
 /** Trade counts and USD by size bucket (see SIZE_BUCKET_LABELS); only present for bars whose executions were recorded with stats. */
@@ -200,4 +203,44 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintDat
     }
   }
   ctx.globalAlpha = 1; ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle';
+}
+
+/** One price row of one candle, with how it stands in that candle. */
+export interface RowCell {
+  low: number; buy: number; sell: number;
+  /** The busiest row of the candle (the point of control). */
+  poc: boolean;
+  /** This row's share of the candle's executed volume, 0 to 1. */
+  share: number;
+  barBuy: number; barSell: number;
+}
+
+/** The row of `bar` that holds `price`, with its place in the candle, or null where the candle has no executions at that price. */
+export function rowCellAt(bar: Bar, step: number, price: number): RowCell | null {
+  const row = bar.rows.find(r => price >= r[0] && price < r[0] + step);
+  if (!row) return null;
+  let busiest = 0, total = 0;
+  for (const r of bar.rows) { busiest = Math.max(busiest, r[1] + r[2]); total += r[1] + r[2]; }
+  return { low: row[0], buy: row[1], sell: row[2], poc: row[1] + row[2] >= busiest && busiest > 0, share: total > 0 ? (row[1] + row[2]) / total : 0, barBuy: bar.buyUsd, barSell: bar.sellUsd };
+}
+
+const signed = (value: number): string => (value < 0 ? '-' : value > 0 ? '+' : '') + volText(Math.abs(value));
+
+/** The popup for a footprint row: its price span, what was sold and bought there, which side had it, and the candle it belongs to. */
+export function rowCellLines(cell: RowCell, bar: Bar, step: number, tf: string): InfoLine[] {
+  const side = imbalance(cell.buy, cell.sell), delta = cell.buy - cell.sell, big = Math.max(cell.buy, cell.sell), small = Math.min(cell.buy, cell.sell);
+  const lines: InfoLine[] = [
+    { text: `${fmtPrice(cell.low, step)} – ${fmtPrice(cell.low + step, step)}`, bold: true },
+    { label: t('Candle'), text: `${clock(bar.t, true)} · ${tf}` },
+    { label: t('Sold'), text: `$${volText(cell.sell)}`, color: 'sell' },
+    { label: t('Bought'), text: `$${volText(cell.buy)}`, color: 'buy' },
+    { label: t('Delta'), text: signed(delta), color: delta > 0 ? 'buy' : delta < 0 ? 'sell' : 'text', bold: true },
+    { label: t('Share of candle'), text: `${(cell.share * 100).toFixed(cell.share < 0.1 ? 1 : 0)}%` },
+  ];
+  if (side) lines.push({ label: t('Heavier side'), text: small > 0 ? t('{side} {ratio}×', { side: side === 'buy' ? t('buyers') : t('sellers'), ratio: (big / small).toFixed(1) }) : side === 'buy' ? t('buyers only') : t('sellers only'), color: side === 'buy' ? 'buy' : 'sell' });
+  else lines.push({ label: t('Heavier side'), text: t('balanced'), color: 'muted' });
+  if (cell.poc) lines.push({ text: t('Point of control: the busiest row of this candle'), color: 'muted', wrap: true });
+  lines.push({ label: t('Candle volume'), text: `$${volText(cell.barBuy + cell.barSell)}`, rule: true });
+  lines.push({ label: t('Candle delta'), text: signed(cell.barBuy - cell.barSell), color: cell.barBuy > cell.barSell ? 'buy' : cell.barBuy < cell.barSell ? 'sell' : 'text' });
+  return lines;
 }

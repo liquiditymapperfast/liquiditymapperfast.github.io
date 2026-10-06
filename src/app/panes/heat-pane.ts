@@ -17,7 +17,8 @@ import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
-import { FootprintData, FootprintLod, footprintLayout, paintFootprint, visibilityFactor, type LodFrame } from './footprint.ts';
+import { FootprintData, FootprintLod, footprintLayout, paintFootprint, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
+import { paintInfoBox } from '../infobox.ts';
 import { TrapData, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { t } from '../i18n.ts';
@@ -608,7 +609,7 @@ export class HeatPane {
     ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     const axisX = this.#w - AXIS_W;
     if (ownY && y >= 0 && y <= ph) { ctx.fillStyle = p.text; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(fmtPrice(hv.price!), axisX + 6, y); }
-    let trapHit: Trap | null = null;
+    let trapHit: Trap | null = null, rowHit: ReturnType<HeatPane['footprintCellUnder']> = null;
     const touch = hv.touch === true;
     // Beside a mouse pointer a readout sits to one side; above a finger, so the hand does not cover it.
     const above = (bw: number, bh: number, clearance: number): { bx: number; by: number } => {
@@ -629,6 +630,8 @@ export class HeatPane {
       ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     } else if (ownY && inX && (trapHit = this.#trapUnder(x, hv.t, hv.price!, pw))) {
       this.#paintTrapPopup(ctx, trapHit, x, y, pw, ph, touch);
+    } else if (ownY && inX && (rowHit = this.#footprintUnder(x, hv.t, hv.price!, pw))) {
+      this.#paintFootprintPopup(ctx, rowHit, x, y, pw, ph, touch);
     } else if (ownY && inX && state.layer === 'liquidity') {
       const cell = this.valueAt(hv.t, hv.price!);
       const source = cell ? this.#sourceOf(hv.t, hv.price!, cell.ask > cell.bid ? 'ask' : 'bid') : '';
@@ -656,6 +659,29 @@ export class HeatPane {
     const slot = pw * tfMs / (this.view.t1 - this.view.t0), left = this.view.xOf(start, pw) + footprintLayout(slot).colLeft;
     if (x < left) return null;
     return this.#traps.on(start).find(trap => price >= trap.zoneLow && price <= trap.zoneHigh) ?? null;
+  }
+
+  /** The footprint row under the pointer (and its candle), while the footprint is clearly on screen; null elsewhere. Also read by tests. */
+  footprintCellUnder(x: number, t: number, price: number, pw: number): { bar: FootprintBar; cell: RowCell; x: number; y: number; w: number; h: number } | null {
+    const data = this.footprintData, step = data.step, v = this.view;
+    if (!(step > 0) || this.#lodFrame.barAlpha < 0.3) return null;
+    const tfMs = TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000, start = Math.floor(t / tfMs) * tfMs, bar = data.bars.get(start);
+    if (!bar) return null;
+    const slot = pw * tfMs / (v.t1 - v.t0), layout = footprintLayout(slot), left = v.xOf(start, pw) + layout.colLeft;
+    if (x < left || x > left + layout.colWidth) return null;
+    const cell = rowCellAt(bar, step, price);
+    if (!cell) return null;
+    const ph = this.plotH, rowPx = Math.abs(v.yOf(0, ph) - v.yOf(step, ph));
+    return { bar, cell, x: left, y: v.yOf(cell.low + step, ph), w: layout.colWidth, h: Math.max(1, rowPx - 1) };
+  }
+  #footprintUnder(x: number, t: number, price: number, pw: number): ReturnType<HeatPane['footprintCellUnder']> { return this.footprintCellUnder(x, t, price, pw); }
+
+  /** Box the row under the pointer and say what it holds. */
+  #paintFootprintPopup(ctx: CanvasRenderingContext2D, hit: NonNullable<ReturnType<HeatPane['footprintCellUnder']>>, x: number, y: number, pw: number, ph: number, touch: boolean): void {
+    const p = this.#palette;
+    ctx.save(); ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.9; ctx.strokeRect(Math.round(hit.x) + 0.5, Math.round(hit.y) + 0.5, Math.max(1, Math.round(hit.w) - 1), Math.max(1, Math.round(hit.h)));
+    ctx.restore();
+    paintInfoBox(ctx, rowCellLines(hit.cell, hit.bar, this.footprintData.step, this.store.state.timeframe), x, y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
   }
 
   #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number, touch = false): void {

@@ -13,6 +13,8 @@ import { coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance
 import { GROUPS, WheelNotches, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
+import { paintInfoBox, type InfoLine } from '../infobox.ts';
+import { levelLines, venueCellLines, type LevelFacts } from './ladder-info.ts';
 import { t } from '../i18n.ts';
 
 const ROW_H = 17;
@@ -306,9 +308,56 @@ export class LadderPane {
     }
   }
 
+  /**
+   * What the pointer is directly on, if it is on something drawn: a venue's cell (or its piece of the bar) says that venue's part of the
+   * level, and the USD column or a plain bar says the whole level. Null over the price column, empty space and the cumulative area.
+   */
+  #cellUnder(state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>,
+    o: { x: number; w: number; title: string; cells: string[] | null; head: number; cover: { lo: number; hi: number } | null; centerBin: number; rows: number; markBin: number; mark: number; step: number },
+    k: { priceW: number; usdW: number; cw: number; barX: number; barW: number; maxLevel: number }): { lines: InfoLine[]; x: number; y: number; w: number; h: number } | null {
+    const hv = this.#hover; if (!hv || this.#drag) return null;
+    const { x: x0, w, rows, markBin, step, centerBin, head } = o;
+    if (hv.x < x0 || hv.x >= x0 + w || hv.y < head || hv.y >= head + rows * ROW_H) return null;
+    const r = Math.floor((hv.y - head) / ROW_H), bin = centerBin + Math.floor(rows / 2) - r - g.bin0;
+    if (bin < 0 || bin >= g.nBins) return null;
+    const rowLo = (g.bin0 + bin) * step;
+    if (o.cover && (rowLo + step <= o.cover.lo || rowLo >= o.cover.hi)) return null;
+    const bid = g.totalBid[bin]!, ask = g.totalAsk[bin]!, isAsk = bin > markBin || (bin === markBin && ask > bid), size = isAsk ? ask : bid;
+    if (!(size > 0)) return null;
+    const y = head + r * ROW_H, ids = o.cells, at = (i: number): number => (isAsk ? g.ask[i] : g.bid[i])?.[bin] ?? 0;
+    const venues = ids ? ids.map((id, i) => ({ name: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, usd: at(i) })) : [];
+    const facts: LevelFacts = { low: rowLo, step, mark: o.mark, ask: isAsk, size, cumulative: (isAsk ? cum.ask : cum.bid)[bin] ?? size, venues: venues.filter(v => v.usd > 0), ...(o.title ? { title: o.title } : {}) };
+    const cellsX = x0 + k.priceW + k.usdW + 8;
+    if (ids && hv.x >= cellsX && hv.x < cellsX + ids.length * k.cw) {
+      const i = Math.floor((hv.x - cellsX) / k.cw);
+      return at(i) > 0 ? { lines: venueCellLines(facts, venues[i]!), x: cellsX + i * k.cw, y: y + 3, w: Math.max(2, k.cw - 2), h: ROW_H - 6 } : null;
+    }
+    if (hv.x >= x0 + k.priceW && hv.x < x0 + k.priceW + k.usdW) return { lines: levelLines(facts), x: x0 + k.priceW, y, w: k.usdW, h: ROW_H };
+    if (state.ladderShow === 'cumulative' || hv.x < k.barX) return null;
+    if (ids) {
+      let sx = k.barX;
+      for (let i = 0; i < ids.length; i++) {
+        const vv = at(i); if (vv <= 0) continue;
+        const seg = vv / k.maxLevel * k.barW, len = Math.max(1, seg - 0.5);
+        if (hv.x < sx + len) return { lines: venueCellLines(facts, venues[i]!), x: sx, y: y + 2, w: len, h: ROW_H - 4 };
+        sx += seg;
+      }
+      return null;
+    }
+    const len = Math.max(1, size / k.maxLevel * k.barW);
+    return hv.x < k.barX + len ? { lines: levelLines(facts), x: k.barX, y: y + 2, w: len, h: ROW_H - 4 } : null;
+  }
+
+  /** Box what is under the pointer and say what it is. */
+  #paintCell(ctx: CanvasRenderingContext2D, cell: { lines: InfoLine[]; x: number; y: number; w: number; h: number }, o: { x: number; w: number; head: number }, rows: number): void {
+    const hv = this.#hover, p = this.#palette; if (!hv) return;
+    ctx.save(); ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.95; ctx.strokeRect(Math.round(cell.x) + 0.5, Math.round(cell.y) + 0.5, Math.max(1, Math.round(cell.w) - 1), Math.max(1, Math.round(cell.h) - 1)); ctx.restore();
+    paintInfoBox(ctx, cell.lines, hv.x, hv.y, { x0: o.x, y0: o.head, x1: o.x + o.w, y1: o.head + rows * ROW_H }, p);
+  }
+
   /** Mirror hover: highlight the rows from the mark to the hovered row and the same number of rows on the other side, dim the rest, and compare the cumulative liquidity of the two bands. */
   #paintMirror(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>,
-    o: { x: number; w: number; title: string; centerBin: number; markBin: number; mark: number; step: number }, head: number, rows: number): void {
+    o: { x: number; w: number; title: string; centerBin: number; markBin: number; mark: number; step: number }, head: number, rows: number, cellUnder = false): void {
     const hv = this.#hover, p = this.#palette;
     if (!hv || this.#drag || !state.show.mirror || hv.x < o.x || hv.x >= o.x + o.w || hv.y < head || hv.y >= head + rows * ROW_H) return;
     const { centerBin, markBin, step } = o, top = Math.floor(rows / 2);
@@ -325,7 +374,8 @@ export class LadderPane {
     const bandTop = head + rowOf(Math.max(hb, mb)) * ROW_H, bandBottom = head + (rowOf(Math.min(hb, mb)) + 1) * ROW_H, pct = percentText(stats);
     dimOutside(ctx, o.x, o.w, head, head + rows * ROW_H, bandTop, bandBottom, p.bg, 0.55);
     paintBand(ctx, p, o.x, o.w, { y: bandTop, color: p.ask, label: `${usd(stats.aboveUsd)} · ${pct}` }, { y: bandBottom, color: p.bid, label: `${usd(stats.belowUsd)} · ${pct}` }, { y0: head, y1: head + rows * ROW_H });
-    paintMirrorBox(ctx, mirrorLines(stats, { above: t('Asks'), below: t('Bids') }, o.title || undefined), hv.x, hv.y, { x0: o.x, y0: head, x1: o.x + o.w, y1: head + rows * ROW_H }, p,
+    // Directly over a cell or a block the popup says what that is, and the comparison's own box would only cover it.
+    if (!cellUnder) paintMirrorBox(ctx, mirrorLines(stats, { above: t('Asks'), below: t('Bids') }, o.title || undefined), hv.x, hv.y, { x0: o.x, y0: head, x1: o.x + o.w, y1: head + rows * ROW_H }, p,
       c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'muted' ? p.muted : p.text, stats.hoveredSide === 'above' ? 'down' : 'up');
   }
 
@@ -441,7 +491,9 @@ export class LadderPane {
       }
       if (bin === markBin) { ctx.fillStyle = p.ask; ctx.fillRect(x0, y + ROW_H - 1, w, 1); }
     }
-    this.#paintMirror(ctx, state, g, cum, o, o.head, rows);
+    const cell = this.#cellUnder(state, g, cum, o, { priceW, usdW, cw, barX, barW, maxLevel });
+    this.#paintMirror(ctx, state, g, cum, o, o.head, rows, cell !== null);
+    if (cell) this.#paintCell(ctx, cell, o, rows);
     // The scale label shares the header row with the DEPTH label, so it only appears when the bar column is wide enough for both.
     if (o.title || barW >= 170) { ctx.fillStyle = p.muted; ctx.textAlign = 'right'; ctx.fillText(t('MAX {value}', { value: usd(maxLevel) }), x0 + w - 6, head - HEAD_H / 2); }
   }

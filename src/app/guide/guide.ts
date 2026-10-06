@@ -3,6 +3,7 @@ import { isCoarse } from '../device.ts';
 import { SECTIONS, readingMinutes, type Block, type Section } from './content.ts';
 import { createFigure } from './figures.ts';
 import { parseInline } from './markup.ts';
+import { t } from '../i18n.ts';
 
 /**
  * The guide: a modal with the table of contents on the left and the text on the right, opened by the Guide button, by a "?" panel's link
@@ -46,7 +47,7 @@ export function openGuide(section?: string): void {
   if (open) { if (section) open.scrollTo(section); return; }
   const figures: { dispose(): void }[] = [];
   const dialog = el('dialog', { class: 'guide', ariaLabel: 'Guide' });
-  const closeButton = el('button', { type: 'button', class: 'guide-x', textContent: '×', tip: 'Close the guide (Esc)', ariaLabel: 'Close the guide' });
+  const closeButton = el('button', { type: 'button', class: 'guide-x', tip: t('Close the guide (Esc)'), ariaLabel: t('Close the guide') });
   const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: 'Guide' }), el('span', { class: 'sub', textContent: `About ${readingMinutes()} minutes to read. Pictures move: ${isCoarse() ? 'tap to look closer, pause or scrub them' : 'hover, pause or scrub them'}.` })), closeButton);
   const toc = el('nav', { class: 'guide-toc', ariaLabel: 'Contents' });
   const select = el('select', { class: 'guide-jump', ariaLabel: 'Jump to a section' });

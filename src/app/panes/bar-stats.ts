@@ -3,6 +3,7 @@ import type { CandleRow, OiBar } from '../store.ts';
 import { price as fmtPrice } from '../format.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { t } from '../i18n.ts';
+import type { InfoLine } from '../infobox.ts';
 
 /**
  * Per-candle statistics shown under the footprint. Each definition computes one number per bar from the executions recorded for
@@ -159,4 +160,36 @@ export function strength(def: StatDef, value: number, scale: { lo: number; hi: n
   if (d <= scale.lo) return 0;
   if (d >= scale.hi || !(scale.hi > scale.lo)) return 1;
   return (Math.log(d) - Math.log(scale.lo)) / (Math.log(scale.hi) - Math.log(scale.lo));
+}
+
+/** What the pointer is on in the strip: one statistic of one candle, with what is needed to say how it compares. */
+export interface StatCell {
+  label: string;
+  /** What the statistic means (the definition's own sentence). */
+  title: string;
+  value: string;
+  /** The colour of the value: a signed statistic is green or red by its sign. */
+  tone: 'buy' | 'sell' | 'text';
+  time: string;
+  /** The same statistic on the candle before, when that candle is the one just before. */
+  previous: string | null;
+  /** Where this value stands among the candles in view (1 is the largest), and how many there are. */
+  rank: number | null;
+  of: number;
+  /** How far above its recent norm the value is, when the highlighter flagged it. */
+  sigma: number | null;
+}
+
+/** The popup for a cell of the strip. */
+export function statCellLines(cell: StatCell): InfoLine[] {
+  const lines: InfoLine[] = [
+    { text: cell.label, bold: true },
+    { label: t('Candle'), text: cell.time },
+    { label: t('Value'), text: cell.value, color: cell.tone, bold: true },
+  ];
+  if (cell.previous !== null) lines.push({ label: t('Candle before'), text: cell.previous });
+  if (cell.rank !== null && cell.of > 1) lines.push({ label: t('Rank in view'), text: t('{rank} of {total}', { rank: cell.rank, total: cell.of }) });
+  if (cell.sigma !== null && Number.isFinite(cell.sigma)) lines.push({ label: t('Unusual'), text: t('{z}σ above its baseline', { z: cell.sigma.toFixed(1) }), bold: true });
+  lines.push({ text: cell.title, color: 'muted', wrap: true, rule: true });
+  return lines;
 }
