@@ -124,7 +124,13 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 /* ---- shared panel (stats, highlights, sounds) ---- */
 .panel { position: fixed; z-index: 60; display: flex; flex-direction: column; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
   box-shadow: 3px 3px 0 var(--shadow); font-size: 12px; }
-.panel-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.panel-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; cursor: grab; user-select: none; touch-action: none; }
+.panel-head button { cursor: pointer; }
+/* A window that is being dragged (panels, the venue picker, the guide): the hand stays closed wherever the pointer is, and nothing is selected on the way. */
+.being-moved, .being-moved * { cursor: grabbing !important; user-select: none; }
+dialog.venues h3 { cursor: grab; touch-action: none; }
+.guide-head { cursor: grab; touch-action: none; }
+.guide-head :is(button, select, a) { cursor: pointer; }
 .panel-head h3 { margin: 0; flex: 1; font-size: 13px; font-weight: 650; letter-spacing: .005em; }
 /* Tooltips (tip.ts): one box in the top layer for the whole page. */
 /* The card the panes too short for a canvas box use (hovercard.ts): the same box as infobox.ts draws, with the same measures. */

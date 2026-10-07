@@ -1,4 +1,6 @@
 import { el } from './dom.ts';
+import { compactBar } from './device.ts';
+import { makeDraggable } from './drag.ts';
 import type { VenueControl, VenueEntry } from './source.ts';
 import { t } from './i18n.ts';
 
@@ -12,8 +14,12 @@ export async function openVenueDialog(venues: VenueControl, selectionProduct: ()
   const dialog = el('dialog', { class: 'venues' });
   dialog.append(el('h3', { textContent: t('Order book venues') }), el('p', { class: 'muted', textContent: t('Loading…') }));
   document.body.append(dialog); dialog.showModal();
+  // Movable by its title like the panels (the title is replaced when the catalogue arrives, so the press is looked at, not one element), and brought back inside the page when that changes size.
+  const drag = makeDraggable(dialog, { grabs: target => target.closest('h3') !== null, enabled: () => !compactBar(), size: () => ({ width: dialog.offsetWidth, need: dialog.offsetHeight }) });
+  const keepInside = (): void => drag.clamp();
+  window.addEventListener('resize', keepInside);
   let timer = 0;
-  dialog.addEventListener('close', () => { window.clearInterval(timer); dialog.remove(); });
+  dialog.addEventListener('close', () => { window.clearInterval(timer); window.removeEventListener('resize', keepInside); dialog.remove(); });
   const close = el('button', { textContent: t('Close'), onclick: () => dialog.close() });
   try {
     const catalog = await venues.catalog();

@@ -1,11 +1,15 @@
 import { el } from './dom.ts';
 import { compactBar, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
+import { EDGE, chooseSide, placeOn, type Side } from './placement.ts';
+import { makeDraggable } from './drag.ts';
 import { t } from './i18n.ts';
 
 /**
  * One panel for every settings popover (bar stats, highlights, sounds, ...): a header, optional sticky tools, a scrolling body, and
- * a small set of row builders so every control lines up the same way. Only one panel is open at a time.
+ * a small set of row builders so every control lines up the same way. Only one panel is open at a time. It opens on the side of its button
+ * where it fits (`placement.ts`), and it can be dragged by its title bar (`drag.ts`): a panel that has been moved stays where it was put,
+ * also when its contents change, and no longer closes when a press lands outside it (it closes on the x, Escape or its button).
  */
 export interface PanelOptions {
   title: string;
@@ -41,29 +45,40 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
   const width = options.width ?? 380;
   document.body.append(root);
 
-  const reposition = (): void => {
+  /**
+   * The height its contents make it, with no limit on it. (Not `root.scrollHeight`: once a maximum height is set the body shrinks inside the
+   * panel and the root reports the height it was cut to, so every later look would find that it fits.)
+   */
+  const natural = (): number => { const keep = root.style.maxHeight; root.style.maxHeight = 'none'; const height = root.offsetHeight; root.style.maxHeight = keep; return height; };
+  /** The side of its button it opened on: chosen when it opens and when the window changes, not on every redraw, so ticking an option cannot make it jump across the button. */
+  let side: Side | null = null;
+  const drag = makeDraggable(root, {
+    grabs: target => head.contains(target) && !target.closest('button, a, input, select, textarea'),
+    enabled: () => !compactBar(),
+    size: () => ({ width: root.offsetWidth, need: natural() }),
+  });
+
+  const reposition = (rechoose = false): void => {
     // On a phone the stylesheet makes every panel a bottom sheet, so no inline position or size may be left behind to fight it.
-    if (compactBar()) { root.style.top = ''; root.style.left = ''; root.style.width = ''; root.style.maxHeight = ''; return; }
-    root.style.width = `${Math.min(width, window.innerWidth - 16)}px`;
-    const a = anchor.getBoundingClientRect();
-    const below = window.innerHeight - a.bottom - 12, above = a.top - 12, up = below < 300 && above > below;
-    const room = Math.max(180, Math.min(window.innerHeight - 24, up ? above : below));
-    root.style.maxHeight = `${room}px`;
-    const height = Math.min(root.scrollHeight, room), w = root.offsetWidth;
-    const top = up ? a.top - 6 - height : a.bottom + 6;
-    const left = (options.align ?? 'left') === 'right' ? a.right - w : a.left;
-    root.style.top = `${Math.max(8, top)}px`; root.style.left = `${Math.min(Math.max(8, left), window.innerWidth - w - 8)}px`;
+    if (compactBar()) { drag.reset(); side = null; root.style.top = ''; root.style.left = ''; root.style.width = ''; root.style.maxHeight = ''; return; }
+    root.style.width = `${Math.min(width, window.innerWidth - 2 * EDGE)}px`;
+    if (drag.moved()) { drag.clamp(); return; }
+    const a = anchor.getBoundingClientRect(), box = { left: a.left, top: a.top, right: a.right, bottom: a.bottom };
+    const need = natural(), view = { width: window.innerWidth, height: window.innerHeight };
+    if (side === null || rechoose) side = chooseSide(box, need, view);
+    const at = placeOn(side, box, need, root.offsetWidth, options.align ?? 'left', view);
+    root.style.maxHeight = `${at.maxHeight}px`; root.style.top = `${at.top}px`; root.style.left = `${at.left}px`;
   };
-  // On a phone the scrim closes the panel; elsewhere a press outside it does.
+  // On a phone the scrim closes the panel; elsewhere a press outside it does, unless it has been moved: then it is a window the person put somewhere.
   const onPointer = (event: PointerEvent): void => {
-    if (compactBar()) return;
+    if (compactBar() || drag.moved()) return;
     const t = event.target as Node;
     // A menu opened from a control inside the panel (a dropdown) is part of it.
     if (!root.contains(t) && !anchor.contains(t) && !(t instanceof Element && t.closest('.menu'))) panel.close();
   };
   const scrim = scrimFor(root, 59, () => panel.close());
   const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') panel.close(); };
-  const onResize = (): void => { scrim.sync(); reposition(); };
+  const onResize = (): void => { scrim.sync(); reposition(true); };
   const stopMode = onLayoutMode(onResize);
   const panel: Panel = {
     root, tools, body, anchor,
@@ -73,7 +88,7 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
       tools.hidden = tools.childElementCount === 0;
       reposition(); body.scrollTop = keep;
     },
-    reposition,
+    reposition: () => reposition(),
     close() {
       if (current !== panel) return;
       current = null; root.remove(); scrim.remove(); anchor.classList.remove('open');

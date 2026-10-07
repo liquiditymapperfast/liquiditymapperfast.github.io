@@ -78,6 +78,8 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
 }
 .sheet { z-index: 55; display: flex; flex-direction: column; max-height: min(92dvh, 780px); transform: translateY(105%); transition: transform .26s cubic-bezier(.2, .85, .2, 1); }
 .sheet.in { transform: none; }
+html[data-bar="compact"] .panel-head { cursor: auto; touch-action: auto; }
+html[data-bar="compact"] :is(dialog.venues h3, .guide-head) { cursor: auto; touch-action: auto; }
 .sheet-head { position: relative; display: flex; align-items: center; gap: 8px; padding: 18px 8px 6px 18px; touch-action: none; cursor: grab; }
 .sheet-grab { position: absolute; left: 50%; top: 7px; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: color-mix(in srgb, var(--text) 24%, transparent); }
 .sheet-head h3 { margin: 0; flex: 1; font-size: 18px; letter-spacing: .005em; }

@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { el } from '../dom.ts';
-import { isCoarse } from '../device.ts';
+import { compactBar, isCoarse } from '../device.ts';
+import { makeDraggable } from '../drag.ts';
 import { SECTIONS, readingMinutes, type Block, type Section } from './content.ts';
 import { createFigure } from './figures.ts';
 import { parseInline } from './markup.ts';
@@ -101,8 +102,14 @@ export async function openGuide(section?: string): Promise<void> {
   };
   scroller.addEventListener('scroll', () => requestAnimationFrame(spy), { passive: true });
 
+  // Movable by its title bar like the panels (not by the close button or the section picker in it), and kept inside the page when that changes size.
+  const drag = makeDraggable(dialog, { grabs: target => target.closest('.guide-head') !== null && !target.closest('button, select, a'), enabled: () => !compactBar(), size: () => ({ width: dialog.offsetWidth, need: dialog.offsetHeight }) });
+  const keepInside = (): void => drag.clamp();
+  window.addEventListener('resize', keepInside);
+
   const close = (): void => {
     if (!open) return; open = null;
+    window.removeEventListener('resize', keepInside);
     for (const figure of figures) figure.dispose();
     dialog.close(); dialog.remove();
     if (/^#guide/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
