@@ -500,8 +500,8 @@ export class CvdPane {
   }
 
   /**
-   * With the Spot or Perp filter on: which kind this is, and how many exchanges with flow it leaves out (null with the filter off). Spot is
-   * two venues (Coinbase and Binance) and perpetuals are the rest, so "only two of my eight" is the filter at work, not a missing row.
+   * With the Spot or Perp filter on: which kind this is, and how many exchanges with flow it leaves out (null with the filter off). Fewer
+   * exchanges trade spot than perpetuals here, so "only five rows" with Spot on is the filter at work, not a missing row.
    */
   #filterNote(s: AppState): { kind: Kind; hidden: number } | undefined {
     if (s.scope === 'all') return undefined;

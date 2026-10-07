@@ -114,7 +114,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'list', items: [
         'Rows are ranked by volume. Labels sit on the **left**: rank, exchange, net flow, share, and `!5m` when quiet. Every line has its own scale, so compare shapes, not heights.',
         '**Map, 5m ... 24h** sets the span. Map follows the chart, and starts where recording did when that was later (it says so). The gear sets the rows, their heights, **Keep listed** (pin any exchanges you follow) and the sound.',
-        '**Spot / Perp** filters the column too. Spot is only Coinbase and Binance, so the top row says how many exchanges the filter leaves out.',
+        '**Spot / Perp** filters the column too, and the top row says how many exchanges the filter leaves out.',
       ] },
       { t: 'note', text: '**Flow** and **Book** in the toolbar hide or show the side columns. Only exchanges with a trade feed count.' },
     ],
@@ -167,7 +167,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'venues', title: 'Exchanges, spot and perpetuals',
     blocks: [
-      { t: 'p', text: 'The map combines up to eight exchanges: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Coinbase and Binance. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.' },
+      { t: 'p', text: 'The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.' },
       { t: 'list', items: [
         '**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.',
         'The **chips** show or hide one exchange\'s contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.',
@@ -202,7 +202,7 @@ export const SECTIONS: readonly Section[] = [
         '**This is not advice**, and it places no orders. It is a way to look at what the order books are doing.',
         '**The map is not the whole market.** It shows the exchanges you switched on, and hidden or split orders are not visible.',
         '**A fresh page is shallow far from the price.** The far side fills in over some minutes.',
-        '**A phone only records while the page is open and awake.** A sleeping screen leaves a gap in the map; **Keep screen on** in Settings holds it awake. With eight exchanges the page reads 175 to 260 MB an hour: on a mobile connection, switch some off in **Venues**.',
+        '**A phone only records while the page is open and awake.** A sleeping screen leaves a gap in the map; **Keep screen on** in Settings holds it awake. With all eleven markets the page reads about 200 to 300 MB an hour: on a mobile connection, switch some off in **Venues**.',
         '**Nothing leaves your machine.** The page talks to the exchanges and to nobody else. Recordings live in your browser; clearing the site\'s data erases them.',
         '**If something looks wrong**: check the connection status at the top right, try Recenter, and if hovering shows nothing, check the Mirror button.',
       ] },

@@ -1,11 +1,11 @@
 # Which venues start by default
 
-Measured 2026-10-05 for BTC. The default used to be every supported venue (26 books, including dead, stale and wall-to-wall shallow ones); it is now the eight below. An existing install keeps the venues it saved; the Venues picker's **Recommended** button selects this set.
+Measured 2026-10-05 for BTC; spot extended 2026-10-07 (below). The default used to be every supported venue (26 books, including dead, stale and wall-to-wall shallow ones); it is now the eleven below. An existing install keeps the venues it saved; the Venues picker's **Recommended** button selects this set.
 
 | | Venues |
 | --- | --- |
 | Perpetuals | Binance, Bybit, OKX, Bitget, Hyperliquid, Deribit |
-| Spot | Binance spot, Coinbase |
+| Spot | Binance spot, Coinbase, Bybit spot, OKX spot, Bitget spot |
 
 Everything else stays one click away in the picker.
 
@@ -13,7 +13,7 @@ Everything else stays one click away in the picker.
 
 A venue starts by default when it is **big** and its **feed is good**:
 
-1. **Big.** Among the largest perpetuals by 24 h BTC volume or open interest, or one of the two largest spot books this app can read. Deribit is the one exception on size (ninth by volume): it is included for its feed (fresh, 23 to 27 bp deep) and because it is where institutional BTC flow and options hedging sit.
+1. **Big.** Among the largest perpetuals by 24 h BTC volume or open interest, or a large spot market of an exchange whose volume can be checked (spot was Binance and Coinbase only until 2026-10-07, because those were the only large spot markets the app had a connector for). Deribit is the one exception on size (ninth by volume): it is included for its feed (fresh, 23 to 27 bp deep) and because it is where institutional BTC flow and options hedging sit.
 2. **Present and fresh.** In the server's own frames 100 % of the time, median age under a second (Hyperliquid, whose aggregated book arrives about every 3 s, is kept as the app's namesake and fifth largest open interest).
 3. **More than a touch.** At least about 400 levels or about 20 bp of reach, so the venue adds depth to a heatmap. OKX (7 bp) is the one exception: second by volume and the freshest feed measured.
 4. **Not wrong.** The book is not crossed and not stale.
@@ -79,5 +79,17 @@ Server CPU on the same machine, one viewer attached, 60 s windows, no profiler: 
 
 - One venue's numbers are one 12-minute window on one day; volumes move by ±10 % hour to hour and the ranking among the middle venues can swap. Re-run both reports before changing the list.
 - "Updated in" reflects the stream each adapter subscribes to (for example Binance's 1 Hz depth stream and a once-a-second re-valuation of very deep books), not what the exchange could send.
-- Spot venues this app has no adapter for (Bybit, OKX, Bitget, Gate.io, MEXC, HTX spot) are large; adding one would make the spot side broader than Binance and Coinbase.
+- Gate.io, MEXC and HTX spot are large by reported volume and have no connector here; their volume is the hardest to corroborate, which matters more for the flow column (where a trade is counted) than for the map.
+
+## 2026-10-07: Bybit, OKX and Bitget spot
+
+The flow column's spot side covered Binance spot and Coinbase only, about 30 % of the BTC spot volume measured above; Bybit, OKX and Bitget spot add about 21 %. They run as connector venues (book and trades on one socket each, `src/shared/venues.ts`), recommended in the browser and on the server, so a saved choice made before them gains them once. Probe of the three feeds, 150 s, calm market (OKX and Bitget traded little in that window):
+
+| Spot market | Trades (150 s) | Levels | Reach bid / ask (bp) | Depth within 10 bp / 50 bp | Sequence gaps | Crossed | Age p50 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Bybit spot | 1 002 ($1.38M) | 1000 / 1000 | 91 / 69 | $4.7M / $10.0M | 0 | never | under 0.1 s |
+| OKX spot | 83 ($0.17M) | 400 / 400 | 25 / 13 | $11.2M / $13.9M | 0 | never | under 0.1 s |
+| Bitget spot | 95 ($0.05M) | 500 / 500 | 63 / 32 | $18.7M / $28.7M | 0 | never | under 0.1 s |
+
+All three pass the rule above. Bybit spot's `seq` names the order its fills belong to, as on the perpetual (926 fills: every seq shared by several fills had one side and one time). Bitget sends its last 50 trades as a snapshot on subscribing; both Bitget connectors leave them out. The three add about 16 % to the data the page receives (12.8 KB/s on top of 78.6 KB/s, measured side by side). The feed manager serves one market per exchange (the perpetual unless `OKX_MARKET_TYPE`, `BYBIT_CATEGORY` or `BITGET_MARKET_TYPE` says spot): a server set to an exchange's spot market should switch the matching spot venue off, or that market is counted twice.
 - Hyperliquid's book is the slowest of the default set (about 3 s old); it is kept for its reach and open interest.
