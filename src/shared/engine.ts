@@ -1,14 +1,15 @@
 import type { ValuedBook } from './levels.ts';
-import { COLUMN_MS, DepthRecorder, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
+import { BROWSER_RETENTION_MS, COLUMN_MS, DepthRecorder, MIN_BIN_USD, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
 import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type SizesAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
 import { RecordedBefore } from './restart.ts';
-import { AbsorptionRecorder, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
+import { AbsorptionRecorder, GROUP_FLOOR_USD, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
 import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
 import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, type Fetcher } from './history.ts';
-import { BROWSER_VENUES, type BrowserVenue } from './venues.ts';
+import { browserVenues, type BrowserVenue } from './venues.ts';
+import { BTC, SCALES, type Coin, type CoinVenue } from './coins.ts';
 import type { BookConnector, TradeEvent } from './connector.ts';
 import type { ColumnSet, ColumnsFrame } from './columns.ts';
 
@@ -18,8 +19,7 @@ import type { ColumnSet, ColumnsFrame } from './columns.ts';
  * footprint, prints). It owns no sockets of its own and no timers beyond `start()`, so a test drives it with `step(now)`.
  */
 
-/** A browser keeps a day of recordings: the page is not a server, and a week of columns would not fit comfortably in memory. */
-export const BROWSER_RETENTION_MS = 24 * 3_600_000;
+export { BROWSER_RETENTION_MS };
 const FLUSH_MS = 30_000, PRUNE_MS = 3_600_000, OI_SAMPLE_MS = 60_000, OI_KEEP_MS = 3 * 24 * 3_600_000, PROBE_AFTER_MS = 10_000, PROBE_AGAIN_MS = 5 * 60_000;
 /** A trade this recent is the venue's price; older than that the book's mid stands in. */
 const TRADE_PRICE_MS = 15_000;
@@ -31,7 +31,7 @@ const NO_BOOK_MS = 10_000;
 
 export type VenueState = 'off' | 'connecting' | 'live' | 'error' | 'blocked';
 /** One venue as the picker and the status chips show it. */
-export interface VenueStatus { id: string; name: string; kind: 'perp' | 'spot'; recommended: boolean; selected: boolean; state: VenueState; detail: string }
+export interface VenueStatus { id: string; name: string; kind: 'perp' | 'spot'; recommended: boolean; selected: boolean; state: VenueState; detail: string; listed: boolean }
 export interface EngineMarket {
   id: string; instrumentId: string; venue: string; exchange: string; symbol: string; nativeSymbol: string; base: string; quote: string; marketType: string; quantityUnit: string; isFree: boolean;
 }
@@ -53,6 +53,9 @@ export interface EngineTick {
 export interface FootprintAnswer { step: number; fine: number; bars: ReturnType<FootprintRecorder['query']>['bars'] }
 
 export interface EngineOptions {
+  /** The coin, and the tier its size floors are kept at (the coin's own unless the page fixed another for its recordings). */
+  coin?: Coin; tier?: number;
+  /** The markets (the coin's eleven unless a test gives others). */
   venues?: readonly BrowserVenue[];
   now?: () => number;
   /** Parsed JSON from a public REST endpoint (candles, open interest). */
@@ -129,6 +132,7 @@ export class Engine {
   onStatus: (venues: VenueStatus[]) => void = () => {};
 
   readonly #venues: readonly BrowserVenue[];
+  readonly #coin: Coin;
   readonly #now: () => number;
   readonly #get: Fetcher;
   readonly #ping: NonNullable<EngineOptions['ping']>;
@@ -143,25 +147,27 @@ export class Engine {
   #lastTick = ''; #lastStatus = '';
   #timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor({ venues = BROWSER_VENUES, now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
-    this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping;
-    this.recorder = new DepthRecorder({ store: columns, now, retentionMs });
-    this.footprints = new FootprintRecorder(footprint, now, retentionMs);
-    this.printStream = new PrintStream(prints, now, retentionMs);
+  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
+    this.#coin = coin; this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping;
+    // A coin that trades less than BTC keeps smaller trades, groups and map cells (shared/coins.ts SCALES); BTC's are 1.
+    const scale = SCALES[tier] ?? 1;
+    this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale });
+    this.footprints = new FootprintRecorder(footprint, now, retentionMs, scale);
+    this.printStream = new PrintStream(prints, now, retentionMs, PRINT_FLOOR_USD * scale);
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
     this.orders = new OrderBuilder(now);
-    this.absorption = new AbsorptionRecorder(absorption, now, { retentionMs });
+    this.absorption = new AbsorptionRecorder(absorption, now, { retentionMs, floorUsd: GROUP_FLOOR_USD * scale });
     this.#recorded = new RecordedBefore(this.flows, this.footprints);
   }
 
   // ---- Venues ---------------------------------------------------------------------------------------------------------------------
 
-  /** Make exactly these venues run: start the ones that were off, stop the ones that are no longer wanted. Unknown ids are ignored. */
+  /** Make exactly these venues run: start the ones that were off, stop the ones that are no longer wanted. Unknown ids, and markets that do not list the coin, are ignored. */
   select(ids: readonly string[]): void {
     const wanted = new Set(ids), now = this.#now();
     for (const venue of this.#venues) {
       const running = this.#runs.get(venue.id);
-      if (wanted.has(venue.id) && !running) {
+      if (wanted.has(venue.id) && !running && venue.listed) {
         const { book, feeds } = venue.make();
         for (const connector of [book, ...feeds]) { connector.onTrade = this.#trade; connector.start(); }
         this.#runs.set(venue.id, { venue, book, feeds, startedAt: now, noBookSince: 0, probe: { ok: null, at: 0, pending: false } });
@@ -180,7 +186,7 @@ export class Engine {
   venueStatus(): VenueStatus[] {
     const live = [...this.#runs.values()].filter(run => run.book.state === 'live').length;
     return this.#venues.map(venue => {
-      const run = this.#runs.get(venue.id), head = { id: venue.id, name: venue.name, kind: venue.kind, recommended: venue.recommended, selected: !!run };
+      const run = this.#runs.get(venue.id), head = { id: venue.id, name: venue.name, kind: venue.kind, recommended: venue.recommended, selected: !!run, listed: venue.listed };
       if (!run) return { ...head, state: 'off' as const, detail: '' };
       const { book } = run;
       if (book.state === 'live') return { ...head, state: 'live' as const, detail: run.noBookSince && this.#now() - run.noBookSince >= NO_BOOK_MS ? 'no usable book right now (crossed or one-sided)' : '' };
@@ -324,11 +330,15 @@ export class Engine {
   /** Taker flow per second for each instrument over [from, to), from its first recorded minute in that range. */
   flow(ids: readonly string[], from: number, to: number): FlowFrame { return this.flows.frame(ids, from, to); }
 
-  prints(from: number, to: number, minUsd = PRINT_FLOOR_USD, limit = 5_000): Print[] { return this.printStream.query(from, to, Math.max(PRINT_FLOOR_USD, minUsd), limit); }
+  prints(from: number, to: number, minUsd = this.printStream.floorUsd, limit = 5_000): Print[] { return this.printStream.query(from, to, Math.max(this.printStream.floorUsd, minUsd), limit); }
+
+  /** How the coin is listed on the market an instrument belongs to (none: not this coin's market, so nothing is asked of it). */
+  #listing(instrumentId: string) { return this.#coin.markets[venueOf(instrumentId) as CoinVenue]; }
 
   /** Candles from the venue's own history. An unreachable venue answers with nothing, and the page falls back to another one. */
   async candles(instrumentId: string, tfMs: number, from: number, to: number): Promise<Candle[]> {
-    try { return await fetchCandles(instrumentId, tfMs, from, to, this.#get); } catch { return []; }
+    const listing = this.#listing(instrumentId); if (!listing) return [];
+    try { return await fetchCandles(instrumentId, tfMs, from, to, this.#get, listing); } catch { return []; }
   }
 
   /** Open interest bars: the venue's own history where it has one, and the readings taken while the page was open. */
@@ -336,7 +346,7 @@ export class Engine {
     const venue = venueOf(instrumentId), key = `${instrumentId}|${tfMs}|${from}|${to}`, cached = this.#oiCache.get(key), now = this.#now();
     let stored: Promise<OiRow[]>;
     if (cached && now - cached.at < OI_CACHE_MS) stored = cached.rows;
-    else { stored = fetchOiHistory(instrumentId, tfMs, from, to, this.#get).catch(() => []); this.#oiCache.set(key, { at: now, rows: stored }); if (this.#oiCache.size > 20) this.#oiCache.delete(this.#oiCache.keys().next().value!); }
+    else { const listing = this.#listing(instrumentId); stored = listing ? fetchOiHistory(instrumentId, tfMs, from, to, this.#get, listing).catch(() => []) : Promise.resolve([]); this.#oiCache.set(key, { at: now, rows: stored }); if (this.#oiCache.size > 20) this.#oiCache.delete(this.#oiCache.keys().next().value!); }
     const live = (this.#oiLive.get(venue) ?? []).filter(sample => Number(sample.observationTimestamp) >= from);
     return oiBars(await stored, live, tfMs);
   }
@@ -346,7 +356,8 @@ export class Engine {
       const run = this.#runs.get(venue); if (!run) continue;
       if (now - (this.#oiAsked.get(venue) ?? 0) < OI_SAMPLE_MS) continue;
       this.#oiAsked.set(venue, now);
-      void fetchOiSample(venue, this.#get).then(base => {
+      const listing = this.#coin.markets[venue as CoinVenue]; if (!listing) continue;
+      void fetchOiSample(venue, this.#get, listing).then(base => {
         if (base === null) return;
         const list = this.#oiLive.get(venue) ?? []; this.#oiLive.set(venue, list);
         list.push({ observationTimestamp: this.#now(), base });

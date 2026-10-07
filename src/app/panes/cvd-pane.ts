@@ -24,7 +24,7 @@ import { laneColors, type LaneColors } from '../cvd/colors.ts';
 import { PriceTrack, type PriceColumns } from '../cvd/price.ts';
 import type { BurstEvent } from '../cvd/burst.ts';
 import { panelSwitchRow } from '../sound/panel.ts';
-import { SIZE_BUCKET_LABELS } from './bar-stats.ts';
+import { sizeBucketLabels } from './bar-stats.ts';
 import { CvdStrip } from './cvd-strip.ts';
 import type { Print } from '../prints.ts';
 import { t } from '../i18n.ts';
@@ -218,7 +218,7 @@ export class CvdPane {
 
   /** The rows of dots above the exchanges: whether they show, which trade sizes they split the trades into (the Bar stats' limits are the starting values), and the blink. */
   #stripSettings(c: CvdSettings): HTMLElement[] {
-    const buckets = (from: number, to: number): [string, string][] => SIZE_BUCKET_LABELS.slice(from, to + 1).map((label, i) => [String(from + i), label]);
+    const buckets = (from: number, to: number): [string, string][] => sizeBucketLabels().slice(from, to + 1).map((label, i) => [String(from + i), label]);
     // The two limits keep apart, as they do in the Bar stats; the panel is drawn again so the other one shows what it was moved to.
     const again = (): void => this.#panel?.render((_tools, body) => this.#buildSettings(body));
     return [

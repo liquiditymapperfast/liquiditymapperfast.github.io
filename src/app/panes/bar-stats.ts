@@ -1,6 +1,8 @@
 import { volText, type Bar } from './footprint.ts';
 import type { CandleRow, OiBar } from '../store.ts';
-import { price as fmtPrice } from '../format.ts';
+import { price as fmtPrice, usd } from '../format.ts';
+import { SIZE_EDGES } from '../../shared/footprint.ts';
+import { scaledUsd } from '../coin.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { t } from '../i18n.ts';
 import type { InfoLine } from '../infobox.ts';
@@ -14,8 +16,11 @@ import { oiDeltaByTime } from '../oi-change.ts';
 export type { StatOptions } from '../stat-options.ts';
 export { DEFAULT_STAT_OPTIONS } from '../stat-options.ts';
 
-/** Size buckets as recorded by the server (notional USD lower edges). */
-export const SIZE_BUCKET_LABELS: readonly string[] = ['< $25K', '$25K-50K', '$50K-100K', '$100K-250K', '$250K-500K', '$500K-1M', '$1M-5M', '$5M+'];
+/** The size buckets' names, from their notional USD edges ("< $25K", "$25K-50K" … "$5M+" for BTC; a coin with smaller floors has smaller edges). */
+export function sizeBucketLabels(): string[] {
+  const edge = (i: number): string => usd(scaledUsd(SIZE_EDGES[i]!)), last = SIZE_EDGES.length - 1;
+  return SIZE_EDGES.map((_, i) => i === 0 ? `< $${edge(1)}` : i === last ? `$${edge(i)}+` : `$${edge(i)}-${edge(i + 1)}`);
+}
 
 export interface StatInput {
   /** Bars oldest first; stats that accumulate (cvd) sum over exactly these. */
@@ -64,8 +69,8 @@ export function diagonalImbalances(rows: Bar['rows'], step: number, options: Pic
   const found: Imbalance[] = [];
   for (const [low, buy, sell] of rows) {
     const index = Math.round(low / step), above = at.get(index + 1), below = at.get(index - 1);
-    if (above && above[0] > 0 && sell >= options.imbRatio * above[0] && sell >= options.imbMinUsd && sell > 0) found.push({ low, side: 'sell' });
-    if (below && below[1] > 0 && buy >= options.imbRatio * below[1] && buy >= options.imbMinUsd && buy > 0) found.push({ low, side: 'buy' });
+    if (above && above[0] > 0 && sell >= options.imbRatio * above[0] && sell >= scaledUsd(options.imbMinUsd) && sell > 0) found.push({ low, side: 'sell' });
+    if (below && below[1] > 0 && buy >= options.imbRatio * below[1] && buy >= scaledUsd(options.imbMinUsd) && buy > 0) found.push({ low, side: 'buy' });
   }
   return found;
 }

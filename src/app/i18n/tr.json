@@ -738,7 +738,7 @@
  "Show trade bubbles": "İşlem balonlarını göster",
  "Large market orders where they traded, the fills of one order added together.": "Büyük piyasa emirleri işlem gördükleri yerde; bir emrin gerçekleşmeleri toplanır.",
  "Smallest order": "En küçük emir",
- "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Bunun altındaki emirler çizilmez. 25K $ üzerindeki her emir kaydedilir, daha düşük bir seçim onları geri getirir.",
+ "Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.": "Bunun altındaki emirler çizilmez. {floor} üzerindeki her emir kaydedilir, daha düşük bir seçim onları geri getirir.",
  "Both sides, or only the market buys or only the market sells.": "Her iki taraf ya da yalnızca piyasa alımları veya yalnızca piyasa satışları.",
  "Buys only": "Yalnızca alımlar",
  "Sells only": "Yalnızca satışlar",
@@ -749,5 +749,15 @@
  "Write the size in large bubbles": "Büyük balonlara büyüklüğü yaz",
  "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Yalnızca sayıyı sığdıracak kadar büyük balonlar alır, uzaklaşınca kaybolur; büyüklüğü için bir balonun üzerine gelin ya da dokunun.",
  "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Seslerdeki Whale büyüklüğünden ({value}) itibaren emirler parlak bir halka alır.",
- "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Bu ayarlar yalnızca balonları değiştirir: sesler ve akış sütununun noktaları kendi büyüklüklerini korur."
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Bu ayarlar yalnızca balonları değiştirir: sesler ve akış sütununun noktaları kendi büyüklüklerini korur.",
+ "does not list this coin": "bu coini listelemiyor",
+ "Coin": "Coin",
+ "Coin: which coin every view shows. Choosing another loads the page again for it.": "Coin: tüm görünümlerin gösterdiği coin. Başka birini seçmek sayfayı onun için yeniden yükler.",
+ "{coin} is not on the coin list, so the page is on BTC.": "{coin} coin listesinde değil, bu yüzden sayfa BTC gösteriyor.",
+ "Search coins": "Coin ara",
+ "{n} of {total} markets": "{total} piyasadan {n}",
+ "No coin matches.": "Eşleşen coin yok.",
+ "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "{total} piyasanın en az {min} tanesinde bulunan coinler, 24 saatlik hacmi en büyük olan önce. {date} listesi.",
+ "The coin list could not be read, so only BTC is offered.": "Coin listesi okunamadı, bu yüzden yalnızca BTC sunuluyor.",
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Boyut ayarları (işlem baloncukları, emilim, sesler, boyut satırları) coinin hacmini izler: {coin} için BTC'dekilerin {factor} katıdır."
 }

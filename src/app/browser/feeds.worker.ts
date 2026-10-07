@@ -1,5 +1,6 @@
 import { BROWSER_RETENTION_MS, Engine } from '../../shared/engine.ts';
-import { BROWSER_VENUES, restoreSelection } from '../../shared/venues.ts';
+import { browserVenues, restoreSelection } from '../../shared/venues.ts';
+import type { Coin } from '../../shared/coins.ts';
 import type { ValuedBook } from '../../shared/levels.ts';
 import type { Print } from '../../shared/prints.ts';
 import { openRecordings, type Recordings } from './idb.ts';
@@ -43,11 +44,11 @@ let storageFailed = false;
  * for it only when it can write (see `init`), and gives it up when its storage stops working, so a tab that cannot record never keeps one
  * that can from it.
  */
-function claimRecorder(): void {
+function claimRecorder(lock: string): void {
   const locks = (navigator as Navigator & { locks?: LockManager }).locks;
   const grant = (): void => { recording = true; post({ type: 'recording', recording: true }); };
   if (!locks) { grant(); return; }
-  void locks.request('lmf-recorder', () => {
+  void locks.request(lock, () => {
     if (storageFailed) return undefined;   // the lock is handed straight on
     grant(); return new Promise<void>(resolve => { giveUpRecorder = resolve; });
   }).catch(() => { if (!storageFailed) grant(); });
@@ -60,24 +61,25 @@ function stopRecording(): void {
   post({ type: 'recording', recording: false, failed: true });
 }
 
-async function init(selected: string[] | null, known: string[] | null, persist: boolean): Promise<void> {
+async function init(selected: string[] | null, known: string[] | null, persist: boolean, coin: Coin, tier: number, database: string, lock: string): Promise<void> {
   if (persist && typeof indexedDB !== 'undefined') {
-    try { recordings = await withTimeout(openRecordings(Date.now() - BROWSER_RETENTION_MS, () => recording, error => { console.warn('recordings are no longer being saved:', error); stopRecording(); }), 5_000, 'opening the recordings'); }
+    try { recordings = await withTimeout(openRecordings(database, Date.now() - BROWSER_RETENTION_MS, () => recording, error => { console.warn('recordings are no longer being saved:', error); stopRecording(); }), 5_000, 'opening the recordings'); }
     catch (error) { console.warn('recordings are not kept this session:', error); }
     if (recordings) {
       // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
       void navigator.storage?.persist?.().catch(() => false);
-      claimRecorder();
+      claimRecorder(lock);
     }
   }
-  const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null, absorption: recordings?.absorption ?? null });
+  const venues = browserVenues(coin);
+  const next = new Engine({ coin, tier, venues, columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null, absorption: recordings?.absorption ?? null });
   next.onLevels = (books, asOf) => post({ type: 'levels', frame: frameOf(books, asOf) });
   next.onTick = tick => post({ type: 'tick', tick });
   next.onPrints = (items: Print[]) => post({ type: 'prints', items });
   next.onFlow = items => post({ type: 'flow', items });
   next.onAbsorption = found => post({ type: 'absorption', groups: found.groups, minutes: found.minutes });
   next.onStatus = venues => post({ type: 'status', venues });
-  next.select(restoreSelection(selected, known) ?? BROWSER_VENUES.filter(v => v.recommended).map(v => v.id));
+  next.select(restoreSelection(selected, known, venues) ?? venues.filter(v => v.recommended).map(v => v.id));
   next.start();
   engine = next;
   post({ type: 'ready', persisted: recordings !== null });
@@ -106,7 +108,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
 
 scope.onmessage = event => {
   const message = event.data;
-  if (message.type === 'init') { init(message.selected, message.known, message.persist).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
+  if (message.type === 'init') { init(message.selected, message.known, message.persist, message.coin, message.tier, message.database, message.lock).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
   if (!engine) { if (message.type === 'rpc') post({ type: 'rpc', id: message.id, error: 'the engine has not started' }); return; }
   if (message.type === 'select') engine.select(message.selected);
   else if (message.type === 'flush') { engine.flush(); void recordings?.flush(); }

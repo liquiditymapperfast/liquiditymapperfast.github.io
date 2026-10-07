@@ -723,7 +723,7 @@
  "Show trade bubbles": "約定バブルを表示",
  "Large market orders where they traded, the fills of one order added together.": "大きな成行注文を約定した場所に表示します（1つの注文の約定は合算）。",
  "Smallest order": "最小の注文",
- "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "これより小さい注文は表示しません。2.5万ドル以上の注文はすべて記録しているので、値を下げればまた表示されます。",
+ "Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.": "これより小さい注文は表示しません。{floor} 以上の注文はすべて記録しているので、値を下げればまた表示されます。",
  "Both sides, or only the market buys or only the market sells.": "両方のサイド、または成行買いだけ、成行売りだけ。",
  "Buys only": "買いのみ",
  "Sells only": "売りのみ",
@@ -734,5 +734,15 @@
  "Write the size in large bubbles": "大きなバブルにサイズを表示",
  "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "数字が収まる大きさのバブルだけに表示するので、縮小すると消えます。バブルにカーソルを合わせるかタップすればサイズが分かります。",
  "Orders from the Whale size in Sounds ({value}) get a bright ring.": "サウンドの Whale サイズ（{value}）以上の注文には明るい輪が付きます。",
- "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "この設定はバブルだけに効きます。サウンドとフロー列のドットはそれぞれのサイズのままです。"
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "この設定はバブルだけに効きます。サウンドとフロー列のドットはそれぞれのサイズのままです。",
+ "does not list this coin": "この通貨は上場していません",
+ "Coin": "通貨",
+ "Coin: which coin every view shows. Choosing another loads the page again for it.": "通貨：すべての表示が扱う通貨です。別の通貨を選ぶと、その通貨でページを読み込み直します。",
+ "{coin} is not on the coin list, so the page is on BTC.": "{coin} は通貨リストにないため、BTC を表示しています。",
+ "Search coins": "通貨を検索",
+ "{n} of {total} markets": "{total} 市場中 {n}",
+ "No coin matches.": "一致する通貨はありません。",
+ "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "{total} 市場のうち {min} 以上に上場している通貨を、24 時間出来高の大きい順に並べています。{date} のリストです。",
+ "The coin list could not be read, so only BTC is offered.": "通貨リストを読み込めなかったため、BTC のみ選べます。",
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "サイズの設定（約定バブル、吸収、サウンド、サイズ行）は通貨の出来高に合わせます。{coin} では BTC の {factor} です。"
 }

@@ -6,6 +6,7 @@ import { SoundEngine } from './engine.ts';
 import { Coalescer, chimeNotes, notesFor, tierOf, type SoundEvent } from './rules.ts';
 import { TIMEFRAMES } from '../../shared/series.ts';
 import { BAR_FRESH_MS } from './alerts.ts';
+import { scaledUsd, sizeScale } from '../coin.ts';
 
 /** What was decided for one event: kept for the test harness and for the panel's "last sounds" line. */
 export interface SoundLogEntry { at: number; kind: 'trade' | 'candle' | 'test'; side?: 'buy' | 'sell'; tier?: string; usd?: number; venues?: number; n?: number; audible: boolean }
@@ -70,9 +71,10 @@ export class Sounds {
   }
   /** Decide and play one event (exposed for the harness through `drainNow`). */
   #play(event: SoundEvent, tiers = this.store.state.sounds.tiers, volume = this.store.state.sounds.volume, kind: SoundLogEntry['kind'] = 'trade'): void {
-    const hit = tierOf(event.usd, tiers);
+    // The tiers are BTC's sizes: a coin with smaller floors is measured against them as the BTC-sized trade it stands for.
+    const usd = event.usd / sizeScale(), hit = tierOf(usd, tiers);
     if (!hit || !hit.tier.on) return;
-    const audible = this.engine.play(notesFor(event.side, hit.index, event.usd, hit.tier.usd, volume));
+    const audible = this.engine.play(notesFor(event.side, hit.index, usd, hit.tier.usd, volume));
     this.#record({ at: this.clock(), kind, side: event.side, tier: hit.tier.id, usd: event.usd, venues: event.venues, n: event.n, audible });
   }
   /** Close every open window now (the harness and the Test buttons do not want to wait a quarter of a second). */
@@ -85,7 +87,7 @@ export class Sounds {
     const tier = tiers[index]!, usd = tier.usd * 1.2;
     void this.engine.unlock().then(() => {
       const audible = this.engine.play(notesFor(side, index, usd, tier.usd, this.store.state.sounds.volume), true);
-      this.#record({ at: this.clock(), kind: 'test', side, tier: tier.id, usd, audible });
+      this.#record({ at: this.clock(), kind: 'test', side, tier: tier.id, usd: scaledUsd(usd), audible });
       this.store.set({ soundState: this.engine.state });
     });
   }

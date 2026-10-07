@@ -10,6 +10,8 @@ import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, Savin
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
 import { t } from './i18n.ts';
+import { BTC, type Coin } from '../shared/coins.ts';
+import { recorderLockName, recordingsName } from './coin.ts';
 
 /** Where a person's venue choice is kept between visits, and the venues there were when it was made (so ones added since can start). */
 const SELECTION_KEY = 'lmf.venues', KNOWN_KEY = 'lmf.venues.known';
@@ -30,7 +32,12 @@ function savedKnown(): string[] | null {
     return Array.isArray(value) && value.every(id => typeof id === 'string') ? value : null;
   } catch { return null; }
 }
-function saveSelection(selected: readonly string[], known: readonly string[]): void {
+/**
+ * Keep a venue choice. A market that does not list the coin on screen cannot be chosen there, so the saved choice keeps whatever it said
+ * about such markets: one choice serves every coin, and a coin missing from a market does not take that market out of it.
+ */
+function saveSelection(selected: readonly string[], known: readonly string[], unlisted: ReadonlySet<string> = new Set()): void {
+  if (unlisted.size) selected = [...selected, ...(savedSelection() ?? []).filter(id => unlisted.has(id) && !selected.includes(id))];
   try { localStorage.setItem(SELECTION_KEY, JSON.stringify(selected)); if (known.length) localStorage.setItem(KNOWN_KEY, JSON.stringify(known)); } catch { /* private mode: the choice lasts for this visit */ }
 }
 
@@ -43,7 +50,7 @@ function statusText(venue: VenueStatus): string {
     case 'error': return venue.detail || t('connection failed');
   }
 }
-export const toEntry = (venue: VenueStatus): VenueEntry => ({ id: venue.id, name: venue.name, supported: true, recommended: venue.recommended, selected: venue.selected, status: statusText(venue), state: venue.state });
+export const toEntry = (venue: VenueStatus): VenueEntry => ({ id: venue.id, name: venue.name, supported: venue.listed, recommended: venue.recommended, selected: venue.selected, status: venue.listed ? statusText(venue) : t('does not list this coin'), state: venue.state });
 
 /**
  * The exchanges straight from this browser: the engine runs in a worker (`browser/feeds.worker.ts`) and this class is the page's side of
@@ -73,7 +80,7 @@ export class BrowserSource implements DataSource, VenueControl {
   storageFailed = false;
   #readyAt = 0;
 
-  constructor(worker: Worker, { persist = true }: { persist?: boolean } = {}) {
+  constructor(worker: Worker, { persist = true, coin = BTC, tier = 0 }: { persist?: boolean; coin?: Coin; tier?: number } = {}) {
     this.#worker = worker;
     let ready!: () => void, known!: () => void, failReady!: (error: Error) => void, failKnown!: (error: Error) => void;
     this.#ready = new Promise<void>((resolve, reject) => { ready = resolve; failReady = reject; });
@@ -117,7 +124,7 @@ export class BrowserSource implements DataSource, VenueControl {
       // outstanding is failed either way (it may never be answered), and only the first case closes the door.
       if (this.#started) this.#rejectCalls(error); else this.#fail(error);
     };
-    this.#post({ type: 'init', selected: savedSelection(), known: savedKnown(), persist });
+    this.#post({ type: 'init', selected: savedSelection(), known: savedKnown(), persist, coin, tier, database: recordingsName(coin.coin), lock: recorderLockName(coin.coin) });
     // Recordings still queued are written as the page goes away.
     addEventListener('pagehide', () => this.#post({ type: 'flush' }));
   }
@@ -202,7 +209,7 @@ export class BrowserSource implements DataSource, VenueControl {
     return { venues: this.#statuses.map(toEntry), limit: null, recommendedKnown: true };
   }
   async apply(selected: readonly string[]): Promise<void> {
-    saveSelection(selected, this.#statuses.map(venue => venue.id));
+    saveSelection(selected, this.#statuses.map(venue => venue.id), new Set(this.#statuses.filter(venue => !venue.listed).map(venue => venue.id)));
     this.#post({ type: 'select', selected: [...selected] });
   }
   watch(listener: (venues: VenueEntry[]) => void): () => void {

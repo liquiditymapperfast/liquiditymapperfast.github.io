@@ -6,6 +6,8 @@ export const SAMPLE_MS = 5_000;
 /** Books older than this at sample time are treated as unobserved (a gap), never carried forward. */
 export const STALE_MS = 45_000;
 export const RETENTION_MS = 7 * 24 * 3_600_000;
+/** A browser keeps a day of recordings: the page is not a server, and a week of columns would not fit comfortably in memory. */
+export const BROWSER_RETENTION_MS = 24 * 3_600_000;
 /** Columns a failing store has not taken that are kept for another try; past this a dead store costs no more memory. */
 const UNSAVED_MAX = 5_000;
 
@@ -52,14 +54,14 @@ export function accumulateSide(side: SideLevels, step: number, into: Map<number,
 export const MIN_BIN_USD = 10_000;
 export const KEEP_ALWAYS = 300;
 
-function finalize(pending: Pick<Pending, 't' | 'n' | 'bid' | 'ask'>): Column {
+function finalize(pending: Pick<Pending, 't' | 'n' | 'bid' | 'ask'>, minBinUsd: number = MIN_BIN_USD): Column {
   const keys = new Set<number>([...pending.bid.keys(), ...pending.ask.keys()]);
   let bins = Int32Array.from([...keys].sort((a, b) => a - b));
   let bid = new Float32Array(bins.length), ask = new Float32Array(bins.length);
   bins.forEach((bin, i) => { bid[i] = (pending.bid.get(bin) ?? 0) / pending.n; ask[i] = (pending.ask.get(bin) ?? 0) / pending.n; });
   if (bins.length > KEEP_ALWAYS) {
     let keep: number[] = [];
-    for (let i = 0; i < bins.length; i++) if (bid[i]! + ask[i]! >= MIN_BIN_USD) keep.push(i);
+    for (let i = 0; i < bins.length; i++) if (bid[i]! + ask[i]! >= minBinUsd) keep.push(i);
     if (keep.length < KEEP_ALWAYS) keep = Array.from(bins.keys()).sort((x, y) => (bid[y]! + ask[y]!) - (bid[x]! + ask[x]!)).slice(0, KEEP_ALWAYS).sort((x, y) => x - y);
     bins = Int32Array.from(keep, i => bins[i]!); const b0 = bid, a0 = ask;
     bid = Float32Array.from(keep, i => b0[i]!); ask = Float32Array.from(keep, i => a0[i]!);
@@ -74,6 +76,8 @@ export interface RecorderOptions {
   steps?: Map<string, number>;
   /** How long minutes are kept (a week by default; the browser keeps a day). */
   retentionMs?: number;
+  /** The smallest bin kept once a column is large (MIN_BIN_USD; smaller for a coin that trades less than BTC). */
+  minBinUsd?: number;
 }
 
 /** Records per-instrument minute columns from periodic book samples. */
@@ -88,9 +92,10 @@ export class DepthRecorder {
   readonly #store: ColumnStore | null;
   readonly #now: () => number;
   readonly #retentionMs: number;
+  readonly #minBinUsd: number;
 
-  constructor({ store = null, now = Date.now, steps = new Map(), retentionMs = RETENTION_MS }: RecorderOptions = {}) {
-    this.#store = store; this.#now = now; this.steps = steps; this.#retentionMs = retentionMs;
+  constructor({ store = null, now = Date.now, steps = new Map(), retentionMs = RETENTION_MS, minBinUsd = MIN_BIN_USD }: RecorderOptions = {}) {
+    this.#store = store; this.#now = now; this.steps = steps; this.#retentionMs = retentionMs; this.#minBinUsd = minBinUsd;
     if (store) {
       for (const { instrumentId, column, step } of store.load(now() - retentionMs)) {
         this.#list(instrumentId).push(column);
@@ -141,7 +146,7 @@ export class DepthRecorder {
   #commit(id: string, pending: Pending): void {
     this.#pending.delete(id);
     if (pending.n === 0) return;
-    const column = finalize(pending);
+    const column = finalize(pending, this.#minBinUsd);
     const list = this.#list(id);
     const last = list[list.length - 1];
     if (last && last.t >= column.t) return;
@@ -186,7 +191,7 @@ export class DepthRecorder {
   query(instrumentId: string, from: number, to: number, stepMs = COLUMN_MS): Column[] {
     const list = [...(this.columns.get(instrumentId) ?? [])];
     const open = this.#pending.get(instrumentId);
-    if (open && open.n > 0) list.push(finalize(open));
+    if (open && open.n > 0) list.push(finalize(open, this.#minBinUsd));
     const inRange = list.filter(column => column.t >= from && column.t < to);
     if (stepMs <= COLUMN_MS) return inRange;
     const merged = new Map<number, { t: number; n: number; bid: Map<number, number>; ask: Map<number, number> }>();

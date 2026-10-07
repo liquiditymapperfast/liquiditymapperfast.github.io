@@ -748,7 +748,7 @@
  "Show trade bubbles": "Показывать пузыри сделок",
  "Large market orders where they traded, the fills of one order added together.": "Крупные рыночные ордера там, где они прошли; исполнения одного ордера сложены.",
  "Smallest order": "Самый маленький ордер",
- "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Ордера меньше этого не рисуются. Записывается каждый ордер от $25K, так что меньшее значение вернёт их.",
+ "Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.": "Ордера меньше этого не рисуются. Записывается каждый ордер от {floor}, так что меньшее значение вернёт их.",
  "Both sides, or only the market buys or only the market sells.": "Обе стороны, или только рыночные покупки, или только рыночные продажи.",
  "Buys only": "Только покупки",
  "Sells only": "Только продажи",
@@ -759,5 +759,15 @@
  "Write the size in large bubbles": "Писать размер в крупных пузырях",
  "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Число получают только пузыри, в которые оно помещается, поэтому при отдалении они пропадают; наведите на пузырь или коснитесь его, чтобы увидеть размер.",
  "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Ордера от размера Whale в «Звуках» ({value}) получают яркое кольцо.",
- "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Эти настройки меняют только пузыри: звуки и точки колонки потока сохраняют свои размеры."
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Эти настройки меняют только пузыри: звуки и точки колонки потока сохраняют свои размеры.",
+ "does not list this coin": "не торгует этой монетой",
+ "Coin": "Монета",
+ "Coin: which coin every view shows. Choosing another loads the page again for it.": "Монета: какую монету показывают все виды. Выбор другой заново загружает страницу для неё.",
+ "{coin} is not on the coin list, so the page is on BTC.": "{coin} нет в списке монет, поэтому страница показывает BTC.",
+ "Search coins": "Поиск монет",
+ "{n} of {total} markets": "{n} из {total} рынков",
+ "No coin matches.": "Подходящих монет нет.",
+ "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "Монеты, которые есть хотя бы на {min} из {total} рынков, по убыванию объёма за 24 ч. Список от {date}.",
+ "The coin list could not be read, so only BTC is offered.": "Список монет не удалось прочитать, поэтому доступен только BTC.",
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Настройки размера (пузыри сделок, поглощение, звуки, строки размеров) следуют объёму монеты: для {coin} они составляют {factor} от значений для BTC."
 }

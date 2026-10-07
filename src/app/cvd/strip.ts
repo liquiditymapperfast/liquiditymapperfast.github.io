@@ -6,6 +6,7 @@ import { t } from '../i18n.ts';
 import { RANK_MS, type CvdSettings } from './settings.ts';
 import { usd } from '../format.ts';
 import { plainUsd, signedUsd, windowName } from './text.ts';
+import { scaledUsd, sizeScale } from '../coin.ts';
 
 /**
  * The strip of dot rows above the exchanges. Everything it says, worked out here without a canvas: four rows of taker buys against sells over
@@ -29,7 +30,8 @@ export const rankMinutes = (settings: Pick<CvdSettings, 'rank'>): number => Math
 export interface SizeBand { from: number; to: number; label: string; range: string }
 
 function bandRange(from: number, to: number, money: (usd: number) => string): string {
-  const low = SIZE_EDGES[from]!, high = SIZE_EDGES[to + 1];
+  const edge = (i: number): number | undefined => SIZE_EDGES[i] === undefined ? undefined : scaledUsd(SIZE_EDGES[i]!);
+  const low = edge(from)!, high = edge(to + 1);
   return from === 0 ? `< ${money(high!)}` : high === undefined ? `${money(low)}+` : `${money(low)}–${money(high)}`;
 }
 
@@ -50,7 +52,7 @@ export function sizeBands(c: Pick<CvdSettings, 'stripRetailMax' | 'stripWhaleMin
  * reported as they happen (the print stream's floor), so the first band, when it holds that bucket alone, is never the answer.
  */
 export function bandOf(bands: readonly SizeBand[], usd: number): number {
-  const bucket = sizeBucket(usd);
+  const bucket = sizeBucket(usd / sizeScale());
   return bands.findIndex(b => bucket >= b.from && bucket <= b.to);
 }
 

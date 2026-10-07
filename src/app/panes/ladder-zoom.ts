@@ -3,8 +3,18 @@
  * into whole notches, and the scroll offset that keeps the price under the pointer where it was when the step changes.
  */
 
-/** Price step per row in USD, finest to coarsest. The Group select, the wheel and the price-column drag all move along this one list. */
+/** Price step per row in USD for BTC, finest to coarsest. The Group select, the wheel and the price-column drag all move along this one list. */
 export const GROUPS: readonly number[] = [0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000];
+
+/**
+ * The steps for another coin, priced near `price`: BTC's list moved by the whole decades between that price and $100,000, so it spans the
+ * same share of the price (BTC's own list when the price is not known).
+ */
+export function groupsFor(price: number): readonly number[] {
+  if (!(price > 0)) return GROUPS;
+  const shift = Math.round(Math.log10(price / 100_000));
+  return shift === 0 ? GROUPS : GROUPS.map(g => Number((g * 10 ** shift).toPrecision(6)));
+}
 
 /**
  * `notches` steps along `steps` from `step` (negative: finer, positive: coarser), stopping at the ends. `step` need not be on the list

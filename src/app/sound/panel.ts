@@ -8,6 +8,7 @@ import type { PanelSounds } from './rules.ts';
 import { clock } from '../format.ts';
 import { usd as formatUsd } from '../format.ts';
 import { t, tn } from '../i18n.ts';
+import { scaledUsd, unscaledUsd } from '../coin.ts';
 
 /** Contents of the Sounds panel: a master switch, volume, which trades count, the size tiers (each with a Test), and the candle chime. */
 export function buildSoundPanel(store: Store, sounds: Sounds, rerender: () => void, tools: HTMLElement, body: HTMLElement, alerts: Alerts | null = null): void {
@@ -29,8 +30,8 @@ export function buildSoundPanel(store: Store, sounds: Sounds, rerender: () => vo
   body.append(heading(t('Large trades')));
   body.append(note(t('A sweep that fills on several venues within a quarter of a second counts as one trade. Buys rise in pitch and sells fall; a bigger tier adds notes and loudness. A trade belongs to the highest tier it reaches, and sounds only if that tier is on.')));
   s.tiers.forEach((tier, index) => {
-    const amount = el('input', { type: 'number', min: String(MIN_TIER_USD), step: '10000', value: String(tier.usd), tip: t('Smallest trade in this tier, USD notional (at least {min})', { min: formatUsd(MIN_TIER_USD) }) });
-    amount.onchange = () => { const v = Number(amount.value); if (Number.isFinite(v)) setTier(tier.id, { usd: v }); };
+    const amount = el('input', { type: 'number', min: String(scaledUsd(MIN_TIER_USD)), step: String(scaledUsd(10_000)), value: String(scaledUsd(tier.usd)), tip: t('Smallest trade in this tier, USD notional (at least {min})', { min: formatUsd(scaledUsd(MIN_TIER_USD)) }) });
+    amount.onchange = () => { const v = Number(amount.value); if (Number.isFinite(v)) setTier(tier.id, { usd: unscaledUsd(v) }); };
     const on = el('input', { type: 'checkbox', checked: tier.on, tip: tier.on ? t('Mute the {tier} tier', { tier: tier.name }) : t('Sound the {tier} tier', { tier: tier.name }) }); on.onchange = () => setTier(tier.id, { on: on.checked });
     body.append(el('div', { class: 'tier-row' },
       el('label', { class: 'tier-name' }, on, el('span', { class: 'name', textContent: tier.name }), el('span', { class: 'desc', textContent: tn(index + 1, '{n} note', '{n} notes') })),
@@ -77,18 +78,18 @@ function panelSounds(store: Store, p: PanelSounds, alerts: Alerts, set: (change:
 
   body.append(heading(t('Flow column')),
     panelSwitchRow(store, 'flow', () => rerender()),
-    numberRow(t('Smallest burst (USD)'), t('Ignore bursts smaller than this, however unusual they are for a quiet exchange.'), { min: 100_000, step: 100_000, value: p.flow.usd }, usd => change('flow', { usd })),
+    numberRow(t('Smallest burst (USD)'), t('Ignore bursts smaller than this, however unusual they are for a quiet exchange.'), { min: scaledUsd(100_000), step: scaledUsd(100_000), value: scaledUsd(p.flow.usd) }, usd => change('flow', { usd: unscaledUsd(usd) })),
     numberRow(t('Sensitivity (deviations)'), t('How far outside its own normal an exchange must go: 2 is touchy, 4 is the default, 8 is only the extreme.'), { min: 2, max: 10, step: 0.5, value: p.flow.sensitivity }, sensitivity => change('flow', { sensitivity })),
     tests('flow-burst'));
 
   body.append(heading(t('Bar stats and footprint')),
     panelSwitchRow(store, 'bars', () => rerender()),
-    numberRow(t('Smallest delta (USD)'), t('Net buys minus sells over the candle that just closed.'), { min: 100_000, step: 500_000, value: p.bars.usd }, usd => change('bars', { usd })),
+    numberRow(t('Smallest delta (USD)'), t('Net buys minus sells over the candle that just closed.'), { min: scaledUsd(100_000), step: scaledUsd(500_000), value: scaledUsd(p.bars.usd) }, usd => change('bars', { usd: unscaledUsd(usd) })),
     tests('bar-delta'));
 
   body.append(heading(t('Order book and heatmap')),
     switchRow(t('A wall appears or is pulled'), t('Within 1% of the price, a level of at least this size appears, or one that has stood for a few seconds is pulled without the price having come to it. Low, soft thud; pulled falls.'), p.book.wall, wall => change('book', { wall })),
-    numberRow(t('Smallest wall (USD)'), t('Added up across the enabled venues at one price.'), { min: 500_000, step: 1_000_000, value: p.book.usd }, usd => change('book', { usd })),
+    numberRow(t('Smallest wall (USD)'), t('Added up across the enabled venues at one price.'), { min: scaledUsd(500_000), step: scaledUsd(1_000_000), value: scaledUsd(p.book.usd) }, usd => change('book', { usd: unscaledUsd(usd) })),
     tests('wall-appeared'));
 
   body.append(heading(t('Depth and Liquidity Tracker')),

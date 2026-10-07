@@ -133,6 +133,18 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 /* A window that is being dragged (panels, the venue picker, the guide): the hand stays closed wherever the pointer is, and nothing is selected on the way. */
 .being-moved, .being-moved * { cursor: grabbing !important; user-select: none; }
 dialog.venues h3 { cursor: grab; touch-action: none; user-select: none; }
+/* The coin picker: a search over the coin list, one row per coin (name, markets, 24 h volume). */
+.coin-btn { font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.coin-btn::after { content: ' ▾'; font-weight: 400; opacity: .7; }
+dialog.coins { width: min(420px, 92vw); }
+dialog.coins input[type=search] { width: 100%; box-sizing: border-box; margin: 8px 0 6px; }
+.coin-list { display: flex; flex-direction: column; max-height: min(52vh, 460px); overflow-y: auto; margin: 0 0 8px; }
+.coin-row { display: grid; grid-template-columns: 1fr auto 5.5em; gap: 12px; align-items: center; text-align: left; border: 0; border-radius: 0; background: none; padding: 5px 6px; }
+.coin-row:hover, .coin-row:focus-visible { background: var(--hover, rgba(127, 127, 127, .14)); }
+.coin-row.on { background: var(--line); }
+.coin-name { font-weight: 600; }
+.coin-volume { text-align: right; }
+dialog.coins p { margin: 4px 0; max-width: 46ch; }
 .guide-head { cursor: grab; touch-action: none; user-select: none; }
 .guide-head :is(button, select, a) { cursor: pointer; }
 .panel-head h3 { margin: 0; flex: 1; font-size: 13px; font-weight: 650; letter-spacing: .005em; }

@@ -29,7 +29,7 @@ class Fake extends BookConnector {
 
 function setup(ids = ['binance', 'bybit'], options: Partial<ConstructorParameters<typeof Engine>[0]> = {}) {
   const fakes = new Map<string, Fake>();
-  const venues: BrowserVenue[] = ids.map(id => ({ id, name: id, kind: 'perp', recommended: true, probe: { url: `https://${id}.example/ping` }, make: () => { const book = new Fake(id); fakes.set(id, book); return { book, feeds: [] }; } }));
+  const venues: BrowserVenue[] = ids.map(id => ({ id, name: id, kind: 'perp', recommended: true, listed: true, probe: { url: `https://${id}.example/ping` }, make: () => { const book = new Fake(id); fakes.set(id, book); return { book, feeds: [] }; } }));
   const engine = new Engine({ venues, ping: async () => true, get: async () => { throw new Error('offline'); }, ...options });
   return { engine, fakes, venues };
 }

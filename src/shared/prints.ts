@@ -51,8 +51,11 @@ export class PrintStream {
   readonly #retentionMs: number;
   #unsaved: Print[] = [];
 
-  constructor(store: PrintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS) {
-    this.#store = store; this.#retentionMs = retentionMs;
+  /** The smallest order kept (PRINT_FLOOR_USD; smaller for a coin that trades less than BTC). */
+  readonly floorUsd: number;
+
+  constructor(store: PrintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS, floorUsd: number = PRINT_FLOOR_USD) {
+    this.#store = store; this.#retentionMs = retentionMs; this.floorUsd = floorUsd;
     if (store) for (const row of store.load(now() - retentionMs, MEMORY_MAX)) { this.#recent.push(row); this.#stored.add(`${row.id}|${row.t}|${row.price}|${row.usd}`); }
   }
 
@@ -64,7 +67,7 @@ export class PrintStream {
       const price = Number(trade.price), usd = Number(trade.notionalUsd ?? Number(trade.amount) * price);
       const t = Number(trade.sourceTimestamp ?? trade.receivedAt);
       const side = String(trade.side).toLowerCase();
-      if (!id || !key || !(price > 0) || !(usd >= PRINT_FLOOR_USD) || !Number.isFinite(t) || (side !== 'buy' && side !== 'sell')) continue;
+      if (!id || !key || !(price > 0) || !(usd >= this.floorUsd) || !Number.isFinite(t) || (side !== 'buy' && side !== 'sell')) continue;
       let seen = this.#seen.get(id); if (!seen) { seen = new Set(); this.#seen.set(id, seen); }
       if (seen.has(key)) continue;
       seen.add(key);
@@ -87,7 +90,7 @@ export class PrintStream {
   takeFresh(): Print[] { return this.#fresh.splice(0); }
 
   /** Prints in [from, to) of at least `minUsd`, oldest first; when more than `limit` match, the oldest are left out. */
-  query(from: number, to: number, minUsd = PRINT_FLOOR_USD, limit = 5_000): Print[] {
+  query(from: number, to: number, minUsd = this.floorUsd, limit = 5_000): Print[] {
     const out: Print[] = [];
     const memoryStart = this.#recent[0]?.t ?? Infinity;
     if (this.#store?.query && from <= memoryStart) {

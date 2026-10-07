@@ -16,6 +16,12 @@ export interface ConnectorStatus { state: ConnectorState; lastError: string | nu
  */
 export interface TradeEvent { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price: number; amount: number; notionalUsd: number; t: number; order?: string }
 
+/**
+ * One coin on one market: the coin, and how that market lists it (see shared/coins.ts). `unit` is coins per listed unit (1000 for
+ * 1000PEPEUSDT), `contract` an OKX swap's listed units per contract, and `inverse` a market that sizes in USD (Deribit's BTC and ETH).
+ */
+export interface Market { coin: string; symbol: string; unit: number; contract?: number; inverse?: boolean }
+
 /** Books with at least this many levels are re-valued no more often than the interval below (the recorder samples every 5 s). */
 const DEEP_BOOK_LEVELS = 2_000, DEEP_BOOK_INTERVAL_MS = 1_000;
 
@@ -37,7 +43,12 @@ export abstract class BookConnector {
   abstract readonly symbol: string;
   abstract readonly quote: string;
   abstract readonly marketType: 'spot' | 'perpetual';
-  readonly base = 'BTC';
+  /** The coin and its market, for the browser's connectors (shared/venues.ts); the server's connectors are BTC and name their symbol themselves. */
+  constructor(protected readonly market: Market | null = null) {}
+  /** The coin this book trades. */
+  get base(): string { return this.market?.coin ?? 'BTC'; }
+  /** Coins per listed unit: prices leave the connector divided by it and sizes multiplied, so everything downstream sees one coin. */
+  protected get unit(): number { return this.market?.unit ?? 1; }
   protected bids = new Map<number, number>();
   protected asks = new Map<number, number>();
   state: ConnectorState = 'stopped';
@@ -88,10 +99,13 @@ export abstract class BookConnector {
   /** USD value of `size` resting at `price`: base-coin sizes by default; venues that size in contracts or in USD override. */
   protected usdOf(price: number, size: number): number { return price * size; }
   /** Venues that publish aggregated price bands rather than ticks name the band a level belongs to ([lo, hi)); those books are never merged. */
-  protected readonly coarse: boolean = false;
+  protected get coarse(): boolean { return false; }
   protected band(_price: number): { lo: number; hi: number } { return { lo: _price, hi: _price }; }
-  /** Report a trade parsed from this venue's frames. */
-  protected emitTrade(trade: Omit<TradeEvent, 'instrumentId'>): void { this.onTrade({ instrumentId: this.instrumentId, ...trade }); }
+  /** Report a trade parsed from this venue's frames (price and amount as listed: they are converted to one coin here). */
+  protected emitTrade(trade: Omit<TradeEvent, 'instrumentId'>): void {
+    const unit = this.unit;
+    this.onTrade({ instrumentId: this.instrumentId, ...trade, ...(unit === 1 ? {} : { price: trade.price / unit, amount: trade.amount * unit }) });
+  }
 
   status(): ConnectorStatus { return { state: this.state, lastError: this.lastError, lastFailure: this.lastFailure, lastUpdate: this.lastUpdate, reconnects: this.reconnects, everLive: this.everLive, failures: this.failures }; }
 
@@ -166,7 +180,7 @@ export abstract class BookConnector {
     this.#retry.unref?.();
   }
 
-  /** The current book in USD (price x base size, all venues here quote in USD or a USD stable), or null when not fresh and uncrossed. */
+  /** The current book in USD (price x base size, all venues here quote in USD or a USD stable), or null when not fresh and uncrossed. Prices are one coin's. */
   valued(now: number, gridStep?: number): ValuedBook | null {
     if (this.state !== 'live' || now - this.lastUpdate > this.silenceMs() + 10_000) return null;
     if (this.#cachedVersion === this.#version) return this.#cached;
@@ -176,7 +190,8 @@ export abstract class BookConnector {
     const side = (map: Map<number, number>, descending: boolean): SideLevels => {
       const prices = [...map.keys()].sort((a, b) => descending ? b - a : a - b);
       const lo = new Float64Array(prices.length), hi = this.coarse ? new Float64Array(prices.length) : lo, usd = new Float64Array(prices.length);
-      prices.forEach((p, i) => { const b = this.coarse ? this.band(p) : null; lo[i] = b ? b.lo : p; if (b) hi[i] = b.hi; usd[i] = this.usdOf(p, map.get(p)!); });
+      const unit = this.unit, coarse = this.coarse;
+      prices.forEach((p, i) => { const b = coarse ? this.band(p) : null; lo[i] = (b ? b.lo : p) / unit; if (b) hi[i] = b.hi / unit; usd[i] = this.usdOf(p, map.get(p)!); });
       return { lo, hi, usd };
     };
     let bids = side(this.bids, true), asks = side(this.asks, false);

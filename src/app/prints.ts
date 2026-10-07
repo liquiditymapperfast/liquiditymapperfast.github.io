@@ -1,5 +1,6 @@
 import { price as fmtPrice } from './format.ts';
 import { t } from './i18n.ts';
+import { scaledUsd, sizeScale } from './coin.ts';
 
 /**
  * One large market order as the server sends it: [time ms, instrument id, side, price, USD notional], and for an order of several fills
@@ -102,7 +103,7 @@ export function printPriceLines(print: Print): { label: string; text: string }[]
 
 /** Bubble radius in px: grows with the square root of the size, never smaller than a dot nor larger than `max`. */
 export function bubbleRadius(usd: number, max = 24): number {
-  return Math.min(max, Math.max(3, 3.2 * Math.sqrt(usd / 50_000)));
+  return Math.min(max, Math.max(3, 3.2 * Math.sqrt(usd / (50_000 * sizeScale()))));
 }
 
 /**
@@ -132,4 +133,4 @@ export function readBubbles(saved: unknown): BubbleSettings {
 }
 
 /** Whether a print is left out by the settings: under the smallest order shown, or on the side that is not. */
-export const bubbleHidden = (p: Print, s: BubbleSettings): boolean => p.usd < s.minUsd || (s.side !== 'both' && p.side !== s.side);
+export const bubbleHidden = (p: Print, s: BubbleSettings): boolean => p.usd < scaledUsd(s.minUsd) || (s.side !== 'both' && p.side !== s.side);

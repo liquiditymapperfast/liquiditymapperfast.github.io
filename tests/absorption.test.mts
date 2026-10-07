@@ -297,7 +297,7 @@ class Fake extends BookConnector {
 test('in the browser, every new fill reaches the detector once and what it finds goes to the page', async () => {
   let now = T0 + 5_000;
   const fakes = new Map<string, Fake>();
-  const venues: BrowserVenue[] = [{ id: 'binance', name: 'binance', kind: 'perp', recommended: true, probe: { url: 'https://binance.example/ping' }, make: () => { const book = new Fake('binance'); fakes.set('binance', book); return { book, feeds: [] }; } }];
+  const venues: BrowserVenue[] = [{ id: 'binance', name: 'binance', kind: 'perp', recommended: true, listed: true, probe: { url: 'https://binance.example/ping' }, make: () => { const book = new Fake('binance'); fakes.set('binance', book); return { book, feeds: [] }; } }];
   const engine = new Engine({ venues, now: () => now, ping: async () => true, get: async () => { throw new Error('offline'); } });
   const found: AbsorptionGroup[] = [];
   engine.onAbsorption = fresh => found.push(...fresh.groups);

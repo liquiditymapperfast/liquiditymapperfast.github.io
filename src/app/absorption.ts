@@ -2,6 +2,7 @@ import { ABSORPTION_WINDOW_MS, GROUP_FLOOR_USD, autoThreshold, markedPart, peakO
 import { clock, price as fmtPrice, usd } from './format.ts';
 import { venueLabel } from './venues.ts';
 import { t, tn } from './i18n.ts';
+import { scaledUsd } from './coin.ts';
 import type { InfoLine } from './infobox.ts';
 
 /**
@@ -96,7 +97,7 @@ export class AbsorptionBook {
   thresholds(ids: readonly string[], s: AbsorptionSettings, now: number): Map<string, number | null> {
     const out = new Map<string, number | null>(), end = Math.floor(now / MINUTE) * MINUTE, start = end - s.sdMinutes * MINUTE;
     for (const id of ids) {
-      if (s.mode === 'fixed') { out.set(id, s.fixedUsd); continue; }
+      if (s.mode === 'fixed') { out.set(id, scaledUsd(s.fixedUsd)); continue; }
       const minutes: AbsorptionMinute[] = [];
       for (const [t, m] of this.#minutes.get(id) ?? []) if (t >= start && t < end) minutes.push(m);
       out.set(id, autoThreshold(minutes, s.k));
@@ -123,14 +124,15 @@ export class AbsorptionBook {
    */
   incomplete(thresholds: ReadonlyMap<string, number | null>): string[] {
     const out: string[] = [];
-    for (const [id, threshold] of thresholds) if (threshold !== null && threshold < Math.max(this.floors[id] ?? GROUP_FLOOR_USD, this.#letGo.get(id) ?? 0)) out.push(id);
+    for (const [id, threshold] of thresholds) if (threshold !== null && threshold < Math.max(this.floors[id] ?? scaledUsd(GROUP_FLOOR_USD), this.#letGo.get(id) ?? 0)) out.push(id);
     return out;
   }
 
   /** The lowest threshold of these instruments, never under the recorder's floor: what a history question needs to ask for. */
   static lowest(thresholds: ReadonlyMap<string, number | null>): number {
     let low = Infinity; for (const v of thresholds.values()) if (v !== null && v < low) low = v;
-    return Math.max(GROUP_FLOOR_USD, Number.isFinite(low) ? low : GROUP_FLOOR_USD);
+    const floor = scaledUsd(GROUP_FLOOR_USD);
+    return Math.max(floor, Number.isFinite(low) ? low : floor);
   }
 }
 

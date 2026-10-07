@@ -19,7 +19,7 @@ class Fake extends BookConnector {
 
 const venue = (id: string, withFeed = false): BrowserVenue & { made: Fake[] } => {
   const made: Fake[] = [];
-  return { id, name: id, kind: 'perp', recommended: true, probe: { url: 'https://x.example' }, made, make: () => { const book = new Fake(id), feeds = withFeed ? [new Fake(id + '-trades')] : []; made.push(book, ...feeds); return { book, feeds }; } };
+  return { id, name: id, kind: 'perp', recommended: true, listed: true, probe: { url: 'https://x.example' }, made, make: () => { const book = new Fake(id), feeds = withFeed ? [new Fake(id + '-trades')] : []; made.push(book, ...feeds); return { book, feeds }; } };
 };
 
 test('a venue with a book on the server gets its trade socket, one that the feed manager already covers does not, and one with a feed of its own runs only that feed', () => {

@@ -723,7 +723,7 @@
  "Show trade bubbles": "显示成交气泡",
  "Large market orders where they traded, the fills of one order added together.": "大额市价单显示在成交的位置，同一订单的各笔成交合计。",
  "Smallest order": "最小订单",
- "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "低于此金额的订单不显示。2.5 万美元以上的订单都会被记录，选更小的值即可重新显示。",
+ "Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.": "低于此金额的订单不显示。{floor} 以上的订单都会被记录，选更小的值即可重新显示。",
  "Both sides, or only the market buys or only the market sells.": "两个方向，或只显示市价买入，或只显示市价卖出。",
  "Buys only": "仅买入",
  "Sells only": "仅卖出",
@@ -734,5 +734,15 @@
  "Write the size in large bubbles": "在大气泡里写出金额",
  "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "只有放得下数字的气泡才会写出，缩小时会消失；悬停或点按任一气泡可查看金额。",
  "Orders from the Whale size in Sounds ({value}) get a bright ring.": "达到声音里 Whale 档位（{value}）的订单带亮环。",
- "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "这些设置只影响气泡：声音和资金流列的圆点保持各自的金额档位。"
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "这些设置只影响气泡：声音和资金流列的圆点保持各自的金额档位。",
+ "does not list this coin": "未上线此币种",
+ "Coin": "币种",
+ "Coin: which coin every view shows. Choosing another loads the page again for it.": "币种：所有视图显示的币种。选择其他币种会为它重新加载页面。",
+ "{coin} is not on the coin list, so the page is on BTC.": "{coin} 不在币种列表中，因此页面显示 BTC。",
+ "Search coins": "搜索币种",
+ "{n} of {total} markets": "{total} 个市场中的 {n} 个",
+ "No coin matches.": "没有匹配的币种。",
+ "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "在 {total} 个市场中至少 {min} 个上线的币种，按 24 小时成交额从大到小排列。{date} 的列表。",
+ "The coin list could not be read, so only BTC is offered.": "无法读取币种列表，因此只提供 BTC。",
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "尺寸设置（成交气泡、吸收、声音、规模行）随币种的成交额而定：{coin} 上为 BTC 的 {factor}。"
 }

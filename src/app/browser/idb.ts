@@ -11,7 +11,7 @@ import { peakOf, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionSto
  * one transaction every half second or so. A write that fails turns writing off for the session rather than disturbing the live view.
  */
 
-const DB_NAME = 'lmf-recordings', VERSION = 3, WRITE_DELAY_MS = 500;
+const VERSION = 3, WRITE_DELAY_MS = 500;
 type Name = 'columns' | 'footprint' | 'prints' | 'flow' | 'absorption' | 'absorptionMinutes';
 const STORES: Name[] = ['columns', 'footprint', 'prints', 'flow', 'absorption', 'absorptionMinutes'];
 /** Absorption groups held in memory by the recorder (older ones are read on demand). */
@@ -21,9 +21,10 @@ interface AbsorptionMinuteRow { inst: string; t: number; n: number; mean: number
 interface ColumnRow { inst: string; t: number; step: number; n: number; bins: Int32Array; bid: Float32Array; ask: Float32Array }
 interface PrintRow extends Print { k: string }
 
-function openDatabase(): Promise<IDBDatabase> {
+/** `name` is the coin's database (app/coin.ts recordingsName): each coin's recordings are kept and read apart. */
+function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, VERSION);
+    const request = indexedDB.open(name, VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       // Version 2 added the flow store, version 3 the absorption stores: an older database keeps what it has and gains only those.
@@ -68,8 +69,8 @@ export interface Recordings {
  * Open the database, read what is still inside the retention window, and return stores for the recorders. `canWrite` says whether this
  * tab is the one allowed to write (only one tab records, so two open pages do not write the same minutes twice).
  */
-export async function openRecordings(since: number, canWrite: () => boolean, onError: (error: unknown) => void = () => {}): Promise<Recordings> {
-  const db = await openDatabase();
+export async function openRecordings(name: string, since: number, canWrite: () => boolean, onError: (error: unknown) => void = () => {}): Promise<Recordings> {
+  const db = await openDatabase(name);
   const absorptionSince = Math.max(since, Date.now() - ABSORPTION_MEMORY_MS);
   const [columnRows, footprintRows, printRows, flowRows, absorptionRows, absorptionMinuteRows] = await Promise.all([readSince<ColumnRow>(db, 'columns', since), readSince<FootprintMinuteRow>(db, 'footprint', since), readSince<PrintRow>(db, 'prints', since), readSince<FlowMinuteRow>(db, 'flow', since),
     readSince<AbsorptionRow>(db, 'absorption', absorptionSince), readSince<AbsorptionMinuteRow>(db, 'absorptionMinutes', absorptionSince)]);

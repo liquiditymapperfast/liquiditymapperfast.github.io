@@ -25,6 +25,7 @@ import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
 import { t } from '../i18n.ts';
+import { currentCoin, scaledUsd, sizeScale } from '../coin.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -34,7 +35,12 @@ const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
 export let AXIS_W = 64;
 export let PROFILE_W = 128;
 export let TRADED_W = 96;
-export function setCompactGutters(compact: boolean): void { AXIS_W = compact ? 58 : 64; PROFILE_W = compact ? 84 : 128; TRADED_W = compact ? 0 : 96; }
+/** The width the price labels need for the coin on screen: BTC's fit the usual width, a coin priced in millionths needs about eleven characters. */
+function axisNeed(): number {
+  const price = currentCoin().price;
+  return price > 0 && price < 1 ? Math.ceil((Math.ceil(-Math.log10(price * 0.0005)) + 2) * 6.5 + 12) : 0;
+}
+export function setCompactGutters(compact: boolean): void { AXIS_W = Math.max(compact ? 58 : 64, axisNeed()); PROFILE_W = compact ? 84 : 128; TRADED_W = compact ? 0 : 96; }
 /** Whether the traded-volume column is drawn: switched on, and the map is wide enough to have one. */
 export const tradedShown = (state: AppState): boolean => state.show.traded && TRADED_W > 0;
 const TIME_H = 22;
@@ -262,7 +268,7 @@ export class HeatPane {
     const gutterCss = `${gutter(state)}px`;
     if (this.#gutterCss !== gutterCss) { this.#gutterCss = gutterCss; this.root.style.setProperty('--gutter', gutterCss); }
     this.#manageRaster();
-    if (state.show.bubbles) this.hub.ensurePrints(this.view, state.tradeBubbles.minUsd);
+    if (state.show.bubbles) this.hub.ensurePrints(this.view, scaledUsd(state.tradeBubbles.minUsd));
     if (tradedShown(state)) this.#ensureTraded(state);
     if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
@@ -516,7 +522,7 @@ export class HeatPane {
     const hidden = (print: Print): boolean => bubbleHidden(print, s) || (off.length > 0 && off.includes(print.id.slice(0, print.id.indexOf(':'))));
     const visible = topPrints(this.hub.prints.items, v.t0, v.t1, v.p0, v.p1, limit, hidden);
     if (!visible.length) return;
-    const whale = state.sounds.tiers[2]?.usd ?? 400_000;
+    const whale = scaledUsd(state.sounds.tiers[2]?.usd ?? 400_000);
     ctx.save();
     const ordered = [...visible].sort((a, b) => a.usd - b.usd);
     for (const print of ordered) {
@@ -853,7 +859,7 @@ export class HeatPane {
       ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
       for (const icon of shown.reverse()) {   // the largest last, on top
         const passiveBuyers = icon.side === 'sell', color = passiveBuyers ? p.bid : p.ask;
-        const size = Math.max(8, Math.min(20, 8 + 5 * Math.sqrt(icon.usd / 1e6))), iy = icon.y + (passiveBuyers ? OFFSET : -OFFSET);
+        const size = Math.max(8, Math.min(20, 8 + 5 * Math.sqrt(icon.usd / (1e6 * sizeScale())))), iy = icon.y + (passiveBuyers ? OFFSET : -OFFSET);
         ctx.globalAlpha = 0.9; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
         ctx.beginPath(); ctx.moveTo(Math.round(icon.x) + 0.5, icon.y); ctx.lineTo(Math.round(icon.x) + 0.5, iy + (passiveBuyers ? -size / 2 : size / 2)); ctx.stroke(); ctx.setLineDash([]);
         ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillRect(icon.x - 2, icon.y - 2, 4, 4);

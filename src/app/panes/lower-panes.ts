@@ -10,7 +10,7 @@ import { activeIds, emptyScopeMessage } from '../scope.ts';
 import type { View } from '../view.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { gutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
-import { BAR_STATS, GROUP_TITLES, PRESETS, SIZE_BUCKET_LABELS, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
+import { BAR_STATS, GROUP_TITLES, PRESETS, sizeBucketLabels, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthKey, imbalanceFlags, ltCardLines, oiCardLines, oiTail, slotAt } from './pane-cards.ts';
@@ -21,6 +21,7 @@ import type { LtSeries } from '../lt.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { panelSwitchRow, panelSwitchOn, setPanelSwitch } from '../sound/panel.ts';
 import { t, tn } from '../i18n.ts';
+import { scaledUsd, unscaledUsd } from '../coin.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -307,8 +308,10 @@ export class OiPane extends TimePane {
     if (spacing >= 9) { ctx.fillStyle = p.accent; for (const i of visible) { ctx.beginPath(); ctx.arc(xc(i), y(oi[i]![4]), 2.4, 0, Math.PI * 2); ctx.fill(); } }
     ctx.restore();
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
-    ctx.fillText(fmtPrice(max, 1), this.w - AXIS_W + 6, 10); ctx.fillText(fmtPrice(min, 1), this.w - AXIS_W + 6, lineBottom - 4);
-    if (split) { ctx.fillText(`±${fmtPrice(maxDelta, 1)}`, this.w - AXIS_W + 6, mid); }
+    // A coin counted in billions (PEPE) would not fit the axis written out in full.
+    const amount = (v: number): string => Math.abs(v) >= 1e6 ? usd(v) : fmtPrice(v, 1);
+    ctx.fillText(amount(max), this.w - AXIS_W + 6, 10); ctx.fillText(amount(min), this.w - AXIS_W + 6, lineBottom - 4);
+    if (split) { ctx.fillText(`±${amount(maxDelta)}`, this.w - AXIS_W + 6, mid); }
     // Readout: the hovered sample, else the newest, with where the data comes from and how old it is.
     const hover = state.hover;
     let shown = oi.length - 1;
@@ -360,7 +363,7 @@ export class LtPane extends TimePane {
       wrap.append(control); this.head.append(wrap);
       this.#sync.push(() => { if (control.value !== get()) control.value = get(); });
     };
-    const size = (v: number, none: string, sign: string): [string, string] => [String(v), v === 0 ? none : `${sign} $${v >= 1e6 ? v / 1e6 + 'M' : v / 1e3 + 'k'}`];
+    const size = (v: number, none: string, sign: string): [string, string] => [String(v), v === 0 ? none : `${sign} $${usd(scaledUsd(v))}`];
     select(t('Half-life'), t("Distance from the touch, in basis points of price, at which a level's weight halves"), HALF_LIVES.map(v => [String(v), `${v} bp`]), () => String(lt().halfLifeBp), v => patch({ halfLifeBp: Number(v) }));
     select(t('Min'), t('Ignore price bins smaller than this'), MIN_SIZES.map(v => size(v, t('any'), '≥')), () => String(lt().minUsd), v => patch({ minUsd: Number(v) }));
     select(t('Max'), t('Ignore price bins larger than this'), MAX_SIZES.map(v => size(v, t('no cap'), '≤')), () => String(lt().maxUsd), v => patch({ maxUsd: Number(v) }));
@@ -395,7 +398,7 @@ export class LtPane extends TimePane {
     const liveTail = v.t1 > Date.now() - 2 * MINUTE;
     if (ids.length && !this.#busy && (key !== this.#key || (liveTail && performance.now() - this.#lastAt > 1_500))) {
       this.#key = key; this.#busy = true; this.#lastAt = performance.now();
-      const params = { halfLifeBp: lt.halfLifeBp, minUsd: lt.minUsd, maxUsd: lt.maxUsd, average: lt.average };
+      const params = { halfLifeBp: lt.halfLifeBp, minUsd: scaledUsd(lt.minUsd), maxUsd: scaledUsd(lt.maxUsd), average: lt.average };
       void this.hub.lt(ids, t0, t1, params).then(r => { this.#series = { ...r, stepMs: this.hub.columnStepMs }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
     }
     const s = this.#series, readout = this.head.querySelector('.readout')!;
@@ -500,10 +503,10 @@ export class BarStatsPane extends TimePane {
       selectRow(t('Cells'), t('Filled cells are shaded by magnitude (log scale between the visible 2nd and 99th percentile); text only is coloured by sign'), [['filled', t('Filled')], ['text', t('Text only')]], options.cells, v => setOptions({ cells: v as StatOptions['cells'] })),
       selectRow(t('OI change in'), t("Open-interest change in base coin (the series' own unit) or as USD (change times the bar's close)"), [['base', t('Base coin')], ['usd', 'USD']], options.oiUnits, v => setOptions({ oiUnits: v as StatOptions['oiUnits'] })),
       numberRow(t('Imbalance ratio'), t('A level counts as imbalanced when its volume is at least this many times the opposite volume one row away'), { min: 1, step: 0.5, value: options.imbRatio }, v => setOptions({ imbRatio: v })),
-      numberRow(t('Imbalance min USD'), t('Ignore imbalanced levels smaller than this'), { min: 0, step: 1000, value: options.imbMinUsd }, v => setOptions({ imbMinUsd: v })),
+      numberRow(t('Imbalance min USD'), t('Ignore imbalanced levels smaller than this'), { min: 0, step: scaledUsd(1000), value: scaledUsd(options.imbMinUsd) }, v => setOptions({ imbMinUsd: unscaledUsd(v) })),
       numberRow(t('Stacked rows'), t('Adjacent imbalanced rows on one side that count as a stack'), { min: 2, step: 1, value: options.stackedN }, v => setOptions({ stackedN: Math.round(v) })),
     );
-    const buckets = SIZE_BUCKET_LABELS.map((label, i): [string, string] => [String(i), label]);
+    const buckets = sizeBucketLabels().map((label, i): [string, string] => [String(i), label]);
     body.append(
       selectRow(t('Retail up to'), t('Market orders in this size bucket and below are retail (delta retail, cvd retail)'), buckets, String(options.retailMax), v => { const r = Number(v); setOptions({ retailMax: r, whaleMin: Math.max(options.whaleMin, Math.min(7, r + 1)) }); }),
       selectRow(t('Whales from'), t('Market orders in this size bucket and above are whales (delta whales, cvd whales)'), buckets, String(options.whaleMin), v => { const w = Number(v); setOptions({ whaleMin: w, retailMax: Math.min(options.retailMax, Math.max(0, w - 1)) }); }),

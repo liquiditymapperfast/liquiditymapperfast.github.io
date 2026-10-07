@@ -2,6 +2,7 @@ import { usd, clock } from '../format.ts';
 import type { InfoLine } from '../infobox.ts';
 import { venueLabel } from '../venues.ts';
 import { t } from '../i18n.ts';
+import { scaledUsd } from '../coin.ts';
 import type { Kind } from '../scope.ts';
 import type { CvdModel, FamilyRow, LaneLine } from './model.ts';
 
@@ -91,7 +92,7 @@ export function aggregateHover(model: CvdModel, column: number, timeMs: number, 
 }
 
 /** Spot and perpetual moving apart over the ranking window: both sides big and of opposite sign. Null when they do not. */
-export function divergence(model: CvdModel, minUsd = 2_000_000): string | null {
+export function divergence(model: CvdModel, minUsd = scaledUsd(2_000_000)): string | null {
   const spot = model.spot?.delta ?? 0, perp = model.perp?.delta ?? 0;
   if (Math.abs(spot) < minUsd || Math.abs(perp) < minUsd || Math.sign(spot) === Math.sign(perp)) return null;
   return spot > 0 ? t('Spot is being bought while perpetuals are being sold.') : t('Spot is being sold while perpetuals are being bought.');

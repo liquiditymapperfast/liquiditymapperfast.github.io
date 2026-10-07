@@ -32,6 +32,7 @@ import { openSheet, type Sheet } from './sheet.ts';
 import { wakeLockSupported } from './wake.ts';
 import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from './i18n.ts';
 import { t, tn } from './i18n.ts';
+import { coinChoice, currentCoin, scaledUsd, unscaledUsd } from './coin.ts';
 
 /** How a timeframe is said in a tooltip. */
 const TIMEFRAME_NAMES: Readonly<Record<string, string>> = { '1m': t('1-minute'), '5m': t('5-minute'), '15m': t('15-minute'), '30m': t('30-minute'), '1h': t('1-hour'), '4h': t('4-hour'), '1d': t('Daily') };
@@ -57,6 +58,10 @@ function setValue(control: HTMLSelectElement | HTMLInputElement, value: string):
 /** Top bar: market, timeframe, layer, pane toggles, heatmap colour, venues, theme. */
 export class Toolbar {
   readonly root = el('header', { class: 'toolbar' });
+  /** The coin every view shows; choosing another loads the page again for it (app/coin.ts). */
+  #coin = el('button', { type: 'button', class: 'coin-btn', textContent: currentCoin().coin, ariaLabel: t('Coin'), tip: t('Coin: which coin every view shows. Choosing another loads the page again for it.'), onclick: () => { void lazy(() => import('./coin-dialog.ts')).then(m => m?.openCoinDialog()); } });
+  /** Says once why the page is on BTC when another coin was asked for. */
+  #coinNotice = el('div', { class: 'notice', role: 'status', hidden: true });
   #market = el('select', { class: 'market', ariaLabel: t('Market'), tip: t("Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.") });
   #timeframes = el('div', { class: 'seg' });
   #layer = el('select', { ariaLabel: t('Layer'), tip: t('Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).') });
@@ -128,6 +133,12 @@ export class Toolbar {
   onVenuesApplied: () => void = () => {};
 
   constructor(private store: Store, private venueControl: VenueControl) {
+    const missing = coinChoice().notice;
+    if (missing) {
+      this.#coinNotice.append(el('span', { class: 'notice-mark', textContent: 'ⓘ', ariaHidden: 'true' }), el('span', { textContent: t('{coin} is not on the coin list, so the page is on BTC.', { coin: missing }) }),
+        el('button', { class: 'notice-close', tip: t('Dismiss'), ariaLabel: t('Dismiss'), onclick: () => { this.#coinNotice.hidden = true; } }));
+      this.#coinNotice.hidden = false;
+    }
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
     for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, tip: t('{timeframe} candles. The footprint, the bar stats and the open-interest bars follow this too.', { timeframe: TIMEFRAME_NAMES[tf] ?? tf }), onclick: () => this.store.set({ timeframe: tf }) }));
     for (const [id, label] of LAYERS) {
@@ -213,15 +224,15 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#absorption, this.#soundButton,
-        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root);
+      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#absorption, this.#soundButton,
+        this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
     this.root.replaceChildren(
       el('div', { class: 'tb-bar' },
-        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#market, this.#spacer, this.#status, this.#more),
+        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#market, this.#spacer, this.#status, this.#more),
         el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter)),
-      this.#notice.root);
+      this.#notice.root, this.#coinNotice);
   }
 
   #toggleSheet(): void {
@@ -427,14 +438,14 @@ export class Toolbar {
     const set = (change: Partial<BubbleSettings>): void => { this.store.set({ tradeBubbles: { ...this.store.state.tradeBubbles, ...change } }); };
     body.append(
       switchRow(t('Show trade bubbles'), t('Large market orders where they traded, the fills of one order added together.'), this.store.state.show.bubbles, on => { this.store.set({ show: { ...this.store.state.show, bubbles: on } }); rebuild(); }),
-      selectRow(t('Smallest order'), t('Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.'), BUBBLE_MINIMUMS.map(v => [String(v), `$${usd(v)}`] as [string, string]), String(b.minUsd), v => set({ minUsd: Number(v) })),
+      selectRow(t('Smallest order'), t('Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.', { floor: `$${usd(scaledUsd(BUBBLE_MINIMUMS[0]!))}` }), BUBBLE_MINIMUMS.map(v => [String(v), `$${usd(scaledUsd(v))}`] as [string, string]), String(b.minUsd), v => set({ minUsd: Number(v) })),
       selectRow(t('Side'), t('Both sides, or only the market buys or only the market sells.'), [['both', t('Both')], ['buy', t('Buys only')], ['sell', t('Sells only')]], b.side, v => set({ side: v === 'buy' || v === 'sell' ? v : 'both' })),
       rangeRow(t('Bubble size'), t('Every bubble larger or smaller; their sizes keep their proportions.'), { min: L.scale.min, max: L.scale.max, step: L.scale.step, value: b.scale, format: v => `×${v.toFixed(1)}` }, scale => set({ scale })),
       rangeRow(t('Opacity'), t('How solid the bubbles are: lower lets the map and the candles show through.'), { min: L.opacity.min, max: L.opacity.max, step: L.opacity.step, value: b.opacity, format: v => `${Math.round(v * 100)}%` }, opacity => set({ opacity })),
       switchRow(t('Write the size in large bubbles'), t('Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.'), b.labels, labels => set({ labels })),
     );
     const whale = this.store.state.sounds.tiers[2]?.usd;
-    if (whale) body.append(note(t('Orders from the Whale size in Sounds ({value}) get a bright ring.', { value: `$${usd(whale)}` })));
+    if (whale) body.append(note(t('Orders from the Whale size in Sounds ({value}) get a bright ring.', { value: `$${usd(scaledUsd(whale))}` })));
     body.append(note(t('These settings change only the bubbles: sounds and the flow column\'s dots keep their own sizes.')));
   }
 
@@ -451,7 +462,7 @@ export class Toolbar {
       rangeRow(t('Standard deviations'), t('Higher marks fewer, only the largest. The usual setting is 10.'), { min: L.k.min, max: L.k.max, step: L.k.step, value: a.k, format: v => `${v} SD` }, k => set({ k })),
       numberRow(t('Over the last (minutes)'), t('How far back the window sums the threshold is taken from reach. The threshold is worked out again every minute.'), { min: L.sdMinutes.min, max: L.sdMinutes.max, step: 1, value: a.sdMinutes }, sdMinutes => set({ sdMinutes })),
     );
-    else body.append(numberRow(t('Size (USD)'), t('A window sum at one price must reach this to be marked, on every venue.'), { min: L.fixedUsd.min, step: 25_000, value: a.fixedUsd }, fixedUsd => set({ fixedUsd })));
+    else body.append(numberRow(t('Size (USD)'), t('A window sum at one price must reach this to be marked, on every venue.'), { min: scaledUsd(L.fixedUsd.min), step: scaledUsd(25_000), value: scaledUsd(a.fixedUsd) }, fixedUsd => set({ fixedUsd: unscaledUsd(fixedUsd) })));
     body.append(switchRow(t('Write the volume beside each mark'), t('The USD taken at that level, added up over the marks drawn as one.'), a.volume, volume => set({ volume })));
     const now = this.absorptionInfo();
     body.append(note(now ? t('Thresholds now: {list}', { list: now }) : t('The thresholds appear once a minute of trading has been recorded.')));

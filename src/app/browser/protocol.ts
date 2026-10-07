@@ -6,6 +6,7 @@ import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../../
 import type { FlowFrame, FlowUpdate } from '../../shared/flow.ts';
 import type { ColumnsFrame } from '../../shared/columns.ts';
 import type { LevelsFrame } from '../wire.ts';
+import type { Coin } from '../../shared/coins.ts';
 
 /** What the page asks the feeds worker for; each has an answer of the type in `RpcResult`. */
 export type RpcCall =
@@ -25,8 +26,11 @@ export interface RpcResult {
 }
 
 export type FeedsIn =
-  /** Start the engine with these venues (null: the recommended set); `persist` keeps recordings in this browser (IndexedDB). */
-  | { type: 'init'; selected: string[] | null; known: string[] | null; persist: boolean }
+  /**
+   * Start the engine on this coin with these venues (null: the recommended set); `persist` keeps recordings in this browser (IndexedDB),
+   * in `database`, with `lock` held by the one tab that writes them.
+   */
+  | { type: 'init'; selected: string[] | null; known: string[] | null; persist: boolean; coin: Coin; tier: number; database: string; lock: string }
   | { type: 'select'; selected: string[] }
   /** The page is going away: write what has not been saved. */
   | { type: 'flush' }

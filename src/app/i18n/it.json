@@ -743,7 +743,7 @@
  "Show trade bubbles": "Mostra le bolle delle operazioni",
  "Large market orders where they traded, the fills of one order added together.": "Gli ordini a mercato grandi dove sono stati eseguiti, con le esecuzioni di un ordine sommate.",
  "Smallest order": "Ordine più piccolo",
- "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Gli ordini al di sotto non sono disegnati. Ogni ordine da 25K $ viene registrato, quindi una scelta più bassa li fa tornare.",
+ "Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.": "Gli ordini al di sotto non sono disegnati. Ogni ordine da {floor} viene registrato, quindi una scelta più bassa li fa tornare.",
  "Both sides, or only the market buys or only the market sells.": "Entrambi i lati, oppure solo gli acquisti a mercato o solo le vendite a mercato.",
  "Buys only": "Solo acquisti",
  "Sells only": "Solo vendite",
@@ -754,5 +754,15 @@
  "Write the size in large bubbles": "Scrivi la dimensione nelle bolle grandi",
  "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Solo le bolle abbastanza grandi per contenere il numero lo ricevono, quindi allontanando spariscono; passa il mouse o tocca una bolla per la sua dimensione.",
  "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Gli ordini dalla dimensione Whale dei Suoni ({value}) hanno un anello luminoso.",
- "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Queste impostazioni cambiano solo le bolle: i suoni e i punti della colonna del flusso mantengono le proprie dimensioni."
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Queste impostazioni cambiano solo le bolle: i suoni e i punti della colonna del flusso mantengono le proprie dimensioni.",
+ "does not list this coin": "non quota questa moneta",
+ "Coin": "Moneta",
+ "Coin: which coin every view shows. Choosing another loads the page again for it.": "Moneta: la moneta mostrata da tutte le viste. Sceglierne un'altra ricarica la pagina per quella.",
+ "{coin} is not on the coin list, so the page is on BTC.": "{coin} non è nell'elenco delle monete, quindi la pagina mostra BTC.",
+ "Search coins": "Cerca monete",
+ "{n} of {total} markets": "{n} di {total} mercati",
+ "No coin matches.": "Nessuna moneta corrisponde.",
+ "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "Monete presenti su almeno {min} dei {total} mercati, dal volume a 24 h più alto. Elenco del {date}.",
+ "The coin list could not be read, so only BTC is offered.": "Non è stato possibile leggere l'elenco delle monete, quindi è offerto solo BTC.",
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Le impostazioni di dimensione (bolle dei trade, assorbimento, suoni, righe di dimensione) seguono il volume della moneta: su {coin} sono {factor} di quelle di BTC."
 }

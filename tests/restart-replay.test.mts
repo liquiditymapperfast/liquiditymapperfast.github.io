@@ -99,7 +99,7 @@ test('in the browser, a reload does not count again what a venue sends again', (
   const stores = memoryStores(), t = Date.now() - 20_000;
   const open = () => {
     const fakes = new Map<string, Fake>();
-    const venues: BrowserVenue[] = [{ id: 'binance', name: 'binance', kind: 'perp', recommended: true, probe: { url: 'https://binance.example/ping' }, make: () => { const book = new Fake('binance'); fakes.set('binance', book); return { book, feeds: [] }; } }];
+    const venues: BrowserVenue[] = [{ id: 'binance', name: 'binance', kind: 'perp', recommended: true, listed: true, probe: { url: 'https://binance.example/ping' }, make: () => { const book = new Fake('binance'); fakes.set('binance', book); return { book, feeds: [] }; } }];
     const engine = new Engine({ venues, ping: async () => true, get: async () => { throw new Error('offline'); }, footprint: stores.footprint, flow: stores.flow });
     engine.select(['binance']);
     return { engine, venue: fakes.get('binance')! };

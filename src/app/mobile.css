@@ -159,6 +159,8 @@ html[data-bar="compact"] .menu-title { display: block; padding: 10px 14px 8px; f
 html[data-bar="compact"] dialog.venues { width: calc(100vw - 24px); max-width: 520px; max-height: 90dvh; overflow: auto; padding: 16px; }
 html[data-bar="compact"] .venue-list { grid-template-columns: 1fr 1fr; gap: 2px 10px; }
 html[data-bar="compact"] .venue-list label { min-height: 42px; }
+html[data-bar="compact"] .coin-row { min-height: 44px; }
+html[data-bar="compact"] dialog.coins input[type=search] { min-height: 40px; font-size: 16px; }
 html[data-bar="compact"] dialog.venues .row { flex-wrap: wrap; justify-content: stretch; }
 html[data-bar="compact"] dialog.venues .row button { flex: 1 1 auto; min-height: 44px; white-space: nowrap; border-radius: var(--radius); }
 html[data-layout^="phone"] dialog.guide { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; border: 0; }

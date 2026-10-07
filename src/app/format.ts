@@ -8,7 +8,9 @@ const fixedFormat = (decimals: number): Intl.NumberFormat => fixed[decimals] ??=
 
 export function price(value: number, step = 0): string {
   if (!Number.isFinite(value)) return '–';
-  const decimals = step > 0 ? Math.min(6, Math.max(0, Math.ceil(-Math.log10(step) - 1e-9))) : value >= 1000 ? 1 : value >= 1 ? 2 : 5;
+  // Up to ten decimals: a coin priced in millionths of a dollar (PEPE) moves in billionths.
+  const decimals = step > 0 ? Math.min(10, Math.max(0, Math.ceil(-Math.log10(step) - 1e-9)))
+    : value >= 1000 ? 1 : value >= 1 ? 2 : value > 0 ? Math.min(10, Math.max(5, Math.ceil(-Math.log10(value)) + 3)) : 5;
   return fixedFormat(decimals).format(value);
 }
 const two = (n: number) => String(n).padStart(2, '0');

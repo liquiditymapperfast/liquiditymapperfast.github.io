@@ -1,6 +1,7 @@
 import { Hub } from './hub.ts';
 import { ServerSource } from './server-source.ts';
 import { BrowserSource } from './browser-source.ts';
+import { chooseCoin, forCoin, keepCoinRecordings, type CoinChoice } from './coin.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
 import { Store, initialState } from './store.ts';
@@ -38,25 +39,29 @@ async function serverAnswers(): Promise<boolean> {
 /**
  * Where the data comes from. A static host (GitHub Pages, any file server) has no server behind it, so the page reads the exchanges
  * itself in a worker. Served by the local server, the page uses that server and its recorded history instead. `?source=browser` or
- * `?source=server` chooses explicitly (`?persist=0` keeps a browser-source session from saving recordings).
+ * `?source=server` chooses explicitly (`?persist=0` keeps a browser-source session from saving recordings). The server records BTC only,
+ * so a page on another coin reads the exchanges itself wherever it is served from.
  */
-async function chooseSource(params: URLSearchParams): Promise<DataSource> {
+async function chooseSource(params: URLSearchParams, choice: CoinChoice): Promise<DataSource> {
   const wanted = params.get('source');
-  if (wanted === 'server' || (wanted !== 'browser' && await serverAnswers())) return new ServerSource();
-  return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0' });
+  if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && await serverAnswers()))) return new ServerSource();
+  return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier });
 }
 
 async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   startDevice();
-  const store = new Store(initialState());
+  const params = new URLSearchParams(location.search);
+  // The coin first: everything after it is built for that coin (BTC needs no list, so a BTC page does not wait for one).
+  const choice = await chooseCoin(params);
+  const store = new Store(forCoin(initialState(), choice.coin));
   setTimeZone(store.state.timeZone);
   applyTheme(store.state.theme);
   installTips();
   installTouchSelects();
   const kernels = await loadKernels();
-  const params = new URLSearchParams(location.search);
-  const source = await chooseSource(params);
+  keepCoinRecordings();
+  const source = await chooseSource(params, choice);
   const hub = new Hub(store, source);
   const wake = new ScreenWake(); wake.set(store.state.keepAwake);
 

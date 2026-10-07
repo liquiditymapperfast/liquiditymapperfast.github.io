@@ -122,9 +122,11 @@ export class FootprintRecorder {
   readonly #dirty = new Set<string>();
 
   readonly #retentionMs: number;
+  /** The size buckets' edges are SIZE_EDGES times this (1 for BTC; smaller for a coin that trades less). */
+  readonly sizeScale: number;
 
-  constructor(store: FootprintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS) {
-    this.#store = store; this.#retentionMs = retentionMs;
+  constructor(store: FootprintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS, sizeScale = 1) {
+    this.#store = store; this.#retentionMs = retentionMs; this.sizeScale = sizeScale;
     if (store) {
       for (const row of store.load(now() - retentionMs)) {
         this.#steps.set(row.inst, row.step);
@@ -184,7 +186,8 @@ export class FootprintRecorder {
     for (const order of orders) {
       const minute = Math.floor(order.t / MINUTE) * MINUTE, stats = this.#stats.get(order.instrumentId)?.get(minute);
       if (!stats || !(order.usd > 0)) continue;
-      if (order.side === 'buy') { stats.buyN++; stats.buy[sizeBucket(order.usd)]! += order.usd; } else { stats.sellN++; stats.sell[sizeBucket(order.usd)]! += order.usd; }
+      const bucket = sizeBucket(order.usd / this.sizeScale);
+      if (order.side === 'buy') { stats.buyN++; stats.buy[bucket]! += order.usd; } else { stats.sellN++; stats.sell[bucket]! += order.usd; }
       this.#dirty.add(`${order.instrumentId}|${minute}`);
     }
   }

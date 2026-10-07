@@ -14,6 +14,8 @@ import { venueLabel } from '../venues.ts';
 import type { BurstEvent } from '../cvd/burst.ts';
 import { TIMEFRAMES } from '../../shared/series.ts';
 import { t } from '../i18n.ts';
+import { scaledUsd } from '../coin.ts';
+import { usd } from '../format.ts';
 
 export type AlertPanel = 'flow' | 'bars' | 'book' | 'depth' | 'oi';
 /** What was decided for one alert: kept for the panel's "recent" list and for the harness; audible is false when the engine was locked or muted. */
@@ -90,7 +92,7 @@ export class Alerts {
     const nowSec = Math.floor(now / 1000);
     for (const id of flowIds(s, this.flow.ids)) {
       const series = this.flow.get(id); if (!series) continue;
-      const found = burst(series, nowSec, { windowSec: 10, baselineSec: 1_800, k: rule.sensitivity, minUsd: rule.usd });
+      const found = burst(series, nowSec, { windowSec: 10, baselineSec: 1_800, k: rule.sensitivity, minUsd: scaledUsd(rule.usd) });
       if (!found || series.span!.last < nowSec - 2) continue;
       if (this.bursts.some(b => b.id === id && now - b.t < FLOW_COOLDOWN_MS)) continue;
       const kind = kindOf(s.markets, id) === 'spot' ? 'spot' : 'perp', family = familyKey(venueOfInstrument(id));
@@ -112,10 +114,10 @@ export class Alerts {
     const active = new Set(activeIds(s)), bins = bookBins(s.levels, active, mark, 0.01);
     // The books the bins are made of: when that set changes (a venue chip, a venue that dropped out of the feed) the walls start over.
     const context = s.levels.books.filter(book => active.has(book.id)).map(book => book.id).sort().join(',');
-    for (const signal of this.#walls.update(now, bins, mark, panels.book.usd, context)) {
+    for (const signal of this.#walls.update(now, bins, mark, scaledUsd(panels.book.usd), context)) {
       if (!panels.book.wall) continue;
       const word = signal.kind === 'appeared' ? t('wall appeared') : t('wall pulled');
-      this.#fire(now, 'book', signal.kind === 'appeared' ? 'wall-appeared' : 'wall-pulled', signal.side, `${signal.side === 'buy' ? t('Bid') : t('Ask')} ${word}: $${Math.round(signal.usd / 1e5) / 10}M`, `wall:${signal.side}:${signal.kind}`, WALL_COOLDOWN_MS);
+      this.#fire(now, 'book', signal.kind === 'appeared' ? 'wall-appeared' : 'wall-pulled', signal.side, `${signal.side === 'buy' ? t('Bid') : t('Ask')} ${word}: $${usd(signal.usd)}`, `wall:${signal.side}:${signal.kind}`, WALL_COOLDOWN_MS);
     }
     const tip = this.#balance.update(imbalanceOf(bins), panels.depth.pct);
     if (tip && panels.depth.imbalance) this.#fire(now, 'depth', 'imbalance', tip, tip === 'buy' ? t('Bids outweigh asks within 1% of the price') : t('Asks outweigh bids within 1% of the price'), 'imbalance', IMBALANCE_COOLDOWN_MS);
@@ -142,7 +144,7 @@ export class Alerts {
     const startSec = Math.floor(start / 1000), endSec = Math.floor(end / 1000) - 1;
     let delta = 0;
     for (const id of ids) delta += this.flow.get(id)?.delta(startSec, endSec) ?? 0;
-    if (Math.abs(delta) < rule.usd) return;
+    if (Math.abs(delta) < scaledUsd(rule.usd)) return;
     this.#fire(now, 'bars', 'bar-delta', delta > 0 ? 'buy' : 'sell', t('{timeframe} candle closed with {delta} of net taker flow', { timeframe: s.timeframe, delta: signedUsd(delta) }), 'bar-delta', 1_000);
   }
 

@@ -10,7 +10,8 @@ import { niceStep } from '../view.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
 import { beyondCover, coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance, liquidityInView, type Cover, type Grouped } from './levels-data.ts';
-import { GROUPS, holdsMark, ladderWheel, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
+import { GROUPS, groupsFor, holdsMark, ladderWheel, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
+import { currentCoin } from '../coin.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
@@ -26,6 +27,9 @@ const PRICE_W = 58, USD_W = 54, MIN_BAR_W = 90, CELL_MAX = 26, CELL_MIN = 5;
 /** Dragging the price column zooms; this is the width of that column's hit area, and how far to drag per zoom step. */
 const AXIS_W = PRICE_W + 6, AXIS_DRAG_PX = 26;
 const BOOK_MIN_W = 250;
+/** A step as the Group list writes it: as it is, or in decimals once it is small enough that it would read "2e-9". */
+const stepText = (step: number): string => step >= 1e-4 ? String(step) : fmtPrice(step, step);
+
 const VENUE_TINT = [1, 0.62, 0.38, 0.8, 0.5, 0.7, 0.3, 0.9];
 
 export { venueLabel };
@@ -57,6 +61,8 @@ export class LadderPane {
   #fling = 0;
   /** What the last frame drew, which gestures are read against (step 0 until a frame has data). */
   #layout = { step: 0, rows: 0, head: 0, colW: 0, mark: 0 };
+  /** The steps the book groups by: BTC's, or BTC's moved to the price of the coin on screen. A saved step not on the list is Auto. */
+  readonly #groups: readonly number[] = currentCoin().coin === 'BTC' ? GROUPS : groupsFor(currentCoin().price);
   #drag: Drag | null = null;
   #autoOption: HTMLOptionElement | null = null;
   /** Mirror-hover comparison for the book under the pointer, or null (read by tests, drawn on the canvas). */
@@ -98,7 +104,7 @@ export class LadderPane {
       const notches = this.#notches.add(e.deltaY * lines * pinch, e.timeStamp);
       // Zooming holds the current price where it is, so the book swells and shrinks around it instead of sliding past; once the book has been
       // scrolled off the mark (or with Alt held) it zooms about the pointer instead.
-      if (notches) { const a = this.#anchor(this.#rowAt(local(e).y), e.altKey); this.#zoomTo(stepBy(this.#layout.step, notches), a.row, a.price); }
+      if (notches) { const a = this.#anchor(this.#rowAt(local(e).y), e.altKey); this.#zoomTo(stepBy(this.#layout.step, notches, this.#groups), a.row, a.price); }
     }, { passive: false });
     c.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch' || e.button !== 0 || !(this.#layout.step > 0)) return;
@@ -163,7 +169,7 @@ export class LadderPane {
         const z = this.#pinch; if (!z) return;
         // Fingers spreading apart is zooming in, which is a finer step; about one step for each 1.6x the separation changes.
         const notches = -Math.round(Math.log2(axisPinchScale(info.start.dy, info.now.dy)) * 1.6);
-        this.#zoomTo(stepBy(z.step, notches), z.row, z.price);
+        this.#zoomTo(stepBy(z.step, notches, this.#groups), z.row, z.price);
       },
       pinchEnd: () => { this.#pinch = null; },
       cancel: () => { this.#drag = null; this.#pinch = null; },
@@ -200,7 +206,7 @@ export class LadderPane {
   /** The step a drag of the price column has reached at pointer height `y`: held about its anchor, which for the mark is the mark as it is now (it moves while the hand does). */
   #zoomDrag(drag: Extract<Drag, { kind: 'zoom' }>, y: number): void {
     const l = this.#layout;
-    this.#zoomTo(stepBy(drag.step, Math.trunc((y - drag.y) / AXIS_DRAG_PX)), drag.onMark ? Math.floor(l.rows / 2) : drag.row, drag.onMark ? l.mark : drag.price);
+    this.#zoomTo(stepBy(drag.step, Math.trunc((y - drag.y) / AXIS_DRAG_PX), this.#groups), drag.onMark ? Math.floor(l.rows / 2) : drag.row, drag.onMark ? l.mark : drag.price);
   }
   /** Group by `step`, keeping `price` (default: what the pointer is over) on `row`, so the zoom is about the pointer rather than the mark. */
   #zoomTo(step: number, row: number, price = this.#priceAt(row)): void {
@@ -211,6 +217,8 @@ export class LadderPane {
     this.store.set({ grouping: step });
   }
   invalidate(): void { if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#render(); }); }
+  /** The saved grouping when it is one of this coin's steps (it may have been chosen on another coin), else Auto. */
+  #grouping(saved: AppState['grouping']): AppState['grouping'] { return saved !== 'auto' && this.#groups.includes(saved) ? saved : 'auto'; }
 
   #selects: { select: HTMLSelectElement; get: () => string }[] = [];
   #select(label: string, options: [string, string][], get: () => string, set: (v: string) => void): HTMLLabelElement {
@@ -226,7 +234,7 @@ export class LadderPane {
     this.#booksButton.className = 'books-btn'; this.#booksButton.textContent = t('Books'); setTip(this.#booksButton, t('Choose which venues get their own book (Single mode)'));
     this.#booksButton.onclick = () => { this.#panel = togglePanel(this.#booksButton, { title: t('Order books'), width: 340, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#buildBooks(tools, body)); };
     const recenter = document.createElement('button'); recenter.className = 'recenter-btn'; recenter.textContent = t('Recenter'); recenter.onclick = () => this.recenter();
-    const group = this.#select(t('Group'), [['auto', t('Auto')], ...GROUPS.map(g => [String(g), String(g)] as [string, string])], () => String(s().grouping), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
+    const group = this.#select(t('Group'), [['auto', t('Auto')], ...this.#groups.map(g => [String(g), stepText(g)] as [string, string])], () => String(this.#grouping(s().grouping)), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
     setTip(group, t('Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.'));
     this.#autoOption = group.querySelector('option[value="auto"]');
     this.controls.append(title, helpButton('orderBook'),
@@ -304,9 +312,9 @@ export class LadderPane {
     const balanceH = state.highlight.on ? BALANCE_H : 0;
     const head = (cells && cellW < 20 ? HEAD_TALL : HEAD_H) + balanceH;
     const rows = Math.max(6, Math.floor((h - head) / ROW_H));
-    const step = state.grouping === 'auto' ? niceStep(mark * 0.012, rows / 2) : state.grouping;
+    const grouping = this.#grouping(state.grouping), step = grouping === 'auto' ? niceStep(mark * 0.012, rows / 2) : grouping;
     this.#layout = { step, rows, head, colW: width / columns, mark };
-    if (this.#autoOption) { const text = state.grouping === 'auto' ? `${t('Auto')} · ${step}` : t('Auto'); if (this.#autoOption.text !== text) this.#autoOption.text = text; }
+    if (this.#autoOption) { const text = grouping === 'auto' ? `${t('Auto')} · ${stepText(step)}` : t('Auto'); if (this.#autoOption.text !== text) this.#autoOption.text = text; }
     const centerBin = Math.floor(mark / step) + this.#offsetRows;
     const p0 = (centerBin - rows / 2) * step, p1 = (centerBin + rows / 2 + 1) * step;
     const g = groupLevels(this.kernels, frame, ids, step, p0, p1);

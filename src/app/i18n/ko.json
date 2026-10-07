@@ -723,7 +723,7 @@
  "Show trade bubbles": "체결 버블 보기",
  "Large market orders where they traded, the fills of one order added together.": "큰 시장가 주문을 체결된 곳에 표시합니다(한 주문의 체결은 합산).",
  "Smallest order": "가장 작은 주문",
- "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "이보다 작은 주문은 그리지 않습니다. 2.5만 달러 이상의 주문은 모두 기록하므로 값을 낮추면 다시 나타납니다.",
+ "Orders under this are not drawn. Every order from {floor} is recorded, so a lower choice brings them back.": "이보다 작은 주문은 그리지 않습니다. {floor} 이상의 주문은 모두 기록하므로 값을 낮추면 다시 나타납니다.",
  "Both sides, or only the market buys or only the market sells.": "양쪽 모두, 또는 시장가 매수만이나 시장가 매도만.",
  "Buys only": "매수만",
  "Sells only": "매도만",
@@ -734,5 +734,15 @@
  "Write the size in large bubbles": "큰 버블에 크기 쓰기",
  "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "숫자가 들어갈 만큼 큰 버블에만 표시하므로 축소하면 사라집니다. 버블에 마우스를 올리거나 탭하면 크기를 볼 수 있습니다.",
  "Orders from the Whale size in Sounds ({value}) get a bright ring.": "소리의 Whale 크기({value}) 이상 주문에는 밝은 테두리가 붙습니다.",
- "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "이 설정은 버블에만 적용됩니다. 소리와 플로우 열의 점은 각자의 크기를 유지합니다."
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "이 설정은 버블에만 적용됩니다. 소리와 플로우 열의 점은 각자의 크기를 유지합니다.",
+ "does not list this coin": "이 코인은 상장되어 있지 않음",
+ "Coin": "코인",
+ "Coin: which coin every view shows. Choosing another loads the page again for it.": "코인: 모든 화면이 보여 주는 코인입니다. 다른 코인을 고르면 그 코인으로 페이지를 다시 불러옵니다.",
+ "{coin} is not on the coin list, so the page is on BTC.": "{coin}은(는) 코인 목록에 없어서 BTC를 표시합니다.",
+ "Search coins": "코인 검색",
+ "{n} of {total} markets": "{total}개 시장 중 {n}개",
+ "No coin matches.": "일치하는 코인이 없습니다.",
+ "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "{total}개 시장 중 {min}개 이상에 상장된 코인을 24시간 거래량이 큰 순서로 보여 줍니다. {date} 목록입니다.",
+ "The coin list could not be read, so only BTC is offered.": "코인 목록을 읽지 못해 BTC만 선택할 수 있습니다.",
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "크기 설정(체결 버블, 흡수, 소리, 크기 행)은 코인의 거래량을 따릅니다. {coin}에서는 BTC의 {factor}입니다."
 }
