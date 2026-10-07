@@ -61,6 +61,15 @@ export function clock(t: number, withDate = false): string {
   return withDate ? `${monthDay(d)} ${time}` : time;
 }
 
+/**
+ * A time-axis tick's label: a tick on a midnight of the zone's clock is its date alone ("Oct 7", never "Oct 7 00:00": zoomed out to days, every
+ * tick is one); elsewhere the time, with the date before it on a tick that marks a new day (`marksDay`).
+ */
+export function tickLabel(t: number, marksDay: boolean): string {
+  if ((t + zoneOffsetMs(t)) % DAY === 0) return monthDay(onWall(t));
+  return clock(t, marksDay);
+}
+
 export function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return s < 90 ? t('{n}s ago', { n: s }) : s < 5400 ? t('{n}m ago', { n: Math.round(s / 60) }) : s < 129600 ? t('{n}h ago', { n: Math.round(s / 3600) }) : t('{n}d ago', { n: Math.round(s / 86400) });

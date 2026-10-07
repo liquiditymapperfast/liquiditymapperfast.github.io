@@ -7,7 +7,7 @@ import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
-import { clock, dayOfMonth, price as fmtPrice, usd, zoneName, zoneOffsetMs } from '../format.ts';
+import { clock, dayOfMonth, price as fmtPrice, tickLabel, usd, zoneName, zoneOffsetMs } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
@@ -342,7 +342,7 @@ export class HeatPane {
     for (const t of ticks) {
       const x = v.xOf(t, pw); if (x < 24 || x > pw - 24) continue;
       const day = dayOfMonth(t);
-      ctx.fillText(day !== lastDay && ((t + zoneOffsetMs(t)) % 86_400_000 === 0 || ticks.length < 3 || lastDay === -1) ? clock(t, true) : clock(t), x, ph + TIME_H / 2);
+      ctx.fillText(tickLabel(t, day !== lastDay && (ticks.length < 3 || lastDay === -1)), x, ph + TIME_H / 2);
       lastDay = day;
     }
     // Which clock the labels are on, under the price axis where no tick label goes (a screenshot says it too).

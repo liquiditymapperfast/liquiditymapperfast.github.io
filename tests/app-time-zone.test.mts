@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clock, dayOfMonth, setTimeZone, startOfDay, timeZone, zoneName, zoneOffsetMs, type TimeZone } from '../src/app/format.ts';
+import { clock, dayOfMonth, setTimeZone, startOfDay, tickLabel, timeZone, zoneName, zoneOffsetMs, type TimeZone } from '../src/app/format.ts';
 import { timeTicks } from '../src/app/panes/heat-pane.ts';
 import { fileName } from '../src/app/screenshot/shapes.ts';
 
@@ -59,4 +59,18 @@ test('a screenshot is named by the clock the page is on', () => {
   const when = new Date(Date.UTC(2026, 9, 5, 14, 3, 7));
   assert.equal(fileName(when, true), 'liquiditymapperfast-2026-10-05-1403-07.png');
   assert.equal(fileName(new Date(2026, 9, 5, 14, 3, 7)), 'liquiditymapperfast-2026-10-05-1403-07.png', 'by default the computer\'s own');
+});
+
+test('a time-axis tick on a midnight is its date alone; elsewhere the time, with the date where a tick marks a new day', () => {
+  on('utc', () => {
+    const midnight = Date.UTC(2026, 9, 7);
+    assert.equal(tickLabel(midnight, true), 'Oct 7', 'zoomed out to days, every tick is a date: no 00:00 after it');
+    assert.equal(tickLabel(midnight, false), 'Oct 7');
+    assert.equal(tickLabel(LATE, true), 'Oct 6 23:30', 'the first tick of a day that is not its midnight keeps its time');
+    assert.equal(tickLabel(LATE, false), '23:30');
+  });
+  on('local', () => {
+    const local = startOfDay(LATE);
+    assert.equal(tickLabel(local, false), clock(local, true).replace(/ 00:00$/, ''), 'the computer\'s own midnight, likewise');
+  });
 });
