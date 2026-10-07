@@ -49,7 +49,7 @@ export class CvdStrip {
 
   constructor(private store: Store, private hub: Hub) {
     this.#canvas.setAttribute('role', 'img');
-    this.#canvas.setAttribute('aria-label', t('Taker flow and trade sizes, as rows of dots'));
+    this.#canvas.setAttribute('aria-label', t('Taker flow and market order sizes, as rows of dots'));
     this.root.append(this.#canvas);
     new ResizeObserver(() => this.#resize()).observe(this.root);
     this.#canvas.addEventListener('pointermove', e => this.#point(e));
@@ -196,12 +196,12 @@ export class CvdStrip {
     heading(t('TAKER FLOW'), '', data.heading);
     data.pulse.forEach((rowData, i) => row(rowData, i, false, false));
     y += g.groupGap;
-    heading(t('TRADE SIZE · USD · {window}', { window: data.window }), data.size.partial && data.size.covered !== null ? coverageNote(data.size.covered, data.size.minutes) : '', t('share of volume'));
+    heading(t('ORDER SIZE · USD · {window}', { window: data.window }), data.size.partial && data.size.covered !== null ? coverageNote(data.size.covered, data.size.minutes) : '', t('share of volume'));
     const bands = sizeBands(this.store.state.cvd), top = y, idle = data.size.state === 'unavailable';
     data.size.rows.forEach((rowData, i) => row(rowData, i, (bands[i]?.to ?? 0) >= 1, idle));
     if (idle) {
       ctx.font = FONT; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      const text = t('Trade sizes are not available from this server.'), room = right - dotsX0;
+      const text = t('Order sizes are not available from this server.'), room = right - dotsX0;
       let shown = text; while (shown.length > 4 && ctx.measureText(shown).width > room) shown = `${shown.slice(0, -2)}…`;
       ctx.fillText(shown, dotsX0, top + (y - top) / 2);
     }

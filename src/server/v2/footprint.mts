@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { FootprintRecorder as FootprintCore, parseStats, type FootprintMinuteRow, type FootprintStore } from '../../shared/footprint.ts';
+import { FootprintRecorder as FootprintCore, parseStats, statsText, type FootprintMinuteRow, type FootprintStore } from '../../shared/footprint.ts';
 
 export { SIZE_EDGES, sizeBucket, parseStats, type TradeLike, type FootprintRow, type FootprintBar, type TradeStats } from '../../shared/footprint.ts';
 
@@ -20,7 +20,7 @@ class SqliteFootprintStore implements FootprintStore {
     const db = this.#db, insert = db.prepare('INSERT OR REPLACE INTO footprint_minutes (inst, t, step, rows, stats) VALUES (?, ?, ?, ?, ?)');
     db.exec('BEGIN');
     try {
-      for (const row of rows) insert.run(row.inst, row.t, row.step, JSON.stringify(row.bins), row.stats ? JSON.stringify([row.stats.buyN, row.stats.sellN, row.stats.buy, row.stats.sell]) : null);
+      for (const row of rows) insert.run(row.inst, row.t, row.step, JSON.stringify(row.bins), row.stats ? statsText(row.stats) : null);
       db.prepare('DELETE FROM footprint_minutes WHERE t < ?').run(expireBefore);
       db.exec('COMMIT');
     } catch (error) { db.exec('ROLLBACK'); throw error; }

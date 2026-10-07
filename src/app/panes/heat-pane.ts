@@ -11,7 +11,7 @@ import { clock, dayOfMonth, price as fmtPrice, usd, zoneName, zoneOffsetMs } fro
 import type { Store, AppState } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
-import { bubbleRadius, topPrints, type Print } from '../prints.ts';
+import { bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
@@ -622,7 +622,7 @@ export class HeatPane {
       const lines: InfoLine[] = [
         { text: `${buy ? t('BUY') : t('SELL')}  $${usd(print.usd)}`, bold: true, color: buy ? 'buy' : 'sell' },
         { label: t('Venue'), text: `${venue} ${symbol}` },
-        { label: t('Price'), text: fmtPrice(print.price) },
+        ...printPriceLines(print),
         { label: t('Time'), text: `${clock(print.t, true)}:${String(new Date(print.t).getSeconds()).padStart(2, '0')}` },
       ];
       // Beside a mouse pointer the box stands clear of the bubble; above a finger, so the hand does not cover it.

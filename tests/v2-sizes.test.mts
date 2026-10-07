@@ -13,11 +13,15 @@ const MIN = 60_000, T0 = 1_800_000_000_000;
 /** A taker trade of `usd` at `t`: the footprint reads the side, the price, the size and the time. */
 const trade = (id: string, inst: string, side: 'buy' | 'sell', usd: number, t: number) => ({ instrumentId: inst, tradeId: id, side, price: 85_000, notionalUsd: usd, sourceTimestamp: t });
 const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
+/** Record fills and count each as a market order of one fill, as the order builder does for a venue that reports orders whole. */
+const recordOrders = (recorder: FootprintRecorder, rows: { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price?: unknown; notionalUsd: number; sourceTimestamp: number }[]): void => {
+  recorder.ingest(rows); recorder.countOrders(rows.map(r => ({ instrumentId: r.instrumentId, side: r.side, t: r.sourceTimestamp, usd: r.notionalUsd })));
+};
 
 test('sizes: each window is the last N whole minutes up to the open one, the instruments are added, and the buckets are the footprint\'s', () => {
   let now = T0 + 30_000;                                    // half way through the minute that is open
   const recorder = new FootprintRecorder(null, () => now);
-  recorder.ingest([
+  recordOrders(recorder, [
     trade('1', 'a:BTC', 'buy', 10_000, T0 + 1_000), trade('2', 'a:BTC', 'sell', 60_000, T0 + 2_000), trade('3', 'b:BTC', 'buy', 600_000, T0 + 5_000),   // the open minute
     trade('4', 'a:BTC', 'buy', 30_000, T0 - 3 * MIN + 1_000),                                                                                         // three minutes back
     trade('5', 'b:BTC', 'sell', 2_000_000, T0 - 10 * MIN + 1_000),                                                                                    // ten minutes back
@@ -46,12 +50,16 @@ type SizesAnswerWindow = SizesAnswer['windows'][number];
 test('sizes: a minute is seen when anyone has rows for it, and a minute with rows but no statistics is seen without them', () => {
   const rows: FootprintMinuteRow[] = [
     { inst: 'old:BTC', t: T0 - MIN, step: 0.5, bins: [[170_000, 5_000, 0]], stats: null },           // recorded before statistics were kept
-    { inst: 'new:BTC', t: T0 - 2 * MIN, step: 0.5, bins: [[170_000, 0, 7_000]], stats: { buyN: 0, sellN: 1, buy: [0, 0, 0, 0, 0, 0, 0, 0], sell: [7_000, 0, 0, 0, 0, 0, 0, 0] } },
+    { inst: 'new:BTC', t: T0 - 2 * MIN, step: 0.5, bins: [[170_000, 0, 7_000]], stats: { buyN: 0, sellN: 1, buy: [0, 0, 0, 0, 0, 0, 0, 0], sell: [7_000, 0, 0, 0, 0, 0, 0, 0], v: 2 } },
+    // statistics from before orders were rebuilt (no version): every fill counted as a trade, so they are not read
+    { inst: 'fills:BTC', t: T0 - 2 * MIN, step: 0.5, bins: [[170_000, 0, 9_000]], stats: { buyN: 0, sellN: 3, buy: [0, 0, 0, 0, 0, 0, 0, 0], sell: [9_000, 0, 0, 0, 0, 0, 0, 0] } },
   ];
   const store: FootprintStore = { load: () => rows, save: () => {}, close: () => {} };
   const recorder = new FootprintRecorder(store, () => T0 + 5_000);
   const w = recorder.sizes(['old:BTC', 'new:BTC'], [5]).windows[0]!;
   assert.equal(w.seen, 2); assert.equal(w.stats, 1, 'only one of them carries statistics');
+  const fills = recorder.sizes(['fills:BTC'], [5]).windows[0]!;
+  assert.deepEqual([fills.seen, fills.stats, fills.sellN], [1, 0, 0], 'per-fill statistics are seen as a minute without statistics');
   assert.equal(w.sellN, 1); assert.equal(sum(w.sell), 7_000); assert.equal(sum(w.buy), 0, 'the old minute\'s 5K of buys is not in the sizes: it has none to give');
   const gap = recorder.sizes(['old:BTC', 'new:BTC'], [3]).windows[0]!;
   assert.equal(gap.seen, 2, 'minutes one and two back are recorded; the open one and the three-back one are not, so a window of three sees two');
@@ -92,7 +100,7 @@ test('/api/v2/sizes answers in one piece on the server\'s own clock, and refuses
     const into = Date.now() % MIN;
     if (into > MIN - 5_000) await new Promise<void>(resolve => setTimeout(resolve, MIN - into + 100));
     const now = Date.now();
-    v2.footprint.ingest([trade('s1', 'x:BTC', 'buy', 80_000, now), trade('s2', 'y:BTC', 'sell', 300_000, now), trade('s3', 'x:BTC', 'sell', 30_000, now - 2 * MIN)]);
+    recordOrders(v2.footprint, [trade('s1', 'x:BTC', 'buy', 80_000, now), trade('s2', 'y:BTC', 'sell', 300_000, now), trade('s3', 'x:BTC', 'sell', 30_000, now - 2 * MIN)]);
     const get = async (query: string) => { const r = await fetch(`${base}/api/v2/sizes?${query}`); return { status: r.status, body: await r.json() as { error?: string } & Partial<SizesAnswer> }; };
     const ok = await get('inst=x:BTC,y:BTC&minutes=1,5,60');
     assert.equal(ok.status, 200);

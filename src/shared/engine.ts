@@ -2,6 +2,7 @@ import type { ValuedBook } from './levels.ts';
 import { COLUMN_MS, DepthRecorder, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
 import { FootprintRecorder, type FootprintStore, type SizesAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
+import { OrderBuilder, orderRow } from './orders.ts';
 import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
 import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, type Fetcher } from './history.ts';
@@ -107,6 +108,8 @@ export class Engine {
   readonly printStream: PrintStream;
   /** Taker buys and sells per instrument per second (the CVD column). */
   readonly flows: FlowRecorder;
+  /** Market orders rebuilt from their fills: the prints and the size statistics count these. */
+  readonly orders: OrderBuilder;
   /** Called with the books that changed since the last call (the full current set), about four times a second at most. */
   onLevels: (books: ValuedBook[], asOf: number) => void = () => {};
   onTick: (tick: EngineTick) => void = () => {};
@@ -138,6 +141,7 @@ export class Engine {
     this.footprints = new FootprintRecorder(footprint, now, retentionMs);
     this.printStream = new PrintStream(prints, now, retentionMs);
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
+    this.orders = new OrderBuilder(now);
   }
 
   // ---- Venues ---------------------------------------------------------------------------------------------------------------------
@@ -194,6 +198,7 @@ export class Engine {
     if (now - this.#lastPrune >= PRUNE_MS) { this.#lastPrune = now; this.recorder.prune(now); }
     this.#pollOi(now);
     this.#probe(now);
+    this.#takeOrders(false);
     const fresh = this.printStream.takeFresh();
     if (fresh.length) this.onPrints(fresh);
     const previous = this.#books;
@@ -205,8 +210,16 @@ export class Engine {
     if (signature !== this.#lastStatus) { this.#lastStatus = signature; this.onStatus(status); }
   }
 
-  /** Write everything not yet saved, including the minute still open (the page is going away). */
-  flush(): void { this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); }
+  /** Write everything not yet saved, including the minute still open and the orders still open (the page is going away). */
+  flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); }
+
+  /** Hand the market orders that are complete (all of them with `all`) to the prints and the size statistics. */
+  #takeOrders(all: boolean): void {
+    const orders = this.orders.drain(all);
+    if (!orders.length) return;
+    this.printStream.ingest(orders.map(orderRow));
+    this.footprints.countOrders(orders);
+  }
 
   #value(now: number): ValuedBook[] {
     const out: ValuedBook[] = [];
@@ -227,10 +240,11 @@ export class Engine {
 
   readonly #trade = (trade: TradeEvent): void => {
     const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
-    this.printStream.ingest([row]);
     this.flows.ingest([row]);
     // A trade seen before (a feed that replays after a reconnect) is in the footprint already, and must not count twice in the candle either.
     if (this.footprints.ingest([row]) === 0) return;
+    // The fill joins its market order; prints and size statistics are taken from orders once they are complete (`step`).
+    this.orders.add([{ ...row, order: trade.order }]);
     const now = this.#now();
     this.#last.set(trade.instrumentId, { price: trade.price, at: now });
     const start = Math.floor(trade.t / COLUMN_MS) * COLUMN_MS, candle = this.#candles.get(trade.instrumentId);

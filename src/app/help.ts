@@ -63,7 +63,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   bubbles: {
     title: t('Trades'), guide: 'trades',
-    tip: t('Large trades as bubbles: green for market buys, red for market sells, bigger for bigger. Hover one for its venue, size and price.'),
+    tip: t('Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, bigger for bigger. Hover one for its venue, size and price.'),
     body: [],
   },
   heatmap: {
@@ -94,7 +94,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Bar stats'), guide: 'footprint',
     tip: t('One row of numbers per statistic under each candle: volume, delta (buys minus sells), cumulative delta and more. Click Stats to choose.'),
     body: [t('Each row is one statistic, one cell per candle, shaded by size. The defaults are volume, delta (buy volume minus sell volume) and cvd (the running sum of delta).'),
-      t('Press Stats to add statistics such as the point of control, stacked imbalances or trades by size. These come from the executions recorded while the page was open, so they start empty and fill with time.')],
+      t('Press Stats to add statistics such as the point of control, stacked imbalances or market orders by size. These come from the executions recorded while the page was open, so they start empty and fill with time.')],
   },
   cvd: {
     title: t('Flow'), guide: 'flow',

@@ -113,7 +113,8 @@ test('the reference price is the first live venue in the preferred order, and ev
 });
 
 test('trades build the live candle, the footprint and the large-trade list', () => {
-  const { engine, fakes } = setup(['binance']);
+  let later = 0;
+  const { engine, fakes } = setup(['binance'], { now: () => Date.now() + later });
   const ticks: EngineTick[] = [], prints: Print[] = [];
   engine.onTick = tick => ticks.push(tick); engine.onPrints = fresh => prints.push(...fresh);
   engine.select(['binance']);
@@ -125,6 +126,8 @@ test('trades build the live candle, the footprint and the large-trade list', () 
   book.trade({ tradeId: 'c', price: 99, amount: 1, t: minute + 3000 });
   book.trade({ tradeId: 'big', price: 100, amount: 400, t: minute + 4000 }); // 40,000 USD
   book.trade({ tradeId: 'a', price: 100, amount: 2, t: minute + 1000 }); // a replay
+  // The last market order is complete once nothing has joined it for a moment (orders.ts): the print comes on the pass after that.
+  later = 200;
   engine.step();
   assert.deepEqual(ticks.at(-1)!.candles['binance:BTCUSDT'], [minute, 100, 103, 99, 100, 404]);
   assert.deepEqual(prints.map(p => [p.id, p.side, p.usd]), [['binance:BTCUSDT', 'buy', 40_000]]);
@@ -297,4 +300,27 @@ test('taker flow is recorded per second, announced about once a second, and answ
   const frame = engine.flow([fake.instrumentId], now - 60_000, now + 1_000);
   const series = frame.instruments[0]!;
   assert.equal(series.buy.reduce((a, b) => a + b, 0), 1_100); assert.equal(series.sell.reduce((a, b) => a + b, 0), 400);
+});
+
+test('fills that the exchange reports one by one print as one market order, and the size statistics count it once', () => {
+  let later = 0;
+  const { engine, fakes } = setup(['bybit'], { now: () => Date.now() + later });
+  const prints: Print[] = [];
+  engine.onPrints = fresh => prints.push(...fresh);
+  engine.select(['bybit']);
+  const book = fakes.get('bybit')!;
+  book.book(100, 101);
+  const minute = Math.floor(Date.now() / 60_000) * 60_000;
+  // Twenty fills of $2,000 each (a Bybit market order that took twenty resting orders): no single fill is anywhere near the print floor.
+  for (let i = 0; i < 20; i++) book.trade({ tradeId: `f${i}`, price: 100 + i * 0.05, amount: 20, t: minute + 1_000, order: 'seq-1' });
+  engine.step();
+  assert.equal(prints.length, 0, 'not printed while the order may still be filling');
+  later = 200; engine.step();
+  assert.equal(prints.length, 1);
+  const total = Array.from({ length: 20 }, (_, i) => (100 + i * 0.05) * 20).reduce((x, y) => x + y, 0);
+  assert.equal(prints[0]!.n, 20); assert.ok(Math.abs(prints[0]!.usd - total) < 1e-6, `${prints[0]!.usd} vs ${total}`);
+  assert.equal(prints[0]!.lo, 100); assert.ok(Math.abs(prints[0]!.hi! - 100.95) < 1e-9);
+  const stats = engine.footprint('bybit:BTCUSDT', 60_000, minute, minute + 60_000, 1).bars[0]!.stats!;
+  assert.equal(stats.buyN, 1, 'one market order');
+  assert.ok(Math.abs(stats.buy[1]! - total) < 1e-6, 'in the $25K-$50K bucket');
 });

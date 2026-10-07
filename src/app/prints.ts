@@ -1,14 +1,26 @@
-/** One large executed trade as the server sends it: [time ms, instrument id, side, price, USD notional]. */
-export type WirePrint = [number, string, 'buy' | 'sell', number, number];
-export interface Print { t: number; id: string; side: 'buy' | 'sell'; price: number; usd: number }
+import { price as fmtPrice } from './format.ts';
+import { t } from './i18n.ts';
 
-/** Check one wire row: five fields of the right kinds, otherwise null (a malformed row is dropped, never drawn). */
+/**
+ * One large market order as the server sends it: [time ms, instrument id, side, price, USD notional], and for an order of several fills
+ * also [..., lowest price, highest price, fills]. The price is the volume-weighted price of its fills.
+ */
+export type WirePrint = [number, string, 'buy' | 'sell', number, number] | [number, string, 'buy' | 'sell', number, number, number, number, number];
+/** A large market order: `lo`, `hi` and `n` only for one of several fills (prints recorded before orders were rebuilt have none). */
+export interface Print { t: number; id: string; side: 'buy' | 'sell'; price: number; usd: number; lo?: number; hi?: number; n?: number }
+
+/**
+ * Check one wire row: five fields of the right kinds, otherwise null (a malformed row is dropped, never drawn). The span and the fill count
+ * are kept only when they are whole and hold the price; a row without them (or with broken ones) is a print of one fill.
+ */
 export function fromWire(row: unknown): Print | null {
   if (!Array.isArray(row) || row.length < 5) return null;
-  const [t, id, side, price, usd] = row as unknown[];
+  const [t, id, side, price, usd, lo, hi, n] = row as unknown[];
   if (typeof t !== 'number' || !Number.isFinite(t) || typeof id !== 'string' || (side !== 'buy' && side !== 'sell')
     || typeof price !== 'number' || !(price > 0) || typeof usd !== 'number' || !(usd > 0)) return null;
-  return { t, id, side, price, usd };
+  const spanned = typeof lo === 'number' && typeof hi === 'number' && typeof n === 'number' && Number.isInteger(n) && n >= 2 && lo > 0 && hi >= lo
+    && price >= lo * (1 - 1e-9) && price <= hi * (1 + 1e-9);
+  return spanned ? { t, id, side, price, usd, lo, hi, n } : { t, id, side, price, usd };
 }
 
 const keyOf = (p: Print): string => `${p.t}|${p.id}|${p.price}|${p.usd}`;
@@ -74,6 +86,17 @@ export function topPrints(items: readonly Print[], t0: number, t1: number, p0: n
   const ties = new Set<Print>();
   for (let i = inside.length - 1; i >= 0 && room > 0; i--) if (inside[i]!.usd === cut) { ties.add(inside[i]!); room--; }
   return inside.filter(p => p.usd > cut || ties.has(p));
+}
+
+/**
+ * The price lines of a bubble's box: a print of one fill has its price; an order of several fills has the average price of its fills, how
+ * many there were, and the prices it reached when they differ (an order that walked the book).
+ */
+export function printPriceLines(print: Print): { label: string; text: string }[] {
+  if (print.n === undefined || print.lo === undefined || print.hi === undefined) return [{ label: t('Price'), text: fmtPrice(print.price) }];
+  const lines = [{ label: t('Average price'), text: fmtPrice(print.price) }, { label: t('Fills'), text: String(print.n) }];
+  if (fmtPrice(print.hi) !== fmtPrice(print.lo)) lines.push({ label: t('Prices reached'), text: `${fmtPrice(print.lo)} – ${fmtPrice(print.hi)}` });
+  return lines;
 }
 
 /** Bubble radius in px: grows with the square root of the size, never smaller than a dot nor larger than `max`. */

@@ -10,8 +10,11 @@ export type ConnectorState = 'stopped' | 'connecting' | 'live' | 'error';
  */
 export interface ConnectorStatus { state: ConnectorState; lastError: string | null; lastFailure: string | null; lastUpdate: number; reconnects: number; everLive: boolean; failures: number }
 
-/** One executed trade, normalised: `side` is the taker's side, `amount` is in base coin and `notionalUsd` in USD (or the USD stable). */
-export interface TradeEvent { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price: number; amount: number; notionalUsd: number; t: number }
+/**
+ * One executed trade, normalised: `side` is the taker's side, `amount` is in base coin and `notionalUsd` in USD (or the USD stable).
+ * `order` is the venue's own key for the market order this fill belongs to, where the venue names one (see `shared/orders.ts`).
+ */
+export interface TradeEvent { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price: number; amount: number; notionalUsd: number; t: number; order?: string }
 
 /** Books with at least this many levels are re-valued no more often than the interval below (the recorder samples every 5 s). */
 const DEEP_BOOK_LEVELS = 2_000, DEEP_BOOK_INTERVAL_MS = 1_000;

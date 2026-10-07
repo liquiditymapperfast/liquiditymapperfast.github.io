@@ -11,6 +11,10 @@ import { FlowSources } from '../src/server/v2/flow-sources.mts';
 
 const MIN = 60_000;
 const T0 = Math.floor(Date.UTC(2026, 9, 6, 12, 0, 0) / MIN) * MIN;
+/** Record fills and count each as a market order of one fill, as the order builder does for a venue that reports orders whole. */
+const recordOrders = (recorder: FootprintRecorder, rows: { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price?: unknown; notionalUsd: number; sourceTimestamp: number }[]): void => {
+  recorder.ingest(rows); recorder.countOrders(rows.map(r => ({ instrumentId: r.instrumentId, side: r.side, t: r.sourceTimestamp, usd: r.notionalUsd })));
+};
 
 // ---- 2: a snapshot that an ended Binance perpetual connection asked for ---------------------------------------------------------------------------------
 
@@ -69,9 +73,9 @@ test('a footprint minute queued for writing keeps the statistics it had when it 
   const queued: FootprintMinuteRow[] = [];
   const store: FootprintStore = { load: () => [], save: rows => { queued.push(...rows); }, close: () => {} };   // the browser's store keeps the row until its delayed write
   const recorder = new FootprintRecorder(store, () => now);
-  recorder.ingest([{ instrumentId: 'x:BTC', tradeId: '1', side: 'buy', price: 85_000, notionalUsd: 100, sourceTimestamp: T0 + 5_000 }]);
+  recordOrders(recorder, [{ instrumentId: 'x:BTC', tradeId: '1', side: 'buy', price: 85_000, notionalUsd: 100, sourceTimestamp: T0 + 5_000 }]);
   now = T0 + MIN + 1_000; recorder.flush();
-  recorder.ingest([{ instrumentId: 'x:BTC', tradeId: '2', side: 'buy', price: 85_000, notionalUsd: 25, sourceTimestamp: T0 + 30_000 }]);     // late, into the minute that was queued
+  recordOrders(recorder, [{ instrumentId: 'x:BTC', tradeId: '2', side: 'buy', price: 85_000, notionalUsd: 25, sourceTimestamp: T0 + 30_000 }]);     // late, into the minute that was queued
   const row = queued[0]!;
   const rows = row.bins.reduce((sum, bin) => sum + bin[1] + bin[2], 0), stats = row.stats ? row.stats.buy.reduce((a, b) => a + b, 0) + row.stats.sell.reduce((a, b) => a + b, 0) : 0;
   assert.equal(rows, 100); assert.equal(stats, 100, `the rows hold ${rows} and the statistics ${stats} (and ${row.stats?.buyN} trades)`);

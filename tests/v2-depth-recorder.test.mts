@@ -190,8 +190,10 @@ test('footprint records trade counts and size buckets, reports them for complete
     let now = hour + 5 * COLUMN_MS;
     const first = new FootprintRecorder(file, () => now);
     const trade = (tradeId: string, side: string, usd: number, t: number) => ({ instrumentId: 'x:BTC', tradeId, side, price: 85_000, notionalUsd: usd, sourceTimestamp: t });
-    first.ingest([trade('1', 'buy', 100, hour + COLUMN_MS + 1_000), trade('2', 'buy', 30_000, hour + COLUMN_MS + 2_000), trade('3', 'sell', 60_000, hour + COLUMN_MS + 3_000),
-      trade('4', 'sell', 6_000_000, hour + COLUMN_MS + 4_000), trade('5', 'sell', 25_000, hour + 2 * COLUMN_MS + 1_000)]);
+    const fills = [trade('1', 'buy', 100, hour + COLUMN_MS + 1_000), trade('2', 'buy', 30_000, hour + COLUMN_MS + 2_000), trade('3', 'sell', 60_000, hour + COLUMN_MS + 3_000),
+      trade('4', 'sell', 6_000_000, hour + COLUMN_MS + 4_000), trade('5', 'sell', 25_000, hour + 2 * COLUMN_MS + 1_000)];
+    // Each fill is its own market order here (as a venue that reports orders whole would send them).
+    first.ingest(fills); first.countOrders(fills.map(f => ({ instrumentId: f.instrumentId, side: f.side as 'buy' | 'sell', t: f.sourceTimestamp, usd: f.notionalUsd })));
     // Minute bars: the new minute has stats, the migrated one does not.
     const minutes = (r: FootprintRecorder) => r.query('x:BTC', hour, hour + 3 * COLUMN_MS, COLUMN_MS, 20).bars;
     assert.equal(minutes(first)[0]!.stats, undefined, 'a minute recorded before stats existed has none');
@@ -214,10 +216,13 @@ test('footprint records trade counts and size buckets, reports them for complete
     const damaged = new DatabaseSync(file);
     damaged.prepare('UPDATE footprint_minutes SET stats = ? WHERE inst = ? AND t = ?').run('[1.5,2,[0,0],[0]]', 'x:BTC', hour + COLUMN_MS);
     damaged.prepare('UPDATE footprint_minutes SET stats = ? WHERE inst = ? AND t = ?').run('not json', 'x:BTC', hour + 2 * COLUMN_MS);
+    // Statistics written before orders were rebuilt (four fields, every fill a trade) are a different quantity: read as none.
+    damaged.prepare('UPDATE footprint_minutes SET stats = ? WHERE inst = ? AND t = ?').run(JSON.stringify([1, 0, [100, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]]), 'x:BTC', hour);
     damaged.close();
     const reloaded = new FootprintRecorder(file, () => now);
     assert.equal(minutes(reloaded)[1]!.stats, undefined);
     assert.equal(minutes(reloaded)[2]!.stats, undefined);
+    assert.equal(minutes(reloaded)[0]!.stats, undefined, 'per-fill statistics from before are not read');
     reloaded.close();
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

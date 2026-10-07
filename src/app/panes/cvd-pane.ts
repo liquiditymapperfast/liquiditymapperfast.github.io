@@ -223,11 +223,11 @@ export class CvdPane {
     const again = (): void => this.#panel?.render((_tools, body) => this.#buildSettings(body));
     return [
       heading(t('Dot rows')),
-      switchRow(t('Show the dot rows'), t('Buys against sells over the last minutes, and by trade size, above the exchanges.'), c.strip, v => this.#set({ strip: v })),
-      selectRow(t('Retail up to'), t('The dot rows put trades up to this size together.'), buckets(0, 6), String(c.stripRetailMax), v => { const r = Number(v); this.#set({ stripRetailMax: r, stripWhaleMin: Math.max(c.stripWhaleMin, r + 1) }); again(); }),
-      selectRow(t('Whales from'), t('The dot rows put trades of this size and above on their last row.'), buckets(1, 7), String(c.stripWhaleMin), v => { const w = Number(v); this.#set({ stripWhaleMin: w, stripRetailMax: Math.min(c.stripRetailMax, w - 1) }); again(); }),
-      switchRow(t('Smallest trades on their own row'), t('Puts the trades under $25K on a row of their own instead of with the retail ones.'), c.stripSmall, v => this.#set({ stripSmall: v })),
-      switchRow(t('Blink on trades'), t('The leading dot of a size row lights for a moment when a trade of that size prints. It stays still when the system asks for less motion.'), c.stripBlink, v => this.#set({ stripBlink: v })),
+      switchRow(t('Show the dot rows'), t('Buys against sells over the last minutes, and by market order size, above the exchanges.'), c.strip, v => this.#set({ strip: v })),
+      selectRow(t('Retail up to'), t('The dot rows put market orders up to this size together.'), buckets(0, 6), String(c.stripRetailMax), v => { const r = Number(v); this.#set({ stripRetailMax: r, stripWhaleMin: Math.max(c.stripWhaleMin, r + 1) }); again(); }),
+      selectRow(t('Whales from'), t('The dot rows put market orders of this size and above on their last row.'), buckets(1, 7), String(c.stripWhaleMin), v => { const w = Number(v); this.#set({ stripWhaleMin: w, stripRetailMax: Math.min(c.stripRetailMax, w - 1) }); again(); }),
+      switchRow(t('Smallest orders on their own row'), t('Puts the market orders under $25K on a row of their own instead of with the retail ones.'), c.stripSmall, v => this.#set({ stripSmall: v })),
+      switchRow(t('Blink on orders'), t('The leading dot of a size row lights for a moment when a market order of that size prints. It stays still when the system asks for less motion.'), c.stripBlink, v => this.#set({ stripBlink: v })),
     ];
   }
 

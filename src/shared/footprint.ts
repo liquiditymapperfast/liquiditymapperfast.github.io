@@ -12,9 +12,17 @@ export type FootprintRow = [number, number, number];
 export const SIZE_EDGES: readonly number[] = [0, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000];
 export const sizeBucket = (usd: number): number => { let bucket = 0; for (let i = 1; i < SIZE_EDGES.length; i++) if (usd >= SIZE_EDGES[i]!) bucket = i; return bucket; };
 
-/** Trade counts and USD by size bucket for a minute or a bar; only trades seen while recording contribute. */
-export interface TradeStats { buyN: number; sellN: number; buy: number[]; sell: number[] }
-const emptyStats = (): TradeStats => ({ buyN: 0, sellN: 0, buy: new Array<number>(SIZE_EDGES.length).fill(0), sell: new Array<number>(SIZE_EDGES.length).fill(0) });
+/**
+ * Market-order counts and USD by order size for a minute or a bar; only orders seen while recording contribute. An order is all the fills
+ * of one market order (see `orders.ts`), counted in the minute of its first fill. `v` is `STATS_VERSION`: statistics written before
+ * orders were rebuilt counted every fill as a trade (so a large order on Bybit was many small ones) and are not read any more.
+ */
+export interface TradeStats { buyN: number; sellN: number; buy: number[]; sell: number[]; v?: number }
+/** The version of the statistics this recorder writes: 2 counts market orders. */
+export const STATS_VERSION = 2;
+const emptyStats = (): TradeStats => ({ buyN: 0, sellN: 0, buy: new Array<number>(SIZE_EDGES.length).fill(0), sell: new Array<number>(SIZE_EDGES.length).fill(0), v: STATS_VERSION });
+/** Statistics of the version this recorder writes, or null (older ones, or none). */
+const current = (stats: TradeStats | null | undefined): TradeStats | null => stats && stats.v === STATS_VERSION ? stats : null;
 
 /**
  * The trades of some instruments added together over the last `minutes` whole minutes (the open minute is the first of them), as the page's
@@ -56,7 +64,7 @@ export interface FootprintBar {
 type Bins = Map<number, [number, number]>;
 
 /** A copy of a minute's statistics, whole: a row waits in a queue (the browser's) while a late trade may still change the minute, and the row must stay what it was when it was queued. */
-const copyStats = (stats: TradeStats | undefined): TradeStats | null => stats ? { buyN: stats.buyN, sellN: stats.sellN, buy: [...stats.buy], sell: [...stats.sell] } : null;
+const copyStats = (stats: TradeStats | undefined): TradeStats | null => stats ? { buyN: stats.buyN, sellN: stats.sellN, buy: [...stats.buy], sell: [...stats.sell], v: STATS_VERSION } : null;
 
 /**
  * The row a price falls in. A price that is a whole number of steps is a boundary and belongs to the row above it, but the division can come
@@ -90,7 +98,9 @@ export class FootprintRecorder {
     if (store) {
       for (const row of store.load(now() - retentionMs)) {
         this.#steps.set(row.inst, row.step);
-        if (row.stats) this.#minuteStats(row.inst).set(row.t, row.stats);
+        // Statistics of an older version counted fills, not orders: such a minute is kept as one recorded without statistics.
+        const stats = current(row.stats);
+        if (stats) this.#minuteStats(row.inst).set(row.t, stats);
         this.#minute(row.inst).set(row.t, new Map(row.bins.map(([bin, buy, sell]) => [bin, [buy, sell] as [number, number]])));
       }
     }
@@ -100,7 +110,7 @@ export class FootprintRecorder {
   #minute(id: string): Map<number, Bins> { let m = this.#minutes.get(id); if (!m) { m = new Map(); this.#minutes.set(id, m); } return m; }
   step(id: string): number | undefined { return this.#steps.get(id); }
 
-  /** Add every trade not seen before. Returns the number accepted. */
+  /** Add every fill not seen before to its price row. Returns the number accepted. Orders are counted separately (`countOrders`). */
   ingest(trades: Iterable<TradeLike>): number {
     let accepted = 0;
     for (const trade of trades) {
@@ -122,17 +132,27 @@ export class FootprintRecorder {
       const bin = binOf(price, step);
       const cell = bins.get(bin) ?? [0, 0];
       cell[side === 'buy' ? 0 : 1] += usd; bins.set(bin, cell);
-      // A minute that was restored without statistics (recorded before they were kept) stays without: counting only the trades that arrive
-      // now would give it statistics that cover a fraction of its volume, and a bar would be passed off as complete on them.
-      const stats = this.#minuteStats(id);
-      if (!restored || stats.has(minute)) {
-        const minuteStats = stats.get(minute) ?? emptyStats(); stats.set(minute, minuteStats);
-        if (side === 'buy') { minuteStats.buyN++; minuteStats.buy[sizeBucket(usd)]! += usd; } else { minuteStats.sellN++; minuteStats.sell[sizeBucket(usd)]! += usd; }
-      }
+      // A minute begun here carries statistics, which its orders fill in. A minute that was restored without statistics (recorded before
+      // they were kept, or before they counted orders) stays without: counting only the orders that arrive now would give it statistics
+      // that cover a fraction of its volume, and a bar would be passed off as complete on them.
+      if (!restored) { const stats = this.#minuteStats(id); if (!stats.has(minute)) stats.set(minute, emptyStats()); }
       this.#dirty.add(`${id}|${minute}`);
       accepted++;
     }
     return accepted;
+  }
+
+  /**
+   * Count market orders (their fills went to `ingest` first) in the statistics of the minute of each one's first fill. A minute without
+   * statistics (restored from before they counted orders) stays without.
+   */
+  countOrders(orders: Iterable<{ instrumentId: string; side: 'buy' | 'sell'; t: number; usd: number }>): void {
+    for (const order of orders) {
+      const minute = Math.floor(order.t / MINUTE) * MINUTE, stats = this.#stats.get(order.instrumentId)?.get(minute);
+      if (!stats || !(order.usd > 0)) continue;
+      if (order.side === 'buy') { stats.buyN++; stats.buy[sizeBucket(order.usd)]! += order.usd; } else { stats.sellN++; stats.sell[sizeBucket(order.usd)]! += order.usd; }
+      this.#dirty.add(`${order.instrumentId}|${minute}`);
+    }
   }
 
   /**
@@ -222,13 +242,17 @@ export function sizesOf(recorder: { minutes(id: string): ReadonlyMap<number, unk
   return { windows: out };
 }
 
-/** Stats as stored (`[buyN, sellN, buy, sell]` as JSON text): the object when every field is valid, else null. */
+/** Stats as stored (`[buyN, sellN, buy, sell, version]` as JSON text) in the current version: the object when every field is valid, else null. */
 export function parseStats(text: string | null): TradeStats | null {
   if (!text) return null;
   try {
-    const [buyN, sellN, buy, sell] = JSON.parse(text) as [number, number, number[], number[]];
+    const [buyN, sellN, buy, sell, version] = JSON.parse(text) as [number, number, number[], number[], number?];
     const count = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
     const bucket = (v: unknown): v is number[] => Array.isArray(v) && v.length === SIZE_EDGES.length && v.every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0);
-    return count(buyN) && count(sellN) && bucket(buy) && bucket(sell) ? { buyN, sellN, buy, sell } : null;
+    // Four fields are statistics from before orders were rebuilt (every fill a trade): not the same quantity, so they are not read.
+    return version === STATS_VERSION && count(buyN) && count(sellN) && bucket(buy) && bucket(sell) ? { buyN, sellN, buy, sell, v: STATS_VERSION } : null;
   } catch { return null; }
 }
+
+/** Stats as the database stores them (see `parseStats`). */
+export const statsText = (stats: TradeStats): string => JSON.stringify([stats.buyN, stats.sellN, stats.buy, stats.sell, STATS_VERSION]);

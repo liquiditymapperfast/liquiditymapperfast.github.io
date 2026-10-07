@@ -202,7 +202,7 @@ export function rowAt(y: number, sizeRows: number): { group: 'pulse' | 'size'; i
 export function rowLines(row: StripRow, data: StripData): InfoLine[] {
   const pulse = row.key.startsWith('pulse:');
   const out: InfoLine[] = [
-    { text: pulse ? t('Taker flow, {window}', { window: row.label }) : t('Trades {band}, {window}', { band: row.range, window: data.window }), bold: true },
+    { text: pulse ? t('Taker flow, {window}', { window: row.label }) : t('Market orders {band}, {window}', { band: row.range, window: data.window }), bold: true },
     { text: data.heading, color: 'muted' },
   ];
   if (row.share === null) out.push({ text: t('Nothing traded in this window.'), color: 'muted', wrap: true, rule: true });

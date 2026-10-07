@@ -505,8 +505,8 @@ export class BarStatsPane extends TimePane {
     );
     const buckets = SIZE_BUCKET_LABELS.map((label, i): [string, string] => [String(i), label]);
     body.append(
-      selectRow(t('Retail up to'), t('Trades in this size bucket and below are retail (delta retail, cvd retail)'), buckets, String(options.retailMax), v => { const r = Number(v); setOptions({ retailMax: r, whaleMin: Math.max(options.whaleMin, Math.min(7, r + 1)) }); }),
-      selectRow(t('Whales from'), t('Trades in this size bucket and above are whales (delta whales, cvd whales)'), buckets, String(options.whaleMin), v => { const w = Number(v); setOptions({ whaleMin: w, retailMax: Math.min(options.retailMax, Math.max(0, w - 1)) }); }),
+      selectRow(t('Retail up to'), t('Market orders in this size bucket and below are retail (delta retail, cvd retail)'), buckets, String(options.retailMax), v => { const r = Number(v); setOptions({ retailMax: r, whaleMin: Math.max(options.whaleMin, Math.min(7, r + 1)) }); }),
+      selectRow(t('Whales from'), t('Market orders in this size bucket and above are whales (delta whales, cvd whales)'), buckets, String(options.whaleMin), v => { const w = Number(v); setOptions({ whaleMin: w, retailMax: Math.min(options.retailMax, Math.max(0, w - 1)) }); }),
     );
   }
 

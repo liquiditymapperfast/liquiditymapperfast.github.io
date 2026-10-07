@@ -8,6 +8,10 @@ import type { ValuedBook, SideLevels } from '../src/shared/levels.ts';
 const MIN = 60_000;
 const T0 = Math.floor(Date.UTC(2026, 9, 6, 12, 0, 0) / MIN) * MIN;
 const trade = (id: string, tradeId: string, side: 'buy' | 'sell', price: unknown, usd: number, t: number) => ({ instrumentId: id, tradeId, side, price, notionalUsd: usd, sourceTimestamp: t });
+/** Record fills and count each as a market order of one fill, as the order builder does for a venue that reports orders whole. */
+const recordOrders = (recorder: FootprintRecorder, rows: { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price?: unknown; notionalUsd: number; sourceTimestamp: number }[]): void => {
+  recorder.ingest(rows); recorder.countOrders(rows.map(r => ({ instrumentId: r.instrumentId, side: r.side, t: r.sourceTimestamp, usd: r.notionalUsd })));
+};
 
 /** A store in memory that can be told to fail, and that starts with whatever rows the test hands it. */
 class FlowMemory implements FlowStore {
@@ -69,7 +73,7 @@ test('flow: a store that fails keeps the minute for the next try', () => {
 test('footprint: closing writes the minute that is still open, statistics included', () => {
   let now = T0 + 10_000;
   const store = new FootprintMemory(), first = new FootprintRecorder(store, () => now);
-  first.ingest([trade('x:BTC', '1', 'buy', 85_000, 30_000, T0 + 5_000)]);
+  recordOrders(first, [trade('x:BTC', '1', 'buy', 85_000, 30_000, T0 + 5_000)]);
   first.flush();
   assert.equal(store.rows.size, 0, 'an ordinary flush leaves the minute that is still filling');
   now = T0 + 30_000; first.close();
@@ -79,7 +83,7 @@ test('footprint: closing writes the minute that is still open, statistics includ
 
   const restart = new FootprintMemory(); restart.initial = [saved];
   const second = new FootprintRecorder(restart, () => now);
-  second.ingest([trade('x:BTC', '2', 'sell', 85_000, 40_000, T0 + 40_000)]);
+  recordOrders(second, [trade('x:BTC', '2', 'sell', 85_000, 40_000, T0 + 40_000)]);
   const bar = second.query('x:BTC', T0, T0 + MIN, MIN, second.step('x:BTC')!).bars[0]!;
   assert.equal(bar.buyUsd, 30_000); assert.equal(bar.sellUsd, 40_000);
   assert.deepEqual([bar.stats?.buyN, bar.stats?.sellN], [1, 1], 'the statistics carry on too');
@@ -115,12 +119,12 @@ test('footprint: a restored minute without statistics does not get statistics fr
   const store = new FootprintMemory();
   store.initial = [{ inst: 'x:BTC', t: T0, step: 0.5, bins: [[170_000, 100, 0]], stats: null }];
   const recorder = new FootprintRecorder(store, () => T0 + 5 * MIN);
-  recorder.ingest([trade('x:BTC', '1', 'buy', 85_000.2, 25, T0 + 30_000)]);
+  recordOrders(recorder, [trade('x:BTC', '1', 'buy', 85_000.2, 25, T0 + 30_000)]);
   const bar = recorder.query('x:BTC', T0, T0 + MIN, MIN, 0.5).bars[0]!;
   assert.equal(bar.buyUsd + bar.sellUsd, 125, 'the late trade is volume');
   assert.equal(bar.stats, undefined, 'but the statistics would cover a fifth of it, so the bar does not claim them');
   const fresh = new FootprintRecorder(null, () => T0 + 5 * MIN);
-  fresh.ingest([trade('x:BTC', '1', 'buy', 85_000.2, 25, T0 + 30_000)]);
+  recordOrders(fresh, [trade('x:BTC', '1', 'buy', 85_000.2, 25, T0 + 30_000)]);
   assert.equal(fresh.query('x:BTC', T0, T0 + MIN, MIN, 0.5).bars[0]!.stats?.buyN, 1, 'a minute recorded here has them');
 });
 

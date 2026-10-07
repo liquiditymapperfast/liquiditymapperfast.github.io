@@ -13,6 +13,7 @@ import { MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS } from '../../shared/footprint.ts'
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
+import { OrderBuilder, orderRow } from '../../shared/orders.ts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
 import { TIMEFRAMES, aggregateCandles, aggregateOi, timeframeMs, withLiveOi, type CandleRow, type OiRow } from './series.mts';
@@ -73,10 +74,17 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  /** Market orders rebuilt from their fills (see shared/orders.ts): the prints and the size statistics count these, not fills. */
+  const orders = new OrderBuilder();
+  const takeOrders = (all: boolean): void => {
+    const done = orders.drain(all);
+    if (!done.length) return;
+    prints.ingest(done.map(orderRow)); footprint.countOrders(done);
+  };
   // The connector venues carry their own trades: the flow column, the footprint and the large-trade bubbles count them like the feed manager's.
   const takeTrade = (trade: import('../../shared/connector.ts').TradeEvent): void => {
-    const row = [{ instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t }];
-    footprint.ingest(row); prints.ingest(row); flow.ingest(row);
+    const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
+    footprint.ingest([row]); flow.ingest([row]); orders.add([{ ...row, order: trade.order }]);
   };
   extra.onTrade(takeTrade);
   // Exchanges the feed manager has depth for but no trade feed: their trades come from the browser engine's connectors (see flow-sources.mts).
@@ -145,8 +153,10 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (members !== lastMembers) { lastMembers = members; levelsDirty = true; }
     if (now - lastSample >= SAMPLE_MS) { lastSample = now; recorder.sample(books, now); }
     footprint.ingest(app.state.trades ?? []);
-    prints.ingest(app.state.trades ?? []);
     flow.ingest(app.state.trades ?? []);
+    // The feed manager's recent trades are handed over whole every pass: the builder takes each fill once (Hyperliquid rows carry the order's hash).
+    orders.add(app.state.trades ?? []);
+    takeOrders(false);
     if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); }
     // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
     if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, flow]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
@@ -304,8 +314,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     close() {
       clearInterval(loop); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
-      // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes are written here).
-      for (const part of [() => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => flowSources.close(), () => extra.close()]) {
+      // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes and the open orders are written here).
+      for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => flowSources.close(), () => extra.close()]) {
         try { part(); } catch (error) { console.error('v2 shutdown:', error); }
       }
     },

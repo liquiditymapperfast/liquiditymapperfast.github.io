@@ -181,7 +181,7 @@ test('what the pointer is told on a row: the figures, the share, and what the re
   assert.deepEqual(text(flow).slice(0, 6), ['|Taker flow, 15m', '|ALL VENUES', 'Buys / sells|$2.7M / $900K', 'Net|+$1.8M', 'Buy share|75%', 'Recorded|11 of 15 minutes']);
   assert.match(flow.at(-1)!.text, /Part of this window was not recorded/); assert.equal(flow.find(l => l.label === 'Recorded')!.bold, true);
   const size = rowLines(data.size.rows[3]!, data);
-  assert.equal(size[0]!.text, 'Trades $500K+, 1H'); assert.ok(size.some(l => l.label === 'Share of volume'));
+  assert.equal(size[0]!.text, 'Market orders $500K+, 1H'); assert.ok(size.some(l => l.label === 'Share of volume'));
   assert.ok(size.some(l => l.label === 'Recorded' && l.text === '47 of 60 minutes'));
   const whole = buildStrip({ flow: book, counted: ['binance:BTCUSDT'], nowSec: SEC, settings: settings(), scope: 'all', sizes: answer(60), state: 'ready' });
   const clean = rowLines(whole.pulse[3]!, whole);
