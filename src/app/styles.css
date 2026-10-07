@@ -128,8 +128,8 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .panel-head button { cursor: pointer; }
 /* A window that is being dragged (panels, the venue picker, the guide): the hand stays closed wherever the pointer is, and nothing is selected on the way. */
 .being-moved, .being-moved * { cursor: grabbing !important; user-select: none; }
-dialog.venues h3 { cursor: grab; touch-action: none; }
-.guide-head { cursor: grab; touch-action: none; }
+dialog.venues h3 { cursor: grab; touch-action: none; user-select: none; }
+.guide-head { cursor: grab; touch-action: none; user-select: none; }
 .guide-head :is(button, select, a) { cursor: pointer; }
 .panel-head h3 { margin: 0; flex: 1; font-size: 13px; font-weight: 650; letter-spacing: .005em; }
 /* Tooltips (tip.ts): one box in the top layer for the whole page. */
