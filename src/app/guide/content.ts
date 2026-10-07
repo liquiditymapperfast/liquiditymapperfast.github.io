@@ -167,12 +167,13 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'venues', title: 'Exchanges, spot and perpetuals',
     blocks: [
-      { t: 'p', text: 'The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.' },
+      { t: 'p', text: 'The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.' },
       { t: 'list', items: [
-        '**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.',
+        '**Spot / Perp / Both** filters what the liquidity views draw.',
         'The **chips** show or hide one exchange\'s contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.',
         'The **Heatmap** selector shows a single exchange\'s own map instead of the combined one.',
         'The **market** selector chooses whose candles, footprint and open interest the chart uses.',
+        '**Coin** switches to another coin on nine or more of these markets; the page reloads.',
       ] },
       { t: 'p', text: 'Some exchanges refuse some countries. If one never connects while the others work, its chip becomes a dashed tag and a banner says it is **unavailable from your location**. A VPN set to another country may enable it; the rest keep working either way.' },
     ],

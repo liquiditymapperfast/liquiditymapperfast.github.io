@@ -95,8 +95,8 @@
  "**Bar stats** is the strip of numbers per candle described above.": "**Çubuk istatistikleri**, yukarıda anlatılan mum başına sayı şeridir.",
  "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "Her birinin başlığında bir **?** vardır ve araç çubuğu düğmeleri (Derinlik, OI, LT, Footprint) onları gösterir veya gizler.",
  "Exchanges, spot and perpetuals": "Borsalar, spot ve vadesizler",
- "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.": "Harita on bire kadar piyasayı birleştirir: Binance, Bybit, OKX, Bitget, Hyperliquid ve Deribit'in vadesiz vadeli işlemleri ile Binance, Coinbase, Bybit, OKX ve Bitget'in spot piyasaları. Kamuya açık defterleri hem büyük hem derindir. **Borsalar** bunlardan herhangi birini açar veya kapatır ve seçim tarayıcınızda saklanır.",
- "**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.": "**Spot / Perp / İkisi** likidite görünümlerinin ne çizeceğini süzer. Hiçbir borsayı asla açmaz veya kapatmaz.",
+ "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.": "Harita on bire kadar piyasayı birleştirir: Binance, Bybit, OKX, Bitget, Hyperliquid ve Deribit'in vadesiz vadeli işlemleri ile Binance, Coinbase, Bybit, OKX ve Bitget'in spot piyasaları. **Borsalar** bunlardan herhangi birini açar veya kapatır ve seçim tarayıcınızda saklanır.",
+ "**Spot / Perp / Both** filters what the liquidity views draw.": "**Spot / Perp / İkisi** likidite görünümlerinin ne çizeceğini süzer.",
  "The **chips** show or hide one exchange's contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.": "**Çipler**, bir borsanın katkısını akışını durdurmadan gösterir veya gizler. Soluk bir çip, Spot / Perp filtresinin gizlediği çiptir: göstermek için tıklayın. Haritası olmayan, seçtiğiniz bir borsa, üzerine gelince nedenini söyleyen kesikli bir çip alır.",
  "The **Heatmap** selector shows a single exchange's own map instead of the combined one.": "**Isı haritası** seçici, birleşik harita yerine tek bir borsanın kendi haritasını gösterir.",
  "The **market** selector chooses whose candles, footprint and open interest the chart uses.": "**Piyasa** seçici, grafiğin kimin mumlarını, footprint'ini ve açık pozisyonunu kullanacağını seçer.",
@@ -177,5 +177,6 @@
  "Rejected buying": "Reddedilen alım",
  "sell": "satış",
  "buy": "alış",
- "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**Emilim** kareleri, bir taraftaki piyasa emirlerinin 10 ms içinde tek bir fiyatta eşiği aşan miktarda bekleyen emirle karşılaştığı yerleri işaretler."
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**Emilim** kareleri, bir taraftaki piyasa emirlerinin 10 ms içinde tek bir fiyatta eşiği aşan miktarda bekleyen emirle karşılaştığı yerleri işaretler.",
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**Coin**, bu piyasaların dokuz veya daha fazlasında bulunan başka bir coine geçer; sayfa yeniden yüklenir."
 }

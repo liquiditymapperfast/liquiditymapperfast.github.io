@@ -95,8 +95,8 @@
  "**Bar stats** is the strip of numbers per candle described above.": "**바 통계**는 위에서 설명한 캔들당 숫자 띠입니다.",
  "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "각각의 머리글에 **?**가 있고, 도구 모음 버튼(뎁스, OI, LT, 풋프린트)이 이들을 보이거나 숨깁니다.",
  "Exchanges, spot and perpetuals": "거래소, 현물, 무기한",
- "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.": "지도는 최대 열한 개 시장을 결합합니다: Binance, Bybit, OKX, Bitget, Hyperliquid, Deribit의 무기한 선물과 Binance, Coinbase, Bybit, OKX, Bitget의 현물 시장입니다. 이들의 공개 호가창은 크고 깊습니다. **거래소**에서 각각을 켜고 끌 수 있으며, 선택은 브라우저에 저장됩니다.",
- "**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.": "**현물 / 무기한 / 둘 다**는 유동성 보기가 그리는 것을 걸러 냅니다. 거래소를 켜거나 끄는 일은 결코 하지 않습니다.",
+ "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.": "지도는 최대 열한 개 시장을 결합합니다: Binance, Bybit, OKX, Bitget, Hyperliquid, Deribit의 무기한 선물과 Binance, Coinbase, Bybit, OKX, Bitget의 현물 시장입니다. **거래소**에서 각각을 켜고 끌 수 있으며, 선택은 브라우저에 저장됩니다.",
+ "**Spot / Perp / Both** filters what the liquidity views draw.": "**현물 / 무기한 / 둘 다**는 유동성 보기가 그리는 것을 걸러 냅니다.",
  "The **chips** show or hide one exchange's contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.": "**칩**은 피드를 멈추지 않고 한 거래소의 기여분을 보이거나 숨깁니다. 흐려진 칩은 현물 / 무기한 필터가 숨기고 있는 것으로, 클릭하면 보입니다. 선택했지만 지도가 없는 거래소에는 점선 칩이 붙고, 올려 두면 이유가 표시됩니다.",
  "The **Heatmap** selector shows a single exchange's own map instead of the combined one.": "**히트맵** 선택기는 합산 지도 대신 한 거래소 자체의 지도를 보여 줍니다.",
  "The **market** selector chooses whose candles, footprint and open interest the chart uses.": "**시장** 선택기는 차트가 누구의 캔들, 풋프린트, 미결제약정을 쓸지 정합니다.",
@@ -177,5 +177,6 @@
  "Rejected buying": "거부된 매수",
  "sell": "매도",
  "buy": "매수",
- "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**흡수** 사각형은 한쪽 시장가 주문이 10 ms 안에 같은 가격에서 임계값을 넘는 양의 대기 주문과 체결된 곳을 표시합니다."
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**흡수** 사각형은 한쪽 시장가 주문이 10 ms 안에 같은 가격에서 임계값을 넘는 양의 대기 주문과 체결된 곳을 표시합니다.",
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**코인**은 이 시장들 중 9곳 이상에 있는 다른 코인으로 바꿉니다. 페이지가 다시 열립니다."
 }

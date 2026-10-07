@@ -95,8 +95,8 @@
  "**Bar stats** is the strip of numbers per candle described above.": "**バー統計**は、上で説明したローソク足ごとの数値の帯です。",
  "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "それぞれのヘッダーに **?** があり、ツールバーのボタン（デプス、OI、LT、フットプリント）で表示・非表示を切り替えられます。",
  "Exchanges, spot and perpetuals": "取引所、現物、無期限",
- "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.": "マップは最大11の市場を組み合わせます：Binance、Bybit、OKX、Bitget、Hyperliquid、Deribit の無期限先物と、Binance、Coinbase、Bybit、OKX、Bitget の現物市場です。公開ブックは大きく、深さもあります。**取引所**でそれぞれをオン・オフでき、選択はブラウザに保存されます。",
- "**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.": "**現物 / 無期限 / 両方**は、流動性ビューが描くものを絞り込みます。取引所をオン・オフすることは決してありません。",
+ "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.": "マップは最大11の市場を組み合わせます：Binance、Bybit、OKX、Bitget、Hyperliquid、Deribit の無期限先物と、Binance、Coinbase、Bybit、OKX、Bitget の現物市場です。**取引所**でそれぞれをオン・オフでき、選択はブラウザに保存されます。",
+ "**Spot / Perp / Both** filters what the liquidity views draw.": "**現物 / 無期限 / 両方**は、流動性ビューが描くものを絞り込みます。",
  "The **chips** show or hide one exchange's contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.": "**チップ**は、フィードを止めずに取引所ごとの寄与を表示・非表示にします。薄暗いチップは現物 / 無期限フィルターが隠しているものです。クリックで表示します。選択したのにマップがない取引所には破線のチップが付き、ホバーで理由が表示されます。",
  "The **Heatmap** selector shows a single exchange's own map instead of the combined one.": "**ヒートマップ**セレクターは、合算マップの代わりに単一取引所専用のマップを表示します。",
  "The **market** selector chooses whose candles, footprint and open interest the chart uses.": "**市場**セレクターは、チャートが使うローソク足、フットプリント、建玉を誰のものにするかを選びます。",
@@ -177,5 +177,6 @@
  "Rejected buying": "拒否された買い",
  "sell": "売り",
  "buy": "買い",
- "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸収**の四角は、片側の成行注文が 10 ms 以内に同じ価格で、しきい値を超える量の待機注文と約定した場所を示します。"
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸収**の四角は、片側の成行注文が 10 ms 以内に同じ価格で、しきい値を超える量の待機注文と約定した場所を示します。",
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**通貨**で、これらの市場のうち 9 つ以上にある別の通貨に切り替えます。ページは読み込み直されます。"
 }

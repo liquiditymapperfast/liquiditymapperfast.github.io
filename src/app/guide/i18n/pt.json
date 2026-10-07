@@ -95,8 +95,8 @@
  "**Bar stats** is the strip of numbers per candle described above.": "**Estatísticas de barra** é a faixa de números por vela descrita acima.",
  "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "Cada um tem um **?** no cabeçalho, e os botões da barra de ferramentas (Profundidade, OI, LT, Footprint) os mostram ou ocultam.",
  "Exchanges, spot and perpetuals": "Exchanges, spot e perpétuos",
- "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.": "O mapa combina até onze mercados: os futuros perpétuos de Binance, Bybit, OKX, Bitget, Hyperliquid e Deribit, e os mercados spot de Binance, Coinbase, Bybit, OKX e Bitget. Seus livros públicos são grandes e profundos. **Exchanges** liga ou desliga qualquer uma, e a escolha fica guardada no seu navegador.",
- "**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.": "**Spot / Perp / Ambos** filtra o que as visões de liquidez desenham. Nunca liga nem desliga uma exchange.",
+ "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.": "O mapa combina até onze mercados: os futuros perpétuos de Binance, Bybit, OKX, Bitget, Hyperliquid e Deribit, e os mercados spot de Binance, Coinbase, Bybit, OKX e Bitget. **Exchanges** liga ou desliga qualquer uma, e a escolha fica guardada no seu navegador.",
+ "**Spot / Perp / Both** filters what the liquidity views draw.": "**Spot / Perp / Ambos** filtra o que as visões de liquidez desenham.",
  "The **chips** show or hide one exchange's contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.": "Os **chips** mostram ou ocultam a contribuição de uma exchange sem parar seu feed. Um chip esmaecido é um que o filtro Spot / Perp está ocultando: clique para mostrá-lo. Uma exchange escolhida que não tem mapa recebe um chip tracejado que diz por quê ao passar o mouse.",
  "The **Heatmap** selector shows a single exchange's own map instead of the combined one.": "O seletor **Mapa de calor** mostra o mapa próprio de uma única exchange em vez do combinado.",
  "The **market** selector chooses whose candles, footprint and open interest the chart uses.": "O seletor de **mercado** escolhe de quem são as velas, o footprint e o open interest que o gráfico usa.",
@@ -177,5 +177,6 @@
  "Rejected buying": "Compra rejeitada",
  "sell": "venda",
  "buy": "compra",
- "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "Os quadrados de **Absorção** marcam onde ordens a mercado de um lado encontraram ordens em espera a um preço por mais que um limiar em 10 ms."
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "Os quadrados de **Absorção** marcam onde ordens a mercado de um lado encontraram ordens em espera a um preço por mais que um limiar em 10 ms.",
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**Moeda** muda para outra moeda presente em nove ou mais destes mercados; a página recarrega."
 }

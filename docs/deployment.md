@@ -10,6 +10,8 @@ The page is at **https://liquiditymapperfast.github.io/**, built and deployed by
 
 GitHub Pages serves static files, and the page needs nothing else: `npm run build:site` writes `dist/` (one HTML file, two scripts, two workers' worth of code, one `.wasm`, one stylesheet) with relative URLs, so it works from the site root or from a project path such as `/<repository>/`. `.github/workflows/pages.yml` builds and deploys it once the repository is on GitHub and Pages is set to "GitHub Actions" (nothing runs before that, and nothing has been pushed). Pages serves it over HTTPS, which Web Locks need.
 
+The workflow also runs once a day (03:17 UTC) to rebuild the coin list (`dist/coins.json`, see `docs/coins.md`) and publish the site again with it. A market whose list the runner cannot read keeps its listings from the list the site has; a failure there never stops the deploy. GitHub stops a schedule after 60 days without a push; a push or a manual run starts it again.
+
 A server stays optional. If one is wanted anyway (a long recorded history for everyone, or the bandwidth-heavy local features), the recommended shape is:
 
 | Piece | Where | Notes |

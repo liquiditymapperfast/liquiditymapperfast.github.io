@@ -95,8 +95,8 @@
  "**Bar stats** is the strip of numbers per candle described above.": "**柱统计**就是上文所述每根 K 线一个数字的条带。",
  "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "每个面板的标题里都有一个 **?**，工具栏按钮（深度、OI、LT、Footprint）可显示或隐藏它们。",
  "Exchanges, spot and perpetuals": "交易所、现货与永续",
- "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. Their public books are both large and deep. **Venues** switches any of them on or off, and the choice is kept in your browser.": "地图最多合并十一个市场：Binance、Bybit、OKX、Bitget、Hyperliquid 和 Deribit 的永续合约，以及 Binance、Coinbase、Bybit、OKX 和 Bitget 的现货市场。它们的公开订单簿既大又深。**交易所**可开启或关闭其中任何一家，选择保存在你的浏览器里。",
- "**Spot / Perp / Both** filters what the liquidity views draw. It never switches an exchange on or off.": "**现货 / 永续 / 两者**筛选流动性视图所绘制的内容。它从不开启或关闭交易所。",
+ "The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.": "地图最多合并十一个市场：Binance、Bybit、OKX、Bitget、Hyperliquid 和 Deribit 的永续合约，以及 Binance、Coinbase、Bybit、OKX 和 Bitget 的现货市场。**交易所**可开启或关闭其中任何一家，选择保存在你的浏览器里。",
+ "**Spot / Perp / Both** filters what the liquidity views draw.": "**现货 / 永续 / 两者**筛选流动性视图所绘制的内容。",
  "The **chips** show or hide one exchange's contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.": "**标签**显示或隐藏某家交易所的贡献，但不停止它的数据源。变暗的标签表示被“现货 / 永续”筛选隐藏：点击即可显示。你选择了但没有地图的交易所会得到一个虚线标签，悬停时会说明原因。",
  "The **Heatmap** selector shows a single exchange's own map instead of the combined one.": "**热力图**选择器显示单个交易所自己的地图，而不是合并后的地图。",
  "The **market** selector chooses whose candles, footprint and open interest the chart uses.": "**市场**选择器决定图表使用谁的 K 线、footprint 和持仓量。",
@@ -177,5 +177,6 @@
  "Rejected buying": "被拒绝的买入",
  "sell": "卖出",
  "buy": "买入",
- "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸收**方块标出同一方向的市价单在 10 毫秒内于同一价格与超过阈值的挂单成交的位置。"
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸收**方块标出同一方向的市价单在 10 毫秒内于同一价格与超过阈值的挂单成交的位置。",
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**币种**可切换到在这些市场中至少九个上线的其他币种；页面会重新加载。"
 }
