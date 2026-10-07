@@ -11,6 +11,8 @@ import { forCoin, tierFor } from '../src/app/coin.ts';
 import { GROUPS, groupsFor } from '../src/app/panes/ladder-zoom.ts';
 import { sizeBucketLabels } from '../src/app/panes/bar-stats.ts';
 import { matchCoins, scaleText } from '../src/app/coin-dialog.ts';
+import { keptChoice } from '../src/app/browser-source.ts';
+import { restoreSelection } from '../src/shared/venues.ts';
 
 type Inside = { url(): string; open(send: (p: unknown) => void): void; usdOf(price: number, size: number): number };
 const inside = (c: BookConnector): Inside => c as unknown as Inside;
@@ -146,6 +148,24 @@ test('a coin\'s tier stays what its recordings were made at while they last, and
   assert.deepEqual(moved, { heatmapSource: 'binance:LITUSDT', ladderVenue: 'hyperliquid:LIT-PERP', ladderVenues: ['coinbase:BTC-USD', 'okx:LIT-USDT-SWAP'] }, 'a market without the coin keeps the old choice');
   assert.deepEqual(forCoin({ heatmapSource: 'aggregated', ladderVenue: '', ladderVenues: [] }, coin('LIT')), { heatmapSource: 'aggregated', ladderVenue: '', ladderVenues: [] });
   assert.deepEqual(forCoin(moved, BTC).heatmapSource, 'binance:BTCUSDT', 'and back');
+});
+
+test('a venue choice applied on a coin some markets do not list leaves those markets as the saved choice had them', () => {
+  const all = BROWSER_VENUES.map(v => v.id), unlisted = new Set(['binancespot', 'coinbase']), listedOnly = all.filter(id => !unlisted.has(id));
+  const noBitget = listedOnly.filter(id => id !== 'bitget');
+  // Nothing saved before: the two stay unseen, so BTC starts them as recommended ones.
+  const first = keptChoice(noBitget, all, unlisted, { selected: null, known: null });
+  assert.deepEqual(first.known.filter(id => unlisted.has(id)), []);
+  assert.deepEqual(restoreSelection(first.selected, first.known)!.sort(), all.filter(id => id !== 'bitget').sort(), 'on BTC: every market but the one left out');
+  // A choice that had left Coinbase out keeps it out, and keeps Binance spot in.
+  const before = { selected: all.filter(id => id !== 'coinbase'), known: all };
+  const later = keptChoice(noBitget, all, unlisted, before);
+  assert.deepEqual(restoreSelection(later.selected, later.known)!.sort(), all.filter(id => id !== 'coinbase' && id !== 'bitget').sort());
+  assert.deepEqual(later.known.sort(), [...all].sort());
+  // A choice saved before the seen list was kept knew the first eight.
+  const old = keptChoice(listedOnly, all, unlisted, { selected: ['binance', 'binancespot'], known: null });
+  assert.ok(old.selected.includes('binancespot') && !old.selected.includes('coinbase'));
+  assert.ok(old.known.includes('coinbase'), 'Coinbase was among the first eight, so it was seen and left out');
 });
 
 test('the order book steps, the size buckets and the coin search follow the coin', () => {

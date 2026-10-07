@@ -1,5 +1,5 @@
 import { BinanceDiffDepthConnector, BookConnector, type Market } from './connector.ts';
-import { BTC, type Coin, type CoinVenue } from './coins.ts';
+import { BTC, EARLIER_BROWSER_VENUES, type Coin, type CoinVenue } from './coins.ts';
 import { hyperliquidGroupingBoundsDecimal } from '../analytics/hyperliquid-bounds.mts';
 
 /**
@@ -416,9 +416,6 @@ export function browserVenues(coin: Coin = BTC): BrowserVenue[] {
 
 /** BTC's markets. */
 export const BROWSER_VENUES: readonly BrowserVenue[] = browserVenues(BTC);
-
-/** The venues there were before a saved choice recorded which venues it had seen. */
-const EARLIER_BROWSER_VENUES: readonly string[] = ['binance', 'bybit', 'okx', 'bitget', 'hyperliquid', 'deribit', 'binancespot', 'coinbase'];
 
 /**
  * The venues to start for a saved choice: the venues it chose, and every recommended venue it had not seen (one added since, which a

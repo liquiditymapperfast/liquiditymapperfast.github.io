@@ -10,7 +10,7 @@ import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, Savin
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
 import { t } from './i18n.ts';
-import { BTC, type Coin } from '../shared/coins.ts';
+import { BTC, EARLIER_BROWSER_VENUES, type Coin } from '../shared/coins.ts';
 import { recorderLockName, recordingsName } from './coin.ts';
 
 /** Where a person's venue choice is kept between visits, and the venues there were when it was made (so ones added since can start). */
@@ -33,11 +33,18 @@ function savedKnown(): string[] | null {
   } catch { return null; }
 }
 /**
- * Keep a venue choice. A market that does not list the coin on screen cannot be chosen there, so the saved choice keeps whatever it said
- * about such markets: one choice serves every coin, and a coin missing from a market does not take that market out of it.
+ * The venue choice to keep after Apply on a coin that some markets do not list. Those markets could not be ticked, so what the saved
+ * choice said about them stands, both whether they were chosen and whether they had been seen: one choice serves every coin. With no
+ * choice saved before, they stay unseen, so a coin that has them starts them as recommended ones.
  */
-function saveSelection(selected: readonly string[], known: readonly string[], unlisted: ReadonlySet<string> = new Set()): void {
-  if (unlisted.size) selected = [...selected, ...(savedSelection() ?? []).filter(id => unlisted.has(id) && !selected.includes(id))];
+export function keptChoice(chosen: readonly string[], all: readonly string[], unlisted: ReadonlySet<string>, before: { selected: readonly string[] | null; known: readonly string[] | null }): { selected: string[]; known: string[] } {
+  const seenBefore = before.known ?? (before.selected ? EARLIER_BROWSER_VENUES : []);
+  return {
+    selected: [...chosen.filter(id => !unlisted.has(id)), ...(before.selected ?? []).filter(id => unlisted.has(id))],
+    known: [...all.filter(id => !unlisted.has(id)), ...seenBefore.filter(id => unlisted.has(id))],
+  };
+}
+function saveSelection(selected: readonly string[], known: readonly string[]): void {
   try { localStorage.setItem(SELECTION_KEY, JSON.stringify(selected)); if (known.length) localStorage.setItem(KNOWN_KEY, JSON.stringify(known)); } catch { /* private mode: the choice lasts for this visit */ }
 }
 
@@ -209,7 +216,9 @@ export class BrowserSource implements DataSource, VenueControl {
     return { venues: this.#statuses.map(toEntry), limit: null, recommendedKnown: true };
   }
   async apply(selected: readonly string[]): Promise<void> {
-    saveSelection(selected, this.#statuses.map(venue => venue.id), new Set(this.#statuses.filter(venue => !venue.listed).map(venue => venue.id)));
+    const unlisted = new Set(this.#statuses.filter(venue => !venue.listed).map(venue => venue.id));
+    const kept = keptChoice(selected, this.#statuses.map(venue => venue.id), unlisted, { selected: savedSelection(), known: savedKnown() });
+    saveSelection(kept.selected, kept.known);
     this.#post({ type: 'select', selected: [...selected] });
   }
   watch(listener: (venues: VenueEntry[]) => void): () => void {

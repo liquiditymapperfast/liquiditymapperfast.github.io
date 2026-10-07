@@ -8,6 +8,9 @@
  * markets' within 2 %.
  */
 
+/** The markets there were before a saved venue choice recorded which ones it had seen (shared/venues.ts restoreSelection). */
+export const EARLIER_BROWSER_VENUES: readonly string[] = ['binance', 'bybit', 'okx', 'bitget', 'hyperliquid', 'deribit', 'binancespot', 'coinbase'];
+
 /** The eleven markets, as the venue ids the browser uses. */
 export const COIN_VENUES = ['binance', 'binancespot', 'bybit', 'bybitspot', 'okx', 'okxspot', 'bitget', 'bitgetspot', 'hyperliquid', 'deribit', 'coinbase'] as const;
 export type CoinVenue = (typeof COIN_VENUES)[number];
