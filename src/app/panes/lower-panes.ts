@@ -19,7 +19,7 @@ import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
 import type { LtSeries } from '../lt.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
-import { candleSpan } from '../candle-span.ts';
+import { FORMING_GAP_PX, candleBody, candleCentre } from '../candle-place.ts';
 import { panelSwitchRow, panelSwitchOn, setPanelSwitch } from '../sound/panel.ts';
 import { t, tn } from '../i18n.ts';
 
@@ -269,12 +269,12 @@ export class OiPane extends TimePane {
     for (const i of visible) { const b = oi[i]!; lo = Math.min(lo, b[3], b[4]); hi = Math.max(hi, b[2], b[4]); maxDelta = Math.max(maxDelta, Math.abs(analysis.delta[i]!)); }
     const pad = Math.max((hi - lo) * 0.18, hi * 0.0004), min = lo - pad, max = hi + pad;
     const y = (value: number) => 6 + (1 - (value - min) / (max - min)) * (lineBottom - 6);
-    // The sample of the candle still forming sits where its candle on the map does: over the part of its slot that has happened.
-    const now = Date.now(), spanOf = (i: number) => candleSpan(oi[i]![0], tf, now);
-    const xc = (i: number) => { const sp = spanOf(i); return v.xOf(sp.from + (sp.to - sp.from) / 2, pw); };
+    // The sample of the candle still forming sits where its candle on the map does (see candleCentre); its change bar, like every other, covers its whole slot.
+    const now = Date.now(), msPerPx = (v.t1 - v.t0) / pw, bodyMs = candleBody(pw * tf / (v.t1 - v.t0)) * msPerPx, gapMs = FORMING_GAP_PX * msPerPx;
+    const xc = (i: number) => v.xOf(candleCentre(oi[i]![0], tf, now, bodyMs, gapMs), pw);
     const first = Math.max(0, visible[0]! - 1), last = visible[visible.length - 1]!;
     const lastBar = oi[oi.length - 1]!, newestCandle = state.candles[state.candles.length - 1];
-    const reachT = Math.min(v.t1, Math.max(spanOf(oi.length - 1).to, newestCandle ? candleSpan(newestCandle[0], tf, now).to : 0));
+    const reachT = Math.min(v.t1, Math.max(lastBar[0] + tf, newestCandle ? newestCandle[0] + tf : 0));
     const xEnd = Math.min(pw, v.xOf(reachT, pw)), xSampled = Math.min(pw, xc(oi.length - 1));
     const line = (from: number, to: number): void => { // step line over bars first..to, ending at the newest sample's centre
       ctx.beginPath(); ctx.moveTo(xc(from), y(oi[from]![4]));
@@ -287,7 +287,7 @@ export class OiPane extends TimePane {
       for (const i of visible) {
         if (i === 0) continue;
         const d = analysis.delta[i]!; if (d === 0) continue;
-        const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(spanOf(i).to, pw), h = Math.abs(d) / (maxDelta || 1) * half;
+        const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(oi[i]![0] + tf, pw), h = Math.abs(d) / (maxDelta || 1) * half;
         ctx.globalAlpha = !emphasise ? 0.75 : analysis.flag[i] ? 1 : 0.38; ctx.fillStyle = d > 0 ? p.bid : p.ask;
         ctx.fillRect(x0 + 0.5, d > 0 ? mid - h : mid, Math.max(1, x1 - x0 - 1), Math.max(1, h));
         if (emphasise && analysis.flag[i]) { // a small cap outside the bar says "this one stands out"
