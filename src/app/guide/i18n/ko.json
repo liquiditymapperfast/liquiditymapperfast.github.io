@@ -81,7 +81,7 @@
  "Trades and sound": "체결과 소리",
  "Large market orders appear as **bubbles** at the price and time they happened, all the fills of one order together: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover or tap one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.": "큰 시장가 주문은 일어난 가격과 시간에 **버블**로 나타나며, 한 주문의 체결은 모두 하나로 합쳐집니다: 시장가 매수는 초록, 시장가 매도는 빨강, 클수록 크게(25,000달러부터). 올려 두거나 탭하면 거래소, 크기, 가격을 볼 수 있습니다. 지도는 기다리는 것을, 버블은 실제로 일어난 것을 보여 줍니다.",
  "**Sound** turns trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.": "**소리**는 체결을 차임으로 바꿉니다: 매수는 상승, 매도는 하강, 큰 스윕일수록 풍성합니다. 네 단계가 크기를 정합니다(Signal 5만 달러, Surge 15만 달러, Whale 40만 달러, Leviathan 150만 달러). 가장 큰 두 단계는 기본으로 켜져 있습니다. 브라우저는 페이지에서 한 번 클릭하거나 키를 누를 때까지 오디오를 잠가 둡니다.",
- "Under **Per panel** in the Sounds panel, each pane can sound one rare event (a flow burst, a big-delta candle, a wall, the book tipping, an unusual open-interest change). All off until chosen.": "소리 패널의 **패널별** 아래에서 각 패널은 드문 이벤트 하나에 소리를 낼 수 있습니다(플로우 급증, 큰 델타 캔들, 벽, 호가창 기울어짐, 비정상적인 미결제약정 변화). 선택하기 전에는 모두 꺼져 있습니다.",
+ "Under **Per panel** in the Sounds panel, each pane can sound one rare event. All off until chosen.": "소리 패널의 **패널별** 아래에서 각 패널은 드문 이벤트 하나에 소리를 낼 수 있습니다. 선택하기 전에는 모두 꺼져 있습니다.",
  "The footprint": "풋프린트",
  "Zoom into the time axis until each candle is wide and the **footprint** appears. At every price inside the candle it shows how much traded **at the bid** (sellers hitting it, the left number) and **at the ask** (buyers lifting it, the right number). A bar marks a row where one side was at least 15% bigger. The heatmap fades as the footprint takes over: both answer the same question at different scales.": "각 캔들이 넓어지고 **풋프린트**가 나타날 때까지 시간 축을 확대하세요. 캔들 안의 모든 가격에서 **매수 호가**(매도자가 치는 쪽, 왼쪽 숫자)와 **매도 호가**(매수자가 가져가는 쪽, 오른쪽 숫자)에서 얼마가 거래되었는지 보여 줍니다. 한쪽이 적어도 15% 더 컸던 행에는 막대가 표시됩니다. 풋프린트가 이어받으면서 히트맵은 희미해집니다: 둘 다 같은 질문에 서로 다른 규모로 답합니다.",
  "**Delta** is buys minus sells. A candle that rose on mostly sellers' volume is more fragile than one that rose on buyers'. The strip under the chart (**Bar stats**) shows one number per candle, by default volume, delta and cumulative delta (cvd). **Stats** adds more.": "**델타**는 매수에서 매도를 뺀 값입니다. 대체로 매도자 거래량으로 오른 캔들은 매수자 거래량으로 오른 캔들보다 약합니다. 차트 아래 띠(**바 통계**)는 캔들마다 숫자 하나를 보여 주며, 기본은 거래량, 델타, 누적 델타(cvd)입니다. **통계**로 더 추가할 수 있습니다.",
@@ -176,5 +176,6 @@
  "Bars: one side at least 15% bigger": "막대: 한쪽이 적어도 15% 더 큼",
  "Rejected buying": "거부된 매수",
  "sell": "매도",
- "buy": "매수"
+ "buy": "매수",
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**흡수** 사각형은 한쪽 시장가 주문이 10 ms 안에 같은 가격에서 임계값을 넘는 양의 대기 주문과 체결된 곳을 표시합니다."
 }

@@ -13,7 +13,8 @@ import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
 import { bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { tradedHeader, tradedLines, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
-import { flowIds } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds } from '../cvd/ids.ts';
+import { markLines, type AbsorptionMark } from '../absorption.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
@@ -100,6 +101,10 @@ export class HeatPane {
   #lod = new FootprintLod();
   #lodFrame: LodFrame = { barAlpha: 0, sellBuyAlpha: 0, needsFrame: false, heatmapOpacity: 1, narrowing: 0 };
   #volume: VolumeAnalysis | null = null;
+  /** Absorption icons drawn in the last frame (centre, size, the marks they stand for), for hover. */
+  #absorptionIcons: { x: number; y: number; s: number; marks: AbsorptionMark[]; usd: number }[] = [];
+  /** The thresholds of the last frame, kept while nothing they depend on changed (the book, the settings, the minute, the venues). */
+  #absorptionKey = ''; #absorptionThresholds: Map<string, number | null> = new Map();
   /** Bubbles drawn in the last frame, for hover. */
   #bubbles: { x: number; y: number; r: number; print: Print }[] = [];
   #grid: { data: Float32Array; w: number; h: number; bounds: Bounds } | null = null;
@@ -259,6 +264,7 @@ export class HeatPane {
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view);
     if (tradedShown(state)) this.#ensureTraded(state);
+    if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
     // Under a dominant footprint the heatmap is gone altogether, so there is nothing to draw.
     if (state.layer === 'liquidity' && this.#lodFrame.heatmapOpacity > 0.003) this.gl.draw(this.view, this.#style(), this.#placeholder()); else this.gl.clear();
@@ -309,6 +315,7 @@ export class HeatPane {
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
+    this.#paintAbsorption(ctx, state, pw, ph);
     // mark line
     const mark = state.mark.price;
     if (mark > 0) {
@@ -684,8 +691,12 @@ export class HeatPane {
     let trapHit: Trap | null = null, rowHit: ReturnType<HeatPane['footprintCellUnder']> = null;
     const touch = hv.touch === true;
     if (touch && ownY && inX && y >= 0 && y <= ph) { ctx.strokeStyle = p.text; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
-    const hit = ownY && inX ? this.#bubbleAt(x, y) : null;
-    if (hit) { // a large trade under the pointer: say what it was
+    const absorbed = ownY && inX ? this.#absorptionAt(x, y) : null;
+    const hit = ownY && inX && !absorbed ? this.#bubbleAt(x, y) : null;
+    if (absorbed) { // an absorption mark under the pointer: what was taken, where, and at which threshold
+      const passiveBuyers = absorbed.marks[0]!.side === 'sell';
+      paintInfoBox(ctx, markLines(absorbed.marks, state.absorption), x, touch ? absorbed.y - absorbed.s - 8 : absorbed.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: passiveBuyers ? p.bid : p.ask, gap: absorbed.s / 2 + 10, placement: touch ? 'up' : 'center' });
+    } else if (hit) { // a large trade under the pointer: say what it was
       const { print } = hit, venue = venueLabel(print.id), symbol = print.id.split(':').slice(1).join(':'), buy = print.side === 'buy';
       const lines: InfoLine[] = [
         { text: `${buy ? t('BUY') : t('SELL')}  $${usd(print.usd)}`, bold: true, color: buy ? 'buy' : 'sell' },
@@ -786,6 +797,94 @@ export class HeatPane {
       ctx.strokeStyle = `rgba(245, 165, 36, ${r.active ? 0.35 + 0.5 * breath : 0.3})`; ctx.lineWidth = 1.2; ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1);
     }
     ctx.restore();
+  }
+
+  /**
+   * The instruments absorption is judged on (every market the page knows and everything with flow, with its chip on; executions follow the
+   * chips, not the Spot/Perp filter, as the bubbles do) and the threshold each is judged at now.
+   */
+  #absorptionContext(state: AppState): { ids: string[]; thresholds: Map<string, number | null> } {
+    const ids = flowLoadIds(state, this.hub.flow.ids).filter(id => !state.disabledVenues.includes(id.slice(0, id.indexOf(':'))));
+    const s = state.absorption, minute = Math.floor(Date.now() / 60_000);
+    const key = `${this.hub.absorption.version}|${minute}|${s.mode}|${s.k}|${s.sdMinutes}|${s.fixedUsd}|${ids.join(',')}`;
+    if (key !== this.#absorptionKey) { this.#absorptionKey = key; this.#absorptionThresholds = this.hub.absorption.thresholds(ids, s, Date.now()); }
+    return { ids, thresholds: this.#absorptionThresholds };
+  }
+
+  /**
+   * Absorption marks: a dot on the level where it happened and, offset from it with a dotted line (so it never covers the bubble of the same
+   * orders), a square in the passive side's colour: below the level when passive buyers took market sells, above it when passive sellers
+   * took market buys. Squares of one side that would overlap are drawn as one with their volume added, and when there are more than fit,
+   * the largest are drawn.
+   */
+  #paintAbsorption(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    this.#absorptionIcons = [];
+    const s = state.absorption; if (!s.on) return;
+    const v = this.view, p = this.#palette, { ids, thresholds } = this.#absorptionContext(state);
+    const marks = this.hub.absorption.marks(ids, thresholds, v.t0, v.t1, v.p0, v.p1);
+    const OFFSET = 20, NEAR = 12;
+    const icons: { side: 'buy' | 'sell'; x: number; y: number; usd: number; marks: AbsorptionMark[] }[] = [];
+    for (const m of [...marks].sort((a, b) => b.usd - a.usd)) {
+      const x = v.xOf((m.t0 + m.t1) / 2, pw), y = v.yOf(m.price, ph);
+      if (x < -NEAR || x > pw + NEAR || y < -NEAR || y > ph + NEAR) continue;
+      const near = icons.find(i => i.side === m.side && Math.abs(i.x - x) < NEAR && Math.abs(i.y - y) < NEAR);
+      if (near) { near.usd += m.usd; near.marks.push(m); } else icons.push({ side: m.side, x, y, usd: m.usd, marks: [m] });
+    }
+    const shown = icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12))));
+    if (shown.length) {
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+      const edge = p.dark ? '#f2f2f2' : '#14171c';
+      ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      for (const icon of shown.reverse()) {   // the largest last, on top
+        const passiveBuyers = icon.side === 'sell', color = passiveBuyers ? p.bid : p.ask;
+        const size = Math.max(8, Math.min(20, 8 + 5 * Math.sqrt(icon.usd / 1e6))), iy = icon.y + (passiveBuyers ? OFFSET : -OFFSET);
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+        ctx.beginPath(); ctx.moveTo(Math.round(icon.x) + 0.5, icon.y); ctx.lineTo(Math.round(icon.x) + 0.5, iy + (passiveBuyers ? -size / 2 : size / 2)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillRect(icon.x - 2, icon.y - 2, 4, 4);
+        ctx.fillRect(icon.x - size / 2, iy - size / 2, size, size);
+        ctx.strokeStyle = edge; ctx.strokeRect(Math.round(icon.x - size / 2) + 0.5, Math.round(iy - size / 2) + 0.5, Math.round(size) - 1, Math.round(size) - 1);
+        this.#absorptionIcons.push({ x: icon.x, y: iy, s: size, marks: icon.marks, usd: icon.usd });
+      }
+      if (s.volume) {
+        // The volumes after every square, the largest first: one that would cover a square or a label already written is left out (the
+        // hover box has it), and one that would run off the chart goes on the square's left.
+        const taken = this.#absorptionIcons.map(i => ({ x0: i.x - i.s / 2, y0: i.y - i.s / 2, x1: i.x + i.s / 2, y1: i.y + i.s / 2 }));
+        ctx.lineWidth = 3; ctx.strokeStyle = p.dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)'; ctx.fillStyle = p.text;
+        for (const icon of [...this.#absorptionIcons].reverse()) {
+          const label = `$${usd(icon.usd)}`, w = ctx.measureText(label).width;
+          let x0 = icon.x + icon.s / 2 + 3; if (x0 + w > pw - 2) x0 = icon.x - icon.s / 2 - 3 - w;
+          const box = { x0, y0: icon.y - 6, x1: x0 + w, y1: icon.y + 6 };
+          if (taken.some(r => r.x0 < box.x1 && box.x0 < r.x1 && r.y0 < box.y1 && box.y0 < r.y1)) continue;
+          taken.push(box); ctx.strokeText(label, x0, icon.y); ctx.fillText(label, x0, icon.y);
+        }
+      }
+      ctx.restore();
+    }
+    // Say where the picture is not the whole truth: a threshold under what was kept, or more marks than one answer carries.
+    const missing = this.hub.absorption.incomplete(thresholds).filter(id => ids.includes(id)), capped = this.hub.absorptionCapped.filter(id => ids.includes(id));
+    const notes: string[] = [];
+    if (missing.length) notes.push(t('Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.', { venues: [...new Set(missing.map(venueLabel))].join(', ') }));
+    if (capped.length) notes.push(t('Absorption: only the largest marks of {venues} are drawn in this window.', { venues: [...new Set(capped.map(venueLabel))].join(', ') }));
+    if (this.hub.absorptionState === 'unavailable') notes.push(t('Absorption is not available from this server.'));
+    if (notes.length) {
+      ctx.save(); ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      const bandH = Math.max(34, Math.min(ph * 0.17, 150));
+      notes.forEach((text, i) => { const y = ph - bandH - 10 - (notes.length - 1 - i) * 14; ctx.lineWidth = 3; ctx.strokeStyle = p.dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.85)'; ctx.strokeText(text, 8, y); ctx.fillStyle = '#e6a700'; ctx.fillText(text, 8, y); });
+      ctx.restore();
+    }
+  }
+
+  /** The threshold each venue is judged at now, in words for the settings panel ("Binance $774K · Bybit $472K"); empty before any is known. */
+  absorptionThresholdText(): string {
+    const { thresholds } = this.#absorptionContext(this.store.state), byVenue = new Map<string, number>();
+    for (const [id, value] of thresholds) if (value !== null) { const venue = venueLabel(id); byVenue.set(venue, Math.max(byVenue.get(venue) ?? 0, value)); }
+    return [...byVenue].sort((a, b) => b[1] - a[1]).map(([venue, value]) => `${venue} $${usd(value)}`).join(' · ');
+  }
+
+  /** The absorption icon under the pointer, if any. */
+  #absorptionAt(x: number, y: number): { marks: AbsorptionMark[]; s: number; y: number } | null {
+    for (let i = this.#absorptionIcons.length - 1; i >= 0; i--) { const icon = this.#absorptionIcons[i]!; if (Math.abs(icon.x - x) <= icon.s / 2 + 3 && Math.abs(icon.y - y) <= icon.s / 2 + 3) return icon; }
+    return null;
   }
 
   /** The drawn bubble nearest the pointer, if the pointer is on it (a few pixels of slack for the small ones). */

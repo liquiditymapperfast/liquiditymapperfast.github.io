@@ -81,7 +81,7 @@
  "Trades and sound": "成交与声音",
  "Large market orders appear as **bubbles** at the price and time they happened, all the fills of one order together: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover or tap one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.": "大额市价单会以**气泡**的形式出现在其发生的价格和时间，同一订单的所有成交合为一个：绿色表示市价买入，红色表示市价卖出，越大越大（从 25,000 美元起）。悬停或点按一个气泡可看交易所、大小和价格。地图显示的是在等待的东西；气泡显示的是实际发生的东西。",
  "**Sound** turns trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.": "**声音**把成交变成钟声：买入上升，卖出下降，更大的扫单更丰富。四个档位设定大小（Signal 5 万美元，Surge 15 万美元，Whale 40 万美元，Leviathan 150 万美元）；最大的两档默认开启。浏览器会把音频保持锁定，直到你在页面上点击或按键一次。",
- "Under **Per panel** in the Sounds panel, each pane can sound one rare event (a flow burst, a big-delta candle, a wall, the book tipping, an unusual open-interest change). All off until chosen.": "在“声音”面板的**按面板设置**下，每个面板都可以为一种罕见事件发声（资金流爆发、大成交量差的 K 线、挂单墙、订单簿倾斜、异常的持仓量变化）。选择之前全部关闭。",
+ "Under **Per panel** in the Sounds panel, each pane can sound one rare event. All off until chosen.": "在“声音”面板的**按面板设置**下，每个面板都可以为一种罕见事件发声。选择之前全部关闭。",
  "The footprint": "Footprint",
  "Zoom into the time axis until each candle is wide and the **footprint** appears. At every price inside the candle it shows how much traded **at the bid** (sellers hitting it, the left number) and **at the ask** (buyers lifting it, the right number). A bar marks a row where one side was at least 15% bigger. The heatmap fades as the footprint takes over: both answer the same question at different scales.": "沿时间轴放大，直到每根 K 线都变宽，**footprint** 就会出现。在 K 线内的每个价位，它显示有多少在**买价**成交（卖家砸向买价，左边的数字）和在**卖价**成交（买家吃掉卖价，右边的数字）。当一侧至少大 15% 时，该行会标出一根条。随着 footprint 接手，热力图逐渐淡去：两者在不同尺度上回答同一个问题。",
  "**Delta** is buys minus sells. A candle that rose on mostly sellers' volume is more fragile than one that rose on buyers'. The strip under the chart (**Bar stats**) shows one number per candle, by default volume, delta and cumulative delta (cvd). **Stats** adds more.": "**成交量差**是买入减卖出。一根主要靠卖方成交量上涨的 K 线，比靠买方成交量上涨的更脆弱。图表下方的条带（**柱统计**）为每根 K 线显示一个数字，默认是成交量、成交量差和累计成交量差（cvd）。**统计**可以添加更多。",
@@ -176,5 +176,6 @@
  "Bars: one side at least 15% bigger": "柱：一侧至少大 15%",
  "Rejected buying": "被拒绝的买入",
  "sell": "卖出",
- "buy": "买入"
+ "buy": "买入",
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸收**方块标出同一方向的市价单在 10 毫秒内于同一价格与超过阈值的挂单成交的位置。"
 }

@@ -12,7 +12,7 @@
  *    window, and the next fill after that opens the next one.
  *
  * Times are the exchange's, never going backwards within an instrument (a fill stamped earlier than the one before it counts at the time
- * of the one before), and fills arrive here after duplicates are removed (a replayed fill would otherwise add to every sum). A sum does not
+ * of the one before, and one stamped inside a minute already settled counts at that minute's end), and fills arrive here after duplicates are removed (a replayed fill would otherwise add to every sum). A sum does not
  * depend on how a venue splits an order into fills, unlike a size floor on single prints.
  *
  * What is kept: the threshold is the page's to choose, and changing it re-judges the whole history, so the recorder keeps candidates rather
@@ -108,6 +108,8 @@ interface MinuteState { n: number; mean: number; m2: number; floor: number; grou
 class InstrumentState {
   clock = -Infinity;
   lastSeenAt = 0;
+  /** The end of the last minute settled: no fill may be counted before it (its row is written and final). */
+  settledUntil = -Infinity;
   /** The fills of the last window, per side and price ("buy|83000.5"): only these can still be in a window. */
   readonly recent = new Map<string, Fill[]>();
   /** The open runs and windows, per side and price. */
@@ -150,7 +152,7 @@ export class AbsorptionRecorder {
     if (!id || !(price > 0) || !(usd > 0) || !Number.isFinite(t) || (side !== 'buy' && side !== 'sell')) return;
     let s = this.#instruments.get(id); if (!s) { s = new InstrumentState(); this.#instruments.set(id, s); }
     s.lastSeenAt = this.now();
-    const at = Math.max(t, s.clock); s.clock = at;
+    const at = Math.max(t, s.clock, s.settledUntil); s.clock = at;
     const W = this.windowMs, key = `${side}|${price}`;
     // Runs and windows this fill's time has left behind are complete.
     this.#closePast(id, s, at);
@@ -180,7 +182,9 @@ export class AbsorptionRecorder {
       this.#closePast(id, s, quiet ? Infinity : s.clock);
       // Price levels nobody has traded at for longer than the window hold nothing that can be in a window again.
       for (const [key, recent] of s.recent) if (!recent.length || recent[recent.length - 1]!.t < s.clock - this.windowMs) s.recent.delete(key);
-      this.#settleMinutes(id, s, quiet ? now : s.clock);
+      // A quiet instrument's clock goes on from its last fill by the time that has passed here: the exchange's clock, not this computer's,
+      // which may be seconds off (settling on it could close a minute the exchange is still in).
+      this.#settleMinutes(id, s, quiet ? s.clock + (now - s.lastSeenAt) : s.clock);
     }
   }
 
@@ -201,7 +205,7 @@ export class AbsorptionRecorder {
       const row: AbsorptionMinute = { id, t, n: m.n, mean: m.mean, m2: m.m2, floor: m.floor };
       this.#remember(row); this.#freshMinutes.push(row); this.#unsavedMinutes.push(row);
       this.#unsavedGroups.push(...m.groups);
-      s.minutes.delete(t);
+      s.minutes.delete(t); s.settledUntil = Math.max(s.settledUntil, t + MINUTE);
     }
   }
 
@@ -272,12 +276,13 @@ export class AbsorptionRecorder {
   async query(ids: readonly string[], mins: readonly number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
     const min = new Map(ids.map((id, i) => [id, mins[i] ?? Infinity])), split = Math.max(from, this.#memoryFrom);
     const found: AbsorptionGroup[] = [];
-    if (this.#store && from < this.#memoryFrom) found.push(...await this.#store.query(ids, mins, from, Math.min(to, this.#memoryFrom), limit));
+    // One more than the limit, so an instrument with exactly `limit` groups is not reported as cut.
+    if (this.#store && from < this.#memoryFrom) found.push(...await this.#store.query(ids, mins, from, Math.min(to, this.#memoryFrom), limit + 1));
     for (const g of this.#memoryGroups) if (g.t0 >= split && g.t0 < to && peakOf(g) >= (min.get(g.id) ?? Infinity)) found.push(g);
     const byId = new Map<string, AbsorptionGroup[]>();
     for (const g of found) { let list = byId.get(g.id); if (!list) { list = []; byId.set(g.id, list); } list.push(g); }
     const groups: AbsorptionGroup[] = [], capped: string[] = [];
-    for (const [id, list] of byId) { list.sort((a, b) => peakOf(b) - peakOf(a)); if (list.length >= limit) capped.push(id); groups.push(...list.slice(0, limit)); }
+    for (const [id, list] of byId) { list.sort((a, b) => peakOf(b) - peakOf(a)); if (list.length > limit) capped.push(id); groups.push(...list.slice(0, limit)); }
     const floors: Record<string, number> = {};
     const raise = (id: string, floor: number): void => { floors[id] = Math.max(floors[id] ?? 0, floor); };
     for (const m of await this.#minutesOf(ids, from, to)) raise(m.id, m.floor);

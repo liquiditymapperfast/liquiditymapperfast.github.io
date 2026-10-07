@@ -7,7 +7,7 @@ import { t } from './i18n.ts';
  * What each part of the page is, in two sizes: a one-sentence tooltip (`tip`) and a short explanation (`body`) behind a "?" button,
  * with the section of the guide that goes further. Tooltips, "?" panels and the guide all read from here so they cannot disagree.
  */
-export type HelpId = 'profile' | 'traded' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book';
 
 export interface HelpTopic {
   title: string;
@@ -30,6 +30,12 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Traded volume'), guide: 'profile',
     tip: t('A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.'),
     body: [],
+  },
+  absorption: {
+    title: t('Absorption'), guide: 'trades',
+    tip: t('Absorption marks: where market orders of one side met resting orders at one price for more than a threshold within 10 ms. A square below a level means passive buyers took the selling; above, passive sellers took the buying.'),
+    body: [t('A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.'),
+      t('The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.')],
   },
   depth: {
     title: t('Depth'), guide: 'lower-panes',

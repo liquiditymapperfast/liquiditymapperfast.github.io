@@ -81,7 +81,7 @@
  "Trades and sound": "約定とサウンド",
  "Large market orders appear as **bubbles** at the price and time they happened, all the fills of one order together: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover or tap one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.": "大口の成行注文は、発生した価格と時刻に**バブル**として現れます（1つの注文の約定はまとめて1つ）：成行買いは緑、成行売りは赤、大きいほど大きく表示されます（25,000ドルから）。取引所、サイズ、価格を見るには、ホバーまたはタップします。マップは待機しているものを、バブルは実際に行われたことを示します。",
  "**Sound** turns trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.": "**サウンド**は約定をチャイムに変えます：買いは上昇、売りは下降、大きなスイープほど豊かな音です。4つの階層がサイズを決めます（Signal 5万ドル、Surge 15万ドル、Whale 40万ドル、Leviathan 150万ドル）。大きいほうの2つは既定でオンです。ブラウザは、ページで一度クリックまたはキー入力するまでオーディオをロックしたままにします。",
- "Under **Per panel** in the Sounds panel, each pane can sound one rare event (a flow burst, a big-delta candle, a wall, the book tipping, an unusual open-interest change). All off until chosen.": "サウンドパネルの**パネルごと**では、各パネルがまれなイベントひとつで鳴らせます（フローのバースト、大きなデルタのローソク足、壁、ブックの傾き、建玉の異常な変化）。選ぶまですべてオフです。",
+ "Under **Per panel** in the Sounds panel, each pane can sound one rare event. All off until chosen.": "サウンドパネルの**パネルごと**では、各パネルがまれなイベントひとつで鳴らせます。選ぶまですべてオフです。",
  "The footprint": "フットプリント",
  "Zoom into the time axis until each candle is wide and the **footprint** appears. At every price inside the candle it shows how much traded **at the bid** (sellers hitting it, the left number) and **at the ask** (buyers lifting it, the right number). A bar marks a row where one side was at least 15% bigger. The heatmap fades as the footprint takes over: both answer the same question at different scales.": "各ローソク足が広がって**フットプリント**が現れるまで、時間軸をズームインします。ローソク足内のすべての価格で、**買い気配**（売り手がぶつける、左の数字）と**売り気配**（買い手が取る、右の数字）でどれだけ約定したかを示します。片側が少なくとも15%大きい行にはバーが付きます。フットプリントが引き継ぐにつれてヒートマップは薄れます：どちらも同じ問いに、異なるスケールで答えています。",
  "**Delta** is buys minus sells. A candle that rose on mostly sellers' volume is more fragile than one that rose on buyers'. The strip under the chart (**Bar stats**) shows one number per candle, by default volume, delta and cumulative delta (cvd). **Stats** adds more.": "**デルタ**は買い引く売りです。主に売り手の出来高で上昇したローソク足は、買い手の出来高で上昇したものより脆いです。チャート下の帯（**バー統計**）はローソク足ごとに1つの数値を示し、既定では出来高、デルタ、累積デルタ（cvd）です。**統計**でさらに追加できます。",
@@ -176,5 +176,6 @@
  "Bars: one side at least 15% bigger": "バー：片側が少なくとも15%大きい",
  "Rejected buying": "拒否された買い",
  "sell": "売り",
- "buy": "買い"
+ "buy": "買い",
+ "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸収**の四角は、片側の成行注文が 10 ms 以内に同じ価格で、しきい値を超える量の待機注文と約定した場所を示します。"
 }

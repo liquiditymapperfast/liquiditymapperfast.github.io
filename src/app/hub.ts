@@ -10,6 +10,7 @@ import type { LtParams, LtSeries } from './lt.ts';
 import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { t } from './i18n.ts';
 import type { ProfileAnswer } from '../shared/footprint.ts';
+import { AbsorptionBook } from './absorption.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -61,6 +62,19 @@ export class Hub {
   columnStepMs = MINUTE;
   onColumns: () => void = () => {};
   busyMs = 0;
+  /** Absorption candidates and window statistics: the window on screen and what the live stream added since. */
+  readonly absorption = new AbsorptionBook();
+  /** Instruments whose groups the last history answer cut at its limit (the smallest left out). */
+  absorptionCapped: string[] = [];
+  absorptionState: 'ready' | 'unavailable' = 'ready';
+  /** Called when absorption groups or minutes arrived (history or live). */
+  onAbsorptionChanged: () => void = () => {};
+  #absorptionLoading = false; #absorptionRetryAt = 0;
+  /**
+   * What the last absorption answer covers, for the connection it was asked on: the instruments and threshold span (`key`), the window, the
+   * amount each instrument was asked from, and the time from which its minutes are held (the live stream keeps both current after that).
+   */
+  #absorptionCover: { key: string; from: number; to: number; mins: number[]; minutesFrom: number } | null = null;
   /** The traded-volume column's last answer, the row step it was asked on, and whether the source can answer at all. */
   traded: { step: number; answer: ProfileAnswer } | null = null;
   tradedState: 'ready' | 'unavailable' = 'ready';
@@ -108,7 +122,7 @@ export class Hub {
     this.source.venues.watch?.(() => { clearTimeout(pending); pending = setTimeout(() => void this.refreshMarkets(), 300); });
     this.source.connect({
       onOpen: () => {
-        this.#connection++; this.#printsWindow = null;
+        this.#connection++; this.#printsWindow = null; this.#absorptionCover = null;
         // What the stream said while it was down is in the recordings and not in the book: ask for the history again (the first open has nothing to repair).
         if (this.#dropped) { this.#dropped = false; this.flow.invalidate(); }
         this.store.set({ connected: true, status: t('live') });
@@ -121,6 +135,7 @@ export class Hub {
       onTick: tick => this.#tick(tick),
       onLayers: message => this.store.set({ layers: message.layers }),
       onFlow: items => { this.flow.apply(items); this.onFlowChanged(); },
+      onAbsorption: (groups, minutes) => { this.absorption.add(groups); this.absorption.addMinutes(minutes); this.onAbsorptionChanged(); },
       onPrints: items => {
         const fresh = this.prints.add(items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; }));
         if (fresh.length) { this.onPrints(fresh); this.onPrintsChanged(); }
@@ -231,6 +246,38 @@ export class Hub {
     const connection = this.#connection;
     // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
     this.source.prints(from, to).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+  }
+
+  /**
+   * Make sure the absorption book holds the window on screen for these instruments, and the minutes of the last `sdMinutes` for the
+   * automatic threshold. Each instrument is asked from a quarter under its threshold, so a threshold drifting down a little does not ask
+   * again (one with no threshold yet is asked only for its minutes, and then again once they give it one). As with the bubbles, history is
+   * asked once per window and the live stream keeps it current: again when the window leaves what was asked, a threshold falls under what
+   * it was asked from, or the stream reconnected. A source that cannot answer (an older server) is asked again a minute later.
+   */
+  ensureAbsorption(ids: readonly string[], thresholds: readonly (number | null)[], view: Bounds, sdMinutes: number): void {
+    if (this.#absorptionLoading || !ids.length || !(view.t1 > view.t0)) return;
+    const now = Date.now(), MIN = 60_000;
+    if (this.absorptionState === 'unavailable' && now < this.#absorptionRetryAt) return;
+    const key = `${ids.join(',')}|${sdMinutes}`, have = this.#absorptionCover?.key === key ? this.#absorptionCover : null;
+    if (have && have.from <= view.t0 && have.to >= Math.min(view.t1, now) && thresholds.every((v, i) => v === null || v >= have.mins[i]!)) return;
+    const span = view.t1 - view.t0;
+    const from = Math.floor((view.t0 - span * 0.25) / MIN) * MIN, to = Math.ceil(Math.min(view.t1 + span * 0.1, now + MIN) / MIN) * MIN;
+    const mins = thresholds.map(v => v === null ? Number.MAX_SAFE_INTEGER : Math.floor(v * 0.75));
+    // The minutes: all of the span the first time, then the last few (the stream has brought the rest).
+    const need = Math.floor(now / MIN) * MIN - (sdMinutes + 1) * MIN;
+    const since = have && have.minutesFrom <= need ? Math.max(need, now - 3 * MIN) : need;
+    const connection = this.#connection;
+    this.#absorptionLoading = true;
+    this.source.absorption([...ids], mins, from, to, 4_000, since).then(
+      answer => {
+        this.absorption.load(answer); this.absorptionCapped = answer.capped; this.absorptionState = 'ready';
+        // The answer covers its window for the connection it was asked on; one that reached the live edge is kept current by the stream.
+        if (connection === this.#connection) this.#absorptionCover = { key, from, to: to >= now ? Infinity : to, mins, minutesFrom: Math.min(since, have?.minutesFrom ?? Infinity) };
+        this.onAbsorptionChanged();
+      },
+      () => { this.absorptionState = 'unavailable'; this.#absorptionRetryAt = Date.now() + 60_000; this.onAbsorptionChanged(); },
+    ).finally(() => { this.#absorptionLoading = false; });
   }
 
   /**

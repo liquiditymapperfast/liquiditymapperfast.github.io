@@ -106,6 +106,8 @@ async function main(): Promise<void> {
   hub.onPrints = fresh => { sounds.feed(fresh); cvd.flash(fresh); };
   hub.onPrintsChanged = () => heat.invalidate();
   hub.onTraded = () => heat.invalidate();
+  hub.onAbsorptionChanged = () => heat.invalidate();
+  toolbar.absorptionInfo = () => heat.absorptionThresholdText();
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
   toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);

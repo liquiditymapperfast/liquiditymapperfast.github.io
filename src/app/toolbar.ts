@@ -16,7 +16,8 @@ import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
 import { SCOPE_OPTIONS, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
-import { rangeRow, switchRow, note, togglePanel, checkRow, heading } from './ui.ts';
+import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow } from './ui.ts';
+import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
 import { openMenu } from './menu.ts';
 import { buildSoundPanel } from './sound/panel.ts';
@@ -76,6 +77,10 @@ export class Toolbar {
   #venueMenu: Panel | null = null;
   #alerts: Alerts | null = null;
   #highlights = el('button', { textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
+  #absorption = el('button', { textContent: t('Absorption'), tip: HELP.absorption.tip });
+  #absorptionPanel: Panel | null = null;
+  /** The threshold each venue is judged at now, in words (set by the page, which knows the venues and the recorded minutes). */
+  absorptionInfo: () => string = () => '';
   #heat = {
     style: el('select', { ariaLabel: t('Colours'), tip: `${t('Heatmap colouring.')} ${HEAT_STYLES.map(s => `${s.label}: ${s.title}.`).join(' ')}` }),
     lo: el('i'), hi: el('i'), legend: el('span', { class: 'legend' }),
@@ -135,6 +140,10 @@ export class Toolbar {
       this.#soundPanel = togglePanel(this.#soundButton, { title: t('Sounds'), width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build);
     };
     this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => this.#buildHighlights(tools, body)); };
+    this.#absorption.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildAbsorption(tools, body, () => this.#absorptionPanel?.render(build));
+      this.#absorptionPanel = togglePanel(this.#absorption, { title: t('Absorption'), width: 400, align: 'left', onClose: () => { this.#absorptionPanel = null; } }, build);
+    };
     for (const style of HEAT_STYLES) this.#heat.style.append(new Option(style.label, style.id));
     this.#heat.style.onchange = () => this.store.set({ heat: { ...this.store.state.heat, style: this.#heat.style.value as HeatStyleId } });
     this.#heat.contrast.oninput = () => this.store.set({ heat: { ...this.store.state.heat, contrast: Number(this.#heat.contrast.value) } });
@@ -190,7 +199,7 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#soundButton,
+      this.root.replaceChildren(this.#brand, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#absorption, this.#soundButton,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root);
       return;
     }
@@ -218,7 +227,7 @@ export class Toolbar {
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
         section(t('Venues'), [field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
-        section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#soundButton)]),
+        section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#absorption, this.#soundButton)]),
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zone),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesButton!.textContent = t('Venues'); });
@@ -395,6 +404,26 @@ export class Toolbar {
       rangeRow(t('Baseline'), t('How many preceding bars the average and spread are taken from.'), { ...HIGHLIGHT_LIMITS.length, value: h.length, format: v => tn(v, '{n} bar', '{n} bars') }, length => set({ length })),
       note(t('A bar is flagged when its value exceeds the mean plus the sensitivity times the standard deviation of the bars before it. The bar itself never raises its own threshold, and nothing is flagged until a dozen bars exist.')),
     );
+  }
+
+  /** The absorption settings: whether the marks show, how the threshold is set, and the threshold each venue is judged at now. */
+  #buildAbsorption(tools: HTMLElement, body: HTMLElement, rebuild: () => void): void {
+    const a = this.store.state.absorption, L = ABSORPTION_LIMITS;
+    tools.append(helpButton('absorption'));
+    const set = (change: Partial<AbsorptionSettings>, again = false): void => { this.store.set({ absorption: { ...this.store.state.absorption, ...change } }); if (again) rebuild(); };
+    body.append(
+      switchRow(t('Show absorption marks'), t('Squares where market orders of one side met resting orders at one price for more than the threshold within 10 ms.'), a.on, on => set({ on })),
+      selectRow(t('Threshold'), t('Automatic follows each venue: the mean plus a number of standard deviations of its recent window sums. Fixed is one USD size for every venue.'), [['auto', t('Automatic')], ['fixed', t('Fixed size')]], a.mode, mode => set({ mode: mode === 'fixed' ? 'fixed' : 'auto' }, true)),
+    );
+    if (a.mode === 'auto') body.append(
+      rangeRow(t('Standard deviations'), t('Higher marks fewer, only the largest. The usual setting is 10.'), { min: L.k.min, max: L.k.max, step: L.k.step, value: a.k, format: v => `${v} SD` }, k => set({ k })),
+      numberRow(t('Over the last (minutes)'), t('How far back the window sums the threshold is taken from reach. The threshold is worked out again every minute.'), { min: L.sdMinutes.min, max: L.sdMinutes.max, step: 1, value: a.sdMinutes }, sdMinutes => set({ sdMinutes })),
+    );
+    else body.append(numberRow(t('Size (USD)'), t('A window sum at one price must reach this to be marked, on every venue.'), { min: L.fixedUsd.min, step: 25_000, value: a.fixedUsd }, fixedUsd => set({ fixedUsd })));
+    body.append(switchRow(t('Write the volume beside each mark'), t('The USD taken at that level, added up over the marks drawn as one.'), a.volume, volume => set({ volume })));
+    const now = this.absorptionInfo();
+    body.append(note(now ? t('Thresholds now: {list}', { list: now }) : t('The thresholds appear once a minute of trading has been recorded.')));
+    body.append(note(t('The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.')));
   }
 
   /** The server anchors venue selection on a USDT/USDC-quoted product; prefer the current market, else the first such market. */
