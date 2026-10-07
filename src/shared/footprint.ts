@@ -139,6 +139,10 @@ export class FootprintRecorder {
   #minuteStats(id: string): Map<number, TradeStats> { let m = this.#stats.get(id); if (!m) { m = new Map(); this.#stats.set(id, m); } return m; }
   #minute(id: string): Map<number, Bins> { let m = this.#minutes.get(id); if (!m) { m = new Map(); this.#minutes.set(id, m); } return m; }
   step(id: string): number | undefined { return this.#steps.get(id); }
+  /** Instruments with a recorded minute. */
+  get instruments(): string[] { return [...this.#minutes.keys()]; }
+  /** The start (ms) of the newest minute recorded for `id`, or 0. */
+  lastMinute(id: string): number { let newest = 0; for (const t of this.#minutes.get(id)?.keys() ?? []) if (t > newest) newest = t; return newest; }
 
   /** Add every fill not seen before to its price row. Returns the number accepted. Orders are counted separately (`countOrders`). */
   ingest(trades: Iterable<TradeLike>): number {

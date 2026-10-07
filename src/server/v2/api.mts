@@ -9,7 +9,8 @@ import { DepthRecorder, COLUMN_MS, SAMPLE_MS, STALE_MS } from './recorder.mts';
 import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
-import { MAX_PROFILE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS } from '../../shared/footprint.ts';
+import { MAX_PROFILE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, type TradeLike } from '../../shared/footprint.ts';
+import { RecordedBefore } from '../../shared/restart.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
@@ -75,6 +76,9 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  /** How far the recordings reach (read now, before any trade): what a venue sends again after a restart is not counted twice. */
+  const recorded = new RecordedBefore(flow, footprint);
+  const unrecorded = (trades: readonly TradeLike[]): TradeLike[] => trades.filter(trade => !recorded.holds(String(trade.instrumentId ?? ''), Number(trade.sourceTimestamp ?? trade.receivedAt)));
   /** Market orders rebuilt from their fills (see shared/orders.ts): the prints and the size statistics count these, not fills. */
   const orders = new OrderBuilder();
   /** Absorption candidates (see shared/absorption.ts): every fill the builder took, once each. */
@@ -87,6 +91,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
   // The connector venues carry their own trades: the flow column, the footprint and the large-trade bubbles count them like the feed manager's.
   const takeTrade = (trade: import('../../shared/connector.ts').TradeEvent): void => {
+    if (recorded.holds(trade.instrumentId, trade.t)) return;
     const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
     footprint.ingest([row]); flow.ingest([row]); detect(orders.add([{ ...row, order: trade.order }]));
   };
@@ -156,10 +161,11 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     // is an empty frame), or a client would draw liquidity that is no longer there while the heartbeats go on.
     if (members !== lastMembers) { lastMembers = members; levelsDirty = true; }
     if (now - lastSample >= SAMPLE_MS) { lastSample = now; recorder.sample(books, now); }
-    footprint.ingest(app.state.trades ?? []);
-    flow.ingest(app.state.trades ?? []);
+    const trades = unrecorded(app.state.trades ?? []);
+    footprint.ingest(trades);
+    flow.ingest(trades);
     // The feed manager's recent trades are handed over whole every pass: the builder takes each fill once (Hyperliquid rows carry the order's hash).
-    detect(orders.add(app.state.trades ?? []));
+    detect(orders.add(trades));
     takeOrders(false);
     absorption.step();
     if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); }

@@ -3,6 +3,7 @@ import { COLUMN_MS, DepthRecorder, SAMPLE_MS, STALE_MS, type Column, type Column
 import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type SizesAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
+import { RecordedBefore } from './restart.ts';
 import { AbsorptionRecorder, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
 import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
@@ -113,6 +114,8 @@ export class Engine {
   readonly orders: OrderBuilder;
   /** Absorption candidates and window statistics, from every fill once. */
   readonly absorption: AbsorptionRecorder;
+  /** How far the recordings reached when this engine started (see shared/restart.ts). */
+  readonly #recorded: RecordedBefore;
   /** Absorption groups found and minutes settled since the last pass. */
   onAbsorption: (found: { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] }) => void = () => {};
   /** Called with the books that changed since the last call (the full current set), about four times a second at most. */
@@ -148,6 +151,7 @@ export class Engine {
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
     this.orders = new OrderBuilder(now);
     this.absorption = new AbsorptionRecorder(absorption, now, { retentionMs });
+    this.#recorded = new RecordedBefore(this.flows, this.footprints);
   }
 
   // ---- Venues ---------------------------------------------------------------------------------------------------------------------
@@ -248,6 +252,8 @@ export class Engine {
   // ---- Trades ---------------------------------------------------------------------------------------------------------------------
 
   readonly #trade = (trade: TradeEvent): void => {
+    // A trade the recordings already hold (a venue sending its recent trades again after a reload) is counted nowhere a second time.
+    if (this.#recorded.holds(trade.instrumentId, trade.t)) return;
     const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
     this.flows.ingest([row]);
     // A trade seen before (a feed that replays after a reconnect) is in the footprint already, and must not count twice in the candle either.
