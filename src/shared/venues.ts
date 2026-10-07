@@ -282,7 +282,8 @@ export class HyperliquidConnector extends BookConnector {
       for (const item of Array.isArray(m.data) ? m.data : []) {
         const d = this.record(item); if (!d) continue;
         const price = num(d.px), amount = num(d.sz), t = num(d.time), side = d.side === 'B' ? 'buy' : d.side === 'A' ? 'sell' : null;
-        // The fills of one market order share its transaction hash; about one row in seven has an all-zero hash, which names nothing.
+        // The fills of one market order share its transaction hash (a batch of orders sent in one transaction shares it too: there is no
+        // public taker order id); about one row in seven has an all-zero hash, which names nothing.
         const order = typeof d.hash === 'string' && !/^0x0*$/i.test(d.hash) ? d.hash : undefined;
         if (side && price > 0 && amount > 0 && Number.isFinite(t)) this.emitTrade({ tradeId: `${t}:BTC:${String(d.tid)}`, side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) });
       }

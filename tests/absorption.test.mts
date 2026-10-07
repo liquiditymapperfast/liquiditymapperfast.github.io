@@ -23,18 +23,18 @@ interface Fill { id: string; t: number; price: number; usd: number; side: Side }
 interface Credited { at: number; usd: number; credit: number }
 
 /**
- * The rule worked out the slow way, from its definition: times clamped so they never go back within an instrument; each fill's window
- * is every earlier-or-same fill of its side and price no older than the window, and every fill in it is credited the larger of what it had
- * and that sum; runs are fills of one side and price with gaps no longer than the window; and the window sums for the threshold open at a
- * fill and take the fills up to that time plus the window.
+ * The rule worked out the slow way, from its definition: each instrument's fills taken in time order (ties in the order they came), at
+ * their own times; each fill's window is every earlier-or-same fill of its side and price no older than the window, and every fill in it
+ * is credited the larger of what it had and that sum; runs are fills of one side and price with gaps no longer than the window; and the
+ * window sums for the threshold open at a fill and take the fills up to that time plus the window.
  */
 function reference(fills: readonly Fill[]): { groups: Map<string, Credited[]>; minutes: Map<string, number[]> } {
-  const clock = new Map<string, number>(), byKey = new Map<string, Credited[]>();
-  for (const f of fills) {
-    const at = Math.max(f.t, clock.get(f.id) ?? -Infinity); clock.set(f.id, at);
+  const byInstrument = new Map<string, Fill[]>(), byKey = new Map<string, Credited[]>();
+  for (const f of fills) { let list = byInstrument.get(f.id); if (!list) { list = []; byInstrument.set(f.id, list); } list.push(f); }
+  for (const list of byInstrument.values()) for (const f of [...list].sort((a, b) => a.t - b.t)) {   // a stable sort: ties keep their order
     const key = `${f.id}|${f.side}|${f.price}`;
-    let list = byKey.get(key); if (!list) { list = []; byKey.set(key, list); }
-    list.push({ at, usd: f.usd, credit: 0 });
+    let keyed = byKey.get(key); if (!keyed) { keyed = []; byKey.set(key, keyed); }
+    keyed.push({ at: f.t, usd: f.usd, credit: 0 });
   }
   const groups = new Map<string, Credited[]>(), minutes = new Map<string, number[]>();
   for (const [key, list] of byKey) {
@@ -54,7 +54,7 @@ function reference(fills: readonly Fill[]): { groups: Map<string, Credited[]>; m
   return { groups, minutes };
 }
 
-/** A seeded stream of fills in bursts on two instruments, three prices and both sides, a few stamped some milliseconds out of order. */
+/** A seeded stream of fills in bursts on two instruments, three prices and both sides, a few delivered up to 200 ms out of order. */
 function stream(seed: number, count: number): Fill[] {
   let s = seed >>> 0;
   const rnd = (): number => (s = (Math.imul(s, 1_664_525) + 1_013_904_223) >>> 0) / 2 ** 32;
@@ -65,7 +65,7 @@ function stream(seed: number, count: number): Fill[] {
     t += rnd() < 0.4 ? Math.floor(rnd() * 3) : Math.floor(rnd() * 40);
     if (rnd() < 0.003) t += 30_000;
     if (rnd() > 0.6) key = pick();
-    const late = rnd() < 0.05 ? Math.floor(rnd() * 8) : 0;
+    const late = rnd() < 0.05 ? Math.floor(rnd() * 200) : 0;
     out.push({ ...key, t: t - late, usd: Math.round(1_000 + rnd() * 30_000) });
   }
   return out;
@@ -123,7 +123,7 @@ test('each minute keeps its largest groups, and the floor says under which credi
   assert.deepEqual(book.incomplete(new Map([['a:BTC', null]])), [], 'no threshold, nothing claimed');
 });
 
-test('times never go back: a fill stamped a little early counts at the clock, one inside a settled minute is left out, and a computer clock ahead of the exchange settles nothing early', () => {
+test('fills are taken in time order at their own times, one inside a settled minute is left out, and a computer clock ahead of the exchange settles nothing early', () => {
   let now = 0;
   const recorder = new AbsorptionRecorder(null, () => now, { perMinute: 100 });
   now = T0 + 10_050; recorder.add('a:BTC', T0 + 10_000, 100, 20_000, 'buy');
@@ -133,7 +133,7 @@ test('times never go back: a fill stamped a little early counts at the clock, on
   now += 600; recorder.step();
   now += 400; recorder.add('a:BTC', T0 + 59_000, 102, 1_000, 'sell');
   let fresh = recorder.takeFresh();
-  assert.deepEqual(fresh.groups.map(g => [g.price, g.t0, g.steps]), [[100, T0 + 10_000, [[40_000, 40_000, 2, T0 + 10_000, T0 + 10_000]]]], 'the early fill joined the window of the one before');
+  assert.deepEqual(fresh.groups.map(g => [g.price, g.t0, g.steps]), [[100, T0 + 9_995, [[40_000, 40_000, 2, T0 + 9_995, T0 + 10_000]]]], 'the fill delivered second is taken first, at its own time, 5 ms before the other: one window');
   assert.deepEqual(fresh.minutes, [], 'the exchange is still in its minute');
   now += 70_000; recorder.step();
   fresh = recorder.takeFresh();
@@ -150,11 +150,52 @@ test('recent trades a venue sends again when its feed connects, newest first, ar
   const recorder = new AbsorptionRecorder(null, () => now);
   // Ten trades of $20,000 at one price, a second apart, delivered at once and newest first: moved forward, they would be one $200,000 window.
   for (let i = 0; i < 10; i++) recorder.add('a:BTC', T0 + 10_000 - i * 1_000, 100, 20_000, 'sell');
-  assert.equal(recorder.lateFills('a:BTC'), 9, 'all but the newest are history arriving late');
+  assert.equal(recorder.lateFills('a:BTC'), 8, 'the two newest are taken in order, each alone; the rest are earlier than what was taken');
   // Live trading after it counts as ever.
   now += 100; recorder.add('a:BTC', T0 + 10_050, 100, 15_000, 'sell'); recorder.add('a:BTC', T0 + 10_055, 100, 15_000, 'sell');
   now += 10 * MIN; recorder.step();
   assert.deepEqual(recorder.takeFresh().groups.map(g => [g.t0, peakOf(g)]), [[T0 + 10_050, 30_000]], 'only the live pair, not the replay');
+});
+
+test('two fills 20 ms apart, delivered newest first, are two windows, not one of their sum', () => {
+  let now = T0 + 1_050;
+  const recorder = new AbsorptionRecorder(null, () => now);
+  recorder.add('a:BTC', T0 + 1_020, 100, 15_000, 'buy'); recorder.add('a:BTC', T0 + 1_000, 100, 15_000, 'buy');
+  now += 10 * MIN; recorder.step();
+  assert.deepEqual(recorder.takeFresh().groups, [], 'each window holds $15,000, under the floor: moved together they would have made $30,000');
+  assert.equal(recorder.lateFills('a:BTC'), 0, 'neither is left out: both are taken, in their order');
+});
+
+test('a restart knows where settling had got to: a fill sent again for a saved burst starts no second group', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'absorption-')), db = path.join(dir, 'depth.sqlite');
+  let now = T0 + 50;
+  const first = new SqliteAbsorptionRecorder(db, () => now);
+  first.add('x:BTC', T0, 100, 30_000, 'buy'); first.add('x:BTC', T0 + 5, 100, 30_000, 'buy');
+  now = T0 + 5 * MIN; first.close();
+  const second = new SqliteAbsorptionRecorder(db, () => now);
+  try {
+    second.add('x:BTC', T0 + 5, 100, 30_000, 'buy');   // the venue sends the burst's second fill again
+    now += 10 * MIN; second.step(); second.flush();
+    assert.equal(second.lateFills('x:BTC'), 1);
+    const answer = await second.query(['x:BTC'], [25_000], T0 - MIN, T0 + MIN, 10, T0 - MIN);
+    assert.deepEqual(answer.groups.map(g => [g.t0, peakOf(g)]), [[T0, 60_000]], 'the saved $60,000 group alone, no $30,000 one beside it');
+  } finally { second.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('closing saves the minute still open: a mark found in it is there after a restart', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'absorption-')), db = path.join(dir, 'depth.sqlite');
+  let now = T0 + 30_050;
+  const first = new SqliteAbsorptionRecorder(db, () => now);
+  first.add('x:BTC', T0 + 30_000, 100, 50_000, 'sell');
+  now = T0 + 31_000; first.close();   // half a minute in: the minute is not over
+  const second = new SqliteAbsorptionRecorder(db, () => now);
+  try {
+    const answer = await second.query(['x:BTC'], [25_000], T0, T0 + MIN, 10, T0);
+    assert.deepEqual(answer.groups.map(g => [g.t0, peakOf(g)]), [[T0 + 30_000, 50_000]]);
+    assert.deepEqual(answer.minutes.map(m => [m.t, m.n]), [[T0, 1]], 'the minute as far as it had got');
+    second.add('x:BTC', T0 + 40_000, 101, 50_000, 'sell');
+    assert.equal(second.lateFills('x:BTC'), 1, 'later in that minute, after the restart: the minute was written, so this is left out');
+  } finally { second.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('trades sent again after a restart add nothing: the first row of a minute stands and a group is kept once', async () => {

@@ -11,12 +11,12 @@
  *    the window sums of the recent past: per price and side, a window opens at a fill and takes the fills up to its opening time plus the
  *    window, and the next fill after that opens the next one.
  *
- * Times are the exchange's, never going backwards within an instrument: a fill stamped a little earlier than one already seen (feeds
- * deliver a few milliseconds out of order) counts at the time of that one. A fill stamped more than `LATE_MS` earlier, or inside a minute
- * already settled, is left out: it is history arriving late (some venues send their recent trades again when a feed connects, newest
- * first), and moving it forward would sum trades minutes apart as if they met in one window. Fills arrive here after duplicates are
- * removed (a replayed fill would otherwise add to every sum). A sum does not depend on how a venue splits an order into fills, unlike a
- * size floor on single prints.
+ * Times are the exchange's, and fills are taken in their order: each instrument holds its fills for `LATE_MS` behind the newest one seen
+ * (feeds deliver some a few milliseconds out of order; measured, at most 25 ms) and takes them sorted by time, at their own times. A fill
+ * stamped earlier than what was already taken, inside a minute already settled, or before what memory answers for, is left out: it is
+ * history arriving late (some venues send their recent trades again when a feed connects, newest first), and counting it at another time
+ * would sum trades that never met in one window. Fills arrive here after duplicates are removed (a replayed fill would otherwise add to
+ * every sum). A sum does not depend on how a venue splits an order into fills, unlike a size floor on single prints.
  *
  * What is kept: the threshold is the page's to choose, and changing it re-judges the whole history, so the recorder keeps candidates rather
  * than marks. A candidate group is a run of fills at one price and side with gaps no longer than the window, with its largest credit at
@@ -32,7 +32,7 @@ export const ABSORPTION_WINDOW_MS = 10;
 export const GROUP_FLOOR_USD = 25_000;
 /** The most groups kept per instrument per minute: the largest. */
 export const GROUPS_PER_MINUTE = 10;
-/** How far behind an instrument's clock a fill may be stamped and still count (at the clock). Live feeds measured: at most 25 ms. */
+/** How long, behind the newest fill an instrument has had, its fills are held so that ones delivered out of order are taken in order. Live feeds measured: at most 25 ms out of order. */
 export const LATE_MS = 250;
 /** The most instruments one history question may name (the page asks about every market it knows). */
 export const MAX_ABSORPTION_INSTRUMENTS = 200;
@@ -112,12 +112,19 @@ interface Run { side: 'buy' | 'sell'; price: number; fills: Fill[]; last: number
 interface Window { start: number; sum: number }
 interface MinuteState { n: number; mean: number; m2: number; floor: number; groups: AbsorptionGroup[] }
 
+interface Held { t: number; price: number; usd: number; side: 'buy' | 'sell' }
+
 class InstrumentState {
+  /** The newest time of a fill seen. */
   clock = -Infinity;
+  /** The time of the last fill taken: everything is taken in time order, so a fill earlier than this can no longer be. */
+  done = -Infinity;
   lastSeenAt = 0;
+  /** Fills not taken yet, in time order (ties in the order they came). */
+  readonly held: Held[] = [];
   /** The end of the last minute settled: a fill stamped before it is left out (its row is written and final). */
   settledUntil = -Infinity;
-  /** Fills left out for being stamped too far behind the clock or inside a settled minute. */
+  /** Fills left out for being stamped before what was taken, inside a settled minute, or before what memory holds. */
   late = 0;
   /** The fills of the last window, per side and price ("buy|83000.5"): only these can still be in a window. */
   readonly recent = new Map<string, Fill[]>();
@@ -152,18 +159,35 @@ export class AbsorptionRecorder {
     if (store) {
       const { groups, minutes } = store.load(this.#memoryFrom);
       this.#memoryGroups = groups.filter(g => g.t0 >= this.#memoryFrom);
-      for (const m of minutes) this.#remember(m);
+      // Where settling had got to: a fill a venue sends again for a settled minute must not start a group a second time there.
+      for (const m of minutes) { this.#remember(m); const s = this.#state(m.id); s.settledUntil = Math.max(s.settledUntil, m.t + MINUTE); }
     }
   }
 
-  /** One fill, after duplicates were removed. */
+  #state(id: string): InstrumentState { let s = this.#instruments.get(id); if (!s) { s = new InstrumentState(); this.#instruments.set(id, s); } return s; }
+
+  /** One fill, after duplicates were removed. It is held until nothing earlier can still come, then taken in time order. */
   add(id: string, t: number, price: number, usd: number, side: 'buy' | 'sell'): void {
     if (!id || !(price > 0) || !(usd > 0) || !Number.isFinite(t) || (side !== 'buy' && side !== 'sell')) return;
-    let s = this.#instruments.get(id); if (!s) { s = new InstrumentState(); this.#instruments.set(id, s); }
+    const s = this.#state(id);
     // Also older than what memory answers for: the store holds that time, and a venue sending hours-old trades again must not add to it.
-    if (t < s.clock - LATE_MS || t < s.settledUntil || t < this.#memoryFrom) { s.late++; return; }
-    s.lastSeenAt = this.now();
-    const at = Math.max(t, s.clock); s.clock = at;
+    if (t < s.done || t < s.settledUntil || t < this.#memoryFrom) { s.late++; return; }
+    s.lastSeenAt = this.now(); s.clock = Math.max(s.clock, t);
+    let at = s.held.length; while (at > 0 && s.held[at - 1]!.t > t) at--;
+    s.held.splice(at, 0, { t, price, usd, side });
+    this.#release(id, s, s.clock - LATE_MS);
+  }
+
+  /** Take the held fills stamped up to `limit`, in time order. */
+  #release(id: string, s: InstrumentState, limit: number): void {
+    let n = 0; while (n < s.held.length && s.held[n]!.t <= limit) n++;
+    if (!n) return;
+    for (const f of s.held.splice(0, n)) this.#take(id, s, f.t, f.price, f.usd, f.side);
+  }
+
+  /** One fill, in time order: its window, its run and the window sums. */
+  #take(id: string, s: InstrumentState, at: number, price: number, usd: number, side: 'buy' | 'sell'): void {
+    s.done = at;
     const W = this.windowMs, key = `${side}|${price}`;
     // Runs and windows this fill's time has left behind are complete.
     this.#closePast(id, s, at);
@@ -185,17 +209,23 @@ export class AbsorptionRecorder {
     else { if (win) this.#closeWindow(s, win); s.windows.set(key, { start: at, sum: usd }); }
   }
 
-  /** Close what is complete everywhere and settle finished minutes; call it now and then (the engine does, every pass). */
-  step(): void {
+  /**
+   * Take what can be taken, close what is complete everywhere and settle finished minutes; call it now and then (the engine does, every
+   * pass). With `final` (the process or the page is going away) everything is taken and closed and every minute settles, the one still
+   * open too, so what was found in it is saved; a restart then leaves that minute as it was written.
+   */
+  step(final = false): void {
     const now = this.now();
     for (const [id, s] of this.#instruments) {
-      const quiet = now - s.lastSeenAt >= QUIET_MS;
-      this.#closePast(id, s, quiet ? Infinity : s.clock);
+      const quiet = final || now - s.lastSeenAt >= QUIET_MS;
+      // A quiet instrument has nothing earlier still to come: all it holds is taken.
+      this.#release(id, s, quiet ? Infinity : s.clock - LATE_MS);
+      this.#closePast(id, s, quiet ? Infinity : s.done);
       // Price levels nobody has traded at for longer than the window hold nothing that can be in a window again.
-      for (const [key, recent] of s.recent) if (!recent.length || recent[recent.length - 1]!.t < s.clock - this.windowMs) s.recent.delete(key);
+      for (const [key, recent] of s.recent) if (!recent.length || recent[recent.length - 1]!.t < s.done - this.windowMs) s.recent.delete(key);
       // A quiet instrument's clock goes on from its last fill by the time that has passed here: the exchange's clock, not this computer's,
       // which may be seconds off (settling on it could close a minute the exchange is still in).
-      this.#settleMinutes(id, s, quiet ? s.clock + (now - s.lastSeenAt) : s.clock);
+      this.#settleMinutes(id, s, final ? Infinity : quiet ? s.done + (now - s.lastSeenAt) : s.done);
     }
   }
 
@@ -258,7 +288,7 @@ export class AbsorptionRecorder {
     return true;
   }
 
-  /** Fills of `id` left out for being stamped too far behind its clock or inside a settled minute. */
+  /** Fills of `id` left out as history arriving late (see the module comment). */
   lateFills(id: string): number { return this.#instruments.get(id)?.late ?? 0; }
 
   /** Groups found and minutes settled since the last call (for the live stream). */
@@ -284,7 +314,7 @@ export class AbsorptionRecorder {
     if (this.#store && (this.#unsavedGroups.length || this.#unsavedMinutes.length)) this.#store.save(this.#unsavedGroups, this.#unsavedMinutes, now - this.#retentionMs);
     this.#unsavedGroups = []; this.#unsavedMinutes = [];
   }
-  close(): void { this.step(); this.flush(); this.#store?.close(); }
+  close(): void { this.step(true); this.flush(); this.#store?.close(); }
 
   /**
    * The page's question for a window [from, to): per instrument, the groups that started in it with a largest credit of at least its

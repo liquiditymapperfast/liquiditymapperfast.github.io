@@ -120,3 +120,23 @@ test('the hub asks one question at a time, again only when it changes or every f
     clock += 60_000; hub.ensureTraded(['a:BTC'], T0, T0 + 2 * MIN, 10, false); assert.equal(asked.length, 4);
   } finally { Date.now = realNow; }
 });
+
+test('an empty selection clears the traded column, and an answer still on its way for the last one is not drawn', async () => {
+  class FakeWorker { onmessage: ((event: { data: unknown }) => void) | null = null; postMessage(): void {} }
+  (globalThis as { Worker?: unknown }).Worker = FakeWorker;
+  const asked: { settle: (ok: boolean) => void }[] = [];
+  const answer: ProfileAnswer = { from: T0, to: T0 + MIN, instruments: [{ id: 'a:BTC', step: 5, rows: [[85_000, 50_000, 0]], minutes: 1, first: T0, earliest: T0 }] };
+  const source = { profile: () => new Promise<ProfileAnswer>((resolve, reject) => { asked.push({ settle: ok => ok ? resolve(answer) : reject(new Error('404')) }); }) };
+  const hub = new Hub(new Store(initialState()), source as never);
+  let changed = 0; hub.onTraded = () => { changed++; };
+  const turn = () => new Promise<void>(resolve => setImmediate(resolve));
+  hub.ensureTraded(['a:BTC'], T0, T0 + MIN, 5, false);
+  asked[0]!.settle(true); await turn();
+  assert.ok(hub.traded, 'the answer is held');
+  hub.ensureTraded([], T0, T0 + MIN, 5, false);
+  assert.equal(hub.traded, null, 'no instruments: nothing is drawn'); assert.equal(changed, 2);
+  hub.ensureTraded(['a:BTC'], T0, T0 + 2 * MIN, 5, false);   // asked again,
+  hub.ensureTraded([], T0, T0 + 2 * MIN, 5, false);          // and the selection empties before the answer comes
+  asked[1]!.settle(true); await turn();
+  assert.equal(hub.traded, null, 'the answer that came late is not drawn');
+});

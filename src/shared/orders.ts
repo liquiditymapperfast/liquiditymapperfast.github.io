@@ -9,6 +9,8 @@
  * The fills of one order share the venue's order key where the venue names one (Coinbase's taker order id, Bybit's `seq`, Hyperliquid's
  * transaction hash), and otherwise the exchange's millisecond: a matching engine stamps all the fills of one order with one time. Two orders
  * on the same side in the same millisecond of a venue without a key are taken for one; the price span and the fill count say what was merged.
+ * Hyperliquid publishes no taker order id: its hash names the signed transaction, which may batch several orders of one account, so there a
+ * batch of same-side orders sent together counts as one order.
  */
 
 /** A fill as the recorders receive it; `order` (or a Hyperliquid row's `hash`) is the venue's own key for the order it belongs to. */

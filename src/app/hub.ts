@@ -82,6 +82,8 @@ export class Hub {
   /** Called when the traded-volume column has a new answer (or the source said it has none). */
   onTraded: () => void = () => {};
   #tradedLoading = false; #tradedAsked = ''; #tradedAt = 0; #tradedRetryAt = 0;
+  /** Counts the traded-volume questions, so an answer can tell whether it is still the one wanted. */
+  #tradedGen = 0;
   /** Oldest recorded depth minute across instruments (ms), or 0 when nothing is recorded. */
   recordedSince = 0;
   /** Instrument with candle history to fall back to when the selected market has none. */
@@ -289,15 +291,18 @@ export class Hub {
    * open minute keeps trading). A source that cannot answer (an older server) is asked again a minute later.
    */
   ensureTraded(ids: readonly string[], from: number, to: number, step: number, live: boolean): void {
-    if (this.#tradedLoading || !ids.length || !(to > from) || !(step > 0)) return;
+    // No instruments left: nothing has traded on the map, and an answer still on its way for the last ones must not draw them back.
+    if (!ids.length) { if (this.traded || this.#tradedAsked) { this.traded = null; this.#tradedAsked = ''; this.#tradedGen++; this.onTraded(); } return; }
+    if (this.#tradedLoading || !(to > from) || !(step > 0)) return;
     const now = Date.now();
     if (this.tradedState === 'unavailable' && now < this.#tradedRetryAt) return;
     const key = `${ids.join(',')}|${step}|${from}|${to}`;
     if (key === this.#tradedAsked && !(live && now - this.#tradedAt >= 5_000)) return;
     this.#tradedLoading = true; this.#tradedAsked = key; this.#tradedAt = now;
+    const generation = ++this.#tradedGen;
     this.source.profile([...ids], from, to, step).then(
-      answer => { this.traded = { step, answer }; this.tradedState = 'ready'; this.onTraded(); },
-      () => { this.tradedState = 'unavailable'; this.#tradedRetryAt = Date.now() + 60_000; this.#tradedAsked = ''; this.onTraded(); },
+      answer => { if (generation !== this.#tradedGen) return; this.traded = { step, answer }; this.tradedState = 'ready'; this.onTraded(); },
+      () => { if (generation !== this.#tradedGen) return; this.tradedState = 'unavailable'; this.#tradedRetryAt = Date.now() + 60_000; this.#tradedAsked = ''; this.onTraded(); },
     ).finally(() => { this.#tradedLoading = false; });
   }
 

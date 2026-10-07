@@ -224,7 +224,7 @@ export class Engine {
   }
 
   /** Write everything not yet saved, including the minute still open and the orders still open (the page is going away). */
-  flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); this.absorption.step(); this.absorption.flush(); }
+  flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); this.absorption.step(true); this.absorption.flush(); }
 
   /** Hand the market orders that are complete (all of them with `all`) to the prints and the size statistics. */
   #takeOrders(all: boolean): void {
