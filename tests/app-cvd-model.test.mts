@@ -163,7 +163,8 @@ test('hover text names the exchange, the lanes and what they did, and a divergen
 test('settings read from storage field by field and never come out invalid', () => {
   assert.deepEqual(readCvd(undefined), CVD_DEFAULTS); assert.deepEqual(readCvd('nonsense'), CVD_DEFAULTS);
   const s = readCvd({ span: '4h', rank: '24h', top: 2, heights: 'equal', auto: false, refreshMin: 500, pinned: ['kraken', 'kraken', 7, '', 'okx'], quietFlag: 'yes', rebase: false, extra: 1 });
-  assert.deepEqual(s, { span: '4h', rank: '24h', top: 3, heights: 'equal', auto: false, refreshMin: 60, pinned: ['kraken', 'okx'], quietFlag: true, rebase: false });
+  assert.deepEqual(s, { span: '4h', rank: '24h', top: 3, heights: 'equal', auto: false, refreshMin: 60, pinned: ['kraken', 'okx'], quietFlag: true, rebase: false,
+    strip: CVD_DEFAULTS.strip, stripRetailMax: CVD_DEFAULTS.stripRetailMax, stripWhaleMin: CVD_DEFAULTS.stripWhaleMin, stripSmall: CVD_DEFAULTS.stripSmall, stripBlink: CVD_DEFAULTS.stripBlink });
   assert.deepEqual(readCvd({ pinHyperliquid: true }).pinned, ['hyperliquid'], 'a save from before the list kept Hyperliquid pinned');
   assert.deepEqual(readCvd({ pinHyperliquid: true, pinned: ['okx'] }).pinned, ['okx'], 'the list wins over the old switch');
   assert.deepEqual(readCvd({ pinned: 'okx' }).pinned, [], 'not a list');

@@ -9,6 +9,7 @@ import { DepthRecorder, COLUMN_MS, SAMPLE_MS, STALE_MS } from './recorder.mts';
 import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
+import { MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS } from '../../shared/footprint.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
@@ -27,6 +28,8 @@ export interface V2Handle {
 const MAX_COLUMN_SPAN_MS = 8 * 24 * 3_600_000;
 /** The most flow history one request may ask for: what the recorder keeps in memory, and a few thousand seconds per instrument cost 8 bytes each. */
 const MAX_FLOW_SPAN_MS = 36 * 3_600_000, MAX_FLOW_INSTRUMENTS = 40;
+/** The most instruments one sizes question may name: it is answered whole, never in parts (the minutes two parts saw could not be told apart), and the flow recorder keeps at most 48. */
+const MAX_SIZES_INSTRUMENTS = 96;
 /** A client whose unsent backlog passes this is dropped rather than buffered without bound; levels frames are skipped past a lower mark. */
 const MAX_CLIENT_BACKLOG_BYTES = 16_000_000, LEVELS_SKIP_BYTES = 4_000_000;
 /** The live socket says something at least this often, so a client can tell a quiet server from a dead connection. */
@@ -238,6 +241,14 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) return sendJson(res, { error: 'limit must be a whole number from 1 to 5000' }, 400);
     sendJson(res, { floor: PRINT_FLOOR_USD, prints: prints.query(from, to, min, limit).map(toWire) });
   };
+  /** The trades of some instruments added together by size over the last N minutes, for each of up to six N (the page's strip); minutes are counted on this server's clock. */
+  const sizesRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
+    const windows = (url.searchParams.get('minutes') ?? '').split(',').filter(Boolean).map(Number);
+    if (!ids.length || ids.length > MAX_SIZES_INSTRUMENTS) return sendJson(res, { error: `inst must name 1 to ${MAX_SIZES_INSTRUMENTS} instruments` }, 400);
+    if (!windows.length || windows.length > MAX_SIZES_WINDOWS || windows.some(m => !Number.isInteger(m) || m < 1 || m > MAX_SIZES_MINUTES)) return sendJson(res, { error: `minutes must be 1 to ${MAX_SIZES_WINDOWS} whole numbers from 1 to ${MAX_SIZES_MINUTES}` }, 400);
+    sendJson(res, footprint.sizes(ids, windows));
+  };
   const flowRoute = (url: URL, res: ServerResponse) => {
     const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean).slice(0, MAX_FLOW_INSTRUMENTS);
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_FLOW_SPAN_MS);
@@ -280,6 +291,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/footprint': footprintRoute(url, res); return true;
           case '/api/v2/prints': printsRoute(url, res); return true;
           case '/api/v2/flow': flowRoute(url, res); return true;
+          case '/api/v2/sizes': sizesRoute(url, res); return true;
           case '/api/v2/venues': venuesRoute(res); return true;
           default: return false;
         }

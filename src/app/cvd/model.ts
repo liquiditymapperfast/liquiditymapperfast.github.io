@@ -29,6 +29,8 @@ export interface CvdModel {
   spot: LaneLine | null; perp: LaneLine | null;
   /** How many instruments are in the aggregate, and how many exchanges have traded in the window but are not shown (past the top N). */
   instruments: number; hidden: number;
+  /** The instruments the two aggregate lines are made of (the first spot and the first perpetual market of every exchange with flow), for the figures that must agree with them. */
+  counted: string[];
 }
 
 export interface ModelInput {
@@ -102,5 +104,5 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
     const r = range(last);
     return { id: '', kind, series: null, lo: last, hi: last, last, ...r, delta, gross, buy: (gross + delta) / 2, sell: (gross - delta) / 2, quiet: false };
   };
-  return { t0, t1, columns, rankSec, nowSec, rows, spot: aggregate('spot'), perp: aggregate('perp'), instruments: withFlow.length, hidden: Math.max(0, volumeFamilies - rows.length) };
+  return { t0, t1, columns, rankSec, nowSec, rows, spot: aggregate('spot'), perp: aggregate('perp'), instruments: withFlow.length, hidden: Math.max(0, volumeFamilies - rows.length), counted: families.flatMap(f => f.lanes.map(l => l.id)) };
 }

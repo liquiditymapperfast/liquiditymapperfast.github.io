@@ -16,6 +16,35 @@ export const sizeBucket = (usd: number): number => { let bucket = 0; for (let i 
 export interface TradeStats { buyN: number; sellN: number; buy: number[]; sell: number[] }
 const emptyStats = (): TradeStats => ({ buyN: 0, sellN: 0, buy: new Array<number>(SIZE_EDGES.length).fill(0), sell: new Array<number>(SIZE_EDGES.length).fill(0) });
 
+/**
+ * The trades of some instruments added together over the last `minutes` whole minutes (the open minute is the first of them), as the page's
+ * strip asks for them. `seen` is how many of those minutes have footprint rows for at least one instrument, `stats` how many carry trade
+ * statistics: a minute nobody recorded is told apart from a minute with nothing in it only by the others having rows, and a minute recorded
+ * before statistics were kept has rows and no statistics.
+ */
+export interface SizesWindow { minutes: number; seen: number; stats: number; buyN: number; sellN: number; buy: number[]; sell: number[] }
+export interface SizesAnswer { windows: SizesWindow[] }
+/** The most windows, and the longest, one question may ask for. */
+export const MAX_SIZES_WINDOWS = 6, MAX_SIZES_MINUTES = 1_440;
+
+/**
+ * A sizes answer checked field by field against the windows that were asked for (same lengths, same order): the answer, or null when it is
+ * anything else (an old server's error page, a cut-off body). Counts are whole numbers, USD are finite and not negative.
+ */
+export function parseSizes(value: unknown, windows: readonly number[]): SizesAnswer | null {
+  const list = (value as { windows?: unknown } | null)?.windows;
+  if (!Array.isArray(list) || list.length !== windows.length) return null;
+  const whole = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max;
+  const usd = (v: unknown): v is number[] => Array.isArray(v) && v.length === SIZE_EDGES.length && v.every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0);
+  const out: SizesWindow[] = [];
+  for (let i = 0; i < windows.length; i++) {
+    const w = list[i] as Partial<SizesWindow> | null;
+    if (!w || w.minutes !== windows[i] || !whole(w.seen, w.minutes) || !whole(w.stats, w.minutes) || w.stats > w.seen || !whole(w.buyN, Number.MAX_SAFE_INTEGER) || !whole(w.sellN, Number.MAX_SAFE_INTEGER) || !usd(w.buy) || !usd(w.sell)) return null;
+    out.push({ minutes: w.minutes, seen: w.seen, stats: w.stats, buyN: w.buyN, sellN: w.sellN, buy: [...w.buy], sell: [...w.sell] });
+  }
+  return { windows: out };
+}
+
 export interface FootprintBar {
   t: number; rows: FootprintRow[]; buyUsd: number; sellUsd: number;
   /** How many of the bar's minutes were recorded, so a reader can tell a whole candle from one seen only in part. */
@@ -128,6 +157,11 @@ export class FootprintRecorder {
   }
   close(): void { this.flush(true); this.#store?.close(); }
 
+  /** The trades of these instruments added together over each of the last `windows` minutes (see `SizesAnswer`), by this recorder's own clock. */
+  sizes(ids: readonly string[], windows: readonly number[]): SizesAnswer {
+    return sizesOf({ minutes: id => this.#minutes.get(id), stats: id => this.#stats.get(id) }, ids, windows, this.now());
+  }
+
   /** Bars of `tfMs` over [from, to), rows merged to `rowStep` (rounded to a multiple of the recorded step). */
   query(id: string, from: number, to: number, tfMs: number, rowStep: number): { step: number; fine: number; bars: FootprintBar[] } {
     const fine = this.#steps.get(id);
@@ -153,6 +187,39 @@ export class FootprintRecorder {
       return { t, rows: list, buyUsd: list.reduce((s, r) => s + r[1], 0), sellUsd: list.reduce((s, r) => s + r[2], 0), minutes: acc?.minutes ?? 0, ...(acc && acc.withStats === acc.minutes ? { stats: acc.stats } : {}) };
     }) };
   }
+}
+
+/**
+ * The recorder's answer to a sizes question (see `SizesAnswer`): each window is the last N whole minutes up to and including the open one,
+ * by this recorder's own clock, for all the instruments added together. The windows all end at the same minute, so one pass back over the
+ * longest serves every one of them, and each minute is looked up by its key rather than found among a week of them.
+ */
+export function sizesOf(recorder: { minutes(id: string): ReadonlyMap<number, unknown> | undefined; stats(id: string): ReadonlyMap<number, TradeStats> | undefined }, ids: readonly string[], windows: readonly number[], now: number): SizesAnswer {
+  const open = Math.floor(now / MINUTE) * MINUTE, longest = windows.reduce((a, b) => Math.max(a, b), 0);
+  const out: SizesWindow[] = windows.map(minutes => ({ minutes, seen: 0, stats: 0, buyN: 0, sellN: 0, buy: new Array<number>(SIZE_EDGES.length).fill(0), sell: new Array<number>(SIZE_EDGES.length).fill(0) }));
+  const books = ids.map(id => [recorder.minutes(id), recorder.stats(id)] as const);
+  const minute = emptyStats();
+  for (let back = 0; back < longest; back++) {
+    const t = open - back * MINUTE;
+    let seen = false, withStats = false;
+    minute.buyN = 0; minute.sellN = 0; minute.buy.fill(0); minute.sell.fill(0);
+    for (const [rows, stats] of books) {
+      if (rows?.has(t)) seen = true;
+      const s = stats?.get(t);
+      if (!s) continue;
+      withStats = true; minute.buyN += s.buyN; minute.sellN += s.sellN;
+      for (let i = 0; i < SIZE_EDGES.length; i++) { minute.buy[i]! += s.buy[i]!; minute.sell[i]! += s.sell[i]!; }
+    }
+    if (!seen && !withStats) continue;
+    for (const w of out) {
+      if (back >= w.minutes) continue;
+      if (seen) w.seen++;
+      if (!withStats) continue;
+      w.stats++; w.buyN += minute.buyN; w.sellN += minute.sellN;
+      for (let i = 0; i < SIZE_EDGES.length; i++) { w.buy[i]! += minute.buy[i]!; w.sell[i]! += minute.sell[i]!; }
+    }
+  }
+  return { windows: out };
 }
 
 /** Stats as stored (`[buyN, sellN, buy, sell]` as JSON text): the object when every field is valid, else null. */

@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   // Sounds the panels may make about what happens in them (flow bursts, walls, the balance, candle closes); the bursts are also marked on the flow column.
   const alerts = new Alerts(store, hub.flow, sounds.engine, Date.now, (ids, from) => { void hub.ensureFlow(ids, from); }); toolbar.attachAlerts(alerts); alerts.start();
   alerts.onChange = () => cvd.invalidate(); cvd.events = alerts.bursts;
-  hub.onPrints = fresh => sounds.feed(fresh);
+  hub.onPrints = fresh => { sounds.feed(fresh); cvd.flash(fresh); };
   hub.onPrintsChanged = () => heat.invalidate();
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
   toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(name); toolbar.previewTheme(name); };
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
     // Every time on the page is written from the one setting: say it changed, and have what shows times draw again.
     if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }
     if (changed.has('theme')) { applyTheme(state.theme); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(state.theme); }
-    if (changed.has('cvd')) cvd.refresh();
+    if (changed.has('cvd')) cvd.settingsChanged();
     if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
     if (changed.has('show')) layout();
     if (changed.has('marketId') || changed.has('timeframe')) void hub.loadSeries(true).then(() => { heat.fit(); lower(); });

@@ -1,5 +1,6 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
+import { parseSizes, type SizesAnswer } from '../shared/footprint.ts';
 import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
@@ -33,6 +34,17 @@ export async function getOi(inst: string, tf: string, from: number, to: number):
 export async function getFlow(ids: string[], from: number, to: number): Promise<FlowFrame> {
   if (!ids.length) return { from, to, instruments: [] };
   return decodeFlowFrame(await (await request(`/api/v2/flow?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}`)).arrayBuffer());
+}
+/**
+ * The trades of the instruments added together by size over each of the last `windows` minutes, in one request (never split: the minutes two
+ * answers saw cannot be added). An answer that is not exactly what was asked for (an older server's 404, a page of HTML, a cut-off body) is an error.
+ */
+export async function getSizes(ids: string[], windows: number[]): Promise<SizesAnswer> {
+  const response = await fetch(`/api/v2/sizes?inst=${ids.map(encodeURIComponent).join(',')}&minutes=${windows.join(',')}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`sizes failed: ${response.status}`);
+  const answer = parseSizes(await response.json().catch(() => null), windows);
+  if (!answer) throw new Error('sizes answered with something else');
+  return answer;
 }
 /** Recorded columns for any number of instruments: the server serves a bounded number per request, so longer lists are split and merged. */
 export async function getColumns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {

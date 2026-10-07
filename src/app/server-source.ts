@@ -1,4 +1,4 @@
-import { connectLive, getBootstrap, getCandles, getColumns, getFlow, getFootprint, getOi, getPrints } from './net.ts';
+import { connectLive, getBootstrap, getCandles, getColumns, getFlow, getFootprint, getOi, getPrints, getSizes } from './net.ts';
 import type { BootstrapState, DataSource, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
 import { stateOfStatus } from './venue-notice.ts';
 
@@ -72,4 +72,5 @@ export class ServerSource implements DataSource {
   columns = getColumns;
   footprint = getFootprint;
   flow = getFlow;
+  sizes = getSizes;
 }

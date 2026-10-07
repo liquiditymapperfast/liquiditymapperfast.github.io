@@ -95,6 +95,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
       const frame = run.flow(call.ids, call.from, call.to);
       return { result: frame, transfer: frame.instruments.flatMap(series => [series.buy.buffer as ArrayBuffer, series.sell.buffer as ArrayBuffer]) };
     }
+    case 'sizes': return { result: run.sizes(call.ids, call.windows), transfer: [] };
     case 'candles': return { result: await run.candles(call.inst, call.tfMs, call.from, call.to), transfer: [] };
     case 'oi': return { result: await run.oi(call.inst, call.tfMs, call.from, call.to), transfer: [] };
   }

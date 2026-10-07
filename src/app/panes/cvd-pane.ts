@@ -4,13 +4,14 @@ import { helpButton } from '../help.ts';
 import { clock, price as fmtPrice, startOfDay } from '../format.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { emptyScopeMessage, kindOf, type Kind } from '../scope.ts';
+import { isPhone } from '../device.ts';
 import { flowIds, flowLoadIds, pinChoices, priceFlowId } from '../cvd/ids.ts';
 import { explainMissing, noticeRows, type NoticeAction } from '../cvd/missing.ts';
 import { buildFamilies } from '../cvd/families.ts';
 import { flowWindow } from '../cvd/window.ts';
-import { MAX_PINNED } from '../cvd/settings.ts';
+import { MAX_PINNED, rankingKey } from '../cvd/settings.ts';
 import { venueLabel } from '../venues.ts';
-import { selectRow, switchRow, numberRow, togglePanel, note, heading } from '../ui.ts';
+import { selectRow, switchRow, numberRow, togglePanel, note, heading, type Panel } from '../ui.ts';
 import type { AppState, Store } from '../store.ts';
 import type { Hub } from '../hub.ts';
 import type { View } from '../view.ts';
@@ -23,6 +24,9 @@ import { laneColors, type LaneColors } from '../cvd/colors.ts';
 import { PriceTrack, type PriceColumns } from '../cvd/price.ts';
 import type { BurstEvent } from '../cvd/burst.ts';
 import { panelSwitchRow } from '../sound/panel.ts';
+import { SIZE_BUCKET_LABELS } from './bar-stats.ts';
+import { CvdStrip } from './cvd-strip.ts';
+import type { Print } from '../prints.ts';
 import { t } from '../i18n.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -88,9 +92,14 @@ export class CvdPane {
   /** Bursts the alert engine has seen, drawn as markers on their rows (set from outside; newest last). */
   events: readonly BurstEvent[] = [];
   #timer = 0;
+  /** The rows of dots above the exchanges, and the settings panel while it is open (so the controls that depend on each other can be redrawn). */
+  #strip: CvdStrip; #panel: Panel | null = null;
+  /** What the ranking was last made from: a change to the strip's own settings leaves the rows where they are. */
+  #rankingKey: string;
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private view: View) {
-    this.root.append(this.controls, this.#notice, this.#wrap);
+    this.#strip = new CvdStrip(store, hub); this.#rankingKey = rankingKey(store.state.cvd);
+    this.root.append(this.controls, this.#strip.root, this.#notice, this.#wrap);
     this.#wrap.append(this.#canvas);
     host.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!;
@@ -98,11 +107,11 @@ export class CvdPane {
     this.#buildControls();
     this.#bindInput();
     // The window moves on by itself (and a venue can go quiet without sending anything), so the column redraws once a second while it is on screen.
-    this.#timer = window.setInterval(() => { if (!this.root.hidden && !document.hidden) this.invalidate(); }, 1000);
+    this.#timer = window.setInterval(() => { if (!this.root.hidden && !document.hidden) { this.invalidate(); this.#strip.refresh(); } }, 1000);
   }
 
   get header(): HTMLElement { return this.controls; }
-  setPalette(name: string): void { this.#palette = PALETTES[name] ?? PALETTES.light!; this.invalidate(); }
+  setPalette(name: string): void { this.#palette = PALETTES[name] ?? PALETTES.light!; this.#strip.setPalette(this.#palette); this.invalidate(); }
   invalidate(): void { if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#render(); }); }
   /**
    * The map's view changed (it does on every frame while it follows the market, and while the pointer moves over it): with the Map span the column
@@ -139,8 +148,16 @@ export class CvdPane {
   }
 
   /** The settings changed (or the person asked for a fresh ranking). */
-  refresh(): void { this.#ranker.reset(); this.#syncControls(); this.#modelKey = ''; this.invalidate(); }
-  dispose(): void { window.clearInterval(this.#timer); }
+  refresh(): void { this.#ranker.reset(); this.#syncControls(); this.#modelKey = ''; this.invalidate(); if (!this.root.hidden) this.#strip.refresh(); }
+  /** The column's settings changed: the ranking starts afresh unless only the dot rows' own were touched, which do not move the exchanges. */
+  settingsChanged(): void {
+    const key = rankingKey(this.store.state.cvd);
+    if (key !== this.#rankingKey) { this.#rankingKey = key; this.refresh(); return; }
+    this.#syncControls(); if (!this.root.hidden) this.#strip.refresh();
+  }
+  /** Trades that printed just now, for the blink of the dot rows. */
+  flash(prints: readonly Print[]): void { this.#strip.flash(prints); }
+  dispose(): void { window.clearInterval(this.#timer); this.#strip.dispose(); }
 
   /** What the last frame drew. */
   get snapshot(): CvdSnapshot {
@@ -149,6 +166,8 @@ export class CvdPane {
       spanMs: model ? model.t1 - model.t0 : 0, columns: model?.columns ?? 0, empty: this.#empty, gutter: this.#gutter, price: this.#priceStats(), since: this.#since, notice: this.#noticeRows, sharedX: this.#sharedX, sharedTime: this.store.state.hover?.source === 'cvd' ? this.store.state.hover.t : null };
   }
   get model(): CvdModel | null { return this.#model; }
+  /** What the dot rows last drew. */
+  get strip(): CvdStrip { return this.#strip; }
   #priceStats(): { id: string | null; filled: number; distinct: number } {
     const last = this.#priceCols?.last, seen = new Set<number>();
     if (last) for (const v of last) if (v === v) seen.add(v);
@@ -166,7 +185,7 @@ export class CvdPane {
     }
     this.#spanSelect.onchange = () => this.#set({ span: this.#spanSelect.value as CvdSpan });
     this.#gear.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
-    this.#gear.onclick = () => { togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left' }, (_tools, body) => this.#buildSettings(body)); };
+    this.#gear.onclick = () => { this.#panel = togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#buildSettings(body)); };
     this.controls.append(el('strong', { textContent: t('Flow'), tip: t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.') }), seg, this.#spanSelect, this.#gear, helpButton('cvd'));
     this.#syncControls();
   }
@@ -177,7 +196,7 @@ export class CvdPane {
   }
   #set(patch: Partial<CvdSettings>): void {
     this.store.set({ cvd: { ...this.store.state.cvd, ...patch } });
-    this.refresh();
+    this.settingsChanged();
   }
   #buildSettings(body: HTMLElement): void {
     const c = this.store.state.cvd;
@@ -191,9 +210,25 @@ export class CvdPane {
       switchRow(t('Flag quiet exchanges'), t('Mark an exchange that has not traded in the last five completed minutes with !5m.'), c.quietFlag, v => this.#set({ quietFlag: v })),
       switchRow(t('Start each line at zero'), t('Draw every line from zero at the left edge, so rows can be compared. Off draws the running total since the history began.'), c.rebase, v => this.#set({ rebase: v })),
       note(t('Blue is spot and amber is perpetual, whichever way the money moved. Numbers carry the sign.')),
+      ...(isPhone() ? [] : this.#stripSettings(c)),
       heading(t('Sound')),
       panelSwitchRow(this.store, 'flow'),
     );
+  }
+
+  /** The rows of dots above the exchanges: whether they show, which trade sizes they split the trades into (the Bar stats' limits are the starting values), and the blink. */
+  #stripSettings(c: CvdSettings): HTMLElement[] {
+    const buckets = (from: number, to: number): [string, string][] => SIZE_BUCKET_LABELS.slice(from, to + 1).map((label, i) => [String(from + i), label]);
+    // The two limits keep apart, as they do in the Bar stats; the panel is drawn again so the other one shows what it was moved to.
+    const again = (): void => this.#panel?.render((_tools, body) => this.#buildSettings(body));
+    return [
+      heading(t('Dot rows')),
+      switchRow(t('Show the dot rows'), t('Buys against sells over the last minutes, and by trade size, above the exchanges.'), c.strip, v => this.#set({ strip: v })),
+      selectRow(t('Retail up to'), t('The dot rows put trades up to this size together.'), buckets(0, 6), String(c.stripRetailMax), v => { const r = Number(v); this.#set({ stripRetailMax: r, stripWhaleMin: Math.max(c.stripWhaleMin, r + 1) }); again(); }),
+      selectRow(t('Whales from'), t('The dot rows put trades of this size and above on their last row.'), buckets(1, 7), String(c.stripWhaleMin), v => { const w = Number(v); this.#set({ stripWhaleMin: w, stripRetailMax: Math.min(c.stripRetailMax, w - 1) }); again(); }),
+      switchRow(t('Smallest trades on their own row'), t('Puts the trades under $25K on a row of their own instead of with the retail ones.'), c.stripSmall, v => this.#set({ stripSmall: v })),
+      switchRow(t('Blink on trades'), t('The leading dot of a size row lights for a moment when a trade of that size prints. It stays still when the system asks for less motion.'), c.stripBlink, v => this.#set({ stripBlink: v })),
+    ];
   }
 
   /** The exchanges that stay in the list whatever their rank: one toggle each, so a person pins whichever they follow. */
@@ -302,6 +337,7 @@ export class CvdPane {
     if (key !== this.#modelKey || !this.#model) {
       this.#model = buildModel({ flow: this.hub.flow, ids, kindOf: id => kindOf(s.markets, id), t0, t1, columns, now, settings: cfg, ranker: this.#ranker });
       this.#priceId = priceId; this.#priceCols = this.#priceColumns(this.#model);
+      this.#strip.setCounted(this.#model.counted); this.#strip.wake();
       this.#modelKey = key;
     }
     const model = this.#model;

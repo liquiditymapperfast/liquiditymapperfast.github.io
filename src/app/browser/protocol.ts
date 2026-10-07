@@ -1,6 +1,7 @@
 import type { EngineBootstrap, EngineTick, FootprintAnswer, VenueStatus } from '../../shared/engine.ts';
 import type { Candle, OiBar } from '../../shared/series.ts';
 import type { Print } from '../../shared/prints.ts';
+import type { SizesAnswer } from '../../shared/footprint.ts';
 import type { FlowFrame, FlowUpdate } from '../../shared/flow.ts';
 import type { ColumnsFrame } from '../../shared/columns.ts';
 import type { LevelsFrame } from '../wire.ts';
@@ -12,11 +13,12 @@ export type RpcCall =
   | { method: 'footprint'; inst: string; tfMs: number; from: number; to: number; rowStep: number }
   | { method: 'prints'; from: number; to: number }
   | { method: 'flow'; ids: string[]; from: number; to: number }
+  | { method: 'sizes'; ids: string[]; windows: number[] }
   | { method: 'candles'; inst: string; tfMs: number; from: number; to: number }
   | { method: 'oi'; inst: string; tfMs: number; from: number; to: number };
 
 export interface RpcResult {
-  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; flow: FlowFrame; candles: Candle[]; oi: OiBar[];
+  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; flow: FlowFrame; sizes: SizesAnswer; candles: Candle[]; oi: OiBar[];
 }
 
 export type FeedsIn =
