@@ -3,6 +3,7 @@ import type { FlowFrame } from '../shared/flow.ts';
 import { TIMEFRAMES } from '../shared/series.ts';
 import { toWire } from '../shared/prints.ts';
 import { parseProfile, parseSizes, type ProfileAnswer, type SizesAnswer } from '../shared/footprint.ts';
+import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import type { FeedsIn, FeedsOut, RpcCall, RpcResult } from './browser/protocol.ts';
 import type { Print } from './prints.ts';
 import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, SavingState, TickMessage, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
@@ -88,6 +89,7 @@ export class BrowserSource implements DataSource, VenueControl {
         }
         case 'prints': this.#handlers?.onPrints(message.items.map(toWire)); break;
         case 'flow': this.#handlers?.onFlow?.(message.items); break;
+        case 'absorption': { const found = parseAbsorptionLive(message); this.#handlers?.onAbsorption?.(found.groups, found.minutes); break; }
         case 'status':
           this.#statuses = message.venues; known();
           for (const watcher of this.#watchers) watcher(message.venues.map(toEntry));
@@ -166,6 +168,11 @@ export class BrowserSource implements DataSource, VenueControl {
   async prints(from: number, to: number): Promise<Print[]> { return this.#call({ method: 'prints', from, to }); }
   async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> { return this.#call({ method: 'columns', ids, from, to, stepMs }); }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
+  async absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
+    const answer = parseAbsorptionAnswer(await this.#call({ method: 'absorption', ids, mins, from, to, limit, since }), ids);
+    if (!answer) throw new Error('the browser engine answered the absorption question with something else');
+    return answer;
+  }
   async profile(ids: string[], from: number, to: number, rowStep: number): Promise<ProfileAnswer> {
     const answer = parseProfile(await this.#call({ method: 'profile', ids, from, to, rowStep }), ids);
     if (!answer) throw new Error('the browser engine answered the profile question with something else');

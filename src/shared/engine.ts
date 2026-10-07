@@ -3,6 +3,7 @@ import { COLUMN_MS, DepthRecorder, SAMPLE_MS, STALE_MS, type Column, type Column
 import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type SizesAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
+import { AbsorptionRecorder, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
 import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
 import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, type Fetcher } from './history.ts';
@@ -57,7 +58,7 @@ export interface EngineOptions {
   get?: Fetcher;
   /** Whether a venue's reachability request was answered; the engine only uses it to explain a venue that never comes up. */
   ping?: (url: string, init?: { method: string; headers: Record<string, string>; body: string }) => Promise<boolean>;
-  columns?: ColumnStore | null; footprint?: FootprintStore | null; prints?: PrintStore | null; flow?: FlowStore | null;
+  columns?: ColumnStore | null; footprint?: FootprintStore | null; prints?: PrintStore | null; flow?: FlowStore | null; absorption?: AbsorptionStore | null;
   retentionMs?: number;
 }
 
@@ -110,6 +111,10 @@ export class Engine {
   readonly flows: FlowRecorder;
   /** Market orders rebuilt from their fills: the prints and the size statistics count these. */
   readonly orders: OrderBuilder;
+  /** Absorption candidates and window statistics, from every fill once. */
+  readonly absorption: AbsorptionRecorder;
+  /** Absorption groups found and minutes settled since the last pass. */
+  onAbsorption: (found: { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] }) => void = () => {};
   /** Called with the books that changed since the last call (the full current set), about four times a second at most. */
   onLevels: (books: ValuedBook[], asOf: number) => void = () => {};
   onTick: (tick: EngineTick) => void = () => {};
@@ -135,13 +140,14 @@ export class Engine {
   #lastTick = ''; #lastStatus = '';
   #timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor({ venues = BROWSER_VENUES, now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
+  constructor({ venues = BROWSER_VENUES, now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
     this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping;
     this.recorder = new DepthRecorder({ store: columns, now, retentionMs });
     this.footprints = new FootprintRecorder(footprint, now, retentionMs);
     this.printStream = new PrintStream(prints, now, retentionMs);
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
     this.orders = new OrderBuilder(now);
+    this.absorption = new AbsorptionRecorder(absorption, now, { retentionMs });
   }
 
   // ---- Venues ---------------------------------------------------------------------------------------------------------------------
@@ -193,12 +199,15 @@ export class Engine {
     const books = this.#value(now);
     // A pass with no book yet must not use up the sample interval, or the first real sample waits five seconds.
     if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); }
-    if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.flows.flush(); }
+    if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.flows.flush(); this.absorption.flush(); }
     if (now - this.#lastFlowPush >= FLOW_SEC) { this.#lastFlowPush = now; const items = this.flows.take(); if (items.length) this.onFlow(items); }
     if (now - this.#lastPrune >= PRUNE_MS) { this.#lastPrune = now; this.recorder.prune(now); }
     this.#pollOi(now);
     this.#probe(now);
     this.#takeOrders(false);
+    this.absorption.step();
+    const found = this.absorption.takeFresh();
+    if (found.groups.length || found.minutes.length) this.onAbsorption(found);
     const fresh = this.printStream.takeFresh();
     if (fresh.length) this.onPrints(fresh);
     const previous = this.#books;
@@ -211,7 +220,7 @@ export class Engine {
   }
 
   /** Write everything not yet saved, including the minute still open and the orders still open (the page is going away). */
-  flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); }
+  flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); this.absorption.step(); this.absorption.flush(); }
 
   /** Hand the market orders that are complete (all of them with `all`) to the prints and the size statistics. */
   #takeOrders(all: boolean): void {
@@ -244,7 +253,7 @@ export class Engine {
     // A trade seen before (a feed that replays after a reconnect) is in the footprint already, and must not count twice in the candle either.
     if (this.footprints.ingest([row]) === 0) return;
     // The fill joins its market order; prints and size statistics are taken from orders once they are complete (`step`).
-    this.orders.add([{ ...row, order: trade.order }]);
+    for (const f of this.orders.add([{ ...row, order: trade.order }])) this.absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side);
     const now = this.#now();
     this.#last.set(trade.instrumentId, { price: trade.price, at: now });
     const start = Math.floor(trade.t / COLUMN_MS) * COLUMN_MS, candle = this.#candles.get(trade.instrumentId);
@@ -296,6 +305,9 @@ export class Engine {
   }
 
   footprint(instrumentId: string, tfMs: number, from: number, to: number, rowStep: number): FootprintAnswer { return this.footprints.query(instrumentId, from, to, tfMs, rowStep); }
+
+  /** Absorption candidates for these instruments over [from, to) and the minutes since `since` (see AbsorptionRecorder.query). */
+  absorptionHistory(ids: readonly string[], mins: readonly number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> { return this.absorption.query(ids, mins, from, to, limit, since); }
 
   /** Traded volume by price for these instruments over [from, to) (the traded-volume column). */
   profile(ids: readonly string[], from: number, to: number, rowStep: number): ProfileAnswer { return this.footprints.profile(ids, from, to, rowStep); }

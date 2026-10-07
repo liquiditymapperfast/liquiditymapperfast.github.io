@@ -1,6 +1,7 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
 import { parseProfile, parseSizes, type ProfileAnswer, type SizesAnswer } from '../shared/footprint.ts';
+import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
@@ -44,6 +45,14 @@ export async function getSizes(ids: string[], windows: number[]): Promise<SizesA
   if (!response.ok) throw new Error(`sizes failed: ${response.status}`);
   const answer = parseSizes(await response.json().catch(() => null), windows);
   if (!answer) throw new Error('sizes answered with something else');
+  return answer;
+}
+/** Absorption candidates and minutes (see DataSource.absorption); an older server without the route rejects (404). */
+export async function getAbsorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
+  const response = await fetch(`/api/v2/absorption?inst=${ids.map(encodeURIComponent).join(',')}&min=${mins.map(m => Math.floor(m)).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}&limit=${limit}&since=${Math.floor(since)}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`absorption failed: ${response.status}`);
+  const answer = parseAbsorptionAnswer(await response.json().catch(() => null), ids);
+  if (!answer) throw new Error('absorption answered with something else');
   return answer;
 }
 /** Traded volume by price for these instruments over [from, to); an older server without the route rejects (404). */
@@ -92,6 +101,7 @@ export function connectLive(handlers: LiveHandlers, { silenceMs = 20_000, pollMs
           else if (message.t === 'tick') handlers.onTick(message as TickMessage); else if (message.t === 'layers') handlers.onLayers(message as LayersMessage);
           else if (message.t === 'prints' && Array.isArray((message as PrintsMessage).items)) handlers.onPrints((message as PrintsMessage).items);
           else if (message.t === 'flow' && Array.isArray((message as { items?: unknown }).items)) handlers.onFlow?.((message as unknown as { items: FlowUpdate[] }).items);
+          else if (message.t === 'absorption') { const found = parseAbsorptionLive(message); handlers.onAbsorption?.(found.groups, found.minutes); }
         } else handlers.onLevels(decodeLevels(event.data as ArrayBuffer));
       } catch (error) { console.error('live frame rejected', error); }
     };

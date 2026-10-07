@@ -1,6 +1,7 @@
 import type { Print } from './prints.ts';
 import type { FlowFrame, FlowUpdate } from '../shared/flow.ts';
 import type { ProfileAnswer, SizesAnswer } from '../shared/footprint.ts';
+import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../shared/absorption.ts';
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { Bar } from './panes/footprint.ts';
 import type { CandleRow, LayerLevel, Market, OiBar } from './store.ts';
@@ -27,6 +28,8 @@ export interface LiveHandlers {
   onPrints(items: unknown[]): void;
   /** Taker flow per second for the seconds that changed (about once a second): each replaces what the page had for that second. */
   onFlow?(items: FlowUpdate[]): void;
+  /** Absorption groups found and minutes settled (checked already). */
+  onAbsorption?(groups: AbsorptionGroup[], minutes: AbsorptionMinute[]): void;
 }
 
 /** Executions per candle for a window, as the footprint draws them. */
@@ -86,6 +89,8 @@ export interface DataSource {
   sizes(ids: string[], windows: number[]): Promise<SizesAnswer>;
   /** Traded volume by price for `ids` over the minutes that start in [from, to). Rejects when the source cannot say (an older server). */
   profile(ids: string[], from: number, to: number, rowStep: number): Promise<ProfileAnswer>;
+  /** Absorption candidates of each of `ids` starting in [from, to) with a largest credit of at least its `mins` entry (at most `limit` each, the largest first), floors, and the minutes since `since`. */
+  absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer>;
   readonly venues: VenueControl;
   /** What becomes of the recordings, at `now`; a source whose recordings are kept elsewhere (the server) leaves it out. */
   saving?(now: number): SavingState;

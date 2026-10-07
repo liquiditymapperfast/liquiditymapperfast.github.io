@@ -36,6 +36,8 @@ export function venueOrderKey(fill: FillLike): string | null {
 }
 
 interface Open { key: string; order: MarketOrder; base: number; at: number }
+/** A fill the builder took: instrument, taker side, price, USD and exchange time. */
+export interface TakenFill { instrumentId: string; side: 'buy' | 'sell'; price: number; usd: number; t: number }
 
 /**
  * Collects fills into market orders. Each instrument has at most one order open: a fill with another key closes it, and so does a quiet
@@ -49,9 +51,9 @@ export class OrderBuilder {
 
   constructor(private now: () => number = Date.now, private quietMs = ORDER_QUIET_MS) {}
 
-  /** Take fills not seen before; returns how many were taken. */
-  add(fills: Iterable<FillLike>): number {
-    let taken = 0;
+  /** Take fills not seen before; returns them, normalised (the absorption detector takes the same fills, once each). */
+  add(fills: Iterable<FillLike>): TakenFill[] {
+    const taken: TakenFill[] = [];
     for (const fill of fills) {
       const id = String(fill.instrumentId ?? ''), tradeId = String(fill.tradeId ?? '');
       const price = Number(fill.price), usd = Number(fill.notionalUsd ?? Number(fill.amount) * price);
@@ -70,7 +72,7 @@ export class OrderBuilder {
         if (open) this.#done.push(open.order);
         this.#open.set(id, { key, base, at: this.now(), order: { instrumentId: id, tradeId, side, t, price, lo: price, hi: price, usd, fills: 1 } });
       }
-      taken++;
+      taken.push({ instrumentId: id, side, price, usd, t });
     }
     return taken;
   }

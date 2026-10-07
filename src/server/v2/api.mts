@@ -13,7 +13,8 @@ import { MAX_PROFILE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS } from '.
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
-import { OrderBuilder, orderRow } from '../../shared/orders.ts';
+import { OrderBuilder, orderRow, type TakenFill } from '../../shared/orders.ts';
+import { AbsorptionRecorder, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, ABSORPTION_WINDOW_MS } from './absorption.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
 import { TIMEFRAMES, aggregateCandles, aggregateOi, timeframeMs, withLiveOi, type CandleRow, type OiRow } from './series.mts';
@@ -21,7 +22,7 @@ import { TIMEFRAMES, aggregateCandles, aggregateOi, timeframeMs, withLiveOi, typ
 type App = ReturnType<typeof createLocalServer>;
 export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number }
 export interface V2Handle {
-  recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; flow: FlowRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
+  recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; flow: FlowRecorder; absorption: AbsorptionRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
   /** Venues (the part of an instrument id before the colon) whose book is being left off the map, with the reason. */
   degradedVenues(): Map<string, string>;
 }
@@ -76,6 +77,9 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   /** Market orders rebuilt from their fills (see shared/orders.ts): the prints and the size statistics count these, not fills. */
   const orders = new OrderBuilder();
+  /** Absorption candidates (see shared/absorption.ts): every fill the builder took, once each. */
+  const absorption = new AbsorptionRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  const detect = (taken: readonly TakenFill[]): void => { for (const f of taken) absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side); };
   const takeOrders = (all: boolean): void => {
     const done = orders.drain(all);
     if (!done.length) return;
@@ -84,7 +88,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   // The connector venues carry their own trades: the flow column, the footprint and the large-trade bubbles count them like the feed manager's.
   const takeTrade = (trade: import('../../shared/connector.ts').TradeEvent): void => {
     const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
-    footprint.ingest([row]); flow.ingest([row]); orders.add([{ ...row, order: trade.order }]);
+    footprint.ingest([row]); flow.ingest([row]); detect(orders.add([{ ...row, order: trade.order }]));
   };
   extra.onTrade(takeTrade);
   // Exchanges the feed manager has depth for but no trade feed: their trades come from the browser engine's connectors (see flow-sources.mts).
@@ -155,19 +159,21 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     footprint.ingest(app.state.trades ?? []);
     flow.ingest(app.state.trades ?? []);
     // The feed manager's recent trades are handed over whole every pass: the builder takes each fill once (Hyperliquid rows carry the order's hash).
-    orders.add(app.state.trades ?? []);
+    detect(orders.add(app.state.trades ?? []));
     takeOrders(false);
+    absorption.step();
     if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); }
     // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
-    if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, flow]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
+    if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, flow, absorption]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
-    const fresh = prints.takeFresh();
+    const fresh = prints.takeFresh(), found = absorption.takeFresh();
     // Taken whether or not anyone listens, so the changed seconds do not pile up while nobody is connected.
     const flowItems = now - lastFlowPush >= FLOW_SEC ? flow.take() : [];
     if (flowItems.length || now - lastFlowPush >= FLOW_SEC) lastFlowPush = now;
     if (wss.clients.size === 0) return;
     if (now - lastBeat >= heartbeatMs) { lastBeat = now; broadcast(JSON.stringify({ t: 'hb', now })); }
     if (fresh.length) broadcast(JSON.stringify({ t: 'prints', items: fresh.map(toWire) }));
+    if (found.groups.length || found.minutes.length) broadcast(JSON.stringify({ t: 'absorption', groups: found.groups, minutes: found.minutes }));
     if (flowItems.length) broadcast(JSON.stringify({ t: 'flow', items: flowItems }));
     if (levelsDirty) {
       levelsDirty = false;
@@ -259,6 +265,27 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (!windows.length || windows.length > MAX_SIZES_WINDOWS || windows.some(m => !Number.isInteger(m) || m < 1 || m > MAX_SIZES_MINUTES)) return sendJson(res, { error: `minutes must be 1 to ${MAX_SIZES_WINDOWS} whole numbers from 1 to ${MAX_SIZES_MINUTES}` }, 400);
     sendJson(res, footprint.sizes(ids, windows));
   };
+  /**
+   * Absorption candidates for some instruments over a window: per instrument the largest first, at least its `min` credit, at most `limit`;
+   * each instrument's highest floor over the window; the settled minutes since `since` for the automatic threshold; and which were cut at the limit.
+   */
+  const absorptionRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
+    if (!ids.length || ids.length > MAX_PROFILE_INSTRUMENTS) return sendJson(res, { error: `inst must name 1 to ${MAX_PROFILE_INSTRUMENTS} instruments` }, 400);
+    const span = windowOf(url, Date.now() + 60_000, 3_600_000); if (!span) return sendJson(res, { error: BAD_WINDOW }, 400);
+    if (span.to - span.from > MAX_COLUMN_SPAN_MS) return sendJson(res, { error: 'the window may be at most eight days' }, 400);
+    // One smallest credit per instrument (its threshold), or one for all of them.
+    const mins = (url.searchParams.get('min') ?? '').split(',').filter(Boolean).map(Number);
+    if (mins.length > 1 && mins.length !== ids.length) return sendJson(res, { error: 'min must be one amount, or one per instrument' }, 400);
+    if (mins.some(m => !Number.isFinite(m) || m < 0)) return sendJson(res, { error: 'min must be USD amounts' }, 400);
+    const perId = ids.map((_, i) => Math.max(GROUP_FLOOR_USD, mins.length > 1 ? mins[i]! : mins[0] ?? GROUP_FLOOR_USD));
+    const limit = bound(url.searchParams.get('limit'), 5_000), since = bound(url.searchParams.get('since'), Date.now() - 30 * 60_000);
+    if (limit === null || !Number.isInteger(limit) || limit < 1 || limit > 20_000) return sendJson(res, { error: 'limit must be a whole number from 1 to 20000' }, 400);
+    if (since === null || since < Date.now() - 25 * 3_600_000) return sendJson(res, { error: 'since may reach back at most 25 hours' }, 400);
+    absorption.query(ids, perId, span.from, span.to, limit, since).then(
+      answer => sendJson(res, { windowMs: ABSORPTION_WINDOW_MS, floorUsd: GROUP_FLOOR_USD, perMinute: GROUPS_PER_MINUTE, ...answer }),
+      error => { console.error('v2 /api/v2/absorption failed:', error); if (!res.headersSent) sendJson(res, { error: 'internal error' }, 500); });
+  };
   /** Traded volume by price for some instruments over a window (the page's traded-volume column). */
   const profileRoute = (url: URL, res: ServerResponse) => {
     const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
@@ -295,7 +322,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
 
   return {
-    recorder, footprint, prints, flow, extra,
+    recorder, footprint, prints, flow, absorption, extra,
     degradedVenues() { return new Map([...degraded].map(([id, reason]) => [id.split(':')[0]!, reason])); },
     handle(req, res) {
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -313,6 +340,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/flow': flowRoute(url, res); return true;
           case '/api/v2/sizes': sizesRoute(url, res); return true;
           case '/api/v2/profile': profileRoute(url, res); return true;
+          case '/api/v2/absorption': absorptionRoute(url, res); return true;
           case '/api/v2/venues': venuesRoute(res); return true;
           default: return false;
         }
@@ -326,7 +354,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
       clearInterval(loop); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
       // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes and the open orders are written here).
-      for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => flowSources.close(), () => extra.close()]) {
+      for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => absorption.close(), () => flowSources.close(), () => extra.close()]) {
         try { part(); } catch (error) { console.error('v2 shutdown:', error); }
       }
     },

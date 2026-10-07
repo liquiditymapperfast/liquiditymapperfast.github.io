@@ -44,17 +44,20 @@ export type AbsorptionStep = [number, number, number, number, number];
 export interface AbsorptionGroup { id: string; side: 'buy' | 'sell'; price: number; t0: number; steps: AbsorptionStep[] }
 /** One minute of an instrument: the window sums opened in it (count, mean, squared deviations) and the credit under which groups may be missing. */
 export interface AbsorptionMinute { id: string; t: number; n: number; mean: number; m2: number; floor: number }
-/** The page's question answered: groups (the largest first), each instrument's highest floor over the window, and settled minutes. */
-export interface AbsorptionAnswer { groups: AbsorptionGroup[]; floors: Record<string, number>; minutes: AbsorptionMinute[] }
+/**
+ * The page's question answered: groups (per instrument the largest first), each instrument's highest floor over the window, settled minutes,
+ * and the instruments whose groups were cut at the limit (the smallest of them are left out).
+ */
+export interface AbsorptionAnswer { groups: AbsorptionGroup[]; floors: Record<string, number>; minutes: AbsorptionMinute[]; capped: string[] }
 
 export interface AbsorptionStore {
   /** Groups and minutes since `since`, for what the recorder holds in memory. */
   load(since: number): { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] };
   save(groups: AbsorptionGroup[], minutes: AbsorptionMinute[], expireBefore: number): void;
-  /** Groups whose first time is in [from, to) with a largest credit of at least `minCredit`, the largest first, at most `limit`. */
-  query(ids: readonly string[], from: number, to: number, minCredit: number, limit: number): AbsorptionGroup[];
+  /** Per instrument of `ids`: its groups whose first time is in [from, to) with a largest credit of at least its `mins` entry, the largest first, at most `limit` (the browser's store answers later). */
+  query(ids: readonly string[], mins: readonly number[], from: number, to: number, limit: number): AbsorptionGroup[] | Promise<AbsorptionGroup[]>;
   /** Minutes of `ids` in [from, to). */
-  minutes(ids: readonly string[], from: number, to: number): AbsorptionMinute[];
+  minutes(ids: readonly string[], from: number, to: number): AbsorptionMinute[] | Promise<AbsorptionMinute[]>;
   close(): void;
 }
 
@@ -262,27 +265,74 @@ export class AbsorptionRecorder {
   close(): void { this.step(); this.flush(); this.#store?.close(); }
 
   /**
-   * The page's question for a window [from, to): the groups that started in it with a largest credit of at least `minCredit` (the largest
-   * first, at most `limit`), each instrument's highest floor over the window, and the settled minutes of [since, now] for the automatic
-   * threshold. Memory answers from `#memoryFrom` on, the store before that.
+   * The page's question for a window [from, to): per instrument, the groups that started in it with a largest credit of at least its
+   * `mins` entry (its threshold), the largest first and at most `limit` of them; each instrument's highest floor over the window; and the
+   * settled minutes of [since, now] for the automatic threshold. Memory answers from `#memoryFrom` on, the store before that.
    */
-  query(ids: readonly string[], from: number, to: number, minCredit: number, limit: number, since: number): AbsorptionAnswer {
-    const wanted = new Set(ids), split = Math.max(from, this.#memoryFrom);
-    const groups: AbsorptionGroup[] = [];
-    if (this.#store && from < this.#memoryFrom) groups.push(...this.#store.query(ids, from, Math.min(to, this.#memoryFrom), minCredit, limit));
-    for (const g of this.#memoryGroups) if (g.t0 >= split && g.t0 < to && wanted.has(g.id) && peakOf(g) >= minCredit) groups.push(g);
-    groups.sort((a, b) => peakOf(b) - peakOf(a));
+  async query(ids: readonly string[], mins: readonly number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
+    const min = new Map(ids.map((id, i) => [id, mins[i] ?? Infinity])), split = Math.max(from, this.#memoryFrom);
+    const found: AbsorptionGroup[] = [];
+    if (this.#store && from < this.#memoryFrom) found.push(...await this.#store.query(ids, mins, from, Math.min(to, this.#memoryFrom), limit));
+    for (const g of this.#memoryGroups) if (g.t0 >= split && g.t0 < to && peakOf(g) >= (min.get(g.id) ?? Infinity)) found.push(g);
+    const byId = new Map<string, AbsorptionGroup[]>();
+    for (const g of found) { let list = byId.get(g.id); if (!list) { list = []; byId.set(g.id, list); } list.push(g); }
+    const groups: AbsorptionGroup[] = [], capped: string[] = [];
+    for (const [id, list] of byId) { list.sort((a, b) => peakOf(b) - peakOf(a)); if (list.length >= limit) capped.push(id); groups.push(...list.slice(0, limit)); }
     const floors: Record<string, number> = {};
     const raise = (id: string, floor: number): void => { floors[id] = Math.max(floors[id] ?? 0, floor); };
-    for (const m of this.#minutesOf(ids, from, to)) raise(m.id, m.floor);
-    for (const [id, s] of this.#instruments) if (wanted.has(id)) for (const [t, m] of s.minutes) if (t >= from && t < to) raise(id, m.floor);
-    return { groups: groups.slice(0, limit), floors, minutes: this.#minutesOf(ids, since, Infinity) };
+    for (const m of await this.#minutesOf(ids, from, to)) raise(m.id, m.floor);
+    for (const [id, s] of this.#instruments) if (min.has(id)) for (const [t, m] of s.minutes) if (t >= from && t < to) raise(id, m.floor);
+    return { groups, floors, minutes: await this.#minutesOf(ids, since, Infinity), capped };
   }
 
-  #minutesOf(ids: readonly string[], from: number, to: number): AbsorptionMinute[] {
+  async #minutesOf(ids: readonly string[], from: number, to: number): Promise<AbsorptionMinute[]> {
     const out: AbsorptionMinute[] = [];
-    if (this.#store && from < this.#memoryFrom) out.push(...this.#store.minutes(ids, from, Math.min(to, this.#memoryFrom)));
+    if (this.#store && from < this.#memoryFrom) out.push(...await this.#store.minutes(ids, from, Math.min(to, this.#memoryFrom)));
     for (const id of ids) for (const [t, m] of this.#memoryMinutes.get(id) ?? []) if (t >= Math.max(from, this.#memoryFrom) && t < to) out.push(m);
     return out.sort((a, b) => a.t - b.t);
   }
+}
+
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** One group as it comes over the wire or out of storage, checked field by field: the group, or null when it is anything else. */
+export function parseGroup(value: unknown): AbsorptionGroup | null {
+  const g = value as Partial<AbsorptionGroup> | null;
+  if (!g || typeof g.id !== 'string' || !g.id || (g.side !== 'buy' && g.side !== 'sell') || !finite(g.price) || !(g.price > 0) || !finite(g.t0) || !Array.isArray(g.steps) || !g.steps.length) return null;
+  let last = Infinity;
+  for (const s of g.steps as unknown[]) {
+    if (!Array.isArray(s) || s.length !== 5 || !s.every(finite)) return null;
+    const [credit, usd, fills, t0, t1] = s as number[];
+    if (!(credit! > 0) || credit! > last || !(usd! > 0) || !Number.isInteger(fills) || fills! < 1 || t1! < t0!) return null;
+    last = credit!;
+  }
+  return { id: g.id, side: g.side, price: g.price, t0: g.t0, steps: (g.steps as number[][]).map(s => [s[0]!, s[1]!, s[2]!, s[3]!, s[4]!] as AbsorptionStep) };
+}
+
+/** One minute, checked field by field: the minute, or null. */
+export function parseMinute(value: unknown): AbsorptionMinute | null {
+  const m = value as Partial<AbsorptionMinute> | null;
+  if (!m || typeof m.id !== 'string' || !m.id || !finite(m.t) || !finite(m.n) || !Number.isInteger(m.n) || m.n < 0 || !finite(m.mean) || !finite(m.m2) || m.m2 < 0 || !finite(m.floor) || m.floor < 0) return null;
+  return { id: m.id, t: m.t, n: m.n, mean: m.mean, m2: m.m2, floor: m.floor };
+}
+
+/** A history answer checked against the instruments asked for: groups and minutes of other instruments, or broken ones, are refused whole. */
+export function parseAbsorptionAnswer(value: unknown, ids: readonly string[]): AbsorptionAnswer | null {
+  const body = value as { groups?: unknown; floors?: unknown; minutes?: unknown } | null;
+  if (!body || !Array.isArray(body.groups) || !Array.isArray(body.minutes) || !body.floors || typeof body.floors !== 'object') return null;
+  const asked = new Set(ids), groups: AbsorptionGroup[] = [], minutes: AbsorptionMinute[] = [], floors: Record<string, number> = {};
+  const listed = (body as { capped?: unknown }).capped;
+  const capped = Array.isArray(listed) ? listed.filter((id): id is string => typeof id === 'string' && asked.has(id)) : [];
+  for (const item of body.groups as unknown[]) { const g = parseGroup(item); if (!g || !asked.has(g.id)) return null; groups.push(g); }
+  for (const item of body.minutes as unknown[]) { const m = parseMinute(item); if (!m || !asked.has(m.id)) return null; minutes.push(m); }
+  for (const [id, floor] of Object.entries(body.floors as Record<string, unknown>)) { if (!asked.has(id) || !finite(floor) || floor < 0) return null; floors[id] = floor; }
+  return { groups, floors, minutes, capped };
+}
+
+/** What the live stream says (groups found, minutes settled), each item checked; broken items are dropped, never drawn. */
+export function parseAbsorptionLive(value: unknown): { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] } {
+  const body = value as { groups?: unknown; minutes?: unknown } | null;
+  const groups = Array.isArray(body?.groups) ? (body.groups as unknown[]).flatMap(item => parseGroup(item) ?? []) : [];
+  const minutes = Array.isArray(body?.minutes) ? (body.minutes as unknown[]).flatMap(item => parseMinute(item) ?? []) : [];
+  return { groups, minutes };
 }

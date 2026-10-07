@@ -70,11 +70,12 @@ async function init(selected: string[] | null, persist: boolean): Promise<void> 
       claimRecorder();
     }
   }
-  const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null });
+  const next = new Engine({ columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null, absorption: recordings?.absorption ?? null });
   next.onLevels = (books, asOf) => post({ type: 'levels', frame: frameOf(books, asOf) });
   next.onTick = tick => post({ type: 'tick', tick });
   next.onPrints = (items: Print[]) => post({ type: 'prints', items });
   next.onFlow = items => post({ type: 'flow', items });
+  next.onAbsorption = found => post({ type: 'absorption', groups: found.groups, minutes: found.minutes });
   next.onStatus = venues => post({ type: 'status', venues });
   next.select(selected ?? BROWSER_VENUES.filter(v => v.recommended).map(v => v.id));
   next.start();
@@ -97,6 +98,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
     }
     case 'sizes': return { result: run.sizes(call.ids, call.windows), transfer: [] };
     case 'profile': return { result: run.profile(call.ids, call.from, call.to, call.rowStep), transfer: [] };
+    case 'absorption': return { result: await run.absorptionHistory(call.ids, call.mins, call.from, call.to, call.limit, call.since), transfer: [] };
     case 'candles': return { result: await run.candles(call.inst, call.tfMs, call.from, call.to), transfer: [] };
     case 'oi': return { result: await run.oi(call.inst, call.tfMs, call.from, call.to), transfer: [] };
   }

@@ -41,7 +41,7 @@ test('without a key the exchange millisecond and the side name the order; an all
     fill('a', 100, 1_000, T0), // a replay after a reconnect
     { instrumentId: 'v:BTC', tradeId: 'bad', side: 'buy', price: 0, notionalUsd: 5, sourceTimestamp: T0 },
   ]);
-  assert.equal(taken, 8, 'the replay and the bad row are not taken');
+  assert.equal(taken.length, 8, 'the replay and the bad row are not taken');
   const orders = builder.drain(true);
   assert.deepEqual(orders.map(o => [o.tradeId, o.side, o.fills]), [['a', 'buy', 2], ['c', 'sell', 1], ['d', 'buy', 1], ['e', 'buy', 2], ['g', 'buy', 2]]);
   assert.equal(venueOrderKey({ hash: '0x0000' }), null); assert.equal(venueOrderKey({ order: '' }), null); assert.equal(venueOrderKey({ order: 42 }), '42');
