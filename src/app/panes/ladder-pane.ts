@@ -10,7 +10,7 @@ import { niceStep } from '../view.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
 import { beyondCover, coverage, cumulative, dominanceWeight, groupLevels, imbalanceByDistance, liquidityInView, type Cover, type Grouped } from './levels-data.ts';
-import { GROUPS, WheelNotches, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
+import { GROUPS, holdsMark, ladderWheel, offsetKeepingPrice, priceAtRow, stepBy } from './ladder-zoom.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
@@ -30,6 +30,11 @@ const VENUE_TINT = [1, 0.62, 0.38, 0.8, 0.5, 0.7, 0.3, 0.9];
 
 export { venueLabel };
 
+/** What a zoom holds still: the mark on the middle row (`onMark`; the price is then the mark at each step, not the one at the start), or `price` on `row`. */
+interface Anchor { onMark: boolean; row: number; price: number }
+/** A pointer drag in progress: the book moving with the pointer, or the price column zooming about its anchor. */
+type Drag = { kind: 'pan'; y: number; offset: number } | ({ kind: 'zoom'; y: number; step: number } & Anchor);
+
 /** Order-book ladder around the mark. Aggregated sums venues with per-venue cells; Single shows one book per chosen venue side by side. */
 export class LadderPane {
   readonly root = document.createElement('section');
@@ -44,16 +49,15 @@ export class LadderPane {
   #panel: Panel | null = null;
   #idsKey = '';
   #hover: { x: number; y: number } | null = null;
-  /** A mouse click is a notch; a touchpad's small deltas make one per 40 px, at most one per 90 ms (see WheelNotches). */
-  #notches = new WheelNotches(100, 250, 30, 40, 90);
+  /** One notch per mouse click, one per 40 px of a touchpad, and a limit in time on both, so a spin or a swipe cannot throw the zoom to the end (see ladderWheel). */
+  #notches = ladderWheel();
   /** Touch: where a finger pinned the mirror comparison, the pinch in progress, and the fling after a lift. */
   #pinned: Pt | null = null;
   #pinch: { step: number; price: number; row: number } | null = null;
   #fling = 0;
   /** What the last frame drew, which gestures are read against (step 0 until a frame has data). */
   #layout = { step: 0, rows: 0, head: 0, colW: 0, mark: 0 };
-  /** A pointer drag in progress: the book moving with the pointer, or the price column zooming about the price it started on. */
-  #drag: { kind: 'pan'; y: number; offset: number } | { kind: 'zoom'; y: number; step: number; price: number; row: number } | null = null;
+  #drag: Drag | null = null;
   #autoOption: HTMLOptionElement | null = null;
   /** Mirror-hover comparison for the book under the pointer, or null (read by tests, drawn on the canvas). */
   mirror: MirrorStats | null = null;
@@ -82,7 +86,7 @@ export class LadderPane {
 
   /**
    * The wheel zooms (the grouping steps finer or coarser about the current price, or about the pointer with Alt or once the book is scrolled), dragging the
-   * book moves it, dragging the price column zooms, and a double-click puts both back.
+   * book moves it, dragging the price column zooms the same way, and a double-click puts both back.
    */
   #bindInput(): void {
     const c = this.#canvas;
@@ -94,18 +98,18 @@ export class LadderPane {
       const notches = this.#notches.add(e.deltaY * lines * pinch, e.timeStamp);
       // Zooming holds the current price where it is, so the book swells and shrinks around it instead of sliding past; once the book has been
       // scrolled off the mark (or with Alt held) it zooms about the pointer instead.
-      if (notches) { const l = this.#layout, centred = this.#offsetRows === 0 && !e.altKey && l.mark > 0; this.#zoomTo(stepBy(l.step, notches), centred ? Math.floor(l.rows / 2) : this.#rowAt(local(e).y), centred ? l.mark : undefined); }
+      if (notches) { const a = this.#anchor(this.#rowAt(local(e).y), e.altKey); this.#zoomTo(stepBy(this.#layout.step, notches), a.row, a.price); }
     }, { passive: false });
     c.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch' || e.button !== 0 || !(this.#layout.step > 0)) return;
       const { x, y } = local(e), row = this.#rowAt(y);
-      this.#drag = this.#onAxis(x) ? { kind: 'zoom', y, step: this.#layout.step, price: this.#priceAt(row), row } : { kind: 'pan', y, offset: this.#offsetRows };
+      this.#drag = this.#onAxis(x) ? { kind: 'zoom', y, step: this.#layout.step, ...this.#anchor(row, e.altKey) } : { kind: 'pan', y, offset: this.#offsetRows };
       c.setPointerCapture(e.pointerId); this.#hover = null; this.#cursor(x); this.invalidate();
     });
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e), drag = this.#drag;
-      if (drag?.kind === 'zoom') this.#zoomTo(stepBy(drag.step, Math.trunc((y - drag.y) / AXIS_DRAG_PX)), drag.row, drag.price); // up zooms in, down out
+      if (drag?.kind === 'zoom') this.#zoomDrag(drag, y); // up zooms in, down out
       else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((y - drag.y) / ROW_H); this.invalidate(); }
       else this.#hover = { x, y };
       this.#cursor(x); this.invalidate();
@@ -138,11 +142,11 @@ export class LadderPane {
         unpin();
         if (!(this.#layout.step > 0)) return;
         const row = this.#rowAt(p.y);
-        this.#drag = this.#onAxis(p.x) ? { kind: 'zoom', y: p.y, step: this.#layout.step, price: this.#priceAt(row), row } : { kind: 'pan', y: p.y, offset: this.#offsetRows };
+        this.#drag = this.#onAxis(p.x) ? { kind: 'zoom', y: p.y, step: this.#layout.step, ...this.#anchor(row, false) } : { kind: 'pan', y: p.y, offset: this.#offsetRows };
       },
       pan: (_d, p) => {
         const drag = this.#drag;
-        if (drag?.kind === 'zoom') this.#zoomTo(stepBy(drag.step, Math.trunc((p.y - drag.y) / AXIS_DRAG_PX)), drag.row, drag.price);
+        if (drag?.kind === 'zoom') this.#zoomDrag(drag, p.y);
         else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((p.y - drag.y) / ROW_H); this.invalidate(); }
       },
       panEnd: v => {
@@ -188,6 +192,16 @@ export class LadderPane {
     return y < head ? Math.floor(rows / 2) : Math.max(0, Math.min(rows - 1, Math.floor((y - head) / ROW_H)));
   }
   #priceAt(row: number): number { const l = this.#layout; return priceAtRow({ mark: l.mark, step: l.step, offsetRows: this.#offsetRows, rows: l.rows, row }); }
+  /** What a zoom started at `row` holds still (see `holdsMark`): the mark on the middle row, or the price under that row. */
+  #anchor(row: number, alt: boolean): Anchor {
+    const l = this.#layout;
+    return holdsMark({ offsetRows: this.#offsetRows, alt, mark: l.mark }) ? { onMark: true, row: Math.floor(l.rows / 2), price: l.mark } : { onMark: false, row, price: this.#priceAt(row) };
+  }
+  /** The step a drag of the price column has reached at pointer height `y`: held about its anchor, which for the mark is the mark as it is now (it moves while the hand does). */
+  #zoomDrag(drag: Extract<Drag, { kind: 'zoom' }>, y: number): void {
+    const l = this.#layout;
+    this.#zoomTo(stepBy(drag.step, Math.trunc((y - drag.y) / AXIS_DRAG_PX)), drag.onMark ? Math.floor(l.rows / 2) : drag.row, drag.onMark ? l.mark : drag.price);
+  }
   /** Group by `step`, keeping `price` (default: what the pointer is over) on `row`, so the zoom is about the pointer rather than the mark. */
   #zoomTo(step: number, row: number, price = this.#priceAt(row)): void {
     const l = this.#layout;
