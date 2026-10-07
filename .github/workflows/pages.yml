@@ -5,6 +5,10 @@ name: Pages
 on:
   push:
     branches: [master]
+  # Once a day the coin list is rebuilt from the markets' lists and the site published again with it (GitHub stops a schedule after
+  # 60 days without a push to the repository; a push or a manual run starts it again).
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -30,6 +34,11 @@ jobs:
       - run: npm run build:site
         env:
           HLM_SOURCEMAP: 'off'
+      # The coin list (src/shared/coins.ts): a market whose list cannot be read from here (some exchanges refuse US addresses, where the
+      # runners are) keeps its listings from the list the site has now; the copy in the repository stands in if that cannot be read.
+      # A failure here never stops the deploy: the copy built into dist stays.
+      - run: npm run build:tools && node build/tools/scripts/coins.mjs --previous https://${{ github.repository_owner }}.github.io/coins.json --fallback src/app/public/coins.json --out dist/coins.json
+        continue-on-error: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

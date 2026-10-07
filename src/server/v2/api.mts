@@ -17,6 +17,7 @@ import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
 import { OrderBuilder, orderRow, type TakenFill } from '../../shared/orders.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, ABSORPTION_WINDOW_MS, MAX_ABSORPTION_INSTRUMENTS } from './absorption.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
+import { CoinList } from './coin-list.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
 import { TIMEFRAMES, aggregateCandles, aggregateOi, timeframeMs, withLiveOi, type CandleRow, type OiRow } from './series.mts';
 
@@ -72,6 +73,9 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   if (persist) { fs.mkdirSync(dataDir, { recursive: true }); store = new SqliteColumnStore(path.join(dataDir, 'depth-v2.sqlite')); }
   const recorder = new DepthRecorder({ store });
   const defaults = process.env.HLM_DEFAULT_VENUES;
+  // The coin list for the page's coin picker, rebuilt here daily (the server itself records BTC only).
+  const coins = persist ? new CoinList(path.join(dataDir, 'coins.json'), path.join(process.cwd(), 'dist', 'coins.json')) : null;
+  coins?.start();
   const extra = new ExtraVenues(persist ? path.join(dataDir, 'v2-venues.json') : null, undefined, !persist || defaults === 'configured' ? false : defaults === 'all' ? true : RECOMMENDED_EXTRA_VENUES);
   const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
@@ -348,6 +352,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/profile': profileRoute(url, res); return true;
           case '/api/v2/absorption': absorptionRoute(url, res); return true;
           case '/api/v2/venues': venuesRoute(res); return true;
+          case '/coins.json': return coins?.send(res) ?? false;
           default: return false;
         }
       } catch (error) {
@@ -357,7 +362,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
       }
     },
     close() {
-      clearInterval(loop); (app.server as Server).off('upgrade', onUpgrade);
+      clearInterval(loop); coins?.close(); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
       // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes and the open orders are written here).
       for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => absorption.close(), () => flowSources.close(), () => extra.close()]) {
