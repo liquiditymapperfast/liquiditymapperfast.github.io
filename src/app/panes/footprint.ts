@@ -162,6 +162,9 @@ export function imbalance(buy: number, sell: number): 'buy' | 'sell' | null {
   return low === 0 || high / low >= IMBALANCE_RATIO ? (buy > sell ? 'buy' : 'sell') : null;
 }
 
+/** The width in px of a candle's body in a slot of `slotPx`: most of the slot, never more than 40 px. Every candle has it, the one still forming too. */
+export const candleBody = (slotPx: number): number => Math.max(1, Math.min(slotPx * 0.72, 40));
+
 /**
  * Geometry of one candle slot with the footprint on, as offsets from the slot's left edge: the candle body sits at the
  * left (about a fifth of the slot, at most 44 px), the row column follows it.

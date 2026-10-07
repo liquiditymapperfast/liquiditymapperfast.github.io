@@ -19,7 +19,6 @@ import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
 import type { LtSeries } from '../lt.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
-import { FORMING_GAP_PX, candleBody, candleCentre } from '../candle-place.ts';
 import { panelSwitchRow, panelSwitchOn, setPanelSwitch } from '../sound/panel.ts';
 import { t, tn } from '../i18n.ts';
 
@@ -269,9 +268,7 @@ export class OiPane extends TimePane {
     for (const i of visible) { const b = oi[i]!; lo = Math.min(lo, b[3], b[4]); hi = Math.max(hi, b[2], b[4]); maxDelta = Math.max(maxDelta, Math.abs(analysis.delta[i]!)); }
     const pad = Math.max((hi - lo) * 0.18, hi * 0.0004), min = lo - pad, max = hi + pad;
     const y = (value: number) => 6 + (1 - (value - min) / (max - min)) * (lineBottom - 6);
-    // The sample of the candle still forming sits where its candle on the map does (see candleCentre); its change bar, like every other, covers its whole slot.
-    const now = Date.now(), msPerPx = (v.t1 - v.t0) / pw, bodyMs = candleBody(pw * tf / (v.t1 - v.t0)) * msPerPx, gapMs = FORMING_GAP_PX * msPerPx;
-    const xc = (i: number) => v.xOf(candleCentre(oi[i]![0], tf, now, bodyMs, gapMs), pw);
+    const xc = (i: number) => v.xOf(oi[i]![0] + tf / 2, pw);
     const first = Math.max(0, visible[0]! - 1), last = visible[visible.length - 1]!;
     const lastBar = oi[oi.length - 1]!, newestCandle = state.candles[state.candles.length - 1];
     const reachT = Math.min(v.t1, Math.max(lastBar[0] + tf, newestCandle ? newestCandle[0] + tf : 0));

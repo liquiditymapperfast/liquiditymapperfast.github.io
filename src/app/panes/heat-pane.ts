@@ -1,7 +1,6 @@
 import { HeatGL, type HeatStyle } from '../heatmap/gl.ts';
 import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow } from '../heatmap/window.ts';
-import { FORMING_GAP_PX, candleBody, candleCentre } from '../candle-place.ts';
 import { isCoarse } from '../device.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
@@ -17,7 +16,7 @@ import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
-import { FootprintData, FootprintLod, footprintLayout, paintFootprint, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
+import { FootprintData, FootprintLod, candleBody, footprintLayout, paintFootprint, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
@@ -452,8 +451,7 @@ export class HeatPane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, v = this.view, p = this.#palette;
     const slot = Math.max(1, pw * tf / (v.t1 - v.t0)), layout = footprintLayout(slot);
     const normal = candleBody(slot), body = Math.max(1, (normal + (Math.max(1, layout.body) - normal) * narrowing));
-    const msPerPx = (v.t1 - v.t0) / pw;
-    const { found } = this.#volumeAnalysis(state), emphasise = state.highlight.on, now = Date.now();
+    const { found } = this.#volumeAnalysis(state), emphasise = state.highlight.on;
     const bandH = Math.max(34, Math.min(ph * 0.17, 150)), floor = ph - 1;
     let max = 0;
     for (const c of state.candles) if (c[0] + tf >= v.t0 && c[0] <= v.t1) max = Math.max(max, c[5]);
@@ -466,11 +464,8 @@ export class HeatPane {
     for (let i = 0; i < state.candles.length; i++) {
       const c = state.candles[i]!; if (c[0] + tf < v.t0 || c[0] > v.t1) continue;
       const hot = emphasise && found.flag[i] === 1, color = c[4] >= c[1] ? p.candleUp : p.candleDown;
-      // The bar stands under its candle, wherever the candle is drawn (the one still forming is not in the middle of its slot: see candleCentre); the faint column marks the whole slot.
-      const slotMiddle = v.xOf(c[0] + tf / 2, pw), footprintAt = v.xOf(c[0], pw) + layout.candleCenter;
-      const xClassic = v.xOf(candleCentre(c[0], tf, now, normal * msPerPx, FORMING_GAP_PX * msPerPx), pw), x = xClassic + (footprintAt - xClassic) * narrowing;
-      const xSlot = slotMiddle + (footprintAt - slotMiddle) * narrowing;
-      if (hot) { ctx.globalAlpha = 0.07; ctx.fillStyle = color; ctx.fillRect(xSlot - Math.max(slot, body) / 2, 0, Math.max(slot, body), ph - bandH - 6); }
+      const xClassic = v.xOf(c[0] + tf / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing;
+      if (hot) { ctx.globalAlpha = 0.07; ctx.fillStyle = color; ctx.fillRect(x - Math.max(slot, body) / 2, 0, Math.max(slot, body), ph - bandH - 6); }
       const h = Math.max(1, c[5] / max * bandH);
       ctx.globalAlpha = !emphasise ? 0.6 : hot ? 1 : 0.4; ctx.fillStyle = color; ctx.fillRect(x - body / 2, floor - h, body, h);
       if (hot) { ctx.globalAlpha = 0.9; ctx.fillStyle = p.dark ? '#ffffff' : '#14171c'; ctx.fillRect(x - body / 2, floor - h - 1.5, body, 1.5); }
@@ -524,15 +519,15 @@ export class HeatPane {
     const bar = Math.max(1, pw * tf / (v.t1 - v.t0));
     // With the footprint on, the candle slides to the left of its slot and keeps a solid body, the row column takes the rest.
     const layout = footprintLayout(bar), normal = candleBody(bar);
-    const body = normal + (Math.max(1, layout.body) - normal) * narrowing, now = Date.now(), msPerPx = (v.t1 - v.t0) / pw;
+    const body = normal + (Math.max(1, layout.body) - normal) * narrowing;
     const volume = this.#volumeAnalysis(state), hot = (i: number) => state.highlight.on && volume.found.flag[i] === 1;
     // A contrasting halo/outline keeps candles legible over both pink and green heat; it fades out over the dimmed footprint view.
     const edge = p.dark ? 'rgba(255,255,255,0.92)' : 'rgba(18,20,24,0.92)', halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)', outline = 1 - 0.85 * narrowing;
     for (let ci = 0; ci < state.candles.length; ci++) {
       const c = state.candles[ci]!;
       if (c[0] + tf < v.t0 || c[0] > v.t1) continue;
-      // Every candle has the same body. The one still forming is not in the middle of its slot but follows the newest trade (see candleCentre), so its own trade bubbles are at its right edge or past it.
-      const xClassic = v.xOf(candleCentre(c[0], tf, now, normal * msPerPx, FORMING_GAP_PX * msPerPx), pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing, up = c[4] >= c[1];
+      // Every candle, the one still forming too, has the same body and stands in the middle of its slot, so the spacing is the same all along.
+      const xClassic = v.xOf(c[0] + tf / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing, up = c[4] >= c[1];
       const color = up ? p.candleUp : p.candleDown;
       const yh = v.yOf(c[2], ph), yl = v.yOf(c[3], ph), yo = v.yOf(c[1], ph), yc = v.yOf(c[4], ph), cx = Math.round(x) + 0.5;
       const top = Math.min(yo, yc), height = Math.max(1.5, Math.abs(yc - yo));

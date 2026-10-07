@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMBALANCE_RATIO, footprintLayout, heatmapShare, imbalance, readBar, validStats, volText, type Bar } from '../src/app/panes/footprint.ts';
+import { IMBALANCE_RATIO, candleBody, footprintLayout, heatmapShare, imbalance, readBar, validStats, volText, type Bar } from '../src/app/panes/footprint.ts';
 
 test('a row gets a bar only when one side dominates, on the dominant side', () => {
   assert.equal(imbalance(5.9e6, 13.4e6), 'sell', 'left number (sell) larger');
@@ -11,6 +11,11 @@ test('a row gets a bar only when one side dominates, on the dominant side', () =
   assert.equal(imbalance(0, 0), null);
   assert.equal(imbalance(IMBALANCE_RATIO * 1000, 1000), 'buy');
   assert.equal(imbalance(IMBALANCE_RATIO * 1000 - 1, 1000), null, 'just under the ratio');
+});
+
+test('every candle has the same body: most of its slot, at most 40 px, never under a pixel (the one still forming has it too)', () => {
+  assert.equal(candleBody(50), 36); assert.equal(candleBody(87), 40, 'a slot of 87 px: 72% would be 63, the cap is 40'); assert.equal(candleBody(120), 40); assert.equal(candleBody(0.5), 1);
+  assert.ok(candleBody(30) < 30, 'it never fills its slot');
 });
 
 test('candle and row column share the slot without overlapping', () => {
