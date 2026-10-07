@@ -1,8 +1,11 @@
 import { BROWSER_VENUES, type BrowserVenue } from '../../shared/venues.ts';
 import type { BookConnector, TradeEvent } from '../../shared/connector.ts';
 
-/** Venues whose trades the feed manager already carries: counting them here as well would count every trade twice. */
-const COVERED: ReadonlySet<string> = new Set(['binance', 'hyperliquid']);
+/**
+ * Venues whose trades already arrive another way: the feed manager carries Binance's and Hyperliquid's, and the spot markets of Bybit, OKX
+ * and Bitget are connector venues whose own sockets carry them. Running them here as well would open a second socket for the same trades.
+ */
+const COVERED: ReadonlySet<string> = new Set(['binance', 'hyperliquid', 'bybitspot', 'okxspot', 'bitgetspot']);
 /** A venue that is no longer wanted keeps its trade socket this long, so a venue picked off and on again does not reconnect. */
 const GRACE_MS = 60_000;
 

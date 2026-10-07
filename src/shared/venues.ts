@@ -89,11 +89,15 @@ export class BinancePerpConnector extends BookConnector {
 
 // ---- Bybit --------------------------------------------------------------------------------------------------------------------------
 
-/** Bybit USDT linear perpetual: orderbook.1000 snapshot then deltas (u counts up by one), and publicTrade on the same socket. */
-export class BybitConnector extends BookConnector {
-  readonly id = 'bybit'; readonly name = 'Bybit'; readonly symbol = 'BTCUSDT'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
+/**
+ * Bybit: orderbook.1000 snapshot then deltas (u counts up by one), and publicTrade on the same socket. The USDT linear perpetual and spot
+ * differ only by address; sizes are BTC in both.
+ */
+abstract class BybitBook extends BookConnector {
+  readonly symbol = 'BTCUSDT'; readonly quote = 'USDT';
+  protected abstract readonly category: 'linear' | 'spot';
   #u = 0;
-  protected url() { return 'wss://stream.bybit.com/v5/public/linear'; }
+  protected url() { return `wss://stream.bybit.com/v5/public/${this.category}`; }
   protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: ['orderbook.1000.BTCUSDT', 'publicTrade.BTCUSDT'] }); }
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping' }) }; }
   onMessage(text: string) {
@@ -119,21 +123,20 @@ export class BybitConnector extends BookConnector {
   }
   protected override reset() { super.reset(); this.#u = 0; }
 }
+export class BybitConnector extends BybitBook { readonly id = 'bybit'; readonly name = 'Bybit'; readonly marketType = 'perpetual' as const; protected readonly category = 'linear'; }
+/** Bybit spot BTC/USDT. Its `seq` names an order as on the perpetual (measured: 103 fills sharing one, never two sides or two times). */
+export class BybitSpotConnector extends BybitBook { readonly id = 'bybitspot'; readonly name = 'Bybit spot'; readonly marketType = 'spot' as const; protected readonly category = 'spot'; }
 
 // ---- OKX ----------------------------------------------------------------------------------------------------------------------------
 
-/** OKX USDT swap: sizes are contracts (0.01 BTC each, read from the instrument list when it answers); books chain on prevSeqId. */
-export class OkxConnector extends BookConnector {
-  readonly id = 'okx'; readonly name = 'OKX'; readonly symbol = 'BTC-USDT-SWAP'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
-  /** BTC per contract. */
-  contract = 0.01;
+/** OKX: books chain on prevSeqId, and trades on the same socket. Sizes are BTC times `contract`: 1 on spot, the swap's contract size there. */
+abstract class OkxBook extends BookConnector {
+  readonly quote = 'USDT';
+  /** BTC per unit of size. */
+  contract = 1;
   #seq = -1;
   protected url() { return 'wss://ws.okx.com:8443/ws/v5/public'; }
-  protected open(send: (p: unknown) => void) {
-    send({ op: 'subscribe', args: [{ channel: 'books', instId: this.symbol }, { channel: 'trades', instId: this.symbol }] });
-    void fetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${this.symbol}`, { signal: AbortSignal.timeout(10_000) })
-      .then(r => r.json() as Promise<{ data?: { ctVal?: string }[] }>).then(body => { const v = num(body.data?.[0]?.ctVal); if (v > 0) this.contract = v; }).catch(() => { /* the documented value stands */ });
-  }
+  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [{ channel: 'books', instId: this.symbol }, { channel: 'trades', instId: this.symbol }] }); }
   override keepalive() { return { everyMs: 20_000, frame: () => 'ping' }; }
   protected override usdOf(price: number, size: number) { return price * size * this.contract; }
   onMessage(text: string) {
@@ -161,15 +164,32 @@ export class OkxConnector extends BookConnector {
   }
   protected override reset() { super.reset(); this.#seq = -1; }
 }
+/** OKX USDT swap: sizes are contracts (0.01 BTC each, read from the instrument list when it answers). */
+export class OkxConnector extends OkxBook {
+  readonly id = 'okx'; readonly name = 'OKX'; readonly symbol = 'BTC-USDT-SWAP'; readonly marketType = 'perpetual' as const;
+  override contract = 0.01;
+  protected override open(send: (p: unknown) => void) {
+    super.open(send);
+    void fetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${this.symbol}`, { signal: AbortSignal.timeout(10_000) })
+      .then(r => r.json() as Promise<{ data?: { ctVal?: string }[] }>).then(body => { const v = num(body.data?.[0]?.ctVal); if (v > 0) this.contract = v; }).catch(() => { /* the documented value stands */ });
+  }
+}
+/** OKX spot BTC/USDT: sizes are BTC. */
+export class OkxSpotConnector extends OkxBook { readonly id = 'okxspot'; readonly name = 'OKX spot'; readonly symbol = 'BTC-USDT'; readonly marketType = 'spot' as const; }
 
 // ---- Bitget -------------------------------------------------------------------------------------------------------------------------
 
-/** Bitget USDT futures: books snapshot then updates chained on seq/pseq, and trades on the same socket. */
-export class BitgetConnector extends BookConnector {
-  readonly id = 'bitget'; readonly name = 'Bitget'; readonly symbol = 'BTCUSDT'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
+/**
+ * Bitget: books snapshot then updates chained on seq/pseq, and trades on the same socket. USDT futures and spot differ only by
+ * instType; sizes are BTC in both. On subscribing, the trade channel first sends the last 50 trades as a snapshot: they were made before
+ * this connection and some were already counted on the last one, so they are left out.
+ */
+abstract class BitgetBook extends BookConnector {
+  readonly symbol = 'BTCUSDT'; readonly quote = 'USDT';
+  protected abstract readonly instType: 'USDT-FUTURES' | 'SPOT';
   #seq = 0;
   protected url() { return 'wss://ws.bitget.com/v2/ws/public'; }
-  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'books', instId: this.symbol }, { instType: 'USDT-FUTURES', channel: 'trade', instId: this.symbol }] }); }
+  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [{ instType: this.instType, channel: 'books', instId: this.symbol }, { instType: this.instType, channel: 'trade', instId: this.symbol }] }); }
   override keepalive() { return { everyMs: 25_000, frame: () => 'ping' }; }
   onMessage(text: string) {
     if (text === 'pong') return;
@@ -177,6 +197,7 @@ export class BitgetConnector extends BookConnector {
     const channel = this.record(m.arg)?.channel;
     const data = Array.isArray(m.data) ? m.data : [];
     if (channel === 'trade') {
+      if (m.action === 'snapshot') return;
       for (const item of data) {
         const d = this.record(item); if (!d) continue;
         const price = num(d.price), amount = num(d.size), t = num(d.ts), side = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : null;
@@ -197,6 +218,8 @@ export class BitgetConnector extends BookConnector {
   }
   protected override reset() { super.reset(); this.#seq = 0; }
 }
+export class BitgetConnector extends BitgetBook { readonly id = 'bitget'; readonly name = 'Bitget'; readonly marketType = 'perpetual' as const; protected readonly instType = 'USDT-FUTURES'; }
+export class BitgetSpotConnector extends BitgetBook { readonly id = 'bitgetspot'; readonly name = 'Bitget spot'; readonly marketType = 'spot' as const; protected readonly instType = 'SPOT'; }
 
 // ---- Coinbase -----------------------------------------------------------------------------------------------------------------------
 
@@ -318,4 +341,22 @@ export const BROWSER_VENUES: readonly BrowserVenue[] = [
   { id: 'deribit', name: 'Deribit', kind: 'perp', recommended: true, probe: { url: 'https://www.deribit.com/api/v2/public/get_time' }, make: () => ({ book: new DeribitConnector(), feeds: [] }) },
   { id: 'binancespot', name: 'Binance spot', kind: 'spot', recommended: true, probe: { url: 'https://api.binance.com/api/v3/ping' }, make: () => ({ book: new BinanceSpotConnector(), feeds: [new BinanceSpotTrades()] }) },
   { id: 'coinbase', name: 'Coinbase', kind: 'spot', recommended: true, probe: { url: 'https://api.exchange.coinbase.com/time' }, make: () => ({ book: new CoinbaseConnector(), feeds: [] }) },
+  { id: 'bybitspot', name: 'Bybit spot', kind: 'spot', recommended: true, probe: { url: 'https://api.bybit.com/v5/market/time' }, make: () => ({ book: new BybitSpotConnector(), feeds: [] }) },
+  { id: 'okxspot', name: 'OKX spot', kind: 'spot', recommended: true, probe: { url: 'https://www.okx.com/api/v5/public/time' }, make: () => ({ book: new OkxSpotConnector(), feeds: [] }) },
+  { id: 'bitgetspot', name: 'Bitget spot', kind: 'spot', recommended: true, probe: { url: 'https://api.bitget.com/api/v2/public/time' }, make: () => ({ book: new BitgetSpotConnector(), feeds: [] }) },
 ];
+
+/** The venues there were before a saved choice recorded which venues it had seen. */
+const EARLIER_BROWSER_VENUES: readonly string[] = ['binance', 'bybit', 'okx', 'bitget', 'hyperliquid', 'deribit', 'binancespot', 'coinbase'];
+
+/**
+ * The venues to start for a saved choice: the venues it chose, and every recommended venue it had not seen (one added since, which a
+ * person who never opened the picker again would otherwise never get). A recommended venue it had seen and left out stays out. No saved
+ * choice: null, the recommended set.
+ */
+export function restoreSelection(selected: readonly string[] | null, known: readonly string[] | null, venues: readonly Pick<BrowserVenue, 'id' | 'recommended'>[] = BROWSER_VENUES): string[] | null {
+  if (!selected) return null;
+  const seen = new Set(known ?? EARLIER_BROWSER_VENUES), out = [...selected];
+  for (const venue of venues) if (venue.recommended && !seen.has(venue.id) && !out.includes(venue.id)) out.push(venue.id);
+  return out;
+}

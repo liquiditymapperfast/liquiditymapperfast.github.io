@@ -10,7 +10,8 @@ test('a few venues all get a chip; many get a handful and a menu, and one over t
   assert.deepEqual(chipPlan(names(5), INLINE_CHIPS), { shown: names(5), more: [] });
   assert.equal(chipPlan(names(INLINE_CHIPS + 1), INLINE_CHIPS).more.length, 0, '"+1" would save nothing');
   const many = chipPlan(names(20), INLINE_CHIPS);
-  assert.deepEqual(many.shown, names(8)); assert.equal(many.more.length, 12); assert.equal(many.more[0], 'v8');
+  assert.deepEqual(many.shown, names(INLINE_CHIPS)); assert.equal(many.more.length, 20 - INLINE_CHIPS); assert.equal(many.more[0], `v${INLINE_CHIPS}`);
+  assert.equal(INLINE_CHIPS, 11, 'the eleven recommended venues all show');
   assert.deepEqual(chipPlan(names(40), Infinity), { shown: names(40), more: [] }, 'the phone sheet has room for all');
   assert.deepEqual(chipPlan([], 8), { shown: [], more: [] });
 });

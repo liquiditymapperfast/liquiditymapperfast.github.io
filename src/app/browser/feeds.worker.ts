@@ -1,5 +1,5 @@
 import { BROWSER_RETENTION_MS, Engine } from '../../shared/engine.ts';
-import { BROWSER_VENUES } from '../../shared/venues.ts';
+import { BROWSER_VENUES, restoreSelection } from '../../shared/venues.ts';
 import type { ValuedBook } from '../../shared/levels.ts';
 import type { Print } from '../../shared/prints.ts';
 import { openRecordings, type Recordings } from './idb.ts';
@@ -60,7 +60,7 @@ function stopRecording(): void {
   post({ type: 'recording', recording: false, failed: true });
 }
 
-async function init(selected: string[] | null, persist: boolean): Promise<void> {
+async function init(selected: string[] | null, known: string[] | null, persist: boolean): Promise<void> {
   if (persist && typeof indexedDB !== 'undefined') {
     try { recordings = await withTimeout(openRecordings(Date.now() - BROWSER_RETENTION_MS, () => recording, error => { console.warn('recordings are no longer being saved:', error); stopRecording(); }), 5_000, 'opening the recordings'); }
     catch (error) { console.warn('recordings are not kept this session:', error); }
@@ -77,7 +77,7 @@ async function init(selected: string[] | null, persist: boolean): Promise<void> 
   next.onFlow = items => post({ type: 'flow', items });
   next.onAbsorption = found => post({ type: 'absorption', groups: found.groups, minutes: found.minutes });
   next.onStatus = venues => post({ type: 'status', venues });
-  next.select(selected ?? BROWSER_VENUES.filter(v => v.recommended).map(v => v.id));
+  next.select(restoreSelection(selected, known) ?? BROWSER_VENUES.filter(v => v.recommended).map(v => v.id));
   next.start();
   engine = next;
   post({ type: 'ready', persisted: recordings !== null });
@@ -106,7 +106,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
 
 scope.onmessage = event => {
   const message = event.data;
-  if (message.type === 'init') { init(message.selected, message.persist).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
+  if (message.type === 'init') { init(message.selected, message.known, message.persist).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
   if (!engine) { if (message.type === 'rpc') post({ type: 'rpc', id: message.id, error: 'the engine has not started' }); return; }
   if (message.type === 'select') engine.select(message.selected);
   else if (message.type === 'flush') { engine.flush(); void recordings?.flush(); }

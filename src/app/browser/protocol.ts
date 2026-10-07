@@ -26,7 +26,7 @@ export interface RpcResult {
 
 export type FeedsIn =
   /** Start the engine with these venues (null: the recommended set); `persist` keeps recordings in this browser (IndexedDB). */
-  | { type: 'init'; selected: string[] | null; persist: boolean }
+  | { type: 'init'; selected: string[] | null; known: string[] | null; persist: boolean }
   | { type: 'select'; selected: string[] }
   /** The page is going away: write what has not been saved. */
   | { type: 'flush' }

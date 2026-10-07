@@ -11,8 +11,8 @@ import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
 import { t } from './i18n.ts';
 
-/** Where a person's venue choice is kept between visits. */
-const SELECTION_KEY = 'lmf.venues';
+/** Where a person's venue choice is kept between visits, and the venues there were when it was made (so ones added since can start). */
+const SELECTION_KEY = 'lmf.venues', KNOWN_KEY = 'lmf.venues.known';
 /** How long the first bootstrap waits for a venue with a price, so the page opens on a market that has data. */
 const FIRST_PRICE_MS = 4_000;
 /** The words shown beside a venue that refuses this visitor's location. */
@@ -24,7 +24,15 @@ function savedSelection(): string[] | null {
     return Array.isArray(value) && value.every(id => typeof id === 'string') ? value : null;
   } catch { return null; }
 }
-function saveSelection(selected: readonly string[]): void { try { localStorage.setItem(SELECTION_KEY, JSON.stringify(selected)); } catch { /* private mode: the choice lasts for this visit */ } }
+function savedKnown(): string[] | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(KNOWN_KEY) ?? 'null') as unknown;
+    return Array.isArray(value) && value.every(id => typeof id === 'string') ? value : null;
+  } catch { return null; }
+}
+function saveSelection(selected: readonly string[], known: readonly string[]): void {
+  try { localStorage.setItem(SELECTION_KEY, JSON.stringify(selected)); if (known.length) localStorage.setItem(KNOWN_KEY, JSON.stringify(known)); } catch { /* private mode: the choice lasts for this visit */ }
+}
 
 function statusText(venue: VenueStatus): string {
   switch (venue.state) {
@@ -109,7 +117,7 @@ export class BrowserSource implements DataSource, VenueControl {
       // outstanding is failed either way (it may never be answered), and only the first case closes the door.
       if (this.#started) this.#rejectCalls(error); else this.#fail(error);
     };
-    this.#post({ type: 'init', selected: savedSelection(), persist });
+    this.#post({ type: 'init', selected: savedSelection(), known: savedKnown(), persist });
     // Recordings still queued are written as the page goes away.
     addEventListener('pagehide', () => this.#post({ type: 'flush' }));
   }
@@ -194,7 +202,7 @@ export class BrowserSource implements DataSource, VenueControl {
     return { venues: this.#statuses.map(toEntry), limit: null, recommendedKnown: true };
   }
   async apply(selected: readonly string[]): Promise<void> {
-    saveSelection(selected);
+    saveSelection(selected, this.#statuses.map(venue => venue.id));
     this.#post({ type: 'select', selected: [...selected] });
   }
   watch(listener: (venues: VenueEntry[]) => void): () => void {

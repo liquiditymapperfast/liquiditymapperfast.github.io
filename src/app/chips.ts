@@ -1,7 +1,7 @@
 import { familyKey, venueOfInstrument } from './cvd/families.ts';
 
-/** How many venue chips the full top bar shows before the rest go into a menu. */
-export const INLINE_CHIPS = 8;
+/** How many venue chips the full top bar shows before the rest go into a menu: the eleven recommended venues all show (measured: they fit at 1366 px). */
+export const INLINE_CHIPS = 11;
 
 export interface ChipPlan { shown: string[]; more: string[] }
 

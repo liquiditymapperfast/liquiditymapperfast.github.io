@@ -37,14 +37,28 @@ const SPECS: Readonly<Record<string, CandleSpec>> = {
     intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' }, limit: 1000,
     page: async (i, _ms, end, get) => list(at(await get(`https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=${i}&end=${end}&limit=1000`), 'result', 'list')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
   },
+  bybitspot: {
+    intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' }, limit: 1000,
+    page: async (i, _ms, end, get) => list(at(await get(`https://api.bybit.com/v5/market/kline?category=spot&symbol=BTCUSDT&interval=${i}&end=${end}&limit=1000`), 'result', 'list')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+  },
   okx: {
     intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 300,
     // volCcy (column 6) is in coin; the plain volume is in contracts.
     page: async (i, _ms, end, get) => list(at(await get(`https://www.okx.com/api/v5/market/history-candles?instId=BTC-USDT-SWAP&bar=${i}&after=${end + 1}&limit=100`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 6))),
   },
+  okxspot: {
+    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 300,
+    // On spot the plain volume (column 5) is in coin; volCcy is in USDT.
+    page: async (i, _ms, end, get) => list(at(await get(`https://www.okx.com/api/v5/market/history-candles?instId=BTC-USDT&bar=${i}&after=${end + 1}&limit=100`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+  },
   bitget: {
     intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 1000,
     page: async (i, _ms, end, get) => list(at(await get(`https://api.bitget.com/api/v2/mix/market/candles?symbol=BTCUSDT&productType=usdt-futures&granularity=${i}&endTime=${end}&limit=1000`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+  },
+  bitgetspot: {
+    // Spot names its intervals unlike futures (1min, not 1m).
+    intervals: { 60_000: '1min', 300_000: '5min', 900_000: '15min', 1_800_000: '30min', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1Dutc' }, limit: 1000,
+    page: async (i, _ms, end, get) => list(at(await get(`https://api.bitget.com/api/v2/spot/market/candles?symbol=BTCUSDT&granularity=${i}&endTime=${end}&limit=1000`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
   },
   coinbase: {
     intervals: { 60_000: '60', 300_000: '300', 900_000: '900', 3_600_000: '3600', 21_600_000: '21600', 86_400_000: '86400' }, limit: 300,
