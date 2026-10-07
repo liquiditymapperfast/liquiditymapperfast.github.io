@@ -11,6 +11,7 @@ import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { t } from './i18n.ts';
 import type { ProfileAnswer } from '../shared/footprint.ts';
 import { AbsorptionBook } from './absorption.ts';
+import { MAX_ABSORPTION_INSTRUMENTS } from '../shared/absorption.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -255,7 +256,9 @@ export class Hub {
    * asked once per window and the live stream keeps it current: again when the window leaves what was asked, a threshold falls under what
    * it was asked from, or the stream reconnected. A source that cannot answer (an older server) is asked again a minute later.
    */
-  ensureAbsorption(ids: readonly string[], thresholds: readonly (number | null)[], view: Bounds, sdMinutes: number): void {
+  ensureAbsorption(allIds: readonly string[], allThresholds: readonly (number | null)[], view: Bounds, sdMinutes: number): void {
+    // More instruments than one question may name is more markets than any page has; the first are asked about.
+    const ids = allIds.slice(0, MAX_ABSORPTION_INSTRUMENTS), thresholds = allThresholds.slice(0, MAX_ABSORPTION_INSTRUMENTS);
     if (this.#absorptionLoading || !ids.length || !(view.t1 > view.t0)) return;
     const now = Date.now(), MIN = 60_000;
     if (this.absorptionState === 'unavailable' && now < this.#absorptionRetryAt) return;

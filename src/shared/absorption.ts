@@ -11,9 +11,12 @@
  *    the window sums of the recent past: per price and side, a window opens at a fill and takes the fills up to its opening time plus the
  *    window, and the next fill after that opens the next one.
  *
- * Times are the exchange's, never going backwards within an instrument (a fill stamped earlier than the one before it counts at the time
- * of the one before, and one stamped inside a minute already settled counts at that minute's end), and fills arrive here after duplicates are removed (a replayed fill would otherwise add to every sum). A sum does not
- * depend on how a venue splits an order into fills, unlike a size floor on single prints.
+ * Times are the exchange's, never going backwards within an instrument: a fill stamped a little earlier than one already seen (feeds
+ * deliver a few milliseconds out of order) counts at the time of that one. A fill stamped more than `LATE_MS` earlier, or inside a minute
+ * already settled, is left out: it is history arriving late (some venues send their recent trades again when a feed connects, newest
+ * first), and moving it forward would sum trades minutes apart as if they met in one window. Fills arrive here after duplicates are
+ * removed (a replayed fill would otherwise add to every sum). A sum does not depend on how a venue splits an order into fills, unlike a
+ * size floor on single prints.
  *
  * What is kept: the threshold is the page's to choose, and changing it re-judges the whole history, so the recorder keeps candidates rather
  * than marks. A candidate group is a run of fills at one price and side with gaps no longer than the window, with its largest credit at
@@ -29,6 +32,10 @@ export const ABSORPTION_WINDOW_MS = 10;
 export const GROUP_FLOOR_USD = 25_000;
 /** The most groups kept per instrument per minute: the largest. */
 export const GROUPS_PER_MINUTE = 10;
+/** How far behind an instrument's clock a fill may be stamped and still count (at the clock). Live feeds measured: at most 25 ms. */
+export const LATE_MS = 250;
+/** The most instruments one history question may name (the page asks about every market it knows). */
+export const MAX_ABSORPTION_INSTRUMENTS = 200;
 const MINUTE = 60_000;
 /** An instrument with nothing new for this long (by the receiving clock) has its runs and windows closed. */
 const QUIET_MS = 500;
@@ -108,8 +115,10 @@ interface MinuteState { n: number; mean: number; m2: number; floor: number; grou
 class InstrumentState {
   clock = -Infinity;
   lastSeenAt = 0;
-  /** The end of the last minute settled: no fill may be counted before it (its row is written and final). */
+  /** The end of the last minute settled: a fill stamped before it is left out (its row is written and final). */
   settledUntil = -Infinity;
+  /** Fills left out for being stamped too far behind the clock or inside a settled minute. */
+  late = 0;
   /** The fills of the last window, per side and price ("buy|83000.5"): only these can still be in a window. */
   readonly recent = new Map<string, Fill[]>();
   /** The open runs and windows, per side and price. */
@@ -151,8 +160,10 @@ export class AbsorptionRecorder {
   add(id: string, t: number, price: number, usd: number, side: 'buy' | 'sell'): void {
     if (!id || !(price > 0) || !(usd > 0) || !Number.isFinite(t) || (side !== 'buy' && side !== 'sell')) return;
     let s = this.#instruments.get(id); if (!s) { s = new InstrumentState(); this.#instruments.set(id, s); }
+    // Also older than what memory answers for: the store holds that time, and a venue sending hours-old trades again must not add to it.
+    if (t < s.clock - LATE_MS || t < s.settledUntil || t < this.#memoryFrom) { s.late++; return; }
     s.lastSeenAt = this.now();
-    const at = Math.max(t, s.clock, s.settledUntil); s.clock = at;
+    const at = Math.max(t, s.clock); s.clock = at;
     const W = this.windowMs, key = `${side}|${price}`;
     // Runs and windows this fill's time has left behind are complete.
     this.#closePast(id, s, at);
@@ -203,7 +214,8 @@ export class AbsorptionRecorder {
     for (const [t, m] of s.minutes) {
       if (t + MINUTE > clock - MINUTE_SETTLE_MS || t + MINUTE > openFrom) continue;
       const row: AbsorptionMinute = { id, t, n: m.n, mean: m.mean, m2: m.m2, floor: m.floor };
-      this.#remember(row); this.#freshMinutes.push(row); this.#unsavedMinutes.push(row);
+      // The first row of a minute stands: after a restart, trades a venue sends again would otherwise replace a whole minute with a part.
+      if (this.#remember(row)) { this.#freshMinutes.push(row); this.#unsavedMinutes.push(row); }
       this.#unsavedGroups.push(...m.groups);
       s.minutes.delete(t); s.settledUntil = Math.max(s.settledUntil, t + MINUTE);
     }
@@ -238,10 +250,16 @@ export class AbsorptionRecorder {
     this.#freshGroups.push(group); this.#memoryGroups.push(group);
   }
 
-  #remember(m: AbsorptionMinute): void {
+  /** Hold a settled minute; false when one for that instrument and time is held already (the first stands). */
+  #remember(m: AbsorptionMinute): boolean {
     let byTime = this.#memoryMinutes.get(m.id); if (!byTime) { byTime = new Map(); this.#memoryMinutes.set(m.id, byTime); }
+    if (byTime.has(m.t)) return false;
     byTime.set(m.t, m);
+    return true;
   }
+
+  /** Fills of `id` left out for being stamped too far behind its clock or inside a settled minute. */
+  lateFills(id: string): number { return this.#instruments.get(id)?.late ?? 0; }
 
   /** Groups found and minutes settled since the last call (for the live stream). */
   takeFresh(): { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] } {
@@ -279,8 +297,12 @@ export class AbsorptionRecorder {
     // One more than the limit, so an instrument with exactly `limit` groups is not reported as cut.
     if (this.#store && from < this.#memoryFrom) found.push(...await this.#store.query(ids, mins, from, Math.min(to, this.#memoryFrom), limit + 1));
     for (const g of this.#memoryGroups) if (g.t0 >= split && g.t0 < to && peakOf(g) >= (min.get(g.id) ?? Infinity)) found.push(g);
-    const byId = new Map<string, AbsorptionGroup[]>();
-    for (const g of found) { let list = byId.get(g.id); if (!list) { list = []; byId.set(g.id, list); } list.push(g); }
+    // A group found again (trades sent again after a restart) is one group: the store keeps one row, and memory may hold both.
+    const byId = new Map<string, AbsorptionGroup[]>(), keys = new Set<string>();
+    for (const g of found) {
+      const key = `${g.id}|${g.side}|${g.price}|${g.t0}`; if (keys.has(key)) continue; keys.add(key);
+      let list = byId.get(g.id); if (!list) { list = []; byId.set(g.id, list); } list.push(g);
+    }
     const groups: AbsorptionGroup[] = [], capped: string[] = [];
     for (const [id, list] of byId) { list.sort((a, b) => peakOf(b) - peakOf(a)); if (list.length > limit) capped.push(id); groups.push(...list.slice(0, limit)); }
     const floors: Record<string, number> = {};

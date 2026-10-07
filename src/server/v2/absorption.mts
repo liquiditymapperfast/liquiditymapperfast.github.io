@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { AbsorptionRecorder as AbsorptionCore, peakOf, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStep, type AbsorptionStore } from '../../shared/absorption.ts';
 
-export { ABSORPTION_WINDOW_MS, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute } from '../../shared/absorption.ts';
+export { ABSORPTION_WINDOW_MS, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, MAX_ABSORPTION_INSTRUMENTS, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute } from '../../shared/absorption.ts';
 
 type GroupRow = { inst: string; t0: number; side: string; price: number; steps: string };
 type MinuteRow = { inst: string; t: number; n: number; mean: number; m2: number; floor: number };
@@ -32,6 +32,10 @@ class SqliteAbsorptionStore implements AbsorptionStore {
       CREATE INDEX IF NOT EXISTS absorption_groups_t0 ON absorption_groups(t0);
       CREATE INDEX IF NOT EXISTS absorption_groups_inst_t0 ON absorption_groups(inst, t0);
       CREATE TABLE IF NOT EXISTS absorption_minutes (inst TEXT NOT NULL, t INTEGER NOT NULL, n INTEGER NOT NULL, mean REAL NOT NULL, m2 REAL NOT NULL, floor REAL NOT NULL, PRIMARY KEY (inst, t));`);
+    // One row per group: a group found again (trades a venue sent again after a restart) is not drawn twice. A table from before this
+    // index loses its copies first.
+    this.#db.exec(`DELETE FROM absorption_groups WHERE rowid NOT IN (SELECT MIN(rowid) FROM absorption_groups GROUP BY inst, t0, side, price);
+      CREATE UNIQUE INDEX IF NOT EXISTS absorption_groups_key ON absorption_groups(inst, t0, side, price);`);
   }
   load(since: number): { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] } {
     const groups = (this.#db.prepare('SELECT inst, t0, side, price, steps FROM absorption_groups WHERE t0 >= ? ORDER BY t0').all(since) as GroupRow[]).flatMap(row => asGroup(row) ?? []);
@@ -48,8 +52,9 @@ class SqliteAbsorptionStore implements AbsorptionStore {
   }
   save(groups: AbsorptionGroup[], minutes: AbsorptionMinute[], expireBefore: number): void {
     const db = this.#db;
-    const group = db.prepare('INSERT INTO absorption_groups (inst, t0, side, price, peak, steps) VALUES (?, ?, ?, ?, ?, ?)');
-    const minute = db.prepare('INSERT OR REPLACE INTO absorption_minutes (inst, t, n, mean, m2, floor) VALUES (?, ?, ?, ?, ?, ?)');
+    // The first row stands, for groups and minutes alike (see the recorder).
+    const group = db.prepare('INSERT OR IGNORE INTO absorption_groups (inst, t0, side, price, peak, steps) VALUES (?, ?, ?, ?, ?, ?)');
+    const minute = db.prepare('INSERT OR IGNORE INTO absorption_minutes (inst, t, n, mean, m2, floor) VALUES (?, ?, ?, ?, ?, ?)');
     db.exec('BEGIN');
     try {
       for (const g of groups) group.run(g.id, g.t0, g.side, g.price, peakOf(g), JSON.stringify(g.steps));

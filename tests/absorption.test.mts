@@ -123,7 +123,7 @@ test('each minute keeps its largest groups, and the floor says under which credi
   assert.deepEqual(book.incomplete(new Map([['a:BTC', null]])), [], 'no threshold, nothing claimed');
 });
 
-test('times never go back: a fill stamped early counts at the clock, one inside a settled minute at its end, and a computer clock ahead of the exchange settles nothing early', () => {
+test('times never go back: a fill stamped a little early counts at the clock, one inside a settled minute is left out, and a computer clock ahead of the exchange settles nothing early', () => {
   let now = 0;
   const recorder = new AbsorptionRecorder(null, () => now, { perMinute: 100 });
   now = T0 + 10_050; recorder.add('a:BTC', T0 + 10_000, 100, 20_000, 'buy');
@@ -141,7 +141,50 @@ test('times never go back: a fill stamped early counts at the clock, one inside 
   now += 50; recorder.add('a:BTC', T0 + 59_500, 103, 1_000, 'buy');
   now += 70_000; recorder.step();
   fresh = recorder.takeFresh();
-  assert.deepEqual(fresh.minutes.map(m => [m.t, m.n]), [[T0 + MIN, 1]], 'a fill stamped inside the settled minute counts at its end: the row is never written twice');
+  assert.deepEqual(fresh.minutes, [], 'a fill stamped inside the settled minute is left out: the row is never written twice');
+  assert.equal(recorder.lateFills('a:BTC'), 1);
+});
+
+test('recent trades a venue sends again when its feed connects, newest first, are not summed as if they met in one window', () => {
+  let now = T0 + 20_000;
+  const recorder = new AbsorptionRecorder(null, () => now);
+  // Ten trades of $20,000 at one price, a second apart, delivered at once and newest first: moved forward, they would be one $200,000 window.
+  for (let i = 0; i < 10; i++) recorder.add('a:BTC', T0 + 10_000 - i * 1_000, 100, 20_000, 'sell');
+  assert.equal(recorder.lateFills('a:BTC'), 9, 'all but the newest are history arriving late');
+  // Live trading after it counts as ever.
+  now += 100; recorder.add('a:BTC', T0 + 10_050, 100, 15_000, 'sell'); recorder.add('a:BTC', T0 + 10_055, 100, 15_000, 'sell');
+  now += 10 * MIN; recorder.step();
+  assert.deepEqual(recorder.takeFresh().groups.map(g => [g.t0, peakOf(g)]), [[T0 + 10_050, 30_000]], 'only the live pair, not the replay');
+});
+
+test('trades sent again after a restart add nothing: the first row of a minute stands and a group is kept once', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'absorption-')), db = path.join(dir, 'depth.sqlite');
+  const fills: [number, number, number][] = [[T0, 100, 30_000], [T0 + 2, 100, 20_000], [T0 + 5_000, 101, 40_000]];
+  let now = T0;
+  const first = new SqliteAbsorptionRecorder(db, () => now);
+  for (const [t, price, usd] of fills) { now = t + 50; first.add('x:BTC', t, price, usd, 'buy'); }
+  now = T0 + 5 * MIN; first.close();
+  // A restart a little later (memory holds the last two hours), and the venue sends the last two trades again.
+  const second = new SqliteAbsorptionRecorder(db, () => now);
+  try {
+    for (const [t, price, usd] of fills.slice(1)) second.add('x:BTC', t, price, usd, 'buy');
+    now += 10 * MIN; second.step();
+    assert.deepEqual(second.takeFresh().minutes, [], 'the minute is held: the part sent again does not replace it');
+    second.flush();
+    const answer = await second.query(['x:BTC'], [25_000], T0 - MIN, T0 + MIN, 10, T0 - MIN);
+    assert.deepEqual(answer.groups.map(peakOf), [50_000, 40_000], 'each group once');
+    assert.deepEqual(answer.minutes.map(m => [m.t, m.n, m.mean]), [[T0, 2, 45_000]], 'the minute as first recorded (windows of $50,000 and $40,000)');
+  } finally { second.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a page book that is full lets its smallest groups go and says which thresholds that leaves incomplete', () => {
+  const book = new AbsorptionBook(10), T = Math.floor(Date.now() / MIN) * MIN;
+  book.load({ groups: [], floors: { 'a:BTC': 25_000 }, minutes: [], capped: [] });
+  book.add(Array.from({ length: 12 }, (_, i): AbsorptionGroup => ({ id: 'a:BTC', side: 'buy', price: 100 + i, t0: T + i, steps: [[30_000 + i * 1_000, 30_000 + i * 1_000, 1, T + i, T + i]] })));
+  assert.equal(book.size, 9, 'down to nine tenths');
+  assert.deepEqual(book.incomplete(new Map([['a:BTC', 31_000]])), ['a:BTC'], 'the $30,000 to $32,000 groups are gone');
+  assert.deepEqual(book.incomplete(new Map([['a:BTC', 32_000]])), []);
+  assert.deepEqual(book.marks(['a:BTC'], new Map([['a:BTC', 30_000]]), T - MIN, T + MIN, 0, 1e6).map(m => m.peak).sort(), [33_000, 34_000, 35_000, 36_000, 37_000, 38_000, 39_000, 40_000, 41_000]);
 });
 
 test('the server store keeps groups and minutes across a restart and answers each instrument from its own threshold, the largest first', async () => {
@@ -188,7 +231,7 @@ test('/api/v2/absorption answers per instrument from its own threshold and refus
     const answer = parseAbsorptionAnswer(reply.body, ['x:BTC', 'y:BTC']);
     assert.ok(answer, 'the shape the page checks for');
     assert.deepEqual(answer!.groups.map(g => [g.id, g.side, peakOf(g)]), [['x:BTC', 'sell', 90_000], ['y:BTC', 'sell', 60_000]], 'x from 50k: its 40k group is not asked for');
-    const many = Array.from({ length: 49 }, (_, i) => `i${i}:BTC`).join(',');
+    const many = Array.from({ length: 201 }, (_, i) => `i${i}:BTC`).join(',');   // more than one question may name
     for (const query of ['', `inst=${many}`, `inst=x:BTC,y:BTC&min=1,2,3`, `inst=x:BTC&min=-1`, `inst=x:BTC&min=abc`, `inst=x:BTC&limit=0`, `inst=x:BTC&limit=20001`, `inst=x:BTC&limit=1.5`,
       `inst=x:BTC&since=${Date.now() - 26 * 3_600_000}`, `inst=x:BTC&from=${to}&to=${from}`, `inst=x:BTC&from=${to - 9 * 24 * 3_600_000}&to=${to}`]) {
       assert.equal((await get(query)).status, 400, query);
