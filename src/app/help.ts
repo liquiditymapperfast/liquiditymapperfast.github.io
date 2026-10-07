@@ -7,7 +7,7 @@ import { t } from './i18n.ts';
  * What each part of the page is, in two sizes: a one-sentence tooltip (`tip`) and a short explanation (`body`) behind a "?" button,
  * with the section of the guide that goes further. Tooltips, "?" panels and the guide all read from here so they cannot disagree.
  */
-export type HelpId = 'profile' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book';
+export type HelpId = 'profile' | 'traded' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book';
 
 export interface HelpTopic {
   title: string;
@@ -25,6 +25,11 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     tip: t('The column at the right edge of the chart: how much liquidity is resting at each price right now, added up over the enabled venues. Pink are asks (sellers waiting above), green are bids (buyers waiting below).'),
     body: [t('The profile is the heatmap collapsed into one moment: for every price, the total size of the orders waiting there right now, summed over the enabled venues. Long bars are walls.'),
       t('Hover it and the Mirror comparison appears (switch that off with the Mirror button).')],
+  },
+  traded: {
+    title: t('Traded volume'), guide: 'profile',
+    tip: t('A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.'),
+    body: [],
   },
   depth: {
     title: t('Depth'), guide: 'lower-panes',

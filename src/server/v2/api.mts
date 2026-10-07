@@ -9,7 +9,7 @@ import { DepthRecorder, COLUMN_MS, SAMPLE_MS, STALE_MS } from './recorder.mts';
 import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
-import { MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS } from '../../shared/footprint.ts';
+import { MAX_PROFILE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS } from '../../shared/footprint.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
@@ -259,6 +259,16 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (!windows.length || windows.length > MAX_SIZES_WINDOWS || windows.some(m => !Number.isInteger(m) || m < 1 || m > MAX_SIZES_MINUTES)) return sendJson(res, { error: `minutes must be 1 to ${MAX_SIZES_WINDOWS} whole numbers from 1 to ${MAX_SIZES_MINUTES}` }, 400);
     sendJson(res, footprint.sizes(ids, windows));
   };
+  /** Traded volume by price for some instruments over a window (the page's traded-volume column). */
+  const profileRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
+    if (!ids.length || ids.length > MAX_PROFILE_INSTRUMENTS) return sendJson(res, { error: `inst must name 1 to ${MAX_PROFILE_INSTRUMENTS} instruments` }, 400);
+    const span = windowOf(url, Date.now() + 60_000, 3_600_000); if (!span) return sendJson(res, { error: BAD_WINDOW }, 400);
+    if (span.to - span.from > MAX_COLUMN_SPAN_MS) return sendJson(res, { error: 'the window may be at most eight days' }, 400);
+    const step = Number(url.searchParams.get('step'));
+    if (!(step > 0) || !Number.isFinite(step)) return sendJson(res, { error: 'step must be a positive number' }, 400);
+    sendJson(res, footprint.profile(ids, span.from, span.to, step));
+  };
   const flowRoute = (url: URL, res: ServerResponse) => {
     const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean).slice(0, MAX_FLOW_INSTRUMENTS);
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_FLOW_SPAN_MS);
@@ -302,6 +312,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/prints': printsRoute(url, res); return true;
           case '/api/v2/flow': flowRoute(url, res); return true;
           case '/api/v2/sizes': sizesRoute(url, res); return true;
+          case '/api/v2/profile': profileRoute(url, res); return true;
           case '/api/v2/venues': venuesRoute(res); return true;
           default: return false;
         }

@@ -689,5 +689,17 @@
  "Order sizes are not available from this server.": "Los tamaños de orden no están disponibles en este servidor.",
  "Average price": "Precio medio",
  "Fills": "Ejecuciones",
- "Prices reached": "Precios alcanzados"
+ "Prices reached": "Precios alcanzados",
+ "Traded": "Negociado",
+ "Traded volume": "Volumen negociado",
+ "A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.": "Una columna junto al perfil: cuánto se compró y vendió a mercado a cada precio durante el tiempo del mapa, en las bolsas que cuenta la columna de flujo. Junto a la liquidez en reposo, muestra qué niveles han cambiado de manos de verdad.",
+ "TRADED": "NEGOCIADO",
+ "TRADED {value}": "NEGOCIADO {value}",
+ "ROW MAX {value}": "FILA MÁX {value}",
+ "since {time}": "desde {time}",
+ "not on this server": "no en este servidor",
+ "Nothing traded at these prices in this window.": "No se negoció nada a estos precios en este intervalo.",
+ "Bought at market": "Comprado a mercado",
+ "Sold at market": "Vendido a mercado",
+ "Recorded since {time}: the window reaches back further than the recording.": "Grabado desde {time}: el intervalo llega más atrás que la grabación."
 }

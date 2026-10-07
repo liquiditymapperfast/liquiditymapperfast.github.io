@@ -673,5 +673,17 @@
  "Order sizes are not available from this server.": "このサーバーでは注文サイズを取得できません。",
  "Average price": "平均価格",
  "Fills": "約定数",
- "Prices reached": "到達価格"
+ "Prices reached": "到達価格",
+ "Traded": "約定量",
+ "Traded volume": "約定量",
+ "A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.": "プロファイルの横の列：マップに表示されている期間に、各価格で成行で買われた量と売られた量です（フロー列が数える取引所の合計）。待機中の流動性と並べると、実際に取引された価格帯が分かります。",
+ "TRADED": "約定量",
+ "TRADED {value}": "約定量 {value}",
+ "ROW MAX {value}": "行最大 {value}",
+ "since {time}": "{time} から",
+ "not on this server": "このサーバーでは不可",
+ "Nothing traded at these prices in this window.": "この期間、この価格帯では約定がありません。",
+ "Bought at market": "成行買い",
+ "Sold at market": "成行売り",
+ "Recorded since {time}: the window reaches back further than the recording.": "{time} から記録：この期間は記録より前までさかのぼっています。"
 }

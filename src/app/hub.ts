@@ -9,6 +9,7 @@ import type { Bounds } from './view.ts';
 import type { LtParams, LtSeries } from './lt.ts';
 import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { t } from './i18n.ts';
+import type { ProfileAnswer } from '../shared/footprint.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -60,6 +61,12 @@ export class Hub {
   columnStepMs = MINUTE;
   onColumns: () => void = () => {};
   busyMs = 0;
+  /** The traded-volume column's last answer, the row step it was asked on, and whether the source can answer at all. */
+  traded: { step: number; answer: ProfileAnswer } | null = null;
+  tradedState: 'ready' | 'unavailable' = 'ready';
+  /** Called when the traded-volume column has a new answer (or the source said it has none). */
+  onTraded: () => void = () => {};
+  #tradedLoading = false; #tradedAsked = ''; #tradedAt = 0; #tradedRetryAt = 0;
   /** Oldest recorded depth minute across instruments (ms), or 0 when nothing is recorded. */
   recordedSince = 0;
   /** Instrument with candle history to fall back to when the selected market has none. */
@@ -224,6 +231,24 @@ export class Hub {
     const connection = this.#connection;
     // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
     this.source.prints(from, to).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+  }
+
+  /**
+   * Make sure the traded-volume column has an answer for these instruments, this window (whole minutes) and this row step. Safe to call
+   * every frame: one request at a time, a new one when the question changes, and every five seconds while the map follows the live edge (the
+   * open minute keeps trading). A source that cannot answer (an older server) is asked again a minute later.
+   */
+  ensureTraded(ids: readonly string[], from: number, to: number, step: number, live: boolean): void {
+    if (this.#tradedLoading || !ids.length || !(to > from) || !(step > 0)) return;
+    const now = Date.now();
+    if (this.tradedState === 'unavailable' && now < this.#tradedRetryAt) return;
+    const key = `${ids.join(',')}|${step}|${from}|${to}`;
+    if (key === this.#tradedAsked && !(live && now - this.#tradedAt >= 5_000)) return;
+    this.#tradedLoading = true; this.#tradedAsked = key; this.#tradedAt = now;
+    this.source.profile([...ids], from, to, step).then(
+      answer => { this.traded = { step, answer }; this.tradedState = 'ready'; this.onTraded(); },
+      () => { this.tradedState = 'unavailable'; this.#tradedRetryAt = Date.now() + 60_000; this.#tradedAsked = ''; this.onTraded(); },
+    ).finally(() => { this.#tradedLoading = false; });
   }
 
   /**

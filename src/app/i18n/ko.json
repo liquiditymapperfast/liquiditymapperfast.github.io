@@ -673,5 +673,17 @@
  "Order sizes are not available from this server.": "이 서버에서는 주문 크기를 가져올 수 없습니다.",
  "Average price": "평균 가격",
  "Fills": "체결 수",
- "Prices reached": "도달 가격"
+ "Prices reached": "도달 가격",
+ "Traded": "체결량",
+ "Traded volume": "체결량",
+ "A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.": "프로파일 옆의 열: 지도에 보이는 기간 동안 각 가격에서 시장가로 매수·매도된 양입니다(플로우 열이 세는 거래소 합계). 대기 중인 유동성과 나란히 보면 실제로 거래된 가격대를 알 수 있습니다.",
+ "TRADED": "체결량",
+ "TRADED {value}": "체결량 {value}",
+ "ROW MAX {value}": "행 최대 {value}",
+ "since {time}": "{time}부터",
+ "not on this server": "이 서버에서는 불가",
+ "Nothing traded at these prices in this window.": "이 기간에 이 가격대에서는 체결이 없습니다.",
+ "Bought at market": "시장가 매수",
+ "Sold at market": "시장가 매도",
+ "Recorded since {time}: the window reaches back further than the recording.": "{time}부터 기록됨: 이 기간은 기록보다 더 이전까지 거슬러 올라갑니다."
 }

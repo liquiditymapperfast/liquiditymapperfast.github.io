@@ -693,5 +693,17 @@
  "Order sizes are not available from this server.": "Размеры ордеров недоступны на этом сервере.",
  "Average price": "Средняя цена",
  "Fills": "Исполнения",
- "Prices reached": "Достигнутые цены"
+ "Prices reached": "Достигнутые цены",
+ "Traded": "Объём",
+ "Traded volume": "Исполненный объём",
+ "A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.": "Столбец рядом с профилем: сколько было куплено и продано по рынку на каждой цене за время на карте, на биржах, которые учитывает столбец потока. Рядом с ожидающей ликвидностью он показывает, какие уровни действительно сменили владельца.",
+ "TRADED": "ОБЪЁМ",
+ "TRADED {value}": "ОБЪЁМ {value}",
+ "ROW MAX {value}": "СТРОКА МАКС {value}",
+ "since {time}": "с {time}",
+ "not on this server": "нет на этом сервере",
+ "Nothing traded at these prices in this window.": "За это время по этим ценам сделок не было.",
+ "Bought at market": "Куплено по рынку",
+ "Sold at market": "Продано по рынку",
+ "Recorded since {time}: the window reaches back further than the recording.": "Записано с {time}: окно начинается раньше записи."
 }

@@ -1,6 +1,6 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
-import { parseSizes, type SizesAnswer } from '../shared/footprint.ts';
+import { parseProfile, parseSizes, type ProfileAnswer, type SizesAnswer } from '../shared/footprint.ts';
 import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
@@ -44,6 +44,14 @@ export async function getSizes(ids: string[], windows: number[]): Promise<SizesA
   if (!response.ok) throw new Error(`sizes failed: ${response.status}`);
   const answer = parseSizes(await response.json().catch(() => null), windows);
   if (!answer) throw new Error('sizes answered with something else');
+  return answer;
+}
+/** Traded volume by price for these instruments over [from, to); an older server without the route rejects (404). */
+export async function getProfile(ids: string[], from: number, to: number, rowStep: number): Promise<ProfileAnswer> {
+  const response = await fetch(`/api/v2/profile?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}&step=${rowStep}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`profile failed: ${response.status}`);
+  const answer = parseProfile(await response.json().catch(() => null), ids);
+  if (!answer) throw new Error('profile answered with something else');
   return answer;
 }
 /** Recorded columns for any number of instruments: the server serves a bounded number per request, so longer lists are split and merged. */

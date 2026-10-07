@@ -2,7 +2,7 @@ import type { VenueStatus } from '../shared/engine.ts';
 import type { FlowFrame } from '../shared/flow.ts';
 import { TIMEFRAMES } from '../shared/series.ts';
 import { toWire } from '../shared/prints.ts';
-import { parseSizes, type SizesAnswer } from '../shared/footprint.ts';
+import { parseProfile, parseSizes, type ProfileAnswer, type SizesAnswer } from '../shared/footprint.ts';
 import type { FeedsIn, FeedsOut, RpcCall, RpcResult } from './browser/protocol.ts';
 import type { Print } from './prints.ts';
 import type { BootstrapState, DataSource, FootprintResponse, LiveHandlers, SavingState, TickMessage, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
@@ -166,6 +166,11 @@ export class BrowserSource implements DataSource, VenueControl {
   async prints(from: number, to: number): Promise<Print[]> { return this.#call({ method: 'prints', from, to }); }
   async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> { return this.#call({ method: 'columns', ids, from, to, stepMs }); }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
+  async profile(ids: string[], from: number, to: number, rowStep: number): Promise<ProfileAnswer> {
+    const answer = parseProfile(await this.#call({ method: 'profile', ids, from, to, rowStep }), ids);
+    if (!answer) throw new Error('the browser engine answered the profile question with something else');
+    return answer;
+  }
   async sizes(ids: string[], windows: number[]): Promise<SizesAnswer> {
     const answer = parseSizes(await this.#call({ method: 'sizes', ids, windows }), windows);
     if (!answer) throw new Error('the browser engine answered the sizes question with something else');

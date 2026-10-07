@@ -685,5 +685,17 @@
  "Order sizes are not available from this server.": "Emir büyüklükleri bu sunucuda mevcut değil.",
  "Average price": "Ortalama fiyat",
  "Fills": "Gerçekleşmeler",
- "Prices reached": "Ulaşılan fiyatlar"
+ "Prices reached": "Ulaşılan fiyatlar",
+ "Traded": "İşlem",
+ "Traded volume": "İşlem hacmi",
+ "A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.": "Profilin yanındaki sütun: haritadaki süre boyunca her fiyatta piyasadan ne kadar alınıp satıldığı (akış sütununun saydığı borsalarda). Bekleyen likiditenin yanında, hangi seviyelerde gerçekten el değiştirildiğini gösterir.",
+ "TRADED": "İŞLEM",
+ "TRADED {value}": "İŞLEM {value}",
+ "ROW MAX {value}": "SATIR MAKS {value}",
+ "since {time}": "{time} itibarıyla",
+ "not on this server": "bu sunucuda yok",
+ "Nothing traded at these prices in this window.": "Bu aralıkta bu fiyatlarda işlem olmadı.",
+ "Bought at market": "Piyasadan alınan",
+ "Sold at market": "Piyasaya satılan",
+ "Recorded since {time}: the window reaches back further than the recording.": "{time} itibarıyla kaydedildi: aralık, kaydın başlangıcından daha geriye uzanıyor."
 }

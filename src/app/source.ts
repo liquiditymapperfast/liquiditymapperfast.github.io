@@ -1,6 +1,6 @@
 import type { Print } from './prints.ts';
 import type { FlowFrame, FlowUpdate } from '../shared/flow.ts';
-import type { SizesAnswer } from '../shared/footprint.ts';
+import type { ProfileAnswer, SizesAnswer } from '../shared/footprint.ts';
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
 import type { Bar } from './panes/footprint.ts';
 import type { CandleRow, LayerLevel, Market, OiBar } from './store.ts';
@@ -84,6 +84,8 @@ export interface DataSource {
    * minutes two answers saw cannot be added, so a long list is never asked in parts. Rejects when the source cannot say (an older server).
    */
   sizes(ids: string[], windows: number[]): Promise<SizesAnswer>;
+  /** Traded volume by price for `ids` over the minutes that start in [from, to). Rejects when the source cannot say (an older server). */
+  profile(ids: string[], from: number, to: number, rowStep: number): Promise<ProfileAnswer>;
   readonly venues: VenueControl;
   /** What becomes of the recordings, at `now`; a source whose recordings are kept elsewhere (the server) leaves it out. */
   saving?(now: number): SavingState;

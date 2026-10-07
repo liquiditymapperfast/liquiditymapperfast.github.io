@@ -26,7 +26,7 @@ export type OiBar = [number, number, number, number, number];
 export interface LayerLevel { id: string; side: string; price: number; notionalUsd: number; active?: boolean; amount?: number }
 
 /** Which panes are on the first time. */
-export const DEFAULT_SHOW: AppState['show'] = { profile: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
+export const DEFAULT_SHOW: AppState['show'] = { profile: true, traded: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
 /**
  * The panes a first visit starts with. The flow column and the book each take a few hundred pixels beside the map, so on a window that is wide enough
  * for the map to stay readable with both (a phone has its tabs instead) they start on; a medium window (a tablet held sideways, a small laptop)
@@ -55,7 +55,7 @@ export interface AppState {
   oi: OiBar[];
   /** Instrument the OI bars belong to (the market's own, or a reference perp when the market has no OI history). */
   oiInstrument: string;
-  show: { profile: boolean; depth: boolean; oi: boolean; candles: boolean; footprint: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean; /** The taker-flow (CVD) column left of the map, and the order book column right of it. */ cvd: boolean; book: boolean };
+  show: { profile: boolean; /** The traded-volume column beside the profile (not on phones). */ traded: boolean; depth: boolean; oi: boolean; candles: boolean; footprint: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean; /** The taker-flow (CVD) column left of the map, and the order book column right of it. */ cvd: boolean; book: boolean };
   /** The CVD column's settings. */
   cvd: CvdSettings;
   /** What counts as standing out (anomalous volume, OI change, ...), shared by every pane. */

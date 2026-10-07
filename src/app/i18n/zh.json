@@ -673,5 +673,17 @@
  "Order sizes are not available from this server.": "此服务器无法提供订单大小。",
  "Average price": "平均价格",
  "Fills": "成交笔数",
- "Prices reached": "触及价格"
+ "Prices reached": "触及价格",
+ "Traded": "成交量",
+ "Traded volume": "成交量",
+ "A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.": "分布旁边的一列：地图所示时间内，每个价格上以市价买入和卖出了多少（按资金流列统计的交易所）。与挂单流动性并列，可以看出哪些价位真正发生了成交。",
+ "TRADED": "成交量",
+ "TRADED {value}": "成交量 {value}",
+ "ROW MAX {value}": "单行最大值 {value}",
+ "since {time}": "自 {time} 起",
+ "not on this server": "此服务器不支持",
+ "Nothing traded at these prices in this window.": "此时段内这些价格上没有成交。",
+ "Bought at market": "市价买入",
+ "Sold at market": "市价卖出",
+ "Recorded since {time}: the window reaches back further than the recording.": "自 {time} 起记录：此时段早于记录开始的时间。"
 }

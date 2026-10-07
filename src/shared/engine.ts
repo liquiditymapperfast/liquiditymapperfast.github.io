@@ -1,6 +1,6 @@
 import type { ValuedBook } from './levels.ts';
 import { COLUMN_MS, DepthRecorder, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
-import { FootprintRecorder, type FootprintStore, type SizesAnswer } from './footprint.ts';
+import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type SizesAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
 import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
@@ -296,6 +296,9 @@ export class Engine {
   }
 
   footprint(instrumentId: string, tfMs: number, from: number, to: number, rowStep: number): FootprintAnswer { return this.footprints.query(instrumentId, from, to, tfMs, rowStep); }
+
+  /** Traded volume by price for these instruments over [from, to) (the traded-volume column). */
+  profile(ids: readonly string[], from: number, to: number, rowStep: number): ProfileAnswer { return this.footprints.profile(ids, from, to, rowStep); }
 
   /** The trades of these instruments added together by size over each of the last `windows` minutes (the page's strip). */
   sizes(ids: readonly string[], windows: readonly number[]): SizesAnswer { return this.footprints.sizes(ids, windows); }

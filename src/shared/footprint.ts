@@ -53,6 +53,36 @@ export function parseSizes(value: unknown, windows: readonly number[]): SizesAns
   return { windows: out };
 }
 
+/**
+ * Traded volume by price over [from, to) for one instrument (the traded-volume column): its rows on a step that is a whole multiple of the
+ * recorded one, how many of the window's minutes have rows, the first of them, and the earliest minute recorded at all (so a reader can tell
+ * a window that reaches back before the recording from one in which nothing traded).
+ */
+export interface ProfileInstrument { id: string; step: number; rows: FootprintRow[]; minutes: number; first: number | null; earliest: number | null }
+export interface ProfileAnswer { from: number; to: number; instruments: ProfileInstrument[] }
+/** The most instruments one profile question may name. */
+export const MAX_PROFILE_INSTRUMENTS = 48;
+
+/** A profile answer checked field by field against the instruments asked for: the answer, or null when it is anything else. */
+export function parseProfile(value: unknown, ids: readonly string[]): ProfileAnswer | null {
+  const body = value as { from?: unknown; to?: unknown; instruments?: unknown } | null;
+  if (!body || typeof body.from !== 'number' || typeof body.to !== 'number' || !Array.isArray(body.instruments)) return null;
+  const asked = new Set(ids), out: ProfileInstrument[] = [];
+  const time = (v: unknown): v is number | null => v === null || (typeof v === 'number' && Number.isFinite(v));
+  for (const item of body.instruments as unknown[]) {
+    const i = item as Partial<ProfileInstrument> | null;
+    if (!i || typeof i.id !== 'string' || !asked.has(i.id) || typeof i.step !== 'number' || !(i.step >= 0) || !Number.isFinite(i.step)
+      || typeof i.minutes !== 'number' || !Number.isInteger(i.minutes) || i.minutes < 0 || !time(i.first) || !time(i.earliest) || !Array.isArray(i.rows)) return null;
+    const rows: FootprintRow[] = [];
+    for (const r of i.rows as unknown[]) {
+      if (!Array.isArray(r) || r.length !== 3 || !r.every(x => typeof x === 'number' && Number.isFinite(x)) || (r[1] as number) < 0 || (r[2] as number) < 0) return null;
+      rows.push([r[0] as number, r[1] as number, r[2] as number]);
+    }
+    out.push({ id: i.id, step: i.step, rows, minutes: i.minutes, first: i.first ?? null, earliest: i.earliest ?? null });
+  }
+  return { from: body.from, to: body.to, instruments: out };
+}
+
 export interface FootprintBar {
   t: number; rows: FootprintRow[]; buyUsd: number; sellUsd: number;
   /** How many of the bar's minutes were recorded, so a reader can tell a whole candle from one seen only in part. */
@@ -180,6 +210,25 @@ export class FootprintRecorder {
   /** The trades of these instruments added together over each of the last `windows` minutes (see `SizesAnswer`), by this recorder's own clock. */
   sizes(ids: readonly string[], windows: readonly number[]): SizesAnswer {
     return sizesOf({ minutes: id => this.#minutes.get(id), stats: id => this.#stats.get(id) }, ids, windows, this.now());
+  }
+
+  /** Traded volume by price for each of `ids` over the minutes that start in [from, to), rows merged to `rowStep` (see `ProfileAnswer`). */
+  profile(ids: readonly string[], from: number, to: number, rowStep: number): ProfileAnswer {
+    const instruments: ProfileInstrument[] = [];
+    for (const id of ids) {
+      const fine = this.#steps.get(id), minutes = this.#minutes.get(id);
+      if (!fine || !minutes || !minutes.size) { instruments.push({ id, step: 0, rows: [], minutes: 0, first: null, earliest: null }); continue; }
+      const factor = Math.max(1, Math.round(rowStep / fine)), step = fine * factor, rows = new Map<number, [number, number]>();
+      let count = 0, first: number | null = null, earliest: number | null = null;
+      for (const [t, bins] of minutes) {
+        if (earliest === null || t < earliest) earliest = t;
+        if (t < from || t >= to) continue;
+        count++; if (first === null || t < first) first = t;
+        for (const [bin, [buy, sell]] of bins) { const row = Math.floor(bin / factor), cell = rows.get(row) ?? [0, 0]; cell[0] += buy; cell[1] += sell; rows.set(row, cell); }
+      }
+      instruments.push({ id, step, rows: [...rows].sort((a, b) => a[0] - b[0]).map(([row, [buy, sell]]): FootprintRow => [row * step, buy, sell]), minutes: count, first, earliest });
+    }
+    return { from, to, instruments };
   }
 
   /** Bars of `tfMs` over [from, to), rows merged to `rowStep` (rounded to a multiple of the recorded step). */

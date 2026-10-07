@@ -12,6 +12,8 @@ import type { Store, AppState } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
 import { bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
+import { tradedHeader, tradedLines, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
+import { flowIds } from '../cvd/ids.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
@@ -27,10 +29,13 @@ import { t } from '../i18n.ts';
 const TRAP_COLOR = '#f5a524';
 /** A recording younger than this gets the faded placeholder to its left. */
 const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
-/** Width of the price axis and of the profile column. A phone gives them less, so the map keeps most of the screen (see `setCompactGutters`). */
+/** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
 export let AXIS_W = 64;
 export let PROFILE_W = 128;
-export function setCompactGutters(compact: boolean): void { AXIS_W = compact ? 58 : 64; PROFILE_W = compact ? 84 : 128; }
+export let TRADED_W = 96;
+export function setCompactGutters(compact: boolean): void { AXIS_W = compact ? 58 : 64; PROFILE_W = compact ? 84 : 128; TRADED_W = compact ? 0 : 96; }
+/** Whether the traded-volume column is drawn: switched on, and the map is wide enough to have one. */
+export const tradedShown = (state: AppState): boolean => state.show.traded && TRADED_W > 0;
 const TIME_H = 22;
 
 /** A plot narrower than this (a phone, a split screen) gets the compact legend, whole-dollar prices and a shorter history note. */
@@ -48,7 +53,7 @@ export function timeTicks(t0: number, t1: number, widthPx: number, minPx = 96): 
   for (let t = Math.ceil((t0 - offset) / step) * step + offset; t <= t1; t += step) out.push(t);
   return out;
 }
-export function gutter(state: AppState): number { return AXIS_W + (state.show.profile ? PROFILE_W : 0); }
+export function gutter(state: AppState): number { return AXIS_W + (state.show.profile ? PROFILE_W : 0) + (tradedShown(state) ? TRADED_W : 0); }
 
 /** Rolling volume baseline for a candle array, keyed by the sensitivity it was computed with. */
 interface VolumeAnalysis { candles: AppState['candles']; key: string; found: Anomalies }
@@ -63,6 +68,8 @@ export class HeatPane {
   /** Mirror-hover comparison for the pointer over the profile column, or null (read by tests, drawn on the profile). */
   mirror: MirrorStats | null = null;
   #profileHover: { y: number } | null = null;
+  /** The pointer over the traded-volume column (its y), or null. */
+  #tradedHover: { y: number } | null = null;
   #profileBox: { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null = null;
   /** The last value given to --gutter on the pane, so a frame that changes nothing writes nothing. */
   #gutterCss = '';
@@ -251,6 +258,7 @@ export class HeatPane {
     if (this.#gutterCss !== gutterCss) { this.#gutterCss = gutterCss; this.root.style.setProperty('--gutter', gutterCss); }
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view);
+    if (tradedShown(state)) this.#ensureTraded(state);
     this.#stepFootprint(state);
     // Under a dominant footprint the heatmap is gone altogether, so there is nothing to draw.
     if (state.layer === 'liquidity' && this.#lodFrame.heatmapOpacity > 0.003) this.gl.draw(this.view, this.#style(), this.#placeholder()); else this.gl.clear();
@@ -307,8 +315,9 @@ export class HeatPane {
       const y = v.yOf(mark, ph);
       if (y >= 0 && y <= ph) { ctx.strokeStyle = p.ask; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
     }
-    // profile column + price axis
+    // profile column, traded-volume column and price axis
     if (state.show.profile) this.#paintProfile(ctx, state, pw, ph);
+    if (tradedShown(state)) this.#paintTraded(ctx, state, pw, ph);
     const axisX = w - AXIS_W;
     ctx.fillStyle = p.panel; ctx.fillRect(axisX, 0, AXIS_W, h);
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(axisX + 0.5, 0); ctx.lineTo(axisX + 0.5, h); ctx.stroke();
@@ -545,6 +554,65 @@ export class HeatPane {
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  /** Left edge of the traded-volume column (after the profile when that is shown), or null when the column is not drawn. */
+  #tradedX(): number | null { const state = this.store.state; return tradedShown(state) ? this.plotW + (state.show.profile ? PROFILE_W : 0) : null; }
+
+  /** The rows the traded column draws: the profile's step, so the two columns share their rows. */
+  #tradedStep(): number { const v = this.view; return niceStep(v.p1 - v.p0, this.plotH / 3); }
+
+  /** Ask for the traded volume of the window on the map (whole minutes, up to the one that is open), on the instruments the flow column counts. */
+  #ensureTraded(state: AppState): void {
+    const v = this.view, MIN = 60_000;
+    if (!(v.t1 > v.t0) || !(v.p1 > v.p0)) return;
+    const from = Math.floor(v.t0 / MIN) * MIN, to = Math.min(Math.ceil(v.t1 / MIN), Math.floor(Date.now() / MIN) + 1) * MIN;
+    this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, this.#tradedStep(), state.followLive);
+  }
+
+  /**
+   * The traded-volume column: for each row of the profile's step, what was bought (bid colour) and sold (ask colour) at market over the window
+   * on the map, as one bar split in two; the row with the most volume is outlined. The header gives the total and the largest row, or when
+   * the recording began when the window reaches back further than that.
+   */
+  #paintTraded(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const x0 = this.#tradedX(); if (x0 === null) return;
+    const p = this.#palette, v = this.view, W = TRADED_W, held = this.hub.traded;
+    const rows: TradedRows | null = held ? tradedRows(held.answer, held.step, v.p0, v.p1) : null;
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
+    ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, W, ph);
+    if (rows && rows.max > 0) {
+      const width = W - 6;
+      for (let i = 0; i < rows.buy.length; i++) {
+        const b = rows.buy[i]!, s = rows.sell[i]!, total = b + s; if (!(total > 0)) continue;
+        const low = (rows.bin0 + i) * rows.step, y0 = v.yOf(low + rows.step, ph), y1 = v.yOf(low, ph);
+        if (y1 < 0 || y0 > ph) continue;
+        const hgt = Math.max(1, y1 - y0 - 0.5), len = Math.max(1, total / rows.max * width), buyLen = len * b / total;
+        ctx.globalAlpha = 0.85;
+        if (b > 0) { ctx.fillStyle = p.bid; ctx.fillRect(x0 + 1, y0, Math.max(0.5, buyLen), hgt); }
+        if (s > 0) { ctx.fillStyle = p.ask; ctx.fillRect(x0 + 1 + buyLen, y0, Math.max(0.5, len - buyLen), hgt); }
+        if (i === rows.poc) { ctx.globalAlpha = 1; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(x0 + 1.5, y0 - 0.5, Math.max(2, len), hgt + 1); }
+      }
+      ctx.globalAlpha = 1;
+    }
+    // The row under the pointer, framed.
+    const hover = this.#tradedHover, hoverRow = rows && hover ? tradedRowAt(rows, v.pOf(hover.y, ph)) : -1;
+    if (rows && hoverRow >= 0) {
+      const low = (rows.bin0 + hoverRow) * rows.step, y0 = v.yOf(low + rows.step, ph), y1 = v.yOf(low, ph);
+      ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.9; ctx.strokeRect(x0 + 0.5, Math.round(y0) + 0.5, W - 1, Math.max(1, Math.round(y1 - y0))); ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 28); ctx.globalAlpha = 1;
+    ctx.fillStyle = p.muted; ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const [head, sub] = this.hub.tradedState === 'unavailable' && !rows ? [t('TRADED'), t('not on this server')] : tradedHeader(rows);
+    // A window that reaches back before the recording says so in the dot rows' amber.
+    ctx.fillText(head, x0 + 4, 4); if (sub) { if (rows?.partial) ctx.fillStyle = '#e6a700'; ctx.fillText(sub, x0 + 4, 16); }
+    ctx.restore(); ctx.textBaseline = 'middle';
+    ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
+    if (rows && hover && hoverRow >= 0) {
+      // The box stands to the left of the column, over the map, like the profile's comparison.
+      paintInfoBox(ctx, tradedLines(rows, hoverRow), x0, hover.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: 'center' });
+      ctx.textBaseline = 'middle';
+    }
   }
 
   #paintProfile(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
@@ -809,11 +877,11 @@ export class HeatPane {
   }
 
   /** Whether a finger's pin is what is on show now (a tap on a pane under the map replaces it with its own). */
-  #pinActive(): boolean { const hv = this.store.state.hover; return this.#pin !== null && (this.#profileHover !== null || (hv?.touch === true && hv.source === 'heat')); }
+  #pinActive(): boolean { const hv = this.store.state.hover; return this.#pin !== null && (this.#profileHover !== null || this.#tradedHover !== null || (hv?.touch === true && hv.source === 'heat')); }
   /** Drop the pinned crosshair (and the profile comparison), if any. */
   #unpin(): void {
-    if (!this.#pin && !this.#profileHover) return;
-    this.#pin = null; this.#profileHover = null;
+    if (!this.#pin && !this.#profileHover && !this.#tradedHover) return;
+    this.#pin = null; this.#profileHover = null; this.#tradedHover = null;
     if (this.store.state.hover?.touch) this.store.set({ hover: null });
     this.invalidate();
   }
@@ -821,11 +889,15 @@ export class HeatPane {
   #pinAt(p: Pt): void {
     const pw = this.plotW, ph = this.plotH, v = this.view;
     this.#pin = p;
+    const tradedX = this.#tradedX();
+    this.#tradedHover = null;
     if (p.x >= 0 && p.x <= pw && p.y >= 0 && p.y <= ph) {
       this.#profileHover = null;
       this.store.set({ hover: { t: v.tOf(p.x, pw), price: v.pOf(p.y, ph), y: p.y, source: 'heat', touch: true } });
-    } else if (p.x > pw && p.x <= pw + PROFILE_W && p.y >= 0 && p.y <= ph) {
+    } else if (this.store.state.show.profile && p.x > pw && p.x <= pw + PROFILE_W && p.y >= 0 && p.y <= ph) {
       this.#profileHover = { y: p.y }; this.store.set({ hover: null });
+    } else if (tradedX !== null && p.x > tradedX && p.x <= tradedX + TRADED_W && p.y >= 0 && p.y <= ph) {
+      this.#profileHover = null; this.#tradedHover = { y: p.y }; this.store.set({ hover: null });
     } else { this.#pin = null; this.#profileHover = null; this.store.set({ hover: null }); }
     this.invalidate();
   }
@@ -961,11 +1033,13 @@ export class HeatPane {
       }
       if (x <= this.plotW && y <= this.plotH) this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: this.view.pOf(y, this.plotH), y, source: 'heat' } });
       else this.store.set({ hover: null });
-      this.#profileHover = !this.#drag && x > this.plotW && x <= this.plotW + PROFILE_W && y >= 0 && y <= this.plotH ? { y } : null;
+      const onProfile = this.store.state.show.profile && x > this.plotW && x <= this.plotW + PROFILE_W, tradedX = this.#tradedX();
+      this.#profileHover = !this.#drag && onProfile && y >= 0 && y <= this.plotH ? { y } : null;
+      this.#tradedHover = !this.#drag && tradedX !== null && x > tradedX && x <= tradedX + TRADED_W && y >= 0 && y <= this.plotH ? { y } : null;
       this.invalidate();
     });
     el.addEventListener('pointerup', e => { if (e.pointerType === 'touch') return; this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; el.style.cursor = this.#onScale(local(e).x, local(e).y) ? 'ns-resize' : ''; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
-    el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
+    el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; this.#tradedHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
     el.addEventListener('dblclick', () => this.fit());
     bindTouch(el, new GestureRecognizer(this.#touchHandlers()));
     window.addEventListener('keydown', e => { if ((e.key === 'r' || e.key === 'Home') && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLSelectElement)) this.fit(); });

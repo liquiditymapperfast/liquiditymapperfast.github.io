@@ -47,7 +47,7 @@ const IDLE_GRACE_MS = 20_000;
 const UPCOMING = 'upcoming';
 
 /** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
-const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['bubbles', t('Trades')]];
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['traded', t('Traded')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['bubbles', t('Trades')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
