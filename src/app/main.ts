@@ -150,6 +150,7 @@ async function main(): Promise<void> {
     if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.refresh(); }
     if (changed.has('markets')) cvd.invalidate();
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
+    if (changed.has('absorption') || changed.has('tradeBubbles')) heat.invalidate();
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('levels')) { ladder.invalidate(); ladder.syncVenues(); heat.invalidate(); }
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();

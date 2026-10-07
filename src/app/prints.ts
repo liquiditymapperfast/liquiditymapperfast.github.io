@@ -63,10 +63,11 @@ export class PrintBook {
 }
 
 /**
- * The prints worth drawing in a window (`items` in time order): inside it, from venues that are shown, and only the `limit` largest, returned oldest first.
- * Zoomed far out there are far more prints than pixels; keeping the biggest is what keeps the picture about size.
+ * The prints worth drawing in a window (`items` in time order): inside it, not `hidden` (a venue switched off, under the smallest size, the
+ * side not shown), and only the `limit` largest of those, returned oldest first. Zoomed far out there are far more prints than pixels;
+ * keeping the biggest is what keeps the picture about size. The filter comes first, so the places go to prints that are drawn.
  */
-export function topPrints(items: readonly Print[], t0: number, t1: number, p0: number, p1: number, limit: number, hidden: (id: string) => boolean = () => false): Print[] {
+export function topPrints(items: readonly Print[], t0: number, t1: number, p0: number, p1: number, limit: number, hidden: (p: Print) => boolean = () => false): Print[] {
   // `items` is in time order (PrintBook keeps it so): find the window by bisection instead of scanning every print each frame.
   let lo = 0, hi = items.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (items[mid]!.t < t0) lo = mid + 1; else hi = mid; }
@@ -74,7 +75,7 @@ export function topPrints(items: readonly Print[], t0: number, t1: number, p0: n
   for (let i = lo; i < items.length; i++) {
     const p = items[i]!;
     if (p.t > t1) break;
-    if (p.price >= p0 && p.price <= p1 && !hidden(p.id)) inside.push(p);
+    if (p.price >= p0 && p.price <= p1 && !hidden(p)) inside.push(p);
   }
   if (inside.length <= limit) return inside;
   // The size of the limit-th largest print, found with a native typed-array sort rather than a comparator sort of objects.
@@ -103,3 +104,32 @@ export function printPriceLines(print: Print): { label: string; text: string }[]
 export function bubbleRadius(usd: number, max = 24): number {
   return Math.min(max, Math.max(3, 3.2 * Math.sqrt(usd / 50_000)));
 }
+
+/**
+ * How the trade bubbles are drawn: the smallest order and the side shown, a size factor (every radius times it, so their proportions stay),
+ * how solid they are, and whether bubbles big enough to hold it carry their size written in them. They change only the bubbles: sounds and
+ * the flow column's dots keep their own sizes.
+ */
+export interface BubbleSettings { minUsd: number; side: 'both' | 'buy' | 'sell'; scale: number; opacity: number; labels: boolean }
+/** The smallest orders a person can choose to see: the recording keeps every one from $25,000. */
+export const BUBBLE_MINIMUMS: readonly number[] = [25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000];
+export const BUBBLE_DEFAULTS: Readonly<BubbleSettings> = { minUsd: 25_000, side: 'both', scale: 1, opacity: 0.5, labels: false };
+export const BUBBLE_LIMITS = { scale: { min: 0.5, max: 2, step: 0.1 }, opacity: { min: 0.1, max: 0.9, step: 0.05 } } as const;
+
+/** Saved settings, each field checked (anything else is the default; a minimum that is not one of the choices is the nearest under it). */
+export function readBubbles(saved: unknown): BubbleSettings {
+  const s = (saved ?? {}) as Partial<BubbleSettings>, d = BUBBLE_DEFAULTS, L = BUBBLE_LIMITS;
+  const within = (v: unknown, lo: number, hi: number, step: number, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(hi, Math.max(lo, v)) / step) * step : fallback;
+  const min = typeof s.minUsd === 'number' && Number.isFinite(s.minUsd) ? [...BUBBLE_MINIMUMS].reverse().find(m => m <= s.minUsd!) ?? d.minUsd : d.minUsd;
+  return {
+    minUsd: min,
+    side: s.side === 'buy' || s.side === 'sell' ? s.side : 'both',
+    scale: Number(within(s.scale, L.scale.min, L.scale.max, L.scale.step, d.scale).toFixed(1)),
+    opacity: Number(within(s.opacity, L.opacity.min, L.opacity.max, L.opacity.step, d.opacity).toFixed(2)),
+    labels: typeof s.labels === 'boolean' ? s.labels : d.labels,
+  };
+}
+
+/** Whether a print is left out by the settings: under the smallest order shown, or on the side that is not. */
+export const bubbleHidden = (p: Print, s: BubbleSettings): boolean => p.usd < s.minUsd || (s.side !== 'both' && p.side !== s.side);

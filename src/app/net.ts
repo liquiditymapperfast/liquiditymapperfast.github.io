@@ -23,8 +23,9 @@ export async function getCandles(inst: string, tf: string, from: number, to: num
   return body.candles;
 }
 /** Large trades in [from, to), oldest first (malformed rows dropped). */
-export async function getPrints(from: number, to: number): Promise<Print[]> {
-  const body = await (await request(`/api/v2/prints?from=${Math.floor(from)}&to=${Math.ceil(to)}`)).json() as { prints?: unknown[] };
+export async function getPrints(from: number, to: number, minUsd?: number): Promise<Print[]> {
+  const min = minUsd !== undefined && Number.isFinite(minUsd) ? `&min=${Math.round(minUsd)}` : '';
+  const body = await (await request(`/api/v2/prints?from=${Math.floor(from)}&to=${Math.ceil(to)}${min}`)).json() as { prints?: unknown[] };
   return (body.prints ?? []).flatMap(row => { const p = fromWire(row); return p ? [p] : []; });
 }
 export async function getOi(inst: string, tf: string, from: number, to: number): Promise<OiBar[]> {

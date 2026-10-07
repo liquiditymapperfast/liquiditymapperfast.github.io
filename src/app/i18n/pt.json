@@ -737,5 +737,22 @@
  "The thresholds appear once a minute of trading has been recorded.": "Os limiares aparecem quando um minuto de negociação for gravado.",
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "O limiar em vigor julga cada marca do mapa, então mudá-lo, ou o mercado movê-lo, redesenha o histórico. Cada exchange é julgada pelo próprio limiar. Uma marca diz o que foi negociado, não o que o preço fez depois.",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "Um ponto fica no nível onde aconteceu e um quadrado ao lado mostra o lado em espera: abaixo do nível quando compradores que esperavam ali absorveram vendas a mercado, acima quando vendedores que esperavam ali absorveram compras a mercado. Passe o mouse sobre um quadrado para ver a exchange, as execuções, a maior soma de 10 ms e o limiar.",
- "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "O limiar automático é calculado para cada exchange a partir da sua própria negociação: a média das suas somas de 10 ms a um preço mais um número de desvios padrão, num período recente. Por isso uma exchange movimentada precisa de mais para ser marcada que uma calma."
+ "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "O limiar automático é calculado para cada exchange a partir da sua própria negociação: a média das suas somas de 10 ms a um preço mais um número de desvios padrão, num período recente. Por isso uma exchange movimentada precisa de mais para ser marcada que uma calma.",
+ "Trade bubble settings": "Ajustes das bolhas de operações",
+ "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "Bolhas de operações: a menor ordem desenhada, o lado, o tamanho e a opacidade delas, e os tamanhos escritos nelas.",
+ "Show trade bubbles": "Mostrar bolhas de operações",
+ "Large market orders where they traded, the fills of one order added together.": "Ordens a mercado grandes onde foram negociadas, com as execuções de uma ordem somadas.",
+ "Smallest order": "Menor ordem",
+ "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Ordens abaixo disto não são desenhadas. Toda ordem a partir de US$ 25K é gravada, então uma escolha menor as traz de volta.",
+ "Both sides, or only the market buys or only the market sells.": "Os dois lados, ou só as compras a mercado ou só as vendas a mercado.",
+ "Buys only": "Só compras",
+ "Sells only": "Só vendas",
+ "Bubble size": "Tamanho das bolhas",
+ "Every bubble larger or smaller; their sizes keep their proportions.": "Todas as bolhas maiores ou menores; os tamanhos mantêm a proporção.",
+ "Opacity": "Opacidade",
+ "How solid the bubbles are: lower lets the map and the candles show through.": "O quão sólidas as bolhas são: mais baixo deixa ver o mapa e as velas.",
+ "Write the size in large bubbles": "Escrever o tamanho nas bolhas grandes",
+ "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Só as bolhas grandes o bastante para o número recebem um, então afastar o zoom as remove; passe o mouse ou toque numa bolha para ver o tamanho.",
+ "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Ordens a partir do tamanho Whale dos Sons ({value}) ganham um anel brilhante.",
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Estes ajustes mudam só as bolhas: os sons e os pontos da coluna de fluxo mantêm seus próprios tamanhos."
 }

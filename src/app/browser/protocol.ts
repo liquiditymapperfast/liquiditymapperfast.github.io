@@ -12,7 +12,7 @@ export type RpcCall =
   | { method: 'bootstrap' }
   | { method: 'columns'; ids: string[]; from: number; to: number; stepMs: number }
   | { method: 'footprint'; inst: string; tfMs: number; from: number; to: number; rowStep: number }
-  | { method: 'prints'; from: number; to: number }
+  | { method: 'prints'; from: number; to: number; minUsd?: number }
   | { method: 'flow'; ids: string[]; from: number; to: number }
   | { method: 'sizes'; ids: string[]; windows: number[] }
   | { method: 'profile'; ids: string[]; from: number; to: number; rowStep: number }

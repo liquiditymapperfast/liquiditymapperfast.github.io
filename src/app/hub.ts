@@ -47,7 +47,8 @@ export class Hub {
   /** Called when the flow book changed (new seconds or history), about once a second. */
   onFlowChanged: () => void = () => {};
   #flowLoading = false;
-  #printsWindow: { t0: number; t1: number } | null = null;
+  /** The window the print book was last filled for, and the smallest order it was asked from. */
+  #printsWindow: { t0: number; t1: number; min: number } | null = null;
   /** The live stream has closed at least once since it last opened, so the next open is a reconnection. */
   #dropped = false;
   /** Counts the times the live stream opened or closed: a history answer can tell whether it was asked for before the stream broke. */
@@ -239,16 +240,20 @@ export class Hub {
     if (chosen) this.store.set({ oi: chosen.bars, oiInstrument: chosen.inst });
   }
 
-  /** Make sure the print book covers `view` (history is fetched once per window; the live stream keeps it current after that). */
-  ensurePrints(view: Bounds): void {
+  /**
+   * Make sure the print book covers `view` with the orders from `minUsd` (history is fetched once per window and smallest size; the live
+   * stream keeps it current after that). An answer holds at most the newest few thousand, so a larger smallest size reaches further back:
+   * a new one is asked for again.
+   */
+  ensurePrints(view: Bounds, minUsd = 25_000): void {
     if (this.#printsLoading || !(view.t1 > view.t0)) return;
     const have = this.#printsWindow;
-    if (have && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now())) return;
+    if (have && have.min === minUsd && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now())) return;
     const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE));
     this.#printsLoading = true;
     const connection = this.#connection;
     // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
-    this.source.prints(from, to).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+    this.source.prints(from, to, minUsd).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to, min: minUsd }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
   }
 
   /**

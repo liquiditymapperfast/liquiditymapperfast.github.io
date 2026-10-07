@@ -165,7 +165,7 @@ export class BrowserSource implements DataSource, VenueControl {
 
   async candles(inst: string, tf: string, from: number, to: number): Promise<CandleRow[]> { return this.#call({ method: 'candles', inst, tfMs: TIMEFRAMES[tf] ?? 3_600_000, from, to }); }
   async oi(inst: string, tf: string, from: number, to: number): Promise<OiBar[]> { return this.#call({ method: 'oi', inst, tfMs: TIMEFRAMES[tf] ?? 3_600_000, from, to }); }
-  async prints(from: number, to: number): Promise<Print[]> { return this.#call({ method: 'prints', from, to }); }
+  async prints(from: number, to: number, minUsd?: number): Promise<Print[]> { return this.#call({ method: 'prints', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
   async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> { return this.#call({ method: 'columns', ids, from, to, stepMs }); }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
   async absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {

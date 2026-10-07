@@ -737,5 +737,22 @@
  "The thresholds appear once a minute of trading has been recorded.": "Le soglie compaiono quando è stato registrato un minuto di scambi.",
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "La soglia in vigore giudica ogni segno sulla mappa, quindi cambiarla, o il mercato che la sposta, ridisegna lo storico. Ogni exchange è giudicato con la propria soglia. Un segno dice cosa è stato scambiato, non cosa ha fatto il prezzo dopo.",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "Un punto sta sul livello dove è avvenuto e un quadrato accanto mostra il lato in attesa: sotto il livello quando compratori in attesa lì hanno assorbito vendite a mercato, sopra quando venditori in attesa lì hanno assorbito acquisti a mercato. Passa il mouse su un quadrato per exchange, esecuzioni, la somma di 10 ms più grande e la soglia.",
- "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "La soglia automatica è calcolata per ogni exchange dai suoi scambi: la media delle sue somme di 10 ms a un prezzo più un numero di deviazioni standard, su un periodo recente. Un exchange attivo deve quindi fare di più per essere segnato di uno tranquillo."
+ "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "La soglia automatica è calcolata per ogni exchange dai suoi scambi: la media delle sue somme di 10 ms a un prezzo più un numero di deviazioni standard, su un periodo recente. Un exchange attivo deve quindi fare di più per essere segnato di uno tranquillo.",
+ "Trade bubble settings": "Impostazioni delle bolle delle operazioni",
+ "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "Bolle delle operazioni: l’ordine più piccolo disegnato, il lato, la loro dimensione e opacità, e le dimensioni scritte dentro.",
+ "Show trade bubbles": "Mostra le bolle delle operazioni",
+ "Large market orders where they traded, the fills of one order added together.": "Gli ordini a mercato grandi dove sono stati eseguiti, con le esecuzioni di un ordine sommate.",
+ "Smallest order": "Ordine più piccolo",
+ "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Gli ordini al di sotto non sono disegnati. Ogni ordine da 25K $ viene registrato, quindi una scelta più bassa li fa tornare.",
+ "Both sides, or only the market buys or only the market sells.": "Entrambi i lati, oppure solo gli acquisti a mercato o solo le vendite a mercato.",
+ "Buys only": "Solo acquisti",
+ "Sells only": "Solo vendite",
+ "Bubble size": "Dimensione delle bolle",
+ "Every bubble larger or smaller; their sizes keep their proportions.": "Tutte le bolle più grandi o più piccole; le dimensioni mantengono le proporzioni.",
+ "Opacity": "Opacità",
+ "How solid the bubbles are: lower lets the map and the candles show through.": "Quanto sono piene le bolle: più basso lascia vedere la mappa e le candele.",
+ "Write the size in large bubbles": "Scrivi la dimensione nelle bolle grandi",
+ "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Solo le bolle abbastanza grandi per contenere il numero lo ricevono, quindi allontanando spariscono; passa il mouse o tocca una bolla per la sua dimensione.",
+ "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Gli ordini dalla dimensione Whale dei Suoni ({value}) hanno un anello luminoso.",
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Queste impostazioni cambiano solo le bolle: i suoni e i punti della colonna del flusso mantengono le proprie dimensioni."
 }

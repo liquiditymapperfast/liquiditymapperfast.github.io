@@ -742,5 +742,22 @@
  "The thresholds appear once a minute of trading has been recorded.": "Пороги появятся, когда будет записана минута торгов.",
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "Действующий порог оценивает каждую отметку на карте, поэтому его изменение, или сдвиг рынком, перерисовывает историю. Каждая биржа оценивается по своему порогу. Отметка говорит о том, что прошло, а не о том, что цена сделала потом.",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "Точка ставится на уровень, где это произошло, а квадрат рядом показывает пассивную сторону: под уровнем, если ждавшие там покупатели поглотили рыночные продажи, над ним — если ждавшие там продавцы поглотили рыночные покупки. Наведите на квадрат, чтобы увидеть биржу, исполнения, наибольшую 10-мс сумму и порог.",
- "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "Автоматический порог рассчитывается для каждой биржи по её собственным торгам: среднее её 10-мс сумм на одной цене плюс несколько стандартных отклонений за недавний период. Поэтому активной бирже для отметки нужно больше, чем спокойной."
+ "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "Автоматический порог рассчитывается для каждой биржи по её собственным торгам: среднее её 10-мс сумм на одной цене плюс несколько стандартных отклонений за недавний период. Поэтому активной бирже для отметки нужно больше, чем спокойной.",
+ "Trade bubble settings": "Настройки пузырей сделок",
+ "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "Пузыри сделок: самый маленький показываемый ордер, сторона, их размер и непрозрачность, размеры внутри них.",
+ "Show trade bubbles": "Показывать пузыри сделок",
+ "Large market orders where they traded, the fills of one order added together.": "Крупные рыночные ордера там, где они прошли; исполнения одного ордера сложены.",
+ "Smallest order": "Самый маленький ордер",
+ "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Ордера меньше этого не рисуются. Записывается каждый ордер от $25K, так что меньшее значение вернёт их.",
+ "Both sides, or only the market buys or only the market sells.": "Обе стороны, или только рыночные покупки, или только рыночные продажи.",
+ "Buys only": "Только покупки",
+ "Sells only": "Только продажи",
+ "Bubble size": "Размер пузырей",
+ "Every bubble larger or smaller; their sizes keep their proportions.": "Все пузыри крупнее или мельче; их размеры сохраняют пропорции.",
+ "Opacity": "Непрозрачность",
+ "How solid the bubbles are: lower lets the map and the candles show through.": "Насколько плотны пузыри: меньше — сквозь них видны карта и свечи.",
+ "Write the size in large bubbles": "Писать размер в крупных пузырях",
+ "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Число получают только пузыри, в которые оно помещается, поэтому при отдалении они пропадают; наведите на пузырь или коснитесь его, чтобы увидеть размер.",
+ "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Ордера от размера Whale в «Звуках» ({value}) получают яркое кольцо.",
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Эти настройки меняют только пузыри: звуки и точки колонки потока сохраняют свои размеры."
 }

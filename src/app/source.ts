@@ -77,7 +77,8 @@ export interface DataSource {
   candles(inst: string, tf: string, from: number, to: number): Promise<CandleRow[]>;
   oi(inst: string, tf: string, from: number, to: number): Promise<OiBar[]>;
   /** Large trades in [from, to), oldest first. */
-  prints(from: number, to: number): Promise<Print[]>;
+  /** Large market orders in [from, to) from `minUsd` (the recording's floor when absent), the newest few thousand of them. */
+  prints(from: number, to: number, minUsd?: number): Promise<Print[]>;
   columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame>;
   /** Taker buys and sells per second for each instrument over [from, to), from its first recorded minute in that range. */
   flow(ids: string[], from: number, to: number): Promise<FlowFrame>;

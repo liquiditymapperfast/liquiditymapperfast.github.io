@@ -732,5 +732,22 @@
  "The thresholds appear once a minute of trading has been recorded.": "Eşikler bir dakikalık işlem kaydedilince görünür.",
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "Geçerli eşik haritadaki her işareti değerlendirir; onu değiştirmek ya da piyasanın onu oynatması geçmişi yeniden çizer. Her borsa kendi eşiğiyle değerlendirilir. İşaret işlem göreni söyler, fiyatın sonra ne yaptığını değil.",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "Nokta olayın gerçekleştiği seviyede durur, yanındaki kare ise bekleyen tarafı gösterir: orada bekleyen alıcılar piyasa satışlarını emdiyse seviyenin altında, orada bekleyen satıcılar piyasa alımlarını emdiyse üstünde. Borsa, gerçekleşmeler, en büyük 10 ms toplamı ve eşik için bir karenin üzerine gelin.",
- "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "Otomatik eşik her borsa için kendi işlemlerinden hesaplanır: yakın bir dönemde tek fiyattaki 10 ms toplamlarının ortalaması artı birkaç standart sapma. Bu yüzden hareketli bir borsanın işaretlenmesi için sakin bir borsadan daha fazlası gerekir."
+ "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "Otomatik eşik her borsa için kendi işlemlerinden hesaplanır: yakın bir dönemde tek fiyattaki 10 ms toplamlarının ortalaması artı birkaç standart sapma. Bu yüzden hareketli bir borsanın işaretlenmesi için sakin bir borsadan daha fazlası gerekir.",
+ "Trade bubble settings": "İşlem balonu ayarları",
+ "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "İşlem balonları: çizilen en küçük emir, taraf, büyüklükleri ve opaklıkları, içlerine yazılan büyüklükler.",
+ "Show trade bubbles": "İşlem balonlarını göster",
+ "Large market orders where they traded, the fills of one order added together.": "Büyük piyasa emirleri işlem gördükleri yerde; bir emrin gerçekleşmeleri toplanır.",
+ "Smallest order": "En küçük emir",
+ "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Bunun altındaki emirler çizilmez. 25K $ üzerindeki her emir kaydedilir, daha düşük bir seçim onları geri getirir.",
+ "Both sides, or only the market buys or only the market sells.": "Her iki taraf ya da yalnızca piyasa alımları veya yalnızca piyasa satışları.",
+ "Buys only": "Yalnızca alımlar",
+ "Sells only": "Yalnızca satışlar",
+ "Bubble size": "Balon büyüklüğü",
+ "Every bubble larger or smaller; their sizes keep their proportions.": "Tüm balonlar daha büyük ya da daha küçük; büyüklükleri oranını korur.",
+ "Opacity": "Opaklık",
+ "How solid the bubbles are: lower lets the map and the candles show through.": "Balonların ne kadar dolu olduğu: düşük değer harita ve mumların görünmesini sağlar.",
+ "Write the size in large bubbles": "Büyük balonlara büyüklüğü yaz",
+ "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Yalnızca sayıyı sığdıracak kadar büyük balonlar alır, uzaklaşınca kaybolur; büyüklüğü için bir balonun üzerine gelin ya da dokunun.",
+ "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Seslerdeki Whale büyüklüğünden ({value}) itibaren emirler parlak bir halka alır.",
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Bu ayarlar yalnızca balonları değiştirir: sesler ve akış sütununun noktaları kendi büyüklüklerini korur."
 }

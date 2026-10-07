@@ -732,5 +732,22 @@
  "The thresholds appear once a minute of trading has been recorded.": "Die Schwellen erscheinen, sobald eine Minute Handel aufgezeichnet ist.",
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "Die jetzt geltende Schwelle beurteilt jede Marke auf der Karte; ändert man sie oder bewegt der Markt sie, wird die Vergangenheit neu gezeichnet. Jede Börse wird an ihrer eigenen Schwelle gemessen. Eine Marke sagt, was gehandelt wurde, nicht was der Preis danach tat.",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "Ein Punkt sitzt auf dem Niveau, wo es geschah, und ein Quadrat daneben zeigt die ruhende Seite: unter dem Niveau, wenn dort wartende Käufer Marktverkäufe aufnahmen, darüber, wenn dort wartende Verkäufer Marktkäufe aufnahmen. Fahre über ein Quadrat für Börse, Ausführungen, die größte 10-ms-Summe und die Schwelle.",
- "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "Die automatische Schwelle wird für jede Börse aus ihrem eigenen Handel bestimmt: der Mittelwert ihrer 10-ms-Summen bei einem Preis plus eine Anzahl Standardabweichungen über eine jüngste Spanne. Eine belebte Börse braucht daher mehr für eine Marke als eine ruhige."
+ "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "Die automatische Schwelle wird für jede Börse aus ihrem eigenen Handel bestimmt: der Mittelwert ihrer 10-ms-Summen bei einem Preis plus eine Anzahl Standardabweichungen über eine jüngste Spanne. Eine belebte Börse braucht daher mehr für eine Marke als eine ruhige.",
+ "Trade bubble settings": "Einstellungen der Trade-Blasen",
+ "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "Trade-Blasen: die kleinste gezeichnete Order, die Seite, ihre Größe und Deckkraft und die Größen in ihnen.",
+ "Show trade bubbles": "Trade-Blasen zeigen",
+ "Large market orders where they traded, the fills of one order added together.": "Große Market-Orders dort, wo sie gehandelt wurden, die Ausführungen einer Order zusammengezählt.",
+ "Smallest order": "Kleinste Order",
+ "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "Kleinere Orders werden nicht gezeichnet. Jede Order ab 25K $ wird aufgezeichnet, eine niedrigere Wahl holt sie also zurück.",
+ "Both sides, or only the market buys or only the market sells.": "Beide Seiten, oder nur die Marktkäufe oder nur die Marktverkäufe.",
+ "Buys only": "Nur Käufe",
+ "Sells only": "Nur Verkäufe",
+ "Bubble size": "Blasengröße",
+ "Every bubble larger or smaller; their sizes keep their proportions.": "Jede Blase größer oder kleiner; ihre Größen behalten ihr Verhältnis.",
+ "Opacity": "Deckkraft",
+ "How solid the bubbles are: lower lets the map and the candles show through.": "Wie deckend die Blasen sind: niedriger lässt die Karte und die Kerzen durchscheinen.",
+ "Write the size in large bubbles": "Größe in große Blasen schreiben",
+ "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "Nur Blasen, die groß genug für die Zahl sind, bekommen eine; beim Herauszoomen fallen sie weg. Fahre über eine Blase oder tippe darauf für ihre Größe.",
+ "Orders from the Whale size in Sounds ({value}) get a bright ring.": "Orders ab der Whale-Größe in den Tönen ({value}) bekommen einen hellen Ring.",
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "Diese Einstellungen ändern nur die Blasen: Töne und die Punkte der Flow-Spalte behalten ihre eigenen Größen."
 }

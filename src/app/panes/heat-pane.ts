@@ -11,7 +11,7 @@ import { clock, dayOfMonth, price as fmtPrice, tickLabel, usd, zoneName, zoneOff
 import type { Store, AppState } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
-import { bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
+import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { tradedHeader, tradedLines, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { flowIds, flowLoadIds } from '../cvd/ids.ts';
 import { markLines, type AbsorptionMark } from '../absorption.ts';
@@ -262,7 +262,7 @@ export class HeatPane {
     const gutterCss = `${gutter(state)}px`;
     if (this.#gutterCss !== gutterCss) { this.#gutterCss = gutterCss; this.root.style.setProperty('--gutter', gutterCss); }
     this.#manageRaster();
-    if (state.show.bubbles) this.hub.ensurePrints(this.view);
+    if (state.show.bubbles) this.hub.ensurePrints(this.view, state.tradeBubbles.minUsd);
     if (tradedShown(state)) this.#ensureTraded(state);
     if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
@@ -512,20 +512,36 @@ export class HeatPane {
     const v = this.view, p = this.#palette, fade = 1 - 0.85 * this.#lodFrame.barAlpha;
     if (fade <= 0.02) return;
     const limit = Math.max(40, Math.min(400, Math.round(pw / 9)));
-    const off = state.disabledVenues;
-    const visible = topPrints(this.hub.prints.items, v.t0, v.t1, v.p0, v.p1, limit, off.length ? id => off.includes(id.slice(0, id.indexOf(':'))) : undefined);
+    const s = state.tradeBubbles, off = state.disabledVenues;
+    const hidden = (print: Print): boolean => bubbleHidden(print, s) || (off.length > 0 && off.includes(print.id.slice(0, print.id.indexOf(':'))));
+    const visible = topPrints(this.hub.prints.items, v.t0, v.t1, v.p0, v.p1, limit, hidden);
     if (!visible.length) return;
     const whale = state.sounds.tiers[2]?.usd ?? 400_000;
     ctx.save();
     const ordered = [...visible].sort((a, b) => a.usd - b.usd);
     for (const print of ordered) {
-      const x = v.xOf(print.t, pw), y = v.yOf(print.price, ph), r = bubbleRadius(print.usd), color = print.side === 'buy' ? p.bid : p.ask;
+      const x = v.xOf(print.t, pw), y = v.yOf(print.price, ph), r = bubbleRadius(print.usd) * s.scale, color = print.side === 'buy' ? p.bid : p.ask;
       if (x < -r || x > pw + r) continue;
       this.#bubbles.push({ x, y, r, print });
-      ctx.globalAlpha = 0.5 * fade; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = s.opacity * fade; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 0.95 * fade; ctx.lineWidth = print.usd >= whale ? 1.8 : 1; ctx.strokeStyle = print.usd >= whale ? (p.dark ? '#ffffff' : '#14171c') : color;
       if (print.usd >= whale) { ctx.shadowColor = color; ctx.shadowBlur = 10; }
       ctx.stroke(); ctx.shadowBlur = 0;
+    }
+    // The size written in each bubble that can hold it, the largest first; one that would run into another's is left to the hover box.
+    if (s.labels) {
+      const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+      ctx.globalAlpha = fade; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
+      ctx.strokeStyle = p.dark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)'; ctx.fillStyle = p.text;
+      for (let i = this.#bubbles.length - 1; i >= 0; i--) {
+        const b = this.#bubbles[i]!, label = `$${usd(b.print.usd)}`, size = Math.min(12, Math.max(9, b.r * 0.5));
+        ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
+        const w = ctx.measureText(label).width;
+        if (w > 2 * b.r - 4) continue;
+        const box = { x0: b.x - w / 2, x1: b.x + w / 2, y0: b.y - size / 2, y1: b.y + size / 2 };
+        if (placed.some(q => q.x0 < box.x1 && box.x0 < q.x1 && q.y0 < box.y1 && box.y0 < q.y1)) continue;
+        placed.push(box); ctx.strokeText(label, b.x, b.y); ctx.fillText(label, b.x, b.y);
+      }
     }
     ctx.restore();
   }

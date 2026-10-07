@@ -717,5 +717,22 @@
  "The thresholds appear once a minute of trading has been recorded.": "1分間の取引が記録されると、しきい値が表示されます。",
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "現在のしきい値がマップ上のすべてのマークを判定するので、変更したり相場で動いたりすると履歴が描き直されます。取引所ごとに自分のしきい値で判定します。マークは約定した事実を示し、その後の値動きは示しません。",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "点は発生した価格に置かれ、その横の四角は待機していた側を示します：そこで待っていた買い手が成行売りを吸収した場合は価格の下、そこで待っていた売り手が成行買いを吸収した場合は上です。四角にカーソルを合わせると、取引所、約定、最大の 10 ms 合計、しきい値が表示されます。",
- "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "自動しきい値は取引所ごとに、その取引所自身の約定から求めます：直近の期間における、同じ価格での 10 ms 合計の平均に標準偏差の倍数を足した値です。そのため活発な取引所ほど、マークされるには多くの約定が必要です。"
+ "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "自動しきい値は取引所ごとに、その取引所自身の約定から求めます：直近の期間における、同じ価格での 10 ms 合計の平均に標準偏差の倍数を足した値です。そのため活発な取引所ほど、マークされるには多くの約定が必要です。",
+ "Trade bubble settings": "約定バブルの設定",
+ "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "約定バブル：表示する最小の注文、サイド、大きさと不透明度、バブル内のサイズ表示。",
+ "Show trade bubbles": "約定バブルを表示",
+ "Large market orders where they traded, the fills of one order added together.": "大きな成行注文を約定した場所に表示します（1つの注文の約定は合算）。",
+ "Smallest order": "最小の注文",
+ "Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.": "これより小さい注文は表示しません。2.5万ドル以上の注文はすべて記録しているので、値を下げればまた表示されます。",
+ "Both sides, or only the market buys or only the market sells.": "両方のサイド、または成行買いだけ、成行売りだけ。",
+ "Buys only": "買いのみ",
+ "Sells only": "売りのみ",
+ "Bubble size": "バブルの大きさ",
+ "Every bubble larger or smaller; their sizes keep their proportions.": "すべてのバブルを大きく、または小さくします。大きさの比率は変わりません。",
+ "Opacity": "不透明度",
+ "How solid the bubbles are: lower lets the map and the candles show through.": "バブルの塗りの濃さ。低くするとマップとローソク足が透けて見えます。",
+ "Write the size in large bubbles": "大きなバブルにサイズを表示",
+ "Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.": "数字が収まる大きさのバブルだけに表示するので、縮小すると消えます。バブルにカーソルを合わせるかタップすればサイズが分かります。",
+ "Orders from the Whale size in Sounds ({value}) get a bright ring.": "サウンドの Whale サイズ（{value}）以上の注文には明るい輪が付きます。",
+ "These settings change only the bubbles: sounds and the flow column's dots keep their own sizes.": "この設定はバブルだけに効きます。サウンドとフロー列のドットはそれぞれのサイズのままです。"
 }

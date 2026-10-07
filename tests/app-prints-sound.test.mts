@@ -28,7 +28,7 @@ test('only the largest prints in the window and price range are drawn, and hidde
   const items = [print(1, 500_000), print(2, 30_000), print(3, 900_000, 'sell'), print(4, 60_000, 'buy', 'bybit:BTCUSDT'), print(5, 700_000, 'buy', 'x:BTC', 50_000), print(99, 5_000_000)];
   assert.deepEqual(topPrints(items, 0, 10, 80_000, 90_000, 10).map(p => p.t), [1, 2, 3, 4], 'outside the time or price window is excluded');
   assert.deepEqual(topPrints(items, 0, 10, 80_000, 90_000, 2).map(p => p.usd), [500_000, 900_000], 'the two largest, oldest first');
-  assert.deepEqual(topPrints(items, 0, 10, 80_000, 90_000, 10, id => id.startsWith('bybit')).map(p => p.t), [1, 2, 3]);
+  assert.deepEqual(topPrints(items, 0, 10, 80_000, 90_000, 10, p => p.id.startsWith('bybit')).map(p => p.t), [1, 2, 3]);
 });
 
 test('bubble radius grows with the square root of size inside fixed bounds', () => {

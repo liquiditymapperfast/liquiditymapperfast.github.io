@@ -18,6 +18,7 @@ import { SCOPE_OPTIONS, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedO
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
 import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow } from './ui.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
+import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
 import { openMenu } from './menu.ts';
 import { buildSoundPanel } from './sound/panel.ts';
@@ -78,6 +79,10 @@ export class Toolbar {
   #alerts: Alerts | null = null;
   #highlights = el('button', { textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
   #absorption = el('button', { textContent: t('Absorption'), tip: HELP.absorption.tip });
+  /** The show/hide buttons of the panes and marks, in the order of `PANE_TOGGLES`, and the bubbles' settings button after them. */
+  #toggleButtons: HTMLButtonElement[] = [];
+  #tradeSettings = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Trade bubble settings'), tip: t('Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.') });
+  #tradePanel: Panel | null = null;
   #absorptionPanel: Panel | null = null;
   /** The threshold each venue is judged at now, in words (set by the page, which knows the venues and the recorded minutes). */
   absorptionInfo: () => string = () => '';
@@ -131,8 +136,17 @@ export class Toolbar {
       this.#layer.append(option);
     }
     this.#layer.onchange = () => this.store.set({ layer: this.#layer.value as Layer });
-    for (const [key, label] of PANE_TOGGLES)
-      this.#toggles.append(el('button', { textContent: label, tip: HELP[key === 'bubbles' ? 'bubbles' : key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) }));
+    for (const [key, label] of PANE_TOGGLES) {
+      const button = el('button', { textContent: label, tip: HELP[key === 'bubbles' ? 'bubbles' : key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) });
+      this.#toggleButtons.push(button); this.#toggles.append(button);
+    }
+    // The bubbles' settings sit right after their switch (Trades), the last of the group.
+    this.#tradeSettings.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
+    this.#tradeSettings.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildTrades(tools, body, () => this.#tradePanel?.render(build));
+      this.#tradePanel = togglePanel(this.#tradeSettings, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
+    };
+    this.#toggles.append(this.#tradeSettings);
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
@@ -254,7 +268,7 @@ export class Toolbar {
     setValue(this.#market, state.marketId);
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
-    [...this.#toggles.children].forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
+    this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
     this.#heat.auto.classList.toggle('on', state.heat.auto);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
@@ -404,6 +418,24 @@ export class Toolbar {
       rangeRow(t('Baseline'), t('How many preceding bars the average and spread are taken from.'), { ...HIGHLIGHT_LIMITS.length, value: h.length, format: v => tn(v, '{n} bar', '{n} bars') }, length => set({ length })),
       note(t('A bar is flagged when its value exceeds the mean plus the sensitivity times the standard deviation of the bars before it. The bar itself never raises its own threshold, and nothing is flagged until a dozen bars exist.')),
     );
+  }
+
+  /** The trade bubbles' settings: whether they show, the smallest order and the side drawn, their size and opacity, and size labels. */
+  #buildTrades(tools: HTMLElement, body: HTMLElement, rebuild: () => void): void {
+    const b = this.store.state.tradeBubbles, L = BUBBLE_LIMITS;
+    tools.append(helpButton('bubbles'));
+    const set = (change: Partial<BubbleSettings>): void => { this.store.set({ tradeBubbles: { ...this.store.state.tradeBubbles, ...change } }); };
+    body.append(
+      switchRow(t('Show trade bubbles'), t('Large market orders where they traded, the fills of one order added together.'), this.store.state.show.bubbles, on => { this.store.set({ show: { ...this.store.state.show, bubbles: on } }); rebuild(); }),
+      selectRow(t('Smallest order'), t('Orders under this are not drawn. Every order from $25K is recorded, so a lower choice brings them back.'), BUBBLE_MINIMUMS.map(v => [String(v), `$${usd(v)}`] as [string, string]), String(b.minUsd), v => set({ minUsd: Number(v) })),
+      selectRow(t('Side'), t('Both sides, or only the market buys or only the market sells.'), [['both', t('Both')], ['buy', t('Buys only')], ['sell', t('Sells only')]], b.side, v => set({ side: v === 'buy' || v === 'sell' ? v : 'both' })),
+      rangeRow(t('Bubble size'), t('Every bubble larger or smaller; their sizes keep their proportions.'), { min: L.scale.min, max: L.scale.max, step: L.scale.step, value: b.scale, format: v => `×${v.toFixed(1)}` }, scale => set({ scale })),
+      rangeRow(t('Opacity'), t('How solid the bubbles are: lower lets the map and the candles show through.'), { min: L.opacity.min, max: L.opacity.max, step: L.opacity.step, value: b.opacity, format: v => `${Math.round(v * 100)}%` }, opacity => set({ opacity })),
+      switchRow(t('Write the size in large bubbles'), t('Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.'), b.labels, labels => set({ labels })),
+    );
+    const whale = this.store.state.sounds.tiers[2]?.usd;
+    if (whale) body.append(note(t('Orders from the Whale size in Sounds ({value}) get a bright ring.', { value: `$${usd(whale)}` })));
+    body.append(note(t('These settings change only the bubbles: sounds and the flow column\'s dots keep their own sizes.')));
   }
 
   /** The absorption settings: whether the marks show, how the threshold is set, and the threshold each venue is judged at now. */
