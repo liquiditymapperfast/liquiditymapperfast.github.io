@@ -882,10 +882,9 @@ export class HeatPane {
       }
       ctx.restore();
     }
-    // Say where the picture is not the whole truth: a threshold under what was kept, or more marks than one answer carries.
-    const missing = this.hub.absorption.incomplete(thresholds).filter(id => ids.includes(id)), capped = this.hub.absorptionCapped.filter(id => ids.includes(id));
+    // Say where the picture is not the whole truth: more marks than one answer carries.
+    const capped = this.hub.absorptionCapped.filter(id => ids.includes(id));
     const notes: string[] = [];
-    if (missing.length) notes.push(t('Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.', { venues: [...new Set(missing.map(venueLabel))].join(', ') }));
     if (capped.length) notes.push(t('Absorption: only the largest marks of {venues} are drawn in this window.', { venues: [...new Set(capped.map(venueLabel))].join(', ') }));
     if (this.hub.absorptionState === 'unavailable') notes.push(t('Absorption is not available from this server.'));
     if (notes.length) {

@@ -47,10 +47,6 @@ const keyOf = (g: AbsorptionGroup): string => `${g.id}|${g.side}|${g.price}|${g.
 export class AbsorptionBook {
   readonly #groups = new Map<string, AbsorptionGroup>();
   readonly #minutes = new Map<string, Map<number, AbsorptionMinute>>();
-  /** Each instrument's highest floor over the window last loaded (groups under it may be missing there). */
-  floors: Record<string, number> = {};
-  /** Per instrument, the largest credit this book let go to stay within `max` (smaller marks of it may be missing too). */
-  readonly #letGo = new Map<string, number>();
   /** Bumped whenever anything changes, so a painter can tell its cache is stale. */
   version = 0;
   constructor(private max = 40_000) {}
@@ -63,9 +59,7 @@ export class AbsorptionBook {
     if (this.#groups.size > this.max) {
       // The smallest go first (no threshold marks them before the others), down to nine tenths so it is not done again on every live push.
       const sorted = [...this.#groups.entries()].sort((a, b) => peakOf(a[1]) - peakOf(b[1]));
-      for (const [key, g] of sorted.slice(0, this.#groups.size - Math.floor(this.max * 0.9))) {
-        this.#groups.delete(key); this.#letGo.set(g.id, Math.max(this.#letGo.get(g.id) ?? 0, peakOf(g)));
-      }
+      for (const [key] of sorted.slice(0, this.#groups.size - Math.floor(this.max * 0.9))) this.#groups.delete(key);
     }
     this.version++;
   }
@@ -75,17 +69,14 @@ export class AbsorptionBook {
     for (const m of minutes) {
       let byTime = this.#minutes.get(m.id); if (!byTime) { byTime = new Map(); this.#minutes.set(m.id, byTime); }
       byTime.set(m.t, m);
-      // A settled minute is the newest knowledge of its floor: a live one may raise what the window was loaded with.
-      this.floors[m.id] = Math.max(this.floors[m.id] ?? 0, m.floor);
     }
     const cutoff = Date.now() - 25 * 3_600_000;
     for (const byTime of this.#minutes.values()) for (const t of byTime.keys()) if (t < cutoff) byTime.delete(t);
     this.version++;
   }
 
-  /** Take a history answer for a window: its groups and minutes join what is held, and its floors replace the last window's. */
+  /** Take a history answer for a window: its groups and minutes join what is held. */
   load(answer: AbsorptionAnswer): void {
-    this.floors = { ...answer.floors }; this.#letGo.clear();
     this.add(answer.groups); this.addMinutes(answer.minutes);
     this.version++;
   }
@@ -115,16 +106,6 @@ export class AbsorptionBook {
       const part = markedPart(g, threshold);
       if (part) out.push({ id: g.id, side: g.side, price: g.price, t0: part.t0, t1: part.t1, usd: part.usd, fills: part.fills, peak: part.peak, threshold });
     }
-    return out;
-  }
-
-  /**
-   * Instruments whose threshold is under the floor of the window loaded, or under what this book let go: some of their marks were not
-   * kept (the recorder keeps the largest per minute, and this book the largest when it is full).
-   */
-  incomplete(thresholds: ReadonlyMap<string, number | null>): string[] {
-    const out: string[] = [];
-    for (const [id, threshold] of thresholds) if (threshold !== null && threshold < Math.max(this.floors[id] ?? scaledUsd(GROUP_FLOOR_USD), this.#letGo.get(id) ?? 0)) out.push(id);
     return out;
   }
 

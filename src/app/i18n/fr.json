@@ -718,7 +718,6 @@
  },
  "Absorption": "Absorption",
  "Absorption marks: where market orders of one side met resting orders at one price for more than a threshold within 10 ms. A square below a level means passive buyers took the selling; above, passive sellers took the buying.": "Marques d'absorption : là où des ordres au marché d'un côté ont rencontré des ordres en attente à un prix pour plus qu'un seuil en 10 ms. Un carré sous un niveau : des acheteurs passifs ont absorbé les ventes ; au-dessus, des vendeurs passifs ont absorbé les achats.",
- "Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.": "Absorption : certaines petites marques de {venues} n'ont pas été conservées ici, ce seuil n'en montre donc qu'une partie.",
  "Absorption: only the largest marks of {venues} are drawn in this window.": "Absorption : sur cette période, seules les plus grandes marques de {venues} sont dessinées.",
  "Absorption is not available from this server.": "L'absorption n'est pas disponible sur ce serveur.",
  "Show absorption marks": "Afficher les marques d'absorption",

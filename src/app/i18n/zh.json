@@ -698,7 +698,6 @@
  "{n} marks": "{n} 个标记",
  "Absorption": "吸收",
  "Absorption marks: where market orders of one side met resting orders at one price for more than a threshold within 10 ms. A square below a level means passive buyers took the selling; above, passive sellers took the buying.": "吸收标记：同一方向的市价单在 10 毫秒内于同一价格与超过阈值的挂单成交的位置。价位下方的方块表示被动买方吸收了卖出；上方表示被动卖方吸收了买入。",
- "Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.": "吸收：此处未保留 {venues} 的部分较小标记，因此该阈值只显示其中一部分。",
  "Absorption: only the largest marks of {venues} are drawn in this window.": "吸收：此时段只绘制 {venues} 的最大标记。",
  "Absorption is not available from this server.": "此服务器不提供吸收数据。",
  "Show absorption marks": "显示吸收标记",

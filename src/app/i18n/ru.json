@@ -723,7 +723,6 @@
  },
  "Absorption": "Поглощение",
  "Absorption marks: where market orders of one side met resting orders at one price for more than a threshold within 10 ms. A square below a level means passive buyers took the selling; above, passive sellers took the buying.": "Отметки поглощения: где рыночные ордера одной стороны встретили лимитные ордера на одной цене больше порога в пределах 10 мс. Квадрат под уровнем — пассивные покупатели поглотили продажи; над ним — пассивные продавцы поглотили покупки.",
- "Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.": "Поглощение: часть мелких отметок {venues} здесь не сохранена, поэтому при этом пороге видна только часть.",
  "Absorption: only the largest marks of {venues} are drawn in this window.": "Поглощение: в этом окне показаны только крупнейшие отметки {venues}.",
  "Absorption is not available from this server.": "Поглощение недоступно на этом сервере.",
  "Show absorption marks": "Показывать отметки поглощения",

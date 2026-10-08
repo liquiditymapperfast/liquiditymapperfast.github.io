@@ -116,11 +116,6 @@ test('each minute keeps its largest groups, and the floor says under which credi
   const answer = await recorder.query(['a:BTC'], [25_000], T0, T0 + MIN, 100, T0);
   assert.deepEqual(answer.groups.map(peakOf), [70_000, 60_000, 50_000], 'the three largest, the largest first');
   assert.deepEqual(answer.floors, { 'a:BTC': 40_000 }, 'the larger of the two left out');
-  const book = new AbsorptionBook();
-  book.load(answer);
-  assert.deepEqual(book.incomplete(new Map([['a:BTC', 35_000]])), ['a:BTC'], 'a threshold under the floor is told it shows part');
-  assert.deepEqual(book.incomplete(new Map([['a:BTC', 40_000]])), []);
-  assert.deepEqual(book.incomplete(new Map([['a:BTC', null]])), [], 'no threshold, nothing claimed');
 });
 
 test('fills are taken in time order at their own times, one inside a settled minute is left out, and a computer clock ahead of the exchange settles nothing early', () => {
@@ -218,13 +213,11 @@ test('trades sent again after a restart add nothing: the first row of a minute s
   } finally { second.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a page book that is full lets its smallest groups go and says which thresholds that leaves incomplete', () => {
+test('a page book that is full lets its smallest groups go', () => {
   const book = new AbsorptionBook(10), T = Math.floor(Date.now() / MIN) * MIN;
   book.load({ groups: [], floors: { 'a:BTC': 25_000 }, minutes: [], capped: [] });
   book.add(Array.from({ length: 12 }, (_, i): AbsorptionGroup => ({ id: 'a:BTC', side: 'buy', price: 100 + i, t0: T + i, steps: [[30_000 + i * 1_000, 30_000 + i * 1_000, 1, T + i, T + i]] })));
   assert.equal(book.size, 9, 'down to nine tenths');
-  assert.deepEqual(book.incomplete(new Map([['a:BTC', 31_000]])), ['a:BTC'], 'the $30,000 to $32,000 groups are gone');
-  assert.deepEqual(book.incomplete(new Map([['a:BTC', 32_000]])), []);
   assert.deepEqual(book.marks(['a:BTC'], new Map([['a:BTC', 30_000]]), T - MIN, T + MIN, 0, 1e6).map(m => m.peak).sort(), [33_000, 34_000, 35_000, 36_000, 37_000, 38_000, 39_000, 40_000, 41_000]);
 });
 

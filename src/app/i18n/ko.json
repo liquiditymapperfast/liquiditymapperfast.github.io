@@ -698,7 +698,6 @@
  "{n} marks": "{n}개",
  "Absorption": "흡수",
  "Absorption marks: where market orders of one side met resting orders at one price for more than a threshold within 10 ms. A square below a level means passive buyers took the selling; above, passive sellers took the buying.": "흡수 표시: 한쪽 시장가 주문이 10 ms 안에 같은 가격에서 임계값을 넘는 양의 대기 주문과 체결된 곳입니다. 가격 아래 사각형은 패시브 매수자가 매도를, 위 사각형은 패시브 매도자가 매수를 흡수했다는 뜻입니다.",
- "Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.": "흡수: {venues}의 작은 표시 일부는 여기 보관되지 않아, 이 임계값으로는 일부만 보입니다.",
  "Absorption: only the largest marks of {venues} are drawn in this window.": "흡수: 이 기간에는 {venues}의 가장 큰 표시만 그립니다.",
  "Absorption is not available from this server.": "이 서버에서는 흡수를 사용할 수 없습니다.",
  "Show absorption marks": "흡수 표시 보기",

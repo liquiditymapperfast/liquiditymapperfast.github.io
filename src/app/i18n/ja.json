@@ -698,7 +698,6 @@
  "{n} marks": "{n} 件",
  "Absorption": "吸収",
  "Absorption marks: where market orders of one side met resting orders at one price for more than a threshold within 10 ms. A square below a level means passive buyers took the selling; above, passive sellers took the buying.": "吸収マーク：片側の成行注文が 10 ms 以内に同じ価格で、しきい値を超える量の待機注文と約定した場所です。価格の下の四角はパッシブな買い手が売りを吸収、上の四角はパッシブな売り手が買いを吸収したことを示します。",
- "Absorption: some smaller marks of {venues} were not kept here, so this threshold shows only part of them.": "吸収：{venues} の小さなマークの一部はここでは保存されていないため、このしきい値では一部しか表示されません。",
  "Absorption: only the largest marks of {venues} are drawn in this window.": "吸収：この期間は {venues} の大きなマークだけを表示しています。",
  "Absorption is not available from this server.": "このサーバーでは吸収を取得できません。",
  "Show absorption marks": "吸収マークを表示",
