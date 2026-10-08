@@ -40,7 +40,7 @@ export async function openCoinDialog(): Promise<void> {
   const rows = el('div', { class: 'coin-list', role: 'listbox' });
   const row = (c: Coin): HTMLElement => el('button', { type: 'button', class: c.coin === here ? 'coin-row on' : 'coin-row', role: 'option', ariaSelected: String(c.coin === here), onclick: () => { dialog.close(); switchCoin(c.coin); } },
     el('span', { class: 'coin-name', textContent: c.coin }),
-    el('span', { class: 'muted', textContent: t('{n} of {total} markets', { n: Object.keys(c.markets).length, total }) }),
+    el('span', { class: 'muted', textContent: t('{n} of {total} markets', { n: COIN_VENUES.filter(v => c.markets[v]).length, total }) }),
     el('span', { class: 'muted coin-volume', textContent: c.volumeUsd > 0 ? `$${usd(c.volumeUsd)}` : '' }));
   const show = (): void => {
     const found = matchCoins(list.coins, search.value), shown = search.value.trim() ? found : found.slice(0, FIRST_ROWS);

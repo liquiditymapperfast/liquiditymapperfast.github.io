@@ -9,7 +9,7 @@ import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore,
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
 import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, type Fetcher } from './history.ts';
 import { browserVenues, type BrowserVenue } from './venues.ts';
-import { BTC, SCALES, type Coin, type CoinVenue } from './coins.ts';
+import { BTC, SCALES, type Coin, type MarketVenue } from './coins.ts';
 import type { BookConnector, TradeEvent } from './connector.ts';
 import type { ColumnSet, ColumnsFrame } from './columns.ts';
 
@@ -333,7 +333,7 @@ export class Engine {
   prints(from: number, to: number, minUsd = this.printStream.floorUsd, limit = PRINTS_PER_ANSWER): Print[] { return this.printStream.query(from, to, Math.max(this.printStream.floorUsd, minUsd), limit); }
 
   /** How the coin is listed on the market an instrument belongs to (none: not this coin's market, so nothing is asked of it). */
-  #listing(instrumentId: string) { return this.#coin.markets[venueOf(instrumentId) as CoinVenue]; }
+  #listing(instrumentId: string) { return this.#coin.markets[venueOf(instrumentId) as MarketVenue]; }
 
   /** Candles from the venue's own history. An unreachable venue answers with nothing, and the page falls back to another one. */
   async candles(instrumentId: string, tfMs: number, from: number, to: number): Promise<Candle[]> {
@@ -356,7 +356,7 @@ export class Engine {
       const run = this.#runs.get(venue); if (!run) continue;
       if (now - (this.#oiAsked.get(venue) ?? 0) < OI_SAMPLE_MS) continue;
       this.#oiAsked.set(venue, now);
-      const listing = this.#coin.markets[venue as CoinVenue]; if (!listing) continue;
+      const listing = this.#coin.markets[venue as MarketVenue]; if (!listing) continue;
       void fetchOiSample(venue, this.#get, listing).then(base => {
         if (base === null) return;
         const list = this.#oiLive.get(venue) ?? []; this.#oiLive.set(venue, list);
@@ -371,12 +371,12 @@ export class Engine {
   /** Ask a venue that has not come up a plain REST question, once now and again every few minutes, to tell "unreachable" from "slow". */
   #probe(now: number): void {
     for (const run of this.#runs.values()) {
-      const { book, probe } = run;
-      if (book.everLive || probe.pending) continue;
+      const { book, probe } = run, ask = run.venue.probe;
+      if (!ask || book.everLive || probe.pending) continue;
       if (book.failures < 2 && now - run.startedAt < PROBE_AFTER_MS) continue;
       if (probe.at && now - probe.at < PROBE_AGAIN_MS) continue;
       probe.pending = true; probe.at = now;
-      void this.#ping(run.venue.probe.url, run.venue.probe.init).then(ok => { probe.ok = ok; }, () => { probe.ok = false; }).finally(() => { probe.pending = false; this.#lastStatus = ''; });
+      void this.#ping(ask.url, ask.init).then(ok => { probe.ok = ok; }, () => { probe.ok = false; }).finally(() => { probe.pending = false; this.#lastStatus = ''; });
     }
   }
 }

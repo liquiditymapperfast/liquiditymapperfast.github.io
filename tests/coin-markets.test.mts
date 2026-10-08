@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { BTC, COIN_VENUES, instrumentIdFor, parseCatalogue, type Coin } from '../src/shared/coins.ts';
-import { BinancePerpConnector, BinancePerpTrades, BinanceSpotBook, DeribitConnector, HyperliquidConnector, OkxConnector, browserVenues, BROWSER_VENUES } from '../src/shared/venues.ts';
+import { BTC, COIN_VENUES, OPTIONAL_VENUES, instrumentIdFor, parseCatalogue, type Coin } from '../src/shared/coins.ts';
+import { BinancePerpConnector, BinancePerpTrades, BinanceSpotBook, DeribitConnector, HyperliquidConnector, MexcConnector, OkxConnector, browserVenues, BROWSER_VENUES } from '../src/shared/venues.ts';
+import { buildMexcSubscription } from '../src/adapters/mexc.mts';
+import { FlowSources } from '../src/server/v2/flow-sources.mts';
 import type { BookConnector, Market, TradeEvent } from '../src/shared/connector.ts';
 import { Engine } from '../src/shared/engine.ts';
 import type { BrowserVenue } from '../src/shared/venues.ts';
@@ -26,11 +28,11 @@ function frames(c: BookConnector): unknown[] { const sent: unknown[] = []; if (!
 
 test('BTC is read exactly as before: the same instruments, addresses and subscriptions', () => {
   const made = BROWSER_VENUES.map(v => v.make());
-  assert.deepEqual(made.map(m => m.book.instrumentId), ['binance:BTCUSDT', 'bybit:BTCUSDT', 'okx:BTC-USDT-SWAP', 'bitget:BTCUSDT', 'hyperliquid:BTC-PERP', 'deribit:BTC-PERPETUAL', 'binancespot:BTCUSDT', 'coinbase:BTC-USD', 'bybitspot:BTCUSDT', 'okxspot:BTC-USDT', 'bitgetspot:BTCUSDT']);
+  assert.deepEqual(made.map(m => m.book.instrumentId), ['binance:BTCUSDT', 'bybit:BTCUSDT', 'okx:BTC-USDT-SWAP', 'bitget:BTCUSDT', 'hyperliquid:BTC-PERP', 'deribit:BTC-PERPETUAL', 'binancespot:BTCUSDT', 'coinbase:BTC-USD', 'bybitspot:BTCUSDT', 'okxspot:BTC-USDT', 'bitgetspot:BTCUSDT', 'mexc:BTC_USDT'], 'the eleven as they were, and MEXC after them');
   assert.deepEqual(made.flatMap(m => [m.book, ...m.feeds]).map(c => inside(c).url()), [
     'wss://fstream.binance.com/public/ws/btcusdt@depth@100ms', 'wss://fstream.binance.com/market/ws/btcusdt@aggTrade', 'wss://stream.bybit.com/v5/public/linear', 'wss://ws.okx.com:8443/ws/v5/public',
     'wss://ws.bitget.com/v2/ws/public', 'wss://api.hyperliquid.xyz/ws', 'wss://www.deribit.com/ws/api/v2', 'wss://stream.binance.com:9443/ws/btcusdt@depth@100ms', 'wss://stream.binance.com:9443/ws/btcusdt@aggTrade',
-    'wss://ws-feed.exchange.coinbase.com', 'wss://stream.bybit.com/v5/public/spot', 'wss://ws.okx.com:8443/ws/v5/public', 'wss://ws.bitget.com/v2/ws/public']);
+    'wss://ws-feed.exchange.coinbase.com', 'wss://stream.bybit.com/v5/public/spot', 'wss://ws.okx.com:8443/ws/v5/public', 'wss://ws.bitget.com/v2/ws/public', 'wss://contract.mexc.com/edge']);
   const sent = Object.fromEntries(made.map(m => [m.book.id, frames(m.book)]));
   assert.deepEqual(sent.bybit, [{ op: 'subscribe', args: ['orderbook.1000.BTCUSDT', 'publicTrade.BTCUSDT'] }]);
   assert.deepEqual(sent.bitget, [{ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'books', instId: 'BTCUSDT' }, { instType: 'USDT-FUTURES', channel: 'trade', instId: 'BTCUSDT' }] }]);
@@ -177,6 +179,56 @@ test('the order book steps, the size buckets and the coin search follow the coin
   assert.ok(starts > 0 && found.every((c, i) => c.coin.includes('PE') && (i < starts) === c.coin.startsWith('PE')), 'names that start with it first, then the rest that contain it');
   assert.equal(matchCoins(shipped.coins, '').length, shipped.coins.length);
   assert.equal(scaleText(0.1), '×0.1'); assert.equal(scaleText(0.04), '×0.04');
-  assert.equal(COIN_VENUES.length, BROWSER_VENUES.length);
-  assert.deepEqual(BROWSER_VENUES.map(v => v.id).sort(), [...COIN_VENUES].sort());
+  assert.deepEqual(BROWSER_VENUES.map(v => v.id).sort(), [...COIN_VENUES, ...OPTIONAL_VENUES].sort(), 'the eleven of the coin list, and the optional ones');
+});
+
+
+test('MEXC: the best 20 levels and trades on one socket, sizes in contracts of 0.0001 BTC, optional, and no probe a page cannot read', () => {
+  const mexc = new MexcConnector(), got = trades(mexc);
+  assert.equal(mexc.instrumentId, 'mexc:BTC_USDT');
+  assert.deepEqual(frames(mexc), [{ method: 'sub.depth.full', param: { symbol: 'BTC_USDT', limit: 20 } }, { method: 'sub.deal', param: { symbol: 'BTC_USDT' } }]);
+  mexc.state = 'connecting';
+  mexc.onMessage(msg({ symbol: 'BTC_USDT', channel: 'push.depth.full', data: { asks: [[81_260.4, 5_380, 1]], bids: [[81_260.3, 10_000, 2]] }, ts: 1 }));
+  const book = mexc.valued(Date.now())!;
+  assert.equal(book.bids.usd[0], 81_260.3 * 10_000 * 0.0001, '10,000 contracts are one BTC');
+  mexc.onMessage(msg({ symbol: 'BTC_USDT', channel: 'push.deal', data: [{ p: 81_260.4, v: 21, T: 1, O: 1, M: 2, t: 1_791_474_003_558, i: '16532415089' }, { p: 81_260.3, v: 300, T: 2, t: 1_791_474_003_560, i: '16532415090' }], ts: 1 }));
+  assert.deepEqual(got.map(t => [t.tradeId, t.side, t.amount, t.notionalUsd]), [['16532415089', 'buy', 21 * 0.0001, 81_260.4 * (21 * 0.0001)], ['16532415090', 'sell', 300 * 0.0001, 81_260.3 * (300 * 0.0001)]]);
+  mexc.onMessage(msg({ symbol: 'ETH_USDT', channel: 'push.deal', data: [{ p: 1, v: 1, T: 1, t: 1, i: 'x' }] }));
+  assert.equal(got.length, 2, 'another symbol is not this book');
+  mexc.onMessage(msg({ channel: 'rs.error', data: 'symbol not exist' }));
+  assert.equal(mexc.state, 'error');
+  const venue = BROWSER_VENUES.find(v => v.id === 'mexc')!;
+  assert.equal(venue.recommended, false); assert.equal(venue.probe, null); assert.equal(venue.kind, 'perp');
+  assert.equal(BROWSER_VENUES[BROWSER_VENUES.length - 1]!.id, 'mexc', 'last: the reference price is taken in this order');
+  assert.equal(browserVenues(coin('PEPE')).find(v => v.id === 'mexc')!.listed, false, 'other coins until the coin list carries MEXC');
+});
+
+test('the server takes MEXC trades from this connector when it has the MEXC book the feed manager names the same way', () => {
+  const request = buildMexcSubscription('depth', { symbol: 'BTC_USDT', limit: 20 });
+  assert.equal(`mexc:${String(request.symbol).toUpperCase()}`, new MexcConnector().instrumentId, 'the feed manager\'s instrument id');
+  const started: string[] = [];
+  const venues: BrowserVenue[] = [{ ...BROWSER_VENUES.find(v => v.id === 'mexc')!, make: () => { const book = new MexcConnector(); book.start = () => { started.push(book.instrumentId); }; return { book, feeds: [] }; } }];
+  const sources = new FlowSources(() => {}, () => 0, venues);
+  sources.sync(new Set(['binance:BTCUSDT']));
+  assert.deepEqual(started, [], 'no MEXC book on the server: no MEXC trades');
+  sources.sync(new Set(['mexc:BTC_USDT']));
+  assert.deepEqual(started, ['mexc:BTC_USDT']);
+});
+
+test('a venue with no probe that never connects is reported as failing, never as refusing this country', () => {
+  class Fake {
+    state = 'error'; onTrade = () => {}; everLive = false; failures = 3; lastError = 'socket closed'; lastFailure = 'socket closed';
+    get instrumentId() { return 'mexc:BTC_USDT'; } start() {} stop() {} valued() { return null; }
+  }
+  class Live extends Fake { override state = 'live'; override everLive = true; override failures = 0; override get instrumentId() { return 'binance:BTCUSDT'; } }
+  let pinged = 0;
+  const venues: BrowserVenue[] = [
+    { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, listed: true, probe: { url: 'https://x.example' }, make: () => ({ book: new Live() as unknown as BookConnector, feeds: [] }) },
+    { id: 'mexc', name: 'MEXC', kind: 'perp', recommended: false, listed: true, probe: null, make: () => ({ book: new Fake() as unknown as BookConnector, feeds: [] }) },
+  ];
+  const engine = new Engine({ venues, get: async () => { throw new Error('offline'); }, ping: async () => { pinged++; return false; }, now: () => 1e12 });
+  engine.select(['binance', 'mexc']);
+  for (let i = 0; i < 3; i++) engine.step(1e12 + i * 20_000);
+  assert.equal(engine.venueStatus().find(v => v.id === 'mexc')!.state, 'error');
+  assert.equal(pinged, 0, 'nothing asked');
 });

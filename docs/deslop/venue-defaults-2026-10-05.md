@@ -93,3 +93,28 @@ The flow column's spot side covered Binance spot and Coinbase only, about 30 % o
 
 All three pass the rule above. Bybit spot's `seq` names the order its fills belong to, as on the perpetual (926 fills: every seq shared by several fills had one side and one time). Bitget sends its last 50 trades as a snapshot on subscribing; both Bitget connectors leave them out. The three add about 16 % to the data the page receives (12.8 KB/s on top of 78.6 KB/s, measured side by side). The feed manager serves one market per exchange (the perpetual unless `OKX_MARKET_TYPE`, `BYBIT_CATEGORY` or `BITGET_MARKET_TYPE` says spot): a server set to an exchange's spot market should switch the matching spot venue off, or that market is counted twice.
 - Hyperliquid's book is the slowest of the default set (about 3 s old); it is kept for its reach and open interest.
+
+
+## 2026-10-08: MEXC, BloFin and Bitunix
+
+Asked for by a visitor. BTC perpetuals, measured on 2026-10-08 at about 15:20 UTC from each exchange's public REST and a 150 s live probe of every feed beside Bybit and Binance. The window fell in a sharp sell-off (Binance traded $257M in it), so the trade flow is compared as a share of Binance's rather than in dollars.
+
+| | MEXC | BloFin | Bitunix | Yardstick |
+| --- | --- | --- | --- | --- |
+| 24 h volume | $3.29B | $0.32B | $2.20B | Binance $11.98B, Bybit $5.12B, OKX $6.30B |
+| Open interest | 47 033 BTC | 4 272 BTC | not published | Binance 95 888, Bybit 57 939 |
+| Trade flow vs Binance, live / reported | 25 % / 27 % | 5.7 % / 2.7 % | 21 % / 18 % | Bybit 52 % / 43 % |
+| Liquidity within 10 bp | $14M to $23M | $70M to $108M | $32M to $39M | about $50M each |
+| Liquidity within 50 bp | $460M to $485M | about $400M | $64M | OKX $149M |
+| Book a page can read | 20 levels a side (`sub.depth.full`), about 4 bp | 400 levels a side, seq-chained, 38 to 79 bp | the whole book, 25 000 levels | |
+| Data received | about 20 KB/s (diffs of the deep book) | 29 KB/s | about 1 500 KB/s | the eleven defaults together about 80 KB/s |
+| Crossed books, staleness | none, under 1 s | none, under 1 s | none, under 1 s | |
+| Trade id, time resolution | id, ms | id, ms | no id, whole seconds | |
+| REST readable by a page (CORS) | no | yes | no | |
+
+- **Volume.** Each venue's live trade flow matched its reported share, so the public feeds do not contradict the volume figures.
+- **Books out of proportion to trading.** BloFin rests up to twice Binance's liquidity near the price on about 3 % of its volume, and MEXC three to five times Binance's within 50 bp. The map adds books together, so either would dominate its walls without reflecting where trading happens. A comparison of each book's shape with Binance's at the same moment (to look for mirrored books) was inconclusive.
+- **MEXC.** Large (third by open interest, 7 % of volume), clean feed, trades with ids. A page cannot read its REST (no snapshot, no candles, no contract size), so the browser takes its best 20 levels and its trades. **Added as an optional venue** (off until chosen; contracts of 0.0001 BTC written into BTC's listing; no reachability probe, so a connection that never comes up is reported as failing rather than as refused for the visitor's country). The server keeps the feed manager's 20-level MEXC book and now takes MEXC's trades through the same connector (FlowSources). A deep book on the server (REST snapshot plus MEXC's conflated diffs, whose versions jump by hundreds per message and so cannot be checked for gaps) is left undone: it would touch the feed manager and bring the heavy far walls onto the map.
+- **BloFin.** A clean, browser-friendly feed (OKX's API shape), but about 1 % of perpetual volume with a book that would distort the map. Not added.
+- **Bitunix.** Its book socket sends the whole book many times a second (about 1.5 MB/s, twenty times the defaults together), its trades have no id (they cannot be told apart after a reconnect) and whole-second times. Not added to the browser; it stays an optional connector on the server, as before.
+- MEXC spot: $0.47B a day, thin (about $2M within 50 bp), protobuf WebSocket. Not added.

@@ -42,7 +42,7 @@ How it is built:
 
 What it loses relative to the server:
 
-- **Eleven venues, not twenty-nine.** Only the recommended set has a browser connector; the other connectors stay with the server.
+- **Twelve venues, not twenty-nine.** The recommended eleven and MEXC (off until chosen, 20 levels) have a browser connector; the other connectors stay with the server.
 - **History.** Candles and open interest come from the venues' REST endpoints at once (Binance has 30 days of open-interest history; Hyperliquid's open interest builds up from samples taken while the page is open). The heatmap, footprint and trade bubbles are built from what the tab has seen: they start empty and fill while the page is open, and IndexedDB keeps 24 hours between visits (a background tab records, but a throttled one may record with gaps). The heatmap draws a dashed line where recording began. A hosted recorder remains possible later as an optional history service.
 - **A fresh book is shallow where the exchange's snapshot ends.** Binance's USD-M depth snapshot stops at 1000 levels, about $130 (0.16 %) from the touch at BTC's tick, and the stream only reveals a level farther out when it changes. A page that has just opened therefore has a thinner far book than a server that has been running for hours (measured 2026-10-05: within $100 of the best bid the exchange snapshot, the browser engine and the server agree to 0.2 %; at $200 the browser had 47.7M, the server 67.3M). It fills in as levels update, in either mode.
 - **HyperTracker layers** (liquidation, stop loss, take profit) need a key that must stay secret, so the layer dropdown lists them as upcoming.

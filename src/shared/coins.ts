@@ -11,9 +11,12 @@
 /** The markets there were before a saved venue choice recorded which ones it had seen (shared/venues.ts restoreSelection). */
 export const EARLIER_BROWSER_VENUES: readonly string[] = ['binance', 'bybit', 'okx', 'bitget', 'hyperliquid', 'deribit', 'binancespot', 'coinbase'];
 
-/** The eleven markets, as the venue ids the browser uses. */
+/** The eleven markets, as the venue ids the browser uses. A coin is listed by how many of these list it. */
 export const COIN_VENUES = ['binance', 'binancespot', 'bybit', 'bybitspot', 'okx', 'okxspot', 'bitget', 'bitgetspot', 'hyperliquid', 'deribit', 'coinbase'] as const;
 export type CoinVenue = (typeof COIN_VENUES)[number];
+/** Markets a person can add that do not count towards a coin's place in the list (MEXC: its books and history are not readable by a page). */
+export const OPTIONAL_VENUES = ['mexc'] as const;
+export type MarketVenue = CoinVenue | (typeof OPTIONAL_VENUES)[number];
 
 /** How one market lists a coin. */
 export interface Listing {
@@ -28,7 +31,8 @@ export interface Listing {
 }
 export interface Coin {
   coin: string;
-  markets: Partial<Record<CoinVenue, Listing>>;
+  /** How each market lists it: the eleven of COIN_VENUES, and an optional market where one is known (BTC's are built in). */
+  markets: Partial<Record<MarketVenue, Listing>>;
   /** 24 h volume in USD over the markets that list it, and the price of one coin when the list was built. */
   volumeUsd: number; price: number;
   /** How much smaller than BTC's the size floors are: 0 is BTC's, each step down is SCALES[tier] (see `tierFor`). */
@@ -50,6 +54,8 @@ export const BTC: Coin = {
     okx: { symbol: 'BTC-USDT-SWAP', unit: 1, contract: 0.01 }, okxspot: { symbol: 'BTC-USDT', unit: 1 },
     bitget: { symbol: 'BTCUSDT', unit: 1 }, bitgetspot: { symbol: 'BTCUSDT', unit: 1 },
     hyperliquid: { symbol: 'BTC', unit: 1 }, deribit: { symbol: 'BTC-PERPETUAL', unit: 1, inverse: true }, coinbase: { symbol: 'BTC-USD', unit: 1 },
+    // Contracts of 0.0001 BTC (MEXC's contract detail; a page cannot read it, so it is written here).
+    mexc: { symbol: 'BTC_USDT', unit: 1, contract: 0.0001 },
   },
 };
 
@@ -297,7 +303,7 @@ export const ONLY_BTC: Catalogue = { version: 1, builtAt: 0, lists: {}, coins: [
 
 /** The instrument id a market's connector gives the coin there (the connectors in shared/venues.ts: "hyperliquid:BTC-PERP", "binance:1000PEPEUSDT"), or null where it is not listed. */
 export function instrumentIdFor(venue: string, coin: Coin): string | null {
-  const listing = coin.markets[venue as CoinVenue];
+  const listing = coin.markets[venue as MarketVenue];
   if (!listing) return null;
   return `${venue}:${venue === 'hyperliquid' ? `${listing.symbol}-PERP` : listing.symbol}`;
 }

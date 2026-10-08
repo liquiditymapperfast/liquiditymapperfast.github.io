@@ -1,5 +1,5 @@
 import { BinanceDiffDepthConnector, BookConnector, type Market } from './connector.ts';
-import { BTC, EARLIER_BROWSER_VENUES, type Coin, type CoinVenue } from './coins.ts';
+import { BTC, EARLIER_BROWSER_VENUES, type Coin, type MarketVenue } from './coins.ts';
 import { hyperliquidGroupingBoundsDecimal } from '../analytics/hyperliquid-bounds.mts';
 
 /**
@@ -12,7 +12,7 @@ const num = (value: unknown): number => Number(value);
 const iso = (value: unknown): number => Date.parse(String(value));
 
 /** BTC on one market, as the page has always read it. */
-const btc = (venue: CoinVenue): Market => ({ coin: 'BTC', ...BTC.markets[venue]! });
+const btc = (venue: MarketVenue): Market => ({ coin: 'BTC', ...BTC.markets[venue]! });
 
 /** A connector for one coin on one market: the symbol is the market's own name for it. */
 abstract class MarketBook extends BookConnector {
@@ -357,6 +357,44 @@ export class HyperliquidConnector extends MarketBook {
   }
 }
 
+// ---- MEXC ---------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * MEXC USDT perpetual: the best 20 levels a side, whole on every push (`sub.depth.full`), and trades on the same socket. A deeper book
+ * would need MEXC's REST snapshot, which sends no CORS header, so a page cannot read it. Sizes are contracts (0.0001 BTC each; the
+ * listing carries the size, as MEXC's contract detail is not readable from a page either).
+ */
+export class MexcConnector extends MarketBook {
+  readonly id = 'mexc'; readonly name = 'MEXC'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
+  constructor(market: Market = btc('mexc')) { super(market); }
+  /** Coins per contract. */
+  readonly contract = this.market.contract ?? 1;
+  protected url() { return 'wss://contract.mexc.com/edge'; }
+  protected open(send: (p: unknown) => void) {
+    send({ method: 'sub.depth.full', param: { symbol: this.symbol, limit: 20 } });
+    send({ method: 'sub.deal', param: { symbol: this.symbol } });
+  }
+  override keepalive() { return { everyMs: 15_000, frame: () => ({ method: 'ping' }) }; }
+  protected override usdOf(price: number, size: number) { return price * size * this.contract; }
+  onMessage(text: string) {
+    const m = this.record(JSON.parse(text)); if (!m) return;
+    if (m.channel === 'rs.error') { this.fail(`subscription refused: ${String(m.data ?? '')}`.slice(0, 160)); return; }
+    if (m.symbol !== undefined && m.symbol !== this.symbol) return;
+    if (m.channel === 'push.depth.full') {
+      const d = this.record(m.data); if (!d) return;
+      this.replace(this.bids, this.rows(d.bids)); this.replace(this.asks, this.rows(d.asks)); this.touch(); return;
+    }
+    if (m.channel === 'push.deal') {
+      for (const item of Array.isArray(m.data) ? m.data : [m.data]) {
+        const d = this.record(item); if (!d) continue;
+        // T: the taker's side (1 buy, 2 sell); v: contracts; i: the trade's id.
+        const price = num(d.p), amount = num(d.v) * this.contract, t = num(d.t), side = d.T === 1 ? 'buy' : d.T === 2 ? 'sell' : null;
+        if (side && price > 0 && amount > 0 && Number.isFinite(t) && d.i !== undefined) this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t });
+      }
+    }
+  }
+}
+
 // ---- Binance spot ---------------------------------------------------------------------------------------------------------------------
 
 /** Binance spot's book: the server's diff-depth connector (shared/connector.ts), for any coin; the deepest spot book (5000 levels a snapshot). */
@@ -381,8 +419,9 @@ export interface BrowserVenue {
   /**
    * A small public REST request that answers when the venue serves this visitor. Exchanges that restrict a country refuse here too (an
    * HTTP error status, or a reply the browser withholds), which is how an unreachable venue is told apart from one that is only slow.
+   * Null for a venue with no REST a page can read (MEXC): one that never connects is then reported as failing, not as refusing a country.
    */
-  probe: { url: string; init?: { method: string; headers: Record<string, string>; body: string } };
+  probe: { url: string; init?: { method: string; headers: Record<string, string>; body: string } } | null;
   /** The book connector first, then any feed that only carries trades. */
   make(): { book: BookConnector; feeds: BookConnector[] };
 }
@@ -390,7 +429,7 @@ export interface BrowserVenue {
 const POST_JSON = { method: 'POST', headers: { 'content-type': 'application/json' } } as const;
 
 /** Each market: its name, kind, reachability request and connectors for one coin's listing there. */
-const VENUE_SPECS: readonly (Omit<BrowserVenue, 'listed' | 'make'> & { id: CoinVenue; make(market: Market): { book: BookConnector; feeds: BookConnector[] } })[] = [
+const VENUE_SPECS: readonly (Omit<BrowserVenue, 'listed' | 'make'> & { id: MarketVenue; make(market: Market): { book: BookConnector; feeds: BookConnector[] } })[] = [
   { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, probe: { url: 'https://fapi.binance.com/fapi/v1/ping' }, make: m => ({ book: new BinancePerpConnector(m), feeds: [new BinancePerpTrades(m)] }) },
   { id: 'bybit', name: 'Bybit', kind: 'perp', recommended: true, probe: { url: 'https://api.bybit.com/v5/market/time' }, make: m => ({ book: new BybitConnector(m), feeds: [] }) },
   { id: 'okx', name: 'OKX', kind: 'perp', recommended: true, probe: { url: 'https://www.okx.com/api/v5/public/time' }, make: m => ({ book: new OkxConnector(m), feeds: [] }) },
@@ -402,6 +441,9 @@ const VENUE_SPECS: readonly (Omit<BrowserVenue, 'listed' | 'make'> & { id: CoinV
   { id: 'bybitspot', name: 'Bybit spot', kind: 'spot', recommended: true, probe: { url: 'https://api.bybit.com/v5/market/time' }, make: m => ({ book: new BybitSpotConnector(m), feeds: [] }) },
   { id: 'okxspot', name: 'OKX spot', kind: 'spot', recommended: true, probe: { url: 'https://www.okx.com/api/v5/public/time' }, make: m => ({ book: new OkxSpotConnector(m), feeds: [] }) },
   { id: 'bitgetspot', name: 'Bitget spot', kind: 'spot', recommended: true, probe: { url: 'https://api.bitget.com/api/v2/public/time' }, make: m => ({ book: new BitgetSpotConnector(m), feeds: [] }) },
+  // Optional (docs/deslop/venue-defaults-2026-10-05.md, 2026-10-08): large by volume and open interest, but a page gets only its best 20
+  // levels, and its resting book is several times heavier than its trading. Last, so the order of the others (and the reference price) is as it was.
+  { id: 'mexc', name: 'MEXC', kind: 'perp', recommended: false, probe: null, make: m => ({ book: new MexcConnector(m), feeds: [] }) },
 ];
 
 /** The markets for one coin: every one of the eleven, each either listing it (and able to start) or not. */

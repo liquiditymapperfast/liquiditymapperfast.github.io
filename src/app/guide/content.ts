@@ -167,7 +167,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'venues', title: 'Exchanges, spot and perpetuals',
     blocks: [
-      { t: 'p', text: 'The map combines up to eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them on or off, and the choice is kept in your browser.' },
+      { t: 'p', text: 'By default the map combines eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them, or MEXC, on or off, and the choice is kept in your browser.' },
       { t: 'list', items: [
         '**Spot / Perp / Both** filters what the liquidity views draw.',
         'The **chips** show or hide one exchange\'s contribution without stopping its feed. A chip that is dimmed is one the Spot / Perp filter is hiding: click it to show it. An exchange you chose that has no map gets a dashed chip that says why on hover.',
