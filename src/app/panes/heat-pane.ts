@@ -26,6 +26,9 @@ import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, typ
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
 import { t } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
+import { DRAG_MIN_PX, selects } from '../range/selection.ts';
+import { draftLabel } from '../range/stats.ts';
+import type { RangePoint, RangeTool } from '../range/tool.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -94,6 +97,10 @@ export class HeatPane {
   #baseline: { lo: number; hi: number; at: number; spanP: number } | null = null;
   #forceBaseline = true;
   #drag: { x: number; y: number; shift: boolean } | null = null;
+  /** The Range tool (set by the page), and a selection being dragged here: where it began, and where a finger last was. */
+  range: RangeTool | null = null;
+  #selecting: { x: number; y: number } | null = null;
+  #touchSelect: { start: Pt; at: Pt } | null = null;
   /** Right-button drag: zoom about the press point, from the view as it was at press time. */
   #zoomDrag: { x: number; y: number; view: Bounds } | null = null;
   #wasLoaded = false;
@@ -362,7 +369,43 @@ export class HeatPane {
       ctx.strokeStyle = p.line; ctx.strokeRect(pw / 2 - width / 2 + 0.5, ph / 2 - 19.5, width - 1, 39);
       ctx.fillStyle = p.text; ctx.textAlign = 'center'; ctx.fillText(emptyScope, pw / 2, ph / 2); ctx.textAlign = 'left'; ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     }
+    this.#paintRange(ctx, state, pw, ph);
     this.#paintCrosshair(ctx, state, pw, ph);
+  }
+
+  /**
+   * The Range tool's selection: a dashed box, or for a stretch of time a band the height of the map, lightly shaded. While it is dragged a
+   * tag beside it gives its size (minutes, and a box's height as a share of its price).
+   */
+  #paintRange(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const sel = state.range; if (!sel) return;
+    const v = this.view, p = this.#palette, box = sel.p0 !== null && sel.p1 !== null;
+    const x0 = Math.max(-2, v.xOf(sel.t0, pw)), x1 = Math.min(pw + 2, v.xOf(sel.t1, pw));
+    if (x1 < 0 || x0 > pw) return;
+    const y0 = box ? Math.max(-2, v.yOf(sel.p1!, ph)) : -2, y1 = box ? Math.min(ph + 2, v.yOf(sel.p0!, ph)) : ph + 2;
+    if (y1 < 0 || y0 > ph) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+    ctx.fillStyle = p.text; ctx.globalAlpha = 0.07; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); ctx.globalAlpha = 1;
+    // A light edge under the dashes, so the box reads over dark cells, bright walls and bubbles alike.
+    const rect = [Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.max(1, Math.round(x1 - x0) - 1), Math.max(1, Math.round(y1 - y0) - 1)] as const;
+    ctx.strokeStyle = p.panel; ctx.lineWidth = 3; ctx.globalAlpha = 0.85; ctx.strokeRect(...rect); ctx.globalAlpha = 1;
+    ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); ctx.strokeRect(...rect); ctx.setLineDash([]);
+    if (sel.draft) {
+      const label = draftLabel(sel);
+      ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      const w = ctx.measureText(label).width + 12, tx = Math.min(pw - w - 2, Math.max(2, x0)), ty = y0 > 24 ? y0 - 22 : Math.min(ph - 22, y1 + 4);
+      ctx.fillStyle = p.panel; ctx.globalAlpha = 0.94; ctx.fillRect(tx, ty, w, 18); ctx.globalAlpha = 1;
+      ctx.strokeStyle = p.line; ctx.strokeRect(tx + 0.5, ty + 0.5, w - 1, 17);
+      ctx.fillStyle = p.text; ctx.fillText(label, tx + 6, ty + 9);
+      ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    }
+    ctx.restore();
+  }
+
+  /** A point of the map for the Range tool, held inside the plot. */
+  #rangePoint(x: number, y: number): RangePoint {
+    const pw = this.plotW, ph = this.plotH;
+    return { t: this.view.tOf(Math.max(0, Math.min(pw, x)), pw), p: this.view.pOf(Math.max(0, Math.min(ph, y)), ph) };
   }
 
   #paintLegend(ctx: CanvasRenderingContext2D, state: AppState): void {
@@ -964,18 +1007,21 @@ export class HeatPane {
       holdMove: p => this.#pinAt(p),
       panStart: p => {
         this.#unpin();
+        if (this.range?.armed && p.x <= this.plotW && p.y <= this.plotH) { this.#touchSelect = { start: p, at: p }; this.range.begin(this.#rangePoint(p.x, p.y)); return; }
         this.#panKind = p.y > this.plotH ? 'time' : p.x > this.#w - AXIS_W ? 'price' : 'map';
         this.#axisDrag = this.#panKind === 'map' ? null : { view: this.view.clone(), x: 0, y: 0 };
       },
-      pan: d => this.#touchPan(d),
+      pan: (d, at) => { if (this.#touchSelect) { this.#touchSelect.at = at; this.range?.move(this.#rangePoint(at.x, at.y)); return; } this.#touchPan(d); },
       panEnd: v => {
+        const touch = this.#touchSelect;
+        if (touch) { this.#touchSelect = null; if (v === null) this.range?.cancel(); else this.range?.end(this.#rangePoint(touch.at.x, touch.at.y), Math.hypot(touch.at.x - touch.start.x, touch.at.y - touch.start.y) < DRAG_MIN_PX); return; }
         const kind = this.#panKind; this.#panKind = null; this.#axisDrag = null;
         if (kind === 'map' && v && !reducedMotion && Math.hypot(v.x, v.y) > 0.08) this.#startFling(v);
       },
       pinchStart: info => this.#pinchBegin(info),
       pinch: info => this.#pinchTo(info),
       pinchEnd: () => { this.#pinch = null; },
-      cancel: () => { this.#panKind = null; this.#axisDrag = null; this.#pinch = null; },
+      cancel: () => { this.#panKind = null; this.#axisDrag = null; this.#pinch = null; if (this.#touchSelect) { this.#touchSelect = null; this.range?.cancel(); } },
     };
   }
 
@@ -1122,6 +1168,9 @@ export class HeatPane {
     el.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
+      if (this.range && selects(this.range.armed, e) && x <= this.plotW && y <= this.plotH) {
+        this.#selecting = { x, y }; this.range.begin(this.#rangePoint(x, y)); el.setPointerCapture(e.pointerId); return;
+      }
       if (e.button === 2) { this.#zoomDrag = { x, y, view: this.view.clone() }; el.setPointerCapture(e.pointerId); return; }
       if (e.button !== 0) return;
       if (this.#onScale(x, y)) {
@@ -1136,7 +1185,12 @@ export class HeatPane {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
       if (this.#scaleDrag) { this.#dragScale(y); return; }
-      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : '';
+      if (this.#selecting && this.range) {
+        this.range.move(this.#rangePoint(x, y));
+        if (x <= this.plotW && y <= this.plotH) this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: this.view.pOf(y, this.plotH), y, source: 'heat' } });
+        return;
+      }
+      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : this.range?.armed && x <= this.plotW && y <= this.plotH ? 'crosshair' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
         const z = this.#zoomDrag, k = 0.006, pw = this.plotW, ph = this.plotH;
@@ -1159,7 +1213,16 @@ export class HeatPane {
       this.#tradedHover = !this.#drag && tradedX !== null && x > tradedX && x <= tradedX + TRADED_W && y >= 0 && y <= this.plotH ? { y } : null;
       this.invalidate();
     });
-    el.addEventListener('pointerup', e => { if (e.pointerType === 'touch') return; this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; el.style.cursor = this.#onScale(local(e).x, local(e).y) ? 'ns-resize' : ''; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
+    el.addEventListener('pointerup', e => {
+      if (e.pointerType === 'touch') return;
+      const sel = this.#selecting;
+      if (sel && this.range) {
+        const { x, y } = local(e); this.#selecting = null;
+        this.range.end(this.#rangePoint(x, y), Math.hypot(x - sel.x, y - sel.y) < DRAG_MIN_PX);
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+        return;
+      }
+      this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; el.style.cursor = this.#onScale(local(e).x, local(e).y) ? 'ns-resize' : ''; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); });
     el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; this.#tradedHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
     el.addEventListener('dblclick', () => this.fit());
     bindTouch(el, new GestureRecognizer(this.#touchHandlers()));

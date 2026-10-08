@@ -286,6 +286,28 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .panel-body { overflow-y: auto; padding: 2px 14px 14px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; min-height: 0; }
 .panel h4 { margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 .panel-note { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+/* The Range panel (range/tool.ts): the selection, then one line per figure. Buy and sell are the bid and ask colours of the theme. */
+.panel-tools .spacer { flex: 1; min-width: 0; }
+.range-lines { display: flex; flex-direction: column; gap: 2px; }
+.range-title { font-weight: 650; font-size: 13px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.range-note { margin: 2px 0 4px; }
+.range-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; line-height: 1.5; }
+.range-stat .label { color: var(--muted); flex: 0 0 auto; }
+.range-stat .value { text-align: right; font-variant-numeric: tabular-nums; }
+.range-stat.buy .value { color: var(--bid); }
+.range-stat.sell .value { color: var(--ask); }
+.range-split { margin: 4px 0 2px; }
+.range-split-bar { display: flex; height: 8px; border: 1px solid var(--line); }
+.range-split-bar .buy { flex: 0 0 var(--share); background: var(--bid); }
+.range-split-bar .sell { flex: 1 1 auto; background: var(--ask); }
+.range-split-labels { display: flex; justify-content: space-between; margin-top: 3px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.range-split-labels .buy { color: var(--bid); }
+.range-split-labels .sell { color: var(--ask); }
+.range-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr .7fr; gap: 6px; font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.range-row > span:not(:first-child) { text-align: right; }
+.range-row.muted { color: var(--muted); font-size: 10.5px; }
+.range-row .bar.buy { background: linear-gradient(to left, color-mix(in srgb, var(--bid) 24%, transparent) var(--w), transparent var(--w)); }
+.range-row .bar.sell { background: linear-gradient(to left, color-mix(in srgb, var(--ask) 24%, transparent) var(--w), transparent var(--w)); }
 .panel .name { font-weight: 600; color: var(--text); }
 .panel .desc { display: block; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .panel .opt { display: grid; grid-template-columns: 18px 1fr; column-gap: 9px; align-items: start; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius); cursor: pointer; }

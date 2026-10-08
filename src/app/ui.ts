@@ -18,6 +18,8 @@ export interface PanelOptions {
   /** Which edge of the anchor the panel lines up with. */
   align?: 'left' | 'right';
   onClose?: () => void;
+  /** A press outside does not close it: a panel about what is on the map, kept open while the person works on the map (as a moved one is). */
+  stays?: boolean;
 }
 export interface Panel {
   readonly root: HTMLElement;
@@ -71,7 +73,7 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
   };
   // On a phone the scrim closes the panel; elsewhere a press outside it does, unless it has been moved: then it is a window the person put somewhere.
   const onPointer = (event: PointerEvent): void => {
-    if (compactBar() || drag.moved()) return;
+    if (compactBar() || drag.moved() || options.stays) return;
     const t = event.target as Node;
     // A menu opened from a control inside the panel (a dropdown) is part of it.
     if (!root.contains(t) && !anchor.contains(t) && !(t instanceof Element && t.closest('.menu'))) panel.close();

@@ -22,6 +22,8 @@ import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../
 import { panelSwitchRow, panelSwitchOn, setPanelSwitch } from '../sound/panel.ts';
 import { t, tn } from '../i18n.ts';
 import { scaledUsd, unscaledUsd } from '../coin.ts';
+import { DRAG_MIN_PX, selects } from '../range/selection.ts';
+import type { RangeTool } from '../range/tool.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -46,6 +48,10 @@ abstract class TimePane {
   #source: 'depth' | 'oi' | 'lt' | 'bars';
   /** Where the pointer (or the pinned finger) is, in the page, for a popup that is a page element rather than canvas drawing. */
   protected pointer: { x: number; y: number } | null = null;
+  /** The Range tool (set by the page), and a stretch of time being selected here: where the drag began, and where a finger last was. */
+  #range: RangeTool | null = null;
+  #selecting: { x: number } | null = null;
+  #touchSelect: { start: Pt; at: Pt } | null = null;
 
   constructor(host: HTMLElement, protected store: Store, protected view: View, cls: string) {
     this.root.className = `pane ${cls}`; this.head.className = 'pane-head';
@@ -53,10 +59,25 @@ abstract class TimePane {
     this.ctx = this.canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.canvas);
     const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars';
+    // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held.
+    this.canvas.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch' || !this.#range) return;
+      const x = e.clientX - this.canvas.getBoundingClientRect().left;
+      if (!selects(this.#range.armed, e) || x < 0 || x > this.plotW) return;
+      this.#selecting = { x }; this.#range.begin({ t: this.#timeAt(x), p: null }); this.canvas.setPointerCapture(e.pointerId);
+    });
+    this.canvas.addEventListener('pointerup', e => {
+      const sel = this.#selecting; if (!sel || !this.#range) return;
+      const x = e.clientX - this.canvas.getBoundingClientRect().left; this.#selecting = null;
+      this.#range.end({ t: this.#timeAt(x), p: null }, Math.abs(x - sel.x) < DRAG_MIN_PX);
+      if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+    });
     this.canvas.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const r = this.canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       this.pointer = { x: e.clientX, y: e.clientY };
+      if (this.#selecting) this.#range?.move({ t: this.#timeAt(x), p: null });
+      this.canvas.style.cursor = this.#range?.armed && x <= this.plotW ? 'crosshair' : '';
       if (x < 0) { this.store.set({ hover: null }); return; }
       // Over the price axis the pointer reads the right edge of the plot, so a pane past its newest point keeps showing that (readAt).
       this.store.set({ hover: { t: this.view.tOf(Math.min(x, this.plotW), this.plotW), price: null, y, source } });
@@ -67,6 +88,10 @@ abstract class TimePane {
 
   /** Let the panes' finger gestures move the map's time axis (called once the map exists). */
   useTimeGestures(time: ReturnType<HeatPane['timeGestures']>): void { this.#time = time; }
+  /** Let a drag across the pane select a stretch of time for the Range tool. */
+  useRange(range: RangeTool): void { this.#range = range; }
+  /** The time at `x`, held inside the plot. */
+  #timeAt(x: number): number { return this.view.tOf(Math.max(0, Math.min(this.plotW, x)), this.plotW); }
 
   /**
    * A tap pins the readout at that time (tap it again to let it go), holding and dragging scrubs it, and dragging or pinching moves
@@ -84,13 +109,21 @@ abstract class TimePane {
       tap: p => { if (this.#pinned && Math.hypot(this.#pinned.x - p.x, this.#pinned.y - p.y) < 28) this.#unpin(); else pin(p); },
       doubleTap: p => { this.#unpin(); this.#time?.doubleTap?.(p); },
       hold: pin, holdMove: pin,
-      panStart: p => { this.#unpin(); this.#time?.panStart?.(p); },
-      pan: (d, p, v) => this.#time?.pan?.(d, p, v),
-      panEnd: v => this.#time?.panEnd?.(v),
+      panStart: p => {
+        this.#unpin();
+        if (this.#range?.armed && p.x <= this.plotW) { this.#touchSelect = { start: p, at: p }; this.#range.begin({ t: this.#timeAt(p.x), p: null }); return; }
+        this.#time?.panStart?.(p);
+      },
+      pan: (d, p, v) => { if (this.#touchSelect) { this.#touchSelect.at = p; this.#range?.move({ t: this.#timeAt(p.x), p: null }); return; } this.#time?.pan?.(d, p, v); },
+      panEnd: v => {
+        const touch = this.#touchSelect;
+        if (touch) { this.#touchSelect = null; if (v === null) this.#range?.cancel(); else this.#range?.end({ t: this.#timeAt(touch.at.x), p: null }, Math.abs(touch.at.x - touch.start.x) < DRAG_MIN_PX); return; }
+        this.#time?.panEnd?.(v);
+      },
       pinchStart: info => { this.#unpin(); this.#time?.pinchStart?.(info); },
       pinch: info => this.#time?.pinch?.(info),
       pinchEnd: () => this.#time?.pinchEnd?.(),
-      cancel: () => this.#time?.cancel?.(),
+      cancel: () => { if (this.#touchSelect) { this.#touchSelect = null; this.#range?.cancel(); } this.#time?.cancel?.(); },
     };
   }
   #unpin(): void {
@@ -110,7 +143,7 @@ abstract class TimePane {
   #prepare(): void {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.#grid(); this.draw(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.#grid(); this.draw(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -118,6 +151,17 @@ abstract class TimePane {
     for (const t of timeTicks(v.t0, v.t1, pw)) { const x = Math.round(v.xOf(t, pw)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, this.h); }
     ctx.stroke(); ctx.globalAlpha = 1;
     ctx.fillStyle = p.panel; ctx.fillRect(this.w - AXIS_W, 0, AXIS_W, this.h);
+  }
+  /** The Range tool's selection, as a lightly shaded band across the pane between dashed edges (a box on the map is its stretch of time here). */
+  #rangeBand(): void {
+    const sel = this.store.state.range; if (!sel) return;
+    const { ctx, palette: p } = this, pw = this.plotW;
+    const x0 = Math.max(0, this.view.xOf(sel.t0, pw)), x1 = Math.min(pw, this.view.xOf(sel.t1, pw));
+    if (x1 <= x0) return;
+    ctx.save(); ctx.fillStyle = p.text; ctx.globalAlpha = 0.07; ctx.fillRect(x0, 0, x1 - x0, this.h); ctx.globalAlpha = 1;
+    ctx.strokeStyle = p.text; ctx.setLineDash([5, 4]); ctx.beginPath();
+    for (const x of [x0, x1]) if (x > 0 && x < pw) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h); }
+    ctx.stroke(); ctx.restore();
   }
   #crosshair(): void {
     const hv = this.store.state.hover; if (!hv) return;

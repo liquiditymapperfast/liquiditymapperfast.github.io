@@ -28,6 +28,8 @@ import { sizeBucketLabels } from './bar-stats.ts';
 import { CvdStrip } from './cvd-strip.ts';
 import type { Print } from '../prints.ts';
 import { t } from '../i18n.ts';
+import { DRAG_MIN_PX, selects } from '../range/selection.ts';
+import type { RangeTool } from '../range/tool.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const PAD = 6, LINE_H = 12;
@@ -80,6 +82,8 @@ export class CvdPane {
   #layout: RowLayout | null = null;
   #scroll = 0;
   #hover: { x: number; y: number } | null = null;
+  /** The Range tool (set by the page): a sideways drag across the lines selects that stretch of time. */
+  range: RangeTool | null = null;
   #gutter = GUTTER_MIN;
   /** The window the last frame drew, for `followMap`. */
   #drawn: { t0: number; t1: number } | null = null;
@@ -261,21 +265,34 @@ export class CvdPane {
       const lines = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? this.#h : 1;
       this.#scrollTo(this.#scroll + e.deltaY * lines);
     }, { passive: false });
-    let drag: { y: number; scroll: number } | null = null;
+    let drag: { y: number; scroll: number } | null = null, selecting: { x: number } | null = null;
     c.addEventListener('pointerdown', e => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
+      const at = local(e), time = this.#timeAt(at.x);
+      if (this.range && time !== null && at.x >= this.#plot.x && (e.pointerType === 'touch' ? this.range.armed : selects(this.range.armed, e))) {
+        selecting = { x: at.x }; this.range.begin({ t: time, p: null }); c.setPointerCapture(e.pointerId); return;
+      }
       const { y } = local(e); drag = { y, scroll: this.#scroll };
       c.setPointerCapture(e.pointerId);
     });
     c.addEventListener('pointermove', e => {
       const { x, y } = local(e);
+      if (selecting) { const time = this.#timeAt(x); if (time !== null) this.range?.move({ t: time, p: null }); if (e.pointerType !== 'touch') this.#shareTime(x); return; }
       if (drag && this.#layout && maxScroll(this.#layout, this.#h) > 0 && (e.pointerType === 'touch' || Math.abs(y - drag.y) > 4)) this.#scrollTo(drag.scroll - (y - drag.y));
       else if (!drag || e.pointerType !== 'touch') this.#hover = { x, y };
       c.style.cursor = drag && Math.abs(y - drag.y) > 4 ? 'grabbing' : 'crosshair';
       if (e.pointerType !== 'touch') this.#shareTime(x);
       this.invalidate();
     });
-    const release = (e: PointerEvent) => { drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); if (e.pointerType === 'touch') this.#hover = null; c.style.cursor = 'crosshair'; this.invalidate(); };
+    const release = (e: PointerEvent) => {
+      const sel = selecting;
+      if (sel) {
+        selecting = null; const { x } = local(e), time = this.#timeAt(x);
+        if (time === null || e.type === 'pointercancel') this.range?.cancel(); else this.range?.end({ t: time, p: null }, Math.abs(x - sel.x) < DRAG_MIN_PX);
+        if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+        return;
+      }
+      drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); if (e.pointerType === 'touch') this.#hover = null; c.style.cursor = 'crosshair'; this.invalidate(); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
     c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.#shareTime(null); this.invalidate(); });
     c.addEventListener('dblclick', () => { this.#scroll = 0; this.invalidate(); });
@@ -370,9 +387,27 @@ export class CvdPane {
     ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.moveTo(0, top + 0.5); ctx.lineTo(this.#w, top + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
     if (maxScroll(layout, this.#h) > 0) this.#paintScrollbar(ctx, p, layout);
     if (this.#empty) { ctx.fillStyle = p.muted; ctx.font = `12px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(this.#empty, this.#w / 2, Math.min(this.#h - 20, top + 36)); }
+    this.#paintRange(ctx, p, plot, model);
     this.#sharedX = this.#sharedLineX();
     if (this.#sharedX !== null) { ctx.save(); ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.moveTo(this.#sharedX + 0.5, 0); ctx.lineTo(this.#sharedX + 0.5, this.#h); ctx.stroke(); ctx.restore(); }
     this.#paintHover(ctx, p, model, layout, plot, window);
+  }
+
+  /** The Range tool's selection, as a lightly shaded band across the rows between dashed edges, where the column shows its time. */
+  #paintRange(ctx: CanvasRenderingContext2D, p: Palette, plot: { x: number; w: number }, model: CvdModel): void {
+    const sel = this.store.state.range; if (!sel || !(model.t1 > model.t0)) return;
+    const xOf = (time: number): number => plot.x + (time - model.t0) / (model.t1 - model.t0) * plot.w;
+    const x0 = Math.max(plot.x, xOf(sel.t0)), x1 = Math.min(plot.x + plot.w, xOf(sel.t1));
+    if (x1 <= x0) return;
+    ctx.save(); ctx.fillStyle = p.text; ctx.globalAlpha = 0.07; ctx.fillRect(x0, 0, x1 - x0, this.#h); ctx.globalAlpha = 1;
+    ctx.strokeStyle = p.text; ctx.setLineDash([5, 4]); ctx.beginPath();
+    for (const x of [x0, x1]) if (x > plot.x && x < plot.x + plot.w) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.#h); }
+    ctx.stroke(); ctx.restore();
+  }
+  /** The time at `x` on the column's lines (held inside them), or null before there is a model. */
+  #timeAt(x: number): number | null {
+    const m = this.#model; if (!m || !(m.t1 > m.t0) || !(this.#plot.w > 0)) return null;
+    return m.t0 + Math.max(0, Math.min(1, (x - this.#plot.x) / this.#plot.w)) * (m.t1 - m.t0);
   }
 
   /** A row: its lanes as lines (each on its own scale), the quiet lanes faded, and its label in the gutter on the left. */

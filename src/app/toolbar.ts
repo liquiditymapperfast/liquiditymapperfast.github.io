@@ -92,6 +92,11 @@ export class Toolbar {
   #trades = el('button', { class: 'led-btn', textContent: t('Trades'), tip: HELP.bubbles.tip });
   #absorption = el('button', { class: 'led-btn', textContent: t('Absorption'), tip: HELP.absorption.tip });
   #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
+  /** The Range tool: lit while it is armed or a selection is shown (range/tool.ts). */
+  #range = el('button', { class: 'led-btn', textContent: t('Range'), tip: HELP.range.tip });
+  onRange: () => void = () => {};
+  /** The Range button, which its panel opens beside. */
+  get rangeButton(): HTMLElement { return this.#range; }
   /** The show/hide buttons of the panes, in the order of `PANE_TOGGLES`. */
   #toggleButtons: HTMLButtonElement[] = [];
   #tradePanel: Panel | null = null;
@@ -186,6 +191,8 @@ export class Toolbar {
     this.#language.onclick = () => this.#openLanguages();
     this.#zone.onclick = () => this.store.set({ timeZone: this.store.state.timeZone === 'utc' ? 'local' : 'utc' });
     this.#recenter.onclick = () => this.onRecenter();
+    // On a phone the button is in Settings, which would cover the map the selection is dragged on.
+    this.#range.onclick = () => { this.#sheet?.close(); this.onRange(); };
     this.#author.onclick = () => { toggleAuthor(this.#author); };
     this.#shot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z"/><circle cx="12" cy="13.4" r="3.3"/></svg>';
     this.venueControl.watch?.(entries => { this.#entries = entries; this.#notice.update(entries); this.#showIdle(this.#drawn); });
@@ -228,7 +235,7 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#absorption, this.#highlights, this.#soundButton,
+      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#absorption, this.#highlights, this.#soundButton, this.#range,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
@@ -250,7 +257,7 @@ export class Toolbar {
     this.#sheet = openSheet(t('Settings'), body => {
       this.#heatctl.replaceChildren();
       body.append(
-        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#guide, this.#shot, this.#author, this.#install.root)]),
+        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
         section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#absorption), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
         section(t('Heatmap'), [
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
@@ -284,7 +291,7 @@ export class Toolbar {
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#range, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));

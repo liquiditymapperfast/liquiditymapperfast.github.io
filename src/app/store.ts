@@ -11,6 +11,7 @@ import { CVD_DEFAULTS, readCvd, type CvdSettings } from './cvd/settings.ts';
 import { ABSORPTION_DEFAULTS, readAbsorption, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_DEFAULTS, readBubbles, type BubbleSettings } from './prints.ts';
 import type { EngineState } from './sound/engine.ts';
+import type { RangeSelection } from './range/selection.ts';
 import { t } from './i18n.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
@@ -102,6 +103,9 @@ export interface AppState {
    * that a finger pinned (it stays until the next tap or drag, and its readouts sit above the finger).
    */
   hover: { t: number; price: number | null; y: number; source: 'heat' | 'depth' | 'oi' | 'lt' | 'bars' | 'cvd'; touch?: boolean } | null;
+  /** The Range tool's selection (a box on the map, or a stretch of time), being dragged or made; and whether the next drag selects (range/). Not saved. */
+  range: RangeSelection | null;
+  rangeTool: boolean;
 }
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
@@ -118,7 +122,7 @@ export function initialState(): AppState {
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
     show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
-    theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, ...saved,
+    theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false, ...saved,
   };
   // Saved objects may predate newer keys: keep the defaults for anything they lack.
   state.show = { ...defaultShow(), ...saved.show };

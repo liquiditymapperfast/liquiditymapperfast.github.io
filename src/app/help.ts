@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range';
 
 export interface HelpTopic {
   title: string;
@@ -91,6 +91,13 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Sounds'), guide: 'trades',
     tip: t('Sounds for large market orders by size tier, a chime on unusual volume, and one rare event per pane if you choose it. Browsers play sound only after a click on the page.'),
     body: [],
+  },
+  range: {
+    title: t('Range'), guide: 'chart',
+    tip: t('Range: drag across the map or a pane under it to see what traded there: market buys and sells, the orders behind them, where they were filled, the absorption and the resting orders. Ctrl+drag (Cmd on a Mac) selects at any time.'),
+    body: [t('Drag across the map for a box (a stretch of time and a band of prices), or across a pane under the map or the flow column for a stretch of time at every price. A selection covers the whole minutes it touches; one that reaches the present stays live and is added up again every few seconds.'),
+      t('Everything is about the exchanges switched on inside the Spot / Perp filter. An order is counted at the price it started at, in the minutes recorded since orders were counted by price; the average order is the volume of those minutes over their orders.'),
+      t('Every market order fills resting orders on its own exchange, so the prices that took the most are where the resting orders were that absorbed them. The absorption marks and the resting orders are the ones the map draws.')],
   },
   heatmap: {
     title: t('The heatmap'), guide: 'heatmap',

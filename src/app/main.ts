@@ -22,6 +22,7 @@ import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts'
 import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
 import { Dock } from './dock.ts';
+import { RangeTool } from './range/tool.ts';
 import { startDevice, onLayoutMode } from './device.ts';
 import './styles.css';
 import './mobile.css';
@@ -101,6 +102,10 @@ async function main(): Promise<void> {
   // A finger on a pane under the map moves the time axis it shares with the map.
   for (const pane of [depth, oi, lt, bars]) pane.useTimeGestures(heat.timeGestures());
   heat.onFrame = lower; heat.onView = lower;
+  // The Range tool: a drag on the map, on a pane under it or across the flow column selects, and its panel adds up what happened there.
+  const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton;
+  heat.range = range; cvd.range = range; for (const pane of [depth, oi, lt, bars]) pane.useRange(range);
+  toolbar.onRange = () => range.toggle();
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
@@ -164,8 +169,9 @@ async function main(): Promise<void> {
     if (changed.has('barStatOptions') && !changed.has('barStats')) bars.refresh();
     if (changed.has('barStats')) { arrange.setPaneHeight('bars', 12 + Math.max(1, enabledStats(state.barStats).length) * 24); bars.refresh(); }
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
+    if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.invalidate(); }
     if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.syncHover(); }
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(store.state.theme);

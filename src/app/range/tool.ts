@@ -1,0 +1,192 @@
+import type { Store } from '../store.ts';
+import type { Hub } from '../hub.ts';
+import { el } from '../dom.ts';
+import { openPanel, type Panel } from '../ui.ts';
+import { helpButton } from '../help.ts';
+import { compactBar } from '../device.ts';
+import { activeIds, kindOf } from '../scope.ts';
+import { flowIds } from '../cvd/ids.ts';
+import { gridStepFor } from '../../shared/grid.ts';
+import { t } from '../i18n.ts';
+import { draftOf, follow, refreshMs, rowStep, snap, type RangeSelection } from './selection.ts';
+import { rangeLines, type RangeInput, type RangeLine } from './stats.ts';
+
+/**
+ * The panel's lines, kept as elements: a line is built again only when what it says changes, and the list is put in order only when the
+ * order changes, so a live selection's figures can be taken again every few seconds without rebuilding the panel (or losing its scroll).
+ */
+export class LineList {
+  readonly root = el('div', { class: 'range-lines' });
+  readonly #nodes = new Map<string, { node: HTMLElement; sig: string }>();
+
+  update(lines: readonly RangeLine[]): void {
+    const next: HTMLElement[] = [], keep = new Set<string>();
+    for (const line of lines) {
+      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone]);
+      let held = this.#nodes.get(line.key);
+      if (!held || held.sig !== sig) { held = { node: lineNode(line), sig }; this.#nodes.set(line.key, held); }
+      keep.add(line.key); next.push(held.node);
+    }
+    for (const key of [...this.#nodes.keys()]) if (!keep.has(key)) this.#nodes.delete(key);
+    const now = this.root.children;
+    if (now.length !== next.length || next.some((node, i) => now[i] !== node)) this.root.replaceChildren(...next);
+  }
+}
+
+function lineNode(line: RangeLine): HTMLElement {
+  const tone = line.tone ? ` ${line.tone}` : '';
+  switch (line.kind) {
+    case 'title': return el('div', { class: 'range-title', textContent: line.cells[0] ?? '' });
+    case 'heading': return el('h4', { textContent: line.cells[0] ?? '' });
+    case 'note': return el('p', { class: `panel-note range-note${tone}`, textContent: line.cells[0] ?? '' });
+    case 'stat': return el('div', { class: `range-stat${tone}` }, el('span', { class: 'label', textContent: line.cells[0] ?? '' }), el('span', { class: 'value', textContent: line.cells[1] ?? '' }));
+    case 'split': {
+      const bar = el('div', { class: 'range-split-bar' }, el('i', { class: 'buy' }), el('i', { class: 'sell' }));
+      bar.style.setProperty('--share', `${((line.share ?? 0.5) * 100).toFixed(1)}%`);
+      return el('div', { class: 'range-split' }, bar, el('div', { class: 'range-split-labels' }, el('span', { class: 'buy', textContent: line.cells[0] ?? '' }), el('span', { class: 'sell', textContent: line.cells[1] ?? '' })));
+    }
+    case 'row': {
+      const row = el('div', { class: `range-row${tone}` }, ...line.cells.map(text => el('span', { textContent: text })));
+      if (line.bars) {
+        const [buy, sell] = line.bars, cells = row.children;
+        (cells[1] as HTMLElement).classList.add('bar', 'buy'); (cells[1] as HTMLElement).style.setProperty('--w', `${(buy * 100).toFixed(1)}%`);
+        (cells[2] as HTMLElement).classList.add('bar', 'sell'); (cells[2] as HTMLElement).style.setProperty('--w', `${(sell * 100).toFixed(1)}%`);
+      }
+      return row;
+    }
+  }
+}
+
+/** A point of a drag: a time, and on the map a price. */
+export interface RangePoint { t: number; p: number | null }
+
+/**
+ * The Range tool: the toolbar button arms it, a drag on the map selects a box and a drag on a pane under it (or across the flow column)
+ * selects a stretch of time, and Ctrl+drag (Cmd on a Mac) selects at any time. The panel then says what happened there (`stats.ts`). The
+ * panes call `begin`, `move` and `end`; what they draw comes from `store.state.range`.
+ *
+ * Everything is gathered for one selection at once, for one set of instruments (the exchanges switched on inside the Spot / Perp filter):
+ * the recording's answer, the resting orders in a box, the absorption marks and the largest orders the map holds there. A live selection
+ * (one that reaches the open minute) is gathered again while the panel is open and the page is shown, at an interval that grows with how
+ * long the last answer took.
+ */
+export class RangeTool {
+  #panel: Panel | null = null;
+  readonly #lines = new LineList();
+  #start: RangePoint | null = null;
+  /** The selection a drag replaces, put back when the drag comes to nothing. */
+  #before: RangeSelection | null = null;
+  #input: RangeInput | null = null;
+  #asked = 0;
+  #lastMs = 0;
+  #timer = 0;
+  #stopping = false;
+  /** The toolbar's button: the panel opens beside it. */
+  anchor: HTMLElement | null = null;
+
+  constructor(private store: Store, private hub: Hub) {
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && this.#start) { e.preventDefault(); this.cancel(); } });
+    document.addEventListener('visibilitychange', () => this.#schedule());
+  }
+
+  get armed(): boolean { return this.store.state.rangeTool; }
+  get dragging(): boolean { return this.#start !== null; }
+
+  /** The toolbar button: arm the tool, or, while it is on (armed, or a selection shown), put it all away. */
+  toggle(): void { if (this.store.state.rangeTool || this.store.state.range || this.#panel) this.stop(); else this.arm(); }
+
+  /** Arm the tool: the next drag selects. On a desktop the panel says how; on a phone it would cover the map, so it waits for the selection. */
+  arm(): void {
+    this.store.set({ rangeTool: true });
+    if (!compactBar()) this.#open();
+    if (!this.store.state.range) this.#render();
+  }
+
+  stop(): void {
+    if (this.#stopping) return;
+    this.#stopping = true;
+    window.clearTimeout(this.#timer); this.#timer = 0; this.#asked++;
+    this.#start = null; this.#before = null; this.#input = null;
+    this.store.set({ rangeTool: false, range: null });
+    this.#panel?.close(); this.#panel = null;
+    this.#stopping = false;
+  }
+
+  begin(at: RangePoint): void {
+    this.#start = at; this.#before = this.store.state.range?.draft === false ? this.store.state.range : null;
+    this.store.set({ range: draftOf(at, at) });
+  }
+  move(at: RangePoint): void { if (this.#start) this.store.set({ range: draftOf(this.#start, at) }); }
+  /** The drag ended at `at`. `small`: it covered too few pixels to be a selection (a click), and what was selected before stays. */
+  end(at: RangePoint, small: boolean): void {
+    const start = this.#start; if (!start) return;
+    if (small) { this.cancel(); return; }
+    this.#start = null; this.#before = null;
+    const sel = snap(draftOf(start, at), Date.now());
+    this.store.set({ range: sel, rangeTool: false });
+    this.#open();
+    void this.#gather(sel, true);
+  }
+  cancel(): void {
+    if (!this.#start) return;
+    this.#start = null;
+    this.store.set({ range: this.#before }); this.#before = null;
+  }
+
+  #open(): void {
+    if (this.#panel || !this.anchor) return;
+    const again = el('button', { type: 'button', textContent: t('New selection'), tip: t('Select another part of the map or of a pane: drag across it.'), onclick: () => { this.store.set({ rangeTool: true }); this.#render(); } });
+    this.#panel = openPanel(this.anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; this.stop(); } }, (tools, body) => {
+      tools.append(again, el('span', { class: 'spacer' }), helpButton('range'));
+      body.append(this.#lines.root);
+    });
+  }
+
+  /** Gather everything for `sel` and show it; `fresh` when it is a new selection rather than a live one taken again. */
+  async #gather(sel: RangeSelection, fresh: boolean): Promise<void> {
+    const asked = ++this.#asked;
+    window.clearTimeout(this.#timer); this.#timer = 0;
+    const state = this.store.state, ids = flowIds(state, this.hub.flow.ids), idSet = new Set(ids);
+    const band = sel.p0 !== null && sel.p1 !== null ? { p0: sel.p0, p1: sel.p1 } : null;
+    const inside = (time: number, price: number): boolean => time >= sel.t0 && time < sel.t1 && (!band || (price >= band.p0 && price < band.p1));
+    const s = state.absorption, now = Date.now();
+    const marks = s.on ? this.hub.absorption.marks(ids, this.hub.absorption.thresholds(ids, s, now), sel.t0, sel.t1, band?.p0 ?? 0, band?.p1 ?? Infinity).filter(m => inside(m.t0, m.price)) : null;
+    const prints = state.show.bubbles ? this.hub.prints.items.filter(p => idSet.has(p.id) && inside(p.t, p.price)) : null;
+    const kind = (id: string) => kindOf(state.markets, id);
+    const kept = !fresh && this.#input ? this.#input : null;
+    this.#input = { sel, answer: kept?.answer ?? null, error: null, marks, resting: kept?.resting ?? null, prints, kind };
+    this.#render();
+    const started = performance.now(), mark = state.mark.price > 0 ? state.mark.price : band ? (band.p0 + band.p1) / 2 : 0;
+    const step = rowStep(sel, gridStepFor(mark > 0 ? mark : 1));
+    const answer = this.hub.source.range(ids, sel.t0, sel.t1, band, step).then(a => ({ a, e: null }), (e: unknown) => ({ a: null, e: e instanceof Error ? e.message : String(e) }));
+    const resting = band ? this.hub.cell(activeIds(state), sel.t0, sel.t1, band.p0, band.p1) : Promise.resolve(null);
+    const [got, rest] = await Promise.all([answer, resting]);
+    if (asked !== this.#asked || !this.#input) return;
+    this.#lastMs = performance.now() - started;
+    this.#input = { ...this.#input, answer: got.a, error: got.a ? null : /\b404\b/.test(got.e ?? '') ? 'older' : 'failed', resting: rest };
+    this.#render();
+    this.#schedule();
+  }
+
+  /** Take a live selection's figures again after a while, while its panel is open and the page is shown. */
+  #schedule(): void {
+    window.clearTimeout(this.#timer); this.#timer = 0;
+    const sel = this.store.state.range;
+    if (!sel || sel.draft || !sel.live || !this.#panel || document.hidden) return;
+    this.#timer = window.setTimeout(() => {
+      const now = this.store.state.range; if (!now || now.draft || !this.#panel) return;
+      const moved = follow(now, Date.now());
+      if (moved !== now) this.store.set({ range: moved });
+      void this.#gather(moved, false);
+    }, refreshMs(this.#lastMs));
+  }
+
+  #render(): void {
+    const input = this.#input, sel = this.store.state.range;
+    const lines: RangeLine[] = input && sel && !sel.draft ? rangeLines(input)
+      : [{ key: 'intro', kind: 'note', cells: [t('Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.')] }];
+    const before = this.#lines.root.childElementCount;
+    this.#lines.update(lines);
+    if (this.#lines.root.childElementCount !== before) this.#panel?.reposition();
+  }
+}
