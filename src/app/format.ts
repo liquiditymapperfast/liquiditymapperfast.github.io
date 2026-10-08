@@ -6,10 +6,19 @@ export const usd = (value: number): string => !Number.isFinite(value) ? '–' : 
 const fixed: Intl.NumberFormat[] = [];
 const fixedFormat = (decimals: number): Intl.NumberFormat => fixed[decimals] ??= new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
+/** The decimals a step is written with (0.25 has two, 2.5 one, 25 none), up to twelve. */
+export function stepDecimals(step: number): number {
+  let k = 0;
+  // Relative to the value: a step of 2.5e-9 is not "whole" at k = 0 however small its remainder is.
+  while (k < 12 && Math.abs(step * 10 ** k - Math.round(step * 10 ** k)) > 1e-6 * Math.abs(step * 10 ** k)) k++;
+  return k;
+}
+
 export function price(value: number, step = 0): string {
   if (!Number.isFinite(value)) return '–';
-  // Up to ten decimals: a coin priced in millionths of a dollar (PEPE) moves in billionths.
-  const decimals = step > 0 ? Math.min(10, Math.max(0, Math.ceil(-Math.log10(step) - 1e-9)))
+  // As many decimals as the step is written with, up to twelve: a coin priced in millionths of a dollar (PEPE) moves in billionths and
+  // less, and a step of 0.25 needs two however coarse it is.
+  const decimals = step > 0 ? Math.min(12, Math.max(0, Math.ceil(-Math.log10(step) - 1e-9), stepDecimals(step)))
     : value >= 1000 ? 1 : value >= 1 ? 2 : value > 0 ? Math.min(10, Math.max(5, Math.ceil(-Math.log10(value)) + 3)) : 5;
   return fixedFormat(decimals).format(value);
 }

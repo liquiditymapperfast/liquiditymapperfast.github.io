@@ -10,6 +10,7 @@ import { Engine } from '../src/shared/engine.ts';
 import type { BrowserVenue } from '../src/shared/venues.ts';
 import { fetchCandles, fetchOiHistory, fetchOiSample } from '../src/shared/history.ts';
 import { forCoin, tierFor } from '../src/app/coin.ts';
+import { price as fmtPrice, stepDecimals } from '../src/app/format.ts';
 import { GROUPS, groupsFor } from '../src/app/panes/ladder-zoom.ts';
 import { sizeBucketLabels } from '../src/app/panes/bar-stats.ts';
 import { matchCoins, scaleText } from '../src/app/coin-dialog.ts';
@@ -146,10 +147,15 @@ test('a coin\'s tier stays what its recordings were made at while they last, and
   assert.equal(tierFor(aaa, now, { AAA: { at: now - 3_600_000, tier: 2 } }), 2, 'recordings made at tier 2 are still kept');
   assert.equal(tierFor(aaa, now, { AAA: { at: now - 2 * 86_400_000, tier: 2 } }), 3, 'nothing left from then');
   assert.equal(tierFor(BTC, now, { BTC: { at: now, tier: 3 } }), 0);
-  const moved = forCoin({ heatmapSource: 'binance:BTCUSDT', ladderVenue: 'hyperliquid:BTC-PERP', ladderVenues: ['coinbase:BTC-USD', 'okx:BTC-USDT-SWAP'] }, coin('LIT'));
+  const moved = forCoin({ heatmapSource: 'binance:BTCUSDT', ladderVenue: 'hyperliquid:BTC-PERP', ladderVenues: ['coinbase:BTC-USD', 'okx:BTC-USDT-SWAP'] }, coin('LIT'), BTC);
   assert.deepEqual(moved, { heatmapSource: 'binance:LITUSDT', ladderVenue: 'hyperliquid:LIT-PERP', ladderVenues: ['coinbase:BTC-USD', 'okx:LIT-USDT-SWAP'] }, 'a market without the coin keeps the old choice');
-  assert.deepEqual(forCoin({ heatmapSource: 'aggregated', ladderVenue: '', ladderVenues: [] }, coin('LIT')), { heatmapSource: 'aggregated', ladderVenue: '', ladderVenues: [] });
-  assert.deepEqual(forCoin(moved, BTC).heatmapSource, 'binance:BTCUSDT', 'and back');
+  assert.deepEqual(forCoin({ heatmapSource: 'aggregated', ladderVenue: '', ladderVenues: [] }, coin('LIT'), BTC), { heatmapSource: 'aggregated', ladderVenue: '', ladderVenues: [] });
+  assert.deepEqual(forCoin(moved, BTC, coin('LIT')).heatmapSource, 'binance:BTCUSDT', 'and back');
+  // A server's own instruments (a server set to a spot market) are nobody's browser instrument: they never move, and on the coin the
+  // choices were made on nothing moves at all.
+  const server = { heatmapSource: 'binance:BTCUSDT:spot', ladderVenue: 'okx:BTC-USDT', ladderVenues: ['bybit:BTCUSDT:spot'] };
+  assert.deepEqual(forCoin(server, BTC, null), server);
+  assert.deepEqual(forCoin(server, coin('LIT'), BTC), server);
 });
 
 test('a venue choice applied on a coin some markets do not list leaves those markets as the saved choice had them', () => {
@@ -231,4 +237,13 @@ test('a venue with no probe that never connects is reported as failing, never as
   for (let i = 0; i < 3; i++) engine.step(1e12 + i * 20_000);
   assert.equal(engine.venueStatus().find(v => v.id === 'mexc')!.state, 'error');
   assert.equal(pinged, 0, 'nothing asked');
+});
+
+
+test('a price is written with as many decimals as its step needs, up to twelve, and BTC\'s steps read as they did', () => {
+  assert.equal(stepDecimals(0.25), 2); assert.equal(stepDecimals(2.5), 1); assert.equal(stepDecimals(25), 0); assert.equal(stepDecimals(2.5e-9), 10);
+  assert.equal(fmtPrice(2_572.5, 2.5), '2,572.5', 'a step of 2.5 keeps its half');
+  assert.equal(fmtPrice(2_570.25, 0.25), '2,570.25');
+  assert.equal(fmtPrice(0.000004065, 1e-11), '0.00000406500');
+  assert.equal(fmtPrice(83_545, 25), '83,545'); assert.equal(fmtPrice(83_545.5, 0.5), '83,545.5'); assert.equal(fmtPrice(83_545, 10), '83,545');
 });

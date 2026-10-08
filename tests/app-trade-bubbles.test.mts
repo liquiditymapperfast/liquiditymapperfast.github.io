@@ -85,5 +85,8 @@ test('the hub asks again for a view zoomed well into a window whose answer was c
     hub.ensurePrints(hour, 25_000); assert.equal(asked.length, 2, 'an hour of a cut day: asked again for its smaller orders');
     asked[1]!.settle([]); await turn();
     hub.ensurePrints(hour, 25_000); assert.equal(asked.length, 2, 'an answer that was not cut covers its window');
+    // At the live edge the stream keeps the window current: a minute later it is not asked for again.
+    Date.now = () => T0 + 5 * MIN;
+    hub.ensurePrints({ t0: T0 - 55 * MIN, t1: T0 + 5 * MIN, p0: 0, p1: 1e6 } as never, 25_000); assert.equal(asked.length, 2, 'the live window is still covered');
   } finally { Date.now = realNow; }
 });

@@ -221,11 +221,12 @@ const sig = (value: number): number => Number(value.toPrecision(6));
  * MIN_MARKETS markets and stays while it has KEEP_MARKETS. With too few lists, or a list that loses too many coins (a market changed its
  * format), the previous catalogue stands, and the reason is in `notes`.
  */
-export function buildCatalogue(lists: Partial<Record<CoinVenue, ListRow[] | null>>, previous: Catalogue | null, now: number): { catalogue: Catalogue; notes: string[] } {
+export function buildCatalogue(lists: Partial<Record<CoinVenue, ListRow[] | null>>, previous: Catalogue | null, now: number): { catalogue: Catalogue; notes: string[]; fresh: boolean } {
   const notes: string[] = [];
   const read = COIN_VENUES.filter(v => lists[v]?.length);
   for (const v of COIN_VENUES) if (!read.includes(v)) notes.push(`${v}: list not read${previous?.lists[v] ? `, keeping its listings from ${new Date(previous.lists[v]!).toISOString()}` : ''}`);
-  if (read.length < MIN_LISTS && previous) { notes.push(`only ${read.length} lists read: the previous catalogue stands`); return { catalogue: previous, notes }; }
+  // Too few lists is no day's list, whether or not there is one to keep (with none, BTC alone stands in, and `fresh` says it is not one).
+  if (read.length < MIN_LISTS) { notes.push(`only ${read.length} lists read: ${previous ? 'the previous catalogue stands' : 'no list built'}`); return { catalogue: previous ?? ONLY_BTC, notes, fresh: false }; }
 
   const before = new Map((previous?.coins ?? []).map(c => [c.coin, c]));
   const byCoin = new Map<string, Map<CoinVenue, ListRow>>();
@@ -261,9 +262,9 @@ export function buildCatalogue(lists: Partial<Record<CoinVenue, ListRow[] | null
   };
   if (previous && out.coins.length < (1 - MAX_LOSS) * previous.coins.length) {
     notes.push(`${out.coins.length} coins against ${previous.coins.length} before: the previous catalogue stands`);
-    return { catalogue: previous, notes };
+    return { catalogue: previous, notes, fresh: false };
   }
-  return { catalogue: out, notes };
+  return { catalogue: out, notes, fresh: true };
 }
 
 // ---- Reading a catalogue ------------------------------------------------------------------------------------------------------------

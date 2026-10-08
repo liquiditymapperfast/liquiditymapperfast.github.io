@@ -142,7 +142,7 @@ export class Toolbar {
   constructor(private store: Store, private venueControl: VenueControl) {
     const missing = coinChoice().notice;
     if (missing) {
-      this.#coinNotice.append(el('span', { class: 'notice-mark', textContent: 'ⓘ', ariaHidden: 'true' }), el('span', { textContent: t('{coin} is not on the coin list, so the page is on BTC.', { coin: missing }) }),
+      this.#coinNotice.append(el('span', { class: 'notice-mark', textContent: 'ⓘ', ariaHidden: 'true' }), el('span', { textContent: missing.reason === 'unreadable' ? t('The coin list could not be read, so only BTC is offered.') : t('{coin} is not on the coin list, so the page is on BTC.', { coin: missing.coin }) }),
         el('button', { class: 'notice-close', tip: t('Dismiss'), ariaLabel: t('Dismiss'), onclick: () => { this.#coinNotice.hidden = true; } }));
       this.#coinNotice.hidden = false;
     }

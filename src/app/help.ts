@@ -154,6 +154,8 @@ export function helpButton(id: HelpId): HTMLButtonElement {
     for (const paragraph of topic.body) body.append(note(paragraph));
     body.append(el('button', { type: 'button', class: 'more', textContent: t('More in the guide →'), onclick: () => { showGuide(topic.guide); } }));
   };
+  // A panel draws its tools again on every change; the new "?" shows as open while its text is still showing below it.
+  queueMicrotask(() => { if (button.closest('.panel')?.querySelector(`.help-inline[data-topic="${id}"]`)) button.classList.add('open'); });
   button.onclick = event => {
     event.stopPropagation();
     // Inside a panel the explanation opens in that panel, right under its tool strip: as a panel of its own it would close this one (one

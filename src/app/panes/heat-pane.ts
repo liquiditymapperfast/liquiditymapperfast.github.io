@@ -1035,7 +1035,7 @@ export class HeatPane {
     const v0 = z.view;
     if (kind === 'price') {
       // Drag down to zoom out, up to zoom in, about the middle of the scale (the same sense as the right-button drag).
-      const mid = (v0.p0 + v0.p1) / 2, span = Math.max((v0.p1 - v0.p0) * Math.exp(z.y * 0.006), 1e-6);
+      const mid = (v0.p0 + v0.p1) / 2, span = Math.max((v0.p1 - v0.p0) * Math.exp(z.y * 0.006), this.#priceRef(this.store.state.mark.price) * PRICE_SPAN_SHARE.min);
       this.view.set({ ...v0, p0: mid - span / 2, p1: mid + span / 2 });
     } else {
       const mid = (v0.t0 + v0.t1) / 2, span = Math.max(30_000, (v0.t1 - v0.t0) * Math.exp(-z.x * 0.006));
@@ -1142,7 +1142,7 @@ export class HeatPane {
         const z = this.#zoomDrag, k = 0.006, pw = this.plotW, ph = this.plotH;
         const fx = Math.exp(-(x - z.x) * k), fy = Math.exp((y - z.y) * k);
         const v0 = z.view, tAnchor = v0.t0 + Math.min(z.x, pw) / pw * (v0.t1 - v0.t0), pAnchor = v0.p0 + (1 - Math.min(z.y, ph) / ph) * (v0.p1 - v0.p0);
-        const tSpan = Math.max(30_000, (v0.t1 - v0.t0) * fx), pSpan = Math.max((v0.p1 - v0.p0) * fy, 1e-6);
+        const tSpan = Math.max(30_000, (v0.t1 - v0.t0) * fx), pSpan = Math.max((v0.p1 - v0.p0) * fy, this.#priceRef(this.store.state.mark.price) * PRICE_SPAN_SHARE.min);
         const t0 = tAnchor - Math.min(z.x, pw) / pw * tSpan, p1 = pAnchor + Math.min(z.y, ph) / ph * pSpan;
         this.view.set({ t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 });
         this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();

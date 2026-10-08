@@ -48,9 +48,9 @@ export class CoinList {
     this.#building = true;
     try {
       const now = this.now(), previous = read(this.file) ?? read(this.shipped);
-      const { catalogue, notes } = buildCatalogue(await fetchLists(this.get, now), previous, now);
+      const { catalogue, notes, fresh } = buildCatalogue(await fetchLists(this.get, now), previous, now);
       for (const note of notes) console.warn(`coin list: ${note}`);
-      if (catalogue === previous) return false;
+      if (!fresh) return false;
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
       const text = JSON.stringify(catalogue), temp = `${this.file}.tmp`;
       fs.writeFileSync(temp, text); fs.renameSync(temp, this.file);

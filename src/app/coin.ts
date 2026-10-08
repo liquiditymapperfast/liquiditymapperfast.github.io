@@ -11,6 +11,9 @@ import type { AppState } from './store.ts';
 
 /** The last coin chosen, the last coin list read, and when each coin was last open with the size tier its recordings were made at. */
 const LAST_KEY = 'lmf.coin', LIST_KEY = 'lmf.coins', OPENED_KEY = 'lmf.coins.opened';
+/** The coin whose instruments the saved choices name (they were made on it, or moved to it by `forCoin`). */
+const SAVED_ON_KEY = 'lmf.coin.saved';
+const COIN_NAME = /^[A-Z0-9]{1,15}$/;
 /** How often an open page says its coin is still open (the tier and the recordings stay while it is). */
 const STILL_OPEN_MS = 10 * 60_000;
 
@@ -18,11 +21,13 @@ export interface CoinChoice {
   coin: Coin;
   /** The tier its size floors are kept at: the list's, unless this browser holds recordings of the coin made at another. */
   tier: number;
-  /** Why the page is not on the coin that was asked for (it left the list, or the list could not be read), else null. */
-  notice: string | null;
+  /** Why the page is not on the coin that was asked for: it is not on the list, or no list could be read. Null when it is. */
+  notice: { coin: string; reason: 'missing' | 'unreadable' } | null;
+  /** The coin the saved instrument choices were made on, when it is not this one (`forCoin` moves them from it). */
+  from: Coin | null;
 }
 
-let chosen: CoinChoice = { coin: BTC, tier: 0, notice: null };
+let chosen: CoinChoice = { coin: BTC, tier: 0, notice: null, from: null };
 let list: Catalogue | null = null;
 
 export const currentCoin = (): Coin => chosen.coin;
@@ -77,9 +82,9 @@ export function tierFor(coin: Coin, now: number, seen: Opened = opened()): numbe
 /** The coin asked for in the address, else the last one chosen here, else BTC. */
 export function requestedCoin(params: URLSearchParams): string {
   const asked = (params.get('coin') ?? '').trim().toUpperCase();
-  if (asked) return asked;
+  if (COIN_NAME.test(asked)) return asked;   // anything else in the address is not a coin, and is not repeated on the page
   const last = readJson(LAST_KEY);
-  return typeof last === 'string' && /^[A-Z0-9]{1,15}$/.test(last) ? last : 'BTC';
+  return typeof last === 'string' && COIN_NAME.test(last) ? last : 'BTC';
 }
 
 /**
@@ -88,20 +93,25 @@ export function requestedCoin(params: URLSearchParams): string {
  */
 export async function chooseCoin(params: URLSearchParams, now = Date.now()): Promise<CoinChoice> {
   const asked = requestedCoin(params);
-  let coin: Coin = BTC, notice: string | null = null;
+  let coin: Coin = BTC, notice: CoinChoice['notice'] = null;
   if (asked !== 'BTC') {
-    const found = (await loadCatalogue()).coins.find(c => c.coin === asked);
+    const catalogue = await loadCatalogue(), found = catalogue.coins.find(c => c.coin === asked);
     if (found) coin = found;
-    else notice = asked;
+    // A list that holds BTC alone is one that could not be read: the coin may well be on the real one.
+    else notice = { coin: asked, reason: catalogue.coins.length > 1 ? 'missing' : 'unreadable' };
   }
+  const savedOn = readJson(SAVED_ON_KEY), madeOn = typeof savedOn === 'string' && COIN_NAME.test(savedOn) ? savedOn : 'BTC';
+  const from = madeOn === coin.coin ? null : madeOn === 'BTC' ? BTC : (list ?? parseCatalogue(readJson(LIST_KEY)))?.coins.find(c => c.coin === madeOn) ?? null;
   const seen = opened(), tier = tierFor(coin, now, seen);
-  chosen = { coin, tier, notice };
-  writeJson(LAST_KEY, coin.coin);
+  chosen = { coin, tier, notice, from };
+  writeJson(SAVED_ON_KEY, coin.coin);
+  // Kept for the next visit unless the list could not be read (the coin asked for stays the one to try again).
+  if (notice?.reason !== 'unreadable') writeJson(LAST_KEY, coin.coin);
   seen[coin.coin] = { at: now, tier }; writeJson(OPENED_KEY, seen);
   // The address names the coin, so a reload or a bookmark comes back to it (BTC is the plain address).
   const url = new URL(location.href);
   if (coin.coin === 'BTC') url.searchParams.delete('coin'); else url.searchParams.set('coin', coin.coin);
-  if (url.href !== location.href) history.replaceState(history.state, '', url);
+  if (url.href !== location.href && notice?.reason !== 'unreadable') history.replaceState(history.state, '', url);
   return chosen;
 }
 
@@ -123,12 +133,14 @@ export function keepCoinRecordings(now: () => number = Date.now): void {
 }
 
 /**
- * Saved choices that name an instrument (the venue shown alone on the map, the ladder's venues) name it for the coin they were made on.
- * They are carried to the same market's instrument for this coin; one this coin is not listed on stays as it was, and the page treats it
- * as a market with no book (the aggregate is shown).
+ * Saved choices that name an instrument (the venue shown alone on the map, the ladder's venues) name it for the coin they were made on
+ * (`from`). Each one that is that coin's instrument on a market is carried to the same market's instrument for this coin; anything else (a
+ * server's own instrument, a market this coin is not listed on) stays as it was, and the page treats it as a market with no book. On the
+ * coin they were made on, nothing moves.
  */
-export function forCoin<S extends Pick<AppState, 'heatmapSource' | 'ladderVenue' | 'ladderVenues'>>(state: S, coin: Coin): S {
-  const move = (id: string): string => { const venue = id.split(':')[0]!; return id.includes(':') ? instrumentIdFor(venue, coin) ?? id : id; };
+export function forCoin<S extends Pick<AppState, 'heatmapSource' | 'ladderVenue' | 'ladderVenues'>>(state: S, coin: Coin, from: Coin | null): S {
+  if (!from || from.coin === coin.coin) return state;
+  const move = (id: string): string => { const venue = id.split(':')[0]!; return id === instrumentIdFor(venue, from) ? instrumentIdFor(venue, coin) ?? id : id; };
   return { ...state, heatmapSource: state.heatmapSource === 'aggregated' ? state.heatmapSource : move(state.heatmapSource), ladderVenue: state.ladderVenue ? move(state.ladderVenue) : state.ladderVenue, ladderVenues: state.ladderVenues.map(move) };
 }
 

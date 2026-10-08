@@ -76,6 +76,10 @@ test('with too few lists, or a list that loses a third of its coins, the previou
   const few = lists({ AAA: { price: 2 } }) as Partial<Record<CoinVenue, ListRow[] | null>>;
   for (const v of COIN_VENUES.slice(0, 6)) few[v] = null;
   assert.equal(buildCatalogue(few, first, NOW + 1).catalogue, first);
+  const none = buildCatalogue(few, null, NOW + 1);
+  assert.equal(none.fresh, false, 'with nothing before it, too few lists is still no day\'s list');
+  assert.deepEqual(none.catalogue.coins.map(c => c.coin), ['BTC']);
+  assert.equal(buildCatalogue(lists({ AAA: { price: 2 } }), null, NOW).fresh, true);
   const lost = buildCatalogue(lists({ AAA: { price: 2 } }), first, NOW + 1);
   assert.equal(lost.catalogue, first);
   assert.ok(lost.notes.some(n => /previous catalogue stands/.test(n)));

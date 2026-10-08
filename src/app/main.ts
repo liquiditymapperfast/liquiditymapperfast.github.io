@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
   // The coin first: everything after it is built for that coin (BTC needs no list, so a BTC page does not wait for one).
   const choice = await chooseCoin(params);
-  const store = new Store(forCoin(initialState(), choice.coin));
+  const store = new Store(forCoin(initialState(), choice.coin, choice.from));
   setTimeZone(store.state.timeZone);
   applyTheme(store.state.theme);
   installTips();
