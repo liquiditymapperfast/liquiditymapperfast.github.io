@@ -74,7 +74,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   bubbles: {
     title: t('Trades'), guide: 'trades',
-    tip: t('Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, bigger for bigger. Hover one for its venue, size and price.'),
+    tip: t('Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, the area in proportion to the size, the largest in view the biggest. Hover one for its venue, size and price.'),
     body: [],
   },
   heatmap: {

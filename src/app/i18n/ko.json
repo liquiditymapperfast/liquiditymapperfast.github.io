@@ -64,7 +64,7 @@
  "Volume": "거래량",
  "Volume bars along the bottom of the chart. Unusually large ones are drawn stronger (see Highlights).": "차트 아래쪽의 거래량 막대. 유난히 큰 것은 더 진하게 그려집니다('하이라이트' 참조).",
  "Trades": "체결",
- "Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, bigger for bigger. Hover one for its venue, size and price.": "큰 시장가 주문을 버블로 표시합니다(한 주문의 체결을 합산). 초록색은 매수, 빨간색은 매도이며 클수록 버블도 큽니다. 버블에 마우스를 올리면 거래소, 크기, 가격을 볼 수 있습니다.",
+ "Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, the area in proportion to the size, the largest in view the biggest. Hover one for its venue, size and price.": "큰 시장가 주문을 버블로 표시합니다(한 주문의 체결을 합산). 초록색은 매수, 빨간색은 매도이며, 면적은 크기에 비례하고 화면에서 가장 큰 주문이 가장 큰 버블입니다. 버블에 마우스를 올리면 거래소, 크기, 가격을 볼 수 있습니다.",
  "The heatmap": "히트맵",
  "Each coloured cell is liquidity resting at a price at a moment: warmer and brighter means more.": "색이 있는 각 셀은 한 시점에 한 가격에 걸려 있는 유동성입니다. 더 따뜻하고 밝을수록 더 많다는 뜻입니다.",
  "Colour shows size on a log scale, so a few huge walls do not hide everything else. The Contrast slider moves the colour window: right shows thinner liquidity, left keeps only the biggest walls. Auto keeps the window following the data.": "색은 크기를 로그 스케일로 나타내므로 몇 개의 거대한 벽이 나머지를 가리지 않습니다. '대비' 슬라이더는 색상 창을 움직입니다. 오른쪽으로 가면 더 얇은 유동성이 보이고, 왼쪽으로 가면 가장 큰 벽만 남습니다. '자동'은 창이 데이터를 따라가게 합니다.",

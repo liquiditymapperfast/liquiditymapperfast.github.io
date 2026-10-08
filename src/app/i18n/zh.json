@@ -64,7 +64,7 @@
  "Volume": "成交量",
  "Volume bars along the bottom of the chart. Unusually large ones are drawn stronger (see Highlights).": "图表底部的成交量柱。异常大的会画得更醒目（见“高亮”）。",
  "Trades": "成交",
- "Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, bigger for bigger. Hover one for its venue, size and price.": "大额市价单以气泡显示（同一订单的各笔成交合计）：绿色为买入，红色为卖出，订单越大气泡越大。悬停可查看交易所、数量和价格。",
+ "Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, the area in proportion to the size, the largest in view the biggest. Hover one for its venue, size and price.": "大额市价单以气泡显示（同一订单的各笔成交合计）：绿色为买入，红色为卖出，面积与金额成正比，视图中最大的订单气泡最大。悬停可查看交易所、数量和价格。",
  "The heatmap": "热力图",
  "Each coloured cell is liquidity resting at a price at a moment: warmer and brighter means more.": "每个彩色单元格是某一时刻某个价位上挂着的流动性：越暖越亮表示越多。",
  "Colour shows size on a log scale, so a few huge walls do not hide everything else. The Contrast slider moves the colour window: right shows thinner liquidity, left keeps only the biggest walls. Auto keeps the window following the data.": "颜色以对数刻度表示大小，这样少数巨大的墙不会遮住其他一切。“对比度”滑块移动颜色窗口：向右显示更薄的流动性，向左只保留最大的墙。“自动”让窗口跟随数据。",

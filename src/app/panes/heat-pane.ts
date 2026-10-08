@@ -508,7 +508,8 @@ export class HeatPane {
   }
 
   /**
-   * Large executed trades as bubbles at their time and price, sized by notional and coloured by the side that took liquidity. Only the
+   * Large executed trades as bubbles at their time and price, coloured by the side that took liquidity, their area in proportion to the
+   * notional with the largest in view the biggest (see bubbleRadius). Only the
    * biggest few hundred in view are drawn, so zooming out keeps the picture about size; trades at or above the whale tier get a glow.
    * They fade under the footprint, whose rows say the same thing in more detail.
    */
@@ -524,9 +525,9 @@ export class HeatPane {
     if (!visible.length) return;
     const whale = scaledUsd(state.sounds.tiers[2]?.usd ?? 400_000);
     ctx.save();
-    const ordered = [...visible].sort((a, b) => a.usd - b.usd);
+    const ordered = [...visible].sort((a, b) => a.usd - b.usd), largest = ordered[ordered.length - 1]!.usd;
     for (const print of ordered) {
-      const x = v.xOf(print.t, pw), y = v.yOf(print.price, ph), r = bubbleRadius(print.usd) * s.scale, color = print.side === 'buy' ? p.bid : p.ask;
+      const x = v.xOf(print.t, pw), y = v.yOf(print.price, ph), r = bubbleRadius(print.usd, largest) * s.scale, color = print.side === 'buy' ? p.bid : p.ask;
       if (x < -r || x > pw + r) continue;
       this.#bubbles.push({ x, y, r, print });
       ctx.globalAlpha = s.opacity * fade; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();

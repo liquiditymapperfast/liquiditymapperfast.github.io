@@ -32,10 +32,12 @@ test('only the largest prints in the window and price range are drawn, and hidde
 });
 
 test('bubble radius grows with the square root of size inside fixed bounds', () => {
-  assert.equal(bubbleRadius(25_000), 3, 'never smaller than a dot');
-  assert.ok(bubbleRadius(400_000) > bubbleRadius(100_000) && bubbleRadius(400_000) < 12);
-  assert.equal(bubbleRadius(1e9), 24, 'capped');
-  assert.ok(Math.abs(bubbleRadius(800_000) / bubbleRadius(200_000) - 2) < 1e-9, 'four times the size, twice the radius');
+  assert.equal(bubbleRadius(25_000, 1e9), 3, 'never smaller than a dot');
+  assert.equal(bubbleRadius(5e6, 5e6), 26, 'the largest in view is the biggest');
+  assert.equal(bubbleRadius(50_000, 50_000), bubbleRadius(5e7, 5e7), 'whatever its dollars: sizes are compared with what is in view');
+  assert.ok(Math.abs(bubbleRadius(800_000, 3.2e6) / bubbleRadius(200_000, 3.2e6) - 2) < 1e-9, 'four times the size, twice the radius (the area follows the size)');
+  assert.ok(bubbleRadius(3e6, 6e7) > 3 && bubbleRadius(3e7, 6e7) > 2 * bubbleRadius(3e6, 6e7), 'a zoomed-out day: millions apart, sizes apart');
+  assert.equal(bubbleRadius(1e6, 0), 3);
 });
 
 test('a sweep across venues inside the window is one event, and sides are kept apart', () => {

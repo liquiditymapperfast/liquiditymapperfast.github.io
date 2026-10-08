@@ -1,6 +1,6 @@
 import { price as fmtPrice } from './format.ts';
 import { t } from './i18n.ts';
-import { scaledUsd, sizeScale } from './coin.ts';
+import { scaledUsd } from './coin.ts';
 
 /**
  * One large market order as the server sends it: [time ms, instrument id, side, price, USD notional], and for an order of several fills
@@ -102,9 +102,16 @@ export function printPriceLines(print: Print): { label: string; text: string }[]
   return lines;
 }
 
-/** Bubble radius in px: grows with the square root of the size, never smaller than a dot nor larger than `max`. */
-export function bubbleRadius(usd: number, max = 24): number {
-  return Math.min(max, Math.max(3, 3.2 * Math.sqrt(usd / (50_000 * sizeScale()))));
+/** The radius of the largest bubble in view, and of the smallest any bubble is drawn at (a dot), in px before the size setting. */
+export const BUBBLE_MAX_R = 26, BUBBLE_MIN_R = 3;
+/**
+ * Bubble radius in px: its area in proportion to the order's size, the largest drawn (`largest`, USD) at BUBBLE_MAX_R, never smaller than a
+ * dot. Sizes are compared with the bubbles in view, not with a fixed scale: zoomed out, the bubbles drawn are the largest of hours of
+ * trading (millions each), and a fixed scale had capped them all at one size, so size said nothing.
+ */
+export function bubbleRadius(usd: number, largest: number): number {
+  if (!(largest > 0) || !(usd > 0)) return BUBBLE_MIN_R;
+  return Math.max(BUBBLE_MIN_R, BUBBLE_MAX_R * Math.sqrt(Math.min(1, usd / largest)));
 }
 
 /**

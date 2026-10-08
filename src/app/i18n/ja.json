@@ -64,7 +64,7 @@
  "Volume": "出来高",
  "Volume bars along the bottom of the chart. Unusually large ones are drawn stronger (see Highlights).": "チャート下部の出来高バー。異常に大きいものは強めに描かれます（「ハイライト」を参照）。",
  "Trades": "約定",
- "Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, bigger for bigger. Hover one for its venue, size and price.": "大きな成行注文をバブルで表示します（1つの注文の約定を合算）。緑は買い、赤は売りで、大きいほどバブルも大きくなります。バブルにカーソルを合わせると、取引所、サイズ、価格が分かります。",
+ "Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, the area in proportion to the size, the largest in view the biggest. Hover one for its venue, size and price.": "大きな成行注文をバブルで表示します（1つの注文の約定を合算）。緑は買い、赤は売りで、面積は注文の大きさに比例し、表示中で最大の注文が最も大きなバブルになります。バブルにカーソルを合わせると、取引所、サイズ、価格が分かります。",
  "The heatmap": "ヒートマップ",
  "Each coloured cell is liquidity resting at a price at a moment: warmer and brighter means more.": "色のついた各セルは、ある時点のある価格に置かれている流動性です。暖かく明るいほど多いことを意味します。",
  "Colour shows size on a log scale, so a few huge walls do not hide everything else. The Contrast slider moves the colour window: right shows thinner liquidity, left keeps only the biggest walls. Auto keeps the window following the data.": "色はサイズを対数スケールで表すので、少数の巨大な壁がほかのすべてを隠すことはありません。「コントラスト」スライダーは色のウィンドウを動かします。右に動かすと薄い流動性が見え、左に動かすと最大の壁だけが残ります。「自動」はウィンドウをデータに追従させます。",
