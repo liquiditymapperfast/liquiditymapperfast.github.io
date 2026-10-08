@@ -1,6 +1,6 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
-import { parseProfile, parseSizes, type ProfileAnswer, type SizesAnswer } from '../shared/footprint.ts';
+import { parseProfile, parseRange, parseSizes, type ProfileAnswer, type RangeAnswer, type SizesAnswer } from '../shared/footprint.ts';
 import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
@@ -62,6 +62,15 @@ export async function getProfile(ids: string[], from: number, to: number, rowSte
   if (!response.ok) throw new Error(`profile failed: ${response.status}`);
   const answer = parseProfile(await response.json().catch(() => null), ids);
   if (!answer) throw new Error('profile answered with something else');
+  return answer;
+}
+/** What happened in a selection of the map or of a pane (see `RangeAnswer`). Rejects on a server that does not know the question (an older one). */
+export async function getRange(ids: string[], from: number, to: number, band: { p0: number; p1: number } | null, rowStep: number): Promise<RangeAnswer> {
+  const prices = band ? `&p0=${band.p0}&p1=${band.p1}` : '';
+  const response = await fetch(`/api/v2/range?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}${prices}&step=${rowStep}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`range failed: ${response.status}`);
+  const answer = parseRange(await response.json().catch(() => null), ids);
+  if (!answer) throw new Error('range answered with something else');
   return answer;
 }
 /** Recorded columns for any number of instruments: the server serves a bounded number per request, so longer lists are split and merged. */

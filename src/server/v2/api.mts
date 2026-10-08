@@ -9,7 +9,7 @@ import { DepthRecorder, COLUMN_MS, SAMPLE_MS, STALE_MS } from './recorder.mts';
 import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
-import { MAX_PROFILE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, type TradeLike } from '../../shared/footprint.ts';
+import { MAX_PROFILE_INSTRUMENTS, MAX_RANGE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, type TradeLike } from '../../shared/footprint.ts';
 import { RecordedBefore } from '../../shared/restart.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
@@ -306,6 +306,20 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (!(step > 0) || !Number.isFinite(step)) return sendJson(res, { error: 'step must be a positive number' }, 400);
     sendJson(res, footprint.profile(ids, span.from, span.to, step));
   };
+  /** What happened in a selection of the map (a band of prices, `p0` and `p1`) or of a pane (every price): see `RangeAnswer`. */
+  const rangeRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
+    if (!ids.length || ids.length > MAX_RANGE_INSTRUMENTS) return sendJson(res, { error: `inst must name 1 to ${MAX_RANGE_INSTRUMENTS} instruments` }, 400);
+    const span = windowOf(url, Date.now() + 60_000, 3_600_000); if (!span) return sendJson(res, { error: BAD_WINDOW }, 400);
+    if (span.to - span.from > MAX_COLUMN_SPAN_MS) return sendJson(res, { error: 'the window may be at most eight days' }, 400);
+    const step = Number(url.searchParams.get('step'));
+    if (!(step > 0) || !Number.isFinite(step)) return sendJson(res, { error: 'step must be a positive number' }, 400);
+    const rawP0 = url.searchParams.get('p0'), rawP1 = url.searchParams.get('p1');
+    if ((rawP0 === null) !== (rawP1 === null)) return sendJson(res, { error: 'p0 and p1 come together' }, 400);
+    const p0 = Number(rawP0), p1 = Number(rawP1);
+    if (rawP0 !== null && !(Number.isFinite(p0) && Number.isFinite(p1) && p1 > p0 && p0 >= 0)) return sendJson(res, { error: 'p0 and p1 must be prices with p0 below p1' }, 400);
+    sendJson(res, footprint.range(ids, span.from, span.to, rawP0 === null ? null : { p0, p1 }, step));
+  };
   const flowRoute = (url: URL, res: ServerResponse) => {
     const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean).slice(0, MAX_FLOW_INSTRUMENTS);
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_FLOW_SPAN_MS);
@@ -350,6 +364,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/flow': flowRoute(url, res); return true;
           case '/api/v2/sizes': sizesRoute(url, res); return true;
           case '/api/v2/profile': profileRoute(url, res); return true;
+          case '/api/v2/range': rangeRoute(url, res); return true;
           case '/api/v2/absorption': absorptionRoute(url, res); return true;
           case '/api/v2/venues': venuesRoute(res); return true;
           case '/coins.json': return coins?.send(res) ?? false;

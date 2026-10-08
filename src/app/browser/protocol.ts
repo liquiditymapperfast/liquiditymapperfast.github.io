@@ -1,7 +1,7 @@
 import type { EngineBootstrap, EngineTick, FootprintAnswer, VenueStatus } from '../../shared/engine.ts';
 import type { Candle, OiBar } from '../../shared/series.ts';
 import type { Print } from '../../shared/prints.ts';
-import type { ProfileAnswer, SizesAnswer } from '../../shared/footprint.ts';
+import type { ProfileAnswer, RangeAnswer, SizesAnswer } from '../../shared/footprint.ts';
 import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../../shared/absorption.ts';
 import type { FlowFrame, FlowUpdate } from '../../shared/flow.ts';
 import type { ColumnsFrame } from '../../shared/columns.ts';
@@ -17,12 +17,13 @@ export type RpcCall =
   | { method: 'flow'; ids: string[]; from: number; to: number }
   | { method: 'sizes'; ids: string[]; windows: number[] }
   | { method: 'profile'; ids: string[]; from: number; to: number; rowStep: number }
+  | { method: 'range'; ids: string[]; from: number; to: number; band: { p0: number; p1: number } | null; rowStep: number }
   | { method: 'absorption'; ids: string[]; mins: number[]; from: number; to: number; limit: number; since: number }
   | { method: 'candles'; inst: string; tfMs: number; from: number; to: number }
   | { method: 'oi'; inst: string; tfMs: number; from: number; to: number };
 
 export interface RpcResult {
-  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; flow: FlowFrame; sizes: SizesAnswer; profile: ProfileAnswer; absorption: AbsorptionAnswer; candles: Candle[]; oi: OiBar[];
+  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; flow: FlowFrame; sizes: SizesAnswer; profile: ProfileAnswer; range: RangeAnswer; absorption: AbsorptionAnswer; candles: Candle[]; oi: OiBar[];
 }
 
 export type FeedsIn =

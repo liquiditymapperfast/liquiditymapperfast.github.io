@@ -83,6 +83,57 @@ export function parseProfile(value: unknown, ids: readonly string[]): ProfileAns
   return { from: body.from, to: body.to, instruments: out };
 }
 
+/**
+ * A selection of the map (a box: a stretch of time and a band of prices) or of a pane under it (a stretch of time at every price): the minutes
+ * that start in [from, to), and the prices in [p0, p1) (every price when they are null).
+ *
+ * `rows` is the volume by price inside the selection for all the instruments together, [priceLow, buyUsd, sellUsd, buyOrders, sellOrders] on
+ * `step` (the step asked for, doubled until there are no more than `MAX_RANGE_ROWS`). Orders are counted only in minutes that count them by
+ * price (see `FootprintRecorder.countOrders`). Each instrument adds what it did in the selection, how many minutes it recorded there and how
+ * many of them count orders (from `countedFrom`), the USD of those counted minutes (what its orders are measured against), its volume at every
+ * price over the same minutes, and over the same length of time just before them with the minutes it recorded there.
+ */
+export type RangeRow = [price: number, buy: number, sell: number, buyN: number, sellN: number];
+export interface RangeInstrument {
+  id: string;
+  band: { buy: number; sell: number; buyN: number; sellN: number };
+  minutes: number; counted: number; countedFrom: number | null;
+  countedUsd: { buy: number; sell: number };
+  all: { buy: number; sell: number };
+  before: { buy: number; sell: number; minutes: number };
+}
+export interface RangeAnswer { from: number; to: number; p0: number | null; p1: number | null; step: number; rows: RangeRow[]; instruments: RangeInstrument[] }
+/** The most rows a range answer carries, and the most instruments one question may name. */
+export const MAX_RANGE_ROWS = 400, MAX_RANGE_INSTRUMENTS = 48;
+
+/** A range answer checked field by field against the instruments asked for: the answer, or null when it is anything else. */
+export function parseRange(value: unknown, ids: readonly string[]): RangeAnswer | null {
+  const body = value as Partial<Record<keyof RangeAnswer, unknown>> | null;
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const usd = (v: unknown): v is number => num(v) && v >= 0;
+  const count = (v: unknown): v is number => num(v) && Number.isInteger(v) && v >= 0;
+  const priceOrNull = (v: unknown): v is number | null => v === null || num(v);
+  if (!body || !num(body.from) || !num(body.to) || !priceOrNull(body.p0) || !priceOrNull(body.p1) || (body.p0 === null) !== (body.p1 === null)
+    || !num(body.step) || !(body.step > 0) || !Array.isArray(body.rows) || body.rows.length > MAX_RANGE_ROWS || !Array.isArray(body.instruments)) return null;
+  const rows: RangeRow[] = [];
+  for (const r of body.rows as unknown[]) {
+    if (!Array.isArray(r) || r.length !== 5 || !num(r[0]) || !usd(r[1]) || !usd(r[2]) || !count(r[3]) || !count(r[4])) return null;
+    rows.push([r[0], r[1], r[2], r[3], r[4]]);
+  }
+  const asked = new Set(ids), instruments: RangeInstrument[] = [];
+  for (const item of body.instruments as unknown[]) {
+    const i = item as { [K in keyof RangeInstrument]?: unknown } | null;
+    const b = i?.band as Record<string, unknown> | undefined, c = i?.countedUsd as Record<string, unknown> | undefined;
+    const a = i?.all as Record<string, unknown> | undefined, p = i?.before as Record<string, unknown> | undefined;
+    if (!i || typeof i.id !== 'string' || !asked.has(i.id) || !b || !c || !a || !p || !count(i.minutes) || !count(i.counted) || i.counted > i.minutes
+      || !(i.countedFrom === null || num(i.countedFrom)) || !usd(b.buy) || !usd(b.sell) || !count(b.buyN) || !count(b.sellN) || !usd(c.buy) || !usd(c.sell)
+      || !usd(a.buy) || !usd(a.sell) || !usd(p.buy) || !usd(p.sell) || !count(p.minutes)) return null;
+    instruments.push({ id: i.id, band: { buy: b.buy, sell: b.sell, buyN: b.buyN, sellN: b.sellN }, minutes: i.minutes, counted: i.counted, countedFrom: i.countedFrom,
+      countedUsd: { buy: c.buy, sell: c.sell }, all: { buy: a.buy, sell: a.sell }, before: { buy: p.buy, sell: p.sell, minutes: p.minutes } });
+  }
+  return { from: body.from, to: body.to, p0: body.p0, p1: body.p1, step: body.step, rows, instruments };
+}
+
 export interface FootprintBar {
   t: number; rows: FootprintRow[]; buyUsd: number; sellUsd: number;
   /** How many of the bar's minutes were recorded, so a reader can tell a whole candle from one seen only in part. */
@@ -91,7 +142,18 @@ export interface FootprintBar {
   stats?: TradeStats;
 }
 
-type Bins = Map<number, [number, number]>;
+/**
+ * A price row of a minute as it is held: taker buy and sell USD, and the market orders that started at that price (in a minute that counts
+ * orders by price; zero in any other).
+ */
+type Cell = [buy: number, sell: number, buyN: number, sellN: number];
+type Bins = Map<number, Cell>;
+/**
+ * What a minute adds up to, kept beside its rows so a question about a stretch of time does not walk every row of every minute: its USD at
+ * every price, the lowest and highest row, and whether its orders are counted by price (a minute begun before they were is not: counting
+ * only the orders that arrive later would give it counts that cover part of its volume).
+ */
+interface MinuteSum { buy: number; sell: number; lo: number; hi: number; counted: boolean }
 
 /** A copy of a minute's statistics, whole: a row waits in a queue (the browser's) while a late trade may still change the minute, and the row must stay what it was when it was queued. */
 const copyStats = (stats: TradeStats | undefined): TradeStats | null => stats ? { buyN: stats.buyN, sellN: stats.sellN, buy: [...stats.buy], sell: [...stats.sell], v: STATS_VERSION } : null;
@@ -102,8 +164,32 @@ const copyStats = (stats: TradeStats | undefined): TradeStats | null => stats ? 
  */
 const binOf = (price: number, step: number): number => Math.floor(price / step * (1 + 1e-12));
 
-/** One recorded minute of one instrument as it is stored: rows are [bin, buyUsd, sellUsd]. */
-export interface FootprintMinuteRow { inst: string; t: number; step: number; bins: [number, number, number][]; stats: TradeStats | null }
+/**
+ * A row as stored: [bin, buyUsd, sellUsd], and in a minute that counts orders by price [bin, buyUsd, sellUsd, buyOrders, sellOrders]. A minute's
+ * rows are all of one form.
+ */
+export type StoredBin = [number, number, number] | [number, number, number, number, number];
+/** A minute's sums from its rows (a minute read back from storage). */
+function sumOf(bins: Bins, counted: boolean): MinuteSum {
+  const sum: MinuteSum = { buy: 0, sell: 0, lo: Infinity, hi: -Infinity, counted };
+  for (const [bin, cell] of bins) { sum.buy += cell[0]; sum.sell += cell[1]; if (bin < sum.lo) sum.lo = bin; if (bin > sum.hi) sum.hi = bin; }
+  return sum;
+}
+
+/**
+ * The row an order is counted in: the one at its price, or the nearest row of the minute when that price has none (an order that ran on into
+ * the next minute started at a price this minute never traded). An order never makes a row of its own: a row with no volume would show in the
+ * footprint and the traded column.
+ */
+function nearestCell(bins: Bins, bin: number): Cell | undefined {
+  const exact = bins.get(bin); if (exact) return exact;
+  let best: Cell | undefined, gap = Infinity;
+  for (const [b, cell] of bins) { const d = Math.abs(b - bin); if (d < gap) { gap = d; best = cell; } }
+  return best;
+}
+
+/** One recorded minute of one instrument as it is stored. */
+export interface FootprintMinuteRow { inst: string; t: number; step: number; bins: StoredBin[]; stats: TradeStats | null }
 /** Where recorded minutes outlive the process (SQLite on the server, IndexedDB in the browser); loading is synchronous, saving may be queued. */
 export interface FootprintStore {
   load(since: number): Iterable<FootprintMinuteRow>;
@@ -115,6 +201,7 @@ export interface FootprintStore {
 export class FootprintRecorder {
   readonly #minutes = new Map<string, Map<number, Bins>>();
   readonly #stats = new Map<string, Map<number, TradeStats>>();
+  readonly #sums = new Map<string, Map<number, MinuteSum>>();
   readonly #steps = new Map<string, number>();
   readonly #seen = new Map<string, Set<string>>();
   readonly #store: FootprintStore | null;
@@ -133,13 +220,17 @@ export class FootprintRecorder {
         // Statistics of an older version counted fills, not orders: such a minute is kept as one recorded without statistics.
         const stats = current(row.stats);
         if (stats) this.#minuteStats(row.inst).set(row.t, stats);
-        this.#minute(row.inst).set(row.t, new Map(row.bins.map(([bin, buy, sell]) => [bin, [buy, sell] as [number, number]])));
+        const counted = row.bins.length > 0 && row.bins.every(b => b.length === 5);
+        const bins: Bins = new Map(row.bins.map(b => [b[0], [b[1], b[2], counted ? b[3]! : 0, counted ? b[4]! : 0] as Cell]));
+        this.#minute(row.inst).set(row.t, bins);
+        this.#minuteSums(row.inst).set(row.t, sumOf(bins, counted));
       }
     }
   }
 
   #minuteStats(id: string): Map<number, TradeStats> { let m = this.#stats.get(id); if (!m) { m = new Map(); this.#stats.set(id, m); } return m; }
   #minute(id: string): Map<number, Bins> { let m = this.#minutes.get(id); if (!m) { m = new Map(); this.#minutes.set(id, m); } return m; }
+  #minuteSums(id: string): Map<number, MinuteSum> { let m = this.#sums.get(id); if (!m) { m = new Map(); this.#sums.set(id, m); } return m; }
   step(id: string): number | undefined { return this.#steps.get(id); }
   /** Instruments with a recorded minute. */
   get instruments(): string[] { return [...this.#minutes.keys()]; }
@@ -164,10 +255,15 @@ export class FootprintRecorder {
       const minute = Math.floor(t / MINUTE) * MINUTE;
       const minutes = this.#minute(id);
       let bins = minutes.get(minute); const restored = bins !== undefined;
-      if (!bins) { bins = new Map(); minutes.set(minute, bins); }
       const bin = binOf(price, step);
-      const cell = bins.get(bin) ?? [0, 0];
-      cell[side === 'buy' ? 0 : 1] += usd; bins.set(bin, cell);
+      let sum = this.#minuteSums(id).get(minute);
+      if (!bins) { bins = new Map(); minutes.set(minute, bins); }
+      if (!sum) { sum = { buy: 0, sell: 0, lo: bin, hi: bin, counted: !restored }; this.#minuteSums(id).set(minute, sum); }
+      const cell = bins.get(bin) ?? [0, 0, 0, 0];
+      if (side === 'buy') { cell[0] += usd; sum.buy += usd; } else { cell[1] += usd; sum.sell += usd; }
+      bins.set(bin, cell);
+      if (bin < sum.lo) sum.lo = bin;
+      if (bin > sum.hi) sum.hi = bin;
       // A minute begun here carries statistics, which its orders fill in. A minute that was restored without statistics (recorded before
       // they were kept, or before they counted orders) stays without: counting only the orders that arrive now would give it statistics
       // that cover a fraction of its volume, and a bar would be passed off as complete on them.
@@ -179,16 +275,23 @@ export class FootprintRecorder {
   }
 
   /**
-   * Count market orders (their fills went to `ingest` first) in the statistics of the minute of each one's first fill. A minute without
-   * statistics (restored from before they counted orders) stays without.
+   * Count market orders (their fills went to `ingest` first) in the statistics of the minute of each one's first fill, and in the row of the
+   * price it started at: the best price it took, where it met the resting orders (a buy's lowest fill, a sell's highest). A minute without
+   * statistics (restored from before they counted orders) stays without, and one that does not count by price gets no counts in its rows.
    */
-  countOrders(orders: Iterable<{ instrumentId: string; side: 'buy' | 'sell'; t: number; usd: number }>): void {
+  countOrders(orders: Iterable<{ instrumentId: string; side: 'buy' | 'sell'; t: number; usd: number; lo?: number; hi?: number; price?: number }>): void {
     for (const order of orders) {
-      const minute = Math.floor(order.t / MINUTE) * MINUTE, stats = this.#stats.get(order.instrumentId)?.get(minute);
+      const id = order.instrumentId, minute = Math.floor(order.t / MINUTE) * MINUTE, stats = this.#stats.get(id)?.get(minute);
       if (!stats || !(order.usd > 0)) continue;
       const bucket = sizeBucket(order.usd / this.sizeScale);
       if (order.side === 'buy') { stats.buyN++; stats.buy[bucket]! += order.usd; } else { stats.sellN++; stats.sell[bucket]! += order.usd; }
-      this.#dirty.add(`${order.instrumentId}|${minute}`);
+      const step = this.#steps.get(id), start = order.side === 'buy' ? order.lo ?? order.price : order.hi ?? order.price;
+      const bins = this.#minutes.get(id)?.get(minute);
+      if (step && bins && start !== undefined && start > 0 && this.#sums.get(id)?.get(minute)?.counted) {
+        const cell = nearestCell(bins, binOf(start, step));
+        if (cell) cell[order.side === 'buy' ? 2 : 3]++;
+      }
+      this.#dirty.add(`${id}|${minute}`);
     }
   }
 
@@ -201,12 +304,16 @@ export class FootprintRecorder {
     const cutoff = this.now() - this.#retentionMs, open = Math.floor(this.now() / MINUTE) * MINUTE;
     for (const minutes of this.#minutes.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
     for (const minutes of this.#stats.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
+    for (const minutes of this.#sums.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
     const store = this.#store, rows: FootprintMinuteRow[] = [], settled: string[] = [];
     for (const key of [...this.#dirty]) {
       const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
       if (t >= open && !(final && store)) continue;
       const bins = this.#minutes.get(id)?.get(t);
-      if (bins && store) rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell]]) => [bin, buy, sell] as [number, number, number]), stats: copyStats(this.#stats.get(id)?.get(t)) });
+      if (bins && store) {
+        const counted = this.#sums.get(id)?.get(t)?.counted === true;
+        rows.push({ inst: id, t, step: this.#steps.get(id)!, bins: [...bins].map(([bin, [buy, sell, buyN, sellN]]): StoredBin => counted ? [bin, buy, sell, buyN, sellN] : [bin, buy, sell]), stats: copyStats(this.#stats.get(id)?.get(t)) });
+      }
       if (t < open) settled.push(key);
     }
     store?.save(rows, cutoff);
@@ -236,6 +343,52 @@ export class FootprintRecorder {
       instruments.push({ id, step, rows: [...rows].sort((a, b) => a[0] - b[0]).map(([row, [buy, sell]]): FootprintRow => [row * step, buy, sell]), minutes: count, first, earliest });
     }
     return { from, to, instruments };
+  }
+
+  /**
+   * What happened in a selection (see `RangeAnswer`): one pass over its minutes, each looked up by its key. A minute's sums answer the
+   * questions about every price, and a box skips the rows of a minute that traded wholly outside its band.
+   */
+  range(ids: readonly string[], from: number, to: number, band: { p0: number; p1: number } | null, rowStep: number): RangeAnswer {
+    const first = Math.ceil(from / MINUTE) * MINUTE, span = Math.max(0, to - first);
+    const merged = new Map<number, RangeRow>(), instruments: RangeInstrument[] = [];
+    for (const id of ids) {
+      const fine = this.#steps.get(id), minutes = this.#minutes.get(id), sums = this.#sums.get(id);
+      const out: RangeInstrument = { id, band: { buy: 0, sell: 0, buyN: 0, sellN: 0 }, minutes: 0, counted: 0, countedFrom: null, countedUsd: { buy: 0, sell: 0 }, all: { buy: 0, sell: 0 }, before: { buy: 0, sell: 0, minutes: 0 } };
+      instruments.push(out);
+      if (!fine || !minutes || !sums) continue;
+      for (let t = first - span; t < first; t += MINUTE) { const s = sums.get(t); if (s) { out.before.buy += s.buy; out.before.sell += s.sell; out.before.minutes++; } }
+      // The band's first and last rows (a row is inside when its low price is).
+      const lo = band ? Math.ceil(band.p0 / fine * (1 - 1e-12)) : -Infinity, hi = band ? Math.ceil(band.p1 / fine * (1 - 1e-12)) : Infinity;
+      for (let t = first; t < to; t += MINUTE) {
+        const s = sums.get(t), bins = minutes.get(t);
+        if (!s || !bins) continue;
+        out.minutes++; out.all.buy += s.buy; out.all.sell += s.sell;
+        if (s.counted) { out.counted++; if (out.countedFrom === null) out.countedFrom = t; }
+        if (s.hi < lo || s.lo >= hi) continue;
+        const whole = s.lo >= lo && s.hi < hi;
+        for (const [bin, cell] of bins) {
+          if (!whole && (bin < lo || bin >= hi)) continue;
+          out.band.buy += cell[0]; out.band.sell += cell[1];
+          if (s.counted) { out.band.buyN += cell[2]; out.band.sellN += cell[3]; out.countedUsd.buy += cell[0]; out.countedUsd.sell += cell[1]; }
+          const key = Math.floor(bin * fine / rowStep * (1 + 1e-12));
+          let row = merged.get(key); if (!row) { row = [0, 0, 0, 0, 0]; merged.set(key, row); }
+          row[1] += cell[0]; row[2] += cell[1];
+          if (s.counted) { row[3] += cell[2]; row[4] += cell[3]; }
+        }
+      }
+    }
+    // Too many rows for an answer: two rows become one until they fit.
+    let step = rowStep, rows = merged;
+    while (rows.size > MAX_RANGE_ROWS) {
+      const next = new Map<number, RangeRow>();
+      for (const [key, row] of rows) {
+        const half = Math.floor(key / 2), into = next.get(half);
+        if (into) for (let i = 1; i < 5; i++) into[i]! += row[i]!; else next.set(half, [0, row[1], row[2], row[3], row[4]]);
+      }
+      rows = next; step *= 2;
+    }
+    return { from, to, p0: band?.p0 ?? null, p1: band?.p1 ?? null, step, rows: [...rows].sort((a, b) => a[0] - b[0]).map(([key, row]): RangeRow => [key * step, row[1], row[2], row[3], row[4]]), instruments };
   }
 
   /** Bars of `tfMs` over [from, to), rows merged to `rowStep` (rounded to a multiple of the recorded step). */
