@@ -13,6 +13,8 @@ export type PrintRow = TradeLike & { lo?: unknown; hi?: unknown; fills?: unknown
 
 /** Smallest trade kept. The browser raises its own floor when it draws or sounds; the server only has to keep what could matter. */
 export const PRINT_FLOOR_USD = 25_000;
+/** The most prints one answer carries (the largest of its window when more match). */
+export const PRINTS_PER_ANSWER = 5_000;
 const RETENTION_MS = 7 * 24 * 3_600_000;
 /** Newest prints held in memory (older ones stay in SQLite). */
 const MEMORY_MAX = 20_000;
@@ -23,9 +25,20 @@ export interface PrintStore {
   /** The newest `limit` prints since `since`, oldest first. */
   load(since: number, limit: number): Print[];
   save(rows: Print[], expireBefore: number): void;
-  /** Prints older than what memory holds, when the store can answer. */
+  /** Prints older than what memory holds, when the store can answer: the `limit` largest in [from, to) from `minUsd`, oldest first. */
   query?(from: number, to: number, minUsd: number, limit: number): Print[];
   close(): void;
+}
+
+/**
+ * The `limit` largest of `prints` (in time order), oldest first; the newest win a tie. A window holds far more orders than an answer carries
+ * (BTC records 3,000 to 5,000 an hour from $25,000), and the map draws only the largest in view: keeping the newest instead would show the
+ * last forty minutes of a day and nothing before them.
+ */
+export function largestPrints(prints: readonly Print[], limit: number): Print[] {
+  if (prints.length <= limit) return [...prints];
+  const kept = new Set([...prints].sort((a, b) => b.usd - a.usd || b.t - a.t).slice(0, limit));
+  return prints.filter(p => kept.has(p));
 }
 
 export const toWire = (p: Print): WirePrint => p.n !== undefined && p.n > 1 && p.lo !== undefined && p.hi !== undefined ? [p.t, p.id, p.side, p.price, p.usd, p.lo, p.hi, p.n] : [p.t, p.id, p.side, p.price, p.usd];
@@ -89,8 +102,8 @@ export class PrintStream {
   /** Prints added since the last call, for broadcasting. */
   takeFresh(): Print[] { return this.#fresh.splice(0); }
 
-  /** Prints in [from, to) of at least `minUsd`, oldest first; when more than `limit` match, the oldest are left out. */
-  query(from: number, to: number, minUsd = this.floorUsd, limit = 5_000): Print[] {
+  /** Prints in [from, to) of at least `minUsd`, oldest first; when more than `limit` match, the largest `limit` (see `largestPrints`). */
+  query(from: number, to: number, minUsd = this.floorUsd, limit = PRINTS_PER_ANSWER): Print[] {
     const out: Print[] = [];
     const memoryStart = this.#recent[0]?.t ?? Infinity;
     if (this.#store?.query && from <= memoryStart) {
@@ -101,7 +114,7 @@ export class PrintStream {
       for (const p of this.#store.query(from, Math.min(to, memoryStart + 1), minUsd, limit)) if (!kept.has(`${p.id}|${p.t}|${p.price}|${p.usd}`)) out.push(p);
     }
     for (const p of this.#recent) if (p.t >= from && p.t < to && p.usd >= minUsd) out.push(p);
-    return out.length > limit ? out.slice(out.length - limit) : out;
+    return largestPrints(out, limit);
   }
 
   /** Write what has not been saved and drop expired rows, from memory as well as from the store. */

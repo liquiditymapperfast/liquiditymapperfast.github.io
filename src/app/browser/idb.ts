@@ -1,6 +1,6 @@
 import type { Column, ColumnStore } from '../../shared/recorder.ts';
 import type { FootprintMinuteRow, FootprintStore } from '../../shared/footprint.ts';
-import type { Print, PrintStore } from '../../shared/prints.ts';
+import { largestPrints, type Print, type PrintStore } from '../../shared/prints.ts';
 import type { FlowMinuteRow, FlowStore } from '../../shared/flow.ts';
 import { fullerColumn, fullerFlowMinute, fullerFootprintMinute } from '../../shared/recording-merge.ts';
 import { peakOf, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from '../../shared/absorption.ts';
@@ -126,10 +126,10 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     load: (_since, limit) => printRows.slice(-limit),
     query: (from, to, minUsd, limit) => {
       const out: Print[] = [];
-      for (const row of everyPrint.values()) if (row.t >= from && row.t < to && row.usd >= minUsd) out.push({ t: row.t, id: row.id, side: row.side, price: row.price, usd: row.usd });
+      for (const row of everyPrint.values()) if (row.t >= from && row.t < to && row.usd >= minUsd) out.push({ t: row.t, id: row.id, side: row.side, price: row.price, usd: row.usd, ...(row.n !== undefined && row.lo !== undefined && row.hi !== undefined ? { lo: row.lo, hi: row.hi, n: row.n } : {}) });
       out.sort((a, b) => a.t - b.t);
-      // The newest `limit` are kept when more match, as the stream's contract says.
-      return out.length > limit ? out.slice(out.length - limit) : out;
+      // The largest `limit` are kept when more match, as the stream's contract says.
+      return largestPrints(out, limit);
     },
     save: (rows, expireBefore) => {
       for (const row of rows) everyPrint.set(printKey(row), { ...row, k: printKey(row) });

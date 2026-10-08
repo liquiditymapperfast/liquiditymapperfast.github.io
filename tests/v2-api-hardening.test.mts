@@ -153,16 +153,17 @@ test('a book that ages out is taken off the map even when nothing else changes',
 
 // ---- the SQLite print store ------------------------------------------------------------------------------------------------------------------------
 
-test('a limited SQLite print query keeps the newest matches, as the stream promises, not the oldest', () => {
+test('a limited SQLite print query keeps the largest matches, as the stream promises, in time order', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlm-prints-'));
   try {
     const file = path.join(dir, 'p.sqlite'), store = new SqlitePrintStore(file);
     try {
-    const rows = [1, 2, 3, 4, 5].map(k => ({ t: 1_000 * k, id: 'x:BTC', side: 'buy' as const, price: 100, usd: 30_000 + k }));
+    const sizes = [90_000, 30_000, 70_000, 30_000, 40_000];
+    const rows = sizes.map((usd, i) => ({ t: 1_000 * (i + 1), id: 'x:BTC', side: 'buy' as const, price: 100, usd }));
     store.save(rows, 0);
-    assert.deepEqual(store.query(0, 10_000, 25_000, 2).map(p => p.t), [4_000, 5_000], 'the latest two, oldest first');
+    assert.deepEqual(store.query(0, 10_000, 25_000, 2).map(p => p.t), [1_000, 3_000], 'the largest two, oldest first: the oldest is the largest');
     assert.deepEqual(store.query(0, 4_500, 25_000, 10).map(p => p.t), [1_000, 2_000, 3_000, 4_000], 'all of them when they fit');
-    assert.deepEqual(store.query(2_500, 10_000, 25_000, 2).map(p => p.t), [4_000, 5_000]);
+    assert.deepEqual(store.query(0, 10_000, 25_000, 4).map(p => p.t), [1_000, 3_000, 4_000, 5_000], 'a tie goes to the newest');
     } finally { store.close(); }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

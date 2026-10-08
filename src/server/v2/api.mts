@@ -13,7 +13,7 @@ import { MAX_PROFILE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, type Tra
 import { RecordedBefore } from '../../shared/restart.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
-import { PRINT_FLOOR_USD, PrintStream, toWire } from './prints.mts';
+import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, toWire } from './prints.mts';
 import { OrderBuilder, orderRow, type TakenFill } from '../../shared/orders.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, ABSORPTION_WINDOW_MS, MAX_ABSORPTION_INSTRUMENTS } from './absorption.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
@@ -263,8 +263,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_COLUMN_SPAN_MS);
     const min = Math.max(PRINT_FLOOR_USD, num(url.searchParams.get('min'), PRINT_FLOOR_USD));
     // A limit is a whole number of prints: SQLite reads a negative one as "no limit", and a fraction is nobody's intent.
-    const rawLimit = url.searchParams.get('limit'), limit = rawLimit === null ? 5_000 : Number(rawLimit);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) return sendJson(res, { error: 'limit must be a whole number from 1 to 5000' }, 400);
+    const rawLimit = url.searchParams.get('limit'), limit = rawLimit === null ? PRINTS_PER_ANSWER : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > PRINTS_PER_ANSWER) return sendJson(res, { error: 'limit must be a whole number from 1 to 5000' }, 400);
     sendJson(res, { floor: PRINT_FLOOR_USD, prints: prints.query(from, to, min, limit).map(toWire) });
   };
   /** The trades of some instruments added together by size over the last N minutes, for each of up to six N (the page's strip); minutes are counted on this server's clock. */

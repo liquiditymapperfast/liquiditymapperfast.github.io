@@ -12,6 +12,7 @@ import { t } from './i18n.ts';
 import type { ProfileAnswer } from '../shared/footprint.ts';
 import { AbsorptionBook } from './absorption.ts';
 import { MAX_ABSORPTION_INSTRUMENTS } from '../shared/absorption.ts';
+import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -48,7 +49,8 @@ export class Hub {
   onFlowChanged: () => void = () => {};
   #flowLoading = false;
   /** The window the print book was last filled for, and the smallest order it was asked from. */
-  #printsWindow: { t0: number; t1: number; min: number } | null = null;
+  /** The window of history the print book was last answered for, from which smallest size, and whether the answer was cut to its largest. */
+  #printsWindow: { t0: number; t1: number; min: number; cut: boolean } | null = null;
   /** The live stream has closed at least once since it last opened, so the next open is a reconnection. */
   #dropped = false;
   /** Counts the times the live stream opened or closed: a history answer can tell whether it was asked for before the stream broke. */
@@ -242,18 +244,19 @@ export class Hub {
 
   /**
    * Make sure the print book covers `view` with the orders from `minUsd` (history is fetched once per window and smallest size; the live
-   * stream keeps it current after that). An answer holds at most the newest few thousand, so a larger smallest size reaches further back:
-   * a new one is asked for again.
+   * stream keeps it current after that). An answer holds at most the largest few thousand of its window (a day of BTC is far more), which is
+   * what a wide view draws; a view zoomed well into a window whose answer was cut is asked for again, for its smaller orders.
    */
   ensurePrints(view: Bounds, minUsd = 25_000): void {
     if (this.#printsLoading || !(view.t1 > view.t0)) return;
     const have = this.#printsWindow;
-    if (have && have.min === minUsd && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now())) return;
+    const narrower = have !== null && have.cut && view.t1 - view.t0 < (have.t1 - have.t0) / 4;
+    if (have && have.min === minUsd && have.t0 <= view.t0 && have.t1 >= Math.min(view.t1, Date.now()) && !narrower) return;
     const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE));
     this.#printsLoading = true;
     const connection = this.#connection;
     // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
-    this.source.prints(from, to, minUsd).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to, min: minUsd }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+    this.source.prints(from, to, minUsd).then(rows => { this.prints.add(rows, { from, to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to, min: minUsd, cut: rows.length >= PRINTS_PER_ANSWER }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
   }
 
   /**

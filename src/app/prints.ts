@@ -29,7 +29,8 @@ const keyOf = (p: Print): string => `${p.t}|${p.id}|${p.price}|${p.usd}`;
 /**
  * Large trades held for drawing, oldest first, without duplicates (a window fetched from history and the live stream overlap).
  * Bounded: past `max` the oldest are dropped, except those in the window of history that was last asked for (`keep`): it is what is being
- * looked at, and a window that was fetched only to be trimmed away at once would be marked as covered and never fetched again.
+ * looked at, and a window that was fetched only to be trimmed away at once would be marked as covered and never fetched again. When that
+ * window alone holds more, its smallest go (the map draws the largest in view).
  */
 export class PrintBook {
   items: Print[] = [];
@@ -53,11 +54,11 @@ export class PrintBook {
     return fresh;
   }
 
-  /** Drop what is over `max`: the oldest first, and what is in the kept window last (only when the window alone is more than the book holds). */
+  /** Drop what is over `max`: the oldest outside the kept window first, then the smallest inside it (only when the window alone is more than the book holds). */
   #trim(): void {
     const over = this.items.length - this.max, keep = this.#keep, gone = new Set<Print>();
     for (const p of this.items) { if (gone.size >= over) break; if (!keep || p.t < keep.from || p.t >= keep.to) gone.add(p); }
-    for (const p of this.items) { if (gone.size >= over) break; gone.add(p); }
+    if (gone.size < over) for (const p of [...this.items].filter(p => !gone.has(p)).sort((a, b) => a.usd - b.usd || a.t - b.t)) { if (gone.size >= over) break; gone.add(p); }
     this.items = this.items.filter(p => !gone.has(p));
     for (const p of gone) this.#keys.delete(keyOf(p));
   }

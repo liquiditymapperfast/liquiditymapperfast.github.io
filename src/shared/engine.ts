@@ -1,7 +1,7 @@
 import type { ValuedBook } from './levels.ts';
 import { BROWSER_RETENTION_MS, COLUMN_MS, DepthRecorder, MIN_BIN_USD, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
 import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type SizesAnswer } from './footprint.ts';
-import { PRINT_FLOOR_USD, PrintStream, type Print, type PrintStore } from './prints.ts';
+import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, type Print, type PrintStore } from './prints.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
 import { RecordedBefore } from './restart.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
@@ -330,7 +330,7 @@ export class Engine {
   /** Taker flow per second for each instrument over [from, to), from its first recorded minute in that range. */
   flow(ids: readonly string[], from: number, to: number): FlowFrame { return this.flows.frame(ids, from, to); }
 
-  prints(from: number, to: number, minUsd = this.printStream.floorUsd, limit = 5_000): Print[] { return this.printStream.query(from, to, Math.max(this.printStream.floorUsd, minUsd), limit); }
+  prints(from: number, to: number, minUsd = this.printStream.floorUsd, limit = PRINTS_PER_ANSWER): Print[] { return this.printStream.query(from, to, Math.max(this.printStream.floorUsd, minUsd), limit); }
 
   /** How the coin is listed on the market an instrument belongs to (none: not this coin's market, so nothing is asked of it). */
   #listing(instrumentId: string) { return this.#coin.markets[venueOf(instrumentId) as CoinVenue]; }
