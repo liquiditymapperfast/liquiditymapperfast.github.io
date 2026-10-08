@@ -756,5 +756,6 @@
  "No coin matches.": "Eşleşen coin yok.",
  "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "{total} piyasanın en az {min} tanesinde bulunan coinler, 24 saatlik hacmi en büyük olan önce. {date} listesi.",
  "The coin list could not be read, so only BTC is offered.": "Coin listesi okunamadı, bu yüzden yalnızca BTC sunuluyor.",
- "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Boyut ayarları (işlem baloncukları, emilim, sesler, boyut satırları) coinin hacmini izler: {coin} için BTC'dekilerin {factor} katıdır."
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Boyut ayarları (işlem baloncukları, emilim, sesler, boyut satırları) coinin hacmini izler: {coin} için BTC'dekilerin {factor} katıdır.",
+ "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "Bir karenin alanı orada emilen hacimle orantılıdır; görünümdeki en büyük işaret en büyüğüdür."
 }

@@ -14,7 +14,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { tradedHeader, tradedLines, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { flowIds, flowLoadIds } from '../cvd/ids.ts';
-import { markLines, type AbsorptionMark } from '../absorption.ts';
+import { markLines, markSize, type AbsorptionMark } from '../absorption.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
@@ -25,7 +25,7 @@ import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
 import { t } from '../i18n.ts';
-import { currentCoin, scaledUsd, sizeScale } from '../coin.ts';
+import { currentCoin, scaledUsd } from '../coin.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -838,7 +838,7 @@ export class HeatPane {
    * Absorption marks: a dot on the level where it happened and, offset from it with a dotted line (so it never covers the bubble of the same
    * orders), a square in the passive side's colour: below the level when passive buyers took market sells, above it when passive sellers
    * took market buys. Squares of one side that would overlap are drawn as one with their volume added, and when there are more than fit,
-   * the largest are drawn.
+   * the largest are drawn. A square's area is in proportion to its volume, the largest in view the biggest (see markSize).
    */
   #paintAbsorption(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#absorptionIcons = [];
@@ -856,11 +856,11 @@ export class HeatPane {
     const shown = icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12))));
     if (shown.length) {
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
-      const edge = p.dark ? '#f2f2f2' : '#14171c';
+      const edge = p.dark ? '#f2f2f2' : '#14171c', largest = shown[0]!.usd;
       ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
       for (const icon of shown.reverse()) {   // the largest last, on top
         const passiveBuyers = icon.side === 'sell', color = passiveBuyers ? p.bid : p.ask;
-        const size = Math.max(8, Math.min(20, 8 + 5 * Math.sqrt(icon.usd / (1e6 * sizeScale())))), iy = icon.y + (passiveBuyers ? OFFSET : -OFFSET);
+        const size = markSize(icon.usd, largest), iy = icon.y + (passiveBuyers ? OFFSET : -OFFSET);
         ctx.globalAlpha = 0.9; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
         ctx.beginPath(); ctx.moveTo(Math.round(icon.x) + 0.5, icon.y); ctx.lineTo(Math.round(icon.x) + 0.5, iy + (passiveBuyers ? -size / 2 : size / 2)); ctx.stroke(); ctx.setLineDash([]);
         ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillRect(icon.x - 2, icon.y - 2, 4, 4);

@@ -741,5 +741,6 @@
  "No coin matches.": "没有匹配的币种。",
  "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "在 {total} 个市场中至少 {min} 个上线的币种，按 24 小时成交额从大到小排列。{date} 的列表。",
  "The coin list could not be read, so only BTC is offered.": "无法读取币种列表，因此只提供 BTC。",
- "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "尺寸设置（成交气泡、吸收、声音、规模行）随币种的成交额而定：{coin} 上为 BTC 的 {factor}。"
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "尺寸设置（成交气泡、吸收、声音、规模行）随币种的成交额而定：{coin} 上为 BTC 的 {factor}。",
+ "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "方块的面积与该处被吸收的成交量成正比，视图中最大的标记最大。"
 }

@@ -741,5 +741,6 @@
  "No coin matches.": "일치하는 코인이 없습니다.",
  "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "{total}개 시장 중 {min}개 이상에 상장된 코인을 24시간 거래량이 큰 순서로 보여 줍니다. {date} 목록입니다.",
  "The coin list could not be read, so only BTC is offered.": "코인 목록을 읽지 못해 BTC만 선택할 수 있습니다.",
- "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "크기 설정(체결 버블, 흡수, 소리, 크기 행)은 코인의 거래량을 따릅니다. {coin}에서는 BTC의 {factor}입니다."
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "크기 설정(체결 버블, 흡수, 소리, 크기 행)은 코인의 거래량을 따릅니다. {coin}에서는 BTC의 {factor}입니다.",
+ "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "사각형의 면적은 그곳에서 흡수된 거래량에 비례하며, 화면에서 가장 큰 표시가 가장 큽니다."
 }

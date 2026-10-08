@@ -766,5 +766,6 @@
  "No coin matches.": "Подходящих монет нет.",
  "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "Монеты, которые есть хотя бы на {min} из {total} рынков, по убыванию объёма за 24 ч. Список от {date}.",
  "The coin list could not be read, so only BTC is offered.": "Список монет не удалось прочитать, поэтому доступен только BTC.",
- "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Настройки размера (пузыри сделок, поглощение, звуки, строки размеров) следуют объёму монеты: для {coin} они составляют {factor} от значений для BTC."
+ "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Настройки размера (пузыри сделок, поглощение, звуки, строки размеров) следуют объёму монеты: для {coin} они составляют {factor} от значений для BTC.",
+ "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "Площадь квадрата пропорциональна поглощённому там объёму; самая крупная метка на экране — самый большой квадрат."
 }

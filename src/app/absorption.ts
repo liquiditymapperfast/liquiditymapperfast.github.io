@@ -37,6 +37,18 @@ export function readAbsorption(saved: unknown): AbsorptionSettings {
   };
 }
 
+/** The side of the largest absorption square in view, and of the smallest any square is drawn at, in px. */
+export const MARK_MAX_PX = 20, MARK_MIN_PX = 6;
+/**
+ * The side of an absorption square in px: its area in proportion to the USD it stands for, the largest square drawn (`largest`) at
+ * MARK_MAX_PX, never smaller than MARK_MIN_PX. Compared with what is in view, as the trade bubbles are: zoomed out, the squares drawn are
+ * the largest of hours (tens of millions each), and a fixed scale had capped every one of them at one size.
+ */
+export function markSize(usd: number, largest: number): number {
+  if (!(largest > 0) || !(usd > 0)) return MARK_MIN_PX;
+  return Math.max(MARK_MIN_PX, MARK_MAX_PX * Math.sqrt(Math.min(1, usd / largest)));
+}
+
 /** A mark: the marked part of one group at its instrument's threshold. */
 export interface AbsorptionMark { id: string; side: 'buy' | 'sell'; price: number; t0: number; t1: number; usd: number; fills: number; peak: number; threshold: number }
 

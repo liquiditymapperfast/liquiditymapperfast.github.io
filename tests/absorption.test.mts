@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { AbsorptionRecorder, markedPart, mergeMoments, parseAbsorptionAnswer, parseAbsorptionLive, parseGroup, parseMinute, peakOf, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStep } from '../src/shared/absorption.ts';
 import { AbsorptionRecorder as SqliteAbsorptionRecorder } from '../src/server/v2/absorption.mts';
-import { ABSORPTION_DEFAULTS, AbsorptionBook, markLines, passiveText, readAbsorption, type AbsorptionMark } from '../src/app/absorption.ts';
+import { ABSORPTION_DEFAULTS, AbsorptionBook, MARK_MAX_PX, MARK_MIN_PX, markLines, markSize, passiveText, readAbsorption, type AbsorptionMark } from '../src/app/absorption.ts';
 import { BookConnector, type TradeEvent } from '../src/shared/connector.ts';
 import { Engine } from '../src/shared/engine.ts';
 import type { BrowserVenue } from '../src/shared/venues.ts';
@@ -417,4 +417,13 @@ test('the hub asks once per window: again when the window leaves it, a threshold
     hub.ensureAbsorption(['a:BTC', 'b:BTC'], [290_000, null], back(), 30); assert.equal(asked.length, 6, 'other instruments');
     assert.equal(asked[5]!.since, Math.floor(clock / MIN) * MIN - 31 * MIN, 'their minutes from the start of the span');
   } finally { Date.now = realNow; }
+});
+
+test('the area of a square follows its volume against the largest square in view, so a zoomed-out day of marks is not one size', () => {
+  assert.equal(markSize(5e7, 5e7), MARK_MAX_PX, 'the largest in view is the biggest');
+  assert.equal(markSize(250_000, 250_000), markSize(5e7, 5e7), 'whatever its dollars');
+  assert.ok(Math.abs(markSize(2e7, 4e7) / markSize(5e6, 4e7) - 2) < 1e-9, 'four times the volume, twice the side');
+  assert.ok(markSize(1.5e7, 5e7) < markSize(3e7, 5e7) && markSize(3e7, 5e7) < MARK_MAX_PX, '$15M and $30M of a day of $50M marks differ');
+  assert.equal(markSize(1, 5e7), MARK_MIN_PX, 'never smaller than can be seen');
+  assert.equal(markSize(1e6, 0), MARK_MIN_PX);
 });
