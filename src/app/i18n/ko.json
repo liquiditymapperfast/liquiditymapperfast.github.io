@@ -628,8 +628,6 @@
  "Show both": "둘 다 표시",
  "Switched off: {names}.": "꺼짐: {names}",
  "Turn on": "켜기",
- "Showing the biggest {shown} of {total} exchanges.": "거래소 {total}곳 중 가장 큰 {shown}곳을 표시 중입니다.",
- "Show all": "모두 표시",
  "No trades in this window: {names}.": "이 구간에 체결 없음: {names}",
  "Not on the map yet (no order book): {names}.": "아직 지도에 없음 (호가창 없음): {names}",
  "Local": "로컬",

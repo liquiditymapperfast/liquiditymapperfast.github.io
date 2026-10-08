@@ -628,8 +628,6 @@
  "Show both": "両方を表示",
  "Switched off: {names}.": "オフ: {names}",
  "Turn on": "オンにする",
- "Showing the biggest {shown} of {total} exchanges.": "{total} 取引所のうち上位 {shown} を表示中。",
- "Show all": "すべて表示",
  "No trades in this window: {names}.": "この期間に約定なし: {names}",
  "Not on the map yet (no order book): {names}.": "まだマップにありません（オーダーブックなし）: {names}",
  "Local": "ローカル",

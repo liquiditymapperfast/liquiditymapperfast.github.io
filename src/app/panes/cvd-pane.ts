@@ -480,7 +480,7 @@ export class CvdPane {
   #updateNotice(model: CvdModel, s: AppState): void {
     const flow = this.hub.flow, withFlow = flow.ids.filter(id => flow.get(id)?.empty === false), winStart = model.nowSec - model.rankSec + 1;
     const missing = explainMissing(s, withFlow, new Set(model.rows.map(r => r.key)), id => flow.get(id)?.gross(winStart, model.nowSec) ?? 0);
-    const rows = noticeRows(missing, venueLabel, model.rows.length, s.scope === 'spot' ? 'spot' : 'perp');
+    const rows = noticeRows(missing, venueLabel, s.scope === 'spot' ? 'spot' : 'perp');
     const key = rows.map(r => `${r.text}\u0001${r.action?.label ?? ''}`).join('\u0002');
     if (key === this.#noticeKey) return;
     this.#noticeKey = key; this.#noticeRows = rows.map(r => r.text);
@@ -494,8 +494,7 @@ export class CvdPane {
   /** What a notice's button does: undo the thing that hides the exchanges, and make the list again now, not at the next re-rank. */
   #runNotice(action: NoticeAction): void {
     if (action.kind === 'both') this.store.set({ scope: 'all' });
-    else if (action.kind === 'on') this.store.set({ disabledVenues: this.store.state.disabledVenues.filter(v => !action.venues.includes(v)) });
-    else { this.#set({ top: 0 }); return; }
+    else this.store.set({ disabledVenues: this.store.state.disabledVenues.filter(v => !action.venues.includes(v)) });
     this.refresh();
   }
 

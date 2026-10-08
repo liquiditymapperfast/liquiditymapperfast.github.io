@@ -27,7 +27,9 @@ test('a held list whose families have all gone is made again, so a ranking that 
   const start = rankAll([input('a', 10, 0), input('b', 8, 0)]);
   ranker.apply(0, start, start);
   const unchanged = rankAll([input('a', 1, 0), input('b', 9, 0), input('c', 50, 0)]);
-  assert.deepEqual(keys(ranker.apply(10_000_000, unchanged, unchanged)), ['a', 'b'], 'by hand: the first layout stays while its families trade');
+  // By hand the first layout's order stays while its families trade (b has passed a); an exchange that starts trading takes a free place
+  // at the end, or a column that shows every exchange would leave it out for good.
+  assert.deepEqual(keys(ranker.apply(10_000_000, unchanged, unchanged)), ['a', 'b', 'c'], 'by hand: the first layout stays while its families trade');
   const other = rankAll([input('x', 3, 0), input('y', 2, 0)]);
   assert.deepEqual(keys(ranker.apply(10_000_001, other, other)), ['x', 'y'], 'but not when none of them is there: that is another universe, not a layout to keep');
 });

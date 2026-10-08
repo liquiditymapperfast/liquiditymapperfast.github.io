@@ -5,10 +5,10 @@ import { t } from '../i18n.ts';
 
 /**
  * Why an exchange that has recorded flow is not a row of the flow column: the Spot / Perp filter leaves it out, its chip is switched off,
- * it has no order book on the map, it has not traded in the window the rows are ranked over, or it is past the number of rows asked for.
- * A column shorter than a person expects has to say why, or it looks like rows that went missing.
+ * it has no order book on the map, or it has not traded in the window the rows are ranked over. A column shorter than a person expects has
+ * to say why, or it looks like rows that went missing. One past the number of rows a person asked for is not named: they chose the number.
  */
-export type MissingWhy = 'filter' | 'off' | 'nobook' | 'quiet' | 'cut';
+export type MissingWhy = 'filter' | 'off' | 'nobook' | 'quiet';
 export interface Missing { key: string; why: MissingWhy; /** The venues of this exchange, for switching them back on. */ venues: string[] }
 
 type State = Pick<AppState, 'markets' | 'disabledVenues' | 'scope' | 'levels'>;
@@ -33,7 +33,7 @@ export function explainMissing(state: State, withFlow: readonly string[], shown:
       return null;
     };
     const venues = [...new Set(ids.map(venueOfInstrument))], open = ids.filter(id => blocked(id) === null);
-    if (open.length) { out.push({ key, why: open.some(id => volume(id) > 0) ? 'cut' : 'quiet', venues }); continue; }
+    if (open.length) { if (!open.some(id => volume(id) > 0)) out.push({ key, why: 'quiet', venues }); continue; }
     const reasons = ids.map(blocked);
     out.push({ key, venues, why: (['filter', 'off', 'nobook'] as const).find(why => reasons.includes(why))! });
   }
@@ -41,16 +41,16 @@ export function explainMissing(state: State, withFlow: readonly string[], shown:
 }
 
 /** What a notice row's button does. */
-export type NoticeAction = { kind: 'both' } | { kind: 'on'; venues: string[] } | { kind: 'all' };
+export type NoticeAction = { kind: 'both' } | { kind: 'on'; venues: string[] };
 export interface NoticeRow { text: string; /** Everything the row names, for its tooltip when the line is cut short. */ full: string; action?: { label: string; run: NoticeAction } }
 
 const NAMES_SHOWN = 6;
 
 /**
- * The words for `missing`, one row per reason, the one a person can undo with a click first. `label` writes an exchange's name, `shown`
- * is how many rows the column has and `scope` the filter that is on.
+ * The words for `missing`, one row per reason, the one a person can undo with a click first. `label` writes an exchange's name and `scope`
+ * is the filter that is on.
  */
-export function noticeRows(missing: readonly Missing[], label: (key: string) => string, shown: number, scope: Scope): NoticeRow[] {
+export function noticeRows(missing: readonly Missing[], label: (key: string) => string, scope: Scope): NoticeRow[] {
   const by = (why: MissingWhy): Missing[] => missing.filter(m => m.why === why);
   const names = (list: readonly Missing[], limit = NAMES_SHOWN): string => { const all = list.map(m => label(m.key)); return all.length > limit ? `${all.slice(0, limit).join(', ')}, …` : all.join(', '); };
   const full = (list: readonly Missing[]): string => list.map(m => label(m.key)).join(', ');
@@ -62,11 +62,6 @@ export function noticeRows(missing: readonly Missing[], label: (key: string) => 
   }
   const off = by('off');
   if (off.length) rows.push({ text: t('Switched off: {names}.', { names: names(off) }), full: t('Switched off: {names}.', { names: full(off) }), action: { label: t('Turn on'), run: { kind: 'on', venues: [...new Set(off.flatMap(m => m.venues))] } } });
-  const cut = by('cut');
-  if (cut.length) {
-    const text = t('Showing the biggest {shown} of {total} exchanges.', { shown, total: shown + cut.length });
-    rows.push({ text, full: `${text} ${full(cut)}`, action: { label: t('Show all'), run: { kind: 'all' } } });
-  }
   const quiet = by('quiet');
   if (quiet.length) rows.push({ text: t('No trades in this window: {names}.', { names: names(quiet) }), full: t('No trades in this window: {names}.', { names: full(quiet) }) });
   const nobook = by('nobook');

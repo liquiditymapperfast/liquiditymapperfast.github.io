@@ -644,8 +644,6 @@
  "Show both": "Afficher les deux",
  "Switched off: {names}.": "Désactivées : {names}.",
  "Turn on": "Activer",
- "Showing the biggest {shown} of {total} exchanges.": "Affichage des {shown} plus grandes plateformes sur {total}.",
- "Show all": "Tout afficher",
  "No trades in this window: {names}.": "Aucune transaction dans cette fenêtre : {names}.",
  "Not on the map yet (no order book): {names}.": "Pas encore sur la carte (pas de carnet d'ordres) : {names}.",
  "Local": "Local",

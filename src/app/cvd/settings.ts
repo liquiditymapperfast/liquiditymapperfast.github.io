@@ -14,8 +14,13 @@ export const RANK_MS: Readonly<Record<RankWindow, number>> = { '15m': 900_000, '
 export interface CvdSettings {
   span: CvdSpan;
   rank: RankWindow;
-  /** How many exchange rows; 0 shows every exchange that has traded. */
+  /** How many exchange rows; 0 (the default) shows every exchange that has traded. */
   top: number;
+  /**
+   * Set on every save since showing every exchange became the default: a top of 8 in a save without it is the old default, not a choice,
+   * and reads as 0 once (an 8 chosen since stays 8).
+   */
+  v: 2;
   heights: HeightMode;
   /** Re-rank every `refreshMin` minutes (off: the first layout stays). */
   auto: boolean; refreshMin: number;
@@ -34,7 +39,7 @@ export interface CvdSettings {
   strip: boolean; stripRetailMax: number; stripWhaleMin: number; stripSmall: boolean; stripBlink: boolean;
 }
 
-export const CVD_DEFAULTS: Readonly<CvdSettings> = { span: 'map', rank: '1h', top: 8, heights: 'golden', auto: true, refreshMin: 1, pinned: [], quietFlag: true, rebase: true,
+export const CVD_DEFAULTS: Readonly<CvdSettings> = { span: 'map', rank: '1h', top: 0, v: 2, heights: 'golden', auto: true, refreshMin: 1, pinned: [], quietFlag: true, rebase: true,
   strip: true, stripRetailMax: DEFAULT_STAT_OPTIONS.retailMax, stripWhaleMin: DEFAULT_STAT_OPTIONS.whaleMin, stripSmall: true, stripBlink: true };
 
 /** The settings that decide which exchanges are rows and in what order: when only the others change, the rows stay where they are. */
@@ -55,11 +60,11 @@ function readPinned(s: Record<string, unknown>): string[] {
 /** Settings from storage, field by field: whatever is missing or not valid falls back to the default. */
 export function readCvd(saved: unknown): CvdSettings {
   const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>, d = CVD_DEFAULTS;
-  const top = bounded(s.top, 0, 32, d.top);
+  const top = s.v !== 2 && s.top === 8 ? 0 : bounded(s.top, 0, 32, d.top);
   // Retail ends in one of the first seven buckets and whales start in a later one, whatever a damaged save says.
   const stripRetailMax = bounded(s.stripRetailMax, 0, 6, d.stripRetailMax), stripWhaleMin = Math.max(stripRetailMax + 1, bounded(s.stripWhaleMin, 1, 7, d.stripWhaleMin));
   return {
-    span: oneOf(CVD_SPANS, s.span, d.span), rank: oneOf(RANK_WINDOWS, s.rank, d.rank), top: top > 0 && top < 3 ? 3 : top,
+    span: oneOf(CVD_SPANS, s.span, d.span), rank: oneOf(RANK_WINDOWS, s.rank, d.rank), top: top > 0 && top < 3 ? 3 : top, v: 2,
     heights: oneOf(HEIGHT_MODES, s.heights, d.heights),
     auto: typeof s.auto === 'boolean' ? s.auto : d.auto, refreshMin: bounded(s.refreshMin, 1, 60, d.refreshMin),
     pinned: readPinned(s),

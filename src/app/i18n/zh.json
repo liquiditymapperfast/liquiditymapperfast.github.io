@@ -628,8 +628,6 @@
  "Show both": "显示两者",
  "Switched off: {names}.": "已关闭：{names}",
  "Turn on": "开启",
- "Showing the biggest {shown} of {total} exchanges.": "显示 {total} 家交易所中最大的 {shown} 家。",
- "Show all": "全部显示",
  "No trades in this window: {names}.": "此窗口内没有成交：{names}",
  "Not on the map yet (no order book): {names}.": "尚未出现在地图上（没有订单簿）：{names}",
  "Local": "本地",

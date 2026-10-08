@@ -648,8 +648,6 @@
  "Show both": "Показать обе",
  "Switched off: {names}.": "Выключены: {names}.",
  "Turn on": "Включить",
- "Showing the biggest {shown} of {total} exchanges.": "Показаны {shown} крупнейших бирж из {total}.",
- "Show all": "Показать все",
  "No trades in this window: {names}.": "Нет сделок в этом окне: {names}.",
  "Not on the map yet (no order book): {names}.": "Пока нет на карте (нет стакана заявок): {names}.",
  "Local": "Местное",

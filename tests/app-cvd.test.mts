@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFamilies, familyKey } from '../src/app/cvd/families.ts';
-import { Ranker, quiet, rankFamilies, type RankInput } from '../src/app/cvd/rank.ts';
+import { Ranker, quiet, rankAll, rankFamilies, type RankInput } from '../src/app/cvd/rank.ts';
 import { PHI, locateRow, maxScroll, rowHeights } from '../src/app/cvd/layout.ts';
 import { BURST_DEFAULTS, burst } from '../src/app/cvd/burst.ts';
 import { FlowSeries } from '../src/shared/flow.ts';
@@ -60,6 +60,25 @@ test('the ranker holds the order for the refresh interval but shows current numb
   assert.equal(held[1]!.gross, 50, 'with the numbers of now');
   assert.deepEqual(ranker.apply(60_000, flipped).map(r => r.family.key), ['b', 'a'], 're-ranked when due');
   assert.deepEqual(ranker.apply(61_000, rankFamilies([input('b', 1, 0)], { top: 6 })).map(r => r.family.key), ['b'], 'a held family with no data is gone');
+});
+
+test('between re-ranks a free place goes to an exchange that has started trading, at the end, and a full list stays as it is', () => {
+  // No limit: the first trades arrive one exchange at a time, and each one is a row as soon as it trades, not a minute later.
+  const ranker = new Ranker(60_000, true);
+  assert.deepEqual(ranker.apply(0, rankFamilies([input('a', 10, 0)], { top: null })).map(r => r.family.key), ['a']);
+  const later = rankFamilies([input('a', 10, 0), input('b', 50, 0), input('c', 5, 0)], { top: null });
+  assert.deepEqual(ranker.apply(1_000, later).map(r => r.family.key), ['a', 'b', 'c'], 'appended in volume order, the first row does not move');
+  assert.deepEqual(ranker.apply(60_000, later).map(r => r.family.key), ['b', 'a', 'c'], 're-ranked when due');
+  // With a limit, only the places that are free: two rows asked for, both taken, and a newcomer waits for the re-rank.
+  const two = new Ranker(60_000, true);
+  two.apply(0, rankFamilies([input('a', 10, 0)], { top: 2 }));
+  assert.deepEqual(two.apply(1_000, rankFamilies([input('a', 10, 0), input('b', 5, 0), input('c', 50, 0)], { top: 2 })).map(r => r.family.key), ['a', 'c']);
+  const crowd = [input('a', 10, 0), input('b', 50, 0), input('c', 60, 0)];
+  assert.deepEqual(two.apply(2_000, rankFamilies(crowd, { top: 2 }), rankAll(crowd)).map(r => r.family.key), ['a', 'c'], 'full: held, though b has passed a');
+  // With auto off the layout still never reorders, but a new exchange is still added.
+  const fixed = new Ranker(1_000, false);
+  fixed.apply(0, rankFamilies([input('a', 1, 0)], { top: null }));
+  assert.deepEqual(fixed.apply(10_000_000, rankFamilies([input('a', 1, 0), input('b', 5, 0)], { top: null })).map(r => r.family.key), ['a', 'b']);
 });
 
 test('with auto off the first layout stays for good, until reset', () => {

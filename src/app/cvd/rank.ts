@@ -59,9 +59,16 @@ export class Ranker {
    */
   apply(now: number, fresh: readonly Ranked[], all: readonly Ranked[] = fresh): Ranked[] {
     const byKey = new Map(all.map(r => [r.family.key, r] as const));
-    const alive = this.#keys.some(key => byKey.has(key));
-    const due = this.#keys.length === 0 || !alive || (this.auto && now - this.#at >= this.refreshMs);
+    const alive = this.#keys.filter(key => byKey.has(key)).length;
+    const due = this.#keys.length === 0 || alive === 0 || (this.auto && now - this.#at >= this.refreshMs);
     if (due && fresh.length) { this.#keys = fresh.map(r => r.family.key); this.#at = now; }
+    else {
+      // A place that is free between re-ranks (with no limit on the rows, or in the first minute, when the exchanges' first trades arrive
+      // one by one) goes to an exchange that has started trading, at the end: the rows already there do not move.
+      let room = fresh.length - alive;
+      const held = new Set(this.#keys);
+      for (const r of fresh) { if (room <= 0) break; if (!held.has(r.family.key)) { this.#keys.push(r.family.key); room--; } }
+    }
     return this.#keys.flatMap(key => { const r = byKey.get(key); return r ? [r] : []; });
   }
 
