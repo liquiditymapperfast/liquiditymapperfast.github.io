@@ -762,5 +762,6 @@
  "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "Monete presenti su almeno {min} dei {total} mercati, dal volume a 24 h più alto. Elenco del {date}.",
  "The coin list could not be read, so only BTC is offered.": "Non è stato possibile leggere l'elenco delle monete, quindi è offerto solo BTC.",
  "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "Le impostazioni di dimensione (bolle dei trade, assorbimento, suoni, righe di dimensione) seguono il volume della moneta: su {coin} sono {factor} di quelle di BTC.",
- "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "L'area di un quadrato è proporzionale al volume assorbito lì; il segno più grande in vista è il più grande."
+ "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "L'area di un quadrato è proporzionale al volume assorbito lì; il segno più grande in vista è il più grande.",
+ "Sounds for large market orders by size tier, a chime on unusual volume, and one rare event per pane if you choose it. Browsers play sound only after a click on the page.": "Suoni per gli ordini a mercato grandi per fascia di dimensione, un rintocco sul volume insolito e un evento raro per pannello se lo scegli. I browser riproducono suoni solo dopo un clic sulla pagina."
 }

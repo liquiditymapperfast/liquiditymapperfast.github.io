@@ -742,5 +742,6 @@
  "Coins on at least {min} of the {total} markets, largest 24 h volume first. List of {date}.": "{total} 市場のうち {min} 以上に上場している通貨を、24 時間出来高の大きい順に並べています。{date} のリストです。",
  "The coin list could not be read, so only BTC is offered.": "通貨リストを読み込めなかったため、BTC のみ選べます。",
  "Size settings (trade bubbles, absorption, sounds, size rows) follow the coin's volume: on {coin} they are {factor} of BTC's.": "サイズの設定（約定バブル、吸収、サウンド、サイズ行）は通貨の出来高に合わせます。{coin} では BTC の {factor} です。",
- "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "四角の面積はそこで吸収された出来高に比例し、表示中で最大のマークが最も大きくなります。"
+ "A square's area is in proportion to the volume taken there, the largest mark in view the biggest.": "四角の面積はそこで吸収された出来高に比例し、表示中で最大のマークが最も大きくなります。",
+ "Sounds for large market orders by size tier, a chime on unusual volume, and one rare event per pane if you choose it. Browsers play sound only after a click on the page.": "サイズ段階ごとの大きな成行注文の音、異常な出来高でのチャイム、そして選べば各ペインのまれな出来事を1つ鳴らします。ブラウザはページをクリックした後でないと音を鳴らしません。"
 }

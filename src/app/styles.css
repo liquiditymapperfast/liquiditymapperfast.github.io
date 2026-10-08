@@ -271,6 +271,10 @@ button.help:hover, button.help.open { color: var(--bg); background: var(--text);
 ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.45; }
 .help-body .lead { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }
 .help-body .more { margin-top: 10px; align-self: flex-start; }
+/* A "?" inside a panel opens its explanation there, under the tool strip (help.ts). */
+.help-inline { display: flex; flex-direction: column; padding: 10px 14px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--ui) 6%, var(--panel)); flex: 0 0 auto; }
+.help-inline .lead { margin: 0 0 6px; font-size: 12.5px; line-height: 1.45; }
+.help-inline .more { margin-top: 6px; align-self: flex-start; }
 /* The cross on a close button is two bars, not a typed ×: a font puts that character wherever its own metrics say, which is rarely the middle of the button. */
 :is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x) { position: relative; padding: 0; font-size: 0; line-height: 0; --cross: 10px; --weight: 1.6px; }
 :is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x)::before, :is(.panel-x, .sheet-x, .guide-x, .notice-close, .panel .srow .x)::after { content: ""; position: absolute; left: 50%; top: 50%; width: var(--cross); height: var(--weight); margin: calc(var(--weight) / -2) 0 0 calc(var(--cross) / -2); border-radius: 1px; background: currentColor; transform: rotate(45deg); }

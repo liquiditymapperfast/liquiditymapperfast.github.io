@@ -165,10 +165,10 @@ export class Toolbar {
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildSoundPanel(this.store, sounds, () => this.#soundPanel?.render(build), tools, body, this.#alerts);
+      const build = (tools: HTMLElement, body: HTMLElement): void => { tools.append(helpButton('sounds')); buildSoundPanel(this.store, sounds, () => this.#soundPanel?.render(build), tools, body, this.#alerts); };
       this.#soundPanel = togglePanel(this.#soundButton, { title: t('Sounds'), width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build);
     };
-    this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => this.#buildHighlights(tools, body)); };
+    this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => { tools.append(helpButton('highlights')); this.#buildHighlights(tools, body); }); };
     this.#absorption.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildAbsorption(tools, body, () => this.#absorptionPanel?.render(build));
       this.#absorptionPanel = togglePanel(this.#absorption, { title: t('Absorption'), width: 400, align: 'left', onClose: () => { this.#absorptionPanel = null; } }, build);

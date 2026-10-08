@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { barAt, columnAt, depthCardLines, ltCardLines, oiCardLines, oiTail, slotAt } from '../src/app/panes/pane-cards.ts';
+import { barAt, columnAt, depthCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
 import { layoutInfo } from '../src/app/infobox.ts';
 
 const MIN = 60_000;
@@ -96,4 +96,15 @@ test('every popup fits the box: no line is left without text, and a long sentenc
 test('looking at the past, the open-interest line carries the last visible level to the edge instead of joining the newest value', () => {
   assert.deepEqual(oiTail(10, 9, 700, 800), { x: 700, live: true }, 'the newest sample is on screen: the line ends at its centre');
   assert.deepEqual(oiTail(10, 4, 700, 800), { x: 800, live: false }, 'the newest is further right than the view: hold the level to the edge');
+});
+
+test("right of the newest point, or over the price axis, the popup keeps showing the newest value; a gap between points still shows none", () => {
+  const times = [0, 60, 120, 300];   // a gap from 180 to 300
+  const read = (t: number): number => readAt(slotAt(times, 60, t), t, times.length - 1, times[times.length - 1]);
+  assert.equal(read(70), 1, "under the pointer");
+  assert.equal(read(200), -1, "in a gap: nothing");
+  assert.equal(read(330), 3, "on the newest");
+  assert.equal(read(10_000), 3, "far right of it: still the newest");
+  assert.equal(readAt(-1, 5, -1, undefined), -1, "no data, nothing");
+  assert.equal(readAt(2, 10_000, 3, 300), 2, "a point under the pointer wins");
 });

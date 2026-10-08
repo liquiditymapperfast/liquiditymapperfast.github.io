@@ -30,6 +30,16 @@ export function slotAt(times: ArrayLike<number>, step: number, time: number): nu
   return found >= 0 && time < times[found]! + step ? found : -1;
 }
 
+/**
+ * What a pointer at `time` reads: the point `found` under it, else, when `time` is at or past the newest point (index `newest`, at
+ * `newestT`), the newest. Right of the plotted data, or over the pane's price axis, the popup keeps the last value instead of going away:
+ * on a plot of this resolution, landing exactly on the last point is a hunt. A time in a gap between points still reads nothing.
+ */
+export function readAt(found: number, time: number, newest: number, newestT: number | undefined): number {
+  if (found >= 0) return found;
+  return newest >= 0 && newestT !== undefined && time >= newestT ? newest : -1;
+}
+
 /** The bar of `bars` (each starting with its start time, sorted) the time falls in: the last one that has started. The newest holds on past its own slot (its level is the latest known until the next sample), so it answers for any later time. */
 export function barAt(bars: ArrayLike<ArrayLike<number>>, tf: number, time: number): number {
   let found = -1;

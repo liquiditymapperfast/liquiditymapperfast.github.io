@@ -1,13 +1,17 @@
 import { el } from './dom.ts';
 import { lazy } from './lazy.ts';
-import { note, togglePanel } from './ui.ts';
+import { note, openedPanel, togglePanel } from './ui.ts';
 import { t } from './i18n.ts';
 
 /**
  * What each part of the page is, in two sizes: a one-sentence tooltip (`tip`) and a short explanation (`body`) behind a "?" button,
  * with the section of the guide that goes further. Tooltips, "?" panels and the guide all read from here so they cannot disagree.
+ *
+ * Where a "?" goes: every feature that shows something on the chart has one, and one only. A pane has it in its header; a feature a toolbar
+ * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
+ * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds';
 
 export interface HelpTopic {
   title: string;
@@ -78,6 +82,16 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     tip: t('Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, the area in proportion to the size, the largest in view the biggest. Hover one for its venue, size and price.'),
     body: [],
   },
+  highlights: {
+    title: t('Highlights'), guide: 'highlights',
+    tip: t('What stands out: unusual volume, open-interest changes and depth imbalance'),
+    body: [],
+  },
+  sounds: {
+    title: t('Sounds'), guide: 'trades',
+    tip: t('Sounds for large market orders by size tier, a chime on unusual volume, and one rare event per pane if you choose it. Browsers play sound only after a click on the page.'),
+    body: [],
+  },
   heatmap: {
     title: t('The heatmap'), guide: 'heatmap',
     tip: t('Each coloured cell is liquidity resting at a price at a moment: warmer and brighter means more.'),
@@ -134,14 +148,26 @@ export const showGuide = (section?: string): void => { void lazy(() => import('.
 export function helpButton(id: HelpId): HTMLButtonElement {
   const topic = HELP[id];
   const button = el('button', { type: 'button', class: 'help', textContent: '?', tip: t('What is this? {topic}', { topic: topic.title }), ariaLabel: t('Explain: {topic}', { topic: topic.title }) });
+  const fill = (body: HTMLElement): void => {
+    body.classList.add('help-body');
+    body.append(el('p', { class: 'lead', textContent: topic.tip }));
+    for (const paragraph of topic.body) body.append(note(paragraph));
+    body.append(el('button', { type: 'button', class: 'more', textContent: t('More in the guide →'), onclick: () => { showGuide(topic.guide); } }));
+  };
   button.onclick = event => {
     event.stopPropagation();
-    togglePanel(button, { title: topic.title, width: 340, align: 'left' }, (_tools, body) => {
-      body.classList.add('help-body');
-      body.append(el('p', { class: 'lead', textContent: topic.tip }));
-      for (const paragraph of topic.body) body.append(note(paragraph));
-      body.append(el('button', { type: 'button', class: 'more', textContent: t('More in the guide →'), onclick: () => { showGuide(topic.guide); } }));
-    });
+    // Inside a panel the explanation opens in that panel, right under its tool strip: as a panel of its own it would close this one (one
+    // panel at a time), and with it the button it was to be placed by, so it landed in the corner of the page.
+    const panel = button.closest('.panel');
+    if (panel) {
+      const shown = panel.querySelector(`.help-inline[data-topic="${id}"]`);
+      if (shown) shown.remove();
+      else { const box = el('div', { class: 'help-inline' }); box.dataset.topic = id; fill(box); panel.querySelector('.panel-body')?.before(box); }
+      button.classList.toggle('open', !shown);
+      openedPanel()?.reposition();
+      return;
+    }
+    togglePanel(button, { title: topic.title, width: 340, align: 'left' }, (_tools, body) => fill(body));
   };
   return button;
 }

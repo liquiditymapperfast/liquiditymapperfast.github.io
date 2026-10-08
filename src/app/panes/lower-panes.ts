@@ -13,7 +13,7 @@ import { gutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
 import { BAR_STATS, GROUP_TITLES, PRESETS, sizeBucketLabels, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { barAt, columnAt, depthCardLines, depthKey, imbalanceFlags, ltCardLines, oiCardLines, oiTail, slotAt } from './pane-cards.ts';
+import { barAt, columnAt, depthCardLines, depthKey, imbalanceFlags, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
@@ -57,8 +57,9 @@ abstract class TimePane {
       if (e.pointerType === 'touch') return;
       const r = this.canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       this.pointer = { x: e.clientX, y: e.clientY };
-      if (x < 0 || x > this.plotW) { this.store.set({ hover: null }); return; }
-      this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: null, y, source } });
+      if (x < 0) { this.store.set({ hover: null }); return; }
+      // Over the price axis the pointer reads the right edge of the plot, so a pane past its newest point keeps showing that (readAt).
+      this.store.set({ hover: { t: this.view.tOf(Math.min(x, this.plotW), this.plotW), price: null, y, source } });
     });
     this.canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') { this.pointer = null; this.store.set({ hover: null }); } });
     bindTouch(this.canvas, new GestureRecognizer(this.#touchHandlers()));
@@ -109,7 +110,7 @@ abstract class TimePane {
   #prepare(): void {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.#grid(); this.draw(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.#grid(); this.draw(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -121,10 +122,12 @@ abstract class TimePane {
   #crosshair(): void {
     const hv = this.store.state.hover; if (!hv) return;
     const { ctx, palette: p } = this;
-    const x = this.view.xOf(hv.t, this.plotW);
+    const x = this.view.xOf(this.cursorT ?? hv.t, this.plotW);
     if (x < 0 || x > this.plotW) return;
     ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h); ctx.stroke(); ctx.setLineDash([]);
   }
+  /** Where the readout stands when it is not under the pointer (past the newest point it shows the newest): the cursor is drawn there. Set by `draw`. */
+  protected cursorT: number | null = null;
   protected abstract draw(): void;
   /** The pane was asked to draw but cannot (it is hidden, or has no size): let go of anything it put outside its canvas. A pin it holds is released first (and only its own, so a pin on another pane stays), or the card would come back at the same spot the next time the tab is shown. */
   protected undrawn(): void {}
@@ -179,14 +182,16 @@ export class DepthPane extends TimePane {
     const s = this.#series;
     const readout = this.head.querySelector('.readout');
     if (!s) { ctx.fillStyle = p.muted; ctx.fillText(t('Depth history is collecting…'), 12, ph / 2); return; }
-    let max = 1, lastB = 0, lastA = 0;
-    for (let x = 0; x < s.w; x++) { max = Math.max(max, s.bid[x]!, s.ask[x]!); if (s.bid[x]! > 0 || s.ask[x]! > 0) { lastB = s.bid[x]!; lastA = s.ask[x]!; } }
+    let max = 1, lastB = 0, lastA = 0, lastX = -1;
+    for (let x = 0; x < s.w; x++) { max = Math.max(max, s.bid[x]!, s.ask[x]!); if (s.bid[x]! > 0 || s.ask[x]! > 0) { lastB = s.bid[x]!; lastA = s.ask[x]!; lastX = x; } }
     const lastTotal = lastB + lastA, lastImbalance = lastTotal > 0 ? (lastB - lastA) / lastTotal : 0;
     const dominant = Math.abs(lastImbalance) < 0.005 ? '' : ` <b class="${lastImbalance > 0 ? 'bid' : 'ask'}">${lastImbalance > 0 ? t('bids') : t('asks')} +${(Math.abs(lastImbalance) * 100).toFixed(1)}%</b>`;
     setHtml(readout, `A <b class="ask">${usd(lastA)}</b> B <b class="bid">${usd(lastB)}</b> Δ <b>${usd(lastB - lastA)}</b>${dominant}`);
     const hv = state.hover;
     if (hv && this.pointer) {
-      const at = columnAt(s.t0, s.t1, s.w, hv.t);
+      const colT = (x: number): number => s.t0 + x / s.w * (s.t1 - s.t0), under = columnAt(s.t0, s.t1, s.w, hv.t);
+      const at = readAt(under >= 0 && (s.bid[under]! > 0 || s.ask[under]! > 0) ? under : -1, hv.t, lastX, lastX >= 0 ? colT(lastX) : undefined);
+      if (at >= 0 && at !== under) this.cursorT = colT(at + 0.5);
       if (at >= 0 && (s.bid[at]! > 0 || s.ask[at]! > 0)) {
         const here = s.bid[at]! + s.ask[at]!;
         let rank = 1, of = 0;
@@ -322,6 +327,7 @@ export class OiPane extends TimePane {
     const source = state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? ` <span class="muted">${t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` })}</span>` : '';
     const sigma = flagged && Number.isFinite(analysis.sigma[shown]) ? ` <span class="muted">${analysis.sigma[shown]!.toFixed(1)}σ</span>` : '';
     const over = hover && this.pointer ? barAt(oi, tf, hover.t) : -1;
+    if (over === oi.length - 1 && hover && hover.t >= oi[over]![0] + tf) this.cursorT = oi[over]![0] + tf / 2;
     if (over >= 0) {
       const there = oi[over]!, seen = visible.filter(i => i > 0), change = over > 0 ? analysis.delta[over]! : null, size = change === null ? 0 : Math.abs(change);
       this.#lines = oiCardLines({
@@ -447,7 +453,8 @@ export class LtPane extends TimePane {
     if (state.hover) { at = 0; for (let i = 0; i < n; i++) if (s.times[i]! <= state.hover.t) at = i; }
     const b = s.bid[at]!, a = s.ask[at]!, total = b + a;
     setHtml(readout, `${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${tn(ids.length, '{n} venue', '{n} venues')}`);
-    const over = state.hover && this.pointer ? slotAt(s.times, step, state.hover.t) : -1;
+    const over = state.hover && this.pointer ? readAt(slotAt(s.times, step, state.hover.t), state.hover.t, n - 1, s.times[n - 1]) : -1;
+    if (over >= 0 && state.hover && state.hover.t >= s.times[over]! + step) this.cursorT = s.times[over]! + step / 2;
     if (over >= 0) this.#lines = ltCardLines({ time: s.times[over]!, bid: s.bid[over]!, ask: s.ask[over]!, halfLifeBp: lt.halfLifeBp, venues: ids.length });
   }
 }
@@ -535,7 +542,10 @@ export class BarStatsPane extends TimePane {
     const visible = all.map((bar, i) => i).filter(i => all[i]!.t + tfMs >= v.t0 && all[i]!.t <= v.t1);
     if (!visible.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No executions recorded for the candles in view.'), 12, ph / 2); return; }
     // Under the pointer: the candle (any pane's pointer says which, the time axis being shared) and, from this pane's own pointer, the row.
-    const hv = state.hover, hoverIdx = hv ? all.findIndex(bar => hv.t >= bar.t && hv.t < bar.t + tfMs) : -1;
+    const hv = state.hover, under = hv ? all.findIndex(bar => hv.t >= bar.t && hv.t < bar.t + tfMs) : -1;
+    // Past the newest bar this pane's own pointer reads the newest (readAt); another pane's pointer there marks nothing here.
+    const hoverIdx = hv && this.pointer ? readAt(under, hv.t, all.length - 1, all[all.length - 1]!.t) : under;
+    if (hoverIdx >= 0 && hoverIdx !== under) this.cursorT = all[hoverIdx]!.t + tfMs / 2;
     const hoverRow = hv && hv.source === 'bars' ? Math.floor((hv.y - top) / rowH) : -1;
     let hoverCell: StatCell | null = null;
     ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
