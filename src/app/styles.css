@@ -289,7 +289,7 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 /* The Traded panel's session list (traded/panel.ts): one row a session, wrapping on a narrow sheet. The remove glyph is drawn, not typed. */
 .session-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .session-row .session-name { flex: 1 1 90px; min-width: 70px; }
-.session-row .session-time { width: 88px; }
+.session-row .session-time { width: 112px; }
 .session-row .session-zone { flex: 0 1 120px; min-width: 96px; }
 .session-dash { color: var(--muted); }
 .session-weekdays { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); white-space: nowrap; }
