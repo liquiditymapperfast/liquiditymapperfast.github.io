@@ -717,8 +717,6 @@
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "当前阈值会判定地图上的每个标记，因此更改它，或行情使它变化，都会重绘历史。每个交易所按各自的阈值判定。标记说明的是成交本身，而不是价格之后的走势。",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "圆点位于发生的价位，旁边的方块表示挂单一方：在那里等待的买方吸收了市价卖出时在价位下方，在那里等待的卖方吸收了市价买入时在上方。将鼠标悬停在方块上可查看交易所、成交笔数、最大的 10 毫秒合计和阈值。",
  "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "自动阈值按每个交易所自身的成交计算：最近一段时间内，同一价格 10 毫秒合计的均值加若干个标准差。因此活跃的交易所需要更多成交才会被标记。",
- "Trade bubble settings": "成交气泡设置",
- "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "成交气泡：显示的最小订单、方向、气泡大小与不透明度，以及写在气泡里的金额。",
  "Show trade bubbles": "显示成交气泡",
  "Large market orders where they traded, the fills of one order added together.": "大额市价单显示在成交的位置，同一订单的各笔成交合计。",
  "Smallest order": "最小订单",

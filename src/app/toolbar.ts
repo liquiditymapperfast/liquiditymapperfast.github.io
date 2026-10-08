@@ -50,10 +50,13 @@ const IDLE_GRACE_MS = 20_000;
 const UPCOMING = 'upcoming';
 
 /** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
-const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['traded', t('Traded')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['bubbles', t('Trades')]];
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['traded', t('Traded')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
+
+/** Light or dim a button's lamp (`.led-btn`): it says whether the feature the button opens is on. Written only when it changes. */
+function lamp(button: HTMLElement, on: boolean): void { const state = on ? 'on' : 'off'; if (button.dataset.state !== state) button.dataset.state = state; }
 
 /** Top bar: market, timeframe, layer, pane toggles, heatmap colour, venues, theme. */
 export class Toolbar {
@@ -75,18 +78,22 @@ export class Toolbar {
   #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Screenshot'), tip: t('Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.'), onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: t('Author'), tip: t('Who made this, and where to find the code. Free, no sign-ups, open source.') });
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
-  #soundButton = el('button', { class: 'sound-btn', textContent: t('Sound'), tip: t('Sound notifications') });
+  #soundButton = el('button', { class: 'led-btn sound-btn', textContent: t('Sound'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
   #sounds: Sounds | null = null;
   /** Where the language and theme buttons live on a desktop screen (the status bar), or null. */
   #statusHost: HTMLElement | null = null;
   #venueMenu: Panel | null = null;
   #alerts: Alerts | null = null;
-  #highlights = el('button', { textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
-  #absorption = el('button', { textContent: t('Absorption'), tip: HELP.absorption.tip });
-  /** The show/hide buttons of the panes and marks, in the order of `PANE_TOGGLES`, and the bubbles' settings button after them. */
+  /**
+   * The features that are switched on and set in a panel: one button each, whose lamp (`.led-btn`) is lit while the feature is on. Trades
+   * and Absorption mark market orders on the map, Highlights and Sound point out what is unusual, so they stand in those pairs.
+   */
+  #trades = el('button', { class: 'led-btn', textContent: t('Trades'), tip: HELP.bubbles.tip });
+  #absorption = el('button', { class: 'led-btn', textContent: t('Absorption'), tip: HELP.absorption.tip });
+  #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
+  /** The show/hide buttons of the panes, in the order of `PANE_TOGGLES`. */
   #toggleButtons: HTMLButtonElement[] = [];
-  #tradeSettings = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Trade bubble settings'), tip: t('Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.') });
   #tradePanel: Panel | null = null;
   #absorptionPanel: Panel | null = null;
   /** The threshold each venue is judged at now, in words (set by the page, which knows the venues and the recorded minutes). */
@@ -96,7 +103,7 @@ export class Toolbar {
     lo: el('i'), hi: el('i'), legend: el('span', { class: 'legend' }),
     contrast: el('input', { type: 'range', min: String(CONTRAST.min), max: String(CONTRAST.max), step: '1', tip: t('Contrast: right reveals thinner liquidity, left keeps only the biggest walls, and the far left tones even those down. Double-click to reset.') }),
     smooth: el('select', { ariaLabel: t('Smoothing'), tip: t('Vertical smoothing when price rows get thin (zoomed out): Auto smooths with a ~5 px Gaussian below 15 px per row, as Bookmap does, so far walls stay visible; Off draws every row exactly.') }),
-    auto: el('button', { textContent: t('Auto'), tip: t('Auto: the colour window follows the data (recomputed on recenter, market change, zoom and every 10 s). Off: it stays where it is.') }),
+    auto: el('button', { class: 'led-btn', textContent: t('Auto'), tip: t('Auto: the colour window follows the data (recomputed on recenter, market change, zoom and every 10 s). Off: it stays where it is.') }),
   };
   #source = el('select', { ariaLabel: t('Source'), tip: t('Heatmap source') });
   #theme = el('button', { class: 'theme-btn', tip: t('Theme: hover to preview, click to keep') });
@@ -148,16 +155,13 @@ export class Toolbar {
     }
     this.#layer.onchange = () => this.store.set({ layer: this.#layer.value as Layer });
     for (const [key, label] of PANE_TOGGLES) {
-      const button = el('button', { textContent: label, tip: HELP[key === 'bubbles' ? 'bubbles' : key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) });
+      const button = el('button', { textContent: label, tip: HELP[key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) });
       this.#toggleButtons.push(button); this.#toggles.append(button);
     }
-    // The bubbles' settings sit right after their switch (Trades), the last of the group.
-    this.#tradeSettings.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
-    this.#tradeSettings.onclick = () => {
+    this.#trades.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildTrades(tools, body, () => this.#tradePanel?.render(build));
-      this.#tradePanel = togglePanel(this.#tradeSettings, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
+      this.#tradePanel = togglePanel(this.#trades, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
     };
-    this.#toggles.append(this.#tradeSettings);
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
@@ -224,7 +228,7 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#highlights, this.#absorption, this.#soundButton,
+      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#absorption, this.#highlights, this.#soundButton,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
@@ -247,12 +251,12 @@ export class Toolbar {
       this.#heatctl.replaceChildren();
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#guide, this.#shot, this.#author, this.#install.root)]),
-        section(t('Show'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
+        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#absorption), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
         section(t('Heatmap'), [
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
         section(t('Venues'), [field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
-        section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#absorption, this.#soundButton)]),
+        section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#highlights, this.#soundButton)]),
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zone),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesButton!.textContent = t('Venues'); });
@@ -280,7 +284,7 @@ export class Toolbar {
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    this.#heat.auto.classList.toggle('on', state.heat.auto);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));

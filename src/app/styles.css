@@ -331,9 +331,10 @@ button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
 .theme-btn .swatch i { width: 8px; height: 12px; }
 .theme-btn::after { content: "▾"; color: var(--muted); font-size: 10px; }
 
-.sound-btn { position: relative; padding-left: 22px; }
-.sound-btn::before { content: ""; position: absolute; left: 8px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--muted); opacity: .55; transition: background .2s, box-shadow .2s; }
-.sound-btn[data-state="on"]::before { background: var(--bid); opacity: 1; }
+/* The lamp of a button that switches a feature on (Trades, Absorption, Highlights, Sound, the colour range's Auto): lit while it is on. */
+.led-btn { position: relative; padding-left: 22px; }
+.led-btn::before { content: ""; position: absolute; left: 8px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--muted); opacity: .55; transition: background .2s, box-shadow .2s; }
+.led-btn[data-state="on"]::before { background: var(--bid); opacity: 1; }
 .sound-btn[data-state="locked"]::before { background: #e6a700; opacity: 1; }
 .sound-btn.flash::before { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bid) 35%, transparent); }
 .sound-state { font-size: 11px; color: var(--muted); }

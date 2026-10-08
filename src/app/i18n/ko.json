@@ -717,8 +717,6 @@
  "The threshold that applies now judges every mark on the map, so changing it, or the market moving it, redraws the history. Each venue is judged at its own threshold. A mark says what traded, not what price did next.": "현재 임계값이 지도의 모든 표시를 판정하므로, 바꾸거나 시장이 움직이면 과거가 다시 그려집니다. 거래소마다 자기 임계값으로 판정합니다. 표시는 체결된 것을 말할 뿐, 이후 가격 움직임을 말하지 않습니다.",
  "A dot sits on the level where it happened, and a square beside it shows the resting side: below the level when buyers waiting there took market sells, above it when sellers waiting there took market buys. Hover a square for the exchange, the fills, the largest 10 ms sum and the threshold.": "점은 일어난 가격에 놓이고, 옆의 사각형은 대기하던 쪽을 보여 줍니다: 그곳에서 기다리던 매수자가 시장가 매도를 흡수했으면 가격 아래, 그곳에서 기다리던 매도자가 시장가 매수를 흡수했으면 위입니다. 사각형에 올려 두면 거래소, 체결, 가장 큰 10 ms 합계와 임계값을 볼 수 있습니다.",
  "The automatic threshold is worked out for each exchange from its own trading: the mean of its 10 ms sums at one price plus a number of standard deviations, over a recent span. A busy exchange therefore needs more to be marked than a quiet one.": "자동 임계값은 거래소마다 그 거래소 자신의 거래로 정합니다: 최근 기간 동안 한 가격에서의 10 ms 합계 평균에 표준편차의 배수를 더한 값입니다. 그래서 활발한 거래소는 조용한 거래소보다 더 많아야 표시됩니다.",
- "Trade bubble settings": "체결 버블 설정",
- "Trade bubbles: the smallest order drawn, the side, their size and how solid they are, and sizes written in them.": "체결 버블: 그릴 가장 작은 주문, 방향, 크기와 불투명도, 버블 안의 크기 표시.",
  "Show trade bubbles": "체결 버블 보기",
  "Large market orders where they traded, the fills of one order added together.": "큰 시장가 주문을 체결된 곳에 표시합니다(한 주문의 체결은 합산).",
  "Smallest order": "가장 작은 주문",
