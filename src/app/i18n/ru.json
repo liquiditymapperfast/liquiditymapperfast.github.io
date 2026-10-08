@@ -824,8 +824,9 @@
  "Bids {value}": "Биды {value}",
  "Asks {value}": "Аски {value}",
  "Held by": "Держат",
- "What rested inside the box on average over its time, as the heatmap draws it.": "Что в среднем стояло внутри прямоугольника за его время — так, как рисует тепловая карта.",
+ "What rested inside the box on average over its time, on the exchanges switched on.": "Что в среднем стояло внутри прямоугольника за его время на включённых биржах.",
  "New selection": "Новое выделение",
  "Select another part of the map or of a pane: drag across it.": "Выделите другую часть карты или панели: проведите по ней.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Проведите по карте, чтобы выделить прямоугольник, или по панели под ней либо колонке потока — для отрезка времени по всем ценам. Ctrl+перетаскивание (Cmd на Mac) выделяет в любой момент; Esc закрывает."
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Проведите по карте, чтобы выделить прямоугольник, или по панели под ней либо колонке потока — для отрезка времени по всем ценам. Ctrl+перетаскивание (Cmd на Mac) выделяет в любой момент; Esc закрывает.",
+ "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "Карта показывает только часть этого выделения: его отметки поглощения и крупнейший ордер считаются только для этой части."
 }

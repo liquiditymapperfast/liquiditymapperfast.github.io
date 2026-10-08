@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   for (const pane of [depth, oi, lt, bars]) pane.useTimeGestures(heat.timeGestures());
   heat.onFrame = lower; heat.onView = lower;
   // The Range tool: a drag on the map, on a pane under it or across the flow column selects, and its panel adds up what happened there.
-  const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton;
+  const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton; range.mapWindow = () => ({ t0: heat.view.t0, t1: heat.view.t1 });
   heat.range = range; cvd.range = range; for (const pane of [depth, oi, lt, bars]) pane.useRange(range);
   toolbar.onRange = () => range.toggle();
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };

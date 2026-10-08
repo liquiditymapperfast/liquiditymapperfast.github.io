@@ -794,8 +794,9 @@
  "Bids {value}": "买盘 {value}",
  "Asks {value}": "卖盘 {value}",
  "Held by": "交易所",
- "What rested inside the box on average over its time, as the heatmap draws it.": "该时段内方框中平均挂着的订单，与热力图的绘制方式相同。",
+ "What rested inside the box on average over its time, on the exchanges switched on.": "该时段内方框中平均挂着的订单，来自已开启的交易所。",
  "New selection": "新选择",
  "Select another part of the map or of a pane: drag across it.": "选择地图或面板的另一部分：在其上拖动。",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "在地图上拖动选择方框，在其下方的面板或资金流列上拖动则选择所有价格上的一段时间。Ctrl+拖动（Mac 上为 Cmd）随时可以选择；Esc 关闭。"
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "在地图上拖动选择方框，在其下方的面板或资金流列上拖动则选择所有价格上的一段时间。Ctrl+拖动（Mac 上为 Cmd）随时可以选择；Esc 关闭。",
+ "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "地图只显示了此选择的一部分：其吸收标记和最大订单只统计这一部分。"
 }

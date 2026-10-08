@@ -818,8 +818,9 @@
  "Bids {value}": "Bid {value}",
  "Asks {value}": "Ask {value}",
  "Held by": "Tenuti da",
- "What rested inside the box on average over its time, as the heatmap draws it.": "Ciò che era in attesa nel riquadro in media nel suo tempo, come lo disegna la heatmap.",
+ "What rested inside the box on average over its time, on the exchanges switched on.": "Ciò che era in attesa nel riquadro in media nel suo tempo, sugli exchange attivi.",
  "New selection": "Nuova selezione",
  "Select another part of the map or of a pane: drag across it.": "Seleziona un'altra parte della mappa o di un pannello: trascinaci sopra.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Trascina sulla mappa per selezionare un riquadro, oppure su un pannello sotto o sulla colonna del flusso per un periodo a tutti i prezzi. Ctrl+trascina (Cmd su Mac) seleziona in qualsiasi momento; Esc chiude."
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Trascina sulla mappa per selezionare un riquadro, oppure su un pannello sotto o sulla colonna del flusso per un periodo a tutti i prezzi. Ctrl+trascina (Cmd su Mac) seleziona in qualsiasi momento; Esc chiude.",
+ "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "La mappa mostra solo una parte di questa selezione: i suoi segni di assorbimento e il suo ordine più grande sono contati solo per quella parte."
 }

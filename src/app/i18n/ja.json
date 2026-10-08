@@ -794,8 +794,9 @@
  "Bids {value}": "買い板 {value}",
  "Asks {value}": "売り板 {value}",
  "Held by": "取引所",
- "What rested inside the box on average over its time, as the heatmap draws it.": "その期間に四角形の中にあった板の注文の平均で、ヒートマップの描き方と同じです。",
+ "What rested inside the box on average over its time, on the exchanges switched on.": "その期間に四角形の中にあった板の注文の平均で、オンになっている取引所のものです。",
  "New selection": "新しい選択",
  "Select another part of the map or of a pane: drag across it.": "マップやパネルの別の部分を選択します。その上をドラッグしてください。",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "マップをドラッグすると四角形、その下のパネルやフロー列をドラッグするとすべての価格での期間を選択します。Ctrl+ドラッグ（Mac では Cmd）でいつでも選択でき、Esc で閉じます。"
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "マップをドラッグすると四角形、その下のパネルやフロー列をドラッグするとすべての価格での期間を選択します。Ctrl+ドラッグ（Mac では Cmd）でいつでも選択でき、Esc で閉じます。",
+ "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "マップにはこの選択の一部しか表示されていません。吸収マークと最大の注文はその部分だけで数えています。"
 }

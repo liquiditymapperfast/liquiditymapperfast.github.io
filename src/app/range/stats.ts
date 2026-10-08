@@ -34,6 +34,8 @@ export interface RangeInput {
   /** The largest market orders the map holds inside the selection (the trade bubbles); null when they are off. */
   prints: readonly Print[] | null;
   kind: (id: string) => 'spot' | 'perp' | null;
+  /** The selection reaches outside the map's time window, for which the marks and the large orders are loaded. */
+  partial?: boolean;
 }
 
 /** One line of the panel. `cells` are its texts; a split's `share` is the buy side's part, 0..1, a row's the length of its bar. */
@@ -75,11 +77,13 @@ function totals(answer: RangeAnswer) {
     s.buy += i.band.buy; s.sell += i.band.sell; s.buyN += i.band.buyN; s.sellN += i.band.sellN;
     s.countedBuy += i.countedUsd.buy; s.countedSell += i.countedUsd.sell;
     s.allBuy += i.all.buy; s.allSell += i.all.sell; s.beforeBuy += i.before.buy; s.beforeSell += i.before.sell;
-    // The selection's coverage is that of the instrument that recorded the most of it (a quiet one has minutes without trades, not gaps).
-    s.minutes = Math.max(s.minutes, i.minutes); s.beforeMinutes = Math.max(s.beforeMinutes, i.before.minutes);
-    if (i.minutes === s.minutes) s.counted = Math.max(s.counted, i.counted);
+    s.beforeMinutes = Math.max(s.beforeMinutes, i.before.minutes);
     if (i.countedFrom !== null && (s.countedFrom === null || i.countedFrom < s.countedFrom)) s.countedFrom = i.countedFrom;
   }
+  // The selection's coverage is that of the instrument that recorded the most of it (a quiet one has minutes without trades, not gaps),
+  // and its counted minutes are that instrument's (the most of them, when several recorded as many).
+  for (const i of answer.instruments) s.minutes = Math.max(s.minutes, i.minutes);
+  for (const i of answer.instruments) if (i.minutes === s.minutes) s.counted = Math.max(s.counted, i.counted);
   return s;
 }
 
@@ -183,6 +187,7 @@ function absorptionLines(input: RangeInput, s: ReturnType<typeof totals> | null)
   const out: RangeLine[] = [{ key: 'h-absorption', kind: 'heading', cells: [t('Absorption marks')] }];
   if (input.marks === null) { out.push({ key: 'abs-off', kind: 'note', tone: 'muted', cells: [t('Absorption is off: switch it on to count its marks here.')] }); return out; }
   const marks = input.marks;
+  if (input.partial) out.push({ key: 'abs-partial', kind: 'note', tone: 'muted', cells: [t('The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.')] });
   if (!marks.length) { out.push({ key: 'abs-none', kind: 'note', tone: 'muted', cells: [t('No absorption marks in this selection.')] }); return out; }
   // A mark's side is the side of the market orders: passive buyers took market sells, passive sellers took market buys.
   const took = { sell: 0, buy: 0 }, byVenue = new Map<string, number>(), byPrice = new Map<number, { usd: number; side: 'buy' | 'sell' }>();
@@ -214,7 +219,7 @@ function restingLines(resting: readonly CellShare[] | null): RangeLine[] {
   out.push({ key: 'rest-split', kind: 'split', share: bid / (bid + ask), cells: [t('Bids {value}', { value: money(bid) }), t('Asks {value}', { value: money(ask) })] });
   const total = bid + ask, venues = [...byVenue].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([key, v]) => `${venueLabel(key)} ${pct(v / total)}`).join(' · ');
   out.push({ key: 'rest-venues', kind: 'stat', cells: [t('Held by'), venues] });
-  out.push({ key: 'rest-note', kind: 'note', tone: 'muted', cells: [t('What rested inside the box on average over its time, as the heatmap draws it.')] });
+  out.push({ key: 'rest-note', kind: 'note', tone: 'muted', cells: [t('What rested inside the box on average over its time, on the exchanges switched on.')] });
   return out;
 }
 

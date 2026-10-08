@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { FootprintRecorder as ServerRecorder } from '../src/server/v2/footprint.mts';
 import { createLocalServer } from '../src/server/http.mts';
 import { installV2 } from '../src/server/v2/api.mts';
 import { HistoryStore } from '../src/server/history.mts';
@@ -135,4 +140,28 @@ test('/api/v2/range answers a box and a stretch of time, and refuses what it can
       assert.equal(refused.status, 400, query); assert.ok(typeof (refused.body as { error?: unknown }).error === 'string', `${query} says why`);
     }
   } finally { v2.close(); app.server.closeAllConnections(); await new Promise<void>(resolve => app.server.close(() => resolve())); await app.close(); }
+});
+
+test('a counted minute goes through the server\'s database whole, and a minute stored without counts stays uncounted there', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlm-range-')), file = path.join(dir, 'fp.sqlite');
+  try {
+    // A minute written by a recorder from before counts were kept: three numbers a row.
+    const old = new DatabaseSync(file);
+    old.exec('CREATE TABLE footprint_minutes (inst TEXT NOT NULL, t INTEGER NOT NULL, step REAL NOT NULL, rows TEXT NOT NULL, stats TEXT, PRIMARY KEY (inst, t))');
+    old.prepare('INSERT INTO footprint_minutes (inst, t, step, rows, stats) VALUES (?, ?, ?, ?, ?)').run('x:BTC', T0, 0.5, JSON.stringify([[170_000, 10_000, 5_000]]), null);
+    old.close();
+    let now = T0 + 10 * MIN;
+    const first = new ServerRecorder(file, () => now);
+    const buy = [fill('b1', 'buy', 85_000, 40_000, T0 + MIN + 1_000), fill('b2', 'buy', 85_001, 30_000, T0 + MIN + 1_000)], sell = [fill('s1', 'sell', 85_010, 20_000, T0 + MIN + 2_000)];
+    first.ingest([...buy, ...sell]); first.countOrders([orderOf(buy), orderOf(sell)]);
+    const asked = (r: FootprintRecorder) => r.range(['x:BTC'], T0, T0 + 2 * MIN, null, 0.5);
+    const before = asked(first);
+    first.close();
+    now += 1;
+    const again = new ServerRecorder(file, () => now), after = asked(again);
+    assert.deepEqual(after.rows, before.rows, 'the rows and their counts come back as they were');
+    assert.deepEqual(after.instruments[0]!.band, { buy: 80_000, sell: 25_000, buyN: 1, sellN: 1 });
+    assert.deepEqual([after.instruments[0]!.minutes, after.instruments[0]!.counted, after.instruments[0]!.countedFrom], [2, 1, T0 + MIN], 'the old minute is still uncounted');
+    again.close();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

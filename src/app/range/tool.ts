@@ -1,7 +1,7 @@
 import type { Store } from '../store.ts';
 import type { Hub } from '../hub.ts';
 import { el } from '../dom.ts';
-import { openPanel, type Panel } from '../ui.ts';
+import { openPanel, openedPanel, type Panel } from '../ui.ts';
 import { helpButton } from '../help.ts';
 import { compactBar } from '../device.ts';
 import { activeIds, kindOf } from '../scope.ts';
@@ -83,6 +83,8 @@ export class RangeTool {
   #stopping = false;
   /** The toolbar's button: the panel opens beside it. */
   anchor: HTMLElement | null = null;
+  /** The map's time window (set by the page): the absorption marks and the large orders are loaded for it, and for no other. */
+  mapWindow: () => { t0: number; t1: number } | null = () => null;
 
   constructor(private store: Store, private hub: Hub) {
     window.addEventListener('keydown', e => { if (e.key === 'Escape' && this.#start) { e.preventDefault(); this.cancel(); } });
@@ -92,8 +94,17 @@ export class RangeTool {
   get armed(): boolean { return this.store.state.rangeTool; }
   get dragging(): boolean { return this.#start !== null; }
 
-  /** The toolbar button: arm the tool, or, while it is on (armed, or a selection shown), put it all away. */
-  toggle(): void { if (this.store.state.rangeTool || this.store.state.range || this.#panel) this.stop(); else this.arm(); }
+  /**
+   * The toolbar button: with the panel open it puts everything away; a selection whose panel another panel replaced gets its panel back
+   * (figures taken again); armed without a panel (a phone) it disarms; otherwise it arms.
+   */
+  toggle(): void {
+    const sel = this.store.state.range;
+    if (this.#panel) this.stop();
+    else if (sel && !sel.draft) { this.#open(); void this.#gather(sel, false); }
+    else if (this.store.state.rangeTool) this.stop();
+    else this.arm();
+  }
 
   /** Arm the tool: the next drag selects. On a desktop the panel says how; on a phone it would cover the map, so it waits for the selection. */
   arm(): void {
@@ -136,7 +147,7 @@ export class RangeTool {
   #open(): void {
     if (this.#panel || !this.anchor) return;
     const again = el('button', { type: 'button', textContent: t('New selection'), tip: t('Select another part of the map or of a pane: drag across it.'), onclick: () => { this.store.set({ rangeTool: true }); this.#render(); } });
-    this.#panel = openPanel(this.anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; this.stop(); } }, (tools, body) => {
+    this.#panel = openPanel(this.anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; window.clearTimeout(this.#timer); this.#timer = 0; queueMicrotask(() => { if (!openedPanel()) this.stop(); }); } }, (tools, body) => {
       tools.append(again, el('span', { class: 'spacer' }), helpButton('range'));
       body.append(this.#lines.root);
     });
@@ -153,8 +164,11 @@ export class RangeTool {
     const marks = s.on ? this.hub.absorption.marks(ids, this.hub.absorption.thresholds(ids, s, now), sel.t0, sel.t1, band?.p0 ?? 0, band?.p1 ?? Infinity).filter(m => inside(m.t0, m.price)) : null;
     const prints = state.show.bubbles ? this.hub.prints.items.filter(p => idSet.has(p.id) && inside(p.t, p.price)) : null;
     const kind = (id: string) => kindOf(state.markets, id);
+    // The marks and the large orders are loaded for the map's window: a selection reaching outside it (across the flow column on a longer
+    // span) has them only for its part on the map.
+    const map = this.mapWindow(), partial = map !== null && (sel.t0 < map.t0 || (!sel.live && sel.t1 > map.t1));
     const kept = !fresh && this.#input ? this.#input : null;
-    this.#input = { sel, answer: kept?.answer ?? null, error: null, marks, resting: kept?.resting ?? null, prints, kind };
+    this.#input = { sel, answer: kept?.answer ?? null, error: null, marks, resting: kept?.resting ?? null, prints, kind, partial };
     this.#render();
     const started = performance.now(), mark = state.mark.price > 0 ? state.mark.price : band ? (band.p0 + band.p1) / 2 : 0;
     const step = rowStep(sel, gridStepFor(mark > 0 ? mark : 1));
@@ -178,7 +192,7 @@ export class RangeTool {
       const moved = follow(now, Date.now());
       if (moved !== now) this.store.set({ range: moved });
       void this.#gather(moved, false);
-    }, refreshMs(this.#lastMs));
+    }, refreshMs(this.#lastMs, sel.t1 - sel.t0));
   }
 
   #render(): void {

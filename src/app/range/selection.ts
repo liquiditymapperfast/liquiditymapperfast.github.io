@@ -49,8 +49,11 @@ export const DRAG_MIN_PX = 4;
 /** Whether a press with the mouse starts a selection: the Range tool is armed, or Ctrl (Cmd on a Mac) is held. */
 export const selects = (armed: boolean, e: { ctrlKey: boolean; metaKey: boolean; button: number }): boolean => e.button === 0 && (armed || e.ctrlKey || e.metaKey);
 
-/** How often a live selection is asked about again: twenty times as long as the last answer took, between two and thirty seconds. */
-export const refreshMs = (lastMs: number): number => Math.max(2_000, Math.min(30_000, Math.round(lastMs * 20)));
+/**
+ * How often a live selection is asked about again: twenty times as long as the last answer took, between two and thirty seconds, and no
+ * more often than every ten seconds for one of four hours or more (a long one walks every row of its minutes on the server's one thread).
+ */
+export const refreshMs = (lastMs: number, spanMs = 0): number => Math.max(spanMs >= 4 * 3_600_000 ? 10_000 : 2_000, Math.min(30_000, Math.round(lastMs * 20)));
 
 /** A price step for the rows of a selection: about 120 rows across a box, and the grid step of the map for a stretch of time (the recorder merges further when there are too many). */
 export function rowStep(sel: Pick<RangeSelection, 'p0' | 'p1'>, gridStep: number): number {

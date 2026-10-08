@@ -818,8 +818,9 @@
  "Bids {value}": "Bids {value}",
  "Asks {value}": "Asks {value}",
  "Held by": "Détenus par",
- "What rested inside the box on average over its time, as the heatmap draws it.": "Ce qui était en attente dans le cadre en moyenne sur sa durée, tel que la heatmap le dessine.",
+ "What rested inside the box on average over its time, on the exchanges switched on.": "Ce qui était en attente dans le cadre en moyenne sur sa durée, sur les plateformes activées.",
  "New selection": "Nouvelle sélection",
  "Select another part of the map or of a pane: drag across it.": "Sélectionnez une autre partie de la carte ou d'un volet : faites glisser dessus.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Faites glisser sur la carte pour sélectionner un cadre, ou sur un volet en dessous ou la colonne de flux pour une période à tous les prix. Ctrl+glisser (Cmd sur Mac) sélectionne à tout moment ; Échap ferme."
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Faites glisser sur la carte pour sélectionner un cadre, ou sur un volet en dessous ou la colonne de flux pour une période à tous les prix. Ctrl+glisser (Cmd sur Mac) sélectionne à tout moment ; Échap ferme.",
+ "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "La carte ne montre qu'une partie de cette sélection : ses marques d'absorption et son plus gros ordre ne sont comptés que pour cette partie."
 }

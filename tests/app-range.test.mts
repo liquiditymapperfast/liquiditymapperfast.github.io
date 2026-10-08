@@ -29,6 +29,7 @@ test('a press selects with the tool armed or Ctrl / Cmd held, only with the main
   assert.equal(selects(false, { ctrlKey: false, metaKey: false, button: 0 }), false);
   assert.equal(selects(true, { ctrlKey: false, metaKey: false, button: 2 }), false, 'the right button still zooms');
   assert.deepEqual([refreshMs(5), refreshMs(300), refreshMs(5_000)], [2_000, 6_000, 30_000]);
+  assert.equal(refreshMs(300, 24 * 60 * MINUTE), 10_000, 'a long selection is asked no more than every ten seconds');
   assert.equal(rowStep({ p0: 81_000, p1: 82_200 }, 20), 10, 'about 120 rows across a box, on a round step');
   assert.equal(rowStep({ p0: null, p1: null }, 20), 20, 'the map\'s grid for every price');
   assert.equal(rowStep({ p0: 81_000, p1: 81_001 }, 20), 0.5, 'never finer than the recording');
@@ -95,4 +96,15 @@ test('absorption marks are added up against what traded there, and resting order
 test('the tag beside a selection being dragged gives its minutes, and a box its height', () => {
   assert.equal(draftLabel({ ...sel(), t1: T0 + 12 * MINUTE }), '12 min · 1.23%');
   assert.equal(draftLabel({ ...sel({ p0: null, p1: null }), t1: T0 + 3 * 60 * MINUTE }), '3 h');
+});
+
+test('coverage is the instrument that recorded the most minutes, in whatever order they come; a selection past the map says what it lacks', () => {
+  const lines = rangeLines(input({ answer: answer([
+    inst('a:BTC', { band: { buy: 100, sell: 100, buyN: 0, sellN: 0 }, minutes: 10, counted: 10, countedFrom: T0 + 20 * MINUTE }),
+    inst('b:BTC', { band: { buy: 100, sell: 100, buyN: 2, sellN: 2 }, minutes: 30, counted: 3, countedFrom: T0 + 27 * MINUTE }),
+  ]) }));
+  assert.match(line(lines, 'orders-from')!.cells[0]!, /(3 of 30 minutes)/, 'not the 10 of the instrument that recorded less');
+  assert.equal(line(lines, 'coverage'), undefined);
+  assert.ok(line(rangeLines(input({ partial: true })), 'abs-partial'));
+  assert.equal(line(rangeLines(input()), 'abs-partial'), undefined);
 });
