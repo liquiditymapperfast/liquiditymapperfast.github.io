@@ -101,6 +101,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
     case 'sizes': return { result: run.sizes(call.ids, call.windows), transfer: [] };
     case 'profile': return { result: run.profile(call.ids, call.from, call.to, call.rowStep), transfer: [] };
     case 'range': return { result: run.range(call.ids, call.from, call.to, call.band, call.rowStep), transfer: [] };
+    case 'valueAreas': return { result: run.valueAreas(call.ids, call.windows, call.rowStep, call.share), transfer: [] };
     case 'absorption': return { result: await run.absorptionHistory(call.ids, call.mins, call.from, call.to, call.limit, call.since), transfer: [] };
     case 'candles': return { result: await run.candles(call.inst, call.tfMs, call.from, call.to), transfer: [] };
     case 'oi': return { result: await run.oi(call.inst, call.tfMs, call.from, call.to), transfer: [] };

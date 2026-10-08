@@ -1,6 +1,6 @@
 import type { ValuedBook } from './levels.ts';
 import { BROWSER_RETENTION_MS, COLUMN_MS, DepthRecorder, MIN_BIN_USD, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
-import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type RangeAnswer, type SizesAnswer } from './footprint.ts';
+import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, type Print, type PrintStore } from './prints.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
 import { RecordedBefore } from './restart.ts';
@@ -324,6 +324,7 @@ export class Engine {
   /** Traded volume by price for these instruments over [from, to) (the traded-volume column). */
   profile(ids: readonly string[], from: number, to: number, rowStep: number): ProfileAnswer { return this.footprints.profile(ids, from, to, rowStep); }
   range(ids: readonly string[], from: number, to: number, band: { p0: number; p1: number } | null, rowStep: number): RangeAnswer { return this.footprints.range(ids, from, to, band, rowStep); }
+  valueAreas(ids: readonly string[], windows: readonly { from: number; to: number }[], rowStep: number, share: number): ValueAreaAnswer { return this.footprints.valueAreas(ids, windows, rowStep, share); }
 
   /** The trades of these instruments added together by size over each of the last `windows` minutes (the page's strip). */
   sizes(ids: readonly string[], windows: readonly number[]): SizesAnswer { return this.footprints.sizes(ids, windows); }

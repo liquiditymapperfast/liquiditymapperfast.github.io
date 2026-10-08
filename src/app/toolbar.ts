@@ -33,6 +33,8 @@ import { wakeLockSupported } from './wake.ts';
 import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from './i18n.ts';
 import { t, tn } from './i18n.ts';
 import { coinChoice, currentCoin, scaledUsd, unscaledUsd } from './coin.ts';
+import { buildTradedPanel } from './traded/panel.ts';
+import { gridStepFor } from '../shared/grid.ts';
 
 /** How a timeframe is said in a tooltip. */
 const TIMEFRAME_NAMES: Readonly<Record<string, string>> = { '1m': t('1-minute'), '5m': t('5-minute'), '15m': t('15-minute'), '30m': t('30-minute'), '1h': t('1-hour'), '4h': t('4-hour'), '1d': t('Daily') };
@@ -50,7 +52,7 @@ const IDLE_GRACE_MS = 20_000;
 const UPCOMING = 'upcoming';
 
 /** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
-const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['traded', t('Traded')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')]];
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
@@ -92,6 +94,9 @@ export class Toolbar {
   #trades = el('button', { class: 'led-btn', textContent: t('Trades'), tip: HELP.bubbles.tip });
   #absorption = el('button', { class: 'led-btn', textContent: t('Absorption'), tip: HELP.absorption.tip });
   #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
+  /** Traded volume: the column beside the profile and the point-of-control lines on the chart, set in its panel (traded/panel.ts). */
+  #traded = el('button', { class: 'led-btn', textContent: t('Traded'), tip: HELP.traded.tip });
+  #tradedPanel: Panel | null = null;
   /** The Range tool: lit while it is armed or a selection is shown (range/tool.ts). */
   #range = el('button', { class: 'led-btn', textContent: t('Range'), tip: HELP.range.tip });
   onRange: () => void = () => {};
@@ -174,6 +179,10 @@ export class Toolbar {
       this.#soundPanel = togglePanel(this.#soundButton, { title: t('Sounds'), width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build);
     };
     this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => { tools.append(helpButton('highlights')); this.#buildHighlights(tools, body); }); };
+    this.#traded.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1));
+      this.#tradedPanel = togglePanel(this.#traded, { title: t('Traded'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; } }, build);
+    };
     this.#absorption.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildAbsorption(tools, body, () => this.#absorptionPanel?.render(build));
       this.#absorptionPanel = togglePanel(this.#absorption, { title: t('Absorption'), width: 400, align: 'left', onClose: () => { this.#absorptionPanel = null; } }, build);
@@ -235,7 +244,7 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#absorption, this.#highlights, this.#soundButton, this.#range,
+      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#absorption, this.#traded, this.#highlights, this.#soundButton, this.#range,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
@@ -258,7 +267,7 @@ export class Toolbar {
       this.#heatctl.replaceChildren();
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
-        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#absorption), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
+        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#absorption, this.#traded), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
         section(t('Heatmap'), [
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
@@ -291,7 +300,7 @@ export class Toolbar {
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#range, state.rangeTool || state.range !== null);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#range, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));

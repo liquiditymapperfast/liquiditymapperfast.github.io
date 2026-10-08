@@ -286,6 +286,17 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .panel-body { overflow-y: auto; padding: 2px 14px 14px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; min-height: 0; }
 .panel h4 { margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 .panel-note { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+/* The Traded panel's session list (traded/panel.ts): one row a session, wrapping on a narrow sheet. The remove glyph is drawn, not typed. */
+.session-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.session-row .session-name { flex: 1 1 90px; min-width: 70px; }
+.session-row .session-time { width: 88px; }
+.session-row .session-zone { flex: 0 1 120px; min-width: 96px; }
+.session-dash { color: var(--muted); }
+.session-weekdays { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); white-space: nowrap; }
+.session-remove { position: relative; width: 24px; height: 24px; padding: 0; }
+.session-remove::before, .session-remove::after { content: ""; position: absolute; left: 6px; right: 6px; top: 50%; height: 2px; margin-top: -1px; background: currentColor; transform: rotate(45deg); }
+.session-remove::after { transform: rotate(-45deg); }
+.session-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 /* The Range panel (range/tool.ts): the selection, then one line per figure. Buy and sell are the bid and ask colours of the theme. */
 .panel-tools .spacer { flex: 1; min-width: 0; }
 .range-lines { display: flex; flex-direction: column; gap: 2px; }

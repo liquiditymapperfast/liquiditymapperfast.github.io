@@ -3,7 +3,12 @@ import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow } from '../heatmap/window.ts';
 import { isCoarse } from '../device.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
-import { TIMEFRAMES, type Hub, type RasterResult } from '../hub.ts';
+import { TIMEFRAMES, valueAreaKey, type Hub, type RasterResult } from '../hub.ts';
+import { gridStepFor } from '../../shared/grid.ts';
+import type { ProfileAnswer } from '../../shared/footprint.ts';
+import type { ValueLevels } from '../../shared/profile.ts';
+import { answerLevels, linesWindows, requestStep, touchedAt } from '../traded/levels.ts';
+import type { ProfileWindow } from '../traded/sessions.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
@@ -100,6 +105,12 @@ export class HeatPane {
   /** The Range tool (set by the page), and a selection being dragged here: where it began, and where a finger last was. */
   range: RangeTool | null = null;
   #selecting: { x: number; y: number } | null = null;
+  /** A drag on the traded column: where it began (it selects whole rows of the column, over the column's window). */
+  #columnSelect: { y: number } | null = null;
+  /** The point of control and value area of what is on the chart, and the answer and rows they were read from. */
+  #levelsMemo: { answer: ProfileAnswer; step: number; share: number; levels: ValueLevels | null } | null = null;
+  /** The days, weeks or sessions the lines are drawn for, and what they were worked out for. */
+  #vaWindows: { key: string; windows: ProfileWindow[] } | null = null;
   #touchSelect: { start: Pt; at: Pt } | null = null;
   /** Right-button drag: zoom about the press point, from the view as it was at press time. */
   #zoomDrag: { x: number; y: number; view: Bounds } | null = null;
@@ -276,7 +287,7 @@ export class HeatPane {
     if (this.#gutterCss !== gutterCss) { this.#gutterCss = gutterCss; this.root.style.setProperty('--gutter', gutterCss); }
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view, scaledUsd(state.tradeBubbles.minUsd));
-    if (tradedShown(state)) this.#ensureTraded(state);
+    if (state.show.traded) { this.#ensureTraded(state); this.#ensureValueAreas(state); }
     if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
     // Under a dominant footprint the heatmap is gone altogether, so there is nothing to draw.
@@ -329,6 +340,7 @@ export class HeatPane {
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
     this.#paintAbsorption(ctx, state, pw, ph);
+    this.#paintValueLines(ctx, state, pw, ph);
     // mark line
     const mark = state.mark.price;
     if (mark > 0) {
@@ -635,12 +647,118 @@ export class HeatPane {
   /** The rows the traded column draws: the profile's step, so the two columns share their rows. */
   #tradedStep(): number { const v = this.view; return niceStep(v.p1 - v.p0, this.plotH / 3); }
 
-  /** Ask for the traded volume of the window on the map (whole minutes, up to the one that is open), on the instruments the flow column counts. */
-  #ensureTraded(state: AppState): void {
+  /** The window the traded column adds up: the whole minutes on the map, up to the one that is open. */
+  #tradedWindow(): { from: number; to: number } {
     const v = this.view, MIN = 60_000;
+    return { from: Math.floor(v.t0 / MIN) * MIN, to: Math.min(Math.ceil(v.t1 / MIN), Math.floor(Date.now() / MIN) + 1) * MIN };
+  }
+  /** The map's grid step at the current price. */
+  #gridStep(): number { const m = this.store.state.mark.price; return gridStepFor(m > 0 ? m : Math.max(1e-9, (this.view.p0 + this.view.p1) / 2)); }
+  /** The rows the point of control and the value area are read from: the grid step times the setting, never the column's rows, which follow the zoom. */
+  #levelStep(): number { return this.#gridStep() * this.store.state.traded.rows; }
+  /** The point of control and the value area of what is on the chart, read from the column's answer over every price (kept until either changes). */
+  #viewLevels(): ValueLevels | null {
+    const held = this.hub.traded; if (!held) return null;
+    const step = this.#levelStep(), share = this.store.state.traded.share / 100, m = this.#levelsMemo;
+    if (m && m.answer === held.answer && m.step === step && m.share === share) return m.levels;
+    const levels = answerLevels(held.answer, step, share);
+    this.#levelsMemo = { answer: held.answer, step, share, levels };
+    return levels;
+  }
+
+  /**
+   * Ask for the traded volume of the window on the map (whole minutes, up to the one that is open), on the instruments the flow column counts,
+   * on rows that both the column's rows and the level rows divide (see `requestStep`).
+   */
+  #ensureTraded(state: AppState): void {
+    const v = this.view;
     if (!(v.t1 > v.t0) || !(v.p1 > v.p0)) return;
-    const from = Math.floor(v.t0 / MIN) * MIN, to = Math.min(Math.ceil(v.t1 / MIN), Math.floor(Date.now() / MIN) + 1) * MIN;
-    this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, this.#tradedStep(), state.followLive);
+    const { from, to } = this.#tradedWindow();
+    this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), state.followLive);
+  }
+
+  /** The days, weeks or sessions the lines are drawn for (worked out again when the settings, the view's minutes or the clock's minute change). */
+  #linesWindows(state: AppState): ProfileWindow[] {
+    const v = this.view, MIN = 60_000, s = state.traded, now = Date.now();
+    const key = `${s.period}|${s.zone}|${s.count}|${JSON.stringify(s.sessions)}|${state.timeZone}|${Math.floor(v.t0 / MIN)}|${Math.ceil(v.t1 / MIN)}|${Math.floor(now / MIN)}`;
+    if (this.#vaWindows?.key !== key) this.#vaWindows = { key, windows: linesWindows(s, state.timeZone, v.t0, v.t1, now) };
+    return this.#vaWindows.windows;
+  }
+  /** Ask for the value areas of the days, weeks or sessions the lines are drawn for. */
+  #ensureValueAreas(state: AppState): void {
+    const s = state.traded;
+    if (s.period === 'view' || (!s.poc && !s.va)) return;
+    const windows = this.#linesWindows(state);
+    if (windows.length) this.hub.ensureValueAreas(flowIds(state, this.hub.flow.ids), windows, this.#levelStep(), s.share / 100);
+  }
+
+  /**
+   * The point of control (a line) and the value area high and low (dashed) on the chart, in the profile colour over a halo that keeps them
+   * apart from the map: across the whole chart for what is on it, or over each day, week or session. A past point of control nobody has
+   * traded through since (a naked one) runs on, dotted, to where it was (or to the right edge). A window recorded for under nine in ten of its
+   * minutes is drawn faint.
+   */
+  #paintValueLines(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const s = state.traded;
+    if (!state.show.traded || (!s.poc && !s.va)) return;
+    const v = this.view, p = this.#palette, now = Date.now(), step = this.#levelStep();
+    const segments: { x0: number; x1: number; levels: ValueLevels; faint: boolean; name: string; naked: number | null }[] = [];
+    if (s.period === 'view') {
+      const levels = this.#viewLevels();
+      if (levels) segments.push({ x0: 0, x1: pw, levels, faint: false, name: '', naked: null });
+    } else {
+      const ids = flowIds(state, this.hub.flow.ids), share = s.share / 100;
+      for (const w of this.#linesWindows(state)) {
+        const held = this.hub.valueAreas.get(valueAreaKey(ids, step, share, w));
+        if (!held || held.poc === null || held.vah === null || held.val === null) continue;
+        const end = Math.min(w.to, now), x0 = v.xOf(w.from, pw), x1 = v.xOf(end, pw);
+        let naked: number | null = null;
+        if (s.naked && w.to <= now) { const touched = touchedAt(held.poc, w.to, state.candles, step / 2); naked = touched === null ? pw : v.xOf(touched, pw); }
+        if (Math.max(x1, naked ?? x1) < 0 || x0 > pw) continue;
+        segments.push({ x0, x1, levels: { poc: held.poc, vah: held.vah, val: held.val }, faint: held.minutes < 0.9 * (end - w.from) / 60_000, name: w.name, naked });
+      }
+    }
+    if (!segments.length) return;
+    const halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)';
+    const line = (x0: number, x1: number, price: number, width: number, dash: number[]): void => {
+      const y = Math.round(v.yOf(price, ph)) + 0.5; if (y < -2 || y > ph + 2 || x1 <= x0) return;
+      ctx.setLineDash(dash);
+      ctx.strokeStyle = halo; ctx.lineWidth = width + 2; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.strokeStyle = p.poc; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    };
+    // Labels wait until every line is drawn, the points of control's first: one that would cover another already placed is left out.
+    const labels: { text: string; x: number; y: number; rank: number; alpha: number }[] = [];
+    const label = (text: string, x: number, price: number, rank: number): void => { const y = v.yOf(price, ph); if (y >= 6 && y <= ph - 6 && x >= 30) labels.push({ text, x, y, rank, alpha: ctx.globalAlpha }); };
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+    for (const seg of segments) {
+      ctx.globalAlpha = seg.faint ? 0.4 : 1;
+      const x0 = Math.max(-4, seg.x0), x1 = Math.min(pw + 4, seg.x1), { poc, vah, val } = seg.levels;
+      if (s.va) { line(x0, x1, vah, 1, [6, 4]); line(x0, x1, val, 1, [6, 4]); }
+      if (s.poc) { line(x0, x1, poc, 2, []); if (seg.naked !== null && seg.naked > x1) line(x1, Math.min(pw + 4, seg.naked), poc, 2, [2, 3]); }
+      ctx.setLineDash([]);
+      if (s.labels && x1 - x0 > 70) {
+        const name = seg.name ? `${seg.name} ` : '';
+        if (s.poc) label(`${name}${t('POC')} ${fmtPrice(poc, step)}`, x1, poc, 0);
+        if (s.va) { label(`${name}${t('VAH')}`, x1, vah, 1); label(`${name}${t('VAL')}`, x1, val, 1); }
+      }
+    }
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    for (const l of labels.sort((a, b) => a.rank - b.rank)) {
+      const w = ctx.measureText(l.text).width + 8, right = Math.min(pw - 2, l.x - 2), box = { x0: right - w, x1: right, y0: l.y - 7, y1: l.y + 7 };
+      if (placed.some(b => b.x0 < box.x1 && box.x0 < b.x1 && b.y0 < box.y1 && box.y0 < b.y1)) continue;
+      placed.push(box);
+      ctx.globalAlpha = l.alpha * 0.85; ctx.fillStyle = p.panel; ctx.fillRect(box.x0, box.y0, w, 14);
+      ctx.globalAlpha = l.alpha; ctx.fillStyle = p.poc; ctx.fillText(l.text, right - 4, l.y);
+    }
+    ctx.restore(); ctx.globalAlpha = 1; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  }
+
+  /** The column's rows a drag from `y0` to `y1` covers, as prices: whole rows of the column, so the selection is what the bars show. */
+  #columnBand(y0: number, y1: number): { p0: number; p1: number } {
+    const v = this.view, ph = this.plotH, step = this.#tradedStep();
+    const a = v.pOf(Math.max(0, Math.min(ph, y0)), ph), b = v.pOf(Math.max(0, Math.min(ph, y1)), ph);
+    return { p0: Math.floor(Math.min(a, b) / step) * step, p1: (Math.floor(Math.max(a, b) / step) + 1) * step };
   }
 
   /**
@@ -651,22 +769,47 @@ export class HeatPane {
   #paintTraded(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const x0 = this.#tradedX(); if (x0 === null) return;
     const p = this.#palette, v = this.view, W = TRADED_W, held = this.hub.traded;
-    const rows: TradedRows | null = held ? tradedRows(held.answer, held.step, v.p0, v.p1) : null;
+    const rows: TradedRows | null = held ? tradedRows(held.answer, this.#tradedStep(), v.p0, v.p1) : null;
+    const s = state.traded, levels = this.#viewLevels();
     ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
     ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, W, ph);
+    // The value area, shaded behind the bars.
+    if (s.valueArea && levels) {
+      const ya = v.yOf(levels.vah, ph), yb = v.yOf(levels.val, ph);
+      ctx.fillStyle = p.poc; ctx.globalAlpha = 0.12; ctx.fillRect(x0 + 1, ya, W - 1, yb - ya); ctx.globalAlpha = 1;
+    }
     if (rows && rows.max > 0) {
       const width = W - 6;
+      let maxNet = 0; if (s.bars === 'delta') for (let i = 0; i < rows.buy.length; i++) maxNet = Math.max(maxNet, Math.abs(rows.buy[i]! - rows.sell[i]!));
       for (let i = 0; i < rows.buy.length; i++) {
-        const b = rows.buy[i]!, s = rows.sell[i]!, total = b + s; if (!(total > 0)) continue;
+        const b = rows.buy[i]!, sl = rows.sell[i]!, total = b + sl; if (!(total > 0)) continue;
         const low = (rows.bin0 + i) * rows.step, y0 = v.yOf(low + rows.step, ph), y1 = v.yOf(low, ph);
         if (y1 < 0 || y0 > ph) continue;
-        const hgt = Math.max(1, y1 - y0 - 0.5), len = Math.max(1, total / rows.max * width), buyLen = len * b / total;
+        const hgt = Math.max(1, y1 - y0 - 0.5);
         ctx.globalAlpha = 0.85;
+        if (s.bars === 'delta') {
+          // The difference alone: as long as it is against the largest difference, in the colour of the side that was the bigger.
+          const net = b - sl; if (!(Math.abs(net) > 0) || !(maxNet > 0)) continue;
+          ctx.fillStyle = net > 0 ? p.bid : p.ask; ctx.fillRect(x0 + 1, y0, Math.max(1, Math.abs(net) / maxNet * width), hgt);
+          continue;
+        }
+        const len = Math.max(1, total / rows.max * width), buyLen = len * b / total;
         if (b > 0) { ctx.fillStyle = p.bid; ctx.fillRect(x0 + 1, y0, Math.max(0.5, buyLen), hgt); }
-        if (s > 0) { ctx.fillStyle = p.ask; ctx.fillRect(x0 + 1 + buyLen, y0, Math.max(0.5, len - buyLen), hgt); }
-        if (i === rows.poc) { ctx.globalAlpha = 1; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(x0 + 1.5, y0 - 0.5, Math.max(2, len), hgt + 1); }
+        if (sl > 0) { ctx.fillStyle = p.ask; ctx.fillRect(x0 + 1 + buyLen, y0, Math.max(0.5, len - buyLen), hgt); }
       }
       ctx.globalAlpha = 1;
+    }
+    // The point of control across the column, at its price, and the value area's edges: the same levels the lines on the chart draw.
+    if (s.valueArea && levels) {
+      const mark = (price: number, width: number, dash: number[]): void => { const y = Math.round(v.yOf(price, ph)) + 0.5; if (y < 0 || y > ph) return; ctx.setLineDash(dash); ctx.strokeStyle = p.poc; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x0 + 1, y); ctx.lineTo(x0 + W, y); ctx.stroke(); };
+      mark(levels.vah, 1, [3, 2]); mark(levels.val, 1, [3, 2]); mark(levels.poc, 2, []); ctx.setLineDash([]); ctx.lineWidth = 1;
+    }
+    // A selection made on the column (its window, a band of its rows), shaded on it.
+    const sel = state.range, win = this.#tradedWindow();
+    if (sel && sel.p0 !== null && sel.p1 !== null && Math.abs(sel.t0 - win.from) < 60_000 && Math.abs(sel.t1 - win.to) < 120_000) {
+      const ya = v.yOf(sel.p1, ph), yb = v.yOf(sel.p0, ph);
+      ctx.fillStyle = p.text; ctx.globalAlpha = 0.14; ctx.fillRect(x0 + 1, ya, W - 1, yb - ya); ctx.globalAlpha = 1;
+      ctx.strokeStyle = p.text; ctx.setLineDash([5, 4]); ctx.strokeRect(x0 + 1.5, Math.round(ya) + 0.5, W - 2, Math.max(1, Math.round(yb - ya) - 1)); ctx.setLineDash([]);
     }
     // The row under the pointer, framed.
     const hover = this.#tradedHover, hoverRow = rows && hover ? tradedRowAt(rows, v.pOf(hover.y, ph)) : -1;
@@ -683,7 +826,7 @@ export class HeatPane {
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
     if (rows && hover && hoverRow >= 0) {
       // The box stands to the left of the column, over the map, like the profile's comparison.
-      paintInfoBox(ctx, tradedLines(rows, hoverRow), x0, hover.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: 'center' });
+      paintInfoBox(ctx, tradedLines(rows, hoverRow, levels), x0, hover.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: 'center' });
       ctx.textBaseline = 'middle';
     }
   }
@@ -1171,6 +1314,13 @@ export class HeatPane {
       if (this.range && selects(this.range.armed, e) && x <= this.plotW && y <= this.plotH) {
         this.#selecting = { x, y }; this.range.begin(this.#rangePoint(x, y)); el.setPointerCapture(e.pointerId); return;
       }
+      const tx = this.#tradedX();
+      if (this.range && e.button === 0 && tx !== null && x > tx && x <= tx + TRADED_W && y >= 0 && y <= this.plotH) {
+        this.#columnSelect = { y };
+        const { from, to } = this.#tradedWindow(), band = this.#columnBand(y, y);
+        this.range.begin({ t: from, p: band.p0 }); this.range.move({ t: to, p: band.p1 }, { t: from, p: band.p0 });
+        el.setPointerCapture(e.pointerId); return;
+      }
       if (e.button === 2) { this.#zoomDrag = { x, y, view: this.view.clone() }; el.setPointerCapture(e.pointerId); return; }
       if (e.button !== 0) return;
       if (this.#onScale(x, y)) {
@@ -1185,12 +1335,19 @@ export class HeatPane {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
       if (this.#scaleDrag) { this.#dragScale(y); return; }
+      if (this.#columnSelect && this.range) {
+        const { from, to } = this.#tradedWindow(), band = this.#columnBand(this.#columnSelect.y, y);
+        this.range.move({ t: to, p: band.p1 }, { t: from, p: band.p0 });
+        this.#tradedHover = { y }; this.invalidate();
+        return;
+      }
       if (this.#selecting && this.range) {
         this.range.move(this.#rangePoint(x, y));
         if (x <= this.plotW && y <= this.plotH) this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: this.view.pOf(y, this.plotH), y, source: 'heat' } });
         return;
       }
-      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : this.range?.armed && x <= this.plotW && y <= this.plotH ? 'crosshair' : '';
+      const overColumn = this.#tradedX() !== null && x > this.#tradedX()! && x <= this.#tradedX()! + TRADED_W && y <= this.plotH;
+      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : overColumn || (this.range?.armed && x <= this.plotW && y <= this.plotH) ? 'crosshair' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
         const z = this.#zoomDrag, k = 0.006, pw = this.plotW, ph = this.plotH;
@@ -1215,6 +1372,14 @@ export class HeatPane {
     });
     el.addEventListener('pointerup', e => {
       if (e.pointerType === 'touch') return;
+      const column = this.#columnSelect;
+      if (column && this.range) {
+        // A click without a drag selects the one row under it.
+        const { y } = local(e), { from, to } = this.#tradedWindow(), band = this.#columnBand(column.y, y); this.#columnSelect = null;
+        this.range.end({ t: to, p: band.p1 }, false, { t: from, p: band.p0 });
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+        return;
+      }
       const sel = this.#selecting;
       if (sel && this.range) {
         const { x, y } = local(e); this.#selecting = null;

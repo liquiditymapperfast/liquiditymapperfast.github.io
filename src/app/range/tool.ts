@@ -127,9 +127,11 @@ export class RangeTool {
     this.#start = at; this.#before = this.store.state.range?.draft === false ? this.store.state.range : null;
     this.store.set({ range: draftOf(at, at) });
   }
-  move(at: RangePoint): void { if (this.#start) this.store.set({ range: draftOf(this.#start, at) }); }
-  /** The drag ended at `at`. `small`: it covered too few pixels to be a selection (a click), and what was selected before stays. */
-  end(at: RangePoint, small: boolean): void {
+  /** The drag is at `at`; `from` moves where it began too (a drag on the traded column holds whole rows, so both ends snap). */
+  move(at: RangePoint, from?: RangePoint): void { if (!this.#start) return; if (from) this.#start = from; this.store.set({ range: draftOf(this.#start, at) }); }
+  /** The drag ended at `at` (and began at `from`, when given). `small`: it covered too few pixels to be a selection (a click), and what was selected before stays. */
+  end(at: RangePoint, small: boolean, from?: RangePoint): void {
+    if (from && this.#start) this.#start = from;
     const start = this.#start; if (!start) return;
     if (small) { this.cancel(); return; }
     this.#start = null; this.#before = null;

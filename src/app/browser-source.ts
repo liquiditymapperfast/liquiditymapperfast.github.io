@@ -2,7 +2,7 @@ import type { VenueStatus } from '../shared/engine.ts';
 import type { FlowFrame } from '../shared/flow.ts';
 import { TIMEFRAMES } from '../shared/series.ts';
 import { toWire } from '../shared/prints.ts';
-import { parseProfile, parseRange, parseSizes, type ProfileAnswer, type RangeAnswer, type SizesAnswer } from '../shared/footprint.ts';
+import { parseProfile, parseRange, parseSizes, parseValueAreas, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from '../shared/footprint.ts';
 import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import type { FeedsIn, FeedsOut, RpcCall, RpcResult } from './browser/protocol.ts';
 import type { Print } from './prints.ts';
@@ -203,6 +203,11 @@ export class BrowserSource implements DataSource, VenueControl {
   async range(ids: string[], from: number, to: number, band: { p0: number; p1: number } | null, rowStep: number): Promise<RangeAnswer> {
     const answer = parseRange(await this.#call({ method: 'range', ids, from, to, band, rowStep }), ids);
     if (!answer) throw new Error('the browser engine answered the range question with something else');
+    return answer;
+  }
+  async valueAreas(ids: string[], windows: { from: number; to: number }[], rowStep: number, share: number): Promise<ValueAreaAnswer> {
+    const answer = parseValueAreas(await this.#call({ method: 'valueAreas', ids, windows, rowStep, share }), windows);
+    if (!answer) throw new Error('the browser engine answered the value-area question with something else');
     return answer;
   }
   async sizes(ids: string[], windows: number[]): Promise<SizesAnswer> {

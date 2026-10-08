@@ -1,6 +1,6 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
-import { parseProfile, parseRange, parseSizes, type ProfileAnswer, type RangeAnswer, type SizesAnswer } from '../shared/footprint.ts';
+import { parseProfile, parseRange, parseSizes, parseValueAreas, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from '../shared/footprint.ts';
 import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import { fromWire, type Print } from './prints.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
@@ -71,6 +71,15 @@ export async function getRange(ids: string[], from: number, to: number, band: { 
   if (!response.ok) throw new Error(`range failed: ${response.status}`);
   const answer = parseRange(await response.json().catch(() => null), ids);
   if (!answer) throw new Error('range answered with something else');
+  return answer;
+}
+/** The point of control and the value area of each window (see `ValueAreaAnswer`). Rejects on a server that does not know the question (an older one). */
+export async function getValueAreas(ids: string[], windows: { from: number; to: number }[], rowStep: number, share: number): Promise<ValueAreaAnswer> {
+  const w = windows.map(x => `${Math.floor(x.from)}-${Math.ceil(x.to)}`).join(',');
+  const response = await fetch(`/api/v2/value-areas?inst=${ids.map(encodeURIComponent).join(',')}&w=${w}&step=${rowStep}&share=${share}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`value areas failed: ${response.status}`);
+  const answer = parseValueAreas(await response.json().catch(() => null), windows.map(x => ({ from: Math.floor(x.from), to: Math.ceil(x.to) })));
+  if (!answer) throw new Error('value areas answered with something else');
   return answer;
 }
 /** Recorded columns for any number of instruments: the server serves a bounded number per request, so longer lists are split and merged. */

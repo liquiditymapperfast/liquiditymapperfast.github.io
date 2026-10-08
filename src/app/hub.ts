@@ -9,7 +9,7 @@ import type { Bounds } from './view.ts';
 import type { LtParams, LtSeries } from './lt.ts';
 import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { t } from './i18n.ts';
-import type { ProfileAnswer } from '../shared/footprint.ts';
+import { MAX_VALUE_AREA_WINDOWS, type ProfileAnswer, type ValueAreaWindow } from '../shared/footprint.ts';
 import { AbsorptionBook } from './absorption.ts';
 import { MAX_ABSORPTION_INSTRUMENTS } from '../shared/absorption.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
@@ -20,6 +20,9 @@ const MINUTE = 60_000;
 export interface RasterResult { id: number; w: number; h: number; data: Float32Array; stats: RasterStats; bounds: Bounds }
 
 /** Owns data loading: bootstrap, live socket, candles, OI, recorded columns and the raster worker. */
+/** A value area's key: the instruments, the row step and share it was read with, and its window. */
+export const valueAreaKey = (ids: readonly string[], step: number, share: number, w: { from: number; to: number }): string => `${ids.join(',')}|${step}|${share}|${w.from}-${w.to}`;
+
 export class Hub {
   readonly worker: Worker;
   #ready: Promise<void>;
@@ -81,6 +84,13 @@ export class Hub {
   #absorptionCover: { key: string; from: number; to: number; mins: number[]; minutesFrom: number } | null = null;
   /** The traded-volume column's last answer, the row step it was asked on, and whether the source can answer at all. */
   traded: { step: number; answer: ProfileAnswer } | null = null;
+  /**
+   * Value areas of days, weeks and sessions by window (`valueAreaKey`), with when each was answered: a window that had ended by then never
+   * changes, so it is asked once; the one under way is asked again after a while (`ensureValueAreas`).
+   */
+  readonly valueAreas = new Map<string, ValueAreaWindow & { at: number }>();
+  valueAreasState: 'ready' | 'unavailable' = 'ready';
+  #vaLoading = false; #vaRetryAt = 0; #vaLastMs = 0;
   tradedState: 'ready' | 'unavailable' = 'ready';
   /** Called when the traded-volume column has a new answer (or the source said it has none). */
   onTraded: () => void = () => {};
@@ -294,6 +304,36 @@ export class Hub {
       },
       () => { this.absorptionState = 'unavailable'; this.#absorptionRetryAt = Date.now() + 60_000; this.onAbsorptionChanged(); },
     ).finally(() => { this.#absorptionLoading = false; });
+  }
+
+  /**
+   * Make sure every window has its value area, on rows of `step` holding `share`. Safe to call every frame: one request at a time, at most a
+   * day of minutes in it (a day costs the recorder about 90 ms), finished windows asked once and the window under way again after a minute
+   * (five when an answer took longer than 300 ms). A source that cannot answer (an older server) is asked again a minute later.
+   */
+  ensureValueAreas(ids: readonly string[], windows: readonly { from: number; to: number }[], step: number, share: number): void {
+    if (this.#vaLoading || !ids.length || !windows.length || !(step > 0)) return;
+    const now = Date.now();
+    if (this.valueAreasState === 'unavailable' && now < this.#vaRetryAt) return;
+    const again = this.#vaLastMs > 300 ? 300_000 : 60_000;
+    const due = windows.filter(w => { const held = this.valueAreas.get(valueAreaKey(ids, step, share, w)); return !held || (w.to > held.at && now - held.at >= again); });
+    if (!due.length) return;
+    const batch: { from: number; to: number }[] = []; let span = 0;
+    for (const w of [...due].sort((a, b) => b.to - a.to)) {
+      const length = Math.min(w.to, now) - w.from;
+      if (batch.length && (span + length > 86_400_000 || batch.length >= MAX_VALUE_AREA_WINDOWS)) break;
+      batch.push(w); span += length;
+    }
+    this.#vaLoading = true;
+    const started = performance.now();
+    this.source.valueAreas([...ids], batch, step, share).then(answer => {
+      this.#vaLastMs = performance.now() - started; this.valueAreasState = 'ready';
+      const at = Date.now();
+      answer.windows.forEach((w, i) => this.valueAreas.set(valueAreaKey(ids, step, share, batch[i]!), { ...w, at }));
+      // A bound on what is held: the oldest answers go first.
+      if (this.valueAreas.size > 600) for (const key of [...this.valueAreas.keys()].slice(0, this.valueAreas.size - 500)) this.valueAreas.delete(key);
+      this.onTraded();
+    }, () => { this.valueAreasState = 'unavailable'; this.#vaRetryAt = Date.now() + 60_000; this.onTraded(); }).finally(() => { this.#vaLoading = false; });
   }
 
   /**

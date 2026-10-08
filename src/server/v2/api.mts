@@ -9,7 +9,7 @@ import { DepthRecorder, COLUMN_MS, SAMPLE_MS, STALE_MS } from './recorder.mts';
 import { SqliteColumnStore } from './store.mts';
 import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
-import { MAX_PROFILE_INSTRUMENTS, MAX_RANGE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, type TradeLike } from '../../shared/footprint.ts';
+import { MAX_PROFILE_INSTRUMENTS, MAX_RANGE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, MAX_VALUE_AREA_SPAN_MS, MAX_VALUE_AREA_WINDOWS, type TradeLike } from '../../shared/footprint.ts';
 import { RecordedBefore } from '../../shared/restart.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
@@ -320,6 +320,18 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (rawP0 !== null && !(Number.isFinite(p0) && Number.isFinite(p1) && p1 > p0 && p0 >= 0)) return sendJson(res, { error: 'p0 and p1 must be prices with p0 below p1' }, 400);
     sendJson(res, footprint.range(ids, span.from, span.to, rawP0 === null ? null : { p0, p1 }, step));
   };
+  /** The point of control and the value area of several windows (days, weeks, sessions): `w` is `from-to` pairs, `share` the value area's part (0..1). */
+  const valueAreasRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
+    if (!ids.length || ids.length > MAX_RANGE_INSTRUMENTS) return sendJson(res, { error: `inst must name 1 to ${MAX_RANGE_INSTRUMENTS} instruments` }, 400);
+    const windows = (url.searchParams.get('w') ?? '').split(',').filter(Boolean).map(pair => { const [a, b] = pair.split('-').map(Number); return { from: a!, to: b! }; });
+    if (!windows.length || windows.length > MAX_VALUE_AREA_WINDOWS || windows.some(w => !Number.isSafeInteger(w.from) || !Number.isSafeInteger(w.to) || w.from < 0 || w.to <= w.from)) return sendJson(res, { error: `w must be 1 to ${MAX_VALUE_AREA_WINDOWS} windows written from-to in ms` }, 400);
+    if (windows.reduce((sum, w) => sum + (w.to - w.from), 0) > MAX_VALUE_AREA_SPAN_MS) return sendJson(res, { error: 'the windows may add up to at most eight days' }, 400);
+    const step = Number(url.searchParams.get('step')), share = Number(url.searchParams.get('share'));
+    if (!(step > 0) || !Number.isFinite(step)) return sendJson(res, { error: 'step must be a positive number' }, 400);
+    if (!(share > 0 && share <= 1)) return sendJson(res, { error: 'share must be above 0 and at most 1' }, 400);
+    sendJson(res, footprint.valueAreas(ids, windows, step, share));
+  };
   const flowRoute = (url: URL, res: ServerResponse) => {
     const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean).slice(0, MAX_FLOW_INSTRUMENTS);
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_FLOW_SPAN_MS);
@@ -365,6 +377,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/sizes': sizesRoute(url, res); return true;
           case '/api/v2/profile': profileRoute(url, res); return true;
           case '/api/v2/range': rangeRoute(url, res); return true;
+          case '/api/v2/value-areas': valueAreasRoute(url, res); return true;
           case '/api/v2/absorption': absorptionRoute(url, res); return true;
           case '/api/v2/venues': venuesRoute(res); return true;
           case '/coins.json': return coins?.send(res) ?? false;

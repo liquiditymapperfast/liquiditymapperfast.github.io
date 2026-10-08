@@ -33,7 +33,9 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   traded: {
     title: t('Traded volume'), guide: 'profile',
     tip: t('A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.'),
-    body: [],
+    body: [t('The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.'),
+      t('In the settings they can be drawn as lines on the chart, worked out over what is on the chart, each day or week, or sessions you set in any market\'s time zone. Hover a row for what traded there and the market orders that began at those prices; drag on the column, or click a row, for everything about those prices in the Range panel.'),
+      t('An order is counted at the price it began at, so a row inside a sweep can have volume and no orders of its own.')],
   },
   absorption: {
     title: t('Absorption'), guide: 'trades',
@@ -97,7 +99,8 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     tip: t('Range: drag across the map or a pane under it to see what traded there: market buys and sells, the orders behind them, where they were filled, the absorption and the resting orders. Ctrl+drag (Cmd on a Mac) selects at any time.'),
     body: [t('Drag across the map for a box (a stretch of time and a band of prices), or across a pane under the map or the flow column for a stretch of time at every price. A selection covers the whole minutes it touches; one that reaches the present stays live and is added up again every few seconds.'),
       t('Everything is about the exchanges switched on inside the Spot / Perp filter. An order is counted at the price it started at, in the minutes recorded since orders were counted by price; the average order is the volume of those minutes over their orders.'),
-      t('Every market order fills resting orders on its own exchange, so the prices that took the most are where the resting orders were that absorbed them. The absorption marks and the resting orders are the ones the map draws.')],
+      t('Every market order fills resting orders on its own exchange, so the prices that took the most are where the resting orders were that absorbed them. The absorption marks and the resting orders are the ones the map draws.'),
+      t('On a narrow band the average order leans: a sweep that began inside the band and ran out of it counts here with only part of its volume, one that began outside counts its volume here without the order.')],
   },
   heatmap: {
     title: t('The heatmap'), guide: 'heatmap',

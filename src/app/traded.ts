@@ -1,4 +1,5 @@
 import type { ProfileAnswer } from '../shared/footprint.ts';
+import type { ValueLevels } from '../shared/profile.ts';
 import { clock, price as fmtPrice, startOfDay, usd } from './format.ts';
 import { t } from './i18n.ts';
 import type { InfoLine } from './infobox.ts';
@@ -13,6 +14,11 @@ import type { InfoLine } from './infobox.ts';
 /** The column's rows on the display grid: buys and sells per row of `step`, the first row being `bin0` (price = (bin0 + i) * step). */
 export interface TradedRows {
   step: number; bin0: number; buy: Float64Array; sell: Float64Array;
+  /**
+   * The market orders that began on each row, where the recording counts them (null from a source that does not), and whether it counts them
+   * in every minute of the window (`counted` of `minutes`, the instrument that recorded the most).
+   */
+  buyN: Float64Array | null; sellN: Float64Array | null; counted: number; minutes: number;
   /** All volume in the rows, the largest row, and the row holding it (-1 when nothing traded). */
   total: number; max: number; poc: number;
   /**
@@ -25,19 +31,23 @@ export interface TradedRows {
 /** Each instrument's rows put on the display grid of `step` over [p0, p1]: a recorded row goes where its middle falls. */
 export function tradedRows(answer: ProfileAnswer, step: number, p0: number, p1: number): TradedRows {
   const bin0 = Math.floor(p0 / step), n = Math.max(0, Math.floor(p1 / step) - bin0 + 1);
-  const buy = new Float64Array(n), sell = new Float64Array(n);
-  let since: number | null = null;
+  const buy = new Float64Array(n), sell = new Float64Array(n), counts = answer.instruments.some(i => i.counts !== undefined);
+  const buyN = counts ? new Float64Array(n) : null, sellN = counts ? new Float64Array(n) : null;
+  let since: number | null = null, minutes = 0, counted = 0;
   for (const inst of answer.instruments) {
     if (inst.earliest !== null && (since === null || inst.earliest > since)) since = inst.earliest;
-    for (const [low, b, s] of inst.rows) {
+    if (inst.minutes > minutes || (inst.minutes === minutes && (inst.counted ?? 0) > counted)) { minutes = inst.minutes; counted = inst.counted ?? 0; }
+    inst.rows.forEach(([low, b, s], r) => {
       const i = Math.floor((low + inst.step / 2) / step) - bin0;
-      if (i < 0 || i >= n) continue;
+      if (i < 0 || i >= n) return;
       buy[i]! += b; sell[i]! += s;
-    }
+      const c = inst.counts?.[r];
+      if (c && buyN && sellN) { buyN[i]! += c[0]; sellN[i]! += c[1]; }
+    });
   }
   let total = 0, max = 0, poc = -1;
   for (let i = 0; i < n; i++) { const v = buy[i]! + sell[i]!; total += v; if (v > max) { max = v; poc = i; } }
-  return { step, bin0, buy, sell, total, max, poc, recordedSince: since, partial: since === null || since > answer.from };
+  return { step, bin0, buy, sell, buyN, sellN, counted, minutes, total, max, poc, recordedSince: since, partial: since === null || since > answer.from };
 }
 
 /** A time as the page says it, with the date when it is not today. */
@@ -51,8 +61,11 @@ export function tradedHeader(rows: TradedRows | null): [string, string] {
   return [head, t('ROW MAX {value}', { value: usd(rows.max) })];
 }
 
-/** What the pointer is told on one row: its prices, buys, sells and the difference, its share of the window, and how far back the recording goes. */
-export function tradedLines(rows: TradedRows, index: number): InfoLine[] {
+/**
+ * What the pointer is told on one row: its prices, buys, sells and the difference, its share of the window, the market orders that began at
+ * these prices, where the row stands against the point of control and the value area (`levels`), and how far back the recording goes.
+ */
+export function tradedLines(rows: TradedRows, index: number, levels: ValueLevels | null = null): InfoLine[] {
   const low = (rows.bin0 + index) * rows.step, b = rows.buy[index] ?? 0, s = rows.sell[index] ?? 0, v = b + s;
   const lines: InfoLine[] = [{ text: `${fmtPrice(low, rows.step)} – ${fmtPrice(low + rows.step, rows.step)}`, bold: true }];
   if (!(v > 0)) lines.push({ text: t('Nothing traded at these prices in this window.'), color: 'muted', wrap: true });
@@ -61,6 +74,15 @@ export function tradedLines(rows: TradedRows, index: number): InfoLine[] {
     const net = b - s;
     lines.push({ label: t('Delta'), text: `${net > 0 ? '+' : net < 0 ? '−' : ''}$${usd(Math.abs(net))}`, ...(net > 0 ? { color: 'buy' as const } : net < 0 ? { color: 'sell' as const } : {}) });
     if (rows.total > 0) lines.push({ label: t('Share of volume'), text: `${(v / rows.total * 100).toFixed(1)} %` });
+    if (rows.buyN && rows.sellN && rows.counted > 0) {
+      lines.push({ label: t('Orders begun here'), text: t('{buys} buys · {sells} sells', { buys: (rows.buyN[index] ?? 0).toLocaleString('en-US'), sells: (rows.sellN[index] ?? 0).toLocaleString('en-US') }) });
+      if (rows.counted < rows.minutes) lines.push({ text: t('Orders are counted for {n} of the {total} minutes.', { n: rows.counted, total: rows.minutes }), color: 'muted', wrap: true });
+    }
+  }
+  if (levels) {
+    const high = low + rows.step;
+    const where = levels.poc >= low && levels.poc < high ? t('Point of control') : high > levels.val && low < levels.vah ? t('In the value area') : low >= levels.vah ? t('Above the value area') : t('Below the value area');
+    lines.push({ label: t('Profile'), text: where, rule: true });
   }
   if (rows.partial && rows.recordedSince !== null) lines.push({ text: t('Recorded since {time}: the window reaches back further than the recording.', { time: when(rows.recordedSince) }), color: 'muted', wrap: true });
   return lines;

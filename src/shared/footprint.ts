@@ -1,4 +1,5 @@
 import { gridStepFor } from './grid.ts';
+import { levelsOf } from './profile.ts';
 
 const MINUTE = 60_000;
 const RETENTION_MS = 7 * 24 * 3_600_000;
@@ -58,7 +59,14 @@ export function parseSizes(value: unknown, windows: readonly number[]): SizesAns
  * recorded one, how many of the window's minutes have rows, the first of them, and the earliest minute recorded at all (so a reader can tell
  * a window that reaches back before the recording from one in which nothing traded).
  */
-export interface ProfileInstrument { id: string; step: number; rows: FootprintRow[]; minutes: number; first: number | null; earliest: number | null }
+export interface ProfileInstrument {
+  id: string; step: number; rows: FootprintRow[]; minutes: number; first: number | null; earliest: number | null;
+  /**
+   * The market orders that began on each row ([buys, sells], beside `rows`), in the minutes that count orders by price, and how many of the
+   * window's minutes those are. Absent from an older server: a page reads no counts then.
+   */
+  counts?: [number, number][]; counted?: number;
+}
 export interface ProfileAnswer { from: number; to: number; instruments: ProfileInstrument[] }
 /** The most instruments one profile question may name. */
 export const MAX_PROFILE_INSTRUMENTS = 48;
@@ -78,7 +86,15 @@ export function parseProfile(value: unknown, ids: readonly string[]): ProfileAns
       if (!Array.isArray(r) || r.length !== 3 || !r.every(x => typeof x === 'number' && Number.isFinite(x)) || (r[1] as number) < 0 || (r[2] as number) < 0) return null;
       rows.push([r[0] as number, r[1] as number, r[2] as number]);
     }
-    out.push({ id: i.id, step: i.step, rows, minutes: i.minutes, first: i.first ?? null, earliest: i.earliest ?? null });
+    let counts: [number, number][] | undefined, counted: number | undefined;
+    if (i.counts !== undefined) {
+      const whole = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+      if (!Array.isArray(i.counts) || i.counts.length !== rows.length || !whole(i.counted) || i.counted > i.minutes) return null;
+      counts = [];
+      for (const c of i.counts as unknown[]) { if (!Array.isArray(c) || c.length !== 2 || !whole(c[0]) || !whole(c[1])) return null; counts.push([c[0], c[1]]); }
+      counted = i.counted;
+    }
+    out.push({ id: i.id, step: i.step, rows, minutes: i.minutes, first: i.first ?? null, earliest: i.earliest ?? null, ...(counts ? { counts, counted } : {}) });
   }
   return { from: body.from, to: body.to, instruments: out };
 }
@@ -132,6 +148,32 @@ export function parseRange(value: unknown, ids: readonly string[]): RangeAnswer 
       countedUsd: { buy: c.buy, sell: c.sell }, all: { buy: a.buy, sell: a.sell }, before: { buy: p.buy, sell: p.sell, minutes: p.minutes } });
   }
   return { from: body.from, to: body.to, p0: body.p0, p1: body.p1, step: body.step, rows, instruments };
+}
+
+/**
+ * The point of control and the value area of each of several windows (days, weeks, sessions), every instrument's volume added together on
+ * rows of `step` over every price: see `shared/profile.ts`. `minutes` is the most minutes any instrument recorded in the window, so a reader
+ * can tell a window recorded in part. A window in which nothing traded has null levels.
+ */
+export interface ValueAreaWindow { from: number; to: number; minutes: number; total: number; poc: number | null; vah: number | null; val: number | null }
+export interface ValueAreaAnswer { step: number; share: number; windows: ValueAreaWindow[] }
+/** The most windows one question may name, and the most time they may add up to (each minute of each is walked: a day takes about 90 ms). */
+export const MAX_VALUE_AREA_WINDOWS = 24, MAX_VALUE_AREA_SPAN_MS = 8 * 86_400_000;
+
+/** A value-area answer checked field by field against the windows asked for (same number, same order). */
+export function parseValueAreas(value: unknown, windows: readonly { from: number; to: number }[]): ValueAreaAnswer | null {
+  const body = value as { step?: unknown; share?: unknown; windows?: unknown } | null;
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const price = (v: unknown): v is number | null => v === null || num(v);
+  if (!body || !num(body.step) || !(body.step > 0) || !num(body.share) || !Array.isArray(body.windows) || body.windows.length !== windows.length) return null;
+  const out: ValueAreaWindow[] = [];
+  for (let k = 0; k < windows.length; k++) {
+    const w = body.windows[k] as Partial<Record<keyof ValueAreaWindow, unknown>> | null;
+    if (!w || w.from !== windows[k]!.from || w.to !== windows[k]!.to || !num(w.minutes) || !Number.isInteger(w.minutes) || w.minutes < 0 || !num(w.total) || w.total < 0
+      || !price(w.poc) || !price(w.vah) || !price(w.val) || (w.poc === null) !== (w.vah === null) || (w.poc === null) !== (w.val === null)) return null;
+    out.push({ from: w.from as number, to: w.to as number, minutes: w.minutes, total: w.total, poc: w.poc, vah: w.vah, val: w.val });
+  }
+  return { step: body.step, share: body.share, windows: out };
 }
 
 export interface FootprintBar {
@@ -332,15 +374,17 @@ export class FootprintRecorder {
     for (const id of ids) {
       const fine = this.#steps.get(id), minutes = this.#minutes.get(id);
       if (!fine || !minutes || !minutes.size) { instruments.push({ id, step: 0, rows: [], minutes: 0, first: null, earliest: null }); continue; }
-      const factor = Math.max(1, Math.round(rowStep / fine)), step = fine * factor, rows = new Map<number, [number, number]>();
-      let count = 0, first: number | null = null, earliest: number | null = null;
+      const factor = Math.max(1, Math.round(rowStep / fine)), step = fine * factor, rows = new Map<number, [number, number, number, number]>(), sums = this.#sums.get(id);
+      let count = 0, counted = 0, first: number | null = null, earliest: number | null = null;
       for (const [t, bins] of minutes) {
         if (earliest === null || t < earliest) earliest = t;
         if (t < from || t >= to) continue;
         count++; if (first === null || t < first) first = t;
-        for (const [bin, [buy, sell]] of bins) { const row = Math.floor(bin / factor), cell = rows.get(row) ?? [0, 0]; cell[0] += buy; cell[1] += sell; rows.set(row, cell); }
+        if (sums?.get(t)?.counted) counted++;
+        for (const [bin, [buy, sell, buyN, sellN]] of bins) { const row = Math.floor(bin / factor), cell = rows.get(row) ?? [0, 0, 0, 0]; cell[0] += buy; cell[1] += sell; cell[2] += buyN; cell[3] += sellN; rows.set(row, cell); }
       }
-      instruments.push({ id, step, rows: [...rows].sort((a, b) => a[0] - b[0]).map(([row, [buy, sell]]): FootprintRow => [row * step, buy, sell]), minutes: count, first, earliest });
+      const sorted = [...rows].sort((a, b) => a[0] - b[0]);
+      instruments.push({ id, step, rows: sorted.map(([row, [buy, sell]]): FootprintRow => [row * step, buy, sell]), minutes: count, first, earliest, counts: sorted.map(([, c]): [number, number] => [c[2], c[3]]), counted });
     }
     return { from, to, instruments };
   }
@@ -389,6 +433,32 @@ export class FootprintRecorder {
       rows = next; step *= 2;
     }
     return { from, to, p0: band?.p0 ?? null, p1: band?.p1 ?? null, step, rows: [...rows].sort((a, b) => a[0] - b[0]).map(([key, row]): RangeRow => [key * step, row[1], row[2], row[3], row[4]]), instruments };
+  }
+
+  /**
+   * The point of control and the value area of each window (see `ValueAreaAnswer`), holding `share` (0..1) of the volume, on rows of
+   * `rowStep`. Each window's minutes are looked up by their keys.
+   */
+  valueAreas(ids: readonly string[], windows: readonly { from: number; to: number }[], rowStep: number, share: number): ValueAreaAnswer {
+    const out: ValueAreaWindow[] = [];
+    for (const w of windows) {
+      const rows = new Map<number, number>(), first = Math.ceil(w.from / MINUTE) * MINUTE;
+      let minutes = 0, total = 0;
+      for (const id of ids) {
+        const fine = this.#steps.get(id), held = this.#minutes.get(id);
+        if (!fine || !held) continue;
+        let seen = 0;
+        for (let t = first; t < w.to; t += MINUTE) {
+          const bins = held.get(t); if (!bins) continue;
+          seen++;
+          for (const [bin, cell] of bins) { const v = cell[0] + cell[1], key = Math.floor(bin * fine / rowStep * (1 + 1e-12)); rows.set(key, (rows.get(key) ?? 0) + v); total += v; }
+        }
+        minutes = Math.max(minutes, seen);
+      }
+      const levels = levelsOf(rows, rowStep, share);
+      out.push({ from: w.from, to: w.to, minutes, total, poc: levels?.poc ?? null, vah: levels?.vah ?? null, val: levels?.val ?? null });
+    }
+    return { step: rowStep, share, windows: out };
   }
 
   /** Bars of `tfMs` over [from, to), rows merged to `rowStep` (rounded to a multiple of the recorded step). */
