@@ -1,5 +1,5 @@
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
-import { decodeFlowFrame, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
+import { decodeFlowFrame, decodeFlowMinutes, type FlowFrame, type FlowMinutesFrame, type FlowUpdate } from '../shared/flow.ts';
 import { parseProfile, parseRange, parseSizes, parseValueAreas, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from '../shared/footprint.ts';
 import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import { fromWire, type Print } from './prints.ts';
@@ -36,6 +36,11 @@ export async function getOi(inst: string, tf: string, from: number, to: number):
 export async function getFlow(ids: string[], from: number, to: number): Promise<FlowFrame> {
   if (!ids.length) return { from, to, instruments: [] };
   return decodeFlowFrame(await (await request(`/api/v2/flow?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}`)).arrayBuffer());
+}
+/** Older flow a minute at a time (a server from before it kept them answers 404, which is an error here). */
+export async function getFlowMinutes(ids: string[], from: number, to: number): Promise<FlowMinutesFrame> {
+  if (!ids.length) return { from, to, instruments: [] };
+  return decodeFlowMinutes(await (await request(`/api/v2/flow-minutes?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}`)).arrayBuffer());
 }
 /**
  * The trades of the instruments added together by size over each of the last `windows` minutes, in one request (never split: the minutes two

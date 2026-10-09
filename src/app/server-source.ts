@@ -1,4 +1,4 @@
-import { connectLive, getAbsorption, getBootstrap, getCandles, getColumns, getFlow, getFootprint, getOi, getPrints, getProfile, getRange, getSizes, getValueAreas } from './net.ts';
+import { connectLive, getAbsorption, getBootstrap, getCandles, getColumns, getFlow, getFlowMinutes, getFootprint, getOi, getPrints, getProfile, getRange, getSizes, getValueAreas } from './net.ts';
 import type { BootstrapState, DataSource, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
 import { stateOfStatus } from './venue-notice.ts';
 
@@ -72,6 +72,7 @@ export class ServerSource implements DataSource {
   columns = getColumns;
   footprint = getFootprint;
   flow = getFlow;
+  flowMinutes = getFlowMinutes;
   sizes = getSizes;
   profile = getProfile;
   range = getRange;

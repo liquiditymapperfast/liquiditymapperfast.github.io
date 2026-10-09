@@ -905,5 +905,6 @@
   "other": "{n} plateformes plus petites"
  },
  "Show the exchange in each bubble": "Afficher la plateforme dans chaque bulle",
- "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Sa marque au centre de chaque bulle assez grande pour la contenir. Survolez une bulle et les autres plateformes s'effacent, pour que ressortent les endroits où celle-ci a négocié."
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Sa marque au centre de chaque bulle assez grande pour la contenir. Survolez une bulle et les autres plateformes s'effacent, pour que ressortent les endroits où celle-ci a négocié.",
+ "Flow since {time}: older flow is not available from this source": "Flux depuis {time} : le flux plus ancien n'est pas disponible depuis cette source"
 }

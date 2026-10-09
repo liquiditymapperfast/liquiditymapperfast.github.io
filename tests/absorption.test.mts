@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { AbsorptionRecorder, markedPart, mergeMoments, parseAbsorptionAnswer, parseAbsorptionLive, parseGroup, parseMinute, peakOf, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStep } from '../src/shared/absorption.ts';
 import { AbsorptionRecorder as SqliteAbsorptionRecorder } from '../src/server/v2/absorption.mts';
-import { ABSORPTION_DEFAULTS, AbsorptionBook, MARK_MAX_PX, MARK_MIN_PX, markLines, markSize, passiveText, readAbsorption, type AbsorptionMark } from '../src/app/absorption.ts';
+import { ABSORPTION_DEFAULTS, AbsorptionBook, MARK_MAX_PX, MARK_MIN_PX, NEAR_PX, iconsOf, markLines, markSize, passiveText, readAbsorption, type AbsorptionMark, type MarkIcon } from '../src/app/absorption.ts';
 import { BookConnector, type TradeEvent } from '../src/shared/connector.ts';
 import { Engine } from '../src/shared/engine.ts';
 import type { BrowserVenue } from '../src/shared/venues.ts';
@@ -426,4 +426,57 @@ test('the area of a square follows its volume against the largest square in view
   assert.ok(markSize(1.5e7, 5e7) < markSize(3e7, 5e7) && markSize(3e7, 5e7) < MARK_MAX_PX, '$15M and $30M of a day of $50M marks differ');
   assert.equal(markSize(1, 5e7), MARK_MIN_PX, 'never smaller than can be seen');
   assert.equal(markSize(1e6, 0), MARK_MIN_PX);
+});
+
+test('the marks of a window are judged once until the groups or thresholds change, and are what judging every group gives', () => {
+  let s = 3; const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) & 0x7fffffff; return s / 0x7fffffff; };
+  const T = Math.floor(Date.now() / MIN) * MIN, ids = ['a:BTC', 'b:BTC', 'c:BTC'];
+  const groupAt = (t0: number): AbsorptionGroup => { const usd = 20_000 + Math.floor(rnd() * 200_000); return { id: ids[Math.floor(rnd() * 3)]!, side: rnd() < 0.5 ? 'buy' : 'sell', price: 100 + Math.floor(rnd() * 50), t0, steps: [[usd, usd, 1 + Math.floor(rnd() * 5), t0, t0 + 3]] }; };
+  const book = new AbsorptionBook(900), all = new Map<string, AbsorptionGroup>();
+  const add = (groups: AbsorptionGroup[]): void => { book.add(groups); for (const g of groups) all.set(groupKey(g), g); };
+  const thresholds = new Map<string, number | null>([['a:BTC', 50_000], ['b:BTC', 30_000], ['c:BTC', null]]);
+  const reference = (t0: number, t1: number, p0: number, p1: number): AbsorptionMark[] => {
+    const out: AbsorptionMark[] = [];
+    for (const g of all.values()) {
+      if (g.t0 < t0 - 10 || g.t0 > t1 || g.price < p0 || g.price > p1) continue;
+      const threshold = thresholds.get(g.id); if (threshold === null || threshold === undefined || peakOf(g) < threshold) continue;
+      const part = markedPart(g, threshold)!;
+      out.push({ id: g.id, side: g.side, price: g.price, t0: part.t0, t1: part.t1, usd: part.usd, fills: part.fills, peak: part.peak, threshold });
+    }
+    return out;
+  };
+  const check = (label: string): void => {
+    for (const [t0, t1, p0, p1] of [[T, T + 600_000, 0, 1e9], [T + 1_000, T + 2_000, 110, 130], [T + 999, T + 999, 0, 1e9], [T - 5_000, T + 50, 120, 120]] as const)
+      assert.deepEqual(book.marks(ids, thresholds, t0, t1, p0, p1), reference(t0, t1, p0, p1), `${label}: ${t0 - T}..${t1 - T}`);
+  };
+  // Live groups in time order (with a repeat that updates a group in place), an older window loaded after them, a few the same instant.
+  for (let i = 0; i < 200; i++) add([groupAt(T + 1_000 + i * 10)]);
+  const again = { ...[...all.values()][5]!, steps: [[90_000, 90_000, 7, T + 1_050, T + 1_052]] as AbsorptionStep[] }; add([again]);
+  check('in order');
+  const once = book.marks(ids, thresholds, T, T + 600_000, 0, 1e9), twice = book.marks(ids, thresholds, T + 1_000, T + 600_000, 0, 1e9);
+  assert.ok(twice.length > 0 && twice.every(m => once.includes(m)), 'the same judged marks, read again for another window');
+  add(Array.from({ length: 150 }, (_, i) => groupAt(T + i * 7)));
+  add(Array.from({ length: 30 }, () => groupAt(T + 999)));
+  check('an older window loaded');
+  // Past the limit the smallest go, and what is left is found the same way.
+  add(Array.from({ length: 700 }, (_, i) => groupAt(T + 3_000 + i)));
+  const kept = new Set<string>(); for (const m of book.marks(ids, new Map(ids.map(id => [id, 0])), 0, Number.MAX_SAFE_INTEGER, 0, 1e9)) kept.add(`${m.id}|${m.side}|${m.price}|${m.t0}`);
+  for (const key of [...all.keys()]) if (!kept.has(key)) all.delete(key);
+  check('after the smallest were dropped');
+});
+
+test('marks near each other become one square exactly as comparing each with every square did', () => {
+  let s = 9; const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) & 0x7fffffff; return s / 0x7fffffff; };
+  const marks: AbsorptionMark[] = Array.from({ length: 3_000 }, (_, i) => ({ id: `v${i % 4}:BTC`, side: rnd() < 0.5 ? 'buy' : 'sell', price: 100 + rnd() * 40, t0: i, t1: i, usd: 1 + Math.floor(rnd() * 40) * 1_000, fills: 1, peak: 1, threshold: 1 }));
+  const xOf = (m: AbsorptionMark): number => -30 + (m.price * 97 % 1) * 900, yOf = (m: AbsorptionMark): number => (m.price - 100) * 15 - 20;
+  const reference: MarkIcon[] = [];
+  for (const m of [...marks].sort((a, b) => b.usd - a.usd)) {
+    const x = xOf(m), y = yOf(m);
+    if (x < -NEAR_PX || x > 800 + NEAR_PX || y < -NEAR_PX || y > 560 + NEAR_PX) continue;
+    const near = reference.find(i => i.side === m.side && Math.abs(i.x - x) < NEAR_PX && Math.abs(i.y - y) < NEAR_PX);
+    if (near) { near.usd += m.usd; near.marks.push(m); } else reference.push({ side: m.side, x, y, usd: m.usd, marks: [m] });
+  }
+  const icons = iconsOf(marks, xOf, yOf, 800, 560);
+  assert.ok(icons.some(i => i.marks.length > 3), 'the made-up marks crowd together');
+  assert.deepEqual(icons, reference);
 });

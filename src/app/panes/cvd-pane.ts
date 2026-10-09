@@ -37,8 +37,10 @@ const PAD = 6, LINE_H = 12;
 /** The label column: a third of the pane, within these limits. */
 const GUTTER_MIN = 76, GUTTER_MAX = 120;
 const MIN_ROW = 56, MIN_AGG = 92, PRICE_H = 44;
-/** Flow history reaches back no further than the recorder keeps it. */
+/** Flow is held a second at a time for at most this long (the ring holds a day and a half); a window reaching further back reads minutes there. */
 const HISTORY_CAP_MS = 24 * 3_600_000;
+/** Older flow (minutes) is asked from a boundary of this many ms before the window. */
+const MINUTES_FROM_MS = 6 * 3_600_000;
 const SPAN_LABELS: Record<CvdSpan, string> = { map: t('Map'), '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '24h': '24h' };
 
 /** What the last frame drew, for the checks that look at the pane without reading its pixels. */
@@ -79,6 +81,8 @@ export class CvdPane {
   #priceCols: PriceColumns | null = null; #priceId: string | null = null;
   /** When the flow began, if the window starts before it (shown as a note on the aggregate row). */
   #since: number | null = null;
+  /** The window starts before the flow because the source keeps no older flow (not because recording began then). */
+  #sinceHeld = false;
   #model: CvdModel | null = null; #modelKey = '';
   #layout: RowLayout | null = null;
   #scroll = 0;
@@ -341,11 +345,21 @@ export class CvdPane {
     const priceId = priceFlowId([s.seriesInstrument, s.marketId], id => this.hub.flow.has(id));
     const reach = Math.max(spanMs, RANK_MS[cfg.rank], 3_600_000);
     const loadIds = flowLoadIds(s, this.hub.flow.ids);
-    void this.hub.ensureFlow(priceId && !loadIds.includes(priceId) ? [...loadIds, priceId] : loadIds, Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000));
+    const flowIdsToLoad = priceId && !loadIds.includes(priceId) ? [...loadIds, priceId] : loadIds;
+    const secondsFrom = Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000);
+    void this.hub.ensureFlow(flowIdsToLoad, secondsFrom);
+    // A window reaching back before the seconds the page holds draws its older part from the minutes (asked from a six-hour boundary, so
+    // zooming out does not ask again at every step, up to where the latest of the seconds begins).
+    const wanted = cfg.span === 'map' ? this.view.t0 : now - CVD_SPAN_MS[cfg.span], older = wanted < secondsFrom - 60_000;
+    if (older) {
+      let latest = secondsFrom;
+      for (const id of flowIdsToLoad) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 > latest) latest = first * 1000; }
+      void this.hub.ensureFlowMinutes(flowIdsToLoad, Math.floor((wanted - 3_600_000) / MINUTES_FROM_MS) * MINUTES_FROM_MS, Math.ceil((latest + 120_000) / 600_000) * 600_000);
+    }
     let earliest = Infinity;
-    for (const id of ids) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 < earliest) earliest = first * 1000; }
+    for (const id of ids) { const first = this.hub.flow.track(id)?.first; if (first !== null && first !== undefined && first * 1000 < earliest) earliest = first * 1000; }
     const win = flowWindow({ span: cfg.span, mapT0: this.view.t0, mapT1: this.view.t1, now, earliest }), { t0, t1 } = win;
-    this.#since = win.since;
+    this.#since = win.since; this.#sinceHeld = older && this.hub.flowMinutesState === 'unavailable';
     this.#loadPrice(now, t0);
     if (s.mark.price > 0) this.#price.add(now, s.mark.price);
 
@@ -547,8 +561,8 @@ export class CvdPane {
 
   /** The price strip's columns: the market's recorded seconds where it has them, the candle closes and marks for what came before (or all of it, when it has none). */
   #priceColumns(model: CvdModel): PriceColumns {
-    const columns = model.columns, track = this.#price.columns(model.t0, model.t1, columns), series = this.#priceId ? this.hub.flow.get(this.#priceId) : undefined;
-    if (!series || series.empty) return track;
+    const columns = model.columns, track = this.#price.columns(model.t0, model.t1, columns), series = this.#priceId ? this.hub.flow.track(this.#priceId) : undefined;
+    if (!series || series.first === null) return track;
     const from = Math.floor(model.t0 / 1000), to = Math.max(from + 1, Math.ceil(model.t1 / 1000)), last = new Float64Array(columns);
     series.priceColumns(from, to, columns, last);
     let min = Infinity, max = -Infinity;
@@ -560,7 +574,7 @@ export class CvdPane {
   }
   /** The price at `time` (ms), from the same source as the strip. */
   #priceAtTime(time: number): number {
-    const series = this.#priceId ? this.hub.flow.get(this.#priceId) : undefined, v = series && !series.empty ? series.priceAt(Math.floor(time / 1000)) : NaN;
+    const series = this.#priceId ? this.hub.flow.track(this.#priceId) : undefined, v = series ? series.priceAt(Math.floor(time / 1000)) : NaN;
     return v === v ? v : this.#price.at(time);
   }
 
@@ -568,7 +582,8 @@ export class CvdPane {
   #paintSince(ctx: CanvasRenderingContext2D, p: Palette, plot: { x: number; w: number }, since: number): void {
     const startOfToday = startOfDay(Date.now());
     ctx.save(); ctx.font = `10px ${SANS}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(fit(ctx, t('Flow recorded since {time}', { time: clock(since, since < startOfToday) }), plot.w - 12), plot.x + 6, 5);
+    const time = clock(since, since < startOfToday);
+    ctx.fillText(fit(ctx, this.#sinceHeld ? t('Flow since {time}: older flow is not available from this source', { time }) : t('Flow recorded since {time}', { time }), plot.w - 12), plot.x + 6, 5);
     ctx.restore();
   }
 

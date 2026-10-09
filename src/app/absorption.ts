@@ -52,6 +52,38 @@ export function markSize(usd: number, largest: number): number {
 /** A mark: the marked part of one group at its instrument's threshold. */
 export interface AbsorptionMark { id: string; side: 'buy' | 'sell'; price: number; t0: number; t1: number; usd: number; fills: number; peak: number; threshold: number }
 
+/** Marks of one side closer than this (px) on both axes are drawn as one square. */
+export const NEAR_PX = 12;
+/** A square on the map: where its first (largest) mark is, and every mark it stands for. */
+export interface MarkIcon { side: 'buy' | 'sell'; x: number; y: number; usd: number; marks: AbsorptionMark[] }
+
+/**
+ * The marks as squares on a plot `w` x `h` px: the largest first, each joins the first square of its side within NEAR_PX on both axes (its
+ * volume added) or starts one where it is; a mark more than NEAR_PX off the plot is left out. Squares never move, so the ones a mark can
+ * join are in the 3 x 3 cells of NEAR_PX around it: the same squares as comparing it with every one, in one pass.
+ */
+export function iconsOf(marks: readonly AbsorptionMark[], xOf: (m: AbsorptionMark) => number, yOf: (m: AbsorptionMark) => number, w: number, h: number): MarkIcon[] {
+  const icons: MarkIcon[] = [], cells = new Map<number, number[]>();
+  const cellOf = (cx: number, cy: number): number => (cx + 4) * 1_048_576 + (cy + 4);
+  for (const m of [...marks].sort((a, b) => b.usd - a.usd)) {
+    const x = xOf(m), y = yOf(m);
+    if (!(x >= -NEAR_PX && x <= w + NEAR_PX && y >= -NEAR_PX && y <= h + NEAR_PX)) continue;
+    const cx = Math.floor(x / NEAR_PX), cy = Math.floor(y / NEAR_PX);
+    let joins = -1;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      for (const i of cells.get(cellOf(cx + dx, cy + dy)) ?? []) {
+        const icon = icons[i]!;
+        if ((joins < 0 || i < joins) && icon.side === m.side && Math.abs(icon.x - x) < NEAR_PX && Math.abs(icon.y - y) < NEAR_PX) joins = i;
+      }
+    }
+    if (joins >= 0) { const icon = icons[joins]!; icon.usd += m.usd; icon.marks.push(m); continue; }
+    const key = cellOf(cx, cy), cell = cells.get(key);
+    if (cell) cell.push(icons.length); else cells.set(key, [icons.length]);
+    icons.push({ side: m.side, x, y, usd: m.usd, marks: [m] });
+  }
+  return icons;
+}
+
 const MINUTE = 60_000;
 const keyOf = (g: AbsorptionGroup): string => `${g.id}|${g.side}|${g.price}|${g.t0}`;
 
@@ -59,6 +91,12 @@ const keyOf = (g: AbsorptionGroup): string => `${g.id}|${g.side}|${g.price}|${g.
 export class AbsorptionBook {
   readonly #groups = new Map<string, AbsorptionGroup>();
   readonly #minutes = new Map<string, Map<number, AbsorptionMinute>>();
+  /**
+   * Every group that is a mark at the thresholds last asked for, with the time it started, in the order the groups came: judged again only
+   * when the groups, the thresholds (a new map from the caller) or the instruments change, so a frame that only moves the pointer, or the
+   * map, reads a list instead of judging tens of thousands of groups.
+   */
+  #judged: { version: number; thresholds: ReadonlyMap<string, number | null>; ids: string; marks: { t0: number; mark: AbsorptionMark }[] } | null = null;
   /** Bumped whenever anything changes, so a painter can tell its cache is stale. */
   version = 0;
   constructor(private max = 40_000) {}
@@ -108,16 +146,26 @@ export class AbsorptionBook {
     return out;
   }
 
-  /** The marks in a window of the map: groups of `ids` that start in [t0 - window, t1] at a price in [p0, p1] and reach their instrument's threshold. */
+  /**
+   * The marks in a window of the map: groups of `ids` that start in [t0 - window, t1] at a price in [p0, p1] and reach their instrument's
+   * threshold. The marks are shared between calls: read them, never change them.
+   */
   marks(ids: readonly string[], thresholds: ReadonlyMap<string, number | null>, t0: number, t1: number, p0: number, p1: number): AbsorptionMark[] {
-    const wanted = new Set(ids), out: AbsorptionMark[] = [];
-    for (const g of this.#groups.values()) {
-      if (!wanted.has(g.id) || g.t0 < t0 - ABSORPTION_WINDOW_MS || g.t0 > t1 || g.price < p0 || g.price > p1) continue;
-      const threshold = thresholds.get(g.id);
-      if (threshold === null || threshold === undefined || peakOf(g) < threshold) continue;
-      const part = markedPart(g, threshold);
-      if (part) out.push({ id: g.id, side: g.side, price: g.price, t0: part.t0, t1: part.t1, usd: part.usd, fills: part.fills, peak: part.peak, threshold });
+    const idsKey = ids.join(',');
+    let judged = this.#judged;
+    if (!judged || judged.version !== this.version || judged.thresholds !== thresholds || judged.ids !== idsKey) {
+      const wanted = new Set(ids), marks: { t0: number; mark: AbsorptionMark }[] = [];
+      for (const g of this.#groups.values()) {
+        if (!wanted.has(g.id)) continue;
+        const threshold = thresholds.get(g.id);
+        if (threshold === null || threshold === undefined || peakOf(g) < threshold) continue;
+        const part = markedPart(g, threshold);
+        if (part) marks.push({ t0: g.t0, mark: { id: g.id, side: g.side, price: g.price, t0: part.t0, t1: part.t1, usd: part.usd, fills: part.fills, peak: part.peak, threshold } });
+      }
+      judged = this.#judged = { version: this.version, thresholds, ids: idsKey, marks };
     }
+    const out: AbsorptionMark[] = [], from = t0 - ABSORPTION_WINDOW_MS;
+    for (const { t0: start, mark } of judged.marks) if (start >= from && start <= t1 && mark.price >= p0 && mark.price <= p1) out.push(mark);
     return out;
   }
 

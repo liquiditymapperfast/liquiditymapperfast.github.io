@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DepthRecorder, COLUMN_MS, SAMPLE_MS, accumulateSide, gridStepFor, type Column, type ColumnStore } from '../src/server/v2/recorder.mts';
+import { DepthRecorder, COLUMN_MS, KEEP_ALWAYS, MIN_BIN_USD, RETENTION_MS, SAMPLE_MS, accumulateSide, gridStepFor, type Column, type ColumnStore } from '../src/server/v2/recorder.mts';
 import { valueBook, type ValuedBook, type SideLevels } from '../src/server/v2/levels.mts';
 import { encodeColumns, encodeLevels } from '../src/server/v2/wire.mts';
 import { aggregateCandles, aggregateOi, withLiveOi } from '../src/server/v2/series.mts';
@@ -279,4 +279,100 @@ test('a column drops bins too small to see, but never goes below its 300 largest
   const small = new DepthRecorder({ now: () => T0 }); small.steps.set('x:BTC', 10);
   small.sample([book('x:BTC', T0, bidsRows(50, 1000), [[90_010, 90_010, 50]])], T0);
   assert.equal(small.query('x:BTC', T0, T0 + COLUMN_MS)[0]!.bins.length, 51);
+});
+
+/** The merge as it was written first (a map per window), with the smallest-bin rule it was meant to apply: what the flat merge must equal. */
+function referenceQuery(columns: readonly Column[], from: number, to: number, stepMs: number, minBinUsd = MIN_BIN_USD): Column[] {
+  const inRange = columns.filter(c => c.t >= from && c.t < to);
+  const groups = new Map<number, { t: number; n: number; bid: Map<number, number>; ask: Map<number, number> }>();
+  for (const column of inRange) {
+    const t = Math.floor(column.t / stepMs) * stepMs;
+    let group = groups.get(t); if (!group) { group = { t, n: 0, bid: new Map(), ask: new Map() }; groups.set(t, group); }
+    group.n += column.n;
+    for (let i = 0; i < column.bins.length; i++) { const bin = column.bins[i]!; group.bid.set(bin, (group.bid.get(bin) ?? 0) + column.bid[i]! * column.n); group.ask.set(bin, (group.ask.get(bin) ?? 0) + column.ask[i]! * column.n); }
+  }
+  return [...groups.values()].sort((a, b) => a.t - b.t).map(g => {
+    let bins = Int32Array.from([...new Set([...g.bid.keys(), ...g.ask.keys()])].sort((a, b) => a - b));
+    let bid = new Float32Array(bins.length), ask = new Float32Array(bins.length);
+    bins.forEach((bin, i) => { bid[i] = (g.bid.get(bin) ?? 0) / g.n; ask[i] = (g.ask.get(bin) ?? 0) / g.n; });
+    if (bins.length > KEEP_ALWAYS) {
+      let keep: number[] = [];
+      for (let i = 0; i < bins.length; i++) if (bid[i]! + ask[i]! >= minBinUsd) keep.push(i);
+      if (keep.length < KEEP_ALWAYS) keep = Array.from(bins.keys()).sort((x, y) => (bid[y]! + ask[y]!) - (bid[x]! + ask[x]!)).slice(0, KEEP_ALWAYS).sort((x, y) => x - y);
+      const b0 = bins, d0 = bid, a0 = ask; bins = Int32Array.from(keep, i => b0[i]!); bid = Float32Array.from(keep, i => d0[i]!); ask = Float32Array.from(keep, i => a0[i]!);
+    }
+    return { t: g.t, n: g.n, bins, bid, ask };
+  });
+}
+
+/** Minutes of made-up columns: some empty, some past the 300 bins a column always keeps, USD from cents to tens of thousands. */
+function randomColumns(minutes: number, seed: number): Column[] {
+  let s = seed; const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) & 0x7fffffff; return s / 0x7fffffff; };
+  const out: Column[] = [];
+  for (let m = 0; m < minutes; m++) {
+    if (rnd() < 0.05) continue;   // a minute nothing was observed in
+    const count = Math.floor(rnd() * 420), base = 4_000 + Math.floor(rnd() * 200);
+    const bins = Int32Array.from([...new Set(Array.from({ length: count }, () => base + Math.floor(rnd() * 600)))].sort((a, b) => a - b));
+    const usd = (): number => rnd() < 0.3 ? 0 : rnd() < 0.5 ? rnd() * 9_000 : rnd() * 60_000;
+    out.push({ t: T0 + m * COLUMN_MS, n: 1 + Math.floor(rnd() * 12), bins, bid: Float32Array.from(bins, usd), ask: Float32Array.from(bins, usd) });
+  }
+  return out;
+}
+
+test('merged windows equal the map merge to the last bit, at every step and from any start', () => {
+  const columns = randomColumns(240, 7), now = T0 + 300 * COLUMN_MS;
+  const recorder = new DepthRecorder({ now: () => now }); recorder.columns.set('x:BTC', columns);
+  for (const step of [2, 3, 5, 8, 15, 16, 60, 64]) {
+    for (const [from, to] of [[T0, now], [T0 + 7.5 * COLUMN_MS, T0 + 201.3 * COLUMN_MS], [T0 - 3_600_000, T0 + 37 * COLUMN_MS]] as const) {
+      const want = referenceQuery(columns, from, to, step * COLUMN_MS);
+      assert.deepEqual(recorder.query('x:BTC', from, to, step * COLUMN_MS), want, `step ${step} min from ${(from - T0) / COLUMN_MS}`);
+      assert.deepEqual(recorder.query('x:BTC', from, to, step * COLUMN_MS), want, `step ${step} min asked again`);
+    }
+  }
+  assert.deepEqual(recorder.query('x:BTC', T0 + 10 * COLUMN_MS, T0 + 20 * COLUMN_MS), columns.filter(c => c.t >= T0 + 10 * COLUMN_MS && c.t < T0 + 20 * COLUMN_MS), 'whole minutes are the columns themselves');
+});
+
+test('a merged window drops the bins too small to see, as a minute does (it once kept them all)', () => {
+  const bins = Int32Array.from({ length: 400 }, (_, i) => 1_000 + i), usd = Float32Array.from(bins, (_, i) => i < 350 ? 20_000 : 100);
+  const recorder = new DepthRecorder({ now: () => T0 + 10 * COLUMN_MS });
+  recorder.columns.set('x:BTC', [0, 1].map(m => ({ t: T0 + m * COLUMN_MS, n: 4, bins, bid: usd, ask: new Float32Array(400) })));
+  const [merged] = recorder.query('x:BTC', T0, T0 + 5 * COLUMN_MS, 5 * COLUMN_MS);
+  assert.equal(merged!.bins.length, 350);
+  assert.ok([...merged!.bid].every(v => v === 20_000));
+  // Fewer large bins than a column always keeps, with ties at the edge: the 300 largest, the lower price first among equals.
+  const tied = Float32Array.from(bins, (_, i) => i % 7 === 0 ? 30_000 : i % 3 === 0 ? 500 : 200);
+  const columns = [0, 1].map(m => ({ t: T0 + m * COLUMN_MS, n: 1 + m, bins, bid: tied, ask: new Float32Array(400) }));
+  recorder.columns.set('x:ETH', columns);
+  const ties = recorder.query('x:ETH', T0, T0 + 5 * COLUMN_MS, 5 * COLUMN_MS);
+  assert.deepEqual(ties, referenceQuery(columns, T0, T0 + 5 * COLUMN_MS, 5 * COLUMN_MS));
+  assert.equal(ties[0]!.bins.length, 300);
+});
+
+test('a window that has ended is merged once and kept; the window still open, and one cut by the question, are merged afresh', () => {
+  let now = T0 + 20 * COLUMN_MS + 30_000;
+  const columns = randomColumns(20, 11), recorder = new DepthRecorder({ now: () => now }); recorder.columns.set('x:BTC', [...columns]);
+  const first = recorder.query('x:BTC', T0, now + COLUMN_MS, 5 * COLUMN_MS), again = recorder.query('x:BTC', T0, now + COLUMN_MS, 5 * COLUMN_MS);
+  assert.equal(again[0], first[0], 'the first window is the one kept');
+  const cut = recorder.query('x:BTC', T0 + 2 * COLUMN_MS, now + COLUMN_MS, 5 * COLUMN_MS);
+  assert.deepEqual(cut[0], referenceQuery(columns, T0 + 2 * COLUMN_MS, now + COLUMN_MS, 5 * COLUMN_MS)[0], 'a window the question starts inside has only its minutes from the start on');
+  assert.notEqual(cut[0], first[0]);
+  // The minute that is being recorded belongs to a window that has not ended: a new column there shows at once.
+  recorder.steps.set('x:BTC', 10);
+  recorder.sample([book('x:BTC', now, [[50_000, 50_000, 30_000]], [])], now);
+  const live = recorder.query('x:BTC', T0, now + COLUMN_MS, 5 * COLUMN_MS);
+  assert.deepEqual(live.at(-1)!.bins.includes(5_000), true, 'the open minute is in its window');
+  // A prune that cuts the second window: what was kept of it is gone with its minutes.
+  recorder.prune(T0 + 7 * COLUMN_MS + RETENTION_MS);
+  const rest = recorder.columns.get('x:BTC')!;
+  assert.deepEqual(recorder.query('x:BTC', T0, T0 + 20 * COLUMN_MS, 5 * COLUMN_MS), referenceQuery(rest, T0, T0 + 20 * COLUMN_MS, 5 * COLUMN_MS), 'after a prune a window is merged from the minutes left');
+});
+
+test('bins too far apart for the flat merge are merged the old way, with the same result', () => {
+  const recorder = new DepthRecorder({ now: () => T0 + 10 * COLUMN_MS });
+  const columns: Column[] = [
+    { t: T0, n: 2, bins: Int32Array.from([5, 3_000_000]), bid: Float32Array.from([1_000, 2]), ask: Float32Array.from([0, 7]) },
+    { t: T0 + COLUMN_MS, n: 3, bins: Int32Array.from([5, 9]), bid: Float32Array.from([10, 20]), ask: Float32Array.from([1, 1]) },
+  ];
+  recorder.columns.set('x:BTC', columns);
+  assert.deepEqual(recorder.query('x:BTC', T0, T0 + 5 * COLUMN_MS, 5 * COLUMN_MS), referenceQuery(columns, T0, T0 + 5 * COLUMN_MS, 5 * COLUMN_MS));
 });

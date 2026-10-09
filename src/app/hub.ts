@@ -51,6 +51,9 @@ export class Hub {
   /** Called when the flow book changed (new seconds or history), about once a second. */
   onFlowChanged: () => void = () => {};
   #flowLoading = false;
+  /** Whether the source answers older flow a minute at a time ('unavailable': the browser engine, which keeps a day, or a server from before). */
+  flowMinutesState: 'ready' | 'unavailable' = 'ready';
+  #flowMinutesLoading = false; #flowMinutesRetryAt = 0;
   /** The window the print book was last filled for, and the smallest order it was asked from. */
   /** The window of history the print book was last answered for, from which smallest size, and whether the answer was cut to its largest. */
   #printsWindow: { t0: number; t1: number; min: number; cut: boolean; live: boolean } | null = null;
@@ -376,12 +379,31 @@ export class Hub {
     } finally { this.#flowLoading = false; }
   }
 
+  /**
+   * Make sure the flow book holds minutes over [from, to] for these instruments, for a window older than the seconds it holds. Safe to call
+   * every frame: one request at a time, none while everything asked for is here, and a source that cannot answer is asked again a minute later.
+   */
+  async ensureFlowMinutes(ids: readonly string[], from: number, to: number): Promise<void> {
+    const source = this.source;
+    if (!source.flowMinutes) { this.flowMinutesState = 'unavailable'; return; }
+    if (this.#flowMinutesLoading || Date.now() < this.#flowMinutesRetryAt) return;
+    const need = this.flow.minutesMissing(ids, from, to);
+    if (!need.length) return;
+    this.#flowMinutesLoading = true;
+    try {
+      for (let i = 0; i < need.length; i += 40) { const part = need.slice(i, i + 40); this.flow.loadMinutes(await source.flowMinutes(part, from, to), part, from, to); }
+      this.flowMinutesState = 'ready';
+    } catch { this.flowMinutesState = 'unavailable'; this.#flowMinutesRetryAt = Date.now() + 60_000; }
+    finally { this.#flowMinutesLoading = false; this.onFlowChanged(); }
+  }
+
   /** Make sure recorded columns cover `view` (with margin) at a resolution suited to `widthPx`. */
   async loadColumns(view: Bounds, widthPx: number): Promise<void> {
     const ids = this.store.state.levels?.books.map(book => book.id) ?? [];
     if (!ids.length || this.#columnsLoading) return;
     const span = view.t1 - view.t0;
-    const stepMs = Math.max(MINUTE, Math.round(span / Math.max(1, widthPx) * 2 / MINUTE) * MINUTE);
+    // About two pixels a column, in minutes that double from one level to the next: zooming moves between a few steps the server has merged before.
+    const stepMs = MINUTE * 2 ** Math.max(0, Math.round(Math.log2(span / Math.max(1, widthPx) * 2 / MINUTE)));
     const key = ids.join(',');
     const have = this.#columns;
     if (have && have.key === key && have.stepMs === stepMs && have.from <= view.t0 && have.to >= view.t1) return;

@@ -56,18 +56,85 @@ export const KEEP_ALWAYS = 300;
 
 function finalize(pending: Pick<Pending, 't' | 'n' | 'bid' | 'ask'>, minBinUsd: number = MIN_BIN_USD): Column {
   const keys = new Set<number>([...pending.bid.keys(), ...pending.ask.keys()]);
-  let bins = Int32Array.from([...keys].sort((a, b) => a - b));
-  let bid = new Float32Array(bins.length), ask = new Float32Array(bins.length);
-  bins.forEach((bin, i) => { bid[i] = (pending.bid.get(bin) ?? 0) / pending.n; ask[i] = (pending.ask.get(bin) ?? 0) / pending.n; });
-  if (bins.length > KEEP_ALWAYS) {
-    let keep: number[] = [];
-    for (let i = 0; i < bins.length; i++) if (bid[i]! + ask[i]! >= minBinUsd) keep.push(i);
-    if (keep.length < KEEP_ALWAYS) keep = Array.from(bins.keys()).sort((x, y) => (bid[y]! + ask[y]!) - (bid[x]! + ask[x]!)).slice(0, KEEP_ALWAYS).sort((x, y) => x - y);
-    bins = Int32Array.from(keep, i => bins[i]!); const b0 = bid, a0 = ask;
-    bid = Float32Array.from(keep, i => b0[i]!); ask = Float32Array.from(keep, i => a0[i]!);
-  }
-  return { t: pending.t, n: pending.n, bins, bid, ask };
+  const bins = Int32Array.from([...keys].sort((a, b) => a - b));
+  return finish(pending.t, pending.n, bins, Float64Array.from(bins, bin => pending.bid.get(bin) ?? 0), Float64Array.from(bins, bin => pending.ask.get(bin) ?? 0), minBinUsd);
 }
+
+/** A column from the USD summed over `n` samples in each of `bins` (ascending): the mean per bin, the smallest bins left out of a large column. */
+function finish(t: number, n: number, sortedBins: Int32Array, bidSum: Float64Array, askSum: Float64Array, minBinUsd: number): Column {
+  const count = sortedBins.length, bid = new Float32Array(count), ask = new Float32Array(count);
+  for (let i = 0; i < count; i++) { bid[i] = bidSum[i]! / n; ask[i] = askSum[i]! / n; }
+  if (count <= KEEP_ALWAYS) return { t, n, bins: sortedBins, bid, ask };
+  // The bins at or above the floor; when fewer than KEEP_ALWAYS are, the KEEP_ALWAYS largest, the lower price first among equals.
+  const keep = new Uint8Array(count);
+  let kept = 0;
+  for (let i = 0; i < count; i++) if (bid[i]! + ask[i]! >= minBinUsd) { keep[i] = 1; kept++; }
+  if (kept < KEEP_ALWAYS) {
+    const totals = new Float64Array(count);
+    for (let i = 0; i < count; i++) totals[i] = bid[i]! + ask[i]!;
+    const edge = Float64Array.from(totals).sort()[count - KEEP_ALWAYS]!;
+    keep.fill(0); kept = 0;
+    for (let i = 0; i < count; i++) if (totals[i]! > edge) { keep[i] = 1; kept++; }
+    for (let i = 0; i < count && kept < KEEP_ALWAYS; i++) if (totals[i] === edge) { keep[i] = 1; kept++; }
+  }
+  const bins = new Int32Array(kept), keptBid = new Float32Array(kept), keptAsk = new Float32Array(kept);
+  for (let i = 0, j = 0; i < count; i++) if (keep[i]) { bins[j] = sortedBins[i]!; keptBid[j] = bid[i]!; keptAsk[j] = ask[i]!; j++; }
+  return { t, n, bins, bid: keptBid, ask: keptAsk };
+}
+
+/** The widest span of bins one window is merged over in flat arrays (the books reach half the price either way, a few thousand bins). */
+const DENSE_BINS = 1 << 20;
+/** Flat sums by bin offset, and the window that last wrote each offset (so they are never cleared): shared, since a merge runs to its end. */
+let denseBid = new Float64Array(0), denseAsk = new Float64Array(0), denseSeen = new Int32Array(0), denseWindow = 0;
+
+/**
+ * Columns `[start, end)` of `columns` (one window, oldest first) as one column: each bin's USD weighted by the samples behind it. The sums are
+ * made in the same order as the map they replaced (column by column, from zero), so the result is the same to the last bit, without a map
+ * operation per bin.
+ */
+function mergeWindow(columns: readonly Column[], start: number, end: number, t: number, minBinUsd: number): Column {
+  let n = 0, lo = Infinity, hi = -Infinity, total = 0;
+  for (let k = start; k < end; k++) {
+    const c = columns[k]!, m = c.bins.length; n += c.n; total += m;
+    if (m) { lo = Math.min(lo, c.bins[0]!); hi = Math.max(hi, c.bins[m - 1]!); }
+  }
+  if (total === 0) return finish(t, n, new Int32Array(0), new Float64Array(0), new Float64Array(0), minBinUsd);
+  const size = hi - lo + 1;
+  if (size > DENSE_BINS) {
+    const group = { t, n, bid: new Map<number, number>(), ask: new Map<number, number>() };
+    for (let k = start; k < end; k++) {
+      const c = columns[k]!;
+      for (let i = 0; i < c.bins.length; i++) { const bin = c.bins[i]!; group.bid.set(bin, (group.bid.get(bin) ?? 0) + c.bid[i]! * c.n); group.ask.set(bin, (group.ask.get(bin) ?? 0) + c.ask[i]! * c.n); }
+    }
+    return finalize(group, minBinUsd);
+  }
+  if (denseSeen.length < size) { const room = Math.min(DENSE_BINS, Math.max(size, denseSeen.length * 2)); denseBid = new Float64Array(room); denseAsk = new Float64Array(room); denseSeen = new Int32Array(room); denseWindow = 0; }
+  if (++denseWindow === 0x7fffffff) { denseSeen.fill(0); denseWindow = 1; }
+  const window = denseWindow, touched = new Int32Array(total);
+  let count = 0;
+  for (let k = start; k < end; k++) {
+    const c = columns[k]!, w = c.n;
+    for (let i = 0; i < c.bins.length; i++) {
+      const at = c.bins[i]! - lo;
+      if (denseSeen[at] !== window) { denseSeen[at] = window; denseBid[at] = 0; denseAsk[at] = 0; touched[count++] = at; }
+      denseBid[at]! += c.bid[i]! * w; denseAsk[at]! += c.ask[i]! * w;
+    }
+  }
+  const offsets = touched.subarray(0, count).sort();
+  const bins = new Int32Array(count), bidSum = new Float64Array(count), askSum = new Float64Array(count);
+  for (let i = 0; i < count; i++) { const at = offsets[i]!; bins[i] = lo + at; bidSum[i] = denseBid[at]!; askSum[i] = denseAsk[at]!; }
+  return finish(t, n, bins, bidSum, askSum, minBinUsd);
+}
+
+/** The index of the first column at or after `t` (columns oldest first). */
+function firstFrom(list: readonly Column[], t: number): number {
+  let lo = 0, hi = list.length;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (list[mid]!.t < t) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+/** How many bins of merged windows are kept for the next question: two days of every market at one step fit (at most about 72 MB). */
+const MERGED_CACHE_BINS = 6_000_000;
 
 export interface RecorderOptions {
   store?: ColumnStore | null;
@@ -93,6 +160,9 @@ export class DepthRecorder {
   readonly #now: () => number;
   readonly #retentionMs: number;
   readonly #minBinUsd: number;
+  /** Merged windows that have ended, by instrument, step and start, least recently asked first; and how many bins they hold. */
+  readonly #merged = new Map<string, Column>();
+  #mergedBins = 0;
 
   constructor({ store = null, now = Date.now, steps = new Map(), retentionMs = RETENTION_MS, minBinUsd = MIN_BIN_USD }: RecorderOptions = {}) {
     this.#store = store; this.#now = now; this.steps = steps; this.#retentionMs = retentionMs; this.#minBinUsd = minBinUsd;
@@ -184,28 +254,41 @@ export class DepthRecorder {
   prune(now = this.#now()): void {
     const cutoff = now - this.#retentionMs;
     for (const list of this.columns.values()) { let drop = 0; while (drop < list.length && list[drop]!.t < cutoff) drop++; if (drop) list.splice(0, drop); }
+    // A kept window that began before the cutoff has lost minutes since it was merged.
+    for (const [key, column] of this.#merged) if (column.t < cutoff) { this.#merged.delete(key); this.#mergedBins -= column.bins.length; }
     this.#store?.prune(cutoff);
   }
 
-  /** Columns in [from, to), optionally merged into stepMs windows (a multiple of COLUMN_MS). The open minute is included. */
+  /**
+   * Columns in [from, to), optionally merged into stepMs windows (a multiple of COLUMN_MS, aligned to it). The open minute is included.
+   * A window that lies wholly inside the question and has ended (none of its minutes can change) is kept, so zooming and panning over
+   * the same days merges each of them once.
+   */
   query(instrumentId: string, from: number, to: number, stepMs = COLUMN_MS): Column[] {
-    const list = [...(this.columns.get(instrumentId) ?? [])];
+    const list = this.columns.get(instrumentId) ?? [];
+    const inRange = list.slice(firstFrom(list, from), firstFrom(list, to));
     const open = this.#pending.get(instrumentId);
-    if (open && open.n > 0) list.push(finalize(open, this.#minBinUsd));
-    const inRange = list.filter(column => column.t >= from && column.t < to);
+    if (open && open.n > 0 && open.t >= from && open.t < to) inRange.push(finalize(open, this.#minBinUsd));
     if (stepMs <= COLUMN_MS) return inRange;
-    const merged = new Map<number, { t: number; n: number; bid: Map<number, number>; ask: Map<number, number> }>();
-    for (const column of inRange) {
-      const t = Math.floor(column.t / stepMs) * stepMs;
-      let group = merged.get(t);
-      if (!group) { group = { t, n: 0, bid: new Map(), ask: new Map() }; merged.set(t, group); }
-      group.n += column.n;
-      for (let i = 0; i < column.bins.length; i++) {
-        const bin = column.bins[i]!;
-        group.bid.set(bin, (group.bid.get(bin) ?? 0) + column.bid[i]! * column.n);
-        group.ask.set(bin, (group.ask.get(bin) ?? 0) + column.ask[i]! * column.n);
+    const settled = Math.min(Math.floor(this.#now() / COLUMN_MS) * COLUMN_MS, open ? open.t : Infinity);
+    const out: Column[] = [];
+    for (let start = 0; start < inRange.length;) {
+      const t = Math.floor(inRange[start]!.t / stepMs) * stepMs;
+      let end = start + 1;
+      while (end < inRange.length && inRange[end]!.t < t + stepMs) end++;
+      const whole = t >= from && t + stepMs <= to && t + stepMs <= settled, key = `${instrumentId}|${stepMs}|${t}`;
+      let column = whole ? this.#merged.get(key) : undefined;
+      if (column) { this.#merged.delete(key); this.#merged.set(key, column); }
+      else {
+        column = mergeWindow(inRange, start, end, t, this.#minBinUsd);
+        if (whole) {
+          this.#merged.set(key, column); this.#mergedBins += column.bins.length;
+          for (const [oldest, gone] of this.#merged) { if (this.#mergedBins <= MERGED_CACHE_BINS) break; this.#merged.delete(oldest); this.#mergedBins -= gone.bins.length; }
+        }
       }
+      out.push(column);
+      start = end;
     }
-    return [...merged.values()].sort((a, b) => a.t - b.t).map(finalize);
+    return out;
   }
 }

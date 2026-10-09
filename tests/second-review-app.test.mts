@@ -182,6 +182,9 @@ test('the depth request is made again when the recorded columns it was waiting f
   assert.notEqual(key({ columns: 4 }), key(), 'columns arrived: the answer was made from fewer');
   for (const over of [{ ids: ['a:BTC', 'b:BTC'] }, { t0: 1_100 }, { t1: 2_100 }, { w: 900 }, { range: 0.1 }]) assert.notEqual(key(over), key(), JSON.stringify(over));
   assert.equal(key({ t0: 1_000.2, t1: 2_000.4 }), key(), 'a fraction of a millisecond of view is not another request');
+  // A map following the live edge moves a little every frame: within a column of the answer (here 1000 ms over 400 columns) it is the same request.
+  assert.equal(key({ t0: 1_001.9, t1: 2_001.7 }), key(), 'the view moved by less than a column');
+  assert.notEqual(key({ t0: 1_003, t1: 2_002.8 }), key(), 'the view moved by a column');
 });
 
 // ---- 11: a frame that lists no books ----------------------------------------------------------------------------------------------------------------------

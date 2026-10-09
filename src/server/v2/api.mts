@@ -11,7 +11,7 @@ import { encodeColumns, encodeLevels } from './wire.mts';
 import { FootprintRecorder } from './footprint.mts';
 import { MAX_PROFILE_INSTRUMENTS, MAX_RANGE_INSTRUMENTS, MAX_SIZES_MINUTES, MAX_SIZES_WINDOWS, MAX_VALUE_AREA_SPAN_MS, MAX_VALUE_AREA_WINDOWS, type TradeLike } from '../../shared/footprint.ts';
 import { RecordedBefore } from '../../shared/restart.ts';
-import { FLOW_SEC, FlowRecorder, encodeFlowFrame } from './flow.mts';
+import { FLOW_SEC, FlowRecorder, encodeFlowFrame, encodeFlowMinutes } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, toWire } from './prints.mts';
 import { OrderBuilder, orderRow, type TakenFill } from '../../shared/orders.ts';
@@ -32,6 +32,8 @@ export interface V2Handle {
 const MAX_COLUMN_SPAN_MS = 8 * 24 * 3_600_000;
 /** The most flow history one request may ask for: what the recorder keeps in memory, and a few thousand seconds per instrument cost 8 bytes each. */
 const MAX_FLOW_SPAN_MS = 36 * 3_600_000, MAX_FLOW_INSTRUMENTS = 40;
+/** The most a minute-totals request may span: everything the store keeps (a week), at 20 bytes a minute per instrument. */
+const MAX_FLOW_MINUTES_SPAN_MS = 8 * 24 * 3_600_000;
 /** The most instruments one sizes question may name: it is answered whole, never in parts (the minutes two parts saw could not be told apart), and the flow recorder keeps at most 48. */
 const MAX_SIZES_INSTRUMENTS = 96;
 /** A client whose unsent backlog passes this is dropped rather than buffered without bound; levels frames are skipped past a lower mark. */
@@ -337,6 +339,11 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_FLOW_SPAN_MS);
     sendBinary(res, Buffer.from(encodeFlowFrame(flow.frame(ids, from, to))));
   };
+  const flowMinutesRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean).slice(0, MAX_FLOW_INSTRUMENTS);
+    const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 24 * 3_600_000), to - MAX_FLOW_MINUTES_SPAN_MS);
+    sendBinary(res, Buffer.from(encodeFlowMinutes(flow.minutes(ids, from, to))));
+  };
   const venuesRoute = (res: ServerResponse) => sendJson(res, { venues: extra.list() });
   const venuesSet = (req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = []; let size = 0;
@@ -374,6 +381,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/footprint': footprintRoute(url, res); return true;
           case '/api/v2/prints': printsRoute(url, res); return true;
           case '/api/v2/flow': flowRoute(url, res); return true;
+          case '/api/v2/flow-minutes': flowMinutesRoute(url, res); return true;
           case '/api/v2/sizes': sizesRoute(url, res); return true;
           case '/api/v2/profile': profileRoute(url, res); return true;
           case '/api/v2/range': rangeRoute(url, res); return true;

@@ -877,5 +877,6 @@
  "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "选择一个区域并汇总那里的成交：在地图上拖动选择方框，在其下方的面板上拖动选择一段时间。Ctrl+拖动（Mac 上为 Cmd）随时可以选择。",
  "{n} smaller venues": "{n} 个较小的交易所",
  "Show the exchange in each bubble": "在每个气泡中显示交易所",
- "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "在每个够大的气泡中央显示交易所标记。悬停某个气泡时，其他交易所会淡出，突出该交易所成交的位置。"
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "在每个够大的气泡中央显示交易所标记。悬停某个气泡时，其他交易所会淡出，突出该交易所成交的位置。",
+ "Flow since {time}: older flow is not available from this source": "资金流自 {time} 起：此数据源不提供更早的资金流"
 }

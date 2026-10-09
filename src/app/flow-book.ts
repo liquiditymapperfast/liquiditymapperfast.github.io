@@ -1,4 +1,5 @@
-import { FlowSeries, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
+import { FlowMinutes, FlowSeries, type FlowFrame, type FlowMinutesFrame, type FlowUpdate } from '../shared/flow.ts';
+import { FlowTrack } from './cvd/track.ts';
 
 /**
  * The page's taker flow: one `FlowSeries` per instrument, fed by the history a source answers and by the seconds it pushes. The two meet
@@ -7,6 +8,9 @@ import { FlowSeries, type FlowFrame, type FlowUpdate } from '../shared/flow.ts';
  */
 export class FlowBook {
   readonly #series = new Map<string, FlowSeries>();
+  /** Older flow a minute at a time, and the window each instrument's minutes were asked for (answered or not). */
+  readonly #minutes = new Map<string, FlowMinutes>();
+  readonly #minutesAsked = new Map<string, { from: number; to: number }>();
   readonly #held = new Map<string, FlowUpdate[]>();
   /** inst -> the earliest millisecond its history was asked from (answered or not: an instrument with nothing recorded is not asked again). */
   readonly #from = new Map<string, number>();
@@ -19,6 +23,11 @@ export class FlowBook {
   get ids(): string[] { return [...this.#series.keys()]; }
   get(id: string): FlowSeries | undefined { return this.#series.get(id); }
   has(id: string): boolean { return this.#series.has(id); }
+  /** The instrument's line for the column: its seconds and, before them, its minutes (undefined when it has neither). */
+  track(id: string): FlowTrack | undefined {
+    const seconds = this.#series.get(id), minutes = this.#minutes.get(id);
+    return seconds || minutes ? new FlowTrack(seconds, minutes) : undefined;
+  }
 
   /** Seconds from the live stream. */
   apply(items: readonly FlowUpdate[]): void {
@@ -64,6 +73,17 @@ export class FlowBook {
     }
     this.version++;
   }
+  /** Which of `ids` still need minutes over [from, to] (never asked, or asked for less). */
+  minutesMissing(ids: readonly string[], from: number, to: number): string[] {
+    return ids.filter(id => { const asked = this.#minutesAsked.get(id); return !(asked && asked.from <= from && asked.to >= to); });
+  }
+  /** Minutes answered for `ids` over [from, to]: each instrument's replace what it had (one with none keeps none). */
+  loadMinutes(frame: FlowMinutesFrame, ids: readonly string[], from: number, to: number): void {
+    for (const id of ids) { this.#minutes.delete(id); this.#minutesAsked.set(id, { from, to }); }
+    for (const s of frame.instruments) if (ids.includes(s.id)) this.#minutes.set(s.id, new FlowMinutes(s));
+    this.version++;
+  }
+
   /** The request failed: let the live seconds in again and allow another try. */
   fail(ids: readonly string[]): void {
     for (const id of ids) { for (const item of this.#held.get(id) ?? []) this.#put(item); this.#held.delete(id); this.#began.delete(id); }

@@ -19,7 +19,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { tradedHeader, tradedLines, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { flowIds, flowLoadIds } from '../cvd/ids.ts';
-import { markLines, markSize, type AbsorptionMark } from '../absorption.ts';
+import { iconsOf, markLines, markSize, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
@@ -38,6 +38,30 @@ import type { RangePoint, RangeTool } from '../range/tool.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
+
+/** Glows around whale bubbles, by colour, radius (whole px) and pixel ratio. */
+const glows = new Map<string, { image: HTMLCanvasElement; half: number }>();
+/**
+ * The soft glow around a whale's bubble: the shadow a 1.8 px ring of radius `r` casts with a 10 px blur, drawn once for each colour and
+ * size and copied after that. A blurred shadow on every whale bubble on every frame was most of what the map cost the graphics card
+ * zoomed out, where nearly every bubble shown is a whale.
+ */
+function glowOf(color: string, r: number, dpr: number): { image: HTMLCanvasElement; half: number } {
+  const radius = Math.max(1, Math.round(r)), key = `${color}|${radius}|${dpr}`;
+  let glow = glows.get(key);
+  if (glow) return glow;
+  if (glows.size > 160) glows.clear();
+  // The blur reaches about three times its sigma (half the blur, in device pixels) past the ring.
+  const half = Math.ceil(radius + 2 + 16 / dpr), image = document.createElement('canvas'), g = image.getContext('2d')!;
+  image.width = image.height = Math.ceil(half * 2 * dpr);
+  // The ring is drawn off the canvas and its shadow, offset back into the middle, is all that lands (shadows ignore the transform).
+  const away = 4 * half;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.shadowColor = color; g.shadowBlur = 10; g.shadowOffsetX = away * dpr;
+  g.lineWidth = 1.8; g.strokeStyle = '#000'; g.beginPath(); g.arc(half - away, half, radius, 0, Math.PI * 2); g.stroke();
+  glow = { image, half }; glows.set(key, glow);
+  return glow;
+}
 /** A recording younger than this gets the faded placeholder to its left. */
 const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
 /** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
@@ -128,6 +152,8 @@ export class HeatPane {
   #volume: VolumeAnalysis | null = null;
   /** Absorption icons drawn in the last frame (centre, size, the marks they stand for), for hover. */
   #absorptionIcons: { x: number; y: number; s: number; marks: AbsorptionMark[]; usd: number }[] = [];
+  /** The squares last worked out, for the view they were worked out at (see #paintAbsorption). */
+  #absorptionLayout: { key: string; t0: number; shown: MarkIcon[] } | null = null;
   /** The thresholds of the last frame, kept while nothing they depend on changed (the book, the settings, the minute, the venues). */
   #absorptionKey = ''; #absorptionThresholds: Map<string, number | null> = new Map();
   /** Bubbles drawn in the last frame, for hover. */
@@ -255,7 +281,9 @@ export class HeatPane {
     const cov = this.gl.coverage;
     const outside = !cov || v.t0 < cov.t0 || v.t1 > cov.t1 || v.p0 < cov.p0 || v.p1 > cov.p1
       || (v.t1 - v.t0) / (cov.t1 - cov.t0) < 0.55 || (v.p1 - v.p0) / (cov.p1 - cov.p0) < 0.55;
-    const stale = this.#rasteredVersion !== this.#dataVersion || this.#rasteredKey !== key || performance.now() - this.#lastRasterAt > 1_500;
+    // What is live is drawn again every second and a half, or, where a raster takes long (days of many venues), no more often than leaves the
+    // worker two thirds of its time for the panes' questions.
+    const stale = this.#rasteredVersion !== this.#dataVersion || this.#rasteredKey !== key || performance.now() - this.#lastRasterAt > Math.max(1_500, 3 * this.hub.busyMs);
     if (this.#rasteredKey !== key) this.#forceBaseline = true;
     void this.hub.loadColumns(v, this.plotW).catch(error => console.error('column load failed', error));
     if (!ids.length || (!outside && !stale)) return;
@@ -594,9 +622,10 @@ export class HeatPane {
     for (const { x, y, r, print } of this.#bubbles) {
       const color = print.side === 'buy' ? p.bid : p.ask, k = dim(print);
       ctx.globalAlpha = s.opacity * fade * k; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.95 * fade * k; ctx.lineWidth = print.usd >= whale ? 1.8 : 1; ctx.strokeStyle = print.usd >= whale ? (p.dark ? '#ffffff' : '#14171c') : color;
-      if (print.usd >= whale && k === 1) { ctx.shadowColor = color; ctx.shadowBlur = 10; }
-      ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.95 * fade * k;
+      if (print.usd >= whale && k === 1) { const glow = glowOf(color, r, this.#dpr); ctx.drawImage(glow.image, x - glow.half, y - glow.half, glow.half * 2, glow.half * 2); }
+      ctx.lineWidth = print.usd >= whale ? 1.8 : 1; ctx.strokeStyle = print.usd >= whale ? (p.dark ? '#ffffff' : '#14171c') : color;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
       // The hovered venue's bubbles, ringed in the text colour a little outside their own edge.
       if (focus !== null && k === 1) { ctx.globalAlpha = fade; ctx.lineWidth = 1.5; ctx.strokeStyle = p.text; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
     }
@@ -1053,29 +1082,29 @@ export class HeatPane {
     this.#absorptionIcons = [];
     const s = state.absorption; if (!s.on) return;
     const v = this.view, p = this.#palette, { ids, thresholds } = this.#absorptionContext(state);
-    const marks = this.hub.absorption.marks(ids, thresholds, v.t0, v.t1, v.p0, v.p1);
-    const OFFSET = 20, NEAR = 12;
-    const icons: { side: 'buy' | 'sell'; x: number; y: number; usd: number; marks: AbsorptionMark[] }[] = [];
-    for (const m of [...marks].sort((a, b) => b.usd - a.usd)) {
-      const x = v.xOf((m.t0 + m.t1) / 2, pw), y = v.yOf(m.price, ph);
-      if (x < -NEAR || x > pw + NEAR || y < -NEAR || y > ph + NEAR) continue;
-      const near = icons.find(i => i.side === m.side && Math.abs(i.x - x) < NEAR && Math.abs(i.y - y) < NEAR);
-      if (near) { near.usd += m.usd; near.marks.push(m); } else icons.push({ side: m.side, x, y, usd: m.usd, marks: [m] });
+    const OFFSET = 20, span = v.t1 - v.t0, pixelMs = span / pw;
+    // The squares are worked out again only when the marks, the scale or the plot change, or the map has moved by a whole pixel: a frame that
+    // only moves the pointer, or follows the live edge by part of a pixel, draws the same squares moved by what the map moved (`dx`).
+    const key = `${this.#absorptionKey}|${Math.round(span)}|${v.p0}|${v.p1}|${pw}|${ph}|${Math.floor(v.t0 / pixelMs)}`;
+    if (this.#absorptionLayout?.key !== key) {
+      const marks = this.hub.absorption.marks(ids, thresholds, v.t0, v.t1, v.p0, v.p1);
+      const icons = iconsOf(marks, m => v.xOf((m.t0 + m.t1) / 2, pw), m => v.yOf(m.price, ph), pw, ph);
+      this.#absorptionLayout = { key, t0: v.t0, shown: icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12)))) };
     }
-    const shown = icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12))));
+    const { shown } = this.#absorptionLayout, dx = (this.#absorptionLayout.t0 - v.t0) / pixelMs;
     if (shown.length) {
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
       const edge = p.dark ? '#f2f2f2' : '#14171c', largest = shown[0]!.usd;
       ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-      for (const icon of shown.reverse()) {   // the largest last, on top
-        const passiveBuyers = icon.side === 'sell', color = passiveBuyers ? p.bid : p.ask;
+      for (let i = shown.length - 1; i >= 0; i--) {   // the largest last, on top
+        const icon = shown[i]!, x = icon.x + dx, passiveBuyers = icon.side === 'sell', color = passiveBuyers ? p.bid : p.ask;
         const size = markSize(icon.usd, largest), iy = icon.y + (passiveBuyers ? OFFSET : -OFFSET);
         ctx.globalAlpha = 0.9; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
-        ctx.beginPath(); ctx.moveTo(Math.round(icon.x) + 0.5, icon.y); ctx.lineTo(Math.round(icon.x) + 0.5, iy + (passiveBuyers ? -size / 2 : size / 2)); ctx.stroke(); ctx.setLineDash([]);
-        ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillRect(icon.x - 2, icon.y - 2, 4, 4);
-        ctx.fillRect(icon.x - size / 2, iy - size / 2, size, size);
-        ctx.strokeStyle = edge; ctx.strokeRect(Math.round(icon.x - size / 2) + 0.5, Math.round(iy - size / 2) + 0.5, Math.round(size) - 1, Math.round(size) - 1);
-        this.#absorptionIcons.push({ x: icon.x, y: iy, s: size, marks: icon.marks, usd: icon.usd });
+        ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, icon.y); ctx.lineTo(Math.round(x) + 0.5, iy + (passiveBuyers ? -size / 2 : size / 2)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillRect(x - 2, icon.y - 2, 4, 4);
+        ctx.fillRect(x - size / 2, iy - size / 2, size, size);
+        ctx.strokeStyle = edge; ctx.strokeRect(Math.round(x - size / 2) + 0.5, Math.round(iy - size / 2) + 0.5, Math.round(size) - 1, Math.round(size) - 1);
+        this.#absorptionIcons.push({ x, y: iy, s: size, marks: icon.marks, usd: icon.usd });
       }
       if (s.volume) {
         // The volumes after every square, the largest first: one that would cover a square or a label already written is left out (the

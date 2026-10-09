@@ -9,7 +9,7 @@ import { WebSocket } from 'ws';
 import { createLocalServer } from '../src/server/http.mts';
 import { installV2 } from '../src/server/v2/api.mts';
 import { FlowRecorder } from '../src/server/v2/flow.mts';
-import { decodeFlowFrame } from '../src/shared/flow.ts';
+import { decodeFlowFrame, decodeFlowMinutes, encodeFlowMinutes } from '../src/shared/flow.ts';
 import { HistoryStore } from '../src/server/history.mts';
 import { QuotaLedger } from '../src/core/quota.mts';
 
@@ -70,6 +70,10 @@ test('the server pushes the seconds that changed, and answers a history request 
     assert.equal(series.buy.reduce((a, b) => a + b, 0), 5_000); assert.equal(series.sell.reduce((a, b) => a + b, 0), 2_000);
     assert.equal(series.buy[Math.floor((now - series.t0) / 1000)], 5_000);
     assert.equal(series.px![Math.floor((now - series.t0) / 1000)], 85_000);
+    const minutes = decodeFlowMinutes(await (await fetch(`http://127.0.0.1:${port}/api/v2/flow-minutes?inst=x:BTC,missing:BTC&from=${now - MIN}&to=${now + MIN}`)).arrayBuffer());
+    assert.deepEqual(minutes.instruments.map(i => i.id), ['x:BTC'], 'minutes too leave out an instrument with nothing recorded');
+    const minute = minutes.instruments[0]!, at = Math.floor((now - minute.t0) / MIN);
+    assert.deepEqual([minute.buy[at], minute.sell[at], minute.px[at]], [5_000, 2_000, 85_000]);
   } finally {
     socket.terminate(); v2.close();
     app.server.closeAllConnections(); await new Promise<void>(resolve => app.server.close(() => resolve())); await app.close();
@@ -89,5 +93,35 @@ test('a database written before prices were kept still loads, and its minutes ha
     const series = recorder.frame(['x:BTC'], T0, T0 + MIN).instruments[0]!;
     assert.equal(series.buy[2], 700); assert.equal(series.sell[2], 100); assert.ok(series.px!.every(v => v === 0));
     recorder.close();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('older flow comes a minute at a time: from the store where memory no longer holds it, from memory after, the same totals either way', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlm-flow-minutes-'));
+  const file = path.join(dir, 'f.sqlite');
+  const at = (id: string, side: string, usd: number, price: number, t: number) => ({ instrumentId: 'x:BTC', tradeId: id, side, price, notionalUsd: usd, sourceTimestamp: t });
+  // Second 1: +1000 -250, second 20: -2000, second 59: +40. The running delta ends its seconds at 0, 750 ... 750, -1250 ... -1250, -1210.
+  const minute = [at('1', 'buy', 1_000, 85_000, T0 + 1_000), at('2', 'sell', 250, 85_010, T0 + 1_400), at('3', 'sell', 2_000, 84_990, T0 + 20_000), at('4', 'buy', 40, 85_020, T0 + 59_000)];
+  try {
+    let now = T0 + 30_000;
+    const first = new FlowRecorder(file, () => now);
+    first.ingest(minute); now = T0 + 2 * MIN; first.flush(); first.close();
+    // Forty hours on, memory (a day and a half) holds none of it; the store does.
+    now = T0 + 40 * 3_600_000;
+    const later = new FlowRecorder(file, () => now);
+    later.ingest(minute.map((trade, i) => ({ ...trade, tradeId: `late-${i}`, sourceTimestamp: trade.sourceTimestamp + 40 * 3_600_000 - 2 * MIN })));
+    const frame = later.minutes(['x:BTC', 'none:BTC'], T0 - 5 * MIN, now + MIN);
+    assert.deepEqual(frame.instruments.map(i => i.id), ['x:BTC']);
+    const series = frame.instruments[0]!;
+    assert.equal(series.t0, T0, 'from the first recorded minute');
+    const expect = [1_040, 2_250, 85_020, -1_250, 750];
+    assert.deepEqual([series.buy[0], series.sell[0], series.px[0], series.lo[0], series.hi[0]], expect, 'the stored minute');
+    const recent = (40 * 3_600_000 - 2 * MIN) / MIN;
+    assert.deepEqual([series.buy[recent], series.sell[recent], series.px[recent], series.lo[recent], series.hi[recent]], expect, 'the same trades in memory read the same');
+    assert.deepEqual([series.buy[1], series.lo[1], series.hi[1], series.px[1]], [0, 0, 0, 0], 'a minute with nothing recorded');
+    const back = decodeFlowMinutes(encodeFlowMinutes(frame));
+    assert.deepEqual(back, frame, 'the bytes give the frame back');
+    assert.throws(() => decodeFlowMinutes(encodeFlowMinutes(frame).slice(0, 200)), /cut off/);
+    later.close();
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -1,5 +1,5 @@
 import type { Print } from './prints.ts';
-import type { FlowFrame, FlowUpdate } from '../shared/flow.ts';
+import type { FlowFrame, FlowMinutesFrame, FlowUpdate } from '../shared/flow.ts';
 import type { ProfileAnswer, RangeAnswer, SizesAnswer, ValueAreaAnswer } from '../shared/footprint.ts';
 import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../shared/absorption.ts';
 import type { ColumnsFrame, LevelsFrame } from './wire.ts';
@@ -82,6 +82,8 @@ export interface DataSource {
   columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame>;
   /** Taker buys and sells per second for each instrument over [from, to), from its first recorded minute in that range. */
   flow(ids: string[], from: number, to: number): Promise<FlowFrame>;
+  /** The same flow a minute at a time, for windows older than the seconds the page holds; a source that keeps no older flow (the browser keeps a day) has none. */
+  flowMinutes?(ids: string[], from: number, to: number): Promise<FlowMinutesFrame>;
   footprint(inst: string, tf: string, from: number, to: number, rowStep: number): Promise<FootprintResponse>;
   /**
    * The trades of `ids` added together by size over each of the last `windows` minutes (up to and including the open one), in one answer: the

@@ -877,5 +877,6 @@
  "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "영역을 선택해 그곳에서 거래된 것을 합산합니다. 지도를 드래그하면 사각형, 그 아래 패널을 드래그하면 기간을 선택합니다. Ctrl+드래그(Mac에서는 Cmd)로 언제든 선택할 수 있습니다.",
  "{n} smaller venues": "작은 거래소 {n}곳",
  "Show the exchange in each bubble": "각 버블에 거래소 표시",
- "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "들어갈 만큼 큰 버블마다 가운데에 거래소 표시를 넣습니다. 버블 위에 올리면 다른 거래소는 뒤로 물러나, 그 거래소가 거래한 곳이 드러납니다."
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "들어갈 만큼 큰 버블마다 가운데에 거래소 표시를 넣습니다. 버블 위에 올리면 다른 거래소는 뒤로 물러나, 그 거래소가 거래한 곳이 드러납니다.",
+ "Flow since {time}: older flow is not available from this source": "플로우 {time}부터: 이 소스에서는 이전 플로우를 사용할 수 없습니다"
 }

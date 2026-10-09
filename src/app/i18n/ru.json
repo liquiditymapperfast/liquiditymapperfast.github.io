@@ -912,5 +912,6 @@
   "other": "{n} небольшой биржи"
  },
  "Show the exchange in each bubble": "Показывать биржу в каждом пузыре",
- "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Её знак в центре каждого пузыря, в который он помещается. Наведите на пузырь, и остальные биржи отступят, а места, где торговала эта биржа, выделятся."
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Её знак в центре каждого пузыря, в который он помещается. Наведите на пузырь, и остальные биржи отступят, а места, где торговала эта биржа, выделятся.",
+ "Flow since {time}: older flow is not available from this source": "Поток с {time}: более ранний поток недоступен из этого источника"
 }

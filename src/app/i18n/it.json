@@ -905,5 +905,6 @@
   "other": "{n} exchange minori"
  },
  "Show the exchange in each bubble": "Mostra l'exchange in ogni bolla",
- "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Il suo segno al centro di ogni bolla abbastanza grande da contenerlo. Passa su una bolla e gli altri exchange si fanno da parte, così risaltano i punti in cui quell'exchange ha scambiato."
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Il suo segno al centro di ogni bolla abbastanza grande da contenerlo. Passa su una bolla e gli altri exchange si fanno da parte, così risaltano i punti in cui quell'exchange ha scambiato.",
+ "Flow since {time}: older flow is not available from this source": "Flusso dalle {time}: il flusso precedente non è disponibile da questa fonte"
 }

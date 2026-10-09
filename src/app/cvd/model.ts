@@ -1,6 +1,7 @@
 import type { FlowSeries } from '../../shared/flow.ts';
 import type { FlowBook } from '../flow-book.ts';
 import type { Kind } from '../scope.ts';
+import type { FlowTrack } from './track.ts';
 import { buildFamilies, type Family } from './families.ts';
 import { Ranker, pickTop, quiet, rankAll, type RankInput } from './rank.ts';
 import { RANK_MS, type CvdSettings } from './settings.ts';
@@ -50,11 +51,14 @@ const range = (...arrays: Float64Array[]): { min: number; max: number } => {
   return min <= max ? { min, max } : { min: NaN, max: NaN };
 };
 
-/** A lane's line over [t0, t1): the running delta from the window's left edge (or as it stands, with `rebase` off), and its figures over the rank window. */
-function laneLine(id: string, kind: Kind, series: FlowSeries, o: { t0Sec: number; t1Sec: number; columns: number; winStart: number; nowSec: number; now: number; rebase: boolean; quietFlag: boolean }): LaneLine {
+/**
+ * A lane's line over [t0, t1) from its track (its seconds, and its minutes before them): the running delta from the window's left edge (or as
+ * it stands, with `rebase` off), and its figures over the rank window from its seconds.
+ */
+function laneLine(id: string, kind: Kind, series: FlowSeries, track: FlowTrack, o: { t0Sec: number; t1Sec: number; columns: number; winStart: number; nowSec: number; now: number; rebase: boolean; quietFlag: boolean }): LaneLine {
   const out = new Float64Array(o.columns * 3);
-  series.decimate(o.t0Sec, o.t1Sec, o.columns, out);
-  const base = o.rebase ? series.cumDelta(o.t0Sec - 1) : 0;
+  track.decimate(o.t0Sec, o.t1Sec, o.columns, out);
+  const base = o.rebase ? track.cumDelta(o.t0Sec - 1) : 0;
   const lo = new Float64Array(o.columns), hi = new Float64Array(o.columns), last = new Float64Array(o.columns);
   for (let c = 0; c < o.columns; c++) { lo[c] = out[c * 3]! - base; hi[c] = out[c * 3 + 1]! - base; last[c] = out[c * 3 + 2]! - base; }
   const r = range(lo, hi);
@@ -83,21 +87,21 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
   const held = ranker.apply(now, fresh, everyone);
   const rows: FamilyRow[] = held.map((r, i) => ({
     key: r.family.key, rank: i + 1, share: r.share, gross: r.gross, quiet: r.quiet,
-    lanes: [...r.family.lanes].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'spot' ? -1 : 1)).map(lane => laneLine(lane.id, lane.kind, flow.get(lane.id)!, common)),
+    lanes: [...r.family.lanes].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'spot' ? -1 : 1)).map(lane => laneLine(lane.id, lane.kind, flow.get(lane.id)!, flow.track(lane.id)!, common)),
   }));
   const volumeFamilies = everyone.length;
 
   const aggregate = (kind: Kind): LaneLine | null => {
-    const lanes = families.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => flow.get(l.id)!);
+    const ids = families.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => l.id), lanes = ids.map(id => flow.get(id)!), tracks = ids.map(id => flow.track(id)!);
     if (!lanes.length) return null;
     const last = nan(columns), span = t1Sec - t0Sec;
     let delta = 0, gross = 0;
-    const bases = lanes.map(s => settings.rebase ? s.cumDelta(t0Sec - 1) : 0);
+    const bases = tracks.map(s => settings.rebase ? s.cumDelta(t0Sec - 1) : 0), firsts = tracks.map(s => s.first);
     for (let c = 0; c < columns; c++) {
       // The same slices as FlowSeries.decimate, so the aggregate and the lanes line up column for column.
       const a = t0Sec + Math.floor(span * c / columns), end = Math.max(a + 1, t0Sec + Math.floor(span * (c + 1) / columns)) - 1;
       let sum = 0, any = false;
-      lanes.forEach((s, i) => { const sp = s.span; if (sp && end >= sp.first) { sum += s.cumDelta(end) - bases[i]!; any = true; } });
+      tracks.forEach((s, i) => { const first = firsts[i]; if (first !== null && first !== undefined && end >= first) { sum += s.cumDelta(end) - bases[i]!; any = true; } });
       if (any) last[c] = sum;
     }
     for (const s of lanes) { delta += s.delta(winStart, nowSec); gross += s.gross(winStart, nowSec); }

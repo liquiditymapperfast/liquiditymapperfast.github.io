@@ -13,7 +13,7 @@ import { gutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
 import { BAR_STATS, GROUP_TITLES, PRESETS, sizeBucketLabels, enabledStats, rowScale, statCellLines, statDef, strength, type StatCell, type StatGroup } from './bar-stats.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { barAt, columnAt, depthCardLines, depthKey, imbalanceFlags, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
+import { barAt, columnAt, depthCardLines, depthColumns, depthKey, imbalanceFlags, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sortableList, togglePanel, type Panel } from '../ui.ts';
@@ -181,6 +181,10 @@ export class DepthPane extends TimePane {
   #range = 0.2;
   #series: { t0: number; t1: number; w: number; bid: Float32Array; ask: Float32Array } | null = null;
   #key = ''; #busy = false;
+  /** When the last request was made, and how long the worker took to answer it (the live edge is asked again on a clock that allows for it). */
+  #askedAt = 0; #tookMs = 0;
+  /** The columns Highlights flags, worked out once for each depth answer and setting (the rule looks back over many columns), not on every frame the pointer moves. */
+  #flags: { series: object; key: string; flags: Uint8Array } | null = null;
   /** The pane is too short for a popup drawn on it, so what the pointer is over is said in a page element. */
   #card = new HoverCard();
   #lines: InfoLine[] | null = null;
@@ -209,9 +213,12 @@ export class DepthPane extends TimePane {
     const emptyScope = emptyScopeMessage(state);
     if (emptyScope) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
     const key = depthKey(ids, v.t0, v.t1, pw, this.#range, this.hub.columnsVersion);
-    if (key !== this.#key && !this.#busy && ids.length) {
+    // What is live changes without the view moving: asked again every second and a half, or less often when an answer takes long.
+    const refresh = v.t1 > Date.now() - 2 * MINUTE && performance.now() - this.#askedAt > Math.max(1_500, 3 * this.#tookMs);
+    if ((key !== this.#key || refresh) && !this.#busy && ids.length) {
       this.#key = key; this.#busy = true;
-      const w = Math.min(1200, Math.max(60, Math.floor(pw / 2)));
+      const asked = this.#askedAt = performance.now();
+      const w = depthColumns(pw);
       const mids = new Float64Array(w);
       const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
       for (let x = 0; x < w; x++) {
@@ -221,7 +228,7 @@ export class DepthPane extends TimePane {
         mids[x] = close;
       }
       const t0 = v.t0, t1 = v.t1;
-      void this.hub.depth(ids, t0, t1, w, this.#range, mids).then(r => { this.#series = { t0, t1, w, bid: r.bid, ask: r.ask }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
+      void this.hub.depth(ids, t0, t1, w, this.#range, mids).then(r => { this.#tookMs = performance.now() - asked; this.#series = { t0, t1, w, bid: r.bid, ask: r.ask }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
     }
     const s = this.#series;
     const readout = this.head.querySelector('.readout');
@@ -247,7 +254,9 @@ export class DepthPane extends TimePane {
     const xOf = (t: number) => v.xOf(t, pw);
     // Which columns stand out is the page's one rule (Highlights: how many deviations, over how many bars before); the rest recedes.
     const columnsPerBar = s.w * (TIMEFRAMES[state.timeframe] ?? 3_600_000) / Math.max(1, s.t1 - s.t0);
-    const unusual = cue ? imbalanceFlags(s.bid, s.ask, state.highlight, columnsPerBar) : null;
+    const flagKey = `${columnsPerBar}|${state.highlight.length}|${state.highlight.mult}`;
+    if (cue && (this.#flags?.series !== s || this.#flags.key !== flagKey)) this.#flags = { series: s, key: flagKey, flags: imbalanceFlags(s.bid, s.ask, state.highlight, columnsPerBar) };
+    const unusual = cue ? this.#flags!.flags : null;
     for (let x = 0; x < s.w; x++) {
       const t = s.t0 + x / s.w * (s.t1 - s.t0), t2 = s.t0 + (x + 1) / s.w * (s.t1 - s.t0);
       const x0 = xOf(t), x1 = xOf(t2);

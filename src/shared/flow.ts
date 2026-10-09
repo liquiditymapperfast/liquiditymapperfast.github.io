@@ -36,6 +36,26 @@ export interface FlowStore {
   load(since: number): Iterable<FlowMinuteRow>;
   save(rows: FlowMinuteRow[], expireBefore: number): void;
   close(): void;
+  /** One instrument's stored minutes in [from, to), for what memory no longer holds (a store that cannot read a range has only what memory has). */
+  range?(inst: string, from: number, to: number): Iterable<FlowMinuteRow>;
+}
+/**
+ * One instrument's flow a minute at a time, for windows older than the seconds the page holds: per minute from `t0` (ms), the USD bought
+ * and sold at market, the last traded price (0: none), and the lowest and highest the running delta reached at the end of its seconds,
+ * counted from where it stood when the minute began (0 for a minute with nothing recorded).
+ */
+export interface FlowMinutesSeries { id: string; t0: number; buy: Float32Array; sell: Float32Array; px: Float32Array; lo: Float32Array; hi: Float32Array }
+export interface FlowMinutesFrame { from: number; to: number; instruments: FlowMinutesSeries[] }
+
+/** A minute's totals from its 60 seconds of buys and sells and their prices (`priceAt(i)`, 0 where none). */
+function summarise(buy: ArrayLike<number>, sell: ArrayLike<number>, priceAt: (i: number) => number): [number, number, number, number, number] {
+  let b = 0, s = 0, d = 0, lo = Infinity, hi = -Infinity, px = 0;
+  for (let i = 0; i < 60; i++) {
+    b += buy[i]!; s += sell[i]!; d += buy[i]! - sell[i]!;
+    if (d < lo) lo = d; if (d > hi) hi = d;
+    const p = priceAt(i); if (p > 0) px = p;
+  }
+  return [b, s, px, lo, hi];
 }
 /** One second's totals as they are pushed to the page: [instrument, second start (ms), buy USD, sell USD, volume-weighted price (0 or absent: no trade)]. They replace what the page had for that second. */
 export type FlowUpdate = [string, number, number, number, number?];
@@ -184,6 +204,31 @@ export class FlowRecorder {
     return { from: start, to: end, instruments };
   }
 
+  /**
+   * Each instrument's minutes in [from, to) as minute totals (see FlowMinutesSeries), starting at its first recorded minute there; an
+   * instrument with none is left out. Memory answers what it holds, the store what is older (both are the same seconds, so a minute reads
+   * the same from either).
+   */
+  minutes(ids: readonly string[], from: number, to: number): FlowMinutesFrame {
+    const start = Math.floor(from / MINUTE) * MINUTE, end = Math.ceil(to / MINUTE) * MINUTE;
+    const instruments: FlowMinutesSeries[] = [];
+    for (const id of ids) {
+      const found = new Map<number, [number, number, number, number, number]>(), memory = this.#minutes.get(id);
+      let held = end;
+      if (memory) for (const t of memory.keys()) if (t < held) held = t;
+      if (this.#store?.range && start < held) for (const row of this.#store.range(id, start, Math.min(end, held))) {
+        if (row.buy.length === 60 && row.sell.length === 60) found.set(row.t, summarise(row.buy, row.sell, i => row.px?.[i] ?? 0));
+      }
+      if (memory) for (const [t, bins] of memory) if (t >= start && t < end) found.set(t, summarise(bins.subarray(0, 60), bins.subarray(60, 120), i => priceOf(bins, i)));
+      if (!found.size) continue;
+      let first = Infinity; for (const t of found.keys()) if (t < first) first = t;
+      const n = (end - first) / MINUTE, series: FlowMinutesSeries = { id, t0: first, buy: new Float32Array(n), sell: new Float32Array(n), px: new Float32Array(n), lo: new Float32Array(n), hi: new Float32Array(n) };
+      for (const [t, [b, s, px, lo, hi]] of found) { const i = (t - first) / MINUTE; series.buy[i] = b; series.sell[i] = s; series.px[i] = px; series.lo[i] = lo; series.hi[i] = hi; }
+      instruments.push(series);
+    }
+    return { from: start, to: end, instruments };
+  }
+
   /** What is recorded for an instrument: its first and last minute, for the page to know how far back to ask. */
   coverage(): Record<string, { first: number; last: number }> {
     const out: Record<string, { first: number; last: number }> = {};
@@ -328,7 +373,73 @@ export class FlowSeries {
   }
 }
 
+/**
+ * One instrument's older flow on the page, a minute at a time (see FlowMinutesSeries): the running delta and gross volume at the end of each
+ * minute, and the lowest and highest the running delta reached inside it, all counted from the start of the first minute. Minutes this old
+ * no longer change, so the whole answer is taken as it is.
+ */
+export class FlowMinutes {
+  /** The first minute's start (ms), and per minute: running sums at its end, the lowest and highest the running delta reached in it, its last price. */
+  readonly t0: number;
+  readonly #delta: Float64Array; readonly #gross: Float64Array; readonly #lo: Float64Array; readonly #hi: Float64Array; readonly #px: Float32Array;
+
+  constructor(s: FlowMinutesSeries) {
+    const n = Math.min(s.buy.length, s.sell.length, s.px.length, s.lo.length, s.hi.length);
+    this.t0 = s.t0; this.#delta = new Float64Array(n); this.#gross = new Float64Array(n); this.#lo = new Float64Array(n); this.#hi = new Float64Array(n); this.#px = s.px.slice(0, n);
+    let d = 0, g = 0;
+    for (let i = 0; i < n; i++) { this.#lo[i] = d + s.lo[i]!; this.#hi[i] = d + s.hi[i]!; d += s.buy[i]! - s.sell[i]!; g += s.buy[i]! + s.sell[i]!; this.#delta[i] = d; this.#gross[i] = g; }
+  }
+
+  get length(): number { return this.#delta.length; }
+  /** Where the minutes end (ms): the start of the minute after the last. */
+  get end(): number { return this.t0 + this.length * MINUTE; }
+  /** The minute that second `sec` falls in (may be outside the minutes held). */
+  indexOf(sec: number): number { return Math.floor((sec * 1000 - this.t0) / MINUTE); }
+  /** Running sums at the end of minute `i`, before the first minute 0; past the last, the last. */
+  deltaAt(i: number): number { return i < 0 ? 0 : this.#delta[Math.min(i, this.length - 1)]!; }
+  grossAt(i: number): number { return i < 0 ? 0 : this.#gross[Math.min(i, this.length - 1)]!; }
+  /** The lowest and highest the running delta reached inside minute `i` (held inside the minutes). */
+  lowAt(i: number): number { return this.#lo[i]!; }
+  highAt(i: number): number { return this.#hi[i]!; }
+  /** The last price at or before the end of minute `i`, read back at most two hours, or NaN. */
+  priceAt(i: number): number {
+    for (let k = Math.min(i, this.length - 1), stop = Math.max(0, k - PRICE_REACH / 60); k >= stop; k--) { const v = this.#px[k]!; if (v > 0) return v; }
+    return NaN;
+  }
+}
+
 // ---- On the wire ------------------------------------------------------------------------------------------------------------------------
+
+/** Minute totals as bytes, laid out as a flow frame is: a u32 header length, the header as JSON padded to 4 bytes, then each instrument's five Float32 arrays. */
+export function encodeFlowMinutes(frame: FlowMinutesFrame): Uint8Array {
+  const head = new TextEncoder().encode(JSON.stringify({ from: frame.from, to: frame.to, instruments: frame.instruments.map(i => ({ id: i.id, t0: i.t0, n: i.buy.length })) }));
+  const pad = (4 - (4 + head.length) % 4) % 4, body = frame.instruments.reduce((sum, i) => sum + i.buy.length * 20, 0);
+  const out = new Uint8Array(4 + head.length + pad + body), view = new DataView(out.buffer);
+  view.setUint32(0, head.length, true); out.set(head, 4);
+  let at = 4 + head.length + pad;
+  for (const i of frame.instruments) for (const array of [i.buy, i.sell, i.px, i.lo, i.hi]) { out.set(new Uint8Array(array.buffer, array.byteOffset, array.byteLength), at); at += array.byteLength; }
+  return out;
+}
+
+/** The inverse of `encodeFlowMinutes`; an answer that does not add up (cut off, or not this kind) is an error. */
+export function decodeFlowMinutes(input: ArrayBuffer | Uint8Array): FlowMinutesFrame {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const buffer = bytes.byteOffset % 4 === 0 ? bytes.buffer as ArrayBuffer : bytes.slice().buffer as ArrayBuffer, base = bytes.byteOffset % 4 === 0 ? bytes.byteOffset : 0;
+  if (bytes.byteLength < 4) throw new Error('flow minutes are too short');
+  const view = new DataView(buffer, base, bytes.byteLength), headLength = view.getUint32(0, true);
+  if (4 + headLength > bytes.byteLength) throw new Error('flow minutes header is cut off');
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, base + 4, headLength))) as { from?: unknown; to?: unknown; instruments?: { id: string; t0: number; n: number }[] };
+  if (typeof header.from !== 'number' || typeof header.to !== 'number' || !Array.isArray(header.instruments)) throw new Error('flow minutes header is not one');
+  let at = base + 4 + headLength + (4 - (4 + headLength) % 4) % 4;
+  const instruments: FlowMinutesSeries[] = [];
+  for (const { id, t0, n } of header.instruments) {
+    if (typeof id !== 'string' || !Number.isFinite(t0) || !Number.isInteger(n) || n < 0 || at + n * 20 > base + bytes.byteLength) throw new Error('flow minutes data is cut off');
+    const part = (k: number): Float32Array => new Float32Array(buffer, at + n * 4 * k, n);
+    instruments.push({ id, t0, buy: part(0), sell: part(1), px: part(2), lo: part(3), hi: part(4) });
+    at += n * 20;
+  }
+  return { from: header.from, to: header.to, instruments };
+}
 
 /**
  * A frame as bytes, for the server's answer: a u32 header length, the header as JSON padded to a multiple of 4 bytes, then each

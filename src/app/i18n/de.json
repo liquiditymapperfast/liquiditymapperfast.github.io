@@ -898,5 +898,6 @@
   "other": "{n} kleinere Börsen"
  },
  "Show the exchange in each bubble": "Die Börse in jeder Blase zeigen",
- "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Ihr Zeichen in der Mitte jeder Blase, die groß genug dafür ist. Fahre über eine Blase, und die anderen Börsen treten zurück, sodass die Stellen hervortreten, an denen diese Börse gehandelt hat."
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Ihr Zeichen in der Mitte jeder Blase, die groß genug dafür ist. Fahre über eine Blase, und die anderen Börsen treten zurück, sodass die Stellen hervortreten, an denen diese Börse gehandelt hat.",
+ "Flow since {time}: older flow is not available from this source": "Flow seit {time}: älterer Flow ist von dieser Quelle nicht verfügbar"
 }

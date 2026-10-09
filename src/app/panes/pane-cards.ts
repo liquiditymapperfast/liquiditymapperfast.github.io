@@ -9,12 +9,18 @@ import { t } from '../i18n.ts';
  * and which column of each series the pointer is over. Plain functions with no canvas and no DOM, so they are tested alone.
  */
 
+/** How many columns the Depth pane asks the worker for over a plot `plotW` px wide. */
+export const depthColumns = (plotW: number): number => Math.min(1200, Math.max(60, Math.floor(plotW / 2)));
+
 /**
  * What a Depth request was made for. The recorded columns that arrive later are part of it: an answer made from the columns that were here
- * before them is not the answer for the ones that came, and a view that stays where it is would otherwise keep it.
+ * before them is not the answer for the ones that came, and a view that stays where it is would otherwise keep it. The view counts in whole
+ * columns of the answer: the map following the live edge moves a little on every frame, and asking again for each of those kept the worker
+ * busy for nothing (what is live is refreshed on a clock instead).
  */
 export function depthKey(ids: readonly string[], t0: number, t1: number, plotW: number, range: number, columnsVersion: number): string {
-  return `${ids.join(',')}|${Math.round(t0)}|${Math.round(t1)}|${plotW}|${range}|${columnsVersion}`;
+  const span = t1 - t0, column = span / depthColumns(plotW);
+  return `${ids.join(',')}|${Math.round(span)}|${column > 0 ? Math.floor(t0 / column) : 0}|${plotW}|${range}|${columnsVersion}`;
 }
 
 /** The column of `count` equal columns over [t0, t1) that `time` falls in, or -1 outside it. */
