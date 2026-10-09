@@ -22,6 +22,7 @@ import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts
 import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
 import { buildKeyLevelPanel } from './keylevels/panel.ts';
 import { buildVwapPanel, type WhaleInfo } from './vwap/panel.ts';
+import { buildFootprintPanel } from './footprint/panel.ts';
 import type { KeyLevelHistory } from './keylevels/history.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
 import { openMenu } from './menu.ts';
@@ -57,7 +58,7 @@ const IDLE_GRACE_MS = 20_000;
 const UPCOMING = 'upcoming';
 
 /** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
-const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['footprint', t('Footprint')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')]];
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['candles', t('Candles')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
@@ -104,6 +105,9 @@ export class Toolbar {
   /** The previous day's, week's and month's levels (keylevels/), set in its panel. */
   #keyLevels = el('button', { class: 'led-btn', textContent: t('Key levels'), tip: HELP.keyLevels.tip });
   #keyLevelPanel: Panel | null = null;
+  /** The footprint (on/off is `show.footprint`), set in its panel: a lamp button since it holds settings, not one of the pane toggles. */
+  #footprint = el('button', { class: 'led-btn', textContent: t('Footprint'), tip: HELP.footprint.tip });
+  #footprintPanel: Panel | null = null;
   /** The VWAP lines (vwap/), set in its panel. */
   #vwap = el('button', { class: 'led-btn', textContent: t('VWAP'), tip: HELP.vwap.tip });
   #vwapPanel: Panel | null = null;
@@ -200,6 +204,10 @@ export class Toolbar {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildTrades(tools, body, () => this.#tradePanel?.render(build));
       this.#tradePanel = togglePanel(this.#trades, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
     };
+    this.#footprint.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildFootprintPanel(this.store, tools, body, () => this.#footprintPanel?.render(build));
+      this.#footprintPanel = togglePanel(this.#footprint, { title: t('Footprint'), width: 440, align: 'left', onClose: () => { this.#footprintPanel = null; } }, build);
+    };
     this.#vwap.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo);
       this.#vwapPanel = togglePanel(this.#vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring) this.store.set({ vwapAnchoring: false }); } }, build);
@@ -285,7 +293,7 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#keyLevels, this.#vwap, this.#highlights, this.#soundButton, this.#range,
+      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#footprint, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#keyLevels, this.#vwap, this.#highlights, this.#soundButton, this.#range,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
@@ -310,7 +318,7 @@ export class Toolbar {
       this.#heatctl.replaceChildren();
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
-        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#keyLevels, this.#vwap), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
+        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#footprint, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#keyLevels, this.#vwap), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
         section(t('Heatmap'), [
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
@@ -343,7 +351,7 @@ export class Toolbar {
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));

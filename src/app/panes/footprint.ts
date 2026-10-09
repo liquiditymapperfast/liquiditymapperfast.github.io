@@ -7,6 +7,8 @@ import type { FootprintResponse } from '../source.ts';
 import type { InfoLine } from '../infobox.ts';
 import { price as fmtPrice, clock } from '../format.ts';
 import { t } from '../i18n.ts';
+import type { BarMarks } from '../footprint/marks.ts';
+import type { FootprintSettings } from '../footprint/settings.ts';
 
 type Row = [number, number, number];
 /** Trade counts and USD by size bucket (see SIZE_BUCKET_LABELS); only present for bars whose executions were recorded with stats. */
@@ -129,6 +131,8 @@ export class FootprintData {
   /** Row step of the loaded data and the recorded finest step. */
   step = 0; fine = 0;
   bars = new Map<number, Bar>();
+  /** Bumped whenever `bars` is replaced, for what is worked out from them (the imbalance marks). */
+  version = 0;
   #key = ''; #loadedAt = 0; #busy = false;
   /** The market and timeframe the bars belong to, and the number of the request whose answer counts. */
   #context = ''; #request = 0;
@@ -139,14 +143,14 @@ export class FootprintData {
     // Rows of another market or timeframe are not rows of this one, whatever the window: they go now, rather than being drawn until the new
     // ones come (or for good, if they never do). A request still out for the old context is left to finish, and its answer is ignored.
     const context = `${inst}|${tf}`;
-    if (context !== this.#context) { this.#context = context; this.bars = new Map(); this.step = 0; this.fine = 0; this.#key = ''; this.#busy = false; }
+    if (context !== this.#context) { this.#context = context; this.bars = new Map(); this.step = 0; this.fine = 0; this.#key = ''; this.#busy = false; this.version++; }
     const key = `${context}|${rowStep}|${Math.floor(view.t0 / tfMs)}|${Math.floor(view.t1 / tfMs)}`;
     if (this.#busy || (key === this.#key && performance.now() - this.#loadedAt < 5_000)) return;
     this.#busy = true; this.#key = key;
     const request = ++this.#request;
     load(inst, tf, view.t0 - tfMs, view.t1 + tfMs, rowStep).then(body => {
       if (request !== this.#request) return;
-      this.step = body.step; this.fine = body.fine; this.bars = new Map(body.bars.map(bar => [bar.t, readBar(bar)])); this.#loadedAt = performance.now(); onLoad();
+      this.step = body.step; this.fine = body.fine; this.bars = new Map(body.bars.map(bar => [bar.t, readBar(bar)])); this.version++; this.#loadedAt = performance.now(); onLoad();
     }).catch(error => {
       if (request !== this.#request) return;
       // Asked again in five seconds, not on every frame.
@@ -187,19 +191,31 @@ export function volText(value: number): string {
 /** Asks which drawn rows to mark (the cells of a flagged candle) and receives their rectangles. */
 export interface RowMarks { wants(barT: number, mid: number, side: 'buy' | 'sell'): boolean; add(x: number, y: number, w: number, h: number, barT: number): void }
 
-/** Draw the per-row footprint to the right of each candle: sell (left) and buy (right) volume, with a bar behind rows where one side dominates. `marks` collects the rectangles of the rows it asks for. */
-export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintData, lod: LodFrame, tf: string, view: View, pw: number, ph: number, p: Palette, marks?: RowMarks): void {
+/** What the footprint draws besides its rows' bars: each candle's imbalance marks, and how it is set (what a row prints, whether diagonal imbalances are outlined). */
+export interface FootprintLook { marks: ReadonlyMap<number, BarMarks> | null; settings: FootprintSettings }
+
+const FONT = '10.5px ui-monospace, SFMono-Regular, Menlo, monospace', BOLD = `600 ${FONT}`;
+
+/**
+ * Draw the per-row footprint to the right of each candle: a bar behind rows where one side dominates the same row, then what the row prints
+ * (sold × bought, the delta, the total, or nothing). A diagonal imbalance is outlined in its side's colour around that side's half of the
+ * row (sells on the left, buys on the right) and its number is bold in that colour; the outline stays while the numbers are too small to
+ * print. `marks` (row marks) collects the rectangles of the rows it asks for.
+ */
+export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintData, lod: LodFrame, tf: string, view: View, pw: number, ph: number, p: Palette, marks?: RowMarks, look?: FootprintLook): void {
   const tfMs = TIMEFRAMES[tf] ?? 3_600_000, step = data.step;
   if (!(step > 0) || lod.barAlpha <= 0.005) return;
   const slot = pw * tfMs / (view.t1 - view.t0), rowPx = Math.abs(view.yOf(0, ph) - view.yOf(step, ph)), layout = footprintLayout(slot);
   let maxSide = 0;
   for (const bar of data.bars.values()) if (bar.t + tfMs >= view.t0 && bar.t <= view.t1) for (const r of bar.rows) maxSide = Math.max(maxSide, r[1], r[2]);
   if (!(maxSide > 0)) return;
-  ctx.font = '10.5px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textBaseline = 'middle';
-  const numberWidth = ctx.measureText('999.9M').width, textColor = p.dark ? '#f1f1f1' : p.text;
+  ctx.font = FONT; ctx.textBaseline = 'middle';
+  const numberWidth = ctx.measureText('999.9M').width, textColor = p.dark ? '#f1f1f1' : p.text, mode = look?.settings.text ?? 'split';
+  const diagonal = look?.settings.diagonal !== false ? look?.marks ?? null : null;
   for (const bar of data.bars.values()) {
     if (bar.t + tfMs < view.t0 || bar.t > view.t1) continue;
-    const left = view.xOf(bar.t, pw) + layout.colLeft;
+    const left = view.xOf(bar.t, pw) + layout.colLeft, split = left + Math.min(numberWidth + 5.5, layout.colWidth / 2), right = Math.min(left + layout.colWidth, split + numberWidth + 5.5);
+    const flags = diagonal?.get(bar.t)?.flags;
     for (const [low, buy, sell] of bar.rows) {
       const yTop = view.yOf(low + step, ph), h = Math.max(1, rowPx - 1);
       if (yTop + h < 0 || yTop > ph) continue;
@@ -210,14 +226,29 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintDat
         ctx.fillRect(left, yTop, barWidth, h);
         if (marks?.wants(bar.t, low + step / 2, side)) marks.add(left, yTop, barWidth, h, bar.t);
       }
-      if (lod.sellBuyAlpha > 0.01) {
-        ctx.globalAlpha = lod.sellBuyAlpha; ctx.fillStyle = textColor;
-        ctx.textAlign = 'right'; ctx.fillText(volText(sell), left + numberWidth + 3, yTop + h / 2);
-        ctx.textAlign = 'left'; ctx.fillText(volText(buy), left + numberWidth + 8, yTop + h / 2);
+      const flag = flags?.get(low);
+      if (flag && h >= 3) {
+        ctx.globalAlpha = lod.barAlpha; ctx.lineWidth = h >= 8 ? 1.5 : 1;
+        if (flag.sell !== undefined) { ctx.strokeStyle = p.candleDown; ctx.strokeRect(left + 0.75, yTop + 0.75, split - left - 1.5, h - 1.5); }
+        if (flag.buy !== undefined) { ctx.strokeStyle = p.candleUp; ctx.strokeRect(split + 0.75, yTop + 0.75, right - split - 1.5, h - 1.5); }
+      }
+      if (lod.sellBuyAlpha > 0.01 && mode !== 'none') {
+        ctx.globalAlpha = lod.sellBuyAlpha;
+        const y = yTop + h / 2;
+        if (mode === 'split') {
+          ctx.font = flag?.sell !== undefined ? BOLD : FONT; ctx.fillStyle = flag?.sell !== undefined ? p.candleDown : textColor;
+          ctx.textAlign = 'right'; ctx.fillText(volText(sell), split - 2.5, y);
+          ctx.font = flag?.buy !== undefined ? BOLD : FONT; ctx.fillStyle = flag?.buy !== undefined ? p.candleUp : textColor;
+          ctx.textAlign = 'left'; ctx.fillText(volText(buy), split + 2.5, y);
+        } else {
+          const value = mode === 'delta' ? buy - sell : buy + sell;
+          ctx.font = flag ? BOLD : FONT; ctx.fillStyle = mode === 'delta' ? (value > 0 ? p.candleUp : value < 0 ? p.candleDown : textColor) : textColor;
+          ctx.textAlign = 'center'; ctx.fillText(mode === 'delta' ? signed(value) : volText(value), (left + right) / 2, y);
+        }
       }
     }
   }
-  ctx.globalAlpha = 1; ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = 1; ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
 }
 
 /** One price row of one candle, with how it stands in that candle. */
@@ -241,8 +272,14 @@ export function rowCellAt(bar: Bar, step: number, price: number): RowCell | null
 
 const signed = (value: number): string => (value < 0 ? '-' : value > 0 ? '+' : '') + volText(Math.abs(value));
 
-/** The popup for a footprint row: its price span, what was sold and bought there, which side had it, and the candle it belongs to. */
-export function rowCellLines(cell: RowCell, bar: Bar, step: number, tf: string): InfoLine[] {
+/** How a diagonal ratio reads: "3.4×", or no ratio at all against an empty row. */
+const ratioText = (ratio: number): string => Number.isFinite(ratio) ? `${ratio.toFixed(1)}×` : '';
+
+/**
+ * The popup for a footprint row: its price span, what was sold and bought there, which side had it, the diagonal imbalances outlined there
+ * (`diagonal`: the ratio of each flagged side), and the candle it belongs to.
+ */
+export function rowCellLines(cell: RowCell, bar: Bar, step: number, tf: string, diagonal?: { sell?: number; buy?: number }): InfoLine[] {
   const side = imbalance(cell.buy, cell.sell), delta = cell.buy - cell.sell, big = Math.max(cell.buy, cell.sell), small = Math.min(cell.buy, cell.sell);
   const lines: InfoLine[] = [
     { text: `${fmtPrice(cell.low, step)} – ${fmtPrice(cell.low + step, step)}`, bold: true },
@@ -254,6 +291,8 @@ export function rowCellLines(cell: RowCell, bar: Bar, step: number, tf: string):
   ];
   if (side) lines.push({ label: t('Heavier side'), text: small > 0 ? t('{side} {ratio}×', { side: side === 'buy' ? t('buyers') : t('sellers'), ratio: (big / small).toFixed(1) }) : side === 'buy' ? t('buyers only') : t('sellers only'), color: side === 'buy' ? 'buy' : 'sell' });
   else lines.push({ label: t('Heavier side'), text: t('balanced'), color: 'muted' });
+  if (diagonal?.sell !== undefined) lines.push({ label: t('Diagonal'), text: Number.isFinite(diagonal.sell) ? t('sells {ratio} the buys one row up', { ratio: ratioText(diagonal.sell) }) : t('sells, none bought one row up'), color: 'sell' });
+  if (diagonal?.buy !== undefined) lines.push({ label: t('Diagonal'), text: Number.isFinite(diagonal.buy) ? t('buys {ratio} the sells one row down', { ratio: ratioText(diagonal.buy) }) : t('buys, none sold one row down'), color: 'buy' });
   if (cell.poc) lines.push({ text: t('Point of control: the busiest row of this candle'), color: 'muted', wrap: true });
   lines.push({ label: t('Candle volume'), text: `$${volText(cell.barBuy + cell.barSell)}`, rule: true });
   lines.push({ label: t('Candle delta'), text: signed(cell.barBuy - cell.barSell), color: cell.barBuy > cell.barSell ? 'buy' : cell.barBuy < cell.barSell ? 'sell' : 'text' });

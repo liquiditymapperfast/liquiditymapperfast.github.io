@@ -13,6 +13,7 @@ import { BUBBLE_DEFAULTS, readBubbles, type BubbleSettings } from './prints.ts';
 import { LIQUIDATION_DEFAULTS, readLiquidations, type LiquidationSettings } from './liquidations.ts';
 import { KEY_LEVEL_DEFAULTS, readKeyLevels, type KeyLevelSettings } from './keylevels/settings.ts';
 import { VWAP_DEFAULTS, readVwap, type VwapSettings } from './vwap/settings.ts';
+import { FOOTPRINT_DEFAULTS, readFootprint, type FootprintSettings } from './footprint/settings.ts';
 import type { EngineState } from './sound/engine.ts';
 import type { RangeSelection } from './range/selection.ts';
 import { TRADED_DEFAULTS, readTraded, type TradedSettings } from './traded/settings.ts';
@@ -79,6 +80,8 @@ export interface AppState {
   vwap: VwapSettings;
   /** The next click on the map places a VWAP anchor (not saved; arming the Range tool ends it). */
   vwapAnchoring: boolean;
+  /** The footprint's own settings (whether it shows is `show.footprint`; its imbalance options are `barStatOptions`). */
+  footprint: FootprintSettings;
   /** Sound notifications: master switch, volume, which trades count and the size tiers. */
   sounds: SoundSettings;
   /** Whether the browser lets sound play yet (it holds audio until a click or key press). */
@@ -124,7 +127,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme', 'traded'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme', 'traded'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -134,7 +137,7 @@ export function initialState(): AppState {
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
-    show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, liquidations: { ...LIQUIDATION_DEFAULTS }, keyLevels: readKeyLevels(KEY_LEVEL_DEFAULTS), vwap: readVwap(VWAP_DEFAULTS), vwapAnchoring: false, sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
+    show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, liquidations: { ...LIQUIDATION_DEFAULTS }, keyLevels: readKeyLevels(KEY_LEVEL_DEFAULTS), vwap: readVwap(VWAP_DEFAULTS), vwapAnchoring: false, footprint: readFootprint(FOOTPRINT_DEFAULTS), sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
     theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false, traded: readTraded(undefined), ...saved,
   };
@@ -151,6 +154,7 @@ export function initialState(): AppState {
   state.liquidations = readLiquidations(saved.liquidations);
   state.keyLevels = readKeyLevels(saved.keyLevels);
   state.vwap = readVwap(saved.vwap);
+  state.footprint = readFootprint(saved.footprint);
   state.traded = readTraded(saved.traded);
   state.scope = saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all';
   state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';

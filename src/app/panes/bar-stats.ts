@@ -57,34 +57,56 @@ const signedPct = (value: number): string => `${value > 0 ? '+' : ''}${value.toF
 const total = (bar: Bar): number => bar.buyUsd + bar.sellUsd;
 const count = (value: number): string => String(Math.round(value));
 
-export interface Imbalance { low: number; side: 'buy' | 'sell' }
+/** A row flagged by `diagonalImbalances`: its low price, the heavier side, and how many times the opposite volume it is (Infinity against an empty row). */
+export interface Imbalance { low: number; side: 'buy' | 'sell'; ratio: number }
 
 /**
  * Diagonal imbalances, as footprint charts compute them: sell volume at a level against buy volume one row higher, and buy
- * volume at a level against sell volume one row lower. (Not the same-row 1.15x rule that tints the footprint cells.)
+ * volume at a level against sell volume one row lower. (Not the same-row 1.15x rule that tints the footprint cells.) A row one away
+ * with nothing traded, inside the candle's range, counts as zero and flags only with `imbZeros`; past the candle's top or bottom there
+ * is nothing to compare with.
  */
-export function diagonalImbalances(rows: Bar['rows'], step: number, options: Pick<StatOptions, 'imbRatio' | 'imbMinUsd'>): Imbalance[] {
+export function diagonalImbalances(rows: Bar['rows'], step: number, options: Pick<StatOptions, 'imbRatio' | 'imbMinUsd'> & { imbZeros?: boolean }): Imbalance[] {
   const at = new Map<number, [number, number]>();
-  for (const [low, buy, sell] of rows) at.set(Math.round(low / step), [buy, sell]);
-  const found: Imbalance[] = [];
+  let lowest = Infinity, highest = -Infinity;
+  for (const [low, buy, sell] of rows) { const index = Math.round(low / step); at.set(index, [buy, sell]); lowest = Math.min(lowest, index); highest = Math.max(highest, index); }
+  const found: Imbalance[] = [], min = scaledUsd(options.imbMinUsd);
+  /** The volume of `side` one row away at `index`: 0 for an empty row inside the candle, null past its range. */
+  const opposite = (index: number, side: 0 | 1): number | null => index < lowest || index > highest ? null : at.get(index)?.[side] ?? 0;
+  const flag = (own: number, other: number | null): number | null => {
+    if (other === null || !(own > 0) || own < min) return null;
+    if (other > 0) return own >= options.imbRatio * other ? own / other : null;
+    return options.imbZeros ? Infinity : null;
+  };
   for (const [low, buy, sell] of rows) {
-    const index = Math.round(low / step), above = at.get(index + 1), below = at.get(index - 1);
-    if (above && above[0] > 0 && sell >= options.imbRatio * above[0] && sell >= scaledUsd(options.imbMinUsd) && sell > 0) found.push({ low, side: 'sell' });
-    if (below && below[1] > 0 && buy >= options.imbRatio * below[1] && buy >= scaledUsd(options.imbMinUsd) && buy > 0) found.push({ low, side: 'buy' });
+    const index = Math.round(low / step);
+    const sellRatio = flag(sell, opposite(index + 1, 0)), buyRatio = flag(buy, opposite(index - 1, 1));
+    if (sellRatio !== null) found.push({ low, side: 'sell', ratio: sellRatio });
+    if (buyRatio !== null) found.push({ low, side: 'buy', ratio: buyRatio });
   }
   return found;
 }
 
-/** Number of runs of at least `n` adjacent rows flagged on the same side. */
-export function stackedRuns(found: readonly Imbalance[], step: number, n: number): number {
-  let runs = 0;
+/** A stacked imbalance: `n` or more adjacent rows flagged on one side, from the bottom of the lowest to the top of the highest. */
+export interface StackedZone { side: 'buy' | 'sell'; low: number; high: number }
+
+/** The runs of at least `n` adjacent rows flagged on the same side, as price spans. */
+export function stackedZones(found: readonly Imbalance[], step: number, n: number): StackedZone[] {
+  const zones: StackedZone[] = [];
   for (const side of ['buy', 'sell'] as const) {
-    const indices = found.filter(f => f.side === side).map(f => Math.round(f.low / step)).sort((a, b) => a - b);
-    let run = 0, previous = Number.NaN;
-    for (const index of indices) { run = index === previous + 1 ? run + 1 : 1; if (run === n) runs++; previous = index; }
+    const indices = [...new Set(found.filter(f => f.side === side).map(f => Math.round(f.low / step)))].sort((a, b) => a - b);
+    let start = 0;
+    for (let i = 1; i <= indices.length; i++) {
+      if (i < indices.length && indices[i] === indices[i - 1]! + 1) continue;
+      if (i - start >= n) zones.push({ side, low: indices[start]! * step, high: (indices[i - 1]! + 1) * step });
+      start = i;
+    }
   }
-  return runs;
+  return zones;
 }
+
+/** Number of runs of at least `n` adjacent rows flagged on the same side. */
+export const stackedRuns = (found: readonly Imbalance[], step: number, n: number): number => stackedZones(found, step, n).length;
 
 const tradeStat = (id: string, label: string, title: string, scale: StatScale, format: (v: number) => string, pick: (stats: NonNullable<Bar['stats']>, input: StatInput, bar: Bar) => number | null): StatDef =>
   ({ id, label, group: 'trades', title, scale, format, compute: input => input.bars.map(bar => bar.stats ? pick(bar.stats, input, bar) : null) });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BAR_STATS, DEFAULT_STAT_OPTIONS, PRESETS, diagonalImbalances, enabledStats, rowScale, stackedRuns, statDef, strength, type StatInput, type StatOptions } from '../src/app/panes/bar-stats.ts';
+import { BAR_STATS, DEFAULT_STAT_OPTIONS, PRESETS, diagonalImbalances, enabledStats, rowScale, stackedRuns, stackedZones, statDef, strength, type StatInput, type StatOptions } from '../src/app/panes/bar-stats.ts';
 import type { Bar } from '../src/app/panes/footprint.ts';
 import type { CandleRow, OiBar } from '../src/app/store.ts';
 
@@ -38,10 +38,15 @@ test('row extremes and the point of control come from the price rows', () => {
 test('diagonal imbalances compare a level with the opposite side one row away and stack when adjacent', () => {
   const rows: [number, number, number][] = [[100, 5, 90], [105, 20, 10], [110, 90, 5], [115, 100, 4]];
   const found = diagonalImbalances(rows, 5, { imbRatio: 3, imbMinUsd: 0 });
-  assert.deepEqual(found, [{ low: 100, side: 'sell' }, { low: 110, side: 'buy' }, { low: 115, side: 'buy' }], 'sell 90 vs buy 20 above; buy 90 vs sell 10 below; buy 100 vs sell 5 below');
+  assert.deepEqual(found, [{ low: 100, side: 'sell', ratio: 4.5 }, { low: 110, side: 'buy', ratio: 9 }, { low: 115, side: 'buy', ratio: 20 }], 'sell 90 vs buy 20 above; buy 90 vs sell 10 below; buy 100 vs sell 5 below');
   assert.equal(stackedRuns(found, 5, 2), 1, 'two adjacent buy rows');
   assert.equal(stackedRuns(found, 5, 3), 0);
-  assert.deepEqual(diagonalImbalances(rows, 5, { imbRatio: 3, imbMinUsd: 95 }), [{ low: 115, side: 'buy' }], 'minimum size filters small levels');
+  assert.deepEqual(stackedZones(found, 5, 2), [{ side: 'buy', low: 110, high: 120 }], 'the run as a price span, from its lowest row\'s bottom to its highest row\'s top');
+  assert.deepEqual(diagonalImbalances(rows, 5, { imbRatio: 3, imbMinUsd: 95 }), [{ low: 115, side: 'buy', ratio: 20 }], 'minimum size filters small levels');
+  // An empty row inside the candle counts only with imbZeros; past the candle's top or bottom there is nothing to compare with.
+  const gap: [number, number, number][] = [[100, 10, 40], [110, 30, 5]];
+  assert.deepEqual(diagonalImbalances(gap, 5, { imbRatio: 3, imbMinUsd: 0 }), []);
+  assert.deepEqual(diagonalImbalances(gap, 5, { imbRatio: 3, imbMinUsd: 0, imbZeros: true }), [{ low: 100, side: 'sell', ratio: Infinity }, { low: 110, side: 'buy', ratio: Infinity }]);
   assert.deepEqual(diagonalImbalances(rows, 5, { imbRatio: 30, imbMinUsd: 0 }), [], 'a higher ratio finds none');
   assert.deepEqual(diagonalImbalances([[100, 50, 0], [110, 0, 50]], 5, { imbRatio: 3, imbMinUsd: 0 }), [], 'rows two steps apart are not neighbours');
   assert.deepEqual(compute('imbalances', { imbRatio: 1.2 }).map(v => typeof v), ['number', 'number', 'number']);

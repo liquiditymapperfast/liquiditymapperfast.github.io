@@ -39,6 +39,7 @@ import { historyTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { paintKeyLevels, paintKeyTags, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
 import { sessionsOf, vwapBarMs, vwapSeries, whaleSeries } from '../vwap/vwap.ts';
 import { anchorsOf } from '../vwap/settings.ts';
+import { FootprintMarks } from '../footprint/marks.ts';
 import { paintVwap, type VwapLine } from '../vwap/paint.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
@@ -162,6 +163,8 @@ export class HeatPane {
   #zoomDrag: { x: number; y: number; view: Bounds } | null = null;
   #wasLoaded = false;
   #footprint = new FootprintData();
+  /** The footprint's imbalance marks, worked out once a load (or when the options change). */
+  #footprintMarks = new FootprintMarks();
   /** Rejected aggressive buying and selling on closed candles, decided once per candle on a row step that does not depend on the zoom. */
   #traps = new TrapData();
   /** The pulsing layer: a canvas of its own above the overlay, redrawn a few times a second only while a trap is in view. */
@@ -390,7 +393,7 @@ export class HeatPane {
     this.#paintLayers(ctx, state, pw, ph);
     this.#paintVolume(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#pulseRects = [];
-    if (state.show.footprint) paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks());
+    if (state.show.footprint) paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks(), { marks: this.#footprintMarks.get(this.#footprint, state.barStatOptions), settings: state.footprint });
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
@@ -1175,7 +1178,8 @@ export class HeatPane {
     const p = this.#palette;
     ctx.save(); ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.9; ctx.strokeRect(Math.round(hit.x) + 0.5, Math.round(hit.y) + 0.5, Math.max(1, Math.round(hit.w) - 1), Math.max(1, Math.round(hit.h)));
     ctx.restore();
-    paintInfoBox(ctx, rowCellLines(hit.cell, hit.bar, this.footprintData.step, this.store.state.timeframe), x, y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
+    const state = this.store.state, diagonal = state.footprint.diagonal ? this.#footprintMarks.get(this.#footprint, state.barStatOptions).get(hit.bar.t)?.flags.get(hit.cell.low) : undefined;
+    paintInfoBox(ctx, rowCellLines(hit.cell, hit.bar, this.footprintData.step, state.timeframe, diagonal), x, y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
   }
 
   #paintTrapPopup(ctx: CanvasRenderingContext2D, trap: Trap, x: number, y: number, pw: number, ph: number, touch = false): void {
