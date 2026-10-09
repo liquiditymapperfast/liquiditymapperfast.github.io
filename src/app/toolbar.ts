@@ -94,8 +94,8 @@ export class Toolbar {
   #trades = el('button', { class: 'led-btn', textContent: t('Trades'), tip: HELP.bubbles.tip });
   #absorption = el('button', { class: 'led-btn', textContent: t('Absorption'), tip: HELP.absorption.tip });
   #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
-  /** Traded volume: the column beside the profile and the point-of-control lines on the chart, set in its panel (traded/panel.ts). */
-  #traded = el('button', { class: 'led-btn', textContent: t('Traded'), tip: HELP.traded.tip });
+  /** The volume profile: the traded-volume column beside the book profile and the point-of-control lines on the chart, set in its panel (traded/panel.ts). */
+  #traded = el('button', { class: 'led-btn', textContent: t('Volume profile'), tip: HELP.traded.tip });
   #tradedPanel: Panel | null = null;
   /** The Range tool: lit while it is armed or a selection is shown (range/tool.ts). */
   #range = el('button', { class: 'led-btn', textContent: t('Range'), tip: HELP.range.tip });
@@ -181,7 +181,7 @@ export class Toolbar {
     this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => { tools.append(helpButton('highlights')); this.#buildHighlights(tools, body); }); };
     this.#traded.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1));
-      this.#tradedPanel = togglePanel(this.#traded, { title: t('Traded'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; } }, build);
+      this.#tradedPanel = togglePanel(this.#traded, { title: t('Volume profile'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; } }, build);
     };
     this.#absorption.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildAbsorption(tools, body, () => this.#absorptionPanel?.render(build));

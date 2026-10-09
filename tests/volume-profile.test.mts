@@ -11,6 +11,7 @@ import { dayWindows, fromWall, lastWindows, offsetMs, sessionWindows, weekWindow
 import { TRADED_DEFAULTS, readTraded, resolveZone } from '../src/app/traded/settings.ts';
 import { answerLevels, linesWindows, requestStep, touchedAt } from '../src/app/traded/levels.ts';
 import { tradedRows } from '../src/app/traded.ts';
+import { initialState } from '../src/app/store.ts';
 
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
@@ -158,4 +159,15 @@ test('a band dragged on the traded column adds up to exactly the bars it covers'
   assert.ok(Math.abs(band.buy - buy) < 1e-6 && Math.abs(band.sell - sell) < 1e-6, `panel ${band.buy}/${band.sell} against bars ${buy}/${sell}`);
   // And the column has the orders that began on each row when the recording counts them (none here: no orders were counted).
   assert.equal(rows.counted, 1);
+});
+
+test('the volume profile is off unless chosen: a first visit and a save from before it had settings read as off, a later choice stays', () => {
+  const g = globalThis as { window?: unknown }, had = g.window;
+  const saved = (value: unknown): void => { g.window = { innerWidth: 1920, localStorage: { getItem: () => JSON.stringify(value) } }; };
+  try {
+    saved({}); assert.equal(initialState().show.traded, false, 'a first visit');
+    saved({ show: { traded: true } }); assert.equal(initialState().show.traded, false, 'the old default of the column, saved before');
+    saved({ show: { traded: true }, traded: {} }); assert.equal(initialState().show.traded, true, 'switched on since');
+    saved({ show: { traded: false }, traded: {} }); assert.equal(initialState().show.traded, false);
+  } finally { g.window = had; }
 });

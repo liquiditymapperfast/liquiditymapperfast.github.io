@@ -30,7 +30,7 @@ export type OiBar = [number, number, number, number, number];
 export interface LayerLevel { id: string; side: string; price: number; notionalUsd: number; active?: boolean; amount?: number }
 
 /** Which panes are on the first time. */
-export const DEFAULT_SHOW: AppState['show'] = { profile: true, traded: true, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
+export const DEFAULT_SHOW: AppState['show'] = { profile: true, traded: false, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
 /**
  * The panes a first visit starts with. The flow column and the book each take a few hundred pixels beside the map, so on a window that is wide enough
  * for the map to stay readable with both (a phone has its tabs instead) they start on; a medium window (a tablet held sideways, a small laptop)
@@ -129,6 +129,9 @@ export function initialState(): AppState {
   };
   // Saved objects may predate newer keys: keep the defaults for anything they lack.
   state.show = { ...defaultShow(), ...saved.show };
+  // The volume profile (the traded column, now with its lines on the chart) is off unless chosen: a save from before it had settings of its
+  // own holds the column's old default, not a choice.
+  if (saved.traded === undefined) state.show.traded = false;
   state.cvd = readCvd(saved.cvd);
   state.sounds = readSounds(saved.sounds);
   state.highlight = readHighlight(saved.highlight);

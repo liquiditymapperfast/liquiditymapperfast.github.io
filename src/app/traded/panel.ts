@@ -9,7 +9,7 @@ import { MAX_COUNT, MAX_SESSIONS, ROW_MULTIPLES, SESSION_PRESETS, SHARES, ZONES,
 import type { SessionDef } from './sessions.ts';
 
 /**
- * The Traded panel: its first row switches the column (and with it the lines) on and off; then the column's bars and markers, how the point
+ * The Volume profile panel: its first row switches the column (and with it the lines) on and off; then the column's bars and markers, how the point
  * of control and the value area are read, and the lines on the chart with what they are worked out over (what is on the chart, days, weeks
  * or sessions, which are edited here). `gridStep` is the map's grid step now, for the row sizes in dollars.
  */
@@ -19,7 +19,7 @@ export function buildTradedPanel(store: Store, tools: HTMLElement, body: HTMLEle
   tools.append(helpButton('traded'));
   const grid = gridStep(), money = (v: number): string => `$${v >= 1 ? usd(v) : v.toPrecision(2)}`;
   body.append(
-    switchRow(t('Show traded volume'), t('The traded column beside the profile and the point-of-control lines on the chart.'), store.state.show.traded, on => { store.set({ show: { ...store.state.show, traded: on } }); rebuild(); }),
+    switchRow(t('Show the volume profile'), t('The column of traded volume beside the book profile, and the point-of-control lines on the chart.'), store.state.show.traded, on => { store.set({ show: { ...store.state.show, traded: on } }); rebuild(); }),
     ...(compactBar() ? [note(t('A phone has no room for the column: the lines on the chart still show.'))] : []),
     heading(t('Column')),
     selectRow(t('Bars'), t('Buys and sells side by side, or only their difference: which side was the bigger at each price, and by how much.'), [['split', t('Buys and sells')], ['delta', t('Delta')]], s.bars, v => set({ bars: v === 'delta' ? 'delta' : 'split' })),

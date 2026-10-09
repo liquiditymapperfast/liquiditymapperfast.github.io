@@ -31,7 +31,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
       t('Hover it and the Mirror comparison appears (switch that off with the Mirror button).')],
   },
   traded: {
-    title: t('Traded volume'), guide: 'profile',
+    title: t('Volume profile'), guide: 'profile',
     tip: t('A column beside the profile: how much was bought and sold at market at each price over the time on the map, on the exchanges the flow column counts. Next to the resting liquidity, it shows which levels have actually changed hands.'),
     body: [t('The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.'),
       t('In the settings they can be drawn as lines on the chart, worked out over what is on the chart, each day or week, or sessions you set in any market\'s time zone. Hover a row for what traded there and the market orders that began at those prices; drag on the column, or click a row, for everything about those prices in the Range panel.'),
