@@ -1058,5 +1058,15 @@
  "The left edge": "Sol kenar",
  "No flow recorded for these candles yet.": "Bu mumlar için henüz akış kaydedilmedi.",
  "Flow is recorded from {time}: the candles before it have none.": "Akış {time} tarihinden beri kaydediliyor: daha önceki mumlarda yok.",
- "flow recorded since {time}": "{time} tarihinden beri kaydedilen akış"
+ "flow recorded since {time}": "{time} tarihinden beri kaydedilen akış",
+ "{n} candles": {
+  "one": "{n} mum",
+  "other": "{n} mum"
+ },
+ "Divergences": "Uyumsuzluklar",
+ "CVD divergence": "CVD uyumsuzluğu",
+ "Swing": "Salınım",
+ "Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.": "Fiyatın daha yüksek bir tepe, CVD'nin daha düşük bir tepe yaptığı ya da fiyatın daha düşük bir dip, CVD'nin daha yüksek bir dip yaptığı yerleri burada ve haritada işaretler.",
+ "How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.": "Bir tepe veya dibin salınım sayılması için her iki yanda kaç mumu aşması gerektiği. Salınım, ancak ondan sonra o kadar mum kapandığında çizilir.",
+ "Divergences join two swing highs in a row where the price made the higher high and the CVD the lower one (in the sell colour, above the highs), or two swing lows where the price made the lower low and the CVD the higher one (in the buy colour, below the lows), on the CVD candles and on the map. A swing must stand beyond the chosen number of closed candles each side, so a divergence appears that many candles after its newer swing, and swings on either side of a restart of the CVD are not compared. They need the chart to show the market's own candles. They show where buying or selling faded against the price; they have not been tested as a signal.": "Uyumsuzluklar, fiyatın daha yüksek tepeyi, CVD'nin daha düşük tepeyi yaptığı art arda iki salınım tepesini (satış renginde, tepelerin üstünde) ya da fiyatın daha düşük dibi, CVD'nin daha yüksek dibi yaptığı iki salınım dibini (alış renginde, diplerin altında) CVD mumları ve harita üzerinde birleştirir. Bir salınım her iki yanda seçilen sayıda kapanmış mumu aşmalıdır; bu yüzden bir uyumsuzluk yeni salınımından o kadar mum sonra görünür ve CVD'nin yeniden başlamasının iki yanındaki salınımlar karşılaştırılmaz. Grafiğin piyasanın kendi mumlarını göstermesi gerekir. Alış veya satışın fiyata göre zayıfladığı yerleri gösterir; sinyal olarak test edilmemiştir."
 }

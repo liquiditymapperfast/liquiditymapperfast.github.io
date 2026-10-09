@@ -1065,5 +1065,16 @@
  "The left edge": "Il bordo sinistro",
  "No flow recorded for these candles yet.": "Nessun flusso registrato ancora per queste candele.",
  "Flow is recorded from {time}: the candles before it have none.": "Il flusso è registrato da {time}: le candele precedenti non ne hanno.",
- "flow recorded since {time}": "flusso registrato da {time}"
+ "flow recorded since {time}": "flusso registrato da {time}",
+ "{n} candles": {
+  "one": "{n} candela",
+  "other": "{n} candele",
+  "many": "{n} candele"
+ },
+ "Divergences": "Divergenze",
+ "CVD divergence": "Divergenza di CVD",
+ "Swing": "Swing",
+ "Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.": "Segna dove il prezzo ha fatto un massimo più alto e il CVD uno più basso, o il prezzo un minimo più basso e il CVD uno più alto, qui e sulla mappa.",
+ "How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.": "Di quante candele per lato un massimo o un minimo deve superare per contare come swing. Uno swing è disegnato solo quando dopo di esso hanno chiuso altrettante candele.",
+ "Divergences join two swing highs in a row where the price made the higher high and the CVD the lower one (in the sell colour, above the highs), or two swing lows where the price made the lower low and the CVD the higher one (in the buy colour, below the lows), on the CVD candles and on the map. A swing must stand beyond the chosen number of closed candles each side, so a divergence appears that many candles after its newer swing, and swings on either side of a restart of the CVD are not compared. They need the chart to show the market's own candles. They show where buying or selling faded against the price; they have not been tested as a signal.": "Le divergenze uniscono due massimi di swing consecutivi in cui il prezzo ha fatto il massimo più alto e il CVD quello più basso (nel colore delle vendite, sopra i massimi), o due minimi di swing in cui il prezzo ha fatto il minimo più basso e il CVD quello più alto (nel colore degli acquisti, sotto i minimi), sulle candele di CVD e sulla mappa. Uno swing deve superare il numero scelto di candele chiuse per lato, quindi una divergenza compare altrettante candele dopo il suo swing più recente, e gli swing ai due lati di una ripartenza del CVD non vengono confrontati. Richiedono che il grafico mostri le candele del mercato stesso. Mostrano dove gli acquisti o le vendite si sono indeboliti rispetto al prezzo; non sono state testate come segnale."
 }

@@ -1065,5 +1065,16 @@
  "The left edge": "Le bord gauche",
  "No flow recorded for these candles yet.": "Aucun flux n'est encore enregistré pour ces bougies.",
  "Flow is recorded from {time}: the candles before it have none.": "Le flux est enregistré depuis {time} : les bougies d'avant n'en ont pas.",
- "flow recorded since {time}": "flux enregistré depuis {time}"
+ "flow recorded since {time}": "flux enregistré depuis {time}",
+ "{n} candles": {
+  "one": "{n} bougie",
+  "other": "{n} bougies",
+  "many": "{n} bougies"
+ },
+ "Divergences": "Divergences",
+ "CVD divergence": "Divergence de CVD",
+ "Swing": "Swing",
+ "Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.": "Marque où le prix a fait un plus haut plus élevé et le CVD un plus bas, ou le prix un plus bas plus bas et le CVD un plus élevé, ici et sur la carte.",
+ "How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.": "De combien de bougies de chaque côté un plus haut ou un plus bas doit se détacher pour compter comme swing. Un swing n'est tracé qu'une fois que ce nombre de bougies a clôturé après lui.",
+ "Divergences join two swing highs in a row where the price made the higher high and the CVD the lower one (in the sell colour, above the highs), or two swing lows where the price made the lower low and the CVD the higher one (in the buy colour, below the lows), on the CVD candles and on the map. A swing must stand beyond the chosen number of closed candles each side, so a divergence appears that many candles after its newer swing, and swings on either side of a restart of the CVD are not compared. They need the chart to show the market's own candles. They show where buying or selling faded against the price; they have not been tested as a signal.": "Les divergences relient deux plus hauts de swing successifs où le prix a fait le plus haut le plus élevé et le CVD le plus bas (dans la couleur de vente, au-dessus des plus hauts), ou deux plus bas de swing où le prix a fait le plus bas le plus bas et le CVD le plus élevé (dans la couleur d'achat, sous les plus bas), sur les bougies de CVD et sur la carte. Un swing doit se détacher du nombre choisi de bougies clôturées de chaque côté : une divergence apparaît donc ce nombre de bougies après son swing le plus récent, et les swings de part et d'autre d'un redémarrage du CVD ne sont pas comparés. Elles demandent que le graphique montre les bougies du marché lui-même. Elles montrent où les achats ou les ventes ont faibli face au prix ; elles n'ont pas été testées comme signal."
 }

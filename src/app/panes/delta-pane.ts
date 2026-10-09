@@ -3,7 +3,7 @@ import type { Store, AppState } from '../store.ts';
 import type { View } from '../view.ts';
 import { helpButton } from '../help.ts';
 import { setTip } from '../tip.ts';
-import { t } from '../i18n.ts';
+import { t, tn } from '../i18n.ts';
 import { clock, usd } from '../format.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
@@ -13,8 +13,9 @@ import { aggregateIds } from '../cvd/model.ts';
 import { resolveZone } from '../traded/settings.ts';
 import { AXIS_W } from './heat-pane.ts';
 import { TimePane, setHtml } from './lower-panes.ts';
-import { FlowCache, candleStarts, deltaCandles, resetKeys, type DeltaCandle } from '../delta/candles.ts';
-import type { DeltaSettings } from '../delta/settings.ts';
+import { FlowCache, candleStarts, deltaCandles, resetKeys, unrecorded, type DeltaCandle } from '../delta/candles.ts';
+import { PIVOTS, type DeltaSettings } from '../delta/settings.ts';
+import { divergences, inView, paintDivergence, type Divergence } from '../delta/divergence.ts';
 
 const HISTORY_CAP_MS = 24 * 3_600_000, MINUTES_FROM_MS = 6 * 3_600_000;
 const signed = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
@@ -39,8 +40,13 @@ export class DeltaPane extends TimePane {
   #lines: InfoLine[] | null = null;
   #cache = new FlowCache();
   #sync: (() => void)[] = [];
-  /** The candles drawn last (the divergences are read from them). */
+  /** The candles drawn last. */
   candles: DeltaCandle[] = [];
+  /** The price/CVD divergences in view, newest last (the map draws them too); none while the pane is not drawn. */
+  divergences: readonly Divergence[] = [];
+  /** Called when `divergences` changed, so the map draws them again. */
+  onDivergences: () => void = () => {};
+  #divKey = '';
 
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'delta');
@@ -58,7 +64,13 @@ export class DeltaPane extends TimePane {
       this.#sync.push(() => { if (control.value !== get()) control.value = get(); });
     };
     select(t('Show'), t('Each candle\'s delta as a bar, or the cumulative delta as candles.'), [['candles', t('CVD candles')], ['bars', t('Delta bars')]], () => d().style, v => patch({ style: v === 'bars' ? 'bars' : 'candles' }));
+    const box = document.createElement('label'); box.className = 'ctl'; setTip(box, t('Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.'));
+    const check = document.createElement('input'); check.type = 'checkbox'; check.checked = d().divergence; check.onchange = () => patch({ divergence: check.checked });
+    box.append(check, t('Divergences'));
+    this.#sync.push(() => { check.checked = d().divergence; });
     select(t('CVD from'), t('Where the cumulative delta starts: the left edge of the chart, or again each day or week (in the Volume profile\'s zone).'), [['none', t('The left edge')], ['day', t('Each day')], ['week', t('Each week')]], () => d().reset, v => patch({ reset: v === 'day' || v === 'week' ? v : 'none' }));
+    this.head.append(box);
+    select(t('Swing'), t('How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.'), PIVOTS.map((n): [string, string] => [String(n), tn(n, '{n} candle', '{n} candles')]), () => String(d().pivot), v => patch({ pivot: (PIVOTS as readonly number[]).includes(Number(v)) ? Number(v) : d().pivot }));
   }
 
   /** Reflect the settings in the header's controls and draw again. */
@@ -70,7 +82,13 @@ export class DeltaPane extends TimePane {
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
-  protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  protected override undrawn(): void { this.#lines = null; this.#card.hide(); this.#setDivergences([]); }
+
+  #setDivergences(list: readonly Divergence[]): void {
+    const key = list.map(d => `${d.kind}${d.from}-${d.to}`).join(',');
+    this.divergences = list;
+    if (key !== this.#divKey) { this.#divKey = key; this.onDivergences(); }
+  }
 
   /** The candles of the view: the flow book asked for what they need, the closed ones worked out once, the open one every time. */
   #candles(state: AppState, now: number): { candles: DeltaCandle[]; starts: number[]; earliest: number | null } {
@@ -90,7 +108,7 @@ export class DeltaPane extends TimePane {
     const tracks = ids.flatMap(id => { const track = flow.track(id); return track ? [track] : []; });
     let earliest: number | null = null;
     for (const track of tracks) if (track.first !== null && (earliest === null || track.first * 1000 < earliest)) earliest = track.first * 1000;
-    const flows = this.#cache.get(`${ids.join(',')}|${tf}|${flow.loads}`, tracks, starts, tf, now);
+    const flows = unrecorded(starts, this.#cache.get(`${ids.join(',')}|${tf}|${flow.loads}`, tracks, starts, tf, now), tf, now);
     return { candles: deltaCandles(starts, flows, resetKeys(starts, s.reset, zone)), starts, earliest };
   }
 
@@ -99,29 +117,36 @@ export class DeltaPane extends TimePane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, readout = this.head.querySelector('.readout');
     const { candles, earliest } = this.#candles(state, now);
     this.candles = candles;
+    // Divergences need the chart's candles to be this market's: a borrowed reference series is another market's price.
+    const bars = state.seriesInstrument === state.marketId ? state.candles.map(c => ({ t: c[0], high: c[2], low: c[3] })) : [];
+    this.#setDivergences(s.divergence && bars.length ? inView(divergences(bars, candles, tf, now, s.pivot), v.t0, v.t1) : []);
     const visible = candles.filter(c => c.t + tf >= v.t0 && c.t <= v.t1);
     if (!visible.length) {
       ctx.fillStyle = p.muted; ctx.textAlign = 'left';
       ctx.fillText(earliest === null ? t('No flow recorded for these candles yet.') : t('Flow is recorded from {time}: the candles before it have none.', { time: clock(earliest, true) }), 12, ph / 2);
       setHtml(readout, ''); return;
     }
-    const bars = s.style === 'bars';
+    const asBars = s.style === 'bars';
     let lo = 0, hi = 0;
-    for (const c of visible) { if (bars) { lo = Math.min(lo, c.delta); hi = Math.max(hi, c.delta); } else { lo = Math.min(lo, c.low); hi = Math.max(hi, c.high); } }
-    if (bars) { const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1; lo = -m; hi = m; }
+    for (const c of visible) { if (asBars) { lo = Math.min(lo, c.delta); hi = Math.max(hi, c.delta); } else { lo = Math.min(lo, c.low); hi = Math.max(hi, c.high); } }
+    if (asBars) { const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1; lo = -m; hi = m; }
     const pad = (hi - lo) * 0.08 || 1, min = lo - pad, max = hi + pad, top = 6, bottom = ph - 6;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (bottom - top);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
     // Zero, and where the CVD starts again (a day or week, or after a stretch with nothing recorded).
     ctx.strokeStyle = p.line; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(0, Math.round(y(0)) + 0.5); ctx.lineTo(pw, Math.round(y(0)) + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
-    if (!bars) {
+    if (!asBars) {
       ctx.strokeStyle = p.muted; ctx.setLineDash([2, 4]); ctx.beginPath();
-      for (const c of visible) if (c.open === 0 && c !== candles[0]) { const x = Math.round(v.xOf(c.t, pw)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, ph); }
+      for (let i = 1; i < candles.length; i++) {
+        const c = candles[i]!;
+        if (c.run === candles[i - 1]!.run || c.t + tf < v.t0 || c.t > v.t1) continue;
+        const x = Math.round(v.xOf(c.t, pw)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, ph);
+      }
       ctx.stroke(); ctx.setLineDash([]);
     }
     for (const c of visible) {
       const x0 = v.xOf(c.t, pw), x1 = v.xOf(c.t + tf, pw), slot = x1 - x0, w = Math.max(1, Math.min(slot * 0.7, 40)), xc = (x0 + x1) / 2;
-      if (bars) {
+      if (asBars) {
         ctx.fillStyle = c.delta >= 0 ? p.candleUp : p.candleDown;
         const y0 = y(0), y1 = y(c.delta);
         ctx.fillRect(xc - w / 2, Math.min(y0, y1), w, Math.max(1, Math.abs(y1 - y0)));
@@ -132,6 +157,8 @@ export class DeltaPane extends TimePane {
         ctx.fillStyle = color; ctx.fillRect(xc - w / 2, Math.min(yo, yc), w, Math.max(1, Math.abs(yc - yo)));
       }
     }
+    // The divergences on the CVD candles (the bars do not show the CVD): its two swings joined.
+    if (!asBars) for (const d of this.divergences) paintDivergence(ctx, d, v.xOf(d.from + tf / 2, pw), y(d.cvdFrom), v.xOf(d.to + tf / 2, pw), y(d.cvdTo), d.kind === 'bear' ? p.ask : p.bid, null);
     ctx.restore();
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     ctx.fillText(signed(hi), this.w - AXIS_W + 6, 10); ctx.fillText(signed(lo), this.w - AXIS_W + 6, ph - 10);

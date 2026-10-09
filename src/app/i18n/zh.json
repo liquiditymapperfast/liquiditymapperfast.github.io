@@ -1037,5 +1037,12 @@
  "The left edge": "左边缘",
  "No flow recorded for these candles yet.": "这些 K 线尚无资金流记录。",
  "Flow is recorded from {time}: the candles before it have none.": "资金流自 {time} 起记录：之前的 K 线没有。",
- "flow recorded since {time}": "资金流自 {time} 起记录"
+ "flow recorded since {time}": "资金流自 {time} 起记录",
+ "{n} candles": "{n} 根 K 线",
+ "Divergences": "背离",
+ "CVD divergence": "CVD 背离",
+ "Swing": "摆动点",
+ "Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.": "在此处和地图上标出价格创出更高的高点而 CVD 高点更低，或价格创出更低的低点而 CVD 低点更高的位置。",
+ "How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.": "高点或低点需在两侧各超出多少根 K 线才算摆动点。只有在其后收盘了这么多根 K 线后才会画出。",
+ "Divergences join two swing highs in a row where the price made the higher high and the CVD the lower one (in the sell colour, above the highs), or two swing lows where the price made the lower low and the CVD the higher one (in the buy colour, below the lows), on the CVD candles and on the map. A swing must stand beyond the chosen number of closed candles each side, so a divergence appears that many candles after its newer swing, and swings on either side of a restart of the CVD are not compared. They need the chart to show the market's own candles. They show where buying or selling faded against the price; they have not been tested as a signal.": "背离在 CVD K 线和地图上连接两个相邻的摆动高点（价格高点更高而 CVD 高点更低，以卖出色画在高点上方），或两个摆动低点（价格低点更低而 CVD 低点更高，以买入色画在低点下方）。摆动点须在两侧各超出所选数量的已收盘 K 线，因此背离会在较新的摆动点之后这么多根 K 线才出现，CVD 重新开始前后的摆动点不作比较。需要图表显示该市场自身的 K 线。它们显示买入或卖出相对价格减弱的位置；未作为信号检验过。"
 }

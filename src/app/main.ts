@@ -93,6 +93,7 @@ async function main(): Promise<void> {
   const depth = new DepthPane(chart, store, heat.view, hub);
   const oi = new OiPane(chart, store, heat.view);
   const delta = new DeltaPane(chart, store, heat.view, hub);
+  heat.divergences = () => delta.divergences; delta.onDivergences = () => heat.invalidate();
   const lt = new LtPane(chart, store, heat.view, hub);
   const ladder = new LadderPane(side, store, kernels);
   const cvd = new CvdPane(flowCol, store, hub, heat.view);

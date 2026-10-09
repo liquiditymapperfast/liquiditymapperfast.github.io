@@ -1037,5 +1037,12 @@
  "The left edge": "左端",
  "No flow recorded for these candles yet.": "これらの足のフローはまだ記録されていません。",
  "Flow is recorded from {time}: the candles before it have none.": "フローは {time} から記録されています。それより前の足にはありません。",
- "flow recorded since {time}": "{time} からのフロー記録"
+ "flow recorded since {time}": "{time} からのフロー記録",
+ "{n} candles": "{n} 本",
+ "Divergences": "ダイバージェンス",
+ "CVD divergence": "CVD ダイバージェンス",
+ "Swing": "スイング",
+ "Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.": "価格が高値を切り上げ CVD が切り下げた所、または価格が安値を切り下げ CVD が切り上げた所を、ここと地図に示します。",
+ "How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.": "高値・安値がスイングとみなされるために、左右それぞれ何本の足を上回る（下回る）必要があるか。スイングは、その後にその本数の足が確定してから描かれます。",
+ "Divergences join two swing highs in a row where the price made the higher high and the CVD the lower one (in the sell colour, above the highs), or two swing lows where the price made the lower low and the CVD the higher one (in the buy colour, below the lows), on the CVD candles and on the map. A swing must stand beyond the chosen number of closed candles each side, so a divergence appears that many candles after its newer swing, and swings on either side of a restart of the CVD are not compared. They need the chart to show the market's own candles. They show where buying or selling faded against the price; they have not been tested as a signal.": "ダイバージェンスは、価格が高値を切り上げ CVD が切り下げた連続する 2 つのスイング高値（売りの色、高値の上）、または価格が安値を切り下げ CVD が切り上げた 2 つのスイング安値（買いの色、安値の下）を、CVD ローソク足と地図の上で結びます。スイングは左右それぞれ選んだ本数の確定足を上回る（下回る）必要があるため、ダイバージェンスは新しい方のスイングからその本数だけ遅れて現れ、CVD のリセットをまたぐスイングは比較しません。チャートがその市場自身のローソク足を表示している必要があります。価格に対して買いや売りが弱まった所を示すもので、シグナルとしては検証されていません。"
 }

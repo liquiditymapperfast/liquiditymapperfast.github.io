@@ -8,14 +8,14 @@ import { windowsOf } from '../keylevels/levels.ts';
  * a sum over several markets are not kept.
  */
 
-/** A running delta read at a second (seconds, not milliseconds) and the first second it holds: what `FlowTrack` is. */
-export interface DeltaTrack { first: number | null; cumDelta(sec: number): number }
+/** A running delta and gross volume read at a second (seconds, not milliseconds) and the first second it holds: what `FlowTrack` is. */
+export interface DeltaTrack { first: number | null; cumDelta(sec: number): number; cumGross(sec: number): number }
 
-/** One candle's flow, relative to its start: what it ended at (the delta) and the lowest and highest the running sum reached, sampled. */
-export interface CandleFlow { delta: number; low: number; high: number }
+/** One candle's flow, relative to its start: what it ended at (the delta), the lowest and highest the running sum reached (sampled), and its gross volume. */
+export interface CandleFlow { delta: number; low: number; high: number; gross: number }
 
-/** One candle as the pane draws it: its delta, and the CVD's open, high, low and close. */
-export interface DeltaCandle { t: number; delta: number; open: number; high: number; low: number; close: number }
+/** One candle as the pane draws it: its delta, the CVD's open, high, low and close, and which run of the CVD it is in (it restarts between runs). */
+export interface DeltaCandle { t: number; delta: number; open: number; high: number; low: number; close: number; run: number }
 
 export const SAMPLES = 16;
 
@@ -29,6 +29,8 @@ export function candleFlow(tracks: readonly DeltaTrack[], t: number, tfMs: numbe
   const live = tracks.filter(k => k.first !== null && k.first <= s - 1);
   if (!live.length) return null;
   const base = live.map(k => k.cumDelta(s - 1));
+  let gross = 0;
+  for (const k of live) gross += k.cumGross(e) - k.cumGross(s - 1);
   let low = 0, high = 0, delta = 0;
   const span = e - s + 1;
   for (let j = 1; j <= samples; j++) {
@@ -40,7 +42,27 @@ export function candleFlow(tracks: readonly DeltaTrack[], t: number, tfMs: numbe
     if (sum > high) high = sum;
     if (j === samples) delta = sum;
   }
-  return { delta, low, high };
+  return { delta, low, high, gross };
+}
+
+/** How long a stretch with no volume on any market must last to be taken as not recorded rather than quiet. */
+export const UNRECORDED_MS = 10 * 60_000;
+
+/**
+ * The flows with the candles nothing was recorded in left out (null). A running delta does not say whether a stretch was recorded, so a
+ * stretch of candles with no volume on any of the markets lasting `minMs` or more is taken as not recorded (a server or page that was not
+ * running); a shorter one is quiet, a delta of 0, as a thin coin can go a minute without a trade.
+ */
+export function unrecorded(starts: readonly number[], flows: readonly (CandleFlow | null)[], tfMs: number, now: number, minMs = UNRECORDED_MS): (CandleFlow | null)[] {
+  const out = flows.slice();
+  for (let i = 0; i < out.length;) {
+    if (!out[i] || out[i]!.gross > 0) { i++; continue; }
+    let j = i, ms = 0;
+    while (j < out.length && out[j] && out[j]!.gross <= 0) { ms += Math.min(starts[j]! + tfMs, now) - starts[j]!; j++; }
+    if (ms >= minMs) for (let k = i; k < j; k++) out[k] = null;
+    i = j;
+  }
+  return out;
 }
 
 export type ResetMode = 'none' | 'day' | 'week';
@@ -75,13 +97,13 @@ export function resetKeys(starts: readonly number[], reset: ResetMode, zone: str
  */
 export function deltaCandles(starts: readonly number[], flows: readonly (CandleFlow | null)[], keys: readonly number[]): DeltaCandle[] {
   const out: DeltaCandle[] = [];
-  let cvd = 0, key = NaN, gap = true;
+  let cvd = 0, key = NaN, gap = true, run = -1;
   for (let i = 0; i < starts.length; i++) {
     const f = flows[i];
     if (!f) { gap = true; continue; }
     // A new day or week, or the first candle after one with nothing recorded (what happened in between is not known): the CVD starts again.
-    if (keys[i] !== key || gap) { cvd = 0; key = keys[i]!; gap = false; }
-    out.push({ t: starts[i]!, delta: f.delta, open: cvd, high: cvd + f.high, low: cvd + f.low, close: cvd + f.delta });
+    if (keys[i] !== key || gap) { cvd = 0; key = keys[i]!; gap = false; run++; }
+    out.push({ t: starts[i]!, delta: f.delta, open: cvd, high: cvd + f.high, low: cvd + f.low, close: cvd + f.delta, run });
     cvd += f.delta;
   }
   return out;

@@ -46,6 +46,7 @@ import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { draftLabel } from '../range/stats.ts';
 import type { RangePoint, RangeTool } from '../range/tool.ts';
+import { paintDivergence, type Divergence } from '../delta/divergence.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -127,6 +128,8 @@ export class HeatPane {
   onStats: () => void = () => {};
   onView: () => void = () => {};
   onFrame: () => void = () => {};
+  /** The Delta pane's price/CVD divergences in view (set in main; none while that pane is not drawn). */
+  divergences: () => readonly Divergence[] = () => [];
   #glCanvas = document.createElement('canvas');
   #ctx: CanvasRenderingContext2D;
   #w = 0; #h = 0; #dpr = 1;
@@ -375,6 +378,16 @@ export class HeatPane {
     if (this.#lodFrame.needsFrame) this.invalidate();
   }
 
+  /** The Delta pane's divergences on the price: the two swings joined above the highs (sellers', ask colour) or below the lows (buyers', bid colour). */
+  #paintDivergences(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const list = this.divergences();
+    if (!list.length) return;
+    const v = this.view, p = this.#palette, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, label = t('CVD divergence');
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+    for (const d of list) paintDivergence(ctx, d, v.xOf(d.from + tf / 2, pw), v.yOf(d.priceFrom, ph), v.xOf(d.to + tf / 2, pw), v.yOf(d.priceTo, ph), d.kind === 'bear' ? p.ask : p.bid, label);
+    ctx.restore();
+  }
+
   #paintOverlay(state: AppState): void {
     const ctx = this.#ctx, w = this.#w, h = this.#h, pw = this.plotW, ph = this.plotH, v = this.view, p = this.#palette;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
@@ -407,6 +420,7 @@ export class HeatPane {
     }
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
+    this.#paintDivergences(ctx, state, pw, ph);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
     this.#paintLiquidations(ctx, state, pw, ph); // above the bubbles: a forced order is one of the market orders, marked as forced
     this.#paintAbsorption(ctx, state, pw, ph);

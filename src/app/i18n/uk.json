@@ -1077,5 +1077,17 @@
  "The left edge": "Лівий край",
  "No flow recorded for these candles yet.": "Для цих свічок потік ще не записано.",
  "Flow is recorded from {time}: the candles before it have none.": "Потік записується з {time}: у свічок до цього його немає.",
- "flow recorded since {time}": "потік записано з {time}"
+ "flow recorded since {time}": "потік записано з {time}",
+ "{n} candles": {
+  "one": "{n} свічка",
+  "few": "{n} свічки",
+  "many": "{n} свічок",
+  "other": "{n} свічки"
+ },
+ "Divergences": "Дивергенції",
+ "CVD divergence": "Дивергенція CVD",
+ "Swing": "Свінг",
+ "Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.": "Позначає, де ціна зробила вищий максимум, а CVD нижчий, або ціна нижчий мінімум, а CVD вищий, тут і на карті.",
+ "How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.": "На скільки свічок з кожного боку максимум чи мінімум має виділятися, щоб вважатися свінгом. Свінг малюється, лише коли після нього закриється стільки свічок.",
+ "Divergences join two swing highs in a row where the price made the higher high and the CVD the lower one (in the sell colour, above the highs), or two swing lows where the price made the lower low and the CVD the higher one (in the buy colour, below the lows), on the CVD candles and on the map. A swing must stand beyond the chosen number of closed candles each side, so a divergence appears that many candles after its newer swing, and swings on either side of a restart of the CVD are not compared. They need the chart to show the market's own candles. They show where buying or selling faded against the price; they have not been tested as a signal.": "Дивергенції з’єднують два свінг-максимуми поспіль, де ціна зробила вищий максимум, а CVD нижчий (кольором продажів, над максимумами), або два свінг-мінімуми, де ціна зробила нижчий мінімум, а CVD вищий (кольором купівель, під мінімумами), на свічках CVD і на карті. Свінг має виділятися на вибрану кількість закритих свічок з кожного боку, тож дивергенція з’являється через стільки свічок після свого нового свінгу, а свінги по різні боки перезапуску CVD не порівнюються. Потрібно, щоб графік показував власні свічки ринку. Вони показують, де купівлі чи продажі ослабли відносно ціни; як сигнал їх не перевірено."
 }

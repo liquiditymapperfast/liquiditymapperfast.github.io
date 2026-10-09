@@ -9,20 +9,21 @@ import type { FlowMinutes, FlowSeries } from '../../shared/flow.ts';
 export class FlowTrack {
   /** The second from which the seconds are read (a minute boundary); null when there is one kind only. */
   readonly join: number | null;
-  /** What is added to a minute's running delta to put it on the seconds' scale. */
+  /** What is added to a minute's running delta (and gross volume) to put it on the seconds' scale. */
   readonly #shift: number;
+  readonly #grossShift: number;
   /** The minutes, when the line reads them (joined to the seconds, or alone when there are no seconds). */
   readonly #m: FlowMinutes | null;
 
   constructor(readonly seconds: FlowSeries | undefined, readonly minutes: FlowMinutes | undefined) {
     const span = seconds?.span ?? null, held = minutes !== undefined && minutes.length > 0;
-    let join: number | null = null, shift = 0;
+    let join: number | null = null, shift = 0, grossShift = 0;
     if (span && held) {
       const j = Math.ceil(span.first / 60) * 60;
       // The minutes must reach the join (or there would be a stretch neither holds) and begin before it (or they add nothing).
-      if (minutes.t0 < j * 1000 && minutes.end >= j * 1000) { join = j; shift = seconds!.cumDelta(j - 1) - minutes.deltaAt(minutes.indexOf(j) - 1); }
+      if (minutes.t0 < j * 1000 && minutes.end >= j * 1000) { join = j; shift = seconds!.cumDelta(j - 1) - minutes.deltaAt(minutes.indexOf(j) - 1); grossShift = seconds!.cumGross(j - 1) - minutes.grossAt(minutes.indexOf(j) - 1); }
     }
-    this.join = join; this.#shift = shift; this.#m = join !== null || (!span && held) ? minutes! : null;
+    this.join = join; this.#shift = shift; this.#grossShift = grossShift; this.#m = join !== null || (!span && held) ? minutes! : null;
   }
 
   /** The first second held, or null when there is nothing. */
@@ -35,6 +36,12 @@ export class FlowTrack {
   cumDelta(sec: number): number {
     if (this.#m && (this.join === null || sec < this.join)) return this.#m.deltaAt(this.#m.indexOf(sec)) + this.#shift;
     return this.seconds?.cumDelta(sec) ?? 0;
+  }
+
+  /** The running gross volume (buys plus sells) at the end of second `sec`, read as `cumDelta` is: a stretch where it does not grow traded nothing or was not recorded. */
+  cumGross(sec: number): number {
+    if (this.#m && (this.join === null || sec < this.join)) return this.#m.grossAt(this.#m.indexOf(sec)) + this.#grossShift;
+    return this.seconds?.cumGross(sec) ?? 0;
   }
 
   /** The price at the end of second `sec`: the seconds' where they hold one, else the last minute's at or before it; NaN when neither has one. */
