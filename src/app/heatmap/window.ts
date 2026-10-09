@@ -24,3 +24,26 @@ export function colourWindow(baseline: SizeWindow | null, contrast: number): Siz
   const shift = -((clampContrast(contrast) - CONTRAST.neutral) / CONTRAST.neutral) * Math.log(baseline.hi / baseline.lo) * 0.75;
   return { lo: baseline.lo * Math.exp(shift), hi: baseline.hi * Math.exp(shift) };
 }
+
+/** The window taken from the cells on screen, and the view it was taken for: when (`at`, `since`: the last new view) and the price span. */
+export interface Baseline extends SizeWindow { at: number; since: number; spanP: number }
+
+/** How long a new view's baseline keeps following the cells while its history loads, and how often Auto blends it toward them after that. */
+export const SETTLE_MS = 15_000, BLEND_MS = 10_000;
+
+/**
+ * The baseline after a raster with percentiles `s`. A new view (`force`: recentred, another market, venues or size; or a price span 2x off
+ * the baseline's) takes a new one, with Auto off too: a cell holds every price of its row, so cell sizes follow the zoom, and a window kept
+ * from another view saturates everything or nothing. It follows the cells for `SETTLE_MS` after that, while the view's history loads (the
+ * first raster can hold little more than the live column). Then Auto blends it halfway toward the cells every `BLEND_MS`; Auto off holds it.
+ */
+export function nextBaseline(b: Baseline | null, s: { p15: number; p96: number }, o: { auto: boolean; force: boolean; spanP: number; now: number }): Baseline | null {
+  if (!(s.p96 > 0)) return b;
+  const hi = s.p96, lo = Math.max(1, Math.min(s.p15, hi / 4));
+  const zoomed = b !== null && o.spanP > 0 && b.spanP > 0 && Math.abs(Math.log(o.spanP / b.spanP)) > Math.LN2;
+  if (!b || o.force || zoomed) return { lo, hi, at: o.now, since: o.now, spanP: o.spanP };
+  if (o.now - b.since < SETTLE_MS) return { ...b, lo, hi, at: o.now };
+  if (!o.auto || o.now - b.at <= BLEND_MS) return b;
+  const blend = (from: number, to: number): number => Math.exp(Math.log(from) * 0.5 + Math.log(to) * 0.5);
+  return { ...b, lo: blend(b.lo, lo), hi: blend(b.hi, hi), at: o.now };
+}

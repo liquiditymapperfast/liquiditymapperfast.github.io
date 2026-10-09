@@ -1,6 +1,6 @@
 import { HeatGL, type HeatStyle } from '../heatmap/gl.ts';
 import { buildLut } from '../heatmap/lut.ts';
-import { colourWindow } from '../heatmap/window.ts';
+import { colourWindow, nextBaseline, type Baseline } from '../heatmap/window.ts';
 import { isCoarse } from '../device.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { TIMEFRAMES, valueAreaKey, type Hub, type RasterResult } from '../hub.ts';
@@ -137,8 +137,8 @@ export class HeatPane {
   #dataVersion = 0; #rasteredVersion = -1; #rasteredKey = ''; #lastRasterAt = 0;
   #liveMargin = 0;
   #palette = PALETTES.light!;
-  /** Colour window from the raster's percentiles. Auto mode refreshes it on recenter, market change, a 2x zoom or every 10 s, so colours do not drift while panning. */
-  #baseline: { lo: number; hi: number; at: number; spanP: number } | null = null;
+  /** Colour window from the raster's percentiles (nextBaseline): new for a new view, then held, or blended toward the cells every 10 s in Auto. */
+  #baseline: Baseline | null = null;
   #forceBaseline = true;
   #drag: { x: number; y: number; shift: boolean } | null = null;
   /** The Range tool (set by the page), and a selection being dragged here: where it began, and where a finger last was. */
@@ -230,17 +230,9 @@ export class HeatPane {
   get window(): { lo: number; hi: number } { return colourWindow(this.#baseline, this.store.state.heat.contrast); }
 
   #updateBaseline(): void {
-    const s = this.stats, auto = this.store.state.heat.auto;
-    if (!(s.p96 > 0)) return;
-    const spanP = this.view.p1 - this.view.p0, now = performance.now(), b = this.#baseline;
-    if (b && !auto) return;
-    const hi = s.p96, lo = Math.max(1, Math.min(s.p15, hi / 4));
-    const zoomed = b !== null && spanP > 0 && Math.abs(Math.log(spanP / b.spanP)) > Math.LN2;
-    if (!b || this.#forceBaseline || zoomed) { this.#baseline = { lo, hi, at: now, spanP }; this.#forceBaseline = false; return; }
-    if (now - b.at > 10_000) {
-      const blend = (from: number, to: number) => Math.exp(Math.log(from) * 0.5 + Math.log(to) * 0.5);
-      this.#baseline = { lo: blend(b.lo, lo), hi: blend(b.hi, hi), at: now, spanP: b.spanP };
-    }
+    if (!(this.stats.p96 > 0)) return;
+    this.#baseline = nextBaseline(this.#baseline, this.stats, { auto: this.store.state.heat.auto, force: this.#forceBaseline, spanP: this.view.p1 - this.view.p0, now: performance.now() });
+    this.#forceBaseline = false;
   }
   invalidate(): void { this.#dirty = true; if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#render(); }); }
   dataChanged(): void { this.#dataVersion++; this.invalidate(); }
