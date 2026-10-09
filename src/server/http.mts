@@ -1287,6 +1287,21 @@ export function createLocalServer({
     streamStateReplacements: 0, streamMarkSent: 0, streamMarkReplacements: 0, streamDrainWaits: 0, streamWriteErrors: 0, streamStateSnapshotAdmissionRejected: 0, streamStateSnapshotAdmissionLast: null, maxPendingState: 0, maxPendingSlots: 0, markPublishes: 0, markSequence: 0, eventLoop,
   };
   let timer: ReturnType<typeof setInterval> | null = null;
+  let stopped: Promise<void> | null = null;
+  /**
+   * Stop answering requests: no new connection, and every open one dropped, including one still sending a large response. server.close()
+   * alone keeps such a connection, and the page sends its next request on it once the response ends, which then reaches stores already
+   * closed ("statement has been finalized" on /api/v2/oi at a restart). Call it before closing any store; it is safe to call again.
+   */
+  const stopServing = (): Promise<void> => {
+    if (!stopped) {
+      for (const client of clients) client.end();
+      clients.clear();
+      stopped = new Promise<void>((resolve) => { if (!server.listening) return resolve(); server.close(() => resolve()); });
+      server.closeAllConnections();
+    }
+    return stopped;
+  };
   let providerTimer: ReturnType<typeof setTimeout> | null = null;
   let providerPollingKind: 'liquidation' | 'stopLoss' | 'takeProfit' = 'liquidation';
   let providerPollGeneration = 0;
@@ -2579,6 +2594,7 @@ export function createLocalServer({
       });
     },
     tick,
+    stopServing,
     close() {
       publicMarketControlGeneration += 1; publicMarketControls = null;
       retainedBudgetClosed = true;
@@ -2589,10 +2605,9 @@ export function createLocalServer({
       if (publishTimer !== null) clearTimeout(publishTimer);
       publishTimer = null;
       eventLoop.disable();
-      for (const client of clients) client.end();
-      clients.clear();
+      const served = stopServing();
       history.close();
-      return new Promise<void>((resolve) => { if (!server.listening) return resolve(); server.close(() => resolve()); });
+      return served;
     },
   };
 }

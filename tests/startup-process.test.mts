@@ -130,3 +130,37 @@ test('explicit persistent history path can be opened across fixture restarts', a
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('shutdown drops a connection still busy with a request, so nothing after it reaches the closed stores', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hlm-startup-busy-'));
+  const port = await freePort();
+  try {
+    const run = runFixture({ PORT: String(port), HISTORY_DB: path.join(directory, 'history.sqlite'), HLM_TEST_SHUTDOWN_AFTER_MS: '1500' });
+    let socket: net.Socket | null = null;
+    for (let i = 0; i < 100 && !socket; i++) {
+      socket = await new Promise<net.Socket | null>((resolve) => { const s = net.connect(port, '127.0.0.1'); s.once('connect', () => resolve(s)); s.once('error', () => resolve(null)); });
+      if (!socket) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(socket, 'the fixture server never listened');
+    let received = '';
+    socket.on('data', (chunk: Buffer) => { received += chunk.toString('latin1'); });
+    socket.on('error', () => {});
+    const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+    // A request the server is still reading when it shuts down: its body ({}, answered 400, changes nothing) is held back.
+    socket.write('POST /api/v2/venues HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{');
+    const dropped = await Promise.race([closed.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 6_000))]);
+    if (!dropped) {
+      // Before the fix the connection outlived the shutdown: finish the request and ask for OI on it, as a page does.
+      socket.write('}');
+      socket.write('GET /api/v2/oi?inst=binance:BTCUSDT&tf=1h HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n');
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      socket.destroy();
+    }
+    const result = await run;
+    assert.equal(dropped, true, `the busy connection outlived the shutdown; it answered: ${received.split('\r\n')[0]}`);
+    assert.doesNotMatch(result.output, /statement has been finalized/);
+    assert.equal(result.code, 0, result.output);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

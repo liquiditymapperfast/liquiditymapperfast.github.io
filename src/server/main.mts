@@ -223,6 +223,8 @@ try {
   if (providerMode === 'live') runningApp.startProviderPolling(undefined, 'liquidation', { initialDelayMs: Number(process.env.HYPERTRACKER_INITIAL_REFRESH_MS ?? 0) });
   console.log(`LiquidityMapperFast local server listening at http://${address.address}:${address.port}${live ? ' (live feeds enabled)' : ' (fixture feeds)'}`);
   const shutdown = async () => {
+    // Stop answering first: a request on a connection that outlived the close would reach the stores closed below.
+    void app?.stopServing();
     v2?.close();
     const cleanupErrors = await cleanupStartup({ feeds, app });
     for (const { component, error } of cleanupErrors) console.error(JSON.stringify({ event: 'shutdown-cleanup-failed', component, mode: live ? 'live' : 'fixture', message: failureFields(error).message ?? String(error), code: failureFields(error).code ?? null }));
@@ -243,6 +245,10 @@ Port ${port} is already in use, most likely by an earlier LiquidityMapperFast se
       + `  Then stop it, or run this one elsewhere:  $env:PORT=8788; npm run dev
 `);
   }
+  // A start that failed after listening has pages connected and the v2 recorders running: stop both, or the process stays alive answering
+  // from closed stores.
+  void app?.stopServing();
+  try { v2?.close(); } catch (closeError) { console.error(JSON.stringify({ event: 'startup-cleanup-failed', component: 'v2', message: failureFields(closeError).message ?? String(closeError) })); }
   const cleanupErrors = await cleanupStartup({ feeds, app });
   for (const { component, error: cleanupError } of cleanupErrors) console.error(JSON.stringify({ event: 'startup-cleanup-failed', component, mode: live ? 'live' : 'fixture', message: failureFields(cleanupError).message ?? String(cleanupError), code: failureFields(cleanupError).code ?? null }));
   process.exitCode = 1;
