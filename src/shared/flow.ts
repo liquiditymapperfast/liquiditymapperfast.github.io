@@ -12,7 +12,7 @@ import type { TradeLike } from './footprint.ts';
  */
 
 export const FLOW_SEC = 1_000;
-const MINUTE = 60_000;
+const MINUTE = 60_000, DAY = 86_400_000;
 /** How long the recorder keeps minutes in memory (the page asks for at most a day). */
 export const FLOW_MEMORY_MS = 36 * 3_600_000;
 /** How long a store keeps them. */
@@ -36,8 +36,6 @@ export interface FlowStore {
   load(since: number): Iterable<FlowMinuteRow>;
   save(rows: FlowMinuteRow[], expireBefore: number): void;
   close(): void;
-  /** One instrument's stored minutes in [from, to), for what memory no longer holds (a store that cannot read a range has only what memory has). */
-  range?(inst: string, from: number, to: number): Iterable<FlowMinuteRow>;
 }
 /**
  * One instrument's flow a minute at a time, for windows older than the seconds the page holds: per minute from `t0` (ms), the USD bought
@@ -88,13 +86,21 @@ export class FlowRecorder {
   readonly #store: FlowStore | null;
   readonly #memoryMs: number;
   readonly #storeMs: number;
+  /**
+   * The minute totals of what memory no longer holds (see FlowMinutesSeries), per instrument and UTC day: 1440 minutes of five numbers,
+   * NaN where nothing was recorded. Read from the store once at start and added to as minutes leave memory; they no longer change.
+   * Reading them back from the store for a request (a week of rows spread through the file) took longer than a request may block.
+   */
+  readonly #old = new Map<string, Map<number, Float32Array>>();
   /** Trades dropped for being older than memory keeps, or for an instrument past the limit. */
   dropped = 0;
 
   constructor(store: FlowStore | null = null, protected now: () => number = Date.now, memoryMs: number = FLOW_MEMORY_MS, storeMs: number = FLOW_STORE_MS) {
     this.#store = store; this.#memoryMs = memoryMs; this.#storeMs = storeMs;
-    if (store) for (const row of store.load(now() - memoryMs)) {
+    const memoryFrom = now() - memoryMs;
+    if (store) for (const row of store.load(now() - storeMs)) {
       if (row.buy.length !== 60 || row.sell.length !== 60) continue;
+      if (row.t < memoryFrom) { this.#keepOld(row.inst, row.t, summarise(row.buy, row.sell, i => row.px?.[i] ?? 0)); continue; }
       const priced = row.px?.length === 60, bins = new Float64Array(priced ? BINS : BINS_WITH_UNPRICED); bins.set(row.buy, 0); bins.set(row.sell, 60);
       // The quantity is what the price is worked back from, so a trade that arrives late for a minute read from the store still averages in.
       if (priced) for (let i = 0; i < 60; i++) { const p = row.px![i]!; if (p > 0) bins[120 + i] = (bins[i]! + bins[60 + i]!) / p; }
@@ -102,6 +108,13 @@ export class FlowRecorder {
       else for (let i = 0; i < 60; i++) bins[BINS + i] = bins[i]! + bins[60 + i]!;
       this.#of(row.inst).set(row.t, bins);
     }
+  }
+
+  #keepOld(inst: string, t: number, totals: readonly number[]): void {
+    let days = this.#old.get(inst); if (!days) { days = new Map(); this.#old.set(inst, days); }
+    const day = Math.floor(t / DAY) * DAY;
+    let block = days.get(day); if (!block) { block = new Float32Array(1440 * 5).fill(NaN); days.set(day, block); }
+    block.set(totals, (t - day) / MINUTE * 5);
   }
 
   #of(inst: string): Map<number, Float64Array> { let m = this.#minutes.get(inst); if (!m) { m = new Map(); this.#minutes.set(inst, m); } return m; }
@@ -159,8 +172,10 @@ export class FlowRecorder {
    * only once the store has taken it, so a store that failed is tried again.
    */
   flush(final = false): void {
-    const now = this.now(), cutoff = now - this.#memoryMs, open = Math.floor(now / MINUTE) * MINUTE;
-    for (const minutes of this.#minutes.values()) for (const t of minutes.keys()) if (t < cutoff) minutes.delete(t);
+    const now = this.now(), cutoff = now - this.#memoryMs, open = Math.floor(now / MINUTE) * MINUTE, kept = now - this.#storeMs;
+    // A minute leaving memory keeps its totals, for windows older than memory; those go when the store would forget them.
+    for (const [inst, minutes] of this.#minutes) for (const [t, bins] of minutes) if (t < cutoff) { this.#keepOld(inst, t, summarise(bins.subarray(0, 60), bins.subarray(60, 120), i => priceOf(bins, i))); minutes.delete(t); }
+    for (const days of this.#old.values()) for (const day of days.keys()) if (day + DAY <= kept) days.delete(day);
     const store = this.#store, rows: FlowMinuteRow[] = [], settled: string[] = [];
     for (const key of [...this.#dirty]) {
       const at = key.lastIndexOf('|'), id = key.slice(0, at), t = Number(key.slice(at + 1));
@@ -206,24 +221,28 @@ export class FlowRecorder {
 
   /**
    * Each instrument's minutes in [from, to) as minute totals (see FlowMinutesSeries), starting at its first recorded minute there; an
-   * instrument with none is left out. Memory answers what it holds, the store what is older (both are the same seconds, so a minute reads
-   * the same from either).
+   * instrument with none is left out. Memory answers what it holds, the kept totals what is older (the same seconds, so a minute reads the
+   * same from either).
    */
   minutes(ids: readonly string[], from: number, to: number): FlowMinutesFrame {
     const start = Math.floor(from / MINUTE) * MINUTE, end = Math.ceil(to / MINUTE) * MINUTE;
     const instruments: FlowMinutesSeries[] = [];
     for (const id of ids) {
-      const found = new Map<number, [number, number, number, number, number]>(), memory = this.#minutes.get(id);
-      let held = end;
-      if (memory) for (const t of memory.keys()) if (t < held) held = t;
-      if (this.#store?.range && start < held) for (const row of this.#store.range(id, start, Math.min(end, held))) {
-        if (row.buy.length === 60 && row.sell.length === 60) found.set(row.t, summarise(row.buy, row.sell, i => row.px?.[i] ?? 0));
+      const memory = this.#minutes.get(id), days = this.#old.get(id);
+      // Kept totals go a day at a time: none older than the store keeps is answered.
+      const keptFrom = Math.max(start, Math.ceil((this.now() - this.#storeMs) / MINUTE) * MINUTE);
+      let first = Infinity;
+      if (memory) for (const t of memory.keys()) if (t >= start && t < end && t < first) first = t;
+      if (days) for (const [day, block] of days) {
+        for (let t = Math.max(keptFrom, day), stop = Math.min(end, first, day + DAY); t < stop; t += MINUTE) { const k = (t - day) / MINUTE * 5; if (block[k] === block[k]) { first = t; break; } }
       }
-      if (memory) for (const [t, bins] of memory) if (t >= start && t < end) found.set(t, summarise(bins.subarray(0, 60), bins.subarray(60, 120), i => priceOf(bins, i)));
-      if (!found.size) continue;
-      let first = Infinity; for (const t of found.keys()) if (t < first) first = t;
+      if (!Number.isFinite(first)) continue;
       const n = (end - first) / MINUTE, series: FlowMinutesSeries = { id, t0: first, buy: new Float32Array(n), sell: new Float32Array(n), px: new Float32Array(n), lo: new Float32Array(n), hi: new Float32Array(n) };
-      for (const [t, [b, s, px, lo, hi]] of found) { const i = (t - first) / MINUTE; series.buy[i] = b; series.sell[i] = s; series.px[i] = px; series.lo[i] = lo; series.hi[i] = hi; }
+      const put = (t: number, totals: ArrayLike<number>, at = 0): void => { const i = (t - first) / MINUTE; series.buy[i] = totals[at]!; series.sell[i] = totals[at + 1]!; series.px[i] = totals[at + 2]!; series.lo[i] = totals[at + 3]!; series.hi[i] = totals[at + 4]!; };
+      if (days) for (const [day, block] of days) {
+        for (let t = Math.max(first, keptFrom, day), stop = Math.min(end, day + DAY); t < stop; t += MINUTE) { const k = (t - day) / MINUTE * 5; if (block[k] === block[k]) put(t, block, k); }
+      }
+      if (memory) for (const [t, bins] of memory) if (t >= first && t < end) put(t, summarise(bins.subarray(0, 60), bins.subarray(60, 120), i => priceOf(bins, i)));
       instruments.push(series);
     }
     return { from: start, to: end, instruments };

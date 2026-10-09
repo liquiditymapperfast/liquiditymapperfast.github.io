@@ -455,6 +455,9 @@ test('the marks of a window are judged once until the groups or thresholds chang
   check('in order');
   const once = book.marks(ids, thresholds, T, T + 600_000, 0, 1e9), twice = book.marks(ids, thresholds, T + 1_000, T + 600_000, 0, 1e9);
   assert.ok(twice.length > 0 && twice.every(m => once.includes(m)), 'the same judged marks, read again for another window');
+  // Another caller judging with its own thresholds (the Range panel) does not push the map's out.
+  book.marks(ids, new Map(thresholds), T, T + 600_000, 0, 1e9);
+  assert.ok(book.marks(ids, thresholds, T, T + 600_000, 0, 1e9).every(m => once.includes(m)), 'the marks the map judged are still kept');
   add(Array.from({ length: 150 }, (_, i) => groupAt(T + i * 7)));
   add(Array.from({ length: 30 }, () => groupAt(T + 999)));
   check('an older window loaded');

@@ -15,19 +15,14 @@ const toRow = (row: { inst: string; t: number; data: Uint8Array }): FlowMinuteRo
 
 class SqliteFlowStore implements FlowStore {
   readonly #db: DatabaseSync;
-  readonly #range;
   constructor(dbPath: string) {
     this.#db = new DatabaseSync(dbPath);
     this.#db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS flow_minutes (inst TEXT NOT NULL, t INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (inst, t));');
-    this.#range = this.#db.prepare('SELECT inst, t, data FROM flow_minutes WHERE inst = ? AND t >= ? AND t < ? ORDER BY t');
   }
   *load(since: number): Iterable<FlowMinuteRow> {
     for (const row of this.#db.prepare('SELECT inst, t, data FROM flow_minutes WHERE t >= ?').all(since) as { inst: string; t: number; data: Uint8Array }[]) {
       const minute = toRow(row); if (minute) yield minute;
     }
-  }
-  *range(inst: string, from: number, to: number): Iterable<FlowMinuteRow> {
-    for (const row of this.#range.all(inst, from, to) as { inst: string; t: number; data: Uint8Array }[]) { const minute = toRow(row); if (minute) yield minute; }
   }
   save(rows: FlowMinuteRow[], expireBefore: number): void {
     const db = this.#db, insert = db.prepare('INSERT OR REPLACE INTO flow_minutes (inst, t, data) VALUES (?, ?, ?)');

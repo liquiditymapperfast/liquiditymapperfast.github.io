@@ -365,6 +365,10 @@ test('a window that has ended is merged once and kept; the window still open, an
   recorder.prune(T0 + 7 * COLUMN_MS + RETENTION_MS);
   const rest = recorder.columns.get('x:BTC')!;
   assert.deepEqual(recorder.query('x:BTC', T0, T0 + 20 * COLUMN_MS, 5 * COLUMN_MS), referenceQuery(rest, T0, T0 + 20 * COLUMN_MS, 5 * COLUMN_MS), 'after a prune a window is merged from the minutes left');
+  // A recorder told to keep none (the cap is the browser's choice) merges every time, with the same result.
+  const none = new DepthRecorder({ now: () => now, mergedCacheBins: 0 }); none.columns.set('x:BTC', [...columns]);
+  const a = none.query('x:BTC', T0, now + COLUMN_MS, 5 * COLUMN_MS), b = none.query('x:BTC', T0, now + COLUMN_MS, 5 * COLUMN_MS);
+  assert.notEqual(a[0], b[0]); assert.deepEqual(a, b); assert.deepEqual(a, first);
 });
 
 test('bins too far apart for the flat merge are merged the old way, with the same result', () => {

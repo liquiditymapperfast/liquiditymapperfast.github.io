@@ -151,7 +151,8 @@ export class Engine {
     this.#coin = coin; this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping;
     // A coin that trades less than BTC keeps smaller trades, groups and map cells (shared/coins.ts SCALES); BTC's are 1.
     const scale = SCALES[tier] ?? 1;
-    this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale });
+    // A page keeps far fewer merged windows than a server (about 6 MB at most): it holds a day, and it may be a phone.
+    this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale, mergedCacheBins: 500_000 });
     this.footprints = new FootprintRecorder(footprint, now, retentionMs, scale);
     this.printStream = new PrintStream(prints, now, retentionMs, PRINT_FLOOR_USD * scale);
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);

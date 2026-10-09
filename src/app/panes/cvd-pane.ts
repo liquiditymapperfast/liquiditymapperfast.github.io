@@ -348,14 +348,13 @@ export class CvdPane {
     const flowIdsToLoad = priceId && !loadIds.includes(priceId) ? [...loadIds, priceId] : loadIds;
     const secondsFrom = Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000);
     void this.hub.ensureFlow(flowIdsToLoad, secondsFrom);
-    // A window reaching back before the seconds the page holds draws its older part from the minutes (asked from a six-hour boundary, so
-    // zooming out does not ask again at every step, up to where the latest of the seconds begins).
+    // A window reaching back before the seconds the page holds draws its older part from the minutes: asked from a six-hour boundary (so
+    // zooming out does not ask again at every step) up to the hour after the latest of the seconds begins. That is where the seconds
+    // were loaded from, not the clock: it stays put until the ring has held a day and a half, and then moves on by the hour.
     const wanted = cfg.span === 'map' ? this.view.t0 : now - CVD_SPAN_MS[cfg.span], older = wanted < secondsFrom - 60_000;
-    if (older) {
-      let latest = secondsFrom;
-      for (const id of flowIdsToLoad) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 > latest) latest = first * 1000; }
-      void this.hub.ensureFlowMinutes(flowIdsToLoad, Math.floor((wanted - 3_600_000) / MINUTES_FROM_MS) * MINUTES_FROM_MS, Math.ceil((latest + 120_000) / 600_000) * 600_000);
-    }
+    let latest = -Infinity;
+    if (older) for (const id of flowIdsToLoad) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 > latest) latest = first * 1000; }
+    if (older && latest > -Infinity) void this.hub.ensureFlowMinutes(flowIdsToLoad, Math.floor((wanted - 3_600_000) / MINUTES_FROM_MS) * MINUTES_FROM_MS, Math.ceil((latest + 120_000) / 3_600_000) * 3_600_000);
     let earliest = Infinity;
     for (const id of ids) { const first = this.hub.flow.track(id)?.first; if (first !== null && first !== undefined && first * 1000 < earliest) earliest = first * 1000; }
     const win = flowWindow({ span: cfg.span, mapT0: this.view.t0, mapT1: this.view.t1, now, earliest }), { t0, t1 } = win;

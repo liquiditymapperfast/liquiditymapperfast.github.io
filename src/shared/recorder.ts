@@ -133,8 +133,8 @@ function firstFrom(list: readonly Column[], t: number): number {
   return lo;
 }
 
-/** How many bins of merged windows are kept for the next question: two days of every market at one step fit (at most about 72 MB). */
-const MERGED_CACHE_BINS = 6_000_000;
+/** How many bins of merged windows a server keeps for the next question: two days of every market at one step fit (at most about 72 MB). */
+export const MERGED_CACHE_BINS = 6_000_000;
 
 export interface RecorderOptions {
   store?: ColumnStore | null;
@@ -145,6 +145,8 @@ export interface RecorderOptions {
   retentionMs?: number;
   /** The smallest bin kept once a column is large (MIN_BIN_USD; smaller for a coin that trades less than BTC). */
   minBinUsd?: number;
+  /** How many bins of merged windows are kept for the next question (MERGED_CACHE_BINS; less in a browser, which keeps a day and may be a phone). */
+  mergedCacheBins?: number;
 }
 
 /** Records per-instrument minute columns from periodic book samples. */
@@ -160,11 +162,13 @@ export class DepthRecorder {
   readonly #now: () => number;
   readonly #retentionMs: number;
   readonly #minBinUsd: number;
+  readonly #mergedCacheBins: number;
   /** Merged windows that have ended, by instrument, step and start, least recently asked first; and how many bins they hold. */
   readonly #merged = new Map<string, Column>();
   #mergedBins = 0;
 
-  constructor({ store = null, now = Date.now, steps = new Map(), retentionMs = RETENTION_MS, minBinUsd = MIN_BIN_USD }: RecorderOptions = {}) {
+  constructor({ store = null, now = Date.now, steps = new Map(), retentionMs = RETENTION_MS, minBinUsd = MIN_BIN_USD, mergedCacheBins = MERGED_CACHE_BINS }: RecorderOptions = {}) {
+    this.#mergedCacheBins = mergedCacheBins;
     this.#store = store; this.#now = now; this.steps = steps; this.#retentionMs = retentionMs; this.#minBinUsd = minBinUsd;
     if (store) {
       for (const { instrumentId, column, step } of store.load(now() - retentionMs)) {
@@ -281,9 +285,9 @@ export class DepthRecorder {
       if (column) { this.#merged.delete(key); this.#merged.set(key, column); }
       else {
         column = mergeWindow(inRange, start, end, t, this.#minBinUsd);
-        if (whole) {
+        if (whole && this.#mergedCacheBins > 0) {
           this.#merged.set(key, column); this.#mergedBins += column.bins.length;
-          for (const [oldest, gone] of this.#merged) { if (this.#mergedBins <= MERGED_CACHE_BINS) break; this.#merged.delete(oldest); this.#mergedBins -= gone.bins.length; }
+          for (const [oldest, gone] of this.#merged) { if (this.#mergedBins <= this.#mergedCacheBins) break; this.#merged.delete(oldest); this.#mergedBins -= gone.bins.length; }
         }
       }
       out.push(column);

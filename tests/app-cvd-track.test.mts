@@ -103,3 +103,20 @@ test('the column model draws a window older than the seconds from the minutes, w
   assert.ok([...after.perp!.last].every(v => Number.isFinite(v)), 'the aggregate too');
   assert.equal(after.perp!.last[119], lane.last[119], 'one instrument: the aggregate is its line');
 });
+
+test('a minute leaving memory keeps its totals for older windows, until the store would forget it', () => {
+  let now = S0 * 1000 + 30_000;
+  const recorder = new FlowRecorder(null, () => now, 10 * MIN, 60 * MIN);
+  recorder.ingest([
+    { instrumentId: 'x:BTC', tradeId: 'a', side: 'buy', price: 80_000, notionalUsd: 900, sourceTimestamp: S0 * 1000 + 2_000 },
+    { instrumentId: 'x:BTC', tradeId: 'b', side: 'sell', price: 80_010, notionalUsd: 1_500, sourceTimestamp: S0 * 1000 + 40_000 },
+  ]);
+  const read = (): number[] => { const m = recorder.minutes(['x:BTC'], S0 * 1000, now).instruments[0]; return m ? [m.t0, m.buy[0]!, m.sell[0]!, m.px[0]!, m.lo[0]!, m.hi[0]!] : []; };
+  const want = [S0 * 1000, 900, 1_500, 80_010, -600, 900];
+  assert.deepEqual(read(), want, 'from memory');
+  now += 20 * MIN; recorder.flush();
+  assert.deepEqual(recorder.frame(['x:BTC'], S0 * 1000, now).instruments, [], 'memory no longer holds the seconds');
+  assert.deepEqual(read(), want, 'the minute reads the same from what was kept');
+  now += 60 * MIN; recorder.flush();
+  assert.deepEqual(read(), [], 'past the store\'s keep it is gone');
+});

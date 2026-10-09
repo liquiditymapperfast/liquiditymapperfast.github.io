@@ -94,9 +94,10 @@ export class AbsorptionBook {
   /**
    * Every group that is a mark at the thresholds last asked for, with the time it started, in the order the groups came: judged again only
    * when the groups, the thresholds (a new map from the caller) or the instruments change, so a frame that only moves the pointer, or the
-   * map, reads a list instead of judging tens of thousands of groups.
+   * map, reads a list instead of judging tens of thousands of groups. Two are kept, the one used last first: the map's and the Range panel's
+   * (which judges with its own thresholds now and then) do not push each other out.
    */
-  #judged: { version: number; thresholds: ReadonlyMap<string, number | null>; ids: string; marks: { t0: number; mark: AbsorptionMark }[] } | null = null;
+  #judged: { version: number; thresholds: ReadonlyMap<string, number | null>; ids: string; marks: { t0: number; mark: AbsorptionMark }[] }[] = [];
   /** Bumped whenever anything changes, so a painter can tell its cache is stale. */
   version = 0;
   constructor(private max = 40_000) {}
@@ -152,8 +153,9 @@ export class AbsorptionBook {
    */
   marks(ids: readonly string[], thresholds: ReadonlyMap<string, number | null>, t0: number, t1: number, p0: number, p1: number): AbsorptionMark[] {
     const idsKey = ids.join(',');
-    let judged = this.#judged;
-    if (!judged || judged.version !== this.version || judged.thresholds !== thresholds || judged.ids !== idsKey) {
+    let judged = this.#judged.find(j => j.version === this.version && j.thresholds === thresholds && j.ids === idsKey);
+    if (judged) this.#judged = [judged, ...this.#judged.filter(j => j !== judged)];
+    else {
       const wanted = new Set(ids), marks: { t0: number; mark: AbsorptionMark }[] = [];
       for (const g of this.#groups.values()) {
         if (!wanted.has(g.id)) continue;
@@ -162,7 +164,8 @@ export class AbsorptionBook {
         const part = markedPart(g, threshold);
         if (part) marks.push({ t0: g.t0, mark: { id: g.id, side: g.side, price: g.price, t0: part.t0, t1: part.t1, usd: part.usd, fills: part.fills, peak: part.peak, threshold } });
       }
-      judged = this.#judged = { version: this.version, thresholds, ids: idsKey, marks };
+      judged = { version: this.version, thresholds, ids: idsKey, marks };
+      this.#judged = [judged, ...this.#judged.filter(j => j.version === this.version)].slice(0, 2);
     }
     const out: AbsorptionMark[] = [], from = t0 - ABSORPTION_WINDOW_MS;
     for (const { t0: start, mark } of judged.marks) if (start >= from && start <= t1 && mark.price >= p0 && mark.price <= p1) out.push(mark);
