@@ -299,9 +299,12 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mark-fg) 28%, transparent); }
 .venue-mark::before { content: attr(data-mark); }
 .venue-mark.spot::after { content: ""; position: absolute; right: 0; bottom: 0; width: 32%; height: 32%; background: linear-gradient(135deg, transparent 50%, var(--mark-fg) 50%); }
-.chip .venue-mark { margin-right: 5px; }
-.range-row .venue-mark { margin-right: 5px; }
-.panel h4 .venue-mark { margin-right: 6px; vertical-align: -3px; }
+/* Whatever holds a mark beside a name centres the two on one line: on the text's baseline the mark sat low against small text. */
+.chip:has(> .venue-mark) { display: inline-flex; align-items: center; }
+.range-row span:has(> .venue-mark) { display: inline-flex; align-items: center; }
+.panel h4:has(> .venue-mark) { display: flex; align-items: center; }
+.chip .venue-mark, .range-row .venue-mark { margin-right: 5px; vertical-align: 0; }
+.panel h4 .venue-mark { margin-right: 6px; vertical-align: 0; }
 /* The Traded panel's session list (traded/panel.ts): one row a session, wrapping on a narrow sheet. The remove glyph is drawn, not typed. */
 .session-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .session-row .session-name { flex: 1 1 90px; min-width: 70px; }

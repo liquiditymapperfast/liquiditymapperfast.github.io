@@ -878,5 +878,6 @@
  "{n} smaller venues": "{n} 个较小的交易所",
  "Show the exchange in each bubble": "在每个气泡中显示交易所",
  "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "在每个够大的气泡中央显示交易所标记。悬停某个气泡时，其他交易所会淡出，突出该交易所成交的位置。",
- "Flow since {time}: older flow is not available from this source": "资金流自 {time} 起：此数据源不提供更早的资金流"
+ "Flow since {time}: older flow is not available from this source": "资金流自 {time} 起：此数据源不提供更早的资金流",
+ "Absorption history could not be loaded; trying again in a minute.": "无法加载吸收历史；一分钟后重试。"
 }

@@ -1122,10 +1122,12 @@ export class HeatPane {
       ctx.restore();
     }
     // Say where the picture is not the whole truth: more marks than one answer carries.
-    const capped = this.hub.absorptionCapped.filter(id => ids.includes(id));
+    // Only where the cut reached marks: the server keeps the largest, so a cut below the threshold left out nothing that would be drawn.
+    const capped = ids.filter(id => { const least = this.hub.absorptionCut.get(id), threshold = thresholds.get(id); return least !== undefined && threshold !== null && threshold !== undefined && least >= threshold; });
     const notes: string[] = [];
     if (capped.length) notes.push(t('Absorption: only the largest marks of {venues} are drawn in this window.', { venues: [...new Set(capped.map(venueLabel))].join(', ') }));
     if (this.hub.absorptionState === 'unavailable') notes.push(t('Absorption is not available from this server.'));
+    else if (this.hub.absorptionState === 'failed') notes.push(t('Absorption history could not be loaded; trying again in a minute.'));
     if (notes.length) {
       ctx.save(); ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
       const bandH = Math.max(34, Math.min(ph * 0.17, 150));

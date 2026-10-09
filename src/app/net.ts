@@ -56,7 +56,8 @@ export async function getSizes(ids: string[], windows: number[]): Promise<SizesA
 /** Absorption candidates and minutes (see DataSource.absorption); an older server without the route rejects (404). */
 export async function getAbsorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
   const response = await fetch(`/api/v2/absorption?inst=${ids.map(encodeURIComponent).join(',')}&min=${mins.map(m => Math.floor(m)).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}&limit=${limit}&since=${Math.floor(since)}`, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`absorption failed: ${response.status}`);
+  // The status goes with the error: an older server without the route (404) is not the same as a request that failed.
+  if (!response.ok) throw Object.assign(new Error(`absorption failed: ${response.status}`), { status: response.status });
   const answer = parseAbsorptionAnswer(await response.json().catch(() => null), ids);
   if (!answer) throw new Error('absorption answered with something else');
   return answer;

@@ -11,7 +11,7 @@ import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { t } from './i18n.ts';
 import { MAX_VALUE_AREA_WINDOWS, type ProfileAnswer, type ValueAreaWindow } from '../shared/footprint.ts';
 import { AbsorptionBook } from './absorption.ts';
-import { MAX_ABSORPTION_INSTRUMENTS } from '../shared/absorption.ts';
+import { ABSORPTION_RETENTION_MS, MAX_ABSORPTION_INSTRUMENTS, peakOf } from '../shared/absorption.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
@@ -75,8 +75,13 @@ export class Hub {
   /** Absorption candidates and window statistics: the window on screen and what the live stream added since. */
   readonly absorption = new AbsorptionBook();
   /** Instruments whose groups the last history answer cut at its limit (the smallest left out). */
-  absorptionCapped: string[] = [];
-  absorptionState: 'ready' | 'unavailable' = 'ready';
+  /**
+   * For each instrument whose last answer was cut at the limit, the smallest peak it kept. The server keeps the largest, so marks are
+   * missing only where that is at or above the instrument's threshold; below it, what was cut was too small to be a mark.
+   */
+  absorptionCut: ReadonlyMap<string, number> = new Map();
+  /** 'unavailable': the source has no absorption (an older server); 'failed': a request failed, and is tried again a minute later. */
+  absorptionState: 'ready' | 'unavailable' | 'failed' = 'ready';
   /** Called when absorption groups or minutes arrived (history or live). */
   onAbsorptionChanged: () => void = () => {};
   #absorptionLoading = false; #absorptionRetryAt = 0;
@@ -287,11 +292,15 @@ export class Hub {
     const ids = allIds.slice(0, MAX_ABSORPTION_INSTRUMENTS), thresholds = allThresholds.slice(0, MAX_ABSORPTION_INSTRUMENTS);
     if (this.#absorptionLoading || !ids.length || !(view.t1 > view.t0)) return;
     const now = Date.now(), MIN = 60_000;
-    if (this.absorptionState === 'unavailable' && now < this.#absorptionRetryAt) return;
+    if (this.absorptionState !== 'ready' && now < this.#absorptionRetryAt) return;
+    // Nothing older than the recorder keeps exists (and the server refuses a question of more than eight days): a map zoomed out further
+    // asks from there.
+    const kept = Math.floor((now - ABSORPTION_RETENTION_MS) / MIN) * MIN, t0 = Math.max(view.t0, kept);
+    if (!(view.t1 > t0)) return;
     const key = `${ids.join(',')}|${sdMinutes}`, have = this.#absorptionCover?.key === key ? this.#absorptionCover : null;
-    if (have && have.from <= view.t0 && have.to >= Math.min(view.t1, now) && thresholds.every((v, i) => v === null || v >= have.mins[i]!)) return;
+    if (have && have.from <= t0 && have.to >= Math.min(view.t1, now) && thresholds.every((v, i) => v === null || v >= have.mins[i]!)) return;
     const span = view.t1 - view.t0;
-    const from = Math.floor((view.t0 - span * 0.25) / MIN) * MIN, to = Math.ceil(Math.min(view.t1 + span * 0.1, now + MIN) / MIN) * MIN;
+    const from = Math.max(kept, Math.floor((t0 - span * 0.25) / MIN) * MIN), to = Math.ceil(Math.min(view.t1 + span * 0.1, now + MIN) / MIN) * MIN;
     const mins = thresholds.map(v => v === null ? Number.MAX_SAFE_INTEGER : Math.floor(v * 0.75));
     // The minutes: all of the span the first time, then the last few (the stream has brought the rest).
     const need = Math.floor(now / MIN) * MIN - (sdMinutes + 1) * MIN;
@@ -300,12 +309,17 @@ export class Hub {
     this.#absorptionLoading = true;
     this.source.absorption([...ids], mins, from, to, 4_000, since).then(
       answer => {
-        this.absorption.load(answer); this.absorptionCapped = answer.capped; this.absorptionState = 'ready';
+        const cut = new Map<string, number>();
+        for (const id of answer.capped) { let least = Infinity; for (const g of answer.groups) if (g.id === id) least = Math.min(least, peakOf(g)); if (Number.isFinite(least)) cut.set(id, least); }
+        this.absorption.load(answer); this.absorptionCut = cut; this.absorptionState = 'ready';
         // The answer covers its window for the connection it was asked on; one that reached the live edge is kept current by the stream.
         if (connection === this.#connection) this.#absorptionCover = { key, from, to: to >= now ? Infinity : to, mins, minutesFrom: Math.min(since, have?.minutesFrom ?? Infinity) };
         this.onAbsorptionChanged();
       },
-      () => { this.absorptionState = 'unavailable'; this.#absorptionRetryAt = Date.now() + 60_000; this.onAbsorptionChanged(); },
+      (error: unknown) => {
+        this.absorptionState = (error as { status?: unknown } | null)?.status === 404 ? 'unavailable' : 'failed';
+        this.#absorptionRetryAt = Date.now() + 60_000; this.onAbsorptionChanged();
+      },
     ).finally(() => { this.#absorptionLoading = false; });
   }
 

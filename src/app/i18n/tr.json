@@ -899,5 +899,6 @@
  },
  "Show the exchange in each bubble": "Her balonda borsayı göster",
  "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Sığacak kadar büyük her balonun ortasında borsanın işareti. Bir balonun üzerine gelin, diğer borsalar geri çekilir ve o borsanın işlem yaptığı yerler öne çıkar.",
- "Flow since {time}: older flow is not available from this source": "Akış {time} saatinden beri: daha eski akış bu kaynaktan alınamıyor"
+ "Flow since {time}: older flow is not available from this source": "Akış {time} saatinden beri: daha eski akış bu kaynaktan alınamıyor",
+ "Absorption history could not be loaded; trying again in a minute.": "Emilim geçmişi yüklenemedi; bir dakika sonra yeniden denenecek."
 }

@@ -43,7 +43,8 @@ const QUIET_MS = 500;
 const MINUTE_SETTLE_MS = 3_000;
 /** Groups and minutes this recent are held in memory to answer the page; older ones are asked of the store. */
 const MEMORY_MS = 2 * 3_600_000;
-const RETENTION_MS = 7 * 24 * 3_600_000;
+/** How long the recorder keeps groups and minutes: nothing older can be asked for. */
+export const ABSORPTION_RETENTION_MS = 7 * 24 * 3_600_000;
 
 /** [credit, USD, fills, first time, last time]: the fills credited at least `credit`, credits falling from row to row (USD and fills add up). */
 export type AbsorptionStep = [number, number, number, number, number];
@@ -153,7 +154,7 @@ export class AbsorptionRecorder {
   readonly #perMinute: number;
   readonly #floor: number;
 
-  constructor(store: AbsorptionStore | null = null, private now: () => number = Date.now, { retentionMs = RETENTION_MS, windowMs = ABSORPTION_WINDOW_MS, perMinute = GROUPS_PER_MINUTE, floorUsd = GROUP_FLOOR_USD }: { retentionMs?: number; windowMs?: number; perMinute?: number; floorUsd?: number } = {}) {
+  constructor(store: AbsorptionStore | null = null, private now: () => number = Date.now, { retentionMs = ABSORPTION_RETENTION_MS, windowMs = ABSORPTION_WINDOW_MS, perMinute = GROUPS_PER_MINUTE, floorUsd = GROUP_FLOOR_USD }: { retentionMs?: number; windowMs?: number; perMinute?: number; floorUsd?: number } = {}) {
     this.#store = store; this.windowMs = windowMs; this.#retentionMs = retentionMs; this.#perMinute = perMinute; this.#floor = floorUsd;
     this.#memoryFrom = store ? now() - MEMORY_MS : -Infinity;
     if (store) {

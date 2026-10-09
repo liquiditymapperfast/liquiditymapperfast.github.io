@@ -878,5 +878,6 @@
  "{n} smaller venues": "小さめの取引所 {n} 件",
  "Show the exchange in each bubble": "各バブルに取引所を表示",
  "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "収まる大きさのバブルの中央にその取引所のマークを表示します。バブルにカーソルを合わせると他の取引所が控えめになり、その取引所が約定した場所が目立ちます。",
- "Flow since {time}: older flow is not available from this source": "フローは {time} から: これより古いフローはこのソースから取得できません"
+ "Flow since {time}: older flow is not available from this source": "フローは {time} から: これより古いフローはこのソースから取得できません",
+ "Absorption history could not be loaded; trying again in a minute.": "吸収の履歴を読み込めませんでした。1分後にもう一度試します。"
 }

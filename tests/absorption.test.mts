@@ -381,9 +381,9 @@ test('only well-formed groups, minutes and answers are taken', () => {
 test('the hub asks once per window: again when the window leaves it, a threshold falls under what was asked, or a minute after a refusal', async () => {
   class FakeWorker { onmessage: ((event: { data: unknown }) => void) | null = null; postMessage(): void {} }
   (globalThis as { Worker?: unknown }).Worker = FakeWorker;
-  const asked: { ids: string[]; mins: number[]; from: number; to: number; limit: number; since: number; settle: (answer: AbsorptionAnswer | null) => void }[] = [];
+  const asked: { ids: string[]; mins: number[]; from: number; to: number; limit: number; since: number; settle: (answer: AbsorptionAnswer | null, status?: number) => void }[] = [];
   const source = { absorption: (ids: string[], mins: number[], from: number, to: number, limit: number, since: number) => new Promise<AbsorptionAnswer>((resolve, reject) => {
-    asked.push({ ids, mins, from, to, limit, since, settle: answer => answer ? resolve(answer) : reject(new Error('404')) });
+    asked.push({ ids, mins, from, to, limit, since, settle: (answer, status = 404) => answer ? resolve(answer) : reject(Object.assign(new Error(String(status)), { status })) });
   }) };
   const hub = new Hub(new Store(initialState()), source as never);
   const realNow = Date.now; let clock = T0 + 30 * MIN + 30_000; Date.now = () => clock;
@@ -416,6 +416,20 @@ test('the hub asks once per window: again when the window leaves it, a threshold
     assert.equal(hub.absorptionState, 'ready');
     hub.ensureAbsorption(['a:BTC', 'b:BTC'], [290_000, null], back(), 30); assert.equal(asked.length, 6, 'other instruments');
     assert.equal(asked[5]!.since, Math.floor(clock / MIN) * MIN - 31 * MIN, 'their minutes from the start of the span');
+    // A request that failed is not a server without absorption: it says so differently, and is tried again a minute later.
+    asked[5]!.settle(null, 500); await turn();
+    assert.equal(hub.absorptionState, 'failed');
+    clock += MIN;
+    // A map zoomed out over nine days asks from where the recorder's week begins (the server refuses more than eight).
+    const wide = { t0: clock - 9 * 86_400_000, t1: clock, p0: 0, p1: 1 } as never;
+    hub.ensureAbsorption(['a:BTC'], [290_000], wide, 30); assert.equal(asked.length, 7);
+    assert.ok(asked[6]!.to - asked[6]!.from <= 8 * 86_400_000 && asked[6]!.from >= clock - 7 * 86_400_000 - MIN, 'within the week that is kept');
+    // An answer cut at the limit says, per instrument, the smallest peak it kept.
+    const group = (usd: number): AbsorptionGroup => ({ id: 'a:BTC', side: 'buy', price: 100, t0: clock - usd, steps: [[usd, usd, 1, clock - usd, clock - usd]] });
+    asked[6]!.settle({ groups: [group(900_000), group(400_000)], floors: {}, minutes: [], capped: ['a:BTC'] }); await turn();
+    assert.equal(hub.absorptionState, 'ready');
+    assert.deepEqual([...hub.absorptionCut], [['a:BTC', 400_000]], 'marks are missing only where the threshold is at or under 400K');
+    hub.ensureAbsorption(['a:BTC'], [290_000], wide, 30); assert.equal(asked.length, 7, 'and the week is not asked for again on the next frame');
   } finally { Date.now = realNow; }
 });
 
