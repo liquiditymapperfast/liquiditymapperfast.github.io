@@ -919,7 +919,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "Borsa, pozisyonun teminatının bittiği fiyatı bildirir. Zorunlu emir piyasaya yakın gerçekleşti, bu yüzden o sırada işlem gören fiyata çizilir.",
  "This exchange reports only its largest liquidation each second.": "Bu borsa her saniye yalnızca en büyük tasfiyesini bildirir.",
  "none reported from {min}": "{min} üzeri bildirilmedi",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "{longs} long · {shorts} short · hacmin {share}'i ({min} üzeri)",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "{longs} long · {shorts} short · bu dakikalardaki tüm piyasa hacminin {share} kadarı ({min} üzeri)",
  "Show liquidations": "Tasfiyeleri göster",
  "Positions the exchanges closed by force, where the market was when it happened.": "Borsaların zorla kapattığı pozisyonlar, o an piyasanın bulunduğu yerde.",
  "Smallest liquidation": "En küçük tasfiye",
@@ -978,5 +978,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "Bu coinin sayfanın geçmişini okuyabildiği bir piyasası yok, bu yüzden kilit seviye yok.",
  "From the hourly candles of {market}, about two months of them.": "{market} piyasasının yaklaşık iki aylık saatlik mumlarından.",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "Grafikteki piyasanın sayfanın okuyabildiği bir geçmişi yok, bu yüzden coinin başka bir piyasası kullanılır; fiyatları biraz farklı olabilir.",
- "Its history could not be read just now; trying again in a minute.": "Geçmişi şu an okunamadı; bir dakika sonra yeniden denenecek."
+ "Its history could not be read just now; trying again in a minute.": "Geçmişi şu an okunamadı; bir dakika sonra yeniden denenecek.",
+ "{longs} longs · {shorts} shorts (from {min})": "{longs} long · {shorts} short ({min} üzeri)",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "Geçmişi yalnızca {date} tarihine kadar uzanıyor, bu yüzden daha önceki dönemlerin çizgileri eksik."
 }

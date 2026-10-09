@@ -933,7 +933,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "Биржа сообщает цену, при которой маржа позиции закончилась. Принудительный ордер исполнился около рынка, поэтому он нарисован по цене, по которой тогда торговали.",
  "This exchange reports only its largest liquidation each second.": "Эта биржа сообщает только свою крупнейшую ликвидацию за каждую секунду.",
  "none reported from {min}": "нет сообщений от {min}",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "лонги {longs} · шорты {shorts} · {share} объёма (от {min})",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "лонги {longs} · шорты {shorts} · {share} всего рыночного объёма за эти минуты (от {min})",
  "Show liquidations": "Показывать ликвидации",
  "Positions the exchanges closed by force, where the market was when it happened.": "Позиции, принудительно закрытые биржами, там, где был рынок в тот момент.",
  "Smallest liquidation": "Минимальная ликвидация",
@@ -992,5 +992,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "Ни у одного рынка этой монеты нет истории, которую страница может прочитать, поэтому ключевых уровней нет.",
  "From the hourly candles of {market}, about two months of them.": "Из часовых свечей {market}, примерно за два месяца.",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "У рынка на графике нет истории, которую страница может прочитать, поэтому используется другой рынок этой монеты; его цены могут немного отличаться.",
- "Its history could not be read just now; trying again in a minute.": "Сейчас не удалось прочитать его историю; повторная попытка через минуту."
+ "Its history could not be read just now; trying again in a minute.": "Сейчас не удалось прочитать его историю; повторная попытка через минуту.",
+ "{longs} longs · {shorts} shorts (from {min})": "лонги {longs} · шорты {shorts} (от {min})",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "Его история доступна только с {date}, поэтому линий более ранних периодов нет."
 }

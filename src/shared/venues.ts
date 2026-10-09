@@ -197,8 +197,8 @@ abstract class OkxBook extends MarketBook {
     const data = Array.isArray(m.data) ? m.data : [];
     if (channel === 'liquidation-orders') {
       // Every swap's liquidations come on this one channel: this market's are the ones whose instId is its own. `posSide` is the side
-      // closed (`side` the forced order's, for a net position), `sz` contracts. `bkPx` is named the bankruptcy price, but measured
-      // 2026-10-09 it was within a few basis points of the mark (Bybit's is 0.3 % away): it is where the forced order went, a fill.
+      // closed (`side` the forced order's, for a net position), `sz` contracts. `bkPx` is named the bankruptcy price, but measured (not
+      // documented) on 2026-10-09 it sat within a few basis points of the mark, Bybit's 0.3 % away: taken as where the forced order went, a fill.
       for (const item of data) {
         const x = this.record(item); if (!x || x.instId !== this.symbol) continue;
         for (const detail of Array.isArray(x.details) ? x.details : []) {

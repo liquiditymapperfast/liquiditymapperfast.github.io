@@ -3,7 +3,8 @@
  * largest, so a cascade is undercounted), Bybit, OKX and Deribit (flagged fills). Hyperliquid, Coinbase and the other venues publish none.
  *
  * A venue reports one of two prices. Binance, OKX and Deribit give a price at the market, where the forced order went (OKX names its
- * price the bankruptcy price, but it was measured within a few basis points of the mark); Bybit gives the position's bankruptcy price,
+ * price the bankruptcy price, but measured on 2026-10-09 it sat within a few basis points of the mark: in one calm half hour, BTC and ETH
+ * longs only, and alts within about 0.1 % of Binance's fill for the same liquidation; OKX does not document this); Bybit gives the position's bankruptcy price,
  * where its margin ran out, about 0.3 % past the mark, which the market need not have traded at. A liquidation is drawn where the market
  * was: at the fill price, or for a bankruptcy price at the instrument's last trade within a minute of the liquidation (the reported price
  * when none was, as for one the venue sent late); the reported price is kept beside it and said in its box.
@@ -42,7 +43,7 @@ export function fromWire(row: unknown): Liquidation | null {
   if (!Array.isArray(row) || row.length < 7) return null;
   const [t, id, side, price, usd, reported, kind] = row as unknown[];
   if (typeof t !== 'number' || !Number.isFinite(t) || typeof id !== 'string' || !id || (side !== 'long' && side !== 'short')) return null;
-  if (typeof price !== 'number' || !(price > 0) || typeof usd !== 'number' || !(usd > 0) || typeof reported !== 'number' || !(reported > 0)) return null;
+  if (typeof price !== 'number' || !(price > 0) || typeof usd !== 'number' || !(usd > 0) || typeof reported !== 'number' || !(reported > 0) || !Number.isFinite(price + usd + reported)) return null;
   if (kind !== 'fill' && kind !== 'bankruptcy') return null;
   return { t, id, side, price, usd, reported, kind };
 }

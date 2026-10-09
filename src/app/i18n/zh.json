@@ -898,7 +898,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "交易所报告的是仓位保证金耗尽时的价格。强制单在市场价附近成交，所以画在当时的成交价处。",
  "This exchange reports only its largest liquidation each second.": "该交易所每秒只报告最大的一笔强平。",
  "none reported from {min}": "{min} 起无报告",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "多头 {longs} · 空头 {shorts} · 占成交量 {share}（{min} 起）",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "多头 {longs} · 空头 {shorts} · 占这些分钟全部市价成交量的 {share}（{min} 起）",
  "Show liquidations": "显示强平",
  "Positions the exchanges closed by force, where the market was when it happened.": "交易所强制平掉的仓位，画在当时的市场价格处。",
  "Smallest liquidation": "最小强平",
@@ -957,5 +957,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "该币种没有页面能读取历史的市场，因此没有关键价位。",
  "From the hourly candles of {market}, about two months of them.": "来自 {market} 约两个月的 1 小时 K 线。",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "图表上的市场没有页面能读取的历史，因此使用该币种的另一个市场；其价格可能略有差异。",
- "Its history could not be read just now; trying again in a minute.": "暂时无法读取其历史；一分钟后重试。"
+ "Its history could not be read just now; trying again in a minute.": "暂时无法读取其历史；一分钟后重试。",
+ "{longs} longs · {shorts} shorts (from {min})": "多头 {longs} · 空头 {shorts}（{min} 起）",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "其历史只能回溯到 {date}，因此缺少更早周期的线。"
 }

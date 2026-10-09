@@ -316,7 +316,7 @@ export class Hub {
       this.liquidations.add(rows, { from, to: live ? Infinity : to }); this.liquidationsState = 'ready';
       if (connection === this.#connection) this.#liquidationsWindow = { t0: from, t1: to, min: minUsd, cut: rows.length >= LIQUIDATIONS_PER_ANSWER, live };
       this.onLiquidationsChanged();
-    }, () => { this.liquidationsState = 'unavailable'; this.#liquidationsRetryAt = Date.now() + 60_000; this.onLiquidationsChanged(); }).finally(() => { this.#liquidationsLoading = false; });
+    }, () => { this.liquidationsState = 'unavailable'; this.#liquidationsRetryAt = Date.now() + 15_000; this.onLiquidationsChanged(); }).finally(() => { this.#liquidationsLoading = false; });
   }
 
   /**

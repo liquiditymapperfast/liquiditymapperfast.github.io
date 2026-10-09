@@ -898,7 +898,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "取引所はポジションの証拠金がなくなった価格を報告します。強制注文は市場の近くで約定したので、そのとき取引されていた価格に描かれます。",
  "This exchange reports only its largest liquidation each second.": "この取引所は毎秒最大の清算 1 件だけを報告します。",
  "none reported from {min}": "{min} 以上の報告なし",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "ロング {longs} · ショート {shorts} · 出来高の {share}（{min} 以上）",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "ロング {longs} · ショート {shorts} · この時間帯の成行出来高全体の {share}（{min} 以上）",
  "Show liquidations": "清算を表示",
  "Positions the exchanges closed by force, where the market was when it happened.": "取引所が強制決済したポジションを、そのときの市場価格に表示します。",
  "Smallest liquidation": "最小の清算",
@@ -957,5 +957,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "この通貨には、ページが履歴を読める市場がないため、主要レベルはありません。",
  "From the hourly candles of {market}, about two months of them.": "{market} の 1 時間足（約 2 か月分）から。",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "チャートの市場にはページが読める履歴がないため、その通貨の別の市場を使います。価格が少し異なることがあります。",
- "Its history could not be read just now; trying again in a minute.": "今は履歴を読めませんでした。1 分後に再試行します。"
+ "Its history could not be read just now; trying again in a minute.": "今は履歴を読めませんでした。1 分後に再試行します。",
+ "{longs} longs · {shorts} shorts (from {min})": "ロング {longs} · ショート {shorts}（{min} 以上）",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "履歴は {date} までしかさかのぼれないため、それ以前の期間の線はありません。"
 }

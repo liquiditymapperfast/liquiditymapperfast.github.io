@@ -926,7 +926,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "A exchange reporta o preço em que a margem da posição se esgotou. A ordem forçada foi executada perto do mercado, por isso é desenhada no preço negociado então.",
  "This exchange reports only its largest liquidation each second.": "Esta exchange só reporta a sua maior liquidação de cada segundo.",
  "none reported from {min}": "nenhuma reportada a partir de {min}",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "{longs} longs · {shorts} shorts · {share} do volume (a partir de {min})",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "{longs} longs · {shorts} shorts · {share} de todo o volume a mercado destes minutos (a partir de {min})",
  "Show liquidations": "Mostrar liquidações",
  "Positions the exchanges closed by force, where the market was when it happened.": "Posições que as exchanges fecharam à força, onde estava o mercado quando aconteceu.",
  "Smallest liquidation": "Liquidação mínima",
@@ -985,5 +985,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "Nenhum mercado desta moeda tem um histórico que a página consiga ler, por isso não há níveis-chave.",
  "From the hourly candles of {market}, about two months of them.": "Das velas horárias de {market}, cerca de dois meses delas.",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "O mercado do gráfico não tem um histórico que a página consiga ler, por isso usa-se outro mercado da moeda; os seus preços podem diferir um pouco.",
- "Its history could not be read just now; trying again in a minute.": "Não foi possível ler o seu histórico agora; nova tentativa dentro de um minuto."
+ "Its history could not be read just now; trying again in a minute.": "Não foi possível ler o seu histórico agora; nova tentativa dentro de um minuto.",
+ "{longs} longs · {shorts} shorts (from {min})": "{longs} longs · {shorts} shorts (a partir de {min})",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "O seu histórico só recua até {date}, por isso faltam as linhas de períodos anteriores."
 }

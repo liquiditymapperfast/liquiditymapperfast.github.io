@@ -123,7 +123,7 @@ export function nativeInterval(spec: Pick<CandleSpec, 'intervals'>, tfMs: number
  * Candles for `instrumentId` at `tfMs` over [from, to], oldest first, built from the venue's native bars (a coarser timeframe is
  * aggregated from a finer one) by walking back page by page from `to`. Returns [] for a venue it does not know.
  */
-export async function fetchCandles(instrumentId: string, tfMs: number, from: number, to: number, get: Fetcher, listing?: HistoryListing): Promise<Candle[]> {
+export async function fetchCandles(instrumentId: string, tfMs: number, from: number, to: number, get: Fetcher, listing?: HistoryListing, maxPages = 12): Promise<Candle[]> {
   const spec = SPECS[venueOf(instrumentId)], market = listingOf(venueOf(instrumentId), listing);
   const native = spec ? nativeInterval(spec, tfMs) : null;
   if (!spec || !market || native === null) return [];
@@ -131,7 +131,7 @@ export async function fetchCandles(instrumentId: string, tfMs: number, from: num
   const rows = new Map<number, CandleRow>();
   let end = to;
   // Enough pages for the window, with a ceiling so a misbehaving endpoint cannot loop.
-  for (let pages = 0; pages < 12 && end > from; pages++) {
+  for (let pages = 0; pages < maxPages && end > from; pages++) {
     const got = (await spec.page(interval, native, end, get, market.symbol)).filter(r => Number.isFinite(r.start) && Number.isFinite(r.open) && Number.isFinite(r.close));
     if (!got.length) break;
     let oldest = Infinity;

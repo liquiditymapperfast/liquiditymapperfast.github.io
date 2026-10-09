@@ -118,7 +118,7 @@ export function rangeLines(input: RangeInput): RangeLine[] {
       }
       const largest = largestPrint(input.prints, sel);
       if (largest) lines.push({ key: 'largest', kind: 'stat', tone: largest.side, cells: [t('Largest order'), `${money(largest.usd)} ${largest.side === 'buy' ? t('buy') : t('sell')} · ${fmtPrice(largest.price)} · ${venueLabel(largest.id)} · ${clock(largest.t)}`] });
-      const forced = liquidationLine(input, total);
+      const forced = liquidationLine(input, s.allBuy + s.allSell > 0 ? s.allBuy + s.allSell : total);
       if (forced) lines.push(forced);
       lines.push(...whoLines(answer, input.kind, total));
       lines.push(...filledLines(answer));
@@ -142,19 +142,24 @@ function orderLine(s: ReturnType<typeof totals>, windowMinutes: number): RangeLi
 
 /**
  * The liquidations inside the selection, of the market orders above (a forced close is a market order, so it is part of that volume, not
- * added to it): longs closed and shorts closed, and their share of the volume, from the smallest the map holds.
+ * added to it): longs closed and shorts closed, from the smallest the Liquidations panel shows, and their share of all the market volume in
+ * those minutes. Not of a box's band: a liquidation is drawn at one price and its whole size traded wherever the book took it, so against the
+ * band alone it could pass 100 %. A share that would still pass it (the recording holds fewer of the minutes than the liquidations) is not said.
  */
-function liquidationLine(input: RangeInput, total: number): RangeLine | null {
+function liquidationLine(input: RangeInput, all: number): RangeLine | null {
   const rows = input.liquidations; if (!rows) return null;
-  const sel = input.sel, from = money(input.liquidationMin ?? 0);
+  const sel = input.sel, min = input.liquidationMin ?? 0, from = money(min);
   let longs = 0, shorts = 0;
   for (const l of rows) {
-    if (l.t < sel.t0 || l.t >= sel.t1) continue;
+    if (l.t < sel.t0 || l.t >= sel.t1 || l.usd < min) continue;
     if (sel.p0 !== null && sel.p1 !== null && (l.price < sel.p0 || l.price >= sel.p1)) continue;
     if (l.side === 'long') longs += l.usd; else shorts += l.usd;
   }
   if (!(longs + shorts > 0)) return { key: 'liquidations', kind: 'stat', tone: 'muted', cells: [t('Liquidations'), t('none reported from {min}', { min: from })] };
-  return { key: 'liquidations', kind: 'stat', tone: longs >= shorts ? 'sell' : 'buy', cells: [t('Liquidations'), t('{longs} longs · {shorts} shorts · {share} of the volume (from {min})', { longs: money(longs), shorts: money(shorts), share: pct((longs + shorts) / total), min: from })] };
+  const share = (longs + shorts) / all, tone = longs >= shorts ? 'sell' : 'buy';
+  const text = share > 0 && share <= 1 ? t('{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})', { longs: money(longs), shorts: money(shorts), share: pct(share), min: from })
+    : t('{longs} longs · {shorts} shorts (from {min})', { longs: money(longs), shorts: money(shorts), min: from });
+  return { key: 'liquidations', kind: 'stat', tone, cells: [t('Liquidations'), text] };
 }
 
 /** The largest market order the map holds inside the selection. */

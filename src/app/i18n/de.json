@@ -919,7 +919,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "Die Börse meldet den Preis, bei dem die Margin der Position aufgebraucht war. Die Zwangsorder wurde nahe am Markt ausgeführt, daher steht sie beim damals gehandelten Preis.",
  "This exchange reports only its largest liquidation each second.": "Diese Börse meldet pro Sekunde nur ihre größte Liquidation.",
  "none reported from {min}": "keine gemeldet ab {min}",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "{longs} Longs · {shorts} Shorts · {share} des Volumens (ab {min})",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "{longs} Longs · {shorts} Shorts · {share} des gesamten Marktvolumens dieser Minuten (ab {min})",
  "Show liquidations": "Liquidationen zeigen",
  "Positions the exchanges closed by force, where the market was when it happened.": "Positionen, die die Börsen zwangsweise geschlossen haben, dort, wo der Markt dabei stand.",
  "Smallest liquidation": "Kleinste Liquidation",
@@ -978,5 +978,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "Kein Markt dieser Coin hat eine Historie, die die Seite lesen kann, daher gibt es keine Schlüssellevels.",
  "From the hourly candles of {market}, about two months of them.": "Aus den Stundenkerzen von {market}, etwa zwei Monaten davon.",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "Der Markt im Chart hat keine Historie, die die Seite lesen kann, daher wird ein anderer Markt der Coin verwendet; seine Preise können leicht abweichen.",
- "Its history could not be read just now; trying again in a minute.": "Seine Historie ließ sich gerade nicht lesen; neuer Versuch in einer Minute."
+ "Its history could not be read just now; trying again in a minute.": "Seine Historie ließ sich gerade nicht lesen; neuer Versuch in einer Minute.",
+ "{longs} longs · {shorts} shorts (from {min})": "{longs} Longs · {shorts} Shorts (ab {min})",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "Seine Historie reicht nur bis {date} zurück, daher fehlen Linien früherer Perioden."
 }

@@ -898,7 +898,7 @@
  "The exchange reports the price at which the position's margin was gone. The forced order filled near the market, so it is drawn at the price trading then.": "거래소는 포지션의 증거금이 소진된 가격을 보고합니다. 강제 주문은 시장 근처에서 체결되었으므로 당시 거래되던 가격에 그려집니다.",
  "This exchange reports only its largest liquidation each second.": "이 거래소는 초마다 가장 큰 청산만 보고합니다.",
  "none reported from {min}": "{min} 이상 보고 없음",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "롱 {longs} · 숏 {shorts} · 거래량의 {share} ({min} 이상)",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "롱 {longs} · 숏 {shorts} · 이 시간 전체 시장가 거래량의 {share} ({min} 이상)",
  "Show liquidations": "청산 표시",
  "Positions the exchanges closed by force, where the market was when it happened.": "거래소가 강제로 청산한 포지션을, 그때의 시장 가격에 표시합니다.",
  "Smallest liquidation": "최소 청산",
@@ -957,5 +957,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "이 코인에는 페이지가 이력을 읽을 수 있는 시장이 없어 주요 레벨이 없습니다.",
  "From the hourly candles of {market}, about two months of them.": "{market}의 1시간 캔들(약 두 달 치)에서.",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "차트의 시장에는 페이지가 읽을 수 있는 이력이 없어 그 코인의 다른 시장을 사용합니다. 가격이 조금 다를 수 있습니다.",
- "Its history could not be read just now; trying again in a minute.": "지금은 이력을 읽지 못했습니다. 1분 뒤 다시 시도합니다."
+ "Its history could not be read just now; trying again in a minute.": "지금은 이력을 읽지 못했습니다. 1분 뒤 다시 시도합니다.",
+ "{longs} longs · {shorts} shorts (from {min})": "롱 {longs} · 숏 {shorts} ({min} 이상)",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "이력이 {date}까지만 있어 그 이전 기간의 선은 없습니다."
 }

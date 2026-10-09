@@ -33,7 +33,7 @@ import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheel
 import { t } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { resolveZone } from '../traded/settings.ts';
-import { keyLines, neededFrom, type KeyLine } from '../keylevels/levels.ts';
+import { MAX_BACK_MS, barMsFor, keyLines, neededFrom, type KeyLine } from '../keylevels/levels.ts';
 import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { paintKeyLevels, paintKeyTags, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
@@ -143,7 +143,7 @@ export class HeatPane {
   /** The days, weeks or sessions the lines are drawn for, and what they were worked out for. */
   #vaWindows: { key: string; windows: ProfileWindow[] } | null = null;
   /** The key levels' market and zone, how far back their candles are needed, and their lines, each kept until what it depends on changes. */
-  #keyContext: { key: string; target: HistoryTarget | null; zone: string } | null = null;
+  #keyContext: { key: string; target: HistoryTarget | null; zone: string; barMs: number } | null = null;
   #keyFrom: { key: string; from: number } | null = null;
   #keyLines: { key: string; lines: KeyLine[] } | null = null;
   /** The tags the key levels want on the price axis this frame. */
@@ -749,36 +749,42 @@ export class HeatPane {
     this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), state.followLive);
   }
 
-  /** Whose hourly candles the key levels are read from and the zone their days start in (again when the market, the coin or a zone changes). */
-  #keyLevelContext(state: AppState): { target: HistoryTarget | null; zone: string } {
-    const coin = currentCoin(), key = `${state.marketId}|${coin.coin}|${state.traded.zone}|${state.timeZone}`;
-    if (this.#keyContext?.key !== key) this.#keyContext = { key, target: historyTarget(state.marketId, coin.markets), zone: resolveZone(state.traded.zone, state.timeZone) };
+  /**
+   * Whose candles the key levels are read from, the zone their days start in and the candle size that starts a bar on every one of its
+   * period boundaries (again when the market, the coin, a zone or the day changes: a zone can move by half an hour for daylight saving).
+   */
+  #keyLevelContext(state: AppState): { target: HistoryTarget | null; zone: string; barMs: number } {
+    const coin = currentCoin(), now = Date.now(), key = `${state.marketId}|${coin.coin}|${state.traded.zone}|${state.timeZone}|${Math.floor(now / 86_400_000)}`;
+    if (this.#keyContext?.key !== key) {
+      const zone = resolveZone(state.traded.zone, state.timeZone);
+      this.#keyContext = { key, target: historyTarget(state.marketId, coin), zone, barMs: barMsFor(zone, now - MAX_BACK_MS, now) };
+    }
     return this.#keyContext;
   }
   /** Ask for the hourly candles the key levels need for this view (how far back is worked out again only when the view's hour changes). */
   #ensureKeyLevels(state: AppState): void {
-    const { target, zone } = this.#keyLevelContext(state), s = state.keyLevels, HOUR = 3_600_000, now = Date.now();
+    const { target, zone, barMs } = this.#keyLevelContext(state), s = state.keyLevels, HOUR = 3_600_000, now = Date.now();
     const key = `${zone}|${s.day.prev}${s.day.mid}${s.day.open}${s.day.sofar}|${s.week.prev}${s.week.mid}${s.week.open}${s.week.sofar}|${s.month.prev}${s.month.mid}${s.month.open}${s.month.sofar}|${Math.floor(this.view.t0 / HOUR)}|${Math.floor(now / HOUR)}`;
     if (this.#keyFrom?.key !== key) this.#keyFrom = { key, from: neededFrom(s, zone, this.view.t0, now) };
-    this.hub.keyHistory.ensure(target, this.#keyFrom.from, () => this.invalidate());
+    this.hub.keyHistory.ensure(target, this.#keyFrom.from, barMs, () => this.invalidate());
   }
   /**
-   * The key levels for the view, from the exchange's hourly candles and, after the last of them, the chart's own candles when they are of the
-   * same market at an hour or finer (those move with every trade; the hourly ones are asked again every five minutes). Worked out again when
+   * The key levels for the view, from the exchange's candles and, after the last of them, the chart's own candles when they are of the same
+   * market and no coarser than those (they move with every trade; the exchange's are asked again every five minutes). Worked out again when
    * the candles, the settings, the view's hour or the clock's minute change, never for a frame that only moves the pointer.
    */
   #keyLevelLines(state: AppState): KeyLine[] {
     const s = state.keyLevels, h = this.hub.keyHistory, v = this.view, now = Date.now(), MIN = 60_000, HOUR = 3_600_000;
     if (!s.on || !anyLine(s) || !h.bars.length) return [];
-    const { target, zone } = this.#keyLevelContext(state);
-    if (!target || target.id !== h.id) return [];
+    const { target, zone, barMs } = this.#keyLevelContext(state);
+    if (!target || target.id !== h.id || barMs !== h.barMs) return [];
     const held = h.bars, lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? HOUR;
-    const live = target.own && state.seriesInstrument === state.marketId && tf <= HOUR ? state.candles.filter(c => c[0] >= lastStart) : [];
+    const live = target.own && state.seriesInstrument === state.marketId && tf <= barMs ? state.candles.filter(c => c[0] >= lastStart) : [];
     const tail = live[live.length - 1];
     const key = `${h.id}|${h.version}|${JSON.stringify(s)}|${zone}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}|${live.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}` : ''}`;
     if (this.#keyLines?.key !== key) {
       const bars = live.length ? [...held, ...live].sort((a, b) => a[0] - b[0]) : held;
-      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched }) };
+      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched, heldFrom: h.heldFrom }) };
     }
     return this.#keyLines.lines;
   }

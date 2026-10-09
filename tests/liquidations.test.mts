@@ -158,6 +158,11 @@ test('the Range panel counts the liquidations in a selection as part of its mark
   assert.deepEqual(line([])!.cells, ['Liquidations', 'none reported from $1K']);
   const l = (side: 'long' | 'short', usd: number, at: number): Liquidation => ({ t: T + at * MIN, id: 'bybit:BTCUSDT', side, price: 80_000, usd, reported: 80_000, kind: 'fill' });
   const some = line([l('long', 150_000, 1), l('short', 50_000, 2), l('long', 1e9, 30)])!;
-  assert.deepEqual(some.cells, ['Liquidations', '$150K longs · $50K shorts · 20% of the volume (from $1K)'], 'one outside the minutes is left out');
+  assert.deepEqual(some.cells, ['Liquidations', '$150K longs · $50K shorts · 20% of all market volume in these minutes (from $1K)'], 'one outside the minutes is left out');
   assert.equal(some.tone, 'sell');
+  assert.deepEqual(line([l('long', 150_000, 1), l('short', 500, 2)])!.cells[1], '$150K longs · $0 shorts · 15% of all market volume in these minutes (from $1K)', 'one under the panel\'s smallest is left out');
+  // A box: its band holds $60K, but a liquidation counts against every price in those minutes, and a share past 100 % is not said.
+  const boxed = { ...base, sel: { ...sel, p0: 79_990, p1: 80_010 }, answer: { ...answer, instruments: [{ ...answer.instruments[0]!, band: { buy: 30_000, sell: 30_000, buyN: 0, sellN: 0 } }] } } as RangeInput;
+  assert.match(rangeLines({ ...boxed, liquidations: [l('long', 500_000, 1)] }).find(x => x.key === 'liquidations')!.cells[1]!, /^\$500K longs · \$0 shorts · 50% of all market volume/);
+  assert.equal(rangeLines({ ...boxed, liquidations: [l('long', 5e6, 1)] }).find(x => x.key === 'liquidations')!.cells[1], '$5M longs · $0 shorts (from $1K)');
 });

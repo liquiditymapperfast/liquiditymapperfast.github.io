@@ -511,7 +511,7 @@
  "{buy} buy · {sell} sell": "{buy} куп. · {sell} прод.",
  "Orders are counted from {time} on ({n} of {total} minutes).": "Ордери рахуються від {time} ({n} із {total} хвилин).",
  "none reported from {min}": "повідомлень немає від {min}",
- "{longs} longs · {shorts} shorts · {share} of the volume (from {min})": "лонги {longs} · шорти {shorts} · {share} обсягу (від {min})",
+ "{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})": "лонги {longs} · шорти {shorts} · {share} усього ринкового обсягу за ці хвилини (від {min})",
  "By exchange": "За біржами",
  "Exchange": "Біржа",
  "Share": "Частка",
@@ -997,5 +997,7 @@
  "No market of this coin has a history the page can read, so there are no key levels.": "Жоден ринок цієї монети не має історії, яку сторінка може прочитати, тож ключових рівнів немає.",
  "From the hourly candles of {market}, about two months of them.": "З годинних свічок {market}, приблизно за два місяці.",
  "The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.": "Ринок на графіку не має історії, яку сторінка може прочитати, тож використовується інший ринок цієї монети; його ціни можуть трохи відрізнятися.",
- "Its history could not be read just now; trying again in a minute.": "Зараз не вдалося прочитати його історію; повторна спроба за хвилину."
+ "Its history could not be read just now; trying again in a minute.": "Зараз не вдалося прочитати його історію; повторна спроба за хвилину.",
+ "{longs} longs · {shorts} shorts (from {min})": "лонги {longs} · шорти {shorts} (від {min})",
+ "Its history reaches back to {date} only, so lines of earlier periods are missing.": "Його історія доступна лише з {date}, тож ліній раніших періодів немає."
 }

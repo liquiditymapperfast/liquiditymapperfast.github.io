@@ -1,19 +1,22 @@
 import { CANDLE_VENUES, fetchCandles, type Fetcher } from '../../shared/history.ts';
-import type { Coin, Listing, MarketVenue } from '../../shared/coins.ts';
+import { instrumentIdFor, type Coin, type Listing, type MarketVenue } from '../../shared/coins.ts';
 import type { CandleRow } from '../store.ts';
 
 /**
- * The hourly candles the key levels are worked out from, read from the exchange's own history (the server keeps no more than a few weeks of
- * minutes, and a page reading the exchanges itself none): the market on the chart where its history can be read, else the first of the usual
- * ones that lists the coin. One stretch of candles is held, reaching back as far as the chart needs (at most about two months); it is extended
- * back when the chart reaches further, and its newest hours are asked again every few minutes. Never asked on a frame: `ensure` returns at once
- * while a request is out, and a failed one waits a minute.
+ * The candles the key levels are worked out from (hourly, or finer in a zone off the hour: `barMsFor`), read from the exchange's own history
+ * (the server keeps no more than a few weeks of minutes, and a page reading the exchanges itself none): the market on the chart where its
+ * history can be read, else the first of the usual ones that lists the coin. One stretch of candles is held, reaching back as far as the chart
+ * needs (at most about two months); it is extended back when the chart reaches further, until the exchange has nothing older, and its newest
+ * bars are asked again every few minutes. Never asked on a frame: `ensure` returns at once while a request is out, and a failed one waits a
+ * minute.
  */
 
 const HOUR = 3_600_000, DAY = 86_400_000;
-/** How often the newest hours are asked again (the developing levels move with the chart's own candles in between). */
+/** How often the newest bars are asked again (the developing levels move with the chart's own candles in between). */
 const REFRESH_MS = 5 * 60_000;
 const RETRY_MS = 60_000;
+/** Pages one request may walk back: OKX gives 100 bars a page, so two months of hours take 15. */
+const MAX_PAGES = 24;
 /** The markets tried, in this order, when the chart's own history cannot be read: the most traded first. */
 const FALLBACK: readonly MarketVenue[] = ['binance', 'bybit', 'okx', 'hyperliquid', 'bitget', 'binancespot', 'coinbase', 'bybitspot', 'okxspot', 'bitgetspot', 'deribit'];
 
@@ -21,25 +24,31 @@ const FALLBACK: readonly MarketVenue[] = ['binance', 'bybit', 'okx', 'hyperliqui
 export interface HistoryTarget { id: string; listing: Listing; own: boolean }
 
 /**
- * Whose candles the levels come from for a chart showing `chartId`: that market (a server names Binance spot `binance:BTCUSDT:spot`) when its
- * history can be read and the coin is listed there, else the first of FALLBACK that lists it. Null when none does.
+ * Whose candles the levels come from for a chart showing `chartId`: that very market when its history can be read (a server names Binance
+ * spot `binance:BTCUSDT:spot`), else the first of FALLBACK that lists the coin. Another market of the chart's venue (OKX spot under `okx`, a
+ * coin-margined contract under `binance`) is not the chart's own. Null when no market of the coin has a history this page can read.
  */
-export function historyTarget(chartId: string, markets: Coin['markets']): HistoryTarget | null {
-  const spot = /^([^:]+):.+:spot$/.exec(chartId);
-  const own = spot ? `${spot[1]}spot` : chartId.split(':')[0]!;
-  for (const venue of [own, ...FALLBACK]) {
-    if (!CANDLE_VENUES.includes(venue)) continue;
-    const listing = markets[venue as MarketVenue];
-    if (listing) return { id: `${venue}:${listing.symbol}`, listing, own: venue === own };
+export function historyTarget(chartId: string, coin: Coin): HistoryTarget | null {
+  const spot = /^([^:]+):(.+):spot$/.exec(chartId);
+  const chart = spot ? `${spot[1]}spot:${spot[2]}` : chartId;
+  const venues = [chart.split(':')[0]!, ...FALLBACK];
+  for (let i = 0; i < venues.length; i++) {
+    const venue = venues[i]!, listing = coin.markets[venue as MarketVenue], id = instrumentIdFor(venue, coin);
+    if (!CANDLE_VENUES.includes(venue) || !listing || !id || (i === 0 && id !== chart)) continue;
+    return { id, listing, own: id === chart };
   }
   return null;
 }
 
 export class KeyLevelHistory {
+  #key = '';
   #id = '';
+  #barMs = HOUR;
   #bars: CandleRow[] = [];
   /** The earliest start asked for (so a history that does not reach further is not asked again for it). */
   #askedFrom = Infinity;
+  /** Set when asking further back brought nothing older: the exchange's history begins there. */
+  #exhausted = false;
   #refreshedAt = 0;
   #pending = false;
   #retryAt = 0;
@@ -50,37 +59,42 @@ export class KeyLevelHistory {
   constructor(private get: Fetcher, private now: () => number = Date.now) {}
 
   get id(): string { return this.#id; }
-  /** Hourly candles, oldest first. */
+  get barMs(): number { return this.#barMs; }
+  /** The bars, oldest first. */
   get bars(): readonly CandleRow[] { return this.#bars; }
+  /** Where the bars held begin (Infinity while there are none). */
+  get heldFrom(): number { return this.#bars[0]?.[0] ?? Infinity; }
 
-  /** Make sure candles of `target` from `from` are held or on their way; `onLoad` runs when an answer changes them. */
-  ensure(target: HistoryTarget | null, from: number, onLoad: () => void): void {
-    if (!target) { if (this.#id) { this.#reset(''); this.version++; } return; }
-    if (target.id !== this.#id) { this.#reset(target.id); this.version++; }
+  /** Make sure `barMs` candles of `target` from `from` are held or on their way; `onLoad` runs when an answer changes them. */
+  ensure(target: HistoryTarget | null, from: number, barMs: number, onLoad: () => void): void {
+    const key = target ? `${target.id}|${barMs}` : '';
+    if (key !== this.#key) { this.#reset(key, target?.id ?? '', barMs); this.version++; }
+    if (!target) return;
     const now = this.now();
     if (this.#pending || now < this.#retryAt) return;
     const want = Math.floor(from / DAY) * DAY;
     let a: number, b: number, forward = false;
     if (!this.#bars.length) { a = want; b = now; forward = true; }
-    else if (want < this.#askedFrom) { a = want; b = this.#bars[0]![0]; }
-    else if (now - this.#refreshedAt >= REFRESH_MS) { a = this.#bars[this.#bars.length - 1]![0] - 2 * HOUR; b = now; forward = true; }
+    else if (want < this.#askedFrom && !this.#exhausted) { a = want; b = this.#bars[0]![0]; }
+    else if (now - this.#refreshedAt >= REFRESH_MS) { a = this.#bars[this.#bars.length - 1]![0] - 2 * barMs; b = now; forward = true; }
     else return;
-    const id = this.#id;
+    const asked = this.#key, before = this.heldFrom;
     this.#pending = true; if (!this.#bars.length) this.state = 'loading';
-    void fetchCandles(id, HOUR, a, b, this.get, target.listing).then(rows => {
-      if (id !== this.#id) return;
+    void fetchCandles(target.id, barMs, a, b, this.get, target.listing, MAX_PAGES).then(rows => {
+      if (asked !== this.#key) return;
       this.#askedFrom = Math.min(this.#askedFrom, a);
       if (forward) this.#refreshedAt = this.now();
       if (rows.length) this.#merge(rows as CandleRow[]);
       else if (!this.#bars.length) this.#retryAt = this.now() + RETRY_MS;
+      if (!forward && !(this.heldFrom < before)) this.#exhausted = true;
       this.state = this.#bars.length ? 'ready' : 'unavailable';
       onLoad();
     }, () => {
-      if (id !== this.#id) return;
+      if (asked !== this.#key) return;
       this.#retryAt = this.now() + RETRY_MS;
       this.state = this.#bars.length ? 'ready' : 'unavailable';
       onLoad();
-    }).finally(() => { if (id === this.#id) this.#pending = false; });
+    }).finally(() => { if (asked === this.#key) this.#pending = false; });
   }
 
   #merge(rows: readonly CandleRow[]): void {
@@ -90,5 +104,8 @@ export class KeyLevelHistory {
     this.version++;
   }
 
-  #reset(id: string): void { this.#id = id; this.#bars = []; this.#askedFrom = Infinity; this.#refreshedAt = 0; this.#pending = false; this.#retryAt = 0; this.state = id ? 'loading' : 'idle'; }
+  #reset(key: string, id: string, barMs: number): void {
+    this.#key = key; this.#id = id; this.#barMs = barMs; this.#bars = []; this.#askedFrom = Infinity; this.#exhausted = false;
+    this.#refreshedAt = 0; this.#pending = false; this.#retryAt = 0; this.state = id ? 'loading' : 'idle';
+  }
 }

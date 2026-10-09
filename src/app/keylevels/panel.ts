@@ -5,10 +5,12 @@ import { helpButton } from '../help.ts';
 import { t } from '../i18n.ts';
 import { venueLabel } from '../venues.ts';
 import { currentCoin } from '../coin.ts';
-import { ZONES } from '../traded/settings.ts';
-import { PERIOD_KINDS, type PeriodKind, type PeriodLines } from './levels.ts';
+import { ZONES, resolveZone } from '../traded/settings.ts';
+
+const DAY = 86_400_000;
+import { MAX_BACK_MS, PERIOD_KINDS, type PeriodKind, type PeriodLines } from './levels.ts';
 import { historyTarget, type KeyLevelHistory } from './history.ts';
-import { codeOf } from './paint.ts';
+import { codeOf, periodDate } from './paint.ts';
 import type { KeyLevelSettings } from './settings.ts';
 
 const PERIOD_NAMES: Readonly<Record<PeriodKind, string>> = { day: t('Day'), week: t('Week'), month: t('Month') };
@@ -46,9 +48,11 @@ export function buildKeyLevelPanel(store: Store, tools: HTMLElement, body: HTMLE
     switchRow(t('Labels'), t('Each line\'s name and price at its right end, where there is room.'), s.labels, labels => set({ labels })),
     switchRow(t('Tags on the price axis'), t('The name of each line that reaches the right edge, beside its price.'), s.tags, tags => set({ tags })),
   );
-  const target = historyTarget(store.state.marketId, currentCoin().markets);
+  const target = historyTarget(store.state.marketId, currentCoin());
   if (!target) { body.append(note(t('No market of this coin has a history the page can read, so there are no key levels.'))); return; }
   body.append(note(t('From the hourly candles of {market}, about two months of them.', { market: `${venueLabel(target.id)} ${target.listing.symbol}` })));
   if (!target.own) body.append(note(t('The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.')));
   if (history?.id === target.id && history.state === 'unavailable') body.append(note(t('Its history could not be read just now; trying again in a minute.')));
+  // A history that begins later than the two months the lines can reach (a young listing, or OKX's shorter pages for a zone off the hour).
+  else if (history?.id === target.id && history.state === 'ready' && history.heldFrom > Date.now() - MAX_BACK_MS + 3 * DAY) body.append(note(t('Its history reaches back to {date} only, so lines of earlier periods are missing.', { date: periodDate(history.heldFrom, 'day', resolveZone(store.state.traded.zone, store.state.timeZone)) })));
 }

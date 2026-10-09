@@ -61,11 +61,11 @@ export function minutesOf(text: string): number | null {
   return h <= 24 && min < 60 && h * 60 + min <= 1_440 ? h * 60 + min : null;
 }
 
-/** Midnight (wall time, read as UTC) of every day of `zone` whose day could touch [t0, t1], oldest first. */
+/** Midnight (wall time, read as UTC) of every day of `zone` whose day could touch [t0, t1], oldest first: the newest 400 at most. */
 function days(zone: string, t0: number, t1: number): { midnight: number; weekday: number }[] {
-  const first = Math.floor(wallOf(zone, t0 - DAY).wall / DAY) * DAY, last = Math.floor(wallOf(zone, t1).wall / DAY) * DAY;
+  const last = Math.floor(wallOf(zone, t1).wall / DAY) * DAY, first = Math.max(Math.floor(wallOf(zone, t0 - DAY).wall / DAY) * DAY, last - 399 * DAY);
   const out: { midnight: number; weekday: number }[] = [];
-  for (let d = first; d <= last && out.length < 400; d += DAY) out.push({ midnight: d, weekday: new Date(d).getUTCDay() });
+  for (let d = first; d <= last; d += DAY) out.push({ midnight: d, weekday: new Date(d).getUTCDay() });
   return out;
 }
 

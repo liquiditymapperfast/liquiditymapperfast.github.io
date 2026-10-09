@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { monthWindows } from '../src/app/traded/sessions.ts';
-import { keyLines, lineEnd, neededFrom, statsOf, MAX_BACK_MS, type KeyLine, type PeriodLines } from '../src/app/keylevels/levels.ts';
+import { barMsFor, keyLines, lineEnd, neededFrom, statsOf, MAX_BACK_MS, type KeyLine, type PeriodLines } from '../src/app/keylevels/levels.ts';
 import { KEY_LEVEL_DEFAULTS, anyLine, readKeyLevels } from '../src/app/keylevels/settings.ts';
 import { placeTags } from '../src/app/keylevels/tags.ts';
 import { KeyLevelHistory, historyTarget } from '../src/app/keylevels/history.ts';
@@ -36,16 +36,30 @@ test('months start on the 1st at midnight in their zone, and a month whose clock
   assert.equal(ny[0]!.to - ny[0]!.from, 30 * DAY + HOUR);
 });
 
-test('a period\'s open, high and low come from the bars that start inside it; it is complete when they hold its first and last hours', () => {
+test('a period\'s open, high and low come from the bars that start inside it; it is complete when the history held reaches back to its start', () => {
   const bars = hourly(D0, 48, i => 100 + i, 10, { 5: [50, 120], 30: [90, 400] });
-  const day1 = statsOf(bars, D0, D0 + DAY, D0 + 3 * DAY)!;
-  assert.deepEqual([day1.open, day1.high, day1.low, day1.opened, day1.complete], [100, 133, 50, true, true]);
-  assert.equal(statsOf(bars, D0 + DAY, D0 + 2 * DAY, D0 + 3 * DAY)!.high, 400);
-  const late = statsOf(bars.slice(3), D0, D0 + DAY, D0 + 3 * DAY)!;
-  assert.equal(late.opened, false, 'its first hours are missing: the open is not its own'); assert.equal(late.complete, false);
-  const underWay = statsOf(bars.slice(0, 30), D0 + DAY, D0 + 2 * DAY, D0 + 29.5 * HOUR)!;
-  assert.equal(underWay.complete, true, 'the period under way is complete up to now');
-  assert.equal(statsOf(bars, D0 + 5 * DAY, D0 + 6 * DAY, D0 + 7 * DAY), null);
+  const day1 = statsOf(bars, D0, D0 + DAY, D0)!;
+  assert.deepEqual([day1.open, day1.high, day1.low, day1.complete], [100, 133, 50, true]);
+  assert.equal(statsOf(bars, D0 + DAY, D0 + 2 * DAY, D0)!.high, 400);
+  assert.equal(statsOf(bars.slice(3), D0, D0 + DAY, D0 + 3 * HOUR)!.complete, false, 'the history begins after its start: its first hours are unknown');
+  // A quiet hour some exchanges send no bar for (Coinbase) is not a hole in what is known: the day is complete without it.
+  const quiet = [...bars.slice(1, 20), ...bars.slice(30)];
+  assert.deepEqual(statsOf(quiet, D0, D0 + DAY, D0), { open: 101, high: 129, low: 50, complete: true });
+  assert.equal(statsOf(bars, D0 + 5 * DAY, D0 + 6 * DAY, D0), null);
+});
+
+test('the candle size starts a bar on every period boundary: half an hour in India, a quarter in Nepal, half an hour in Lord Howe\'s summer', () => {
+  const year = [Date.UTC(2026, 0, 1), Date.UTC(2026, 11, 31)] as const;
+  assert.deepEqual(['UTC', 'America/New_York', 'Asia/Kolkata', 'Asia/Kathmandu', 'Australia/Lord_Howe'].map(z => barMsFor(z, ...year) / 60_000), [60, 60, 30, 15, 30]);
+  // India: a day starts at 18:30 UTC. On half-hour bars the spike at 18:45 is the new day's, its open the 18:30 bar's.
+  const start = Date.UTC(2026, 9, 3, 18, 30), half = 30 * 60_000;
+  const bars: CandleRow[] = Array.from({ length: 3 * 48 }, (_, i) => [start + i * half, 100, 101, 99, 100, 1] as CandleRow);
+  bars[48] = [start + DAY, 150, 200, 149, 150, 1]; // 18:30-19:00 UTC on the 4th: the first half hour of the 5th in India, with a spike at 18:45
+  const now = start + 2 * DAY + HOUR;
+  const ls = keyLines(bars, lines({ prev: true, open: true }), { zone: 'Asia/Kolkata', t0: start + DAY, t1: now, now, untouched: false });
+  const day3 = pick(ls, l => l.from === start + 2 * DAY);
+  assert.deepEqual(day3.map(l => [codeOf(l), l.price]), [['PDH', 200], ['PDL', 99], ['DO', 100]]);
+  assert.deepEqual(pick(ls, l => l.from === start + DAY && l.what === 'open').map(l => l.price), [150], 'the day\'s open is its first half hour\'s');
 });
 
 test('over each day: the previous day\'s high, low and middle, the day\'s open, and the range so far of the day under way only', () => {
@@ -122,11 +136,44 @@ test('settings are read field by field, and the codes and ranks follow the perio
 });
 
 test('the candles come from the chart\'s own market where its history can be read, else the first that lists the coin', () => {
-  assert.deepEqual(historyTarget('binance:BTCUSDT:spot', BTC.markets), { id: 'binancespot:BTCUSDT', listing: BTC.markets.binancespot, own: true }, 'a server names Binance spot binance:BTCUSDT:spot');
-  assert.equal(historyTarget('hyperliquid:BTC-PERP', BTC.markets)!.own, true);
-  const kraken = historyTarget('kraken:BTC/USD', BTC.markets)!;
+  assert.deepEqual(historyTarget('binance:BTCUSDT:spot', BTC), { id: 'binancespot:BTCUSDT', listing: BTC.markets.binancespot!, own: true }, 'a server names Binance spot binance:BTCUSDT:spot');
+  assert.equal(historyTarget('hyperliquid:BTC-PERP', BTC)!.own, true);
+  const kraken = historyTarget('kraken:BTC/USD', BTC)!;
   assert.deepEqual([kraken.id, kraken.own], ['binance:BTCUSDT', false]);
-  assert.equal(historyTarget('binance:BTCUSDT', {}), null);
+  assert.equal(historyTarget('binance:BTCUSDT', { ...BTC, markets: {} }), null);
+  // Another market of the chart's venue is not its own: OKX spot under `okx`, a coin-margined contract under `binance`.
+  assert.deepEqual([historyTarget('okx:BTC-USDT', BTC)!.id, historyTarget('okx:BTC-USDT', BTC)!.own], ['binance:BTCUSDT', false]);
+  assert.equal(historyTarget('binance:BTCUSD_PERP', BTC)!.own, false);
+});
+
+test('zoomed out over a year the lines are still today\'s: the newest days are kept, and nothing before the history is looked at', () => {
+  const now = D0 + 3 * DAY + 5 * HOUR, bars = hourly(now - 70 * DAY, 70 * 24 + 5, () => 150, 10);
+  const ls = keyLines(bars, lines({ prev: true }, { prev: true }), { zone: 'UTC', t0: now - 400 * DAY, t1: now + HOUR, now, untouched: false });
+  assert.ok(ls.some(l => l.period === 'day' && l.from === D0 + 3 * DAY), 'today\'s');
+  assert.ok(ls.some(l => l.period === 'week' && l.from === D0), 'this week\'s');
+  assert.ok(ls.length < 200, `${ls.length} lines`);
+});
+
+test('a history that ends further back is not asked for more after the exchange said it has nothing older', async () => {
+  let now = D0 + 10 * DAY;
+  const asked: number[] = [];
+  const get = async (url: string): Promise<unknown> => {
+    const end = Number(new URL(url).searchParams.get('endTime')), first = now - 5 * DAY; // listed five days ago
+    asked.push(end);
+    const rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    return rows;
+  };
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
+  const settle = (): Promise<void> => new Promise(r => setTimeout(r, 0));
+  h.ensure(target, now - 3 * DAY, HOUR, () => {}); await settle(); await settle();
+  h.ensure(target, now - 9 * DAY, HOUR, () => {}); await settle(); await settle();
+  assert.equal(asked.length, 3, 'further back: one page with the two older days, one that came back empty');
+  h.ensure(target, now - 10 * DAY, HOUR, () => {}); await settle(); await settle();
+  assert.equal(asked.length, 4, 'once more, which brought nothing older');
+  for (const back of [11, 12, 20]) { h.ensure(target, now - back * DAY, HOUR, () => {}); await settle(); }
+  assert.equal(asked.length, 4, 'and never again');
+  assert.equal(h.heldFrom, now - 5 * DAY);
 });
 
 test('the history is asked once, then further back when the chart needs it, its newest hours every five minutes, and a minute after a failure', async () => {
@@ -142,24 +189,24 @@ test('the history is asked once, then further back when the chart needs it, its 
     asked.push([rows.length ? (rows[0] as number[])[0]! : end, end]);
     return rows;
   };
-  const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC.markets)!;
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
   let loads = 0; const onLoad = (): void => { loads++; };
   const settle = (): Promise<void> => new Promise(r => setTimeout(r, 0));
-  h.ensure(target, now - 3 * DAY, onLoad); h.ensure(target, now - 3 * DAY, onLoad);
+  h.ensure(target, now - 3 * DAY, HOUR, onLoad); h.ensure(target, now - 3 * DAY, HOUR, onLoad);
   await settle(); await settle();
   assert.equal(asked.length, 1, 'one request while one is out'); assert.equal(loads, 1); assert.equal(h.state, 'ready');
   assert.ok(h.bars[0]![0] <= now - 3 * DAY && h.bars.length > 70);
-  h.ensure(target, now - 3 * DAY, onLoad); await settle();
+  h.ensure(target, now - 3 * DAY, HOUR, onLoad); await settle();
   assert.equal(asked.length, 1, 'nothing new is needed');
-  h.ensure(target, now - 20 * DAY, onLoad); await settle(); await settle();
+  h.ensure(target, now - 20 * DAY, HOUR, onLoad); await settle(); await settle();
   assert.equal(asked.length, 2, 'further back'); assert.ok(h.bars[0]![0] <= now - 20 * DAY);
-  now += 5 * 60_000; h.ensure(target, now - 20 * DAY, onLoad); await settle(); await settle();
+  now += 5 * 60_000; h.ensure(target, now - 20 * DAY, HOUR, onLoad); await settle(); await settle();
   assert.equal(asked.length, 3, 'the newest hours again'); assert.equal(h.bars[h.bars.length - 1]![0], Math.floor(now / HOUR) * HOUR);
   const version = h.version;
-  fail = true; now += 5 * 60_000; h.ensure(target, now - 20 * DAY, onLoad); await settle(); await settle();
+  fail = true; now += 5 * 60_000; h.ensure(target, now - 20 * DAY, HOUR, onLoad); await settle(); await settle();
   assert.equal(h.state, 'ready', 'a failed refresh keeps what is held');
-  now += 30_000; h.ensure(target, now - 20 * DAY, onLoad); await settle();
+  now += 30_000; h.ensure(target, now - 20 * DAY, HOUR, onLoad); await settle();
   assert.equal(h.version, version, 'not asked again within the minute');
-  h.ensure(historyTarget('bybit:BTCUSDT', BTC.markets), now - DAY, () => {});
+  h.ensure(historyTarget('bybit:BTCUSDT', BTC), now - DAY, HOUR, () => {});
   assert.equal(h.bars.length, 0, 'another market starts again'); assert.equal(h.id, 'bybit:BTCUSDT');
 });

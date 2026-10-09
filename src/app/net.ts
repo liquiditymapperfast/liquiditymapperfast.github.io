@@ -23,13 +23,13 @@ export async function getCandles(inst: string, tf: string, from: number, to: num
   const body = await (await request(`/api/v2/candles?inst=${encodeURIComponent(inst)}&tf=${tf}&from=${from}&to=${to}`)).json() as { candles: CandleRow[] };
   return body.candles;
 }
-/** Large trades in [from, to), oldest first (malformed rows dropped). */
 /** Liquidations in a window (a server from before them answers 404, which is an error here). */
 export async function getLiquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> {
   const min = minUsd !== undefined ? `&min=${Math.floor(minUsd)}` : '';
   const body = await (await request(`/api/v2/liquidations?from=${Math.floor(from)}&to=${Math.ceil(to)}${min}`)).json() as { liquidations?: unknown[] };
   return (body.liquidations ?? []).flatMap(row => { const l = liquidationFromWire(row); return l ? [l] : []; });
 }
+/** Large trades in [from, to), oldest first (malformed rows dropped). */
 export async function getPrints(from: number, to: number, minUsd?: number): Promise<Print[]> {
   const min = minUsd !== undefined && Number.isFinite(minUsd) ? `&min=${Math.round(minUsd)}` : '';
   const body = await (await request(`/api/v2/prints?from=${Math.floor(from)}&to=${Math.ceil(to)}${min}`)).json() as { prints?: unknown[] };
