@@ -8,7 +8,7 @@ import { RecordedBefore } from './restart.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
 import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore, type FlowUpdate } from './flow.ts';
 import { TIMEFRAMES, type Candle, type OiBar, type OiRow } from './series.ts';
-import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, type Fetcher } from './history.ts';
+import { OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiSample, oiBars, venueOf, webGet, type Fetcher } from './history.ts';
 import { browserVenues, type BrowserVenue } from './venues.ts';
 import { BTC, SCALES, type Coin, type MarketVenue } from './coins.ts';
 import type { BookConnector, TradeEvent } from './connector.ts';
@@ -74,25 +74,6 @@ interface Run {
   probe: { ok: boolean | null; at: number; pending: boolean };
 }
 
-/** One request and its first reply over a WebSocket (see `Fetcher`). */
-function socketRequest(url: string, body: string, timeoutMs: number): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url);
-    let settled = false;
-    const timer = setTimeout(() => settle(() => reject(new Error('the socket request timed out'))), timeoutMs);
-    const settle = (finish: () => void): void => { if (settled) return; settled = true; clearTimeout(timer); try { socket.close(); } catch { /* already closed */ } finish(); };
-    socket.onopen = () => socket.send(body);
-    socket.onmessage = event => settle(() => { try { resolve(JSON.parse(String(event.data))); } catch (error) { reject(error); } });
-    socket.onerror = () => settle(() => reject(new Error('the socket request failed')));
-    socket.onclose = () => settle(() => reject(new Error('the socket closed before it answered')));
-  });
-}
-const defaultGet: Fetcher = async (url, init) => {
-  if (url.startsWith('wss://')) return socketRequest(url, init?.body ?? '', 15_000);
-  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
-};
 const defaultPing = async (url: string, init?: { method: string; headers: Record<string, string>; body: string }): Promise<boolean> => {
   try { return (await fetch(url, { ...init, signal: AbortSignal.timeout(6_000), cache: 'no-store' })).ok; } catch { return false; }
 };
@@ -153,7 +134,7 @@ export class Engine {
   #lastTick = ''; #lastStatus = '';
   #timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = defaultGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
+  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = webGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, retentionMs = BROWSER_RETENTION_MS }: EngineOptions = {}) {
     this.#coin = coin; this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping;
     // A coin that trades less than BTC keeps smaller trades, groups and map cells (shared/coins.ts SCALES); BTC's are 1.
     const scale = SCALES[tier] ?? 1;

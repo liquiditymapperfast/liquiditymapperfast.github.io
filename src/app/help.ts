@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels';
 
 export interface HelpTopic {
   title: string;
@@ -36,6 +36,13 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.'),
       t('In the settings they can be drawn as lines on the chart, worked out over what is on the chart, each day or week, or sessions you set in any market\'s time zone. Hover a row for what traded there and the market orders that began at those prices; drag on the column, or click a row, for everything about those prices in the Range panel.'),
       t('An order is counted at the price it began at, so a row inside a sweep can have volume and no orders of its own.')],
+  },
+  keyLevels: {
+    title: t('Key levels'), guide: 'profile',
+    tip: t('Lines where the previous day, week and month traded highest and lowest and halfway between, and where the one under way opened: the levels many traders watch.'),
+    body: [t('PDH and PDL are the previous day\'s high and low and PDM the middle of the two; DO is where the day opened, and DH and DL how high and low it has traded so far. W and M stand for the week and the month. A day starts at midnight in the zone you choose (the Volume profile\'s), a week on Monday and a month on the 1st.'),
+      t('They come from one market\'s hourly candles, read from the exchange: the market on the chart where the page can read its history, else another market of the coin, named in the panel. The hour under way follows the chart\'s own candles. They reach back about two months.'),
+      t('A previous high, low or middle that the next period never traded through stays on, dotted, until price reaches it.')],
   },
   absorption: {
     title: t('Absorption'), guide: 'trades',

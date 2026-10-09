@@ -14,6 +14,27 @@ import { BTC, type CoinVenue, type Listing } from './coins.ts';
  */
 export type Fetcher = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<unknown>;
 
+/** One request and its first reply over a WebSocket (see `Fetcher`). */
+function socketRequest(url: string, body: string, timeoutMs: number): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    let settled = false;
+    const timer = setTimeout(() => settle(() => reject(new Error('the socket request timed out'))), timeoutMs);
+    const settle = (finish: () => void): void => { if (settled) return; settled = true; clearTimeout(timer); try { socket.close(); } catch { /* already closed */ } finish(); };
+    socket.onopen = () => socket.send(body);
+    socket.onmessage = event => settle(() => { try { resolve(JSON.parse(String(event.data))); } catch (error) { reject(error); } });
+    socket.onerror = () => settle(() => reject(new Error('the socket request failed')));
+    socket.onclose = () => settle(() => reject(new Error('the socket closed before it answered')));
+  });
+}
+/** The fetcher a page or a worker uses: HTTP with a 15 s limit, and a `wss://` URL as one request over a socket. */
+export const webGet: Fetcher = async (url, init) => {
+  if (url.startsWith('wss://')) return socketRequest(url, init?.body ?? '', 15_000);
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+};
+
 const num = (value: unknown): number => Number(value);
 const at = (value: unknown, ...path: (string | number)[]): unknown => path.reduce<unknown>((v, key) => (v !== null && typeof v === 'object' ? (v as Record<string | number, unknown>)[key] : undefined), value);
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];

@@ -23,7 +23,7 @@ test('text, muted text, accents and the buy / sell colours are legible on the ba
     for (const surface of [p.bg, p.panel]) {
       assert.ok(contrast(p.text, surface) >= 7, `${id}: text ${contrast(p.text, surface).toFixed(2)} on ${surface}`);
       assert.ok(contrast(p.muted, surface) >= 4.5, `${id}: muted ${contrast(p.muted, surface).toFixed(2)} on ${surface}`);
-      for (const key of ['accent', 'ui', 'bid', 'ask', 'candleUp', 'candleDown', 'poc'] as const) assert.ok(contrast(p[key], surface) >= 3, `${id}: ${key} ${contrast(p[key], surface).toFixed(2)} on ${surface}`);
+      for (const key of ['accent', 'ui', 'bid', 'ask', 'candleUp', 'candleDown', 'poc', 'level'] as const) assert.ok(contrast(p[key], surface) >= 3, `${id}: ${key} ${contrast(p[key], surface).toFixed(2)} on ${surface}`);
     }
     assert.equal(p.dark, luminance(p.bg) < 0.18, `${id}: the dark flag matches the background`);
   }

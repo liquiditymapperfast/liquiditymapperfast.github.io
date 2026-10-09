@@ -119,6 +119,7 @@ async function main(): Promise<void> {
   hub.onPrints = fresh => { sounds.feed(fresh); cvd.flash(fresh); };
   hub.onPrintsChanged = () => heat.invalidate();
   hub.onLiquidationsChanged = () => heat.invalidate();
+  toolbar.keyHistory = hub.keyHistory;
   hub.onTraded = () => heat.invalidate();
   hub.onAbsorptionChanged = () => heat.invalidate();
   toolbar.absorptionInfo = () => heat.absorptionThresholdText();

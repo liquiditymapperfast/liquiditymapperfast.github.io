@@ -32,6 +32,11 @@ import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, typ
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
 import { t } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
+import { resolveZone } from '../traded/settings.ts';
+import { keyLines, neededFrom, type KeyLine } from '../keylevels/levels.ts';
+import { anyLine } from '../keylevels/settings.ts';
+import { historyTarget, type HistoryTarget } from '../keylevels/history.ts';
+import { paintKeyLevels, paintKeyTags, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { draftLabel } from '../range/stats.ts';
@@ -137,6 +142,12 @@ export class HeatPane {
   #levelsMemo: { answer: ProfileAnswer; step: number; share: number; levels: ValueLevels | null } | null = null;
   /** The days, weeks or sessions the lines are drawn for, and what they were worked out for. */
   #vaWindows: { key: string; windows: ProfileWindow[] } | null = null;
+  /** The key levels' market and zone, how far back their candles are needed, and their lines, each kept until what it depends on changes. */
+  #keyContext: { key: string; target: HistoryTarget | null; zone: string } | null = null;
+  #keyFrom: { key: string; from: number } | null = null;
+  #keyLines: { key: string; lines: KeyLine[] } | null = null;
+  /** The tags the key levels want on the price axis this frame. */
+  #keyTags: KeyTag[] = [];
   #touchSelect: { start: Pt; at: Pt } | null = null;
   /** Right-button drag: zoom about the press point, from the view as it was at press time. */
   #zoomDrag: { x: number; y: number; view: Bounds } | null = null;
@@ -320,6 +331,7 @@ export class HeatPane {
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view, scaledUsd(state.tradeBubbles.minUsd));
     if (state.liquidations.on) this.hub.ensureLiquidations(this.view, scaledUsd(state.liquidations.minUsd));
+    if (state.keyLevels.on && anyLine(state.keyLevels)) this.#ensureKeyLevels(state);
     if (state.show.traded) { this.#ensureTraded(state); this.#ensureValueAreas(state); }
     if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
@@ -375,6 +387,7 @@ export class HeatPane {
     this.#paintLiquidations(ctx, state, pw, ph); // above the bubbles: a forced order is one of the market orders, marked as forced
     this.#paintAbsorption(ctx, state, pw, ph);
     this.#paintValueLines(ctx, state, pw, ph);
+    this.#keyTags = state.keyLevels.on ? paintKeyLevels(ctx, this.#keyLevelLines(state), v, pw, ph, p, state.keyLevels, Date.now(), this.#keyLevelContext(state).zone) : [];
     // mark line
     const mark = state.mark.price;
     if (mark > 0) {
@@ -388,7 +401,9 @@ export class HeatPane {
     ctx.fillStyle = p.panel; ctx.fillRect(axisX, 0, AXIS_W, h);
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(axisX + 0.5, 0); ctx.lineTo(axisX + 0.5, h); ctx.stroke();
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
-    for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
+    const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), keyTags = placeKeyTags(this.#keyTags, mark > 0 ? [{ y0: markY - 9, y1: markY + 9 }] : [], ph);
+    for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
+    paintKeyTags(ctx, keyTags, axisX, AXIS_W, p);
     if (mark > 0) {
       const y = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph)));
       ctx.fillStyle = p.ask; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18);
@@ -732,6 +747,40 @@ export class HeatPane {
     if (!(v.t1 > v.t0) || !(v.p1 > v.p0)) return;
     const { from, to } = this.#tradedWindow();
     this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), state.followLive);
+  }
+
+  /** Whose hourly candles the key levels are read from and the zone their days start in (again when the market, the coin or a zone changes). */
+  #keyLevelContext(state: AppState): { target: HistoryTarget | null; zone: string } {
+    const coin = currentCoin(), key = `${state.marketId}|${coin.coin}|${state.traded.zone}|${state.timeZone}`;
+    if (this.#keyContext?.key !== key) this.#keyContext = { key, target: historyTarget(state.marketId, coin.markets), zone: resolveZone(state.traded.zone, state.timeZone) };
+    return this.#keyContext;
+  }
+  /** Ask for the hourly candles the key levels need for this view (how far back is worked out again only when the view's hour changes). */
+  #ensureKeyLevels(state: AppState): void {
+    const { target, zone } = this.#keyLevelContext(state), s = state.keyLevels, HOUR = 3_600_000, now = Date.now();
+    const key = `${zone}|${s.day.prev}${s.day.mid}${s.day.open}${s.day.sofar}|${s.week.prev}${s.week.mid}${s.week.open}${s.week.sofar}|${s.month.prev}${s.month.mid}${s.month.open}${s.month.sofar}|${Math.floor(this.view.t0 / HOUR)}|${Math.floor(now / HOUR)}`;
+    if (this.#keyFrom?.key !== key) this.#keyFrom = { key, from: neededFrom(s, zone, this.view.t0, now) };
+    this.hub.keyHistory.ensure(target, this.#keyFrom.from, () => this.invalidate());
+  }
+  /**
+   * The key levels for the view, from the exchange's hourly candles and, after the last of them, the chart's own candles when they are of the
+   * same market at an hour or finer (those move with every trade; the hourly ones are asked again every five minutes). Worked out again when
+   * the candles, the settings, the view's hour or the clock's minute change, never for a frame that only moves the pointer.
+   */
+  #keyLevelLines(state: AppState): KeyLine[] {
+    const s = state.keyLevels, h = this.hub.keyHistory, v = this.view, now = Date.now(), MIN = 60_000, HOUR = 3_600_000;
+    if (!s.on || !anyLine(s) || !h.bars.length) return [];
+    const { target, zone } = this.#keyLevelContext(state);
+    if (!target || target.id !== h.id) return [];
+    const held = h.bars, lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? HOUR;
+    const live = target.own && state.seriesInstrument === state.marketId && tf <= HOUR ? state.candles.filter(c => c[0] >= lastStart) : [];
+    const tail = live[live.length - 1];
+    const key = `${h.id}|${h.version}|${JSON.stringify(s)}|${zone}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}|${live.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}` : ''}`;
+    if (this.#keyLines?.key !== key) {
+      const bars = live.length ? [...held, ...live].sort((a, b) => a[0] - b[0]) : held;
+      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched }) };
+    }
+    return this.#keyLines.lines;
   }
 
   /** The days, weeks or sessions the lines are drawn for (worked out again when the settings, the view's minutes or the clock's minute change). */

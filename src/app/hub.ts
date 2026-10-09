@@ -15,6 +15,8 @@ import { MAX_VALUE_AREA_WINDOWS, type ProfileAnswer, type ValueAreaWindow } from
 import { AbsorptionBook } from './absorption.ts';
 import { ABSORPTION_RETENTION_MS, MAX_ABSORPTION_INSTRUMENTS, peakOf } from '../shared/absorption.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
+import { webGet } from '../shared/history.ts';
+import { KeyLevelHistory } from './keylevels/history.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -50,6 +52,8 @@ export class Hub {
   onPrintsChanged: () => void = () => {};
   /** Liquidations held for the map (the venues that publish them), and a call when they change. */
   readonly liquidations = new LiquidationBook();
+  /** The hourly candles the key levels are read from, straight from the exchange (keylevels/history.ts). */
+  readonly keyHistory = new KeyLevelHistory(webGet);
   onLiquidationsChanged: () => void = () => {};
   /** 'unavailable': the source has no liquidations (a server from before them); asked again a minute later. */
   liquidationsState: 'ready' | 'unavailable' = 'ready';

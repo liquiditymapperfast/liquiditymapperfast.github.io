@@ -344,6 +344,14 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .panel .opt:hover, .panel .field:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
 .panel .opt input[type=checkbox] { margin: 1px 0 0; width: 15px; height: 15px; accent-color: var(--ui); cursor: pointer; }
 .panel .opt .desc { grid-column: 2; }
+/* Key levels: which lines of the day, week and month, as a grid of boxes (rows the lines, columns the periods). */
+.keylevel-grid { display: grid; grid-template-columns: 1fr repeat(3, 52px); align-items: center; margin: 2px 0 8px; font-size: 12px; }
+.keylevel-grid .head { text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 2px; }
+.keylevel-grid .what { display: flex; flex-direction: column; padding: 4px 0; border-top: 1px solid var(--line); }
+.keylevel-grid .what .desc { color: var(--muted); font-size: 11px; }
+.keylevel-grid label { display: flex; justify-content: center; align-self: stretch; align-items: center; border-top: 1px solid var(--line); cursor: pointer; }
+.keylevel-grid label:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.keylevel-grid input[type=checkbox] { margin: 0; width: 15px; height: 15px; accent-color: var(--ui); cursor: pointer; }
 .panel .field { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 7px 8px; margin: 0 -8px; border-radius: var(--radius); }
 .panel .field > select, .panel .field > input[type=number] { width: 150px; }
 .panel .slider { display: flex; align-items: center; gap: 8px; width: 170px; }

@@ -90,6 +90,19 @@ export function weekWindows(zone: string, t0: number, t1: number): ProfileWindow
   return out;
 }
 
+/** The calendar months of `zone` (the 1st at 00:00 to the next 1st) that touch [t0, t1], oldest first. */
+export function monthWindows(zone: string, t0: number, t1: number): ProfileWindow[] {
+  const out: ProfileWindow[] = [];
+  const first = new Date(wallOf(zone, t0).wall), last = new Date(wallOf(zone, t1).wall);
+  let y = first.getUTCFullYear(), m = first.getUTCMonth();
+  while ((y < last.getUTCFullYear() || (y === last.getUTCFullYear() && m <= last.getUTCMonth())) && out.length < 400) {
+    const from = fromWall(zone, Date.UTC(y, m, 1)), to = fromWall(zone, Date.UTC(y, m + 1, 1));
+    if (to > t0 && from < t1) out.push({ key: `month|${zone}|${from}`, name: '', from, to });
+    if (++m === 12) { m = 0; y++; }
+  }
+  return out;
+}
+
 /** The windows of the sessions that are on and touch [t0, t1], oldest first; `resolve` turns a stored zone into an IANA name. */
 export function sessionWindows(defs: readonly SessionDef[], t0: number, t1: number, resolve: (zone: string) => string = z => z): ProfileWindow[] {
   const out: ProfileWindow[] = [];
