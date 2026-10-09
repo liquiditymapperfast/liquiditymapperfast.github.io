@@ -1040,5 +1040,12 @@
  "sells {ratio} the buys one row up": "vendas {ratio} as compras uma linha acima",
  "sells, none bought one row up": "vendas, nada comprado uma linha acima",
  "buys {ratio} the sells one row down": "compras {ratio} as vendas uma linha abaixo",
- "buys, none sold one row down": "compras, nada vendido uma linha abaixo"
+ "buys, none sold one row down": "compras, nada vendido uma linha abaixo",
+ "Running on": "Prolongado",
+ "Stacked imbalance zones": "Zonas de desequilíbrios empilhados",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Uma faixa onde uma vela fechada empilhou desequilíbrios de um lado (suporte das compras, resistência das vendas), até uma vela posterior negociar dentro dela.",
+ "Untouched points of control": "Pontos de controle não tocados",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "A linha mais negociada de cada vela fechada, pontilhada até à margem direita enquanto nenhuma vela posterior a atravessar.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Ambos aparecem enquanto o footprint estiver visível, e se uma vela posterior os alcançou lê-se das velas do mercado do gráfico.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "No seu painel, os desequilíbrios empilhados de uma vela fechada podem prolongar-se como zona (verde das compras, abaixo como suporte; vermelha das vendas, acima como resistência) até uma vela posterior negociar dentro dela, e a sua linha mais negociada como linha pontilhada enquanto nenhuma vela posterior a atravessar (um ponto de controle não tocado, ou «nu»)."
 }

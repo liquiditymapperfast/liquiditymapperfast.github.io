@@ -40,6 +40,7 @@ import { paintKeyLevels, paintKeyTags, placeKeyTags, underTag, type KeyTag } fro
 import { sessionsOf, vwapBarMs, vwapSeries, whaleSeries } from '../vwap/vwap.ts';
 import { anchorsOf } from '../vwap/settings.ts';
 import { FootprintMarks } from '../footprint/marks.ts';
+import { FootprintRuns, paintRuns } from '../footprint/runs.ts';
 import { paintVwap, type VwapLine } from '../vwap/paint.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
@@ -165,6 +166,8 @@ export class HeatPane {
   #footprint = new FootprintData();
   /** The footprint's imbalance marks, worked out once a load (or when the options change). */
   #footprintMarks = new FootprintMarks();
+  /** The stacked-imbalance zones and naked points of control running on from closed candles. */
+  #footprintRuns = new FootprintRuns();
   /** Rejected aggressive buying and selling on closed candles, decided once per candle on a row step that does not depend on the zoom. */
   #traps = new TrapData();
   /** The pulsing layer: a canvas of its own above the overlay, redrawn a few times a second only while a trap is in view. */
@@ -393,7 +396,15 @@ export class HeatPane {
     this.#paintLayers(ctx, state, pw, ph);
     this.#paintVolume(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#pulseRects = [];
-    if (state.show.footprint) paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks(), { marks: this.#footprintMarks.get(this.#footprint, state.barStatOptions), settings: state.footprint });
+    if (state.show.footprint) {
+      const marks = this.#footprintMarks.get(this.#footprint, state.barStatOptions), fp = state.footprint;
+      // Zones and naked points of control only while the footprint itself shows, faded with it: zoomed out, its data is still loaded.
+      if ((fp.zones || fp.nakedPoc) && this.#lodFrame.barAlpha > 0.05 && state.seriesInstrument === state.marketId) {
+        const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+        paintRuns(ctx, this.#footprintRuns.get(this.#footprintMarks.key, marks, state.candles, tfMs, this.#footprint.step, Date.now(), { zones: fp.zones, pocs: fp.nakedPoc }), v, pw, ph, p, this.#lodFrame.barAlpha);
+      }
+      paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks(), { marks, settings: fp });
+    }
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one

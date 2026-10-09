@@ -25,6 +25,8 @@ export function marksOf(bar: Bar, step: number, options: StatOptions): BarMarks 
 /** The marks of every candle loaded, worked out again only when the rows (a new load) or the options change. */
 export class FootprintMarks {
   #key = '';
+  /** What the marks held were worked out from (the load and the options), for what is worked out from them in turn. */
+  get key(): string { return this.#key; }
   #marks = new Map<number, BarMarks>();
   get(data: FootprintData, options: StatOptions): ReadonlyMap<number, BarMarks> {
     const key = `${data.version}|${data.step}|${options.imbRatio}|${options.imbMinUsd}|${options.stackedN}|${options.imbZeros}`;

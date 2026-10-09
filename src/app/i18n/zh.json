@@ -1012,5 +1012,12 @@
  "sells {ratio} the buys one row up": "卖出为上一行买入的 {ratio}",
  "sells, none bought one row up": "有卖出，上一行无买入",
  "buys {ratio} the sells one row down": "买入为下一行卖出的 {ratio}",
- "buys, none sold one row down": "有买入，下一行无卖出"
+ "buys, none sold one row down": "有买入，下一行无卖出",
+ "Running on": "延续",
+ "Stacked imbalance zones": "堆叠失衡区",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "已收盘 K 线在一侧堆叠失衡形成的区带（买入为支撑，卖出为阻力），延续到之后的 K 线进入其中为止。",
+ "Untouched points of control": "未触及的控制点",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "每根已收盘 K 线成交最多的行，在之后的 K 线穿过它之前以虚线延续到右边缘。",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "两者都只在足迹图显示时出现，之后的 K 线是否触及由图表市场的 K 线判断。",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "在其面板中，已收盘 K 线的堆叠失衡可延续为区带（买入为绿色，在下方作支撑；卖出为红色，在上方作阻力），直到之后的 K 线进入其中；其成交最多的行可在之后的 K 线穿过前以虚线延续（未触及的，即裸露的控制点）。"
 }

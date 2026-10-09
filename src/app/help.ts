@@ -77,7 +77,8 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Footprint'), guide: 'footprint',
     tip: t('Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.'),
     body: [t('A row\'s bar is tinted by the side that traded more at that price. A diagonal imbalance compares across rows, as footprint traders read it: a row\'s sells against the buys one row up (while the bid is at one price, the offer is a row above it), and its buys against the sells one row down. Where one is at least the ratio times the other (3 by default), that half of the row is outlined in its side\'s colour; hover a row for the ratio.'),
-      t('Imbalances are read on the rows shown, and the rows grow as you zoom out, so zooming changes which rows stand out. The ratio, the minimum size and the number of stacked rows are the bar statistics\' too, so the strip under the map counts what the cells show.')],
+      t('Imbalances are read on the rows shown, and the rows grow as you zoom out, so zooming changes which rows stand out. The ratio, the minimum size and the number of stacked rows are the bar statistics\' too, so the strip under the map counts what the cells show.'),
+      t('In its panel, a closed candle\'s stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).')],
   },
   lt: {
     title: t('Liquidity Tracker'), guide: 'lower-panes',

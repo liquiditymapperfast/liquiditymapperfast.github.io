@@ -1012,5 +1012,12 @@
  "sells {ratio} the buys one row up": "매도가 한 행 위 매수의 {ratio}",
  "sells, none bought one row up": "매도, 한 행 위 매수 없음",
  "buys {ratio} the sells one row down": "매수가 한 행 아래 매도의 {ratio}",
- "buys, none sold one row down": "매수, 한 행 아래 매도 없음"
+ "buys, none sold one row down": "매수, 한 행 아래 매도 없음",
+ "Running on": "이어서 표시",
+ "Stacked imbalance zones": "연속 불균형 구역",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "마감된 캔들이 한쪽에 불균형을 쌓은 띠(매수는 지지, 매도는 저항). 이후 캔들이 그 안에서 거래될 때까지 이어집니다.",
+ "Untouched points of control": "닿지 않은 포인트 오브 컨트롤",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "마감된 각 캔들에서 가장 많이 거래된 행. 이후 캔들이 통과하지 않는 동안 오른쪽 끝까지 점선으로 이어집니다.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "둘 다 풋프린트가 보이는 동안 표시되며, 이후 캔들이 닿았는지는 차트 시장의 캔들로 판단합니다.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "패널에서 마감된 캔들의 연속 불균형을 구역으로 이어 그릴 수 있고(매수는 초록, 아래의 지지; 매도는 빨강, 위의 저항) 이후 캔들이 그 안에서 거래될 때까지 이어집니다. 가장 많이 거래된 행은 이후 캔들이 통과하지 않는 동안 점선으로 이어집니다(닿지 않은, 즉 네이키드 포인트 오브 컨트롤)."
 }

@@ -1040,5 +1040,12 @@
  "sells {ratio} the buys one row up": "vendite {ratio} gli acquisti una riga sopra",
  "sells, none bought one row up": "vendite, nulla comprato una riga sopra",
  "buys {ratio} the sells one row down": "acquisti {ratio} le vendite una riga sotto",
- "buys, none sold one row down": "acquisti, nulla venduto una riga sotto"
+ "buys, none sold one row down": "acquisti, nulla venduto una riga sotto",
+ "Running on": "Prolungato",
+ "Stacked imbalance zones": "Zone di squilibri impilati",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Una fascia dove una candela chiusa ha impilato squilibri da un lato (supporto dagli acquisti, resistenza dalle vendite), finché una candela successiva vi scambia dentro.",
+ "Untouched points of control": "Punti di controllo non toccati",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "La riga più scambiata di ogni candela chiusa, punteggiata fino al bordo destro finché nessuna candela successiva l'ha attraversata.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Entrambi compaiono finché si vede il footprint, e se una candela successiva li ha raggiunti si legge dalle candele del mercato del grafico.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "Nel suo pannello, gli squilibri impilati di una candela chiusa possono prolungarsi come zona (verde dagli acquisti, sotto come supporto; rossa dalle vendite, sopra come resistenza) finché una candela successiva vi scambia dentro, e la sua riga più scambiata come linea punteggiata finché nessuna candela successiva l'ha attraversata (un punto di controllo non toccato, o «nudo»)."
 }

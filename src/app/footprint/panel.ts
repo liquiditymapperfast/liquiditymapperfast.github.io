@@ -26,5 +26,9 @@ export function buildFootprintPanel(store: Store, tools: HTMLElement, body: HTML
     switchRow(t('Count against an empty row'), t('A row beside one where nothing traded, inside the candle, counts as imbalanced however small it is (from the minimum).'), o.imbZeros, imbZeros => setOptions({ imbZeros })),
     numberRow(t('Stacked rows'), t('Adjacent imbalanced rows on one side that count as a stack'), { min: 2, step: 1, value: o.stackedN }, v => setOptions({ stackedN: Math.max(2, Math.round(v)) })),
     note(t('The ratio, the minimum and the stacked rows are the bar statistics\' too. Imbalances are read on the rows shown: zooming changes the row size, and with it which rows stand out.')),
+    heading(t('Running on')),
+    switchRow(t('Stacked imbalance zones'), t('A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.'), fp.zones, zones => set({ zones })),
+    switchRow(t('Untouched points of control'), t('Each closed candle\'s busiest row, dotted to the right edge while no later candle has traded through it.'), fp.nakedPoc, nakedPoc => set({ nakedPoc })),
+    note(t('Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.')),
   );
 }

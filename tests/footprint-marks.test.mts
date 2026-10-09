@@ -4,6 +4,8 @@ import { FootprintMarks, marksOf } from '../src/app/footprint/marks.ts';
 import { FOOTPRINT_DEFAULTS, readFootprint } from '../src/app/footprint/settings.ts';
 import { FootprintData, rowCellAt, rowCellLines, type Bar } from '../src/app/panes/footprint.ts';
 import { DEFAULT_STAT_OPTIONS } from '../src/app/stat-options.ts';
+import { reachedAt, runsOf } from '../src/app/footprint/runs.ts';
+import type { CandleRow } from '../src/app/store.ts';
 
 const T = Date.UTC(2026, 9, 9, 12);
 // Five rows of $5: sells 90 at 100 against buys 20 at 105; buys 90, 100 and 120 at 110 to 120 against the sells one row down.
@@ -35,6 +37,21 @@ test('the row popup says why a row is outlined: the ratio against the row one aw
   const empty = rowCellLines(cell, bar, 5, '1m', { buy: Infinity }).map(l => l.text);
   assert.ok(empty.includes('buys, none sold one row down'));
   assert.ok(!rowCellLines(cell, bar, 5, '1m').some(l => l.label === 'Diagonal'), 'no flags: no line');
+});
+
+test('a zone runs from its candle until a later one trades into it; a point of control shows only while untouched; the candle under way makes neither', () => {
+  const MIN = 60_000, marks = marksOf(bar, 5, DEFAULT_STAT_OPTIONS); // a buy zone 110-125, the point of control row 120-125
+  const c = (t: number, high: number, low: number): CandleRow => [t, low, high, low, high, 1];
+  const candles = [c(T, 125, 100), c(T + MIN, 140, 130), c(T + 2 * MIN, 135, 124), c(T + 3 * MIN, 130, 112)];
+  const runs = runsOf(new Map([[T, marks]]), candles, MIN, 5, T + 10 * MIN, { zones: true, pocs: true });
+  assert.deepEqual(runs.map(r => [r.kind, r.low, r.high, r.from, r.until]), [['zone', 110, 125, T + MIN, T + 2 * MIN]], 'the zone until the candle that dipped to 124; the row 120-125 was traded too, so no naked point of control');
+  const away = [c(T, 125, 100), c(T + MIN, 140, 130), c(T + 2 * MIN, 150, 131)];
+  assert.deepEqual(runsOf(new Map([[T, marks]]), away, MIN, 5, T + 10 * MIN, { zones: true, pocs: true }).map(r => [r.kind, r.until]), [['zone', null], ['poc', null]], 'never reached: both run to the right edge');
+  assert.deepEqual(runsOf(new Map([[T, marks]]), away, MIN, 5, T + 30_000, { zones: true, pocs: true }), [], 'the candle under way makes none');
+  assert.deepEqual(runsOf(new Map([[T, marks]]), away, MIN, 5, T + 10 * MIN, { zones: false, pocs: true }).map(r => r.kind), ['poc']);
+  assert.equal(reachedAt(110, 125, T + MIN, candles), T + 2 * MIN);
+  const many = new Map(Array.from({ length: 50 }, (_, i) => [T - i * MIN, marks] as const));
+  assert.equal(runsOf(many, away, MIN, 5, T + 10 * MIN, { zones: true, pocs: true }, 30).length, 30, 'capped, the newest kept');
 });
 
 test('footprint settings are read field by field', () => {

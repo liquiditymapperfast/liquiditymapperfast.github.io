@@ -1012,5 +1012,12 @@
  "sells {ratio} the buys one row up": "売りが 1 行上の買いの {ratio}",
  "sells, none bought one row up": "売りあり、1 行上は買いなし",
  "buys {ratio} the sells one row down": "買いが 1 行下の売りの {ratio}",
- "buys, none sold one row down": "買いあり、1 行下は売りなし"
+ "buys, none sold one row down": "買いあり、1 行下は売りなし",
+ "Running on": "延長表示",
+ "Stacked imbalance zones": "連続インバランスのゾーン",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "確定したローソク足が片側にインバランスを積み重ねた帯（買いは支持、売りは抵抗）。後の足がその中で取引されるまで延びます。",
+ "Untouched points of control": "未到達のポイント・オブ・コントロール",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "確定した各ローソク足で最も取引された行。後の足がそこを通過するまで、右端まで点線で延びます。",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "どちらもフットプリントが表示されている間だけ表示され、後の足が届いたかはチャートの市場のローソク足で判定します。",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "パネルでは、確定した足の連続インバランスをゾーンとして延長でき（買いは緑で下の支持、売りは赤で上の抵抗）、後の足がその中で取引されるまで続きます。また最も取引された行を、後の足が通過するまで点線で延長できます（未到達の、いわゆるネイキッドのポイント・オブ・コントロール）。"
 }

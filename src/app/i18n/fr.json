@@ -1040,5 +1040,12 @@
  "sells {ratio} the buys one row up": "ventes {ratio} les achats une ligne plus haut",
  "sells, none bought one row up": "ventes, rien acheté une ligne plus haut",
  "buys {ratio} the sells one row down": "achats {ratio} les ventes une ligne plus bas",
- "buys, none sold one row down": "achats, rien vendu une ligne plus bas"
+ "buys, none sold one row down": "achats, rien vendu une ligne plus bas",
+ "Running on": "Prolongé",
+ "Stacked imbalance zones": "Zones de déséquilibres empilés",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Une bande où une bougie close a empilé des déséquilibres d'un côté (support par les achats, résistance par les ventes), jusqu'à ce qu'une bougie suivante y traite.",
+ "Untouched points of control": "Points de contrôle non touchés",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "La ligne la plus traitée de chaque bougie close, en pointillé jusqu'au bord droit tant qu'aucune bougie suivante ne l'a traversée.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Les deux s'affichent tant que le footprint est visible, et l'atteinte par une bougie suivante se lit dans les bougies du marché du graphique.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "Dans son panneau, les déséquilibres empilés d'une bougie close peuvent se prolonger en zone (verte par les achats, en dessous comme support ; rouge par les ventes, au-dessus comme résistance) jusqu'à ce qu'une bougie suivante y traite, et sa ligne la plus traitée en pointillé tant qu'aucune bougie suivante ne l'a traversée (un point de contrôle non touché, ou « nu »)."
 }

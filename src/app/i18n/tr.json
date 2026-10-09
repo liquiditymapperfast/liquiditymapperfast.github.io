@@ -1033,5 +1033,12 @@
  "sells {ratio} the buys one row up": "satışlar bir üst satırdaki alışların {ratio}",
  "sells, none bought one row up": "satışlar, bir üst satırda alış yok",
  "buys {ratio} the sells one row down": "alışlar bir alt satırdaki satışların {ratio}",
- "buys, none sold one row down": "alışlar, bir alt satırda satış yok"
+ "buys, none sold one row down": "alışlar, bir alt satırda satış yok",
+ "Running on": "Uzatılanlar",
+ "Stacked imbalance zones": "Üst üste dengesizlik bölgeleri",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Kapanmış bir mumun bir tarafta dengesizlikleri üst üste yığdığı bant (alışlardan destek, satışlardan direnç); sonraki bir mum içine girene kadar uzar.",
+ "Untouched points of control": "Dokunulmamış kontrol noktaları",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "Kapanmış her mumun en çok işlem gören satırı; sonraki bir mum içinden geçene kadar sağ kenara noktalı uzar.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "İkisi de footprint görünürken gösterilir; sonraki bir mumun onlara ulaşıp ulaşmadığı grafikteki piyasanın mumlarından okunur.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "Panelinde, kapanmış bir mumun üst üste dengesizlikleri sonraki bir mum içine girene kadar bölge olarak uzatılabilir (alışlardan yeşil, altta destek; satışlardan kırmızı, üstte direnç); en çok işlem gören satırı da sonraki bir mum içinden geçmedikçe noktalı çizgi olarak (dokunulmamış, yani çıplak kontrol noktası)."
 }

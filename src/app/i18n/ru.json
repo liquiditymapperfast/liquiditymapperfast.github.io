@@ -1047,5 +1047,12 @@
  "sells {ratio} the buys one row up": "продажи {ratio} покупок строкой выше",
  "sells, none bought one row up": "продажи, строкой выше ничего не куплено",
  "buys {ratio} the sells one row down": "покупки {ratio} продаж строкой ниже",
- "buys, none sold one row down": "покупки, строкой ниже ничего не продано"
+ "buys, none sold one row down": "покупки, строкой ниже ничего не продано",
+ "Running on": "Продление",
+ "Stacked imbalance zones": "Зоны стопок дисбалансов",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Полоса, где закрытая свеча сложила дисбалансы на одной стороне (поддержка от покупок, сопротивление от продаж), пока более поздняя свеча не войдёт в неё.",
+ "Untouched points of control": "Нетронутые точки контроля",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "Самая торгуемая строка каждой закрытой свечи — пунктиром до правого края, пока её не пересечёт более поздняя свеча.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Оба видны, пока виден футпринт, а дошла ли до них более поздняя свеча, определяется по свечам рынка на графике.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "В его панели стопки дисбалансов закрытой свечи можно продлевать зоной (зелёной от покупок, снизу как поддержка; красной от продаж, сверху как сопротивление), пока более поздняя свеча не войдёт в неё, а самую торгуемую строку — пунктиром, пока её не пересечёт более поздняя свеча (нетронутая, или «голая», точка контроля)."
 }

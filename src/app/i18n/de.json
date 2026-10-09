@@ -1033,5 +1033,12 @@
  "sells {ratio} the buys one row up": "Verkäufe {ratio} die Käufe eine Zeile höher",
  "sells, none bought one row up": "Verkäufe, eine Zeile höher nichts gekauft",
  "buys {ratio} the sells one row down": "Käufe {ratio} die Verkäufe eine Zeile tiefer",
- "buys, none sold one row down": "Käufe, eine Zeile tiefer nichts verkauft"
+ "buys, none sold one row down": "Käufe, eine Zeile tiefer nichts verkauft",
+ "Running on": "Fortgeführt",
+ "Stacked imbalance zones": "Zonen gestapelter Ungleichgewichte",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Ein Band, wo eine geschlossene Kerze Ungleichgewichte auf einer Seite gestapelt hat (Unterstützung aus Käufen, Widerstand aus Verkäufen), bis eine spätere Kerze hineinhandelt.",
+ "Untouched points of control": "Unberührte Points of Control",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "Die belebteste Zeile jeder geschlossenen Kerze, gepunktet bis zum rechten Rand, solange keine spätere Kerze hindurchgehandelt hat.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Beide erscheinen, solange der Footprint sichtbar ist; ob eine spätere Kerze sie erreicht hat, wird aus den Kerzen des Marktes im Chart gelesen.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "In seinem Panel können die gestapelten Ungleichgewichte einer geschlossenen Kerze als Zone fortgeführt werden (grün aus Käufen, darunter als Unterstützung; rot aus Verkäufen, darüber als Widerstand), bis eine spätere Kerze hineinhandelt, und ihre belebteste Zeile als gepunktete Linie, solange keine spätere Kerze hindurchgehandelt hat (ein unberührter, „nackter“ Point of Control)."
 }

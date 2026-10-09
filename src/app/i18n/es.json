@@ -1040,5 +1040,12 @@
  "sells {ratio} the buys one row up": "ventas {ratio} las compras una fila arriba",
  "sells, none bought one row up": "ventas, nada comprado una fila arriba",
  "buys {ratio} the sells one row down": "compras {ratio} las ventas una fila abajo",
- "buys, none sold one row down": "compras, nada vendido una fila abajo"
+ "buys, none sold one row down": "compras, nada vendido una fila abajo",
+ "Running on": "Prolongado",
+ "Stacked imbalance zones": "Zonas de desequilibrios apilados",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Una banda donde una vela cerrada apiló desequilibrios de un lado (soporte de compras, resistencia de ventas), hasta que una vela posterior negocia dentro.",
+ "Untouched points of control": "Puntos de control no tocados",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "La fila más negociada de cada vela cerrada, punteada hasta el borde derecho mientras ninguna vela posterior la haya atravesado.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Ambos se muestran mientras se ve el footprint, y si una vela posterior los alcanzó se lee de las velas del mercado del gráfico.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "En su panel, los desequilibrios apilados de una vela cerrada pueden prolongarse como zona (verde de compras, debajo como soporte; roja de ventas, encima como resistencia) hasta que una vela posterior negocie dentro, y su fila más negociada como línea punteada mientras ninguna vela posterior la atraviese (un punto de control no tocado, o «desnudo»)."
 }

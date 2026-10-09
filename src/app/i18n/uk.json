@@ -1052,5 +1052,12 @@
  "sells {ratio} the buys one row up": "продажі {ratio} купівель рядком вище",
  "sells, none bought one row up": "продажі, рядком вище нічого не куплено",
  "buys {ratio} the sells one row down": "купівлі {ratio} продажів рядком нижче",
- "buys, none sold one row down": "купівлі, рядком нижче нічого не продано"
+ "buys, none sold one row down": "купівлі, рядком нижче нічого не продано",
+ "Running on": "Продовження",
+ "Stacked imbalance zones": "Зони стосів дисбалансів",
+ "A band where a closed candle stacked imbalances on one side (support from buys, resistance from sells), until a later candle trades into it.": "Смуга, де закрита свічка склала дисбаланси на одному боці (підтримка від купівель, опір від продажів), доки пізніша свічка не ввійде в неї.",
+ "Untouched points of control": "Недоторкані точки контролю",
+ "Each closed candle's busiest row, dotted to the right edge while no later candle has traded through it.": "Найбільш торгований рядок кожної закритої свічки — пунктиром до правого краю, доки його не перетне пізніша свічка.",
+ "Both show while the footprint does, and whether a later candle reached them is read from the candles of the market on the chart.": "Обидва видно, поки видно футпринт, а чи дійшла до них пізніша свічка, визначається за свічками ринку на графіку.",
+ "In its panel, a closed candle's stacked imbalances can run on as a zone (green from buys, below as support; red from sells, above as resistance) until a later candle trades into it, and its busiest row as a dotted line while no later candle has traded through it (an untouched, or naked, point of control).": "У його панелі стоси дисбалансів закритої свічки можна продовжувати зоною (зеленою від купівель, знизу як підтримка; червоною від продажів, згори як опір), доки пізніша свічка не ввійде в неї, а найбільш торгований рядок — пунктиром, доки його не перетне пізніша свічка (недоторкана, або «гола», точка контролю)."
 }
