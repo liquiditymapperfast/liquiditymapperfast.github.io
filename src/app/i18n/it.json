@@ -896,5 +896,7 @@
  "Orders are counted for {n} of the {total} minutes.": "Gli ordini sono contati per {n} dei {total} minuti.",
  "In the value area": "Nell'area di valore",
  "Above the value area": "Sopra l'area di valore",
- "Below the value area": "Sotto l'area di valore"
+ "Below the value area": "Sotto l'area di valore",
+ "Select": "Seleziona",
+ "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Seleziona un'area e somma ciò che è stato scambiato lì: trascina sulla mappa per un riquadro, o su un pannello sotto per un periodo. Ctrl+trascina (Cmd su Mac) seleziona in qualsiasi momento."
 }

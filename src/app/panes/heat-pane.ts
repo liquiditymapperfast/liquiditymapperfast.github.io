@@ -487,8 +487,9 @@ export class HeatPane {
     // The legend plate takes the top-left corner of the map: a note that would run under it goes beneath it instead.
     const w = ctx.measureText(label).width, right = x >= w + 12, left = right ? x - 6 - w : x + 6, box = this.#legendBox;
     let top = left < box.right + 8 ? box.bottom + 6 : 6;
-    // Recenter sits in the top-right corner of the map on the full toolbar: the note does not run under it.
-    if (top < 40 && this.root.querySelector('.map-recenter') && (right ? x - 6 : x + 6 + w) > pw - 124) top = 40;
+    // Select and Recenter sit in the top-right corner of the map on the full toolbar: the note does not run under them.
+    const corner = this.root.querySelector<HTMLElement>('.map-tools');
+    if (top < 40 && corner && (right ? x - 6 : x + 6 + w) > pw - corner.offsetWidth - 16) top = 40;
     if (right) { ctx.textAlign = 'right'; ctx.fillText(label, x - 6, top); } else { ctx.textAlign = 'left'; ctx.fillText(label, x + 6, top); }
     ctx.restore();
   }

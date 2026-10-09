@@ -69,13 +69,20 @@ main { --side-w: 420px; --flow-w: 300px; display: grid; grid-template-columns: v
 .pane.heat canvas:last-child { cursor: crosshair; touch-action: none; }
 /* The pulse layer sits above the overlay so a trap's cells glow over the footprint, and lets every pointer event through to it. */
 .pane.heat canvas.pulse { z-index: 1; pointer-events: none; }
-/* Recenter acts on the map, so it sits in the map's top-right corner, left of the profile column. */
-.pane.heat .map-recenter { position: absolute; z-index: 3; top: 8px; right: calc(var(--gutter, 192px) + 8px); display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);
+/* Select and Recenter act on the map, so they sit in the map's top-right corner, left of the profile column. */
+.pane.heat .map-tools { position: absolute; z-index: 3; top: 8px; right: calc(var(--gutter, 192px) + 8px); display: flex; gap: 6px; }
+.pane.heat .map-recenter, .pane.heat .map-select { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);
   background: color-mix(in srgb, var(--panel) 86%, transparent); font-size: 11px; color: var(--text); box-shadow: 3px 3px 0 var(--shadow); }
+/* Select wears the Range lamp on its left, then a dashed box: the selection it makes. */
+.pane.heat .map-select { padding-left: 21px; }
+.pane.heat .map-select::before { left: 7px; }
+.map-select .select-glyph { width: 13px; height: 13px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-dasharray='4 3'%3E%3Crect x='3' y='5' width='18' height='14'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-dasharray='4 3'%3E%3Crect x='3' y='5' width='18' height='14'/%3E%3C/svg%3E") center / contain no-repeat; }
 .pane.heat .map-recenter::before { content: ""; width: 14px; height: 14px; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
-.pane.heat .map-recenter:hover { background: var(--panel); }
+.pane.heat .map-recenter:hover, .pane.heat .map-select:hover { background: var(--panel); }
 .pane.ladder { flex: 1 1 auto; }
 .pane.cvd { flex: 1 1 auto; }
 .cvd-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }

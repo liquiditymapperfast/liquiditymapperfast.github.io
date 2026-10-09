@@ -100,6 +100,14 @@ export class Toolbar {
   /** The Range tool: lit while it is armed or a selection is shown (range/tool.ts). */
   #range = el('button', { class: 'led-btn', textContent: t('Range'), tip: HELP.range.tip });
   onRange: () => void = () => {};
+  /**
+   * The same tool from the map's own corner, beside Recenter, where a person looking at the map finds it (the toolbar's Range button is easy to
+   * miss). Its lamp follows the toolbar's.
+   */
+  #rangeCorner = el('button', { type: 'button', class: 'led-btn map-select', ariaLabel: t('Select an area'), tip: t('Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.') },
+    el('i', { class: 'select-glyph', ariaHidden: 'true' }), t('Select'));
+  /** The map's top-right corner: Select and Recenter, side by side. */
+  #mapTools = el('div', { class: 'map-tools' });
   /** The Range button, which its panel opens beside. */
   get rangeButton(): HTMLElement { return this.#range; }
   /** The show/hide buttons of the panes, in the order of `PANE_TOGGLES`. */
@@ -202,6 +210,7 @@ export class Toolbar {
     this.#recenter.onclick = () => this.onRecenter();
     // On a phone the button is in Settings, which would cover the map the selection is dragged on.
     this.#range.onclick = () => { this.#sheet?.close(); this.onRange(); };
+    this.#rangeCorner.onclick = () => this.onRange();
     this.#author.onclick = () => { toggleAuthor(this.#author); };
     this.#shot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z"/><circle cx="12" cy="13.4" r="3.3"/></svg>';
     this.venueControl.watch?.(entries => { this.#entries = entries; this.#notice.update(entries); this.#showIdle(this.#drawn); });
@@ -240,7 +249,7 @@ export class Toolbar {
       this.#sheet?.close();
       this.#fillHeatControls();
       const inCorner = this.#mapHost !== null;
-      if (inCorner) this.#mapHost!.prepend(this.#recenter);
+      if (inCorner) { this.#mapTools.replaceChildren(this.#rangeCorner, this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
@@ -248,6 +257,8 @@ export class Toolbar {
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
+    // A phone has Range in Settings and Recenter beside the timeframes: the map's corner stays clear.
+    this.#mapTools.remove();
     this.root.replaceChildren(
       el('div', { class: 'tb-bar' },
         el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#market, this.#spacer, this.#status, this.#more),
@@ -300,7 +311,7 @@ export class Toolbar {
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#range, state.rangeTool || state.range !== null);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));

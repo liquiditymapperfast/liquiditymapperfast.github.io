@@ -872,5 +872,7 @@
  "Orders are counted for {n} of the {total} minutes.": "주문은 {total}분 중 {n}분에 대해 셉니다.",
  "In the value area": "밸류 에어리어 안",
  "Above the value area": "밸류 에어리어 위",
- "Below the value area": "밸류 에어리어 아래"
+ "Below the value area": "밸류 에어리어 아래",
+ "Select": "선택",
+ "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "영역을 선택해 그곳에서 거래된 것을 합산합니다. 지도를 드래그하면 사각형, 그 아래 패널을 드래그하면 기간을 선택합니다. Ctrl+드래그(Mac에서는 Cmd)로 언제든 선택할 수 있습니다."
 }
