@@ -2,6 +2,7 @@ import type { RangeAnswer } from '../../shared/footprint.ts';
 import type { AbsorptionMark } from '../absorption.ts';
 import type { CellShare } from '../cell-sources.ts';
 import type { Print } from '../prints.ts';
+import type { Liquidation } from '../../shared/liquidations.ts';
 import { familyKey, venueOfInstrument } from '../cvd/families.ts';
 import { venueLabel } from '../venues.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
@@ -33,6 +34,9 @@ export interface RangeInput {
   resting: readonly CellShare[] | null;
   /** The largest market orders the map holds inside the selection (the trade bubbles); null when they are off. */
   prints: readonly Print[] | null;
+  /** The liquidations the map holds inside the selection, from `liquidationMin` USD; null when they are off. */
+  liquidations?: readonly Liquidation[] | null;
+  liquidationMin?: number;
   kind: (id: string) => 'spot' | 'perp' | null;
   /** The selection reaches outside the map's time window, for which the marks and the large orders are loaded. */
   partial?: boolean;
@@ -114,6 +118,8 @@ export function rangeLines(input: RangeInput): RangeLine[] {
       }
       const largest = largestPrint(input.prints, sel);
       if (largest) lines.push({ key: 'largest', kind: 'stat', tone: largest.side, cells: [t('Largest order'), `${money(largest.usd)} ${largest.side === 'buy' ? t('buy') : t('sell')} · ${fmtPrice(largest.price)} · ${venueLabel(largest.id)} · ${clock(largest.t)}`] });
+      const forced = liquidationLine(input, total);
+      if (forced) lines.push(forced);
       lines.push(...whoLines(answer, input.kind, total));
       lines.push(...filledLines(answer));
     }
@@ -132,6 +138,23 @@ function orderLine(s: ReturnType<typeof totals>, windowMinutes: number): RangeLi
   out.push({ key: 'average', kind: 'stat', cells: [t('Average order'), t('{buy} buy · {sell} sell', { buy: avg(s.countedBuy, s.buyN), sell: avg(s.countedSell, s.sellN) })] });
   if (s.counted < windowMinutes && s.countedFrom !== null) out.push({ key: 'orders-from', kind: 'note', tone: 'muted', cells: [t('Orders are counted from {time} on ({n} of {total} minutes).', { time: clock(s.countedFrom), n: s.counted, total: windowMinutes })] });
   return out;
+}
+
+/**
+ * The liquidations inside the selection, of the market orders above (a forced close is a market order, so it is part of that volume, not
+ * added to it): longs closed and shorts closed, and their share of the volume, from the smallest the map holds.
+ */
+function liquidationLine(input: RangeInput, total: number): RangeLine | null {
+  const rows = input.liquidations; if (!rows) return null;
+  const sel = input.sel, from = money(input.liquidationMin ?? 0);
+  let longs = 0, shorts = 0;
+  for (const l of rows) {
+    if (l.t < sel.t0 || l.t >= sel.t1) continue;
+    if (sel.p0 !== null && sel.p1 !== null && (l.price < sel.p0 || l.price >= sel.p1)) continue;
+    if (l.side === 'long') longs += l.usd; else shorts += l.usd;
+  }
+  if (!(longs + shorts > 0)) return { key: 'liquidations', kind: 'stat', tone: 'muted', cells: [t('Liquidations'), t('none reported from {min}', { min: from })] };
+  return { key: 'liquidations', kind: 'stat', tone: longs >= shorts ? 'sell' : 'buy', cells: [t('Liquidations'), t('{longs} longs · {shorts} shorts · {share} of the volume (from {min})', { longs: money(longs), shorts: money(shorts), share: pct((longs + shorts) / total), min: from })] };
 }
 
 /** The largest market order the map holds inside the selection. */

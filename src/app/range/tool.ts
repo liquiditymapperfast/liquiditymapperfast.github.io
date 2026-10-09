@@ -11,6 +11,7 @@ import { t } from '../i18n.ts';
 import { draftOf, follow, refreshMs, rowStep, snap, type RangeSelection } from './selection.ts';
 import { rangeLines, type RangeInput, type RangeLine } from './stats.ts';
 import { venueMark } from '../venue-marks.ts';
+import { scaledUsd } from '../coin.ts';
 
 /**
  * The panel's lines, kept as elements: a line is built again only when what it says changes, and the list is put in order only when the
@@ -166,12 +167,13 @@ export class RangeTool {
     const s = state.absorption, now = Date.now();
     const marks = s.on ? this.hub.absorption.marks(ids, this.hub.absorption.thresholds(ids, s, now), sel.t0, sel.t1, band?.p0 ?? 0, band?.p1 ?? Infinity).filter(m => inside(m.t0, m.price)) : null;
     const prints = state.show.bubbles ? this.hub.prints.items.filter(p => idSet.has(p.id) && inside(p.t, p.price)) : null;
+    const liquidations = state.liquidations.on ? this.hub.liquidations.items.filter(l => idSet.has(l.id) && inside(l.t, l.price)) : null;
     const kind = (id: string) => kindOf(state.markets, id);
     // The marks and the large orders are loaded for the map's window: a selection reaching outside it (across the flow column on a longer
     // span) has them only for its part on the map.
     const map = this.mapWindow(), partial = map !== null && (sel.t0 < map.t0 || (!sel.live && sel.t1 > map.t1));
     const kept = !fresh && this.#input ? this.#input : null;
-    this.#input = { sel, answer: kept?.answer ?? null, error: null, marks, resting: kept?.resting ?? null, prints, kind, partial };
+    this.#input = { sel, answer: kept?.answer ?? null, error: null, marks, resting: kept?.resting ?? null, prints, liquidations, liquidationMin: scaledUsd(state.liquidations.minUsd), kind, partial };
     this.#render();
     const started = performance.now(), mark = state.mark.price > 0 ? state.mark.price : band ? (band.p0 + band.p1) / 2 : 0;
     const step = rowStep(sel, gridStepFor(mark > 0 ? mark : 1));

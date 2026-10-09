@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations';
 
 export interface HelpTopic {
   title: string;
@@ -83,6 +83,13 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Trades'), guide: 'trades',
     tip: t('Large market orders as bubbles (the fills of one order added together): green for buys, red for sells, the area in proportion to the size, the largest in view the biggest. Hover one for its venue, size and price.'),
     body: [],
+  },
+  liquidations: {
+    title: t('Liquidations'), guide: 'trades',
+    tip: t('Positions the exchanges closed by force, as diamonds where the market was: in the sell colour where longs were closed, the buy colour where shorts were, the area in proportion to the size. Hover one for the exchange, the size and the prices.'),
+    body: [t('A liquidation is a market order the exchange placed to close a position whose margin ran out, so it is also among the trade bubbles and in the Range panel\'s volume; the diamond says it was forced.'),
+      t('Binance, Bybit, OKX and Deribit publish their liquidations; Binance only its largest each second, so a cascade there shows fewer than happened. Hyperliquid, Coinbase and the other exchanges publish none.'),
+      t('Bybit reports the price at which the position\'s margin was gone, which can be some way from where the market traded; the diamond is drawn at the price trading when it happened, and the box gives both.')],
   },
   highlights: {
     title: t('Highlights'), guide: 'highlights',

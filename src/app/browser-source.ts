@@ -2,6 +2,7 @@ import type { VenueStatus } from '../shared/engine.ts';
 import type { FlowFrame } from '../shared/flow.ts';
 import { TIMEFRAMES } from '../shared/series.ts';
 import { toWire } from '../shared/prints.ts';
+import { toWire as liquidationWire, type Liquidation } from '../shared/liquidations.ts';
 import { parseProfile, parseRange, parseSizes, parseValueAreas, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from '../shared/footprint.ts';
 import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import type { FeedsIn, FeedsOut, RpcCall, RpcResult } from './browser/protocol.ts';
@@ -110,6 +111,7 @@ export class BrowserSource implements DataSource, VenueControl {
           this.#handlers?.onTick(this.#tick); break;
         }
         case 'prints': this.#handlers?.onPrints(message.items.map(toWire)); break;
+        case 'liquidations': this.#handlers?.onLiquidations?.(message.items.map(liquidationWire)); break;
         case 'flow': this.#handlers?.onFlow?.(message.items); break;
         case 'absorption': { const found = parseAbsorptionLive(message); this.#handlers?.onAbsorption?.(found.groups, found.minutes); break; }
         case 'status':
@@ -188,6 +190,7 @@ export class BrowserSource implements DataSource, VenueControl {
   async candles(inst: string, tf: string, from: number, to: number): Promise<CandleRow[]> { return this.#call({ method: 'candles', inst, tfMs: TIMEFRAMES[tf] ?? 3_600_000, from, to }); }
   async oi(inst: string, tf: string, from: number, to: number): Promise<OiBar[]> { return this.#call({ method: 'oi', inst, tfMs: TIMEFRAMES[tf] ?? 3_600_000, from, to }); }
   async prints(from: number, to: number, minUsd?: number): Promise<Print[]> { return this.#call({ method: 'prints', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
+  async liquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> { return this.#call({ method: 'liquidations', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
   async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> { return this.#call({ method: 'columns', ids, from, to, stepMs }); }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
   async absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {

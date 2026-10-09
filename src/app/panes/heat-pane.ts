@@ -20,6 +20,7 @@ import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } fr
 import { tradedHeader, tradedLines, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { flowIds, flowLoadIds } from '../cvd/ids.ts';
 import { iconsOf, markLines, markSize, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
+import { diamondRadius, liquidationHidden, liquidationLines, type Liquidation } from '../liquidations.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
@@ -158,6 +159,8 @@ export class HeatPane {
   #absorptionKey = ''; #absorptionThresholds: Map<string, number | null> = new Map();
   /** Bubbles drawn in the last frame, for hover. */
   #bubbles: { x: number; y: number; r: number; print: Print }[] = [];
+  /** The liquidations drawn this frame (half-diagonal `r`), for the pointer. */
+  #diamonds: { x: number; y: number; r: number; liq: Liquidation }[] = [];
   #grid: { data: Float32Array; w: number; h: number; bounds: Bounds } | null = null;
   /** Where the liquidity under the pointer comes from: asked of the worker once per map cell and kept while the pointer stays in it. */
   #sources: { key: string; text: string } | null = null;
@@ -316,6 +319,7 @@ export class HeatPane {
     if (this.#gutterCss !== gutterCss) { this.#gutterCss = gutterCss; this.root.style.setProperty('--gutter', gutterCss); }
     this.#manageRaster();
     if (state.show.bubbles) this.hub.ensurePrints(this.view, scaledUsd(state.tradeBubbles.minUsd));
+    if (state.liquidations.on) this.hub.ensureLiquidations(this.view, scaledUsd(state.liquidations.minUsd));
     if (state.show.traded) { this.#ensureTraded(state); this.#ensureValueAreas(state); }
     if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
@@ -368,6 +372,7 @@ export class HeatPane {
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
+    this.#paintLiquidations(ctx, state, pw, ph); // above the bubbles: a forced order is one of the market orders, marked as forced
     this.#paintAbsorption(ctx, state, pw, ph);
     this.#paintValueLines(ctx, state, pw, ph);
     // mark line
@@ -953,8 +958,12 @@ export class HeatPane {
     const touch = hv.touch === true;
     if (touch && ownY && inX && y >= 0 && y <= ph) { ctx.strokeStyle = p.text; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
     const absorbed = ownY && inX ? this.#absorptionAt(x, y) : null;
-    const hit = ownY && inX && !absorbed ? this.#bubbleAt(x, y) : null;
-    if (absorbed) { // an absorption mark under the pointer: what was taken, where, and at which threshold
+    const forced = ownY && inX && !absorbed ? this.#diamondAt(x, y) : null;
+    const hit = ownY && inX && !absorbed && !forced ? this.#bubbleAt(x, y) : null;
+    if (forced) { // a liquidation under the pointer: which positions were closed, where, and what the exchange reported
+      const long = forced.liq.side === 'long';
+      paintInfoBox(ctx, liquidationLines(forced.liq), x, touch ? forced.y - forced.r - 8 : forced.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: long ? p.candleDown : p.candleUp, gap: forced.r + 10, placement: touch ? 'up' : 'center' });
+    } else if (absorbed) { // an absorption mark under the pointer: what was taken, where, and at which threshold
       const passiveBuyers = absorbed.marks[0]!.side === 'sell';
       paintInfoBox(ctx, markLines(absorbed.marks, state.absorption), x, touch ? absorbed.y - absorbed.s - 8 : absorbed.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: passiveBuyers ? p.bid : p.ask, gap: absorbed.s / 2 + 10, placement: touch ? 'up' : 'center' });
     } else if (hit) { // a large trade under the pointer: say what it was
@@ -1143,6 +1152,54 @@ export class HeatPane {
     return [...byVenue].sort((a, b) => b[1] - a[1]).map(([venue, value]) => `${venue} $${usd(value)}`).join(' · ');
   }
 
+  /**
+   * Liquidations as diamonds where the market was when they came: in the sell colour where longs were closed (the exchange sold them), the
+   * buy colour where shorts were, as every mark on the page; the diamond and its hard edge say forced. The area is in proportion to the USD
+   * closed, the largest in view the biggest, and only the largest few hundred in view are drawn. A venue switched off is left out, as for the
+   * bubbles; one large enough carries its exchange's mark, and with labels on the larger ones have their size beside them.
+   */
+  #paintLiquidations(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    this.#diamonds = [];
+    const s = state.liquidations; if (!s.on) return;
+    const v = this.view, p = this.#palette, off = state.disabledVenues;
+    const hidden = (l: Liquidation): boolean => liquidationHidden(l, s) || (off.length > 0 && off.includes(l.id.slice(0, l.id.indexOf(':'))));
+    const visible = topPrints(this.hub.liquidations.items, v.t0, v.t1, v.p0, v.p1, Math.max(30, Math.min(300, Math.round(pw / 10))), hidden);
+    if (!visible.length) return;
+    const ordered = [...visible].sort((a, b) => a.usd - b.usd), largest = ordered[ordered.length - 1]!.usd, edge = p.dark ? '#ffffff' : '#14171c';
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+    for (const l of ordered) {
+      const x = v.xOf(l.t, pw), y = v.yOf(l.price, ph), r = diamondRadius(l.usd, largest) * s.scale;
+      if (x < -r || x > pw + r) continue;
+      ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+      ctx.globalAlpha = 0.8; ctx.fillStyle = l.side === 'long' ? p.ask : p.bid; ctx.fill();
+      ctx.globalAlpha = 1; ctx.lineWidth = r >= 8 ? 1.6 : 1.2; ctx.strokeStyle = edge; ctx.stroke();
+      if (r >= 10) drawVenueMark(ctx, l.id, x, y, Math.min(14, Math.round(r * 0.85)));
+      this.#diamonds.push({ x, y, r, liq: l });
+    }
+    if (s.labels) {
+      // The size beside the larger diamonds, the largest first; one that would run into a diamond or a label already written is left to the box.
+      const taken = this.#diamonds.map(d => ({ x0: d.x - d.r, y0: d.y - d.r, x1: d.x + d.r, y1: d.y + d.r }));
+      ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      ctx.lineWidth = 3; ctx.strokeStyle = p.dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.85)'; ctx.fillStyle = p.text;
+      for (let i = this.#diamonds.length - 1; i >= 0; i--) {
+        const d = this.#diamonds[i]!; if (d.r < 7) continue;
+        const label = `$${usd(d.liq.usd)}`, w = ctx.measureText(label).width;
+        let x0 = d.x + d.r + 3; if (x0 + w > pw - 2) x0 = d.x - d.r - 3 - w;
+        const box = { x0, y0: d.y - 6, x1: x0 + w, y1: d.y + 6 };
+        if (taken.some(r => r.x0 < box.x1 && box.x0 < r.x1 && r.y0 < box.y1 && box.y0 < r.y1)) continue;
+        taken.push(box); ctx.strokeText(label, x0, d.y); ctx.fillText(label, x0, d.y);
+      }
+    }
+    ctx.restore();
+  }
+
+  /** The drawn liquidation the pointer is on (inside its diamond, with a few pixels of slack), the nearest if several. */
+  #diamondAt(x: number, y: number): { r: number; liq: Liquidation; y: number } | null {
+    let best: { r: number; liq: Liquidation; y: number } | null = null, bestD = Infinity;
+    for (const d of this.#diamonds) { const reach = Math.abs(d.x - x) + Math.abs(d.y - y); if (reach <= d.r + 3 && reach < bestD) { best = d; bestD = reach; } }
+    return best;
+  }
+
   /** The absorption icon under the pointer, if any. */
   #absorptionAt(x: number, y: number): { marks: AbsorptionMark[]; s: number; y: number } | null {
     for (let i = this.#absorptionIcons.length - 1; i >= 0; i--) { const icon = this.#absorptionIcons[i]!; if (Math.abs(icon.x - x) <= icon.s / 2 + 3 && Math.abs(icon.y - y) <= icon.s / 2 + 3) return icon; }
@@ -1156,7 +1213,7 @@ export class HeatPane {
   #bubbleFocus(state: AppState, pw: number, ph: number): string | null {
     const hv = state.hover; if (!hv || hv.source !== 'heat' || hv.price === null) return null;
     const x = this.view.xOf(hv.t, pw), y = this.view.yOf(hv.price, ph);
-    if (x < 0 || x > pw || y < 0 || y > ph || this.#absorptionAt(x, y)) return null;
+    if (x < 0 || x > pw || y < 0 || y > ph || this.#absorptionAt(x, y) || this.#diamondAt(x, y)) return null;
     const hit = this.#bubbleAt(x, y);
     return hit ? hit.print.id.slice(0, hit.print.id.indexOf(':')) : null;
   }

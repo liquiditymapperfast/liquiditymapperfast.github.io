@@ -14,11 +14,12 @@ import { HELP, helpButton, showGuide, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
-import { SCOPE_OPTIONS, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
+import { SCOPE_OPTIONS, activeIds, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
 import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow } from './ui.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
+import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
 import { openMenu } from './menu.ts';
 import { buildSoundPanel } from './sound/panel.ts';
@@ -46,7 +47,7 @@ function hiddenByFilter(venue: string, kind: 'spot' | 'perp' | null, scope: stri
   if (kind === 'spot') return t('{venue} is a spot venue, so the Perp filter hides it. Click to show it: the filter goes back to Both.', { venue });
   return back ? t('{venue} is an unclassified venue, so the Spot filter hides it. Click to show it: the filter goes back to Both.', { venue }) : t('{venue} is an unclassified venue, so the Perp filter hides it. Click to show it: the filter goes back to Both.', { venue });
 }
-const LAYERS: [Layer, string][] = [['liquidity', t('Liquidity')], ['liquidation', t('Liquidation')], ['stopLoss', t('Stop loss')], ['takeProfit', t('Take profit')]];
+const LAYERS: [Layer, string][] = [['liquidity', t('Liquidity')], ['liquidation', t('Liquidation levels')], ['stopLoss', t('Stop loss')], ['takeProfit', t('Take profit')]];
 /** A chosen venue that has no book for this long gets a chip saying so (a start-up that is merely slow does not). */
 const IDLE_GRACE_MS = 20_000;
 /** What the dropdown says next to a layer that cannot be chosen yet. */
@@ -94,6 +95,11 @@ export class Toolbar {
    */
   #trades = el('button', { class: 'led-btn', textContent: t('Trades'), tip: HELP.bubbles.tip });
   #absorption = el('button', { class: 'led-btn', textContent: t('Absorption'), tip: HELP.absorption.tip });
+  /** Liquidations on the map (liquidations.ts), set in its panel. */
+  #liquidations = el('button', { class: 'led-btn', textContent: t('Liquidations'), tip: HELP.liquidations.tip });
+  #liquidationPanel: Panel | null = null;
+  /** Where the page's data comes from (set by the page): a page reading the exchanges itself keeps liquidations only while it is open. */
+  sourceKind: 'server' | 'browser' = 'server';
   #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
   /** The volume profile: the traded-volume column beside the book profile and the point-of-control lines on the chart, set in its panel (traded/panel.ts). */
   #traded = el('button', { class: 'led-btn', textContent: t('Volume profile'), tip: HELP.traded.tip });
@@ -181,6 +187,10 @@ export class Toolbar {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildTrades(tools, body, () => this.#tradePanel?.render(build));
       this.#tradePanel = togglePanel(this.#trades, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
     };
+    this.#liquidations.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildLiquidations(tools, body, () => this.#liquidationPanel?.render(build));
+      this.#liquidationPanel = togglePanel(this.#liquidations, { title: t('Liquidations'), width: 400, align: 'left', onClose: () => { this.#liquidationPanel = null; } }, build);
+    };
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
@@ -254,7 +264,7 @@ export class Toolbar {
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#zone, this.#language, this.#theme);
-      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#absorption, this.#traded, this.#highlights, this.#soundButton, this.#range,
+      this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#highlights, this.#soundButton, this.#range,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;
     }
@@ -279,7 +289,7 @@ export class Toolbar {
       this.#heatctl.replaceChildren();
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
-        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#absorption, this.#traded), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
+        section(t('Show'), [this.#toggles, el('div', { class: 'sheet-tiles' }, this.#trades, this.#liquidations, this.#absorption, this.#traded), el('p', { class: 'sheet-note', textContent: t('Depth, OI, LT and Footprint each add a tab to the bar under the map.') })]),
         section(t('Heatmap'), [
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
@@ -312,7 +322,7 @@ export class Toolbar {
     [...this.#timeframes.children].forEach(b => b.classList.toggle('on', b.textContent === state.timeframe));
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));
@@ -481,6 +491,24 @@ export class Toolbar {
     const whale = this.store.state.sounds.tiers[2]?.usd;
     if (whale) body.append(note(t('Orders from the Whale size in Sounds ({value}) get a bright ring.', { value: `$${usd(scaledUsd(whale))}` })));
     body.append(note(t('These settings change only the bubbles: sounds and the flow column\'s dots keep their own sizes.')));
+  }
+
+  /** The liquidations' settings: whether they show, the smallest drawn, the side, their size and labels, and which venues report them. */
+  #buildLiquidations(tools: HTMLElement, body: HTMLElement, rebuild: () => void): void {
+    const s = this.store.state.liquidations, L = LIQUIDATION_LIMITS;
+    tools.append(helpButton('liquidations'));
+    const set = (change: Partial<LiquidationSettings>): void => { this.store.set({ liquidations: { ...this.store.state.liquidations, ...change } }); };
+    body.append(
+      switchRow(t('Show liquidations'), t('Positions the exchanges closed by force, where the market was when it happened.'), s.on, on => { set({ on }); rebuild(); }),
+      selectRow(t('Smallest liquidation'), t('Smaller ones are not drawn. Every one from {floor} is recorded, so a lower choice brings them back.', { floor: `$${usd(scaledUsd(LIQUIDATION_MINIMUMS[0]!))}` }), LIQUIDATION_MINIMUMS.map(v => [String(v), `$${usd(scaledUsd(v))}`] as [string, string]), String(s.minUsd), v => set({ minUsd: Number(v) })),
+      selectRow(t('Side'), t('Both, or only the longs closed (forced selling) or only the shorts closed (forced buying).'), [['both', t('Both')], ['long', t('Longs closed')], ['short', t('Shorts closed')]], s.side, v => set({ side: v === 'long' || v === 'short' ? v : 'both' })),
+      rangeRow(t('Size'), t('Every diamond larger or smaller; their sizes keep their proportions.'), { min: L.scale.min, max: L.scale.max, step: L.scale.step, value: s.scale, format: v => `×${v.toFixed(1)}` }, scale => set({ scale })),
+      switchRow(t('Write the size beside the larger ones'), t('Only where it fits; hover or tap any diamond for its size.'), s.labels, labels => set({ labels })),
+    );
+    // Which of the venues switched on report them at all: said here, not on the chart.
+    const state = this.store.state, markets = activeIds(state).map(id => ({ venue: id.slice(0, id.indexOf(':')), spot: kindOf(state.markets, id) === 'spot' }));
+    for (const line of coverageLines(markets)) body.append(note(line.text));
+    if (this.sourceKind !== 'server') body.append(note(t('This page reads the exchanges itself and keeps liquidations only while it is open.')));
   }
 
   /** The absorption settings: whether the marks show, how the threshold is set, and the threshold each venue is judged at now. */

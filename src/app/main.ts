@@ -69,6 +69,7 @@ async function main(): Promise<void> {
   const wake = new ScreenWake(); wake.set(store.state.keepAwake);
 
   const toolbar = new Toolbar(store, source.venues);
+  toolbar.sourceKind = source.kind === 'server' ? 'server' : 'browser';
   const main = document.createElement('main');
   const chart = document.createElement('div'); chart.className = 'chart-col';
   const side = document.createElement('div'); side.className = 'side-col';
@@ -117,6 +118,7 @@ async function main(): Promise<void> {
   alerts.onChange = () => cvd.invalidate(); cvd.events = alerts.bursts;
   hub.onPrints = fresh => { sounds.feed(fresh); cvd.flash(fresh); };
   hub.onPrintsChanged = () => heat.invalidate();
+  hub.onLiquidationsChanged = () => heat.invalidate();
   hub.onTraded = () => heat.invalidate();
   hub.onAbsorptionChanged = () => heat.invalidate();
   toolbar.absorptionInfo = () => heat.absorptionThresholdText();

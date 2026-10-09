@@ -14,6 +14,7 @@ import { RecordedBefore } from '../../shared/restart.ts';
 import { FLOW_SEC, FlowRecorder, encodeFlowFrame, encodeFlowMinutes } from './flow.mts';
 import { FlowSources } from './flow-sources.mts';
 import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, toWire } from './prints.mts';
+import { LIQUIDATION_FLOOR_USD, LIQUIDATIONS_PER_ANSWER, LiquidationStream, toWire as liquidationWire } from './liquidations.mts';
 import { OrderBuilder, orderRow, type TakenFill } from '../../shared/orders.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, ABSORPTION_WINDOW_MS, MAX_ABSORPTION_INSTRUMENTS } from './absorption.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
@@ -24,7 +25,7 @@ import { TIMEFRAMES, aggregateCandles, aggregateOi, timeframeMs, withLiveOi, typ
 type App = ReturnType<typeof createLocalServer>;
 export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number }
 export interface V2Handle {
-  recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; flow: FlowRecorder; absorption: AbsorptionRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
+  recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; liquidations: LiquidationStream; flow: FlowRecorder; absorption: AbsorptionRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
   /** Venues (the part of an instrument id before the colon) whose book is being left off the map, with the reason. */
   degradedVenues(): Map<string, string>;
 }
@@ -81,6 +82,10 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const extra = new ExtraVenues(persist ? path.join(dataDir, 'v2-venues.json') : null, undefined, !persist || defaults === 'configured' ? false : defaults === 'all' ? true : RECOMMENDED_EXTRA_VENUES);
   const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  /** Liquidations from the venues that publish them (shared/liquidations.ts). */
+  const liquidations = new LiquidationStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  /** Each instrument's last traded price and when it came: where a liquidation reported at its bankruptcy price is drawn. */
+  const lastPrice = new Map<string, { price: number; at: number }>(); // `at` is the trade's own time, the clock a liquidation's time is on
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   /** How far the recordings reach (read now, before any trade): what a venue sends again after a restart is not counted twice. */
   const recorded = new RecordedBefore(flow, footprint);
@@ -97,13 +102,15 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
   // The connector venues carry their own trades: the flow column, the footprint and the large-trade bubbles count them like the feed manager's.
   const takeTrade = (trade: import('../../shared/connector.ts').TradeEvent): void => {
+    if (trade.t >= (lastPrice.get(trade.instrumentId)?.at ?? -Infinity)) lastPrice.set(trade.instrumentId, { price: trade.price, at: trade.t });
     if (recorded.holds(trade.instrumentId, trade.t)) return;
     const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
     footprint.ingest([row]); flow.ingest([row]); detect(orders.add([{ ...row, order: trade.order }]));
   };
+  const takeLiquidation = (event: import('../../shared/liquidations.ts').LiquidationEvent): void => { liquidations.ingest([event], id => lastPrice.get(id) ?? null); };
   extra.onTrade(takeTrade);
   // Exchanges the feed manager has depth for but no trade feed: their trades come from the browser engine's connectors (see flow-sources.mts).
-  const flowSources = new FlowSources(takeTrade);
+  const flowSources = new FlowSources(takeTrade, undefined, undefined, takeLiquidation);
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   /** Each venue's book as last valued, by the book object it was valued from: an update replaces the object, so an unchanged object is an unchanged book. */
   const valued = new Map<string, { source: unknown; book: ValuedBook | null; at: number }>();
@@ -167,6 +174,10 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     // is an empty frame), or a client would draw liquidity that is no longer there while the heartbeats go on.
     if (members !== lastMembers) { lastMembers = members; levelsDirty = true; }
     if (now - lastSample >= SAMPLE_MS) { lastSample = now; recorder.sample(books, now); }
+    for (const trade of app.state.trades ?? []) {
+      const price = Number(trade.price), at = Number(trade.sourceTimestamp ?? trade.receivedAt), id = String(trade.instrumentId ?? '');
+      if (price > 0 && id && Number.isFinite(at) && at >= (lastPrice.get(id)?.at ?? -Infinity)) lastPrice.set(id, { price, at });
+    }
     const trades = unrecorded(app.state.trades ?? []);
     footprint.ingest(trades);
     flow.ingest(trades);
@@ -176,15 +187,16 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     absorption.step();
     if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); }
     // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
-    if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, flow, absorption]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
+    if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, liquidations, flow, absorption]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
-    const fresh = prints.takeFresh(), found = absorption.takeFresh();
+    const fresh = prints.takeFresh(), found = absorption.takeFresh(), forced = liquidations.takeFresh();
     // Taken whether or not anyone listens, so the changed seconds do not pile up while nobody is connected.
     const flowItems = now - lastFlowPush >= FLOW_SEC ? flow.take() : [];
     if (flowItems.length || now - lastFlowPush >= FLOW_SEC) lastFlowPush = now;
     if (wss.clients.size === 0) return;
     if (now - lastBeat >= heartbeatMs) { lastBeat = now; broadcast(JSON.stringify({ t: 'hb', now })); }
     if (fresh.length) broadcast(JSON.stringify({ t: 'prints', items: fresh.map(toWire) }));
+    if (forced.length) broadcast(JSON.stringify({ t: 'liquidations', items: forced.map(liquidationWire) }));
     if (found.groups.length || found.minutes.length) broadcast(JSON.stringify({ t: 'absorption', groups: found.groups, minutes: found.minutes }));
     if (flowItems.length) broadcast(JSON.stringify({ t: 'flow', items: flowItems }));
     if (levelsDirty) {
@@ -260,6 +272,14 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     const rows = num(url.searchParams.get('rows'), 0);
     if (!(rows >= 0)) return sendJson(res, { error: 'rows must not be negative' }, 400);
     sendJson(res, { instrumentId: id, tf, ...footprint.query(id, span.from, span.to, tfMs, rows) });
+  };
+  const liquidationsRoute = (url: URL, res: ServerResponse) => {
+    // As the prints: a window longer than what is kept is cut to its last eight days, never refused.
+    const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_COLUMN_SPAN_MS);
+    const min = Math.max(LIQUIDATION_FLOOR_USD, num(url.searchParams.get('min'), LIQUIDATION_FLOOR_USD));
+    const rawLimit = url.searchParams.get('limit'), limit = rawLimit === null ? LIQUIDATIONS_PER_ANSWER : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > LIQUIDATIONS_PER_ANSWER) return sendJson(res, { error: `limit must be a whole number from 1 to ${LIQUIDATIONS_PER_ANSWER}` }, 400);
+    sendJson(res, { floor: LIQUIDATION_FLOOR_USD, liquidations: liquidations.query(from, to, min, limit).map(liquidationWire) });
   };
   const printsRoute = (url: URL, res: ServerResponse) => {
     const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 3_600_000), to - MAX_COLUMN_SPAN_MS);
@@ -365,7 +385,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
 
   return {
-    recorder, footprint, prints, flow, absorption, extra,
+    recorder, footprint, prints, liquidations, flow, absorption, extra,
     degradedVenues() { return new Map([...degraded].map(([id, reason]) => [id.split(':')[0]!, reason])); },
     handle(req, res) {
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -380,6 +400,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/oi': oi(url, res); return true;
           case '/api/v2/footprint': footprintRoute(url, res); return true;
           case '/api/v2/prints': printsRoute(url, res); return true;
+          case '/api/v2/liquidations': liquidationsRoute(url, res); return true;
           case '/api/v2/flow': flowRoute(url, res); return true;
           case '/api/v2/flow-minutes': flowMinutesRoute(url, res); return true;
           case '/api/v2/sizes': sizesRoute(url, res); return true;
@@ -401,7 +422,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
       clearInterval(loop); coins?.close(); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
       // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes and the open orders are written here).
-      for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => flow.close(), () => absorption.close(), () => flowSources.close(), () => extra.close()]) {
+      for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => footprint.close(), () => prints.close(), () => liquidations.close(), () => flow.close(), () => absorption.close(), () => flowSources.close(), () => extra.close()]) {
         try { part(); } catch (error) { console.error('v2 shutdown:', error); }
       }
     },

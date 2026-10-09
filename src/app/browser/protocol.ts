@@ -1,6 +1,7 @@
 import type { EngineBootstrap, EngineTick, FootprintAnswer, VenueStatus } from '../../shared/engine.ts';
 import type { Candle, OiBar } from '../../shared/series.ts';
 import type { Print } from '../../shared/prints.ts';
+import type { Liquidation } from '../../shared/liquidations.ts';
 import type { ProfileAnswer, RangeAnswer, SizesAnswer, ValueAreaAnswer } from '../../shared/footprint.ts';
 import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../../shared/absorption.ts';
 import type { FlowFrame, FlowUpdate } from '../../shared/flow.ts';
@@ -14,6 +15,7 @@ export type RpcCall =
   | { method: 'columns'; ids: string[]; from: number; to: number; stepMs: number }
   | { method: 'footprint'; inst: string; tfMs: number; from: number; to: number; rowStep: number }
   | { method: 'prints'; from: number; to: number; minUsd?: number }
+  | { method: 'liquidations'; from: number; to: number; minUsd?: number }
   | { method: 'flow'; ids: string[]; from: number; to: number }
   | { method: 'sizes'; ids: string[]; windows: number[] }
   | { method: 'profile'; ids: string[]; from: number; to: number; rowStep: number }
@@ -24,7 +26,7 @@ export type RpcCall =
   | { method: 'oi'; inst: string; tfMs: number; from: number; to: number };
 
 export interface RpcResult {
-  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; flow: FlowFrame; sizes: SizesAnswer; profile: ProfileAnswer; range: RangeAnswer; valueAreas: ValueAreaAnswer; absorption: AbsorptionAnswer; candles: Candle[]; oi: OiBar[];
+  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; liquidations: Liquidation[]; flow: FlowFrame; sizes: SizesAnswer; profile: ProfileAnswer; range: RangeAnswer; valueAreas: ValueAreaAnswer; absorption: AbsorptionAnswer; candles: Candle[]; oi: OiBar[];
 }
 
 export type FeedsIn =
@@ -45,6 +47,7 @@ export type FeedsOut =
   | { type: 'levels'; frame: LevelsFrame }
   | { type: 'tick'; tick: EngineTick }
   | { type: 'prints'; items: Print[] }
+  | { type: 'liquidations'; items: Liquidation[] }
   | { type: 'flow'; items: FlowUpdate[] }
   | { type: 'absorption'; groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] }
   | { type: 'status'; venues: VenueStatus[] }

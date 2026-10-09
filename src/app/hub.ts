@@ -1,6 +1,8 @@
 import { connectionStatus } from './net.ts';
 import type { DataSource, FootprintResponse, TickMessage } from './source.ts';
 import { PrintBook, fromWire, type Print } from './prints.ts';
+import { LiquidationBook, fromWire as liquidationFromWire } from './liquidations.ts';
+import { LIQUIDATIONS_PER_ANSWER } from '../shared/liquidations.ts';
 import { FlowBook } from './flow-book.ts';
 import type { Store, CandleRow } from './store.ts';
 import type { WorkerIn, WorkerOut, RasterStats } from './worker/raster.worker.ts';
@@ -46,6 +48,13 @@ export class Hub {
   onPrints: (fresh: Print[]) => void = () => {};
   /** Called when the print book changed, so the chart can redraw its bubbles. */
   onPrintsChanged: () => void = () => {};
+  /** Liquidations held for the map (the venues that publish them), and a call when they change. */
+  readonly liquidations = new LiquidationBook();
+  onLiquidationsChanged: () => void = () => {};
+  /** 'unavailable': the source has no liquidations (a server from before them); asked again a minute later. */
+  liquidationsState: 'ready' | 'unavailable' = 'ready';
+  #liquidationsWindow: { t0: number; t1: number; min: number; cut: boolean; live: boolean } | null = null;
+  #liquidationsLoading = false; #liquidationsRetryAt = 0;
   /** Taker flow per second for every instrument that has traded: the CVD column reads it, and sounds read what it just got. */
   readonly flow = new FlowBook();
   /** Called when the flow book changed (new seconds or history), about once a second. */
@@ -146,7 +155,7 @@ export class Hub {
     this.source.venues.watch?.(() => { clearTimeout(pending); pending = setTimeout(() => void this.refreshMarkets(), 300); });
     this.source.connect({
       onOpen: () => {
-        this.#connection++; this.#printsWindow = null; this.#absorptionCover = null;
+        this.#connection++; this.#printsWindow = null; this.#liquidationsWindow = null; this.#absorptionCover = null;
         // What the stream said while it was down is in the recordings and not in the book: ask for the history again (the first open has nothing to repair).
         if (this.#dropped) { this.#dropped = false; this.flow.invalidate(); }
         this.store.set({ connected: true, status: t('live') });
@@ -163,6 +172,10 @@ export class Hub {
       onPrints: items => {
         const fresh = this.prints.add(items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; }));
         if (fresh.length) { this.onPrints(fresh); this.onPrintsChanged(); }
+      },
+      onLiquidations: items => {
+        const fresh = this.liquidations.add(items.flatMap(row => { const l = liquidationFromWire(row); return l ? [l] : []; }));
+        if (fresh.length) this.onLiquidationsChanged();
       },
     });
   }
@@ -278,6 +291,28 @@ export class Hub {
     // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
     // The book keeps a live window open-ended, so the orders the stream adds after it are kept like the window's own.
     this.source.prints(from, to, minUsd).then(rows => { this.prints.add(rows, { from, to: live ? Infinity : to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to, min: minUsd, cut: rows.length >= PRINTS_PER_ANSWER, live }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+  }
+
+  /**
+   * Make sure the liquidation book covers `view` from `minUsd`, as `ensurePrints` does for the trade bubbles: history once per window and
+   * smallest size, the live stream after that. A source without liquidations (an older server) is asked again a minute later.
+   */
+  ensureLiquidations(view: Bounds, minUsd: number): void {
+    const source = this.source;
+    if (!source.liquidations) { this.liquidationsState = 'unavailable'; return; }
+    if (this.#liquidationsLoading || !(view.t1 > view.t0)) return;
+    if (this.liquidationsState === 'unavailable' && Date.now() < this.#liquidationsRetryAt) return;
+    const have = this.#liquidationsWindow;
+    const narrower = have !== null && have.cut && view.t1 - view.t0 < (have.t1 - have.t0) / 4;
+    if (have && have.min === minUsd && have.t0 <= view.t0 && (have.live || have.t1 >= Math.min(view.t1, Date.now())) && !narrower) return;
+    const span = view.t1 - view.t0, from = Math.floor(view.t0 - span * 0.5), to = Math.ceil(Math.min(view.t1 + span * 0.1, Date.now() + MINUTE)), live = to >= Date.now();
+    this.#liquidationsLoading = true;
+    const connection = this.#connection;
+    source.liquidations(from, to, minUsd).then(rows => {
+      this.liquidations.add(rows, { from, to: live ? Infinity : to }); this.liquidationsState = 'ready';
+      if (connection === this.#connection) this.#liquidationsWindow = { t0: from, t1: to, min: minUsd, cut: rows.length >= LIQUIDATIONS_PER_ANSWER, live };
+      this.onLiquidationsChanged();
+    }, () => { this.liquidationsState = 'unavailable'; this.#liquidationsRetryAt = Date.now() + 60_000; this.onLiquidationsChanged(); }).finally(() => { this.#liquidationsLoading = false; });
   }
 
   /**

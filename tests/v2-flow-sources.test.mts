@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { BookConnector, type TradeEvent } from '../src/shared/connector.ts';
 import type { BrowserVenue } from '../src/shared/venues.ts';
 import { FlowSources } from '../src/server/v2/flow-sources.mts';
+import type { LiquidationEvent } from '../src/shared/liquidations.ts';
 
 /** A connector with no socket that counts its starts and stops. */
 class Fake extends BookConnector {
@@ -29,7 +30,7 @@ test('a venue with a book on the server gets its trade socket, one that the feed
   const sources = new FlowSources(t => seen.push(t), () => now, [bybit, spot, binance, hl]);
   sources.sync(new Set(['bybit:BTCUSDT', 'binancespot:BTCUSDT', 'binance:BTCUSDT', 'hyperliquid:BTCUSDT', 'nobody:BTCUSDT']));
   assert.deepEqual(sources.active.sort(), ['binancespot', 'bybit']);
-  assert.equal(binance.made.length + hl.made.length, 0, 'their trades come from the feed manager');
+  assert.equal([...binance.made, ...hl.made].reduce((n, c) => n + c.starts, 0), 0, 'their trades come from the feed manager: nothing of theirs is started');
   assert.equal(bybit.made[0]!.starts, 1, 'the book connector carries the trades');
   assert.equal(spot.made[0]!.starts, 0, 'the spot book is the extra venue\'s, not started here'); assert.equal(spot.made[1]!.starts, 1);
   bybit.made[0]!.say('t1'); spot.made[1]!.say('s1');
@@ -53,4 +54,19 @@ test('a venue that is no longer wanted keeps its socket for a minute and goes af
   assert.equal(b.made.length, 2, 'wanted again before the minute was up: kept');
   sources.close();
   assert.deepEqual(sources.active, []); assert.equal(a.made[0]!.stops, 1);
+});
+
+test('a venue the feed manager covers runs only its liquidation feed here, and that feed hands its liquidations on', () => {
+  const made: Fake[] = [], forced: LiquidationEvent[] = [];
+  const binance: BrowserVenue = { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, listed: true, probe: null,
+    make: () => { const book = new Fake('binance'), trades = new Fake('binance'), liquidations = new Fake('binance'); made.push(book, trades, liquidations); return { book, feeds: [trades], liquidations: [liquidations] }; } };
+  const sources = new FlowSources(() => {}, () => 0, [binance], event => forced.push(event));
+  sources.sync(new Set(['bybit:BTCUSDT']));
+  assert.equal(made.reduce((n, c) => n + c.starts, 0), 0, 'no Binance book on the server: nothing started');
+  sources.sync(new Set(['binance:BTCUSDT']));
+  assert.deepEqual(made.map(c => c.starts), [0, 0, 1], 'only the liquidation feed: the book and the trades come from the feed manager');
+  made[2]!.onLiquidation({ instrumentId: 'binance:BTCUSDT', t: 1, side: 'long', price: 100, amount: 1, notionalUsd: 100, kind: 'fill' });
+  assert.equal(forced.length, 1);
+  sources.sync(new Set(['binance:BTCUSDT']));
+  assert.equal(made.length, 3, 'made once');
 });

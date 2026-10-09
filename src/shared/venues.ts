@@ -54,6 +54,28 @@ export class BinancePerpTrades extends BinanceTrades {
   protected open() { /* the stream is chosen by the address */ }
 }
 
+/**
+ * Binance USD-M liquidations: the forced orders of one market, at most one a second (the largest of that second, so a cascade is
+ * undercounted). They can be silent for many minutes, so the same stream also carries the mark price every second: that is what keeps a
+ * live socket from being taken for a dead one. `S` is the forced order's side (SELL closes a long) and `ap` its average fill price.
+ */
+export class BinanceLiquidations extends TradeFeed {
+  readonly id = 'binance'; readonly name = 'Binance'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
+  constructor(market: Market = btc('binance')) { super(market); }
+  protected url() { const s = this.symbol.toLowerCase(); return `wss://fstream.binance.com/market/stream?streams=${s}@forceOrder/${s}@markPrice@1s`; }
+  protected open() { /* the streams are chosen by the address */ }
+  onMessage(text: string) {
+    const d = this.record(this.record(JSON.parse(text))?.data); if (!d) return;
+    if (d.e === 'forceOrder') {
+      const o = this.record(d.o); if (!o || o.s !== this.symbol) return;
+      const price = num(o.ap) > 0 ? num(o.ap) : num(o.p), amount = num(o.z) > 0 ? num(o.z) : num(o.q), t = num(o.T);
+      const side = o.S === 'SELL' ? 'long' : o.S === 'BUY' ? 'short' : null;
+      if (side && price > 0 && amount > 0 && Number.isFinite(t)) this.emitLiquidation({ t, side, price, amount, notionalUsd: price * amount, kind: 'fill' });
+    }
+    if (d.e === 'forceOrder' || d.e === 'markPriceUpdate') this.touch();
+  }
+}
+
 /** Binance USD-M perpetual: the diff-depth stream chained on the previous update id (\`pu\`), synchronised with a REST snapshot. */
 export class BinancePerpConnector extends MarketBook {
   readonly id = 'binance'; readonly name = 'Binance'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
@@ -112,11 +134,20 @@ abstract class BybitBook extends MarketBook {
   protected abstract readonly category: 'linear' | 'spot';
   #u = 0;
   protected url() { return `wss://stream.bybit.com/v5/public/${this.category}`; }
-  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [`orderbook.1000.${this.symbol}`, `publicTrade.${this.symbol}`] }); }
+  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [`orderbook.1000.${this.symbol}`, `publicTrade.${this.symbol}`, ...(this.category === 'linear' ? [`allLiquidation.${this.symbol}`] : [])] }); }
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping' }) }; }
   onMessage(text: string) {
     const m = this.record(JSON.parse(text)); if (!m) return;
     const topic = String(m.topic ?? '');
+    if (topic === `allLiquidation.${this.symbol}`) {
+      // `S` is the side of the position closed (Buy: a long), `p` its bankruptcy price (measured 2026-10-09: 0.3 % under the mark for a long).
+      for (const item of Array.isArray(m.data) ? m.data : []) {
+        const d = this.record(item); if (!d) continue;
+        const price = num(d.p), amount = num(d.v), t = num(d.T), side = d.S === 'Buy' ? 'long' : d.S === 'Sell' ? 'short' : null;
+        if (side && price > 0 && amount > 0 && Number.isFinite(t)) this.emitLiquidation({ t, side, price, amount, notionalUsd: price * amount, kind: 'bankruptcy' });
+      }
+      return;
+    }
     if (topic.startsWith('publicTrade.')) {
       for (const item of Array.isArray(m.data) ? m.data : []) {
         const d = this.record(item); if (!d) continue;
@@ -164,6 +195,21 @@ abstract class OkxBook extends MarketBook {
     const m = this.record(JSON.parse(text)); if (!m) return;
     const channel = this.record(m.arg)?.channel;
     const data = Array.isArray(m.data) ? m.data : [];
+    if (channel === 'liquidation-orders') {
+      // Every swap's liquidations come on this one channel: this market's are the ones whose instId is its own. `posSide` is the side
+      // closed (`side` the forced order's, for a net position), `sz` contracts. `bkPx` is named the bankruptcy price, but measured
+      // 2026-10-09 it was within a few basis points of the mark (Bybit's is 0.3 % away): it is where the forced order went, a fill.
+      for (const item of data) {
+        const x = this.record(item); if (!x || x.instId !== this.symbol) continue;
+        for (const detail of Array.isArray(x.details) ? x.details : []) {
+          const d = this.record(detail); if (!d) continue;
+          const side = d.posSide === 'long' ? 'long' : d.posSide === 'short' ? 'short' : d.side === 'sell' ? 'long' : d.side === 'buy' ? 'short' : null;
+          const price = num(d.bkPx), amount = num(d.sz) * this.contract, t = num(d.ts);
+          if (side && price > 0 && amount > 0 && Number.isFinite(t)) this.emitLiquidation({ t, side, price, amount, notionalUsd: price * amount, kind: 'fill' });
+        }
+      }
+      return;
+    }
     if (channel === 'trades') {
       for (const item of data) {
         const d = this.record(item); if (!d) continue;
@@ -190,6 +236,7 @@ export class OkxConnector extends OkxBook {
   constructor(market: Market = btc('okx')) { super(market); }
   protected override open(send: (p: unknown) => void) {
     super.open(send);
+    send({ op: 'subscribe', args: [{ channel: 'liquidation-orders', instType: 'SWAP' }] });
     void fetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${this.symbol}`, { signal: AbortSignal.timeout(10_000) })
       .then(r => r.json() as Promise<{ data?: { ctVal?: string }[] }>).then(body => { const v = num(body.data?.[0]?.ctVal); if (v > 0) this.contract = v; }).catch(() => { /* the documented value stands */ });
   }
@@ -306,14 +353,26 @@ export class DeribitConnector extends MarketBook {
       this.replace(this.bids, this.rows(d.bids)); this.replace(this.asks, this.rows(d.asks)); this.touch(); return;
     }
     if (channel.startsWith('trades.')) {
+      /** The forced fills of this frame, one entry per forced order (its fills share a time and a side). */
+      const forced = new Map<string, { t: number; side: 'long' | 'short'; coins: number; usd: number }>();
       for (const item of Array.isArray(params.data) ? params.data : []) {
         const d = this.record(item); if (!d) continue;
         const price = num(d.price), amount = num(d.amount), t = num(d.timestamp), side = d.direction === 'buy' ? 'buy' : d.direction === 'sell' ? 'sell' : null;
         if (!side || !(price > 0) || !(amount > 0) || !Number.isFinite(t)) continue;
         // A coin-margined perpetual's amount is USD; a USDC one's is coins.
-        if (this.market.inverse) this.emitTrade({ tradeId: String(d.trade_id), side, price, amount: amount / price, notionalUsd: amount, t });
-        else this.emitTrade({ tradeId: String(d.trade_id), side, price, amount, notionalUsd: price * amount, t });
+        const coins = this.market.inverse ? amount / price : amount, usd = this.market.inverse ? amount : price * amount;
+        this.emitTrade({ tradeId: String(d.trade_id), side, price, amount: coins, notionalUsd: usd, t });
+        // The taker's forced order went the trade's way (a sell closes a long); a forced maker order went the other way.
+        const flag = typeof d.liquidation === 'string' ? d.liquidation : '';
+        const closed: ('long' | 'short')[] = [];
+        if (flag.includes('T')) closed.push(side === 'sell' ? 'long' : 'short');
+        if (flag.includes('M')) closed.push(side === 'sell' ? 'short' : 'long');
+        for (const which of closed) {
+          const key = `${t}|${which}`, sum = forced.get(key) ?? { t, side: which, coins: 0, usd: 0 };
+          sum.coins += coins; sum.usd += usd; forced.set(key, sum);
+        }
       }
+      for (const f of forced.values()) this.emitLiquidation({ t: f.t, side: f.side, price: f.usd / f.coins, amount: f.coins, notionalUsd: f.usd, kind: 'fill' });
     }
   }
 }
@@ -422,15 +481,18 @@ export interface BrowserVenue {
    * Null for a venue with no REST a page can read (MEXC): one that never connects is then reported as failing, not as refusing a country.
    */
   probe: { url: string; init?: { method: string; headers: Record<string, string>; body: string } } | null;
-  /** The book connector first, then any feed that only carries trades. */
-  make(): { book: BookConnector; feeds: BookConnector[] };
+  /** The book connector first, then any feed that only carries trades, and any that only carries liquidations. */
+  make(): Made;
 }
+
+/** A venue's connectors: its book, the feeds that only carry trades, and those that only carry liquidations (where the others' sockets do not). */
+export interface Made { book: BookConnector; feeds: BookConnector[]; liquidations?: BookConnector[] }
 
 const POST_JSON = { method: 'POST', headers: { 'content-type': 'application/json' } } as const;
 
 /** Each market: its name, kind, reachability request and connectors for one coin's listing there. */
-const VENUE_SPECS: readonly (Omit<BrowserVenue, 'listed' | 'make'> & { id: MarketVenue; make(market: Market): { book: BookConnector; feeds: BookConnector[] } })[] = [
-  { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, probe: { url: 'https://fapi.binance.com/fapi/v1/ping' }, make: m => ({ book: new BinancePerpConnector(m), feeds: [new BinancePerpTrades(m)] }) },
+const VENUE_SPECS: readonly (Omit<BrowserVenue, 'listed' | 'make'> & { id: MarketVenue; make(market: Market): Made })[] = [
+  { id: 'binance', name: 'Binance', kind: 'perp', recommended: true, probe: { url: 'https://fapi.binance.com/fapi/v1/ping' }, make: m => ({ book: new BinancePerpConnector(m), feeds: [new BinancePerpTrades(m)], liquidations: [new BinanceLiquidations(m)] }) },
   { id: 'bybit', name: 'Bybit', kind: 'perp', recommended: true, probe: { url: 'https://api.bybit.com/v5/market/time' }, make: m => ({ book: new BybitConnector(m), feeds: [] }) },
   { id: 'okx', name: 'OKX', kind: 'perp', recommended: true, probe: { url: 'https://www.okx.com/api/v5/public/time' }, make: m => ({ book: new OkxConnector(m), feeds: [] }) },
   { id: 'bitget', name: 'Bitget', kind: 'perp', recommended: true, probe: { url: 'https://api.bitget.com/api/v2/public/time' }, make: m => ({ book: new BitgetConnector(m), feeds: [] }) },

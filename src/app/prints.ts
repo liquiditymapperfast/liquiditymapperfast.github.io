@@ -27,24 +27,24 @@ export function fromWire(row: unknown): Print | null {
 const keyOf = (p: Print): string => `${p.t}|${p.id}|${p.price}|${p.usd}`;
 
 /**
- * Large trades held for drawing, oldest first, without duplicates (a window fetched from history and the live stream overlap).
+ * Marks held for drawing (large trades, liquidations), oldest first, without duplicates (a window fetched from history and the live stream overlap).
  * Bounded: past `max` the oldest are dropped, except those in the window of history that was last asked for (`keep`): it is what is being
  * looked at, and a window that was fetched only to be trimmed away at once would be marked as covered and never fetched again. When that
  * window alone holds more, its smallest go (the map draws the largest in view).
  */
-export class PrintBook {
-  items: Print[] = [];
+export class TimeBook<T extends { t: number; usd: number }> {
+  items: T[] = [];
   #keys = new Set<string>();
   #keep: { from: number; to: number } | null = null;
   /** Bumped whenever the contents change, so a painter can tell its cache is stale. */
   version = 0;
-  constructor(private max = 20_000) {}
+  constructor(private keyOf: (item: T) => string, private max = 20_000) {}
 
-  /** Add prints; returns the ones that were new. `keep` is the window of history these were fetched for. */
-  add(prints: Iterable<Print>, keep?: { from: number; to: number }): Print[] {
+  /** Add items; returns the ones that were new. `keep` is the window of history these were fetched for. */
+  add(items: Iterable<T>, keep?: { from: number; to: number }): T[] {
     if (keep) this.#keep = keep;
-    const fresh: Print[] = [];
-    for (const p of prints) { const key = keyOf(p); if (this.#keys.has(key)) continue; this.#keys.add(key); fresh.push(p); }
+    const fresh: T[] = [];
+    for (const p of items) { const key = this.keyOf(p); if (this.#keys.has(key)) continue; this.#keys.add(key); fresh.push(p); }
     if (!fresh.length) return fresh;
     const last = this.items[this.items.length - 1];
     fresh.sort((a, b) => a.t - b.t);
@@ -56,24 +56,27 @@ export class PrintBook {
 
   /** Drop what is over `max`: the oldest outside the kept window first, then the smallest inside it (only when the window alone is more than the book holds). */
   #trim(): void {
-    const over = this.items.length - this.max, keep = this.#keep, gone = new Set<Print>();
+    const over = this.items.length - this.max, keep = this.#keep, gone = new Set<T>();
     for (const p of this.items) { if (gone.size >= over) break; if (!keep || p.t < keep.from || p.t >= keep.to) gone.add(p); }
     if (gone.size < over) for (const p of [...this.items].filter(p => !gone.has(p)).sort((a, b) => a.usd - b.usd || a.t - b.t)) { if (gone.size >= over) break; gone.add(p); }
     this.items = this.items.filter(p => !gone.has(p));
-    for (const p of gone) this.#keys.delete(keyOf(p));
+    for (const p of gone) this.#keys.delete(this.keyOf(p));
   }
 }
+
+/** Large trades held for drawing. */
+export class PrintBook extends TimeBook<Print> { constructor(max = 20_000) { super(keyOf, max); } }
 
 /**
  * The prints worth drawing in a window (`items` in time order): inside it, not `hidden` (a venue switched off, under the smallest size, the
  * side not shown), and only the `limit` largest of those, returned oldest first. Zoomed far out there are far more prints than pixels;
  * keeping the biggest is what keeps the picture about size. The filter comes first, so the places go to prints that are drawn.
  */
-export function topPrints(items: readonly Print[], t0: number, t1: number, p0: number, p1: number, limit: number, hidden: (p: Print) => boolean = () => false): Print[] {
+export function topPrints<T extends { t: number; price: number; usd: number }>(items: readonly T[], t0: number, t1: number, p0: number, p1: number, limit: number, hidden: (p: T) => boolean = () => false): T[] {
   // `items` is in time order (PrintBook keeps it so): find the window by bisection instead of scanning every print each frame.
   let lo = 0, hi = items.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (items[mid]!.t < t0) lo = mid + 1; else hi = mid; }
-  const inside: Print[] = [];
+  const inside: T[] = [];
   for (let i = lo; i < items.length; i++) {
     const p = items[i]!;
     if (p.t > t1) break;
@@ -86,7 +89,7 @@ export function topPrints(items: readonly Print[], t0: number, t1: number, p0: n
   // Every print bigger than that size stays. The places left go to those exactly as big, the newest of them first: they tie for the last
   // places, and a bigger print must never lose its place to a tie because it is older.
   let room = limit; for (const p of inside) if (p.usd > cut) room--;
-  const ties = new Set<Print>();
+  const ties = new Set<T>();
   for (let i = inside.length - 1; i >= 0 && room > 0; i--) if (inside[i]!.usd === cut) { ties.add(inside[i]!); room--; }
   return inside.filter(p => p.usd > cut || ties.has(p));
 }

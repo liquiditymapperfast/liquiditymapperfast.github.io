@@ -42,7 +42,7 @@ export function buildSoundPanel(store: Store, sounds: Sounds, rerender: () => vo
 
   body.append(heading(t('Candles')));
   body.append(switchRow(t('Chime on unusual volume'), t('One soft chime when a candle closes with unusually large volume (the sensitivity is set in Highlights).'), s.barChime, barChime => set({ barChime })));
-  body.append(note(t('Liquidation sounds are not offered: the public feeds used here carry no liquidation events.')));
+  body.append(note(t('Liquidations have no sound; the Liquidations button draws them on the map.')));
   if (alerts) panelSounds(store, s.panels, alerts, set, body, rerender);
 }
 

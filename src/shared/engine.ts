@@ -2,6 +2,7 @@ import type { ValuedBook } from './levels.ts';
 import { BROWSER_RETENTION_MS, COLUMN_MS, DepthRecorder, MIN_BIN_USD, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
 import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, type Print, type PrintStore } from './prints.ts';
+import { LIQUIDATION_FLOOR_USD, LIQUIDATIONS_PER_ANSWER, LiquidationStream, type Liquidation, type LiquidationEvent } from './liquidations.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
 import { RecordedBefore } from './restart.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
@@ -126,6 +127,10 @@ export class Engine {
   onTick: (tick: EngineTick) => void = () => {};
   /** Large trades that are new. */
   onPrints: (fresh: Print[]) => void = () => {};
+  /** Liquidations that are new. */
+  onLiquidations: (fresh: Liquidation[]) => void = () => {};
+  /** Liquidations reported by the venues that publish them: kept in memory only (nothing of them is written to the browser's storage). */
+  readonly liquidationStream: LiquidationStream;
   /** The seconds whose taker flow changed, with their totals so far; about once a second. */
   onFlow: (items: FlowUpdate[]) => void = () => {};
   /** The picker's rows, whenever any of them changed. */
@@ -138,7 +143,8 @@ export class Engine {
   readonly #ping: NonNullable<EngineOptions['ping']>;
   readonly #runs = new Map<string, Run>();
   #books: ValuedBook[] = [];
-  readonly #last = new Map<string, { price: number; at: number }>();
+  /** Each instrument's last trade: its price, when it arrived (`at`) and its own time (`t`, what a liquidation is placed by). */
+  readonly #last = new Map<string, { price: number; at: number; t: number }>();
   readonly #candles = new Map<string, LiveCandle>();
   readonly #oiLive = new Map<string, OiRow[]>();
   readonly #oiAsked = new Map<string, number>();
@@ -155,6 +161,7 @@ export class Engine {
     this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale, mergedCacheBins: 500_000 });
     this.footprints = new FootprintRecorder(footprint, now, retentionMs, scale);
     this.printStream = new PrintStream(prints, now, retentionMs, PRINT_FLOOR_USD * scale);
+    this.liquidationStream = new LiquidationStream(null, now, retentionMs, LIQUIDATION_FLOOR_USD * scale);
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
     this.orders = new OrderBuilder(now);
     this.absorption = new AbsorptionRecorder(absorption, now, { retentionMs, floorUsd: GROUP_FLOOR_USD * scale });
@@ -169,8 +176,8 @@ export class Engine {
     for (const venue of this.#venues) {
       const running = this.#runs.get(venue.id);
       if (wanted.has(venue.id) && !running && venue.listed) {
-        const { book, feeds } = venue.make();
-        for (const connector of [book, ...feeds]) { connector.onTrade = this.#trade; connector.start(); }
+        const made = venue.make(), feeds = [...made.feeds, ...(made.liquidations ?? [])], book = made.book;
+        for (const connector of [book, ...feeds]) { connector.onTrade = this.#trade; connector.onLiquidation = this.#liquidation; connector.start(); }
         this.#runs.set(venue.id, { venue, book, feeds, startedAt: now, noBookSince: 0, probe: { ok: null, at: 0, pending: false } });
       } else if (!wanted.has(venue.id) && running) {
         for (const connector of [running.book, ...running.feeds]) connector.stop();
@@ -210,7 +217,7 @@ export class Engine {
     const books = this.#value(now);
     // A pass with no book yet must not use up the sample interval, or the first real sample waits five seconds.
     if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); }
-    if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.flows.flush(); this.absorption.flush(); }
+    if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.liquidationStream.flush(); this.flows.flush(); this.absorption.flush(); }
     if (now - this.#lastFlowPush >= FLOW_SEC) { this.#lastFlowPush = now; const items = this.flows.take(); if (items.length) this.onFlow(items); }
     if (now - this.#lastPrune >= PRUNE_MS) { this.#lastPrune = now; this.recorder.prune(now); }
     this.#pollOi(now);
@@ -221,6 +228,8 @@ export class Engine {
     if (found.groups.length || found.minutes.length) this.onAbsorption(found);
     const fresh = this.printStream.takeFresh();
     if (fresh.length) this.onPrints(fresh);
+    const forced = this.liquidationStream.takeFresh();
+    if (forced.length) this.onLiquidations(forced);
     const previous = this.#books;
     this.#books = books;
     if (books.length !== previous.length || books.some((book, i) => book !== previous[i])) this.onLevels(books, now);
@@ -268,11 +277,14 @@ export class Engine {
     // The fill joins its market order; prints and size statistics are taken from orders once they are complete (`step`).
     for (const f of this.orders.add([{ ...row, order: trade.order }])) this.absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side);
     const now = this.#now();
-    this.#last.set(trade.instrumentId, { price: trade.price, at: now });
+    this.#last.set(trade.instrumentId, { price: trade.price, at: now, t: trade.t });
     const start = Math.floor(trade.t / COLUMN_MS) * COLUMN_MS, candle = this.#candles.get(trade.instrumentId);
     if (!candle || start > candle[0]) this.#candles.set(trade.instrumentId, [start, trade.price, trade.price, trade.price, trade.price, trade.amount]);
     else if (start === candle[0]) { candle[2] = Math.max(candle[2], trade.price); candle[3] = Math.min(candle[3], trade.price); candle[4] = trade.price; candle[5] += trade.amount; }
   };
+
+  /** A liquidation a venue reported: placed at the instrument's last traded price when the venue gives a bankruptcy price. */
+  readonly #liquidation = (event: LiquidationEvent): void => { this.liquidationStream.ingest([event], id => { const last = this.#last.get(id); return last ? { price: last.price, at: last.t } : null; }); };
 
   // ---- Price ----------------------------------------------------------------------------------------------------------------------
 
@@ -334,6 +346,8 @@ export class Engine {
   flow(ids: readonly string[], from: number, to: number): FlowFrame { return this.flows.frame(ids, from, to); }
 
   prints(from: number, to: number, minUsd = this.printStream.floorUsd, limit = PRINTS_PER_ANSWER): Print[] { return this.printStream.query(from, to, Math.max(this.printStream.floorUsd, minUsd), limit); }
+
+  liquidations(from: number, to: number, minUsd = this.liquidationStream.floorUsd, limit = LIQUIDATIONS_PER_ANSWER): Liquidation[] { return this.liquidationStream.query(from, to, Math.max(this.liquidationStream.floorUsd, minUsd), limit); }
 
   /** How the coin is listed on the market an instrument belongs to (none: not this coin's market, so nothing is asked of it). */
   #listing(instrumentId: string) { return this.#coin.markets[venueOf(instrumentId) as MarketVenue]; }

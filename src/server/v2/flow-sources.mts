@@ -1,5 +1,6 @@
 import { BROWSER_VENUES, type BrowserVenue } from '../../shared/venues.ts';
 import type { BookConnector, TradeEvent } from '../../shared/connector.ts';
+import type { LiquidationEvent } from '../../shared/liquidations.ts';
 
 /**
  * Venues whose trades already arrive another way: the feed manager carries Binance's and Hyperliquid's, and the spot markets of Bybit, OKX
@@ -9,7 +10,7 @@ const COVERED: ReadonlySet<string> = new Set(['binance', 'hyperliquid', 'bybitsp
 /** A venue that is no longer wanted keeps its trade socket this long, so a venue picked off and on again does not reconnect. */
 const GRACE_MS = 60_000;
 
-interface Made { book: BookConnector; feeds: BookConnector[] }
+interface Made { book: BookConnector; feeds: BookConnector[]; liquidations?: BookConnector[] }
 
 /**
  * Trades for the flow column, footprint and large-trade bubbles from the venues the feed manager has depth for but no trade feed
@@ -23,7 +24,7 @@ export class FlowSources {
   /** Connectors made but not started: a venue has to be made to tell which instrument it trades, and that one is what starts if the venue is wanted. */
   readonly #spare = new Map<string, Made>();
 
-  constructor(private onTrade: (trade: TradeEvent) => void, private now: () => number = Date.now, private venues: readonly BrowserVenue[] = BROWSER_VENUES) {}
+  constructor(private onTrade: (trade: TradeEvent) => void, private now: () => number = Date.now, private venues: readonly BrowserVenue[] = BROWSER_VENUES, private onLiquidation: (event: LiquidationEvent) => void = () => {}) {}
 
   get active(): string[] { return [...this.#running.keys()]; }
 
@@ -31,7 +32,6 @@ export class FlowSources {
   sync(wanted: ReadonlySet<string>): void {
     const now = this.now();
     for (const venue of this.venues) {
-      if (COVERED.has(venue.id)) continue;
       const run = this.#running.get(venue.id);
       if (run) {
         if (wanted.has(run.instrument)) run.unwantedSince = 0;
@@ -40,11 +40,12 @@ export class FlowSources {
         continue;
       }
       const made = this.#spare.get(venue.id) ?? venue.make(); this.#spare.set(venue.id, made);
+      // A venue whose trades come another way runs only its liquidation feed, if it has one (one with neither stays made and unstarted).
+      const connectors = [...(COVERED.has(venue.id) ? [] : made.feeds.length ? made.feeds : [made.book]), ...(made.liquidations ?? [])];
       const instrument = made.book.instrumentId;
-      if (!wanted.has(instrument)) continue;
+      if (!connectors.length || !wanted.has(instrument)) continue;
       this.#spare.delete(venue.id);
-      const connectors = made.feeds.length ? made.feeds : [made.book];
-      for (const connector of connectors) { connector.onTrade = this.onTrade; connector.start(); }
+      for (const connector of connectors) { connector.onTrade = this.onTrade; connector.onLiquidation = this.onLiquidation; connector.start(); }
       this.#running.set(venue.id, { connectors, instrument, unwantedSince: 0 });
     }
   }

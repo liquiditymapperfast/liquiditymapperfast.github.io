@@ -35,7 +35,8 @@ test('BTC is read exactly as before: the same instruments, addresses and subscri
     'wss://ws.bitget.com/v2/ws/public', 'wss://api.hyperliquid.xyz/ws', 'wss://www.deribit.com/ws/api/v2', 'wss://stream.binance.com:9443/ws/btcusdt@depth@100ms', 'wss://stream.binance.com:9443/ws/btcusdt@aggTrade',
     'wss://ws-feed.exchange.coinbase.com', 'wss://stream.bybit.com/v5/public/spot', 'wss://ws.okx.com:8443/ws/v5/public', 'wss://ws.bitget.com/v2/ws/public', 'wss://contract.mexc.com/edge']);
   const sent = Object.fromEntries(made.map(m => [m.book.id, frames(m.book)]));
-  assert.deepEqual(sent.bybit, [{ op: 'subscribe', args: ['orderbook.1000.BTCUSDT', 'publicTrade.BTCUSDT'] }]);
+  assert.deepEqual(sent.bybit, [{ op: 'subscribe', args: ['orderbook.1000.BTCUSDT', 'publicTrade.BTCUSDT', 'allLiquidation.BTCUSDT'] }], 'and its liquidations on the same socket');
+  assert.deepEqual(made.flatMap(m => m.liquidations ?? []).map(c => inside(c).url()), ['wss://fstream.binance.com/market/stream?streams=btcusdt@forceOrder/btcusdt@markPrice@1s'], 'Binance liquidations on a socket of their own');
   assert.deepEqual(sent.bitget, [{ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'books', instId: 'BTCUSDT' }, { instType: 'USDT-FUTURES', channel: 'trade', instId: 'BTCUSDT' }] }]);
   assert.deepEqual(sent.hyperliquid, [{ method: 'subscribe', subscription: { type: 'l2Book', coin: 'BTC', nSigFigs: 3 } }, { method: 'subscribe', subscription: { type: 'trades', coin: 'BTC' } }]);
   assert.deepEqual(sent.deribit, [{ jsonrpc: '2.0', id: 1, method: 'public/subscribe', params: { channels: ['book.BTC-PERPETUAL.10.20.100ms', 'trades.BTC-PERPETUAL.100ms'] } }]);
@@ -52,10 +53,10 @@ test('every other coin is subscribed by its own names: nothing it asks for says 
     if (c.coin === 'BTC' || c.coin.includes('BTC')) continue;
     for (const venue of browserVenues(c)) {
       if (!venue.listed) { assert.equal(c.markets[venue.id as keyof Coin['markets']], undefined); assert.throws(() => venue.make()); continue; }
-      const { book, feeds } = venue.make();
+      const { book, feeds, liquidations } = venue.make();
       assert.equal(book.instrumentId, instrumentIdFor(venue.id, c), `${c.coin} ${venue.id}`);
       assert.equal(book.base, c.coin);
-      for (const connector of [book, ...feeds]) {
+      for (const connector of [book, ...feeds, ...(liquidations ?? [])]) {
         const said = JSON.stringify([inside(connector).url(), frames(connector), connector.instrumentId]);
         assert.ok(!said.includes('BTC') && !said.includes('btc'), `${c.coin} ${venue.id}: ${said}`);
         checked++;

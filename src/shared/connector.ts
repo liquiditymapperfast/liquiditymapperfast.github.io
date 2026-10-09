@@ -1,6 +1,7 @@
 import type { ValuedBook, SideLevels } from './levels.ts';
 import { gridStepFor } from './grid.ts';
 import { mergeByDistance } from './merge.ts';
+import type { LiquidationEvent } from './liquidations.ts';
 
 export type ConnectorState = 'stopped' | 'connecting' | 'live' | 'error';
 /**
@@ -61,6 +62,8 @@ export abstract class BookConnector {
   failures = 0;
   /** Receives every trade the venue sends on this socket; set by whoever records them. */
   onTrade: (trade: TradeEvent) => void = () => {};
+  /** Receives every liquidation the venue reports on this socket (the venues that publish them: shared/liquidations.ts). */
+  onLiquidation: (event: LiquidationEvent) => void = () => {};
   #socket: WebSocket | null = null;
   #ping: ReturnType<typeof setInterval> | null = null;
   #pending: unknown = null;
@@ -105,6 +108,12 @@ export abstract class BookConnector {
   protected emitTrade(trade: Omit<TradeEvent, 'instrumentId'>): void {
     const unit = this.unit;
     this.onTrade({ instrumentId: this.instrumentId, ...trade, ...(unit === 1 ? {} : { price: trade.price / unit, amount: trade.amount * unit }) });
+  }
+
+  /** Report a liquidation parsed from this venue's frames (price and amount as listed: converted to one coin here, as a trade's are). */
+  protected emitLiquidation(event: Omit<LiquidationEvent, 'instrumentId'>): void {
+    const unit = this.unit;
+    this.onLiquidation({ instrumentId: this.instrumentId, ...event, ...(unit === 1 ? {} : { price: event.price / unit, amount: event.amount * unit }) });
   }
 
   status(): ConnectorStatus { return { state: this.state, lastError: this.lastError, lastFailure: this.lastFailure, lastUpdate: this.lastUpdate, reconnects: this.reconnects, everLive: this.everLive, failures: this.failures }; }

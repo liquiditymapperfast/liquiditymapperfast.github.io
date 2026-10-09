@@ -1,4 +1,5 @@
 import type { Print } from './prints.ts';
+import type { Liquidation } from '../shared/liquidations.ts';
 import type { FlowFrame, FlowMinutesFrame, FlowUpdate } from '../shared/flow.ts';
 import type { ProfileAnswer, RangeAnswer, SizesAnswer, ValueAreaAnswer } from '../shared/footprint.ts';
 import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../shared/absorption.ts';
@@ -20,12 +21,15 @@ export interface TickMessage {
 }
 export interface LayersMessage { t: 'layers'; layers: Record<string, LayerLevel[]> }
 export interface PrintsMessage { t: 'prints'; items: unknown[] }
+export interface LiquidationsMessage { t: 'liquidations'; items: unknown[] }
 export interface LiveHandlers {
   /** `failures` counts the connections lost since the last one that worked; `host` is the place being tried. */
   onOpen(): void; onClose(failures: number, host: string): void;
   onLevels(frame: LevelsFrame): void; onTick(tick: TickMessage): void; onLayers(message: LayersMessage): void;
   /** New large trades, as wire rows (check each with `fromWire`). */
   onPrints(items: unknown[]): void;
+  /** New liquidations, as wire rows (check each with shared/liquidations.ts `fromWire`). */
+  onLiquidations?(items: unknown[]): void;
   /** Taker flow per second for the seconds that changed (about once a second): each replaces what the page had for that second. */
   onFlow?(items: FlowUpdate[]): void;
   /** Absorption groups found and minutes settled (checked already). */
@@ -79,6 +83,8 @@ export interface DataSource {
   /** Large trades in [from, to), oldest first. */
   /** Large market orders in [from, to) from `minUsd` (the recording's floor when absent), the newest few thousand of them. */
   prints(from: number, to: number, minUsd?: number): Promise<Print[]>;
+  /** Liquidations in a window, from the smallest kept or `minUsd` (a server from before them has none). */
+  liquidations?(from: number, to: number, minUsd?: number): Promise<Liquidation[]>;
   columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame>;
   /** Taker buys and sells per second for each instrument over [from, to), from its first recorded minute in that range. */
   flow(ids: string[], from: number, to: number): Promise<FlowFrame>;

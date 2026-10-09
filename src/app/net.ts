@@ -3,9 +3,10 @@ import { decodeFlowFrame, decodeFlowMinutes, type FlowFrame, type FlowMinutesFra
 import { parseProfile, parseRange, parseSizes, parseValueAreas, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from '../shared/footprint.ts';
 import { parseAbsorptionAnswer, parseAbsorptionLive, type AbsorptionAnswer } from '../shared/absorption.ts';
 import { fromWire, type Print } from './prints.ts';
+import { fromWire as liquidationFromWire, type Liquidation } from '../shared/liquidations.ts';
 import { decodeColumns, decodeLevels, type ColumnsFrame } from './wire.ts';
 import type { CandleRow, OiBar } from './store.ts';
-import type { BootstrapState, FootprintResponse, LayersMessage, LiveHandlers, PrintsMessage, TickMessage } from './source.ts';
+import type { BootstrapState, FootprintResponse, LayersMessage, LiquidationsMessage, LiveHandlers, PrintsMessage, TickMessage } from './source.ts';
 import { t } from './i18n.ts';
 
 async function request(path: string): Promise<Response> {
@@ -23,6 +24,12 @@ export async function getCandles(inst: string, tf: string, from: number, to: num
   return body.candles;
 }
 /** Large trades in [from, to), oldest first (malformed rows dropped). */
+/** Liquidations in a window (a server from before them answers 404, which is an error here). */
+export async function getLiquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> {
+  const min = minUsd !== undefined ? `&min=${Math.floor(minUsd)}` : '';
+  const body = await (await request(`/api/v2/liquidations?from=${Math.floor(from)}&to=${Math.ceil(to)}${min}`)).json() as { liquidations?: unknown[] };
+  return (body.liquidations ?? []).flatMap(row => { const l = liquidationFromWire(row); return l ? [l] : []; });
+}
 export async function getPrints(from: number, to: number, minUsd?: number): Promise<Print[]> {
   const min = minUsd !== undefined && Number.isFinite(minUsd) ? `&min=${Math.round(minUsd)}` : '';
   const body = await (await request(`/api/v2/prints?from=${Math.floor(from)}&to=${Math.ceil(to)}${min}`)).json() as { prints?: unknown[] };
@@ -125,6 +132,7 @@ export function connectLive(handlers: LiveHandlers, { silenceMs = 20_000, pollMs
           if (message.t === 'hb') beats = true;
           else if (message.t === 'tick') handlers.onTick(message as TickMessage); else if (message.t === 'layers') handlers.onLayers(message as LayersMessage);
           else if (message.t === 'prints' && Array.isArray((message as PrintsMessage).items)) handlers.onPrints((message as PrintsMessage).items);
+          else if (message.t === 'liquidations' && Array.isArray((message as LiquidationsMessage).items)) handlers.onLiquidations?.((message as LiquidationsMessage).items);
           else if (message.t === 'flow' && Array.isArray((message as { items?: unknown }).items)) handlers.onFlow?.((message as unknown as { items: FlowUpdate[] }).items);
           else if (message.t === 'absorption') { const found = parseAbsorptionLive(message); handlers.onAbsorption?.(found.groups, found.minutes); }
         } else handlers.onLevels(decodeLevels(event.data as ArrayBuffer));
