@@ -1,6 +1,6 @@
 import type { InfoLine } from '../infobox.ts';
 import { price as fmtPrice, usd } from '../format.ts';
-import { t } from '../i18n.ts';
+import { t, tn } from '../i18n.ts';
 
 /** What is known about one price level of the order book, to say what the pointer is on. */
 export interface LevelFacts {
@@ -31,8 +31,11 @@ export function distanceText(price: number, mark: number): string {
 const span = (f: LevelFacts): string => `${fmtPrice(f.low, f.step)} – ${fmtPrice(f.low + f.step, f.step)}`;
 const side = (f: LevelFacts): InfoLine => ({ label: t('Side'), text: f.ask ? t('Ask: sellers waiting') : t('Bid: buyers waiting'), color: f.ask ? 'above' : 'below' });
 
-/** The popup for a whole level (the block of bars at one price, all venues together or one venue's book). */
-export function levelLines(f: LevelFacts): InfoLine[] {
+/**
+ * The popup for a whole level (the block of bars at one price, all venues together or one venue's book), with its venues largest first: the
+ * first `limit` of them (the Compact book, with room for every piece in its bar, names them all).
+ */
+export function levelLines(f: LevelFacts, limit = 4): InfoLine[] {
   const lines: InfoLine[] = [
     { text: f.title ?? t('Order book level'), bold: true },
     { label: t('Price'), text: span(f) },
@@ -43,8 +46,8 @@ export function levelLines(f: LevelFacts): InfoLine[] {
   ];
   if (f.venues.length > 1) {
     const sorted = [...f.venues].sort((a, b) => b.usd - a.usd), total = sorted.reduce((sum, v) => sum + v.usd, 0);
-    sorted.slice(0, 4).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${total > 0 ? Math.round(v.usd / total * 100) : 0}%`, rule: i === 0 }));
-    if (sorted.length > 4) lines.push({ text: t('+{n} more venues', { n: sorted.length - 4 }), color: 'muted' });
+    sorted.slice(0, limit).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${total > 0 ? Math.round(v.usd / total * 100) : 0}%`, rule: i === 0 }));
+    if (sorted.length > limit) lines.push({ text: t('+{n} more venues', { n: sorted.length - limit }), color: 'muted' });
   }
   return lines;
 }
@@ -62,5 +65,23 @@ export function venueCellLines(f: LevelFacts, venue: { name: string; usd: number
   if (f.venues.length > 1) lines.push({ label: t('Rank at this price'), text: t('{rank} of {total}', { rank, total: f.venues.length }) });
   lines.push({ label: t('Distance'), text: distanceText(f.low + f.step / 2, f.mark) });
   lines.push({ label: t('All venues here'), text: `$${usd(f.size)}`, rule: true });
+  return lines;
+}
+
+/**
+ * The popup for the smaller venues' piece at the end of a Compact bar: each of them with its part of the level, so nothing too narrow to draw
+ * is out of reach.
+ */
+export function smallerVenuesLines(f: LevelFacts, venues: readonly { name: string; usd: number }[]): InfoLine[] {
+  const usdSum = venues.reduce((sum, v) => sum + v.usd, 0);
+  const lines: InfoLine[] = [
+    { text: tn(venues.length, '{n} smaller venue', '{n} smaller venues'), bold: true },
+    { label: t('Price'), text: span(f) },
+    side(f),
+    { label: t('Size'), text: `$${usd(usdSum)}`, bold: true },
+    { label: t('Share of level'), text: `${f.size > 0 ? Math.round(usdSum / f.size * 100) : 0}%` },
+  ];
+  venues.slice(0, 10).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${f.size > 0 ? Math.round(v.usd / f.size * 100) : 0}%`, rule: i === 0 }));
+  if (venues.length > 10) lines.push({ text: t('+{n} more venues', { n: venues.length - 10 }), color: 'muted' });
   return lines;
 }

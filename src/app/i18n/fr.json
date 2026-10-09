@@ -898,5 +898,10 @@
  "Above the value area": "Au-dessus de la zone de valeur",
  "Below the value area": "Sous la zone de valeur",
  "Select": "Sélection",
- "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Sélectionnez une zone et additionnez ce qui s'y est négocié : faites glisser sur la carte pour un cadre, ou sur un volet en dessous pour une période. Ctrl+glisser (Cmd sur Mac) sélectionne à tout moment."
+ "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Sélectionnez une zone et additionnez ce qui s'y est négocié : faites glisser sur la carte pour un cadre, ou sur un volet en dessous pour une période. Ctrl+glisser (Cmd sur Mac) sélectionne à tout moment.",
+ "{n} smaller venues": {
+  "one": "{n} plateforme plus petite",
+  "many": "{n} plateformes plus petites",
+  "other": "{n} plateformes plus petites"
+ }
 }

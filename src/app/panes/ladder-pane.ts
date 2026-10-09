@@ -5,7 +5,7 @@ import { setTip } from '../tip.ts';
 import { helpButton } from '../help.ts';
 import { button, checkRow, note, togglePanel, type Panel } from '../ui.ts';
 import type { Kernels } from '../kernels.ts';
-import { PALETTES } from '../theme.ts';
+import { PALETTES, rgb, type Palette } from '../theme.ts';
 import { niceStep } from '../view.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
@@ -15,7 +15,8 @@ import { currentCoin } from '../coin.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorStats } from '../mirror.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
-import { levelLines, venueCellLines, type LevelFacts } from './ladder-info.ts';
+import { levelLines, smallerVenuesLines, venueCellLines, type LevelFacts } from './ladder-info.ts';
+import { barPieces, pieceAt, pieceLabel, rankVenues, type BarPiece } from './ladder-pieces.ts';
 import { t } from '../i18n.ts';
 
 const ROW_H = 17;
@@ -31,6 +32,20 @@ const BOOK_MIN_W = 250;
 const stepText = (step: number): string => step >= 1e-4 ? String(step) : fmtPrice(step, step);
 
 const VENUE_TINT = [1, 0.62, 0.38, 0.8, 0.5, 0.7, 0.3, 0.9];
+/** A Compact bar's piece narrower than this joins the smaller venues' piece at the end of the bar. */
+const PIECE_MIN_PX = 3;
+/** How long the Compact bar keeps its venue order while the venues stay the same (it is made again when they change). */
+const ORDER_HOLD_MS = 300_000;
+/** The venue a book belongs to, as a popup names it: "Binance BTCUSDT". */
+const bookName = (id: string): string => `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`;
+
+/** Text that reads on a piece drawn in `color` at `alpha` over the background: near-black on a light result, white on a dark one. */
+function textOn(color: string, alpha: number, p: Palette): string {
+  const [r, g, b] = rgb(color), [br, bg, bb] = rgb(p.bg), mix = (c: number, base: number) => c * alpha + base * (1 - alpha);
+  const lin = (c: number) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const luminance = 0.2126 * lin(mix(r, br)) + 0.7152 * lin(mix(g, bg)) + 0.0722 * lin(mix(b, bb));
+  return luminance > 0.36 ? '#121418' : '#ffffff';
+}
 
 export { venueLabel };
 
@@ -52,6 +67,8 @@ export class LadderPane {
   #booksButton = document.createElement('button');
   #panel: Panel | null = null;
   #idsKey = '';
+  /** The Compact bar's venue order, the venues it was made for and when (see `#venueOrder`). */
+  #order: { key: string; order: string[]; at: number } | null = null;
   #hover: { x: number; y: number } | null = null;
   /** One notch per mouse click, one per 40 px of a touchpad, and a limit in time on both, so a spin or a swipe cannot throw the zoom to the end (see ladderWheel). */
   #notches = ladderWheel();
@@ -324,12 +341,50 @@ export class LadderPane {
       ids.forEach((id, k) => {
         const idx = g.ids.indexOf(id); if (idx < 0) return;
         const own: Grouped = { ...g, totalBid: g.bid[idx]!, totalAsk: g.ask[idx]! };
-        this.#drawBook(ctx, state, own, { x: k * colW, w: colW, title: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, cells: null, cellW: 0, head, balanceH, cover: coverage(frame.books.find(b => b.id === id), mark), centerBin, rows, markBin, mark, step });
+        this.#drawBook(ctx, state, own, { x: k * colW, w: colW, title: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, cells: null, order: null, cellW: 0, head, balanceH, cover: coverage(frame.books.find(b => b.id === id), mark), centerBin, rows, markBin, mark, step });
         if (k > 0) { ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(k * colW + 0.5, 0); ctx.lineTo(k * colW + 0.5, h); ctx.stroke(); }
       });
     } else {
-      this.#drawBook(ctx, state, g, { x: 0, w: width, title: '', cells: cells ? ids : null, cellW, head, balanceH, cover: null, centerBin, rows, markBin, mark, step });
+      const hiBin = centerBin + Math.floor(rows / 2) - g.bin0;
+      const order = state.ladderMode === 'compact' && ids.length > 1 ? this.#venueOrder(g, hiBin - rows + 1, hiBin) : null;
+      this.#drawBook(ctx, state, g, { x: 0, w: width, title: '', cells: cells ? ids : null, order, cellW, head, balanceH, cover: null, centerBin, rows, markBin, mark, step });
     }
+  }
+
+  /**
+   * The order the Compact bar keeps its venues in: the most liquidity on the rows in view first. It is held while the same venues are on the
+   * book (for `ORDER_HOLD_MS`), so a venue keeps its place on every row and from one frame to the next.
+   */
+  #venueOrder(g: Grouped, loBin: number, hiBin: number): string[] {
+    const key = [...g.ids].sort().join(','), now = Date.now(), held = this.#order;
+    if (held && held.key === key && now - held.at < ORDER_HOLD_MS) return held.order;
+    const totals = new Map<string, number>();
+    g.ids.forEach((id, i) => {
+      let sum = 0;
+      for (let b = Math.max(0, loBin); b <= Math.min(g.nBins - 1, hiBin); b++) sum += (g.bid[i]?.[b] ?? 0) + (g.ask[i]?.[b] ?? 0);
+      totals.set(id, sum);
+    });
+    const order = rankVenues(g.ids, id => totals.get(id) ?? 0);
+    this.#order = { key, order, at: now };
+    return order;
+  }
+
+  /**
+   * A Compact bar's pieces: each venue's part in the bar's order, the shade alternating with its place (so neighbours stay apart) and a hair
+   * of background between them; the smaller venues' piece at the end lighter. A piece wide enough says whose it is, and its size when it fits.
+   */
+  #paintPieces(ctx: CanvasRenderingContext2D, pieces: readonly BarPiece[], y: number, color: string, f: number): void {
+    const p = this.#palette;
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
+    const measure = (text: string): number => ctx.measureText(text).width;
+    for (const piece of pieces) {
+      const alpha = Math.min(1, (piece.rank < 0 ? 0.4 : piece.rank % 2 === 0 ? 0.92 : 0.62) * f), w = Math.max(1, piece.w - (piece.w >= 3 ? 1 : 0));
+      ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.fillRect(piece.x, y + 2, w, ROW_H - 4);
+      ctx.globalAlpha = 1;
+      const label = piece.id ? pieceLabel(piece.id, usd(piece.usd), w, measure) : piece.merged.length > 1 && measure(`+${piece.merged.length}`) + 8 <= w ? `+${piece.merged.length}` : null;
+      if (label) { ctx.fillStyle = textOn(color, alpha, p); ctx.fillText(label, piece.x + 4, y + ROW_H / 2 + 0.5); }
+    }
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
   }
 
   /**
@@ -337,7 +392,7 @@ export class LadderPane {
    * level, and the USD column or a plain bar says the whole level. Null over the price column, empty space and the cumulative area.
    */
   #cellUnder(state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>,
-    o: { x: number; w: number; title: string; cells: string[] | null; head: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number },
+    o: { x: number; w: number; title: string; cells: string[] | null; order: string[] | null; head: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number },
     k: { priceW: number; usdW: number; cw: number; barX: number; barW: number; maxLevel: number }): { lines: InfoLine[]; x: number; y: number; w: number; h: number } | null {
     const hv = this.#hover; if (!hv || this.#drag) return null;
     const { x: x0, w, rows, markBin, step, centerBin, head } = o;
@@ -349,15 +404,23 @@ export class LadderPane {
     const bid = g.totalBid[bin]!, ask = g.totalAsk[bin]!, isAsk = bin > markBin || (bin === markBin && ask > bid), size = isAsk ? ask : bid;
     if (!(size > 0)) return null;
     const y = head + r * ROW_H, ids = o.cells, at = (i: number): number => (isAsk ? g.ask[i] : g.bid[i])?.[bin] ?? 0;
-    const venues = ids ? ids.map((id, i) => ({ name: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, usd: at(i) })) : [];
+    const order = o.order, orderIdx = order ? order.map(id => g.ids.indexOf(id)) : null;
+    const venues = ids ? ids.map((id, i) => ({ name: bookName(id), usd: at(i) })) : order && orderIdx ? order.map((id, n) => ({ name: bookName(id), usd: at(orderIdx[n]!) })) : [];
     const facts: LevelFacts = { low: rowLo, step, mark: o.mark, ask: isAsk, size, cumulative: (isAsk ? cum.ask : cum.bid)[bin] ?? size, venues: venues.filter(v => v.usd > 0), ...(o.title ? { title: o.title } : {}) };
     const cellsX = x0 + k.priceW + k.usdW + 8;
     if (ids && hv.x >= cellsX && hv.x < cellsX + ids.length * k.cw) {
       const i = Math.floor((hv.x - cellsX) / k.cw);
       return at(i) > 0 ? { lines: venueCellLines(facts, venues[i]!), x: cellsX + i * k.cw, y: y + 3, w: Math.max(2, k.cw - 2), h: ROW_H - 6 } : null;
     }
-    if (hv.x >= x0 + k.priceW && hv.x < x0 + k.priceW + k.usdW) return { lines: levelLines(facts), x: x0 + k.priceW, y, w: k.usdW, h: ROW_H };
+    // Compact names every venue of the level (its bar has a piece for each); Aggregated the largest four beside its columns.
+    if (hv.x >= x0 + k.priceW && hv.x < x0 + k.priceW + k.usdW) return { lines: levelLines(facts, order ? 12 : 4), x: x0 + k.priceW, y, w: k.usdW, h: ROW_H };
     if (state.ladderShow === 'cumulative' || hv.x < k.barX) return null;
+    if (order && orderIdx) {
+      const piece = pieceAt(barPieces(order, orderIdx.map(i => at(i)), k.maxLevel, k.barX, k.barW, PIECE_MIN_PX), hv.x);
+      if (!piece) return null;
+      const lines = piece.id ? venueCellLines(facts, { name: bookName(piece.id), usd: piece.usd }) : smallerVenuesLines(facts, piece.merged.map(m => ({ name: bookName(m.id), usd: m.usd })));
+      return { lines, x: piece.x, y: y + 2, w: Math.max(1, piece.w - 0.5), h: ROW_H - 4 };
+    }
     if (ids) {
       let sx = k.barX;
       for (let i = 0; i < ids.length; i++) {
@@ -457,7 +520,7 @@ export class LadderPane {
   }
 
   #drawBook(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped,
-    o: { x: number; w: number; title: string; cells: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
+    o: { x: number; w: number; title: string; cells: string[] | null; order: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
     const p = this.#palette, { x: x0, w, rows, markBin, step, centerBin } = o;
     const cum = cumulative(g, o.mark);
     const dominance = state.highlight.on ? imbalanceByDistance(g, cum, markBin) : null;
@@ -483,6 +546,7 @@ export class LadderPane {
       ctx.textAlign = 'left'; ctx.fillText(state.ladderShow === 'levels' ? t('DEPTH') : t('DEPTH + CUM'), barX, line);
     }
     let maxLevel = 1; const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1);
+    const orderIdx = o.order ? o.order.map(id => g.ids.indexOf(id)) : null;
     for (let i = 0; i < g.nBins; i++) maxLevel = Math.max(maxLevel, g.totalBid[i]!, g.totalAsk[i]!);
     if (state.ladderShow !== 'levels') this.#paintCumulative(ctx, g, cum, o, barX, barW, maxCum, weight);
     if (o.balanceH > 0) this.#paintBalance(ctx, g, cum, o, x0, w);
@@ -507,7 +571,9 @@ export class LadderPane {
         if (vv > 0) { ctx.globalAlpha = Math.min(1, (0.18 + 0.82 * Math.sqrt(vv / maxLevel)) * f); ctx.fillStyle = color; ctx.fillRect(x0 + priceW + usdW + 8 + k * cw, y + 3, Math.max(2, cw - 2), ROW_H - 6); ctx.globalAlpha = 1; }
       });
       if (state.ladderShow !== 'cumulative' && value > 0) {
-        if (cellIds) {
+        if (orderIdx && o.order) {
+          this.#paintPieces(ctx, barPieces(o.order, orderIdx.map(i => (isAsk ? g.ask[i] : g.bid[i])?.[bin] ?? 0), maxLevel, barX, barW, PIECE_MIN_PX), y, color, f);
+        } else if (cellIds) {
           let x = barX;
           cellIds.forEach((_, k) => {
             const vv = (isAsk ? g.ask[k] : g.bid[k])?.[bin] ?? 0; if (vv <= 0) return;

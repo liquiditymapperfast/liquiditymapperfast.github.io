@@ -904,5 +904,11 @@
  "Above the value area": "Выше зоны стоимости",
  "Below the value area": "Ниже зоны стоимости",
  "Select": "Выделить",
- "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Выделите область и сложите то, что там торговалось: проведите по карте для прямоугольника или по панели под ней для отрезка времени. Ctrl+перетаскивание (Cmd на Mac) выделяет в любой момент."
+ "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Выделите область и сложите то, что там торговалось: проведите по карте для прямоугольника или по панели под ней для отрезка времени. Ctrl+перетаскивание (Cmd на Mac) выделяет в любой момент.",
+ "{n} smaller venues": {
+  "one": "{n} небольшая биржа",
+  "few": "{n} небольшие биржи",
+  "many": "{n} небольших бирж",
+  "other": "{n} небольшой биржи"
+ }
 }

@@ -892,5 +892,9 @@
  "Above the value area": "Değer alanının üstünde",
  "Below the value area": "Değer alanının altında",
  "Select": "Seç",
- "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Bir alan seçin ve orada işlem göreni toplayın: kutu için haritada, bir zaman aralığı için altındaki bir panelde sürükleyin. Ctrl+sürükle (Mac'te Cmd) her zaman seçer."
+ "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "Bir alan seçin ve orada işlem göreni toplayın: kutu için haritada, bir zaman aralığı için altındaki bir panelde sürükleyin. Ctrl+sürükle (Mac'te Cmd) her zaman seçer.",
+ "{n} smaller venues": {
+  "one": "{n} küçük borsa",
+  "other": "{n} küçük borsa"
+ }
 }

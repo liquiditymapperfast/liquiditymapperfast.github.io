@@ -874,5 +874,6 @@
  "Above the value area": "バリューエリアより上",
  "Below the value area": "バリューエリアより下",
  "Select": "選択",
- "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "範囲を選択して、そこで取引されたものを集計します。マップをドラッグすると四角形、その下のパネルをドラッグすると期間を選択します。Ctrl+ドラッグ（Mac では Cmd）でいつでも選択できます。"
+ "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "範囲を選択して、そこで取引されたものを集計します。マップをドラッグすると四角形、その下のパネルをドラッグすると期間を選択します。Ctrl+ドラッグ（Mac では Cmd）でいつでも選択できます。",
+ "{n} smaller venues": "小さめの取引所 {n} 件"
 }
