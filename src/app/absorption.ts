@@ -149,7 +149,7 @@ export function markLines(marks: readonly AbsorptionMark[], s: AbsorptionSetting
   lines.push({ text: passiveText(side, total), wrap: true });
   if (marks.length === 1) {
     const m = marks[0]!, symbol = m.id.split(':').slice(1).join(':');
-    lines.push({ label: t('Venue'), text: `${venueLabel(m.id)} ${symbol}`, rule: true }, { label: t('Price'), text: fmtPrice(m.price) });
+    lines.push({ label: t('Venue'), text: `${venueLabel(m.id)} ${symbol}`, rule: true, mark: m.id }, { label: t('Price'), text: fmtPrice(m.price) });
     lines.push({ label: t('Time'), text: m.t1 > m.t0 ? `${precise(m.t0)} +${m.t1 - m.t0} ms` : precise(m.t0) });
     lines.push({ label: t('Fills'), text: String(m.fills) }, { label: t('Largest window'), text: `$${usd(m.peak)}` });
     lines.push({ label: t('Threshold'), text: thresholdText(s, m.threshold) });

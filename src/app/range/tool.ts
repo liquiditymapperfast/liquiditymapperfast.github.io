@@ -10,6 +10,7 @@ import { gridStepFor } from '../../shared/grid.ts';
 import { t } from '../i18n.ts';
 import { draftOf, follow, refreshMs, rowStep, snap, type RangeSelection } from './selection.ts';
 import { rangeLines, type RangeInput, type RangeLine } from './stats.ts';
+import { venueMark } from '../venue-marks.ts';
 
 /**
  * The panel's lines, kept as elements: a line is built again only when what it says changes, and the list is put in order only when the
@@ -22,7 +23,7 @@ export class LineList {
   update(lines: readonly RangeLine[]): void {
     const next: HTMLElement[] = [], keep = new Set<string>();
     for (const line of lines) {
-      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone]);
+      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark]);
       let held = this.#nodes.get(line.key);
       if (!held || held.sig !== sig) { held = { node: lineNode(line), sig }; this.#nodes.set(line.key, held); }
       keep.add(line.key); next.push(held.node);
@@ -46,7 +47,7 @@ function lineNode(line: RangeLine): HTMLElement {
       return el('div', { class: 'range-split' }, bar, el('div', { class: 'range-split-labels' }, el('span', { class: 'buy', textContent: line.cells[0] ?? '' }), el('span', { class: 'sell', textContent: line.cells[1] ?? '' })));
     }
     case 'row': {
-      const row = el('div', { class: `range-row${tone}` }, ...line.cells.map(text => el('span', { textContent: text })));
+      const row = el('div', { class: `range-row${tone}` }, ...line.cells.map((text, i) => i === 0 && line.mark ? el('span', {}, venueMark(line.mark, 13), text) : el('span', { textContent: text })));
       if (line.bars) {
         const [buy, sell] = line.bars, cells = row.children;
         (cells[1] as HTMLElement).classList.add('bar', 'buy'); (cells[1] as HTMLElement).style.setProperty('--w', `${(buy * 100).toFixed(1)}%`);

@@ -32,6 +32,7 @@ import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheel
 import { t } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
+import { drawVenueMark } from '../venue-marks.ts';
 import { draftLabel } from '../range/stats.ts';
 import type { RangePoint, RangeTool } from '../range/tool.ts';
 
@@ -567,7 +568,8 @@ export class HeatPane {
    * Large executed trades as bubbles at their time and price, coloured by the side that took liquidity, their area in proportion to the
    * notional with the largest in view the biggest (see bubbleRadius). Only the
    * biggest few hundred in view are drawn, so zooming out keeps the picture about size; trades at or above the whale tier get a glow.
-   * They fade under the footprint, whose rows say the same thing in more detail.
+   * They fade under the footprint, whose rows say the same thing in more detail. A bubble large enough carries its exchange's mark, and
+   * while the pointer is on one, the bubbles of the other venues step back and that venue's own are ringed: where else it traded.
    */
   #paintBubbles(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#bubbles = [];
@@ -583,13 +585,28 @@ export class HeatPane {
     ctx.save();
     const ordered = [...visible].sort((a, b) => a.usd - b.usd), largest = ordered[ordered.length - 1]!.usd;
     for (const print of ordered) {
-      const x = v.xOf(print.t, pw), y = v.yOf(print.price, ph), r = bubbleRadius(print.usd, largest) * s.scale, color = print.side === 'buy' ? p.bid : p.ask;
+      const x = v.xOf(print.t, pw), y = v.yOf(print.price, ph), r = bubbleRadius(print.usd, largest) * s.scale;
       if (x < -r || x > pw + r) continue;
       this.#bubbles.push({ x, y, r, print });
-      ctx.globalAlpha = s.opacity * fade; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.95 * fade; ctx.lineWidth = print.usd >= whale ? 1.8 : 1; ctx.strokeStyle = print.usd >= whale ? (p.dark ? '#ffffff' : '#14171c') : color;
-      if (print.usd >= whale) { ctx.shadowColor = color; ctx.shadowBlur = 10; }
+    }
+    const focus = this.#bubbleFocus(state, pw, ph), venueOf = (print: Print): string => print.id.slice(0, print.id.indexOf(':'));
+    const dim = (print: Print): number => focus !== null && venueOf(print) !== focus ? 0.2 : 1;
+    for (const { x, y, r, print } of this.#bubbles) {
+      const color = print.side === 'buy' ? p.bid : p.ask, k = dim(print);
+      ctx.globalAlpha = s.opacity * fade * k; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.95 * fade * k; ctx.lineWidth = print.usd >= whale ? 1.8 : 1; ctx.strokeStyle = print.usd >= whale ? (p.dark ? '#ffffff' : '#14171c') : color;
+      if (print.usd >= whale && k === 1) { ctx.shadowColor = color; ctx.shadowBlur = 10; }
       ctx.stroke(); ctx.shadowBlur = 0;
+      // The hovered venue's bubbles, ringed in the text colour a little outside their own edge.
+      if (focus !== null && k === 1) { ctx.globalAlpha = fade; ctx.lineWidth = 1.5; ctx.strokeStyle = p.text; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+    }
+    // The exchange's mark in each bubble that can hold it; with sizes written too, the mark goes above the middle and the size below it.
+    const MARK_MIN_R = 7, BOTH_MIN_R = 16, markSize = (r: number): number => Math.min(18, Math.max(10, Math.round(r * 0.9)));
+    if (s.marks) for (const b of this.#bubbles) {
+      if (b.r < MARK_MIN_R) continue;
+      const size = markSize(b.r);
+      ctx.globalAlpha = fade * (dim(b.print) < 1 ? 0.35 : 1);
+      drawVenueMark(ctx, b.print.id, b.x, s.labels && b.r >= BOTH_MIN_R ? b.y - size * 0.45 : b.y, size);
     }
     // The size written in each bubble that can hold it, the largest first; one that would run into another's is left to the hover box.
     if (s.labels) {
@@ -598,12 +615,17 @@ export class HeatPane {
       ctx.strokeStyle = p.dark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)'; ctx.fillStyle = p.text;
       for (let i = this.#bubbles.length - 1; i >= 0; i--) {
         const b = this.#bubbles[i]!, label = `$${usd(b.print.usd)}`, size = Math.min(12, Math.max(9, b.r * 0.5));
+        // A bubble with a mark in its middle writes its size under the mark, if it is large enough for both, and otherwise not at all.
+        const marked = s.marks && b.r >= MARK_MIN_R;
+        if (marked && b.r < BOTH_MIN_R) continue;
+        const ly = marked ? b.y + markSize(b.r) * 0.55 + size * 0.2 : b.y;
         ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
         const w = ctx.measureText(label).width;
         if (w > 2 * b.r - 4) continue;
-        const box = { x0: b.x - w / 2, x1: b.x + w / 2, y0: b.y - size / 2, y1: b.y + size / 2 };
+        const box = { x0: b.x - w / 2, x1: b.x + w / 2, y0: ly - size / 2, y1: ly + size / 2 };
         if (placed.some(q => q.x0 < box.x1 && box.x0 < q.x1 && q.y0 < box.y1 && box.y0 < q.y1)) continue;
-        placed.push(box); ctx.strokeText(label, b.x, b.y); ctx.fillText(label, b.x, b.y);
+        ctx.globalAlpha = fade * dim(b.print);
+        placed.push(box); ctx.strokeText(label, b.x, ly); ctx.fillText(label, b.x, ly);
       }
     }
     ctx.restore();
@@ -909,7 +931,7 @@ export class HeatPane {
     } else if (hit) { // a large trade under the pointer: say what it was
       const { print } = hit, venue = venueLabel(print.id), symbol = print.id.split(':').slice(1).join(':'), buy = print.side === 'buy';
       const lines: InfoLine[] = [
-        { text: `${buy ? t('BUY') : t('SELL')}  $${usd(print.usd)}`, bold: true, color: buy ? 'buy' : 'sell' },
+        { text: `${buy ? t('BUY') : t('SELL')}  $${usd(print.usd)}`, bold: true, color: buy ? 'buy' : 'sell', mark: print.id },
         { label: t('Venue'), text: `${venue} ${symbol}` },
         ...printPriceLines(print),
         { label: t('Time'), text: `${clock(print.t, true)}:${String(new Date(print.t).getSeconds()).padStart(2, '0')}` },
@@ -1094,6 +1116,18 @@ export class HeatPane {
   #absorptionAt(x: number, y: number): { marks: AbsorptionMark[]; s: number; y: number } | null {
     for (let i = this.#absorptionIcons.length - 1; i >= 0; i--) { const icon = this.#absorptionIcons[i]!; if (Math.abs(icon.x - x) <= icon.s / 2 + 3 && Math.abs(icon.y - y) <= icon.s / 2 + 3) return icon; }
     return null;
+  }
+
+  /**
+   * The venue whose bubble the pointer is on (an absorption mark under the pointer comes first, as the popup has it), or null. The bubbles
+   * have their places for this frame already.
+   */
+  #bubbleFocus(state: AppState, pw: number, ph: number): string | null {
+    const hv = state.hover; if (!hv || hv.source !== 'heat' || hv.price === null) return null;
+    const x = this.view.xOf(hv.t, pw), y = this.view.yOf(hv.price, ph);
+    if (x < 0 || x > pw || y < 0 || y > ph || this.#absorptionAt(x, y)) return null;
+    const hit = this.#bubbleAt(x, y);
+    return hit ? hit.print.id.slice(0, hit.print.id.indexOf(':')) : null;
   }
 
   /** The drawn bubble nearest the pointer, if the pointer is on it (a few pixels of slack for the small ones). */

@@ -875,5 +875,7 @@
  "Below the value area": "バリューエリアより下",
  "Select": "選択",
  "Select an area and add up what traded there: drag across the map for a box, or across a pane under it for a stretch of time. Ctrl+drag (Cmd on a Mac) selects at any time.": "範囲を選択して、そこで取引されたものを集計します。マップをドラッグすると四角形、その下のパネルをドラッグすると期間を選択します。Ctrl+ドラッグ（Mac では Cmd）でいつでも選択できます。",
- "{n} smaller venues": "小さめの取引所 {n} 件"
+ "{n} smaller venues": "小さめの取引所 {n} 件",
+ "Show the exchange in each bubble": "各バブルに取引所を表示",
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "収まる大きさのバブルの中央にその取引所のマークを表示します。バブルにカーソルを合わせると他の取引所が控えめになり、その取引所が約定した場所が目立ちます。"
 }

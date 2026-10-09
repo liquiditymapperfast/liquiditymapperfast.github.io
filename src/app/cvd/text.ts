@@ -11,7 +11,8 @@ export const signedUsd = (value: number): string => !Number.isFinite(value) ? '�
 export const plainUsd = (value: number): string => Number.isFinite(value) ? `$${usd(value)}` : '–';
 
 /** One line of a row's label: its text, which colour it takes, and a coloured dot ahead of it (the lane's line colour). */
-export interface LabelLine { text: string; tone: 'text' | 'muted'; bold?: boolean; dot?: Kind }
+/** `mark`: the exchange whose mark goes before the text (the row's name line). */
+export interface LabelLine { text: string; tone: 'text' | 'muted'; bold?: boolean; dot?: Kind; mark?: string }
 
 /** The ranking window as a short name: "1H". */
 export const windowName = (rankSec: number): string => rankSec >= 86_400 ? `${Math.round(rankSec / 86_400)}D` : rankSec >= 3_600 ? `${Math.round(rankSec / 3_600)}H` : `${Math.round(rankSec / 60)}M`;
@@ -25,7 +26,7 @@ const letter = (kind: Kind): string => kind === 'spot' ? t('S') : t('P');
  */
 export function rowLabel(row: FamilyRow, window: string, height: number, showQuiet: boolean): LabelLine[] {
   const lines = Math.max(2, Math.floor((height - 6) / 12));
-  const head: LabelLine = { text: `#${row.rank} ${venueLabel(row.key).toUpperCase()}${showQuiet && row.quiet ? ' !5m' : ''}`, tone: 'text', bold: true };
+  const head: LabelLine = { text: `#${row.rank} ${venueLabel(row.key).toUpperCase()}${showQuiet && row.quiet ? ' !5m' : ''}`, tone: 'text', bold: true, mark: row.key };
   const lanes = row.lanes.map(l => ({ text: `${letter(l.kind)} ${signedUsd(l.delta)}`, tone: 'text' as const, dot: l.kind }));
   const share: LabelLine = { text: `${Math.round(row.share * 100)}% · ${plainUsd(row.gross)}`, tone: 'muted' };
   if (lines >= 2 + lanes.length) return [head, ...lanes, share];

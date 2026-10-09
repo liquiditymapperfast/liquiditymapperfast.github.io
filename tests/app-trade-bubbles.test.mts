@@ -9,8 +9,9 @@ const MIN = 60_000, T0 = 1_800_000_000_000;
 
 test('saved bubble settings are read field by field: a minimum that is not a choice is the nearest under it', () => {
   assert.deepEqual(readBubbles(undefined), BUBBLE_DEFAULTS);
-  assert.deepEqual(readBubbles({ minUsd: 300_000, side: 'sell', scale: 1.34, opacity: 0.33, labels: true }), { minUsd: 250_000, side: 'sell', scale: 1.3, opacity: 0.35, labels: true });
-  assert.deepEqual(readBubbles({ minUsd: 10, side: 'left', scale: 9, opacity: 0, labels: 'yes' }), { minUsd: 25_000, side: 'both', scale: 2, opacity: 0.1, labels: false });
+  assert.deepEqual(readBubbles({ minUsd: 300_000, side: 'sell', scale: 1.34, opacity: 0.33, labels: true }), { minUsd: 250_000, side: 'sell', scale: 1.3, opacity: 0.35, labels: true, marks: true });
+  assert.equal(readBubbles({ marks: false }).marks, false, 'the marks can be switched off');
+  assert.deepEqual(readBubbles({ minUsd: 10, side: 'left', scale: 9, opacity: 0, labels: 'yes' }), { minUsd: 25_000, side: 'both', scale: 2, opacity: 0.1, labels: false, marks: true });
   assert.equal(readBubbles({ minUsd: 5e9 }).minUsd, 2_500_000);
   assert.equal(readBubbles({ minUsd: Number.NaN }).minUsd, 25_000);
 });

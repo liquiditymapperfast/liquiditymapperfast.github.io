@@ -293,6 +293,15 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .panel-body { overflow-y: auto; padding: 2px 14px 14px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; min-height: 0; }
 .panel h4 { margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 .panel-note { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+/* An exchange's mark (venue-marks.ts) beside its name: its brand colour and monogram, a notch in the corner for a spot market. Drawn, not an image. */
+.venue-mark { display: inline-grid; place-items: center; position: relative; flex: 0 0 auto; vertical-align: -2px; overflow: hidden; border-radius: 2px;
+  background: var(--mark-bg); color: var(--mark-fg); font-style: normal; font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mark-fg) 28%, transparent); }
+.venue-mark::before { content: attr(data-mark); }
+.venue-mark.spot::after { content: ""; position: absolute; right: 0; bottom: 0; width: 32%; height: 32%; background: linear-gradient(135deg, transparent 50%, var(--mark-fg) 50%); }
+.chip .venue-mark { margin-right: 5px; }
+.range-row .venue-mark { margin-right: 5px; }
+.panel h4 .venue-mark { margin-right: 6px; vertical-align: -3px; }
 /* The Traded panel's session list (traded/panel.ts): one row a session, wrapping on a narrow sheet. The remove glyph is drawn, not typed. */
 .session-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .session-row .session-name { flex: 1 1 90px; min-width: 70px; }

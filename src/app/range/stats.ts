@@ -46,6 +46,8 @@ export interface RangeLine {
   share?: number;
   /** A row's bars, buys then sells, each 0..1 of the longest. */
   bars?: [number, number];
+  /** The exchange whose mark goes before a row's first cell. */
+  mark?: string;
   tone?: 'buy' | 'sell' | 'muted';
 }
 
@@ -156,9 +158,9 @@ function whoLines(answer: RangeAnswer, kind: RangeInput['kind'], total: number):
   const sorted = [...families].sort((a, b) => (b[1].buy + b[1].sell) - (a[1].buy + a[1].sell));
   const out: RangeLine[] = [{ key: 'h-who', kind: 'heading', cells: [t('By exchange')] }];
   const largest = sorted.length ? sorted[0]![1].buy + sorted[0]![1].sell : 1;
-  const row = (key: string, name: string, f: { buy: number; sell: number }): RangeLine => ({ key: `who-${key}`, kind: 'row', cells: [name, money(f.buy), money(f.sell), pct((f.buy + f.sell) / total)], bars: [f.buy / largest, f.sell / largest] });
+  const row = (key: string, name: string, f: { buy: number; sell: number }, mark?: string): RangeLine => ({ key: `who-${key}`, kind: 'row', cells: [name, money(f.buy), money(f.sell), pct((f.buy + f.sell) / total)], bars: [f.buy / largest, f.sell / largest], ...(mark ? { mark } : {}) });
   out.push({ key: 'who-head', kind: 'row', tone: 'muted', cells: [t('Exchange'), t('Bought'), t('Sold'), t('Share')] });
-  for (const [key, f] of sorted.slice(0, 6)) out.push(row(key, venueLabel(key), f));
+  for (const [key, f] of sorted.slice(0, 6)) out.push(row(key, venueLabel(key), f, key));
   const rest = sorted.slice(6);
   if (rest.length) out.push(row('rest', tn(rest.length, '{n} other', '{n} others'), rest.reduce((a, [, f]) => ({ buy: a.buy + f.buy, sell: a.sell + f.sell }), { buy: 0, sell: 0 })));
   if (lanes.spot + lanes.perp > 0) out.push({ key: 'lanes', kind: 'stat', cells: [t('Spot · perpetual'), `${pct(lanes.spot / (lanes.spot + lanes.perp))} · ${pct(lanes.perp / (lanes.spot + lanes.perp))}`] });

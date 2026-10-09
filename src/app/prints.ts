@@ -119,10 +119,11 @@ export function bubbleRadius(usd: number, largest: number): number {
  * how solid they are, and whether bubbles big enough to hold it carry their size written in them. They change only the bubbles: sounds and
  * the flow column's dots keep their own sizes.
  */
-export interface BubbleSettings { minUsd: number; side: 'both' | 'buy' | 'sell'; scale: number; opacity: number; labels: boolean }
+/** `marks`: the exchange's mark in each bubble large enough to hold it. */
+export interface BubbleSettings { minUsd: number; side: 'both' | 'buy' | 'sell'; scale: number; opacity: number; labels: boolean; marks: boolean }
 /** The smallest orders a person can choose to see: the recording keeps every one from $25,000. */
 export const BUBBLE_MINIMUMS: readonly number[] = [25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000];
-export const BUBBLE_DEFAULTS: Readonly<BubbleSettings> = { minUsd: 25_000, side: 'both', scale: 1, opacity: 0.5, labels: false };
+export const BUBBLE_DEFAULTS: Readonly<BubbleSettings> = { minUsd: 25_000, side: 'both', scale: 1, opacity: 0.5, labels: false, marks: true };
 export const BUBBLE_LIMITS = { scale: { min: 0.5, max: 2, step: 0.1 }, opacity: { min: 0.1, max: 0.9, step: 0.05 } } as const;
 
 /** Saved settings, each field checked (anything else is the default; a minimum that is not one of the choices is the nearest under it). */
@@ -137,6 +138,7 @@ export function readBubbles(saved: unknown): BubbleSettings {
     scale: Number(within(s.scale, L.scale.min, L.scale.max, L.scale.step, d.scale).toFixed(1)),
     opacity: Number(within(s.opacity, L.opacity.min, L.opacity.max, L.opacity.step, d.opacity).toFixed(2)),
     labels: typeof s.labels === 'boolean' ? s.labels : d.labels,
+    marks: typeof s.marks === 'boolean' ? s.marks : d.marks,
   };
 }
 

@@ -903,5 +903,7 @@
   "one": "{n} exchange menor",
   "many": "{n} exchanges menores",
   "other": "{n} exchanges menores"
- }
+ },
+ "Show the exchange in each bubble": "Mostrar a exchange em cada bolha",
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "A sua marca no centro de cada bolha grande o suficiente para a conter. Passe sobre uma bolha e as outras exchanges recuam, para que se destaquem os sítios onde essa exchange negociou."
 }

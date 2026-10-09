@@ -34,6 +34,7 @@ import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from '
 import { t, tn } from './i18n.ts';
 import { coinChoice, currentCoin, scaledUsd, unscaledUsd } from './coin.ts';
 import { buildTradedPanel } from './traded/panel.ts';
+import { venueMark } from './venue-marks.ts';
 import { gridStepFor } from '../shared/grid.ts';
 
 /** How a timeframe is said in a tooltip. */
@@ -350,8 +351,8 @@ export class Toolbar {
     this.#scope.classList.toggle('inert', shown !== 'aggregated');
     // The full bar shows a handful of chips and puts the rest in a menu; the phone's Settings sheet has room for every one.
     const plan = chipPlan(venues, compactBar() ? Infinity : INLINE_CHIPS);
-    const chipOf = (v: string): HTMLElement => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), textContent: venueLabel(v), tip: t('Show / hide this venue'),
-      onclick: () => this.store.set(chipClick(this.store.state, v)) });
+    const chipOf = (v: string): HTMLElement => el('button', { class: (state.disabledVenues.includes(v) ? 'chip off' : 'chip') + (scoped(v) ? '' : ' scoped-out'), tip: t('Show / hide this venue'),
+      onclick: () => this.store.set(chipClick(this.store.state, v)) }, venueMark(v, 13), venueLabel(v));
     const chipKey = venues.map(v => v + (state.disabledVenues.includes(v) ? '-' : '+') + (scoped(v) ? 's' : 'x')).join(',') + '|' + plan.shown.length;
     if (this.#chips.dataset.key !== chipKey) {
       this.#chips.dataset.key = chipKey;
@@ -382,7 +383,8 @@ export class Toolbar {
       el('button', { type: 'button', textContent: t('All off'), tip: t('Hide every venue'), onclick: () => this.store.set({ disabledVenues: [...venues] }) }));
     body.replaceChildren(note(t('Chips are switches: a venue that is off keeps its book but is left out of the map, the book and the flow column.')));
     for (const group of exchangeGroups(venues)) {
-      body.append(heading(venueLabel(group.key)));
+      const head = heading(venueLabel(group.key)); head.prepend(venueMark(group.key, 13));
+      body.append(head);
       for (const v of group.venues) body.append(checkRow(venueLabel(v), scopedOut(this.store.state, v) ? t('Hidden by the Spot / Perp filter') : t('Show on the map'), !this.store.state.disabledVenues.includes(v), () => { this.store.set(chipClick(this.store.state, v)); }));
     }
   }
@@ -474,6 +476,7 @@ export class Toolbar {
       rangeRow(t('Bubble size'), t('Every bubble larger or smaller; their sizes keep their proportions.'), { min: L.scale.min, max: L.scale.max, step: L.scale.step, value: b.scale, format: v => `×${v.toFixed(1)}` }, scale => set({ scale })),
       rangeRow(t('Opacity'), t('How solid the bubbles are: lower lets the map and the candles show through.'), { min: L.opacity.min, max: L.opacity.max, step: L.opacity.step, value: b.opacity, format: v => `${Math.round(v * 100)}%` }, opacity => set({ opacity })),
       switchRow(t('Write the size in large bubbles'), t('Only bubbles big enough to hold the number get one, so zooming out drops them; hover or tap any bubble for its size.'), b.labels, labels => set({ labels })),
+      switchRow(t('Show the exchange in each bubble'), t('Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.'), b.marks, marks => set({ marks })),
     );
     const whale = this.store.state.sounds.tiers[2]?.usd;
     if (whale) body.append(note(t('Orders from the Whale size in Sounds ({value}) get a bright ring.', { value: `$${usd(scaledUsd(whale))}` })));

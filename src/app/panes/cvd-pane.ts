@@ -29,6 +29,7 @@ import { CvdStrip } from './cvd-strip.ts';
 import type { Print } from '../prints.ts';
 import { t } from '../i18n.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
+import { drawVenueMark } from '../venue-marks.ts';
 import type { RangeTool } from '../range/tool.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -426,6 +427,7 @@ export class CvdPane {
     label.forEach((line, i) => {
       const ly = first + i * LINE_H;
       let x = PAD;
+      if (line.mark) { drawVenueMark(ctx, line.mark, x + 6, ly, 12); x += 16; }
       if (line.dot) { ctx.fillStyle = line.dot === 'spot' ? colors.spot : colors.perp; ctx.beginPath(); ctx.arc(x + 3, ly, 3, 0, Math.PI * 2); ctx.fill(); x += 11; }
       ctx.font = line.bold ? `600 11px ${SANS}` : `11px ${line.dot ? MONO : SANS}`;
       ctx.fillStyle = line.tone === 'muted' ? p.muted : p.text;

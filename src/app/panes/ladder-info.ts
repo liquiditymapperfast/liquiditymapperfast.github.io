@@ -15,8 +15,8 @@ export interface LevelFacts {
   size: number;
   /** The running total from the mark out to and including this level, USD. */
   cumulative: number;
-  /** Each venue's part of the level, any order (venues with nothing there left out). */
-  venues: readonly { name: string; usd: number }[];
+  /** Each venue's part of the level, any order (venues with nothing there left out); `id`, the book's instrument, gives its line the venue's mark. */
+  venues: readonly { name: string; usd: number; id?: string }[];
   /** A book that belongs to one venue says which. */
   title?: string;
 }
@@ -46,17 +46,17 @@ export function levelLines(f: LevelFacts, limit = 4): InfoLine[] {
   ];
   if (f.venues.length > 1) {
     const sorted = [...f.venues].sort((a, b) => b.usd - a.usd), total = sorted.reduce((sum, v) => sum + v.usd, 0);
-    sorted.slice(0, limit).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${total > 0 ? Math.round(v.usd / total * 100) : 0}%`, rule: i === 0 }));
+    sorted.slice(0, limit).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${total > 0 ? Math.round(v.usd / total * 100) : 0}%`, rule: i === 0, ...(v.id ? { mark: v.id } : {}) }));
     if (sorted.length > limit) lines.push({ text: t('+{n} more venues', { n: sorted.length - limit }), color: 'muted' });
   }
   return lines;
 }
 
 /** The popup for one venue's part of a level (a coloured cell in a venue's column, or its piece of the bar). */
-export function venueCellLines(f: LevelFacts, venue: { name: string; usd: number }): InfoLine[] {
+export function venueCellLines(f: LevelFacts, venue: { name: string; usd: number; id?: string }): InfoLine[] {
   const ranked = [...f.venues].sort((a, b) => b.usd - a.usd), rank = 1 + ranked.filter(v => v.usd > venue.usd).length;
   const lines: InfoLine[] = [
-    { text: venue.name, bold: true },
+    { text: venue.name, bold: true, ...(venue.id ? { mark: venue.id } : {}) },
     { label: t('Price'), text: span(f) },
     side(f),
     { label: t('Size'), text: `$${usd(venue.usd)}`, bold: true },
@@ -72,7 +72,7 @@ export function venueCellLines(f: LevelFacts, venue: { name: string; usd: number
  * The popup for the smaller venues' piece at the end of a Compact bar: each of them with its part of the level, so nothing too narrow to draw
  * is out of reach.
  */
-export function smallerVenuesLines(f: LevelFacts, venues: readonly { name: string; usd: number }[]): InfoLine[] {
+export function smallerVenuesLines(f: LevelFacts, venues: readonly { name: string; usd: number; id?: string }[]): InfoLine[] {
   const usdSum = venues.reduce((sum, v) => sum + v.usd, 0);
   const lines: InfoLine[] = [
     { text: tn(venues.length, '{n} smaller venue', '{n} smaller venues'), bold: true },
@@ -81,7 +81,7 @@ export function smallerVenuesLines(f: LevelFacts, venues: readonly { name: strin
     { label: t('Size'), text: `$${usd(usdSum)}`, bold: true },
     { label: t('Share of level'), text: `${f.size > 0 ? Math.round(usdSum / f.size * 100) : 0}%` },
   ];
-  venues.slice(0, 10).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${f.size > 0 ? Math.round(v.usd / f.size * 100) : 0}%`, rule: i === 0 }));
+  venues.slice(0, 10).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${f.size > 0 ? Math.round(v.usd / f.size * 100) : 0}%`, rule: i === 0, ...(v.id ? { mark: v.id } : {}) }));
   if (venues.length > 10) lines.push({ text: t('+{n} more venues', { n: venues.length - 10 }), color: 'muted' });
   return lines;
 }

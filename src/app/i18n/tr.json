@@ -896,5 +896,7 @@
  "{n} smaller venues": {
   "one": "{n} küçük borsa",
   "other": "{n} küçük borsa"
- }
+ },
+ "Show the exchange in each bubble": "Her balonda borsayı göster",
+ "Its mark in the middle of every bubble large enough to hold it. Hover a bubble and the other venues step back, so the places that venue traded stand out.": "Sığacak kadar büyük her balonun ortasında borsanın işareti. Bir balonun üzerine gelin, diğer borsalar geri çekilir ve o borsanın işlem yaptığı yerler öne çıkar."
 }

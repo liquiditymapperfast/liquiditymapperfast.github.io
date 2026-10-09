@@ -1,4 +1,5 @@
 import { chromeFor, type Chrome, type Palette } from './theme.ts';
+import { drawVenueMark } from './venue-marks.ts';
 
 /**
  * The small box drawn on a canvas beside the pointer to say what is under it: the Mirror comparison, a footprint row, a bar statistic,
@@ -16,8 +17,13 @@ export interface InfoLine {
   wrap?: boolean;
   /** A hairline above this line, to set a group of lines apart. */
   rule?: boolean;
+  /** An exchange (an instrument id or a venue) whose mark goes first on the line: before the label, or before the text of a plain line. Not on a wrapped line. */
+  mark?: string;
 }
-export interface InfoRow { label?: string; text: string; color: InfoColor; bold: boolean; rule: boolean }
+export interface InfoRow { label?: string; text: string; color: InfoColor; bold: boolean; rule: boolean; mark?: string }
+
+/** The side of a mark in the box, and the space it takes before its text. */
+export const MARK = Object.freeze({ size: 12, room: 16 });
 
 export const INFO = Object.freeze({ lineH: 16, pad: 8, gap: 14, rule: 5, wrapAt: 250 });
 
@@ -29,7 +35,7 @@ export function layoutInfo(measure: (text: string, bold: boolean, kind: InfoKind
   const rows: InfoRow[] = [];
   for (const line of lines) {
     const base = { color: line.color ?? 'text', bold: line.bold === true, rule: line.rule === true };
-    if (line.label !== undefined || !line.wrap || measure(line.text, base.bold, 'plain') <= wrapAt) { rows.push({ ...base, text: line.text, ...(line.label !== undefined ? { label: line.label } : {}) }); continue; }
+    if (line.label !== undefined || !line.wrap || measure(line.text, base.bold, 'plain') <= wrapAt) { rows.push({ ...base, text: line.text, ...(line.label !== undefined ? { label: line.label } : {}), ...(line.mark ? { mark: line.mark } : {}) }); continue; }
     let current = '', first = true;
     const flush = (): void => { rows.push({ ...base, rule: base.rule && first, text: current }); first = false; };
     for (const word of line.text.split(' ')) {
@@ -40,8 +46,9 @@ export function layoutInfo(measure: (text: string, bold: boolean, kind: InfoKind
   }
   let labelW = 0, valueW = 0, plainW = 0;
   for (const row of rows) {
-    if (row.label !== undefined) { labelW = Math.max(labelW, measure(row.label, false, 'label')); valueW = Math.max(valueW, measure(row.text, row.bold, 'value')); }
-    else plainW = Math.max(plainW, measure(row.text, row.bold, 'plain'));
+    const mark = row.mark ? MARK.room : 0;
+    if (row.label !== undefined) { labelW = Math.max(labelW, measure(row.label, false, 'label') + mark); valueW = Math.max(valueW, measure(row.text, row.bold, 'value')); }
+    else plainW = Math.max(plainW, measure(row.text, row.bold, 'plain') + mark);
   }
   const labeled = labelW > 0 || valueW > 0 ? labelW + INFO.gap + valueW : 0;
   const height = rows.reduce<number>((sum, row) => sum + INFO.lineH + (row.rule ? INFO.rule : 0), INFO.pad);
@@ -88,11 +95,14 @@ export function paintInfoBox(ctx: CanvasRenderingContext2D, lines: readonly Info
   for (const row of rows) {
     if (row.rule) { ctx.globalAlpha = 0.5; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(bx + pad, Math.round(top + 2) + 0.5); ctx.lineTo(bx + w - pad, Math.round(top + 2) + 0.5); ctx.stroke(); ctx.globalAlpha = 1; top += INFO.rule; }
     const mid = top + lineH / 2;
+    // A mark goes first on its line, and the line's first text after it.
+    const indent = row.mark ? MARK.room : 0;
+    if (row.mark) drawVenueMark(ctx, row.mark, bx + pad + MARK.size / 2, mid, MARK.size);
     if (row.label !== undefined) {
-      ctx.font = fontOf(false, 'label'); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(row.label, bx + pad, mid);
+      ctx.font = fontOf(false, 'label'); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(row.label, bx + pad + indent, mid);
       ctx.font = fontOf(row.bold, 'value'); ctx.fillStyle = pick(row.color); ctx.textAlign = 'right'; ctx.fillText(row.text, bx + w - pad, mid);
     } else {
-      ctx.font = fontOf(row.bold, 'plain'); ctx.fillStyle = pick(row.color); ctx.textAlign = 'left'; ctx.fillText(row.text, bx + pad, mid);
+      ctx.font = fontOf(row.bold, 'plain'); ctx.fillStyle = pick(row.color); ctx.textAlign = 'left'; ctx.fillText(row.text, bx + pad + indent, mid);
     }
     top += lineH;
   }

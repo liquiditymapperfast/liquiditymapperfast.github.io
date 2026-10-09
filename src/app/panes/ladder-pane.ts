@@ -17,6 +17,7 @@ import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percen
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { levelLines, smallerVenuesLines, venueCellLines, type LevelFacts } from './ladder-info.ts';
 import { barPieces, pieceAt, pieceLabel, rankVenues, type BarPiece } from './ladder-pieces.ts';
+import { drawVenueMark } from '../venue-marks.ts';
 import { t } from '../i18n.ts';
 
 const ROW_H = 17;
@@ -341,7 +342,7 @@ export class LadderPane {
       ids.forEach((id, k) => {
         const idx = g.ids.indexOf(id); if (idx < 0) return;
         const own: Grouped = { ...g, totalBid: g.bid[idx]!, totalAsk: g.ask[idx]! };
-        this.#drawBook(ctx, state, own, { x: k * colW, w: colW, title: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, cells: null, order: null, cellW: 0, head, balanceH, cover: coverage(frame.books.find(b => b.id === id), mark), centerBin, rows, markBin, mark, step });
+        this.#drawBook(ctx, state, own, { x: k * colW, w: colW, title: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, markId: id, cells: null, order: null, cellW: 0, head, balanceH, cover: coverage(frame.books.find(b => b.id === id), mark), centerBin, rows, markBin, mark, step });
         if (k > 0) { ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(k * colW + 0.5, 0); ctx.lineTo(k * colW + 0.5, h); ctx.stroke(); }
       });
     } else {
@@ -381,8 +382,11 @@ export class LadderPane {
       const alpha = Math.min(1, (piece.rank < 0 ? 0.4 : piece.rank % 2 === 0 ? 0.92 : 0.62) * f), w = Math.max(1, piece.w - (piece.w >= 3 ? 1 : 0));
       ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.fillRect(piece.x, y + 2, w, ROW_H - 4);
       ctx.globalAlpha = 1;
-      const label = piece.id ? pieceLabel(piece.id, usd(piece.usd), w, measure) : piece.merged.length > 1 && measure(`+${piece.merged.length}`) + 8 <= w ? `+${piece.merged.length}` : null;
-      if (label) { ctx.fillStyle = textOn(color, alpha, p); ctx.fillText(label, piece.x + 4, y + ROW_H / 2 + 0.5); }
+      // A piece wide enough starts with its venue's mark, and says what fits after it.
+      const marked = piece.id !== null && w >= 15, MARK = 11, after = marked ? MARK + 4 : 0;
+      if (marked) drawVenueMark(ctx, piece.id!, piece.x + 2 + MARK / 2, y + ROW_H / 2, MARK);
+      const label = piece.id ? pieceLabel(piece.id, usd(piece.usd), w - after, measure) : piece.merged.length > 1 && measure(`+${piece.merged.length}`) + 8 <= w ? `+${piece.merged.length}` : null;
+      if (label) { ctx.fillStyle = textOn(color, alpha, p); ctx.fillText(label, piece.x + (marked ? 2 + after : 4), y + ROW_H / 2 + 0.5); }
     }
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
   }
@@ -405,7 +409,7 @@ export class LadderPane {
     if (!(size > 0)) return null;
     const y = head + r * ROW_H, ids = o.cells, at = (i: number): number => (isAsk ? g.ask[i] : g.bid[i])?.[bin] ?? 0;
     const order = o.order, orderIdx = order ? order.map(id => g.ids.indexOf(id)) : null;
-    const venues = ids ? ids.map((id, i) => ({ name: bookName(id), usd: at(i) })) : order && orderIdx ? order.map((id, n) => ({ name: bookName(id), usd: at(orderIdx[n]!) })) : [];
+    const venues = ids ? ids.map((id, i) => ({ name: bookName(id), usd: at(i), id })) : order && orderIdx ? order.map((id, n) => ({ name: bookName(id), usd: at(orderIdx[n]!), id })) : [];
     const facts: LevelFacts = { low: rowLo, step, mark: o.mark, ask: isAsk, size, cumulative: (isAsk ? cum.ask : cum.bid)[bin] ?? size, venues: venues.filter(v => v.usd > 0), ...(o.title ? { title: o.title } : {}) };
     const cellsX = x0 + k.priceW + k.usdW + 8;
     if (ids && hv.x >= cellsX && hv.x < cellsX + ids.length * k.cw) {
@@ -418,7 +422,7 @@ export class LadderPane {
     if (order && orderIdx) {
       const piece = pieceAt(barPieces(order, orderIdx.map(i => at(i)), k.maxLevel, k.barX, k.barW, PIECE_MIN_PX), hv.x);
       if (!piece) return null;
-      const lines = piece.id ? venueCellLines(facts, { name: bookName(piece.id), usd: piece.usd }) : smallerVenuesLines(facts, piece.merged.map(m => ({ name: bookName(m.id), usd: m.usd })));
+      const lines = piece.id ? venueCellLines(facts, { name: bookName(piece.id), usd: piece.usd, id: piece.id }) : smallerVenuesLines(facts, piece.merged.map(m => ({ name: bookName(m.id), usd: m.usd, id: m.id })));
       return { lines, x: piece.x, y: y + 2, w: Math.max(1, piece.w - 0.5), h: ROW_H - 4 };
     }
     if (ids) {
@@ -520,7 +524,7 @@ export class LadderPane {
   }
 
   #drawBook(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped,
-    o: { x: number; w: number; title: string; cells: string[] | null; order: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
+    o: { x: number; w: number; title: string; markId?: string; cells: string[] | null; order: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
     const p = this.#palette, { x: x0, w, rows, markBin, step, centerBin } = o;
     const cum = cumulative(g, o.mark);
     const dominance = state.highlight.on ? imbalanceByDistance(g, cum, markBin) : null;
@@ -529,17 +533,23 @@ export class LadderPane {
     const priceW = PRICE_W, usdW = USD_W, cellIds = o.cells, cw = o.cellW, head = o.head - o.balanceH, venueW = cellIds ? cellIds.length * cw + 2 : 0;
     const barX = x0 + priceW + usdW + venueW + 8, barW = Math.max(20, x0 + w - barX - 6);
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
-    if (o.title) { ctx.fillStyle = p.text; ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillText(o.title, x0 + 6, head / 2); ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillStyle = p.muted; }
+    if (o.title) {
+      const indent = o.markId ? 17 : 0;
+      if (o.markId) drawVenueMark(ctx, o.markId, x0 + 6 + 6, head / 2, 12);
+      ctx.fillStyle = p.text; ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillText(o.title, x0 + 6 + indent, head / 2); ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillStyle = p.muted;
+    }
     else {
       const line = head - HEAD_H / 2;
       ctx.fillText(t('PRICE'), x0 + 6, line); ctx.textAlign = 'right'; ctx.fillText(t('LEVEL USD'), x0 + priceW + usdW, line);
       if (cellIds) {
         ctx.textAlign = 'left';
-        if (cw >= 20) cellIds.forEach((id, k) => ctx.fillText(venueLabel(id).slice(0, 3).toUpperCase(), x0 + priceW + usdW + 10 + k * cw, line));
-        else {
-          // Narrow cells: names run upward from each cell so any number of venues stays readable.
+        // Each venue column is headed by its mark where it is wide enough to hold one; narrower ones (and those under 20 px, above the
+        // mark) carry the name running upward, so any number of venues stays readable.
+        const marked = cw >= 12, size = Math.min(14, cw - 2);
+        if (marked) cellIds.forEach((id, k) => drawVenueMark(ctx, id, x0 + priceW + usdW + 8 + k * cw + (cw - 2) / 2, line, size));
+        if (cw < 20) {
           ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
-          cellIds.forEach((id, k) => { ctx.save(); ctx.translate(x0 + priceW + usdW + 8 + k * cw + cw / 2 + 3, head - 2); ctx.rotate(-Math.PI / 2); ctx.fillText(venueLabel(id).slice(0, 5), 0, 0); ctx.restore(); });
+          cellIds.forEach((id, k) => { ctx.save(); ctx.translate(x0 + priceW + usdW + 8 + k * cw + cw / 2 + 3, head - 2 - (marked ? size + 4 : 0)); ctx.rotate(-Math.PI / 2); ctx.fillText(venueLabel(id).slice(0, marked ? 4 : 5), 0, 0); ctx.restore(); });
           ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
         }
       }
