@@ -16,10 +16,18 @@ import { normalizeHistoryPath, startupFailureRecord } from './startup-diagnostic
 import { installV2, type V2Handle } from './v2/api.mts';
 import { restoreFeedSelection, saveFeedSelection } from './feed-selection-store.mts';
 import { ORDERBOOK_VENUE_MAX_SELECTED, orderbookVenueStatus } from '../core/orderbook-venue-controls.mts';
+import { FeedConfigurationRetired } from './live-feed-transport.mts';
 
 type ServerApp = ReturnType<typeof createLocalServer>;
 function failureFields(error: unknown): Record<string, unknown> { return error != null && typeof error === 'object' ? error as Record<string, unknown> : {}; }
 
+// A wait of a retired feed configuration settles with FeedConfigurationRetired, and every caller in live-feeds.mts handles it; one that does
+// not must not take the server down (it did at a startup, 2026-10-09: the saved venue selection's start retired a paced heartbeat). Any other
+// rejection nobody handled still ends the process, as Node does by default.
+process.on('unhandledRejection', reason => {
+  if (reason instanceof FeedConfigurationRetired) { console.error('live feeds: a wait of a retired configuration was left unhandled (ignored)'); return; }
+  throw reason;
+});
 const live = process.env.ENABLE_LIVE_FEEDS === 'true';
 const fixtureTickMs = live ? 0 : Number(process.env.FIXTURE_TICK_MS ?? 1500);
 const liveFeedCoreConfig = { ...liveFeedConfiguration(),

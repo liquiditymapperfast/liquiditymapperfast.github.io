@@ -117,3 +117,29 @@ test('replacement starts close late factory transports without consuming replace
     assert.deepEqual([...manager.feeds.values()], current);
   } finally { manager.stop(); }
 });
+
+test('a heartbeat waiting for room under the pacing ends quietly when a new start retires its configuration', { timeout: 10_000 }, async () => {
+  // 2026-10-09: the saved venue selection's start, at startup, retired a paced heartbeat whose rejection nobody handled, and Node ended the server.
+  let clock = 1_000_000;
+  const beats: (() => unknown)[] = [], unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  const manager = new LiveFeedManager({ networkEnabled: true, oiPollMs: 0,
+    transportFactory: () => ({ open: () => {}, send: () => {}, close: () => {} }),
+    schedule: () => 1, cancel: () => {}, heartbeatSchedule: fn => { beats.push(fn); return beats.length; }, heartbeatCancel: () => {}, transportNow: () => clock,
+  });
+  try {
+    await manager.start({ selectedOrderbookVenues: ['hyperliquid'], referenceBackfill: false });
+    await until(() => beats.length > 0);
+    // Every send now waits for room, as when many feeds of one venue share its pacing.
+    (manager.transportBudget as unknown as { planMessage: () => { delayMs: number } }).planMessage = () => ({ delayMs: 60_000 });
+    clock += 31_000;                                   // past Hyperliquid's 30 s heartbeat interval, inside its 10 s timeout
+    // Every feed's beat comes due; Hyperliquid's sends a frame, so it waits for room.
+    const beat = Promise.all(beats.map(fn => Promise.resolve(fn())));
+    const next = manager.start({ selectedOrderbookVenues: ['hyperliquid'], referenceBackfill: false });
+    await beat;                                        // every one settles: the frame was not sent, and nothing failed
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+    manager.stop(); await next.catch(() => {});
+  } finally { manager.stop(); process.off('unhandledRejection', onUnhandled); }
+});

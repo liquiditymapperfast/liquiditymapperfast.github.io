@@ -1,7 +1,7 @@
 /// <reference path="./ws-runtime.d.ts" />
 import { ORDERBOOK_VENUE_MAX_SELECTED } from '../core/orderbook-venue-controls.mts';
 import { gunzipSync } from 'node:zlib';
-import { LiveFeedOperationScope, retireLiveFeedSocket, waitForLiveFeedSocketOpen } from './live-feed-transport.mts';
+import { FeedConfigurationRetired, LiveFeedOperationScope, retireLiveFeedSocket, waitForLiveFeedSocketOpen } from './live-feed-transport.mts';
 import {
   AdapterTransportError,
   buildBinanceRequest,
@@ -2136,7 +2136,10 @@ export class LiveFeedManager {
   async #sendTransport(feed: LiveFeed, frame: unknown) {
     if (!this.#isCurrentTransportFeed(feed)) return false;
     const plan = this.transportBudget.planMessage(feed.spec.venue);
-    if (plan.delayMs > 0) await this.#operationScope.delay(plan.delayMs);
+    if (plan.delayMs > 0) {
+      // Waiting for room under the venue's pacing: a configuration retired meanwhile means the frame is simply not sent.
+      try { await this.#operationScope.delay(plan.delayMs); } catch (error) { if (error instanceof FeedConfigurationRetired) return false; throw error; }
+    }
     if (!this.#isCurrentTransportFeed(feed)) return false;
     const encoded = typeof frame === 'string' ? frame : JSON.stringify(frame);
     feed.socket?.send?.(encoded);
@@ -2288,7 +2291,9 @@ export class LiveFeedManager {
         this.#retireFeed(feed.id);
         return;
       }
-      if (current.action === 'heartbeat') await this.#sendHeartbeat(feed);
+      // Nothing awaits a timer's promise: a failed send fails the feed here, and a retired configuration ends the beat quietly.
+      try { if (current.action === 'heartbeat') await this.#sendHeartbeat(feed); }
+      catch (error) { if (!(error instanceof FeedConfigurationRetired) && this.#isCurrentTransportFeed(feed)) this.#fail(feed.id, error, feed.socket); return; }
       this.#scheduleHeartbeat(feed);
     }, delay);
     if (typeof feed.heartbeatTimer === 'object' && typeof feedRecord(feed.heartbeatTimer).unref === 'function') {
@@ -3312,7 +3317,7 @@ export class LiveFeedManager {
     // A denied open advances the fence while its old placeholder stays owned.
     const generation = this.feedGenerations.get(id) ?? feed?.generation;
     const attempt = (status.attempt ?? 0) + 1; const delay = reconnectDelay(attempt, { baseMs: this.reconnectBaseMs, maxMs: this.reconnectMaxMs }); const nextRetryAt = this.now() + delay;
-    const retry = this.schedule(async () => {
+    const retry = this.schedule(async () => { try {
       const current = this.feeds.get(id);
       if (!this.running || this.specs.get(id) !== spec || this.feedGenerations.get(id) !== generation || current?.retry !== retry) return;
       if (current) current.retry = null;
@@ -3331,7 +3336,7 @@ export class LiveFeedManager {
         return snapshot;
       }
       return this.#open(id, spec);
-    }, delay);
+    } catch (error) { if (error instanceof FeedConfigurationRetired) return undefined; throw error; } }, delay);
     if (feed) feed.retry = retry; else this.feeds.set(id, { id, socket: null, spec, generation, retry, retired: false });
     this.#setStatus(id, { state: unavailable ? 'unavailable' : 'backoff', attempt, nextRetryAt, ...(unavailable ? { active: false, lastError: 'retained-data admission rejected' } : {}) });
   }
@@ -3351,7 +3356,7 @@ export class LiveFeedManager {
     this.oiTimer = this.schedule(async () => {
       if (!this.running || generation !== this.configurationGeneration) return;
       this.oiTimer = null;
-      await this.pollOpenInterest(params);
+      try { await this.pollOpenInterest(params); } catch (error) { if (error instanceof FeedConfigurationRetired) return; throw error; }
       this.#scheduleOiPoll(params, generation);
     }, this.oiPollMs);
   }

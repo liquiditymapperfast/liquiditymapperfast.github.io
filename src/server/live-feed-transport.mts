@@ -39,6 +39,15 @@ export function waitForLiveFeedSocketOpen(socket: OpeningSocket, timeoutMs: numb
 
 interface OperationCancellation<T> { onCancel?: () => unknown; onLateValue?: (value: T) => unknown; }
 
+/**
+ * What a wait of a retired configuration settles with: not a failure, only the news that the configuration it belonged to is gone (a newer
+ * start, or a stop). Code that runs on its own (a timer, a fire-and-forget send) must catch it: Node ends the process on a rejection nobody
+ * handles, and a start that replaces another (the saved venue selection restored at startup) retires whatever the old one was waiting on.
+ */
+export class FeedConfigurationRetired extends AdapterTransportError {
+  constructor() { super('Live feed configuration retired'); this.name = 'FeedConfigurationRetired'; }
+}
+
 /** Generation-owned waits settle on retirement; underlying requests retain their budgets. */
 export class LiveFeedOperationScope {
   #cancelled = false;
@@ -60,7 +69,7 @@ export class LiveFeedOperationScope {
         if (settled) return;
         settled = true; cancelled = true; this.#waiters.delete(cancel);
         try { onCancel?.(); } catch { /* preserve retirement */ }
-        reject(new AdapterTransportError('Live feed configuration retired'));
+        reject(new FeedConfigurationRetired());
       };
       Promise.resolve(operation).then(value => {
         if (settled) { if (cancelled) { try { onLateValue?.(value); } catch { /* late ownership is best effort */ } } return; }
