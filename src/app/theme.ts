@@ -9,6 +9,8 @@ export interface Palette {
   poc: string;
   /** The key levels (previous day, week and month): a neutral of its own, apart from the profile's hue and the buy and sell colours. */
   level: string;
+  /** The VWAP lines: a hue of their own, away from the buy and sell colours, the profile's and the amber marks (cyan on a light page, yellow on a dark one). */
+  vwap: string;
 }
 
 /**
@@ -18,21 +20,21 @@ export interface Palette {
  */
 export const PALETTES: Record<string, Palette> = {
   light: { label: t('Light'), dark: false, bg: '#ffffff', panel: '#ffffff', text: '#1b1d21', muted: '#667085', line: '#e7e9ec', accent: '#1b1d21', ui: '#2f6bff',
-    bid: '#0fa44a', bidSoft: '#cdeed8', ask: '#e0066f', askSoft: '#ffd0e6', candleUp: '#12a150', candleDown: '#e0115f', poc: '#7c3aed', level: '#3f4654' },
+    bid: '#0fa44a', bidSoft: '#cdeed8', ask: '#e0066f', askSoft: '#ffd0e6', candleUp: '#12a150', candleDown: '#e0115f', poc: '#7c3aed', level: '#3f4654', vwap: '#0891b2' },
   latte: { label: 'Latte', dark: false, bg: '#eff1f5', panel: '#f6f7fa', text: '#434660', muted: '#5c5f77', line: '#ccd0da', accent: '#1e66f5', ui: '#1e66f5',
-    bid: '#368a24', bidSoft: '#cfe6c8', ask: '#d20f39', askSoft: '#f6cdd5', candleUp: '#368a24', candleDown: '#d20f39', poc: '#8839ef', level: '#4c4f69' },
+    bid: '#368a24', bidSoft: '#cfe6c8', ask: '#d20f39', askSoft: '#f6cdd5', candleUp: '#368a24', candleDown: '#d20f39', poc: '#8839ef', level: '#4c4f69', vwap: '#0b7fa5' },
   dark: { label: t('Dark'), dark: true, bg: '#121215', panel: '#17171b', text: '#fffcf0', muted: '#8b8d93', line: '#2a2c30', accent: '#00ffda', ui: '#5b9bff',
-    bid: '#00ffda', bidSoft: '#0d5a4f', ask: '#ff4d57', askSoft: '#6b1c22', candleUp: '#00d9b8', candleDown: '#ff4d4d', poc: '#c4a7ff', level: '#e6e1cf' },
+    bid: '#00ffda', bidSoft: '#0d5a4f', ask: '#ff4d57', askSoft: '#6b1c22', candleUp: '#00d9b8', candleDown: '#ff4d4d', poc: '#c4a7ff', level: '#e6e1cf', vwap: '#f4e04d' },
   darker: { label: t('Darker'), dark: true, bg: '#0c0c0e', panel: '#111315', text: '#d9e2df', muted: '#7d8785', line: '#252b2c', accent: '#36d27c', ui: '#5b9bff',
-    bid: '#28cf72', bidSoft: '#0f4a2c', ask: '#f05d67', askSoft: '#5a2329', candleUp: '#28cf72', candleDown: '#f05d67', poc: '#c4a7ff', level: '#d9e2df' },
+    bid: '#28cf72', bidSoft: '#0f4a2c', ask: '#f05d67', askSoft: '#5a2329', candleUp: '#28cf72', candleDown: '#f05d67', poc: '#c4a7ff', level: '#d9e2df', vwap: '#f4e04d' },
   midnight: { label: 'Midnight', dark: true, bg: '#1a1b26', panel: '#16161e', text: '#c0caf5', muted: '#8089b3', line: '#292e42', accent: '#7aa2f7', ui: '#7aa2f7',
-    bid: '#73daca', bidSoft: '#1c4a45', ask: '#f7768e', askSoft: '#5a2a3a', candleUp: '#9ece6a', candleDown: '#f7768e', poc: '#bb9af7', level: '#a9b1d6' },
+    bid: '#73daca', bidSoft: '#1c4a45', ask: '#f7768e', askSoft: '#5a2a3a', candleUp: '#9ece6a', candleDown: '#f7768e', poc: '#bb9af7', level: '#a9b1d6', vwap: '#e6d36a' },
   mocha: { label: 'Mocha', dark: true, bg: '#1e1e2e', panel: '#181825', text: '#cdd6f4', muted: '#a6adc8', line: '#313244', accent: '#cba6f7', ui: '#89b4fa',
-    bid: '#a6e3a1', bidSoft: '#2f4a35', ask: '#f38ba8', askSoft: '#5a2c3c', candleUp: '#a6e3a1', candleDown: '#f38ba8', poc: '#cba6f7', level: '#bac2de' },
+    bid: '#a6e3a1', bidSoft: '#2f4a35', ask: '#f38ba8', askSoft: '#5a2c3c', candleUp: '#a6e3a1', candleDown: '#f38ba8', poc: '#cba6f7', level: '#bac2de', vwap: '#f9e2af' },
   colorblind: { label: t('Colour-blind safe'), dark: true, bg: '#12151c', panel: '#171b24', text: '#e8ecf4', muted: '#9aa3b5', line: '#2a3140', accent: '#e69f00', ui: '#56b4e9',
-    bid: '#56b4e9', bidSoft: '#16405c', ask: '#e69f00', askSoft: '#5c3f00', candleUp: '#56b4e9', candleDown: '#e69f00', poc: '#cc79a7', level: '#d6dbe6' },
+    bid: '#56b4e9', bidSoft: '#16405c', ask: '#e69f00', askSoft: '#5c3f00', candleUp: '#56b4e9', candleDown: '#e69f00', poc: '#cc79a7', level: '#d6dbe6', vwap: '#f0e442' },
   terminal: { label: 'Terminal', dark: true, bg: '#000000', panel: '#050805', text: '#00ff00', muted: '#51b85c', line: '#134b16', accent: '#00ff00', ui: '#00ff00',
-    bid: '#00ff00', bidSoft: '#0a4d00', ask: '#ff0000', askSoft: '#5a0000', candleUp: '#11af00', candleDown: '#ff6363', poc: '#00e5ff', level: '#e6e6e6' },
+    bid: '#00ff00', bidSoft: '#0a4d00', ask: '#ff0000', askSoft: '#5a0000', candleUp: '#11af00', candleDown: '#ff6363', poc: '#00e5ff', level: '#e6e6e6', vwap: '#ffff66' },
 };
 /** Order of the theme menu: light themes first, then dark ones from neutral to themed. */
 export const THEME_ORDER = ['light', 'latte', 'dark', 'darker', 'midnight', 'mocha', 'colorblind', 'terminal'] as const;

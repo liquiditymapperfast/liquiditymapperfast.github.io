@@ -54,6 +54,18 @@ export class Hub {
   readonly liquidations = new LiquidationBook();
   /** The hourly candles the key levels are read from, straight from the exchange (keylevels/history.ts). */
   readonly keyHistory = new KeyLevelHistory(webGet);
+  readonly #vwapHistories = new Map<number, KeyLevelHistory>();
+  /** The VWAP's candles of one bar size (a minute for a day's session, coarser for longer ones and old anchors), asked again every minute. */
+  vwapHistory(barMs: number): KeyLevelHistory {
+    let h = this.#vwapHistories.get(barMs);
+    if (!h) {
+      // At most a few sizes are in use at once; the one not asked for longest goes first.
+      if (this.#vwapHistories.size >= 4) this.#vwapHistories.delete(this.#vwapHistories.keys().next().value!);
+      h = new KeyLevelHistory(webGet, Date.now, 60_000);
+    } else this.#vwapHistories.delete(barMs);
+    this.#vwapHistories.set(barMs, h);
+    return h;
+  }
   onLiquidationsChanged: () => void = () => {};
   /** 'unavailable': the source has no liquidations (a server from before them); asked again a minute later. */
   liquidationsState: 'ready' | 'unavailable' = 'ready';

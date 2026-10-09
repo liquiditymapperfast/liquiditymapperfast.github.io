@@ -13,7 +13,7 @@ import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
 import { clock, dayOfMonth, price as fmtPrice, tickLabel, usd, zoneName, zoneOffsetMs } from '../format.ts';
-import type { Store, AppState } from '../store.ts';
+import type { Store, AppState, CandleRow } from '../store.ts';
 import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf } from '../scope.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
@@ -37,6 +37,9 @@ import { MAX_BACK_MS, barMsFor, keyLines, neededFrom, type KeyLine } from '../ke
 import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { paintKeyLevels, paintKeyTags, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
+import { sessionsOf, vwapBarMs, vwapSeries } from '../vwap/vwap.ts';
+import { anchorsOf } from '../vwap/settings.ts';
+import { paintVwap, type VwapLine } from '../vwap/paint.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { draftLabel } from '../range/stats.ts';
@@ -146,6 +149,12 @@ export class HeatPane {
   #keyContext: { key: string; target: HistoryTarget | null; zone: string; barMs: number } | null = null;
   #keyFrom: { key: string; from: number } | null = null;
   #keyLines: { key: string; lines: KeyLine[] } | null = null;
+  /** The VWAP's plan (sessions, anchors, bar sizes) and its lines, kept until what they depend on changes; its tags this frame. */
+  #vwapPlanned: { key: string; plan: { sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number> } } | null = null;
+  #vwapDrawn: { key: string; lines: VwapLine[] } | null = null;
+  #vwapTags: KeyTag[] = [];
+  /** A click on the map while an anchor is being placed (set by the page): the time clicked. */
+  onAnchor: ((t: number) => void) | null = null;
   /** The tags the key levels want on the price axis this frame. */
   #keyTags: KeyTag[] = [];
   #touchSelect: { start: Pt; at: Pt } | null = null;
@@ -332,6 +341,7 @@ export class HeatPane {
     if (state.show.bubbles) this.hub.ensurePrints(this.view, scaledUsd(state.tradeBubbles.minUsd));
     if (state.liquidations.on) this.hub.ensureLiquidations(this.view, scaledUsd(state.liquidations.minUsd));
     if (state.keyLevels.on && anyLine(state.keyLevels)) this.#ensureKeyLevels(state);
+    if (state.vwap.on) this.#ensureVwap(state);
     if (state.show.traded) { this.#ensureTraded(state); this.#ensureValueAreas(state); }
     if (state.absorption.on) { const { ids, thresholds } = this.#absorptionContext(state); this.hub.ensureAbsorption(ids, ids.map(id => thresholds.get(id) ?? null), this.view, state.absorption.sdMinutes); }
     this.#stepFootprint(state);
@@ -388,6 +398,7 @@ export class HeatPane {
     this.#paintAbsorption(ctx, state, pw, ph);
     this.#paintValueLines(ctx, state, pw, ph);
     this.#keyTags = state.keyLevels.on ? paintKeyLevels(ctx, this.#keyLevelLines(state), v, pw, ph, p, state.keyLevels, Date.now(), this.#keyLevelContext(state).zone) : [];
+    this.#vwapTags = state.vwap.on ? paintVwap(ctx, this.#vwapLines(state), v, pw, ph, p, state.vwap) : [];
     // mark line
     const mark = state.mark.price;
     if (mark > 0) {
@@ -401,7 +412,7 @@ export class HeatPane {
     ctx.fillStyle = p.panel; ctx.fillRect(axisX, 0, AXIS_W, h);
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(axisX + 0.5, 0); ctx.lineTo(axisX + 0.5, h); ctx.stroke();
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
-    const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), keyTags = placeKeyTags(this.#keyTags, mark > 0 ? [{ y0: markY - 9, y1: markY + 9 }] : [], ph);
+    const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), keyTags = placeKeyTags([...this.#keyTags, ...this.#vwapTags], mark > 0 ? [{ y0: markY - 9, y1: markY + 9 }] : [], ph);
     for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
     paintKeyTags(ctx, keyTags, axisX, AXIS_W, p);
     if (mark > 0) {
@@ -761,6 +772,72 @@ export class HeatPane {
     }
     return this.#keyContext;
   }
+/**
+   * What the VWAP lines need: the sessions touching the chart (and their bar size), each anchor of the coin (and its bar size, by its age),
+   * and for each bar size how far back its candles must reach. Worked out again when the settings, the zone, the coin, the view's hour or
+   * the clock's minute change.
+   */
+  #vwapPlan(state: AppState): { sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number> } {
+    const s = state.vwap, v = this.view, now = Date.now(), MIN = 60_000, HOUR = 3_600_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
+    const key = `${JSON.stringify(s)}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
+    if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
+    const sessions = s.session ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now) : [];
+    const sessionBar = vwapBarMs(sessions.length ? now - sessions[0]!.from : 0, barMs);
+    const anchors = anchorsOf(s, coin, now).map(at => ({ at, bar: vwapBarMs(now - at, barMs) }));
+    const reach = new Map<number, number>();
+    const need = (bar: number, from: number): void => { reach.set(bar, Math.min(reach.get(bar) ?? Infinity, Math.floor(from / bar) * bar)); };
+    if (sessions.length) need(sessionBar, sessions[0]!.from);
+    for (const a of anchors) need(a.bar, a.at);
+    const plan = { sessions, sessionBar, anchors, reach };
+    this.#vwapPlanned = { key, plan };
+    return plan;
+  }
+  /** Ask for the candles the VWAP lines need, one history per bar size. */
+  #ensureVwap(state: AppState): void {
+    const { target } = this.#keyLevelContext(state), plan = this.#vwapPlan(state);
+    for (const [bar, from] of plan.reach) this.hub.vwapHistory(bar).ensure(target, from, bar, () => this.invalidate());
+  }
+  /**
+   * The bars of one VWAP history and, after the last of them, the chart's own candles when they are of the same market and no coarser (the
+   * bar under way is then the chart's, not the history's partial one, so no volume is counted twice). Null until the history is the target's.
+   */
+  #vwapBars(state: AppState, bar: number, target: HistoryTarget): readonly CandleRow[] | null {
+    const h = this.hub.vwapHistory(bar);
+    if (h.id !== target.id || h.barMs !== bar || !h.bars.length) return null;
+    const held = h.bars, lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+    if (!(target.own && state.seriesInstrument === state.marketId && tf <= bar)) return held;
+    const live = state.candles.filter(c => c[0] >= lastStart);
+    if (!live.length) return held;
+    const from = live[0]![0];
+    return [...held.filter(b => b[0] < from), ...live];
+  }
+  /** The VWAP lines for the view, worked out again only when the plan, a history or the chart's last candle changes. */
+  #vwapLines(state: AppState): VwapLine[] {
+    const s = state.vwap; if (!s.on) return [];
+    const { target } = this.#keyLevelContext(state); if (!target) return [];
+    const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1];
+    const versions = [...plan.reach.keys()].map(bar => { const h = this.hub.vwapHistory(bar); return `${bar}:${h.id}:${h.version}`; }).join(',');
+    const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}`;
+    if (this.#vwapDrawn?.key === key) return this.#vwapDrawn.lines;
+    const lines: VwapLine[] = [], now = Date.now();
+    const sessionBars = plan.sessions.length ? this.#vwapBars(state, plan.sessionBar, target) : null;
+    const heldFrom = (bar: number): number => this.hub.vwapHistory(bar).heldFrom;
+    if (sessionBars) for (const w of plan.sessions) {
+      // A session whose start the history does not reach yet has no true average: it waits rather than show a wrong one.
+      if (heldFrom(plan.sessionBar) > w.from) continue;
+      const points = vwapSeries(sessionBars, w.from, w.to);
+      if (points.length) lines.push({ kind: 'session', n: 0, points, live: w.to > now, key: w.key });
+    }
+    plan.anchors.forEach((a, i) => {
+      const bars = this.#vwapBars(state, a.bar, target), start = Math.floor(a.at / a.bar) * a.bar;
+      if (!bars || heldFrom(a.bar) > start) return;
+      const points = vwapSeries(bars, start, Infinity);
+      if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}` });
+    });
+    this.#vwapDrawn = { key, lines };
+    return lines;
+  }
+
   /** Ask for the hourly candles the key levels need for this view (how far back is worked out again only when the view's hour changes). */
   #ensureKeyLevels(state: AppState): void {
     const { target, zone, barMs } = this.#keyLevelContext(state), s = state.keyLevels, HOUR = 3_600_000, now = Date.now();
@@ -1322,7 +1399,10 @@ export class HeatPane {
     const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     return {
       down: () => this.#stopFling(),
-      tap: p => { if (this.#pinActive() && Math.hypot(this.#pin!.x - p.x, this.#pin!.y - p.y) < 28) this.#unpin(); else this.#pinAt(p); },
+      tap: p => {
+        if (this.store.state.vwapAnchoring && p.x <= this.plotW && p.y <= this.plotH) { this.onAnchor?.(this.view.tOf(p.x, this.plotW)); return; }
+        if (this.#pinActive() && Math.hypot(this.#pin!.x - p.x, this.#pin!.y - p.y) < 28) this.#unpin(); else this.#pinAt(p);
+      },
       doubleTap: () => { this.#unpin(); this.fit(); },
       // A short tick under the finger says the hold registered (where the browser allows it: it wants the page to have been used first).
       hold: p => { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(8); this.#pinAt(p); },
@@ -1490,6 +1570,8 @@ export class HeatPane {
     el.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
+      // Placing a VWAP anchor: the click is the anchor, nothing else.
+      if (this.store.state.vwapAnchoring && e.button === 0 && x <= this.plotW && y <= this.plotH) { this.onAnchor?.(this.view.tOf(x, this.plotW)); return; }
       if (this.range && selects(this.range.armed, e) && x <= this.plotW && y <= this.plotH) {
         this.#selecting = { x, y }; this.range.begin(this.#rangePoint(x, y)); el.setPointerCapture(e.pointerId); return;
       }
@@ -1526,7 +1608,7 @@ export class HeatPane {
         return;
       }
       const overColumn = this.#tradedX() !== null && x > this.#tradedX()! && x <= this.#tradedX()! + TRADED_W && y <= this.plotH;
-      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : overColumn || (this.range?.armed && x <= this.plotW && y <= this.plotH) ? 'crosshair' : '';
+      el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : overColumn || ((this.range?.armed || this.store.state.vwapAnchoring) && x <= this.plotW && y <= this.plotH) ? 'crosshair' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
         const z = this.#zoomDrag, k = 0.006, pw = this.plotW, ph = this.plotH;

@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels' | 'vwap';
 
 export interface HelpTopic {
   title: string;
@@ -43,6 +43,12 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('PDH and PDL are the previous day\'s high and low and PDM the middle of the two; DO is where the day opened, and DH and DL how high and low it has traded so far. W and M stand for the week and the month. A day starts at midnight in the zone you choose (the Volume profile\'s), a week on Monday and a month on the 1st.'),
       t('They come from one market\'s hourly candles, read from the exchange: the market on the chart where the page can read its history, else another market of the coin, named in the panel. The hour under way follows the chart\'s own candles. They reach back about two months.'),
       t('A previous high, low or middle that the next period never traded through stays on, dotted, until price reaches it.')],
+  },
+  vwap: {
+    title: t('VWAP'), guide: 'profile',
+    tip: t('The average price the market traded at since a session began or since a moment you choose, weighted by volume: where buyers and sellers have done business on average.'),
+    body: [t('The session VWAP starts again each day, week or month, in the zone the Volume profile and Key levels use; its bands are one and two standard deviations of the prices traded, weighted by volume. An anchored VWAP (AVWAP) runs from a moment you click on the map, such as a low, a high or the candle of a news event; a coin keeps up to four.'),
+      t('Each bar\'s typical price (its high, low and close) is weighted by its volume, from one market\'s candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart\'s own candles.')],
   },
   absorption: {
     title: t('Absorption'), guide: 'trades',

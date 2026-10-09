@@ -14,7 +14,7 @@ import { MAX_BACK_MS } from './levels.ts';
  */
 
 const HOUR = 3_600_000, DAY = 86_400_000;
-/** How often the newest bars are asked again (the developing levels move with the chart's own candles in between). */
+/** How often the newest bars are asked again by default (the developing levels move with the chart's own candles in between). */
 const REFRESH_MS = 5 * 60_000;
 const RETRY_MS = 60_000;
 /** Pages one request may walk back: OKX gives 100 bars a page, so two months of hours take 15. */
@@ -60,7 +60,8 @@ export class KeyLevelHistory {
   version = 0;
   state: 'idle' | 'loading' | 'ready' | 'unavailable' = 'idle';
 
-  constructor(private get: Fetcher, private now: () => number = Date.now) {}
+  /** `refreshMs`: how often the newest bars are asked again (the VWAP wants them every minute). */
+  constructor(private get: Fetcher, private now: () => number = Date.now, private refreshMs: number = REFRESH_MS) {}
 
   get id(): string { return this.#id; }
   get barMs(): number { return this.#barMs; }
@@ -82,7 +83,7 @@ export class KeyLevelHistory {
     let a: number, b: number, forward = false;
     if (!this.#bars.length) { a = want; b = now; forward = true; }
     else if (want < this.#askedFrom && !this.#exhausted) { a = want; b = this.#bars[0]![0]; }
-    else if (now - this.#refreshedAt >= REFRESH_MS) { a = this.#bars[this.#bars.length - 1]![0] - 2 * barMs; b = now; forward = true; }
+    else if (now - this.#refreshedAt >= this.refreshMs) { a = this.#bars[this.#bars.length - 1]![0] - 2 * barMs; b = now; forward = true; }
     else return;
     const asked = this.#key, before = this.heldFrom;
     this.#pending = true; if (!this.#bars.length) this.state = 'loading';

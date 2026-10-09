@@ -1,7 +1,8 @@
 import { Hub } from './hub.ts';
 import { ServerSource } from './server-source.ts';
 import { BrowserSource } from './browser-source.ts';
-import { chooseCoin, forCoin, keepCoinRecordings, type CoinChoice } from './coin.ts';
+import { chooseCoin, currentCoin, forCoin, keepCoinRecordings, type CoinChoice } from './coin.ts';
+import { withAnchor } from './vwap/settings.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
 import { Store, initialState } from './store.ts';
@@ -120,6 +121,8 @@ async function main(): Promise<void> {
   hub.onPrintsChanged = () => { heat.invalidate(); range.refreshHeld(); };
   hub.onLiquidationsChanged = () => { heat.invalidate(); range.refreshHeld(); };
   toolbar.keyHistory = hub.keyHistory;
+  // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
+  heat.onAnchor = at => { const s = store.state; store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, at, Date.now()), vwapAnchoring: false }); };
   hub.onTraded = () => heat.invalidate();
   hub.onAbsorptionChanged = () => heat.invalidate();
   toolbar.absorptionInfo = () => heat.absorptionThresholdText();
@@ -165,7 +168,9 @@ async function main(): Promise<void> {
     if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.refresh(); }
     if (changed.has('markets')) cvd.invalidate();
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
-    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded')) heat.invalidate();
+    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded') || changed.has('vwap') || changed.has('vwapAnchoring')) heat.invalidate();
+    // Placing a VWAP anchor and selecting a Range both take the next press on the map: arming one ends the other.
+    if (changed.has('rangeTool') && state.rangeTool && state.vwapAnchoring) store.set({ vwapAnchoring: false });
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show')) range.refreshHeld();
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('levels')) { ladder.invalidate(); ladder.syncVenues(); heat.invalidate(); }
@@ -177,7 +182,7 @@ async function main(): Promise<void> {
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.invalidate(); }
     if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.syncHover(); }
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(store.state.theme);

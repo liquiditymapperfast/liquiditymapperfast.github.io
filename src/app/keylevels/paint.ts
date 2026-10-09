@@ -28,8 +28,11 @@ const PERIOD_RANK: Readonly<Record<PeriodKind, number>> = { month: 0, week: 1, d
 const WHAT_RANK = (what: LevelWhat, prev: boolean): number => prev ? (what === 'mid' ? 2 : 0) : what === 'open' ? 1 : 3;
 export const rankOf = (line: Pick<KeyLine, 'period' | 'what' | 'prev'>): number => PERIOD_RANK[line.period] * 4 + WHAT_RANK(line.what, line.prev);
 
-/** A tag on the price axis; `older` for a level of an earlier period still running on (outlined, after the current ones). */
-export interface KeyTag extends TagWish { text: string; older: boolean }
+/**
+ * A tag on the price axis; `older` for a level of an earlier period still running on (outlined, after the current ones). `color`: another
+ * feature's tag placed with these (the VWAP's), in its own colour; the level colour when absent.
+ */
+export interface KeyTag extends TagWish { text: string; older: boolean; color?: string }
 export const TAG_H = 14;
 /** How far down the order a level of an earlier period still running on goes: after every line of the periods under way and just ended. */
 const OLDER_RANK = 20;
@@ -94,18 +97,18 @@ export const placeKeyTags = (tags: readonly KeyTag[], blocked: readonly Band[], 
 /** Whether a price label on the axis at `y` would sit under one of the tags (it is then left out, so no half-covered number shows). */
 export const underTag = (tags: readonly KeyTag[], y: number): boolean => tags.some(k => Math.abs(k.y - y) < TAG_H / 2 + 6);
 
-/** Draw the tags `placeKeyTags` kept, in the level colour (outlined for a level of an earlier period). */
+/** Draw the tags `placeKeyTags` kept, in their colour (outlined for a level of an earlier period). */
 export function paintKeyTags(ctx: CanvasRenderingContext2D, tags: readonly KeyTag[], axisX: number, axisW: number, p: Palette): void {
   if (!tags.length) return;
   ctx.save();
   ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   for (const tag of tags) {
-    const y = Math.round(tag.y);
+    const y = Math.round(tag.y), color = tag.color ?? p.level;
     if (tag.older) { // outlined: a level of an earlier period still running on
       ctx.fillStyle = p.panel; ctx.fillRect(axisX + 1, y - TAG_H / 2, axisW - 1, TAG_H);
-      ctx.strokeStyle = p.level; ctx.lineWidth = 1; ctx.strokeRect(axisX + 1.5, y - TAG_H / 2 + 0.5, axisW - 2, TAG_H - 1);
-      ctx.fillStyle = p.level;
-    } else { ctx.fillStyle = p.level; ctx.fillRect(axisX + 1, y - TAG_H / 2, axisW - 1, TAG_H); ctx.fillStyle = p.bg; }
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(axisX + 1.5, y - TAG_H / 2 + 0.5, axisW - 2, TAG_H - 1);
+      ctx.fillStyle = color;
+    } else { ctx.fillStyle = color; ctx.fillRect(axisX + 1, y - TAG_H / 2, axisW - 1, TAG_H); ctx.fillStyle = p.bg; }
     ctx.fillText(tag.text, axisX + 6, y + 0.5);
   }
   ctx.restore();
