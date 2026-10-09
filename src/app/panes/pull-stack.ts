@@ -117,7 +117,9 @@ export class PullHistory {
   #seq = 0;
   #key = '';
   #lo = Infinity; #hi = -Infinity;
-  #cache: { key: string; view: PullView } | null = null;
+  /** The views worked out for the newest snapshot (one per book in Single mode), dropped when a new one is taken. */
+  #cache = new Map<string, PullView>();
+  #cacheSeq = -1;
 
   /** The price between snapshots (each frame the book draws). */
   noteMark(price: number): void { if (price > 0) { this.#lo = Math.min(this.#lo, price); this.#hi = Math.max(this.#hi, price); } }
@@ -125,7 +127,7 @@ export class PullHistory {
   /** Take a snapshot when one is due; `key` names the coin, grid and window, and a new one starts again. */
   step(kernels: Kernels, frame: LevelsFrame, mark: number, now: number, windowS: number, base: number, key: string): void {
     const spacing = Math.max(MIN_SPACING_MS, windowS * 1000 / RING), last = this.#ring[this.#ring.length - 1];
-    if (key !== this.#key || (last && now - last.t > 3 * spacing)) { this.#key = key; this.#ring = []; this.#cache = null; }
+    if (key !== this.#key || (last && now - last.t > 3 * spacing)) { this.#key = key; this.#ring = []; this.#cache.clear(); }
     else if (last && now - last.t < spacing) return;
     this.#ring.push(snapshot(kernels, frame, base, mark, now, ++this.#seq, this.#lo, this.#hi));
     this.#lo = Infinity; this.#hi = -Infinity;
@@ -143,10 +145,12 @@ export class PullHistory {
     for (let i = ring.length - 2; i >= 0; i--) if (ring[i]!.t <= target + spacing / 2) { at = i; break; }
     if (at < 0) return { kind: 'filling', waitS: Math.max(1, Math.ceil((ring[0]!.t + windowS * 1000 - now.t) / 1000)) };
     const then = ring[at]!, key = `${then.seq}|${now.seq}|${step}|${bin0}|${n}|${ids.join(',')}`;
-    if (this.#cache?.key === key) return this.#cache.view;
+    if (this.#cacheSeq !== now.seq || this.#cache.size > 32) { this.#cache.clear(); this.#cacheSeq = now.seq; }
+    const held = this.#cache.get(key);
+    if (held) return held;
     const rows = pullRows(then, now, ring.slice(at + 1), ids, step, bin0, n);
     const view: PullView = rows ? { kind: 'rows', rows } : { kind: 'fine' };
-    this.#cache = { key, view };
+    this.#cache.set(key, view);
     return view;
   }
 }

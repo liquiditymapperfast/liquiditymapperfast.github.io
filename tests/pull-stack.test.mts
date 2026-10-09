@@ -99,3 +99,14 @@ test('the window fills before it shows, snapshots keep their spacing, a gap star
   assert.deepEqual(h.view(['a:BTC'], 10, 8_190, 20, 15), { kind: 'filling', waitS: 15 });
   assert.equal(h.view(['a:BTC'], 10, 8_190, 20, 0).kind, 'off');
 });
+
+test('each book of Single mode keeps its own view until the next snapshot', async () => {
+  const kernels = await loadWasm();
+  const h = new PullHistory(), f = frame(wide('a:BTC', [[81_950, 81_950, 100]]), wide('b:BTC'));
+  for (let t = 0; t <= 16_000; t += 1_000) h.step(kernels, f, MARK, t, 15, BASE, 'BTC|0.5|15');
+  const a = h.view(['a:BTC'], 10, 8_190, 20, 15), b = h.view(['b:BTC'], 10, 8_190, 20, 15);
+  assert.equal(h.view(['a:BTC'], 10, 8_190, 20, 15), a);
+  assert.equal(h.view(['b:BTC'], 10, 8_190, 20, 15), b);
+  h.step(kernels, f, MARK, 17_000, 15, BASE, 'BTC|0.5|15');
+  assert.notEqual(h.view(['a:BTC'], 10, 8_190, 20, 15), a, 'a new snapshot: worked out again');
+});

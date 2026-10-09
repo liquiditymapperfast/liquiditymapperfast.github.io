@@ -28,7 +28,7 @@ const HEAD_TALL = 46;
 const BALANCE_H = 16;
 const PRICE_W = 58, USD_W = 54, MIN_BAR_W = 90, CELL_MAX = 26, CELL_MIN = 5;
 /** The pull/stack column beside LEVEL USD, while it is on. */
-const PS_W = 50;
+const PS_W = 58;
 /** A window as the popup says it: "15 s", "1 min". */
 const windowText = (s: number): string => s < 60 ? t('{n} s', { n: s }) : t('{n} min', { n: s / 60 });
 const signedUsd = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${usd(Math.abs(v))}`;
@@ -559,8 +559,7 @@ export class LadderPane {
       const line = head - HEAD_H / 2;
       ctx.fillText(t('PRICE'), x0 + 6, line); ctx.textAlign = 'right'; ctx.fillText(t('LEVEL USD'), x0 + priceW + USD_W, line);
       if (pull) {
-        const s = state.pullStack, short = s < 60 ? `${s}s` : `${s / 60}m`;
-        ctx.fillText(pull.kind === 'filling' ? `Δ ${pull.waitS}s…` : pull.kind === 'fine' ? 'Δ –' : `Δ ${short}`, x0 + priceW + usdW, line);
+        ctx.fillText(pull.kind === 'filling' ? `Δ ${t('{n} s', { n: pull.waitS })}…` : pull.kind === 'fine' ? 'Δ –' : `Δ ${windowText(state.pullStack)}`, x0 + priceW + usdW, line);
       }
       if (cellIds) {
         ctx.textAlign = 'left';
