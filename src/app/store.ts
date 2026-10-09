@@ -14,6 +14,7 @@ import { LIQUIDATION_DEFAULTS, readLiquidations, type LiquidationSettings } from
 import { KEY_LEVEL_DEFAULTS, readKeyLevels, type KeyLevelSettings } from './keylevels/settings.ts';
 import { VWAP_DEFAULTS, readVwap, type VwapSettings } from './vwap/settings.ts';
 import { FOOTPRINT_DEFAULTS, readFootprint, type FootprintSettings } from './footprint/settings.ts';
+import { DELTA_DEFAULTS, readDelta, type DeltaSettings } from './delta/settings.ts';
 import type { EngineState } from './sound/engine.ts';
 import type { RangeSelection } from './range/selection.ts';
 import { TRADED_DEFAULTS, readTraded, type TradedSettings } from './traded/settings.ts';
@@ -34,7 +35,7 @@ export type OiBar = [number, number, number, number, number];
 export interface LayerLevel { id: string; side: string; price: number; notionalUsd: number; active?: boolean; amount?: number }
 
 /** Which panes are on the first time. */
-export const DEFAULT_SHOW: AppState['show'] = { profile: true, traded: false, depth: true, oi: true, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
+export const DEFAULT_SHOW: AppState['show'] = { profile: true, traded: false, depth: true, oi: true, delta: false, candles: true, footprint: false, lt: false, mirror: true, volume: true, bubbles: true, cvd: true, book: true };
 /**
  * The panes a first visit starts with. The flow column and the book each take a few hundred pixels beside the map, so on a window that is wide enough
  * for the map to stay readable with both (a phone has its tabs instead) they start on; a medium window (a tablet held sideways, a small laptop)
@@ -63,7 +64,7 @@ export interface AppState {
   oi: OiBar[];
   /** Instrument the OI bars belong to (the market's own, or a reference perp when the market has no OI history). */
   oiInstrument: string;
-  show: { profile: boolean; /** The traded-volume column beside the profile (not on phones). */ traded: boolean; depth: boolean; oi: boolean; candles: boolean; footprint: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean; /** The taker-flow (CVD) column left of the map, and the order book column right of it. */ cvd: boolean; book: boolean };
+  show: { profile: boolean; /** The traded-volume column beside the profile (not on phones). */ traded: boolean; depth: boolean; oi: boolean; /** The Delta pane under the map (taker delta and CVD by candle). */ delta: boolean; candles: boolean; footprint: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean; /** The taker-flow (CVD) column left of the map, and the order book column right of it. */ cvd: boolean; book: boolean };
   /** The CVD column's settings. */
   cvd: CvdSettings;
   /** What counts as standing out (anomalous volume, OI change, ...), shared by every pane. */
@@ -82,6 +83,8 @@ export interface AppState {
   vwapAnchoring: boolean;
   /** The footprint's own settings (whether it shows is `show.footprint`; its imbalance options are `barStatOptions`). */
   footprint: FootprintSettings;
+  /** The Delta pane's settings: bars or CVD candles, where the CVD restarts, divergences. */
+  delta: DeltaSettings;
   /** Sound notifications: master switch, volume, which trades count and the size tiers. */
   sounds: SoundSettings;
   /** Whether the browser lets sound play yet (it holds audio until a click or key press). */
@@ -117,7 +120,7 @@ export interface AppState {
    * Shared cursor: `t` is authoritative; each pane converts it to its own x. `price` is only set by the heatmap. `touch` marks a hover
    * that a finger pinned (it stays until the next tap or drag, and its readouts sit above the finger).
    */
-  hover: { t: number; price: number | null; y: number; source: 'heat' | 'depth' | 'oi' | 'lt' | 'bars' | 'cvd'; touch?: boolean } | null;
+  hover: { t: number; price: number | null; y: number; source: 'heat' | 'depth' | 'oi' | 'lt' | 'bars' | 'cvd' | 'delta'; touch?: boolean } | null;
   /** The Range tool's selection (a box on the map, or a stretch of time), being dragged or made; and whether the next drag selects (range/). Not saved. */
   range: RangeSelection | null;
   rangeTool: boolean;
@@ -127,7 +130,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme', 'traded'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme', 'traded'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -137,7 +140,7 @@ export function initialState(): AppState {
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
-    show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, liquidations: { ...LIQUIDATION_DEFAULTS }, keyLevels: readKeyLevels(KEY_LEVEL_DEFAULTS), vwap: readVwap(VWAP_DEFAULTS), vwapAnchoring: false, footprint: readFootprint(FOOTPRINT_DEFAULTS), sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
+    show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, liquidations: { ...LIQUIDATION_DEFAULTS }, keyLevels: readKeyLevels(KEY_LEVEL_DEFAULTS), vwap: readVwap(VWAP_DEFAULTS), vwapAnchoring: false, footprint: readFootprint(FOOTPRINT_DEFAULTS), delta: readDelta(DELTA_DEFAULTS), sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
     heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
     theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false, traded: readTraded(undefined), ...saved,
   };
@@ -155,6 +158,7 @@ export function initialState(): AppState {
   state.keyLevels = readKeyLevels(saved.keyLevels);
   state.vwap = readVwap(saved.vwap);
   state.footprint = readFootprint(saved.footprint);
+  state.delta = readDelta(saved.delta);
   state.traded = readTraded(saved.traded);
   state.scope = saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all';
   state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';

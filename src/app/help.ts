@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels' | 'vwap';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane';
 
 export interface HelpTopic {
   title: string;
@@ -50,6 +50,18 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('The session VWAP starts again each day, week or month, in the zone the Volume profile and Key levels use; its bands are one and two standard deviations of the prices traded, weighted by volume. An anchored VWAP (AVWAP) runs from a moment you click on the map, such as a low, a high or the candle of a news event; a coin keeps up to four.'),
       t('Each bar\'s typical price (its high, low and close) is weighted by its volume, from one market\'s candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart\'s own candles.'),
       t('The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.')],
+  },
+  delta: {
+    title: t('Delta'), guide: 'lower-panes',
+    tip: t('A pane under the map: what taker buys outweighed sells by in each candle, and the cumulative delta (CVD) as candles.'),
+    body: [],
+  },
+  deltaPane: {
+    title: t('Delta'), guide: 'lower-panes',
+    tip: t('What taker buys outweighed sells by in each candle, over the exchanges the flow column adds up.'),
+    body: [t('Each candle\'s delta is what was bought at market minus what was sold, in dollars, over the same markets as the flow column\'s ALL VENUES lines (the exchanges switched on, inside Spot / Perp). As bars it is each candle on its own; as CVD candles it adds up from the left edge of the chart, or starts again each day or week, and a dotted line marks where it starts again.'),
+      t('A CVD candle opens and closes where the running delta was at the candle\'s start and end. Its high and low are sampled sixteen times through the candle, since the extremes of a sum over several exchanges are not kept, so a wick can be a little short.'),
+      t('It comes from the flow the page holds: a day a second at a time, and older minutes where the server keeps them. Candles before that have none, and the CVD starts again after a stretch with nothing recorded.')],
   },
   absorption: {
     title: t('Absorption'), guide: 'trades',

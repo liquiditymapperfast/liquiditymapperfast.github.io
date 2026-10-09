@@ -191,6 +191,7 @@ html[data-layout^="phone"] main[data-tab="flow"] .pane.cvd:not([hidden]),
 html[data-layout^="phone"] main[data-tab="book"] .pane.ladder:not([hidden]),
 html[data-layout^="phone"] main[data-tab="depth"] .pane.depth:not([hidden]),
 html[data-layout^="phone"] main[data-tab="oi"] .pane.oi:not([hidden]),
+html[data-layout^="phone"] main[data-tab="delta"] .pane.delta:not([hidden]),
 html[data-layout^="phone"] main[data-tab="lt"] .pane.lt:not([hidden]),
 html[data-layout^="phone"] main[data-tab="stats"] .pane.bars:not([hidden]) { display: flex; flex: 0 0 var(--dock-size, 40%) !important; min-height: 0 !important; }
 

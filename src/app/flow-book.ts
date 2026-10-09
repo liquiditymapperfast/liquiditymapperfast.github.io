@@ -19,6 +19,8 @@ export class FlowBook {
   readonly #began = new Map<string, number>();
   /** Bumped whenever anything changed, for whoever redraws. */
   version = 0;
+  /** Bumped when history is loaded, fails or stops counting (not for a live second): what is worked out from older flow keys on it. */
+  loads = 0;
 
   get ids(): string[] { return [...this.#series.keys()]; }
   get(id: string): FlowSeries | undefined { return this.#series.get(id); }
@@ -58,7 +60,7 @@ export class FlowBook {
    * every instrument is asked for again at the next look. A request that is on its way began before this, so its answer does not count as
    * having covered anything.
    */
-  invalidate(): void { this.#epoch++; this.#from.clear(); }
+  invalidate(): void { this.#epoch++; this.#from.clear(); this.loads++; }
   /** The answer: replace each instrument's series with its history, then put the held live seconds on top. */
   load(frame: FlowFrame, ids: readonly string[], from: number): void {
     for (const s of frame.instruments) {
@@ -71,7 +73,7 @@ export class FlowBook {
       for (const item of this.#held.get(id) ?? []) this.#put(item);
       this.#held.delete(id);
     }
-    this.version++;
+    this.version++; this.loads++;
   }
   /** Which of `ids` still need minutes over [from, to] (never asked, or asked for less). */
   minutesMissing(ids: readonly string[], from: number, to: number): string[] {
@@ -81,12 +83,12 @@ export class FlowBook {
   loadMinutes(frame: FlowMinutesFrame, ids: readonly string[], from: number, to: number): void {
     for (const id of ids) { this.#minutes.delete(id); this.#minutesAsked.set(id, { from, to }); }
     for (const s of frame.instruments) if (ids.includes(s.id)) this.#minutes.set(s.id, new FlowMinutes(s));
-    this.version++;
+    this.version++; this.loads++;
   }
 
   /** The request failed: let the live seconds in again and allow another try. */
   fail(ids: readonly string[]): void {
     for (const id of ids) { for (const item of this.#held.get(id) ?? []) this.#put(item); this.#held.delete(id); this.#began.delete(id); }
-    this.version++;
+    this.version++; this.loads++;
   }
 }

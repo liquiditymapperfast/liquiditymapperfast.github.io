@@ -52,6 +52,22 @@ const range = (...arrays: Float64Array[]): { min: number; max: number } => {
 };
 
 /**
+ * The families the ALL VENUES lines are made of: those of the instruments with flow, and also those that have only older minutes (nothing
+ * traded in the last day), whose part of a window reaching back to them would otherwise be left out. Those with seconds come first, so one
+ * never takes the place of a market that trades now. The Delta pane adds up the same instruments, so the two never disagree.
+ */
+export function aggregateFamilies(flow: FlowBook, ids: readonly string[], kindOf: (id: string) => Kind | null): { withFlow: string[]; olderOnly: string[]; families: Family[]; aggregate: Family[] } {
+  const withFlow = ids.filter(id => { const s = flow.get(id); return s !== undefined && !s.empty; }), active = new Set(withFlow);
+  const families = buildFamilies(withFlow, kindOf);
+  const olderOnly = ids.filter(id => !active.has(id) && flow.track(id)?.first != null);
+  return { withFlow, olderOnly, families, aggregate: olderOnly.length ? buildFamilies([...withFlow, ...olderOnly], kindOf) : families };
+}
+
+/** The instruments of the ALL VENUES lines, spot and perpetual together (one of each kind per exchange). */
+export const aggregateIds = (flow: FlowBook, ids: readonly string[], kindOf: (id: string) => Kind | null): string[] =>
+  aggregateFamilies(flow, ids, kindOf).aggregate.flatMap(f => f.lanes.map(l => l.id));
+
+/**
  * A lane's line over [t0, t1) from its track (its seconds, and its minutes before them): the running delta from the window's left edge (or as
  * it stands, with `rebase` off), and its figures over the rank window from its seconds.
  */
@@ -73,12 +89,8 @@ function laneLine(id: string, kind: Kind, series: FlowSeries, track: FlowTrack, 
 export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, ranker }: ModelInput): CvdModel {
   const nowSec = Math.floor(now / 1000), rankSec = Math.round(RANK_MS[settings.rank] / 1000), winStart = nowSec - rankSec + 1;
   const t0Sec = Math.floor(t0 / 1000), t1Sec = Math.max(t0Sec + 1, Math.ceil(t1 / 1000));
-  const withFlow = ids.filter(id => { const s = flow.get(id); return s !== undefined && !s.empty; }), active = new Set(withFlow);
-  const families = buildFamilies(withFlow, kindOf);
-  // The aggregate lines also count an instrument that has only older minutes (nothing traded in the last day): a window reaching back to
-  // them would leave it out. Those with seconds come first, so one never takes the place of a market that trades now.
-  const olderOnly = ids.filter(id => !active.has(id) && flow.track(id)?.first != null);
-  const aggregateFamilies = olderOnly.length ? buildFamilies([...withFlow, ...olderOnly], kindOf) : families;
+  // The aggregate lines also count an instrument that has only older minutes (see aggregateFamilies).
+  const { withFlow, olderOnly, families, aggregate: aggregated } = aggregateFamilies(flow, ids, kindOf);
   const common = { t0Sec, t1Sec, columns, winStart, nowSec, now, rebase: settings.rebase, quietFlag: settings.quietFlag };
 
   const grossOf = (family: Family, kind: Kind): number => { const lane = family.lanes.find(l => l.kind === kind); return lane ? flow.get(lane.id)!.gross(winStart, nowSec) : 0; };
@@ -96,7 +108,7 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
   const volumeFamilies = everyone.length;
 
   const aggregate = (kind: Kind): LaneLine | null => {
-    const ids = aggregateFamilies.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => l.id), lanes = ids.map(id => flow.get(id)), tracks = ids.map(id => flow.track(id)!);
+    const ids = aggregated.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => l.id), lanes = ids.map(id => flow.get(id)), tracks = ids.map(id => flow.track(id)!);
     if (!ids.length) return null;
     const last = nan(columns), span = t1Sec - t0Sec;
     let delta = 0, gross = 0;

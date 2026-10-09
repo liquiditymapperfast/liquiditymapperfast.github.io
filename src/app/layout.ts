@@ -21,8 +21,9 @@ export class Layout {
   constructor(private main: HTMLElement, private chart: HTMLElement, private side: HTMLElement, panes: LayoutPane[], private flow: HTMLElement | null = null) {
     this.#panes = panes;
     // Restore pane order and heights.
+    // The saved order, and a pane it does not know (one added since) after the others: a new pane must not undo a person's order.
     const order = this.#saved.order?.filter(id => panes.some(p => p.id === id)) ?? [];
-    if (order.length === panes.length) this.#panes = order.map(id => panes.find(p => p.id === id)!);
+    if (order.length) this.#panes = [...order.map(id => panes.find(p => p.id === id)!), ...panes.filter(p => !order.includes(p.id))];
     for (const pane of this.#panes) {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);

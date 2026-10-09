@@ -30,11 +30,11 @@ import type { RangeTool } from '../range/tool.ts';
  * invalidates style and layout, so a node is written only when what it says changes.
  */
 const written = new WeakMap<Element, string>();
-const setHtml = (node: Element | null, html: string): void => { if (!node || written.get(node) === html) return; written.set(node, html); node.innerHTML = html; };
-const setText = (node: Element | null, text: string): void => { if (!node || written.get(node) === text) return; written.set(node, text); node.textContent = text; };
+export const setHtml = (node: Element | null, html: string): void => { if (!node || written.get(node) === html) return; written.set(node, html); node.innerHTML = html; };
+export const setText = (node: Element | null, text: string): void => { if (!node || written.get(node) === text) return; written.set(node, text); node.textContent = text; };
 
 /** A canvas pane whose x axis is the main chart's time axis. */
-abstract class TimePane {
+export abstract class TimePane {
   readonly root = document.createElement('section');
   protected head = document.createElement('div');
   protected canvas = document.createElement('canvas');
@@ -45,7 +45,7 @@ abstract class TimePane {
   /** What the map does with a gesture on the time axis these panes share with it (set by `useTimeGestures`). */
   #time: ReturnType<HeatPane['timeGestures']> | null = null;
   #pinned: Pt | null = null;
-  #source: 'depth' | 'oi' | 'lt' | 'bars';
+  #source: 'depth' | 'oi' | 'lt' | 'bars' | 'delta';
   /** Where the pointer (or the pinned finger) is, in the page, for a popup that is a page element rather than canvas drawing. */
   protected pointer: { x: number; y: number } | null = null;
   /** The Range tool (set by the page), and a stretch of time being selected here: where the drag began, and where a finger last was. */
@@ -58,7 +58,7 @@ abstract class TimePane {
     this.root.append(this.head, this.canvas); host.append(this.root);
     this.ctx = this.canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.canvas);
-    const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars';
+    const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta';
     // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held.
     this.canvas.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch' || !this.#range) return;

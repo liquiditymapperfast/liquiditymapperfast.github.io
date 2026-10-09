@@ -10,7 +10,7 @@ import { t } from './i18n.ts';
  * A tab exists only while its pane is switched on in Settings (Footprint is what brings the bar-stats pane, "Stats").
  * A handle between the map and the pane resizes it, and the size is remembered per tab and orientation.
  */
-export type DockTab = 'map' | 'flow' | 'book' | 'depth' | 'oi' | 'lt' | 'stats';
+export type DockTab = 'map' | 'flow' | 'book' | 'depth' | 'oi' | 'delta' | 'lt' | 'stats';
 
 interface TabSpec { id: DockTab; label: string; tip: string; icon: string; /** The `show` switch that must be on; absent when the pane is always available. */ needs?: keyof AppState['show'] }
 const svg = (body: string): string => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -25,6 +25,8 @@ export const DOCK_TABS: readonly TabSpec[] = [
     icon: svg('<path d="M3.5 20V15h5V10.5h5V7h7"/><path d="M3.5 20h17"/>') },
   { id: 'oi', label: 'OI', tip: t('Open interest and how it changes with each candle.'), needs: 'oi',
     icon: svg('<path d="M5 20v-4M10 20v-7M15 20v-5M20 20v-9"/><path d="M4 9l5-3 5 2 6-4"/>') },
+  { id: 'delta', label: t('Delta'), tip: t('What taker buys outweighed sells by in each candle, and the cumulative delta.'), needs: 'delta',
+    icon: svg('<path d="M5 20V12M9.7 20V8M14.3 20v-6M19 20V5"/><path d="M3.5 12h17" stroke-dasharray="2 2.5"/>') },
   { id: 'lt', label: 'LT', tip: t('The Liquidity Tracker: bid and ask liquidity near the price as two lines.'), needs: 'lt',
     icon: svg('<path d="M3.5 9c3-4 5 4 8 0s5-2 9-2"/><path d="M3.5 17c3-4 5 4 8 0s5-2 9-2"/>') },
   { id: 'stats', label: t('Stats'), tip: t('Statistics for each candle, beneath the footprint.'), needs: 'footprint',
@@ -47,8 +49,8 @@ export const resolveTab = (wanted: DockTab, show: AppState['show']): DockTab => 
  * or the pixels the person dragged it to. The result is a CSS length for `--dock-size`.
  */
 export const DEFAULT_SHARE: Readonly<Record<Axis, Readonly<Record<Exclude<DockTab, 'map'>, number>>>> = {
-  portrait: { flow: 0.5, book: 0.46, depth: 0.38, oi: 0.38, lt: 0.38, stats: 0.3 },
-  landscape: { flow: 0.46, book: 0.46, depth: 0.42, oi: 0.42, lt: 0.42, stats: 0.38 },
+  portrait: { flow: 0.5, book: 0.46, depth: 0.38, oi: 0.38, delta: 0.38, lt: 0.38, stats: 0.3 },
+  landscape: { flow: 0.46, book: 0.46, depth: 0.42, oi: 0.42, delta: 0.42, lt: 0.42, stats: 0.38 },
 };
 export const clampSize = (px: number, available: number, axis: Axis): number => Math.round(Math.max(axis === 'portrait' ? 120 : 220, Math.min(available - (axis === 'portrait' ? 150 : 200), px)));
 
