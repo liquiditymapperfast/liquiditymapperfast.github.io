@@ -18,6 +18,7 @@ import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { levelLines, smallerVenuesLines, venueCellLines, type LevelFacts } from './ladder-info.ts';
 import { barPieces, pieceAt, pieceLabel, rankVenues, type BarPiece } from './ladder-pieces.ts';
 import { drawVenueMark } from '../venue-marks.ts';
+import { PullHistory, pullBase, readPullWindow, type PullRows } from './pull-stack.ts';
 import { t } from '../i18n.ts';
 
 const ROW_H = 17;
@@ -26,6 +27,11 @@ const HEAD_TALL = 46;
 /** Height of the balance bar under the header (bids against asks within the visible range). */
 const BALANCE_H = 16;
 const PRICE_W = 58, USD_W = 54, MIN_BAR_W = 90, CELL_MAX = 26, CELL_MIN = 5;
+/** The pull/stack column beside LEVEL USD, while it is on. */
+const PS_W = 50;
+/** A window as the popup says it: "15 s", "1 min". */
+const windowText = (s: number): string => s < 60 ? t('{n} s', { n: s }) : t('{n} min', { n: s / 60 });
+const signedUsd = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${usd(Math.abs(v))}`;
 /** Dragging the price column zooms; this is the width of that column's hit area, and how far to drag per zoom step. */
 const AXIS_W = PRICE_W + 6, AXIS_DRAG_PX = 26;
 const BOOK_MIN_W = 250;
@@ -85,6 +91,8 @@ export class LadderPane {
   #autoOption: HTMLOptionElement | null = null;
   /** Mirror-hover comparison for the book under the pointer, or null (read by tests, drawn on the canvas). */
   mirror: MirrorStats | null = null;
+  /** The book's snapshots for pull/stack (taken only while it is on and the book is drawn). */
+  #pull = new PullHistory();
 
   constructor(host: HTMLElement, private store: Store, private kernels: Kernels) {
     this.root.className = 'pane ladder';
@@ -255,11 +263,13 @@ export class LadderPane {
     const group = this.#select(t('Group'), [['auto', t('Auto')], ...this.#groups.map(g => [String(g), stepText(g)] as [string, string])], () => String(this.#grouping(s().grouping)), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
     setTip(group, t('Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.'));
     this.#autoOption = group.querySelector('option[value="auto"]');
+    const pull = this.#select(t('Pull/stack'), [['0', t('off')], ...[15, 60, 300].map(s => [String(s), windowText(s)] as [string, string])], () => String(s().pullStack), v => this.store.set({ pullStack: readPullWindow(Number(v)) }));
+    setTip(pull, t('How much resting liquidity each price gained (+, stacked) or lost (−, pulled) over this window. Grey: the price traded there in the window, where a fill takes liquidity away just as a pull does.'));
     this.controls.append(title, helpButton('orderBook'),
       this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
       group,
       this.#select(t('Show'), [['both', t('Levels + cum')], ['levels', t('Levels')], ['cumulative', t('Cumulative')]], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] })),
-      this.#booksButton, recenter);
+      pull, this.#booksButton, recenter);
     this.syncVenues();
   }
 
@@ -324,9 +334,12 @@ export class LadderPane {
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0); ctx.clearRect(0, 0, width, h);
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textBaseline = 'middle';
     if (!frame || !(mark > 0) || width < 80) { ctx.fillStyle = p.muted; ctx.fillText(t('Waiting for order book…'), 12, 20); return; }
+    // Pull/stack: a snapshot of every venue when one is due (nothing at all while it is off).
+    const pullS = state.pullStack;
+    if (pullS) { const base = pullBase(this.#groups[0] ?? 0.1); this.#pull.noteMark(mark); this.#pull.step(this.kernels, frame, mark, Date.now(), pullS, base, `${state.marketId}|${base}|${pullS}`); }
     const ids = state.ladderMode === 'single' ? books : activeIds(state);
     const cells = state.ladderMode === 'aggregated' && ids.length > 1;
-    const cellW = cells ? Math.max(CELL_MIN, Math.min(CELL_MAX, Math.floor((width - PRICE_W - USD_W - 8 - MIN_BAR_W) / ids.length))) : 0;
+    const cellW = cells ? Math.max(CELL_MIN, Math.min(CELL_MAX, Math.floor((width - PRICE_W - USD_W - (pullS ? PS_W : 0) - 8 - MIN_BAR_W) / ids.length))) : 0;
     const balanceH = state.highlight.on ? BALANCE_H : 0;
     const head = (cells && cellW < 20 ? HEAD_TALL : HEAD_H) + balanceH;
     const rows = Math.max(6, Math.floor((h - head) / ROW_H));
@@ -342,13 +355,13 @@ export class LadderPane {
       ids.forEach((id, k) => {
         const idx = g.ids.indexOf(id); if (idx < 0) return;
         const own: Grouped = { ...g, totalBid: g.bid[idx]!, totalAsk: g.ask[idx]! };
-        this.#drawBook(ctx, state, own, { x: k * colW, w: colW, title: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, markId: id, cells: null, order: null, cellW: 0, head, balanceH, cover: coverage(frame.books.find(b => b.id === id), mark), centerBin, rows, markBin, mark, step });
+        this.#drawBook(ctx, state, own, { x: k * colW, w: colW, title: `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`, markId: id, pullIds: [id], cells: null, order: null, cellW: 0, head, balanceH, cover: coverage(frame.books.find(b => b.id === id), mark), centerBin, rows, markBin, mark, step });
         if (k > 0) { ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(k * colW + 0.5, 0); ctx.lineTo(k * colW + 0.5, h); ctx.stroke(); }
       });
     } else {
       const hiBin = centerBin + Math.floor(rows / 2) - g.bin0;
       const order = state.ladderMode === 'compact' && ids.length > 1 ? this.#venueOrder(g, hiBin - rows + 1, hiBin) : null;
-      this.#drawBook(ctx, state, g, { x: 0, w: width, title: '', cells: cells ? ids : null, order, cellW, head, balanceH, cover: null, centerBin, rows, markBin, mark, step });
+      this.#drawBook(ctx, state, g, { x: 0, w: width, title: '', pullIds: ids, cells: cells ? ids : null, order, cellW, head, balanceH, cover: null, centerBin, rows, markBin, mark, step });
     }
   }
 
@@ -397,7 +410,7 @@ export class LadderPane {
    */
   #cellUnder(state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>,
     o: { x: number; w: number; title: string; cells: string[] | null; order: string[] | null; head: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number },
-    k: { priceW: number; usdW: number; cw: number; barX: number; barW: number; maxLevel: number }): { lines: InfoLine[]; x: number; y: number; w: number; h: number } | null {
+    k: { priceW: number; usdW: number; cw: number; barX: number; barW: number; maxLevel: number; pull: PullRows | null }): { lines: InfoLine[]; x: number; y: number; w: number; h: number } | null {
     const hv = this.#hover; if (!hv || this.#drag) return null;
     const { x: x0, w, rows, markBin, step, centerBin, head } = o;
     if (hv.x < x0 || hv.x >= x0 + w || hv.y < head || hv.y >= head + rows * ROW_H) return null;
@@ -410,7 +423,9 @@ export class LadderPane {
     const y = head + r * ROW_H, ids = o.cells, at = (i: number): number => (isAsk ? g.ask[i] : g.bid[i])?.[bin] ?? 0;
     const order = o.order, orderIdx = order ? order.map(id => g.ids.indexOf(id)) : null;
     const venues = ids ? ids.map((id, i) => ({ name: bookName(id), usd: at(i), id })) : order && orderIdx ? order.map((id, n) => ({ name: bookName(id), usd: at(orderIdx[n]!), id })) : [];
-    const facts: LevelFacts = { low: rowLo, step, mark: o.mark, ask: isAsk, size, cumulative: (isAsk ? cum.ask : cum.bid)[bin] ?? size, venues: venues.filter(v => v.usd > 0), ...(o.title ? { title: o.title } : {}) };
+    const change = k.pull ? (isAsk ? k.pull.ask[bin]! : k.pull.bid[bin]!) : NaN;
+    const facts: LevelFacts = { low: rowLo, step, mark: o.mark, ask: isAsk, size, cumulative: (isAsk ? cum.ask : cum.bid)[bin] ?? size, venues: venues.filter(v => v.usd > 0), ...(o.title ? { title: o.title } : {}),
+      ...(change === change && k.pull ? { pull: { usd: change, touched: k.pull.touched[bin] === 1, window: windowText(state.pullStack) } } : {}) };
     const cellsX = x0 + k.priceW + k.usdW + 8;
     if (ids && hv.x >= cellsX && hv.x < cellsX + ids.length * k.cw) {
       const i = Math.floor((hv.x - cellsX) / k.cw);
@@ -524,13 +539,15 @@ export class LadderPane {
   }
 
   #drawBook(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped,
-    o: { x: number; w: number; title: string; markId?: string; cells: string[] | null; order: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
+    o: { x: number; w: number; title: string; markId?: string; pullIds: string[]; cells: string[] | null; order: string[] | null; cellW: number; head: number; balanceH: number; cover: Cover | null; centerBin: number; rows: number; markBin: number; mark: number; step: number }): void {
     const p = this.#palette, { x: x0, w, rows, markBin, step, centerBin } = o;
     const cum = cumulative(g, o.mark);
     const dominance = state.highlight.on ? imbalanceByDistance(g, cum, markBin) : null;
     const weight = (bin: number, bidSide: boolean): number => dominance ? dominanceWeight(dominance[bin]!, bidSide) : 1;
     // `head` is where the rows start; the labels sit above the balance bar, which takes the last `balanceH` of it.
-    const priceW = PRICE_W, usdW = USD_W, cellIds = o.cells, cw = o.cellW, head = o.head - o.balanceH, venueW = cellIds ? cellIds.length * cw + 2 : 0;
+    // The pull/stack column sits after LEVEL USD, so everything right of it moves along by its width.
+    const pull = state.pullStack ? this.#pull.view(o.pullIds, step, g.bin0, g.nBins, state.pullStack) : null;
+    const priceW = PRICE_W, usdW = USD_W + (pull ? PS_W : 0), cellIds = o.cells, cw = o.cellW, head = o.head - o.balanceH, venueW = cellIds ? cellIds.length * cw + 2 : 0;
     const barX = x0 + priceW + usdW + venueW + 8, barW = Math.max(20, x0 + w - barX - 6);
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     if (o.title) {
@@ -540,7 +557,11 @@ export class LadderPane {
     }
     else {
       const line = head - HEAD_H / 2;
-      ctx.fillText(t('PRICE'), x0 + 6, line); ctx.textAlign = 'right'; ctx.fillText(t('LEVEL USD'), x0 + priceW + usdW, line);
+      ctx.fillText(t('PRICE'), x0 + 6, line); ctx.textAlign = 'right'; ctx.fillText(t('LEVEL USD'), x0 + priceW + USD_W, line);
+      if (pull) {
+        const s = state.pullStack, short = s < 60 ? `${s}s` : `${s / 60}m`;
+        ctx.fillText(pull.kind === 'filling' ? `Δ ${pull.waitS}s…` : pull.kind === 'fine' ? 'Δ –' : `Δ ${short}`, x0 + priceW + usdW, line);
+      }
       if (cellIds) {
         ctx.textAlign = 'left';
         // Each venue column is headed by its mark where it is wide enough to hold one; narrower ones (and those under 20 px, above the
@@ -558,6 +579,10 @@ export class LadderPane {
     let maxLevel = 1; const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1);
     const orderIdx = o.order ? o.order.map(id => g.ids.indexOf(id)) : null;
     for (let i = 0; i < g.nBins; i++) maxLevel = Math.max(maxLevel, g.totalBid[i]!, g.totalAsk[i]!);
+    // The largest change the price did not reach, so the numbers fade with their size.
+    const pullRows = pull?.kind === 'rows' ? pull.rows : null;
+    let maxPull = 1;
+    if (pullRows) for (let i = 0; i < g.nBins; i++) if (!pullRows.touched[i]) for (const v of [pullRows.bid[i]!, pullRows.ask[i]!]) if (v === v) maxPull = Math.max(maxPull, Math.abs(v));
     if (state.ladderShow !== 'levels') this.#paintCumulative(ctx, g, cum, o, barX, barW, maxCum, weight);
     if (o.balanceH > 0) this.#paintBalance(ctx, g, cum, o, x0, w);
     for (let r = 0; r < rows; r++) {
@@ -575,7 +600,14 @@ export class LadderPane {
       const value = isAsk ? ask : bid, color = isAsk ? p.ask : p.bid, f = weight(bin, !isAsk);
       if (bin === markBin) { ctx.fillStyle = p.line; ctx.fillRect(x0, y, w, ROW_H); }
       ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(fmtPrice((g.bin0 + bin) * step, step), x0 + 6, mid);
-      ctx.fillStyle = value > 0 ? p.text : p.muted; ctx.textAlign = 'right'; ctx.fillText(value > 0 ? usd(value) : '', x0 + priceW + usdW, mid);
+      ctx.fillStyle = value > 0 ? p.text : p.muted; ctx.textAlign = 'right'; ctx.fillText(value > 0 ? usd(value) : '', x0 + priceW + USD_W, mid);
+      if (pullRows) {
+        const change = isAsk ? pullRows.ask[bin]! : pullRows.bid[bin]!, touched = pullRows.touched[bin] === 1;
+        if (change === change && Math.abs(change) >= 1) {
+          ctx.fillStyle = touched ? p.muted : color; ctx.globalAlpha = touched ? 0.85 : Math.min(1, 0.45 + 0.55 * Math.sqrt(Math.abs(change) / maxPull));
+          ctx.fillText(signedUsd(change), x0 + priceW + usdW, mid); ctx.globalAlpha = 1;
+        }
+      }
       if (cellIds) cellIds.forEach((_, k) => {
         const vv = (isAsk ? g.ask[k] : g.bid[k])?.[bin] ?? 0;
         if (vv > 0) { ctx.globalAlpha = Math.min(1, (0.18 + 0.82 * Math.sqrt(vv / maxLevel)) * f); ctx.fillStyle = color; ctx.fillRect(x0 + priceW + usdW + 8 + k * cw, y + 3, Math.max(2, cw - 2), ROW_H - 6); ctx.globalAlpha = 1; }
@@ -594,7 +626,7 @@ export class LadderPane {
       }
       if (bin === markBin) { ctx.fillStyle = p.ask; ctx.fillRect(x0, y + ROW_H - 1, w, 1); }
     }
-    const cell = this.#cellUnder(state, g, cum, o, { priceW, usdW, cw, barX, barW, maxLevel });
+    const cell = this.#cellUnder(state, g, cum, o, { priceW, usdW, cw, barX, barW, maxLevel, pull: pullRows });
     this.#paintMirror(ctx, state, g, cum, o, o.head, rows, cell !== null);
     if (cell) this.#paintCell(ctx, cell, o, rows);
     // The scale label shares the header row with the DEPTH label, so it only appears when the bar column is wide enough for both.

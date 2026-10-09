@@ -15,6 +15,7 @@ import { KEY_LEVEL_DEFAULTS, readKeyLevels, type KeyLevelSettings } from './keyl
 import { VWAP_DEFAULTS, readVwap, type VwapSettings } from './vwap/settings.ts';
 import { FOOTPRINT_DEFAULTS, readFootprint, type FootprintSettings } from './footprint/settings.ts';
 import { DELTA_DEFAULTS, readDelta, type DeltaSettings } from './delta/settings.ts';
+import { readPullWindow, type PullWindow } from './panes/pull-stack.ts';
 import type { EngineState } from './sound/engine.ts';
 import type { RangeSelection } from './range/selection.ts';
 import { TRADED_DEFAULTS, readTraded, type TradedSettings } from './traded/settings.ts';
@@ -107,6 +108,8 @@ export interface AppState {
   grouping: 'auto' | number;
   ladderMode: LadderMode;
   ladderShow: LadderShow;
+  /** The order book's pull/stack window in seconds (0: off). */
+  pullStack: PullWindow;
   ladderVenue: string;
   /** Instrument ids that get their own book in Single mode (empty = every enabled venue). */
   ladderVenues: string[];
@@ -130,7 +133,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderVenue', 'ladderVenues', 'theme', 'traded'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'pullStack', 'ladderVenue', 'ladderVenues', 'theme', 'traded'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -141,7 +144,7 @@ export function initialState(): AppState {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
     show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, liquidations: { ...LIQUIDATION_DEFAULTS }, keyLevels: readKeyLevels(KEY_LEVEL_DEFAULTS), vwap: readVwap(VWAP_DEFAULTS), vwapAnchoring: false, footprint: readFootprint(FOOTPRINT_DEFAULTS), delta: readDelta(DELTA_DEFAULTS), sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
-    heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', ladderVenue: '', ladderVenues: [],
+    heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', pullStack: 0, ladderVenue: '', ladderVenues: [],
     theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false, traded: readTraded(undefined), ...saved,
   };
   // Saved objects may predate newer keys: keep the defaults for anything they lack.
@@ -159,6 +162,7 @@ export function initialState(): AppState {
   state.vwap = readVwap(saved.vwap);
   state.footprint = readFootprint(saved.footprint);
   state.delta = readDelta(saved.delta);
+  state.pullStack = readPullWindow(saved.pullStack);
   state.traded = readTraded(saved.traded);
   state.scope = saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all';
   state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';

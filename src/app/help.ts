@@ -183,7 +183,8 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Order book'), guide: 'order-book',
     tip: t('The ladder: every price with the liquidity resting there, one column per venue and a bar for the combined size. Scroll over it to zoom the price step.'),
     body: [t('Each row is a price step. Pink rows above the price are asks, green rows below are bids. The coloured cells are the venues (their size at that price) and the bar on the right is the combined size, with the running total behind it.'),
-      t('Mode chooses between all venues added together, one venue alone, or a compact view. Group is the price step per row: scroll over the book, or drag its price column, to change it. Hover for the Mirror comparison.')],
+      t('Mode chooses between all venues added together, one venue alone, or a compact view. Group is the price step per row: scroll over the book, or drag its price column, to change it. Hover for the Mirror comparison.'),
+      t('Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue\'s book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.')],
   },
 };
 

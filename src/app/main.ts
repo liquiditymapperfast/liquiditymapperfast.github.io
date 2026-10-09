@@ -184,7 +184,7 @@ async function main(): Promise<void> {
     if (changed.has('lt') || changed.has('show') || changed.has('sounds')) lt.refresh();
     if (changed.has('barStatOptions') && !changed.has('barStats')) bars.refresh();
     if (changed.has('barStats')) { arrange.setPaneHeight('bars', 12 + Math.max(1, enabledStats(state.barStats).length) * 24); bars.refresh(); }
-    if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
+    if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('pullStack') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.invalidate(); }
     if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); delta.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.syncHover(); }
     if (changed.has('delta')) delta.settingsChanged();

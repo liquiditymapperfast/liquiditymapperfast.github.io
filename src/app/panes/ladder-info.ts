@@ -19,6 +19,8 @@ export interface LevelFacts {
   venues: readonly { name: string; usd: number; id?: string }[];
   /** A book that belongs to one venue says which. */
   title?: string;
+  /** What the level gained (+) or lost (−) over the pull/stack window, and whether the price traded there meanwhile. */
+  pull?: { usd: number; touched: boolean; window: string };
 }
 
 /** How far a level is from the mark: "+0.42% · 36 bp", negative below it. */
@@ -44,6 +46,11 @@ export function levelLines(f: LevelFacts, limit = 4): InfoLine[] {
     { label: t('From the mark'), text: `$${usd(f.cumulative)}` },
     { label: t('Distance'), text: distanceText(f.low + f.step / 2, f.mark) },
   ];
+  if (f.pull) {
+    const v = f.pull.usd;
+    lines.push({ label: t('Pull/stack, {window}', { window: f.pull.window }), text: `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`, color: f.pull.touched ? 'muted' : f.ask ? 'above' : 'below' });
+    if (f.pull.touched) lines.push({ text: t('The price traded here in the window: a fill takes liquidity away just as a pull does.'), color: 'muted' });
+  }
   if (f.venues.length > 1) {
     const sorted = [...f.venues].sort((a, b) => b.usd - a.usd), total = sorted.reduce((sum, v) => sum + v.usd, 0);
     sorted.slice(0, limit).forEach((v, i) => lines.push({ label: v.name, text: `$${usd(v.usd)} · ${total > 0 ? Math.round(v.usd / total * 100) : 0}%`, rule: i === 0, ...(v.id ? { mark: v.id } : {}) }));
