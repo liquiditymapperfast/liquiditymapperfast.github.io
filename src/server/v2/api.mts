@@ -289,6 +289,20 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (!Number.isInteger(limit) || limit < 1 || limit > PRINTS_PER_ANSWER) return sendJson(res, { error: 'limit must be a whole number from 1 to 5000' }, 400);
     sendJson(res, { floor: PRINT_FLOOR_USD, prints: prints.query(from, to, min, limit).map(toWire) });
   };
+  /**
+   * Whale VWAP sums: per step, the USD and coins bought and sold by the large market orders of some instruments from a size band up (kept in
+   * memory beside the prints, see shared/print-sums.ts), and since when the recording counts them.
+   */
+  const printSumsRoute = (url: URL, res: ServerResponse) => {
+    const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
+    if (!ids.length || ids.length > MAX_SIZES_INSTRUMENTS) return sendJson(res, { error: `inst must name 1 to ${MAX_SIZES_INSTRUMENTS} instruments` }, 400);
+    const to = num(url.searchParams.get('to'), Date.now() + 60_000), from = Math.max(num(url.searchParams.get('from'), to - 86_400_000), to - MAX_COLUMN_SPAN_MS);
+    const step = num(url.searchParams.get('step'), 60_000);
+    if (!(step >= 60_000) || (to - from) / step > 20_000) return sendJson(res, { error: 'step must be at least a minute, and at most 20,000 steps' }, 400);
+    const answer = prints.printSums(ids, from, to, num(url.searchParams.get('min'), NaN), step);
+    if (!answer) return sendJson(res, { error: `min must be one of ${prints.sums.bands.join(', ')}` }, 400);
+    sendJson(res, answer);
+  };
   /** The trades of some instruments added together by size over the last N minutes, for each of up to six N (the page's strip); minutes are counted on this server's clock. */
   const sizesRoute = (url: URL, res: ServerResponse) => {
     const ids = (url.searchParams.get('inst') ?? '').split(',').filter(Boolean);
@@ -400,6 +414,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
           case '/api/v2/oi': oi(url, res); return true;
           case '/api/v2/footprint': footprintRoute(url, res); return true;
           case '/api/v2/prints': printsRoute(url, res); return true;
+          case '/api/v2/print-sums': printSumsRoute(url, res); return true;
           case '/api/v2/liquidations': liquidationsRoute(url, res); return true;
           case '/api/v2/flow': flowRoute(url, res); return true;
           case '/api/v2/flow-minutes': flowMinutesRoute(url, res); return true;

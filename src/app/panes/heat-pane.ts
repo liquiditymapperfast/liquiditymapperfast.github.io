@@ -37,7 +37,7 @@ import { MAX_BACK_MS, barMsFor, keyLines, neededFrom, type KeyLine } from '../ke
 import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { paintKeyLevels, paintKeyTags, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
-import { sessionsOf, vwapBarMs, vwapSeries } from '../vwap/vwap.ts';
+import { sessionsOf, vwapBarMs, vwapSeries, whaleSeries } from '../vwap/vwap.ts';
 import { anchorsOf } from '../vwap/settings.ts';
 import { paintVwap, type VwapLine } from '../vwap/paint.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
@@ -781,21 +781,23 @@ export class HeatPane {
     const s = state.vwap, v = this.view, now = Date.now(), MIN = 60_000, HOUR = 3_600_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
     const key = `${JSON.stringify(s)}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
     if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
-    const sessions = s.session ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now) : [];
+    // The whale VWAP follows the same sessions, so they are worked out for either.
+    const sessions = s.session || s.whale ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now) : [];
     const sessionBar = vwapBarMs(sessions.length ? now - sessions[0]!.from : 0, barMs);
     const anchors = anchorsOf(s, coin, now).map(at => ({ at, bar: vwapBarMs(now - at, barMs) }));
     const reach = new Map<number, number>();
     const need = (bar: number, from: number): void => { reach.set(bar, Math.min(reach.get(bar) ?? Infinity, Math.floor(from / bar) * bar)); };
-    if (sessions.length) need(sessionBar, sessions[0]!.from);
+    if (sessions.length && s.session) need(sessionBar, sessions[0]!.from);
     for (const a of anchors) need(a.bar, a.at);
     const plan = { sessions, sessionBar, anchors, reach };
     this.#vwapPlanned = { key, plan };
     return plan;
   }
-  /** Ask for the candles the VWAP lines need, one history per bar size. */
+  /** Ask for the candles the VWAP lines need, one history per bar size, and the whale sums from the first session (within the week recorded). */
   #ensureVwap(state: AppState): void {
     const { target } = this.#keyLevelContext(state), plan = this.#vwapPlan(state);
     for (const [bar, from] of plan.reach) this.hub.vwapHistory(bar).ensure(target, from, bar, () => this.invalidate());
+    if (state.vwap.whale && plan.sessions.length) this.hub.ensureWhale(flowIds(state, this.hub.flow.ids), Math.max(plan.sessions[0]!.from, Date.now() - 7 * 86_400_000), scaledUsd(state.vwap.whaleUsd));
   }
   /**
    * The bars of one VWAP history and, after the last of them, the chart's own candles when they are of the same market and no coarser (the
@@ -817,16 +819,27 @@ export class HeatPane {
     const { target } = this.#keyLevelContext(state); if (!target) return [];
     const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1];
     const versions = [...plan.reach.keys()].map(bar => { const h = this.hub.vwapHistory(bar); return `${bar}:${h.id}:${h.version}`; }).join(',');
-    const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}`;
+    const w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}` : '';
+    const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}`;
     if (this.#vwapDrawn?.key === key) return this.#vwapDrawn.lines;
     const lines: VwapLine[] = [], now = Date.now();
     const sessionBars = plan.sessions.length ? this.#vwapBars(state, plan.sessionBar, target) : null;
     const heldFrom = (bar: number): number => this.hub.vwapHistory(bar).heldFrom;
-    if (sessionBars) for (const w of plan.sessions) {
+    if (sessionBars && s.session) for (const w of plan.sessions) {
       // A session whose start the history does not reach yet has no true average: it waits rather than show a wrong one.
       if (heldFrom(plan.sessionBar) > w.from) continue;
       const points = vwapSeries(sessionBars, w.from, w.to);
       if (points.length) lines.push({ kind: 'session', n: 0, points, live: w.to > now, key: w.key });
+    }
+    // The whale lines of each session, from where the recording's count of large orders begins when that is later; only the sums of the size asked.
+    const whale = this.hub.whale;
+    if (s.whale && whale && whale.minUsd === scaledUsd(s.whaleUsd)) {
+      const rows = this.hub.whaleRows();
+      for (const w of plan.sessions) {
+        const { buys, sells } = whaleSeries(rows, Math.max(w.from, whale.since ?? w.from), w.to), live = w.to > now;
+        if (buys.length) lines.push({ kind: 'whaleBuy', n: 0, points: buys, live, key: `whale-buy|${w.key}` });
+        if (sells.length) lines.push({ kind: 'whaleSell', n: 0, points: sells, live, key: `whale-sell|${w.key}` });
+      }
     }
     plan.anchors.forEach((a, i) => {
       const bars = this.#vwapBars(state, a.bar, target), start = Math.floor(a.at / a.bar) * a.bar;

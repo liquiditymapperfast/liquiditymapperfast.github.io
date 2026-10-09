@@ -982,5 +982,16 @@
  "Then click the map where the average should start.": "次に、平均を始めたい位置をマップ上でクリックします。",
  "Click the map where the average should start.": "平均を始めたい位置をマップ上でクリックしてください。",
  "No market of this coin has a history the page can read, so there is no VWAP.": "この通貨には、ページが履歴を読める市場がないため、VWAP はありません。",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "{market} のローソク足から。各足の典型価格（高値・安値・終値）を出来高で加重し、1 日分は 1 分足、それより長い期間はより粗い足を使います。"
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "{market} のローソク足から。各足の典型価格（高値・安値・終値）を出来高で加重し、1 日分は 1 分足、それより長い期間はより粗い足を使います。",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "クジラ VWAP は、記録された大口の成行注文（取引バブルと同じ注文で、選んだサイズ以上）だけを、買いと売りを分けて、有効な取引所について、セッション開始時または記録開始時から平均します。",
+ "Whale buys": "クジラの買い",
+ "Whale sells": "クジラの売り",
+ "Whale VWAP": "クジラ VWAP",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "セッション開始以来、大口の成行注文が支払った平均価格。買いは買いの色、売りは売りの色で示します。",
+ "Orders from": "対象注文の最小サイズ",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "有効な取引所で、このサイズ以上の成行注文だけを平均します。",
+ "The orders could not be read just now; trying again in a minute.": "今は注文を読めませんでした。1 分後に再試行します。",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "このサーバーはまだクジラの集計を保持していません。新しいバージョンで再起動する必要があります。",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "大口注文は {time} から記録されています。それより長いセッションでは、クジラの線はそこから始まります。",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "このページは取引所を自分で読み込みます。このブラウザで記録した注文を数えます。"
 }

@@ -21,7 +21,7 @@ import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
 import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
 import { buildKeyLevelPanel } from './keylevels/panel.ts';
-import { buildVwapPanel } from './vwap/panel.ts';
+import { buildVwapPanel, type WhaleInfo } from './vwap/panel.ts';
 import type { KeyLevelHistory } from './keylevels/history.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
 import { openMenu } from './menu.ts';
@@ -107,6 +107,8 @@ export class Toolbar {
   /** The VWAP lines (vwap/), set in its panel. */
   #vwap = el('button', { class: 'led-btn', textContent: t('VWAP'), tip: HELP.vwap.tip });
   #vwapPanel: Panel | null = null;
+  /** What the page knows of the whale sums (set by the page), for the VWAP panel. */
+  whaleInfo: () => WhaleInfo | null = () => null;
   /** The key levels' candles (set by the page), for the panel to say whose they are and whether they could be read. */
   keyHistory: KeyLevelHistory | null = null;
   /** Where the page's data comes from (set by the page): a page reading the exchanges itself keeps liquidations only while it is open. */
@@ -199,7 +201,7 @@ export class Toolbar {
       this.#tradePanel = togglePanel(this.#trades, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
     };
     this.#vwap.onclick = () => {
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build));
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo);
       this.#vwapPanel = togglePanel(this.#vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring) this.store.set({ vwapAnchoring: false }); } }, build);
     };
     this.#keyLevels.onclick = () => {

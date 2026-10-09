@@ -1,5 +1,6 @@
 import type { Print } from './prints.ts';
 import type { Liquidation } from '../shared/liquidations.ts';
+import type { PrintSumsAnswer } from '../shared/print-sums.ts';
 import type { FlowFrame, FlowMinutesFrame, FlowUpdate } from '../shared/flow.ts';
 import type { ProfileAnswer, RangeAnswer, SizesAnswer, ValueAreaAnswer } from '../shared/footprint.ts';
 import type { AbsorptionAnswer, AbsorptionGroup, AbsorptionMinute } from '../shared/absorption.ts';
@@ -85,6 +86,8 @@ export interface DataSource {
   prints(from: number, to: number, minUsd?: number): Promise<Print[]>;
   /** Liquidations in a window, from the smallest kept or `minUsd` (a server from before them has none). */
   liquidations?(from: number, to: number, minUsd?: number): Promise<Liquidation[]>;
+  /** Whale VWAP sums of `ids` in [from, to) from the size band at `minUsd` up, in steps of `stepMs` (a server from before them answers 404). */
+  printSums?(ids: string[], from: number, to: number, minUsd: number, stepMs: number): Promise<PrintSumsAnswer>;
   columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame>;
   /** Taker buys and sells per second for each instrument over [from, to), from its first recorded minute in that range. */
   flow(ids: string[], from: number, to: number): Promise<FlowFrame>;

@@ -1017,5 +1017,16 @@
  "Then click the map where the average should start.": "Затем нажмите на карте там, где должно начаться среднее.",
  "Click the map where the average should start.": "Нажмите на карте там, где должно начаться среднее.",
  "No market of this coin has a history the page can read, so there is no VWAP.": "Ни у одного рынка этой монеты нет истории, которую страница может прочитать, поэтому VWAP нет.",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "По свечам {market}: типичная цена каждой свечи (максимум, минимум и закрытие), взвешенная по её объёму, поминутно для дня и крупнее для более долгих периодов."
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "По свечам {market}: типичная цена каждой свечи (максимум, минимум и закрытие), взвешенная по её объёму, поминутно для дня и крупнее для более долгих периодов.",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "Китовый VWAP усредняет только записанные крупные рыночные ордера (те же, что пузыри сделок, от выбранного размера), покупки и продажи отдельно, на включённых биржах, с начала сессии или с начала записи.",
+ "Whale buys": "Покупки китов",
+ "Whale sells": "Продажи китов",
+ "Whale VWAP": "Китовый VWAP",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "Средняя цена, которую заплатили крупные рыночные ордера с начала сессии: покупки цветом покупок, продажи цветом продаж.",
+ "Orders from": "Ордера от",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "Усредняются только рыночные ордера не меньше этого размера на включённых биржах.",
+ "The orders could not be read just now; trying again in a minute.": "Сейчас не удалось прочитать ордера; повторная попытка через минуту.",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "Этот сервер ещё не ведёт китовые суммы: его нужно перезапустить с новой версией.",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "Крупные ордера записываются с {time}: на более длинной сессии китовые линии начинаются оттуда.",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "Эта страница сама читает биржи: она учитывает ордера, записанные в этом браузере."
 }

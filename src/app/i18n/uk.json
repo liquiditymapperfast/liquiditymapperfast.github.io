@@ -1022,5 +1022,16 @@
  "Then click the map where the average should start.": "Потім натисніть на карті там, де має початися середнє.",
  "Click the map where the average should start.": "Натисніть на карті там, де має початися середнє.",
  "No market of this coin has a history the page can read, so there is no VWAP.": "Жоден ринок цієї монети не має історії, яку сторінка може прочитати, тож VWAP немає.",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "За свічками {market}: типова ціна кожної свічки (максимум, мінімум і закриття), зважена за її обсягом, похвилинно для дня й грубіше для довших періодів."
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "За свічками {market}: типова ціна кожної свічки (максимум, мінімум і закриття), зважена за її обсягом, похвилинно для дня й грубіше для довших періодів.",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "Китовий VWAP усереднює лише записані великі ринкові ордери (ті самі, що бульбашки угод, від вибраного розміру), купівлі й продажі окремо, на ввімкнених біржах, від початку сесії або від початку запису.",
+ "Whale buys": "Купівлі китів",
+ "Whale sells": "Продажі китів",
+ "Whale VWAP": "Китовий VWAP",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "Середня ціна, яку заплатили великі ринкові ордери від початку сесії: купівлі кольором купівель, продажі кольором продажів.",
+ "Orders from": "Ордери від",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "Усереднюються лише ринкові ордери не менші за цей розмір на ввімкнених біржах.",
+ "The orders could not be read just now; trying again in a minute.": "Зараз не вдалося прочитати ордери; повторна спроба за хвилину.",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "Цей сервер ще не веде китові суми: його треба перезапустити з новою версією.",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "Великі ордери записуються з {time}: на довшій сесії китові лінії починаються звідти.",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "Ця сторінка сама читає біржі: вона враховує ордери, записані в цьому браузері."
 }

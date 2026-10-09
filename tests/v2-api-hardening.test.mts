@@ -70,6 +70,20 @@ test('print limits are whole numbers from 1 to 5000; a negative limit is not "no
   });
 });
 
+test('whale sums: instruments, a size band and a step of at least a minute are required; an answer is what the orders add up to', async () => {
+  await withServer(async ({ v2, base }) => {
+    const t = Date.now() - 5 * MIN;
+    v2.prints.ingest([{ instrumentId: 'x:BTC', tradeId: '1', side: 'buy', price: 80_000, notionalUsd: 1_600_000, sourceTimestamp: t }]);
+    for (const route of ['/api/v2/print-sums?min=1000000', '/api/v2/print-sums?inst=x:BTC&min=300000', '/api/v2/print-sums?inst=x:BTC&min=1000000&step=1000', `/api/v2/print-sums?inst=${Array.from({ length: 97 }, (_, i) => `v${i}:BTC`).join(',')}&min=1000000`]) {
+      assert.equal((await get(base, route)).status, 400, route);
+    }
+    const ok = await get(base, `/api/v2/print-sums?inst=x:BTC&min=1000000&from=${t - MIN}&to=${t + MIN}`);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.since, t);
+    assert.deepEqual(ok.body.rows, [[Math.floor(t / MIN) * MIN, 1_600_000, 20, 0, 0]]);
+  });
+});
+
 const candle = (start: number, volume: number, receivedAt: number) => ({ instrumentId: 'x:BTC', interval: '1m', start, end: start + MIN, open: 100, high: 101, low: 99, close: 100.5, volume, sourceTimestamp: start + MIN, receivedAt, closed: true });
 
 test('a minute that is both stored and held live counts once, as the later copy', async () => {

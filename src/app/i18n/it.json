@@ -1010,5 +1010,16 @@
  "Then click the map where the average should start.": "Poi clicca sulla mappa dove deve iniziare la media.",
  "Click the map where the average should start.": "Clicca sulla mappa dove deve iniziare la media.",
  "No market of this coin has a history the page can read, so there is no VWAP.": "Nessun mercato di questa moneta ha uno storico che la pagina possa leggere, quindi non c'è VWAP.",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "Dalle candele di {market}: il prezzo tipico di ogni candela (massimo, minimo e chiusura) ponderato per il suo volume, minuto per minuto per un giorno e più grosse per periodi lunghi."
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "Dalle candele di {market}: il prezzo tipico di ogni candela (massimo, minimo e chiusura) ponderato per il suo volume, minuto per minuto per un giorno e più grosse per periodi lunghi.",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "Il VWAP delle balene fa la media solo dei grandi ordini a mercato registrati (gli stessi delle bolle degli scambi, dalla dimensione scelta), acquisti e vendite separati, sugli exchange attivi, dall'inizio della sessione o della registrazione.",
+ "Whale buys": "Acquisti delle balene",
+ "Whale sells": "Vendite delle balene",
+ "Whale VWAP": "VWAP delle balene",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "Il prezzo medio pagato dai grandi ordini a mercato dall'inizio della sessione: acquisti nel colore di acquisto, vendite in quello di vendita.",
+ "Orders from": "Ordini da",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "Si fa la media solo degli ordini a mercato almeno di questa dimensione, sugli exchange attivi.",
+ "The orders could not be read just now; trying again in a minute.": "Non è stato possibile leggere gli ordini; nuovo tentativo tra un minuto.",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "Questo server non tiene ancora le somme delle balene: va riavviato con la nuova versione.",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "I grandi ordini sono registrati da {time}: in una sessione più lunga le linee delle balene partono da lì.",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "Questa pagina legge da sé gli exchange: conta gli ordini registrati in questo browser."
 }

@@ -982,5 +982,16 @@
  "Then click the map where the average should start.": "然后在地图上点击平均值的起点。",
  "Click the map where the average should start.": "请在地图上点击平均值的起点。",
  "No market of this coin has a history the page can read, so there is no VWAP.": "该币种没有页面能读取历史的市场，因此没有 VWAP。",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "来自 {market} 的 K 线：每根 K 线的典型价（最高、最低和收盘）按其成交量加权，一天内用 1 分钟 K 线，更长周期用更粗的 K 线。"
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "来自 {market} 的 K 线：每根 K 线的典型价（最高、最低和收盘）按其成交量加权，一天内用 1 分钟 K 线，更长周期用更粗的 K 线。",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "巨鲸 VWAP 只对已记录的大额市价单（与成交气泡相同的订单，从你选择的规模起）求平均，买入和卖出分开，限于已开启的交易所，自时段开始或记录开始以来。",
+ "Whale buys": "巨鲸买入",
+ "Whale sells": "巨鲸卖出",
+ "Whale VWAP": "巨鲸 VWAP",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "自时段开始以来大额市价单支付的平均价格：买入用买入颜色，卖出用卖出颜色。",
+ "Orders from": "订单起始规模",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "只对已开启交易所中至少这么大的市价单求平均。",
+ "The orders could not be read just now; trying again in a minute.": "暂时无法读取订单；一分钟后重试。",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "此服务器尚未保存巨鲸汇总：需要用新版本重新启动。",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "大额订单自 {time} 起被记录：时段更长时，巨鲸线从那里开始。",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "此页面自行读取交易所：它统计在此浏览器中记录的订单。"
 }

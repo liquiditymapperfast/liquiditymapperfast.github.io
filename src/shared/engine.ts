@@ -2,6 +2,7 @@ import type { ValuedBook } from './levels.ts';
 import { BROWSER_RETENTION_MS, COLUMN_MS, DepthRecorder, MIN_BIN_USD, SAMPLE_MS, STALE_MS, type Column, type ColumnStore } from './recorder.ts';
 import { FootprintRecorder, type FootprintStore, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from './footprint.ts';
 import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, type Print, type PrintStore } from './prints.ts';
+import type { PrintSumsAnswer } from './print-sums.ts';
 import { LIQUIDATION_FLOOR_USD, LIQUIDATIONS_PER_ANSWER, LiquidationStream, type Liquidation, type LiquidationEvent } from './liquidations.ts';
 import { OrderBuilder, orderRow } from './orders.ts';
 import { RecordedBefore } from './restart.ts';
@@ -328,6 +329,8 @@ export class Engine {
 
   prints(from: number, to: number, minUsd = this.printStream.floorUsd, limit = PRINTS_PER_ANSWER): Print[] { return this.printStream.query(from, to, Math.max(this.printStream.floorUsd, minUsd), limit); }
 
+  /** Whale VWAP sums of `ids` (see print-sums.ts): null for a size that is not one of the bands. */
+  printSums(ids: readonly string[], from: number, to: number, minUsd: number, stepMs: number): PrintSumsAnswer | null { return this.printStream.printSums(ids, from, to, minUsd, stepMs); }
   liquidations(from: number, to: number, minUsd = this.liquidationStream.floorUsd, limit = LIQUIDATIONS_PER_ANSWER): Liquidation[] { return this.liquidationStream.query(from, to, Math.max(this.liquidationStream.floorUsd, minUsd), limit); }
 
   /** How the coin is listed on the market an instrument belongs to (none: not this coin's market, so nothing is asked of it). */

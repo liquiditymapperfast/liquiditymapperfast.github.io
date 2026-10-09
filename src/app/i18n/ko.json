@@ -982,5 +982,16 @@
  "Then click the map where the average should start.": "그런 다음 평균을 시작할 위치를 맵에서 클릭하세요.",
  "Click the map where the average should start.": "평균을 시작할 위치를 맵에서 클릭하세요.",
  "No market of this coin has a history the page can read, so there is no VWAP.": "이 코인에는 페이지가 이력을 읽을 수 있는 시장이 없어 VWAP가 없습니다.",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "{market}의 캔들에서. 각 봉의 대표 가격(고가·저가·종가)을 거래량으로 가중하며, 하루는 1분봉, 더 긴 기간은 더 굵은 봉을 씁니다."
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "{market}의 캔들에서. 각 봉의 대표 가격(고가·저가·종가)을 거래량으로 가중하며, 하루는 1분봉, 더 긴 기간은 더 굵은 봉을 씁니다.",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "고래 VWAP는 기록된 대형 시장가 주문(거래 버블과 같은 주문, 선택한 크기 이상)만을 매수와 매도로 나누어, 켜 둔 거래소에서, 세션 시작 또는 기록 시작부터 평균합니다.",
+ "Whale buys": "고래 매수",
+ "Whale sells": "고래 매도",
+ "Whale VWAP": "고래 VWAP",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "세션 시작 이후 대형 시장가 주문이 지불한 평균 가격. 매수는 매수 색, 매도는 매도 색으로 표시합니다.",
+ "Orders from": "주문 최소 크기",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "켜 둔 거래소에서 이 크기 이상의 시장가 주문만 평균합니다.",
+ "The orders could not be read just now; trying again in a minute.": "지금은 주문을 읽지 못했습니다. 1분 뒤 다시 시도합니다.",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "이 서버는 아직 고래 합계를 보관하지 않습니다. 새 버전으로 다시 시작해야 합니다.",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "대형 주문은 {time}부터 기록되었습니다. 더 긴 세션에서는 고래 선이 그때부터 시작합니다.",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "이 페이지는 거래소를 직접 읽습니다. 이 브라우저에서 기록한 주문을 셉니다."
 }

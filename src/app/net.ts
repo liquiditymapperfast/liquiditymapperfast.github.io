@@ -1,3 +1,4 @@
+import type { PrintSumsAnswer, SumRow } from '../shared/print-sums.ts';
 import { COLUMNS_PER_REQUEST } from '../shared/columns.ts';
 import { decodeFlowFrame, decodeFlowMinutes, type FlowFrame, type FlowMinutesFrame, type FlowUpdate } from '../shared/flow.ts';
 import { parseProfile, parseRange, parseSizes, parseValueAreas, type ProfileAnswer, type RangeAnswer, type SizesAnswer, type ValueAreaAnswer } from '../shared/footprint.ts';
@@ -22,6 +23,12 @@ export const getBootstrap = async (): Promise<BootstrapState> => (await request(
 export async function getCandles(inst: string, tf: string, from: number, to: number): Promise<CandleRow[]> {
   const body = await (await request(`/api/v2/candles?inst=${encodeURIComponent(inst)}&tf=${tf}&from=${from}&to=${to}`)).json() as { candles: CandleRow[] };
   return body.candles;
+}
+/** Whale VWAP sums (a server from before them answers 404, which is an error here); rows that are not five finite numbers are dropped. */
+export async function getPrintSums(ids: string[], from: number, to: number, minUsd: number, stepMs: number): Promise<PrintSumsAnswer> {
+  const body = await (await request(`/api/v2/print-sums?inst=${ids.map(encodeURIComponent).join(',')}&from=${Math.floor(from)}&to=${Math.ceil(to)}&min=${minUsd}&step=${Math.round(stepMs)}`)).json() as { since?: unknown; rows?: unknown[] };
+  const rows = (Array.isArray(body.rows) ? body.rows : []).filter((r): r is SumRow => Array.isArray(r) && r.length === 5 && r.every(x => typeof x === 'number' && Number.isFinite(x)));
+  return { since: typeof body.since === 'number' && Number.isFinite(body.since) ? body.since : null, rows };
 }
 /** Liquidations in a window (a server from before them answers 404, which is an error here). */
 export async function getLiquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> {

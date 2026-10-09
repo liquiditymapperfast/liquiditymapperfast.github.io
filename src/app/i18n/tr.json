@@ -1003,5 +1003,16 @@
  "Then click the map where the average should start.": "Sonra ortalamanın başlayacağı yere haritada tıklayın.",
  "Click the map where the average should start.": "Ortalamanın başlayacağı yere haritada tıklayın.",
  "No market of this coin has a history the page can read, so there is no VWAP.": "Bu coinin sayfanın geçmişini okuyabildiği bir piyasası yok, bu yüzden VWAP yok.",
- "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "{market} mumlarından: her mumun tipik fiyatı (en yüksek, en düşük ve kapanış) hacmiyle ağırlıklandırılır; bir gün için dakikalık, daha uzun süreler için daha kaba mumlarla."
+ "From the candles of {market}: each bar's typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.": "{market} mumlarından: her mumun tipik fiyatı (en yüksek, en düşük ve kapanış) hacmiyle ağırlıklandırılır; bir gün için dakikalık, daha uzun süreler için daha kaba mumlarla.",
+ "The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.": "Balina VWAP yalnızca kaydedilen büyük piyasa emirlerinin (işlem baloncuklarıyla aynı emirler, seçtiğiniz büyüklükten itibaren) ortalamasını alır; alışlar ve satışlar ayrı, açık borsalarda, seans ya da kayıt başladığından beri.",
+ "Whale buys": "Balina alışları",
+ "Whale sells": "Balina satışları",
+ "Whale VWAP": "Balina VWAP",
+ "The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.": "Seans başladığından beri büyük piyasa emirlerinin ödediği ortalama fiyat: alışlar alış renginde, satışlar satış renginde.",
+ "Orders from": "Emir büyüklüğü en az",
+ "Only market orders at least this large are averaged, on the exchanges switched on.": "Açık borsalarda yalnızca en az bu büyüklükteki piyasa emirlerinin ortalaması alınır.",
+ "The orders could not be read just now; trying again in a minute.": "Emirler şu an okunamadı; bir dakika sonra yeniden denenecek.",
+ "This server does not keep whale sums yet: it needs restarting with the new version.": "Bu sunucu henüz balina toplamlarını tutmuyor: yeni sürümle yeniden başlatılması gerekiyor.",
+ "Large orders are recorded since {time}: on a longer session the whale lines start there.": "Büyük emirler {time} tarihinden beri kaydediliyor: daha uzun bir seansta balina çizgileri oradan başlar.",
+ "This page reads the exchanges itself: it counts the orders it has recorded in this browser.": "Bu sayfa borsaları kendisi okur: bu tarayıcıda kaydettiği emirleri sayar."
 }

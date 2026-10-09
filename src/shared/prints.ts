@@ -1,4 +1,5 @@
 import type { TradeLike } from './footprint.ts';
+import { PrintSums, type PrintSumsAnswer } from './print-sums.ts';
 
 /**
  * One large market order (its fills added together, see `orders.ts`): the time of its first fill, the instrument, the taker's side, the
@@ -27,6 +28,8 @@ export interface PrintStore {
   save(rows: Print[], expireBefore: number): void;
   /** Prints older than what memory holds, when the store can answer: the `limit` largest in [from, to) from `minUsd`, oldest first. */
   query?(from: number, to: number, minUsd: number, limit: number): Print[];
+  /** Every print since `since` from `minUsd`, once, in no set order: what the whale sums are built from when the stream starts. */
+  each?(since: number, minUsd: number, take: (print: Print) => void): void;
   close(): void;
 }
 
@@ -66,10 +69,16 @@ export class PrintStream {
 
   /** The smallest order kept (PRINT_FLOOR_USD; smaller for a coin that trades less than BTC). */
   readonly floorUsd: number;
+  /** Whale VWAP sums of the prints held (see print-sums.ts), fed as they arrive and expired with them. */
+  readonly sums: PrintSums;
 
   constructor(store: PrintStore | null = null, protected now: () => number = Date.now, retentionMs: number = RETENTION_MS, floorUsd: number = PRINT_FLOOR_USD) {
     this.#store = store; this.#retentionMs = retentionMs; this.floorUsd = floorUsd;
+    this.sums = new PrintSums(floorUsd / PRINT_FLOOR_USD);
     if (store) for (const row of store.load(now() - retentionMs, MEMORY_MAX)) { this.#recent.push(row); this.#stored.add(`${row.id}|${row.t}|${row.price}|${row.usd}`); }
+    // The sums are built once from everything the store keeps (memory holds only the newest), or from memory when the store cannot walk its rows.
+    if (store?.each) store.each(now() - retentionMs, this.sums.bands[0]!, print => this.sums.add(print));
+    else for (const print of this.#recent) this.sums.add(print);
   }
 
   /** Take market orders (or single trades); returns the prints that are new and large enough, oldest first. */
@@ -91,7 +100,7 @@ export class PrintStream {
       added.push(print); this.#unsaved.push(print);
     }
     added.sort((a, b) => a.t - b.t);
-    for (const print of added) { this.#recent.push(print); this.#fresh.push(print); }
+    for (const print of added) { this.#recent.push(print); this.#fresh.push(print); this.sums.add(print); }
     // Feeds interleave, so keep memory ordered by time (appends are almost always in order already).
     const before = this.#recent[this.#recent.length - added.length - 1];
     if (added.length && before && before.t > added[0]!.t) this.#recent.sort((a, b) => a.t - b.t);
@@ -117,9 +126,13 @@ export class PrintStream {
     return largestPrints(out, limit);
   }
 
+  /** The whale sums of `ids` in [from, to) from the size band at `minUsd` up, in steps of `stepMs` (null for a size that is not a band's edge). */
+  printSums(ids: readonly string[], from: number, to: number, minUsd: number, stepMs: number): PrintSumsAnswer | null { return this.sums.query(ids, from, to, minUsd, stepMs); }
+
   /** Write what has not been saved and drop expired rows, from memory as well as from the store. */
   flush(): void {
     const cutoff = this.now() - this.#retentionMs;
+    this.sums.expire(cutoff);
     let expired = 0; while (expired < this.#recent.length && this.#recent[expired]!.t < cutoff) expired++;
     if (expired) this.#recent.splice(0, expired);
     const store = this.#store; if (!store) { this.#unsaved = []; return; }

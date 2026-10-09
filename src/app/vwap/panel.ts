@@ -3,18 +3,22 @@ import { el } from '../dom.ts';
 import { heading, note, selectRow, switchRow } from '../ui.ts';
 import { helpButton } from '../help.ts';
 import { t } from '../i18n.ts';
-import { clock } from '../format.ts';
+import { clock, usd } from '../format.ts';
+import { currentCoin, scaledUsd } from '../coin.ts';
+import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
 import { venueLabel } from '../venues.ts';
-import { currentCoin } from '../coin.ts';
 import { historyTarget } from '../keylevels/history.ts';
 import { MAX_ANCHORS, anchorsOf, withoutAnchor, type VwapSettings } from './settings.ts';
 
+/** What the page knows of the whale sums: where the recording's count of large orders begins, whether the source has them, which source it is. */
+export interface WhaleInfo { since: number | null; state: 'ready' | 'unavailable'; browser: boolean }
+
 /**
  * The VWAP panel: its first row switches the lines on and off; the session VWAP (what it restarts at, its bands); the anchored ones (each with
- * its start and a remove button, and a button that arms the next click on the map to place one); labels and axis tags; whose candles they come
- * from.
+ * its start and a remove button, and a button that arms the next click on the map to place one); the whale VWAP (its size, and since when the
+ * large orders are recorded); labels and axis tags; whose candles they come from.
  */
-export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLElement, rebuild: () => void): void {
+export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLElement, rebuild: () => void, whale: () => WhaleInfo | null = () => null): void {
   const s = store.state.vwap, coin = currentCoin().coin, now = Date.now();
   const set = (change: Partial<VwapSettings>, again = false): void => { store.set({ vwap: { ...store.state.vwap, ...change } }); if (again) rebuild(); };
   tools.append(helpButton('vwap'));
@@ -38,6 +42,17 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
     onclick: () => { store.set(armed ? { vwapAnchoring: false } : { vwapAnchoring: true, rangeTool: false }); rebuild(); } });
   body.append(el('div', { class: 'session-add' }, place));
   if (armed) body.append(note(t('Click the map where the average should start.')));
+  body.append(
+    heading(t('Whale VWAP')),
+    switchRow(t('Whale VWAP'), t('The average price the large market orders paid since the session began: buys in the buy colour, sells in the sell colour.'), s.whale, on => set({ whale: on }, true)),
+    selectRow(t('Orders from'), t('Only market orders at least this large are averaged, on the exchanges switched on.'), WHALE_BANDS_USD.map(b => [String(b), `$${usd(scaledUsd(b))}`] as [string, string]), String(s.whaleUsd), v => set({ whaleUsd: Number(v) })),
+  );
+  const info = whale();
+  if (s.whale && info) {
+    if (info.state === 'unavailable') body.append(note(info.browser ? t('The orders could not be read just now; trying again in a minute.') : t('This server does not keep whale sums yet: it needs restarting with the new version.')));
+    else if (info.since !== null) body.append(note(t('Large orders are recorded since {time}: on a longer session the whale lines start there.', { time: clock(info.since, true) })));
+    if (info.browser) body.append(note(t('This page reads the exchanges itself: it counts the orders it has recorded in this browser.')));
+  }
   body.append(
     switchRow(t('Labels'), t('Each line\'s name and price at its right end, where there is room.'), s.labels, labels => set({ labels })),
     switchRow(t('Tags on the price axis'), t('The name of each line that reaches the right edge, beside its price.'), s.tags, tags => set({ tags })),

@@ -124,6 +124,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
   const everyPrint = new Map<string, PrintRow>(printRows.map(row => [row.k, row]));
   const prints: PrintStore = {
     load: (_since, limit) => printRows.slice(-limit),
+    each: (since, minUsd, take) => { for (const row of everyPrint.values()) if (row.t >= since && row.usd >= minUsd) take({ t: row.t, id: row.id, side: row.side, price: row.price, usd: row.usd }); },
     query: (from, to, minUsd, limit) => {
       const out: Print[] = [];
       for (const row of everyPrint.values()) if (row.t >= from && row.t < to && row.usd >= minUsd) out.push({ t: row.t, id: row.id, side: row.side, price: row.price, usd: row.usd, ...(row.n !== undefined && row.lo !== undefined && row.hi !== undefined ? { lo: row.lo, hi: row.hi, n: row.n } : {}) });

@@ -1,6 +1,7 @@
 import { windowsOf, type PeriodKind } from '../keylevels/levels.ts';
 import type { ProfileWindow } from '../traded/sessions.ts';
 import type { CandleRow } from '../store.ts';
+import type { SumRow } from '../../shared/print-sums.ts';
 
 /**
  * The volume-weighted average price from one market's candles: each bar's typical price (high + low + close) / 3 weighted by its volume in
@@ -34,6 +35,22 @@ export function vwapSeries(bars: readonly CandleRow[], from: number, to: number)
     out.push({ t, vwap: ref + mean, sd: Math.sqrt(Math.max(0, d2v / v - mean * mean)) });
   }
   return out;
+}
+
+/**
+ * The whale VWAPs over [from, to): the running Σusd / Σcoins of the large market orders bought and of those sold, from the sums a minute at a
+ * time (sorted by start). Each line begins at its side's first order; a minute without one carries it on unchanged.
+ */
+export function whaleSeries(rows: readonly SumRow[], from: number, to: number): { buys: VwapPoint[]; sells: VwapPoint[] } {
+  const buys: VwapPoint[] = [], sells: VwapPoint[] = [];
+  let bu = 0, bc = 0, su = 0, sc = 0;
+  for (const r of rows) {
+    if (r[0] < from) continue; if (r[0] >= to) break;
+    bu += r[1]; bc += r[2]; su += r[3]; sc += r[4];
+    if (bc > 0) buys.push({ t: r[0], vwap: bu / bc, sd: 0 });
+    if (sc > 0) sells.push({ t: r[0], vwap: su / sc, sd: 0 });
+  }
+  return { buys, sells };
 }
 
 /**

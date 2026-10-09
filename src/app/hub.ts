@@ -17,6 +17,7 @@ import { ABSORPTION_RETENTION_MS, MAX_ABSORPTION_INSTRUMENTS, peakOf } from '../
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 import { webGet } from '../shared/history.ts';
 import { KeyLevelHistory } from './keylevels/history.ts';
+import type { SumRow } from '../shared/print-sums.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -55,6 +56,45 @@ export class Hub {
   /** The hourly candles the key levels are read from, straight from the exchange (keylevels/history.ts). */
   readonly keyHistory = new KeyLevelHistory(webGet);
   readonly #vwapHistories = new Map<number, KeyLevelHistory>();
+  /**
+   * The whale VWAP's sums: the whole minutes answered (`rows`, before `to`) and since then the minutes added from the orders pushed live
+   * (`tail`, from `to` on), so neither counts an order the other has. `since`: where the recording's count of large orders begins.
+   */
+  whale: { key: string; ids: ReadonlySet<string>; minUsd: number; since: number | null; rows: SumRow[]; to: number; tail: Map<number, SumRow>; at: number } | null = null;
+  whaleState: 'ready' | 'unavailable' = 'ready';
+  #whaleLoading = false;
+  #whaleRetryAt = 0;
+  /** The whale sums of `ids` from `from` for orders from `minUsd`: asked again every 45 seconds, a minute after a failure; never on a frame. */
+  ensureWhale(ids: readonly string[], from: number, minUsd: number): void {
+    const source = this.source;
+    if (!source.printSums) { this.whaleState = 'unavailable'; return; }
+    const now = Date.now(), key = `${[...ids].sort().join(',')}|${minUsd}|${Math.floor(from / MINUTE)}`, held = this.whale;
+    if (this.#whaleLoading || now < this.#whaleRetryAt || !ids.length) return;
+    if (held && held.key === key && now - held.at < 45_000) return;
+    const to = Math.floor(now / MINUTE) * MINUTE;
+    this.#whaleLoading = true;
+    source.printSums([...ids], from, to, minUsd, MINUTE).then(answer => {
+      const kept = this.whale?.key === key ? this.whale.tail : new Map<number, SumRow>();
+      for (const minute of [...kept.keys()]) if (minute < to) kept.delete(minute);
+      this.whale = { key, ids: new Set(ids), minUsd, since: answer.since, rows: answer.rows, to, tail: kept, at: Date.now() };
+      this.whaleState = 'ready'; this.onPrintsChanged();
+    }, () => { this.whaleState = 'unavailable'; this.#whaleRetryAt = Date.now() + 60_000; this.onPrintsChanged(); }).finally(() => { this.#whaleLoading = false; });
+  }
+  /** The whale sums held, answered minutes then live ones, oldest first. */
+  whaleRows(): SumRow[] {
+    const w = this.whale; if (!w) return [];
+    return w.tail.size ? [...w.rows, ...[...w.tail.values()].sort((a, b) => a[0] - b[0])] : w.rows;
+  }
+  /** Add pushed orders to the whale tail: those of its instruments, from its size, in or after the first minute not answered. */
+  #whaleTake(fresh: readonly Print[]): void {
+    const w = this.whale; if (!w) return;
+    for (const p of fresh) {
+      if (p.t < w.to || p.usd < w.minUsd || !w.ids.has(p.id) || !(p.price > 0)) continue;
+      const minute = Math.floor(p.t / MINUTE) * MINUTE;
+      let row = w.tail.get(minute); if (!row) { row = [minute, 0, 0, 0, 0]; w.tail.set(minute, row); }
+      if (p.side === 'buy') { row[1] += p.usd; row[2] += p.usd / p.price; } else { row[3] += p.usd; row[4] += p.usd / p.price; }
+    }
+  }
   /** The VWAP's candles of one bar size (a minute for a day's session, coarser for longer ones and old anchors), asked again every minute. */
   vwapHistory(barMs: number): KeyLevelHistory {
     let h = this.#vwapHistories.get(barMs);
@@ -187,7 +227,7 @@ export class Hub {
       onAbsorption: (groups, minutes) => { this.absorption.add(groups); this.absorption.addMinutes(minutes); this.onAbsorptionChanged(); },
       onPrints: items => {
         const fresh = this.prints.add(items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; }));
-        if (fresh.length) { this.onPrints(fresh); this.onPrintsChanged(); }
+        if (fresh.length) { this.#whaleTake(fresh); this.onPrints(fresh); this.onPrintsChanged(); }
       },
       onLiquidations: items => {
         const fresh = this.liquidations.add(items.flatMap(row => { const l = liquidationFromWire(row); return l ? [l] : []; }));

@@ -1,4 +1,5 @@
 import { MAX_BACK_MS, type PeriodKind } from '../keylevels/levels.ts';
+import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
 
 /**
  * The VWAP's settings: whether it shows; the session VWAP (restarting each day, week or month in the Volume profile's zone) and its bands;
@@ -14,14 +15,18 @@ export interface VwapSettings {
   anchors: Record<string, number[]>;
   labels: boolean;
   tags: boolean;
+  /** The whale VWAP: the average price the large market orders paid since the session began, buys and sells apart. */
+  whale: boolean;
+  /** The smallest order it averages: one of the whale bands, as BTC's (scaled for the coin on the page). */
+  whaleUsd: number;
 }
 
 export const MAX_ANCHORS = 4;
 /** Coins whose anchors are kept (a person tries many coins; the anchors of the oldest go first). */
 const MAX_ANCHOR_COINS = 20;
 
-/** Off until switched on; then the day's session VWAP, no bands, no anchors. */
-export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', bands: 0, anchors: {}, labels: true, tags: true };
+/** Off until switched on; then the day's session VWAP, no bands, no anchors, no whale VWAP (from $1M when it is switched on). */
+export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', bands: 0, anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000 };
 
 const flag = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
 
@@ -41,6 +46,7 @@ export function readVwap(saved: unknown): VwapSettings {
     period: s.period === 'week' || s.period === 'month' ? s.period : 'day',
     bands: s.bands === 1 || s.bands === 2 ? s.bands : 0,
     anchors, labels: flag(s.labels, d.labels), tags: flag(s.tags, d.tags),
+    whale: flag(s.whale, d.whale), whaleUsd: typeof s.whaleUsd === 'number' && WHALE_BANDS_USD.includes(s.whaleUsd) ? s.whaleUsd : d.whaleUsd,
   };
 }
 
