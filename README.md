@@ -205,7 +205,7 @@ One window language across the page (`src/app/chrome.css`, loaded last): square 
 
 ## Languages
 
-English, Spanish, German, French, Portuguese, Italian, Russian, Turkish, Chinese, Japanese and Korean, chosen from the browser's preference, `?lang=xx`, or the Language button. See `docs/languages.md` for how it works, why the browser's own translation is not enough, what is not translated and how to add one. The packs were written by an AI assistant and have not been reviewed by native speakers.
+English, Spanish, German, French, Portuguese, Italian, Russian, Ukrainian, Turkish, Chinese, Japanese and Korean, chosen from the browser's preference, `?lang=xx`, or the Language button. See `docs/languages.md` for how it works, why the browser's own translation is not enough, what is not translated and how to add one. The packs were written by an AI assistant and have not been reviewed by native speakers.
 
 ## Limits
 

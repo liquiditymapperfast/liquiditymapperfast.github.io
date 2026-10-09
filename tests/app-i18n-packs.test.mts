@@ -122,7 +122,7 @@ test('no text a person reads is left outside t() (add a new sentence to the page
 
 test('the template for a new language has every text, and a form for each way that language counts', () => {
   const keys = keysInPage();
-  for (const code of ['ru', 'ja', 'es']) {
+  for (const code of ['ru', 'uk', 'ja', 'es']) {
     const pack = template(code);
     assert.deepEqual(Object.keys(pack).sort(), [...keys].sort(), code);
     const counted = pack['{n} notes'];

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LANGUAGES, language, pickLanguage, setLanguage, t, tn } from '../src/app/i18n.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import { LANGUAGES, language, pickLanguage, setLanguage, t, tn, type Pack } from '../src/app/i18n.ts';
+import { appRoot } from '../scripts/i18n-keys.mts';
 
 const codes = LANGUAGES.map(l => l.code);
 
@@ -55,6 +58,22 @@ test('tn picks the form for the count: English has two, Russian has three, and a
   try { assert.equal(tn(1, '{n} note', '{n} notes'), '1 note', 'a language with no entry says it in English, one form per count'); } finally { setLanguage('en'); }
   setLanguage('ja', { '{n} notes': '{n} 音' });
   try { assert.equal(tn(1, '{n} note', '{n} notes'), '1 音'); assert.equal(tn(7, '{n} note', '{n} notes'), '7 音'); } finally { setLanguage('en'); }
+});
+
+test('tn picks the Ukrainian forms from the real pack: one, few, many and, for a fraction, other', () => {
+  const uk = JSON.parse(fs.readFileSync(path.join(appRoot, 'i18n', 'uk.json'), 'utf8')) as Pack;
+  setLanguage('uk', uk);
+  try {
+    const say = (n: number): string => tn(n, '{n} note', '{n} notes');
+    assert.equal(say(1), '1 нота');
+    assert.equal(say(21), '21 нота');
+    assert.equal(say(2), '2 ноти');
+    assert.equal(say(24), '24 ноти');
+    assert.equal(say(5), '5 нот');
+    assert.equal(say(11), '11 нот');
+    assert.equal(say(0), '0 нот');
+    assert.equal(say(1.5), '1.5 ноти');
+  } finally { setLanguage('en'); }
 });
 
 test('every language the page lists has a name written in itself, and codes are unique and lower-case', () => {

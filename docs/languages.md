@@ -1,6 +1,6 @@
 # Languages
 
-The page speaks English, Spanish, German, French, Portuguese, Italian, Russian, Turkish, Chinese, Japanese and Korean. It starts in the first of your browser's preferred languages that it has a pack for (any Chinese tag, `zh-TW` included, gets the one Chinese pack), and falls back to English. A **Language** button (beside the theme button on the full toolbar, and under Appearance in Settings) chooses one or goes back to **Automatic**; `?lang=de` in the address overrides both. Choosing reloads the page, because the words are picked as the page is built.
+The page speaks English, Spanish, German, French, Portuguese, Italian, Russian, Ukrainian, Turkish, Chinese, Japanese and Korean. It starts in the first of your browser's preferred languages that it has a pack for (any Chinese tag, `zh-TW` included, gets the one Chinese pack), and falls back to English. A **Language** button (beside the theme button on the full toolbar, and under Appearance in Settings) chooses one or goes back to **Automatic**; `?lang=de` in the address overrides both. Choosing reloads the page, because the words are picked as the page is built.
 
 ## Why not leave it to the browser
 
@@ -32,4 +32,4 @@ A new sentence on the page is written `t('...')` from the start; the same test f
 
 ## Where the translations come from
 
-The ten packs were written by an AI assistant, not by native speakers, and have not been reviewed by any. Terms follow what traders use in each language (for example 订单簿 for the order book in Chinese, `стакан` in Russian, `Orderbuch` in German; Bid, Ask, Footprint, Delta and CVD stay as they are in the Latin-script languages). A correction is an edit to one JSON value.
+The eleven packs were written by an AI assistant, not by native speakers, and have not been reviewed by any. Terms follow what traders use in each language (for example 订单簿 for the order book in Chinese, `стакан` in Russian, `Orderbuch` in German; Bid, Ask, Footprint, Delta and CVD stay as they are in the Latin-script languages). A correction is an edit to one JSON value.
