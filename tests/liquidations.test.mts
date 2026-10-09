@@ -65,6 +65,10 @@ test('Deribit: a flagged fill is a liquidation of the taker (T), the maker (M) o
   const first = events[0]!;
   assert.ok(close(first.price, 80_000 / (50_000 / 80_000 + 30_000 / 79_990)), 'the volume-weighted price of its fills');
   assert.equal(first.kind, 'fill');
+  // The same fills again, batched differently (a replay after a reconnect): known trade ids add nothing.
+  const deribit = new DeribitConnector(), once = collect(deribit, frame([fill(7, 'sell', 80_000, 300, 20, 'T')]));
+  assert.deepEqual(collect(deribit, frame([fill(7, 'sell', 80_000, 300, 20, 'T')]), frame([fill(8, 'sell', 80_000, 200, 20, 'T')])).map(e => Math.round(e.notionalUsd)), [200], 'only the new fill');
+  assert.equal(once.length, 1);
 });
 
 const event = (over: Partial<LiquidationEvent> = {}): LiquidationEvent => ({ instrumentId: 'bybit:BTCUSDT', t: 1_000, side: 'long', price: 80_000, amount: 0.1, notionalUsd: 8_000, kind: 'fill', ...over });
@@ -165,4 +169,6 @@ test('the Range panel counts the liquidations in a selection as part of its mark
   const boxed = { ...base, sel: { ...sel, p0: 79_990, p1: 80_010 }, answer: { ...answer, instruments: [{ ...answer.instruments[0]!, band: { buy: 30_000, sell: 30_000, buyN: 0, sellN: 0 } }] } } as RangeInput;
   assert.match(rangeLines({ ...boxed, liquidations: [l('long', 500_000, 1)] }).find(x => x.key === 'liquidations')!.cells[1]!, /^\$500K longs · \$0 shorts · 50% of all market volume/);
   assert.equal(rangeLines({ ...boxed, liquidations: [l('long', 5e6, 1)] }).find(x => x.key === 'liquidations')!.cells[1], '$5M longs · $0 shorts (from $1K)');
+  // One Deribit fill that closed a long and a short (MT): in both totals, but its volume once in the share.
+  assert.equal(line([l('long', 100_000, 3), l('short', 100_000, 3)])!.cells[1], '$100K longs · $100K shorts · 10% of all market volume in these minutes (from $1K)');
 });

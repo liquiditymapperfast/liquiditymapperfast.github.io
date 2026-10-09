@@ -784,7 +784,8 @@ export class HeatPane {
     const key = `${h.id}|${h.version}|${JSON.stringify(s)}|${zone}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}|${live.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}` : ''}`;
     if (this.#keyLines?.key !== key) {
       const bars = live.length ? [...held, ...live].sort((a, b) => a[0] - b[0]) : held;
-      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched, heldFrom: h.heldFrom }) };
+      // The chart's own candles run on from the last bar to now, so they carry what is known up to now.
+      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched, heldFrom: h.heldFrom, heldTo: live.length ? now : h.heldTo }) };
     }
     return this.#keyLines.lines;
   }

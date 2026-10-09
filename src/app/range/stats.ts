@@ -149,14 +149,18 @@ function orderLine(s: ReturnType<typeof totals>, windowMinutes: number): RangeLi
 function liquidationLine(input: RangeInput, all: number): RangeLine | null {
   const rows = input.liquidations; if (!rows) return null;
   const sel = input.sel, min = input.liquidationMin ?? 0, from = money(min);
-  let longs = 0, shorts = 0;
+  let longs = 0, shorts = 0, forced = 0;
+  // One forced fill can close a long and a short at once (Deribit's MT): it is in both totals, but traded once.
+  const fills = new Set<string>();
   for (const l of rows) {
     if (l.t < sel.t0 || l.t >= sel.t1 || l.usd < min) continue;
     if (sel.p0 !== null && sel.p1 !== null && (l.price < sel.p0 || l.price >= sel.p1)) continue;
     if (l.side === 'long') longs += l.usd; else shorts += l.usd;
+    const fill = `${l.id}|${l.t}|${l.reported}|${Math.round(l.usd * 100)}`;
+    if (!fills.has(fill)) { fills.add(fill); forced += l.usd; }
   }
   if (!(longs + shorts > 0)) return { key: 'liquidations', kind: 'stat', tone: 'muted', cells: [t('Liquidations'), t('none reported from {min}', { min: from })] };
-  const share = (longs + shorts) / all, tone = longs >= shorts ? 'sell' : 'buy';
+  const share = forced / all, tone = longs >= shorts ? 'sell' : 'buy';
   const text = share > 0 && share <= 1 ? t('{longs} longs · {shorts} shorts · {share} of all market volume in these minutes (from {min})', { longs: money(longs), shorts: money(shorts), share: pct(share), min: from })
     : t('{longs} longs · {shorts} shorts (from {min})', { longs: money(longs), shorts: money(shorts), min: from });
   return { key: 'liquidations', kind: 'stat', tone, cells: [t('Liquidations'), text] };

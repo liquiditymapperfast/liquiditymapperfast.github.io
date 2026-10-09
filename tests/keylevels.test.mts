@@ -44,7 +44,12 @@ test('a period\'s open, high and low come from the bars that start inside it; it
   assert.equal(statsOf(bars.slice(3), D0, D0 + DAY, D0 + 3 * HOUR)!.complete, false, 'the history begins after its start: its first hours are unknown');
   // A quiet hour some exchanges send no bar for (Coinbase) is not a hole in what is known: the day is complete without it.
   const quiet = [...bars.slice(1, 20), ...bars.slice(30)];
-  assert.deepEqual(statsOf(quiet, D0, D0 + DAY, D0), { open: 101, high: 129, low: 50, complete: true });
+  assert.deepEqual(statsOf(quiet, D0, D0 + DAY, D0), { open: 101, high: 129, low: 50, opened: true, complete: true });
+  // The history stops at noon (the refreshes failed since): the day's open is known, its high and low are not.
+  assert.deepEqual([statsOf(bars, D0, D0 + DAY, D0, D0 + 12 * HOUR)!.opened, statsOf(bars, D0, D0 + DAY, D0, D0 + 12 * HOUR)!.complete], [true, false]);
+  const now = D0 + DAY + 3 * HOUR;
+  const ls = keyLines(bars.slice(0, 12), lines({ prev: true }), { zone: 'UTC', t0: D0, t1: now, now, untouched: false, heldTo: D0 + 12 * HOUR });
+  assert.equal(ls.length, 0, 'no previous-day lines from half a day');
   assert.equal(statsOf(bars, D0 + 5 * DAY, D0 + 6 * DAY, D0), null);
 });
 
@@ -174,6 +179,30 @@ test('a history that ends further back is not asked for more after the exchange 
   for (const back of [11, 12, 20]) { h.ensure(target, now - back * DAY, HOUR, () => {}); await settle(); }
   assert.equal(asked.length, 4, 'and never again');
   assert.equal(h.heldFrom, now - 5 * DAY);
+});
+
+test('a history longer than one request\'s pages is read in turns until it reaches back far enough, and bars past two months are dropped', async () => {
+  // OKX: 100 bars a page, records before `after`; on quarter hours 24 pages reach 25 days.
+  let now = D0 + 10 * DAY, requests = 0;
+  const Q = 15 * 60_000;
+  const get = async (url: string): Promise<unknown> => {
+    requests++;
+    const after = Number(new URL(url).searchParams.get('after')), rows: unknown[] = [];
+    for (let t = Math.floor((after - 1) / Q) * Q; rows.length < 100 && t >= now - 200 * DAY; t -= Q) if (t < after) rows.push([String(t), '100', '110', '90', '100', '1', '1']);
+    return { data: rows };
+  };
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('okx:BTC-USDT-SWAP', BTC)!;
+  const settle = async (): Promise<void> => { for (let i = 0; i < 40; i++) await new Promise(r => setTimeout(r, 0)); };
+  h.ensure(target, now - 40 * DAY, Q, () => {}); await settle();
+  assert.ok(h.heldFrom > now - 26 * DAY && h.heldFrom < now - 24 * DAY, `first turn: ${(now - h.heldFrom) / DAY} days`);
+  h.ensure(target, now - 40 * DAY, Q, () => {}); await settle();
+  assert.ok(h.heldFrom <= now - 40 * DAY, `second turn: ${(now - h.heldFrom) / DAY} days`);
+  const asked = requests; h.ensure(target, now - 40 * DAY, Q, () => {}); await settle();
+  assert.equal(requests, asked, 'there: nothing more is asked');
+  // A month later the newest bars are asked again and the oldest, past what the levels can reach, are dropped.
+  now += 30 * DAY; h.ensure(target, now - 40 * DAY, Q, () => {}); await settle();
+  assert.ok(h.heldFrom >= now - MAX_BACK_MS - DAY, `${(now - h.heldFrom) / DAY} days held`);
+  assert.ok(h.heldTo >= now - 1, 'held up to the request just made');
 });
 
 test('the history is asked once, then further back when the chart needs it, its newest hours every five minutes, and a minute after a failure', async () => {

@@ -157,10 +157,12 @@ export class RangeTool {
     });
   }
 
-  /** Gather everything for `sel` and show it; `fresh` when it is a new selection rather than a live one taken again. */
-  async #gather(sel: RangeSelection, fresh: boolean): Promise<void> {
-    const asked = ++this.#asked;
-    window.clearTimeout(this.#timer); this.#timer = 0;
+  /**
+   * What the map holds inside `sel` (the absorption marks, the large orders and the liquidations), read from the hub as it is now. The marks
+   * and the large orders are loaded for the map's window: a selection reaching outside it (across the flow column on a longer span) has them
+   * only for its part on the map.
+   */
+  #held(sel: RangeSelection): Pick<RangeInput, 'marks' | 'prints' | 'liquidations' | 'liquidationMin' | 'kind' | 'partial'> {
     const state = this.store.state, ids = flowIds(state, this.hub.flow.ids), idSet = new Set(ids);
     const band = sel.p0 !== null && sel.p1 !== null ? { p0: sel.p0, p1: sel.p1 } : null;
     const inside = (time: number, price: number): boolean => time >= sel.t0 && time < sel.t1 && (!band || (price >= band.p0 && price < band.p1));
@@ -169,11 +171,34 @@ export class RangeTool {
     const prints = state.show.bubbles ? this.hub.prints.items.filter(p => idSet.has(p.id) && inside(p.t, p.price)) : null;
     const liquidations = state.liquidations.on ? this.hub.liquidations.items.filter(l => idSet.has(l.id) && inside(l.t, l.price)) : null;
     const kind = (id: string) => kindOf(state.markets, id);
-    // The marks and the large orders are loaded for the map's window: a selection reaching outside it (across the flow column on a longer
-    // span) has them only for its part on the map.
     const map = this.mapWindow(), partial = map !== null && (sel.t0 < map.t0 || (!sel.live && sel.t1 > map.t1));
+    return { marks, prints, liquidations, liquidationMin: scaledUsd(state.liquidations.minUsd), kind, partial };
+  }
+
+  /**
+   * Read again what the map holds for the selection on show (its large orders or liquidations arrived after it was made, or their settings
+   * changed), without asking the recording again; at most once a frame.
+   */
+  refreshHeld(): void {
+    if (this.#heldFrame || !this.#panel || !this.#input) return;
+    this.#heldFrame = requestAnimationFrame(() => {
+      this.#heldFrame = 0;
+      const sel = this.store.state.range, input = this.#input;
+      if (!sel || sel.draft || !input || !this.#panel || input.sel !== sel) return;
+      this.#input = { ...input, ...this.#held(sel) };
+      this.#render();
+    });
+  }
+  #heldFrame = 0;
+
+  /** Gather everything for `sel` and show it; `fresh` when it is a new selection rather than a live one taken again. */
+  async #gather(sel: RangeSelection, fresh: boolean): Promise<void> {
+    const asked = ++this.#asked;
+    window.clearTimeout(this.#timer); this.#timer = 0;
+    const state = this.store.state, ids = flowIds(state, this.hub.flow.ids);
+    const band = sel.p0 !== null && sel.p1 !== null ? { p0: sel.p0, p1: sel.p1 } : null;
     const kept = !fresh && this.#input ? this.#input : null;
-    this.#input = { sel, answer: kept?.answer ?? null, error: null, marks, resting: kept?.resting ?? null, prints, liquidations, liquidationMin: scaledUsd(state.liquidations.minUsd), kind, partial };
+    this.#input = { sel, answer: kept?.answer ?? null, error: null, resting: kept?.resting ?? null, ...this.#held(sel) };
     this.#render();
     const started = performance.now(), mark = state.mark.price > 0 ? state.mark.price : band ? (band.p0 + band.p1) / 2 : 0;
     const step = rowStep(sel, gridStepFor(mark > 0 ? mark : 1));

@@ -117,8 +117,8 @@ async function main(): Promise<void> {
   const alerts = new Alerts(store, hub.flow, sounds.engine, Date.now, (ids, from) => { void hub.ensureFlow(ids, from); }); toolbar.attachAlerts(alerts); alerts.start();
   alerts.onChange = () => cvd.invalidate(); cvd.events = alerts.bursts;
   hub.onPrints = fresh => { sounds.feed(fresh); cvd.flash(fresh); };
-  hub.onPrintsChanged = () => heat.invalidate();
-  hub.onLiquidationsChanged = () => heat.invalidate();
+  hub.onPrintsChanged = () => { heat.invalidate(); range.refreshHeld(); };
+  hub.onLiquidationsChanged = () => { heat.invalidate(); range.refreshHeld(); };
   toolbar.keyHistory = hub.keyHistory;
   hub.onTraded = () => heat.invalidate();
   hub.onAbsorptionChanged = () => heat.invalidate();
@@ -165,7 +165,8 @@ async function main(): Promise<void> {
     if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.refresh(); }
     if (changed.has('markets')) cvd.invalidate();
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
-    if (changed.has('absorption') || changed.has('tradeBubbles')) heat.invalidate();
+    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded')) heat.invalidate();
+    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show')) range.refreshHeld();
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('levels')) { ladder.invalidate(); ladder.syncVenues(); heat.invalidate(); }
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();
@@ -176,7 +177,7 @@ async function main(): Promise<void> {
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.invalidate(); }
     if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); cvd.syncHover(); }
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(store.state.theme);

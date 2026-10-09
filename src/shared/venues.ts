@@ -337,6 +337,8 @@ export class CoinbaseConnector extends MarketBook {
 export class DeribitConnector extends MarketBook {
   readonly id = 'deribit'; readonly name = 'Deribit'; readonly quote = 'USD'; readonly marketType = 'perpetual' as const;
   constructor(market: Market = btc('deribit')) { super(market); }
+  /** The trade ids of forced fills already counted: a fill seen again (a replay after a reconnect) must not add to a liquidation twice. */
+  readonly #forcedSeen = new Set<string>();
   /** $10 bands for BTC, as the server reads it; single levels for the rest. */
   readonly #group = this.market.symbol === 'BTC-PERPETUAL' ? '10' : 'none';
   protected override get coarse() { return this.#group !== 'none'; }
@@ -367,6 +369,12 @@ export class DeribitConnector extends MarketBook {
         const closed: ('long' | 'short')[] = [];
         if (flag.includes('T')) closed.push(side === 'sell' ? 'long' : 'short');
         if (flag.includes('M')) closed.push(side === 'sell' ? 'short' : 'long');
+        if (closed.length) {
+          const tradeId = String(d.trade_id);
+          if (this.#forcedSeen.has(tradeId)) continue;
+          this.#forcedSeen.add(tradeId);
+          if (this.#forcedSeen.size > 4_000) { const keep = [...this.#forcedSeen].slice(-2_000); this.#forcedSeen.clear(); for (const k of keep) this.#forcedSeen.add(k); }
+        }
         for (const which of closed) {
           const key = `${t}|${which}`, sum = forced.get(key) ?? { t, side: which, coins: 0, usd: 0 };
           sum.coins += coins; sum.usd += usd; forced.set(key, sum);

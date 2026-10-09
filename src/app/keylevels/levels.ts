@@ -39,8 +39,13 @@ export function barMsFor(zone: string, from: number, to: number): number {
   }
 }
 
-/** One period's open, high and low from the candles that start inside it; `complete` when the candles held reach back to its start. */
-export interface PeriodStats { open: number; high: number; low: number; complete: boolean }
+/**
+ * One period's open, high and low from the candles that start inside it: `opened` when the candles held reach back to its start (its open
+ * is known), `complete` when they also reach its end (its high and low are).
+ */
+export interface PeriodStats { open: number; high: number; low: number; opened: boolean; complete: boolean }
+/** How far short of a period's end the history may stop and the period still count as ended in it: the newest bars are asked every five minutes. */
+const END_SLACK_MS = 6 * MINUTE;
 
 /** One line on the chart: which period and level it is, its price, and the stretch it is drawn over. */
 export interface KeyLine {
@@ -67,10 +72,10 @@ export function windowsOf(period: PeriodKind, zone: string, t0: number, t1: numb
 /**
  * The open, high and low of [from, to) from `bars` (sorted by start; any mix of the history's bars and finer ones): the open is the first bar's
  * that starts inside, high and low over every bar that starts inside. With `barMsFor`'s size every period starts on a bar, so no bar is split.
- * A period is complete when the history held starts at or before it (`heldFrom`): a bar missing inside it is an interval nobody traded in (some
- * exchanges send none), not one unknown. Null when no bar starts inside.
+ * A period is opened when the history held starts at or before it (`heldFrom`) and complete when it also reaches its end (`heldTo`): a bar
+ * missing inside it is an interval nobody traded in (some exchanges send none), not one unknown. Null when no bar starts inside.
  */
-export function statsOf(bars: readonly CandleRow[], from: number, to: number, heldFrom: number): PeriodStats | null {
+export function statsOf(bars: readonly CandleRow[], from: number, to: number, heldFrom: number, heldTo: number = Infinity): PeriodStats | null {
   let open = NaN, high = -Infinity, low = Infinity, first = Infinity;
   for (const b of bars) {
     const t = b[0]; if (t < from) continue; if (t >= to) break;
@@ -79,7 +84,8 @@ export function statsOf(bars: readonly CandleRow[], from: number, to: number, he
     if (b[3] < low) low = b[3];
   }
   if (!(high >= low) || !Number.isFinite(open)) return null;
-  return { open, high, low, complete: heldFrom <= from };
+  const opened = heldFrom <= from;
+  return { open, high, low, opened, complete: opened && heldTo >= to - END_SLACK_MS };
 }
 
 /** The first bar starting at or after `after` whose range reaches `price` (null: none yet). `bars` sorted by start. */
@@ -104,24 +110,26 @@ export interface KeyLineOptions {
   zone: string; t0: number; t1: number; now: number; untouched: boolean;
   /** Where the history held begins (default: the first bar); a period starting before it is incomplete. */
   heldFrom?: number;
+  /** Up to when the history is known (default: the end of the last bar); a period ending after it is not complete. */
+  heldTo?: number;
 }
 
 /**
  * The lines for the periods that have begun and touch the chart (and the few before its left edge, for a level still untouched in view), oldest
- * first: over each period, the previous one's high, low and middle (when that one is complete), its own open (when it is complete), and for the
+ * first: over each period, the previous one's high, low and middle (when that one is complete), its own open (when its start is held), and for the
  * one under way its high and low so far. `bars` are sorted by start. Periods before the history held are not looked at, so a chart zoomed out
  * over a year asks for about two months of windows, not hundreds.
  */
 export function keyLines(bars: readonly CandleRow[], lines: Readonly<Record<PeriodKind, PeriodLines>>, o: KeyLineOptions): KeyLine[] {
   const out: KeyLine[] = [], end = Math.min(o.t1, o.now);
   if (!bars.length || !(end > o.t0)) return out;
-  const heldFrom = o.heldFrom ?? bars[0]![0];
+  const heldFrom = o.heldFrom ?? bars[0]![0], heldTo = o.heldTo ?? bars[bars.length - 1]![0] + HOUR;
   for (const period of PERIOD_KINDS) {
     const want = lines[period]; if (!want.prev && !want.mid && !want.open && !want.sofar) continue;
     const start = Math.max(o.t0 - (LOOKBACK[period] + 1) * SPAN[period], heldFrom - SPAN[period]);
     if (!(end > start)) continue;
     const windows = windowsOf(period, o.zone, start, end).filter(w => w.from <= o.now);
-    const stats = windows.map(w => statsOf(bars, w.from, w.to, heldFrom));
+    const stats = windows.map(w => statsOf(bars, w.from, w.to, heldFrom, heldTo));
     for (let i = 0; i < windows.length; i++) {
       const w = windows[i]!, own = stats[i], prev = i > 0 && windows[i - 1]!.to === w.from ? stats[i - 1] : null;
       const to = w.to, under = w.to > o.now;
@@ -136,7 +144,7 @@ export function keyLines(bars: readonly CandleRow[], lines: Readonly<Record<Peri
           out.push(line);
         }
       }
-      if (own?.complete && want.open) out.push({ period, what: 'open', prev: false, price: own.open, from: w.from, to, of: w.from, window: w.key });
+      if (own?.opened && want.open) out.push({ period, what: 'open', prev: false, price: own.open, from: w.from, to, of: w.from, window: w.key });
       if (own && want.sofar && under) {
         out.push({ period, what: 'high', prev: false, price: own.high, from: w.from, to, of: w.from, window: w.key });
         out.push({ period, what: 'low', prev: false, price: own.low, from: w.from, to, of: w.from, window: w.key });
