@@ -120,3 +120,21 @@ test('a minute leaving memory keeps its totals for older windows, until the stor
   now += 60 * MIN; recorder.flush();
   assert.deepEqual(read(), [], 'past the store\'s keep it is gone');
 });
+
+test('an instrument with only older minutes counts in the aggregate, and never takes the place of one that trades now', () => {
+  const { recorder } = recording(), book = new FlowBook(), now = (S0 + HOURS * 3_600) * 1000, from = S0 + 5 * 3_600;
+  // x:BTC trades now (seconds for the last hour, minutes before); old:BTC, a market of the same exchange family and kind, has only older minutes.
+  book.load(recorder.frame(['x:BTC'], from * 1000, now), ['x:BTC'], from * 1000);
+  const old = recorder.minutes(['x:BTC'], S0 * 1000, (S0 + 3_600) * 1000).instruments[0]!;
+  book.loadMinutes({ from: S0 * 1000, to: now, instruments: [recorder.minutes(['x:BTC'], S0 * 1000, from * 1000 + 2 * MIN).instruments[0]!, { ...old, id: 'y:BTC' }, { ...old, id: 'xspot:BTC' }] }, ['x:BTC', 'y:BTC', 'xspot:BTC'], S0 * 1000, from * 1000 + 2 * MIN);
+  const run = (ids: string[]): ReturnType<typeof buildModel> => buildModel({ flow: book, ids, kindOf: () => 'perp', t0: S0 * 1000, t1: now, columns: 120, now, settings: { ...CVD_DEFAULTS, rank: '1h' }, ranker: new Ranker() });
+  const one = run(['x:BTC']), both = run(['x:BTC', 'y:BTC']);
+  assert.deepEqual(both.rows.map(r => r.key), ['x'], 'a row is an exchange that trades now');
+  assert.notDeepEqual([...both.perp!.last.subarray(0, 20)], [...one.perp!.last.subarray(0, 20)], 'the older minutes of y count in the aggregate');
+  const added = [...both.perp!.last.subarray(70)].map((v, i) => Math.round(v - one.perp!.last[70 + i]!));
+  assert.ok(added.every(v => v === added[0]), 'after its minutes end its running delta holds where it ended');
+  assert.deepEqual(both.counted, ['x:BTC'], 'the dot rows still count what trades now');
+  // xspot is the x family (the alias) and the same kind here: the market that trades now keeps the place.
+  const family = run(['xspot:BTC', 'x:BTC']);
+  assert.deepEqual([...family.perp!.last], [...one.perp!.last], 'x, not xspot, is the family\'s line');
+});

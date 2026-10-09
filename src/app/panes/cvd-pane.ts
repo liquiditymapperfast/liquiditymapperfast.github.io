@@ -354,6 +354,8 @@ export class CvdPane {
     const wanted = cfg.span === 'map' ? this.view.t0 : now - CVD_SPAN_MS[cfg.span], older = wanted < secondsFrom - 60_000;
     let latest = -Infinity;
     if (older) for (const id of flowIdsToLoad) { const first = this.hub.flow.get(id)?.span?.first; if (first !== undefined && first * 1000 > latest) latest = first * 1000; }
+    // Nothing traded in the last day (the seconds were asked for and none came): the minutes are asked for up to the hour that is coming.
+    if (older && latest === -Infinity && !this.hub.flow.missing(flowIdsToLoad, secondsFrom).length) latest = now;
     if (older && latest > -Infinity) void this.hub.ensureFlowMinutes(flowIdsToLoad, Math.floor((wanted - 3_600_000) / MINUTES_FROM_MS) * MINUTES_FROM_MS, Math.ceil((latest + 120_000) / 3_600_000) * 3_600_000);
     let earliest = Infinity;
     for (const id of ids) { const first = this.hub.flow.track(id)?.first; if (first !== null && first !== undefined && first * 1000 < earliest) earliest = first * 1000; }

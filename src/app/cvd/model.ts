@@ -73,8 +73,12 @@ function laneLine(id: string, kind: Kind, series: FlowSeries, track: FlowTrack, 
 export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, ranker }: ModelInput): CvdModel {
   const nowSec = Math.floor(now / 1000), rankSec = Math.round(RANK_MS[settings.rank] / 1000), winStart = nowSec - rankSec + 1;
   const t0Sec = Math.floor(t0 / 1000), t1Sec = Math.max(t0Sec + 1, Math.ceil(t1 / 1000));
-  const withFlow = ids.filter(id => { const s = flow.get(id); return s !== undefined && !s.empty; });
+  const withFlow = ids.filter(id => { const s = flow.get(id); return s !== undefined && !s.empty; }), active = new Set(withFlow);
   const families = buildFamilies(withFlow, kindOf);
+  // The aggregate lines also count an instrument that has only older minutes (nothing traded in the last day): a window reaching back to
+  // them would leave it out. Those with seconds come first, so one never takes the place of a market that trades now.
+  const olderOnly = ids.filter(id => !active.has(id) && flow.track(id)?.first != null);
+  const aggregateFamilies = olderOnly.length ? buildFamilies([...withFlow, ...olderOnly], kindOf) : families;
   const common = { t0Sec, t1Sec, columns, winStart, nowSec, now, rebase: settings.rebase, quietFlag: settings.quietFlag };
 
   const grossOf = (family: Family, kind: Kind): number => { const lane = family.lanes.find(l => l.kind === kind); return lane ? flow.get(lane.id)!.gross(winStart, nowSec) : 0; };
@@ -92,8 +96,8 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
   const volumeFamilies = everyone.length;
 
   const aggregate = (kind: Kind): LaneLine | null => {
-    const ids = families.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => l.id), lanes = ids.map(id => flow.get(id)!), tracks = ids.map(id => flow.track(id)!);
-    if (!lanes.length) return null;
+    const ids = aggregateFamilies.flatMap(f => f.lanes.filter(l => l.kind === kind)).map(l => l.id), lanes = ids.map(id => flow.get(id)), tracks = ids.map(id => flow.track(id)!);
+    if (!ids.length) return null;
     const last = nan(columns), span = t1Sec - t0Sec;
     let delta = 0, gross = 0;
     const bases = tracks.map(s => settings.rebase ? s.cumDelta(t0Sec - 1) : 0), firsts = tracks.map(s => s.first);
@@ -104,9 +108,9 @@ export function buildModel({ flow, ids, kindOf, t0, t1, columns, now, settings, 
       tracks.forEach((s, i) => { const first = firsts[i]; if (first !== null && first !== undefined && end >= first) { sum += s.cumDelta(end) - bases[i]!; any = true; } });
       if (any) last[c] = sum;
     }
-    for (const s of lanes) { delta += s.delta(winStart, nowSec); gross += s.gross(winStart, nowSec); }
+    for (const s of lanes) if (s) { delta += s.delta(winStart, nowSec); gross += s.gross(winStart, nowSec); }
     const r = range(last);
     return { id: '', kind, series: null, lo: last, hi: last, last, ...r, delta, gross, buy: (gross + delta) / 2, sell: (gross - delta) / 2, quiet: false };
   };
-  return { t0, t1, columns, rankSec, nowSec, rows, spot: aggregate('spot'), perp: aggregate('perp'), instruments: withFlow.length, hidden: Math.max(0, volumeFamilies - rows.length), counted: families.flatMap(f => f.lanes.map(l => l.id)) };
+  return { t0, t1, columns, rankSec, nowSec, rows, spot: aggregate('spot'), perp: aggregate('perp'), instruments: withFlow.length + olderOnly.length, hidden: Math.max(0, volumeFamilies - rows.length), counted: families.flatMap(f => f.lanes.map(l => l.id)) };
 }

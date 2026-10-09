@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VENUE_MARKS, markOf, monogramPx } from '../src/app/venue-marks.ts';
+import { VENUE_MARKS, markOf, monogramPx, useMarkets } from '../src/app/venue-marks.ts';
 import { MARK, layoutInfo } from '../src/app/infobox.ts';
 
 const luminance = (hex: string): number => {
@@ -31,4 +31,23 @@ test('a line with a mark makes room for it before its first text', () => {
   assert.equal(marked.rows[0]!.mark, 'binance:BTCUSDT');
   const labelled = layoutInfo(measure, [{ label: 'Bybit BTCUSDT', text: '$20.6M · 25%', mark: 'bybit:BTCUSDT' }]);
   assert.equal(labelled.labelW, 'Bybit BTCUSDT'.length * 6 + MARK.room, 'on a labelled line the mark goes before the label');
+});
+
+test('a market the market list calls spot has the notch, whatever its venue is called', () => {
+  let markets = [
+    { instrumentId: 'binance:BTCUSDT', marketType: 'perpetual' }, { instrumentId: 'binance:BTCUSDT:spot', marketType: 'spot' },
+    { instrumentId: 'coinbase:BTC-USD', marketType: 'spot' }, { instrumentId: 'kraken:BTC/USD', marketType: 'spot' },
+  ];
+  useMarkets(() => markets);
+  try {
+    assert.equal(markOf('binance:BTCUSDT:spot').spot, true);
+    assert.equal(markOf('binance:BTCUSDT:spot').family, 'binance', 'still Binance\'s mark');
+    assert.equal(markOf('coinbase:BTC-USD').spot, true);
+    assert.equal(markOf('binance:BTCUSDT').spot, false);
+    assert.equal(markOf('coinbase').spot, true, 'a venue that lists only spot markets');
+    assert.equal(markOf('binance').spot, false, 'a venue with both');
+    assert.equal(markOf('binancespot:BTCUSDT').spot, true, 'the alias still says so with no list');
+    markets = [{ instrumentId: 'coinbase:BTC-USD', marketType: 'perpetual' }];
+    assert.equal(markOf('coinbase:BTC-USD').spot, false, 'a new list is read as it is');
+  } finally { useMarkets(() => []); }
 });

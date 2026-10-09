@@ -28,6 +28,7 @@ import './styles.css';
 import './mobile.css';
 import './chrome.css';
 import { t } from './i18n.ts';
+import { useMarkets } from './venue-marks.ts';
 
 /** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */
 async function serverAnswers(): Promise<boolean> {
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
   // The coin first: everything after it is built for that coin (BTC needs no list, so a BTC page does not wait for one).
   const choice = await chooseCoin(params);
   const store = new Store(forCoin(initialState(), choice.coin, choice.from));
+  useMarkets(() => store.state.markets);
   setTimeZone(store.state.timeZone);
   applyTheme(store.state.theme);
   installTips();
