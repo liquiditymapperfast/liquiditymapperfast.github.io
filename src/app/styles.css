@@ -111,6 +111,8 @@ main { --side-w: 420px; --flow-w: 300px; display: grid; grid-template-columns: v
 .ctl { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
 .ctl select, .pane-head button { padding: 1px 6px; font-size: 11px; }
 .pane-head .ctl:last-of-type, .pane-head > button:last-child { margin-left: auto; }
+.ctl-group { gap: 12px; flex-wrap: wrap; }
+.ctl-group .ctl:last-of-type { margin-left: 0; }
 
 dialog.venues { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); padding: 16px 20px; min-width: 320px; }
 dialog.venues::backdrop { background: rgba(0, 0, 0, .35); }

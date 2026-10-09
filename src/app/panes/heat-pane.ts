@@ -420,7 +420,7 @@ export class HeatPane {
     }
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
-    this.#paintDivergences(ctx, state, pw, ph);
+    if (state.show.candles) this.#paintDivergences(ctx, state, pw, ph); // joined swings need the candles they join
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
     this.#paintLiquidations(ctx, state, pw, ph); // above the bubbles: a forced order is one of the market orders, marked as forced
     this.#paintAbsorption(ctx, state, pw, ph);

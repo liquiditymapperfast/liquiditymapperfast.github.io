@@ -55,12 +55,14 @@ export class DeltaPane extends TimePane {
     setTip(this.head.querySelector('strong')!, t('What taker buys outweighed sells by in each candle, over the exchanges the flow column adds up.'));
     const d = (): DeltaSettings => this.store.state.delta;
     const patch = (change: Partial<DeltaSettings>): void => this.store.set({ delta: { ...d(), ...change } });
+    // One group, so the header's rule that puts its last control at the right edge moves them all together.
+    const group = document.createElement('span'); group.className = 'ctl ctl-group'; this.head.append(group);
     const select = (label: string, title: string, options: [string, string][], get: () => string, set: (value: string) => void): void => {
       const wrap = document.createElement('label'); wrap.className = 'ctl'; setTip(wrap, title); wrap.append(label);
       const control = document.createElement('select');
       for (const [value, text] of options) control.append(new Option(text, value));
       control.value = get(); control.onchange = () => set(control.value);
-      wrap.append(control); this.head.append(wrap);
+      wrap.append(control); group.append(wrap);
       this.#sync.push(() => { if (control.value !== get()) control.value = get(); });
     };
     select(t('Show'), t('Each candle\'s delta as a bar, or the cumulative delta as candles.'), [['candles', t('CVD candles')], ['bars', t('Delta bars')]], () => d().style, v => patch({ style: v === 'bars' ? 'bars' : 'candles' }));
@@ -69,7 +71,7 @@ export class DeltaPane extends TimePane {
     box.append(check, t('Divergences'));
     this.#sync.push(() => { check.checked = d().divergence; });
     select(t('CVD from'), t('Where the cumulative delta starts: the left edge of the chart, or again each day or week (in the Volume profile\'s zone).'), [['none', t('The left edge')], ['day', t('Each day')], ['week', t('Each week')]], () => d().reset, v => patch({ reset: v === 'day' || v === 'week' ? v : 'none' }));
-    this.head.append(box);
+    group.append(box);
     select(t('Swing'), t('How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.'), PIVOTS.map((n): [string, string] => [String(n), tn(n, '{n} candle', '{n} candles')]), () => String(d().pivot), v => patch({ pivot: (PIVOTS as readonly number[]).includes(Number(v)) ? Number(v) : d().pivot }));
   }
 
