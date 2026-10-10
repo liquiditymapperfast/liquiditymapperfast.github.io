@@ -423,3 +423,12 @@ button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
 .keys-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
 .keys-caps { display: inline-flex; gap: 4px; min-width: 76px; }
 .keys-pairs { flex-wrap: wrap; gap: 6px 12px; }
+/* Saved layouts (layouts/panel.ts). */
+.layout-save { display: flex; gap: 6px; margin: 10px 0 2px; }
+.layout-name { flex: 1; min-width: 0; padding: 3px 6px; font: inherit; }
+.layout-message.error { color: var(--ask); }
+.layout-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.layout-row > button:first-child { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layout-date { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.layout-row button.armed { color: var(--ask); }
+.layout-tools { display: flex; flex-wrap: wrap; gap: 6px; }

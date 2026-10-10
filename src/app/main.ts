@@ -116,6 +116,7 @@ async function main(): Promise<void> {
   heat.range = range; cvd.range = range; for (const pane of [depth, oi, delta, lt, bars]) pane.useRange(range);
   toolbar.onRange = () => range.toggle();
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
+  toolbar.panes = { arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults() };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
   const sounds = new Sounds(store); toolbar.attachSounds(sounds); sounds.start();

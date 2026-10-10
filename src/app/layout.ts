@@ -1,6 +1,7 @@
 import { setTip } from './tip.ts';
 import { isPhone } from './device.ts';
 import { t } from './i18n.ts';
+import { arrangeOrder, type PaneArrangement } from './layouts/layouts.ts';
 /** Resizable, reorderable layout: splitters between panes, persisted in localStorage. */
 interface Saved { sideW?: number; flowW?: number; heights?: Record<string, number>; order?: string[] }
 const KEY = 'hlm-layout-v2';
@@ -17,13 +18,15 @@ export class Layout {
   /** The vertical splitters: between the flow column and the map, and between the map and the book. */
   #flowSplit: HTMLElement | null = null;
   #sideSplit: HTMLElement;
+  /** The arrangement the page starts with when nothing is saved (the Default layout). */
+  readonly #defaults: PaneArrangement;
 
   constructor(private main: HTMLElement, private chart: HTMLElement, private side: HTMLElement, panes: LayoutPane[], private flow: HTMLElement | null = null) {
     this.#panes = panes;
-    // Restore pane order and heights.
-    // The saved order, and a pane it does not know (one added since) after the others: a new pane must not undo a person's order.
-    const order = this.#saved.order?.filter(id => panes.some(p => p.id === id)) ?? [];
-    if (order.length) this.#panes = [...order.map(id => panes.find(p => p.id === id)!), ...panes.filter(p => !order.includes(p.id))];
+    this.#defaults = { order: panes.map(p => p.id), heights: Object.fromEntries(panes.flatMap(p => p.height !== undefined ? [[p.id, p.height]] : [])), sideW: 420, flowW: 300 };
+    // Restore pane order and heights: the saved order, and a pane it does not know (one added since) after the others, so a new pane does
+    // not undo a person's order.
+    this.#panes = arrangeOrder(this.#saved.order ?? [], panes.map(p => ({ id: p.id, fixed: p.height !== undefined }))).map(id => panes.find(p => p.id === id)!);
     for (const pane of this.#panes) {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);
@@ -106,6 +109,35 @@ export class Layout {
         if (above.height !== undefined) this.#setHeight(above, aboveStart + dy);
       });
     });
+  }
+
+  /** The arrangement the page starts with when nothing is saved. */
+  defaults(): PaneArrangement { return { ...this.#defaults, order: [...this.#defaults.order], heights: { ...this.#defaults.heights } }; }
+
+  /** The panes as they are now: order, heights (a hidden pane's as it will come back), and the column widths. */
+  arrangement(): PaneArrangement {
+    const heights: Record<string, number> = {};
+    for (const p of this.#panes) if (p.height !== undefined) heights[p.id] = Math.round(!p.root.hidden ? this.#height(p) : this.#saved.heights?.[p.id] ?? p.height);
+    return { order: this.#panes.map(p => p.id), heights, sideW: Math.round(this.#sideWidth()), flowW: Math.round(this.flow ? this.#flowWidth() : this.#saved.flowW ?? 300) };
+  }
+
+  /**
+   * Arrange the panes as `a` says (a saved layout): their order (panes it does not know after the others), every fixed pane's height,
+   * hidden ones too so they come back at it, and the column widths; then keep it as the page's own. Not on a phone, which arranges by tab.
+   */
+  apply(a: PaneArrangement): void {
+    if (isPhone()) return;
+    const known = this.#defaults.order.map(id => ({ id, fixed: this.#defaults.heights[id] !== undefined }));
+    const ids = arrangeOrder(a.order, known);
+    this.#panes = ids.map(id => this.#panes.find(p => p.id === id)!);
+    const heights: Record<string, number> = { ...this.#saved.heights };
+    for (const p of this.#panes) if (p.height !== undefined) { const h = a.heights[p.id] ?? heights[p.id] ?? p.height; this.#setHeight(p, h); heights[p.id] = Math.round(Math.max(p.min ?? 70, h)); }
+    this.#setSideWidth(a.sideW);
+    if (this.flow) this.#setFlowWidth(a.flowW);
+    this.#reattach();
+    // What was asked for, not what is measured: a pane hidden now has no height to measure.
+    write({ sideW: this.#sideWidth(), flowW: this.flow ? this.#flowWidth() : a.flowW, heights, order: ids });
+    this.#saved = read();
   }
 
   /** Set a fixed-height pane's height (its content changed size) and remember it. */

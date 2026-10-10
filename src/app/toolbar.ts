@@ -18,6 +18,7 @@ import { SCOPE_OPTIONS, activeIds, chipClick, heatmapSourceOf, kindOf, scopeCoun
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
 import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow, openedPanel } from './ui.ts';
 import { GROUP_TITLES, SHORTCUTS, type ShortcutGroup } from './shortcuts.ts';
+import { buildLayoutsPanel, type LayoutsPanelState, type PaneHost } from './layouts/panel.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
 import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
@@ -155,6 +156,9 @@ export class Toolbar {
   #zone = el('button', { class: 'zone-btn' });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
   #keys = el('button', { type: 'button', class: 'keys-btn', textContent: t('Keys'), tip: t('Keyboard shortcuts (?)'), onclick: () => this.openShortcuts() });
+  /** Saved layouts (the status bar, beside Keys); `panes` is the page's Layout, set by main. */
+  #layouts = el('button', { type: 'button', class: 'layouts-btn', textContent: t('Layouts'), tip: t('Save the panes and what the chart shows under a name, and switch between them'), onclick: () => this.#openLayouts() });
+  panes: PaneHost | null = null;
   /** The lamp panel open now, with what redraws it. */
   #open: { panel: Panel; redraw: () => void } | null = null;
   #language = el('button', { class: 'language-btn', ariaLabel: t('Language'), tip: t('Language: the page uses the language of your browser unless you choose another here') }, el('span', { textContent: language().toUpperCase() }));
@@ -295,6 +299,13 @@ export class Toolbar {
   /** Redraw the lamp panel that is open, after its feature was switched from the keyboard, so its switch says what the lamp does. */
   refreshOpenPanel(): void { if (this.#open && openedPanel() === this.#open.panel) this.#open.redraw(); }
 
+  #openLayouts(): void {
+    const panes = this.panes; if (!panes) return;
+    const ui: LayoutsPanelState = { message: null, armed: null };
+    const build = (_tools: HTMLElement, body: HTMLElement): void => buildLayoutsPanel(this.store, panes, body, () => panel?.render(build), ui);
+    const panel = togglePanel(this.#layouts, { title: t('Layouts'), width: 440, align: 'right' }, build);
+  }
+
   /** The list of keyboard shortcuts, made from the table itself so the two cannot disagree (the status bar's Keys button, and ?). */
   openShortcuts(): void {
     if (!this.#keys.isConnected) return;
@@ -326,7 +337,7 @@ export class Toolbar {
       if (inCorner) { this.#mapTools.replaceChildren(this.#rangeCorner, this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
-      host?.replaceChildren(this.#keys, this.#zone, this.#language, this.#theme);
+      host?.replaceChildren(this.#layouts, this.#keys, this.#zone, this.#language, this.#theme);
       this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#footprint, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#keyLevels, this.#vwap, this.#highlights, this.#soundButton, this.#range,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;

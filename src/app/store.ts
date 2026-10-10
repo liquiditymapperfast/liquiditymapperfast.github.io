@@ -1,24 +1,24 @@
 import type { LevelsFrame } from './wire.ts';
 import type { TimeZone } from './format.ts';
-import type { HeatStyleId } from './heatmap/lut.ts';
+import { HEAT_STYLES, type HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
 import { LT_DEFAULTS, type LtParams } from './lt.ts';
 import { resolveThemeId } from './theme.ts';
 import { DEFAULT_STAT_OPTIONS, type StatOptions } from './stat-options.ts';
-import { DEFAULT_HIGHLIGHT, readHighlight, type HighlightOptions } from './anomaly.ts';
+import { readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
-import { CVD_DEFAULTS, readCvd, type CvdSettings } from './cvd/settings.ts';
-import { ABSORPTION_DEFAULTS, readAbsorption, type AbsorptionSettings } from './absorption.ts';
-import { BUBBLE_DEFAULTS, readBubbles, type BubbleSettings } from './prints.ts';
-import { LIQUIDATION_DEFAULTS, readLiquidations, type LiquidationSettings } from './liquidations.ts';
-import { KEY_LEVEL_DEFAULTS, readKeyLevels, type KeyLevelSettings } from './keylevels/settings.ts';
-import { VWAP_DEFAULTS, readVwap, type VwapSettings } from './vwap/settings.ts';
-import { FOOTPRINT_DEFAULTS, readFootprint, type FootprintSettings } from './footprint/settings.ts';
-import { DELTA_DEFAULTS, readDelta, type DeltaSettings } from './delta/settings.ts';
+import { readCvd, type CvdSettings } from './cvd/settings.ts';
+import { readAbsorption, type AbsorptionSettings } from './absorption.ts';
+import { readBubbles, type BubbleSettings } from './prints.ts';
+import { readLiquidations, type LiquidationSettings } from './liquidations.ts';
+import { readKeyLevels, type KeyLevelSettings } from './keylevels/settings.ts';
+import { readVwap, type VwapSettings } from './vwap/settings.ts';
+import { readFootprint, type FootprintSettings } from './footprint/settings.ts';
+import { readDelta, type DeltaSettings } from './delta/settings.ts';
 import { readPullWindow, type PullWindow } from './panes/pull-stack.ts';
 import type { EngineState } from './sound/engine.ts';
 import type { RangeSelection } from './range/selection.ts';
-import { TRADED_DEFAULTS, readTraded, type TradedSettings } from './traded/settings.ts';
+import { readTraded, type TradedSettings } from './traded/settings.ts';
 import { t } from './i18n.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
@@ -138,42 +138,66 @@ function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
 
+/** The settings a saved layout holds: what the chart shows and how, never the coin, the venues, the theme, the time zone or the sounds. */
+export const LAYOUT_KEYS = ['timeframe', 'layer', 'show', 'cvd', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'delta',
+  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'pullStack', 'traded'] as const satisfies readonly (keyof AppState)[];
+export type Settings = Pick<AppState, (typeof LAYOUT_KEYS)[number]>;
+
+/** The timeframes (hub.ts TIMEFRAMES; a test keeps the two the same). */
+export const TIMEFRAME_IDS: readonly string[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+const HEAT_DEFAULTS: AppState['heat'] = { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' };
+
+/** A flat settings object from storage or a file: each field the defaults have, kept when it has the default's type (a number must be finite). */
+export function sameShape<T extends object>(defaults: T, raw: unknown): T {
+  const out = { ...defaults } as Record<string, unknown>;
+  if (raw && typeof raw === 'object') {
+    for (const [key, fallback] of Object.entries(defaults)) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (typeof value === typeof fallback && (typeof value !== 'number' || Number.isFinite(value))) out[key] = value;
+    }
+  }
+  return out as T;
+}
+
+/**
+ * The settings of a saved page or a saved layout, field by field: anything missing or not valid gets its default. A layouts file can come
+ * from anywhere, so nothing reaches the state without passing here.
+ */
+export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): Settings {
+  const heat = sameShape(HEAT_DEFAULTS, saved.heat), lt = saved.lt as { view?: unknown } | undefined;
+  return {
+    timeframe: typeof saved.timeframe === 'string' && TIMEFRAME_IDS.includes(saved.timeframe) ? saved.timeframe : '1h',
+    // A layer saved before it was withdrawn would otherwise open on an empty chart.
+    layer: AVAILABLE_LAYERS.includes(saved.layer as Layer) ? saved.layer as Layer : 'liquidity',
+    show: sameShape(defaultShow(), saved.show),
+    cvd: readCvd(saved.cvd), highlight: readHighlight(saved.highlight), absorption: readAbsorption(saved.absorption), tradeBubbles: readBubbles(saved.tradeBubbles),
+    liquidations: readLiquidations(saved.liquidations), keyLevels: readKeyLevels(saved.keyLevels), vwap: readVwap(saved.vwap), footprint: readFootprint(saved.footprint),
+    delta: readDelta(saved.delta), pullStack: readPullWindow(saved.pullStack), traded: readTraded(saved.traded),
+    scope: saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all',
+    heat: { ...heat, style: HEAT_STYLES.some(style => style.id === heat.style) ? heat.style : 'bookmap', smooth: heat.smooth === 'off' ? 'off' : 'auto', contrast: clampContrast(heat.contrast) },
+    lt: { ...sameShape(LT_DEFAULTS, saved.lt), view: lt?.view === 'imbalance' ? 'imbalance' : 'lines' },
+    barStats: Array.isArray(saved.barStats) ? saved.barStats.filter((id): id is string => typeof id === 'string').slice(0, 24) : [...DEFAULT_BAR_STATS],
+    barStatOptions: sameShape(DEFAULT_STAT_OPTIONS, saved.barStatOptions),
+    grouping: saved.grouping === 'auto' || (typeof saved.grouping === 'number' && Number.isFinite(saved.grouping) && saved.grouping > 0) ? saved.grouping : 'auto',
+    ladderMode: saved.ladderMode === 'single' || saved.ladderMode === 'compact' ? saved.ladderMode : 'aggregated',
+    ladderShow: saved.ladderShow === 'levels' || saved.ladderShow === 'cumulative' ? saved.ladderShow : 'both',
+  };
+}
+
 export function initialState(): AppState {
   const saved = readSaved();
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
-    timeframe: '1h', layer: 'liquidity', layers: {}, candles: [], oi: [], oiInstrument: '',
-    show: defaultShow(), cvd: { ...CVD_DEFAULTS }, highlight: { ...DEFAULT_HIGHLIGHT }, absorption: { ...ABSORPTION_DEFAULTS }, tradeBubbles: { ...BUBBLE_DEFAULTS }, liquidations: { ...LIQUIDATION_DEFAULTS }, keyLevels: readKeyLevels(KEY_LEVEL_DEFAULTS), vwap: readVwap(VWAP_DEFAULTS), vwapAnchoring: false, footprint: readFootprint(FOOTPRINT_DEFAULTS), delta: readDelta(DELTA_DEFAULTS), sounds: readSounds(DEFAULT_SOUNDS), soundState: 'locked', lastSound: 0, scope: 'all', lt: { ...LT_DEFAULTS, view: 'lines' }, barStats: [...DEFAULT_BAR_STATS], barStatOptions: { ...DEFAULT_STAT_OPTIONS }, heatmapSource: 'aggregated', disabledVenues: [],
-    heat: { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto' }, grouping: 'auto', ladderMode: 'aggregated', ladderShow: 'both', pullStack: 0, ladderVenue: '', ladderVenues: [],
-    theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false, traded: readTraded(undefined), ...saved,
+    layers: {}, candles: [], oi: [], oiInstrument: '', sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
+    ladderVenue: '', ladderVenues: [], theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
+    ...saved, ...readSettings(saved),
   };
-  // Saved objects may predate newer keys: keep the defaults for anything they lack.
-  state.show = { ...defaultShow(), ...saved.show };
   // The volume profile (the traded column, now with its lines on the chart) is off unless chosen: a save from before it had settings of its
-  // own holds the column's old default, not a choice.
+  // own holds the column's old default, not a choice. (A page's save only: a saved layout always carries its own.)
   if (saved.traded === undefined) state.show.traded = false;
-  state.cvd = readCvd(saved.cvd);
   state.sounds = readSounds(saved.sounds);
-  state.highlight = readHighlight(saved.highlight);
-  state.absorption = readAbsorption(saved.absorption);
-  state.tradeBubbles = readBubbles(saved.tradeBubbles);
-  state.liquidations = readLiquidations(saved.liquidations);
-  state.keyLevels = readKeyLevels(saved.keyLevels);
-  state.vwap = readVwap(saved.vwap);
-  state.footprint = readFootprint(saved.footprint);
-  state.delta = readDelta(saved.delta);
-  state.pullStack = readPullWindow(saved.pullStack);
-  state.traded = readTraded(saved.traded);
-  state.scope = saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all';
   state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';
-  state.heat = { style: 'bookmap', auto: true, contrast: 50, smooth: 'auto', ...saved.heat };
-  state.heat.contrast = clampContrast(state.heat.contrast);
-  state.lt = { ...LT_DEFAULTS, view: 'lines', ...saved.lt };
   state.theme = resolveThemeId(state.theme);
-  // A layer saved before it was withdrawn would otherwise open on an empty chart.
-  if (!AVAILABLE_LAYERS.includes(state.layer)) state.layer = 'liquidity';
-  state.barStatOptions = { ...DEFAULT_STAT_OPTIONS, ...saved.barStatOptions };
-  state.barStats = Array.isArray(saved.barStats) ? saved.barStats.filter((id): id is string => typeof id === 'string') : [...DEFAULT_BAR_STATS];
   return state;
 }
 
