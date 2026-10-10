@@ -89,11 +89,11 @@
  "Zooming in reveals the rows, then the imbalances, then a candle with rejected buying.": "확대하면 먼저 행이, 그다음 불균형이, 그다음 거부된 매수가 있는 캔들이 나타납니다.",
  "This describes a closed candle and says nothing about who holds what. It needs a footprint that holds the candle's whole volume (about an hour of recording at 5 minutes, longer at slower timeframes), and nobody has shown that it predicts anything. Treat it as a place to look, never as a signal.": "이것은 마감된 캔들을 설명할 뿐, 누가 무엇을 들고 있는지는 말하지 않습니다. 캔들의 전체 거래량을 담은 풋프린트가 필요하며(5분봉에서 약 한 시간의 기록, 더 느린 시간 단위에서는 더 오래), 이것이 무언가를 예측한다고 보인 사람은 없습니다. 볼 만한 곳으로 대하고, 결코 신호로 대하지 마세요.",
  "The panes underneath": "아래 패널들",
- "**Depth** adds up bids and asks within a distance of the price (1% to 20%, set with Range) and draws asks up in pink and bids down in green. When one side is unusually larger, that bar is drawn stronger.": "**뎁스**는 가격에서 일정 거리 안의 매수·매도 호가를 합산하고(1%~20%, 범위로 설정) 매도 호가는 위로 분홍색, 매수 호가는 아래로 초록색으로 그립니다. 한쪽이 유난히 크면 그 막대가 더 진하게 그려집니다.",
+ "**Depth** adds up bids and asks within a distance of the price (set with Range), asks up in pink and bids down in green; an unusually larger side is drawn stronger.": "**뎁스**는 가격에서 일정 거리(범위로 설정) 안의 매수·매도 호가를 합산해 매도 호가는 위로 분홍색, 매수 호가는 아래로 초록색으로 그립니다. 유난히 큰 쪽은 더 진하게 그려집니다.",
  "**Open Interest** is the number of contracts currently open, which is not volume. It rises when positions are opened and falls when they are closed, and it cannot tell you who is long or short. The small bars are its change per candle.": "**미결제약정**은 현재 열려 있는 계약 수이며 거래량이 아닙니다. 포지션이 열리면 오르고 닫히면 내리며, 누가 롱이고 숏인지는 알려 주지 못합니다. 작은 막대는 캔들당 변화입니다.",
- "**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, weighted so that what is closest counts most: a level counts fully at the touch and half as much for every half-life further away. Bid above ask means more support just under the price than resistance above it.": "**Liquidity Tracker**(LT)는 가격 근처의 매수·매도 유동성을 두 개의 선으로 그리며, 가장 가까운 것이 가장 크게 반영되도록 가중합니다. 한 수준은 접촉 지점에서 전부 반영되고, 반감기만큼 멀어질 때마다 절반씩 줄어듭니다. 매수선이 매도선 위에 있으면 가격 바로 아래의 지지가 위의 저항보다 많다는 뜻입니다.",
+ "**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.": "**Liquidity Tracker**(LT)는 가격 근처의 매수·매도 유동성을 두 개의 선으로 그리며, 가까운 것일수록 크게 반영합니다. 매수선이 매도선 위에 있으면 가격 아래의 지지가 위의 저항보다 많다는 뜻입니다.",
  "**Bar stats** is the strip of numbers per candle described above.": "**바 통계**는 위에서 설명한 캔들당 숫자 띠입니다.",
- "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "각각의 머리글에 **?**가 있고, 도구 모음 버튼(뎁스, OI, LT, 풋프린트)이 이들을 보이거나 숨깁니다.",
+ "Each has a **?** in its header, and the toolbar buttons (Depth, OI, Delta, LT) show or hide them.": "각각 머리글에 **?** 가 있고, 도구 모음의 버튼(뎁스, OI, 델타, LT)으로 표시하거나 숨깁니다.",
  "Exchanges, spot and perpetuals": "거래소, 현물, 무기한",
  "By default the map combines eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them, or MEXC, on or off, and the choice is kept in your browser.": "지도는 기본으로 열한 개 시장을 결합합니다: Binance, Bybit, OKX, Bitget, Hyperliquid, Deribit의 무기한 선물과 Binance, Coinbase, Bybit, OKX, Bitget의 현물 시장입니다. **거래소**에서 각각과 MEXC를 켜고 끌 수 있으며, 선택은 브라우저에 저장됩니다.",
  "**Spot / Perp / Both** filters what the liquidity views draw.": "**현물 / 무기한 / 둘 다**는 유동성 보기가 그리는 것을 걸러 냅니다.",
@@ -178,5 +178,8 @@
  "sell": "매도",
  "buy": "매수",
  "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**흡수** 사각형은 한쪽 시장가 주문이 10 ms 안에 같은 가격에서 임계값을 넘는 양의 대기 주문과 체결된 곳을 표시합니다.",
- "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**코인**은 이 시장들 중 9곳 이상에 있는 다른 코인으로 바꿉니다. 페이지가 다시 열립니다."
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**코인**은 이 시장들 중 9곳 이상에 있는 다른 코인으로 바꿉니다. 페이지가 다시 열립니다.",
+ "**Delta** is each candle's market buys minus sells, as bars or as CVD candles, with divergences and **NL/NS**, an estimate of who opened and closed positions.": "**델타**는 각 캔들의 시장가 매수에서 매도를 뺀 값으로, 막대나 CVD 캔들로 보이며 다이버전스와, 누가 포지션을 열고 닫았는지 추정하는 **NL/NS** 가 있습니다.",
+ "[[?]]": "[[?]]",
+ "All keys": "모든 키"
 }

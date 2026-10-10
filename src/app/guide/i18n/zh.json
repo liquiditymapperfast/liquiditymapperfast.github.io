@@ -89,11 +89,11 @@
  "Zooming in reveals the rows, then the imbalances, then a candle with rejected buying.": "放大时先出现各行，然后是失衡，然后是一根出现被拒绝买入的 K 线。",
  "This describes a closed candle and says nothing about who holds what. It needs a footprint that holds the candle's whole volume (about an hour of recording at 5 minutes, longer at slower timeframes), and nobody has shown that it predicts anything. Treat it as a place to look, never as a signal.": "这描述的是一根已收盘的 K 线，并不说明谁持有什么。它需要一个包含该 K 线全部成交量的 footprint（5 分钟周期约需一小时记录，更慢的周期需要更久），而且没有人证明它能预测任何东西。把它当作值得一看的地方，永远不要当作信号。",
  "The panes underneath": "下方的面板",
- "**Depth** adds up bids and asks within a distance of the price (1% to 20%, set with Range) and draws asks up in pink and bids down in green. When one side is unusually larger, that bar is drawn stronger.": "**深度**把价格一定距离内的买盘和卖盘相加（1% 到 20%，用“范围”设定），卖盘向上画成粉色，买盘向下画成绿色。当一侧异常大时，那根柱会画得更醒目。",
+ "**Depth** adds up bids and asks within a distance of the price (set with Range), asks up in pink and bids down in green; an unusually larger side is drawn stronger.": "**深度**把价格一定距离内（用“范围”设定）的买盘和卖盘相加，卖盘向上画成粉色，买盘向下画成绿色；异常大的一侧画得更醒目。",
  "**Open Interest** is the number of contracts currently open, which is not volume. It rises when positions are opened and falls when they are closed, and it cannot tell you who is long or short. The small bars are its change per candle.": "**持仓量**是当前未平仓合约的数量，它不是成交量。开仓时上升，平仓时下降，它无法告诉你谁多谁空。小柱是它每根 K 线的变化。",
- "**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, weighted so that what is closest counts most: a level counts fully at the touch and half as much for every half-life further away. Bid above ask means more support just under the price than resistance above it.": "**Liquidity Tracker**（LT）把价格附近的买盘和卖盘流动性画成两条线，经过加权，使最近的占最大权重：某一档在接触价处全额计入，每远一个半衰期就减半。买盘线在卖盘线上方，表示价格下方的支撑比上方的阻力更多。",
+ "**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.": "**Liquidity Tracker**（LT）把价格附近的买盘和卖盘流动性画成两条线，越近权重越大。买盘线在卖盘线上方，表示价格下方的支撑比上方的阻力更多。",
  "**Bar stats** is the strip of numbers per candle described above.": "**柱统计**就是上文所述每根 K 线一个数字的条带。",
- "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "每个面板的标题里都有一个 **?**，工具栏按钮（深度、OI、LT、Footprint）可显示或隐藏它们。",
+ "Each has a **?** in its header, and the toolbar buttons (Depth, OI, Delta, LT) show or hide them.": "每个窗格的标题栏都有一个 **?**，工具栏按钮（深度、OI、Delta、LT）用来显示或隐藏它们。",
  "Exchanges, spot and perpetuals": "交易所、现货与永续",
  "By default the map combines eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them, or MEXC, on or off, and the choice is kept in your browser.": "地图默认合并十一个市场：Binance、Bybit、OKX、Bitget、Hyperliquid 和 Deribit 的永续合约，以及 Binance、Coinbase、Bybit、OKX 和 Bitget 的现货市场。**交易所**可开启或关闭其中任何一家，也可开启 MEXC，选择保存在你的浏览器里。",
  "**Spot / Perp / Both** filters what the liquidity views draw.": "**现货 / 永续 / 两者**筛选流动性视图所绘制的内容。",
@@ -178,5 +178,8 @@
  "sell": "卖出",
  "buy": "买入",
  "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸收**方块标出同一方向的市价单在 10 毫秒内于同一价格与超过阈值的挂单成交的位置。",
- "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**币种**可切换到在这些市场中至少九个上线的其他币种；页面会重新加载。"
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**币种**可切换到在这些市场中至少九个上线的其他币种；页面会重新加载。",
+ "**Delta** is each candle's market buys minus sells, as bars or as CVD candles, with divergences and **NL/NS**, an estimate of who opened and closed positions.": "**Delta** 是每根 K 线中以市价买入减去卖出的量，以柱或 CVD K 线显示，并有背离和 **NL/NS**——对谁开仓、谁平仓的估算。",
+ "[[?]]": "[[?]]",
+ "All keys": "全部快捷键"
 }

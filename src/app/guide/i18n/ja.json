@@ -89,11 +89,11 @@
  "Zooming in reveals the rows, then the imbalances, then a candle with rejected buying.": "ズームインすると、まず行、次に偏り、そして拒否された買いのあるローソク足が現れます。",
  "This describes a closed candle and says nothing about who holds what. It needs a footprint that holds the candle's whole volume (about an hour of recording at 5 minutes, longer at slower timeframes), and nobody has shown that it predicts anything. Treat it as a place to look, never as a signal.": "これは確定したローソク足を述べるもので、誰が何を保有しているかについては何も言いません。ローソク足の全出来高を含むフットプリントが必要で（5分足で約1時間の記録、遅い時間足ではそれ以上）、何かを予測することを示した人はいません。見る場所として扱い、決してシグナルとして扱わないでください。",
  "The panes underneath": "下のパネル",
- "**Depth** adds up bids and asks within a distance of the price (1% to 20%, set with Range) and draws asks up in pink and bids down in green. When one side is unusually larger, that bar is drawn stronger.": "**デプス**は価格から一定距離内の買い板と売り板を合計し（1%〜20%、「範囲」で設定）、売り板を上向きにピンク、買い板を下向きに緑で描きます。片側が異常に大きいとき、そのバーはより強く描かれます。",
+ "**Depth** adds up bids and asks within a distance of the price (set with Range), asks up in pink and bids down in green; an unusually larger side is drawn stronger.": "**デプス**は価格から一定距離内（「範囲」で設定）の買い板と売り板を合計し、売り板を上向きにピンク、買い板を下向きに緑で描きます。異常に大きい側はより強く描かれます。",
  "**Open Interest** is the number of contracts currently open, which is not volume. It rises when positions are opened and falls when they are closed, and it cannot tell you who is long or short. The small bars are its change per candle.": "**建玉**は現在建っている契約数で、出来高ではありません。ポジションが建てられると増え、決済されると減り、誰がロングかショートかは分かりません。小さなバーはローソク足ごとの変化です。",
- "**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, weighted so that what is closest counts most: a level counts fully at the touch and half as much for every half-life further away. Bid above ask means more support just under the price than resistance above it.": "**Liquidity Tracker**（LT）は価格付近の買い板と売り板の流動性を2本の線で描きます。最も近いものが最も重くなるよう重み付けされ、水準はタッチ位置で全量、半減期ごとに半分ずつ数えられます。買い線が売り線より上なら、価格のすぐ下の支えが上の抵抗より多いことを意味します。",
+ "**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.": "**Liquidity Tracker**（LT）は価格付近の買い板と売り板の流動性を2本の線で描き、近いものほど重く数えます。買い線が売り線より上なら、価格の下の支えが上の抵抗より多いことを意味します。",
  "**Bar stats** is the strip of numbers per candle described above.": "**バー統計**は、上で説明したローソク足ごとの数値の帯です。",
- "Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.": "それぞれのヘッダーに **?** があり、ツールバーのボタン（デプス、OI、LT、フットプリント）で表示・非表示を切り替えられます。",
+ "Each has a **?** in its header, and the toolbar buttons (Depth, OI, Delta, LT) show or hide them.": "それぞれ見出しに **?** があり、ツールバーのボタン（デプス、OI、デルタ、LT）で表示・非表示を切り替えます。",
  "Exchanges, spot and perpetuals": "取引所、現物、無期限",
  "By default the map combines eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them, or MEXC, on or off, and the choice is kept in your browser.": "マップは標準で11の市場を組み合わせます：Binance、Bybit、OKX、Bitget、Hyperliquid、Deribit の無期限先物と、Binance、Coinbase、Bybit、OKX、Bitget の現物市場です。**取引所**でそれぞれと MEXC をオン・オフでき、選択はブラウザに保存されます。",
  "**Spot / Perp / Both** filters what the liquidity views draw.": "**現物 / 無期限 / 両方**は、流動性ビューが描くものを絞り込みます。",
@@ -178,5 +178,8 @@
  "sell": "売り",
  "buy": "買い",
  "**Absorption** squares mark where one side's market orders met resting orders at one price for more than a threshold within 10 ms.": "**吸収**の四角は、片側の成行注文が 10 ms 以内に同じ価格で、しきい値を超える量の待機注文と約定した場所を示します。",
- "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**通貨**で、これらの市場のうち 9 つ以上にある別の通貨に切り替えます。ページは読み込み直されます。"
+ "**Coin** switches to another coin on nine or more of these markets; the page reloads.": "**通貨**で、これらの市場のうち 9 つ以上にある別の通貨に切り替えます。ページは読み込み直されます。",
+ "**Delta** is each candle's market buys minus sells, as bars or as CVD candles, with divergences and **NL/NS**, an estimate of who opened and closed positions.": "**デルタ**は各足の成行の買いから売りを引いたもので、バーまたは CVD ローソク足で表示し、ダイバージェンスと、誰がポジションを建て・決済したかの推定 **NL/NS** があります。",
+ "[[?]]": "[[?]]",
+ "All keys": "すべてのキー"
 }

@@ -156,12 +156,13 @@ export const SECTIONS: readonly Section[] = [
     id: 'lower-panes', title: 'The panes underneath',
     blocks: [
       { t: 'list', items: [
-        '**Depth** adds up bids and asks within a distance of the price (1% to 20%, set with Range) and draws asks up in pink and bids down in green. When one side is unusually larger, that bar is drawn stronger.',
+        '**Depth** adds up bids and asks within a distance of the price (set with Range), asks up in pink and bids down in green; an unusually larger side is drawn stronger.',
         '**Open Interest** is the number of contracts currently open, which is not volume. It rises when positions are opened and falls when they are closed, and it cannot tell you who is long or short. The small bars are its change per candle.',
-        '**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, weighted so that what is closest counts most: a level counts fully at the touch and half as much for every half-life further away. Bid above ask means more support just under the price than resistance above it.',
+        '**Delta** is each candle\'s market buys minus sells, as bars or as CVD candles, with divergences and **NL/NS**, an estimate of who opened and closed positions.',
+        '**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.',
         '**Bar stats** is the strip of numbers per candle described above.',
       ] },
-      { t: 'p', text: 'Each has a **?** in its header, and the toolbar buttons (Depth, OI, LT, Footprint) show or hide them.' },
+      { t: 'p', text: 'Each has a **?** in its header, and the toolbar buttons (Depth, OI, Delta, LT) show or hide them.' },
     ],
   },
   {
@@ -192,6 +193,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'keys', rows: [
         ['[[S]]', 'Screenshot'],
         ['[[R]], [[Home]]', 'Back to the live edge'],
+        ['[[?]]', 'All keys'],
         ['[[Esc]]', 'Close a panel, the guide or the screenshot tool'],
       ] },
     ],
