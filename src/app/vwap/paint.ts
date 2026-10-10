@@ -15,6 +15,10 @@ export interface VwapLine {
   /** Whether it runs to now (the session under way, an anchor): its last value gets a tag on the price axis. */
   live: boolean;
   key: string;
+  /** The history's bar (ms), for a session or an anchor: in replay a point counts once its bar is over. */
+  bar?: number;
+  /** Where the chart's own candles take over from the history (already cut to a replay's moment); Infinity when they do not. */
+  liveFrom?: number;
 }
 
 /** Tag and label order against the key levels' (0 to 11, earlier periods' from 20): the session VWAP with the previous day's levels, anchors after the opens. */

@@ -28,6 +28,10 @@ test('the candle under way, rebuilt from a price a second: open at its start, cl
   const track = { priceAt: (s: number) => { let p = NaN; for (const [k, v] of prices) if (k <= s) p = v; return p; } };
   assert.deepEqual(formingCandle(track, T, T + 30_000), [T, 100, 104, 98, 101, 0]);
   assert.equal(formingCandle({ priceAt: () => NaN }, T, T + 30_000), null, 'no prices: none');
+  // Minute history: a minute holds its end's price, so a moment inside one reads only the minutes over by then.
+  const minutes = { priceAt: (s: number) => 100 + Math.floor((s - T / 1000) / 60), settled: (s: number) => Math.floor((s + 1) / 60) * 60 - 1 };
+  assert.equal(formingCandle(minutes, T, T + 30_000), null, 'inside its first minute: nothing over yet');
+  assert.deepEqual(formingCandle(minutes, T, T + 150_000)!.slice(1, 5), [100, 101, 100, 101], 'two minutes over: not the third\'s end price');
   assert.equal(formingCandle(track, T, T), null, 'not begun');
 });
 

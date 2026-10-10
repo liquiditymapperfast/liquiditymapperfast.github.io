@@ -81,8 +81,8 @@ const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
 /** Replay: each VWAP line up to the last bar that ended by its moment (so its tag is the VWAP then); live, the lines as they are. */
 function replayCut(lines: VwapLine[], at: number): VwapLine[] {
   if (!replaying()) return lines;
-  // The whale lines step at irregular minutes: they are worked out to the moment shown already (#vwapLines).
-  return lines.map(l => { if (l.kind === 'whaleBuy' || l.kind === 'whaleSell') return l; const step = l.points.length > 1 ? l.points[1]!.t - l.points[0]!.t : 60_000; return { ...l, points: l.points.filter(q => q.t + step <= at) }; });
+  // A history bar's point counts once the bar is over; the chart's own candles (from `liveFrom`) and the whale lines are cut to the moment already.
+  return lines.map(l => l.bar === undefined ? l : { ...l, points: l.points.filter(q => q.t >= (l.liveFrom ?? Infinity) || q.t + l.bar! <= at) });
 }
 
 /** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
@@ -383,10 +383,11 @@ export class HeatPane {
   /** While replaying, the candles as they were at its moment (the one under way rebuilt from the recorded price a second), kept per second. */
   #atCandles: { key: string; src: readonly CandleRow[]; rows: CandleRow[] } | null = null;
   #shownCandles(state: AppState): readonly CandleRow[] {
-    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, at = pageNow(), key = `${tf}|${Math.floor(at / 1000)}`;
+    // Again when flow arrives: paused before it loaded, the candle under way would otherwise stay without it.
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, at = pageNow(), key = `${tf}|${Math.floor(at / 1000)}|${this.hub.flow.version}`;
     if (this.#atCandles?.key === key && this.#atCandles.src === state.candles) return this.#atCandles.rows;
     const id = state.seriesInstrument || state.marketId, start = Math.floor(at / tf) * tf, DAY = 86_400_000;
-    if (Date.now() - start < DAY - 3_600_000) void this.hub.ensureFlow([id], start - 60_000);
+    if (Date.now() - start < DAY - 3_600_000) void this.hub.ensureFlow([id], start - 60_000).then(() => this.invalidate(), () => {});
     else void this.hub.ensureFlowMinutes([id], Math.floor((start - 3_600_000) / 21_600_000) * 21_600_000, Math.ceil((start + tf + 3_600_000) / 3_600_000) * 3_600_000);
     const track = this.hub.flow.track(id);
     const rows = candlesAt(state.candles, tf, at, track ? formingCandle(track, start, at) : null);
@@ -924,16 +925,16 @@ export class HeatPane {
    * The bars of one VWAP history and, after the last of them, the chart's own candles when they are of the same market and no coarser (the
    * bar under way is then the chart's, not the history's partial one, so no volume is counted twice). Null until the history is the target's.
    */
-  #vwapBars(state: AppState, bar: number, target: HistoryTarget): readonly CandleRow[] | null {
+  #vwapBars(state: AppState, bar: number, target: HistoryTarget): { rows: readonly CandleRow[]; liveFrom: number } | null {
     const h = this.hub.vwapHistory(bar);
     if (h.id !== target.id || h.barMs !== bar || !h.bars.length) return null;
     const held = h.bars, lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    if (!(target.own && state.seriesInstrument === state.marketId && tf <= bar)) return held;
+    if (!(target.own && state.seriesInstrument === state.marketId && tf <= bar)) return { rows: held, liveFrom: Infinity };
     const live = state.candles.filter(c => c[0] >= lastStart);
-    if (!live.length) return held;
+    if (!live.length) return { rows: held, liveFrom: Infinity };
     const from = live[0]![0];
     // A held bar reaching into the chart's candles would count that stretch twice.
-    return [...held.filter(b => b[0] + bar <= from), ...live];
+    return { rows: [...held.filter(b => b[0] + bar <= from), ...live], liveFrom: from };
   }
   /** The VWAP lines for the view, worked out again only when the plan, a history or the chart's last candle changes. */
   #vwapLines(state: AppState): VwapLine[] {
@@ -941,7 +942,8 @@ export class HeatPane {
     const { target } = this.#keyLevelContext(state); if (!target) return [];
     const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1];
     const versions = [...plan.reach.keys()].map(bar => { const h = this.hub.vwapHistory(bar); return `${bar}:${h.id}:${h.version}`; }).join(',');
-    const w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}` : '';
+    // With the venues on screen: switched, the sums held are another set's until the new ones come.
+    const whaleIds = flowIds(state, this.hub.flow.ids), w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}|${whaleIds.join(',')}` : '';
     // Replay: again each minute shown, for the whale lines' minutes closed by then.
     const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
     if (this.#vwapDrawn?.key === key) return replayCut(this.#vwapDrawn.lines, pageNow());
@@ -951,18 +953,19 @@ export class HeatPane {
     if (sessionBars && s.session) for (const w of plan.sessions) {
       // A session whose start the history does not reach yet has no true average: it waits rather than show a wrong one.
       if (heldFrom(plan.sessionBar) > w.from) continue;
-      const points = vwapSeries(sessionBars, w.from, w.to);
-      if (points.length) lines.push({ kind: 'session', n: 0, points, live: w.to > now, key: w.key });
+      const points = vwapSeries(sessionBars.rows, w.from, w.to);
+      if (points.length) lines.push({ kind: 'session', n: 0, points, live: w.to > now, key: w.key, bar: plan.sessionBar, liveFrom: sessionBars.liveFrom });
     }
     // The whale lines of each session, from where the recording's count of large orders begins when that is later; only the sums of the size asked.
     const whale = this.hub.whale;
-    const whaleIds = flowIds(state, this.hub.flow.ids);
     if (s.whale && whale && whale.minUsd === scaledUsd(s.whaleUsd) && whale.ids.size === whaleIds.length && whaleIds.every(id => whale.ids.has(id))) {
       const rows = this.hub.whaleRows();
       for (const w of plan.sessions) {
         // Replay: only the minutes over by the moment shown (a minute's sums are known at its end).
         const upTo = replaying() ? Math.min(w.to, now - 60_000 + 1) : w.to;
-        const { buys, sells } = whaleSeries(rows, Math.max(w.from, whale.since ?? w.from), upTo, Math.min(w.to, now)), live = w.to > now;
+        // The recording's start as the minute it falls in: the sums are kept a minute at a time, and that minute's orders were recorded.
+        const since = whale.since !== null ? Math.floor(whale.since / 60_000) * 60_000 : w.from;
+        const { buys, sells } = whaleSeries(rows, Math.max(w.from, since), upTo, Math.min(w.to, now)), live = w.to > now;
         if (buys.length) lines.push({ kind: 'whaleBuy', n: 0, points: buys, live, key: `whale-buy|${w.key}` });
         if (sells.length) lines.push({ kind: 'whaleSell', n: 0, points: sells, live, key: `whale-sell|${w.key}` });
       }
@@ -971,8 +974,8 @@ export class HeatPane {
       // From the first whole bar after the anchor: a bar begun before it would carry volume from before the moment chosen.
       const bars = this.#vwapBars(state, a.bar, target), start = Math.ceil(a.at / a.bar) * a.bar;
       if (!bars || heldFrom(a.bar) > start) return;
-      const points = vwapSeries(bars, start, Infinity);
-      if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}` });
+      const points = vwapSeries(bars.rows, start, Infinity);
+      if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}`, bar: a.bar, liveFrom: bars.liveFrom });
     });
     this.#vwapDrawn = { key, lines };
     return replayCut(lines, now);

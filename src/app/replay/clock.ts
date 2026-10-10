@@ -44,8 +44,9 @@ export function caughtUp(): boolean { return clock !== null && pageNow() >= real
  * its high and low the extremes of up to `samples` seconds in between, its volume the recorded gross over the close (in coins, as a candle's
  * volume is). The recorded candle would carry its whole future; null without prices.
  */
-export function formingCandle(track: { priceAt(sec: number): number; cumGross?(sec: number): number }, start: number, at: number, samples = 600): CandleRow | null {
-  const s0 = Math.floor(start / 1000), s1 = Math.floor(at / 1000) - 1;
+export function formingCandle(track: { priceAt(sec: number): number; cumGross?(sec: number): number; settled?(sec: number): number }, start: number, at: number, samples = 600): CandleRow | null {
+  // Up to the last second known exactly at `at` (in minute history, the last minute over).
+  const s0 = Math.floor(start / 1000), s1 = track.settled ? track.settled(Math.floor(at / 1000) - 1) : Math.floor(at / 1000) - 1;
   if (s1 < s0) return null;
   const step = Math.max(1, Math.ceil((s1 - s0 + 1) / samples));
   let open = NaN, high = -Infinity, low = Infinity, close = NaN;

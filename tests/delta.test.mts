@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FlowCache, candleFlow, candleStarts, deltaCandles, resetKeys, unrecorded, type DeltaTrack } from '../src/app/delta/candles.ts';
+import { FlowCache, MAX_CANDLES, candleFlow, candleStarts, deltaCandles, resetKeys, unrecorded, type DeltaTrack } from '../src/app/delta/candles.ts';
 import { DELTA_DEFAULTS, readDelta } from '../src/app/delta/settings.ts';
 import { deltaCardLines } from '../src/app/panes/delta-pane.ts';
 
@@ -22,6 +22,8 @@ test('a candle\'s delta is exact at its close; its high and low are sampled thro
   const late = track(s0 + 10, () => 1_000);
   assert.deepEqual(candleFlow([late], T, MIN, T + 2 * MIN), null, 'a market that begins inside the candle joins from the next');
   assert.equal(candleFlow([a], T, MIN, T + 20_000)!.delta, a.cumDelta(s0 + 19), 'the candle under way: up to now');
+  const minuteHeld: DeltaTrack = { ...a, cumDelta: a.cumDelta, cumGross: a.cumGross, settled: sec => Math.floor((sec + 1) / 60) * 60 - 1 };
+  assert.deepEqual(candleFlow([minuteHeld], T, 5 * MIN, T + 150_000)!.delta, a.cumDelta(s0 + 119) - a.cumDelta(s0 - 1), 'minute history: up to the last minute over, not into the one under way');
 });
 
 test('the CVD adds up each candle\'s delta and starts again each day, or after a candle with nothing recorded', () => {
@@ -61,6 +63,11 @@ test('the candles start at the chart\'s left edge, or at the start of the day or
   assert.equal(candleStarts(t0, now, now, HOUR, 'day', 'UTC')[0], Date.UTC(2026, 9, 9));
   assert.equal(candleStarts(t0, now, now, HOUR, 'week', 'UTC')[0], Date.UTC(2026, 9, 5), 'Monday');
   assert.equal(candleStarts(t0, now, now, MIN, 'week', 'UTC', 100).length, 100, 'capped, the newest kept');
+  // A Friday noon with a two-week view of one-minute candles: capped, the CVD starts at this week's Monday, never in the middle of one.
+  const friday = Date.UTC(2026, 9, 9, 12), cvd = candleStarts(friday - 14 * DAY, friday, friday, MIN, 'week', 'UTC', undefined, true);
+  assert.equal(cvd[0], Date.UTC(2026, 9, 5), 'from Monday 00:00');
+  assert.ok(candleStarts(friday - 14 * DAY, friday, friday, MIN, 'week', 'UTC').length === MAX_CANDLES, 'bars: as many as the cap allows');
+  assert.equal(candleStarts(friday - 14 * DAY, friday, friday, MIN, 'day', 'UTC', undefined, true)[0]! % DAY, 0, 'daily: from a midnight');
 });
 
 test('closed candles are worked out once; the one under way every time; new older flow starts again', () => {

@@ -149,7 +149,7 @@ async function main(): Promise<void> {
   hub.onAbsorptionChanged = () => heat.invalidate();
   toolbar.absorptionInfo = () => heat.absorptionThresholdText();
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
-  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(name); toolbar.previewTheme(name); };
+  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; applyTheme(name); for (const p of [heat, ladder, depth, oi, delta, lt, bars, cvd]) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
   // An address like #guide/mirror opens the guide there.
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
-  for (const p of [heat, ladder, depth, oi, lt, bars, cvd]) p.setPalette(store.state.theme);
+  for (const p of [heat, ladder, depth, oi, delta, lt, bars, cvd]) p.setPalette(store.state.theme);
   layout(); ladder.syncControls(); lt.refresh();
   arrange.setPaneHeight('bars', 12 + Math.max(1, enabledStats(store.state.barStats).length) * 24);
   toolbar.sync(store.state, heat.window);

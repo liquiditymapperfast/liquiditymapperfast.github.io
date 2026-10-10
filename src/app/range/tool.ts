@@ -81,6 +81,10 @@ export class RangeTool {
   #before: RangeSelection | null = null;
   #input: RangeInput | null = null;
   #asked = 0;
+  /** The selection the open interest belongs to (a new one, or closing, moves it on), whether a request for it is out, and what it answered for. */
+  #oiFor = 0;
+  #oiBusy = -1;
+  #oiKey = '';
   #lastMs = 0;
   #timer = 0;
   #stopping = false;
@@ -119,7 +123,7 @@ export class RangeTool {
   stop(): void {
     if (this.#stopping) return;
     this.#stopping = true;
-    window.clearTimeout(this.#timer); this.#timer = 0; this.#asked++;
+    window.clearTimeout(this.#timer); this.#timer = 0; this.#asked++; this.#oiFor++;
     this.#start = null; this.#before = null; this.#input = null;
     this.store.set({ rangeTool: false, range: null });
     this.#panel?.close(); this.#panel = null;
@@ -196,6 +200,7 @@ export class RangeTool {
   /** Gather everything for `sel` and show it; `fresh` when it is a new selection rather than a live one taken again. */
   async #gather(sel: RangeSelection, fresh: boolean): Promise<void> {
     const asked = ++this.#asked;
+    if (fresh) { this.#oiFor++; this.#oiKey = ''; }
     window.clearTimeout(this.#timer); this.#timer = 0;
     const state = this.store.state, ids = flowIds(state, this.hub.flow.ids);
     const band = sel.p0 !== null && sel.p1 !== null ? { p0: sel.p0, p1: sel.p1 } : null;
@@ -210,9 +215,17 @@ export class RangeTool {
     const oiInst = state.oiInstrument || state.seriesInstrument || state.marketId, market = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId);
     // Its dollar figure at the price of the selection's end (the chart's candle there), not today's; it fills in when it comes, the rest does not wait.
     const endCandle = [...state.candles].reverse().find(c => c[0] < sel.t1), price = endCandle ? endCandle[4] : state.mark.price;
-    if (oiInst) void this.hub.source.oi(oiInst, '1m', sel.t0 - 11 * 60_000, sel.t1 + 60_000).then(bars => bars.length ? { inst: oiInst, bars, coin: market?.base ?? '', price } : null, () => null)
-      .then(interest => { if (asked !== this.#asked || !this.#input) return; this.#input = { ...this.#input, oi: interest }; this.#render(); });
-    else this.#input = { ...this.#input, oi: null };
+    const oiKey = `${oiInst}|${Math.floor(sel.t0 / 60_000)}|${Math.floor(sel.t1 / 60_000)}`, oiFor = this.#oiFor;
+    if (!oiInst) this.#input = { ...this.#input, oi: null };
+    else if (oiKey !== this.#oiKey && this.#oiBusy !== oiFor) {
+      this.#oiBusy = oiFor;
+      void this.hub.source.oi(oiInst, '1m', sel.t0 - 11 * 60_000, sel.t1 + 60_000).then(bars => bars.length ? { inst: oiInst, bars, coin: market?.base ?? '', price } : null, () => null)
+        .then(interest => {
+          if (this.#oiBusy === oiFor) this.#oiBusy = -1;
+          if (oiFor !== this.#oiFor || !this.#input) return;
+          this.#oiKey = oiKey; this.#input = { ...this.#input, oi: interest }; this.#render();
+        });
+    }
     const [got, rest] = await Promise.all([answer, resting]);
     if (asked !== this.#asked || !this.#input) return;
     this.#lastMs = performance.now() - started;

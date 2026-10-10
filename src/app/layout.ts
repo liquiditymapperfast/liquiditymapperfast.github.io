@@ -163,10 +163,10 @@ export class Layout {
     for (const p of this.#panes) if (p.height !== undefined) { const h = a.heights[p.id] ?? heights[p.id] ?? p.height; this.#setHeight(p, h); heights[p.id] = Math.round(Math.max(p.min ?? 70, h)); }
     this.#setSideWidth(a.sideW);
     if (this.flow) this.#setFlowWidth(a.flowW);
-    this.#reattach();
-    // What was asked for, not what is measured: a pane hidden now has no height to measure.
+    // What was asked for, not what is measured (a pane hidden now has no height to measure); kept first, as the fit reads it.
     write({ sideW: this.#sideWidth(), flowW: this.flow ? this.#flowWidth() : a.flowW, heights, order: ids });
     this.#saved = read();
+    this.#reattach();
   }
 
   /** Set a fixed-height pane's height (its content changed size) and remember it. */

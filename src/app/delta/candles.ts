@@ -9,7 +9,7 @@ import { windowsOf } from '../keylevels/levels.ts';
  */
 
 /** A running delta and gross volume read at a second (seconds, not milliseconds) and the first second it holds: what `FlowTrack` is. */
-export interface DeltaTrack { first: number | null; cumDelta(sec: number): number; cumGross(sec: number): number }
+export interface DeltaTrack { first: number | null; cumDelta(sec: number): number; cumGross(sec: number): number; settled?(sec: number): number }
 
 /** One candle's flow, relative to its start: what it ended at (the delta), the lowest and highest the running sum reached (sampled), and its gross volume. */
 export interface CandleFlow { delta: number; low: number; high: number; gross: number }
@@ -29,15 +29,17 @@ export function candleFlow(tracks: readonly DeltaTrack[], t: number, tfMs: numbe
   const live = tracks.filter(k => k.first !== null && k.first <= s - 1);
   if (!live.length) return null;
   const base = live.map(k => k.cumDelta(s - 1));
+  // A candle under way reads each track only as far as it is exact (replay inside a minute of minute history: the minute before).
+  const exact = (k: DeltaTrack, sec: number): number => k.settled ? Math.max(s - 1, k.settled(sec)) : sec;
   let gross = 0;
-  for (const k of live) gross += k.cumGross(e) - k.cumGross(s - 1);
+  for (const k of live) gross += k.cumGross(exact(k, e)) - k.cumGross(s - 1);
   let low = 0, high = 0, delta = 0;
   const span = e - s + 1;
   for (let j = 1; j <= samples; j++) {
     const at = j === samples ? e : s + Math.floor(span * j / samples) - 1;
     if (at < s) continue;
     let sum = 0;
-    for (let i = 0; i < live.length; i++) sum += live[i]!.cumDelta(at) - base[i]!;
+    for (let i = 0; i < live.length; i++) sum += live[i]!.cumDelta(exact(live[i]!, at)) - base[i]!;
     if (sum < low) low = sum;
     if (sum > high) high = sum;
     if (j === samples) delta = sum;
@@ -67,16 +69,22 @@ export function unrecorded(starts: readonly number[], flows: readonly (CandleFlo
 
 export type ResetMode = 'none' | 'day' | 'week';
 
+/** At most this many candles: a week of one-minute ones and a little over, so a capped weekly CVD still holds its restart. */
+export const MAX_CANDLES = 10_200;
+
 /**
  * The candle starts the CVD is taken over, oldest first, at most `max` (the newest): from the chart's left edge (`none`), or from the start
  * of the day or week (in `zone`) the left edge falls in, so the CVD on screen is the one that restarted there.
  */
-export function candleStarts(t0: number, t1: number, now: number, tfMs: number, reset: ResetMode, zone: string, max = 6_000): number[] {
+export function candleStarts(t0: number, t1: number, now: number, tfMs: number, reset: ResetMode, zone: string, max = MAX_CANDLES, whole = false): number[] {
   let from = t0;
   if (reset !== 'none') { const w = windowsOf(reset, zone, t0, t0 + 1)[0]; if (w) from = Math.min(from, w.from); }
   const first = Math.floor(from / tfMs) * tfMs, last = Math.floor(Math.min(t1, now) / tfMs) * tfMs;
   const out: number[] = [];
-  for (let t = Math.max(first, last - (max - 1) * tfMs); t <= last; t += tfMs) out.push(t);
+  const from0 = Math.max(first, last - (max - 1) * tfMs);
+  for (let t = from0; t <= last; t += tfMs) out.push(t);
+  // `whole` (a running sum is shown): cut short by the cap, it starts at the next restart, so its first day or week is never a part one.
+  if (whole && from0 > first && reset !== 'none') { const w = windowsOf(reset, zone, from0, last + 1).find(x => x.from >= from0); if (w) return out.filter(t => t >= w.from); }
   return out;
 }
 

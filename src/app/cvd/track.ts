@@ -44,6 +44,15 @@ export class FlowTrack {
     return this.seconds?.cumGross(sec) ?? 0;
   }
 
+  /**
+   * The latest second at or before `sec` whose values are exact: `sec` itself in the seconds; in the minutes, the end of the last minute over
+   * by then (a minute holds its end's price and sums, which a replay paused inside it must not see).
+   */
+  settled(sec: number): number {
+    if (this.#m && (this.join === null || sec < this.join)) return Math.floor((sec + 1) / 60) * 60 - 1;
+    return sec;
+  }
+
   /** The price at the end of second `sec`: the seconds' where they hold one, else the last minute's at or before it; NaN when neither has one. */
   priceAt(sec: number): number {
     const m = this.#m;

@@ -112,7 +112,7 @@ export class DeltaPane extends TimePane {
 
   #candles(state: AppState, now: number): { candles: DeltaCandle[]; starts: number[]; earliest: number | null } {
     const v = this.view, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow;
-    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
+    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone, undefined, s.style !== 'bars');
     if (!starts.length) return { candles: [], starts, earliest: null };
     this.#ensure(flowLoadIds(state, flow.ids), starts[0]!, Date.now());
     const ids = aggregateIds(flow, flowIds(state, flow.ids), id => kindOf(state.markets, id));
@@ -133,14 +133,16 @@ export class DeltaPane extends TimePane {
     const zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow, oiInst = state.oiInstrument;
     const coin = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '';
     const market = oiInst ? `${venueLabel(oiInst)} ${oiInst.split(':').slice(1).join(':')}` : '';
-    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
+    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone, undefined, true);
     let candles: NlnsCandle[] = [];
     if (oiInst && state.oi.length && starts.length) {
       this.#ensure([oiInst], starts[0]!, Date.now());
       const track = flow.track(oiInst), tracks = track ? [track] : [];
       const flows = tracks.length ? unrecorded(starts, this.#oiCache.get(`${oiInst}|${tf}|${flow.loads}`, tracks, starts, tf, now), tf, now) : starts.map(() => null);
       // Replay: a candle's way only once it had closed by the moment shown.
-      const way = new Map(state.candles.filter(c => !replaying() || c[0] + tf <= now).map(c => [c[0], Math.sign(c[4] - c[1])]));
+      // Only the OI market's own candles say which way its price went (a spot chart's are another market's); replay: once closed.
+      const own = oiInst === (state.seriesInstrument || state.marketId);
+      const way = new Map(own ? state.candles.filter(c => !replaying() || c[0] + tf <= now).map(c => [c[0], Math.sign(c[4] - c[1])]) : []);
       const oi = replaying() ? state.oi.filter(b => b[0] + tf <= now) : state.oi;
       candles = nlnsCandles(starts, oiDeltas(oi, starts, tf), flows, starts.map(t0 => way.get(t0) ?? 0), resetKeys(starts, s.reset, zone));
     }

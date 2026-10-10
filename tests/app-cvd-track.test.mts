@@ -44,6 +44,7 @@ test('the minutes before the seconds and the seconds make one running delta, wit
   const { recorder, buy, sell } = recording(), real = truth(buy, sell);
   const from = S0 + 4 * 3_600 + 17, { seconds, minutes } = pageOf(recorder, from), track = new FlowTrack(seconds, minutes);
   assert.equal(track.join, S0 + 4 * 3_600 + 60, 'the seconds take over at their first whole minute');
+  assert.deepEqual([track.settled(S0 + 125), track.settled(S0 + 179), track.settled(S0 + 4 * 3_600 + 125)], [S0 + 119, S0 + 179, S0 + 4 * 3_600 + 125], 'in the minutes, exact only at a minute\'s end; in the seconds, every second');
   assert.equal(track.first, S0, 'the line begins where the minutes do');
   const at = (sec: number): number => track.cumDelta(sec) - track.cumDelta(S0 - 1);
   // Before the join the line is the running delta at every minute's end; after it, at every second.

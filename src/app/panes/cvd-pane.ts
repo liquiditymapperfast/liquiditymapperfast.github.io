@@ -325,10 +325,11 @@ export class CvdPane {
   #loadPrice(now: number, from: number): void {
     const id = this.store.state.seriesInstrument || this.store.state.marketId;
     if (!id || this.#priceLoading) return;
-    const want = `${id}|${Math.floor(from / 3_600_000)}`;
-    if (want === this.#priceFor && now - this.#priceAt < 60_000) return;
+    // Replay: candles up to the last minute over by its moment, asked again as it moves on; live, again after a minute.
+    const replay = replaying(), want = `${id}|${Math.floor(from / 3_600_000)}${replay ? `|${Math.floor(now / 60_000)}` : ''}`;
+    if (want === this.#priceFor && (replay || Date.now() - this.#priceAt < 60_000)) return;
     this.#priceLoading = true;
-    this.hub.source.candles(id, '1m', from - 120_000, now + 60_000).then(rows => {
+    this.hub.source.candles(id, '1m', from - 120_000, replay ? Math.floor(now / 60_000) * 60_000 - 1 : now + 60_000).then(rows => {
       if (this.store.state.seriesInstrument !== id && this.store.state.marketId !== id) return;
       this.#price.load(rows as unknown as number[][], Date.now()); this.#priceFor = want; this.#priceAt = Date.now(); this.#modelKey = ''; this.invalidate();
     }, () => { this.#priceAt = Date.now(); this.#priceFor = want; }).finally(() => { this.#priceLoading = false; });
@@ -364,7 +365,7 @@ export class CvdPane {
     const win = flowWindow({ span: cfg.span, mapT0: this.view.t0, mapT1: this.view.t1, now, earliest }), { t0, t1 } = win;
     this.#since = win.since; this.#sinceHeld = older && this.hub.flowMinutesState === 'unavailable';
     this.#loadPrice(now, t0);
-    if (s.mark.price > 0) this.#price.add(now, s.mark.price);
+    if (s.mark.price > 0 && !replaying()) this.#price.add(Date.now(), s.mark.price);
 
     this.#gutter = Math.max(GUTTER_MIN, Math.min(GUTTER_MAX, Math.round(this.#w * 0.34)));
     const plotW = Math.max(20, this.#w - this.#gutter - PAD), columns = Math.max(24, Math.min(900, Math.floor(plotW)));
@@ -514,7 +515,7 @@ export class CvdPane {
     ctx.save(); ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y + h) - 0.5); ctx.lineTo(this.#w, Math.round(y + h) - 0.5); ctx.stroke();
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     const st = this.store.state, track = replaying() ? this.hub.flow.track(st.seriesInstrument || st.marketId) : undefined;
-    const last = replaying() ? (track?.priceAt(Math.floor(pageNow() / 1000) - 1) ?? NaN) : st.mark.price, ly = y + h / 2;
+    const sec = Math.floor(pageNow() / 1000) - 1, last = replaying() ? (track ? track.priceAt(track.settled(sec)) : NaN) : st.mark.price, ly = y + h / 2;
     ctx.font = `600 11px ${SANS}`; ctx.fillStyle = p.text; ctx.fillText(t('PRICE'), PAD, ly - LINE_H / 2);
     ctx.font = `11px ${MONO}`; ctx.fillStyle = p.muted; ctx.fillText(fit(ctx, last > 0 ? fmtPrice(last) : '–', this.#gutter - 10), PAD, ly + LINE_H / 2);
     if (cols.min <= cols.max) {
