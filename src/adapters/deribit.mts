@@ -16,12 +16,15 @@ interface DeribitMarketMetadata {
 }
 function marketFor(value: unknown, metadata: DeribitMarketMetadata = {}) {
   const nativeSymbol = instrument(value);
-  const base = String(metadata.base ?? nativeSymbol.split('-')[0] ?? nativeSymbol).toUpperCase();
-  const quote = String(metadata.quote ?? 'USD').toUpperCase();
+  // The name says the margin: BTC-PERPETUAL is inverse (amounts are USD notional), SOL_USDC-PERPETUAL is linear in USDC (amounts are
+  // coins). Book frames carry no future type, so the name decides when metadata does not.
+  const [pair = nativeSymbol] = nativeSymbol.split('-');
+  const [pairBase = pair, pairQuote] = pair.split('_');
+  const linear = metadata.futureType === 'linear' || metadata.futureType == null && pairQuote != null;
+  const base = String(metadata.base ?? pairBase).toUpperCase();
+  const quote = String(metadata.quote ?? pairQuote ?? 'USD').toUpperCase();
   const marketType = nativeSymbol.endsWith('-PERPETUAL') ? 'perpetual' : 'delivery';
-  // Deribit inverse BTC perpetual/futures amounts are already USD notional.
-  // Linear contracts can be added later with quantityUnit=base metadata.
-  const quantityUnit = metadata.quantityUnit ?? (metadata.futureType === 'linear' ? 'base' : 'quote');
+  const quantityUnit = metadata.quantityUnit ?? (linear ? 'base' : 'quote');
   return { venue: 'deribit', nativeSymbol, symbol: nativeSymbol, base, quote, marketType, tickSize: metadata.tickSize ?? null, quantityUnit };
 }
 function assertDeribit(payload: unknown) {
@@ -58,12 +61,25 @@ export function buildDeribitRequest(kind: string, { instrumentName = 'BTC-PERPET
   throw new RangeError(`Unsupported Deribit request: ${kind}`);
 }
 
-/** Use Deribit's public grouped full-book channel for a bounded, no-credential feed. */
-export function buildDeribitSubscription(kind: string, { instrumentName = 'BTC-PERPETUAL', group = DERIBIT_DEFAULT_GROUP, depth = DERIBIT_DEFAULT_DEPTH, interval = DERIBIT_DEFAULT_INTERVAL }: AdapterOptions = {}) {
+/**
+ * The price groups Deribit's grouped book channel takes for an instrument. The BTC and ETH inverse perpetuals take coarse groups;
+ * the USDC-margined linear perpetuals (SOL_USDC-PERPETUAL and the other coins) take only `none`: any other group is answered with an
+ * empty list of subscribed channels, not an error, so the feed would keep its REST snapshot and never go live (measured 2026-10-10).
+ */
+export function deribitBookGroups(instrumentName: string): readonly string[] {
+  const native = instrument(instrumentName);
+  if (native.startsWith('BTC-')) return ['none', '1', '2', '5', '10'];
+  if (native.startsWith('ETH-')) return ['none', '5', '10', '25', '100', '250'];
+  return ['none'];
+}
+
+/** Use Deribit's public grouped full-book channel for a bounded, no-credential feed (ungrouped where the instrument takes no group). */
+export function buildDeribitSubscription(kind: string, { instrumentName = 'BTC-PERPETUAL', group, depth = DERIBIT_DEFAULT_DEPTH, interval = DERIBIT_DEFAULT_INTERVAL }: AdapterOptions = {}) {
   if (kind !== 'depth') throw new RangeError(`Unsupported Deribit subscription: ${kind}`);
   const native = instrument(instrumentName);
-  const allowedGroups = native.startsWith('BTC-') ? ['none', '1', '2', '5', '10'] : ['none', '5', '10', '25', '100', '250'];
-  const groupValue = String(group); if (!allowedGroups.includes(groupValue)) throw new RangeError(`Unsupported Deribit ${native} group: ${group}`);
+  const allowedGroups = deribitBookGroups(native);
+  const fallback = allowedGroups.includes(String(DERIBIT_DEFAULT_GROUP)) ? String(DERIBIT_DEFAULT_GROUP) : 'none';
+  const groupValue = group == null ? fallback : String(group); if (!allowedGroups.includes(groupValue)) throw new RangeError(`Unsupported Deribit ${native} group: ${group}`);
   const depthValue = String(Math.trunc(finiteNumber(depth, 'depth'))); if (!['1', '10', '20'].includes(depthValue)) throw new RangeError(`Unsupported Deribit depth: ${depth}`);
   if (!['100ms', 'agg2'].includes(String(interval))) throw new RangeError(`Unsupported Deribit interval: ${interval}`);
   const channel = `book.${native}.${groupValue}.${depthValue}.${String(interval)}`;
@@ -99,7 +115,7 @@ export function normalizeDeribitDepth(payload: unknown, { instrumentName, source
   const native = instrument(instrumentName ?? recordValue(row)?.instrument_name ?? recordValue(recordValue(recordValue(envelope)?.params)?.data)?.instrument_name);
   const asks = recordValue(row)?.asks; const bids = recordValue(row)?.bids;
   if (!Array.isArray(asks) || !Array.isArray(bids)) throw new TypeError('Deribit depth bids/asks missing');
-  const market = marketFor(native, { quote: 'USD' });
+  const market = marketFor(native);
   const sourceTimestamp = epochMs(recordValue(row)?.timestamp ?? recordValue(recordValue(recordValue(envelope)?.params)?.data)?.timestamp, receivedAt);
   const id = recordValue(row)?.change_id ?? recordValue(row)?.changeId;
   const channel = channelGrouping(envelope, native);
