@@ -41,15 +41,18 @@ export function vwapSeries(bars: readonly CandleRow[], from: number, to: number)
  * The whale VWAPs over [from, to): the running Σusd / Σcoins of the large market orders bought and of those sold, from the sums a minute at a
  * time (sorted by start). Each line begins at its side's first order; a minute without one carries it on unchanged.
  */
-export function whaleSeries(rows: readonly SumRow[], from: number, to: number): { buys: VwapPoint[]; sells: VwapPoint[] } {
+export function whaleSeries(rows: readonly SumRow[], from: number, to: number, end?: number): { buys: VwapPoint[]; sells: VwapPoint[] } {
   const buys: VwapPoint[] = [], sells: VwapPoint[] = [];
+  // A minute without an order carries the line on unchanged: a step at each minute that has one, and on to `end` after the last.
+  const step = (out: VwapPoint[], t: number, vwap: number): void => { const last = out[out.length - 1]; if (last && last.vwap !== vwap) out.push({ t, vwap: last.vwap, sd: 0 }); out.push({ t, vwap, sd: 0 }); };
   let bu = 0, bc = 0, su = 0, sc = 0;
   for (const r of rows) {
     if (r[0] < from) continue; if (r[0] >= to) break;
     bu += r[1]; bc += r[2]; su += r[3]; sc += r[4];
-    if (bc > 0) buys.push({ t: r[0], vwap: bu / bc, sd: 0 });
-    if (sc > 0) sells.push({ t: r[0], vwap: su / sc, sd: 0 });
+    if (bc > 0 && r[2] > 0) step(buys, r[0], bu / bc);
+    if (sc > 0 && r[4] > 0) step(sells, r[0], su / sc);
   }
+  for (const out of [buys, sells]) { const last = out[out.length - 1]; if (last && end !== undefined && end > last.t) out.push({ t: end, vwap: last.vwap, sd: 0 }); }
   return { buys, sells };
 }
 

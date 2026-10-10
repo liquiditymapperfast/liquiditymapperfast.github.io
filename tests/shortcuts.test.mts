@@ -14,6 +14,8 @@ test('letters by what they type, digits by where they are, and the keys that nee
   assert.equal(kind(press('1', { code: 'Digit1' })), 'tf:1m');
   assert.equal(kind(press('&', { code: 'Digit1' })), 'tf:1m', 'AZERTY types & on the 1 key');
   assert.equal(kind(press('7', { code: 'Numpad7' })), 'tf:1d');
+  assert.equal(kind(press('Home', { code: 'Numpad7' })), 'recenter', 'the numpad with NumLock off: Home, not a timeframe');
+  assert.equal(kind(press('ArrowLeft', { code: 'Numpad4' })), null);
   assert.equal(kind(press('8', { code: 'Digit8' })), null);
   assert.equal(kind(press('?', { code: 'Slash' })), 'list', 'whatever Shift it took to type');
   assert.equal(kind(press('+', { code: 'NumpadAdd' })), 'zoom');

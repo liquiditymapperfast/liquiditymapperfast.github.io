@@ -141,7 +141,12 @@ export class Layout {
   /** The panes as they are now: order, heights (a hidden pane's as it will come back), and the column widths. */
   arrangement(): PaneArrangement {
     const heights: Record<string, number> = {};
-    for (const p of this.#panes) if (p.height !== undefined) heights[p.id] = Math.round(!p.root.hidden ? this.#height(p) : this.#saved.heights?.[p.id] ?? p.height);
+    // A pane shrunk to fit this window keeps its own height (as #persist does); a hidden one the height it will come back at.
+    for (const p of this.#panes) {
+      if (p.height === undefined) continue;
+      const own = this.#saved.heights?.[p.id] ?? p.height;
+      heights[p.id] = Math.round(p.root.hidden || this.#fitted.has(p.id) ? own : this.#height(p));
+    }
     return { order: this.#panes.map(p => p.id), heights, sideW: Math.round(this.#sideWidth()), flowW: Math.round(this.flow ? this.#flowWidth() : this.#saved.flowW ?? 300) };
   }
 

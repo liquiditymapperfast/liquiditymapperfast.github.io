@@ -208,11 +208,15 @@ export class RangeTool {
     const resting = band ? this.hub.cell(activeIds(state), sel.t0, sel.t1, band.p0, band.p1) : Promise.resolve(null);
     // The open interest of the market the OI pane shows, a sample a minute, from a little before the selection.
     const oiInst = state.oiInstrument || state.seriesInstrument || state.marketId, market = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId);
-    const oi = oiInst ? this.hub.source.oi(oiInst, '1m', sel.t0 - 11 * 60_000, sel.t1 + 60_000).then(bars => bars.length ? { inst: oiInst, bars, coin: market?.base ?? '', price: state.mark.price } : null, () => null) : Promise.resolve(null);
-    const [got, rest, interest] = await Promise.all([answer, resting, oi]);
+    // Its dollar figure at the price of the selection's end (the chart's candle there), not today's; it fills in when it comes, the rest does not wait.
+    const endCandle = [...state.candles].reverse().find(c => c[0] < sel.t1), price = endCandle ? endCandle[4] : state.mark.price;
+    if (oiInst) void this.hub.source.oi(oiInst, '1m', sel.t0 - 11 * 60_000, sel.t1 + 60_000).then(bars => bars.length ? { inst: oiInst, bars, coin: market?.base ?? '', price } : null, () => null)
+      .then(interest => { if (asked !== this.#asked || !this.#input) return; this.#input = { ...this.#input, oi: interest }; this.#render(); });
+    else this.#input = { ...this.#input, oi: null };
+    const [got, rest] = await Promise.all([answer, resting]);
     if (asked !== this.#asked || !this.#input) return;
     this.#lastMs = performance.now() - started;
-    this.#input = { ...this.#input, answer: got.a, error: got.a ? null : /\b404\b/.test(got.e ?? '') ? 'older' : 'failed', resting: rest, oi: interest };
+    this.#input = { ...this.#input, answer: got.a, error: got.a ? null : /\b404\b/.test(got.e ?? '') ? 'older' : 'failed', resting: rest };
     this.#render();
     this.#schedule();
   }

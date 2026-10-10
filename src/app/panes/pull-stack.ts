@@ -121,6 +121,9 @@ export class PullHistory {
   #cache = new Map<string, PullView>();
   #cacheSeq = -1;
 
+  /** Forget every snapshot (pull/stack switched off: they can be tens of megabytes). */
+  clear(): void { if (this.#ring.length) { this.#ring = []; this.#key = ''; this.#cache.clear(); } }
+
   /** The price between snapshots (each frame the book draws). */
   noteMark(price: number): void { if (price > 0) { this.#lo = Math.min(this.#lo, price); this.#hi = Math.max(this.#hi, price); } }
 

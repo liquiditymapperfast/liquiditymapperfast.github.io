@@ -17,3 +17,21 @@ export interface StatOptions {
   cells: 'filled' | 'text';
 }
 export const DEFAULT_STAT_OPTIONS: Readonly<StatOptions> = Object.freeze({ imbRatio: 3, imbMinUsd: 0, stackedN: 3, imbZeros: false, retailMax: 2, whaleMin: 5, oiUnits: 'base', cells: 'filled' });
+
+/**
+ * Options from storage or a layouts file, field by field, within what the settings allow: a ratio from 1, no negative size, stacks of two
+ * rows or more, the retail and whale buckets 0 to 7 with whales above retail, and the units and cell styles there are.
+ */
+export function readStatOptions(raw: unknown): StatOptions {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>, d = DEFAULT_STAT_OPTIONS;
+  const num = (v: unknown, lo: number, hi: number, fallback: number): number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : fallback;
+  const bucket = (v: unknown, fallback: number): number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 7 ? v : fallback;
+  let retailMax = bucket(r.retailMax, d.retailMax), whaleMin = bucket(r.whaleMin, d.whaleMin);
+  if (whaleMin <= retailMax) { retailMax = d.retailMax; whaleMin = d.whaleMin; }
+  return {
+    imbRatio: num(r.imbRatio, 1, 100, d.imbRatio), imbMinUsd: num(r.imbMinUsd, 0, 1e12, d.imbMinUsd),
+    stackedN: typeof r.stackedN === 'number' && Number.isInteger(r.stackedN) && r.stackedN >= 2 && r.stackedN <= 50 ? r.stackedN : d.stackedN,
+    imbZeros: typeof r.imbZeros === 'boolean' ? r.imbZeros : d.imbZeros, retailMax, whaleMin,
+    oiUnits: r.oiUnits === 'usd' ? 'usd' : 'base', cells: r.cells === 'text' ? 'text' : 'filled',
+  };
+}

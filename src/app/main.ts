@@ -130,6 +130,7 @@ async function main(): Promise<void> {
     go: t => heat.goTo(t),
     live: () => { if (replaying()) replayBar.stop(); else toolbar.onRecenter(); },
   };
+  hub.onWhaleChanged = () => toolbar.refreshOpenPanel();
   toolbar.panes = { arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults() };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };

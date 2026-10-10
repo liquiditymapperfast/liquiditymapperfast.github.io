@@ -335,6 +335,7 @@ export class LadderPane {
     // Pull/stack: a snapshot of every venue when one is due (nothing at all while it is off).
     const pullS = state.pullStack;
     if (pullS) { const base = pullBase(this.#groups[0] ?? 0.1); this.#pull.noteMark(mark); this.#pull.step(this.kernels, frame, mark, Date.now(), pullS, base, `${state.marketId}|${base}|${pullS}`); }
+    else this.#pull.clear();
     const ids = state.ladderMode === 'single' ? books : activeIds(state);
     const cells = state.ladderMode === 'aggregated' && ids.length > 1;
     const cellW = cells ? Math.max(CELL_MIN, Math.min(CELL_MAX, Math.floor((width - PRICE_W - USD_W - (pullS ? PS_W : 0) - 8 - MIN_BAR_W) / ids.length))) : 0;

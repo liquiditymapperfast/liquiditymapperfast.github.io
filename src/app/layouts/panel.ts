@@ -3,7 +3,7 @@ import { t, tn } from '../i18n.ts';
 import { clock } from '../format.ts';
 import { button, heading, note } from '../ui.ts';
 import type { Store } from '../store.ts';
-import { MAX_LAYOUTS, cleanName, exportFile, importFile, loadLayouts, mergeLayouts, settingsOf, settingsToApply, storeLayouts, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
+import { MAX_LAYOUTS, changedSettings, cleanName, exportFile, importFile, loadLayouts, mergeLayouts, settingsOf, settingsToApply, storeLayouts, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
 
 /** What arranges the panes (the page's Layout). */
 export interface PaneHost { arrangement(): PaneArrangement; apply(a: PaneArrangement): void; defaults(): PaneArrangement }
@@ -21,7 +21,7 @@ export function buildLayoutsPanel(store: Store, panes: PaneHost, body: HTMLEleme
   const say = (text: string, error = false): void => { ui.message = { text, error }; ui.armed = null; redraw(); };
   const keep = (next: SavedLayout[], done: string): void => { if (storeLayouts(next)) say(done); else say(t('This browser did not let the page keep it.'), true); };
   const capture = (name: string): SavedLayout => ({ name, savedAt: Date.now(), settings: settingsOf(store.state), panes: panes.arrangement() });
-  const apply = (layout: { panes: PaneArrangement; settings: SavedLayout['settings'] }): void => { panes.apply(layout.panes); store.set(settingsToApply(layout.settings, store.state)); };
+  const apply = (layout: { panes: PaneArrangement; settings: SavedLayout['settings'] }): void => { panes.apply(layout.panes); store.set(changedSettings(settingsToApply(layout.settings, store.state), store.state)); };
 
   body.append(note(t('A layout keeps the panes, their sizes and what the chart shows: not the coin, the venues, the theme, the time zone, the sounds or your VWAP anchors.')));
 

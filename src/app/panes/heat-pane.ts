@@ -81,7 +81,8 @@ const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
 /** Replay: each VWAP line up to the last bar that ended by its moment (so its tag is the VWAP then); live, the lines as they are. */
 function replayCut(lines: VwapLine[], at: number): VwapLine[] {
   if (!replaying()) return lines;
-  return lines.map(l => { const step = l.points.length > 1 ? l.points[1]!.t - l.points[0]!.t : 60_000; return { ...l, points: l.points.filter(q => q.t + step <= at) }; });
+  // The whale lines step at irregular minutes: they are worked out to the moment shown already (#vwapLines).
+  return lines.map(l => { if (l.kind === 'whaleBuy' || l.kind === 'whaleSell') return l; const step = l.points.length > 1 ? l.points[1]!.t - l.points[0]!.t : 60_000; return { ...l, points: l.points.filter(q => q.t + step <= at) }; });
 }
 
 /** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
@@ -152,6 +153,8 @@ export class HeatPane {
   /** Colour window from the raster's percentiles (nextBaseline): new for a new view, then held, or blended toward the cells every 10 s in Auto. */
   #baseline: Baseline | null = null;
   #forceBaseline = true;
+  /** The venues and size the colour window was taken for. */
+  #baselineKey = '';
   #drag: { x: number; y: number; shift: boolean } | null = null;
   /** The Range tool (set by the page), and a selection being dragged here: where it began, and where a finger last was. */
   range: RangeTool | null = null;
@@ -330,7 +333,8 @@ export class HeatPane {
     // What is live is drawn again every second and a half, or, where a raster takes long (days of many venues), no more often than leaves the
     // worker two thirds of its time for the panes' questions.
     const stale = this.#rasteredVersion !== this.#dataVersion || this.#rasteredKey !== key || performance.now() - this.#lastRasterAt > Math.max(1_500, 3 * this.hub.busyMs);
-    if (this.#rasteredKey !== key) this.#forceBaseline = true;
+    // A new view of other venues or another size takes a new colour window; a pan or zoom only asks for a new raster (#rasteredKey).
+    if (this.#baselineKey !== key) { this.#baselineKey = key; this.#forceBaseline = true; }
     void this.hub.loadColumns(v, this.plotW).catch(error => console.error('column load failed', error));
     if (!ids.length || (!outside && !stale)) return;
     const spanT = v.t1 - v.t0, spanP = v.p1 - v.p0;
@@ -352,7 +356,7 @@ export class HeatPane {
    */
   /** Draw again for the countdown when nothing else has for most of a second (a quiet market): the page shown, the candles on. */
   tick(): void {
-    if (document.visibilityState === 'visible' && this.store.state.show.candles && performance.now() - this.#lastRender > 900) this.invalidate();
+    if (document.visibilityState === 'visible' && this.store.state.show.candles && !isPhone() && performance.now() - this.#lastRender > 900) this.invalidate();
   }
 
   /** Replay: its moment becomes the map's live edge (at the span the map has), followed as it moves on. */
@@ -369,7 +373,8 @@ export class HeatPane {
   goTo(t: number): void {
     const v = this.view, span = v.t1 - v.t0, t0 = t - span / 2, t1 = t + span / 2;
     let lo = Infinity, hi = -Infinity;
-    for (const c of this.store.state.candles) if (c[0] + 1 > t0 && c[0] < t1) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
+    const tf = TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000;
+    for (const c of this.store.state.candles) if (c[0] + tf > t0 && c[0] < t1) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
     const pad = (hi - lo) * 0.18;
     v.set({ t0, t1, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
     this.store.set({ followLive: false }); this.#liveMargin = v.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
@@ -519,7 +524,7 @@ export class HeatPane {
     const clockText = mark > 0 && state.show.candles && !isPhone() ? countdown(pageNow(), tf) : null, clockBelow = markY + 9 + COUNTDOWN_H <= ph;
     const band = { y0: markY - 9 - (clockText && !clockBelow ? COUNTDOWN_H : 0), y1: markY + 9 + (clockText && clockBelow ? COUNTDOWN_H : 0) };
     const keyTags = placeKeyTags([...this.#keyTags, ...this.#vwapTags], mark > 0 ? [band] : [], ph);
-    for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
+    for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y) && !(mark > 0 && y > band.y0 && y < band.y1)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
     paintKeyTags(ctx, keyTags, axisX, AXIS_W, p);
     if (mark > 0) {
       const y = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph)));
@@ -911,7 +916,9 @@ export class HeatPane {
   #ensureVwap(state: AppState): void {
     const { target } = this.#keyLevelContext(state), plan = this.#vwapPlan(state);
     for (const [bar, from] of plan.reach) this.hub.vwapHistory(bar).ensure(target, from, bar, () => this.invalidate());
-    if (state.vwap.whale && plan.sessions.length) this.hub.ensureWhale(flowIds(state, this.hub.flow.ids), Math.max(plan.sessions[0]!.from, Date.now() - 7 * 86_400_000), scaledUsd(state.vwap.whaleUsd));
+    // The seven days the recorder keeps, from a whole hour: a start moving with the clock would ask again every minute.
+    const kept = Math.ceil((Date.now() - 7 * 86_400_000) / 3_600_000) * 3_600_000;
+    if (state.vwap.whale && plan.sessions.length) this.hub.ensureWhale(flowIds(state, this.hub.flow.ids), Math.max(plan.sessions[0]!.from, kept), scaledUsd(state.vwap.whaleUsd));
   }
   /**
    * The bars of one VWAP history and, after the last of them, the chart's own candles when they are of the same market and no coarser (the
@@ -925,7 +932,8 @@ export class HeatPane {
     const live = state.candles.filter(c => c[0] >= lastStart);
     if (!live.length) return held;
     const from = live[0]![0];
-    return [...held.filter(b => b[0] < from), ...live];
+    // A held bar reaching into the chart's candles would count that stretch twice.
+    return [...held.filter(b => b[0] + bar <= from), ...live];
   }
   /** The VWAP lines for the view, worked out again only when the plan, a history or the chart's last candle changes. */
   #vwapLines(state: AppState): VwapLine[] {
@@ -934,7 +942,8 @@ export class HeatPane {
     const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1];
     const versions = [...plan.reach.keys()].map(bar => { const h = this.hub.vwapHistory(bar); return `${bar}:${h.id}:${h.version}`; }).join(',');
     const w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}` : '';
-    const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}`;
+    // Replay: again each minute shown, for the whale lines' minutes closed by then.
+    const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
     if (this.#vwapDrawn?.key === key) return replayCut(this.#vwapDrawn.lines, pageNow());
     const lines: VwapLine[] = [], now = pageNow();
     const sessionBars = plan.sessions.length ? this.#vwapBars(state, plan.sessionBar, target) : null;
@@ -947,16 +956,20 @@ export class HeatPane {
     }
     // The whale lines of each session, from where the recording's count of large orders begins when that is later; only the sums of the size asked.
     const whale = this.hub.whale;
-    if (s.whale && whale && whale.minUsd === scaledUsd(s.whaleUsd)) {
+    const whaleIds = flowIds(state, this.hub.flow.ids);
+    if (s.whale && whale && whale.minUsd === scaledUsd(s.whaleUsd) && whale.ids.size === whaleIds.length && whaleIds.every(id => whale.ids.has(id))) {
       const rows = this.hub.whaleRows();
       for (const w of plan.sessions) {
-        const { buys, sells } = whaleSeries(rows, Math.max(w.from, whale.since ?? w.from), w.to), live = w.to > now;
+        // Replay: only the minutes over by the moment shown (a minute's sums are known at its end).
+        const upTo = replaying() ? Math.min(w.to, now - 60_000 + 1) : w.to;
+        const { buys, sells } = whaleSeries(rows, Math.max(w.from, whale.since ?? w.from), upTo, Math.min(w.to, now)), live = w.to > now;
         if (buys.length) lines.push({ kind: 'whaleBuy', n: 0, points: buys, live, key: `whale-buy|${w.key}` });
         if (sells.length) lines.push({ kind: 'whaleSell', n: 0, points: sells, live, key: `whale-sell|${w.key}` });
       }
     }
     plan.anchors.forEach((a, i) => {
-      const bars = this.#vwapBars(state, a.bar, target), start = Math.floor(a.at / a.bar) * a.bar;
+      // From the first whole bar after the anchor: a bar begun before it would carry volume from before the moment chosen.
+      const bars = this.#vwapBars(state, a.bar, target), start = Math.ceil(a.at / a.bar) * a.bar;
       if (!bars || heldFrom(a.bar) > start) return;
       const points = vwapSeries(bars, start, Infinity);
       if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}` });

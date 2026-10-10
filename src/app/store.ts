@@ -4,7 +4,7 @@ import { HEAT_STYLES, type HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
 import { LT_DEFAULTS, type LtParams } from './lt.ts';
 import { resolveThemeId } from './theme.ts';
-import { DEFAULT_STAT_OPTIONS, type StatOptions } from './stat-options.ts';
+import { readStatOptions, type StatOptions } from './stat-options.ts';
 import { readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
 import { readCvd, type CvdSettings } from './cvd/settings.ts';
@@ -180,7 +180,7 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     heat: { ...heat, style: HEAT_STYLES.some(style => style.id === heat.style) ? heat.style : 'bookmap', smooth: heat.smooth === 'off' ? 'off' : 'auto', contrast: clampContrast(heat.contrast) },
     lt: { ...sameShape(LT_DEFAULTS, saved.lt), view: lt?.view === 'imbalance' ? 'imbalance' : 'lines' },
     barStats: Array.isArray(saved.barStats) ? saved.barStats.filter((id): id is string => typeof id === 'string').slice(0, 24) : [...DEFAULT_BAR_STATS],
-    barStatOptions: sameShape(DEFAULT_STAT_OPTIONS, saved.barStatOptions),
+    barStatOptions: readStatOptions(saved.barStatOptions),
     grouping: saved.grouping === 'auto' || (typeof saved.grouping === 'number' && Number.isFinite(saved.grouping) && saved.grouping > 0) ? saved.grouping : 'auto',
     ladderMode: saved.ladderMode === 'single' || saved.ladderMode === 'compact' ? saved.ladderMode : 'aggregated',
     ladderShow: saved.ladderShow === 'levels' || saved.ladderShow === 'cumulative' ? saved.ladderShow : 'both',

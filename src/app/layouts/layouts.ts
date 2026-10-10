@@ -7,7 +7,7 @@ import { LAYOUT_KEYS, readSettings, type AppState, type Settings } from '../stor
  * (`hlm-layouts-v1`) and can be written to a file and read back; a file can come from anywhere, so every field goes through `readSettings`.
  */
 
-export const LAYOUTS_KEY = 'hlm-layouts-v1', MAX_LAYOUTS = 20, MAX_NAME = 40, FILE_FORMAT = 'liquiditymapperfast-layouts';
+export const LAYOUTS_KEY = 'hlm-layouts-v1', MAX_LAYOUTS = 20, MAX_NAME = 40, FILE_FORMAT = 'liquiditymapperfast-layouts', MAX_FILE_CHARS = 1_000_000;
 
 /** Where the panes are: their order, the heights of those with a fixed height, and the widths of the flow column and the book (px). */
 export interface PaneArrangement { order: string[]; heights: Record<string, number>; sideW: number; flowW: number }
@@ -28,6 +28,21 @@ export function settingsOf(state: AppState): Partial<Settings> {
   const { anchors: _anchors, ...vwap } = state.vwap;
   const { zone: _zone, ...traded } = state.traded;
   return { ...out, vwap: vwap as Settings['vwap'], traded: traded as Settings['traded'] };
+}
+
+/** Equal values, whatever order an object's keys are in (a setting read again lists them in its own order). */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every(k => Object.hasOwn(b, k) && same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/** The fields of `next` that differ from the state (a timeframe set again would reload the chart and jump it to now). */
+export function changedSettings(next: Settings, state: AppState): Partial<Settings> {
+  const out: Record<string, unknown> = {};
+  for (const key of LAYOUT_KEYS) if (!same(next[key], state[key])) out[key] = next[key];
+  return out as Partial<Settings>;
 }
 
 /** What applying a layout's settings sets: each field read as a saved page's is, with this chart's own VWAP anchors and zone kept. */
@@ -85,7 +100,8 @@ export function readLayouts(raw: unknown): SavedLayout[] {
     const r = item as Record<string, unknown>, name = cleanName(r.name), panes = readArrangement(r.panes);
     if (!name || !panes || !r.settings || typeof r.settings !== 'object') continue;
     out = out.filter(l => !sameName(l.name, name));
-    out.push({ name, savedAt: typeof r.savedAt === 'number' && Number.isFinite(r.savedAt) ? r.savedAt : 0, settings: r.settings as Partial<Settings>, panes });
+    // The settings as they will be applied, so nothing else is kept or written back (a file can hold anything).
+    out.push({ name, savedAt: typeof r.savedAt === 'number' && Number.isFinite(r.savedAt) ? r.savedAt : 0, settings: settingsOf(readSettings(r.settings as Partial<Settings>) as unknown as AppState), panes });
   }
   return out.slice(-MAX_LAYOUTS);
 }
@@ -104,6 +120,8 @@ export function exportFile(list: readonly SavedLayout[]): string {
 
 /** The layouts in a file, or why there are none. */
 export function importFile(text: string): { layouts: SavedLayout[] } | { error: 'not-layouts' | 'empty' } {
+  // Twenty layouts are a few tens of kilobytes; a file far larger is something else, and would fill this browser's storage.
+  if (text.length > MAX_FILE_CHARS) return { error: 'not-layouts' };
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return { error: 'not-layouts' }; }
   if (!raw || typeof raw !== 'object' || (raw as { format?: unknown }).format !== FILE_FORMAT) return { error: 'not-layouts' };

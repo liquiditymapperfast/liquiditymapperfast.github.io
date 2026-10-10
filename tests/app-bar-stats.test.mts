@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BAR_STATS, DEFAULT_STAT_OPTIONS, PRESETS, diagonalImbalances, enabledStats, rowScale, stackedRuns, stackedZones, statDef, strength, type StatInput, type StatOptions } from '../src/app/panes/bar-stats.ts';
 import type { Bar } from '../src/app/panes/footprint.ts';
+import { readStatOptions } from '../src/app/stat-options.ts';
 import type { CandleRow, OiBar } from '../src/app/store.ts';
 
 const MIN = 60_000;
@@ -101,4 +102,14 @@ test('colour scale: log between the visible 2nd and 99th percentile, so one outl
   assert.equal(rowScale(def, [0, null, undefined]), null, 'nothing to scale');
   const share = statDef('deltaPct')!;
   assert.equal(strength(share, 0, rowScale(share, [-100, -50, 50, 100])), 0);
+});
+
+test('bar statistics options from storage or a file: each within what the settings allow, else its default', () => {
+  assert.deepEqual(readStatOptions(undefined), DEFAULT_STAT_OPTIONS);
+  const good = { imbRatio: 2.5, imbMinUsd: 10_000, stackedN: 4, imbZeros: true, retailMax: 1, whaleMin: 6, oiUnits: 'usd', cells: 'text' } as const;
+  assert.deepEqual(readStatOptions(good), good);
+  const bad = readStatOptions({ imbRatio: 0.5, imbMinUsd: -1, stackedN: 2.5, imbZeros: 'yes', retailMax: 9, whaleMin: -1, oiUnits: 'eur', cells: 'neon', extra: 1 });
+  assert.deepEqual(bad, DEFAULT_STAT_OPTIONS);
+  assert.deepEqual([readStatOptions({ retailMax: 5, whaleMin: 3 }).retailMax, readStatOptions({ retailMax: 5, whaleMin: 3 }).whaleMin], [2, 5], 'whales must be above retail');
+  assert.equal(readStatOptions({ stackedN: 1 }).stackedN, 3);
 });

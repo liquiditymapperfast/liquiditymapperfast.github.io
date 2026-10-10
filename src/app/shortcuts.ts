@@ -38,7 +38,7 @@ const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 const toggle = (cap: string, label: string, feature: Feature): Shortcut => ({ group: 'show', caps: [cap], label, keys: [cap.toLowerCase()], action: { kind: 'toggle', feature } });
 
 export const SHORTCUTS: readonly Shortcut[] = [
-  ...TIMEFRAMES.map((tf, i): Shortcut => ({ group: 'timeframe', caps: [String(i + 1)], label: tf, codes: [`Digit${i + 1}`, `Numpad${i + 1}`], action: { kind: 'timeframe', tf } })),
+  ...TIMEFRAMES.map((tf, i): Shortcut => ({ group: 'timeframe', caps: [String(i + 1)], label: tf, codes: [`Digit${i + 1}`], keys: [String(i + 1)], action: { kind: 'timeframe', tf } })),
   { group: 'chart', caps: ['R', t('Home')], label: t('Recenter'), keys: ['r', 'home'], action: { kind: 'recenter' } },
   { group: 'chart', caps: ['+'], label: t('Zoom time in'), keys: ['+', '='], action: { kind: 'zoom', dir: 1 }, repeat: true },
   { group: 'chart', caps: ['−'], label: t('Zoom time out'), keys: ['-', '_'], action: { kind: 'zoom', dir: -1 }, repeat: true },

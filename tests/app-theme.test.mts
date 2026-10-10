@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PALETTES, THEME_ORDER, chromeFor, mixHex, resolveThemeId, rgb } from '../src/app/theme.ts';
+import { PALETTES, THEME_ORDER, chromeFor, mixHex, resolveThemeId, rgb, textOn, type Palette } from '../src/app/theme.ts';
 
 const luminance = (hex: string): number => {
   const [r, g, b] = rgb(hex).map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)) as [number, number, number];
@@ -77,4 +77,15 @@ test('at strength 0 the page is flat: the lit and shaded edges and the faces are
     const full = chromeFor(p, 1), half = chromeFor(p, 0.5);
     assert.ok(Math.abs(luminance(half.lo) - luminance(p.panel)) < Math.abs(luminance(full.lo) - luminance(p.panel)), `${id}: half strength is between flat and full`);
   }
+});
+
+test('text on a colour is whichever of near-black and white reads better on it', () => {
+  const on = (bg: string): Palette => ({ ...Object.values(PALETTES)[0]!, bg });
+  for (const c of ['#ffffff', '#000000', '#ff0000', '#2f6fd6', '#16a34a', '#e11d48', '#f59e0b', '#7c3aed', '#808080', '#5a5a5a']) {
+    const text = textOn(c, 1, on('#000000'));
+    const other = text === '#ffffff' ? '#121418' : '#ffffff';
+    assert.ok(contrast(text, c) >= contrast(other, c), `${c}: ${text}`);
+  }
+  assert.equal(textOn('#ff0000', 1, on('#000000')), '#121418', 'pure red: dark text reads better (4.7 against 4.0)');
+  assert.equal(textOn('#ffffff', 0, on('#000000')), '#ffffff', 'fully transparent: the background decides');
 });

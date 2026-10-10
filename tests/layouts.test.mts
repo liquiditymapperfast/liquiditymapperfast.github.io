@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TIMEFRAMES } from '../src/app/hub.ts';
 import { LAYOUT_KEYS, TIMEFRAME_IDS, readSettings, type AppState } from '../src/app/store.ts';
-import { MAX_LAYOUTS, arrangeOrder, cleanName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, readArrangement, settingsOf, settingsToApply, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
+import { MAX_FILE_CHARS, MAX_LAYOUTS, arrangeOrder, changedSettings, cleanName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, readArrangement, settingsOf, settingsToApply, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
 
 const defaults = readSettings({});
 const state = (patch: Partial<AppState> = {}): AppState => ({ ...defaults, ...patch } as AppState);
@@ -63,6 +63,11 @@ test('export and import: the same layouts back, a stranger\'s file refused, a fu
   assert.deepEqual(importFile('{"layouts": []}'), { error: 'not-layouts' });
   assert.deepEqual(importFile('not json'), { error: 'not-layouts' });
   assert.deepEqual(importFile(JSON.stringify({ format: 'liquiditymapperfast-layouts', version: 1, layouts: [{ name: 'x', panes: PANES }] })), { error: 'empty' }, 'no settings: not a layout');
+  assert.deepEqual(importFile(' '.repeat(MAX_FILE_CHARS + 1)), { error: 'not-layouts' }, 'far larger than any layouts file');
+  const odd = importFile(JSON.stringify({ format: 'liquiditymapperfast-layouts', version: 1, layouts: [{ name: 'x', panes: PANES, settings: { timeframe: '2h', junk: 'x'.repeat(1000) } }] }));
+  assert.ok('layouts' in odd);
+  assert.equal(odd.layouts[0]!.settings.timeframe, '1h', 'kept as it will be applied');
+  assert.ok(!('junk' in odd.layouts[0]!.settings), 'nothing else kept or written back');
   const full = Array.from({ length: MAX_LAYOUTS - 1 }, (_, i) => layout(`L${i}`));
   const merged = mergeLayouts(full, [layout('L0'), layout('new1'), layout('new2')]);
   assert.deepEqual([merged.added, merged.replaced, merged.skipped, merged.list.length], [1, 1, 1, MAX_LAYOUTS]);
@@ -81,4 +86,11 @@ test('pane order: the saved one, a pane added since after it; sizes within reaso
   assert.deepEqual(fitHeights([330, 330], [60, 60], 697, 240), [228, 228], "the map's own minimum (240 px in CSS) when it is more than the share");
   assert.deepEqual(fitHeights([150, 120], [60, 60], 1100), [150, 120], 'room enough: as they were');
   assert.deepEqual(fitHeights([400, 400], [300, 60], 500), [300, 170], 'never below its own minimum');
+});
+
+test('applying a layout sets only what differs, so the same timeframe does not reload the chart', () => {
+  const now = state({ timeframe: '15m' });
+  assert.deepEqual(changedSettings(settingsToApply(settingsOf(now), now), now), {});
+  const next = settingsToApply(settingsOf(state({ timeframe: '15m', ladderMode: 'compact' })), now);
+  assert.deepEqual(Object.keys(changedSettings(next, now)), ['ladderMode']);
 });

@@ -18,9 +18,9 @@ export interface FootprintRun {
   from: number; until: number | null;
 }
 
-/** The start of the first candle from `after` whose range reaches into [low, high], or null. `candles` sorted by start. */
+/** The start of the first candle from `after` whose range reaches into [low, high) (the rows' top edge belongs to the row above), or null. `candles` sorted by start. */
 export function reachedAt(low: number, high: number, after: number, candles: readonly CandleRow[]): number | null {
-  for (const c of candles) { if (c[0] < after) continue; if (c[3] <= high && c[2] >= low) return c[0]; }
+  for (const c of candles) { if (c[0] < after) continue; if (c[3] < high && c[2] >= low) return c[0]; }
   return null;
 }
 

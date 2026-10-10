@@ -65,6 +65,8 @@ export class Hub {
   #whaleLoading = false;
   #whaleRetryAt = 0;
   /** The whale sums of `ids` from `from` for orders from `minUsd`: asked again every 45 seconds, a minute after a failure; never on a frame. */
+  /** The whale sums were answered or failed (the VWAP panel says which). */
+  onWhaleChanged: () => void = () => {};
   ensureWhale(ids: readonly string[], from: number, minUsd: number): void {
     const source = this.source;
     if (!source.printSums) { this.whaleState = 'unavailable'; return; }
@@ -77,8 +79,8 @@ export class Hub {
       const kept = this.whale?.key === key ? this.whale.tail : new Map<number, SumRow>();
       for (const minute of [...kept.keys()]) if (minute < to) kept.delete(minute);
       this.whale = { key, ids: new Set(ids), minUsd, since: answer.since, rows: answer.rows, to, tail: kept, at: Date.now() };
-      this.whaleState = 'ready'; this.onPrintsChanged();
-    }, () => { this.whaleState = 'unavailable'; this.#whaleRetryAt = Date.now() + 60_000; this.onPrintsChanged(); }).finally(() => { this.#whaleLoading = false; });
+      this.whaleState = 'ready'; this.onPrintsChanged(); this.onWhaleChanged();
+    }, () => { this.whaleState = 'unavailable'; this.#whaleRetryAt = Date.now() + 60_000; this.onPrintsChanged(); this.onWhaleChanged(); }).finally(() => { this.#whaleLoading = false; });
   }
   /** The whale sums held, answered minutes then live ones, oldest first. */
   whaleRows(): SumRow[] {

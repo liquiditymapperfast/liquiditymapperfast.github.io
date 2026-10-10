@@ -50,6 +50,7 @@ test('a zone runs from its candle until a later one trades into it; a point of c
   assert.deepEqual(runsOf(new Map([[T, marks]]), away, MIN, 5, T + 30_000, { zones: true, pocs: true }), [], 'the candle under way makes none');
   assert.deepEqual(runsOf(new Map([[T, marks]]), away, MIN, 5, T + 10 * MIN, { zones: false, pocs: true }).map(r => r.kind), ['poc']);
   assert.equal(reachedAt(110, 125, T + MIN, candles), T + 2 * MIN);
+  assert.equal(reachedAt(110, 124, T + MIN, candles), T + 3 * MIN, 'a low on the top edge belongs to the row above: not reached');
   const many = new Map(Array.from({ length: 50 }, (_, i) => [T - i * MIN, marks] as const));
   assert.equal(runsOf(many, away, MIN, 5, T + 10 * MIN, { zones: true, pocs: true }, 30).length, 30, 'capped, the newest kept');
 });

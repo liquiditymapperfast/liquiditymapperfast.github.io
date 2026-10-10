@@ -58,8 +58,10 @@ test('the sums the server rebuilds from SQLite when it starts are the ones it ke
 test('the whale lines are the running dollars over coins of each side, from where they are asked to start', () => {
   const rows: [number, number, number, number, number][] = [[T, 200_000, 2.5, 0, 0], [T + MIN, 0, 0, 100_000, 1.25], [T + 2 * MIN, 400_000, 4.9, 0, 0]];
   const { buys, sells } = whaleSeries(rows, T, T + 3 * MIN);
-  assert.deepEqual(buys.map(p => [p.t, +p.vwap.toFixed(2)]), [[T, 80_000], [T + MIN, 80_000], [T + 2 * MIN, +(600_000 / 7.4).toFixed(2)]]);
-  assert.deepEqual(sells.map(p => [p.t, p.vwap]), [[T + MIN, 80_000], [T + 2 * MIN, 80_000]], 'a side begins at its first order');
+  assert.deepEqual(buys.map(p => [p.t, +p.vwap.toFixed(2)]), [[T, 80_000], [T + 2 * MIN, 80_000], [T + 2 * MIN, +(600_000 / 7.4).toFixed(2)]], 'flat until the next order, then a step');
+  assert.deepEqual(sells.map(p => [p.t, p.vwap]), [[T + MIN, 80_000]], 'a side begins at its first order');
+  const on = whaleSeries(rows, T, T + 3 * MIN, T + 10 * MIN);
+  assert.deepEqual([on.buys.at(-1), on.sells.at(-1)].map(p => [p!.t, +p!.vwap.toFixed(2)]), [[T + 10 * MIN, +(600_000 / 7.4).toFixed(2)], [T + 10 * MIN, 80_000]], 'and on, flat, to the end asked');
   assert.deepEqual(whaleSeries(rows, T + MIN, T + 3 * MIN).buys.map(p => p.t), [T + 2 * MIN], 'from the recording\'s start when that is later');
 });
 
