@@ -324,7 +324,8 @@ export class CvdPane {
   /** Minute candles of the market on screen for the price strip, fetched now and then (the live marks carry it between). */
   #loadPrice(now: number, from: number): void {
     const id = this.store.state.seriesInstrument || this.store.state.marketId;
-    if (!id || this.#priceLoading) return;
+    // Not before the map has a window (at startup the window begins at zero).
+    if (!id || this.#priceLoading || !(from > 0)) return;
     // Replay: candles up to the last minute over by its moment, asked again as it moves on; live, again after a minute.
     const replay = replaying(), want = `${id}|${Math.floor(from / 3_600_000)}${replay ? `|${Math.floor(now / 60_000)}` : ''}`;
     if (want === this.#priceFor && (replay || Date.now() - this.#priceAt < 60_000)) return;
