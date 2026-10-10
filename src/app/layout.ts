@@ -1,7 +1,7 @@
 import { setTip } from './tip.ts';
 import { isPhone } from './device.ts';
 import { t } from './i18n.ts';
-import { arrangeOrder, type PaneArrangement } from './layouts/layouts.ts';
+import { arrangeOrder, fitHeights, type PaneArrangement } from './layouts/layouts.ts';
 /** Resizable, reorderable layout: splitters between panes, persisted in localStorage. */
 interface Saved { sideW?: number; flowW?: number; heights?: Record<string, number>; order?: string[] }
 const KEY = 'hlm-layout-v2';
@@ -18,6 +18,8 @@ export class Layout {
   /** The vertical splitters: between the flow column and the map, and between the map and the book. */
   #flowSplit: HTMLElement | null = null;
   #sideSplit: HTMLElement;
+  /** The heights `#fit` last gave the panes under the map: a pane still at one of them was not resized by hand, and keeps its own height when saved. */
+  #fitted = new Map<string, number>();
   /** The arrangement the page starts with when nothing is saved (the Default layout). */
   readonly #defaults: PaneArrangement;
 
@@ -48,6 +50,7 @@ export class Layout {
       var startFlow = this.#flowWidth();
     }
     this.rebuild();
+    window.addEventListener('resize', () => this.#fit());
   }
 
   #flowWidth(): number { return parseFloat(getComputedStyle(this.main).getPropertyValue('--flow-w')) || 300; }
@@ -60,7 +63,12 @@ export class Layout {
     // A phone arranges panes by tab, not by drag: what it measures must not overwrite the sizes chosen on a desktop.
     if (isPhone()) return;
     const heights: Record<string, number> = {};
-    for (const p of this.#panes) if (p.height !== undefined && !p.root.hidden) heights[p.id] = Math.round(this.#height(p));
+    for (const p of this.#panes) {
+      if (p.height === undefined || p.root.hidden) continue;
+      // A pane shrunk to fit the window keeps the height it was given; one resized by hand since gets its new one.
+      const shown = Math.round(this.#height(p)), fitted = this.#fitted.get(p.id), own = this.#saved.heights?.[p.id];
+      heights[p.id] = fitted !== undefined && own !== undefined && Math.abs(shown - fitted) <= 1 ? own : shown;
+    }
     write({ sideW: this.#sideWidth(), flowW: this.flow ? this.#flowWidth() : this.#saved.flowW, heights: { ...this.#saved.heights, ...heights }, order: this.#panes.map(p => p.id) });
     this.#saved = read();
   }
@@ -109,6 +117,22 @@ export class Layout {
         if (above.height !== undefined) this.#setHeight(above, aboveStart + dy);
       });
     });
+    this.#fit();
+  }
+
+  /**
+   * The panes under the map at their own heights, or shrunk in proportion when they would leave the map too little of the column (`fitHeights`).
+   * Their own heights are kept, so a taller window gets them back. Not on a phone, which shows one pane at a time.
+   */
+  #fit(): void {
+    if (isPhone()) return;
+    const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined);
+    const avail = this.chart.clientHeight - this.#splitters.length * 6;
+    if (!fixed.length || avail <= 0) return;
+    const flexible = this.#panes.filter(p => !p.root.hidden && p.height === undefined), mapMin = flexible.reduce((sum, p) => sum + (parseFloat(getComputedStyle(p.root).minHeight) || 0), 0);
+    const want = fixed.map(p => this.#saved.heights?.[p.id] ?? p.height!), heights = fitHeights(want, fixed.map(p => p.min ?? 70), avail, Math.max(mapMin, 1));
+    this.#fitted.clear();
+    fixed.forEach((p, i) => { this.#setHeight(p, heights[i]!); if (heights[i] !== want[i]) this.#fitted.set(p.id, heights[i]!); });
   }
 
   /** The arrangement the page starts with when nothing is saved. */

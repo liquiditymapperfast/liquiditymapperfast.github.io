@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TIMEFRAMES } from '../src/app/hub.ts';
 import { LAYOUT_KEYS, TIMEFRAME_IDS, readSettings, type AppState } from '../src/app/store.ts';
-import { MAX_LAYOUTS, arrangeOrder, cleanName, exportFile, importFile, mergeLayouts, mergeOrder, readArrangement, settingsOf, settingsToApply, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
+import { MAX_LAYOUTS, arrangeOrder, cleanName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, readArrangement, settingsOf, settingsToApply, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
 
 const defaults = readSettings({});
 const state = (patch: Partial<AppState> = {}): AppState => ({ ...defaults, ...patch } as AppState);
@@ -76,4 +76,9 @@ test('pane order: the saved one, a pane added since after it; sizes within reaso
   const known = [{ id: 'heat', fixed: false }, { id: 'oi', fixed: true }, { id: 'depth', fixed: true }, { id: 'delta', fixed: true }];
   assert.deepEqual(arrangeOrder(['delta', 'oi', 'depth'], known), ['heat', 'delta', 'oi', 'depth']);
   assert.deepEqual(arrangeOrder(['depth', 'heat', 'oi'], known), ['heat', 'depth', 'oi', 'delta']);
+  // Two 330 px panes from a 1313 px window in a 709 px column: the map keeps 30 % (213 px) and the panes share the rest.
+  assert.deepEqual(fitHeights([330, 330], [60, 60], 709), [248, 248]);
+  assert.deepEqual(fitHeights([330, 330], [60, 60], 697, 240), [228, 228], "the map's own minimum (240 px in CSS) when it is more than the share");
+  assert.deepEqual(fitHeights([150, 120], [60, 60], 1100), [150, 120], 'room enough: as they were');
+  assert.deepEqual(fitHeights([400, 400], [300, 60], 500), [300, 170], 'never below its own minimum');
 });

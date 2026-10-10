@@ -62,6 +62,20 @@ export function arrangeOrder(saved: readonly string[], known: readonly { id: str
   return known.map(p => p.fixed ? fixed.shift()! : p.id);
 }
 
+/** The share of the column the map keeps at least, and its smallest height (px), when the panes under it are fitted. */
+export const MAP_MIN_SHARE = 0.3, MAP_MIN_PX = 160;
+
+/**
+ * The heights of the panes under the map in a column of `avail` px: as wanted while the map keeps `MAP_MIN_SHARE` of the column (at least
+ * `mapMin`, its own CSS minimum), else all shrunk in proportion, none below its own minimum. A layout from a taller window, or a window made smaller, would
+ * otherwise push the last pane off the screen.
+ */
+export function fitHeights(want: readonly number[], mins: readonly number[], avail: number, mapMin = MAP_MIN_PX): number[] {
+  const room = avail - Math.max(mapMin, avail * MAP_MIN_SHARE), total = want.reduce((a, b) => a + b, 0);
+  const f = room > 0 && total > room ? room / total : 1;
+  return want.map((h, i) => f < 1 ? Math.max(mins[i] ?? 0, Math.floor(h * f)) : h);
+}
+
 /** Layouts from storage or a file: the valid ones, at most `MAX_LAYOUTS`, one per name (the later one wins). */
 export function readLayouts(raw: unknown): SavedLayout[] {
   let out: SavedLayout[] = [];
