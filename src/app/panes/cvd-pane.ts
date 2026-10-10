@@ -31,7 +31,7 @@ import { t } from '../i18n.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import type { RangeTool } from '../range/tool.ts';
-import { pageNow } from '../replay/clock.ts';
+import { pageNow, replaying } from '../replay/clock.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const PAD = 6, LINE_H = 12;
@@ -347,7 +347,8 @@ export class CvdPane {
     const reach = Math.max(spanMs, RANK_MS[cfg.rank], 3_600_000);
     const loadIds = flowLoadIds(s, this.hub.flow.ids);
     const flowIdsToLoad = priceId && !loadIds.includes(priceId) ? [...loadIds, priceId] : loadIds;
-    const secondsFrom = Math.max(now - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000);
+    // Loading keeps the real clock (the seconds held end at the real now); the window shown ends at the page's now (a replay's moment).
+    const secondsFrom = Math.max(Date.now() - HISTORY_CAP_MS, Math.min(now, cfg.span === 'map' ? this.view.t1 : now) - reach - 60_000);
     void this.hub.ensureFlow(flowIdsToLoad, secondsFrom);
     // A window reaching back before the seconds the page holds draws its older part from the minutes: asked from a six-hour boundary (so
     // zooming out does not ask again at every step) up to the hour after the latest of the seconds begins. That is where the seconds
@@ -512,7 +513,8 @@ export class CvdPane {
     const columns = model.columns, cols = this.#priceCols ?? this.#price.columns(model.t0, model.t1, columns);
     ctx.save(); ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y + h) - 0.5); ctx.lineTo(this.#w, Math.round(y + h) - 0.5); ctx.stroke();
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    const last = this.store.state.mark.price, ly = y + h / 2;
+    const st = this.store.state, track = replaying() ? this.hub.flow.track(st.seriesInstrument || st.marketId) : undefined;
+    const last = replaying() ? (track?.priceAt(Math.floor(pageNow() / 1000) - 1) ?? NaN) : st.mark.price, ly = y + h / 2;
     ctx.font = `600 11px ${SANS}`; ctx.fillStyle = p.text; ctx.fillText(t('PRICE'), PAD, ly - LINE_H / 2);
     ctx.font = `11px ${MONO}`; ctx.fillStyle = p.muted; ctx.fillText(fit(ctx, last > 0 ? fmtPrice(last) : '–', this.#gutter - 10), PAD, ly + LINE_H / 2);
     if (cols.min <= cols.max) {

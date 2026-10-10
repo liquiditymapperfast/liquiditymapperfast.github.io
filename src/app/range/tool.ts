@@ -12,6 +12,7 @@ import { draftOf, follow, refreshMs, rowStep, snap, type RangeSelection } from '
 import { rangeLines, type RangeInput, type RangeLine } from './stats.ts';
 import { venueMark } from '../venue-marks.ts';
 import { scaledUsd } from '../coin.ts';
+import { pageNow, replaying } from '../replay/clock.ts';
 
 /**
  * The panel's lines, kept as elements: a line is built again only when what it says changes, and the list is put in order only when the
@@ -137,7 +138,8 @@ export class RangeTool {
     const start = this.#start; if (!start) return;
     if (small) { this.cancel(); return; }
     this.#start = null; this.#before = null;
-    const sel = snap(draftOf(start, at), Date.now());
+    // Replay: snapped on its clock, up to its moment, and never live (the live refresh would move it with the real now).
+    const snapped = snap(draftOf(start, at), pageNow()), sel = replaying() ? { ...snapped, t1: Math.min(snapped.t1, Math.ceil(pageNow() / 60_000) * 60_000), live: false } : snapped;
     this.store.set({ range: sel, rangeTool: false });
     this.#open();
     void this.#gather(sel, true);

@@ -240,20 +240,22 @@ export class DepthPane extends TimePane {
     const s = this.#series;
     const readout = this.head.querySelector('.readout');
     if (!s) { ctx.fillStyle = p.muted; ctx.fillText(t('Depth history is collecting…'), 12, ph / 2); return; }
+    // Replay: only the columns up to its moment speak (the rest is covered).
+    const cutW = replaying() ? Math.max(0, Math.min(s.w, Math.floor((pageNow() - s.t0) / (s.t1 - s.t0) * s.w))) : s.w;
     let max = 1, lastB = 0, lastA = 0, lastX = -1;
-    for (let x = 0; x < s.w; x++) { max = Math.max(max, s.bid[x]!, s.ask[x]!); if (s.bid[x]! > 0 || s.ask[x]! > 0) { lastB = s.bid[x]!; lastA = s.ask[x]!; lastX = x; } }
+    for (let x = 0; x < cutW; x++) { max = Math.max(max, s.bid[x]!, s.ask[x]!); if (s.bid[x]! > 0 || s.ask[x]! > 0) { lastB = s.bid[x]!; lastA = s.ask[x]!; lastX = x; } }
     const lastTotal = lastB + lastA, lastImbalance = lastTotal > 0 ? (lastB - lastA) / lastTotal : 0;
     const dominant = Math.abs(lastImbalance) < 0.005 ? '' : ` <b class="${lastImbalance > 0 ? 'bid' : 'ask'}">${lastImbalance > 0 ? t('bids') : t('asks')} +${(Math.abs(lastImbalance) * 100).toFixed(1)}%</b>`;
     setHtml(readout, `A <b class="ask">${usd(lastA)}</b> B <b class="bid">${usd(lastB)}</b> Δ <b>${usd(lastB - lastA)}</b>${dominant}`);
     const hv = state.hover;
     if (hv && this.pointer) {
-      const colT = (x: number): number => s.t0 + x / s.w * (s.t1 - s.t0), under = columnAt(s.t0, s.t1, s.w, hv.t);
+      const colT = (x: number): number => s.t0 + x / s.w * (s.t1 - s.t0), column = columnAt(s.t0, s.t1, s.w, hv.t), under = column < cutW ? column : -1;
       const at = readAt(under >= 0 && (s.bid[under]! > 0 || s.ask[under]! > 0) ? under : -1, hv.t, lastX, lastX >= 0 ? colT(lastX) : undefined);
       if (at >= 0 && at !== under) this.cursorT = colT(at + 0.5);
       if (at >= 0 && (s.bid[at]! > 0 || s.ask[at]! > 0)) {
         const here = s.bid[at]! + s.ask[at]!;
         let rank = 1, of = 0;
-        for (let x = 0; x < s.w; x++) { const total = s.bid[x]! + s.ask[x]!; if (total > 0) { of++; if (total > here) rank++; } }
+        for (let x = 0; x < cutW; x++) { const total = s.bid[x]! + s.ask[x]!; if (total > 0) { of++; if (total > here) rank++; } }
         this.#lines = depthCardLines({ time: s.t0 + at / s.w * (s.t1 - s.t0), bid: s.bid[at]!, ask: s.ask[at]!, range: this.#range, rank, of });
       }
     }
@@ -318,10 +320,20 @@ export class OiPane extends TimePane {
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
   protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  /** Replay: the bars that ended by its moment, kept until the next candle (the analysis is cached on the array); live, all of them. */
+  #oiCut: { src: readonly OiBar[]; slot: number; out: OiBar[] } | null = null;
+  #oiAt(bars: OiBar[], tf: number): OiBar[] {
+    if (!replaying()) return bars;
+    const slot = Math.floor(pageNow() / tf);
+    if (this.#oiCut?.src === bars && this.#oiCut.slot === slot) return this.#oiCut.out;
+    const out = bars.filter(b => b[0] + tf <= slot * tf);
+    this.#oiCut = { src: bars, slot, out };
+    return out;
+  }
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state: AppState = this.store.state;
     // Replay: the bar under way at its moment would carry what came after; only bars that ended by then.
-    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = replaying() ? state.oi.filter(b => b[0] + tf <= pageNow()) : state.oi, highlight = state.highlight;
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = this.#oiAt(state.oi, tf), highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
     const say = (html: string): void => setHtml(readout, html);
     if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
@@ -383,7 +395,7 @@ export class OiPane extends TimePane {
     let shown = oi.length - 1;
     if (hover) { shown = -1; for (let i = 0; i < oi.length; i++) if (oi[i]![0] <= hover.t) shown = i; else break; if (shown < 0) shown = 0; }
     const bar = oi[shown]!, d = shown > 0 ? analysis.delta[shown]! : 0, flagged = highlight.on && analysis.flag[shown] === 1;
-    const age = Date.now() - lastBar[0], stale = age > Math.max(3 * tf, 3 * 60_000);
+    const age = pageNow() - lastBar[0], stale = age > Math.max(3 * tf, 3 * 60_000);
     const sign = d > 0 ? '+' : d < 0 ? '−' : '';
     const source = state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? ` <span class="muted">${t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` })}</span>` : '';
     const sigma = flagged && Number.isFinite(analysis.sigma[shown]) ? ` <span class="muted">${analysis.sigma[shown]!.toFixed(1)}σ</span>` : '';
@@ -470,7 +482,10 @@ export class LtPane extends TimePane {
     }
     const s = this.#series, readout = this.head.querySelector('.readout')!;
     if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); setText(readout, ''); return; }
-    const n = s.times.length, step = s.stepMs, xOf = (t: number) => v.xOf(t + step / 2, pw), gap = step * 2.5;
+    let n = s.times.length;
+    if (replaying()) { const cut = pageNow(); while (n > 0 && s.times[n - 1]! > cut) n--; }
+    if (!n) { setText(readout, ''); return; }
+    const step = s.stepMs, xOf = (t: number) => v.xOf(t + step / 2, pw), gap = step * 2.5;
     let max = 0;
     for (let i = 0; i < n; i++) if (s.times[i]! + step >= v.t0 && s.times[i]! <= v.t1) max = Math.max(max, s.bid[i]!, s.ask[i]!);
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';

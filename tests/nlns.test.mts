@@ -27,7 +27,7 @@ test('without the market\'s flow the price\'s way decides, and says so; a restar
   const starts = [T, T + H, T + 2 * H, T + 3 * H];
   const deltas = [{ dOi: 10, oiStart: 100 }, { dOi: 5, oiStart: 110 }, null, { dOi: 3, oiStart: 120 }];
   const c = nlnsCandles(starts, deltas, [null, flow(0), null, null], [-1, 1, 1, 1], [0, 0, 0, 0]);
-  assert.deepEqual(c.map(x => [x.t, x.v, x.byPrice, x.cum, x.run]), [[T, -10, true, -10, 0], [T + H, 5, true, -5, 0], [T + 3 * H, 3, true, 3, 1]]);
+  assert.deepEqual(c.map(x => [x.t, x.v, x.byPrice, x.cum, x.run]), [[T, -10, true, -10, 0], [T + H, 0, false, -10, 0], [T + 3 * H, 3, true, 3, 1]], "recorded flow that came out even is neither side, not the price's");
   const daily = nlnsCandles(starts.slice(0, 2), deltas.slice(0, 2), [flow(1), flow(1)], [0, 0], [0, 1]);
   assert.deepEqual(daily.map(x => x.cum), [10, 5], 'a new day starts at 0');
 });

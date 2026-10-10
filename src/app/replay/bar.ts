@@ -29,7 +29,14 @@ export class ReplayBar {
     const live = el('button', { type: 'button', class: 'replay-live', textContent: t('Live'), tip: t('Leave the replay and go back to now') });
     live.onclick = () => this.stop();
     this.root.append(el('strong', { textContent: t('Replay') }), this.#play, this.#speed, this.#time, live, helpButton('replay'));
+    // A hidden tab draws nothing: the replay waits for it, rather than jumping on by the time it was away.
+    document.addEventListener('visibilitychange', () => {
+      if (!replaying()) return;
+      if (document.hidden) { if (replayView()?.playing) { pauseReplay(); this.#autoPaused = true; this.#sync(); } }
+      else if (this.#autoPaused) { this.#autoPaused = false; playReplay(); this.#sync(); }
+    });
   }
+  #autoPaused = false;
 
   /** Replay from `from` (already within what is held): the map's live edge becomes that moment and moves on at the chosen speed. */
   start(from: number, speed: ReplaySpeed = 10): void {
@@ -38,7 +45,6 @@ export class ReplayBar {
     this.host.placeAt(from);
     this.root.hidden = false; this.root.classList.remove('ended');
     this.#sync();
-    if (!this.#frame) this.#frame = requestAnimationFrame(this.#tick);
   }
 
   /** Back to live; with a `note`, the bar says it for a few seconds before it goes. */
@@ -62,6 +68,7 @@ export class ReplayBar {
     this.#play.dataset.tip = view.playing ? t('Pause') : t('Play');
     if (this.#speed.value !== String(view.speed)) this.#speed.value = String(view.speed);
     this.#time.textContent = withSeconds(pageNow());
+    if (view.playing && !this.#frame) this.#frame = requestAnimationFrame(this.#tick);
   }
 
   #tick = (): void => {
@@ -75,6 +82,7 @@ export class ReplayBar {
       if (this.#time.textContent !== text) this.#time.textContent = text;
       if (replayView()?.playing) this.host.redraw();
     }
-    this.#frame = requestAnimationFrame(this.#tick);
+    // Paused: nothing moves, so no frames; play asks for them again (#sync).
+    if (replayView()?.playing) this.#frame = requestAnimationFrame(this.#tick);
   };
 }

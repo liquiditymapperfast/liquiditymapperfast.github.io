@@ -48,7 +48,7 @@ import { draftLabel } from '../range/stats.ts';
 import type { RangePoint, RangeTool } from '../range/tool.ts';
 import { paintDivergence, type Divergence } from '../delta/divergence.ts';
 import { countdown, lineSide } from '../price-line.ts';
-import { candlesAt, formingCandle, pageNow, replaying } from '../replay/clock.ts';
+import { candlesAt, formingCandle, pageNow, replaying, replayView } from '../replay/clock.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -78,6 +78,12 @@ function glowOf(color: string, r: number, dpr: number): { image: HTMLCanvasEleme
 }
 /** A recording younger than this gets the faded placeholder to its left. */
 const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
+/** Replay: each VWAP line up to the last bar that ended by its moment (so its tag is the VWAP then); live, the lines as they are. */
+function replayCut(lines: VwapLine[], at: number): VwapLine[] {
+  if (!replaying()) return lines;
+  return lines.map(l => { const step = l.points.length > 1 ? l.points[1]!.t - l.points[0]!.t : 60_000; return { ...l, points: l.points.filter(q => q.t + step <= at) }; });
+}
+
 /** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
 export let AXIS_W = 64;
 /** The countdown box under the price tag. */
@@ -263,6 +269,7 @@ export class HeatPane {
 
   /** Frame the most recent candles, centred on the mark. */
   fit(): void {
+    if (replaying()) { this.placeAt(pageNow()); return; }
     this.#forceBaseline = true;
     const { candles, mark, timeframe } = this.store.state;
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000;
@@ -352,7 +359,8 @@ export class HeatPane {
   placeAt(t: number): void {
     const v = this.view, span = v.t1 - v.t0, margin = span * 0.08;
     let lo = Infinity, hi = -Infinity;
-    for (const c of this.store.state.candles) if (c[0] + 1 > t - span && c[0] < t) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
+    const tf = TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000;
+    for (const c of this.store.state.candles) if (c[0] + 1 > t - span && c[0] + tf <= t) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
     const pad = (hi - lo) * 0.18;
     v.set({ t0: t + margin - span, t1: t + margin, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
     this.#liveMargin = margin; this.store.set({ followLive: true }); this.#rasteredKey = ''; this.#atCandles = null; this.onView(); this.invalidate();
@@ -372,7 +380,10 @@ export class HeatPane {
   #shownCandles(state: AppState): readonly CandleRow[] {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, at = pageNow(), key = `${tf}|${Math.floor(at / 1000)}`;
     if (this.#atCandles?.key === key && this.#atCandles.src === state.candles) return this.#atCandles.rows;
-    const track = this.hub.flow.track(state.seriesInstrument || state.marketId), start = Math.floor(at / tf) * tf;
+    const id = state.seriesInstrument || state.marketId, start = Math.floor(at / tf) * tf, DAY = 86_400_000;
+    if (Date.now() - start < DAY - 3_600_000) void this.hub.ensureFlow([id], start - 60_000);
+    else void this.hub.ensureFlowMinutes([id], Math.floor((start - 3_600_000) / 21_600_000) * 21_600_000, Math.ceil((start + tf + 3_600_000) / 3_600_000) * 3_600_000);
+    const track = this.hub.flow.track(id);
     const rows = candlesAt(state.candles, tf, at, track ? formingCandle(track, start, at) : null);
     this.#atCandles = { key, src: state.candles, rows };
     return rows;
@@ -427,7 +438,7 @@ export class HeatPane {
     const factor = visibilityFactor(state.candles, tfMs, v, pw, ph, rowH || 1, rowStep || 1);
     this.#lodFrame = this.#lod.step(now, { enabled: true, hasData: this.#footprint.bars.size > 0, widthCss: pw * tfMs / (v.t1 - v.t0), rowHeightCss: rowH, factor });
     // A trap needs the candles and the footprint to be the same market's; a chart showing a reference series instead says nothing about this market's flow.
-    if (this.#lodFrame.barAlpha > 0.05 && state.seriesInstrument === state.marketId) {
+    if (this.#lodFrame.barAlpha > 0.05 && state.seriesInstrument === state.marketId && !replaying()) {
       this.#traps.ensure({ inst: state.marketId, tf: state.timeframe, tfMs, candles: state.candles, fine, view: v, load: (inst, tf, from, to, rows) => this.hub.footprint(inst, tf, from, to, rows), onLoad: () => this.invalidate() });
     } else this.#traps.clear();
     if (this.#lodFrame.needsFrame) this.invalidate();
@@ -740,7 +751,7 @@ export class HeatPane {
     const limit = Math.max(40, Math.min(400, Math.round(pw / 9)));
     const s = state.tradeBubbles, off = state.disabledVenues;
     const hidden = (print: Print): boolean => bubbleHidden(print, s) || (off.length > 0 && off.includes(print.id.slice(0, print.id.indexOf(':'))));
-    const visible = topPrints(this.hub.prints.items, v.t0, v.t1, v.p0, v.p1, limit, hidden);
+    const visible = topPrints(this.hub.prints.items, v.t0, replaying() ? Math.min(v.t1, pageNow()) : v.t1, v.p0, v.p1, limit, hidden);
     if (!visible.length) return;
     const whale = scaledUsd(state.sounds.tiers[2]?.usd ?? 400_000);
     ctx.save();
@@ -834,7 +845,8 @@ export class HeatPane {
 
   /** The window the traded column adds up: the whole minutes on the map, up to the one that is open. */
   #tradedWindow(): { from: number; to: number } {
-    const v = this.view, MIN = 60_000;
+    const v = this.view, MIN = 60_000, replay = replayView();
+    if (replay) { const q = MIN * Math.max(1, Math.round(replay.speed / 60)); return { from: Math.floor(v.t0 / MIN) * MIN, to: Math.min(Math.ceil(v.t1 / MIN) * MIN, Math.floor(pageNow() / q) * q) }; }
     return { from: Math.floor(v.t0 / MIN) * MIN, to: Math.min(Math.ceil(v.t1 / MIN), Math.floor(pageNow() / MIN) + 1) * MIN };
   }
   /** The map's grid step at the current price. */
@@ -859,7 +871,7 @@ export class HeatPane {
     const v = this.view;
     if (!(v.t1 > v.t0) || !(v.p1 > v.p0)) return;
     const { from, to } = this.#tradedWindow();
-    this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), state.followLive);
+    this.hub.ensureTraded(flowIds(state, this.hub.flow.ids), from, to, requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), state.followLive && !replaying());
   }
 
   /**
@@ -923,7 +935,7 @@ export class HeatPane {
     const versions = [...plan.reach.keys()].map(bar => { const h = this.hub.vwapHistory(bar); return `${bar}:${h.id}:${h.version}`; }).join(',');
     const w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}` : '';
     const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}`;
-    if (this.#vwapDrawn?.key === key) return this.#vwapDrawn.lines;
+    if (this.#vwapDrawn?.key === key) return replayCut(this.#vwapDrawn.lines, pageNow());
     const lines: VwapLine[] = [], now = pageNow();
     const sessionBars = plan.sessions.length ? this.#vwapBars(state, plan.sessionBar, target) : null;
     const heldFrom = (bar: number): number => this.hub.vwapHistory(bar).heldFrom;
@@ -950,9 +962,7 @@ export class HeatPane {
       if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}` });
     });
     this.#vwapDrawn = { key, lines };
-    // Replay: each line up to the last bar that ended by its moment (so its tag is the VWAP then).
-    if (replaying()) return lines.map(l => { const step = l.points.length > 1 ? l.points[1]!.t - l.points[0]!.t : 60_000; return { ...l, points: l.points.filter(q => q.t + step <= now) }; });
-    return lines;
+    return replayCut(lines, now);
   }
 
   /** Ask for the hourly candles the key levels need for this view (how far back is worked out again only when the view's hour changes). */
@@ -1021,6 +1031,7 @@ export class HeatPane {
       for (const w of this.#linesWindows(state)) {
         const held = this.hub.valueAreas.get(valueAreaKey(ids, step, share, w));
         if (!held || held.poc === null || held.vah === null || held.val === null) continue;
+        if (replaying() && w.to > now) continue;
         const end = Math.min(w.to, now), x0 = v.xOf(w.from, pw), x1 = v.xOf(end, pw);
         let naked: number | null = null;
         if (s.naked && w.to <= now) { const touched = touchedAt(held.poc, w.to, state.candles, step / 2); naked = touched === null ? pw : v.xOf(touched, pw); }
@@ -1200,6 +1211,8 @@ export class HeatPane {
     const hv = state.hover; if (!hv) return;
     const p = this.#palette, v = this.view;
     const x = v.xOf(hv.t, pw), inX = x >= 0 && x <= pw, ownY = hv.source === 'heat' && hv.price !== null;
+    // Replay: right of its moment everything is covered, so nothing there answers the pointer.
+    const here = inX && !(replaying() && hv.t > pageNow());
     const y = ownY ? v.yOf(hv.price!, ph) : -1;
     ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.globalAlpha = 0.8; ctx.beginPath();
     if (inX) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, ph); }
@@ -1210,9 +1223,9 @@ export class HeatPane {
     let trapHit: Trap | null = null, rowHit: ReturnType<HeatPane['footprintCellUnder']> = null;
     const touch = hv.touch === true;
     if (touch && ownY && inX && y >= 0 && y <= ph) { ctx.strokeStyle = p.text; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
-    const absorbed = ownY && inX ? this.#absorptionAt(x, y) : null;
-    const forced = ownY && inX && !absorbed ? this.#diamondAt(x, y) : null;
-    const hit = ownY && inX && !absorbed && !forced ? this.#bubbleAt(x, y) : null;
+    const absorbed = ownY && here ? this.#absorptionAt(x, y) : null;
+    const forced = ownY && here && !absorbed ? this.#diamondAt(x, y) : null;
+    const hit = ownY && here && !absorbed && !forced ? this.#bubbleAt(x, y) : null;
     if (forced) { // a liquidation under the pointer: which positions were closed, where, and what the exchange reported
       const long = forced.liq.side === 'long';
       paintInfoBox(ctx, liquidationLines(forced.liq), x, touch ? forced.y - forced.r - 8 : forced.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: long ? p.candleDown : p.candleUp, gap: forced.r + 10, placement: touch ? 'up' : 'center' });
@@ -1229,11 +1242,11 @@ export class HeatPane {
       ];
       // Beside a mouse pointer the box stands clear of the bubble; above a finger, so the hand does not cover it.
       paintInfoBox(ctx, lines, x, touch ? y - hit.r - 8 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: buy ? p.candleUp : p.candleDown, gap: hit.r + 10, placement: touch ? 'up' : 'center' });
-    } else if (ownY && inX && (trapHit = this.#trapUnder(x, hv.t, hv.price!, pw))) {
+    } else if (ownY && here && (trapHit = this.#trapUnder(x, hv.t, hv.price!, pw))) {
       this.#paintTrapPopup(ctx, trapHit, x, y, pw, ph, touch);
-    } else if (ownY && inX && (rowHit = this.#footprintUnder(x, hv.t, hv.price!, pw))) {
+    } else if (ownY && here && (rowHit = this.#footprintUnder(x, hv.t, hv.price!, pw))) {
       this.#paintFootprintPopup(ctx, rowHit, x, y, pw, ph, touch);
-    } else if (ownY && inX && state.layer === 'liquidity') {
+    } else if (ownY && here && state.layer === 'liquidity') {
       const cell = this.valueAt(hv.t, hv.price!);
       const side = cell && cell.ask > cell.bid ? 'ask' : 'bid', source = cell ? this.#sourceOf(hv.t, hv.price!, side) : '';
       const lines: InfoLine[] = [{ label: t('Price'), text: fmtPrice(hv.price!) }];
@@ -1267,7 +1280,7 @@ export class HeatPane {
     const data = this.footprintData, step = data.step, v = this.view;
     if (!(step > 0) || this.#lodFrame.barAlpha < 0.3) return null;
     const tfMs = TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000, start = Math.floor(t / tfMs) * tfMs, bar = data.bars.get(start);
-    if (!bar) return null;
+    if (!bar || (replaying() && start + tfMs > pageNow())) return null;
     const slot = pw * tfMs / (v.t1 - v.t0), layout = footprintLayout(slot), left = v.xOf(start, pw) + layout.colLeft;
     if (x < left || x > left + layout.colWidth) return null;
     const cell = rowCellAt(bar, step, price);
@@ -1417,7 +1430,7 @@ export class HeatPane {
     const s = state.liquidations; if (!s.on) return;
     const v = this.view, p = this.#palette, off = state.disabledVenues;
     const hidden = (l: Liquidation): boolean => liquidationHidden(l, s) || (off.length > 0 && off.includes(l.id.slice(0, l.id.indexOf(':'))));
-    const visible = topPrints(this.hub.liquidations.items, v.t0, v.t1, v.p0, v.p1, Math.max(30, Math.min(300, Math.round(pw / 10))), hidden);
+    const visible = topPrints(this.hub.liquidations.items, v.t0, replaying() ? Math.min(v.t1, pageNow()) : v.t1, v.p0, v.p1, Math.max(30, Math.min(300, Math.round(pw / 10))), hidden);
     if (!visible.length) return;
     const ordered = [...visible].sort((a, b) => a.usd - b.usd), largest = ordered[ordered.length - 1]!.usd, edge = p.dark ? '#ffffff' : '#14171c';
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
@@ -1465,7 +1478,7 @@ export class HeatPane {
    * have their places for this frame already.
    */
   #bubbleFocus(state: AppState, pw: number, ph: number): string | null {
-    const hv = state.hover; if (!hv || hv.source !== 'heat' || hv.price === null) return null;
+    const hv = state.hover; if (!hv || hv.source !== 'heat' || hv.price === null || (replaying() && hv.t > pageNow())) return null;
     const x = this.view.xOf(hv.t, pw), y = this.view.yOf(hv.price, ph);
     if (x < 0 || x > pw || y < 0 || y > ph || this.#absorptionAt(x, y) || this.#diamondAt(x, y)) return null;
     const hit = this.#bubbleAt(x, y);

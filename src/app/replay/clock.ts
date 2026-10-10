@@ -41,9 +41,10 @@ export function caughtUp(): boolean { return clock !== null && pageNow() >= real
 
 /**
  * The candle under way at `at`, rebuilt from a price a second (the flow recording's): its open at the candle's start, its close at `at`,
- * its high and low the extremes of up to `samples` seconds in between. The recorded candle would carry its whole future; null without prices.
+ * its high and low the extremes of up to `samples` seconds in between, its volume the recorded gross over the close (in coins, as a candle's
+ * volume is). The recorded candle would carry its whole future; null without prices.
  */
-export function formingCandle(track: { priceAt(sec: number): number }, start: number, at: number, samples = 600): CandleRow | null {
+export function formingCandle(track: { priceAt(sec: number): number; cumGross?(sec: number): number }, start: number, at: number, samples = 600): CandleRow | null {
   const s0 = Math.floor(start / 1000), s1 = Math.floor(at / 1000) - 1;
   if (s1 < s0) return null;
   const step = Math.max(1, Math.ceil((s1 - s0 + 1) / samples));
@@ -57,7 +58,9 @@ export function formingCandle(track: { priceAt(sec: number): number }, start: nu
   }
   const last = track.priceAt(s1);
   if (last > 0) { close = last; high = Math.max(high, last); low = Math.min(low, last); }
-  return open === open && close === close ? [start, open, high, low, close, 0] : null;
+  if (!(open === open && close === close)) return null;
+  const gross = track.cumGross ? track.cumGross(s1) - track.cumGross(s0 - 1) : 0;
+  return [start, open, high, low, close, gross > 0 ? gross / close : 0];
 }
 
 /**

@@ -43,11 +43,12 @@ export function nlnsCandles(starts: readonly number[], deltas: readonly ({ dOi: 
     const d = deltas[i];
     if (!d) { gap = true; continue; }
     if (keys[i] !== key || gap) { cum = 0; key = keys[i]!; gap = false; run++; }
-    const flow = flows[i], byFlow = flow ? Math.sign(flow.delta) : 0, byPrice = byFlow === 0 ? Math.sign(priceWay[i] ?? 0) : 0;
-    const side = (byFlow || byPrice) as 1 | -1 | 0, v = side * Math.abs(d.dOi);
+    // The market's own flow decides, even when it came out even (neither side); the price's way only where no flow is recorded.
+    const flow = flows[i], byFlow = flow ? Math.sign(flow.delta) : 0, byPrice = flow ? 0 : Math.sign(priceWay[i] ?? 0);
+    const side = (flow ? byFlow : byPrice) as 1 | -1 | 0, v = side * Math.abs(d.dOi);
     const kind: NlnsKind | null = side === 0 || d.dOi === 0 ? null : d.dOi > 0 ? (side > 0 ? 'newLongs' : 'newShorts') : (side > 0 ? 'shortsClosed' : 'longsClosed');
     cum += v;
-    out.push({ t: starts[i]!, dOi: d.dOi, oiStart: d.oiStart, side, byPrice: byFlow === 0 && byPrice !== 0, v, kind, cum, run });
+    out.push({ t: starts[i]!, dOi: d.dOi, oiStart: d.oiStart, side, byPrice: !flow && byPrice !== 0, v, kind, cum, run });
   }
   return out;
 }

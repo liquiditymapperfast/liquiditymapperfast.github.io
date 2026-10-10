@@ -139,7 +139,8 @@ export class DeltaPane extends TimePane {
       this.#ensure([oiInst], starts[0]!, Date.now());
       const track = flow.track(oiInst), tracks = track ? [track] : [];
       const flows = tracks.length ? unrecorded(starts, this.#oiCache.get(`${oiInst}|${tf}|${flow.loads}`, tracks, starts, tf, now), tf, now) : starts.map(() => null);
-      const way = new Map(state.candles.map(c => [c[0], Math.sign(c[4] - c[1])]));
+      // Replay: a candle's way only once it had closed by the moment shown.
+      const way = new Map(state.candles.filter(c => !replaying() || c[0] + tf <= now).map(c => [c[0], Math.sign(c[4] - c[1])]));
       const oi = replaying() ? state.oi.filter(b => b[0] + tf <= now) : state.oi;
       candles = nlnsCandles(starts, oiDeltas(oi, starts, tf), flows, starts.map(t0 => way.get(t0) ?? 0), resetKeys(starts, s.reset, zone));
     }

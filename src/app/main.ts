@@ -128,7 +128,7 @@ async function main(): Promise<void> {
     centre: () => (heat.view.t0 + heat.view.t1) / 2,
     earliest: () => ({ depth: hub.recordedSince > 0 ? hub.recordedSince : null, candles: store.state.candles[0]?.[0] ?? null }),
     go: t => heat.goTo(t),
-    live: () => toolbar.onRecenter(),
+    live: () => { if (replaying()) replayBar.stop(); else toolbar.onRecenter(); },
   };
   toolbar.panes = { arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults() };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
