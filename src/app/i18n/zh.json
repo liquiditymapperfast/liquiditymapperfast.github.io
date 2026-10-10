@@ -1105,5 +1105,11 @@
  "Go": "跳转",
  "Centre the map on this moment": "将地图居中到此时刻",
  "Depth is recorded from {time}.": "深度自 {time} 起记录。",
- "Candles at this timeframe reach back to {time}.": "此时间周期的 K 线可追溯至 {time}。"
+ "Candles at this timeframe reach back to {time}.": "此时间周期的 K 线可追溯至 {time}。",
+ "No open interest of {market} is held for these minutes.": "这几分钟没有 {market} 的未平仓量。",
+ "At the start and the end": "开始与结束时",
+ "Change": "变化",
+ "Lowest and highest": "最低与最高",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "一个市场，即 OI 窗格显示的那个，且是整个市场，而非仅框内价格。上升：有仓位开立；下降：有仓位平仓。并不说明是谁开仓或平仓。",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "一个市场，即 OI 窗格显示的那个。上升：有仓位开立；下降：有仓位平仓。并不说明是谁开仓或平仓。"
 }

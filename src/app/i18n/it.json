@@ -1141,5 +1141,11 @@
  "Go": "Vai",
  "Centre the map on this moment": "Centra la mappa su questo momento",
  "Depth is recorded from {time}.": "La profondità è registrata da {time}.",
- "Candles at this timeframe reach back to {time}.": "Le candele di questo timeframe arrivano fino a {time}."
+ "Candles at this timeframe reach back to {time}.": "Le candele di questo timeframe arrivano fino a {time}.",
+ "No open interest of {market} is held for these minutes.": "Nessun open interest di {market} per questi minuti.",
+ "At the start and the end": "All'inizio e alla fine",
+ "Change": "Variazione",
+ "Lowest and highest": "Minimo e massimo",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "Un mercato, quello del pannello OI, e tutto, non solo i prezzi del riquadro. In salita: posizioni aperte; in discesa: chiuse. Non chi le ha aperte o chiuse.",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "Un mercato, quello del pannello OI. In salita: posizioni aperte; in discesa: chiuse. Non chi le ha aperte o chiuse."
 }

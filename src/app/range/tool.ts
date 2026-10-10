@@ -198,16 +198,19 @@ export class RangeTool {
     const state = this.store.state, ids = flowIds(state, this.hub.flow.ids);
     const band = sel.p0 !== null && sel.p1 !== null ? { p0: sel.p0, p1: sel.p1 } : null;
     const kept = !fresh && this.#input ? this.#input : null;
-    this.#input = { sel, answer: kept?.answer ?? null, error: null, resting: kept?.resting ?? null, ...this.#held(sel) };
+    this.#input = { sel, answer: kept?.answer ?? null, error: null, resting: kept?.resting ?? null, oi: kept && kept.oi !== undefined ? kept.oi : 'asking', ...this.#held(sel) };
     this.#render();
     const started = performance.now(), mark = state.mark.price > 0 ? state.mark.price : band ? (band.p0 + band.p1) / 2 : 0;
     const step = rowStep(sel, gridStepFor(mark > 0 ? mark : 1));
     const answer = this.hub.source.range(ids, sel.t0, sel.t1, band, step).then(a => ({ a, e: null }), (e: unknown) => ({ a: null, e: e instanceof Error ? e.message : String(e) }));
     const resting = band ? this.hub.cell(activeIds(state), sel.t0, sel.t1, band.p0, band.p1) : Promise.resolve(null);
-    const [got, rest] = await Promise.all([answer, resting]);
+    // The open interest of the market the OI pane shows, a sample a minute, from a little before the selection.
+    const oiInst = state.oiInstrument || state.seriesInstrument || state.marketId, market = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId);
+    const oi = oiInst ? this.hub.source.oi(oiInst, '1m', sel.t0 - 11 * 60_000, sel.t1 + 60_000).then(bars => bars.length ? { inst: oiInst, bars, coin: market?.base ?? '', price: state.mark.price } : null, () => null) : Promise.resolve(null);
+    const [got, rest, interest] = await Promise.all([answer, resting, oi]);
     if (asked !== this.#asked || !this.#input) return;
     this.#lastMs = performance.now() - started;
-    this.#input = { ...this.#input, answer: got.a, error: got.a ? null : /\b404\b/.test(got.e ?? '') ? 'older' : 'failed', resting: rest };
+    this.#input = { ...this.#input, answer: got.a, error: got.a ? null : /\b404\b/.test(got.e ?? '') ? 'older' : 'failed', resting: rest, oi: interest };
     this.#render();
     this.#schedule();
   }

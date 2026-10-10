@@ -1132,5 +1132,11 @@
  "Go": "Los",
  "Centre the map on this moment": "Die Karte auf diesen Moment zentrieren",
  "Depth is recorded from {time}.": "Die Tiefe wird ab {time} aufgezeichnet.",
- "Candles at this timeframe reach back to {time}.": "Kerzen in diesem Zeitrahmen reichen bis {time} zurück."
+ "Candles at this timeframe reach back to {time}.": "Kerzen in diesem Zeitrahmen reichen bis {time} zurück.",
+ "No open interest of {market} is held for these minutes.": "Für diese Minuten ist kein Open Interest von {market} vorhanden.",
+ "At the start and the end": "Am Anfang und am Ende",
+ "Change": "Änderung",
+ "Lowest and highest": "Tiefst- und Höchstwert",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "Ein Markt, der im OI-Bereich, und zwar ganz, nicht nur die Preise der Box. Steigend: Positionen eröffnet; fallend: geschlossen. Nicht, wer sie eröffnet oder geschlossen hat.",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "Ein Markt, der im OI-Bereich. Steigend: Positionen eröffnet; fallend: geschlossen. Nicht, wer sie eröffnet oder geschlossen hat."
 }

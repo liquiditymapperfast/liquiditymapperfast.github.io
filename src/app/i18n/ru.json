@@ -1150,5 +1150,11 @@
  "Go": "Перейти",
  "Centre the map on this moment": "Поставить этот момент в центр карты",
  "Depth is recorded from {time}.": "Глубина записывается с {time}.",
- "Candles at this timeframe reach back to {time}.": "Свечи этого таймфрейма доходят до {time}."
+ "Candles at this timeframe reach back to {time}.": "Свечи этого таймфрейма доходят до {time}.",
+ "No open interest of {market} is held for these minutes.": "Для этих минут нет открытого интереса {market}.",
+ "At the start and the end": "В начале и в конце",
+ "Change": "Изменение",
+ "Lowest and highest": "Минимум и максимум",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "Один рынок — тот, что показывает панель OI, — и целиком, а не только цены рамки. Растёт: позиции открыты; падает: закрыты. Не кто их открыл или закрыл.",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "Один рынок — тот, что показывает панель OI. Растёт: позиции открыты; падает: закрыты. Не кто их открыл или закрыл."
 }

@@ -8,6 +8,7 @@ import { venueLabel } from '../venues.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { t, tn } from '../i18n.ts';
 import { MINUTE, type RangeSelection } from './selection.ts';
+import type { OiBar } from '../store.ts';
 
 /**
  * What the Range panel says about a selection, worked out from what was gathered for it: every number and word here, the panel only lays the
@@ -40,6 +41,11 @@ export interface RangeInput {
   kind: (id: string) => 'spot' | 'perp' | null;
   /** The selection reaches outside the map's time window, for which the marks and the large orders are loaded. */
   partial?: boolean;
+  /**
+   * The open interest of one market (the one the OI pane shows) around the selection, a sample a minute; 'asking' while it is asked for,
+   * null when that market has none, undefined when it was not asked. `coin` is the unit it is counted in, `price` what a coin is worth now (for the dollar figure).
+   */
+  oi?: { inst: string; bars: readonly OiBar[]; coin: string; price: number } | null | 'asking';
 }
 
 /** One line of the panel. `cells` are its texts; a split's `share` is the buy side's part, 0..1, a row's the length of its bar. */
@@ -94,6 +100,45 @@ function totals(answer: RangeAnswer) {
 }
 
 /** Every line the panel shows for `input`, in order. */
+/** How old the last sample before a selection may be to stand for its start (the open interest is sampled once a minute). */
+const OI_STALE_MS = 10 * MINUTE;
+
+/**
+ * The open interest at the start of [t0, t1) (the last sample before it, at most `OI_STALE_MS` old, else the first inside), at its end (the
+ * last sample inside) and the most and least inside. Bars are [start, open, high, low, close]; null when the start or the end is not held.
+ */
+export function oiChange(bars: readonly OiBar[], t0: number, t1: number): { start: number; end: number; low: number; high: number } | null {
+  let start: number | null = null, end: number | null = null, low = Infinity, high = -Infinity;
+  for (const [t, open, hi, lo, close] of bars) {
+    if (t < t0) { if (t >= t0 - OI_STALE_MS) start = close; continue; }
+    if (t >= t1) break;
+    if (start === null) start = open;
+    end = close; low = Math.min(low, lo); high = Math.max(high, hi);
+  }
+  return start !== null && end !== null ? { start, end, low: Math.min(low, start), high: Math.max(high, start) } : null;
+}
+
+/**
+ * The open interest across the selection: one market's (the OI pane's), so other exchanges are not in it; for the whole market, never a
+ * box's prices (it has none). Its change says whether positions were opened or closed in these minutes, not by whom.
+ */
+function oiLines(input: RangeInput, box: boolean): RangeLine[] {
+  if (input.oi === 'asking') return [{ key: 'h-oi', kind: 'heading', cells: [t('Open interest')] }, { key: 'oi-wait', kind: 'note', tone: 'muted', cells: [t('Adding up…')] }];
+  if (!input.oi) return [];
+  const { inst, bars, coin, price } = input.oi, sel = input.sel, change = oiChange(bars, sel.t0, sel.t1), name = `${venueLabel(inst)} ${inst.split(':').slice(1).join(':')}`;
+  const out: RangeLine[] = [{ key: 'h-oi', kind: 'heading', cells: [t('Open interest')] }];
+  if (!change) return [...out, { key: 'oi-none', kind: 'note', tone: 'muted', cells: [t('No open interest of {market} is held for these minutes.', { market: name })] }];
+  const amount = (x: number): string => `${x.toLocaleString('en-US', { maximumFractionDigits: x >= 1_000 ? 0 : 2 })} ${coin}`;
+  const d = change.end - change.start, rel = change.start > 0 ? d / change.start : 0;
+  const sign = d > 0 ? '+' : d < 0 ? '−' : '';
+  out.push({ key: 'oi-market', kind: 'stat', cells: [t('Market'), name], mark: inst });
+  out.push({ key: 'oi-ends', kind: 'stat', cells: [t('At the start and the end'), `${amount(change.start)} → ${amount(change.end)}`] });
+  out.push({ key: 'oi-change', kind: 'stat', cells: [t('Change'), `${sign}${amount(Math.abs(d))} · ${sign}${(Math.abs(rel) * 100).toFixed(2)}%${price > 0 ? ` · ${signed(d * price)}` : ''}`] });
+  if (change.high > Math.max(change.start, change.end) || change.low < Math.min(change.start, change.end)) out.push({ key: 'oi-range', kind: 'stat', tone: 'muted', cells: [t('Lowest and highest'), `${amount(change.low)} / ${amount(change.high)}`] });
+  out.push({ key: 'oi-note', kind: 'note', tone: 'muted', cells: [box ? t('One market, the one the OI pane shows, and all of it, not only the box\'s prices. Rising: positions opened; falling: closed. Not who opened or closed them.') : t('One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.')] });
+  return out;
+}
+
 export function rangeLines(input: RangeInput): RangeLine[] {
   const { sel, answer } = input, box = sel.p0 !== null && sel.p1 !== null, lines: RangeLine[] = [...selectionLines(sel)];
   const windowMinutes = Math.round((sel.t1 - sel.t0) / MINUTE);
@@ -124,6 +169,7 @@ export function rangeLines(input: RangeInput): RangeLine[] {
       lines.push(...filledLines(answer));
     }
   }
+  lines.push(...oiLines(input, box));
   lines.push(...absorptionLines(input, answer ? totals(answer) : null));
   if (box) lines.push(...restingLines(input.resting));
   return lines;

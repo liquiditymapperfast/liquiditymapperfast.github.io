@@ -1155,5 +1155,11 @@
  "Go": "Перейти",
  "Centre the map on this moment": "Поставити цей момент у центр карти",
  "Depth is recorded from {time}.": "Глибина записується з {time}.",
- "Candles at this timeframe reach back to {time}.": "Свічки цього таймфрейму сягають {time}."
+ "Candles at this timeframe reach back to {time}.": "Свічки цього таймфрейму сягають {time}.",
+ "No open interest of {market} is held for these minutes.": "Для цих хвилин немає відкритого інтересу {market}.",
+ "At the start and the end": "На початку й у кінці",
+ "Change": "Зміна",
+ "Lowest and highest": "Мінімум і максимум",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "Один ринок — той, що показує панель OI, — і повністю, а не лише ціни рамки. Зростає: позиції відкрито; падає: закрито. Не хто їх відкрив чи закрив.",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "Один ринок — той, що показує панель OI. Зростає: позиції відкрито; падає: закрито. Не хто їх відкрив чи закрив."
 }

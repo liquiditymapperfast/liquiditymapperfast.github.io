@@ -1105,5 +1105,11 @@
  "Go": "移動",
  "Centre the map on this moment": "この時刻を地図の中央に",
  "Depth is recorded from {time}.": "板の深さは {time} から記録されています。",
- "Candles at this timeframe reach back to {time}.": "この時間足のローソク足は {time} までさかのぼります。"
+ "Candles at this timeframe reach back to {time}.": "この時間足のローソク足は {time} までさかのぼります。",
+ "No open interest of {market} is held for these minutes.": "この数分の {market} の建玉はありません。",
+ "At the start and the end": "開始時と終了時",
+ "Change": "変化",
+ "Lowest and highest": "最小と最大",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "OI ペインが示す 1 つの市場の全体で、ボックスの価格だけではありません。増加：ポジションが建てられた。減少：決済された。誰が建てたか、決済したかではありません。",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "OI ペインが示す 1 つの市場です。増加：ポジションが建てられた。減少：決済された。誰が建てたか、決済したかではありません。"
 }

@@ -1132,5 +1132,11 @@
  "Go": "Git",
  "Centre the map on this moment": "Haritayı bu ana ortala",
  "Depth is recorded from {time}.": "Derinlik {time} itibarıyla kaydediliyor.",
- "Candles at this timeframe reach back to {time}.": "Bu zaman dilimindeki mumlar {time} tarihine kadar uzanır."
+ "Candles at this timeframe reach back to {time}.": "Bu zaman dilimindeki mumlar {time} tarihine kadar uzanır.",
+ "No open interest of {market} is held for these minutes.": "Bu dakikalar için {market} açık pozisyon verisi yok.",
+ "At the start and the end": "Başta ve sonda",
+ "Change": "Değişim",
+ "Lowest and highest": "En düşük ve en yüksek",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "Tek bir piyasa, OI bölmesinin gösterdiği, ve tamamı; yalnızca kutunun fiyatları değil. Artış: pozisyon açıldı; düşüş: kapandı. Kimin açtığı ya da kapattığı değil.",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "Tek bir piyasa, OI bölmesinin gösterdiği. Artış: pozisyon açıldı; düşüş: kapandı. Kimin açtığı ya da kapattığı değil."
 }

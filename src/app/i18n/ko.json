@@ -1105,5 +1105,11 @@
  "Go": "이동",
  "Centre the map on this moment": "이 시점을 맵 가운데로",
  "Depth is recorded from {time}.": "호가 깊이는 {time}부터 기록되어 있습니다.",
- "Candles at this timeframe reach back to {time}.": "이 시간 단위의 캔들은 {time}까지 거슬러 갑니다."
+ "Candles at this timeframe reach back to {time}.": "이 시간 단위의 캔들은 {time}까지 거슬러 갑니다.",
+ "No open interest of {market} is held for these minutes.": "이 몇 분 동안의 {market} 미결제약정이 없습니다.",
+ "At the start and the end": "시작과 끝",
+ "Change": "변화",
+ "Lowest and highest": "최저와 최고",
+ "One market, the one the OI pane shows, and all of it, not only the box's prices. Rising: positions opened; falling: closed. Not who opened or closed them.": "OI 패널이 보여 주는 한 시장의 전체이며, 박스의 가격만이 아닙니다. 증가: 포지션이 열림, 감소: 닫힘. 누가 열고 닫았는지는 아닙니다.",
+ "One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.": "OI 패널이 보여 주는 한 시장입니다. 증가: 포지션이 열림, 감소: 닫힘. 누가 열고 닫았는지는 아닙니다."
 }
