@@ -387,7 +387,7 @@ export class HeatPane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, at = pageNow(), key = `${tf}|${Math.floor(at / 1000)}|${this.hub.flow.version}`;
     if (this.#atCandles?.key === key && this.#atCandles.src === state.candles) return this.#atCandles.rows;
     const id = state.seriesInstrument || state.marketId, start = Math.floor(at / tf) * tf, DAY = 86_400_000;
-    if (Date.now() - start < DAY - 3_600_000) void this.hub.ensureFlow([id], start - 60_000).then(() => this.invalidate(), () => {});
+    if (Date.now() - start < DAY - 3_600_000) void this.hub.ensureFlow([id], start - 60_000);
     else void this.hub.ensureFlowMinutes([id], Math.floor((start - 3_600_000) / 21_600_000) * 21_600_000, Math.ceil((start + tf + 3_600_000) / 3_600_000) * 3_600_000);
     const track = this.hub.flow.track(id);
     const rows = candlesAt(state.candles, tf, at, track ? formingCandle(track, start, at) : null);

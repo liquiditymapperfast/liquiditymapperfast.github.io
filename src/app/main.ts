@@ -109,7 +109,8 @@ async function main(): Promise<void> {
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
   ], flowCol);
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); lt.invalidate(); bars.invalidate(); cvd.followMap(); };
-  hub.onFlowChanged = () => { cvd.invalidate(); delta.invalidate(); };
+  // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
+  hub.onFlowChanged = () => { cvd.invalidate(); delta.invalidate(); if (replaying()) heat.invalidate(); };
   // A finger on a pane under the map moves the time axis it shares with the map.
   for (const pane of [depth, oi, delta, lt, bars]) pane.useTimeGestures(heat.timeGestures());
   heat.onFrame = lower; heat.onView = lower;
