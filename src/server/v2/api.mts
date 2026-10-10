@@ -17,12 +17,17 @@ import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, toWire } from './print
 import { OrderBuilder, orderRow, type TakenFill } from '../../shared/orders.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, GROUPS_PER_MINUTE, ABSORPTION_WINDOW_MS, MAX_ABSORPTION_INSTRUMENTS } from './absorption.mts';
 import { ExtraVenues, RECOMMENDED_EXTRA_VENUES } from './venues.mts';
+import { connectorFactories } from './connectors.mts';
+import { BTC, type Coin } from '../../shared/coins.ts';
+import { browserVenues } from '../../shared/venues.ts';
+import { coinScale } from './server-coin.mts';
+import { MIN_BIN_USD, RETENTION_MS } from '../../shared/recorder.ts';
 import { CoinList } from './coin-list.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
 import { TIMEFRAMES, aggregateCandles, aggregateOi, timeframeMs, withLiveOi, type CandleRow, type OiRow } from './series.mts';
 
 type App = ReturnType<typeof createLocalServer>;
-export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number }
+export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number; /** The coin recorded (BTC unless given); its size floors are BTC's times its scale, as in the browser engine. */ coin?: Coin }
 export interface V2Handle {
   recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; flow: FlowRecorder; absorption: AbsorptionRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
   /** Venues (the part of an instrument id before the colon) whose book is being left off the map, with the reason. */
@@ -68,17 +73,18 @@ const BAD_WINDOW = 'from and to must be milliseconds, from before to and neither
 const BAD_SERIES = 'inst and a supported tf are required';
 
 /** Attach the v2 data plane (depth recorder, live WebSocket, series endpoints) to a running local server. */
-export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, heartbeatMs = HEARTBEAT_MS }: V2Options): V2Handle {
+export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, heartbeatMs = HEARTBEAT_MS, coin = BTC }: V2Options): V2Handle {
+  const scale = coinScale(coin);
   let store: SqliteColumnStore | null = null;
   if (persist) { fs.mkdirSync(dataDir, { recursive: true }); store = new SqliteColumnStore(path.join(dataDir, 'depth-v2.sqlite')); }
-  const recorder = new DepthRecorder({ store });
+  const recorder = new DepthRecorder({ store, minBinUsd: MIN_BIN_USD * scale });
   const defaults = process.env.HLM_DEFAULT_VENUES;
-  // The coin list for the page's coin picker, rebuilt here daily (the server itself records BTC only).
+  // The coin list for the page's coin picker, rebuilt here daily (the server itself records one coin: `coin`).
   const coins = persist ? new CoinList(path.join(dataDir, 'coins.json'), path.join(process.cwd(), 'dist', 'coins.json')) : null;
   coins?.start();
-  const extra = new ExtraVenues(persist ? path.join(dataDir, 'v2-venues.json') : null, undefined, !persist || defaults === 'configured' ? false : defaults === 'all' ? true : RECOMMENDED_EXTRA_VENUES);
-  const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
-  const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  const extra = new ExtraVenues(persist ? path.join(dataDir, 'v2-venues.json') : null, connectorFactories(coin), !persist || defaults === 'configured' ? false : defaults === 'all' ? true : RECOMMENDED_EXTRA_VENUES);
+  const footprint = new FootprintRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null, Date.now, RETENTION_MS, scale);
+  const prints = new PrintStream(persist ? path.join(dataDir, 'depth-v2.sqlite') : null, Date.now, RETENTION_MS, PRINT_FLOOR_USD * scale);
   const flow = new FlowRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
   /** How far the recordings reach (read now, before any trade): what a venue sends again after a restart is not counted twice. */
   const recorded = new RecordedBefore(flow, footprint);
@@ -86,7 +92,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   /** Market orders rebuilt from their fills (see shared/orders.ts): the prints and the size statistics count these, not fills. */
   const orders = new OrderBuilder();
   /** Absorption candidates (see shared/absorption.ts): every fill the builder took, once each. */
-  const absorption = new AbsorptionRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null);
+  const absorption = new AbsorptionRecorder(persist ? path.join(dataDir, 'depth-v2.sqlite') : null, Date.now, { floorUsd: GROUP_FLOOR_USD * scale });
   const detect = (taken: readonly TakenFill[]): void => { for (const f of taken) absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side); };
   const takeOrders = (all: boolean): void => {
     const done = orders.drain(all);
@@ -101,7 +107,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
   extra.onTrade(takeTrade);
   // Exchanges the feed manager has depth for but no trade feed: their trades come from the browser engine's connectors (see flow-sources.mts).
-  const flowSources = new FlowSources(takeTrade);
+  const flowSources = new FlowSources(takeTrade, Date.now, browserVenues(coin).filter(venue => venue.listed));
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   /** Each venue's book as last valued, by the book object it was valued from: an update replaces the object, so an unchanged object is an unchanged book. */
   const valued = new Map<string, { source: unknown; book: ValuedBook | null; at: number }>();

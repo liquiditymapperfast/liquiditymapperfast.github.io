@@ -1,7 +1,8 @@
 import { inflateRawSync } from 'node:zlib';
 import { BinanceSpotConnector, BinanceUsConnector, BitunixConnector, BookConnector, HitbtcConnector, PoloniexConnector } from '../../shared/connector.ts';
 
-import { BitgetSpotConnector, BybitSpotConnector, OkxSpotConnector } from '../../shared/venues.ts';
+import { BinanceSpotBook, BitgetSpotConnector, BybitSpotConnector, OkxSpotConnector } from '../../shared/venues.ts';
+import { BTC, type Coin, type MarketVenue } from '../../shared/coins.ts';
 export { BinanceSpotConnector, BinanceUsConnector, BitunixConnector, BookConnector, HitbtcConnector, PoloniexConnector, type ConnectorState, type ConnectorStatus } from '../../shared/connector.ts';
 
 /** BitMart spot depth50: deflate-compressed full snapshots. */
@@ -31,3 +32,19 @@ export const CONNECTOR_FACTORIES: Record<string, () => BookConnector> = {
   bybitspot: () => new BybitSpotConnector(), okxspot: () => new OkxSpotConnector(), bitgetspot: () => new BitgetSpotConnector(),
   bitmart: () => new BitmartConnector(), bitunix: () => new BitunixConnector(),
 };
+
+/**
+ * The connector venues for the coin a server records. BTC has all of them; another coin has the four large spot markets that list it
+ * (the small connectors are BTC-only), each reading the market's own name for the coin from the coin list.
+ */
+export function connectorFactories(coin: Coin): Record<string, () => BookConnector> {
+  if (coin.coin === BTC.coin) return CONNECTOR_FACTORIES;
+  const market = (venue: MarketVenue) => { const listing = coin.markets[venue]; return listing ? { coin: coin.coin, ...listing } : null; };
+  const out: Record<string, () => BookConnector> = {};
+  const binance = market('binancespot'), bybit = market('bybitspot'), okx = market('okxspot'), bitget = market('bitgetspot');
+  if (binance) out.binancespot = () => new BinanceSpotBook(binance);
+  if (bybit) out.bybitspot = () => new BybitSpotConnector(bybit);
+  if (okx) out.okxspot = () => new OkxSpotConnector(okx);
+  if (bitget) out.bitgetspot = () => new BitgetSpotConnector(bitget);
+  return out;
+}

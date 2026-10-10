@@ -44,5 +44,5 @@ export class SqlitePrintStore implements PrintStore {
 
 /** Large trades across all venues, persisted in SQLite (`dbPath`) or kept in memory when there is none. */
 export class PrintStream extends PrintCore {
-  constructor(dbPath: string | null = null, now: () => number = Date.now) { super(dbPath ? new SqlitePrintStore(dbPath) : null, now); }
+  constructor(dbPath: string | null = null, now: () => number = Date.now, retentionMs?: number, floorUsd?: number) { super(dbPath ? new SqlitePrintStore(dbPath) : null, now, retentionMs, floorUsd); }
 }

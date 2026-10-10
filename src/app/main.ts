@@ -29,23 +29,25 @@ import './mobile.css';
 import './chrome.css';
 import { t } from './i18n.ts';
 
-/** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */
-async function serverAnswers(): Promise<boolean> {
+/** The coin the local server serving this page records (its state endpoint answers with JSON on this very origin), or null when no server answers. */
+async function serverCoin(): Promise<string | null> {
   try {
     const response = await fetch('api/v2/state', { signal: AbortSignal.timeout(1_500), cache: 'no-store' });
-    return response.ok && (response.headers.get('content-type') ?? '').includes('json');
-  } catch { return false; }
+    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) return null;
+    const state = await response.json() as { markInstrumentId?: unknown };
+    return /^hyperliquid:([A-Z0-9]+)-PERP$/.exec(String(state.markInstrumentId ?? ''))?.[1] ?? 'BTC';
+  } catch { return null; }
 }
 
 /**
  * Where the data comes from. A static host (GitHub Pages, any file server) has no server behind it, so the page reads the exchanges
  * itself in a worker. Served by the local server, the page uses that server and its recorded history instead. `?source=browser` or
- * `?source=server` chooses explicitly (`?persist=0` keeps a browser-source session from saving recordings). The server records BTC only,
+ * `?source=server` chooses explicitly (`?persist=0` keeps a browser-source session from saving recordings). A server records one coin,
  * so a page on another coin reads the exchanges itself wherever it is served from.
  */
-async function chooseSource(params: URLSearchParams, choice: CoinChoice): Promise<DataSource> {
+async function chooseSource(params: URLSearchParams, choice: CoinChoice, served: string | null): Promise<DataSource> {
   const wanted = params.get('source');
-  if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && await serverAnswers()))) return new ServerSource();
+  if (wanted === 'server' || (wanted !== 'browser' && served === choice.coin.coin)) return new ServerSource();
   return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier });
 }
 
@@ -53,6 +55,9 @@ async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   startDevice();
   const params = new URLSearchParams(location.search);
+  // A page served by a server opens on the server's coin unless the address names another.
+  const served = await serverCoin();
+  if (served && !params.has('coin')) params.set('coin', served);
   // The coin first: everything after it is built for that coin (BTC needs no list, so a BTC page does not wait for one).
   const choice = await chooseCoin(params);
   const store = new Store(forCoin(initialState(), choice.coin, choice.from));
@@ -62,7 +67,7 @@ async function main(): Promise<void> {
   installTouchSelects();
   const kernels = await loadKernels();
   keepCoinRecordings();
-  const source = await chooseSource(params, choice);
+  const source = await chooseSource(params, choice, served);
   const hub = new Hub(store, source);
   const wake = new ScreenWake(); wake.set(store.state.keepAwake);
 

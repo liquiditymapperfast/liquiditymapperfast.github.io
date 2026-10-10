@@ -15,8 +15,8 @@ interface Made { book: BookConnector; feeds: BookConnector[] }
  * Trades for the flow column, footprint and large-trade bubbles from the venues the feed manager has depth for but no trade feed
  * (Bybit, OKX, Bitget, Deribit, Coinbase) and Binance spot. The browser engine's own connectors do it: where an exchange's book socket
  * also carries its trades, that connector runs (its book is simply not read); where trades have a feed of their own (Binance spot),
- * only that feed runs. A venue is started when the server has a book for the instrument its connectors trade (they are BTC connectors:
- * a server set up for another coin has depth that their trades do not belong to) and stopped a minute after it has none.
+ * only that feed runs. A venue is started when the server has a book for the instrument its connectors trade (the venues are made for
+ * the server's coin, so their instruments are the ones its books are of) and stopped a minute after it has none.
  */
 export class FlowSources {
   readonly #running = new Map<string, { connectors: BookConnector[]; instrument: string; unwantedSince: number }>();

@@ -17,6 +17,7 @@ import { installV2, type V2Handle } from './v2/api.mts';
 import { restoreFeedSelection, saveFeedSelection } from './feed-selection-store.mts';
 import { ORDERBOOK_VENUE_MAX_SELECTED, orderbookVenueStatus } from '../core/orderbook-venue-controls.mts';
 import { FeedConfigurationRetired } from './live-feed-transport.mts';
+import { applyServerCoin, markInstrumentIdFor, serverCoin } from './v2/server-coin.mts';
 
 type ServerApp = ReturnType<typeof createLocalServer>;
 function failureFields(error: unknown): Record<string, unknown> { return error != null && typeof error === 'object' ? error as Record<string, unknown> : {}; }
@@ -28,6 +29,10 @@ process.on('unhandledRejection', reason => {
   if (reason instanceof FeedConfigurationRetired) { console.error('live feeds: a wait of a retired configuration was left unhandled (ignored)'); return; }
   throw reason;
 });
+// The coin recorded: its listings set the feed venues' symbols before the feed configuration is read.
+const recordedCoin = serverCoin();
+const recordedMark = markInstrumentIdFor(recordedCoin);
+applyServerCoin(recordedCoin);
 const live = process.env.ENABLE_LIVE_FEEDS === 'true';
 const fixtureTickMs = live ? 0 : Number(process.env.FIXTURE_TICK_MS ?? 1500);
 const liveFeedCoreConfig = { ...liveFeedConfiguration(),
@@ -86,6 +91,7 @@ let v2: V2Handle | null = null;
 let startupStage = 'history-initialization';
 try {
   app = createLocalServer({
+    host: process.env.HLM_HOST || undefined,
     fixtureTickMs,
     liveMode: live,
     activeCandleInstrumentIds,
@@ -153,7 +159,9 @@ try {
   const address = await runningApp.start();
   if (address === null || typeof address !== 'object' || typeof address.address !== 'string' || !Number.isInteger(address.port)) throw new Error('Local server did not return a valid TCP address');
   const memoryOnly = String(effectiveHistoryPath).trim() === ':memory:';
-  v2 = installV2(runningApp, { dataDir: memoryOnly ? '' : path.dirname(path.resolve(String(effectiveHistoryPath))), persist: !memoryOnly });
+  // Another coin's price comes from its Hyperliquid perpetual, as BTC's does from BTC-PERP.
+  if (recordedCoin.coin !== 'BTC') runningApp.state.markInstrumentId = recordedMark;
+  v2 = installV2(runningApp, { dataDir: memoryOnly ? '' : path.dirname(path.resolve(String(effectiveHistoryPath))), persist: !memoryOnly, coin: recordedCoin });
   startupStage = 'feed-start';
   failAtRequestedTestStage('feed-start');
   if (feeds) await feeds.start(liveFeedCoreConfig);
@@ -201,7 +209,8 @@ try {
       },
     });
     // A restart keeps the venues chosen in the dialog; the first run selects the recommended venues (HLM_DEFAULT_VENUES=all selects every supported venue, =configured keeps the flag-configured set).
-    if (feedSelectionFile) {
+    // The venue dialog's selection is planned for BTC and ETH only, so another coin keeps the venues its listings switched on.
+    if (feedSelectionFile && recordedCoin.coin === 'BTC') {
       const supported = publicOrderbookVenueCatalog().filter(venue => venue.supported).map(venue => venue.id);
       void restoreFeedSelection({ file: feedSelectionFile, markets: () => runningApp.state?.markets ?? [],
         select: async (instrumentId, venues) => {

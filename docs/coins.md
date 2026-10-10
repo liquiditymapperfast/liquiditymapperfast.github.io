@@ -38,9 +38,18 @@ Candles, open interest and the open-interest samples are converted the same way 
 
 The lists add up to about 4.5 MB (largest: Binance perpetual and Bitget spot, about 1 MB each). Every one answers a page with CORS, but the page never reads them: it reads the one list, about 76 KB (9 KB compressed).
 
-## The server: BTC only
+## The server: one coin per server
 
-The local server's feed manager serves one market per exchange, and switching its coin means restarting its feeds (about 13 s, and the path behind the dead-feeds incident). So the server stays on BTC, and a page it serves on another coin reads the exchanges itself, exactly as the public site does. What stays BTC-only: the server's 29 venues and its recordings, the HyperTracker layers, and the rejected-aggressive cue's tested scope (`docs/trapped-traders.md`).
+The local server's feed manager serves one market per exchange, and switching its coin means restarting its feeds (about 13 s, and the path behind the dead-feeds incident). So a server never switches: it records the coin it was started with, BTC unless `HL_DEFAULT_COIN` names another coin of the list (`src/server/v2/server-coin.mts`). To record several coins, run one server per coin, each with its own `PORT` and `HISTORY_DB`.
+
+For a coin other than BTC the server reads the coin's listings from the list (the data folder's copy, then the built site's, then the repository's):
+
+- the feed manager's perpetuals and Coinbase take each market's own name for the coin (`SOL_USDC-PERPETUAL` on Deribit), a market that does not list it is switched off, and a setting already given (`BYBIT_ENABLED=false`, `OKX_DEFAULT_SYMBOL=...`) is kept;
+- the connector venues are the spot markets of Binance, Bybit, OKX and Bitget that list it (the small connectors stay BTC-only), and the trades of the venues without a trade feed come from the browser engine's connectors for the same coin;
+- the recorders' floors are BTC's times the coin's scale (below), as in the browser;
+- the mark is the coin's Hyperliquid perpetual; a coin Hyperliquid lists only in thousands (`kPEPE`) is refused at start.
+
+A page the server serves opens on the server's coin and uses its recordings; a page on another coin reads the exchanges itself, exactly as the public site does. What stays BTC-only: the venue dialog's selection on the server (it is planned for BTC and ETH, `public-orderbook-selection.mts`, so another coin keeps the venues its listings switched on), the 18 small venues, the HyperTracker layers, and the rejected-aggressive cue's tested scope (`docs/trapped-traders.md`).
 
 ## Switching
 

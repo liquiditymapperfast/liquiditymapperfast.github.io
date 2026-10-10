@@ -30,5 +30,5 @@ class SqliteFootprintStore implements FootprintStore {
 
 /** The footprint recorder persisted in SQLite (`dbPath`), or kept in memory when there is none. */
 export class FootprintRecorder extends FootprintCore {
-  constructor(dbPath: string | null = null, now: () => number = Date.now) { super(dbPath ? new SqliteFootprintStore(dbPath) : null, now); }
+  constructor(dbPath: string | null = null, now: () => number = Date.now, retentionMs?: number, sizeScale?: number) { super(dbPath ? new SqliteFootprintStore(dbPath) : null, now, retentionMs, sizeScale); }
 }

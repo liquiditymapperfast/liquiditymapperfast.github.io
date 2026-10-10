@@ -69,5 +69,5 @@ class SqliteAbsorptionStore implements AbsorptionStore {
 
 /** The absorption recorder persisted in SQLite (`dbPath`), or kept in memory when there is none. */
 export class AbsorptionRecorder extends AbsorptionCore {
-  constructor(dbPath: string | null = null, now: () => number = Date.now) { super(dbPath ? new SqliteAbsorptionStore(dbPath) : null, now); }
+  constructor(dbPath: string | null = null, now: () => number = Date.now, options?: { floorUsd?: number }) { super(dbPath ? new SqliteAbsorptionStore(dbPath) : null, now, options); }
 }
