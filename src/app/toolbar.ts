@@ -138,7 +138,7 @@ export class Toolbar {
   /** Go to a date and time (the map's corner, beside Select; G). */
   #goto = el('button', { type: 'button', class: 'map-goto', textContent: t('Go to'), tip: t('Go to a date and time (keyboard: G)'), onclick: () => this.openGoTo() });
   /** What Go to moves and reads (set by main). */
-  goTo: { centre(): number; earliest(): { depth: number | null; candles: number | null }; go(t: number): void; live(): void } | null = null;
+  goTo: { centre(): number; earliest(): { depth: number | null; candles: number | null }; go(t: number): void; live(): void; replay(t: number): void } | null = null;
   /** The Range button, which its panel opens beside. */
   get rangeButton(): HTMLElement { return this.#range; }
   /** The show/hide buttons of the panes, in the order of `PANE_TOGGLES`. */
@@ -324,7 +324,16 @@ export class Toolbar {
         panel?.render(build);
       };
       input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
-      body.append(el('div', { class: 'goto-row' }, input, button(t('Go'), go, t('Centre the map on this moment'))));
+      // Replay from the moment chosen: the same clamp as Go, and nothing to replay from now or later.
+      const replay = (): void => {
+        const asked = parseDateTime(input.value, zone);
+        if (asked === null) { message = t('Choose a date and a time.'); panel?.render(build); return; }
+        const { depth, candles } = host.earliest(), earliest = [depth, candles].filter((v): v is number => v !== null).reduce<number | null>((a, b) => a === null ? b : Math.min(a, b), null);
+        const where = clampGoTo(asked, earliest, Date.now());
+        if (where.clamped === 'live') { message = t('That is still to come: there is nothing to replay yet.'); panel?.render(build); return; }
+        host.replay(where.t); panel?.close();
+      };
+      body.append(el('div', { class: 'goto-row' }, input, button(t('Go'), go, t('Centre the map on this moment')), button(t('Replay from here'), replay, t('Play what was recorded back from this moment, as if it were live'))));
       if (message) body.append(el('p', { class: 'panel-note goto-message', textContent: message }));
       const { depth, candles } = host.earliest();
       body.append(note([depth !== null ? t('Depth is recorded from {time}.', { time: clock(depth, true) }) : '', candles !== null ? t('Candles at this timeframe reach back to {time}.', { time: clock(candles, true) }) : ''].filter(Boolean).join(' ')));

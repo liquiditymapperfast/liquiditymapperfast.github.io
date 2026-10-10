@@ -24,6 +24,7 @@ import { t, tn } from '../i18n.ts';
 import { scaledUsd, unscaledUsd } from '../coin.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import type { RangeTool } from '../range/tool.ts';
+import { pageNow, replaying } from '../replay/clock.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -143,7 +144,7 @@ export abstract class TimePane {
   #prepare(): void {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.#grid(); this.draw(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.#grid(); this.draw(); this.#replayMask(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -173,6 +174,12 @@ export abstract class TimePane {
   /** Where the readout stands when it is not under the pointer (past the newest point it shows the newest): the cursor is drawn there. Set by `draw`. */
   protected cursorT: number | null = null;
   protected abstract draw(): void;
+  /** Replay: what came after its moment is not shown, as on the map. */
+  #replayMask(): void {
+    if (!replaying()) return;
+    const x = Math.max(0, Math.min(this.plotW, this.view.xOf(pageNow(), this.plotW)));
+    if (x < this.plotW) { this.ctx.fillStyle = this.palette.bg; this.ctx.fillRect(x, 0, this.plotW - x, this.h); }
+  }
   /** The pane was asked to draw but cannot (it is hidden, or has no size): let go of anything it put outside its canvas. A pin it holds is released first (and only its own, so a pin on another pane stays), or the card would come back at the same spot the next time the tab is shown. */
   protected undrawn(): void {}
 }
@@ -313,7 +320,8 @@ export class OiPane extends TimePane {
   protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state: AppState = this.store.state;
-    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = state.oi, highlight = state.highlight;
+    // Replay: the bar under way at its moment would carry what came after; only bars that ended by then.
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, oi = replaying() ? state.oi.filter(b => b[0] + tf <= pageNow()) : state.oi, highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
     const say = (html: string): void => setHtml(readout, html);
     if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
@@ -588,7 +596,8 @@ export class BarStatsPane extends TimePane {
     const readout = this.head.querySelector('.readout');
     setText(readout, tn(defs.length, '{n} stat · cvd sums the bars loaded for the view', '{n} stats · cvd sums the bars loaded for the view'));
     if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use Stats to add some.'), 12, ph / 2); return; }
-    const data = this.heat.footprintData, all = [...data.bars.values()].sort((a, b) => a.t - b.t);
+    // Replay: only the candles that ended by its moment (a candle under way would carry its future executions).
+    const data = this.heat.footprintData, until = replaying() ? pageNow() : Infinity, all = [...data.bars.values()].filter(b => b.t + tfMs <= until).sort((a, b) => a.t - b.t);
     if (!all.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Bar stats appear once the footprint has executions for the visible candles.'), 12, ph / 2); return; }
     const input = { bars: all, step: data.step, options, candles: new Map(state.candles.map(c => [c[0], c] as const)), oi: new Map(state.oi.map(b => [b[0], b] as const)) };
     const slot = pw * tfMs / (v.t1 - v.t0), top = 3, rowH = Math.max(15, (ph - 6) / defs.length), filled = options.cells === 'filled';

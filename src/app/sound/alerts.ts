@@ -16,6 +16,7 @@ import { TIMEFRAMES } from '../../shared/series.ts';
 import { t } from '../i18n.ts';
 import { scaledUsd } from '../coin.ts';
 import { usd } from '../format.ts';
+import { replaying } from '../replay/clock.ts';
 
 export type AlertPanel = 'flow' | 'bars' | 'book' | 'depth' | 'oi';
 /** What was decided for one alert: kept for the panel's "recent" list and for the harness; audible is false when the engine was locked or muted. */
@@ -68,6 +69,7 @@ export class Alerts {
 
   /** One look at everything (every second); `now` is the clock, so a test steps it. */
   tick(now: number): void {
+    if (replaying()) return;
     this.#flow(now); this.#book(now); this.#bars(now); this.#oi(now);
   }
 

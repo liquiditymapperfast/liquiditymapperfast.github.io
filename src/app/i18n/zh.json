@@ -1127,5 +1127,19 @@
  "No open interest for this market.": "此市场没有未平仓量。",
  "No change of open interest is held for these candles yet.": "这些 K 线尚无未平仓量变化。",
  "side by price where no flow is recorded": "无资金流记录处按价格判断方向",
- "NL/NS (in Show) estimates who opened and closed positions: each candle's change of open interest of the OI pane's market, given to the side that traded at market there (its taker delta, or the way its price went where its flow is not recorded). Up with buyers: new longs; up with sellers: new shorts; down with sellers: longs closed; down with buyers: shorts closed. Bars are solid where positions were opened and hollow where they were closed, and the line is their running sum, restarting where the CVD does. Every position has a long and a short holder, so this is an estimate, in coins and for that one market; it has not been tested as a signal.": "NL/NS（在“显示”中）估算谁开仓、谁平仓：OI 窗格所在市场中每根 K 线的未平仓量变化，归给在那里以市价成交的一方（其主动成交 delta；无资金流记录处按其价格方向）。随买方上升：新开多头；随卖方上升：新开空头；随卖方下降：多头平仓；随买方下降：空头平仓。开仓处的柱为实心，平仓处为空心，线是其累计和，在 CVD 重新开始处重新开始。每个仓位都有多头和空头持有者，所以这只是估算，以币计，且只针对该市场；未作为信号检验过。"
+ "NL/NS (in Show) estimates who opened and closed positions: each candle's change of open interest of the OI pane's market, given to the side that traded at market there (its taker delta, or the way its price went where its flow is not recorded). Up with buyers: new longs; up with sellers: new shorts; down with sellers: longs closed; down with buyers: shorts closed. Bars are solid where positions were opened and hollow where they were closed, and the line is their running sum, restarting where the CVD does. Every position has a long and a short holder, so this is an estimate, in coins and for that one market; it has not been tested as a signal.": "NL/NS（在“显示”中）估算谁开仓、谁平仓：OI 窗格所在市场中每根 K 线的未平仓量变化，归给在那里以市价成交的一方（其主动成交 delta；无资金流记录处按其价格方向）。随买方上升：新开多头；随卖方上升：新开空头；随卖方下降：多头平仓；随买方下降：空头平仓。开仓处的柱为实心，平仓处为空心，线是其累计和，在 CVD 重新开始处重新开始。每个仓位都有多头和空头持有者，所以这只是估算，以币计，且只针对该市场；未作为信号检验过。",
+ "Replay": "回放",
+ "Play what was recorded back as if it were live, from a moment you choose in Go to.": "从“跳转”中选择的时刻起，像实时一样回放所记录的内容。",
+ "Replay starts from a moment you choose in Go to (Replay from here) and moves on at the speed chosen: the map, its candles, the trades, the panes under it and the flow column show what was known then, and what came after is covered. Live goes back to now; a replay that catches up goes back on its own.": "回放从你在“跳转”中选择的时刻（从这里回放）开始，并按所选速度前进：地图、其 K 线、成交、下方窗格和资金流列显示当时已知的内容，之后的内容被遮盖。“实时”返回当前；追上当前的回放会自动返回。",
+ "What it cannot show: the order book (recorded a minute at a time as the map's columns, not as a ladder), the profile column, and the dot rows above the flow column. The candle under way is rebuilt from the recorded price a second, exact within the last day and a minute at a time before; the footprint, the bar statistics and the open interest of a candle are shown once it has ended. Candles reach back as far as the chart holds them (its last 500), the map as far as depth is recorded. Sounds and alerts are silent.": "无法显示的内容：订单簿（以地图的列每分钟记录一次，而非阶梯）、分布列，以及资金流列上方的点状行。进行中的 K 线由记录的每秒价格重建：最近一天内精确，更早则按分钟；一根 K 线的足迹、柱状统计和未平仓量在其结束后才显示。K 线可回溯到图表所保存的范围（最近 500 根），地图可回溯到有深度记录的时刻。声音与提醒静音。",
+ "Replay: the order book is live only.": "回放：订单簿只有实时。",
+ "Pause": "暂停",
+ "Play": "播放",
+ "Speed": "速度",
+ "Live": "实时",
+ "Leave the replay and go back to now": "退出回放并返回当前",
+ "The replay caught up with now: live again.": "回放已追上当前：已恢复实时。",
+ "That is still to come: there is nothing to replay yet.": "那还没到：还没有可回放的内容。",
+ "Replay from here": "从这里回放",
+ "Play what was recorded back from this moment, as if it were live": "从此时刻起像实时一样回放记录"
 }

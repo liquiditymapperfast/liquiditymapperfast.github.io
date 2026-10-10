@@ -8,6 +8,7 @@ import type { Hub } from '../hub.ts';
 import type { Print } from '../prints.ts';
 import type { SizesAnswer } from '../../shared/footprint.ts';
 import { GEOMETRY, askedWindows, buildStrip, coverageNote, flashBands, ledRow, percent, rankMinutes, rowAt, rowLines, sizeBands, stripHeight, weightDots, weightText, type Led, type StripData, type StripRow } from '../cvd/strip.ts';
+import { replaying } from '../replay/clock.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 const FONT = `9px ${SANS}`, FONT_BOLD = `600 9px ${SANS}`;
@@ -73,7 +74,8 @@ export class CvdStrip {
   refresh(): void {
     const s = this.store.state, c = s.cvd;
     // A phone's flow pane is half the map's height and has no room for 130 px of dots above its rows: the strip is for the desktop arrangement (a tablet held sideways has it).
-    this.root.hidden = !c.strip || isPhone();
+    // Replay: the sizes are counted on the server's clock, the flow rows end now: neither is the replay's moment.
+    this.root.hidden = !c.strip || isPhone() || replaying();
     if (this.root.hidden) { this.#card.hide(); return; }
     const windows = askedWindows(rankMinutes(c)), key = this.#key(windows);
     this.#ask(windows, key);

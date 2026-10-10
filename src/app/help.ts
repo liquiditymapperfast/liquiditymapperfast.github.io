@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'barStats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane' | 'replay';
 
 export interface HelpTopic {
   title: string;
@@ -43,6 +43,12 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('PDH and PDL are the previous day\'s high and low and PDM the middle of the two; DO is where the day opened, and DH and DL how high and low it has traded so far. W and M stand for the week and the month. A day starts at midnight in the zone you choose (the Volume profile\'s), a week on Monday and a month on the 1st.'),
       t('They come from one market\'s hourly candles, read from the exchange: the market on the chart where the page can read its history, else another market of the coin, named in the panel. The hour under way follows the chart\'s own candles. They reach back about two months.'),
       t('A previous high, low or middle that the next period never traded through stays on, dotted, until price reaches it.')],
+  },
+  replay: {
+    title: t('Replay'), guide: 'heatmap',
+    tip: t('Play what was recorded back as if it were live, from a moment you choose in Go to.'),
+    body: [t('Replay starts from a moment you choose in Go to (Replay from here) and moves on at the speed chosen: the map, its candles, the trades, the panes under it and the flow column show what was known then, and what came after is covered. Live goes back to now; a replay that catches up goes back on its own.'),
+      t('What it cannot show: the order book (recorded a minute at a time as the map\'s columns, not as a ladder), the profile column, and the dot rows above the flow column. The candle under way is rebuilt from the recorded price a second, exact within the last day and a minute at a time before; the footprint, the bar statistics and the open interest of a candle are shown once it has ended. Candles reach back as far as the chart holds them (its last 500), the map as far as depth is recorded. Sounds and alerts are silent.')],
   },
   vwap: {
     title: t('VWAP'), guide: 'profile',

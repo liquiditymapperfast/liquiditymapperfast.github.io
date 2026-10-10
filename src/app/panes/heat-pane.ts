@@ -48,6 +48,7 @@ import { draftLabel } from '../range/stats.ts';
 import type { RangePoint, RangeTool } from '../range/tool.ts';
 import { paintDivergence, type Divergence } from '../delta/divergence.ts';
 import { countdown, lineSide } from '../price-line.ts';
+import { candlesAt, formingCandle, pageNow, replaying } from '../replay/clock.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -273,7 +274,7 @@ export class HeatPane {
     for (const c of recent) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
     if (!(hi > lo)) { const p = mark.price || 1; lo = p * 0.99; hi = p * 1.01; }
     const pad = (hi - lo) * 0.18;
-    const now = Date.now();
+    const now = pageNow();
     let span = tf * Math.max(40, Math.min(110, recent.length || 80));
     // With little recorded depth, frame the recorded window so the heatmap is visible rather than a sliver.
     const since = this.hub.recordedSince;
@@ -289,8 +290,8 @@ export class HeatPane {
     const pw = this.plotW, v = this.view, state = this.store.state;
     if (!(pw > 0) || !(v.t1 > v.t0)) return;
     const factor = limitFactor(Math.exp(-dir * 0.25), v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);
-    v.zoomTime(factor, holdPixel({ axis: 'time', pointer: pw / 2, size: pw, alt: false, follow: state.followLive, mark: state.mark.price, markPixel: 0, nowPixel: v.xOf(Date.now(), pw) }), pw);
-    this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+    v.zoomTime(factor, holdPixel({ axis: 'time', pointer: pw / 2, size: pw, alt: false, follow: state.followLive, mark: state.mark.price, markPixel: 0, nowPixel: v.xOf(pageNow(), pw) }), pw);
+    this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   #onRaster(result: RasterResult): void {
@@ -347,23 +348,52 @@ export class HeatPane {
     if (document.visibilityState === 'visible' && this.store.state.show.candles && performance.now() - this.#lastRender > 900) this.invalidate();
   }
 
+  /** Replay: its moment becomes the map's live edge (at the span the map has), followed as it moves on. */
+  placeAt(t: number): void {
+    const v = this.view, span = v.t1 - v.t0, margin = span * 0.08;
+    let lo = Infinity, hi = -Infinity;
+    for (const c of this.store.state.candles) if (c[0] + 1 > t - span && c[0] < t) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
+    const pad = (hi - lo) * 0.18;
+    v.set({ t0: t + margin - span, t1: t + margin, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
+    this.#liveMargin = margin; this.store.set({ followLive: true }); this.#rasteredKey = ''; this.#atCandles = null; this.onView(); this.invalidate();
+  }
+
   goTo(t: number): void {
     const v = this.view, span = v.t1 - v.t0, t0 = t - span / 2, t1 = t + span / 2;
     let lo = Infinity, hi = -Infinity;
     for (const c of this.store.state.candles) if (c[0] + 1 > t0 && c[0] < t1) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
     const pad = (hi - lo) * 0.18;
     v.set({ t0, t1, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
-    this.store.set({ followLive: false }); this.#liveMargin = v.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+    this.store.set({ followLive: false }); this.#liveMargin = v.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
+  /** While replaying, the candles as they were at its moment (the one under way rebuilt from the recorded price a second), kept per second. */
+  #atCandles: { key: string; src: readonly CandleRow[]; rows: CandleRow[] } | null = null;
+  #shownCandles(state: AppState): readonly CandleRow[] {
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, at = pageNow(), key = `${tf}|${Math.floor(at / 1000)}`;
+    if (this.#atCandles?.key === key && this.#atCandles.src === state.candles) return this.#atCandles.rows;
+    const track = this.hub.flow.track(state.seriesInstrument || state.marketId), start = Math.floor(at / tf) * tf;
+    const rows = candlesAt(state.candles, tf, at, track ? formingCandle(track, start, at) : null);
+    this.#atCandles = { key, src: state.candles, rows };
+    return rows;
+  }
+
+  /** The state as the map draws it: while replaying, the candles as they were at its moment and the price then. */
+  #displayState(): AppState {
+    const state = this.store.state;
+    if (!replaying()) return state;
+    const candles = this.#shownCandles(state) as CandleRow[], last = candles[candles.length - 1];
+    return { ...state, candles, mark: { price: last ? last[4] : 0, asOf: pageNow() } };
   }
 
   #render(): void {
     this.#lastRender = performance.now();
     this.#dirty = false;
-    const state = this.store.state;
+    const state = this.#displayState();
     if (this.#w <= 1 || this.#h <= 1) return;
     if (!(this.view.t1 > this.view.t0) && (state.candles.length || state.mark.price)) this.fit();
     if (state.followLive && this.view.t1 > this.view.t0) {
-      const shift = Date.now() + this.#liveMargin - this.view.t1;
+      const shift = pageNow() + this.#liveMargin - this.view.t1;
       if (Math.abs(shift) > 0) { this.view.t0 += shift; this.view.t1 += shift; }
       const mark = state.mark.price, { p0, p1 } = this.view, span = p1 - p0;
       if (mark && (mark < p0 + span * 0.1 || mark > p1 - span * 0.1)) { const mid = mark - span / 2; this.view.p0 = mid; this.view.p1 = mid + span; this.#rasteredKey = ''; }
@@ -439,9 +469,9 @@ export class HeatPane {
       // Zones and naked points of control only while the footprint itself shows, faded with it: zoomed out, its data is still loaded.
       if ((fp.zones || fp.nakedPoc) && this.#lodFrame.barAlpha > 0.05 && state.seriesInstrument === state.marketId) {
         const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-        paintRuns(ctx, this.#footprintRuns.get(this.#footprintMarks.key, marks, state.candles, tfMs, this.#footprint.step, Date.now(), { zones: fp.zones, pocs: fp.nakedPoc }), v, pw, ph, p, this.#lodFrame.barAlpha);
+        paintRuns(ctx, this.#footprintRuns.get(this.#footprintMarks.key, marks, state.candles, tfMs, this.#footprint.step, pageNow(), { zones: fp.zones, pocs: fp.nakedPoc }), v, pw, ph, p, this.#lodFrame.barAlpha);
       }
-      paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks(), { marks, settings: fp });
+      paintFootprint(ctx, this.#footprint, this.#lodFrame, state.timeframe, v, pw, ph, p, this.#trapMarks(), { marks, settings: fp, ...(replaying() ? { until: pageNow() } : {}) });
     }
     this.#startPulse();
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
@@ -450,8 +480,14 @@ export class HeatPane {
     this.#paintLiquidations(ctx, state, pw, ph); // above the bubbles: a forced order is one of the market orders, marked as forced
     this.#paintAbsorption(ctx, state, pw, ph);
     this.#paintValueLines(ctx, state, pw, ph);
-    this.#keyTags = state.keyLevels.on ? paintKeyLevels(ctx, this.#keyLevelLines(state), v, pw, ph, p, state.keyLevels, Date.now(), this.#keyLevelContext(state).zone) : [];
+    this.#keyTags = state.keyLevels.on ? paintKeyLevels(ctx, this.#keyLevelLines(state), v, pw, ph, p, state.keyLevels, pageNow(), this.#keyLevelContext(state).zone) : [];
     this.#vwapTags = state.vwap.on ? paintVwap(ctx, this.#vwapLines(state), v, pw, ph, p, state.vwap) : [];
+    // Replay: nothing after its moment is shown (the heatmap under this canvas included), and a line marks it.
+    if (replaying()) {
+      const x = Math.max(0, Math.min(pw, v.xOf(pageNow(), pw)));
+      if (x < pw) { ctx.fillStyle = p.bg; ctx.fillRect(x, 0, pw - x, ph); }
+      ctx.strokeStyle = p.text; ctx.globalAlpha = 0.6; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, ph); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
     // The price line, in the colour of the candle under way (rising or falling), as is its tag on the axis.
     const mark = state.mark.price, side = lineSide(state.candles, state.seriesInstrument, state.marketId);
     const markColor = side === 'up' ? p.candleUp : side === 'down' ? p.candleDown : p.ask;
@@ -460,7 +496,8 @@ export class HeatPane {
       if (y >= 0 && y <= ph) { ctx.strokeStyle = markColor; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
     }
     // profile column, traded-volume column and price axis
-    if (state.show.profile) this.#paintProfile(ctx, state, pw, ph);
+    // The profile column is the book as it is now: not shown in replay, which has no book of its moment.
+    if (state.show.profile && !replaying()) this.#paintProfile(ctx, state, pw, ph);
     if (tradedShown(state)) this.#paintTraded(ctx, state, pw, ph);
     const axisX = w - AXIS_W;
     ctx.fillStyle = p.panel; ctx.fillRect(axisX, 0, AXIS_W, h);
@@ -468,7 +505,7 @@ export class HeatPane {
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     // The countdown to the candle's close sits under the price tag (above it at the foot of the axis), inside the band kept clear of other tags.
     const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    const clockText = mark > 0 && state.show.candles && !isPhone() ? countdown(Date.now(), tf) : null, clockBelow = markY + 9 + COUNTDOWN_H <= ph;
+    const clockText = mark > 0 && state.show.candles && !isPhone() ? countdown(pageNow(), tf) : null, clockBelow = markY + 9 + COUNTDOWN_H <= ph;
     const band = { y0: markY - 9 - (clockText && !clockBelow ? COUNTDOWN_H : 0), y1: markY + 9 + (clockText && clockBelow ? COUNTDOWN_H : 0) };
     const keyTags = placeKeyTags([...this.#keyTags, ...this.#vwapTags], mark > 0 ? [band] : [], ph);
     for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
@@ -589,7 +626,7 @@ export class HeatPane {
    * old recording, never gets it.
    */
   #placeholder(): { boundary: number; sample: number; rgb: [number, number, number] } | null {
-    const since = this.hub.recordedSince, v = this.view, now = Date.now();
+    const since = this.hub.recordedSince, v = this.view, now = pageNow();
     if (!(since > v.t0) || since >= v.t1 || now - since > PLACEHOLDER_MAX_AGE_MS || v.t1 < now - 60_000) return null;
     // The column to copy is the current minute's: it holds every venue's book as it is now, where the first minute may hold only the venues that had connected by then.
     return { boundary: since, sample: Math.max(since + 15_000, Math.floor(now / 60_000) * 60_000 + 15_000), rgb: rgb(this.#palette.muted) };
@@ -798,7 +835,7 @@ export class HeatPane {
   /** The window the traded column adds up: the whole minutes on the map, up to the one that is open. */
   #tradedWindow(): { from: number; to: number } {
     const v = this.view, MIN = 60_000;
-    return { from: Math.floor(v.t0 / MIN) * MIN, to: Math.min(Math.ceil(v.t1 / MIN), Math.floor(Date.now() / MIN) + 1) * MIN };
+    return { from: Math.floor(v.t0 / MIN) * MIN, to: Math.min(Math.ceil(v.t1 / MIN), Math.floor(pageNow() / MIN) + 1) * MIN };
   }
   /** The map's grid step at the current price. */
   #gridStep(): number { const m = this.store.state.mark.price; return gridStepFor(m > 0 ? m : Math.max(1e-9, (this.view.p0 + this.view.p1) / 2)); }
@@ -830,7 +867,7 @@ export class HeatPane {
    * period boundaries (again when the market, the coin, a zone or the day changes: a zone can move by half an hour for daylight saving).
    */
   #keyLevelContext(state: AppState): { target: HistoryTarget | null; zone: string; barMs: number } {
-    const coin = currentCoin(), now = Date.now(), key = `${state.marketId}|${coin.coin}|${state.traded.zone}|${state.timeZone}|${Math.floor(now / 86_400_000)}`;
+    const coin = currentCoin(), now = pageNow(), key = `${state.marketId}|${coin.coin}|${state.traded.zone}|${state.timeZone}|${Math.floor(now / 86_400_000)}`;
     if (this.#keyContext?.key !== key) {
       const zone = resolveZone(state.traded.zone, state.timeZone);
       this.#keyContext = { key, target: historyTarget(state.marketId, coin), zone, barMs: barMsFor(zone, now - MAX_BACK_MS, now) };
@@ -843,7 +880,7 @@ export class HeatPane {
    * the clock's minute change.
    */
   #vwapPlan(state: AppState): { sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number> } {
-    const s = state.vwap, v = this.view, now = Date.now(), MIN = 60_000, HOUR = 3_600_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
+    const s = state.vwap, v = this.view, now = pageNow(), MIN = 60_000, HOUR = 3_600_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
     const key = `${JSON.stringify(s)}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
     if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
     // The whale VWAP follows the same sessions, so they are worked out for either.
@@ -887,7 +924,7 @@ export class HeatPane {
     const w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}` : '';
     const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}`;
     if (this.#vwapDrawn?.key === key) return this.#vwapDrawn.lines;
-    const lines: VwapLine[] = [], now = Date.now();
+    const lines: VwapLine[] = [], now = pageNow();
     const sessionBars = plan.sessions.length ? this.#vwapBars(state, plan.sessionBar, target) : null;
     const heldFrom = (bar: number): number => this.hub.vwapHistory(bar).heldFrom;
     if (sessionBars && s.session) for (const w of plan.sessions) {
@@ -913,12 +950,14 @@ export class HeatPane {
       if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}` });
     });
     this.#vwapDrawn = { key, lines };
+    // Replay: each line up to the last bar that ended by its moment (so its tag is the VWAP then).
+    if (replaying()) return lines.map(l => { const step = l.points.length > 1 ? l.points[1]!.t - l.points[0]!.t : 60_000; return { ...l, points: l.points.filter(q => q.t + step <= now) }; });
     return lines;
   }
 
   /** Ask for the hourly candles the key levels need for this view (how far back is worked out again only when the view's hour changes). */
   #ensureKeyLevels(state: AppState): void {
-    const { target, zone, barMs } = this.#keyLevelContext(state), s = state.keyLevels, HOUR = 3_600_000, now = Date.now();
+    const { target, zone, barMs } = this.#keyLevelContext(state), s = state.keyLevels, HOUR = 3_600_000, now = pageNow();
     const key = `${zone}|${s.day.prev}${s.day.mid}${s.day.open}${s.day.sofar}|${s.week.prev}${s.week.mid}${s.week.open}${s.week.sofar}|${s.month.prev}${s.month.mid}${s.month.open}${s.month.sofar}|${Math.floor(this.view.t0 / HOUR)}|${Math.floor(now / HOUR)}`;
     if (this.#keyFrom?.key !== key) this.#keyFrom = { key, from: neededFrom(s, zone, this.view.t0, now) };
     this.hub.keyHistory.ensure(target, this.#keyFrom.from, barMs, () => this.invalidate());
@@ -929,25 +968,28 @@ export class HeatPane {
    * the candles, the settings, the view's hour or the clock's minute change, never for a frame that only moves the pointer.
    */
   #keyLevelLines(state: AppState): KeyLine[] {
-    const s = state.keyLevels, h = this.hub.keyHistory, v = this.view, now = Date.now(), MIN = 60_000, HOUR = 3_600_000;
+    const s = state.keyLevels, h = this.hub.keyHistory, v = this.view, now = pageNow(), MIN = 60_000, HOUR = 3_600_000;
     if (!s.on || !anyLine(s) || !h.bars.length) return [];
     const { target, zone, barMs } = this.#keyLevelContext(state);
     if (!target || target.id !== h.id || barMs !== h.barMs) return [];
-    const held = h.bars, lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? HOUR;
+    // Replay: only the bars closed by its moment (a bar under way carries its future high and low).
+    const held = replaying() ? h.bars.filter(b => b[0] + h.barMs <= now) : h.bars;
+    if (!held.length) return [];
+    const lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? HOUR;
     const live = target.own && state.seriesInstrument === state.marketId && tf <= barMs ? state.candles.filter(c => c[0] >= lastStart) : [];
     const tail = live[live.length - 1];
     const key = `${h.id}|${h.version}|${JSON.stringify(s)}|${zone}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}|${live.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}` : ''}`;
     if (this.#keyLines?.key !== key) {
       const bars = live.length ? [...held, ...live].sort((a, b) => a[0] - b[0]) : held;
       // The chart's own candles run on from the last bar to now, so they carry what is known up to now.
-      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched, heldFrom: h.heldFrom, heldTo: live.length ? now : h.heldTo }) };
+      this.#keyLines = { key, lines: keyLines(bars, s, { zone, t0: v.t0, t1: v.t1, now, untouched: s.untouched, heldFrom: h.heldFrom, heldTo: live.length ? now : replaying() ? Math.min(h.heldTo ?? now, now) : h.heldTo }) };
     }
     return this.#keyLines.lines;
   }
 
   /** The days, weeks or sessions the lines are drawn for (worked out again when the settings, the view's minutes or the clock's minute change). */
   #linesWindows(state: AppState): ProfileWindow[] {
-    const v = this.view, MIN = 60_000, s = state.traded, now = Date.now();
+    const v = this.view, MIN = 60_000, s = state.traded, now = pageNow();
     const key = `${s.period}|${s.zone}|${s.count}|${JSON.stringify(s.sessions)}|${state.timeZone}|${Math.floor(v.t0 / MIN)}|${Math.ceil(v.t1 / MIN)}|${Math.floor(now / MIN)}`;
     if (this.#vaWindows?.key !== key) this.#vaWindows = { key, windows: linesWindows(s, state.timeZone, v.t0, v.t1, now) };
     return this.#vaWindows.windows;
@@ -969,7 +1011,7 @@ export class HeatPane {
   #paintValueLines(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const s = state.traded;
     if (!state.show.traded || (!s.poc && !s.va)) return;
-    const v = this.view, p = this.#palette, now = Date.now(), step = this.#levelStep();
+    const v = this.view, p = this.#palette, now = pageNow(), step = this.#levelStep();
     const segments: { x0: number; x1: number; levels: ValueLevels; faint: boolean; name: string; naked: number | null }[] = [];
     if (s.period === 'view') {
       const levels = this.#viewLevels();
@@ -1554,7 +1596,7 @@ export class HeatPane {
     const pw = this.plotW, ph = this.plotH, kind = this.#panKind;
     if (kind === 'map') {
       this.view.pan(d.x, d.y, pw, ph);
-      this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+      this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
       return;
     }
     const z = this.#axisDrag; if (!z) return;
@@ -1568,7 +1610,7 @@ export class HeatPane {
       const mid = (v0.t0 + v0.t1) / 2, span = Math.max(30_000, (v0.t1 - v0.t0) * Math.exp(-z.x * 0.006));
       this.view.set({ ...v0, t0: mid - span / 2, t1: mid + span / 2 });
     }
-    this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+    this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   #pinchBegin(info: PinchInfo): void {
@@ -1589,7 +1631,7 @@ export class HeatPane {
     this.view.set({ t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 });
     // Moving the two fingers together is a pan as well: after a real move the view no longer follows the live edge on its own.
     if (Math.hypot(info.mid.x - info.startMid.x, info.mid.y - info.startMid.y) > 12 && this.store.state.followLive) this.store.set({ followLive: false });
-    this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+    this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   /** Carry on panning after the finger lifts, slowing to a stop (about a quarter of a second per e-fold of speed). */
@@ -1600,7 +1642,7 @@ export class HeatPane {
     const step = (now: number): void => {
       const dt = Math.min(48, now - last); last = now;
       this.view.pan(vx * dt, vy * dt, this.plotW, this.plotH);
-      this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+      this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
       const decay = Math.exp(-dt / 260); vx *= decay; vy *= decay;
       this.#fling = Math.hypot(vx, vy) < 0.02 || document.hidden ? 0 : requestAnimationFrame(step);
     };
@@ -1627,7 +1669,7 @@ export class HeatPane {
   #bindInput(): void {
     const el = this.overlay;
     const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-    const touched = () => { this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate(); };
+    const touched = () => { this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate(); };
     // The wheel on the chart zooms time and on the price scale zooms price (Shift swaps them). Each holds still what is being watched: the
     // current price, or the live edge while the map follows the market, so the map swells and shrinks around it instead of sliding.
     el.addEventListener('wheel', e => {
@@ -1641,9 +1683,9 @@ export class HeatPane {
         v.zoomPrice(factor, holdPixel({ axis, pointer: y, size: ph, alt: e.altKey, follow: state.followLive, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }), ph);
       } else {
         const factor = limitFactor(raw, v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);
-        v.zoomTime(factor, holdPixel({ axis, pointer: x, size: pw, alt: e.altKey, follow: state.followLive, mark, markPixel: 0, nowPixel: v.xOf(Date.now(), pw) }), pw);
+        v.zoomTime(factor, holdPixel({ axis, pointer: x, size: pw, alt: e.altKey, follow: state.followLive, mark, markPixel: 0, nowPixel: v.xOf(pageNow(), pw) }), pw);
       }
-      this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+      this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
     }, { passive: false });
     el.addEventListener('contextmenu', e => e.preventDefault());
     el.addEventListener('pointerdown', e => {
@@ -1696,7 +1738,7 @@ export class HeatPane {
         const tSpan = Math.max(30_000, (v0.t1 - v0.t0) * fx), pSpan = Math.max((v0.p1 - v0.p0) * fy, this.#priceRef(this.store.state.mark.price) * PRICE_SPAN_SHARE.min);
         const t0 = tAnchor - Math.min(z.x, pw) / pw * tSpan, p1 = pAnchor + Math.min(z.y, ph) / ph * pSpan;
         this.view.set({ t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 });
-        this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+        this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
         return;
       }
       if (this.#drag) {

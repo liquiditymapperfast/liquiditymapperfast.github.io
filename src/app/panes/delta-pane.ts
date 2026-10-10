@@ -18,6 +18,7 @@ import { PIVOTS, type DeltaSettings } from '../delta/settings.ts';
 import { divergences, inView, paintDivergence, type Divergence } from '../delta/divergence.ts';
 import { coinText, nlnsCandles, nlnsCardLines, oiDeltas, type NlnsCandle } from '../delta/nlns.ts';
 import { venueLabel } from '../venues.ts';
+import { pageNow, replaying } from '../replay/clock.ts';
 
 const HISTORY_CAP_MS = 24 * 3_600_000, MINUTES_FROM_MS = 6 * 3_600_000;
 const signed = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
@@ -113,7 +114,7 @@ export class DeltaPane extends TimePane {
     const v = this.view, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow;
     const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
     if (!starts.length) return { candles: [], starts, earliest: null };
-    this.#ensure(flowLoadIds(state, flow.ids), starts[0]!, now);
+    this.#ensure(flowLoadIds(state, flow.ids), starts[0]!, Date.now());
     const ids = aggregateIds(flow, flowIds(state, flow.ids), id => kindOf(state.markets, id));
     const tracks = ids.flatMap(id => { const track = flow.track(id); return track ? [track] : []; });
     let earliest: number | null = null;
@@ -135,11 +136,12 @@ export class DeltaPane extends TimePane {
     const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
     let candles: NlnsCandle[] = [];
     if (oiInst && state.oi.length && starts.length) {
-      this.#ensure([oiInst], starts[0]!, now);
+      this.#ensure([oiInst], starts[0]!, Date.now());
       const track = flow.track(oiInst), tracks = track ? [track] : [];
       const flows = tracks.length ? unrecorded(starts, this.#oiCache.get(`${oiInst}|${tf}|${flow.loads}`, tracks, starts, tf, now), tf, now) : starts.map(() => null);
       const way = new Map(state.candles.map(c => [c[0], Math.sign(c[4] - c[1])]));
-      candles = nlnsCandles(starts, oiDeltas(state.oi, starts, tf), flows, starts.map(t0 => way.get(t0) ?? 0), resetKeys(starts, s.reset, zone));
+      const oi = replaying() ? state.oi.filter(b => b[0] + tf <= now) : state.oi;
+      candles = nlnsCandles(starts, oiDeltas(oi, starts, tf), flows, starts.map(t0 => way.get(t0) ?? 0), resetKeys(starts, s.reset, zone));
     }
     const visible = candles.filter(c => c.t + tf >= v.t0 && c.t <= v.t1);
     if (!visible.length) {
@@ -187,7 +189,7 @@ export class DeltaPane extends TimePane {
   }
 
   #paint(): void {
-    const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, now = Date.now();
+    const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, now = pageNow();
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, readout = this.head.querySelector('.readout');
     if (s.style === 'nlns') { this.candles = []; this.#setDivergences([]); this.#paintNlns(state, now, readout); return; }
     const { candles, earliest } = this.#candles(state, now);

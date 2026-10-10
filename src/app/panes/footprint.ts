@@ -192,7 +192,7 @@ export function volText(value: number): string {
 export interface RowMarks { wants(barT: number, mid: number, side: 'buy' | 'sell'): boolean; add(x: number, y: number, w: number, h: number, barT: number): void }
 
 /** What the footprint draws besides its rows' bars: each candle's imbalance marks, and how it is set (what a row prints, whether diagonal imbalances are outlined). */
-export interface FootprintLook { marks: ReadonlyMap<number, BarMarks> | null; settings: FootprintSettings }
+export interface FootprintLook { marks: ReadonlyMap<number, BarMarks> | null; settings: FootprintSettings; /** Replay: only candles that ended by then. */ until?: number }
 
 const FONT = '10.5px ui-monospace, SFMono-Regular, Menlo, monospace', BOLD = `600 ${FONT}`;
 
@@ -207,12 +207,14 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, data: FootprintDat
   if (!(step > 0) || lod.barAlpha <= 0.005) return;
   const slot = pw * tfMs / (view.t1 - view.t0), rowPx = Math.abs(view.yOf(0, ph) - view.yOf(step, ph)), layout = footprintLayout(slot);
   let maxSide = 0;
-  for (const bar of data.bars.values()) if (bar.t + tfMs >= view.t0 && bar.t <= view.t1) for (const r of bar.rows) maxSide = Math.max(maxSide, r[1], r[2]);
+  const until = look?.until ?? Infinity;
+  for (const bar of data.bars.values()) if (bar.t + tfMs >= view.t0 && bar.t <= view.t1 && bar.t + tfMs <= until) for (const r of bar.rows) maxSide = Math.max(maxSide, r[1], r[2]);
   if (!(maxSide > 0)) return;
   ctx.font = FONT; ctx.textBaseline = 'middle';
   const numberWidth = ctx.measureText('999.9M').width, textColor = p.dark ? '#f1f1f1' : p.text, mode = look?.settings.text ?? 'split';
   const diagonal = look?.settings.diagonal !== false ? look?.marks ?? null : null;
   for (const bar of data.bars.values()) {
+    if (bar.t + tfMs > until) continue;
     if (bar.t + tfMs < view.t0 || bar.t > view.t1) continue;
     const left = view.xOf(bar.t, pw) + layout.colLeft, split = left + Math.min(numberWidth + 5.5, layout.colWidth / 2), right = Math.min(left + layout.colWidth, split + numberWidth + 5.5);
     const flags = diagonal?.get(bar.t)?.flags;

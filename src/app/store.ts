@@ -20,6 +20,7 @@ import type { EngineState } from './sound/engine.ts';
 import type { RangeSelection } from './range/selection.ts';
 import { readTraded, type TradedSettings } from './traded/settings.ts';
 import { t } from './i18n.ts';
+import type { ReplayView } from './replay/clock.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
 /** Layers that can be chosen today. The others are announced in the dropdown as upcoming and need a data source that is not connected yet. */
@@ -108,6 +109,8 @@ export interface AppState {
   grouping: 'auto' | number;
   ladderMode: LadderMode;
   ladderShow: LadderShow;
+  /** Replay (replay/clock.ts): what its controls show, null when live. Not saved: a page always opens live. */
+  replay: ReplayView | null;
   /** The order book's pull/stack window in seconds (0: off). */
   pullStack: PullWindow;
   ladderVenue: string;
@@ -189,7 +192,7 @@ export function initialState(): AppState {
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null,
     layers: {}, candles: [], oi: [], oiInstrument: '', sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
-    ladderVenue: '', ladderVenues: [], theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
+    ladderVenue: '', ladderVenues: [], replay: null, theme: 'light', followLive: true, keepAwake: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };
   // The volume profile (the traded column, now with its lines on the chart) is off unless chosen: a save from before it had settings of its
@@ -198,6 +201,7 @@ export function initialState(): AppState {
   state.sounds = readSounds(saved.sounds);
   state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';
   state.theme = resolveThemeId(state.theme);
+  state.replay = null;
   return state;
 }
 

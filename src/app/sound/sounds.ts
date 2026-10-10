@@ -7,6 +7,7 @@ import { Coalescer, chimeNotes, notesFor, tierOf, type SoundEvent } from './rule
 import { TIMEFRAMES } from '../../shared/series.ts';
 import { BAR_FRESH_MS } from './alerts.ts';
 import { scaledUsd, sizeScale } from '../coin.ts';
+import { replaying } from '../replay/clock.ts';
 
 /** What was decided for one event: kept for the test harness and for the panel's "last sounds" line. */
 export interface SoundLogEntry { at: number; kind: 'trade' | 'candle' | 'test'; side?: 'buy' | 'sell'; tier?: string; usd?: number; venues?: number; n?: number; audible: boolean }
@@ -53,7 +54,7 @@ export class Sounds {
   /** New large prints from the live stream. */
   feed(prints: readonly Print[]): void {
     const s = this.store.state;
-    if (!s.sounds.on) return;
+    if (!s.sounds.on || replaying()) return;
     const nowMs = this.clock(), at = this.now();
     for (const p of prints) {
       if (nowMs - p.t > MAX_AGE_MS) continue;
@@ -94,6 +95,7 @@ export class Sounds {
 
   /** A closed candle with unusually large volume gets one chime. */
   #onCandles(): void {
+    if (replaying()) return;
     const s = this.store.state, candles = s.candles;
     if (!s.sounds.on || !s.sounds.barChime || candles.length < 14) return;
     // Another market or timeframe has candles of its own, and what is loaded for it is history whatever it says about its newest bar.

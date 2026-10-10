@@ -438,3 +438,11 @@ button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E") center / contain no-repeat; }
 .goto-row { display: flex; gap: 6px; }
 .goto-time { flex: 1; min-width: 0; padding: 3px 6px; font: inherit; }
+/* The replay bar (replay/bar.ts): on the map, above its time axis. */
+.pane.heat .replay-bar { position: absolute; z-index: 3; left: 8px; bottom: 30px; display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 11px; color: var(--text); background: var(--face, var(--panel)); border-radius: var(--radius); box-shadow: inset 1px 1px 0 var(--hi, transparent), inset -1px -1px 0 var(--lo, transparent), 2px 2px 0 var(--shadow); }
+.pane.heat .replay-bar[hidden] { display: none; }
+.replay-bar .replay-time { font-variant-numeric: tabular-nums; min-width: 9.5em; }
+.replay-bar.ended .replay-play, .replay-bar.ended select, .replay-bar.ended .replay-live { display: none; }
+.replay-bar .replay-play { width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.replay-bar .replay-play::before { content: ""; width: 12px; height: 12px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4h4v16H6zM14 4h4v16h-4z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4h4v16H6zM14 4h4v16h-4z'/%3E%3C/svg%3E") center / contain no-repeat; }
+.replay-bar .replay-play.paused::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4l13 8-13 8z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4l13 8-13 8z'/%3E%3C/svg%3E") center / contain no-repeat; }

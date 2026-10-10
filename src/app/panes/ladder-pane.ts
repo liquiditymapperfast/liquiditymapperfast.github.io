@@ -21,6 +21,7 @@ import { drawVenueMark } from '../venue-marks.ts';
 import { PullHistory, pullBase, readPullWindow, type PullRows } from './pull-stack.ts';
 import { lineSide } from '../price-line.ts';
 import { t } from '../i18n.ts';
+import { replaying } from '../replay/clock.ts';
 
 const ROW_H = 17;
 const HEAD_H = 20;
@@ -326,8 +327,11 @@ export class LadderPane {
     this.#setCanvas(width);
     const ctx = this.#ctx, h = this.#h;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0); ctx.clearRect(0, 0, width, h);
-    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textBaseline = 'middle';
+    // The context keeps the last frame's alignment (the columns are right-aligned): a message starts at the left.
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     if (!frame || !(mark > 0) || width < 80) { ctx.fillStyle = p.muted; ctx.fillText(t('Waiting for order book…'), 12, 20); return; }
+    // Replay: the books are recorded a minute at a time (the map's columns), not as a ladder; this one is the live book, which would mislead.
+    if (replaying()) { ctx.fillStyle = p.muted; ctx.fillText(t('Replay: the order book is live only.'), 12, 20); return; }
     // Pull/stack: a snapshot of every venue when one is due (nothing at all while it is off).
     const pullS = state.pullStack;
     if (pullS) { const base = pullBase(this.#groups[0] ?? 0.1); this.#pull.noteMark(mark); this.#pull.step(this.kernels, frame, mark, Date.now(), pullS, base, `${state.marketId}|${base}|${pullS}`); }

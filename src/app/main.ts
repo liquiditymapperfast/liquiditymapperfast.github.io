@@ -22,6 +22,8 @@ import { CvdPane } from './panes/cvd-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
 import { DeltaPane } from './panes/delta-pane.ts';
 import { matchShortcut, togglePatch } from './shortcuts.ts';
+import { ReplayBar } from './replay/bar.ts';
+import { replaying } from './replay/clock.ts';
 import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
 import { Dock } from './dock.ts';
@@ -118,7 +120,11 @@ async function main(): Promise<void> {
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.
   window.setInterval(() => heat.tick(), 1_000);
+  // Replay (replay/): its bar sits on the map; the map is drawn as it plays and the panes under it follow its frames.
+  const replayBar = new ReplayBar(store, { redraw: () => heat.invalidate(), placeAt: t => heat.placeAt(t), live: () => toolbar.onRecenter() });
+  heat.root.append(replayBar.root);
   toolbar.goTo = {
+    replay: t => replayBar.start(t),
     centre: () => (heat.view.t0 + heat.view.t1) / 2,
     earliest: () => ({ depth: hub.recordedSince > 0 ? hub.recordedSince : null, candles: store.state.candles[0]?.[0] ?? null }),
     go: t => heat.goTo(t),
@@ -131,7 +137,7 @@ async function main(): Promise<void> {
   // Sounds the panels may make about what happens in them (flow bursts, walls, the balance, candle closes); the bursts are also marked on the flow column.
   const alerts = new Alerts(store, hub.flow, sounds.engine, Date.now, (ids, from) => { void hub.ensureFlow(ids, from); }); toolbar.attachAlerts(alerts); alerts.start();
   alerts.onChange = () => cvd.invalidate(); cvd.events = alerts.bursts;
-  hub.onPrints = fresh => { sounds.feed(fresh); cvd.flash(fresh); };
+  hub.onPrints = fresh => { if (replaying()) return; sounds.feed(fresh); cvd.flash(fresh); };
   hub.onPrintsChanged = () => { heat.invalidate(); range.refreshHeld(); };
   hub.onLiquidationsChanged = () => { heat.invalidate(); range.refreshHeld(); };
   toolbar.keyHistory = hub.keyHistory;
@@ -197,6 +203,8 @@ async function main(): Promise<void> {
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show')) range.refreshHeld();
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('levels')) { ladder.invalidate(); ladder.syncVenues(); heat.invalidate(); }
+    // Replay starting or ending changes what the book, the flow column and the panes show, whether or not new data arrives.
+    if (changed.has('replay')) { ladder.invalidate(); cvd.invalidate(); heat.invalidate(); lower(); }
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();
     if (changed.has('oi') || changed.has('show')) oi.invalidate();
     if (changed.has('lt') || changed.has('show') || changed.has('sounds')) lt.refresh();

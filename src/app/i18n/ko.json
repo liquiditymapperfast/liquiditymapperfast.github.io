@@ -1127,5 +1127,19 @@
  "No open interest for this market.": "이 시장의 미결제약정이 없습니다.",
  "No change of open interest is held for these candles yet.": "이 캔들들의 미결제약정 변화가 아직 없습니다.",
  "side by price where no flow is recorded": "흐름 기록이 없는 곳은 가격으로 판단",
- "NL/NS (in Show) estimates who opened and closed positions: each candle's change of open interest of the OI pane's market, given to the side that traded at market there (its taker delta, or the way its price went where its flow is not recorded). Up with buyers: new longs; up with sellers: new shorts; down with sellers: longs closed; down with buyers: shorts closed. Bars are solid where positions were opened and hollow where they were closed, and the line is their running sum, restarting where the CVD does. Every position has a long and a short holder, so this is an estimate, in coins and for that one market; it has not been tested as a signal.": "NL/NS(표시)는 누가 포지션을 열고 닫았는지 추정합니다. OI 패널 시장에서 각 캔들의 미결제약정 변화를 그곳에서 시장가로 거래한 쪽(그 시장의 테이커 델타, 흐름 기록이 없는 곳은 가격 방향)에 배정합니다. 매수자와 함께 증가: 신규 롱, 매도자와 함께 증가: 신규 숏, 매도자와 함께 감소: 롱 청산, 매수자와 함께 감소: 숏 청산. 포지션이 열린 곳의 막대는 채워지고 닫힌 곳은 비어 있으며, 선은 그 누적 합으로 CVD와 같은 곳에서 다시 시작합니다. 모든 포지션에는 롱과 숏 보유자가 있으므로 이는 추정치이며, 코인 단위로 그 한 시장에 대한 것입니다. 신호로 검증되지 않았습니다."
+ "NL/NS (in Show) estimates who opened and closed positions: each candle's change of open interest of the OI pane's market, given to the side that traded at market there (its taker delta, or the way its price went where its flow is not recorded). Up with buyers: new longs; up with sellers: new shorts; down with sellers: longs closed; down with buyers: shorts closed. Bars are solid where positions were opened and hollow where they were closed, and the line is their running sum, restarting where the CVD does. Every position has a long and a short holder, so this is an estimate, in coins and for that one market; it has not been tested as a signal.": "NL/NS(표시)는 누가 포지션을 열고 닫았는지 추정합니다. OI 패널 시장에서 각 캔들의 미결제약정 변화를 그곳에서 시장가로 거래한 쪽(그 시장의 테이커 델타, 흐름 기록이 없는 곳은 가격 방향)에 배정합니다. 매수자와 함께 증가: 신규 롱, 매도자와 함께 증가: 신규 숏, 매도자와 함께 감소: 롱 청산, 매수자와 함께 감소: 숏 청산. 포지션이 열린 곳의 막대는 채워지고 닫힌 곳은 비어 있으며, 선은 그 누적 합으로 CVD와 같은 곳에서 다시 시작합니다. 모든 포지션에는 롱과 숏 보유자가 있으므로 이는 추정치이며, 코인 단위로 그 한 시장에 대한 것입니다. 신호로 검증되지 않았습니다.",
+ "Replay": "리플레이",
+ "Play what was recorded back as if it were live, from a moment you choose in Go to.": "기록된 내용을 이동에서 고른 시점부터 실시간처럼 재생합니다.",
+ "Replay starts from a moment you choose in Go to (Replay from here) and moves on at the speed chosen: the map, its candles, the trades, the panes under it and the flow column show what was known then, and what came after is covered. Live goes back to now; a replay that catches up goes back on its own.": "리플레이는 이동에서 고른 시점(여기서부터 리플레이)부터 시작해 고른 속도로 진행됩니다. 맵, 캔들, 체결, 아래 패널과 흐름 열은 그때 알 수 있던 것을 보여 주고, 그 뒤의 일은 가려집니다. 실시간을 누르면 지금으로 돌아가며, 따라잡은 리플레이는 스스로 돌아갑니다.",
+ "What it cannot show: the order book (recorded a minute at a time as the map's columns, not as a ladder), the profile column, and the dot rows above the flow column. The candle under way is rebuilt from the recorded price a second, exact within the last day and a minute at a time before; the footprint, the bar statistics and the open interest of a candle are shown once it has ended. Candles reach back as far as the chart holds them (its last 500), the map as far as depth is recorded. Sounds and alerts are silent.": "보여 줄 수 없는 것: 호가창(맵의 열로 1분씩 기록되며 래더로는 아님), 프로파일 열, 흐름 열 위의 점 행. 진행 중인 캔들은 기록된 초당 가격으로 다시 만들며, 최근 하루 안은 정확하고 그 전은 1분 단위입니다. 캔들의 풋프린트, 막대 통계, 미결제약정은 캔들이 끝난 뒤에 보입니다. 캔들은 차트가 보유한 만큼(최근 500개), 맵은 깊이가 기록된 만큼 거슬러 갑니다. 소리와 알림은 울리지 않습니다.",
+ "Replay: the order book is live only.": "리플레이: 호가창은 실시간에서만 볼 수 있습니다.",
+ "Pause": "일시 정지",
+ "Play": "재생",
+ "Speed": "속도",
+ "Live": "실시간",
+ "Leave the replay and go back to now": "리플레이를 끝내고 지금으로 돌아가기",
+ "The replay caught up with now: live again.": "리플레이가 지금을 따라잡았습니다. 다시 실시간입니다.",
+ "That is still to come: there is nothing to replay yet.": "아직 오지 않은 시간이라 리플레이할 것이 없습니다.",
+ "Replay from here": "여기서부터 리플레이",
+ "Play what was recorded back from this moment, as if it were live": "이 시점부터 기록을 실시간처럼 재생"
 }

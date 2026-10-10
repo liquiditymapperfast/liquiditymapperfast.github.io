@@ -1127,5 +1127,19 @@
  "No open interest for this market.": "この市場の建玉はありません。",
  "No change of open interest is held for these candles yet.": "これらの足の建玉の変化はまだありません。",
  "side by price where no flow is recorded": "フロー記録がない所は価格で側を判定",
- "NL/NS (in Show) estimates who opened and closed positions: each candle's change of open interest of the OI pane's market, given to the side that traded at market there (its taker delta, or the way its price went where its flow is not recorded). Up with buyers: new longs; up with sellers: new shorts; down with sellers: longs closed; down with buyers: shorts closed. Bars are solid where positions were opened and hollow where they were closed, and the line is their running sum, restarting where the CVD does. Every position has a long and a short holder, so this is an estimate, in coins and for that one market; it has not been tested as a signal.": "NL/NS（表示）は、誰がポジションを建て、誰が決済したかを推定します。OI ペインの市場で各足の建玉の変化を、そこで成行で取引した側（その市場のテイカーデルタ、フローの記録がない所では価格の向き）に割り当てます。買い手で増加：新規ロング、売り手で増加：新規ショート、売り手で減少：ロング決済、買い手で減少：ショート決済。建てた所のバーは塗りつぶし、決済した所は中空で、線はその累積で、CVD と同じ所で 0 から始まります。どのポジションにもロングとショートの保有者がいるため、これは推定で、単位はコイン、対象はその 1 つの市場です。シグナルとしては検証されていません。"
+ "NL/NS (in Show) estimates who opened and closed positions: each candle's change of open interest of the OI pane's market, given to the side that traded at market there (its taker delta, or the way its price went where its flow is not recorded). Up with buyers: new longs; up with sellers: new shorts; down with sellers: longs closed; down with buyers: shorts closed. Bars are solid where positions were opened and hollow where they were closed, and the line is their running sum, restarting where the CVD does. Every position has a long and a short holder, so this is an estimate, in coins and for that one market; it has not been tested as a signal.": "NL/NS（表示）は、誰がポジションを建て、誰が決済したかを推定します。OI ペインの市場で各足の建玉の変化を、そこで成行で取引した側（その市場のテイカーデルタ、フローの記録がない所では価格の向き）に割り当てます。買い手で増加：新規ロング、売り手で増加：新規ショート、売り手で減少：ロング決済、買い手で減少：ショート決済。建てた所のバーは塗りつぶし、決済した所は中空で、線はその累積で、CVD と同じ所で 0 から始まります。どのポジションにもロングとショートの保有者がいるため、これは推定で、単位はコイン、対象はその 1 つの市場です。シグナルとしては検証されていません。",
+ "Replay": "リプレイ",
+ "Play what was recorded back as if it were live, from a moment you choose in Go to.": "記録を、移動で選んだ時刻からライブのように再生します。",
+ "Replay starts from a moment you choose in Go to (Replay from here) and moves on at the speed chosen: the map, its candles, the trades, the panes under it and the flow column show what was known then, and what came after is covered. Live goes back to now; a replay that catches up goes back on its own.": "リプレイは移動で選んだ時刻（ここからリプレイ）から始まり、選んだ速度で進みます。地図、ローソク足、約定、その下のペインとフロー列は当時わかっていたことを示し、その後のことは隠されます。ライブで現在に戻り、追いついたリプレイは自動で戻ります。",
+ "What it cannot show: the order book (recorded a minute at a time as the map's columns, not as a ladder), the profile column, and the dot rows above the flow column. The candle under way is rebuilt from the recorded price a second, exact within the last day and a minute at a time before; the footprint, the bar statistics and the open interest of a candle are shown once it has ended. Candles reach back as far as the chart holds them (its last 500), the map as far as depth is recorded. Sounds and alerts are silent.": "表示できないもの：板（地図の列として 1 分ずつ記録され、ラダーとしてではない）、プロファイル列、フロー列の上の点の行。進行中の足は記録された秒ごとの価格から作り直され、直近 1 日は正確、それ以前は 1 分単位です。足のフットプリント、バー統計、建玉はその足が終わってから表示されます。ローソク足はチャートが保持する範囲（最新 500 本）まで、地図は深さが記録された範囲までさかのぼれます。サウンドとアラートは鳴りません。",
+ "Replay: the order book is live only.": "リプレイ：板はライブのみです。",
+ "Pause": "一時停止",
+ "Play": "再生",
+ "Speed": "速度",
+ "Live": "ライブ",
+ "Leave the replay and go back to now": "リプレイを終えて現在に戻る",
+ "The replay caught up with now: live again.": "リプレイが現在に追いつきました。ライブに戻りました。",
+ "That is still to come: there is nothing to replay yet.": "それはまだ先です。リプレイするものはまだありません。",
+ "Replay from here": "ここからリプレイ",
+ "Play what was recorded back from this moment, as if it were live": "この時刻から記録をライブのように再生"
 }

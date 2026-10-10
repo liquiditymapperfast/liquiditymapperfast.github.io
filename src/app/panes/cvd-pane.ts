@@ -31,6 +31,7 @@ import { t } from '../i18n.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import type { RangeTool } from '../range/tool.ts';
+import { pageNow } from '../replay/clock.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const PAD = 6, LINE_H = 12;
@@ -337,7 +338,7 @@ export class CvdPane {
 
   #render(): void {
     if (this.root.hidden || this.#w < 60 || this.#h < 60) return;
-    const s = this.store.state, cfg = s.cvd, now = Date.now(), p = this.#palette, ctx = this.#ctx;
+    const s = this.store.state, cfg = s.cvd, now = pageNow(), p = this.#palette, ctx = this.#ctx;
     this.#ranker.refreshMs = cfg.refreshMin * 60_000; this.#ranker.auto = cfg.auto;
     const spanMs = cfg.span === 'map' ? Math.max(60_000, this.view.t1 - this.view.t0) : CVD_SPAN_MS[cfg.span];
     const ids = flowIds(s, this.hub.flow.ids);
@@ -581,7 +582,7 @@ export class CvdPane {
 
   /** "Flow recorded since 13:54", muted, at the left of the aggregate row: the window reaches back before the recording began. */
   #paintSince(ctx: CanvasRenderingContext2D, p: Palette, plot: { x: number; w: number }, since: number): void {
-    const startOfToday = startOfDay(Date.now());
+    const startOfToday = startOfDay(pageNow());
     ctx.save(); ctx.font = `10px ${SANS}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     const time = clock(since, since < startOfToday);
     ctx.fillText(fit(ctx, this.#sinceHeld ? t('Flow since {time}: older flow is not available from this source', { time }) : t('Flow recorded since {time}', { time }), plot.w - 12), plot.x + 6, 5);
