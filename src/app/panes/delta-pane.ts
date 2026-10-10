@@ -16,6 +16,8 @@ import { TimePane, setHtml } from './lower-panes.ts';
 import { FlowCache, candleStarts, deltaCandles, resetKeys, unrecorded, type DeltaCandle } from '../delta/candles.ts';
 import { PIVOTS, type DeltaSettings } from '../delta/settings.ts';
 import { divergences, inView, paintDivergence, type Divergence } from '../delta/divergence.ts';
+import { coinText, nlnsCandles, nlnsCardLines, oiDeltas, type NlnsCandle } from '../delta/nlns.ts';
+import { venueLabel } from '../venues.ts';
 
 const HISTORY_CAP_MS = 24 * 3_600_000, MINUTES_FROM_MS = 6 * 3_600_000;
 const signed = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
@@ -39,6 +41,8 @@ export class DeltaPane extends TimePane {
   #card = new HoverCard();
   #lines: InfoLine[] | null = null;
   #cache = new FlowCache();
+  /** The OI market's own flow per candle, for NL/NS. */
+  #oiCache = new FlowCache();
   #sync: (() => void)[] = [];
   /** The candles drawn last. */
   candles: DeltaCandle[] = [];
@@ -65,7 +69,7 @@ export class DeltaPane extends TimePane {
       wrap.append(control); group.append(wrap);
       this.#sync.push(() => { if (control.value !== get()) control.value = get(); });
     };
-    select(t('Show'), t('Each candle\'s delta as a bar, or the cumulative delta as candles.'), [['candles', t('CVD candles')], ['bars', t('Delta bars')]], () => d().style, v => patch({ style: v === 'bars' ? 'bars' : 'candles' }));
+    select(t('Show'), t('Each candle\'s delta as a bar, the cumulative delta as candles, or NL/NS: the change of open interest given to the side that traded at market.'), [['candles', t('CVD candles')], ['bars', t('Delta bars')], ['nlns', 'NL/NS']], () => d().style, v => patch({ style: v === 'bars' || v === 'nlns' ? v : 'candles' }));
     const box = document.createElement('label'); box.className = 'ctl'; setTip(box, t('Mark where the price made a higher high and the CVD a lower one, or the price a lower low and the CVD a higher one, here and on the map.'));
     const check = document.createElement('input'); check.type = 'checkbox'; check.checked = d().divergence; check.onchange = () => patch({ divergence: check.checked });
     box.append(check, t('Divergences'));
@@ -93,12 +97,9 @@ export class DeltaPane extends TimePane {
   }
 
   /** The candles of the view: the flow book asked for what they need, the closed ones worked out once, the open one every time. */
-  #candles(state: AppState, now: number): { candles: DeltaCandle[]; starts: number[]; earliest: number | null } {
-    const v = this.view, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow;
-    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
-    if (!starts.length) return { candles: [], starts, earliest: null };
-    // The flow the candles need: the seconds the page holds (a day), and the minutes before them, as the flow column asks for them.
-    const loadIds = flowLoadIds(state, flow.ids), from = starts[0]!, secondsFrom = Math.max(now - HISTORY_CAP_MS, from - 60_000);
+  /** Ask the flow book for what candles from `from` need: the seconds the page holds (a day), and the minutes before them, as the flow column asks for them. */
+  #ensure(loadIds: string[], from: number, now: number): void {
+    const flow = this.hub.flow, secondsFrom = Math.max(now - HISTORY_CAP_MS, from - 60_000);
     void this.hub.ensureFlow(loadIds, secondsFrom);
     if (from < secondsFrom - 60_000) {
       let latest = -Infinity;
@@ -106,6 +107,13 @@ export class DeltaPane extends TimePane {
       if (latest === -Infinity && !flow.missing(loadIds, secondsFrom).length) latest = now;
       if (latest > -Infinity) void this.hub.ensureFlowMinutes(loadIds, Math.floor((from - 3_600_000) / MINUTES_FROM_MS) * MINUTES_FROM_MS, Math.ceil((latest + 120_000) / 3_600_000) * 3_600_000);
     }
+  }
+
+  #candles(state: AppState, now: number): { candles: DeltaCandle[]; starts: number[]; earliest: number | null } {
+    const v = this.view, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow;
+    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
+    if (!starts.length) return { candles: [], starts, earliest: null };
+    this.#ensure(flowLoadIds(state, flow.ids), starts[0]!, now);
     const ids = aggregateIds(flow, flowIds(state, flow.ids), id => kindOf(state.markets, id));
     const tracks = ids.flatMap(id => { const track = flow.track(id); return track ? [track] : []; });
     let earliest: number | null = null;
@@ -114,9 +122,74 @@ export class DeltaPane extends TimePane {
     return { candles: deltaCandles(starts, flows, resetKeys(starts, s.reset, zone)), starts, earliest };
   }
 
+  /**
+   * NL/NS (delta/nlns.ts): each candle's change of open interest of the OI pane's market, given to the side that traded at market on that
+   * market (its own flow; the way its price went where none is recorded), as bars (solid: opened, hollow: closed) and its running sum as a
+   * line, restarting where the CVD does. In coins, and for that one market, which the readout names.
+   */
+  #paintNlns(state: AppState, now: number, readout: Element | null): void {
+    const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta;
+    const zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow, oiInst = state.oiInstrument;
+    const coin = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '';
+    const market = oiInst ? `${venueLabel(oiInst)} ${oiInst.split(':').slice(1).join(':')}` : '';
+    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone);
+    let candles: NlnsCandle[] = [];
+    if (oiInst && state.oi.length && starts.length) {
+      this.#ensure([oiInst], starts[0]!, now);
+      const track = flow.track(oiInst), tracks = track ? [track] : [];
+      const flows = tracks.length ? unrecorded(starts, this.#oiCache.get(`${oiInst}|${tf}|${flow.loads}`, tracks, starts, tf, now), tf, now) : starts.map(() => null);
+      const way = new Map(state.candles.map(c => [c[0], Math.sign(c[4] - c[1])]));
+      candles = nlnsCandles(starts, oiDeltas(state.oi, starts, tf), flows, starts.map(t0 => way.get(t0) ?? 0), resetKeys(starts, s.reset, zone));
+    }
+    const visible = candles.filter(c => c.t + tf >= v.t0 && c.t <= v.t1);
+    if (!visible.length) {
+      ctx.fillStyle = p.muted; ctx.textAlign = 'left';
+      ctx.fillText(!oiInst || !state.oi.length ? t('No open interest for this market.') : t('No change of open interest is held for these candles yet.'), 12, ph / 2);
+      setHtml(readout, ''); return;
+    }
+    let lo = 0, hi = 0;
+    for (const c of visible) { lo = Math.min(lo, c.v, c.cum); hi = Math.max(hi, c.v, c.cum); }
+    const pad = (hi - lo) * 0.08 || 1, min = lo - pad, max = hi + pad, top = 6, bottom = ph - 6;
+    const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (bottom - top);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+    ctx.strokeStyle = p.line; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(0, Math.round(y(0)) + 0.5); ctx.lineTo(pw, Math.round(y(0)) + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = p.muted; ctx.setLineDash([2, 4]); ctx.beginPath();
+    for (let i = 1; i < candles.length; i++) {
+      const c = candles[i]!;
+      if (c.run === candles[i - 1]!.run || c.t + tf < v.t0 || c.t > v.t1) continue;
+      const x = Math.round(v.xOf(c.t, pw)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, ph);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    // Bars: opened solid, closed hollow (or faint where a bar is too narrow to show an outline).
+    for (const c of visible) {
+      const x0 = v.xOf(c.t, pw), x1 = v.xOf(c.t + tf, pw), w = Math.max(1, Math.min((x1 - x0) * 0.7, 40)), xc = (x0 + x1) / 2;
+      const y0 = y(0), y1 = y(c.v), color = c.v >= 0 ? p.candleUp : p.candleDown, h = Math.max(1, Math.abs(y1 - y0));
+      if (c.dOi > 0) { ctx.fillStyle = color; ctx.fillRect(xc - w / 2, Math.min(y0, y1), w, h); }
+      else if (w >= 4) { ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(xc - w / 2) + 0.5, Math.round(Math.min(y0, y1)) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(h) - 1)); }
+      else { ctx.globalAlpha = 0.45; ctx.fillStyle = color; ctx.fillRect(xc - w / 2, Math.min(y0, y1), w, h); ctx.globalAlpha = 1; }
+    }
+    // The running sum, broken where it restarts.
+    ctx.strokeStyle = p.text; ctx.lineWidth = 1.25; ctx.beginPath();
+    let run = -1;
+    for (const c of visible) { const x = v.xOf(c.t + tf / 2, pw); if (c.run !== run) { ctx.moveTo(x, y(c.cum)); run = c.run; } else ctx.lineTo(x, y(c.cum)); }
+    ctx.stroke(); ctx.lineWidth = 1;
+    ctx.restore();
+    ctx.fillStyle = p.muted; ctx.textAlign = 'left';
+    ctx.fillText(coinText(hi, coin), this.w - AXIS_W + 6, 10); ctx.fillText(coinText(lo, coin), this.w - AXIS_W + 6, ph - 10);
+    const hover = state.hover, newest = candles[candles.length - 1]!;
+    let shown = newest;
+    if (hover) { const under = [...candles].reverse().find(c => c.t <= hover.t); if (under) shown = under; }
+    if (hover && this.pointer && shown === newest && hover.t >= newest.t + tf) this.cursorT = newest.t + tf / 2;
+    if (hover && this.pointer) this.#lines = nlnsCardLines(shown, state.timeframe, coin, market);
+    const tone = (x: number): string => x > 0 ? 'bid' : x < 0 ? 'ask' : '';
+    const byPrice = visible.some(c => c.byPrice) ? ` · ${t('side by price where no flow is recorded')}` : '';
+    setHtml(readout, `NL/NS <b class="${tone(shown.v)}">${coinText(shown.v, coin)}</b> ${t('since the start')} <b class="${tone(shown.cum)}">${coinText(shown.cum, coin)}</b> <span class="muted">${t('from {venue}', { venue: market })}${byPrice}</span>`);
+  }
+
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, now = Date.now();
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, readout = this.head.querySelector('.readout');
+    if (s.style === 'nlns') { this.candles = []; this.#setDivergences([]); this.#paintNlns(state, now, readout); return; }
     const { candles, earliest } = this.#candles(state, now);
     this.candles = candles;
     // Divergences need the chart's candles to be this market's: a borrowed reference series is another market's price.
