@@ -15,6 +15,7 @@ export type ShortcutAction =
   | { kind: 'zoom'; dir: 1 | -1 }
   | { kind: 'toggle'; feature: Feature }
   | { kind: 'range' }
+  | { kind: 'goto' }
   | { kind: 'screenshot' }
   | { kind: 'list' };
 
@@ -49,6 +50,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   toggle('K', t('Key levels'), 'keyLevels'),
   toggle('V', t('VWAP'), 'vwap'),
   toggle('H', t('Highlights'), 'highlights'),
+  { group: 'tools', caps: ['G'], label: t('Go to a date and time'), keys: ['g'], action: { kind: 'goto' } },
   { group: 'tools', caps: ['X'], label: t('Range: the next drag selects (Esc cancels)'), keys: ['x'], action: { kind: 'range' } },
   { group: 'tools', caps: ['S'], label: t('Screenshot'), keys: ['s'], action: { kind: 'screenshot' } },
   { group: 'tools', caps: ['?'], label: t('This list'), keys: ['?'], action: { kind: 'list' } },

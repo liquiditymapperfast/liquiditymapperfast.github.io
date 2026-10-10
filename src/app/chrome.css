@@ -82,11 +82,11 @@ button.help:hover, button.help.open { color: var(--bg); background: var(--text);
 .theme-btn::after { content: ""; flex: none; width: 0; height: 0; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; margin-left: 2px; }
 
 /* ---- over the map: nothing that blurs or softens what is painted underneath, which repaints all the time ------------------------ */
-.pane.heat .map-recenter, .pane.heat .map-select {
+.pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto {
   border-radius: var(--radius); background: var(--face); -webkit-backdrop-filter: none; backdrop-filter: none;
   box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo), 2px 2px 0 var(--shadow);
 }
-.pane.heat .map-recenter:hover, .pane.heat .map-select:hover { background: var(--face); border-color: var(--text); }
+.pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover { background: var(--face); border-color: var(--text); }
 
 /* ---- the rest of the page, in the same shapes ------------------------------------------------------------------------------------ */
 /* A switch: a sunken square track and a raised square knob. */

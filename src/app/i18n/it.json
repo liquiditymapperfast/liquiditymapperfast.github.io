@@ -1129,5 +1129,17 @@
   "one": "{n} layout letto.",
   "other": "{n} layout letti.",
   "many": "{n} layout letti."
- }
+ },
+ "Go to": "Vai a",
+ "Go to a date and time": "Vai a una data e ora",
+ "Go to a date and time (keyboard: G)": "Vai a una data e ora (tastiera: G)",
+ "Date and time": "Data e ora",
+ "Choose a date and a time.": "Scegli una data e un’ora.",
+ "That is still to come: back at the live edge.": "Deve ancora arrivare: di nuovo al bordo in tempo reale.",
+ "Nothing is held that far back: at the start of what is, {time}.": "Non c’è nulla così indietro: all’inizio di ciò che c’è, {time}.",
+ "At {time}.": "A {time}.",
+ "Go": "Vai",
+ "Centre the map on this moment": "Centra la mappa su questo momento",
+ "Depth is recorded from {time}.": "La profondità è registrata da {time}.",
+ "Candles at this timeframe reach back to {time}.": "Le candele di questo timeframe arrivano fino a {time}."
 }

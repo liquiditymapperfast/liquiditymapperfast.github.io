@@ -3,7 +3,7 @@ import { PALETTES, THEME_ORDER } from './theme.ts';
 import { AVAILABLE_LAYERS, type Store, type AppState, type Layer } from './store.ts';
 import { VPN_HINT, VenueNotice, blockedVenues, idleText, idleVenues } from './venue-notice.ts';
 import type { VenueEntry } from './source.ts';
-import { usd, zoneName } from './format.ts';
+import { clock, usd, zoneName } from './format.ts';
 import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
 import { lazy } from './lazy.ts';
@@ -16,9 +16,10 @@ import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
 import { SCOPE_OPTIONS, activeIds, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
-import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow, openedPanel } from './ui.ts';
+import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow, openedPanel, button } from './ui.ts';
 import { GROUP_TITLES, SHORTCUTS, type ShortcutGroup } from './shortcuts.ts';
 import { buildLayoutsPanel, type LayoutsPanelState, type PaneHost } from './layouts/panel.ts';
+import { clampGoTo, formatDateTime, parseDateTime } from './price-line.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
 import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
@@ -134,6 +135,10 @@ export class Toolbar {
     el('i', { class: 'select-glyph', ariaHidden: 'true' }), t('Select'));
   /** The map's top-right corner: Select and Recenter, side by side. */
   #mapTools = el('div', { class: 'map-tools' });
+  /** Go to a date and time (the map's corner, beside Select; G). */
+  #goto = el('button', { type: 'button', class: 'map-goto', textContent: t('Go to'), tip: t('Go to a date and time (keyboard: G)'), onclick: () => this.openGoTo() });
+  /** What Go to moves and reads (set by main). */
+  goTo: { centre(): number; earliest(): { depth: number | null; candles: number | null }; go(t: number): void; live(): void } | null = null;
   /** The Range button, which its panel opens beside. */
   get rangeButton(): HTMLElement { return this.#range; }
   /** The show/hide buttons of the panes, in the order of `PANE_TOGGLES`. */
@@ -299,6 +304,35 @@ export class Toolbar {
   /** Redraw the lamp panel that is open, after its feature was switched from the keyboard, so its switch says what the lamp does. */
   refreshOpenPanel(): void { if (this.#open && openedPanel() === this.#open.panel) this.#open.redraw(); }
 
+  /**
+   * The Go to panel: a date and time on the page's clock, the map centred on it at its zoom. It says how far back the depth and the candles
+   * reach (the chart holds its last 500 candles), goes to the start of them for an earlier moment and to the live edge for one to come.
+   */
+  openGoTo(): void {
+    const host = this.goTo; if (!host || !this.#goto.isConnected) return;
+    const zone = this.store.state.timeZone;
+    let message = '';
+    const build = (_tools: HTMLElement, body: HTMLElement): void => {
+      const input = el('input', { type: 'datetime-local', class: 'goto-time', value: formatDateTime(host.centre(), zone), ariaLabel: t('Date and time') });
+      const go = (): void => {
+        const asked = parseDateTime(input.value, zone);
+        if (asked === null) { message = t('Choose a date and a time.'); panel?.render(build); return; }
+        const { depth, candles } = host.earliest(), earliest = [depth, candles].filter((v): v is number => v !== null).reduce<number | null>((a, b) => a === null ? b : Math.min(a, b), null);
+        const where = clampGoTo(asked, earliest, Date.now());
+        if (where.clamped === 'live') { host.live(); message = t('That is still to come: back at the live edge.'); }
+        else { host.go(where.t); message = where.clamped === 'before' ? t('Nothing is held that far back: at the start of what is, {time}.', { time: clock(where.t, true) }) : t('At {time}.', { time: clock(where.t, true) }); }
+        panel?.render(build);
+      };
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+      body.append(el('div', { class: 'goto-row' }, input, button(t('Go'), go, t('Centre the map on this moment'))));
+      if (message) body.append(el('p', { class: 'panel-note goto-message', textContent: message }));
+      const { depth, candles } = host.earliest();
+      body.append(note([depth !== null ? t('Depth is recorded from {time}.', { time: clock(depth, true) }) : '', candles !== null ? t('Candles at this timeframe reach back to {time}.', { time: clock(candles, true) }) : ''].filter(Boolean).join(' ')));
+      requestAnimationFrame(() => input.focus());
+    };
+    const panel = togglePanel(this.#goto, { title: t('Go to'), width: 340, align: 'right', stays: true }, build);
+  }
+
   #openLayouts(): void {
     const panes = this.panes; if (!panes) return;
     const ui: LayoutsPanelState = { message: null, armed: null };
@@ -334,7 +368,7 @@ export class Toolbar {
       this.#sheet?.close();
       this.#fillHeatControls();
       const inCorner = this.#mapHost !== null;
-      if (inCorner) { this.#mapTools.replaceChildren(this.#rangeCorner, this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
+      if (inCorner) { this.#mapTools.replaceChildren(this.#goto, this.#rangeCorner, this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#layouts, this.#keys, this.#zone, this.#language, this.#theme);

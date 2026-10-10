@@ -5,7 +5,7 @@ import { setTip } from '../tip.ts';
 import { helpButton } from '../help.ts';
 import { button, checkRow, note, togglePanel, type Panel } from '../ui.ts';
 import type { Kernels } from '../kernels.ts';
-import { PALETTES, rgb, type Palette } from '../theme.ts';
+import { PALETTES, textOn } from '../theme.ts';
 import { niceStep } from '../view.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Store, AppState } from '../store.ts';
@@ -19,6 +19,7 @@ import { levelLines, smallerVenuesLines, venueCellLines, type LevelFacts } from 
 import { barPieces, pieceAt, pieceLabel, rankVenues, type BarPiece } from './ladder-pieces.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { PullHistory, pullBase, readPullWindow, type PullRows } from './pull-stack.ts';
+import { lineSide } from '../price-line.ts';
 import { t } from '../i18n.ts';
 
 const ROW_H = 17;
@@ -46,13 +47,6 @@ const ORDER_HOLD_MS = 300_000;
 /** The venue a book belongs to, as a popup names it: "Binance BTCUSDT". */
 const bookName = (id: string): string => `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`;
 
-/** Text that reads on a piece drawn in `color` at `alpha` over the background: near-black on a light result, white on a dark one. */
-function textOn(color: string, alpha: number, p: Palette): string {
-  const [r, g, b] = rgb(color), [br, bg, bb] = rgb(p.bg), mix = (c: number, base: number) => c * alpha + base * (1 - alpha);
-  const lin = (c: number) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  const luminance = 0.2126 * lin(mix(r, br)) + 0.7152 * lin(mix(g, bg)) + 0.0722 * lin(mix(b, bb));
-  return luminance > 0.36 ? '#121418' : '#ffffff';
-}
 
 export { venueLabel };
 
@@ -623,7 +617,8 @@ export class LadderPane {
           ctx.globalAlpha = 1;
         } else { ctx.globalAlpha = Math.min(1, 0.75 * f); ctx.fillStyle = color; ctx.fillRect(barX, y + 2, Math.max(1, value / maxLevel * barW), ROW_H - 4); ctx.globalAlpha = 1; }
       }
-      if (bin === markBin) { ctx.fillStyle = p.ask; ctx.fillRect(x0, y + ROW_H - 1, w, 1); }
+      // The price row's line in the colour of the map's price line (the candle under way rising or falling).
+      if (bin === markBin) { const side = lineSide(state.candles, state.seriesInstrument, state.marketId); ctx.fillStyle = side === 'up' ? p.candleUp : side === 'down' ? p.candleDown : p.ask; ctx.fillRect(x0, y + ROW_H - 1, w, 1); }
     }
     const cell = this.#cellUnder(state, g, cum, o, { priceW, usdW, cw, barX, barW, maxLevel, pull: pullRows });
     this.#paintMirror(ctx, state, g, cum, o, o.head, rows, cell !== null);

@@ -1120,5 +1120,17 @@
  "Read {n} layouts.": {
   "one": "{n} Layout gelesen.",
   "other": "{n} Layouts gelesen."
- }
+ },
+ "Go to": "Gehe zu",
+ "Go to a date and time": "Zu Datum und Uhrzeit springen",
+ "Go to a date and time (keyboard: G)": "Zu Datum und Uhrzeit springen (Taste: G)",
+ "Date and time": "Datum und Uhrzeit",
+ "Choose a date and a time.": "Wähle ein Datum und eine Uhrzeit.",
+ "That is still to come: back at the live edge.": "Das liegt noch in der Zukunft: zurück am Live-Rand.",
+ "Nothing is held that far back: at the start of what is, {time}.": "So weit zurück ist nichts vorhanden: am Anfang dessen, was da ist, {time}.",
+ "At {time}.": "Bei {time}.",
+ "Go": "Los",
+ "Centre the map on this moment": "Die Karte auf diesen Moment zentrieren",
+ "Depth is recorded from {time}.": "Die Tiefe wird ab {time} aufgezeichnet.",
+ "Candles at this timeframe reach back to {time}.": "Kerzen in diesem Zeitrahmen reichen bis {time} zurück."
 }

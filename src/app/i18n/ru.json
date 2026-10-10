@@ -1138,5 +1138,17 @@
   "few": "Прочитано {n} макета.",
   "many": "Прочитано {n} макетов.",
   "other": "Прочитано {n} макета."
- }
+ },
+ "Go to": "Перейти",
+ "Go to a date and time": "Перейти к дате и времени",
+ "Go to a date and time (keyboard: G)": "Перейти к дате и времени (клавиша G)",
+ "Date and time": "Дата и время",
+ "Choose a date and a time.": "Выберите дату и время.",
+ "That is still to come: back at the live edge.": "Это ещё впереди: возврат к живому краю.",
+ "Nothing is held that far back: at the start of what is, {time}.": "Так далеко данных нет: к началу того, что есть, {time}.",
+ "At {time}.": "На {time}.",
+ "Go": "Перейти",
+ "Centre the map on this moment": "Поставить этот момент в центр карты",
+ "Depth is recorded from {time}.": "Глубина записывается с {time}.",
+ "Candles at this timeframe reach back to {time}.": "Свечи этого таймфрейма доходят до {time}."
 }

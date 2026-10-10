@@ -1093,5 +1093,17 @@
  "Import": "가져오기",
  "Read layouts from a file written by Export (a name already here is replaced)": "내보내기로 만든 파일에서 레이아웃을 가져옵니다(이미 있는 이름은 바뀝니다)",
  "This browser did not let the page keep it.": "이 브라우저가 페이지의 저장을 허용하지 않았습니다.",
- "Read {n} layouts.": "레이아웃 {n}개를 가져왔습니다."
+ "Read {n} layouts.": "레이아웃 {n}개를 가져왔습니다.",
+ "Go to": "이동",
+ "Go to a date and time": "날짜와 시간으로 이동",
+ "Go to a date and time (keyboard: G)": "날짜와 시간으로 이동 (키: G)",
+ "Date and time": "날짜와 시간",
+ "Choose a date and a time.": "날짜와 시간을 고르세요.",
+ "That is still to come: back at the live edge.": "아직 오지 않은 시간입니다. 실시간 끝으로 돌아왔습니다.",
+ "Nothing is held that far back: at the start of what is, {time}.": "그렇게 오래된 데이터는 없습니다. 있는 데이터의 시작인 {time}(으)로 이동했습니다.",
+ "At {time}.": "{time}(으)로 이동했습니다.",
+ "Go": "이동",
+ "Centre the map on this moment": "이 시점을 맵 가운데로",
+ "Depth is recorded from {time}.": "호가 깊이는 {time}부터 기록되어 있습니다.",
+ "Candles at this timeframe reach back to {time}.": "이 시간 단위의 캔들은 {time}까지 거슬러 갑니다."
 }

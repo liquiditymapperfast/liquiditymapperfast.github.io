@@ -1093,5 +1093,17 @@
  "Import": "导入",
  "Read layouts from a file written by Export (a name already here is replaced)": "从“导出”写入的文件中读取布局（已有的同名布局将被替换）",
  "This browser did not let the page keep it.": "此浏览器不允许页面保存。",
- "Read {n} layouts.": "已读取 {n} 个布局。"
+ "Read {n} layouts.": "已读取 {n} 个布局。",
+ "Go to": "跳转",
+ "Go to a date and time": "跳转到日期和时间",
+ "Go to a date and time (keyboard: G)": "跳转到日期和时间（快捷键：G）",
+ "Date and time": "日期和时间",
+ "Choose a date and a time.": "请选择日期和时间。",
+ "That is still to come: back at the live edge.": "那还没到：已回到实时边缘。",
+ "Nothing is held that far back: at the start of what is, {time}.": "没有那么早的数据：已跳到现有数据的开始，{time}。",
+ "At {time}.": "已跳到 {time}。",
+ "Go": "跳转",
+ "Centre the map on this moment": "将地图居中到此时刻",
+ "Depth is recorded from {time}.": "深度自 {time} 起记录。",
+ "Candles at this timeframe reach back to {time}.": "此时间周期的 K 线可追溯至 {time}。"
 }

@@ -1,7 +1,7 @@
 import { HeatGL, type HeatStyle } from '../heatmap/gl.ts';
 import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow, nextBaseline, type Baseline } from '../heatmap/window.ts';
-import { isCoarse } from '../device.ts';
+import { isCoarse, isPhone } from '../device.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { TIMEFRAMES, valueAreaKey, type Hub, type RasterResult } from '../hub.ts';
 import { gridStepFor } from '../../shared/grid.ts';
@@ -10,7 +10,7 @@ import type { ValueLevels } from '../../shared/profile.ts';
 import { answerLevels, linesWindows, requestStep, touchedAt } from '../traded/levels.ts';
 import type { ProfileWindow } from '../traded/sessions.ts';
 import type { Kernels } from '../kernels.ts';
-import { PALETTES, rgb, type Palette } from '../theme.ts';
+import { PALETTES, rgb, textOn, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
 import { clock, dayOfMonth, price as fmtPrice, tickLabel, usd, zoneName, zoneOffsetMs } from '../format.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
@@ -47,6 +47,7 @@ import { drawVenueMark } from '../venue-marks.ts';
 import { draftLabel } from '../range/stats.ts';
 import type { RangePoint, RangeTool } from '../range/tool.ts';
 import { paintDivergence, type Divergence } from '../delta/divergence.ts';
+import { countdown, lineSide } from '../price-line.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -78,6 +79,8 @@ function glowOf(color: string, r: number, dpr: number): { image: HTMLCanvasEleme
 const PLACEHOLDER_MAX_AGE_MS = 2 * 3_600_000;
 /** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
 export let AXIS_W = 64;
+/** The countdown box under the price tag. */
+const COUNTDOWN_H = 15;
 export let PROFILE_W = 128;
 export let TRADED_W = 96;
 /** The width the price labels need for the coin on screen: BTC's fit the usual width, a coin priced in millionths needs about eleven characters. */
@@ -134,6 +137,8 @@ export class HeatPane {
   #ctx: CanvasRenderingContext2D;
   #w = 0; #h = 0; #dpr = 1;
   #dirty = true; #frame = 0;
+  /** When the map was last drawn: the countdown redraws it once a second only when nothing else has (a quiet market). */
+  #lastRender = 0;
   #dataVersion = 0; #rasteredVersion = -1; #rasteredKey = ''; #lastRasterAt = 0;
   #liveMargin = 0;
   #palette = PALETTES.light!;
@@ -333,7 +338,26 @@ export class HeatPane {
     return { bid: rgb(p.bid), bidSoft: rgb(p.bidSoft), ask: rgb(p.ask), askSoft: rgb(p.askSoft), min: w.lo, max: w.hi, mode: heat.style, opacity };
   }
 
+  /**
+   * Centre the map on `t` at the span it has, leaving the live edge as a drag does, and fit the price to the candles there when there are
+   * any (the price may have been far from today's). The depth and the panes under the map load what the new window needs on their own.
+   */
+  /** Draw again for the countdown when nothing else has for most of a second (a quiet market): the page shown, the candles on. */
+  tick(): void {
+    if (document.visibilityState === 'visible' && this.store.state.show.candles && performance.now() - this.#lastRender > 900) this.invalidate();
+  }
+
+  goTo(t: number): void {
+    const v = this.view, span = v.t1 - v.t0, t0 = t - span / 2, t1 = t + span / 2;
+    let lo = Infinity, hi = -Infinity;
+    for (const c of this.store.state.candles) if (c[0] + 1 > t0 && c[0] < t1) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
+    const pad = (hi - lo) * 0.18;
+    v.set({ t0, t1, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
+    this.store.set({ followLive: false }); this.#liveMargin = v.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
   #render(): void {
+    this.#lastRender = performance.now();
     this.#dirty = false;
     const state = this.store.state;
     if (this.#w <= 1 || this.#h <= 1) return;
@@ -428,11 +452,12 @@ export class HeatPane {
     this.#paintValueLines(ctx, state, pw, ph);
     this.#keyTags = state.keyLevels.on ? paintKeyLevels(ctx, this.#keyLevelLines(state), v, pw, ph, p, state.keyLevels, Date.now(), this.#keyLevelContext(state).zone) : [];
     this.#vwapTags = state.vwap.on ? paintVwap(ctx, this.#vwapLines(state), v, pw, ph, p, state.vwap) : [];
-    // mark line
-    const mark = state.mark.price;
+    // The price line, in the colour of the candle under way (rising or falling), as is its tag on the axis.
+    const mark = state.mark.price, side = lineSide(state.candles, state.seriesInstrument, state.marketId);
+    const markColor = side === 'up' ? p.candleUp : side === 'down' ? p.candleDown : p.ask;
     if (mark > 0) {
       const y = v.yOf(mark, ph);
-      if (y >= 0 && y <= ph) { ctx.strokeStyle = p.ask; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
+      if (y >= 0 && y <= ph) { ctx.strokeStyle = markColor; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
     }
     // profile column, traded-volume column and price axis
     if (state.show.profile) this.#paintProfile(ctx, state, pw, ph);
@@ -441,13 +466,24 @@ export class HeatPane {
     ctx.fillStyle = p.panel; ctx.fillRect(axisX, 0, AXIS_W, h);
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(axisX + 0.5, 0); ctx.lineTo(axisX + 0.5, h); ctx.stroke();
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
-    const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), keyTags = placeKeyTags([...this.#keyTags, ...this.#vwapTags], mark > 0 ? [{ y0: markY - 9, y1: markY + 9 }] : [], ph);
+    // The countdown to the candle's close sits under the price tag (above it at the foot of the axis), inside the band kept clear of other tags.
+    const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+    const clockText = mark > 0 && state.show.candles && !isPhone() ? countdown(Date.now(), tf) : null, clockBelow = markY + 9 + COUNTDOWN_H <= ph;
+    const band = { y0: markY - 9 - (clockText && !clockBelow ? COUNTDOWN_H : 0), y1: markY + 9 + (clockText && clockBelow ? COUNTDOWN_H : 0) };
+    const keyTags = placeKeyTags([...this.#keyTags, ...this.#vwapTags], mark > 0 ? [band] : [], ph);
     for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
     paintKeyTags(ctx, keyTags, axisX, AXIS_W, p);
     if (mark > 0) {
       const y = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph)));
-      ctx.fillStyle = p.ask; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18);
-      ctx.fillStyle = '#fff'; ctx.fillText(fmtPrice(mark), axisX + 6, y);
+      ctx.fillStyle = markColor; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18);
+      ctx.fillStyle = textOn(markColor, 1, p); ctx.fillText(fmtPrice(mark), axisX + 6, y);
+      if (clockText) {
+        const top = clockBelow ? y + 9 : y - 9 - COUNTDOWN_H;
+        ctx.fillStyle = p.panel; ctx.fillRect(axisX + 1, top, AXIS_W - 1, COUNTDOWN_H);
+        ctx.strokeStyle = markColor; ctx.lineWidth = 1; ctx.strokeRect(axisX + 1.5, top + 0.5, AXIS_W - 2, COUNTDOWN_H - 1);
+        ctx.fillStyle = p.text; ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.fillText(clockText, axisX + 6, top + COUNTDOWN_H / 2 + 0.5);
+        ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+      }
     }
     // time axis
     ctx.fillStyle = p.panel; ctx.fillRect(0, ph, w, TIME_H);

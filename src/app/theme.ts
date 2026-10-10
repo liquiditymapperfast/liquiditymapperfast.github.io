@@ -122,3 +122,11 @@ export function rgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
 }
+
+/** Text that reads on something drawn in `color` at `alpha` over the background: near-black on a light result, white on a dark one. */
+export function textOn(color: string, alpha: number, p: Palette): string {
+  const [r, g, b] = rgb(color), [br, bg, bb] = rgb(p.bg), mix = (c: number, base: number) => c * alpha + base * (1 - alpha);
+  const lin = (c: number) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const luminance = 0.2126 * lin(mix(r, br)) + 0.7152 * lin(mix(g, bg)) + 0.0722 * lin(mix(b, bb));
+  return luminance > 0.36 ? '#121418' : '#ffffff';
+}

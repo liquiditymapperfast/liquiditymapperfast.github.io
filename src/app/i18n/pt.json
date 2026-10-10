@@ -1129,5 +1129,17 @@
   "one": "{n} layout lido.",
   "other": "{n} layouts lidos.",
   "many": "{n} layouts lidos."
- }
+ },
+ "Go to": "Ir para",
+ "Go to a date and time": "Ir para uma data e hora",
+ "Go to a date and time (keyboard: G)": "Ir para uma data e hora (teclado: G)",
+ "Date and time": "Data e hora",
+ "Choose a date and a time.": "Escolha uma data e uma hora.",
+ "That is still to come: back at the live edge.": "Isso ainda está para vir: de volta à margem em direto.",
+ "Nothing is held that far back: at the start of what is, {time}.": "Não há nada tão atrás: no início do que há, {time}.",
+ "At {time}.": "Em {time}.",
+ "Go": "Ir",
+ "Centre the map on this moment": "Centrar o mapa neste momento",
+ "Depth is recorded from {time}.": "A profundidade é registada desde {time}.",
+ "Candles at this timeframe reach back to {time}.": "As velas deste período recuam até {time}."
 }

@@ -1129,5 +1129,17 @@
   "one": "Se leyó {n} diseño.",
   "other": "Se leyeron {n} diseños.",
   "many": "Se leyeron {n} diseños."
- }
+ },
+ "Go to": "Ir a",
+ "Go to a date and time": "Ir a una fecha y hora",
+ "Go to a date and time (keyboard: G)": "Ir a una fecha y hora (teclado: G)",
+ "Date and time": "Fecha y hora",
+ "Choose a date and a time.": "Elige una fecha y una hora.",
+ "That is still to come: back at the live edge.": "Eso aún no ha llegado: de vuelta al borde en vivo.",
+ "Nothing is held that far back: at the start of what is, {time}.": "No hay nada tan atrás: al inicio de lo que hay, {time}.",
+ "At {time}.": "En {time}.",
+ "Go": "Ir",
+ "Centre the map on this moment": "Centra el mapa en este momento",
+ "Depth is recorded from {time}.": "La profundidad se registra desde {time}.",
+ "Candles at this timeframe reach back to {time}.": "Las velas de esta temporalidad llegan hasta {time}."
 }

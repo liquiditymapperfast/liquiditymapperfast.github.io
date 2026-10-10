@@ -1120,5 +1120,17 @@
  "Read {n} layouts.": {
   "one": "{n} düzen okundu.",
   "other": "{n} düzen okundu."
- }
+ },
+ "Go to": "Git",
+ "Go to a date and time": "Bir tarih ve saate git",
+ "Go to a date and time (keyboard: G)": "Bir tarih ve saate git (klavye: G)",
+ "Date and time": "Tarih ve saat",
+ "Choose a date and a time.": "Bir tarih ve saat seçin.",
+ "That is still to come: back at the live edge.": "Bu henüz gelmedi: canlı uca dönüldü.",
+ "Nothing is held that far back: at the start of what is, {time}.": "Bu kadar geriye veri yok: olanın başına, {time}.",
+ "At {time}.": "{time} anına gidildi.",
+ "Go": "Git",
+ "Centre the map on this moment": "Haritayı bu ana ortala",
+ "Depth is recorded from {time}.": "Derinlik {time} itibarıyla kaydediliyor.",
+ "Candles at this timeframe reach back to {time}.": "Bu zaman dilimindeki mumlar {time} tarihine kadar uzanır."
 }

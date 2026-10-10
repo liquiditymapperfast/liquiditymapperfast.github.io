@@ -116,6 +116,14 @@ async function main(): Promise<void> {
   heat.range = range; cvd.range = range; for (const pane of [depth, oi, delta, lt, bars]) pane.useRange(range);
   toolbar.onRange = () => range.toggle();
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
+  // The countdown under the price tag: a redraw a second when nothing else draws the map.
+  window.setInterval(() => heat.tick(), 1_000);
+  toolbar.goTo = {
+    centre: () => (heat.view.t0 + heat.view.t1) / 2,
+    earliest: () => ({ depth: hub.recordedSince > 0 ? hub.recordedSince : null, candles: store.state.candles[0]?.[0] ?? null }),
+    go: t => heat.goTo(t),
+    live: () => toolbar.onRecenter(),
+  };
   toolbar.panes = { arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults() };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
@@ -152,6 +160,7 @@ async function main(): Promise<void> {
     else if (a.kind === 'zoom') heat.zoomStep(a.dir);
     else if (a.kind === 'toggle') { store.set(togglePatch(store.state, a.feature)); toolbar.refreshOpenPanel(); }
     else if (a.kind === 'range') range.toggle();
+    else if (a.kind === 'goto') toolbar.openGoTo();
     else if (a.kind === 'screenshot') void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot());
     else toolbar.openShortcuts();
   });

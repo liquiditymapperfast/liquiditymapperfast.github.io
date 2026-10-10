@@ -1093,5 +1093,17 @@
  "Import": "読み込み",
  "Read layouts from a file written by Export (a name already here is replaced)": "書き出しで作ったファイルからレイアウトを読み込みます（同じ名前は置き換えます）",
  "This browser did not let the page keep it.": "このブラウザーはページの保存を許可しませんでした。",
- "Read {n} layouts.": "{n} 個のレイアウトを読み込みました。"
+ "Read {n} layouts.": "{n} 個のレイアウトを読み込みました。",
+ "Go to": "移動",
+ "Go to a date and time": "日時へ移動",
+ "Go to a date and time (keyboard: G)": "日時へ移動（キー：G）",
+ "Date and time": "日時",
+ "Choose a date and a time.": "日付と時刻を選んでください。",
+ "That is still to come: back at the live edge.": "それはまだ先です。ライブの端に戻りました。",
+ "Nothing is held that far back: at the start of what is, {time}.": "そこまで前のデータはありません。ある分の最初、{time} に移動しました。",
+ "At {time}.": "{time} に移動しました。",
+ "Go": "移動",
+ "Centre the map on this moment": "この時刻を地図の中央に",
+ "Depth is recorded from {time}.": "板の深さは {time} から記録されています。",
+ "Candles at this timeframe reach back to {time}.": "この時間足のローソク足は {time} までさかのぼります。"
 }

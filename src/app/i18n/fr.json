@@ -1129,5 +1129,17 @@
   "one": "{n} disposition lue.",
   "other": "{n} dispositions lues.",
   "many": "{n} dispositions lues."
- }
+ },
+ "Go to": "Aller à",
+ "Go to a date and time": "Aller à une date et une heure",
+ "Go to a date and time (keyboard: G)": "Aller à une date et une heure (clavier : G)",
+ "Date and time": "Date et heure",
+ "Choose a date and a time.": "Choisissez une date et une heure.",
+ "That is still to come: back at the live edge.": "C’est encore à venir : retour au bord en direct.",
+ "Nothing is held that far back: at the start of what is, {time}.": "Rien n’est conservé aussi loin : au début de ce qui l’est, {time}.",
+ "At {time}.": "À {time}.",
+ "Go": "Aller",
+ "Centre the map on this moment": "Centrer la carte sur ce moment",
+ "Depth is recorded from {time}.": "La profondeur est enregistrée depuis {time}.",
+ "Candles at this timeframe reach back to {time}.": "Les bougies de cette unité de temps remontent à {time}."
 }
