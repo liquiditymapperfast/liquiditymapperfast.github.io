@@ -21,6 +21,7 @@ import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
 import { DeltaPane } from './panes/delta-pane.ts';
+import { matchShortcut, togglePatch } from './shortcuts.ts';
 import { enabledStats } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
 import { Dock } from './dock.ts';
@@ -139,12 +140,19 @@ async function main(): Promise<void> {
   const fromAddress = (): void => { if (/^#guide/.test(location.hash)) void lazy(() => import('./guide/guide.ts')).then(m => m?.openFromAddress()); };
   fromAddress(); window.addEventListener('hashchange', fromAddress);
 
-  // S takes a screenshot (not while typing in a field or when a modifier is held).
+  // The keyboard shortcuts (shortcuts.ts: the table, and when a key is left alone).
   window.addEventListener('keydown', e => {
-    if (e.key.toLowerCase() !== 's' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-    const t = e.target as HTMLElement | null;
-    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) || document.querySelector('dialog[open]')) return;
-    e.preventDefault(); void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot());
+    const hit = matchShortcut(e, document.querySelector('dialog[open]') !== null);
+    if (!hit) return;
+    e.preventDefault();
+    const a = hit.action;
+    if (a.kind === 'timeframe') store.set({ timeframe: a.tf });
+    else if (a.kind === 'recenter') toolbar.onRecenter();
+    else if (a.kind === 'zoom') heat.zoomStep(a.dir);
+    else if (a.kind === 'toggle') { store.set(togglePatch(store.state, a.feature)); toolbar.refreshOpenPanel(); }
+    else if (a.kind === 'range') range.toggle();
+    else if (a.kind === 'screenshot') void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot());
+    else toolbar.openShortcuts();
   });
 
   // The profile column and axis are narrower on a phone; everything that aligns to them has to redraw when that changes.

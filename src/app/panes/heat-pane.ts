@@ -279,6 +279,15 @@ export class HeatPane {
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
+  /** One step of time zoom from the keyboard (in: `dir` 1), as the wheel does over the chart: about the live edge while the map follows the market. */
+  zoomStep(dir: 1 | -1): void {
+    const pw = this.plotW, v = this.view, state = this.store.state;
+    if (!(pw > 0) || !(v.t1 > v.t0)) return;
+    const factor = limitFactor(Math.exp(-dir * 0.25), v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);
+    v.zoomTime(factor, holdPixel({ axis: 'time', pointer: pw / 2, size: pw, alt: false, follow: state.followLive, mark: state.mark.price, markPixel: 0, nowPixel: v.xOf(Date.now(), pw) }), pw);
+    this.#liveMargin = this.view.t1 - Date.now(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
   #onRaster(result: RasterResult): void {
     this.stats = result.stats;
     this.#updateBaseline();
@@ -1686,6 +1695,5 @@ export class HeatPane {
     el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; this.#tradedHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidate(); } });
     el.addEventListener('dblclick', () => this.fit());
     bindTouch(el, new GestureRecognizer(this.#touchHandlers()));
-    window.addEventListener('keydown', e => { if ((e.key === 'r' || e.key === 'Home') && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLSelectElement)) this.fit(); });
   }
 }

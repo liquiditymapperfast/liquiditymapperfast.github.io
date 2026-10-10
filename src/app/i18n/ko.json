@@ -1049,5 +1049,17 @@
  "Pull/stack, {window}": "취소/추가, {window}",
  "How much resting liquidity each price gained (+, stacked) or lost (−, pulled) over this window. Grey: the price traded there in the window, where a fill takes liquidity away just as a pull does.": "이 기간 동안 각 가격의 대기 유동성이 얼마나 늘었는지(+, 추가) 줄었는지(−, 취소). 회색: 기간 중 그 가격에서 체결이 있었던 곳으로, 체결도 취소처럼 유동성을 줄입니다.",
  "The price traded here in the window: a fill takes liquidity away just as a pull does.": "기간 중 이 가격에서 체결이 있었습니다: 체결도 취소처럼 유동성을 줄입니다.",
- "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "취소/추가(기본값 꺼짐)는 수준 USD 뒤에 열을 추가합니다. 고른 기간 동안 각 행의 대기 유동성이 얼마나 늘었는지(+, 추가) 줄었는지(−, 취소)를 각 거래소 호가창의 스냅샷으로 보여 줍니다. 거래소는 두 시점 모두 그 호가창이 행 전체에 닿은 곳에서만 셉니다. 그래서 가격을 따라 움직이는 호가 깊이의 끝을 취소로 보지 않습니다. 기간 중 가격이 닿은 행은 회색입니다. 체결도 취소처럼 유동성을 줄이며 둘은 구별할 수 없습니다. 다시 연결한 거래소는 호가창을 새로 만들기 때문에 둘이 한꺼번에 일어난 것처럼 보입니다. 가장 촘촘한 그룹 단위에서는 열이 비어 있습니다. 축소하세요."
+ "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "취소/추가(기본값 꺼짐)는 수준 USD 뒤에 열을 추가합니다. 고른 기간 동안 각 행의 대기 유동성이 얼마나 늘었는지(+, 추가) 줄었는지(−, 취소)를 각 거래소 호가창의 스냅샷으로 보여 줍니다. 거래소는 두 시점 모두 그 호가창이 행 전체에 닿은 곳에서만 셉니다. 그래서 가격을 따라 움직이는 호가 깊이의 끝을 취소로 보지 않습니다. 기간 중 가격이 닿은 행은 회색입니다. 체결도 취소처럼 유동성을 줄이며 둘은 구별할 수 없습니다. 다시 연결한 거래소는 호가창을 새로 만들기 때문에 둘이 한꺼번에 일어난 것처럼 보입니다. 가장 촘촘한 그룹 단위에서는 열이 비어 있습니다. 축소하세요.",
+ "Zoom time in": "시간 확대",
+ "Zoom time out": "시간 축소",
+ "Range: the next drag selects (Esc cancels)": "범위: 다음 드래그로 선택 (Esc로 취소)",
+ "This list": "이 목록",
+ "Timeframe": "시간 단위",
+ "Chart": "차트",
+ "On or off": "켜기/끄기",
+ "Keys": "키",
+ "Keyboard shortcuts (?)": "키보드 단축키 (?)",
+ "Keyboard shortcuts": "키보드 단축키",
+ "Keys do nothing while you type in a field or a window is open, or with Ctrl, Alt or ⌘ held.": "입력란에 입력하는 중이거나 창이 열려 있을 때, Ctrl·Alt·⌘를 누르고 있을 때는 키가 작동하지 않습니다.",
+ "Home": "Home"
 }

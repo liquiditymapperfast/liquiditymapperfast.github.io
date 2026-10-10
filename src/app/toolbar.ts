@@ -16,7 +16,8 @@ import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
 import { SCOPE_OPTIONS, activeIds, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
-import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow } from './ui.ts';
+import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow, openedPanel } from './ui.ts';
+import { GROUP_TITLES, SHORTCUTS, type ShortcutGroup } from './shortcuts.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
 import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
@@ -152,6 +153,10 @@ export class Toolbar {
   /** The page's language: the code of the one in use, and a menu of the others (a language is chosen before the page is built, so choosing one reloads it). */
   /** Which clock the page's times are on: UTC, or the computer's own. */
   #zone = el('button', { class: 'zone-btn' });
+  /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
+  #keys = el('button', { type: 'button', class: 'keys-btn', textContent: t('Keys'), tip: t('Keyboard shortcuts (?)'), onclick: () => this.openShortcuts() });
+  /** The lamp panel open now, with what redraws it. */
+  #open: { panel: Panel; redraw: () => void } | null = null;
   #language = el('button', { class: 'language-btn', ariaLabel: t('Language'), tip: t('Language: the page uses the language of your browser unless you choose another here') }, el('span', { textContent: language().toUpperCase() }));
   #status = el('span', { class: 'status', tip: t('Connection to the data source: live when frames are arriving.') });
   #brand = el('span', { class: 'brand', textContent: 'LiquidityMapperFast' });
@@ -202,38 +207,41 @@ export class Toolbar {
     }
     this.#trades.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildTrades(tools, body, () => this.#tradePanel?.render(build));
-      this.#tradePanel = togglePanel(this.#trades, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build);
+      this.#tradePanel = this.#track(togglePanel(this.#trades, { title: t('Trades'), width: 380, align: 'left', onClose: () => { this.#tradePanel = null; } }, build), build);
     };
     this.#footprint.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildFootprintPanel(this.store, tools, body, () => this.#footprintPanel?.render(build));
-      this.#footprintPanel = togglePanel(this.#footprint, { title: t('Footprint'), width: 440, align: 'left', onClose: () => { this.#footprintPanel = null; } }, build);
+      this.#footprintPanel = this.#track(togglePanel(this.#footprint, { title: t('Footprint'), width: 440, align: 'left', onClose: () => { this.#footprintPanel = null; } }, build), build);
     };
     this.#vwap.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo);
-      this.#vwapPanel = togglePanel(this.#vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring) this.store.set({ vwapAnchoring: false }); } }, build);
+      this.#vwapPanel = this.#track(togglePanel(this.#vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring) this.store.set({ vwapAnchoring: false }); } }, build), build);
     };
     this.#keyLevels.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildKeyLevelPanel(this.store, tools, body, () => this.#keyLevelPanel?.render(build), this.keyHistory);
-      this.#keyLevelPanel = togglePanel(this.#keyLevels, { title: t('Key levels'), width: 420, align: 'left', onClose: () => { this.#keyLevelPanel = null; } }, build);
+      this.#keyLevelPanel = this.#track(togglePanel(this.#keyLevels, { title: t('Key levels'), width: 420, align: 'left', onClose: () => { this.#keyLevelPanel = null; } }, build), build);
     };
     this.#liquidations.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildLiquidations(tools, body, () => this.#liquidationPanel?.render(build));
-      this.#liquidationPanel = togglePanel(this.#liquidations, { title: t('Liquidations'), width: 400, align: 'left', onClose: () => { this.#liquidationPanel = null; } }, build);
+      this.#liquidationPanel = this.#track(togglePanel(this.#liquidations, { title: t('Liquidations'), width: 400, align: 'left', onClose: () => { this.#liquidationPanel = null; } }, build), build);
     };
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#soundButton.onclick = () => {
       const sounds = this.#sounds; if (!sounds) return;
       const build = (tools: HTMLElement, body: HTMLElement): void => { tools.append(helpButton('sounds')); buildSoundPanel(this.store, sounds, () => this.#soundPanel?.render(build), tools, body, this.#alerts); };
-      this.#soundPanel = togglePanel(this.#soundButton, { title: t('Sounds'), width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build);
+      this.#soundPanel = this.#track(togglePanel(this.#soundButton, { title: t('Sounds'), width: 420, align: 'left', onClose: () => { this.#soundPanel = null; } }, build), build);
     };
-    this.#highlights.onclick = () => { togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, (tools, body) => { tools.append(helpButton('highlights')); this.#buildHighlights(tools, body); }); };
+    this.#highlights.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => { tools.append(helpButton('highlights')); this.#buildHighlights(tools, body); };
+      this.#track(togglePanel(this.#highlights, { title: t('Highlights'), width: 380, align: 'left' }, build), build);
+    };
     this.#traded.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1));
-      this.#tradedPanel = togglePanel(this.#traded, { title: t('Volume profile'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; } }, build);
+      this.#tradedPanel = this.#track(togglePanel(this.#traded, { title: t('Volume profile'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; } }, build), build);
     };
     this.#absorption.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildAbsorption(tools, body, () => this.#absorptionPanel?.render(build));
-      this.#absorptionPanel = togglePanel(this.#absorption, { title: t('Absorption'), width: 400, align: 'left', onClose: () => { this.#absorptionPanel = null; } }, build);
+      this.#absorptionPanel = this.#track(togglePanel(this.#absorption, { title: t('Absorption'), width: 400, align: 'left', onClose: () => { this.#absorptionPanel = null; } }, build), build);
     };
     for (const style of HEAT_STYLES) this.#heat.style.append(new Option(style.label, style.id));
     this.#heat.style.onchange = () => this.store.set({ heat: { ...this.store.state.heat, style: this.#heat.style.value as HeatStyleId } });
@@ -278,6 +286,32 @@ export class Toolbar {
   #fillHeatControls(): void { this.#heatctl.replaceChildren(this.#heatHelp, this.#heat.style, this.#heatScale, this.#heat.auto, this.#heat.smooth); }
 
   /** The desktop status bar takes the language and theme buttons (and the connection text) from the top bar. */
+  /** Remember the lamp panel just opened (or none) and how to redraw it. */
+  #track(panel: Panel | null, build: (tools: HTMLElement, body: HTMLElement) => void): Panel | null {
+    this.#open = panel ? { panel, redraw: () => panel.render(build) } : null;
+    return panel;
+  }
+
+  /** Redraw the lamp panel that is open, after its feature was switched from the keyboard, so its switch says what the lamp does. */
+  refreshOpenPanel(): void { if (this.#open && openedPanel() === this.#open.panel) this.#open.redraw(); }
+
+  /** The list of keyboard shortcuts, made from the table itself so the two cannot disagree (the status bar's Keys button, and ?). */
+  openShortcuts(): void {
+    if (!this.#keys.isConnected) return;
+    togglePanel(this.#keys, { title: t('Keyboard shortcuts'), width: 380, align: 'right' }, (_tools, body) => {
+      const list = el('div', { class: 'keys-list' });
+      for (const group of ['timeframe', 'chart', 'show', 'tools'] as ShortcutGroup[]) {
+        list.append(heading(GROUP_TITLES[group]));
+        const rows = SHORTCUTS.filter(s => s.group === group);
+        // The timeframes are one row of key and name pairs; every other shortcut has a row of its own.
+        if (group === 'timeframe') list.append(el('div', { class: 'keys-row keys-pairs' }, ...rows.map(s => el('span', {}, el('kbd', { textContent: s.caps[0] ?? '' }), ` ${s.label}`))));
+        else for (const s of rows) list.append(el('div', { class: 'keys-row' }, el('span', { class: 'keys-caps' }, ...s.caps.map(cap => el('kbd', { textContent: cap }))), el('span', { textContent: s.label })));
+      }
+      list.append(note(t('Keys do nothing while you type in a field or a window is open, or with Ctrl, Alt or ⌘ held.')));
+      body.append(list);
+    });
+  }
+
   hostStatusControls(host: HTMLElement): void { this.#statusHost = host; this.#arrange(); }
 
   /** Put Recenter in a corner of the map `host` (on the full toolbar; the compact bar keeps it beside the timeframes). */
@@ -292,7 +326,7 @@ export class Toolbar {
       if (inCorner) { this.#mapTools.replaceChildren(this.#rangeCorner, this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
-      host?.replaceChildren(this.#zone, this.#language, this.#theme);
+      host?.replaceChildren(this.#keys, this.#zone, this.#language, this.#theme);
       this.root.replaceChildren(this.#brand, this.#coin, this.#market, this.#venuesButton!, this.#source, this.#timeframes, this.#layer, this.#toggles, this.#footprint, this.#trades, this.#liquidations, this.#absorption, this.#traded, this.#keyLevels, this.#vwap, this.#highlights, this.#soundButton, this.#range,
         this.#heatctl, this.#scope, this.#chips, this.#blocked, ...(inCorner ? [] : [this.#recenter]), this.#spacer, this.#install.root, this.#guide, this.#shot, this.#author, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status]), this.#notice.root, this.#coinNotice);
       return;

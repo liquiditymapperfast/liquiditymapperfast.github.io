@@ -1094,5 +1094,17 @@
  "Pull/stack, {window}": "Знято/додано, {window}",
  "How much resting liquidity each price gained (+, stacked) or lost (−, pulled) over this window. Grey: the price traded there in the window, where a fill takes liquidity away just as a pull does.": "Скільки ліквідності, що чекає, кожна ціна отримала (+, додано) чи втратила (−, знято) за це вікно. Сірим: ціна торгувалася там у цьому вікні, а виконання прибирає ліквідність так само, як зняття.",
  "The price traded here in the window: a fill takes liquidity away just as a pull does.": "Ціна торгувалася тут у цьому вікні: виконання прибирає ліквідність так само, як зняття.",
- "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "Знято/додано (типово вимкнено) додає колонку після РІВЕНЬ USD: скільки ліквідності, що чекає, кожен рядок отримав (+, додано) чи втратив (−, знято) за вибране вікно, за знімками стакана кожної біржі. Біржа враховується в рядку лише там, де її стакан сягав усього рядка в обидва моменти, тож край її глибини, що зсувається з ціною, не вважається зняттям. Рядки, яких ціна сягала за вікно, сірі: виконання прибирає ліквідність так само, як зняття, і розрізнити їх не можна. Біржа, що перепідключилася, заново будує стакан, і це виглядає як сплеск того й іншого. На найдрібніших кроках колонка порожня: зменште масштаб."
+ "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "Знято/додано (типово вимкнено) додає колонку після РІВЕНЬ USD: скільки ліквідності, що чекає, кожен рядок отримав (+, додано) чи втратив (−, знято) за вибране вікно, за знімками стакана кожної біржі. Біржа враховується в рядку лише там, де її стакан сягав усього рядка в обидва моменти, тож край її глибини, що зсувається з ціною, не вважається зняттям. Рядки, яких ціна сягала за вікно, сірі: виконання прибирає ліквідність так само, як зняття, і розрізнити їх не можна. Біржа, що перепідключилася, заново будує стакан, і це виглядає як сплеск того й іншого. На найдрібніших кроках колонка порожня: зменште масштаб.",
+ "Zoom time in": "Наблизити за часом",
+ "Zoom time out": "Віддалити за часом",
+ "Range: the next drag selects (Esc cancels)": "Діапазон: наступне перетягування виділяє (Esc — скасувати)",
+ "This list": "Цей список",
+ "Timeframe": "Таймфрейм",
+ "Chart": "Графік",
+ "On or off": "Увімк. чи вимк.",
+ "Keys": "Клавіші",
+ "Keyboard shortcuts (?)": "Гарячі клавіші (?)",
+ "Keyboard shortcuts": "Гарячі клавіші",
+ "Keys do nothing while you type in a field or a window is open, or with Ctrl, Alt or ⌘ held.": "Клавіші не діють, поки ви друкуєте в полі чи відкрите вікно, а також із натиснутими Ctrl, Alt або ⌘.",
+ "Home": "Home"
 }

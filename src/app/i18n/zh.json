@@ -1049,5 +1049,17 @@
  "Pull/stack, {window}": "撤单/挂单，{window}",
  "How much resting liquidity each price gained (+, stacked) or lost (−, pulled) over this window. Grey: the price traded there in the window, where a fill takes liquidity away just as a pull does.": "在此时间窗内每个价位的挂单流动性增加（+，挂单）或减少（−，撤单）了多少。灰色：窗口内该价位有成交，成交和撤单一样会减少流动性。",
  "The price traded here in the window: a fill takes liquidity away just as a pull does.": "窗口内该价位有成交：成交和撤单一样会减少流动性。",
- "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "撤单/挂单（默认关闭）在 价位 美元 之后添加一列：根据各交易所订单簿的快照，显示所选时间窗内每一行的挂单流动性增加（+，挂单）或减少（−，撤单）了多少。交易所只在两个时刻其订单簿都覆盖整行的位置计入，因此随价格移动的深度边缘不会被当作撤单。窗口内价格到达过的行显示为灰色：成交和撤单一样会减少流动性，二者无法区分。重新连接的交易所会重建订单簿，看起来像两者同时激增。在最细的分组步长下该列为空：请缩小。"
+ "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "撤单/挂单（默认关闭）在 价位 美元 之后添加一列：根据各交易所订单簿的快照，显示所选时间窗内每一行的挂单流动性增加（+，挂单）或减少（−，撤单）了多少。交易所只在两个时刻其订单簿都覆盖整行的位置计入，因此随价格移动的深度边缘不会被当作撤单。窗口内价格到达过的行显示为灰色：成交和撤单一样会减少流动性，二者无法区分。重新连接的交易所会重建订单簿，看起来像两者同时激增。在最细的分组步长下该列为空：请缩小。",
+ "Zoom time in": "放大时间轴",
+ "Zoom time out": "缩小时间轴",
+ "Range: the next drag selects (Esc cancels)": "范围：下一次拖动即选择（Esc 取消）",
+ "This list": "此列表",
+ "Timeframe": "时间周期",
+ "Chart": "图表",
+ "On or off": "开启或关闭",
+ "Keys": "快捷键",
+ "Keyboard shortcuts (?)": "键盘快捷键（?）",
+ "Keyboard shortcuts": "键盘快捷键",
+ "Keys do nothing while you type in a field or a window is open, or with Ctrl, Alt or ⌘ held.": "在输入框中输入、有窗口打开，或按住 Ctrl、Alt 或 ⌘ 时，快捷键不起作用。",
+ "Home": "Home"
 }

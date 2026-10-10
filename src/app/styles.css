@@ -247,7 +247,7 @@ dialog.guide::backdrop { background: rgba(8, 10, 14, .5);  }
 .guide-section p, .guide-section li { font-size: 14px; line-height: 1.68; }
 .guide-section p { margin: 0 0 12px; }
 .guide-section ul { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 7px; }
-.guide-section kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--radius); background: color-mix(in srgb, var(--text) 5%, var(--panel)); font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
+.guide-section kbd, .keys-list kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--radius); background: color-mix(in srgb, var(--text) 5%, var(--panel)); font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
 .guide-section code { padding: 1px 5px; border-radius: var(--radius); background: color-mix(in srgb, var(--text) 7%, transparent); font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .guide-section .note { display: block; margin: 14px 0; padding: 11px 14px; border-left: 3px solid var(--ui); border-radius: 0 var(--radius) var(--radius) 0; background: color-mix(in srgb, var(--ui) 8%, transparent); font-size: 13px; line-height: 1.6; }
 .guide-section .note.warn { border-left-color: #f5a524; background: color-mix(in srgb, #f5a524 11%, transparent); }
@@ -416,3 +416,10 @@ button.open { border-color: var(--ui); box-shadow: 0 0 0 1px var(--ui) inset; }
 .panel .tier-usd input { width: 92px; }
 .panel .tier-test { display: inline-flex; gap: 4px; }
 .panel .tier-test button { padding: 2px 8px; font-size: 11px; }
+
+/* The keyboard shortcuts list (toolbar.ts openShortcuts). */
+.keys-list h4 { margin: 10px 0 4px; }
+.keys-list h4:first-child { margin-top: 0; }
+.keys-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
+.keys-caps { display: inline-flex; gap: 4px; min-width: 76px; }
+.keys-pairs { flex-wrap: wrap; gap: 6px 12px; }

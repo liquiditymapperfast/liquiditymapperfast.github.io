@@ -1049,5 +1049,17 @@
  "Pull/stack, {window}": "プル/スタック、{window}",
  "How much resting liquidity each price gained (+, stacked) or lost (−, pulled) over this window. Grey: the price traded there in the window, where a fill takes liquidity away just as a pull does.": "この期間に各価格の待機中の流動性がどれだけ増えたか（+、スタック）減ったか（−、プル）。グレー：期間中にその価格で約定があった所で、約定はプルと同じように流動性を減らします。",
  "The price traded here in the window: a fill takes liquidity away just as a pull does.": "期間中にここで約定がありました：約定はプルと同じように流動性を減らします。",
- "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "プル/スタック（既定はオフ）は レベル USD の後に列を加えます。選んだ期間に各行の待機中の流動性がどれだけ増えたか（+、スタック）減ったか（−、プル）を、各取引所の板のスナップショットから示します。取引所は、両方の時点でその板が行全体に届いていた所でだけ数えるので、価格とともに動く板の深さの端はプルとはみなしません。期間中に価格が届いた行はグレーです。約定はプルと同じように流動性を減らし、両者は区別できません。再接続した取引所は板を作り直すため、両方が一度に起きたように見えます。最も細かいグループの刻みでは列は空のままです。ズームアウトしてください。"
+ "Pull/stack (off by default) adds a column after LEVEL USD: how much resting liquidity each row gained (+, stacked) or lost (−, pulled) over the window chosen, from snapshots of every venue's book. A venue counts at a row only where its book reached the whole row at both ends, so the edge of its depth moving with the price is not taken for a pull. Rows the price reached in the window are grey: a fill takes liquidity away just as a pull does, and the two cannot be told apart. A venue that reconnects rebuilds its book, which reads as a burst of both. At the finest Group steps the column stays empty: zoom out.": "プル/スタック（既定はオフ）は レベル USD の後に列を加えます。選んだ期間に各行の待機中の流動性がどれだけ増えたか（+、スタック）減ったか（−、プル）を、各取引所の板のスナップショットから示します。取引所は、両方の時点でその板が行全体に届いていた所でだけ数えるので、価格とともに動く板の深さの端はプルとはみなしません。期間中に価格が届いた行はグレーです。約定はプルと同じように流動性を減らし、両者は区別できません。再接続した取引所は板を作り直すため、両方が一度に起きたように見えます。最も細かいグループの刻みでは列は空のままです。ズームアウトしてください。",
+ "Zoom time in": "時間軸を拡大",
+ "Zoom time out": "時間軸を縮小",
+ "Range: the next drag selects (Esc cancels)": "範囲：次のドラッグで選択（Esc で取り消し）",
+ "This list": "この一覧",
+ "Timeframe": "時間足",
+ "Chart": "チャート",
+ "On or off": "オン／オフ",
+ "Keys": "キー",
+ "Keyboard shortcuts (?)": "キーボードショートカット（?）",
+ "Keyboard shortcuts": "キーボードショートカット",
+ "Keys do nothing while you type in a field or a window is open, or with Ctrl, Alt or ⌘ held.": "フィールドに入力中やウィンドウが開いているとき、Ctrl・Alt・⌘ を押しているときは、キーは働きません。",
+ "Home": "Home"
 }
