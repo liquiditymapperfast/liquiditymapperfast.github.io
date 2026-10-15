@@ -79,6 +79,19 @@ export function dayWindows(zone: string, t0: number, t1: number): ProfileWindow[
   return out;
 }
 
+/**
+ * The days of `zone` starting `startMinute` minutes after midnight instead of at it (a session VWAP that starts the day at an
+ * exchange's or a market's opening time): each window runs to the next day's start, 23, 24 or 25 hours as the clocks change.
+ */
+export function dayWindowsAt(zone: string, t0: number, t1: number, startMinute: number): ProfileWindow[] {
+  const out: ProfileWindow[] = [];
+  for (const { midnight } of days(zone, t0 - DAY, t1)) {
+    const from = fromWall(zone, midnight + startMinute * MINUTE), to = fromWall(zone, midnight + DAY + startMinute * MINUTE);
+    if (to > t0 && from < t1) out.push({ key: `day|${zone}|${from}`, name: '', from, to });
+  }
+  return out;
+}
+
 /** The weeks of `zone` (Monday 00:00 to Monday 00:00) that touch [t0, t1]. */
 export function weekWindows(zone: string, t0: number, t1: number): ProfileWindow[] {
   const out: ProfileWindow[] = [];

@@ -1049,7 +1049,7 @@ export class HeatPane {
     const key = `${JSON.stringify(s)}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
     if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
     // The whale VWAP follows the same sessions, so they are worked out for either.
-    const sessions = s.session || s.whale ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now) : [];
+    const sessions = s.session || s.whale ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now, s.startMinute) : [];
     const sessionBar = vwapBarMs(sessions.length ? now - sessions[0]!.from : 0, barMs);
     const anchors = anchorsOf(s, coin, now).map(at => ({ at, bar: vwapBarMs(now - at, barMs) }));
     const reach = new Map<number, number>();

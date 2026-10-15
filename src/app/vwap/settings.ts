@@ -9,6 +9,8 @@ export interface VwapSettings {
   on: boolean;
   session: boolean;
   period: PeriodKind;
+  /** Minutes after midnight of the zone the day's session VWAP starts at (null: midnight, the day's own start). */
+  startMinute: number | null;
   /** Bands around the session VWAP: none, ±1 standard deviation, or ±1 and ±2. */
   bands: 0 | 1 | 2;
   /** Each coin's anchors (ms), oldest first, at most MAX_ANCHORS. */
@@ -22,11 +24,19 @@ export interface VwapSettings {
 }
 
 export const MAX_ANCHORS = 4;
+
+/** The choices of a day's start ("HH:MM" shown as the zone's clock reads it): midnight by default, or the hour an exchange's or a market's day opens. */
+export const VWAP_STARTS: readonly (readonly [string, string])[] = [
+  ['', '00:00'], ['60', '01:00'], ['120', '02:00'], ['180', '03:00'], ['240', '04:00'], ['300', '05:00'], ['360', '06:00'],
+  ['420', '07:00'], ['480', '08:00'], ['540', '09:00'], ['600', '10:00'], ['660', '11:00'], ['720', '12:00'], ['780', '13:00'],
+  ['840', '14:00'], ['900', '15:00'], ['960', '16:00'], ['1020', '17:00'], ['1080', '18:00'], ['1140', '19:00'],
+  ['1200', '20:00'], ['1260', '21:00'], ['1320', '22:00'], ['1380', '23:00'],
+];
 /** Coins whose anchors are kept (a person tries many coins; the anchors of the oldest go first). */
 const MAX_ANCHOR_COINS = 20;
 
 /** Off until switched on; then the day's session VWAP, no bands, no anchors, no whale VWAP (from $1M when it is switched on). */
-export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', bands: 0, anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000 };
+export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', startMinute: null, bands: 0, anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000 };
 
 const flag = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
 
@@ -44,6 +54,7 @@ export function readVwap(saved: unknown): VwapSettings {
   return {
     on: flag(s.on, d.on), session: flag(s.session, d.session),
     period: s.period === 'week' || s.period === 'month' ? s.period : 'day',
+    startMinute: typeof s.startMinute === 'number' && Number.isInteger(s.startMinute) && s.startMinute >= 0 && s.startMinute < 1_440 ? s.startMinute : null,
     bands: s.bands === 1 || s.bands === 2 ? s.bands : 0,
     anchors, labels: flag(s.labels, d.labels), tags: flag(s.tags, d.tags),
     whale: flag(s.whale, d.whale), whaleUsd: typeof s.whaleUsd === 'number' && WHALE_BANDS_USD.includes(s.whaleUsd) ? s.whaleUsd : d.whaleUsd,
