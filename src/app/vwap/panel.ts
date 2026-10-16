@@ -8,7 +8,7 @@ import { currentCoin, scaledUsd } from '../coin.ts';
 import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
 import { venueLabel } from '../venues.ts';
 import { historyTarget } from '../keylevels/history.ts';
-import { MAX_ANCHORS, anchorsOf, withoutAnchor, type VwapSettings } from './settings.ts';
+import { MAX_ANCHORS, VWAP_STARTS, anchorsOf, withoutAnchor, type VwapSettings } from './settings.ts';
 
 /** What the page knows of the whale sums: where the recording's count of large orders begins, whether the source has them, which source it is. */
 export interface WhaleInfo { since: number | null; state: 'ready' | 'unavailable'; browser: boolean }
@@ -27,6 +27,7 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
     heading(t('Session')),
     switchRow(t('Session VWAP'), t('Starts again at each day, week or month, in the zone the Volume profile and Key levels use.'), s.session, session => set({ session })),
     selectRow(t('Starts again each'), t('The stretch the average is taken over.'), [['day', t('Day')], ['week', t('Week')], ['month', t('Month')]], s.period, v => set({ period: v === 'week' || v === 'month' ? v : 'day' })),
+    ...(s.period === 'day' ? [selectRow(t('Session starts at'), t('The time of day the day\'s average starts at, in the zone the Volume profile and Key levels use. Midnight keeps the calendar day.'), VWAP_STARTS.map(([v, label]: readonly [string, string]) => [v, label] as [string, string]), String(s.startMinute ?? ''), v => set({ startMinute: v === '' ? null : Number(v) }))] : []),
     selectRow(t('Bands'), t('Lines one and two standard deviations either side: how far prices spread around the average, weighted by volume.'), [['0', t('None')], ['1', '±1σ'], ['2', '±1σ ±2σ']], String(s.bands), v => set({ bands: v === '1' ? 1 : v === '2' ? 2 : 0 })),
     heading(t('Anchored VWAP')),
     note(t('The average from a moment you choose up to now: from a low, a high or the candle of a news event.')),

@@ -1,4 +1,4 @@
-import { windowsOf, type PeriodKind } from '../keylevels/levels.ts';
+import { dayWindowsAt, windowsOf, type PeriodKind } from '../keylevels/levels.ts';
 import type { ProfileWindow } from '../traded/sessions.ts';
 import type { CandleRow } from '../store.ts';
 import type { SumRow } from '../../shared/print-sums.ts';
@@ -65,7 +65,11 @@ export function vwapBarMs(spanMs: number, zoneBarMs: number): number {
   return Math.min(rule, zoneBarMs);
 }
 
-/** The sessions of `period` in `zone` that have begun and touch [t0, t1] (the one under way among them), oldest first. */
-export function sessionsOf(period: PeriodKind, zone: string, t0: number, t1: number, now: number): ProfileWindow[] {
+/**
+ * The sessions of `period` in `zone` that have begun and touch [t0, t1] (the one under way among them), oldest first. A day with
+ * `startMinute` set (minutes after midnight) starts there instead of at midnight: the stretch an exchange's or a market's day runs.
+ */
+export function sessionsOf(period: PeriodKind, zone: string, t0: number, t1: number, now: number, startMinute: number | null = null): ProfileWindow[] {
+  if (period === 'day' && startMinute !== null) return dayWindowsAt(zone, t0, Math.min(t1, now), startMinute).filter((w: ProfileWindow) => w.from <= now);
   return windowsOf(period, zone, t0, Math.min(t1, now)).filter(w => w.from <= now);
 }

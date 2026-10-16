@@ -43,6 +43,19 @@ test('sessions are the periods of the zone that have begun and touch the chart',
   assert.deepEqual(sessionsOf('week', 'UTC', now - HOUR, now, now).map(w => w.from), [D0]);
 });
 
+test('a day whose session starts at a set hour runs from there to the next day\'s, whatever the zone\'s clocks do', () => {
+  const now = D0 + 2 * DAY + 5 * HOUR;
+  // 14:00 UTC: each window runs 14:00 to 14:00, and one beginning the day before the chart still counts once it has begun.
+  assert.deepEqual(sessionsOf('day', 'UTC', D0 + 12 * HOUR, now + HOUR, now, 14 * 60).map(w => w.from),
+    [D0 - 10 * HOUR, D0 + 14 * HOUR, D0 + DAY + 14 * HOUR]);
+  assert.ok(sessionsOf('day', 'UTC', D0 + 12 * HOUR, now + HOUR, now, 14 * 60).every((w, i, a) => i === 0 || a[i - 1]!.to === w.from), 'each window runs to the next one\'s start');
+  // New York leaves daylight saving on 1 November 2026: the window starting at 09:00 local before the change is 25 hours.
+  const ny = sessionsOf('day', 'America/New_York', Date.UTC(2026, 10, 1, 12), Date.UTC(2026, 10, 1, 13), Date.UTC(2026, 10, 3), 9 * 60);
+  assert.equal(ny[0]!.to - ny[0]!.from, 25 * HOUR);
+  // A start not set keeps the calendar day.
+  assert.deepEqual(sessionsOf('day', 'UTC', D0 + 12 * HOUR, now + HOUR, now, null).map(w => w.from), [D0, D0 + DAY, D0 + 2 * DAY]);
+});
+
 test('anchors are kept per coin, to the minute, at most four, none in the future or older than the history reaches', () => {
   const now = D0 + 10 * DAY;
   let s = { ...VWAP_DEFAULTS };
