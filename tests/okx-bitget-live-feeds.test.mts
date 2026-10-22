@@ -108,3 +108,20 @@ test('provider metadata hydrates verified OKX face value and uses documented Bit
   assert.equal(repairedOkxMarket.base, 'BTC'); assert.equal(repairedOkxMarket.quote, 'USDT');
   manager.stop(); app.close();
 });
+
+test('OKX open interest rides its channel, in coins and stamped with the exchange time; spot has no such feed', async () => {
+  const fake = transport(); const messages:LiveFeedEvent[] = []; const manager = new LiveFeedManager({ networkEnabled: true, transportFactory: fake.factory, oiPollMs: 0, onMessage: message => messages.push(message) });
+  await manager.start({ okxEnabled: true, okxSymbol: 'BTC-USDT-SWAP' });
+  const oi = defined(fake.sockets.find(item => item.spec.id === 'okx-oi'));
+  assert.deepEqual(JSON.parse(oi.sent[0]), { op: 'subscribe', args: [{ channel: 'open-interest', instId: 'BTC-USDT-SWAP' }] });
+  oi.emit({ event: 'subscribe', arg: { channel: 'open-interest', instId: 'BTC-USDT-SWAP' } });
+  oi.emit({ arg: { channel: 'open-interest', instId: 'BTC-USDT-SWAP' }, data: [{ instId: 'BTC-USDT-SWAP', instType: 'SWAP', oi: '2990937', oiCcy: '29909.37', oiUsd: '2477295037', ts: '1700000000000' }] });
+  const got = messages.filter(item => item.id === 'okx-oi');
+  assert.equal(got.length, 1);
+  assert.deepEqual({ instrumentId: got[0]!.message.instrumentId, base: got[0]!.message.base, sourceTimestamp: got[0]!.message.sourceTimestamp, quality: got[0]!.message.quality, venue: got[0]!.venue }, { instrumentId: 'okx:BTC-USDT-SWAP', base: 29909.37, sourceTimestamp: 1700000000000, quality: 'native', venue: 'okx' });
+  manager.stop();
+  const spot = new LiveFeedManager({ networkEnabled: true, transportFactory: fake.factory, oiPollMs: 0 });
+  await spot.start({ okxEnabled: true, okxSymbol: 'BTC-USDT', okxMarketType: 'spot' });
+  assert.equal(spot.specs.has('okx-oi'), false, 'spot has no open interest feed');
+  spot.stop();
+});

@@ -19,6 +19,13 @@ export interface ConnectorStatus { state: ConnectorState; lastError: string | nu
 export interface TradeEvent { instrumentId: string; tradeId: string; side: 'buy' | 'sell'; price: number; amount: number; notionalUsd: number; t: number; order?: string }
 
 /**
+ * One open-interest reading a venue's socket carries (Bybit's `tickers.<symbol>`, OKX's `open-interest` channel): `t` is the exchange's
+ * own push time and `base` the one-sided open interest in coins (Bybit's `singleOpenInterest`, OKX's `oiCcy`). An inverse market's
+ * reading keeps its own USD as `quote`.
+ */
+export interface OiEvent { instrumentId: string; t: number; base: number; quote?: number }
+
+/**
  * One coin on one market: the coin, and how that market lists it (see shared/coins.ts). `unit` is coins per listed unit (1000 for
  * 1000PEPEUSDT), `contract` an OKX swap's listed units per contract, and `inverse` a market that sizes in USD (Deribit's BTC and ETH).
  */
@@ -67,6 +74,8 @@ export abstract class BookConnector {
   onTrade: (trade: TradeEvent) => void = () => {};
   /** Receives every liquidation the venue reports on this socket (the venues that publish them: shared/liquidations.ts). */
   onLiquidation: (event: LiquidationEvent) => void = () => {};
+  /** Receives the open-interest readings the venue's socket carries, where it does (Bybit's ticker, OKX's open-interest channel). */
+  onOi: (event: OiEvent) => void = () => {};
   #socket: WebSocket | null = null;
   #ping: ReturnType<typeof setInterval> | null = null;
   #pending: unknown = null;
@@ -137,6 +146,12 @@ export abstract class BookConnector {
   protected emitLiquidation(event: Omit<LiquidationEvent, 'instrumentId'>): void {
     const unit = this.unit;
     this.onLiquidation({ instrumentId: this.instrumentId, ...event, ...(unit === 1 ? {} : { price: event.price / unit, amount: event.amount * unit }) });
+  }
+
+  /** Report an open-interest reading parsed from this venue's frames (base as listed: converted to one coin here, as a trade's sizes are). */
+  protected emitOi(event: Omit<OiEvent, 'instrumentId'>): void {
+    const unit = this.unit;
+    this.onOi({ instrumentId: this.instrumentId, ...event, ...(unit === 1 ? {} : { base: event.base * unit, ...(event.quote !== undefined ? { quote: event.quote * unit } : {}) }) });
   }
 
   status(): ConnectorStatus { return { state: this.state, lastError: this.lastError, lastFailure: this.lastFailure, lastUpdate: this.lastUpdate, reconnects: this.reconnects, everLive: this.everLive, failures: this.failures }; }

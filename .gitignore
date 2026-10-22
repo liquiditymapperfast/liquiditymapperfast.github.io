@@ -8,6 +8,8 @@ data/runtime/
 *.local
 build/
 .tmp/
+# The esbuild temp workaround for Windows (see "esbuild Access is denied" note): TMP/TEMP pointed here
+.tmp-esbuild/
 
 # Screenshots for visual checks stay on this machine
 example_images/

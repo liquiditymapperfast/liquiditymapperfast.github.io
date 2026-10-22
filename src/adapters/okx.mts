@@ -83,10 +83,11 @@ export function buildOkxRequest(kind: string, { instId: instrument, instType, ma
   return { url: `${baseUrl}${kind === 'instruments' ? '/api/v5/public/instruments' : '/api/v5/market/books'}?${query}`, method: 'GET', headers: { accept: 'application/json' } };
 }
 
-export function buildOkxSubscription(kind: string, { instId: instrument, instType, marketType, channel = 'books' }: AdapterOptions = {}) {
-  if (kind !== 'depth') throw new RangeError(`Unsupported OKX subscription: ${kind}`);
+export function buildOkxSubscription(kind: string, { instId: instrument, instType, marketType, channel = kind === 'open-interest' ? 'open-interest' : 'books' }: AdapterOptions = {}) {
+  if (kind !== 'depth' && kind !== 'open-interest') throw new RangeError(`Unsupported OKX subscription: ${kind}`);
   const id = instId(instrument); const type = okxFamily({ instType, marketType }, id);
   if ((type === 'SPOT') !== !id.endsWith('-SWAP')) throw new TypeError('OKX subscription instrument/family mismatch');
+  if (kind === 'open-interest' && type !== 'SWAP') throw new RangeError('OKX spot does not provide open interest');
   const value = { channel: String(channel), instId: id };
   return { url: OKX_PUBLIC_WS_URL, method: 'subscribe', args: [value], topic: `${value.channel}:${id}`, channel: value.channel, instId: id };
 }
@@ -124,8 +125,25 @@ export function normalizeOkxDepth(payload: unknown, { instId: instrument, instTy
   return { kind: 'depthDelta' as const, venue: 'okx', instrumentId: okxInstrumentId(native), nativeSymbol: market.nativeSymbol, market, units: market.quantityUnit, ...(market.contractValue != null ? { contractValue: market.contractValue } : {}), sourceTimestamp, receivedAt, sequence: normalizeSequence(row?.seqId ?? row?.seq, 'update sequence'), ...predecessor, bids: sideLevels(bids, 'bids'), asks: sideLevels(asks, 'asks') };
 }
 
-export function normalizeOkxInstrumentInfo(payload: unknown, { instId: instrument, instType, marketType, receivedAt = Date.now() }: AdapterOptions = {}) {
-  const family = okxFamily({ instType, marketType });
+/**
+ * One push of the OKX `open-interest` channel: `oiCcy` is the open interest in coins (the same field the REST sampler reads) and `ts`
+ * the exchange's own push time. Only the perpetual swap publishes it.
+ */
+export function normalizeOkxOpenInterest(payload: unknown, { instId: instrument, instType, marketType, receivedAt = Date.now() }: AdapterOptions = {}) {
+  const envelope = recordValue(assertOkx(payload));
+  const arg = recordValue(envelope?.arg);
+  if (arg?.channel !== 'open-interest') throw new TypeError('OKX open-interest channel mismatch');
+  const row = recordValue(Array.isArray(envelope?.data) ? arrayValue(envelope!.data)[0] : envelope?.data);
+  const id = instId(arg?.instId ?? row?.instId ?? instrument);
+  const expected = instrument == null ? null : instId(instrument);
+  if (expected != null && id !== expected) throw new TypeError('OKX open-interest instrument mismatch');
+  if (!id.endsWith('-SWAP')) throw new TypeError('OKX open interest is a swap metric');
+  const oiCcy = positiveMetadata(row?.oiCcy, 'oiCcy');
+  const sourceTimestamp = epochMs(row?.ts ?? envelope?.ts, receivedAt);
+  return { kind: 'openInterest' as const, instrumentId: okxInstrumentId(id), sourceTimestamp, receivedAt, base: oiCcy, quality: 'native' as const };
+}
+
+export function normalizeOkxInstrumentInfo(payload: unknown, { instId: instrument, instType, marketType, receivedAt = Date.now() }: AdapterOptions = {}) {  const family = okxFamily({ instType, marketType });
   const selectedId = instrument == null ? null : instId(instrument);
   const rows = dataOf(payload); if (!Array.isArray(rows)) throw new TypeError('OKX instruments must be an array');
   const assets = rows.filter((raw: unknown) => {

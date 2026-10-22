@@ -913,7 +913,7 @@ async function route(req: IncomingMessage, res: ServerResponse, state: RuntimeSt
     const delay = services.metrics?.eventLoop;
     return json(res, { ok: true, pid: process.pid, uptimeSec: Math.round(process.uptime()), rssBytes: process.memoryUsage().rss,
       eventLoopDelayMs: delay ? { p50: delay.percentile(50) / 1e6, p95: delay.percentile(95) / 1e6, p99: delay.percentile(99) / 1e6, max: delay.max / 1e6 } : null,
-      appliedMessages: services.metrics?.appliedMessages ?? 0, feedManager: services.retainedProviders?.feeds?.startDiagnostics?.() ?? null, statuses: state.statuses, quota: quota.snapshot() });
+      appliedMessages: services.metrics?.appliedMessages ?? 0, feedManager: services.retainedProviders?.feeds?.startDiagnostics?.() ?? null, sampledOi: services.sampledOiStatus?.() ?? null, statuses: state.statuses, quota: quota.snapshot() });
   }
   if (req.method === 'GET' && url.pathname === '/api/status') return json(res, { venues: state.statuses, quota: quota.snapshot() });
   if (req.method === 'GET' && url.pathname === '/api/stream') {
@@ -1131,6 +1131,8 @@ export function createLocalServer({
   let publicMarketControls: PublicMarketControls | null = null;
   let publicMarketControlGeneration = 0;
   let publicMarketSelectionBusy = false;
+  /** The open-interest sampler's status getter, installed by v2 once the sampler exists (the diagnostics route reads it). */
+  const oiSamplerStatusRef: { current: (() => Record<string, unknown>) | null } = { current: null };
   const providerRetainedPayloads = new Map<string, { logicalBytes: number; temporaryBytes: number; consumers: number; physical: ProcessMemoryReservation | null }>();
   const providerFlightCount = () => providerFlights.size + providerResourceFlights.size + publicCatalogFlights.size;
   const processMemory = new ProcessMemoryMonitor();
@@ -2559,6 +2561,7 @@ export function createLocalServer({
     if (!guardRequest(req, res)) return; // other websites cannot reach a localhost server through the browser (request-guard.mts)
     route(req, res, state, quota, clients, bus, history, {
       provider: providerRef.current, refreshProvider, selectProviderLayer, discoverPublicProducts, selectPublicMarket, orderbookCatalog, selectOrderbooks, publishState, metrics, retainedProviders, admitRetainedMutation, startFixtureTicks, stopFixtureTicks,
+      sampledOiStatus: () => oiSamplerStatusRef.current?.() ?? null,
     }).catch((error) => json(res, { error: error.message }, 500));
   });
   return {
@@ -2570,6 +2573,8 @@ export function createLocalServer({
     setActiveBookSets,
     applyActiveBookSelectionStatus,
     applyLiveFeedStatus,
+    /** The open-interest sampler's status getter (installed by v2 once the sampler exists), for the diagnostics route. */
+    setOiSamplerStatus(getter: () => Record<string, unknown>) { oiSamplerStatusRef.current = getter; },
     setProvider(next: ProviderClient | null) {
       stopProviderPolling();
       providerRef.generation += 1;

@@ -128,3 +128,34 @@ test('Bybit open interest stored as both sides is halved once, and only once', (
   assert.equal(close(twice, 'bybit:BTCUSDT'), 30_000, 'not halved again');
   twice.close(); rmSync(dir, { recursive: true, force: true });
 });
+
+test('a reading keeps the venue\'s own clock, failures are counted and logged at most every ten minutes, and fast venues are read every five seconds', async () => {
+  let clock = NOW, failing = false;
+  const applied: OiSampleMessage[] = [], logs: string[] = [];
+  const get = async (url: string): Promise<unknown> => {
+    if (url.includes('open-interest?category')) return { result: { list: [] } };
+    if (url.includes('tickers')) { if (failing) throw new Error('HTTP 500'); return { result: { list: [{ openInterest: '20', singleOpenInterest: '10' }] }, time: 1_700_000_000_000 }; }
+    throw new Error(url);
+  };
+  const sampler = new OiSampler((message, venue) => applied.push(message), () => {}, get, () => clock, 60_000, message => logs.push(message));
+  sampler.sync(['bybit:BTCUSDT']);
+  await sampler.round();
+  assert.equal(applied[0]!.sourceTimestamp, 1_700_000_000_000, 'the venue\'s own clock rides the sample');
+  assert.equal(sampler.status().bybit.lastSuccess, NOW); assert.equal(sampler.status().bybit.failures, 0); assert.equal(sampler.status().bybit.fast, false);
+  sampler.setFast(['bybit']);
+  assert.equal(sampler.status().bybit.fast, true);
+  clock += 5_000; await sampler.roundFast();
+  assert.equal(applied.length, 2, 'a fast round reads the venue');
+  await sampler.roundFast();
+  assert.equal(applied.length, 2, 'not again within five seconds');
+  clock += 5_000; failing = true;
+  await sampler.roundFast();
+  assert.equal(sampler.status().bybit.failures, 1); assert.match(String(sampler.status().bybit.lastError), /500/); assert.equal(logs.length, 1, 'logged once');
+  clock += 5_000; await sampler.roundFast();
+  assert.equal(sampler.status().bybit.failures, 2); assert.equal(logs.length, 1, 'at most once every ten minutes');
+  clock += 10 * 60_000 + 5_000; await sampler.roundFast();
+  assert.equal(logs.length, 2, 'logged again after ten minutes');
+  sampler.setFast([]);
+  assert.equal(sampler.status().bybit.fast, false);
+  sampler.close();
+});

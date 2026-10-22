@@ -128,14 +128,17 @@ export class BinancePerpConnector extends MarketBook {
 
 /**
  * Bybit: orderbook.1000 snapshot then deltas (u counts up by one), and publicTrade on the same socket. The USDT linear perpetual and spot
- * differ only by address; sizes are coins in both.
+ * differ only by address; sizes are coins in both. The perpetual also subscribes `tickers.<symbol>` for open interest: the snapshot that
+ * arrives on subscribing carries the whole ticker, each delta only the fields that changed (open interest among them only when it did).
  */
 abstract class BybitBook extends MarketBook {
   readonly quote = 'USDT';
   protected abstract readonly category: 'linear' | 'spot';
   #u = 0;
   protected url() { return `wss://stream.bybit.com/v5/public/${this.category}`; }
-  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [`orderbook.1000.${this.symbol}`, `publicTrade.${this.symbol}`, ...(this.category === 'linear' ? [`allLiquidation.${this.symbol}`] : [])] }); }
+  /** Topics this market subscribes that carry open interest: the perpetual's ticker (spot has none). */
+  protected oiTopics(): string[] { return []; }
+  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [`orderbook.1000.${this.symbol}`, `publicTrade.${this.symbol}`, ...(this.category === 'linear' ? [`allLiquidation.${this.symbol}`] : []), ...this.oiTopics()] }); }
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping' }) }; }
   onMessage(text: string) {
     const m = this.record(JSON.parse(text)); if (!m) return;
@@ -159,6 +162,19 @@ abstract class BybitBook extends MarketBook {
       }
       return;
     }
+    if (topic === `tickers.${this.symbol}`) {
+      const d = this.record(m.data); if (!d) return;
+      // A delta without the open-interest fields is not a reading (open interest did not change), never a zero; the `single…` figure is
+      // one side of every contract, as every other venue reports it.
+      const single = d.singleOpenInterest !== undefined && d.singleOpenInterest !== null && d.singleOpenInterest !== ''
+        ? num(d.singleOpenInterest) : d.openInterest !== undefined && d.openInterest !== null && d.openInterest !== ''
+          ? num(d.openInterest) / 2 : null;
+      if (single === null || !(single > 0)) return;
+      const t = num(m.ts);
+      if (!Number.isFinite(t) || !(t > 0)) return;
+      this.emitOi({ t, base: single });
+      return;
+    }
     if (topic !== `orderbook.1000.${this.symbol}`) return;
     const d = this.record(m.data); if (!d) return;
     const u = num(d.u);
@@ -172,6 +188,7 @@ abstract class BybitBook extends MarketBook {
 export class BybitConnector extends BybitBook {
   readonly id = 'bybit'; readonly name = 'Bybit'; readonly marketType = 'perpetual' as const; protected readonly category = 'linear';
   constructor(market: Market = btc('bybit')) { super(market); }
+  protected override oiTopics(): string[] { return [`tickers.${this.symbol}`]; }
 }
 /** Bybit spot. Its `seq` names an order as on the perpetual (measured on BTC/USDT: 103 fills sharing one, never two sides or two times). */
 export class BybitSpotConnector extends BybitBook {
@@ -221,6 +238,15 @@ abstract class OkxBook extends MarketBook {
       }
       return;
     }
+    if (channel === 'open-interest') {
+      // The swap's own open-interest channel: `oiCcy` is the open interest in coins and `ts` the exchange's push time.
+      for (const item of data) {
+        const d = this.record(item); if (!d) continue;
+        const oiCcy = num(d.oiCcy), t = num(d.ts);
+        if (oiCcy > 0 && Number.isFinite(t)) this.emitOi({ t, base: oiCcy });
+      }
+      return;
+    }
     if (channel !== 'books') return;
     for (const item of data) {
       const d = this.record(item); if (!d) continue;
@@ -239,7 +265,7 @@ export class OkxConnector extends OkxBook {
   constructor(market: Market = btc('okx')) { super(market); }
   protected override open(send: (p: unknown) => void) {
     super.open(send);
-    send({ op: 'subscribe', args: [{ channel: 'liquidation-orders', instType: 'SWAP' }] });
+    send({ op: 'subscribe', args: [{ channel: 'liquidation-orders', instType: 'SWAP' }, { channel: 'open-interest', instId: this.symbol }] });
     void fetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${this.symbol}`, { signal: AbortSignal.timeout(10_000) })
       .then(r => r.json() as Promise<{ data?: { ctVal?: string }[] }>).then(body => { const v = num(body.data?.[0]?.ctVal); if (v > 0) this.contract = v; }).catch(() => { /* the documented value stands */ });
   }

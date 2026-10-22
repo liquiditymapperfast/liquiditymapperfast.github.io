@@ -10,6 +10,8 @@ import type { CellShare } from './cell-sources.ts';
 import type { Bounds } from './view.ts';
 import type { LtParams, LtSeries } from './lt.ts';
 import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
+import { applyOiReading, takeOiPushes } from './oi-push.ts';
+import { replaying } from './replay/clock.ts';
 import { atOnePrice, inverseOi, oiSumOf, type OiPart } from './oi-change.ts';
 import { oiMarketIds } from './market-choice.ts';
 import { nextBookGone } from './cvd/ids.ts';
@@ -417,6 +419,8 @@ export class Hub {
         const fresh = this.liquidations.add(items.flatMap(row => { const l = liquidationFromWire(row); return l ? [l] : []; }));
         if (fresh.length) this.onLiquidationsChanged();
       },
+      // Open interest is pushed the moment the source has a reading: the pane follows the exchanges, not the clock.
+      onOiPush: items => this.#oiPush(items),
     });
     this.#live.tape(this.#tapeOn);
   }
@@ -501,7 +505,7 @@ export class Hub {
     const own = seriesInstrument || marketId; if (!own) return Promise.resolve();
     const added = oiMarketIds(state, this.flow), venues = added ?? [];
     const key = `${own}|${timeframe}|${state.oiMarkets}|${venues.join(',')}`;
-    // A load for the same markets still under way is the answer: asking again on the 20 s clock while a slow history (Bybit's pages, in a
+    // A load for the same markets still under way is the answer: asking again on the 10 s clock while a slow history (Bybit's pages, in a
     // page) is still coming would make every answer stale before it came, and the pane would never get one.
     const held = this.#oiInflight;
     if (held && held.key === key && held.generation === this.#oiGen) return held.promise;
@@ -510,6 +514,38 @@ export class Hub {
     return promise;
   }
   #oiInflight: { key: string; generation: number; promise: Promise<void> } | null = null;
+  /**
+   * The source pushes each new open-interest reading the moment it lands, so the pane moves with the exchanges instead of waiting for the
+   * 10 s clock (which stays as the reconciliation: history, venues switched, a reading the push missed). A reading is put in the bucket of
+   * its own time; one older than the newest bar (a restart, an out-of-order frame) changes nothing. A replay is the past: pushes say
+   * nothing it did not know then.
+   */
+  #oiPush(items: unknown[]): void {
+    if (replaying()) return;
+    const readings = takeOiPushes(items);
+    if (!readings.length) return;
+    const { state } = this.store;
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+    const parts = state.oiParts;
+    if (parts.length > 1) {
+      let changed = false;
+      const nextParts = parts.map(part => {
+        const mine = readings.filter(reading => reading.instrumentId === part.id);
+        if (!mine.length) return part;
+        let bars: OiBar[] | null = null;
+        for (const reading of mine) { const next = applyOiReading(bars ?? part.bars, reading.t, reading.base, tf); if (next) bars = next; }
+        if (!bars) return part;
+        changed = true;
+        return { ...part, bars };
+      });
+      if (changed) this.store.set({ oiParts: nextParts, oi: oiSumOf(nextParts, tf).bars, oiPrice: 0 });
+    } else if (state.oiInstrument) {
+      const mine = readings.filter(reading => reading.instrumentId === state.oiInstrument);
+      let bars: OiBar[] | null = null;
+      for (const reading of mine) { const next = applyOiReading(bars ?? state.oi, reading.t, reading.base, tf); if (next) bars = next; }
+      if (bars) this.store.set({ oi: bars });
+    }
+  }
   /** What the open-interest markets were last checked against (`refreshOiMarkets`), so a check with nothing new costs a comparison. */
   #oiChecked: readonly unknown[] = [];
 

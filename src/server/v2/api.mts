@@ -187,6 +187,17 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   // Only a market the registry calls a perpetual (a spot book of a venue that has perpetuals too has no open interest).
   const perpetual = (id: string): boolean => (app.state.markets ?? []).some(m => String((m as { instrumentId?: unknown; id?: unknown }).instrumentId ?? (m as { id?: unknown }).id) === id && (m as { marketType?: unknown }).marketType === 'perpetual');
   const oiSampler = oiSampling ? new OiSampler((message, venue) => { app.applyMessage(message, venue); }, oiHistoryWriter(app.history)) : null;
+  // The sampler's per-venue outcomes (failures in a row, last error, the fast fallback mode) on the diagnostics route.
+  if (oiSampler) app.setOiSamplerStatus(() => oiSampler.status());
+  /**
+   * Bybit's and OKX's WebSocket OI feeds, by their feed ids: while one is not live its venue is read by the sampler every five seconds
+   * instead of once a minute (the WebSocket returns, the minute cadence does too).
+   */
+  const oiFeedIds = new Map<string, string>([['bybit', 'bybit-ticker'], ['okx', 'okx-oi']]);
+  const oiFastVenues = (): string[] => {
+    const statuses = app.state.feedStatuses ?? {};
+    return [...oiFeedIds.entries()].filter(([venue, id]) => String((statuses as Record<string, { state?: unknown }>)[id]?.state) !== 'live').map(([venue]) => venue);
+  };
   const farBooks = new Map<string, FarPoller>();
   const syncFar = (ids: readonly string[]): void => {
     const wanted = new Set<string>(), now = Date.now();
@@ -206,6 +217,24 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const degraded = new Map<string, string>();
   let levelsDirty = true;
   let lastSample = 0, lastPrune = 0, lastFlush = 0, lastBeat = 0, lastFlowPush = 0, lastSources = 0;
+  // Open-interest pushes: per instrument the newest reading already sent, so only readings that are new since the last pass go out.
+  let oiSeenReady = false;
+  const oiSeen = new Map<string, number>();
+  const oiTime = (row: { observationTimestamp?: unknown; sourceTimestamp?: unknown; receivedAt?: unknown }): number => Number(row.observationTimestamp ?? row.sourceTimestamp ?? row.receivedAt);
+  const newOi = (): { instrumentId: string; t: number; base: number; quote?: number }[] => {
+    const rows = app.state.oi ?? [];
+    if (!oiSeenReady) { for (const row of rows) { const id = String(row.instrumentId ?? ''); if (id) oiSeen.set(id, oiTime(row)); } oiSeenReady = true; return []; }
+    const out: { instrumentId: string; t: number; base: number; quote?: number }[] = [];
+    for (let i = rows.length - 1; i >= 0 && out.length < 128; i--) {
+      const row = rows[i]!; const id = String(row.instrumentId ?? ''); if (!id) continue;
+      const t = oiTime(row), base = Number(row.base);
+      if (!(t > 0) || !Number.isFinite(base) || t <= (oiSeen.get(id) ?? 0)) continue;
+      oiSeen.set(id, t);
+      const quote = row.quote === undefined || row.quote === null ? undefined : Number(row.quote);
+      out.push({ instrumentId: id, t, base, ...(quote !== undefined && Number.isFinite(quote) ? { quote } : {}) });
+    }
+    return out.reverse();
+  };
   let lastTick = '', lastLayers = '';
   /** Which books were on the map when the levels were last published, so one that ages out is published as gone. */
   let lastMembers = '';
@@ -289,7 +318,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     detect(orders.add(trades));
     takeOrders(false);
     absorption.step();
-    if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); syncFar(Object.keys(app.state.books ?? {})); oiSampler?.sync(Object.keys(app.state.books ?? {}).filter(perpetual)); }
+    if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); syncFar(Object.keys(app.state.books ?? {})); oiSampler?.sync(Object.keys(app.state.books ?? {}).filter(perpetual)); oiSampler?.setFast(oiFastVenues()); }
     // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
     if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, liquidations, flow, absorption, coverage]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
@@ -298,8 +327,12 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     const flowItems = now - lastFlowPush >= FLOW_SEC ? flow.take() : [];
     if (flowItems.length || now - lastFlowPush >= FLOW_SEC) lastFlowPush = now;
     const tape = tapeOut; tapeOut = [];
+    // Open interest: what the reducer took since the last pass is pushed to the pages the moment it lands, so the OI pane follows the
+    // exchanges instead of a clock. The first pass only marks what is there (the fixture's or a restart's rows) as seen.
+    const oiItems = newOi();
     if (wss.clients.size === 0) return;
     if (now - lastBeat >= heartbeatMs) { lastBeat = now; broadcast(JSON.stringify({ t: 'hb', now })); }
+    if (oiItems.length) broadcast(JSON.stringify({ t: 'oi', items: oiItems }));
     if (fresh.length) broadcast(JSON.stringify({ t: 'prints', items: fresh.map(toWire) }));
     if (forced.length) broadcast(JSON.stringify({ t: 'liquidations', items: forced.map(liquidationWire) }));
     if (found.groups.length || found.minutes.length) broadcast(JSON.stringify({ t: 'absorption', groups: found.groups, minutes: found.minutes }));

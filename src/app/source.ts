@@ -29,6 +29,7 @@ export interface TickMessage {
 export interface LayersMessage { t: 'layers'; layers: Record<string, LayerLevel[]> }
 export interface PrintsMessage { t: 'prints'; items: unknown[] }
 export interface LiquidationsMessage { t: 'liquidations'; items: unknown[] }
+export interface OiPushMessage { t: 'oi'; items: unknown[] }
 export interface LiveHandlers {
   /** `failures` counts the connections lost since the last one that worked; `host` is the place being tried. */
   onOpen(): void; onClose(failures: number, host: string): void;
@@ -43,6 +44,8 @@ export interface LiveHandlers {
   onTape?(batch: TapeBatch): void;
   /** Absorption groups found and minutes settled (checked already). */
   onAbsorption?(groups: AbsorptionGroup[], minutes: AbsorptionMinute[]): void;
+  /** New open-interest readings the moment the source has them (each checked by the caller before the bars are touched). */
+  onOiPush?(items: unknown[]): void;
   /** A gap of `id` was filled from the venue's trade history over [from, to): recovered trades, never to flash or sound. */
   onRecovered?(id: string, from: number, to: number): void;
 }

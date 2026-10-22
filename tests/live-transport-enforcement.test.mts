@@ -151,6 +151,10 @@ test('Bybit negative acknowledgement releases the retired session before retry',
   fixtureSocket(defined(feed).socket).emit({ op: 'subscribe', success: false, retCode: 10001, retMsg: 'denied' });
   assert.equal(fixtureSocket(defined(feed).socket).closed, true);
   assert.equal(manager.status()['bybit-depth'].state, 'backoff');
+  // The venue's other feed (its open-interest ticker) still owns its connection; a negative acknowledgement retires it the same way.
+  const ticker = manager.feeds.get('bybit-ticker');
+  fixtureSocket(defined(ticker).socket).emit({ op: 'subscribe', success: false, retCode: 10001, retMsg: 'denied' });
+  assert.equal(fixtureSocket(defined(ticker).socket).closed, true);
   assert.equal(budget.snapshot().bybit.connections, 0);
   manager.stop();
 });

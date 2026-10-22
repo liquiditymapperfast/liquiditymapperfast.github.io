@@ -60,6 +60,8 @@ export type FeedsOut =
   | { type: 'prints'; items: Print[] }
   | { type: 'liquidations'; items: Liquidation[] }
   | { type: 'flow'; items: FlowUpdate[] }
+  /** A new open-interest reading, the moment the engine has it (the venue's socket or its REST poll), for the OI pane to follow at once. */
+  | { type: 'oi'; instrumentId: string; t: number; base: number; quote?: number }
   | { type: 'tape'; batch: TapeBatch }
   | { type: 'absorption'; groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] }
   | { type: 'status'; venues: VenueStatus[] }

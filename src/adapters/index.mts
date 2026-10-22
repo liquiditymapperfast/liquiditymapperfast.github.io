@@ -76,7 +76,9 @@ export type AdapterTradeMessage =
 export type AdapterOpenInterestMessage =
   | ReturnType<typeof import('./hyperliquid.mts').normalizeHyperliquidAssetContext>
   | ReturnType<typeof import('./binance.mts').normalizeBinanceOpenInterest>
-  | ReturnType<typeof import('./bybit.mts').normalizeBybitOpenInterest>;
+  | ReturnType<typeof import('./bybit.mts').normalizeBybitOpenInterest>
+  | ReturnType<typeof import('./bybit.mts').normalizeBybitTicker>
+  | ReturnType<typeof import('./okx.mts').normalizeOkxOpenInterest>;
 export type NormalizedAdapterMessage = AdapterDepthMessage | AdapterMetadataMessage | AdapterTradeMessage | AdapterOpenInterestMessage | (import('./common.mts').NormalizedAdapterCandle & { kind: 'candle' }) | ReturnType<typeof import('./hypertracker.mts').normalizeHyperTrackerSnapshot> | import('./common.mts').AdapterDepthBook;
 export type AdapterTransportRequest = import('./common.mts').RequestDescriptor;
 export type AdapterSubscriptionRequest = import('./common.mts').SubscriptionDescriptor;

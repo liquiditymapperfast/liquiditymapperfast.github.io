@@ -106,6 +106,8 @@ export interface RouteServices {
   orderbookCatalog?: () => OrderbookVenueCatalog | PublicCatalogReply;
   selectOrderbooks?: (instrumentId: unknown, venues: unknown) => Promise<OrderbookVenueCatalog | PublicCatalogReply>;
   admitRetainedMutation?: <T>(candidate: unknown, context: MutationContext, mutation: () => T, onReject?: ((reservation: MutationReservation) => void) | null) => MutationResult<T>;
+  /** The open-interest sampler's per-venue outcomes (oi-sampler.mts), for the diagnostics route. */
+  sampledOiStatus?: () => Record<string, unknown> | null;
 }
 export interface CandleReclaimOptions { history?: HistoryStore | null; feeds?: FeedOwner | null; targetBytes?: number; protectedInstrumentIds?: Set<string>; instrumentId?: string; startupCandleInstrumentIds?: readonly string[] | Set<string>; }
 export type BookSerializationOptions = { compact?: boolean; serverLevelsPerSide?: number };

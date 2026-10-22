@@ -255,16 +255,19 @@ export async function fetchOiSample(venue: string, get: Fetcher, listing?: Histo
 
 /**
  * The same reading with, for an inverse market (Deribit's BTC and ETH perpetuals, counted in USD), its own USD as `quote`: its coins are
- * the USD at the mark of the moment, and only the USD tells contracts opened or closed apart from the price moving.
+ * the USD at the mark of the moment, and only the USD tells contracts opened or closed apart from the price moving. Where the venue's
+ * answer carries its own clock (Bybit's `time`, OKX's row `ts`), it is kept as `sourceTimestamp`, so the reading is placed by the
+ * exchange's time, not by when it arrived here.
  */
-export async function fetchOiReading(venue: string, get: Fetcher, listing?: HistoryListing): Promise<{ base: number; quote?: number } | null> {
+export async function fetchOiReading(venue: string, get: Fetcher, listing?: HistoryListing): Promise<{ base: number; quote?: number; sourceTimestamp?: number } | null> {
   const value = await readOiSample(venue, get, listing);
   return value === null ? null : typeof value === 'number' ? { base: value } : value;
 }
 
-async function readOiSample(venue: string, get: Fetcher, listing?: HistoryListing): Promise<number | { base: number; quote: number } | null> {
+async function readOiSample(venue: string, get: Fetcher, listing?: HistoryListing): Promise<number | { base: number; quote?: number; sourceTimestamp?: number } | null> {
   const market = listingOf(venue, listing); if (!market) return null;
   const coins = (v: number): number | null => v > 0 && Number.isFinite(v) ? v * market.unit : null;
+  const exchangeTime = (value: unknown): number | null => { const t = num(value); return Number.isFinite(t) && t > 0 ? t : null; };
   if (venue === 'binance') return coins(num(at(await get(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${market.symbol}`), 'openInterest')));
   if (venue === 'hyperliquid') {
     const result = await get('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
@@ -272,14 +275,22 @@ async function readOiSample(venue: string, get: Fetcher, listing?: HistoryListin
     return index >= 0 ? coins(num(at(result, 1, index, 'openInterest'))) : null;
   }
   if (venue === 'bybit') {
-    const ticker = at(await get(`https://api.bybit.com/v5/market/tickers?category=${market.inverse ? 'inverse' : 'linear'}&symbol=${market.symbol}`), 'result', 'list', 0);
+    const answer = await get(`https://api.bybit.com/v5/market/tickers?category=${market.inverse ? 'inverse' : 'linear'}&symbol=${market.symbol}`);
+    const ticker = at(answer, 'result', 'list', 0);
+    const sourceTimestamp = exchangeTime(at(answer, 'time'));
+    const stamped = sourceTimestamp === null ? {} : { sourceTimestamp };
     // One side, as every other venue reports (Bybit's `openInterest` counts both: `singleOpenInterest` is half of it).
-    if (!market.inverse) return coins(bybitSingle(ticker, 'openInterest'));
+    if (!market.inverse) { const base = coins(bybitSingle(ticker, 'openInterest')); return base === null ? null : { base, ...stamped }; }
     // An inverse perpetual: open interest in USD, and its value in coins at the mark of the moment.
     const usd = bybitSingle(ticker, 'openInterest'), base = coins(bybitSingle(ticker, 'openInterestValue'));
-    return base !== null && usd > 0 ? { base, quote: usd * market.unit } : null;
+    return base !== null && usd > 0 ? { base, quote: usd * market.unit, ...stamped } : null;
   }
-  if (venue === 'okx') return coins(num(at(await get(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${market.symbol}`), 'data', 0, 'oiCcy')));
+  if (venue === 'okx') {
+    const answer = await get(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${market.symbol}`);
+    const sourceTimestamp = exchangeTime(at(answer, 'data', 0, 'ts'));
+    const base = coins(num(at(answer, 'data', 0, 'oiCcy')));
+    return base === null ? null : { base, ...(sourceTimestamp === null ? {} : { sourceTimestamp }) };
+  }
   if (venue === 'bitget') return coins(num(at(await get(`https://api.bitget.com/api/v2/mix/market/open-interest?symbol=${market.symbol}&productType=usdt-futures`), 'data', 'openInterestList', 0, 'size')));
   if (venue === 'deribit') {
     const summary = at(await get(`https://www.deribit.com/api/v2/public/get_book_summary_by_instrument?instrument_name=${market.symbol}`), 'result', 0);

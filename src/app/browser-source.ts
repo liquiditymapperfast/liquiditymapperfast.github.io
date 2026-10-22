@@ -124,6 +124,7 @@ export class BrowserSource implements DataSource, VenueControl {
         case 'prints': this.#handlers?.onPrints(message.items.map(toWire)); break;
         case 'liquidations': this.#handlers?.onLiquidations?.(message.items.map(liquidationWire)); break;
         case 'flow': this.#handlers?.onFlow?.(message.items); break;
+        case 'oi': this.#handlers?.onOiPush?.([message]); break;
         case 'tape': { if (!this.#tapeOn) break; const batch = checkTape(message.batch); if (batch) this.#handlers?.onTape?.(batch); break; }
         case 'absorption': { const found = parseAbsorptionLive(message); this.#handlers?.onAbsorption?.(found.groups, found.minutes); break; }
         case 'status':

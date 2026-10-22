@@ -296,7 +296,9 @@ export async function runBybitLiveManagerSmoke({
   let cancelled = false;
   let manager: BybitSmokeManager | null = null;
   const transportFactory = async (spec: LiveFeedTransportOptions) => {
-    if (spec.venue !== 'bybit') return suppliedTransportFactory ? suppliedTransportFactory(spec) : new InertSocket();
+    // The open-interest ticker feed is not part of this depth observation: it gets an inert socket, so the bounded evidence stays the
+    // depth session alone (the manager's other default feeds get inert sockets too).
+    if (spec.venue !== 'bybit' || spec.channel !== 'depth') return spec.venue !== 'bybit' && suppliedTransportFactory ? suppliedTransportFactory(spec) : new InertSocket();
     const transport = suppliedTransportFactory ? await suppliedTransportFactory(spec) : await createWsTransport({ venue: spec.venue, request: spec.request });
     if (cancelled) {
       try { transport.close?.(); } catch {}
@@ -465,7 +467,7 @@ export async function runBybitLiveManagerSmoke({
       result: completed ? 'manager completed all requested bounded evidence stages' : 'bounded observation failed one or more requested evidence stages',
       deltaObservation: state.parsedDeltas > 0 ? 'parsed deltas were matched to their raw session frame and routed through LiveFeedManager' : 'no parsed delta was observed within the bounded window',
       lifecycle: replacement ? 'local socket termination led to a manager-owned replacement with exact ACK, fresh snapshot, and advancing update ID' : 'bounded close/reconnect was incomplete',
-      networkBoundary: 'only the Bybit public linear socket used a real transport; default non-Bybit transports were inert and no REST transport was supplied',
+      networkBoundary: 'only the Bybit public linear depth socket used a real transport; the open-interest ticker feed and default non-Bybit transports were inert, and no REST transport was supplied',
       credentials: 'none',
       writes: 'none',
     },

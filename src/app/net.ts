@@ -12,7 +12,7 @@ import { decodeColumns, decodeLevels, decodeTape, frameType, type ColumnsFrame }
 import type { CandleRow, OiBar } from './store.ts';
 import { parsePriceHistory, type PriceHistoryAnswer } from '../shared/price-history.ts';
 import { TIMEFRAMES } from '../shared/series.ts';
-import type { BootstrapState, FootprintResponse, LayersMessage, LiquidationsMessage, LiveHandlers, PrintsMessage, TickMessage } from './source.ts';
+import type { BootstrapState, FootprintResponse, LayersMessage, LiquidationsMessage, LiveHandlers, OiPushMessage, PrintsMessage, TickMessage } from './source.ts';
 import { t } from './i18n.ts';
 
 async function request(path: string, signal?: AbortSignal): Promise<Response> {
@@ -197,6 +197,7 @@ export function connectLive(handlers: LiveHandlers, { silenceMs = 20_000, pollMs
           else if (message.t === 'prints' && Array.isArray((message as PrintsMessage).items)) handlers.onPrints((message as PrintsMessage).items);
           else if (message.t === 'liquidations' && Array.isArray((message as LiquidationsMessage).items)) handlers.onLiquidations?.((message as LiquidationsMessage).items);
           else if (message.t === 'flow' && Array.isArray((message as { items?: unknown }).items)) handlers.onFlow?.((message as unknown as { items: FlowUpdate[] }).items);
+          else if (message.t === 'oi' && Array.isArray((message as OiPushMessage).items)) handlers.onOiPush?.((message as OiPushMessage).items);
           else if (message.t === 'absorption') { const found = parseAbsorptionLive(message); handlers.onAbsorption?.(found.groups, found.minutes); }
         } else if (frameType(event.data as ArrayBuffer) === 'tape') { const batch = decodeTape(event.data as ArrayBuffer); if (batch && tapeOn) handlers.onTape?.(batch); }
         else handlers.onLevels(decodeLevels(event.data as ArrayBuffer));

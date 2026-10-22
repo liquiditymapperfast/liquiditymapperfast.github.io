@@ -259,6 +259,73 @@ test('open interest joins the venue history with the readings taken while the pa
   assert.ok(bars.some(b => b[4] === 100));
 });
 
+test('open interest pushed on a venue socket lands in its own minute and the newest push moves that minute in place', async () => {
+  const minute = 60_000, t0 = Math.floor(Date.now() / minute) * minute - 10 * minute;
+  const { engine, fakes } = setup(['bybit'], { now: () => t0 + 4 * minute });
+  engine.select(['bybit']);
+  const book = fakes.get('bybit')!;
+  book.onOi({ instrumentId: 'bybit:BTCUSDT', t: t0 + 3 * minute + 7_000, base: 50_000 });
+  book.onOi({ instrumentId: 'bybit:BTCUSDT', t: t0 + 3 * minute + 21_000, base: 50_500 });
+  engine.step(); await settle();
+  const bars = await engine.oi('bybit:BTCUSDT', minute, t0, t0 + 5 * minute);
+  assert.equal(bars.filter(b => b[0] === t0 + 3 * minute).length, 1, 'one reading a minute, however many pushes');
+  assert.equal(bars.at(-1)![4], 50_500, 'the newest push is the minute\'s close');
+});
+
+test('a venue with a socket OI feed asks REST only once the stream goes quiet, then every five seconds', async () => {
+  let now = Date.now(), calls = 0;
+  const get = async (url: string) => {
+    if (url.includes('api.bybit.com/v5/market/tickers')) { calls++; return { result: { list: [{ openInterest: '200', singleOpenInterest: '100' }] } }; }
+    throw new Error('offline');
+  };
+  const { engine, fakes } = setup(['bybit'], { now: () => now, get });
+  engine.select(['bybit']);
+  fakes.get('bybit')!.onOi({ instrumentId: 'bybit:BTCUSDT', t: now, base: 50_000 });
+  engine.step(); await settle();
+  assert.equal(calls, 0, 'the socket reading keeps the REST fallback quiet');
+  now += 61_000; engine.step(); await settle();
+  assert.equal(calls, 1, 'after a silent minute the fallback asks again');
+  now += 4_000; engine.step(); await settle();
+  assert.equal(calls, 1, 'the fallback asks every five seconds, not on every pass');
+  now += 1_000; engine.step(); await settle();
+  assert.equal(calls, 2, 'a due pass asks');
+});
+
+test('Binance open interest, which has no socket, is polled every five seconds', async () => {
+  let now = Date.now(), calls = 0;
+  const get = async (url: string) => {
+    if (url.includes('/fapi/v1/openInterest')) { calls++; return { openInterest: '105' }; }
+    throw new Error('offline');
+  };
+  const { engine } = setup(['binance'], { now: () => now, get });
+  engine.select(['binance']);
+  engine.step(); await settle();
+  assert.equal(calls, 1, 'the first pass asks');
+  now += 4_000; engine.step(); await settle();
+  assert.equal(calls, 1, 'not again within five seconds');
+  now += 1_000; engine.step(); await settle();
+  assert.equal(calls, 2, 'every five seconds');
+});
+
+test('every reading is handed to onOiLive the moment it lands, from the socket and from the REST poll', async () => {
+  const socketReadings: { instrumentId: string; base: number }[] = [], restReadings: { instrumentId: string; base: number }[] = [];
+  const minute = 60_000, t0 = Math.floor(Date.now() / minute) * minute;
+  const bybit = setup(['bybit'], { now: () => t0 });
+  bybit.engine.onOiLive = (instrumentId, reading) => socketReadings.push({ instrumentId, base: reading.base });
+  bybit.engine.select(['bybit']);
+  bybit.fakes.get('bybit')!.onOi({ instrumentId: 'bybit:BTCUSDT', t: t0 + 7_000, base: 50_000 });
+  await settle();
+  assert.deepEqual(socketReadings, [{ instrumentId: 'bybit:BTCUSDT', base: 50_000 }], 'the socket reading is pushed with its market');
+  bybit.engine.stop();
+  let now = t0;
+  const binance = setup(['binance'], { now: () => now, get: async url => url.includes('/fapi/v1/openInterest') ? { openInterest: '105' } : null });
+  binance.engine.onOiLive = (instrumentId, reading) => restReadings.push({ instrumentId, base: reading.base });
+  binance.engine.select(['binance']);
+  binance.engine.step(); await settle();
+  assert.deepEqual(restReadings, [{ instrumentId: 'binance:BTCUSDT', base: 105 }], 'the REST poll reading is pushed too');
+  binance.engine.stop();
+});
+
 test('stopping the engine stops every connector', () => {
   const { engine, fakes } = setup(['binance', 'bybit']);
   engine.select(['binance', 'bybit']);

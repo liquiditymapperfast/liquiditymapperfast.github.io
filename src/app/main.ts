@@ -293,8 +293,9 @@ async function main(): Promise<void> {
   await hub.loadSeries(true);
   heat.fit(); lower();
   window.setInterval(() => { void hub.loadSeries(true); }, 60_000);
-  // OI is sampled about once a minute on the server; asking more often than that keeps the newest bar from lagging by a whole refresh.
-  window.setInterval(() => { void hub.loadOi(); }, 20_000);
+  // Open interest now arrives on the venues' WebSocket streams (and Binance's 2 s REST), so the pane reads it every ten seconds: a change
+  // shows within seconds, and the newest bar stops lagging a whole refresh behind.
+  window.setInterval(() => { void hub.loadOi(); }, 10_000);
   (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, cvd, candle, sounds, alerts, glass };
 }
 

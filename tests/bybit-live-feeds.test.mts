@@ -76,3 +76,22 @@ test('Bybit close reconnects with a fresh session and blocks deltas until snapsh
   second.emit(delta(2)); assert.equal(messages.filter(item => item.message.kind === 'depthDelta').length, 0);
   second.emit(snapshot(1, '90')); assert.equal(messages.filter(item => item.message.kind === 'depthSnapshot' && item.message.complete === true).length, 2); assert.equal(messages.filter(item => item.message.kind === 'depthSnapshot' && item.message.complete === false).length, 1); second.emit(delta(2)); assert.equal(messages.filter(item => item.message.kind === 'depthDelta').length, 1); manager.stop();
 });
+
+test('Bybit open interest rides the ticker feed: the snapshot seeds it, deltas change it, and a delta without it is no reading', async () => {
+  const fake = transport(); const messages:LiveFeedEvent[] = []; const manager = new LiveFeedManager({ networkEnabled: true, transportFactory: fake.factory, oiPollMs: 0, onMessage: message => messages.push(message) });
+  await manager.start({ bybitEnabled: true, bybitSymbol: 'BTCUSDT' });
+  const ticker = defined(fake.sockets.find(item => item.spec.id === 'bybit-ticker'));
+  assert.deepEqual(JSON.parse(ticker.sent[0]), { op: 'subscribe', args: ['tickers.BTCUSDT'] });
+  const oi = () => messages.filter(item => item.id === 'bybit-ticker' && item.message.kind === 'openInterest');
+  ticker.emit({ op: 'subscribe', success: true, retCode: 0, args: ['tickers.BTCUSDT'] });
+  ticker.emit({ topic: 'tickers.BTCUSDT', type: 'snapshot', ts: 1_700_000_000_000, data: { symbol: 'BTCUSDT', openInterest: '200', singleOpenInterest: '100' } });
+  assert.equal(oi().length, 1);
+  assert.deepEqual({ instrumentId: oi()[0]!.message.instrumentId, base: oi()[0]!.message.base, sourceTimestamp: oi()[0]!.message.sourceTimestamp, quality: oi()[0]!.message.quality, venue: oi()[0]!.venue }, { instrumentId: 'bybit:BTCUSDT', base: 100, sourceTimestamp: 1_700_000_000_000, quality: 'native', venue: 'bybit' });
+  ticker.emit({ topic: 'tickers.BTCUSDT', type: 'delta', ts: 1_700_000_001_000, data: { symbol: 'BTCUSDT', openInterest: '202', singleOpenInterest: '101' } });
+  assert.equal(oi().length, 2); assert.equal(oi()[1]!.message.base, 101);
+  ticker.emit({ topic: 'tickers.BTCUSDT', type: 'delta', ts: 1_700_000_002_000, data: { symbol: 'BTCUSDT', markPrice: '80000' } });
+  assert.equal(oi().length, 2, 'a delta without the open-interest fields is no reading');
+  ticker.emit({ topic: 'tickers.ETHUSDT', type: 'delta', ts: 1_700_000_003_000, data: { symbol: 'ETHUSDT', singleOpenInterest: '1' } });
+  assert.equal(oi().length, 2, 'a foreign topic is ignored');
+  manager.stop();
+});
