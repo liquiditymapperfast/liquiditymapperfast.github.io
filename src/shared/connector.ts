@@ -42,8 +42,25 @@ const STARTUP_MS = 30_000;
 
 const num = (value: unknown): number => Number(value);
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-const rows = (value: unknown): [number, number][] => Array.isArray(value)
-  ? value.flatMap(row => Array.isArray(row) ? [[num(row[0]), num(row[1])] as [number, number]] : []).filter(([p, q]) => Number.isFinite(p) && p > 0 && Number.isFinite(q) && q >= 0) : [];
+/** A side's [price, size] rows, the malformed ones left out; one pass, no array a row in between (a whole book can be tens of thousands). */
+const rows = (value: unknown): [number, number][] => {
+  const out: [number, number][] = [];
+  if (!Array.isArray(value)) return out;
+  for (const row of value) {
+    if (!Array.isArray(row)) continue;
+    const p = num(row[0]), q = num(row[1]);
+    if (Number.isFinite(p) && p > 0 && Number.isFinite(q) && q >= 0) out.push([p, q]);
+  }
+  return out;
+};
+/** The rows of one side within `share` of its best price (the highest bid, the lowest ask): what the map can draw of a whole-book snapshot. */
+export const rowsNear = (value: unknown, side: 'bid' | 'ask', share: number): [number, number][] => {
+  const all = rows(value);
+  let best = side === 'bid' ? -Infinity : Infinity;
+  for (const [p] of all) if (side === 'bid' ? p > best : p < best) best = p;
+  const lo = side === 'bid' ? best * (1 - share) : -Infinity, hi = side === 'ask' ? best * (1 + share) : Infinity;
+  return all.filter(([p]) => p >= lo && p <= hi);
+};
 
 /** A self-contained public order-book connector: owns its socket, reconnects with backoff and keeps a local book. */
 export abstract class BookConnector {
@@ -325,18 +342,27 @@ export class PoloniexConnector extends BookConnector {
   }
 }
 
-/** Bitunix USDT-margined futures depth_books: full snapshots. */
+/**
+ * How much of a Bitunix snapshot is kept: the levels within this share of the touch. Its snapshots are the whole book (25,500 levels and 500 KB
+ * a message, from -89 % to +8,900 % of the price, measured 2026-10-30); the levels within 10 % hold 88 % of its dollars.
+ */
+const BITUNIX_NEAR = 0.1;
+
+/** Bitunix USDT-margined futures depth_books: full snapshots of the whole book. */
 export class BitunixConnector extends BookConnector {
   readonly id = 'bitunix'; readonly name = 'Bitunix'; readonly symbol = 'BTCUSDT'; readonly quote = 'USDT'; readonly marketType = 'perpetual' as const;
   protected url() { return 'wss://fapi.bitunix.com/public/'; }
   protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [{ symbol: this.symbol, ch: 'depth_books' }] }); }
-  /** Full 1000-level snapshots arrive many times a second; the map samples at 4 Hz. */
-  protected override coalesceMs() { return 400; }
+  /**
+   * Its whole book arrives about three times a second; one a second is taken (the recorder samples every 5 s). Read at 2.5 a second it was
+   * a fifth of the server's busy main thread (Karl's 8787, profiled 2026-10-30): 11 ms to parse each and as long again to read its rows.
+   */
+  protected override coalesceMs() { return 1_000; }
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping', ping: Math.floor(Date.now() / 1000) }) }; }
   onMessage(text: string) {
     const m = this.record(JSON.parse(text)); if (!m || m.ch !== 'depth_books' || m.symbol !== this.symbol) return;
     const d = this.record(m.data); if (!d) return;
-    this.replace(this.bids, this.rows(d.b)); this.replace(this.asks, this.rows(d.a)); this.touch();
+    this.replace(this.bids, rowsNear(d.b, 'bid', BITUNIX_NEAR)); this.replace(this.asks, rowsNear(d.a, 'ask', BITUNIX_NEAR)); this.touch();
   }
 }
 

@@ -441,12 +441,16 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     if (![from, to, stepMs].every(v => Math.abs(v) <= Number.MAX_SAFE_INTEGER)) return sendJson(res, { error: BAD_WINDOW }, 400);
     // An instrument at a time, the live loop running between them: days older than memory holds are read back from the store, which for a
     // zoomed-out week took seconds (an instrument's share of it is well under one).
+    // The loop is let run between instruments only once a turn has taken LT_TURN_MS (as the tracker's lane does): a question answered from
+    // memory goes in one turn, where letting go after each of a dozen books made it wait behind every other route's work a dozen times on
+    // a busy loop (11 s for 12 books of 24 hourly windows on 8787, 2026-10-30).
     void (async () => {
       const results: { instrumentId: string; step: number; columns: ReturnType<typeof recorder.query> }[] = [];
+      let turnStart = performance.now();
       for (const id of ids) {
         if (closed || res.destroyed) return;
         results.push({ instrumentId: id, step: recorder.steps.get(id) ?? 0, columns: recorder.query(id, from, to, stepMs, close) });
-        await new Promise<void>(resolve => setImmediate(resolve));
+        if (performance.now() - turnStart > LT_TURN_MS) { await new Promise<void>(resolve => setImmediate(resolve)); turnStart = performance.now(); }
       }
       if (!res.destroyed) sendBinary(res, encodeColumns(results, from, to, stepMs, close));
     })().catch(error => { console.error('v2 /api/v2/columns failed:', error); if (!res.headersSent) sendJson(res, { error: 'internal error' }, 500); else res.end(); });
