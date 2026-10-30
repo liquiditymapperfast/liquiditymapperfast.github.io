@@ -123,7 +123,7 @@ export class Toolbar {
   #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Screenshot'), tip: t('Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.'), onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: t('Author'), tip: t('Who made this, and where to find the code. Free, no sign-ups, open source.') });
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
-  #soundButton = el('button', { class: 'led-btn sound-btn', textContent: t('Sound'), tip: t('Sound notifications') });
+  #soundButton = el('button', { class: 'led-btn sound-btn', textContent: t('Sounds'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
   #sounds: Sounds | null = null;
   /** Where the language and theme buttons live on a desktop screen (the status bar), or null. */
@@ -142,7 +142,7 @@ export class Toolbar {
     liquidations: settingsKey(t('Liquidations')), traded: settingsKey(t('Volume profile')), absorption: settingsKey(t('Absorption')),
   };
   /** The Alerts deck's settings keys: Highlights and Sound are switched and set the same way. */
-  #alertKeys = { highlights: settingsKey(t('Highlights')), sound: settingsKey(t('Sound')) };
+  #alertKeys = { highlights: settingsKey(t('Highlights')), sound: settingsKey(t('Sounds')) };
   #alertSplits: { highlights: HTMLElement; sound: HTMLElement } | null = null;
   /** The split buttons themselves (the button and its key), built once the buttons and keys exist. */
   #splits: Record<Exclude<Feature, 'highlights'>, HTMLElement> | null = null;
@@ -579,8 +579,8 @@ export class Toolbar {
       const inCorner = this.#mapHost !== null;
       if (inCorner) { this.#mapTools.replaceChildren(this.#layoutCorner, this.#goto, this.#rangeCorner, ...(this.#drawCorner ? [this.#drawCorner] : []), this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
-      // With a status bar the connection state, the language and theme buttons and Waves' lamp live there.
-      host?.replaceChildren(this.#keys, this.#zone, this.#language, this.#theme, this.#glass);
+      // With a status bar the connection state and the language and theme buttons live there.
+      host?.replaceChildren(this.#keys, this.#zone, this.#language, this.#theme);
       // A console of decks, each a framed group of what belongs together, at most two rows tall, wrapping as whole decks (Karl,
       // 2026-10-16: one wrapping row read as a jumble). The venues are switched from the Venues button, not listed as chips.
       setTip(this.#venuesButton!, t('Venues: switch each exchange on or off for the map, the book and the flow column, or choose which ones feed the page'));
@@ -590,7 +590,7 @@ export class Toolbar {
       // arrow that folds the bar away sits on that deck's bottom edge, taking no width: room kept for it at the bar's end wrapped this deck
       // onto a second row at 1,600 px, doubling the bar, and the top edge holds the title.
       // Install stands before the screenshot mark, so that the mark keeps its place whether the browser offers installing or not (Install comes in beside Author).
-      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#glass, this.#status])]);
+      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status])]);
       tools.append(this.#collapse);
       this.#deckBreaks = []; this.#fitted = null; this.#fittedOrder = '';
       this.#decks = [
@@ -600,7 +600,9 @@ export class Toolbar {
         deck('panels', t('Panels'), [this.#toggles]),
         // The Range tool is the map corner's Select when the map holds its tools (Karl, 2026-10-27: the deck's Range was the same button twice).
         deck('chart', t('Chart'), [sp.footprint, sp.trades, sp.liquidations, sp.absorption], [sp.traded, sp.keyLevels, sp.vwap, this.#scriptsSplit, ...(inCorner ? [] : [this.#range])]),
-        deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound]),
+        // Waves beside Sounds (Karl, 2026-10-30, from the status bar's corner): with Highlights, the three ways the page says that something large
+        // happened, marked, heard and seen across the screen.
+        deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound, this.#glass]),
         tools];
       this.root.replaceChildren(...this.#decks, this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
       this.#fit();
@@ -707,9 +709,9 @@ export class Toolbar {
           field(t('Layer'), this.#layer), field(t('Source'), this.#source), field(t('Colours'), this.#heat.style),
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
         section(t('Venues'), [field(t('Market'), this.#market, true), field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
-        section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#alertSplits!.highlights, this.#alertSplits!.sound)]),
-        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme),
-          field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i'))), field(t('Time zone'), this.#zone),
+        section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#alertSplits!.highlights, this.#alertSplits!.sound),
+          field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i')))]),
+        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zone),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesLabel.textContent = t('Venues'); this.#venuesCount.hidden = false; });
     this.#more.classList.add('open');

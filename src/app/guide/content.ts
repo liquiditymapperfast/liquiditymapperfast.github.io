@@ -142,7 +142,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'Large market orders appear as **bubbles** at the price and time they happened, all the fills of one order together: green for market buys, red for market sells, bigger for bigger (from $25,000). Hover or tap one for its exchange, size and price. The map shows what is waiting; the bubbles show what was actually done.' },
       { t: 'p', text: '**Absorption** squares mark where one side\'s market orders met resting orders at one price for more than a threshold within 10 ms.' },
-      { t: 'p', text: '**Sound** turns trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.' },
+      { t: 'p', text: '**Sounds** turn trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); the two largest are on by default. Browsers keep audio locked until you click or press a key on the page once.' },
       { t: 'p', text: 'Under **Per panel** in the Sounds panel, each pane can sound one rare event. All off until chosen.' },
     ],
   },
