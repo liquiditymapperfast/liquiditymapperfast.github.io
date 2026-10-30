@@ -53,11 +53,15 @@ const rows = (value: unknown): [number, number][] => {
   }
   return out;
 };
-/** The rows of one side within `share` of its best price (the highest bid, the lowest ask): what the map can draw of a whole-book snapshot. */
+/**
+ * The rows of one side within `share` of its best price (the highest bid, the lowest ask, of the rows with a size: a zero-size row at a stray
+ * price is no touch, and would have cut the real book away): what the map can draw of a whole-book snapshot.
+ */
 export const rowsNear = (value: unknown, side: 'bid' | 'ask', share: number): [number, number][] => {
   const all = rows(value);
   let best = side === 'bid' ? -Infinity : Infinity;
-  for (const [p] of all) if (side === 'bid' ? p > best : p < best) best = p;
+  for (const [p, q] of all) if (q > 0 && (side === 'bid' ? p > best : p < best)) best = p;
+  if (!Number.isFinite(best)) return all;
   const lo = side === 'bid' ? best * (1 - share) : -Infinity, hi = side === 'ask' ? best * (1 + share) : Infinity;
   return all.filter(([p]) => p >= lo && p <= hi);
 };
