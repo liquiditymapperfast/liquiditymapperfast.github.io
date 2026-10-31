@@ -219,7 +219,7 @@ main { --left-w: var(--flow-w); --right-w: var(--side-w); --rail-w: 22px; }
 .side-col .edge-chev { transform: rotate(135deg); }
 html[data-layout^="phone"] .edge-rail { display: none !important; }
 /* The menu and the close button at the end of a pane's header (layout.ts #mover): the header keeps room for them, and its first row ends where they begin. */
-html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-right: 54px; }
+html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-right: 54px; touch-action: none; }
 .pane-tools { position: absolute; top: 3px; right: 4px; z-index: 7; display: flex; gap: 2px; }
 html[data-layout^="phone"] .pane-tools { display: none; }
 /* A side pane's title bar (layout.ts #mover): the pane's name, its handle, its menu and its close button, above a header that has no title of its own. */

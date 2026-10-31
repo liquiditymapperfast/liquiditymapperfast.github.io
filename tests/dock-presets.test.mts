@@ -61,6 +61,19 @@ test('a ready-made layout never touches a setting that is not a pane switch', ()
   }
 });
 
+test('a layout opens as many panes under the map as the window has room for: the map keeps its own minimum, nothing is pushed off', () => {
+  for (const env of ENVS) for (const def of PRESETS) {
+    const { arrangement: a, show } = buildPreset(def, env);
+    const open = STRIP_PANES.filter(p => p.id !== 'script' && show[PANE_SHOW_KEY[p.id]!]), need = open.reduce((sum, p) => sum + p.min + 5, open.length ? 240 : 0);
+    assert.ok(need <= env.height, `${def.id} at ${env.width}x${env.height}: needs ${need}`);
+    assert.deepEqual(a.order.filter(id => id !== 'heat' && open.some(p => p.id === id)), def.strip.map(([id]) => id as string).filter(id => open.some(p => p.id === id)), `${def.id}: the panes it opens, in the order it lists them`);
+    assert.ok(open.length === def.strip.length || def.strip.slice(0, open.length).every(([id]) => open.some(p => p.id === id)), `${def.id}: where some wait, the last of its list are the ones`);
+  }
+  const small = buildPreset(PRESETS.find(d => d.id === 'everything')!, { width: 1024, height: 584 }).show, large = buildPreset(PRESETS.find(d => d.id === 'everything')!, ENVS[3]!).show;
+  assert.deepEqual(['bars', 'depth', 'oi', 'delta', 'ls', 'lt'].map(k => k === 'bars' ? small.stats : small[k as 'lt']), [true, true, true, true, true, false], 'a 584 px column has room for five of the six: the last of the list waits');
+  assert.equal(large.lt, true);
+});
+
 test('the panes under the map take their share of the column, each at least its own minimum, each at most a wall', () => {
   const env = ENVS[3]!;
   for (const def of PRESETS.filter(p => p.strip.length)) {

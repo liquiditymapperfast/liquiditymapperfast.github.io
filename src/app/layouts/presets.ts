@@ -67,25 +67,32 @@ export interface BuiltPreset { arrangement: PaneArrangement; show: Partial<AppSt
 const TALLEST_PX = 360;
 /** What a pane that keeps the height its rows need (the Bar stats table) is counted as when the rest of the share is divided. */
 const OWN_HEIGHT_PX = 90;
+/** The least the map is left (its own CSS minimum) and what a splitter takes: a layout opens as many of its panes under the map as fit under those. */
+const MAP_FLOOR_PX = 240, SPLITTER_PX = 5;
 
 export function buildPreset(def: PresetDef, env: PresetEnv): BuiltPreset {
-  const ids = def.strip.map(([id]) => id);
+  // A layout made for a large screen opens as many of its panes as the window has room for, in the order it lists them: past that the last of them would be pushed off the screen.
+  const room = (list: readonly StripId[]): number => list.reduce((sum, id) => sum + stripSize(id).min + SPLITTER_PX, MAP_FLOOR_PX);
+  const kept = def.strip.map(([id]) => id);
+  while (kept.length && room(kept) > env.height) kept.pop();
+  const strip = def.strip.filter(([id]) => kept.includes(id));
+  const ids = kept;
   // Which panes are open: every pane the page can open, those under the map by whether the layout lists them. The Scripts pane is the person's own (it shows only where a script
   // draws in a row) and is left as it is.
   const show: Partial<AppState['show']> = { cvd: def.cvd ?? defaultShow(env.width).cvd, book: def.book };
   for (const pane of STRIP_PANES) if (pane.id !== 'script') show[PANE_SHOW_KEY[pane.id]!] = ids.includes(pane.id);
   Object.assign(show, def.overlays);
-  const weights = def.strip.filter(([, w]) => w > 0), total = weights.reduce((sum, [, w]) => sum + w, 0);
-  const room = Math.max(0, def.stripShare * env.height - (def.strip.length - weights.length) * OWN_HEIGHT_PX);
+  const weights = strip.filter(([, w]) => w > 0), total = weights.reduce((sum, [, w]) => sum + w, 0);
+  const share = Math.max(0, def.stripShare * env.height - (strip.length - weights.length) * OWN_HEIGHT_PX);
   const heights: Record<string, number> = {};
   for (const pane of STRIP_PANES) heights[pane.id] = pane.height;
-  for (const [id, w] of weights) heights[id] = Math.round(Math.max(stripSize(id).min, Math.min(TALLEST_PX, room * w / total)));
+  for (const [id, w] of weights) heights[id] = Math.round(Math.max(stripSize(id).min, Math.min(TALLEST_PX, share * w / total)));
   // The Bar stats table is as tall as its rows need (the page sizes it when they change): a layout never gives it a height of its own.
   delete heights.bars;
   const rest = STRIP_PANES.map(p => p.id).filter(id => !ids.includes(id));
   const wide = defaultColumns(env.width);
-  const share = (s: number | undefined, min: number, max: number): number | null => s === undefined ? null : Math.round(Math.max(min, Math.min(max, env.width * s)));
-  const dock: DockPlan = { left: ['cvd'], right: ['book'], leftW: share(def.leftShare, 260, 520), rightW: share(def.rightShare, 350, 620), weights: {} };
+  const columnShare = (s: number | undefined, min: number, max: number): number | null => s === undefined ? null : Math.round(Math.max(min, Math.min(max, env.width * s)));
+  const dock: DockPlan = { left: ['cvd'], right: ['book'], leftW: columnShare(def.leftShare, 260, 520), rightW: columnShare(def.rightShare, 350, 620), weights: {} };
   const arrangement: PaneArrangement = { order: ['heat', ...ids, ...rest], heights, flowW: dock.leftW ?? wide.flowW, sideW: dock.rightW ?? wide.sideW, dock };
   return { arrangement, show };
 }

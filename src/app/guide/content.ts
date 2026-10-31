@@ -85,7 +85,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'fig', id: 'zoom-price', caption: 'Wheel on the price scale: the current price stays put while the scale around it changes.' },
       { t: 'fig', id: 'zoom-time', caption: 'Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.' },
       { t: 'fig', id: 'pan', caption: 'Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.' },
-      { t: 'p', text: 'The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes, and the grip (⠿) in a pane\'s header to reorder it. Sizes are remembered.' },
+      { t: 'p', text: 'The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes to resize them, and a pane by its grip (⠿) to move it. Sizes and places are remembered.' },
     ],
   },
   {
@@ -117,7 +117,7 @@ export const SECTIONS: readonly Section[] = [
         '**Map, 5m ... 24h** sets the span. Map follows the chart, and starts where recording did when that was later (it says so). The gear sets the rows, their heights, **Keep listed** (pin any exchanges you follow) and the sound.',
         '**Spot / Perp** filters the column too, and the top row says how many exchanges the filter leaves out.',
       ] },
-      { t: 'note', text: '**Flow** and **Book** in the toolbar hide or show the side columns. Only exchanges with a trade feed count.' },
+      { t: 'note', text: '**Flow** and **Book** in the toolbar hide or show the side columns, and either one can stand on the other side of the map: drag its title bar. **Layouts**, in the map\'s corner, holds ready-made arrangements and your own. Only exchanges with a trade feed count.' },
     ],
   },
   {

@@ -40,7 +40,7 @@ test('a switch does not flip back and forth while its key is held; zoom repeats'
 
 test('no two shortcuts share a key, and every switch has one', () => {
   const seen = new Set<string>();
-  for (const s of SHORTCUTS) for (const k of [...(s.codes ?? []).map(c => `code:${c}`), ...(s.keys ?? []).map(k => `key:${k}`)]) { assert.ok(!seen.has(k), k); seen.add(k); }
+  for (const s of SHORTCUTS) for (const k of [...(s.codes ?? []).map(c => `code:${c}`), ...(s.code ? [`code:${s.code}`] : []), ...(s.keys ?? []).map(k => `key:${k}`)]) { assert.ok(!seen.has(k), k); seen.add(k); }
   const features: Feature[] = ['footprint', 'trades', 'liquidations', 'absorption', 'traded', 'keyLevels', 'vwap', 'highlights'];
   assert.deepEqual(SHORTCUTS.flatMap(s => s.action.kind === 'toggle' ? [s.action.feature] : []).sort(), [...features].sort());
   assert.ok(!seen.has('key:m'), 'M is the Mirror toggle on the toolbar: not taken');
@@ -52,4 +52,15 @@ test('a switch flips its own feature and nothing else', () => {
   assert.deepEqual(togglePatch(state, 'trades'), { show: { footprint: false, bubbles: false, traded: false, mirror: true } });
   assert.deepEqual(togglePatch(state, 'liquidations'), { liquidations: { on: true, min: 1 } });
   assert.deepEqual(togglePatch(state, 'highlights'), { highlight: { on: false } });
+});
+
+test('the brackets hide or show the two columns, matched by their place on the keyboard (on many layouts a bracket needs AltGr)', () => {
+  const side = (e: KeyPress): string | null => { const s = matchShortcut(e, false); return s && s.action.kind === 'column' ? s.action.side : null; };
+  assert.equal(side(press('[', { code: 'BracketLeft' })), 'left');
+  assert.equal(side(press(']', { code: 'BracketRight' })), 'right');
+  assert.equal(side(press('ü', { code: 'BracketLeft' })), 'left', 'a German keyboard types ü on that key');
+  assert.equal(side(press('[', { code: 'BracketLeft', ctrlKey: true, altKey: true })), null, 'AltGr types the bracket there: the page leaves it');
+  assert.equal(side(press('[', { code: 'BracketLeft', target: { tagName: 'INPUT' } })), null, 'typing in a field');
+  assert.equal(side(press('[', { code: 'BracketLeft', repeat: true })), null, 'held: not flipped back and forth');
+  assert.deepEqual(SHORTCUTS.filter(s => s.action.kind === 'column').map(s => s.caps[0]), ['[', ']']);
 });
