@@ -26,13 +26,14 @@
  "**Candles and open interest are different**: they come from each exchange's own history, so they are there at once.": "**Candele e open interest sono diversi**: vengono dallo storico proprio di ogni exchange, quindi ci sono subito.",
  "The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.": "Il **footprint, le bolle di operazioni e le statistiche barre** sono registrati come la mappa, quindi partono anch’essi vuoti.",
  "Moving around": "Muoversi",
- "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.": "Su un computer tutto si fa con il mouse, e nulla richiede prima un clic. Finché il grafico segue il mercato, lo zoom tiene fermo il bordo live (tempo) o il prezzo attuale (prezzo), così l’immagine si gonfia e si stringe attorno ad esso invece di scivolare.",
+ "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.": "Su un computer tutto si fa con il mouse, e nulla richiede prima un clic. Finché il grafico segue il mercato, lo zoom tiene fermi il bordo live e il prezzo attuale, così l’immagine si gonfia e si stringe attorno a essi invece di scivolare; dopo che hai spostato il grafico a mano, tiene fermo il punto sotto il puntatore.",
  "[[Wheel]] on the chart": "[[Rotella]] sul grafico",
  "Zoom the **time** axis": "Zooma l’asse del **tempo**",
+ "Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it": "Zooma **tempo e prezzo insieme**, della stessa quantità, così l’immagine mantiene la forma che le hai dato",
  "[[Wheel]] or drag on the price scale": "[[Rotella]] o trascina sulla scala dei prezzi",
  "Zoom the **price** axis (drag up zooms in, down zooms out)": "Zooma l’asse del **prezzo** (trascinare in su ingrandisce, in giù riduce)",
  "[[Shift]] + [[Wheel]]": "[[Shift]] + [[Rotella]]",
- "Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer": "Zooma l’altro asse. [[Alt]] + [[Rotella]] zooma attorno al puntatore",
+ "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge": "Sul grafico, zooma solo l’asse del **tempo** (sulla scala dei prezzi, il tempo invece del prezzo). [[Alt]] + [[Rotella]] zooma attorno al puntatore e stacca il grafico dal bordo live",
  "Drag": "Trascina",
  "Pan both ways. With [[Shift]], pan time only": "Sposta in entrambe le direzioni. Con [[Shift]], solo il tempo",
  "Right-drag": "Trascina col tasto destro",
@@ -51,7 +52,7 @@
  "**Drag an axis**": "**Trascina un asse**",
  "Along the price or time scale to zoom it": "Lungo la scala dei prezzi o del tempo per zoomarla",
  "Wheel on the price scale: the current price stays put while the scale around it changes.": "Rotella sulla scala dei prezzi: il prezzo attuale resta fermo mentre la scala attorno cambia.",
- "Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.": "Rotella sul grafico: il bordo live resta fermo mentre il tempo zooma. Le candele si allargano e compare il footprint.",
+ "Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.": "Rotella sul grafico: tempo e prezzo zoomano insieme attorno al bordo live e al prezzo attuale, che restano fermi. Le candele si allargano e compare il footprint.",
  "Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.": "Trascina per guardarti intorno. Spostarsi interrompe il seguire il bordo live; Ricentra lo riprende.",
  "The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes to resize them, and a pane by its grip (⠿) to move it. Sizes and places are remembered.": "I pannelli condividono l’asse del tempo, quindi ciò che fai su di esso avviene in tutti. Trascina i divisori tra i pannelli per ridimensionarli, e un pannello dalla sua maniglia (⠿) per spostarlo. Dimensioni e posizioni vengono ricordate.",
  "The profile": "Il profilo",
@@ -186,5 +187,6 @@
  "On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:": "Su un **telefono o tablet** la barra in basso sceglie la vista. Il **Nastro**, il **Flusso** e il libro degli ordini in verticale riempiono lo schermo; il resto sta sotto la mappa (accanto quando il telefono è di lato). **Mappa** dà al grafico tutto lo schermo, e tutto il resto è dietro il pulsante **⋯**. Gli stessi movimenti si fanno con le dita:",
  "So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. A **dashed line** marks the moment the recording began. Before it the map is left empty: nothing is drawn where nothing was recorded, so every colour on the map is real.": "Perciò alla prima visita la parte colorata è una striscia sottile sul bordo destro che cresce con i minuti. Una **linea tratteggiata** segna il momento in cui è iniziata la registrazione. Prima di essa la mappa resta vuota: dove non è stato registrato nulla non si disegna nulla, quindi ogni colore sulla mappa è reale.",
  "A first visit, sped up. Colour is what was recorded while the page was open; before the dashed line there is nothing to show.": "Una prima visita, accelerata. Il colore è ciò che è stato registrato mentre la pagina era aperta; prima della linea tratteggiata non c'è nulla da mostrare.",
- "Not recorded": "Non registrato"
+ "Not recorded": "Non registrato",
+ "[[Wheel]] on the time labels along the bottom": "[[Rotella]] sulle etichette del tempo in basso"
 }

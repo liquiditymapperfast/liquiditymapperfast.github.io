@@ -26,13 +26,14 @@
  "**Candles and open interest are different**: they come from each exchange's own history, so they are there at once.": "**Свічки та відкритий інтерес — інакше**: вони беруться з власної історії кожної біржі, тож є одразу.",
  "The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.": "**Футпринт, бульбашки угод і статистика барів** записуються так само, як карта, тож теж починаються порожніми.",
  "Moving around": "Як переміщатися",
- "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.": "На комп'ютері все робиться мишею, і спершу клікати ні на що не потрібно. Поки графік стежить за ринком, масштабування утримує на місці живий край (час) або поточну ціну (ціна), тож картина роздувається й стискається навколо нього, а не зсувається.",
+ "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.": "На комп'ютері все робиться мишею, і спершу клікати ні на що не потрібно. Поки графік стежить за ринком, масштабування утримує на місці живий край і поточну ціну, тож картина роздувається й стискається навколо них, а не ковзає; після того як ви зсунули графік вручну, утримується точка під вказівником.",
  "[[Wheel]] on the chart": "[[Колесо]] над графіком",
  "Zoom the **time** axis": "Масштабує вісь **часу**",
+ "Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it": "Масштабує **час і ціну разом**, в одне й те саме число разів, тож картина зберігає надану вами форму",
  "[[Wheel]] or drag on the price scale": "[[Колесо]] або перетягування по шкалі цін",
  "Zoom the **price** axis (drag up zooms in, down zooms out)": "Масштабує вісь **цін** (перетягування вгору наближає, вниз віддаляє)",
  "[[Shift]] + [[Wheel]]": "[[Shift]] + [[Колесо]]",
- "Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer": "Масштабує другу вісь. [[Alt]] + [[Колесо]] масштабує навколо вказівника",
+ "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge": "На графіку масштабує лише вісь **часу** (на шкалі ціни — час замість ціни). [[Alt]] + [[Колесо]] масштабує навколо вказівника і відпускає графік від живого краю",
  "Drag": "Перетягування",
  "Pan both ways. With [[Shift]], pan time only": "Панорамування в обидва боки. З [[Shift]] — лише по часу",
  "Right-drag": "Перетягування правою кнопкою",
@@ -51,7 +52,7 @@
  "**Drag an axis**": "**Перетягування осі**",
  "Along the price or time scale to zoom it": "Уздовж шкали цін або часу, щоб масштабувати її",
  "Wheel on the price scale: the current price stays put while the scale around it changes.": "Колесо над шкалою цін: поточна ціна лишається на місці, поки шкала навколо неї змінюється.",
- "Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.": "Колесо над графіком: живий край лишається на місці, поки масштабується час. Свічки стають ширшими, і з'являється футпринт.",
+ "Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.": "Колесо над графіком: час і ціна масштабуються разом навколо живого краю й поточної ціни, які лишаються на місці. Свічки стають ширшими, і з'являється футпринт.",
  "Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.": "Перетягуйте, щоб роззирнутися. Панорамування зупиняє стеження графіка за живим краєм; «Центрувати» вмикає його знову.",
  "The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes to resize them, and a pane by its grip (⠿) to move it. Sizes and places are remembered.": "Панелі мають спільну вісь часу, тож те, що ви робите з нею, відбувається з усіма. Перетягуйте роздільники між панелями, щоб змінити розмір, а саму панель — за ручку (⠿), щоб перемістити. Розміри й місця запам'ятовуються.",
  "The profile": "Профіль",
@@ -186,5 +187,6 @@
  "On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:": "На **телефоні чи планшеті** нижня панель обирає вигляд. **Стрічка**, **Потік** і стакан заявок у вертикальному положенні займають увесь екран; решта розташована під картою (збоку, коли телефон лежить на боці). **Карта** віддає графіку весь екран, а все інше — за кнопкою **⋯**. Ті самі рухи робляться пальцями:",
  "So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. A **dashed line** marks the moment the recording began. Before it the map is left empty: nothing is drawn where nothing was recorded, so every colour on the map is real.": "Тому під час першого візиту кольорова частина — це тонка смужка біля правого краю, яка росте з хвилинами. **Пунктирна лінія** позначає момент, коли почався запис. До неї карта лишається порожньою: там, де нічого не записано, нічого не малюється, тож кожен колір на карті справжній.",
  "A first visit, sped up. Colour is what was recorded while the page was open; before the dashed line there is nothing to show.": "Перший візит у прискореному вигляді. Колір — те, що було записано, поки сторінка була відкрита; до пунктирної лінії показувати нічого.",
- "Not recorded": "Не записано"
+ "Not recorded": "Не записано",
+ "[[Wheel]] on the time labels along the bottom": "[[Колесо]] над підписами часу внизу"
 }

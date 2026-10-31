@@ -253,15 +253,15 @@ function zoomScene(axis: 'price' | 'time'): Scene {
       g.fillStyle = th.bg; g.fillRect(0, 0, w, h);
       const b: Box = { x: 8, y: 8, w: w - 78, h: h - 36 };
       const k = breathe(u), z = 1 - 0.6 * k;                         // 1 = whole range, smaller = zoomed in
-      const px = axis === 'time' ? 0.88 : 0.62, py = axis === 'price' ? 0.5 : 0.4; // what holds still, as shares of the box: the live edge for time, the current price for price
+      const px = axis === 'time' ? 0.88 : 0.62, py = 0.5; // what holds still, as shares of the box: the live edge for time, the current price for price
       const base: Dom = { t0: 0.35, t1: 1, p0: MARK - 1250, p1: MARK + 1250 };
       const d: Dom = { ...base };
-      if (axis === 'price') { const anchor = mix(base.p1, base.p0, py); d.p0 = anchor + (base.p0 - anchor) * z; d.p1 = anchor + (base.p1 - anchor) * z; }
-      else { const anchor = mix(base.t0, base.t1, px); d.t0 = anchor + (base.t0 - anchor) * z; d.t1 = anchor + (base.t1 - anchor) * z; }
+      // The wheel on the chart zooms both axes by the same factor, about the live edge and the current price; on the price scale, price alone about the current price.
+      { const anchor = mix(base.p1, base.p0, py); d.p0 = anchor + (base.p0 - anchor) * z; d.p1 = anchor + (base.p1 - anchor) * z; }
+      if (axis === 'time') { const anchor = mix(base.t0, base.t1, px); d.t0 = anchor + (base.t0 - anchor) * z; d.t1 = anchor + (base.t1 - anchor) * z; }
       chart(g, b, d, th, { axis: true });
       const cx = b.x + px * b.w, cy = b.y + py * b.h;
-      g.strokeStyle = th.muted; g.setLineDash([3, 3]); g.beginPath(); if (axis === 'price') { g.moveTo(b.x, cy + 0.5); g.lineTo(b.x + b.w, cy + 0.5); } else { g.moveTo(cx + 0.5, b.y); g.lineTo(cx + 0.5, b.y + b.h); } g.stroke(); g.setLineDash([]);
-      // The wheel on the chart zooms time; on the price scale, at the right, it zooms price.
+      g.strokeStyle = th.muted; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(b.x, cy + 0.5); g.lineTo(b.x + b.w, cy + 0.5); if (axis === 'time') { g.moveTo(cx + 0.5, b.y); g.lineTo(cx + 0.5, b.y + b.h); } g.stroke(); g.setLineDash([]);
       if (axis === 'price') pointer(g, b.x + b.w + 34, b.y + 0.3 * b.h, th); else pointer(g, b.x + 0.5 * b.w, b.y + 0.3 * b.h, th);
       const lit = k > 0.04 && k < 0.96 ? 1 : 0;
       badge(g, axis === 'price' ? tg('Wheel on the price scale') : tg('Wheel on the chart'), b.x + 10, b.y + 10, th, lit);

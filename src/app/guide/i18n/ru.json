@@ -26,13 +26,14 @@
  "**Candles and open interest are different**: they come from each exchange's own history, so they are there at once.": "**Свечи и открытый интерес устроены иначе**: они берутся из собственной истории каждой биржи, поэтому доступны сразу.",
  "The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.": "**Футпринт, пузыри сделок и статистика баров** записываются так же, как карта, поэтому тоже начинаются пустыми.",
  "Moving around": "Как перемещаться",
- "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.": "На компьютере всё делается мышью, и ничего не требует предварительного щелчка. Пока график следует за рынком, масштабирование удерживает на месте живой край (по времени) или текущую цену (по цене), так что картинка раздувается и сжимается вокруг него, а не скользит.",
+ "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.": "На компьютере всё делается мышью, и ничего не требует предварительного щелчка. Пока график следует за рынком, масштабирование удерживает на месте живой край и текущую цену, так что картинка раздувается и сжимается вокруг них, а не скользит; после того как вы сдвинули график вручную, удерживается точка под указателем.",
  "[[Wheel]] on the chart": "[[Колесо]] над графиком",
  "Zoom the **time** axis": "Масштабирует ось **времени**",
+ "Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it": "Масштабирует **время и цену вместе**, в одно и то же число раз, так что картинка сохраняет заданную вами форму",
  "[[Wheel]] or drag on the price scale": "[[Колесо]] или перетаскивание по шкале цены",
  "Zoom the **price** axis (drag up zooms in, down zooms out)": "Масштабирует ось **цены** (вверх — приближает, вниз — отдаляет)",
  "[[Shift]] + [[Wheel]]": "[[Shift]] + [[Колесо]]",
- "Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer": "Масштабирует другую ось. [[Alt]] + [[Колесо]] масштабирует вокруг указателя",
+ "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge": "На графике масштабирует только ось **времени** (на шкале цены — время вместо цены). [[Alt]] + [[Колесо]] масштабирует вокруг указателя и отпускает график от живого края",
  "Drag": "Перетаскивание",
  "Pan both ways. With [[Shift]], pan time only": "Сдвигает в обе стороны. С [[Shift]] — только время",
  "Right-drag": "Перетаскивание правой кнопкой",
@@ -51,7 +52,7 @@
  "**Drag an axis**": "**Перетаскивание оси**",
  "Along the price or time scale to zoom it": "Вдоль шкалы цены или времени для её масштабирования",
  "Wheel on the price scale: the current price stays put while the scale around it changes.": "Колесо над шкалой цены: текущая цена остаётся на месте, пока шкала вокруг неё меняется.",
- "Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.": "Колесо над графиком: живой край остаётся на месте, пока масштабируется время. Свечи становятся шире, и появляется футпринт.",
+ "Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.": "Колесо над графиком: время и цена масштабируются вместе вокруг живого края и текущей цены, которые остаются на месте. Свечи становятся шире, и появляется футпринт.",
  "Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.": "Перетаскивайте, чтобы осмотреться. Сдвиг прекращает следование за живым краем; «Центрировать» возобновляет его.",
  "The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes to resize them, and a pane by its grip (⠿) to move it. Sizes and places are remembered.": "Панели делят ось времени, поэтому то, что вы с ней делаете, происходит во всех. Перетаскивайте разделители между панелями, чтобы менять размер, а саму панель — за рукоятку (⠿), чтобы переместить. Размеры и места запоминаются.",
  "The profile": "Профиль",
@@ -186,5 +187,6 @@
  "On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:": "На **телефоне или планшете** нижняя панель выбирает вид. **Лента**, **Поток** и стакан заявок в вертикальном положении занимают весь экран; остальное расположено под картой (сбоку, когда телефон лежит на боку). **Карта** отдаёт графику весь экран, а всё остальное за кнопкой **⋯**. Те же движения делаются пальцами:",
  "So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. A **dashed line** marks the moment the recording began. Before it the map is left empty: nothing is drawn where nothing was recorded, so every colour on the map is real.": "Поэтому при первом посещении цветная часть — тонкая полоса у правого края, которая растёт с минутами. **Пунктирная линия** отмечает момент, когда началась запись. До неё карта остаётся пустой: там, где ничего не записано, ничего не рисуется, поэтому каждый цвет на карте настоящий.",
  "A first visit, sped up. Colour is what was recorded while the page was open; before the dashed line there is nothing to show.": "Первое посещение, ускоренно. Цвет — то, что записано, пока страница была открыта; до пунктирной линии показывать нечего.",
- "Not recorded": "Не записано"
+ "Not recorded": "Не записано",
+ "[[Wheel]] on the time labels along the bottom": "[[Колесо]] над подписями времени внизу"
 }

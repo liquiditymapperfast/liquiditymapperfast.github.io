@@ -43,7 +43,7 @@ import { FOOTPRINT_SETTLE_MS, FootprintData, FootprintLod, VENUE_LINES, candleBo
 import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
-import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, regionAt, wheelAxis } from './heat-zoom.ts';
+import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, priceRef, regionAt, wheelZoom } from './heat-zoom.ts';
 import { t, tn } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { linesToAsk } from '../sizes.ts';
@@ -3101,7 +3101,7 @@ export class HeatPane {
   #onScale(x: number, y: number): boolean { return y >= 0 && y <= this.plotH && x >= this.#w - AXIS_W; }
 
   /** The price the span limits are a share of: the current price, or the middle of the view before there is one. */
-  #priceRef(mark: number): number { return mark > 0 ? mark : Math.max(1e-9, Math.abs(this.view.p0 + this.view.p1) / 2); }
+  #priceRef(mark: number): number { return priceRef(mark, this.view.p0, this.view.p1); }
 
   /** The price scale is being dragged: `y` pixels below where it began zooms out by exp(0.006 per pixel), holding the price where the drag took hold. */
   #dragScale(y: number): void {
@@ -3118,21 +3118,17 @@ export class HeatPane {
     // In the plot's coordinates: the columns left of the map are at negative x.
     const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left - this.#left, y: e.clientY - r.top }; };
     const touched = () => { this.store.set({ followLive: false }); this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate(); };
-    // The wheel on the chart zooms time and on the price scale zooms price (Shift swaps them). Each holds still what is being watched: the
-    // current price, or the live edge while the map follows the market, so the map swells and shrinks around it instead of sliding.
+    // The wheel on the chart zooms time and price together by the same factor (the picture keeps its shape), on the price scale price alone, on the
+    // time strip time alone; Shift on the chart zooms time only (`wheelZoom`). Each axis holds still what is being watched: the live edge and the
+    // current price while the map follows the market, so it swells and shrinks around them instead of sliding; the point under the pointer on a map
+    // moved by hand, and with Alt.
     el.addEventListener('wheel', e => {
       e.preventDefault();
-      const { x, y } = local(e), pw = this.plotW, ph = this.plotH, v = this.view, state = this.store.state;
-      const lines = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? ph : 1;
-      const raw = Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY * lines), 240) * 0.0016);
-      const axis = wheelAxis(regionAt(x, y, pw, ph), e.shiftKey), mark = state.mark.price;
-      if (axis === 'price') {
-        const ref = this.#priceRef(mark), factor = limitFactor(raw, v.p1 - v.p0, ref * PRICE_SPAN_SHARE.min, ref * PRICE_SPAN_SHARE.max);
-        v.zoomPrice(factor, holdPixel({ axis, pointer: y, size: ph, alt: e.altKey, follow: state.followLive, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }), ph);
-      } else {
-        const factor = limitFactor(raw, v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);
-        v.zoomTime(factor, holdPixel({ axis, pointer: x, size: pw, alt: e.altKey, follow: state.followLive, mark, markPixel: 0, nowPixel: v.xOf(pageNow(), pw) }), pw);
-      }
+      const { x, y } = local(e), pw = this.plotW, ph = this.plotH, v = this.view, state = this.store.state, mark = state.mark.price;
+      const zoom = wheelZoom({ region: regionAt(x, y, pw, ph), shift: e.shiftKey, alt: e.altKey, follow: state.followLive, deltaY: e.deltaY, deltaMode: e.deltaMode, x, y, plotW: pw, plotH: ph, view: v, mark, markY: v.yOf(mark, ph), nowX: v.xOf(pageNow(), pw) });
+      if (zoom.price) v.zoomPrice(zoom.price.factor, zoom.price.hold, ph);
+      if (zoom.time) v.zoomTime(zoom.time.factor, zoom.time.hold, pw);
+      if (zoom.unfollow) this.store.set({ followLive: false });
       this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
     }, { passive: false });
     el.addEventListener('contextmenu', e => e.preventDefault());

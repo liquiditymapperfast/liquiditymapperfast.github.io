@@ -26,13 +26,14 @@
  "**Candles and open interest are different**: they come from each exchange's own history, so they are there at once.": "**ローソク足と建玉は別です**。各取引所自身の履歴から取得するため、すぐに表示されます。",
  "The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.": "**フットプリント、約定バブル、バー統計**はマップと同じように記録されるので、これらも空の状態から始まります。",
  "Moving around": "操作方法",
- "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.": "パソコンでは、すべてマウスで操作でき、先にクリックする必要はありません。チャートが相場を追っている間、ズームはライブエッジ（時間）または現在価格（価格）を固定するので、画像は滑らずにその周りで膨らんだり縮んだりします。",
+ "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.": "パソコンでは、すべてマウスで操作でき、先にクリックする必要はありません。チャートが相場を追っている間、ズームはライブエッジと現在価格を固定するので、画像は滑らずにその周りで膨らんだり縮んだりします。チャートを手で動かした後は、ポインターの下の点を固定します。",
  "[[Wheel]] on the chart": "チャート上で[[ホイール]]",
  "Zoom the **time** axis": "**時間**軸をズームします",
+ "Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it": "**時間と価格を一緒に**同じ倍率でズームするので、画像はあなたが整えた形を保ちます",
  "[[Wheel]] or drag on the price scale": "価格スケール上で[[ホイール]]またはドラッグ",
  "Zoom the **price** axis (drag up zooms in, down zooms out)": "**価格**軸をズームします（上へドラッグで拡大、下で縮小）",
  "[[Shift]] + [[Wheel]]": "[[Shift]] + [[ホイール]]",
- "Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer": "もう一方の軸をズームします。[[Alt]] + [[ホイール]]はポインターを中心にズームします",
+ "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge": "チャート上では**時間**軸だけをズームします（価格スケール上では、価格の代わりに時間）。[[Alt]] + [[ホイール]]はポインターを中心にズームし、チャートをライブエッジから外します",
  "Drag": "ドラッグ",
  "Pan both ways. With [[Shift]], pan time only": "両方向にパンします。[[Shift]]を押すと時間だけをパンします",
  "Right-drag": "右ドラッグ",
@@ -51,7 +52,7 @@
  "**Drag an axis**": "**軸をドラッグ**",
  "Along the price or time scale to zoom it": "価格または時間のスケールに沿ってドラッグしてズームします",
  "Wheel on the price scale: the current price stays put while the scale around it changes.": "価格スケール上のホイール：スケールが周囲で変わる間、現在価格は動きません。",
- "Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.": "チャート上のホイール：時間がズームする間、ライブエッジは動きません。ローソク足が広がり、フットプリントが現れます。",
+ "Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.": "チャート上のホイール：時間と価格が一緒にズームし、ライブエッジと現在価格は動きません。ローソク足が広がり、フットプリントが現れます。",
  "Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.": "ドラッグして見回します。パンするとチャートはライブエッジの追従をやめます。「中央に戻す」で再開します。",
  "The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes to resize them, and a pane by its grip (⠿) to move it. Sizes and places are remembered.": "パネルは時間軸を共有するので、時間軸への操作はすべてのパネルに反映されます。パネル間の仕切りをドラッグしてサイズを変え、パネルのグリップ（⠿）をドラッグして移動します。サイズと位置は記憶されます。",
  "The profile": "プロファイル",
@@ -186,5 +187,6 @@
  "On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:": "**スマートフォンやタブレット**では、下のバーが表示を選びます。**歩み値**、**フロー**、そして縦持ちのときの板は画面全体を使い、そのほかはマップの下に表示されます（横向きの場合は横に表示）。**マップ**はチャートに画面全体を与え、そのほかはすべて**⋯**ボタンの奥にあります。同じ操作を指で行います：",
  "So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. A **dashed line** marks the moment the recording began. Before it the map is left empty: nothing is drawn where nothing was recorded, so every colour on the map is real.": "そのため初回訪問では、色付きの部分は右端の細い帯で、分が経つにつれて伸びていきます。**破線**が記録の始まった瞬間を示します。それより前のマップは空のままです。記録されていない所には何も描かないので、マップ上の色はすべて本物です。",
  "A first visit, sped up. Colour is what was recorded while the page was open; before the dashed line there is nothing to show.": "初回訪問を早送りしたものです。色はページを開いている間に記録されたもので、破線より前には表示するものがありません。",
- "Not recorded": "記録なし"
+ "Not recorded": "記録なし",
+ "[[Wheel]] on the time labels along the bottom": "下の時間ラベル上で[[ホイール]]"
 }
