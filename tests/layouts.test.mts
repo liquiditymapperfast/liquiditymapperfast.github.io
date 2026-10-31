@@ -85,7 +85,16 @@ test('pane order: the saved one, a pane added since after it; sizes within reaso
   assert.deepEqual(fitHeights([330, 330], [60, 60], 709), [248, 248]);
   assert.deepEqual(fitHeights([330, 330], [60, 60], 697, 240), [228, 228], "the map's own minimum (240 px in CSS) when it is more than the share");
   assert.deepEqual(fitHeights([150, 120], [60, 60], 1100), [150, 120], 'room enough: as they were');
-  assert.deepEqual(fitHeights([400, 400], [300, 60], 500), [300, 170], 'never below its own minimum');
+  assert.deepEqual(fitHeights([400, 400], [300, 60], 500), [300, 60], 'never below its own minimum: a pane held at it, the other takes what is left (here less than its own, as nothing fits)');
+  // Six panes in a column of 644 px under a map that keeps 240: they add up to the room, not to a few pixels more.
+  const six = fitHeights([108, 132, 150, 150, 120, 128], [56, 70, 60, 60, 60, 70], 644, 240);
+  assert.ok(six.reduce((a, b) => a + b, 0) <= 404, String(six));
+  assert.ok(six.every((h, i) => h >= [56, 70, 60, 60, 60, 70][i]!));
+  // Whatever the room, the panes never add up to more than it unless their minimums alone do.
+  for (const avail of [500, 640, 700, 900, 1200]) for (const want of [[300, 300, 300], [84, 132, 150, 150, 120, 128, 220]]) {
+    const mins = want.map(() => 60), got = fitHeights(want, mins, avail, 240), room = avail - Math.max(240, avail * 0.3);
+    assert.ok(got.reduce((a, b) => a + b, 0) <= Math.max(room, 60 * want.length) + 1, `${avail} ${want}: ${got}`);
+  }
 });
 
 test('applying a layout sets only what differs, so the same timeframe does not reload the chart', () => {

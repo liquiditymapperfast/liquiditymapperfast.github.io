@@ -30,12 +30,16 @@ function read(): Saved {
 }
 function write(saved: Saved): void { try { window.localStorage.setItem(KEY, JSON.stringify(saved)); } catch { /* storage unavailable */ } }
 
-export interface LayoutPane { id: string; root: HTMLElement; /** Initial height in px for fixed-height panes; the flexible pane has none. */ height?: number; min?: number; head?: HTMLElement | null }
+export interface LayoutPane {
+  id: string; root: HTMLElement; /** Initial height in px for fixed-height panes; the flexible pane has none. */ height?: number; min?: number; head?: HTMLElement | null;
+  /** False for a pane whose switch is more than the pane's (the Scripts pane: its switch is the Scripts feature, which draws on the map too): it has no close button. */
+  closable?: boolean;
+}
 /** A pane that stands beside the map: its header (the controls it has), and the name its edge tab and its buttons give it. */
 export interface SidePane { id: SidePaneId; root: HTMLElement; head: HTMLElement; title: string }
 
 /** A pane that can be moved by its header: a side pane or a pane under the map. */
-interface Mover { id: string; kind: 'side' | 'strip'; root: HTMLElement; head: HTMLElement; title: () => string }
+interface Mover { id: string; kind: 'side' | 'strip'; root: HTMLElement; head: HTMLElement; title: () => string; closable: boolean }
 
 /** The width of a column's splitter (px; the stylesheet's `.splitter` says the same). */
 const SPLIT_W = 6;
@@ -69,14 +73,14 @@ export class Layout {
     this.#regions = regions;
     this.#plan = readPlan(this.#saved.dock) ?? defaultPlan();
     this.#defaults = { order: panes.map(p => p.id), heights: Object.fromEntries(panes.flatMap(p => p.height !== undefined ? [[p.id, p.height]] : [])), ...defaultColumns(window.innerWidth), dock: defaultPlan() };
-    for (const pane of sidePanes) { this.#sidePanes.set(pane.id, pane); this.#mover({ id: pane.id, kind: 'side', root: pane.root, head: pane.head, title: () => pane.title }); }
+    for (const pane of sidePanes) { this.#sidePanes.set(pane.id, pane); this.#mover({ id: pane.id, kind: 'side', root: pane.root, head: pane.head, title: () => pane.title, closable: true }); }
     // Restore pane order and heights: the saved order, and a pane it does not know (one added since) after the others, so a new pane does
     // not undo a person's order.
     this.#panes = arrangeOrder(this.#saved.order ?? [], panes.map(p => ({ id: p.id, fixed: p.height !== undefined }))).map(id => panes.find(p => p.id === id)!);
     for (const pane of this.#panes) {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);
-      if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id });
+      if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id, closable: pane.closable !== false });
     }
     // The splitters between the map and each column; a drag sets that column's width, a double click gives it back to the window.
     for (const side of SIDES) {
@@ -131,6 +135,13 @@ export class Layout {
 
   /** Pointer-drag helper: calls `move(totalDx, totalDy)` while a button is held on `handle`. */
   #drag(handle: HTMLElement, moveX: ((dx: number) => void) | null, start: () => void, end: () => void, moveY?: (dy: number) => void): void {
+    // A splitter is a separator the keyboard can move too: the arrow keys along its axis, sixteen pixels a press, sixty-four with Shift.
+    handle.tabIndex = 0; handle.setAttribute('role', 'separator'); handle.setAttribute('aria-orientation', moveY ? 'horizontal' : 'vertical'); handle.setAttribute('aria-label', t('Drag to resize'));
+    handle.addEventListener('keydown', e => {
+      const step = e.shiftKey ? 64 : 16, d = moveY ? (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0) : (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0);
+      if (!d) return;
+      e.preventDefault(); start(); moveX?.(d); moveY?.(d); end();
+    });
     handle.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
       e.preventDefault(); handle.setPointerCapture(e.pointerId); start(); handle.classList.add('active');
@@ -328,21 +339,29 @@ export class Layout {
   }
 
   /**
-   * What a pane's header carries: a grip to drag it by (its place is the page's to change: either side of the map for a side pane, between the
-   * panes under the map for the others), a menu of the same moves for a keyboard and a touch screen (also on a right click of the header), and a
-   * close button, which hides the pane (the page's switch for it; a side pane's edge tab brings it back).
+   * What a pane carries to be moved and closed: a handle to drag it by (its place is the page's to change: either side of the map for a side
+   * pane, between the panes under the map for the others), a menu of the same moves for a keyboard and a touch screen (also on a right click),
+   * and a close button, which hides the pane (the page's switch for it; a side pane's edge tab brings it back). A side pane gets a title bar of its
+   * own above its header, which is crowded to the last pixel at the narrowest a column is made (and then shows no title of its own); a pane under
+   * the map carries them at the end of its header, which has the room, and is a handle all over where it holds no control.
    */
   #mover(m: Mover): void {
     this.#movers.set(m.id, m);
-    const grip = el('span', { class: 'grip', tip: t('Drag to move this pane') });
-    m.head.prepend(grip);
-    grip.addEventListener('pointerdown', e => this.#startDrag(m, e));
     const more = el('button', { type: 'button', class: 'pane-more', tip: t('Move, resize or hide this panel'), ariaLabel: t('Move, resize or hide this panel'), onclick: () => this.#menu(m, more) });
     const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: t('Hide this panel'), ariaLabel: t('Hide this panel'), onclick: () => this.onClose(m.id) });
     close.dataset.pane = m.id;
-    m.head.classList.add('has-tools');
-    m.head.append(el('div', { class: 'pane-tools' }, more, close));
-    m.head.addEventListener('contextmenu', e => {
+    const tools = el('div', { class: 'pane-tools' }, more, ...(m.closable ? [close] : []));
+    let handle = m.head;
+    if (m.kind === 'side') {
+      // The header's own title keeps its tooltip (what the pane is) in the bar.
+      const bar = handle = el('div', { class: 'pane-head pane-bar' }, el('span', { class: 'grip', ariaHidden: 'true' }), el('strong', { textContent: m.title(), tip: m.head.querySelector('strong')?.dataset.tip ?? '' }), tools);
+      m.root.prepend(bar); m.root.classList.add('has-bar');
+    } else {
+      m.head.prepend(el('span', { class: 'grip', tip: t('Drag to move this pane') }));
+      m.head.classList.add('has-tools'); m.head.append(tools);
+    }
+    handle.addEventListener('pointerdown', e => { if (!(e.target instanceof Element) || e.target.closest('button, select, input, textarea, a, label, canvas')) return; this.#startDrag(m, e); });
+    handle.addEventListener('contextmenu', e => {
       if (isPhone() || !(e.target instanceof Element) || e.target.closest('select, input, textarea, button, a, canvas')) return;
       e.preventDefault(); this.#menu(m, more);
     });
@@ -362,7 +381,8 @@ export class Layout {
       if (i > 0) items.push({ id: 'up', label: t('Move up') });
       if (i >= 0 && i < fixed.length - 1) items.push({ id: 'down', label: t('Move down') });
     }
-    items.push({ id: 'reset', label: t('Reset the size') }, { id: 'hide', label: t('Hide this panel') });
+    items.push({ id: 'reset', label: t('Reset the size') });
+    if (m.closable) items.push({ id: 'hide', label: t('Hide this panel') });
     openMenu(anchor, items, '', { onPreview: () => {}, onSelect: action => this.#act(m, action) });
   }
 

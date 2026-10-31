@@ -140,7 +140,7 @@ async function main(): Promise<void> {
     { id: 'delta', root: delta.root, height: 150, min: 60, head: delta.header },
     { id: 'ls', root: ls.root, height: 120, min: 60, head: ls.header },
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
-    { id: 'script', root: script.root, height: 220, min: 60, head: script.header },
+    { id: 'script', root: script.root, height: 220, min: 60, head: script.header, closable: false },
   ], [
     { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow') },
     { id: 'book', root: ladder.root, head: ladder.controls, title: t('Order Book') },

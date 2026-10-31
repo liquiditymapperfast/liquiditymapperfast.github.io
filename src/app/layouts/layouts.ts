@@ -122,13 +122,22 @@ export const MAP_MIN_SHARE = 0.3, MAP_MIN_PX = 160;
 
 /**
  * The heights of the panes under the map in a column of `avail` px: as wanted while the map keeps `MAP_MIN_SHARE` of the column (at least
- * `mapMin`, its own CSS minimum), else all shrunk in proportion, none below its own minimum. A layout from a taller window, or a window made smaller, would
- * otherwise push the last pane off the screen.
+ * `mapMin`, its own CSS minimum), else all shrunk in proportion, none below its own minimum: a pane that would come out under it keeps it, and
+ * the others share what is left in proportion (a proportion with the minimums put back on afterwards added up to more than the room). A layout
+ * from a taller window, or a window made smaller, would otherwise push the last pane off the screen.
  */
 export function fitHeights(want: readonly number[], mins: readonly number[], avail: number, mapMin = MAP_MIN_PX): number[] {
   const room = avail - Math.max(mapMin, avail * MAP_MIN_SHARE), total = want.reduce((a, b) => a + b, 0);
-  const f = room > 0 && total > room ? room / total : 1;
-  return want.map((h, i) => f < 1 ? Math.max(mins[i] ?? 0, Math.floor(h * f)) : h);
+  if (!(room > 0 && total > room)) return [...want];
+  const out = want.map(() => 0), pinned = want.map(() => false), min = (i: number): number => mins[i] ?? 0;
+  for (let pass = 0; pass <= want.length; pass++) {
+    const free = want.reduce((sum, h, i) => sum + (pinned[i] ? 0 : h), 0), left = room - want.reduce((sum, _, i) => sum + (pinned[i] ? min(i) : 0), 0);
+    const f = free > 0 ? Math.max(0, left) / free : 0;
+    let again = false;
+    want.forEach((h, i) => { if (pinned[i]) return; if (h * f < min(i)) { pinned[i] = true; again = true; } else out[i] = Math.floor(h * f); });
+    if (!again) break;
+  }
+  return want.map((_, i) => pinned[i] ? min(i) : out[i]!);
 }
 
 /** Layouts from storage or a file: the valid ones, at most `MAX_LAYOUTS`, one per name (the later one wins). */

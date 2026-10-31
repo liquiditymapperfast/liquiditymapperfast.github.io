@@ -222,6 +222,12 @@ html[data-layout^="phone"] .edge-rail { display: none !important; }
 html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-right: 54px; }
 .pane-tools { position: absolute; top: 3px; right: 4px; z-index: 7; display: flex; gap: 2px; }
 html[data-layout^="phone"] .pane-tools { display: none; }
+/* A side pane's title bar (layout.ts #mover): the pane's name, its handle, its menu and its close button, above a header that has no title of its own. */
+.pane-head.pane-bar { flex-wrap: nowrap; gap: 6px; padding: 2px 4px 2px 8px; cursor: grab; touch-action: none; user-select: none; }
+.pane-bar strong { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pane-bar .pane-tools { position: static; flex: none; }
+html[data-layout^="phone"] .pane-bar { display: none; }
+html[data-layout="desktop"] .pane.has-bar > .pane-head:not(.pane-bar) > strong { display: none; }
 html[data-layout] .pane-head :is(.pane-x, .pane-more) { position: relative; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; line-height: 0; color: var(--muted); }
 html[data-layout] .pane-head .pane-x { --cross: 9px; }
 html[data-layout] .pane-head :is(.pane-x, .pane-more):hover { color: var(--text); }
@@ -363,6 +369,7 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 .splitter.v { cursor: col-resize; touch-action: none; }
 .splitter.h { cursor: row-resize; height: 6px; touch-action: none; }
 .splitter::after { content: ""; position: absolute; inset: -3px; }
+.splitter:focus-visible { outline: 2px solid var(--ui); outline-offset: -2px; }
 .grip { cursor: grab; touch-action: none; color: var(--muted); user-select: none; margin-right: -4px; font-size: 14px; line-height: 1; position: relative; z-index: 6; /* above a splitter's wider touch zone, which would otherwise take the touch */ }
 .pane.moving { box-shadow: inset 0 0 0 2px var(--muted); }
 /* A pane's grip: two columns of three dots, drawn (a typed braille character looks as its font draws it). */
