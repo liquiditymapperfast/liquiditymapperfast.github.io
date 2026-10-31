@@ -1923,5 +1923,12 @@
  "Further back than the readings held: Bybit's own open interest, scaled to meet the line where it starts. An estimate of the total, and how far it moved since the reading before.": "보유한 값보다 이전: Bybit 자체의 미결제약정을 선이 시작하는 곳에서 이어지도록 환산한 것입니다. 합계의 추정치와, 이전 값 이후 얼마나 움직였는지입니다.",
  "Zoomed out further back than the readings held (the chart's last 500 candles), the line goes on faint and dashed from Bybit's own history, which reaches back years, scaled to meet the line where it starts. Bybit is one venue of several, so this part is an estimate of the total (≈), drawn without change bars. It is there while Bybit's perpetual is among the markets added together.": "보유한 값(차트의 최근 캔들 500개)보다 이전까지 축소하면, 선은 몇 년 전까지 거슬러 올라가는 Bybit 자체 기록으로 흐린 점선이 되어 이어지며, 선이 시작하는 곳에서 이어지도록 환산됩니다. Bybit는 여러 거래소 중 하나이므로 이 부분은 합계의 추정치(≈)이며 변화 막대 없이 그려집니다. Bybit의 무기한 선물이 합산하는 시장에 포함되어 있는 동안 표시됩니다.",
  "Hide this panel": "이 창 숨기기",
- "Show {name}": "{name} 표시"
+ "Show {name}": "{name} 표시",
+ "Move, resize or hide this panel": "이 창을 이동하거나 크기를 바꾸거나 숨기기",
+ "Move to the right side": "오른쪽으로 이동",
+ "Move to the left side": "왼쪽으로 이동",
+ "Move up": "위로 이동",
+ "Move down": "아래로 이동",
+ "Swap the two sides": "양쪽 맞바꾸기",
+ "Reset the size": "크기 초기화"
 }

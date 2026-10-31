@@ -1923,5 +1923,12 @@
  "Further back than the readings held: Bybit's own open interest, scaled to meet the line where it starts. An estimate of the total, and how far it moved since the reading before.": "早于已有读数：Bybit 自身的持仓量，按比例换算，在线的起点处与之相接。这是总量的估计值，以及自上一个读数以来的变化量。",
  "Zoomed out further back than the readings held (the chart's last 500 candles), the line goes on faint and dashed from Bybit's own history, which reaches back years, scaled to meet the line where it starts. Bybit is one venue of several, so this part is an estimate of the total (≈), drawn without change bars. It is there while Bybit's perpetual is among the markets added together.": "缩放到已有读数（图表最近的 500 根 K 线）之前时，线会以淡色虚线沿 Bybit 自身可追溯数年的历史继续，并按比例换算，在线的起点处与之相接。Bybit 只是多个交易所之一，因此这一段是总量的估计值（≈），不画变化柱。只要 Bybit 的永续合约在相加的市场之中，就会显示。",
  "Hide this panel": "隐藏此窗格",
- "Show {name}": "显示{name}"
+ "Show {name}": "显示{name}",
+ "Move, resize or hide this panel": "移动、调整大小或隐藏此窗格",
+ "Move to the right side": "移到右侧",
+ "Move to the left side": "移到左侧",
+ "Move up": "上移",
+ "Move down": "下移",
+ "Swap the two sides": "左右互换",
+ "Reset the size": "重置大小"
 }

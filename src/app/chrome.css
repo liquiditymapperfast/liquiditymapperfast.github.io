@@ -115,6 +115,10 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 /* Every close button is the same square with a drawn cross: the window's, the guide's, a notice's, a list row's, a sheet's. */
 :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x) { border: 1px solid var(--edge); border-radius: var(--radius); background: var(--face); color: var(--text); }
 :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x):hover { background: var(--face); color: var(--text); border-color: var(--text); }
+/* The menu key beside a pane's close button is the same small square (the bevel frame draws its own, from its generic button). */
+:where(:root:not([data-frame="bevel"])) .pane-more { border: 1px solid var(--edge); border-radius: var(--radius); background: var(--face); }
+:where(:root:not([data-frame="bevel"])) .pane-more:hover { border-color: var(--text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head .pane-more { width: 16px; height: 14px; flex: none; }
 /* A menu's lit row: a tint of the theme's blue, the text left as it is. */
 .menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--ui) 16%, var(--panel)); color: var(--text); }
 .menu-item:focus-visible { outline: 2px solid var(--ui); outline-offset: -2px; }

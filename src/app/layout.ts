@@ -1,9 +1,11 @@
 import { setTip } from './tip.ts';
 import { el } from './dom.ts';
+import { openMenu, type MenuItem } from './menu.ts';
 import { isPhone } from './device.ts';
 import { t } from './i18n.ts';
 import { arrangeOrder, defaultColumns, fitHeights, type PaneArrangement } from './layouts/layouts.ts';
-import { SIDES, clonePlan, columnState, defaultPlan, fitColumns, legacyPlan, maxColumnWidth, minWidthOf, moveSide, openIn, otherSide, readPlan, sideOf, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
+import { SIDES, clonePlan, columnState, defaultPlan, fitColumns, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
+import { dropTarget, type Box, type DropScene, type DropTarget } from './layouts/dock-drop.ts';
 
 /**
  * Resizable, reorderable layout, kept in localStorage. The map's column holds the map and the panes under it (splitters between them, a grip
@@ -32,7 +34,10 @@ export interface LayoutPane { id: string; root: HTMLElement; /** Initial height 
 /** A pane that stands beside the map: its header (the controls it has), and the name its edge tab and its buttons give it. */
 export interface SidePane { id: SidePaneId; root: HTMLElement; head: HTMLElement; title: string }
 
-/** The width of a column's splitter, and of the strip a column with nothing open leaves (px; the stylesheet's `--rail-w` says the same). */
+/** A pane that can be moved by its header: a side pane or a pane under the map. */
+interface Mover { id: string; kind: 'side' | 'strip'; root: HTMLElement; head: HTMLElement; title: () => string }
+
+/** The width of a column's splitter (px; the stylesheet's `.splitter` says the same). */
 const SPLIT_W = 6;
 
 export class Layout {
@@ -50,6 +55,7 @@ export class Layout {
   readonly #rails = {} as Record<Side, HTMLElement>;
   #railKeys: Record<Side, string> = { left: '', right: '' };
   readonly #stackBars = new Map<string, HTMLElement>();
+  readonly #movers = new Map<string, Mover>();
   /** The heights `#fit` last gave the panes under the map: a pane still at one of them was not resized by hand, and keeps its own height when saved. */
   #fitted = new Map<string, number>();
   /** The arrangement the page starts with when nothing is saved (the Default layout). */
@@ -63,14 +69,14 @@ export class Layout {
     this.#regions = regions;
     this.#plan = readPlan(this.#saved.dock) ?? defaultPlan();
     this.#defaults = { order: panes.map(p => p.id), heights: Object.fromEntries(panes.flatMap(p => p.height !== undefined ? [[p.id, p.height]] : [])), ...defaultColumns(window.innerWidth), dock: defaultPlan() };
-    for (const pane of sidePanes) { this.#sidePanes.set(pane.id, pane); this.#tools(pane.id, pane.head); }
+    for (const pane of sidePanes) { this.#sidePanes.set(pane.id, pane); this.#mover({ id: pane.id, kind: 'side', root: pane.root, head: pane.head, title: () => pane.title }); }
     // Restore pane order and heights: the saved order, and a pane it does not know (one added since) after the others, so a new pane does
     // not undo a person's order.
     this.#panes = arrangeOrder(this.#saved.order ?? [], panes.map(p => ({ id: p.id, fixed: p.height !== undefined }))).map(id => panes.find(p => p.id === id)!);
     for (const pane of this.#panes) {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);
-      if (pane.head) { this.#grip(pane); this.#tools(pane.id, pane.head); }
+      if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id });
     }
     // The splitters between the map and each column; a drag sets that column's width, a double click gives it back to the window.
     for (const side of SIDES) {
@@ -318,32 +324,127 @@ export class Layout {
     this.#setHeight(pane, h); this.#persist();
   }
 
-  /** The close button at the end of a pane's header: it hides the pane (the page's switch for it), and a side pane's edge tab brings it back. */
-  #tools(id: string, head: HTMLElement): void {
-    const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: t('Hide this panel'), ariaLabel: t('Hide this panel'), onclick: () => this.onClose(id) });
-    close.dataset.pane = id;
-    head.classList.add('has-tools');
-    head.append(el('div', { class: 'pane-tools' }, close));
+  /**
+   * What a pane's header carries: a grip to drag it by (its place is the page's to change: either side of the map for a side pane, between the
+   * panes under the map for the others), a menu of the same moves for a keyboard and a touch screen (also on a right click of the header), and a
+   * close button, which hides the pane (the page's switch for it; a side pane's edge tab brings it back).
+   */
+  #mover(m: Mover): void {
+    this.#movers.set(m.id, m);
+    const grip = el('span', { class: 'grip', tip: t('Drag to move this pane') });
+    m.head.prepend(grip);
+    grip.addEventListener('pointerdown', e => this.#startDrag(m, e));
+    const more = el('button', { type: 'button', class: 'pane-more', tip: t('Move, resize or hide this panel'), ariaLabel: t('Move, resize or hide this panel'), onclick: () => this.#menu(m, more) });
+    const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: t('Hide this panel'), ariaLabel: t('Hide this panel'), onclick: () => this.onClose(m.id) });
+    close.dataset.pane = m.id;
+    m.head.classList.add('has-tools');
+    m.head.append(el('div', { class: 'pane-tools' }, more, close));
+    m.head.addEventListener('contextmenu', e => {
+      if (isPhone() || !(e.target instanceof Element) || e.target.closest('select, input, textarea, button, a, canvas')) return;
+      e.preventDefault(); this.#menu(m, more);
+    });
   }
 
-  /** Header grip that reorders fixed panes by dragging over their neighbours. */
-  #grip(pane: LayoutPane): void {
-    const grip = document.createElement('span'); grip.className = 'grip'; setTip(grip, t('Drag to move this pane'));
-    pane.head!.prepend(grip);
-    grip.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
-      e.preventDefault(); grip.setPointerCapture(e.pointerId); pane.root.classList.add('moving');
-      const onMove = (m: PointerEvent) => {
-        const others = this.#panes.filter(p => p !== pane && !p.root.hidden && p.height !== undefined);
-        for (const other of others) {
-          const r = other.root.getBoundingClientRect(), mid = r.top + r.height / 2;
-          const i = this.#panes.indexOf(pane), j = this.#panes.indexOf(other);
-          if ((j < i && m.clientY < mid) || (j > i && m.clientY > mid)) { this.#panes.splice(i, 1); this.#panes.splice(j, 0, pane); this.#reattach(); break; }
-        }
-      };
-      const onUp = () => { pane.root.classList.remove('moving'); grip.removeEventListener('pointermove', onMove); grip.removeEventListener('pointerup', onUp); this.#persist(); };
-      grip.addEventListener('pointermove', onMove); grip.addEventListener('pointerup', onUp);
-    });
+  /** The moves a pane's menu offers now: only those that go somewhere. */
+  #menu(m: Mover, anchor: HTMLElement): void {
+    const items: MenuItem[] = [];
+    if (m.kind === 'side') {
+      const id = m.id as SidePaneId, side = sideOf(this.#plan, id);
+      items.push({ id: side === 'left' ? 'right' : 'left', label: side === 'left' ? t('Move to the right side') : t('Move to the left side') });
+      if (nudge(this.#plan, id, -1, this.#shown) !== this.#plan) items.push({ id: 'up', label: t('Move up') });
+      if (nudge(this.#plan, id, 1, this.#shown) !== this.#plan) items.push({ id: 'down', label: t('Move down') });
+      items.push({ id: 'swap', label: t('Swap the two sides') });
+    } else {
+      const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined), i = fixed.findIndex(p => p.id === m.id);
+      if (i > 0) items.push({ id: 'up', label: t('Move up') });
+      if (i >= 0 && i < fixed.length - 1) items.push({ id: 'down', label: t('Move down') });
+    }
+    items.push({ id: 'reset', label: t('Reset the size') }, { id: 'hide', label: t('Hide this panel') });
+    openMenu(anchor, items, '', { onPreview: () => {}, onSelect: action => this.#act(m, action) });
+  }
+
+  #act(m: Mover, action: string): void {
+    if (action === 'hide') { this.onClose(m.id); return; }
+    if (m.kind === 'side') {
+      const id = m.id as SidePaneId, key = sideOf(this.#plan, id) === 'left' ? 'leftW' : 'rightW';
+      if (action === 'left' || action === 'right') this.moveSidePane(id, action);
+      else if (action === 'up' || action === 'down') { this.#plan = nudge(this.#plan, id, action === 'up' ? -1 : 1, this.#shown); this.#renderSides(); this.#persist(); }
+      else if (action === 'swap') this.swapSides();
+      else if (action === 'reset') { this.#plan[key] = null; for (const other of this.#plan[sideOf(this.#plan, id)]) delete this.#plan.weights[other]; this.#renderSides(); this.#persist(); }
+      return;
+    }
+    const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined), i = fixed.findIndex(p => p.id === m.id), pane = fixed[i];
+    if (action === 'up' && i > 0) this.#moveStrip(m.id, fixed[i - 1]!.id);
+    else if (action === 'down' && i >= 0 && i < fixed.length - 1) this.#moveStrip(m.id, fixed[i + 2]?.id ?? null);
+    else if (action === 'reset' && pane) {
+      const heights = { ...this.#saved.heights }; delete heights[pane.id]; this.#saved = { ...this.#saved, heights };
+      this.#setHeight(pane, pane.height!); this.#fit(); this.#persist();
+    }
+  }
+
+  /** A pane under the map put before `beforeId` (the last when that is null), among the panes under the map: the map keeps its own place. */
+  #moveStrip(id: string, beforeId: string | null): void {
+    const fixed = this.#panes.filter(p => p.height !== undefined).map(p => p.id).filter(x => x !== id);
+    const at = beforeId === null ? -1 : fixed.indexOf(beforeId);
+    if (at < 0) fixed.push(id); else fixed.splice(at, 0, id);
+    const ids = arrangeOrder(fixed, this.#panes.map(p => ({ id: p.id, fixed: p.height !== undefined })));
+    if (ids.join() === this.#panes.map(p => p.id).join()) return;
+    this.#panes = ids.map(i => this.#panes.find(p => p.id === i)!);
+    this.#reattach(); this.#persist();
+  }
+
+  /** The page measured for `dropTarget`: where the columns, the panes in them and the map's column are now. */
+  #scene(): DropScene {
+    const box = (node: Element): Box => { const r = node.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+    const column = (side: Side): DropScene['columns'][Side] => {
+      const region = this.#regions[side], open = region.dataset.state === 'open';
+      return { box: box(region), open, panes: open ? openIn(this.#plan, side, this.#shown).map(id => ({ id, box: box(this.#sidePanes.get(id)!.root) })) : [] };
+    };
+    return {
+      main: box(this.main), edge: Math.max(260, Math.round(window.innerWidth * 0.2)), columns: { left: column('left'), right: column('right') },
+      strip: { box: box(this.chart), panes: this.#panes.filter(p => !p.root.hidden).map(p => ({ id: p.id, box: box(p.root), fixed: p.height !== undefined })) },
+    };
+  }
+
+  /**
+   * Drag a pane by its grip: a small label follows the pointer and a mark shows where the pane would stand (a bar between two panes, a strip
+   * along the edge where a column is not there); letting go moves it there, Escape or a drop anywhere else leaves it.
+   */
+  #startDrag(m: Mover, down: PointerEvent): void {
+    if (down.button !== 0 || isPhone()) return;
+    down.preventDefault();
+    const grip = down.currentTarget as HTMLElement;
+    try { grip.setPointerCapture(down.pointerId); } catch { /* the drag does not need it */ }
+    const drag = m.kind === 'side' ? { kind: 'side' as const, id: m.id as SidePaneId } : { kind: 'strip' as const, id: m.id };
+    let live = false, target: DropTarget | null = null, scene: DropScene | null = null, ghost: HTMLElement | null = null, mark: HTMLElement | null = null;
+    const move = (e: PointerEvent): void => {
+      if (e.pointerId !== down.pointerId) return;
+      if (!live) {
+        if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
+        live = true; scene = this.#scene();
+        document.body.classList.add('pane-dragging'); m.root.classList.add('moving');
+        ghost = el('div', { class: 'pane-ghost' }, el('i', { class: 'grip-mark' }), el('span', { textContent: m.title() }));
+        mark = el('div', { class: 'drop-mark', hidden: true });
+        document.body.append(mark, ghost);
+      }
+      ghost!.style.transform = `translate(${Math.round(e.clientX + 14)}px, ${Math.round(e.clientY + 12)}px)`;
+      target = dropTarget(scene!, drag, e.clientX, e.clientY);
+      mark!.hidden = target === null;
+      if (target) {
+        mark!.className = target.kind === 'side' && target.area ? 'drop-mark area' : 'drop-mark';
+        Object.assign(mark!.style, { left: `${target.box.x}px`, top: `${target.box.y}px`, width: `${target.box.w}px`, height: `${target.box.h}px` });
+      }
+    };
+    const stop = (commit: boolean): void => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); window.removeEventListener('keydown', key, true);
+      try { grip.releasePointerCapture(down.pointerId); } catch { /* it was never held */ }
+      ghost?.remove(); mark?.remove(); document.body.classList.remove('pane-dragging'); m.root.classList.remove('moving');
+      if (live && commit && target) { if (target.kind === 'side') this.moveSidePane(m.id as SidePaneId, target.side, target.beforeId); else this.#moveStrip(m.id, target.beforeId); }
+    };
+    const up = (e: PointerEvent): void => { if (e.pointerId === down.pointerId) stop(true); };
+    const cancel = (e: PointerEvent): void => { if (e.pointerId === down.pointerId) stop(false); };
+    const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stop(false); } };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel); window.addEventListener('keydown', key, true);
   }
   #reattach(): void { for (const p of this.#panes) this.chart.append(p.root); this.rebuild(); }
 }

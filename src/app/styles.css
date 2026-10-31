@@ -7,6 +7,7 @@
   --mark-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M3.5 6.5h17M3.5 12h17M3.5 17.5h17'/%3E%3Ccircle cx='9' cy='6.5' r='2.7' fill='black' stroke='none'/%3E%3Ccircle cx='15.5' cy='12' r='2.7' fill='black' stroke='none'/%3E%3Ccircle cx='7.5' cy='17.5' r='2.7' fill='black' stroke='none'/%3E%3C/svg%3E");
   /* The question mark of every "?" (chrome.css button.help, and a script's row button): drawn, so it sits in the middle of its box whatever the font. */
   --mark-help: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.2 8.6a3.9 3.9 0 1 1 5.9 3.3c-1.3.8-2.1 1.5-2.1 3'/%3E%3Cpath d='M12 19.6h.01'/%3E%3C/svg%3E");
+  --mark-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Ccircle cx='5' cy='12' r='2.2'/%3E%3Ccircle cx='12' cy='12' r='2.2'/%3E%3Ccircle cx='19' cy='12' r='2.2'/%3E%3C/svg%3E");
   --mark-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E");
   --ui: #2f6bff; --bid: #0fa44a; --bid-soft: #cdeed8; --ask: #e0066f; --ask-soft: #ffd0e6; --gutter: 192px;
   font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -217,16 +218,28 @@ main { --left-w: var(--flow-w); --right-w: var(--side-w); --rail-w: 22px; }
 .flow-col .edge-chev { transform: rotate(-45deg); }
 .side-col .edge-chev { transform: rotate(135deg); }
 html[data-layout^="phone"] .edge-rail { display: none !important; }
-/* The close button at the end of a pane's header (layout.ts #tools): the header keeps room for it, and its first row ends where the button begins. */
-html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-right: 30px; }
+/* The menu and the close button at the end of a pane's header (layout.ts #mover): the header keeps room for them, and its first row ends where they begin. */
+html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-right: 54px; }
 .pane-tools { position: absolute; top: 3px; right: 4px; z-index: 7; display: flex; gap: 2px; }
 html[data-layout^="phone"] .pane-tools { display: none; }
-html[data-layout] .pane-head .pane-x { width: 20px; height: 20px; min-height: 0; --cross: 9px; color: var(--muted); }
-html[data-layout] .pane-head .pane-x:hover { color: var(--text); }
+html[data-layout] .pane-head :is(.pane-x, .pane-more) { position: relative; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; line-height: 0; color: var(--muted); }
+html[data-layout] .pane-head .pane-x { --cross: 9px; }
+html[data-layout] .pane-head :is(.pane-x, .pane-more):hover { color: var(--text); }
+.pane-more::before { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px; background: currentColor; -webkit-mask: var(--mark-more) center / contain no-repeat; mask: var(--mark-more) center / contain no-repeat; }
+/* A pane being dragged by its grip: a label with the pointer, a mark where it would stand (a bar between two panes, or the strip along an edge where a column is not there), and the pane itself dimmed. */
+body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-select: none !important; }
+.pane.moving { opacity: .55; }
+.pane-ghost { position: fixed; left: 0; top: 0; z-index: 90; display: flex; align-items: center; gap: 7px; padding: 4px 11px 4px 7px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--panel); color: var(--text); font-size: 12px; font-weight: 700; white-space: nowrap; pointer-events: none; box-shadow: 3px 3px 0 var(--shadow); }
+.pane-ghost .grip-mark { flex: none; width: 10px; height: 15px; color: var(--muted); background: radial-gradient(circle, currentColor 1.2px, transparent 1.6px) 0 0 / 5px 5px; }
+.drop-mark { position: fixed; z-index: 89; pointer-events: none; border-radius: 2px; background: var(--ui); }
+.drop-mark[hidden] { display: none; }
+.drop-mark.area { border-radius: 0; background: color-mix(in srgb, var(--ui) 14%, transparent); outline: 2px dashed var(--ui); outline-offset: -2px; }
 @media (pointer: coarse) {
   main { --rail-w: 30px; }
-  html[data-layout="desktop"] .pane-head.has-tools { padding-right: 42px; }
-  html[data-layout] .pane-head .pane-x { width: 30px; height: 30px; --cross: 12px; }
+  html[data-layout="desktop"] .pane-head.has-tools { padding-right: 76px; }
+  html[data-layout] .pane-head :is(.pane-x, .pane-more) { width: 30px; height: 30px; }
+  html[data-layout] .pane-head .pane-x { --cross: 12px; }
+  .pane-more::before { width: 18px; height: 18px; }
   .edge-tab { font-size: 12px; }
 }
 .pane { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--panel); }

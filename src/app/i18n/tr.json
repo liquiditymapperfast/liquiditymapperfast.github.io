@@ -2002,5 +2002,12 @@
  "Further back than the readings held: Bybit's own open interest, scaled to meet the line where it starts. An estimate of the total, and how far it moved since the reading before.": "Eldeki okumalardan daha geride: Bybit'in kendi açık pozisyonu, çizginin başladığı yerde onunla buluşacak şekilde ölçeklenmiş. Toplamın bir tahmini ve bir önceki okumadan bu yana ne kadar değiştiği.",
  "Zoomed out further back than the readings held (the chart's last 500 candles), the line goes on faint and dashed from Bybit's own history, which reaches back years, scaled to meet the line where it starts. Bybit is one venue of several, so this part is an estimate of the total (≈), drawn without change bars. It is there while Bybit's perpetual is among the markets added together.": "Eldeki okumalardan (grafiğin son 500 mumu) daha geriye uzaklaştırınca çizgi, yıllar öncesine uzanan Bybit'in kendi geçmişiyle soluk ve kesikli olarak devam eder; çizginin başladığı yerde onunla buluşacak şekilde ölçeklenir. Bybit birkaç borsadan biridir, bu yüzden bu kısım toplamın bir tahminidir (≈) ve değişim çubukları olmadan çizilir. Bybit'in vadesizi toplanan piyasalar arasında olduğu sürece görünür.",
  "Hide this panel": "Bu bölmeyi gizle",
- "Show {name}": "{name} göster"
+ "Show {name}": "{name} göster",
+ "Move, resize or hide this panel": "Bu bölmeyi taşı, yeniden boyutlandır veya gizle",
+ "Move to the right side": "Sağ tarafa taşı",
+ "Move to the left side": "Sol tarafa taşı",
+ "Move up": "Yukarı taşı",
+ "Move down": "Aşağı taşı",
+ "Swap the two sides": "İki tarafı değiştir",
+ "Reset the size": "Boyutu sıfırla"
 }

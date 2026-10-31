@@ -1923,5 +1923,12 @@
  "Further back than the readings held: Bybit's own open interest, scaled to meet the line where it starts. An estimate of the total, and how far it moved since the reading before.": "保持している値より前：Bybit自身の建玉を、線の始まりでつながるよう換算したものです。合計の推定値と、前の値からの変化量です。",
  "Zoomed out further back than the readings held (the chart's last 500 candles), the line goes on faint and dashed from Bybit's own history, which reaches back years, scaled to meet the line where it starts. Bybit is one venue of several, so this part is an estimate of the total (≈), drawn without change bars. It is there while Bybit's perpetual is among the markets added together.": "保持している値（チャートの直近500本のローソク足）より前までズームアウトすると、線は数年さかのぼるBybit自身の履歴から薄い破線で続き、線の始まりでつながるよう換算されます。Bybitは複数ある取引所の一つなので、この部分は合計の推定値（≈）で、変化のバーは描きません。Bybitの無期限先物が合算する市場に含まれている間だけ表示されます。",
  "Hide this panel": "このペインを隠す",
- "Show {name}": "{name}を表示"
+ "Show {name}": "{name}を表示",
+ "Move, resize or hide this panel": "このペインの移動・サイズ変更・非表示",
+ "Move to the right side": "右側へ移動",
+ "Move to the left side": "左側へ移動",
+ "Move up": "上へ移動",
+ "Move down": "下へ移動",
+ "Swap the two sides": "左右を入れ替える",
+ "Reset the size": "サイズを元に戻す"
 }

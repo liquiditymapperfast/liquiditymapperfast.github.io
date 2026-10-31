@@ -2061,5 +2061,12 @@
  "Further back than the readings held: Bybit's own open interest, scaled to meet the line where it starts. An estimate of the total, and how far it moved since the reading before.": "Далі в минуле, ніж є значення: власний відкритий інтерес Bybit, масштабований так, щоб зійтися з лінією там, де вона починається. Оцінка суми та на скільки вона змінилася від попереднього значення.",
  "Zoomed out further back than the readings held (the chart's last 500 candles), the line goes on faint and dashed from Bybit's own history, which reaches back years, scaled to meet the line where it starts. Bybit is one venue of several, so this part is an estimate of the total (≈), drawn without change bars. It is there while Bybit's perpetual is among the markets added together.": "Якщо віддалити масштаб далі в минуле, ніж є значення (останні 500 свічок графіка), лінія продовжується блідим пунктиром за власною історією Bybit, що сягає років назад, масштабованою так, щоб зійтися з лінією там, де вона починається. Bybit — одна біржа з кількох, тож ця частина — оцінка суми (≈), без стовпчиків змін. Вона показується, поки безстроковий контракт Bybit входить до складених ринків.",
  "Hide this panel": "Приховати цю панель",
- "Show {name}": "Показати: {name}"
+ "Show {name}": "Показати: {name}",
+ "Move, resize or hide this panel": "Перемістити, змінити розмір або приховати цю панель",
+ "Move to the right side": "Перемістити праворуч",
+ "Move to the left side": "Перемістити ліворуч",
+ "Move up": "Вище",
+ "Move down": "Нижче",
+ "Swap the two sides": "Поміняти боки місцями",
+ "Reset the size": "Скинути розмір"
 }

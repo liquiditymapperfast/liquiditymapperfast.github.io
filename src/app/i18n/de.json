@@ -2002,5 +2002,12 @@
  "Further back than the readings held: Bybit's own open interest, scaled to meet the line where it starts. An estimate of the total, and how far it moved since the reading before.": "Weiter zurück als die vorhandenen Werte: Bybits eigener Open Interest, so skaliert, dass er dort an die Linie anschließt, wo sie beginnt. Eine Schätzung der Summe und wie weit sie sich seit dem vorherigen Wert bewegt hat.",
  "Zoomed out further back than the readings held (the chart's last 500 candles), the line goes on faint and dashed from Bybit's own history, which reaches back years, scaled to meet the line where it starts. Bybit is one venue of several, so this part is an estimate of the total (≈), drawn without change bars. It is there while Bybit's perpetual is among the markets added together.": "Weiter herausgezoomt, als die vorhandenen Werte reichen (die letzten 500 Kerzen des Charts), setzt sich die Linie blass und gestrichelt mit Bybits eigener Historie fort, die Jahre zurückreicht, so skaliert, dass sie dort an die Linie anschließt, wo diese beginnt. Bybit ist eine von mehreren Börsen, daher ist dieser Teil eine Schätzung der Summe (≈), ohne Änderungsbalken gezeichnet. Er erscheint, solange Bybits Perpetual unter den zusammengezählten Märkten ist.",
  "Hide this panel": "Diesen Bereich ausblenden",
- "Show {name}": "{name} einblenden"
+ "Show {name}": "{name} einblenden",
+ "Move, resize or hide this panel": "Diesen Bereich verschieben, in der Größe ändern oder ausblenden",
+ "Move to the right side": "Nach rechts verschieben",
+ "Move to the left side": "Nach links verschieben",
+ "Move up": "Nach oben",
+ "Move down": "Nach unten",
+ "Swap the two sides": "Beide Seiten tauschen",
+ "Reset the size": "Größe zurücksetzen"
 }
