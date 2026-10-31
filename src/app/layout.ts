@@ -4,7 +4,7 @@ import { openMenu, type MenuItem } from './menu.ts';
 import { isPhone } from './device.ts';
 import { t } from './i18n.ts';
 import { arrangeOrder, defaultColumns, fitHeights, type PaneArrangement } from './layouts/layouts.ts';
-import { SIDES, clonePlan, columnState, defaultPlan, fitColumns, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
+import { SIDES, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
 import { dropTarget, type Box, type DropScene, type DropTarget } from './layouts/dock-drop.ts';
 
 /**
@@ -94,7 +94,9 @@ export class Layout {
     }
     this.rebuild();
     this.#renderSides();
-    window.addEventListener('resize', () => { this.#fit(); this.#applyColumns(); });
+    // A window that becomes a phone (or stops being one) is laid out again: a phone arranges its panes by tab, and the weights of a stack are the desktop's.
+    let phone = isPhone();
+    window.addEventListener('resize', () => { this.#fit(); if (isPhone() !== phone) { phone = !phone; this.#renderSides(); } else this.#applyColumns(); });
   }
 
   /** What a column is now: its width as it is laid out; one that is not laid out has none, so the width it keeps or the window's. */
@@ -102,12 +104,12 @@ export class Layout {
     const laid = this.#regions[side].getBoundingClientRect().width;
     return Math.round(laid > 0 && this.#regions[side].dataset.state === 'open' ? laid : this.#wanted(side));
   }
-  /** The width a column is asked for: the one dragged to, else what the stylesheet gives the first pane in it at this window. */
+  /** The width a column is asked for: the one dragged to, else what the stylesheet gives its lead pane (the book, the wider, where it is open in it) at this window. */
   #wanted(side: Side): number {
     const own = this.#plan[side === 'left' ? 'leftW' : 'rightW'];
     if (own !== null) return own;
-    const first = this.#plan[side].find(id => this.#shown[id]) ?? this.#plan[side][0], wide = defaultColumns(window.innerWidth);
-    return first === 'book' ? wide.sideW : wide.flowW;
+    const wide = defaultColumns(window.innerWidth);
+    return leadOf(this.#plan, side, this.#shown) === 'book' ? wide.sideW : wide.flowW;
   }
   /** A column made `w` wide, within what its panes need and what the map is to keep. */
   #setWidth(side: Side, w: number): void {
@@ -173,7 +175,8 @@ export class Layout {
         const pane = this.#sidePanes.get(id); if (!pane) continue;
         if (this.#shown[id] && above !== null) nodes.push(this.#stackBar(above, id));
         nodes.push(pane.root);
-        pane.root.style.flex = open.length > 1 ? `${this.#plan.weights[id] ?? 1} 1 0px` : '';
+        // A phone shows one pane at a time and sizes it in the stylesheet: a share written here would beat that and leave the pane short of the area.
+        pane.root.style.flex = open.length > 1 && !isPhone() ? `${this.#plan.weights[id] ?? 1} 1 0px` : '';
         if (this.#shown[id]) above = id;
       }
       const closed = list.filter(id => !this.#shown[id]);
@@ -228,13 +231,11 @@ export class Layout {
     if (isPhone()) { this.main.style.removeProperty('grid-template-columns'); return; }
     // The widths: the stylesheet's own (it follows the window) for a column that was not dragged, the dragged one otherwise, and both taken down together when they would leave the map too little.
     const wide = window.innerWidth;
-    const want = (side: Side): number => this.#wanted(side), min = (side: Side): number => minWidthOf(openIn(this.#plan, side, this.#shown));
-    const both = states.left === 'open' && states.right === 'open';
-    const [lw, rw] = both ? fitColumns(want('left'), want('right'), wide, min('left'), min('right')) : [want('left'), want('right')];
+    const min = (side: Side): number => minWidthOf(openIn(this.#plan, side, this.#shown));
+    const [lw, rw] = laidOutWidths([this.#wanted('left'), this.#wanted('right')], [min('left'), min('right')], [states.left === 'open', states.right === 'open'], wide);
     for (const side of SIDES) {
-      const own = this.#plan[side === 'left' ? 'leftW' : 'rightW'], fitted = side === 'left' ? lw : rw, first = openIn(this.#plan, side, this.#shown)[0] ?? this.#plan[side][0];
-      const asked = this.#wanted(side);
-      this.main.style.setProperty(side === 'left' ? '--left-w' : '--right-w', own === null && fitted === asked ? (first === 'book' ? 'var(--side-w)' : 'var(--flow-w)') : `${fitted}px`);
+      const own = this.#plan[side === 'left' ? 'leftW' : 'rightW'], fitted = side === 'left' ? lw : rw, asked = this.#wanted(side);
+      this.main.style.setProperty(side === 'left' ? '--left-w' : '--right-w', own === null && fitted === asked ? (leadOf(this.#plan, side, this.#shown) === 'book' ? 'var(--side-w)' : 'var(--flow-w)') : `${fitted}px`);
     }
     const tracks: string[] = [];
     if (states.left === 'open') tracks.push('var(--left-w)', `${SPLIT_W}px`); else if (states.left === 'rail') tracks.push('var(--rail-w)');
@@ -407,6 +408,7 @@ export class Layout {
 
   /** A pane under the map put before `beforeId` (the last when that is null), among the panes under the map: the map keeps its own place. */
   #moveStrip(id: string, beforeId: string | null): void {
+    if (isPhone()) return;
     const fixed = this.#panes.filter(p => p.height !== undefined).map(p => p.id).filter(x => x !== id);
     const at = beforeId === null ? -1 : fixed.indexOf(beforeId);
     if (at < 0) fixed.push(id); else fixed.splice(at, 0, id);

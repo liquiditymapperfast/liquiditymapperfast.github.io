@@ -141,6 +141,24 @@ export function fitColumns(left: number, right: number, windowW: number, minLeft
   return [Math.max(minLeft, Math.floor(left * f)), Math.max(minRight, Math.floor(right * f))];
 }
 
+/**
+ * The widths the two columns are laid out at, given what each is asked for (`want`) and the least its open panes need (`min`): while both are
+ * open they are taken down together when they would leave the map too little (`fitColumns`); an open column is never narrower than its panes need
+ * nor wider than the window allows, whatever width was kept for it (a layout from a wider window, or a width carried across by a move). A column
+ * that is not open keeps what it is asked for.
+ */
+export function laidOutWidths(want: readonly [number, number], min: readonly [number, number], open: readonly [boolean, boolean], windowW: number): [number, number] {
+  const fitted = open[0] && open[1] ? fitColumns(want[0], want[1], windowW, min[0], min[1]) : [want[0], want[1]];
+  const size = (i: 0 | 1): number => open[i] ? Math.max(min[i], Math.min(fitted[i]!, maxColumnWidth(windowW, 0, min[i]))) : fitted[i]!;
+  return [size(0), size(1)];
+}
+
+/** The pane whose default width a column has: the book (the wider) when it is open there, else the first pane that is open, else the first it holds. */
+export function leadOf(plan: DockPlan, side: Side, shown: Readonly<Record<SidePaneId, boolean>>): SidePaneId | undefined {
+  const open = openIn(plan, side, shown);
+  return open.includes('book') ? 'book' : open[0] ?? (plan[side].includes('book') ? 'book' : plan[side][0]);
+}
+
 /** Equal plans: the same panes in the same places, and the same sizes within `tolerance` px (a column that follows the window is only equal to one that does). */
 export function samePlan(a: DockPlan, b: DockPlan, tolerance = 8): boolean {
   const near = (x: number | null, y: number | null): boolean => x === null || y === null ? x === y : Math.abs(x - y) <= tolerance;

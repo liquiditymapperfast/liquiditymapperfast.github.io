@@ -1,10 +1,10 @@
-import type { AppState, Store } from '../store.ts';
+import type { AppState, Settings, Store } from '../store.ts';
 import { t } from '../i18n.ts';
 import { toast } from '../toast.ts';
-import { LAYOUTS_KEY, MAX_LAYOUTS, changedSettings, cleanName, loadLayouts, settingsOf, settingsToApply, storeLayouts, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
+import { LAYOUTS_KEY, MAX_LAYOUTS, changedSettings, cleanName, copyName, loadLayouts, paneSettings, samePanes, settingsOf, settingsToApply, storeLayouts, undoPatch, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
 import { PRESETS, buildPreset, type PresetDef, type PresetEnv } from './presets.ts';
 import { readActive, sameShot, shotOf, type Active } from './active.ts';
-import { PANE_SHOW_KEY, type Side } from './dock-model.ts';
+import { PANE_SHOW_KEY, type Side, type SidePaneId } from './dock-model.ts';
 
 /** What arranges the panes (the page's Layout), as the actions below and the layouts panel see it. */
 export interface PaneHost {
@@ -13,8 +13,8 @@ export interface PaneHost {
   env(): PresetEnv;
 }
 
-/** What the screen was: the panes as they stood, which are open and what else is switched, and which layout it was showing. */
-interface Snapshot { panes: PaneArrangement; show: AppState['show']; active: Active | null }
+/** What the screen was: the panes as they stood, the chart's settings (which panes are open among them), and which layout it was showing. */
+interface Snapshot { panes: PaneArrangement; settings: Partial<Settings>; active: Active | null }
 
 export const ACTIVE_KEY = 'hlm-layout-active-v1';
 const sameName = (a: string, b: string): boolean => a.toLocaleLowerCase() === b.toLocaleLowerCase();
@@ -27,17 +27,24 @@ const sameName = (a: string, b: string): boolean => a.toLocaleLowerCase() === b.
 export class LayoutActions {
   constructor(readonly store: Store, readonly host: PaneHost) {}
 
-  snapshot(): Snapshot { return { panes: this.host.arrangement(), show: { ...this.store.state.show }, active: this.active() }; }
-  restore(s: Snapshot): void {
-    this.host.apply(s.panes);
-    this.store.set({ show: { ...s.show } });
-    this.#setActive(s.active);
+  snapshot(): Snapshot { return { panes: this.host.arrangement(), settings: structuredClone(settingsOf(this.store.state)), active: this.active() }; }
+  /**
+   * Put back what an action changed (`before` to `after`) and nothing else: the panes if nobody has moved them since, each setting it changed that still
+   * stands as it left it. A person who goes on working in the seconds the Undo is offered keeps what they did.
+   */
+  #undo(before: Snapshot, after: Snapshot): void {
+    const now = this.snapshot(), untouched = samePanes(after.panes, now.panes);
+    if (untouched && !samePanes(before.panes, after.panes)) this.host.apply(before.panes);
+    const patch = undoPatch(before.settings, after.settings, now.settings);
+    if (Object.keys(patch).length) this.store.set(patch);
+    if (untouched) this.#setActive(before.active);
   }
-  /** Do `change`, say so, and offer to put things back as they were. */
+  /** Do `change`, say so, and offer to put back what it changed. */
   #undoable(text: string, change: () => void): void {
     const before = this.snapshot();
     change();
-    toast(text, { action: { label: t('Undo'), run: () => this.restore(before) } });
+    const after = this.snapshot();
+    toast(text, { action: { label: t('Undo'), run: () => this.#undo(before, after) } });
   }
 
   // ---- which layout the screen is showing --------------------------------------------------------------------------------
@@ -97,10 +104,10 @@ export class LayoutActions {
   }
 
   // ---- a person's own ---------------------------------------------------------------------------------------------------
-  /** The screen as a layout: the panes and which are open, and with `withSettings` everything the chart shows as well. */
+  /** The screen as a layout: the panes and which are open, and with `withSettings` everything the chart shows as well (the footprint, the timeframe, the colours …). */
   #capture(name: string, withSettings: boolean): SavedLayout {
     const state = this.store.state;
-    return { name, savedAt: Date.now(), settings: withSettings ? settingsOf(state) : { show: { ...state.show } }, panes: this.host.arrangement() };
+    return { name, savedAt: Date.now(), settings: withSettings ? settingsOf(state) : paneSettings(state), panes: this.host.arrangement() };
   }
   save(raw: string, withSettings: boolean): { ok: true; replaced: boolean; name: string } | { ok: false; why: 'name' | 'full' | 'storage' } {
     const name = cleanName(raw);
@@ -133,9 +140,8 @@ export class LayoutActions {
   duplicate(name: string): string | null {
     const list = loadLayouts(), at = list.find(l => sameName(l.name, name));
     if (!at || list.length >= MAX_LAYOUTS) return null;
-    const stem = t('{name} copy', { name: at.name });
-    let copy = cleanName(stem) ?? stem, n = 2;
-    while (list.some(l => sameName(l.name, copy))) copy = cleanName(`${stem} ${n++}`) ?? `${stem} ${n}`;
+    const copy = copyName(at.name, shown => t('{name} copy', { name: shown }), candidate => list.some(l => sameName(l.name, candidate)));
+    if (!copy) return null;
     const made = upsert(list, { ...at, name: copy, savedAt: Date.now() });
     return made && storeLayouts(made) ? copy : null;
   }
@@ -145,7 +151,12 @@ export class LayoutActions {
     if (at < 0) return;
     const gone = list[at]!;
     if (!storeLayouts(list.filter((_, i) => i !== at))) return;
-    toast(t('Deleted “{name}”.', { name: gone.name }), { action: { label: t('Undo'), run: () => { const now = loadLayouts(); storeLayouts([...now.slice(0, at), gone, ...now.slice(at)].slice(0, MAX_LAYOUTS)); restored(); } } });
+    toast(t('Deleted “{name}”.', { name: gone.name }), { action: { label: t('Undo'), run: () => {
+      // Brought back only where it fits: into a full list, or beside a layout that took its name since, it would push another one out or be read as a duplicate.
+      const now = loadLayouts();
+      if (now.length >= MAX_LAYOUTS || now.some(l => sameName(l.name, gone.name))) { toast(t('“{name}” could not be brought back: its name is taken, or there are {n} layouts already.', { name: gone.name, n: MAX_LAYOUTS })); return; }
+      storeLayouts([...now.slice(0, at), gone, ...now.slice(at)]); restored();
+    } } });
   }
 
   // ---- panes ------------------------------------------------------------------------------------------------------------
@@ -155,9 +166,13 @@ export class LayoutActions {
     if (key && this.store.state.show[key] !== on) this.store.set({ show: { ...this.store.state.show, [key]: on } });
   }
   hide(id: string, name: string): void { this.#undoable(t('Hid {name}.', { name }), () => this.setPane(id, false)); }
-  /** A column closed if any pane in it is open, else opened with the panes it holds. */
+  /** The panes each column had open when it was last folded away by `toggleColumn`: opened again, a pane that was shut on purpose before stays shut. */
+  readonly #folded: Record<Side, SidePaneId[]> = { left: [], right: [] };
+  /** A column closed if any pane in it is open, else opened with the panes it had open when it was closed (all it holds, if it was not closed from here). */
   toggleColumn(side: Side): void {
     const ids = this.host.arrangement().dock?.[side] ?? [], open = ids.filter(id => this.store.state.show[PANE_SHOW_KEY[id]!]);
-    for (const id of ids) this.setPane(id, open.length === 0);
+    if (open.length) { this.#folded[side] = open; for (const id of open) this.setPane(id, false); return; }
+    const back = this.#folded[side].filter(id => ids.includes(id));
+    for (const id of back.length ? back : ids) this.setPane(id, true);
   }
 }

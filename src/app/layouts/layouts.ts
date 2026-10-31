@@ -1,5 +1,5 @@
 import { LAYOUT_KEYS, readSettings, type AppState, type Settings } from '../store.ts';
-import { readPlan, type DockPlan } from './dock-model.ts';
+import { PANE_SHOW_KEY, legacyPlan, readPlan, samePlan, type DockPlan } from './dock-model.ts';
 
 /**
  * Saved layouts: a name for the panes as they are arranged (order, heights, column widths) and the settings of what the chart shows
@@ -9,6 +9,8 @@ import { readPlan, type DockPlan } from './dock-model.ts';
  */
 
 export const LAYOUTS_KEY = 'hlm-layouts-v1', MAX_LAYOUTS = 20, MAX_NAME = 40, FILE_FORMAT = 'liquiditymapperfast-layouts', MAX_FILE_CHARS = 1_000_000;
+/** Midnight of 1 January 3000 (ms): a layout is not older or newer than that. */
+const MAX_SAVED_AT = 32_503_680_000_000;
 
 /**
  * Where the panes are: their order and the heights of those under the map with a fixed height, and the widths of the flow column and the book (px,
@@ -42,6 +44,28 @@ export function cleanName(raw: unknown): string | null {
 }
 const sameName = (a: string, b: string): boolean => a.toLocaleLowerCase() === b.toLocaleLowerCase();
 
+/**
+ * The name for a copy of `name`: `wording(name)` ("Name copy"), then "Name copy 2", "Name copy 3" … for the first that is free. The name is cut
+ * to leave room for the wording and the number, so that the end of the new name is never what `cleanName` cuts away (a long name would otherwise
+ * come out as one that is taken already, every time). Null when none is free within the layouts a person can have.
+ */
+export function copyName(name: string, wording: (shown: string) => string, taken: (candidate: string) => boolean): string | null {
+  const extra = wording('').length;
+  for (let n = 1; n <= MAX_LAYOUTS + 1; n++) {
+    const ending = n === 1 ? '' : ` ${n}`;
+    const candidate = cleanName(`${wording(name.slice(0, Math.max(1, MAX_NAME - extra - ending.length)).trimEnd())}${ending}`);
+    if (candidate && !taken(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** The switches that open a pane (the Scripts pane is the person's own: a layout does not decide it): what a layout that keeps the panes alone carries of `show`. */
+export const PANE_SWITCHES: readonly (keyof AppState['show'])[] = Object.entries(PANE_SHOW_KEY).filter(([id]) => id !== 'script').map(([, key]) => key);
+/** The settings of a layout that keeps the panes alone: which are open, and nothing else. */
+export function paneSettings(state: AppState): Partial<Settings> {
+  return { show: Object.fromEntries(PANE_SWITCHES.map(key => [key, state.show[key]])) as Settings['show'] };
+}
+
 /** The settings a layout keeps from a state: `LAYOUT_KEYS`, without the VWAP anchors and the Volume profile's zone. */
 export function settingsOf(state: AppState): Partial<Settings> {
   const out: Record<string, unknown> = {};
@@ -67,9 +91,35 @@ export function changedSettings(next: Settings, state: AppState): Partial<Settin
 }
 
 /**
+ * What Undo puts back after an action changed the settings from `before` to `after`: each setting the action changed, if it still stands as the
+ * action left it (`now`), and the switches one by one. What the person did since to anything else is not touched.
+ */
+export function undoPatch(before: Partial<Settings>, after: Partial<Settings>, now: Partial<Settings>): Partial<Settings> {
+  const out: Record<string, unknown> = {};
+  for (const key of LAYOUT_KEYS) {
+    if (key === 'show') {
+      const b = before.show, a = after.show, n = now.show;
+      if (!b || !a || !n) continue;
+      const show: Record<string, boolean> = { ...n };
+      let changed = false;
+      for (const k of Object.keys(b) as (keyof typeof b)[]) if (b[k] !== a[k] && a[k] === n[k]) { show[k] = b[k]; changed = true; }
+      if (changed) out.show = show;
+    } else if (!same(before[key], after[key]) && same(after[key], now[key])) out[key] = before[key];
+  }
+  return out as Partial<Settings>;
+}
+
+/** The same arrangement of the panes: the order, the heights and the places of the panes within a few pixels (what is measured shifts by a pixel or two). */
+export function samePanes(a: PaneArrangement, b: PaneArrangement, tolerance = 8): boolean {
+  if (a.order.join() !== b.order.join()) return false;
+  for (const id of new Set([...Object.keys(a.heights), ...Object.keys(b.heights)])) if (Math.abs((a.heights[id] ?? 0) - (b.heights[id] ?? 0)) > tolerance) return false;
+  return samePlan(a.dock ?? legacyPlan(a.flowW, a.sideW), b.dock ?? legacyPlan(b.flowW, b.sideW), tolerance);
+}
+
+/**
  * The settings a layout carries, as they will be applied: each field it names read as a saved page's is, the others left out (a layout saved
- * with the panes alone carries the switches that say which are open and nothing else), and not the VWAP anchors or the Volume profile's zone.
- * Nothing else is kept, so nothing else is written back.
+ * with the panes alone carries the switches that open them and nothing else), and not the VWAP anchors or the Volume profile's zone.
+ * Nothing else is kept, so nothing else is written back. Of the switches too, only those it names: the others are left as they are.
  */
 export function carriedSettings(raw: Partial<Settings>): Partial<Settings> {
   const full = readSettings(raw), out: Record<string, unknown> = {};
@@ -78,16 +128,22 @@ export function carriedSettings(raw: Partial<Settings>): Partial<Settings> {
   for (const key of LAYOUT_KEYS) if (named(key)) out[key] = full[key];
   if (out.vwap) { const { anchors: _anchors, ...vwap } = full.vwap; out.vwap = vwap; }
   if (out.traded) { const { zone: _zone, ...traded } = full.traded; out.traded = traded; }
+  if (out.show) {
+    // Two switches follow from something else in a layout from before (readSettings): the Bar stats table showed with the footprint until it had its
+    // own switch, and the Volume profile along the top was the measure strip.
+    const given = (raw.show && typeof raw.show === 'object' ? raw.show : {}) as Record<string, unknown>;
+    out.show = Object.fromEntries(Object.entries(full.show).filter(([key]) => typeof given[key] === 'boolean' || (key === 'stats' && typeof given.footprint === 'boolean') || (key === 'traded' && Object.hasOwn(raw, 'measureStrip'))));
+  }
   return out as Partial<Settings>;
 }
 
 /**
  * What applying a layout's settings sets: the chart as it is now, with each field the layout carries on top of it, read as a saved page's is
- * (a layout that carries only some fields, a preset or one saved without the chart's settings, leaves the rest as they are, not as the page
- * starts with them), and this chart's own VWAP anchors and zone kept.
+ * (a layout that carries only some fields, a preset or one saved with the panes alone, leaves the rest as they are, not as the page starts
+ * with them; of the switches too), and this chart's own VWAP anchors and zone kept.
  */
 export function settingsToApply(saved: Partial<Settings>, current: AppState): Settings {
-  const settings = readSettings({ ...settingsOf(current), ...saved });
+  const settings = readSettings({ ...settingsOf(current), ...saved, ...(saved.show ? { show: { ...current.show, ...saved.show } } : {}) });
   return { ...settings, vwap: { ...settings.vwap, anchors: current.vwap.anchors }, traded: { ...settings.traded, zone: current.traded.zone } };
 }
 
@@ -150,7 +206,9 @@ export function readLayouts(raw: unknown): SavedLayout[] {
     if (!name || !panes || !r.settings || typeof r.settings !== 'object') continue;
     out = out.filter(l => !sameName(l.name, name));
     // The settings as they will be applied, so nothing else is kept or written back (a file can hold anything).
-    out.push({ name, savedAt: typeof r.savedAt === 'number' && Number.isFinite(r.savedAt) ? r.savedAt : 0, settings: carriedSettings(r.settings as Partial<Settings>), panes });
+    // A date a clock can show (a file can hold any number, and a date past the year 3000 makes the page's date formatting throw).
+    const savedAt = typeof r.savedAt === 'number' && r.savedAt > 0 && r.savedAt < MAX_SAVED_AT ? Math.round(r.savedAt) : 0;
+    out.push({ name, savedAt, settings: carriedSettings(r.settings as Partial<Settings>), panes });
   }
   return out.slice(-MAX_LAYOUTS);
 }
