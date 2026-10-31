@@ -37,6 +37,7 @@ import { openedSheet } from './sheet.ts';
 import { topShown } from './measures/strip.ts';
 import { tableHeight } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
+import { PANE_SHOW_KEY } from './layouts/dock-model.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
 import { startDevice, onLayoutMode, isPhone, layoutMode } from './device.ts';
@@ -131,7 +132,7 @@ async function main(): Promise<void> {
   // The phone's Candle view: a tab of its own that fills the area (panes/candle-pane.ts); it counts the markets the map's footprint counts.
   const candle = new CandlePane(main, store, hub, kernels, s => heat.footprintMarkets(s));
   toolbar.tapeFields = () => candle.settingsFields();
-  const arrange = new Layout(main, chart, side, [
+  const arrange = new Layout(main, chart, { left: flowCol, right: side }, [
     { id: 'heat', root: heat.root, min: 240 },
     { id: 'bars', root: bars.root, height: 84, min: 56, head: bars.header },
     { id: 'depth', root: depth.root, height: 132, min: 70, head: depth.header },
@@ -140,7 +141,13 @@ async function main(): Promise<void> {
     { id: 'ls', root: ls.root, height: 120, min: 60, head: ls.header },
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
     { id: 'script', root: script.root, height: 220, min: 60, head: script.header },
-  ], flowCol);
+  ], [
+    { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow') },
+    { id: 'book', root: ladder.root, head: ladder.controls, title: t('Order Book') },
+  ]);
+  // The close button on a pane's header and the edge tab of a closed side pane are the pane's switch (the Panels row in the top bar flips the same one).
+  const paneSwitch = (id: string, on: boolean): void => { const key = PANE_SHOW_KEY[id]; if (key && store.state.show[key] !== on) store.set({ show: { ...store.state.show, [key]: on } }); };
+  arrange.onClose = id => paneSwitch(id, false); arrange.onOpen = id => paneSwitch(id, true);
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
   // The volume profile along the top of the map draws traded volume from the flow too: history that has landed redraws it (a live second
@@ -285,9 +292,8 @@ async function main(): Promise<void> {
     const s = store.state;
     gutters();
     depth.root.hidden = !s.show.depth; oi.root.hidden = !s.show.oi; delta.root.hidden = !s.show.delta; ls.root.hidden = !s.show.ls; lt.root.hidden = !s.show.lt; bars.root.hidden = !s.show.stats; script.root.hidden = !scriptRows(s);
-    // The two side panels vanish and return at once: nothing is rebuilt, a hidden column is simply not laid out.
-    cvd.root.hidden = !s.show.cvd; ladder.root.hidden = !s.show.book;
-    arrange.columns({ flow: s.show.cvd, book: s.show.book });
+    // The two side panels vanish and return at once: nothing is rebuilt, a hidden column is simply not laid out (a closed one leaves an edge tab).
+    arrange.sides({ cvd: s.show.cvd, book: s.show.book });
     arrange.rebuild();
     if (s.show.cvd) cvd.invalidate(); if (s.show.book) ladder.invalidate();
     // The Scripts tab, like its pane, is there only for scripts drawn in rows: those on the map need neither.

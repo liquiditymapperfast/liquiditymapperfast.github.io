@@ -196,10 +196,39 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .seg.scope button.on { background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
 
 /* The columns' widths until one is dragged: the golden section for the map, the rest shared (layouts/layouts.ts `defaultColumns` says the same). */
-main { --side-w: max(clamp(350px, 26.25vw, 420px), 19.1vw); --flow-w: max(clamp(260px, 18.75vw, 300px), 19.1vw); display: grid; grid-template-columns: var(--flow-w) 6px minmax(0, 1fr) 6px var(--side-w); min-height: 0; }
+main { --side-w: max(clamp(350px, 26.25vw, 420px), 19.1vw); --flow-w: max(clamp(260px, 18.75vw, 300px), 19.1vw); display: grid; grid-template-columns: var(--left-w) 6px minmax(0, 1fr) 6px var(--right-w); min-height: 0; }
+/* The columns beside the map are as wide as the stylesheet makes the pane in them; layout.ts writes a width of its own where a drag set one, and `--side-w`
+   to the left column where the book stands there (the flow column on the right takes `--flow-w`). A column with nothing open is a strip `--rail-w` wide. */
+main { --left-w: var(--flow-w); --right-w: var(--side-w); --rail-w: 22px; }
 .chart-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .side-col, .flow-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .side-col[hidden], .flow-col[hidden], .splitter[hidden] { display: none; }
+/* A column with nothing open is a strip along the window's edge with a tab for each pane it holds, which opens that pane again (layout.ts #railTabs). */
+.edge-rail { display: none; }
+:is(.flow-col, .side-col)[data-state="rail"] { background: var(--panel); }
+.flow-col[data-state="rail"] { border-right: 1px solid var(--line); }
+.side-col[data-state="rail"] { border-left: 1px solid var(--line); }
+:is(.flow-col, .side-col)[data-state="rail"] > .edge-rail { display: flex; flex-direction: column; align-items: stretch; gap: 6px; flex: 1 1 auto; min-height: 0; padding: 8px 0; overflow: hidden; }
+.edge-tab { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 0 1 auto; min-height: 0; padding: 9px 0; border-color: transparent; background: transparent; color: var(--muted); font-size: 11px; line-height: 1; overflow: hidden; }
+.edge-tab span { writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flow-col .edge-tab span { transform: rotate(180deg); }
+.edge-tab:hover, .edge-tab:focus-visible { color: var(--text); border-color: var(--edge); background: color-mix(in srgb, var(--ui) 14%, var(--panel)); }
+.edge-chev { flex: none; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.6px 1.6px 0; }
+.flow-col .edge-chev { transform: rotate(-45deg); }
+.side-col .edge-chev { transform: rotate(135deg); }
+html[data-layout^="phone"] .edge-rail { display: none !important; }
+/* The close button at the end of a pane's header (layout.ts #tools): the header keeps room for it, and its first row ends where the button begins. */
+html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-right: 30px; }
+.pane-tools { position: absolute; top: 3px; right: 4px; z-index: 7; display: flex; gap: 2px; }
+html[data-layout^="phone"] .pane-tools { display: none; }
+html[data-layout] .pane-head .pane-x { width: 20px; height: 20px; min-height: 0; --cross: 9px; color: var(--muted); }
+html[data-layout] .pane-head .pane-x:hover { color: var(--text); }
+@media (pointer: coarse) {
+  main { --rail-w: 30px; }
+  html[data-layout="desktop"] .pane-head.has-tools { padding-right: 42px; }
+  html[data-layout] .pane-head .pane-x { width: 30px; height: 30px; --cross: 12px; }
+  .edge-tab { font-size: 12px; }
+}
 .pane { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
 .pane[hidden] { display: none; }
 .pane.heat { flex: 1 1 auto; min-height: 240px; overflow: hidden; }

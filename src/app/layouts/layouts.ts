@@ -1,4 +1,5 @@
 import { LAYOUT_KEYS, readSettings, type AppState, type Settings } from '../store.ts';
+import { readPlan, type DockPlan } from './dock-model.ts';
 
 /**
  * Saved layouts: a name for the panes as they are arranged (order, heights, column widths) and the settings of what the chart shows
@@ -9,8 +10,13 @@ import { LAYOUT_KEYS, readSettings, type AppState, type Settings } from '../stor
 
 export const LAYOUTS_KEY = 'hlm-layouts-v1', MAX_LAYOUTS = 20, MAX_NAME = 40, FILE_FORMAT = 'liquiditymapperfast-layouts', MAX_FILE_CHARS = 1_000_000;
 
-/** Where the panes are: their order, the heights of those with a fixed height, and the widths of the flow column and the book (px). */
-export interface PaneArrangement { order: string[]; heights: Record<string, number>; sideW: number; flowW: number }
+/**
+ * Where the panes are: their order and the heights of those under the map with a fixed height, and the widths of the flow column and the book (px,
+ * as they were laid out). `dock` says which side each side pane stands on and how a column is shared (dock-model.ts); a layout from before it has
+ * none, and then the flow column is left of the map and the book right of it. The widths stay as the first versions wrote them (`flowW` the
+ * flow column's, `sideW` the book's, wherever each stands), so that an older page can read what a newer one wrote.
+ */
+export interface PaneArrangement { order: string[]; heights: Record<string, number>; sideW: number; flowW: number; dock?: DockPlan }
 export interface SavedLayout { name: string; savedAt: number; settings: Partial<Settings>; panes: PaneArrangement }
 
 /**
@@ -60,9 +66,13 @@ export function changedSettings(next: Settings, state: AppState): Partial<Settin
   return out as Partial<Settings>;
 }
 
-/** What applying a layout's settings sets: each field read as a saved page's is, with this chart's own VWAP anchors and zone kept. */
+/**
+ * What applying a layout's settings sets: the chart as it is now, with each field the layout carries on top of it, read as a saved page's is
+ * (a layout that carries only some fields, a preset or one saved without the chart's settings, leaves the rest as they are, not as the page
+ * starts with them), and this chart's own VWAP anchors and zone kept.
+ */
 export function settingsToApply(saved: Partial<Settings>, current: AppState): Settings {
-  const settings = readSettings(saved);
+  const settings = readSettings({ ...settingsOf(current), ...saved });
   return { ...settings, vwap: { ...settings.vwap, anchors: current.vwap.anchors }, traded: { ...settings.traded, zone: current.traded.zone } };
 }
 
@@ -73,8 +83,8 @@ export function readArrangement(raw: unknown): PaneArrangement | null {
   const order = Array.isArray(r.order) ? r.order.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 40).slice(0, 40) : [];
   const heights: Record<string, number> = {};
   if (r.heights && typeof r.heights === 'object') for (const [id, h] of Object.entries(r.heights as Record<string, unknown>).slice(0, 40)) { const v = size(h, 40, 4_000); if (v !== null && id.length <= 40) heights[id] = v; }
-  const sideW = size(r.sideW, 200, 4_000), flowW = size(r.flowW, 150, 4_000);
-  return sideW === null || flowW === null ? null : { order, heights, sideW, flowW };
+  const sideW = size(r.sideW, 200, 4_000), flowW = size(r.flowW, 150, 4_000), dock = readPlan(r.dock);
+  return sideW === null || flowW === null ? null : { order, heights, sideW, flowW, ...(dock ? { dock } : {}) };
 }
 
 /** The panes in `saved` order, the ones it does not name (added since) after them in their own order. */

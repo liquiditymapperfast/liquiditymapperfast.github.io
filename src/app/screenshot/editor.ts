@@ -116,10 +116,10 @@ function openEditor(snap: Snapshot): { close(): void } {
     const r = node.getBoundingClientRect();
     if (r.width > 40 && r.height > 20) snapTargets.push({ rect: { x: r.left, y: r.top, w: r.width, h: r.height }, label });
   };
-  for (const [selector, label] of [['.pane.heat', t('Click to take the chart')], ['.pane.depth', t('Click to take Depth')], ['.pane.oi', t('Click to take Open interest')], ['.pane.delta', t('Click to take Delta')], ['.pane.ls', t('Click to take Long/Short')], ['.pane.lt', t('Click to take the Liquidity Tracker')], ['.pane.bars', t('Click to take Bar stats')], ['.side-col', t('Click to take the order book')], ['.pane.cvd', t('Click to take the flow column')]] as const) {
+  for (const [selector, label] of [['.pane.heat', t('Click to take the chart')], ['.pane.depth', t('Click to take Depth')], ['.pane.oi', t('Click to take Open interest')], ['.pane.delta', t('Click to take Delta')], ['.pane.ls', t('Click to take Long/Short')], ['.pane.lt', t('Click to take the Liquidity Tracker')], ['.pane.bars', t('Click to take Bar stats')], ['.pane.ladder', t('Click to take the order book')], ['.pane.cvd', t('Click to take the flow column')]] as const) {
     const node = document.querySelector(selector) as HTMLElement | null; if (node) take(node, label);
   }
-  for (const node of document.querySelectorAll<HTMLElement>('.pane')) if (!named.has(node) && !node.closest('.side-col')) take(node, t('Click to take this pane'));
+  for (const node of document.querySelectorAll<HTMLElement>('.pane')) if (!named.has(node)) take(node, t('Click to take this pane'));
   // Anything on the page that is not a pane (above all the top bar, which is not a picture worth taking alone) takes the whole page: every pane that is open.
   snapTargets.push({ rect: { x: 0, y: 0, w: W, h: H }, label: t('Click to take the whole page') });
 
