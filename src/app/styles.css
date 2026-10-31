@@ -258,19 +258,18 @@ body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-sel
 .layout-thumb .t-map rect { fill: color-mix(in srgb, var(--ui) 22%, var(--panel)); stroke: var(--ui); }
 .layout-thumb .t-map polyline { stroke: var(--ui); }
 .layout-thumb .t-strip rect { fill: color-mix(in srgb, var(--text) 6%, var(--panel)); }
-.layout-name { display: block; font-size: 12px; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layout-title { display: block; font-size: 12px; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layout-blurb { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; font-size: 10.5px; line-height: 1.3; color: var(--muted); }
 .layout-card.own .layout-blurb { -webkit-line-clamp: 1; }
 .layout-card .layout-more { position: absolute; top: 9px; right: 9px; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; color: var(--muted); }
 .layout-card .layout-more:hover { color: var(--text); }
-.layout-rename { width: 100%; min-width: 0; box-sizing: border-box; padding: 1px 4px; font: 700 12px/1.25 inherit; }
-.layout-save { display: flex; gap: 6px; margin-top: 10px; }
+.layout-rename { width: 100%; min-width: 0; box-sizing: border-box; padding: 1px 4px; font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1.25; }
 .layout-name-field { flex: 1 1 auto; min-width: 0; padding: 3px 7px; font: inherit; }
 .layout-keep { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 11px; color: var(--muted); cursor: pointer; }
 .layout-chips, .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (max-width: 640px) { .layout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* A short message at the foot of the page that goes by itself, with a way back (toast.ts). */
-.toast { position: fixed; left: 50%; bottom: 44px; z-index: 80; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 24px)); padding: 7px 8px 7px 14px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--text); color: var(--bg); font-size: 12px; box-shadow: 3px 3px 0 var(--shadow); }
+.toast { position: fixed; left: 50%; bottom: calc(44px + env(safe-area-inset-bottom)); z-index: 400; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 24px)); padding: 7px 8px 7px 14px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--text); color: var(--bg); font-size: 13px; line-height: 1.4; box-shadow: 3px 3px 0 var(--shadow); }
 .toast-action { flex: none; padding: 2px 10px; border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
 .toast-action:hover { background: var(--bg); color: var(--text); border-color: var(--bg); }
 html[data-bar="compact"] .toast { bottom: 76px; }
@@ -490,7 +489,6 @@ dialog.shot::backdrop { background: transparent; }
 .shot-preview { position: absolute; display: block; pointer-events: none; }
 .shot-preview[hidden] { display: none; }
 .shot-text { position: absolute; min-width: 140px; padding: 0 3px; margin: 0; border: 1px dashed rgba(255, 255, 255, .8); border-radius: var(--radius); background: rgba(0, 0, 0, .18); outline: none; text-shadow: 1px 1px 0 rgba(0, 0, 0, .55); }
-.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 400; max-width: min(92vw, 460px); padding: 11px 16px; border-radius: var(--radius); background: var(--text); color: var(--bg); font-size: 13px; line-height: 1.4; box-shadow: 3px 3px 0 var(--shadow); }
 .shot-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 9px 16px; border-radius: var(--radius); background: rgba(22, 25, 31, .95); color: #f2f4f7; font-size: 12.5px; box-shadow: 3px 3px 0 var(--shadow); z-index: 500; animation: shot-toast 2.4s ease both; }
 @keyframes shot-toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 

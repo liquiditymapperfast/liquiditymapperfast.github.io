@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_BOTH_SHARE, MAX_COLUMN_SHARE, MIN_COLUMN_W, columnState, defaultPlan, fitColumns, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, readPlan, samePlan, swapSides, type DockPlan } from '../src/app/layouts/dock-model.ts';
+import { MAX_BOTH_SHARE, MAX_COLUMN_SHARE, MIN_COLUMN_W, columnState, defaultPlan, fitColumns, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, readPlan, samePlan, swapSides, type DockPlan } from '../src/app/layouts/dock-model.ts';
 import { readArrangement } from '../src/app/layouts/layouts.ts';
 
 const plan = (patch: Partial<DockPlan> = {}): DockPlan => ({ ...defaultPlan(), ...patch });
@@ -111,4 +111,35 @@ test('an arrangement keeps where the side panes stand, and one from before has n
   assert.deepEqual(moved.dock, { left: ['book'], right: ['cvd'], leftW: 410, rightW: null, weights: { book: 2 } });
   assert.deepEqual(moved.order, base.order, 'what an older page reads is still there');
   assert.equal(readArrangement({ ...base, dock: 'left' })!.dock, undefined, 'a dock that is not one is left out, the layout still reads');
+});
+
+test('a column that stands alone is laid out within what its panes need and what the window allows (review 2026-10-31: only two open columns were fitted)', () => {
+  // A width kept in a wider window (or read from a file) in a window of 1,280 px, the other column closed: the map keeps its share.
+  assert.deepEqual(laidOutWidths([300, 1500], [200, 260], [false, true], 1280), [300, Math.floor(1280 * MAX_COLUMN_SHARE)]);
+  assert.deepEqual(laidOutWidths([4000, 420], [200, 260], [true, false], 1280), [Math.floor(1280 * MAX_COLUMN_SHARE), 420]);
+  // The flow column narrowed to its own minimum, then the book dropped on it: no narrower than the book needs.
+  assert.deepEqual(laidOutWidths([200, 420], [260, 260], [true, false], 1600), [260, 420]);
+  // A width carried across by a move: the flow column's 200 px on the right where the book stands too.
+  assert.deepEqual(laidOutWidths([300, 200], [200, 260], [false, true], 1600), [300, 260]);
+  // Two open columns are fitted together as before, and still never under their minimums.
+  assert.deepEqual(laidOutWidths([300, 420], [200, 260], [true, true], 1600), fitColumns(300, 420, 1600, 200, 260));
+  const [l, r] = laidOutWidths([900, 900], [200, 260], [true, true], 1280);
+  assert.ok(l + r <= 1280 * MAX_BOTH_SHARE + 2 && l >= 200 && r >= 260);
+  // A column that is not open keeps what it is asked for (nothing is laid out there).
+  assert.deepEqual(laidOutWidths([123, 456], [200, 260], [false, false], 1280), [123, 456]);
+  // Sound at any window: an open column is within [its minimum, the window's share] unless the minimum is more than the share.
+  for (const w of [320, 640, 900, 1280, 1920, 3840]) for (const want of [150, 300, 900, 4000]) {
+    const [x] = laidOutWidths([want, 300], [260, 200], [true, false], w);
+    assert.ok(x >= 260 && x <= Math.max(260, w * MAX_COLUMN_SHARE), `${w}/${want}: ${x}`);
+  }
+});
+
+test('the default width of a column is the book\'s (the wider) whenever the book is open in it, whichever pane is first', () => {
+  const stacked = (order: DockPlan['left']): DockPlan => plan({ left: order, right: [] });
+  assert.equal(leadOf(stacked(['cvd', 'book']), 'left', both), 'book');
+  assert.equal(leadOf(stacked(['book', 'cvd']), 'left', both), 'book');
+  assert.equal(leadOf(stacked(['cvd', 'book']), 'left', { cvd: true, book: false }), 'cvd', 'the book is closed there');
+  assert.equal(leadOf(stacked(['cvd', 'book']), 'left', { cvd: false, book: false }), 'book', 'nothing open: the column is the one it will be when the book opens');
+  assert.equal(leadOf(plan(), 'right', both), 'book');
+  assert.equal(leadOf(plan({ left: [], right: [] }), 'left', both), undefined);
 });

@@ -57,7 +57,7 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
     const card = el('div', { class: on ? 'layout-card on' : 'layout-card' },
       el('button', { type: 'button', class: 'layout-apply', tip: def.blurb(), onclick: () => { actions.applyPreset(def); later(); } },
         thumbSvg(thumbBoxes(built.arrangement, { ...now.show, ...built.show }, env)),
-        el('span', { class: 'layout-name', textContent: def.name() }), el('span', { class: 'layout-blurb', textContent: def.blurb() })));
+        el('span', { class: 'layout-title', textContent: def.name() }), el('span', { class: 'layout-blurb', textContent: def.blurb() })));
     card.dataset.layout = def.id;
     return card;
   };
@@ -82,7 +82,7 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
         },
       }, 'right', { keepPanel: true });
     };
-    const name = ui.renaming === layout.name ? renameField(layout) : el('span', { class: 'layout-name', textContent: layout.name });
+    const name = ui.renaming === layout.name ? renameField(layout) : el('span', { class: 'layout-title', textContent: layout.name });
     const card = el('div', { class: on ? 'layout-card own on' : 'layout-card own' },
       el('button', { type: 'button', class: 'layout-apply', tip: t('Apply this layout'), onclick: () => { actions.applySaved(layout); later(); } }, picture, name, el('span', { class: 'layout-blurb', textContent: layout.savedAt ? clock(layout.savedAt, true) : '' })), more);
     card.dataset.layout = layout.name;
@@ -90,14 +90,22 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
   };
   const renameField = (layout: SavedLayout): HTMLElement => {
     const input = el('input', { type: 'text', class: 'layout-rename', maxLength: 40, value: layout.name, ariaLabel: t('Name') });
-    const done = (commit: boolean): void => {
+    const done = (commit: boolean, afterClick = false): void => {
       ui.renaming = null;
-      if (!commit || input.value === layout.name) { redraw(); return; }
-      const r = actions.rename(layout.name, input.value);
-      say(r === 'ok' ? t('Renamed to “{name}”.', { name: input.value.trim() }) : r === 'taken' ? t('A layout with that name is already there.') : r === 'name' ? t('Give the layout a name.') : t('This browser did not let the page keep it.'), r !== 'ok');
+      if (commit && input.value !== layout.name) {
+        const r = actions.rename(layout.name, input.value);
+        ui.message = { text: r === 'ok' ? t('Renamed to “{name}”.', { name: input.value.trim() }) : r === 'taken' ? t('A layout with that name is already there.') : r === 'name' ? t('Give the layout a name.') : t('This browser did not let the page keep it.'), error: r !== 'ok' };
+      }
+      if (!afterClick) { redraw(); return; }
+      // The focus leaves the field with the press that takes it. Redrawing the panel now would remove the very button being pressed, so that the click, finding its
+      // target gone, would not reach it and would read as a click outside the panel, which closes it: the panel is redrawn once the click has been handled.
+      const redrawn = (): void => { window.clearTimeout(timer); document.removeEventListener('click', onClick, true); redraw(); };
+      const onClick = (): void => { window.setTimeout(redrawn, 0); };
+      const timer = window.setTimeout(redrawn, 600);
+      document.addEventListener('click', onClick, true);
     };
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); done(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } });
-    input.addEventListener('blur', () => { if (ui.renaming === layout.name) done(true); });
+    input.addEventListener('blur', () => { if (ui.renaming === layout.name) done(true, true); });
     input.addEventListener('click', e => e.stopPropagation());
     requestAnimationFrame(() => { input.focus(); input.select(); });
     return input;
