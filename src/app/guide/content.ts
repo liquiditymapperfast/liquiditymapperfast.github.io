@@ -1,7 +1,9 @@
 /**
  * The guide's text, as data. Inline markup in any string: `**bold**`, `code` between backticks, and `[[Key]]` for a keyboard key.
- * Figures are named animations drawn by `figures.ts`. The aim is a page that can be read in ten to sixteen minutes and leaves the reader
- * with a working picture of what each part is for; anything deeper lives in the "?" panels, which share their text with the tooltips.
+ * Figures are named animations drawn by `figures.ts`. The aim is a page that leaves the reader with a working picture of what each part is for.
+ * It may grow as the page does (the sixteen minutes it once fitted in were a habit, not a rule): add what a reader needs to understand something,
+ * never text to fill a section or a second way of saying what is already said, and leave what is deeper to the "?" panels, which share their text
+ * with the tooltips.
  */
 export type FigureId = 'anatomy' | 'colours' | 'recording' | 'zoom-price' | 'zoom-time' | 'pan' | 'flow' | 'mirror' | 'footprint';
 
@@ -64,11 +66,12 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'moving', title: 'Moving around',
     blocks: [
-      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.' },
+      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.' },
       { t: 'keys', rows: [
-        ['[[Wheel]] on the chart', 'Zoom the **time** axis'],
+        ['[[Wheel]] on the chart', 'Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it'],
         ['[[Wheel]] or drag on the price scale', 'Zoom the **price** axis (drag up zooms in, down zooms out)'],
-        ['[[Shift]] + [[Wheel]]', 'Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer'],
+        ['[[Wheel]] on the time labels along the bottom', 'Zoom the **time** axis'],
+        ['[[Shift]] + [[Wheel]]', 'On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge'],
         ['Drag', 'Pan both ways. With [[Shift]], pan time only'],
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['Double-click, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
@@ -83,7 +86,7 @@ export const SECTIONS: readonly Section[] = [
         ['**Drag an axis**', 'Along the price or time scale to zoom it'],
       ] },
       { t: 'fig', id: 'zoom-price', caption: 'Wheel on the price scale: the current price stays put while the scale around it changes.' },
-      { t: 'fig', id: 'zoom-time', caption: 'Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.' },
+      { t: 'fig', id: 'zoom-time', caption: 'Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.' },
       { t: 'fig', id: 'pan', caption: 'Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.' },
       { t: 'p', text: 'The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes, and the grip (⠿) in a pane\'s header to reorder it. Sizes are remembered.' },
     ],

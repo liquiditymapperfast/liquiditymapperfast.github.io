@@ -26,13 +26,14 @@
  "**Candles and open interest are different**: they come from each exchange's own history, so they are there at once.": "**K 线和持仓量不同**：它们来自各个交易所自己的历史，所以立刻就有。",
  "The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.": "**Footprint、成交气泡和柱统计**与地图一样是现场记录的，所以也是从空白开始。",
  "Moving around": "如何操作",
- "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.": "在电脑上一切都用鼠标完成，而且不需要先点击。图表跟随行情时，缩放会保持实时边缘（时间）或当前价格（价格）不动，这样画面围绕它膨胀和收缩，而不是滑动。",
+ "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.": "在电脑上一切都用鼠标完成，而且不需要先点击。图表跟随行情时，缩放会保持实时边缘和当前价格不动，这样画面围绕它们膨胀和收缩，而不是滑动；手动移动图表之后，则保持指针下的那个点不动。",
  "[[Wheel]] on the chart": "在图表上用[[滚轮]]",
  "Zoom the **time** axis": "缩放**时间**轴",
+ "Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it": "**时间和价格一起**按相同比例缩放，这样画面保持你设定的形状",
  "[[Wheel]] or drag on the price scale": "在价格刻度上用[[滚轮]]或拖动",
  "Zoom the **price** axis (drag up zooms in, down zooms out)": "缩放**价格**轴（向上拖放大，向下拖缩小）",
  "[[Shift]] + [[Wheel]]": "[[Shift]] + [[滚轮]]",
- "Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer": "缩放另一条轴。[[Alt]] + [[滚轮]]围绕指针缩放",
+ "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge": "在图表上只缩放**时间**轴（在价格刻度上则缩放时间而非价格）。[[Alt]] + [[滚轮]]围绕指针缩放，并使图表脱离实时边缘",
  "Drag": "拖动",
  "Pan both ways. With [[Shift]], pan time only": "向两个方向平移。按住 [[Shift]] 时只平移时间",
  "Right-drag": "右键拖动",
@@ -51,7 +52,7 @@
  "**Drag an axis**": "**拖动坐标轴**",
  "Along the price or time scale to zoom it": "沿价格或时间刻度拖动来缩放它",
  "Wheel on the price scale: the current price stays put while the scale around it changes.": "在价格刻度上滚轮：当前价格保持不动，周围的刻度随之变化。",
- "Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.": "在图表上滚轮：实时边缘保持不动，时间随之缩放。K 线变宽，footprint 出现。",
+ "Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.": "在图表上滚轮：时间和价格一起缩放，实时边缘和当前价格保持不动。K 线变宽，footprint 出现。",
  "Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.": "拖动来四处查看。平移会让图表停止跟随实时边缘；“重新居中”会重新开始。",
  "The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes, and the grip (⠿) in a pane's header to reorder it. Sizes are remembered.": "各面板共用时间轴，所以你对它做的操作会作用于所有面板。拖动面板之间的分隔条，以及面板标题中的把手（⠿）可以重新排序。大小会被记住。",
  "The profile": "分布",
@@ -186,5 +187,6 @@
  "On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:": "在**手机或平板**上，底部的栏选择视图。**逐笔**、**资金流**和竖持时的订单簿占满整个屏幕；其余的位于地图下方（手机横置时在其旁边）。**地图**让图表占满整个屏幕，其余一切都在 **⋯** 按钮后面。同样的操作用手指完成：",
  "So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. A **dashed line** marks the moment the recording began. Before it the map is left empty: nothing is drawn where nothing was recorded, so every colour on the map is real.": "因此首次访问时，彩色部分是右边缘的一条细带，随着分钟数增长。**虚线**标出录制开始的时刻。虚线之前的地图留空：没有录到的地方什么也不画，所以地图上的每一种颜色都是真实的。",
  "A first visit, sped up. Colour is what was recorded while the page was open; before the dashed line there is nothing to show.": "首次访问，加速播放。彩色是页面打开期间录下的内容；虚线之前没有可显示的内容。",
- "Not recorded": "未录制"
+ "Not recorded": "未录制",
+ "[[Wheel]] on the time labels along the bottom": "在底部时间标签上用[[滚轮]]"
 }

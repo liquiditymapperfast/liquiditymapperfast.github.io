@@ -26,13 +26,14 @@
  "**Candles and open interest are different**: they come from each exchange's own history, so they are there at once.": "**캔들과 미결제약정은 다릅니다**: 각 거래소 자체의 이력에서 가져오므로 바로 있습니다.",
  "The **footprint, trade bubbles and bar stats** are recorded like the map, so they also start empty.": "**풋프린트, 체결 버블, 바 통계**는 지도처럼 기록되므로 이것들도 빈 상태에서 시작합니다.",
  "Moving around": "움직이기",
- "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge (time) or the current price (price) still, so the picture swells and shrinks around it instead of sliding.": "컴퓨터에서는 모든 것을 마우스로 하며, 먼저 클릭할 필요가 없습니다. 차트가 시장을 따라가는 동안 줌은 실시간 가장자리(시간) 또는 현재 가격(가격)을 고정하므로, 화면은 미끄러지지 않고 그 주위로 부풀거나 줄어듭니다.",
+ "On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.": "컴퓨터에서는 모든 것을 마우스로 하며, 먼저 클릭할 필요가 없습니다. 차트가 시장을 따라가는 동안 줌은 실시간 가장자리와 현재 가격을 고정하므로, 화면은 미끄러지지 않고 그 주위로 부풀거나 줄어듭니다. 차트를 손으로 움직인 뒤에는 포인터 아래의 지점을 고정합니다.",
  "[[Wheel]] on the chart": "차트에서 [[휠]]",
  "Zoom the **time** axis": "**시간** 축을 확대/축소합니다",
+ "Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it": "**시간과 가격을 함께** 같은 비율로 확대/축소하므로, 화면은 사용자가 만든 모양을 유지합니다",
  "[[Wheel]] or drag on the price scale": "가격 눈금에서 [[휠]] 또는 드래그",
  "Zoom the **price** axis (drag up zooms in, down zooms out)": "**가격** 축을 확대/축소합니다(위로 드래그하면 확대, 아래로 드래그하면 축소)",
  "[[Shift]] + [[Wheel]]": "[[Shift]] + [[휠]]",
- "Zoom the other axis. [[Alt]] + [[Wheel]] zooms around the pointer": "다른 축을 확대/축소합니다. [[Alt]] + [[휠]]은 포인터를 중심으로 확대/축소합니다",
+ "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge": "차트에서는 **시간** 축만 확대/축소합니다(가격 스케일에서는 가격 대신 시간). [[Alt]] + [[휠]]은 포인터를 중심으로 확대/축소하며 차트를 실시간 가장자리에서 떼어 냅니다",
  "Drag": "드래그",
  "Pan both ways. With [[Shift]], pan time only": "양쪽으로 이동합니다. [[Shift]]를 누르면 시간만 이동합니다",
  "Right-drag": "오른쪽 드래그",
@@ -51,7 +52,7 @@
  "**Drag an axis**": "**축 드래그**",
  "Along the price or time scale to zoom it": "가격 또는 시간 눈금을 따라 드래그해서 확대/축소합니다",
  "Wheel on the price scale: the current price stays put while the scale around it changes.": "가격 눈금에서 휠: 주위의 눈금이 바뀌는 동안 현재 가격은 제자리에 있습니다.",
- "Wheel on the chart: the live edge stays put while time zooms. Candles get wider and the footprint appears.": "차트에서 휠: 시간이 확대/축소되는 동안 실시간 가장자리는 제자리에 있습니다. 캔들이 넓어지고 풋프린트가 나타납니다.",
+ "Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.": "차트에서 휠: 시간과 가격이 함께 확대/축소되며, 실시간 가장자리와 현재 가격은 제자리에 있습니다. 캔들이 넓어지고 풋프린트가 나타납니다.",
  "Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.": "드래그해서 둘러보세요. 이동하면 차트가 실시간 가장자리 따라가기를 멈추고, 다시 가운데로를 누르면 다시 시작합니다.",
  "The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes, and the grip (⠿) in a pane's header to reorder it. Sizes are remembered.": "패널들은 시간 축을 공유하므로 시간 축에 하는 일은 모든 패널에 일어납니다. 패널 사이의 구분선과, 패널 머리글의 손잡이(⠿)를 드래그해서 순서를 바꿉니다. 크기는 기억됩니다.",
  "The profile": "프로파일",
@@ -186,5 +187,6 @@
  "On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:": "**스마트폰이나 태블릿**에서는 아래 막대가 화면을 고릅니다. **테이프**, **플로우**, 그리고 세로로 든 호가창이 화면 전체를 채우고, 나머지는 지도 아래에 있습니다(가로로 눕히면 옆에). **지도**는 차트에 화면 전체를 주고, 나머지는 모두 **⋯** 버튼 뒤에 있습니다. 같은 동작을 손가락으로 합니다:",
  "So on a first visit the coloured part is a thin stripe at the right edge that grows with the minutes. A **dashed line** marks the moment the recording began. Before it the map is left empty: nothing is drawn where nothing was recorded, so every colour on the map is real.": "그래서 첫 방문에서는 색이 있는 부분이 오른쪽 가장자리의 가는 띠이고, 분이 지날수록 자랍니다. **점선**이 기록이 시작된 순간을 표시합니다. 그 앞의 지도는 비어 있습니다. 기록되지 않은 곳에는 아무것도 그리지 않으므로, 지도의 모든 색은 실제입니다.",
  "A first visit, sped up. Colour is what was recorded while the page was open; before the dashed line there is nothing to show.": "첫 방문을 빠르게 돌린 모습입니다. 색은 페이지가 열려 있는 동안 기록된 것이고, 점선 앞에는 보여 줄 것이 없습니다.",
- "Not recorded": "기록 없음"
+ "Not recorded": "기록 없음",
+ "[[Wheel]] on the time labels along the bottom": "아래쪽 시간 눈금에서 [[휠]]"
 }

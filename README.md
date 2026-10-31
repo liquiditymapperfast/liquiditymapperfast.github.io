@@ -28,9 +28,9 @@ npm run dev:fixture  # the server with offline demo feeds
 
 | Gesture | Effect |
 | --- | --- |
-| Wheel on the chart | Zoom the time axis about the live edge while the map follows the market (so it swells and shrinks around now instead of sliding); about the pointer with Alt, or on a map you have moved by hand |
-| Wheel or drag on the price scale | Zoom the price axis about the current price while it is on the map (the pointer turns to a resize arrow over the scale; the wheel over the profile column beside it zooms price too); drag up zooms in, down zooms out; Alt + wheel zooms about the pointer |
-| Shift + wheel | Zoom the other axis (price on the chart, time on the price scale) |
+| Wheel on the chart | Zoom time and price together, by the same factor, so the picture keeps the shape you gave it (a limit on one axis stops both): about the live edge and the current price while the map follows the market (so it swells and shrinks around them instead of sliding), about the point under the pointer on a map you have moved by hand. Alt holds the pointer too, and takes the map off the live point as a drag does (else the current price would pull the scale back from under it). The wheel on the time labels along the bottom zooms time alone |
+| Wheel or drag on the price scale | Zoom the price axis about the current price while it is on the map (the pointer turns to a resize arrow over the scale; the wheel over the profile column beside it zooms price too); drag up zooms in, down zooms out; Alt + wheel zooms about the pointer (and takes the map off the live point) |
+| Shift + wheel | On the chart, zoom time alone (what the wheel did there before it zoomed both), held as the wheel holds it; on the price scale, time instead of price |
 | Drag / Shift+drag | Pan both axes / time only |
 | Double-click, `R`, `Home`, Recenter | Return to the live edge |
 | Go to (map corner, `G`) | A date and time on the page's clock: the map is centred on it at its zoom (and fitted to the candles there). It says how far back the depth and the candles go (the chart holds its last 500 candles: at 1m that is about eight hours, so further back the candles are the exchange's history, read for the view, with the depth and footprint the recording has); an earlier moment goes to the start of them, a later one to the live edge |
