@@ -40,7 +40,7 @@ test('a switch does not flip back and forth while its key is held; zoom repeats'
 
 test('no two shortcuts share a key, and every switch has one', () => {
   const seen = new Set<string>();
-  for (const s of SHORTCUTS) for (const k of [...(s.codes ?? []).map(c => `code:${c}`), ...(s.code ? [`code:${s.code}`] : []), ...(s.keys ?? []).map(k => `key:${k}`)]) { assert.ok(!seen.has(k), k); seen.add(k); }
+  for (const s of SHORTCUTS) for (const k of [...(s.codes ?? []).map(c => `code:${c}`), ...(s.keys ?? []).map(k => `key:${k}`)]) { assert.ok(!seen.has(k), k); seen.add(k); }
   const features: Feature[] = ['footprint', 'trades', 'liquidations', 'absorption', 'traded', 'keyLevels', 'vwap', 'highlights'];
   assert.deepEqual(SHORTCUTS.flatMap(s => s.action.kind === 'toggle' ? [s.action.feature] : []).sort(), [...features].sort());
   assert.ok(!seen.has('key:m'), 'M is the Mirror toggle on the toolbar: not taken');

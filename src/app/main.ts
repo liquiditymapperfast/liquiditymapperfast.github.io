@@ -375,6 +375,7 @@ async function main(): Promise<void> {
 
   for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle]) p.setPalette(store.state.theme);
   layout(); ladder.syncControls(); lt.refresh();
+  layouts.seedDefault();
   arrange.setPaneHeight('bars', tableHeight(store.state.barStats, store.state.barStatOptions));
   toolbar.sync(store.state, heat.window);
   // The page opens on the coin's Binance perpetual wherever it is read (`defaultMarket`): its series is asked for as the page starts. Giving

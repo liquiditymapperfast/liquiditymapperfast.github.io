@@ -31,8 +31,6 @@ export interface Shortcut {
   label: string;
   /** Matched by `KeyboardEvent.code` (a place on the keyboard) or by `key` (what the key types, lower case). */
   codes?: readonly string[];
-  /** The place on the keyboard of a key that needs AltGr on some layouts (a bracket): matched by `code`, as the digits are. */
-  code?: string;
   keys?: readonly string[];
   action: ShortcutAction;
   /** Whether holding the key repeats it (zoom); a switch flipping back and forth while held would not help anyone. */
@@ -56,8 +54,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   toggle('V', t('VWAP'), 'vwap'),
   toggle('H', t('Highlights'), 'highlights'),
   // Matched by their place on the keyboard too: on many layouts a bracket needs AltGr, which a shortcut leaves to the browser.
-  { group: 'show', caps: ['['], label: t('Left column'), code: 'BracketLeft', keys: ['['], action: { kind: 'column', side: 'left' } },
-  { group: 'show', caps: [']'], label: t('Right column'), code: 'BracketRight', keys: [']'], action: { kind: 'column', side: 'right' } },
+  { group: 'show', caps: ['['], label: t('Left column'), codes: ['BracketLeft'], keys: ['['], action: { kind: 'column', side: 'left' } },
+  { group: 'show', caps: [']'], label: t('Right column'), codes: ['BracketRight'], keys: [']'], action: { kind: 'column', side: 'right' } },
   { group: 'tools', caps: ['G'], label: t('Go to a date and time'), keys: ['g'], action: { kind: 'goto' } },
   { group: 'tools', caps: ['X'], label: t('Range: the next drag selects (Esc cancels)'), keys: ['x'], action: { kind: 'range' } },
   { group: 'tools', caps: ['D'], label: t('Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)'), keys: ['d'], action: { kind: 'draw' } },
@@ -82,7 +80,7 @@ export function ignored(e: KeyPress, dialogOpen: boolean): boolean {
 export function matchShortcut(e: KeyPress, dialogOpen: boolean, list: readonly Shortcut[] = SHORTCUTS): Shortcut | null {
   if (ignored(e, dialogOpen)) return null;
   const key = e.key.toLowerCase();
-  const hit = list.find(s => s.codes?.includes(e.code) || s.code === e.code || s.keys?.includes(key)) ?? null;
+  const hit = list.find(s => s.codes?.includes(e.code) || s.keys?.includes(key)) ?? null;
   return hit && (!e.repeat || hit.repeat) ? hit : null;
 }
 

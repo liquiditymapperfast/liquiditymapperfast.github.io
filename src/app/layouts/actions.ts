@@ -1,7 +1,7 @@
 import type { AppState, Store } from '../store.ts';
 import { t } from '../i18n.ts';
 import { toast } from '../toast.ts';
-import { MAX_LAYOUTS, changedSettings, cleanName, loadLayouts, settingsOf, settingsToApply, storeLayouts, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
+import { LAYOUTS_KEY, MAX_LAYOUTS, changedSettings, cleanName, loadLayouts, settingsOf, settingsToApply, storeLayouts, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
 import { PRESETS, buildPreset, type PresetDef, type PresetEnv } from './presets.ts';
 import { readActive, sameShot, shotOf, type Active } from './active.ts';
 import { PANE_SHOW_KEY, type Side } from './dock-model.ts';
@@ -50,6 +50,14 @@ export class LayoutActions {
   /** The screen is this layout now: taken as it is drawn, a frame on, once the page has laid out what was asked for. */
   #remember(kind: Active['kind'], id: string): void {
     requestAnimationFrame(() => this.#setActive({ kind, id, shot: shotOf(this.host.arrangement(), this.store.state.show) }));
+  }
+  /**
+   * A page nobody has arranged yet is the Default layout, and the panel says so: nothing of the layouts is stored on a first visit (the page's own
+   * arrangement, the saved layouts and this record are all written only by something a person did).
+   */
+  seedDefault(): void {
+    try { if (this.active() || [LAYOUTS_KEY, 'hlm-layout-v2', 'hlm-layout-v3'].some(key => window.localStorage.getItem(key) !== null)) return; } catch { return; }
+    this.#remember('preset', 'default');
   }
   /** The name of the layout the screen is showing, or null (none was applied, or it has been deleted since). */
   activeName(): string | null {
