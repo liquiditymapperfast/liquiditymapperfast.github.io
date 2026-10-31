@@ -67,6 +67,21 @@ export function changedSettings(next: Settings, state: AppState): Partial<Settin
 }
 
 /**
+ * The settings a layout carries, as they will be applied: each field it names read as a saved page's is, the others left out (a layout saved
+ * with the panes alone carries the switches that say which are open and nothing else), and not the VWAP anchors or the Volume profile's zone.
+ * Nothing else is kept, so nothing else is written back.
+ */
+export function carriedSettings(raw: Partial<Settings>): Partial<Settings> {
+  const full = readSettings(raw), out: Record<string, unknown> = {};
+  // A layout from when the profile along the top was the measure strip carries it as that: read into the profile's settings (`readSettings`), which it therefore names.
+  const named = (key: string): boolean => Object.hasOwn(raw, key) || (key === 'traded' && Object.hasOwn(raw, 'measureStrip'));
+  for (const key of LAYOUT_KEYS) if (named(key)) out[key] = full[key];
+  if (out.vwap) { const { anchors: _anchors, ...vwap } = full.vwap; out.vwap = vwap; }
+  if (out.traded) { const { zone: _zone, ...traded } = full.traded; out.traded = traded; }
+  return out as Partial<Settings>;
+}
+
+/**
  * What applying a layout's settings sets: the chart as it is now, with each field the layout carries on top of it, read as a saved page's is
  * (a layout that carries only some fields, a preset or one saved without the chart's settings, leaves the rest as they are, not as the page
  * starts with them), and this chart's own VWAP anchors and zone kept.
@@ -126,7 +141,7 @@ export function readLayouts(raw: unknown): SavedLayout[] {
     if (!name || !panes || !r.settings || typeof r.settings !== 'object') continue;
     out = out.filter(l => !sameName(l.name, name));
     // The settings as they will be applied, so nothing else is kept or written back (a file can hold anything).
-    out.push({ name, savedAt: typeof r.savedAt === 'number' && Number.isFinite(r.savedAt) ? r.savedAt : 0, settings: settingsOf(readSettings(r.settings as Partial<Settings>) as unknown as AppState), panes });
+    out.push({ name, savedAt: typeof r.savedAt === 'number' && Number.isFinite(r.savedAt) ? r.savedAt : 0, settings: carriedSettings(r.settings as Partial<Settings>), panes });
   }
   return out.slice(-MAX_LAYOUTS);
 }

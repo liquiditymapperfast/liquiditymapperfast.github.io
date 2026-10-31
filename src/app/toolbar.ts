@@ -20,7 +20,8 @@ import { HIGHLIGHT_LIMITS } from './anomaly.ts';
 import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow, openedPanel, button, sizeRow } from './ui.ts';
 import { SIZE_MAX_USD } from './sizes.ts';
 import { GROUP_TITLES, SHORTCUTS, togglePatch, type Feature, type ShortcutGroup } from './shortcuts.ts';
-import { buildLayoutsPanel, type LayoutsPanelState, type PaneHost } from './layouts/panel.ts';
+import { buildGallery, newGalleryState } from './layouts/gallery.ts';
+import type { LayoutActions } from './layouts/actions.ts';
 import { clampGoTo, formatDateTime, parseDateTime } from './price-line.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
@@ -219,9 +220,9 @@ export class Toolbar {
   #zone = el('button', { class: 'zone-btn' });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
   #keys = el('button', { type: 'button', class: 'keys-btn', textContent: t('Keys'), tip: t('Keyboard shortcuts (?)'), onclick: () => this.openShortcuts() });
-  /** Saved layouts (the status bar, beside Keys); `panes` is the page's Layout, set by main. */
-  #layouts = el('button', { type: 'button', class: 'layouts-btn', textContent: t('Layouts'), tip: t('Save the panes and what the chart shows under a name, and switch between them'), onclick: () => this.#openLayouts() });
-  panes: PaneHost | null = null;
+  /** Layouts, from the map's corner (a compact bar has it in Settings): the layout the screen is showing, the ready-made ones and the person's own (layouts/gallery.ts). `layouts` is set by main. */
+  #layoutCorner = el('button', { type: 'button', class: 'map-layout', ariaLabel: t('Layouts'), tip: t('Layouts: choose a ready-made arrangement of the panels, or save your own'), onclick: () => this.#openLayouts(this.#layoutCorner) }, t('Layouts'));
+  layouts: LayoutActions | null = null;
   /** The lamp panel open now, with what redraws it. */
   #open: { panel: Panel; redraw: () => void } | null = null;
   #language = el('button', { class: 'language-btn', ariaLabel: t('Language'), tip: t('Language: the page uses the language of your browser unless you choose another here') }, el('span', { textContent: language().toUpperCase() }));
@@ -476,11 +477,12 @@ export class Toolbar {
     const panel = togglePanel(this.#goto, { title: t('Go to'), width: 340, align: 'right', stays: true }, build);
   }
 
-  #openLayouts(): void {
-    const panes = this.panes; if (!panes) return;
-    const ui: LayoutsPanelState = { message: null, armed: null };
-    const build = (_tools: HTMLElement, body: HTMLElement): void => buildLayoutsPanel(this.store, panes, body, () => panel?.render(build), ui);
-    const panel = togglePanel(this.#layouts, { title: t('Layouts'), width: 440, align: 'right' }, build);
+  #openLayouts(anchor: HTMLElement): void {
+    const actions = this.layouts; if (!actions) return;
+    const ui = newGalleryState();
+    // A redraw after the panel was closed (a toast's Undo, a frame later) leaves it closed.
+    const build = (_tools: HTMLElement, body: HTMLElement): void => buildGallery(actions, body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui);
+    const panel = togglePanel(anchor, { title: t('Layouts'), width: 560, align: 'right' }, build);
   }
 
   /** The list of keyboard shortcuts, made from the table itself so the two cannot disagree (the status bar's Keys button, and ?). */
@@ -529,10 +531,10 @@ export class Toolbar {
       this.#sheet?.close();
       this.#fillHeatControls();
       const inCorner = this.#mapHost !== null;
-      if (inCorner) { this.#mapTools.replaceChildren(this.#goto, this.#rangeCorner, ...(this.#drawCorner ? [this.#drawCorner] : []), this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
+      if (inCorner) { this.#mapTools.replaceChildren(this.#layoutCorner, this.#goto, this.#rangeCorner, ...(this.#drawCorner ? [this.#drawCorner] : []), this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state, the language and theme buttons and Waves' lamp live there.
-      host?.replaceChildren(this.#layouts, this.#keys, this.#zone, this.#language, this.#theme, this.#glass);
+      host?.replaceChildren(this.#keys, this.#zone, this.#language, this.#theme, this.#glass);
       // A console of decks, each a framed group of what belongs together, at most two rows tall, wrapping as whole decks (Karl,
       // 2026-10-16: one wrapping row read as a jumble). The venues are switched from the Venues button, not listed as chips.
       setTip(this.#venuesButton!, t('Venues: switch each exchange on or off for the map, the book and the flow column, or choose which ones feed the page'));
@@ -649,6 +651,8 @@ export class Toolbar {
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
         section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.') })]),
+        // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
+        ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')))])]),
         section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', 'absorption', 'traded', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),
         // Only a phone has the Tape tab; a touch tablet keeps the desktop's panes and gets this sheet without it.
         ...(this.tapeFields && isPhone() ? [section(t('Tape'), this.tapeFields().map(([label, control]) => field(label, control)), helpButton('candlePane'))] : []),

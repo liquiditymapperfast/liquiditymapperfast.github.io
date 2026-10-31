@@ -234,6 +234,40 @@ body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-sel
 .drop-mark { position: fixed; z-index: 89; pointer-events: none; border-radius: 2px; background: var(--ui); }
 .drop-mark[hidden] { display: none; }
 .drop-mark.area { border-radius: 0; background: color-mix(in srgb, var(--ui) 14%, transparent); outline: 2px dashed var(--ui); outline-offset: -2px; }
+/* Layouts (layouts/gallery.ts): a card is a picture of the panes drawn from the layout itself, with its name and what it is for. */
+.pane.heat .map-layout::before { content: ""; width: 13px; height: 13px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='1.5'/%3E%3Cpath d='M9 4v16M9 12h12'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='1.5'/%3E%3Cpath d='M9 4v16M9 12h12'/%3E%3C/svg%3E") center / contain no-repeat; }
+.layout-now { display: flex; align-items: center; gap: 10px; padding: 2px 0 6px; }
+.layout-now .layout-thumb { flex: none; width: 66px; }
+.layout-now-text { font-size: 12px; font-weight: 600; }
+.layout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.layout-card { position: relative; display: flex; min-width: 0; }
+.layout-card > .layout-apply { flex: 1 1 auto; display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; padding: 6px 6px 7px; text-align: left; background: var(--panel); }
+.layout-card > .layout-apply:hover { border-color: var(--text); }
+.layout-card.on > .layout-apply { border-color: var(--ui); box-shadow: inset 0 0 0 1px var(--ui); }
+.layout-thumb { display: block; width: 100%; height: auto; }
+.layout-thumb rect { fill: var(--panel); stroke: var(--muted); stroke-width: .8; }
+.layout-thumb polyline { fill: none; stroke: var(--muted); stroke-width: 1.1; stroke-linecap: round; stroke-linejoin: round; }
+.layout-thumb .t-map rect { fill: color-mix(in srgb, var(--ui) 22%, var(--panel)); stroke: var(--ui); }
+.layout-thumb .t-map polyline { stroke: var(--ui); }
+.layout-thumb .t-strip rect { fill: color-mix(in srgb, var(--text) 6%, var(--panel)); }
+.layout-name { display: block; font-size: 12px; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layout-blurb { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; font-size: 10.5px; line-height: 1.3; color: var(--muted); }
+.layout-card.own .layout-blurb { -webkit-line-clamp: 1; }
+.layout-card .layout-more { position: absolute; top: 9px; right: 9px; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; color: var(--muted); }
+.layout-card .layout-more:hover { color: var(--text); }
+.layout-rename { width: 100%; min-width: 0; box-sizing: border-box; padding: 1px 4px; font: 700 12px/1.25 inherit; }
+.layout-save { display: flex; gap: 6px; margin-top: 10px; }
+.layout-name-field { flex: 1 1 auto; min-width: 0; padding: 3px 7px; font: inherit; }
+.layout-keep { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 11px; color: var(--muted); cursor: pointer; }
+.layout-chips, .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 640px) { .layout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* A short message at the foot of the page that goes by itself, with a way back (toast.ts). */
+.toast { position: fixed; left: 50%; bottom: 44px; z-index: 80; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 24px)); padding: 7px 8px 7px 14px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--text); color: var(--bg); font-size: 12px; box-shadow: 3px 3px 0 var(--shadow); }
+.toast-action { flex: none; padding: 2px 10px; border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
+.toast-action:hover { background: var(--bg); color: var(--text); border-color: var(--bg); }
+html[data-bar="compact"] .toast { bottom: 76px; }
 @media (pointer: coarse) {
   main { --rail-w: 30px; }
   html[data-layout="desktop"] .pane-head.has-tools { padding-right: 76px; }
@@ -252,7 +286,7 @@ body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-sel
 .pane.heat canvas.dust { pointer-events: none; }
 /* Select and Recenter act on the map, so they sit in the map's top-right corner, left of the profile column. */
 .pane.heat .map-tools { position: absolute; z-index: 3; top: 8px; right: calc(var(--gutter, 192px) + 8px); display: flex; gap: 6px; }
-.pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto, .pane.heat .map-draw { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);
+.pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto, .pane.heat .map-draw, .pane.heat .map-layout { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);
   background: color-mix(in srgb, var(--panel) 86%, transparent); font-size: 11px; color: var(--text); box-shadow: 3px 3px 0 var(--shadow); }
 /* Select wears the Range lamp on its left, then a dashed box: the selection it makes. */
 .pane.heat .map-select { padding-left: 21px; }
@@ -263,10 +297,10 @@ body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-sel
 .pane.heat .map-recenter::before { content: ""; width: 14px; height: 14px; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
-.pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover, .pane.heat .map-draw:hover { background: var(--panel); }
+.pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover, .pane.heat .map-draw:hover, .pane.heat .map-layout:hover { background: var(--panel); }
 /* On a window this narrow the three buttons over the top right of the map would hide the title and the figures beside it: they shrink to their drawings. */
 @media (max-width: 1560px) {
-  html[data-layout="desktop"] .pane.heat .map-tools :is(.map-goto, .map-select, .map-recenter, .map-draw) { font-size: 0; gap: 0; padding: 0 7px; }
+  html[data-layout="desktop"] .pane.heat .map-tools :is(.map-goto, .map-select, .map-recenter, .map-draw, .map-layout) { font-size: 0; gap: 0; padding: 0 7px; }
   html[data-layout="desktop"] .pane.heat .map-tools .map-select, html[data-layout="desktop"] .pane.heat .map-tools .map-draw { padding-left: 21px; }
 }
 .pane.ladder { flex: 1 1 auto; }

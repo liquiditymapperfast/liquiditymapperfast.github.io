@@ -37,7 +37,7 @@ import { openedSheet } from './sheet.ts';
 import { topShown } from './measures/strip.ts';
 import { tableHeight } from './panes/bar-stats.ts';
 import { Layout } from './layout.ts';
-import { PANE_SHOW_KEY } from './layouts/dock-model.ts';
+import { LayoutActions } from './layouts/actions.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
 import { startDevice, onLayoutMode, isPhone, layoutMode } from './device.ts';
@@ -145,9 +145,13 @@ async function main(): Promise<void> {
     { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow') },
     { id: 'book', root: ladder.root, head: ladder.controls, title: t('Order Book') },
   ]);
-  // The close button on a pane's header and the edge tab of a closed side pane are the pane's switch (the Panels row in the top bar flips the same one).
-  const paneSwitch = (id: string, on: boolean): void => { const key = PANE_SHOW_KEY[id]; if (key && store.state.show[key] !== on) store.set({ show: { ...store.state.show, [key]: on } }); };
-  arrange.onClose = id => paneSwitch(id, false); arrange.onOpen = id => paneSwitch(id, true);
+  // What the person does to the layout (layouts/actions.ts): the layouts panel, a pane's close button and the edge tab of a closed side pane (the Panels row in the top bar flips the same switches).
+  const layouts = new LayoutActions(store, {
+    arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults(), swapSides: () => arrange.swapSides(),
+    env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200) }),
+  });
+  arrange.onClose = id => layouts.hide(id, arrange.title(id)); arrange.onOpen = id => layouts.setPane(id, true);
+  toolbar.layouts = layouts;
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
   // The volume profile along the top of the map draws traded volume from the flow too: history that has landed redraws it (a live second
@@ -180,7 +184,6 @@ async function main(): Promise<void> {
     live: () => { if (replaying()) replayBar.stop(); else toolbar.onRecenter(); },
   };
   hub.onWhaleChanged = () => toolbar.refreshOpenPanel();
-  toolbar.panes = { arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults() };
   toolbar.onSelectMarket = id => store.set({ marketId: id });
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
   const sounds = new Sounds(store); toolbar.attachSounds(sounds); sounds.start();
@@ -274,6 +277,7 @@ async function main(): Promise<void> {
     else if (a.kind === 'recenter') toolbar.onRecenter();
     else if (a.kind === 'zoom') heat.zoomStep(a.dir);
     else if (a.kind === 'toggle') { store.set(togglePatch(store.state, a.feature)); toolbar.refreshOpenPanel(); }
+    else if (a.kind === 'column') layouts.toggleColumn(a.side);
     else if (a.kind === 'range') range.toggle();
     else if (a.kind === 'draw') drawBar.toggle();
     else if (a.kind === 'goto') toolbar.openGoTo();

@@ -304,6 +304,9 @@ export class Layout {
     this.#reattach();
   }
 
+  /** What a pane is called (its header's title), for what is said about it. */
+  title(id: string): string { return this.#movers.get(id)?.title() ?? id; }
+
   /** Move a side pane to `side`, before `beforeId` in that column (the end of it when null). */
   moveSidePane(id: SidePaneId, side: Side, beforeId: SidePaneId | null = null): void {
     if (isPhone()) return;
