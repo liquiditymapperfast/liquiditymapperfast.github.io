@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqProfile, liqRows, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, type LiqLevels } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqProfile, liqRows, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, paintLiqStripe, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
+import { View } from '../src/app/view.ts';
 import { LIQ_LEVELS_URL, liqLevelsUrl, readLiqLevels } from '../src/app/liq-url.ts';
 import { BTC, type Coin } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
@@ -251,4 +252,30 @@ test('the seam weighs the book against the liquidations each side, ranks level s
   assert.ok(Math.abs(s.walls[0]!.ratio - 110 / 130) < 1e-12);
   assert.equal(spearman([1, 2, 3], [5, 5, 5]), null, 'a list that does not vary has no correlation');
   assert.ok(Math.abs(spearman([1, 2, 2, 3], [10, 20, 20, 30])! - 1) < 1e-12, 'ties share their rank');
+});
+
+test('a one-position diamond wears its side\'s colour, ringed in the page\'s ground, in every theme', () => {
+  // A recording canvas: what each closed path was filled and stroked with.
+  const marks: { fill: string; stroke: string }[] = [];
+  let fillStyle = '', strokeStyle = '', inPath = false;
+  const ctx = {
+    save() {}, restore() {}, fillRect() {}, moveTo() {}, lineTo() {}, closePath() {},
+    beginPath() { inPath = true; },
+    stroke() { if (inPath) marks.push({ fill: '', stroke: strokeStyle }); },
+    fill() { if (inPath) { marks[marks.length - 1]!.fill = fillStyle; inPath = false; } },
+    set fillStyle(v: string) { fillStyle = v; }, get fillStyle() { return fillStyle; },
+    set strokeStyle(v: string) { strokeStyle = v; }, get strokeStyle() { return strokeStyle; },
+    globalAlpha: 1, lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D;
+  const row = (p0: number, side: 'long' | 'short'): LiqRow => {
+    const r: LiqRow = { p0, p1: p0 + 10, long: 0, longIso: 0, longWallets: 0, short: 0, shortIso: 0, shortWallets: 0, longTop: 0, shortTop: 0, longOne: false, shortOne: false,
+      longFirst: NaN, longGone: NaN, longLeft: 0, shortFirst: NaN, shortGone: NaN, shortLeft: 0 };
+    // One position holds 4 of the row's 5 million on this side.
+    return Object.assign(r, side === 'long' ? { long: 5e6, longTop: 4e6, longOne: true, longLeft: 5e6 } : { short: 5e6, shortTop: 4e6, shortOne: true, shortLeft: 5e6 });
+  };
+  const view = new View({ t0: 0, t1: 1, p0: 0, p1: 200 });
+  // Terminal's colours: its text is green, which drew a short's colour on the longs' red rows.
+  const colors = { long: '#ff3030', short: '#00ff00', text: '#00ff00', muted: '#51b85c', bg: '#000000' };
+  paintLiqStripe(ctx, view, 0, 100, 400, [row(50, 'long'), row(150, 'short')], () => 0.9, colors);
+  assert.deepEqual(marks, [{ fill: colors.long, stroke: colors.bg }, { fill: colors.short, stroke: colors.bg }]);
 });

@@ -284,8 +284,8 @@ export const standingHeat = (rows: readonly LiqRow[]): ((usd: number) => number)
 
 /**
  * Draws the rows as a stripe from `x0` (the live edge) to the plot's right edge, beside the profile column: what still stands of each row,
- * the more the darker, with a crisp edge on the strongest on the side facing the price, and a small diamond at the start of a large row one
- * position holds at least half of. A level price has traded through is gone; nothing is drawn over the heatmap's past.
+ * the more the darker, with a crisp edge on the strongest on the side facing the price, and a small diamond in the side's colour at the start
+ * of a large row one position holds at least half of. A level price has traded through is gone; nothing is drawn over the heatmap's past.
  */
 export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: number, pw: number, ph: number, rows: readonly LiqRow[], heat: (usd: number) => number, colors: LiqColors): void {
   const w = pw - x0;
@@ -306,9 +306,12 @@ export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: nu
         ctx.globalAlpha = Math.min(1, a + 0.15); ctx.fillRect(x0, edge, w, 1);
       }
       if (r[`${side}One`] && usd >= 3e6 && w > 14) {
+        // In its side's colour, as on the phone's ladder, ringed in the page's ground so it stands off its own row (Karl, 2026-11-01: in the
+        // text colour it was green on Terminal's red rows, a short's colour on longs).
         const cx = x0 + 9, cy = (y0 + y1) / 2, s = Math.min(4, Math.max(2.5, h / 2 + 1));
-        ctx.globalAlpha = 0.95; ctx.fillStyle = colors.text;
-        ctx.beginPath(); ctx.moveTo(cx, cy - s); ctx.lineTo(cx + s, cy); ctx.lineTo(cx, cy + s); ctx.lineTo(cx - s, cy); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy - s); ctx.lineTo(cx + s, cy); ctx.lineTo(cx, cy + s); ctx.lineTo(cx - s, cy); ctx.closePath();
+        ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = colors.bg; ctx.stroke();
+        ctx.fillStyle = side === 'long' ? colors.long : colors.short; ctx.fill();
       }
     }
   }
