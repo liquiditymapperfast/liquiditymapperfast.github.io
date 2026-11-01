@@ -2800,7 +2800,8 @@ export class HeatPane {
     // The seam itself, lit while it is pointed at.
     ctx.strokeStyle = p.ui; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + PROFILE_W, 0); ctx.lineTo(x0 + PROFILE_W, ph); ctx.stroke();
     ctx.restore();
-    const times = (r: number): string => !Number.isFinite(r) ? '∞' : r >= 100 ? `${Math.round(r)}×` : `${r >= 10 ? r.toFixed(0) : r.toFixed(1)}×`;
+    // A neighbour row with almost nothing would make a ratio of millions: past 100 it says so and no more.
+    const times = (r: number): string => !Number.isFinite(r) || r >= 100 ? '100×+' : `${r >= 10 ? r.toFixed(0) : r.toFixed(1)}×`;
     const cover = (book: number, liq: number, below: boolean): string => liq <= 0 ? t('No liquidation levels in this range')
       : book >= liq ? (below ? t('Bids cover the longs {ratio}', { ratio: times(book / liq) }) : t('Asks cover the shorts {ratio}', { ratio: times(book / liq) }))
       : (below ? t('Longs exceed the bids {ratio}', { ratio: times(liq / Math.max(book, 1)) }) : t('Shorts exceed the asks {ratio}', { ratio: times(liq / Math.max(book, 1)) }));

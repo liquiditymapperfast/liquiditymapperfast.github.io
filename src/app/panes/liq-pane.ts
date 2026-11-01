@@ -89,6 +89,8 @@ export class LiqPane {
       el('div', { class: 'liq-meta' }, this.#within, this.#ratio));
     this.#body.append(this.#canvas, this.#pulse);
     this.root.append(head, this.#summary, this.#ranges, this.#body, this.#foot);
+    // Until the first drawing has numbers to put in them (a reason shows meanwhile).
+    this.#summary.hidden = true; this.#ranges.hidden = true; this.#pulse.hidden = true;
     parent.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.#body);
