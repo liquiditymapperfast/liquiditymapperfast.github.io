@@ -1989,5 +1989,6 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "完成",
  "Next": "下一步",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "此栏中的每个标签都是同一市场的另一种视图：逐笔、资金流、地图、订单簿等。左右滑动此栏查看其余标签。"
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "此栏中的每个标签都是同一市场的另一种视图：逐笔、资金流、地图、订单簿等。左右滑动此栏查看其余标签。",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "语言参考正在下载为 {name}。请在浏览器的下载列表中查看。"
 }

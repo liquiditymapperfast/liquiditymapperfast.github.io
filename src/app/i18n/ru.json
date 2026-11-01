@@ -2122,5 +2122,6 @@
  "{n} of {total}": "{n} из {total}",
  "Done": "Готово",
  "Next": "Далее",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Каждая вкладка этой панели — другой взгляд на тот же рынок: Лента, Поток, Карта, Стакан и другие. Листайте панель, чтобы увидеть остальные."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Каждая вкладка этой панели — другой взгляд на тот же рынок: Лента, Поток, Карта, Стакан и другие. Листайте панель, чтобы увидеть остальные.",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Справочник языка скачивается как {name}. Ищите его в загрузках браузера."
 }

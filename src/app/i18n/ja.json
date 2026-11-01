@@ -1989,5 +1989,6 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "完了",
  "Next": "次へ",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "このバーのタブは、同じ市場を別の見方で表示します：歩み値、フロー、マップ、板など。残りはバーをスワイプしてください。"
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "このバーのタブは、同じ市場を別の見方で表示します：歩み値、フロー、マップ、板など。残りはバーをスワイプしてください。",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "言語リファレンスを {name} としてダウンロードしています。ブラウザーのダウンロードを確認してください。"
 }

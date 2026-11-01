@@ -2127,5 +2127,6 @@
  "{n} of {total}": "{n} із {total}",
  "Done": "Готово",
  "Next": "Далі",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Кожна вкладка цієї панелі — інший погляд на той самий ринок: Стрічка, Потік, Карта, Стакан та інші. Гортайте панель, щоб побачити решту."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Кожна вкладка цієї панелі — інший погляд на той самий ринок: Стрічка, Потік, Карта, Стакан та інші. Гортайте панель, щоб побачити решту.",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Довідник мови завантажується як {name}. Шукайте його в завантаженнях браузера."
 }

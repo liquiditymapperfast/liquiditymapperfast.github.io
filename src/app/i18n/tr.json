@@ -2068,5 +2068,6 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "Bitir",
  "Next": "İleri",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Bu çubuktaki her sekme aynı piyasanın başka bir görünümüdür: Şerit, Akış, Harita, Defter ve daha fazlası. Gerisi için çubuğu kaydırın."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Bu çubuktaki her sekme aynı piyasanın başka bir görünümüdür: Şerit, Akış, Harita, Defter ve daha fazlası. Gerisi için çubuğu kaydırın.",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Dil başvuru kılavuzu {name} olarak indiriliyor. Tarayıcının indirilenler bölümüne bak."
 }

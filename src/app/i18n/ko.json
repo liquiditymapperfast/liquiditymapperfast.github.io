@@ -1989,5 +1989,6 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "완료",
  "Next": "다음",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "이 막대의 각 탭은 같은 시장을 다르게 보여 줍니다: 테이프, 플로우, 지도, 호가창 등. 나머지는 막대를 밀어서 확인하세요."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "이 막대의 각 탭은 같은 시장을 다르게 보여 줍니다: 테이프, 플로우, 지도, 호가창 등. 나머지는 막대를 밀어서 확인하세요.",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "언어 레퍼런스를 {name}(으)로 다운로드하는 중입니다. 브라우저의 다운로드 목록을 확인하세요."
 }

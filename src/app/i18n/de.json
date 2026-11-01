@@ -2068,5 +2068,6 @@
  "{n} of {total}": "{n} von {total}",
  "Done": "Fertig",
  "Next": "Weiter",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Jeder Tab in dieser Leiste zeigt denselben Markt anders: Tape, Flow, Karte, Book und mehr. Wische über die Leiste für den Rest."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Jeder Tab in dieser Leiste zeigt denselben Markt anders: Tape, Flow, Karte, Book und mehr. Wische über die Leiste für den Rest.",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Die Sprachreferenz wird als {name} heruntergeladen. Sie liegt in den Downloads deines Browsers."
 }

@@ -2095,5 +2095,6 @@
  "{n} of {total}": "{n} di {total}",
  "Done": "Fine",
  "Next": "Avanti",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Ogni scheda di questa barra è un’altra vista dello stesso mercato: Nastro, Flusso, Mappa, Book e altre. Scorri la barra per vedere il resto."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Ogni scheda di questa barra è un’altra vista dello stesso mercato: Nastro, Flusso, Mappa, Book e altre. Scorri la barra per vedere il resto.",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Il riferimento del linguaggio viene scaricato come {name}. Cercalo nei download del browser."
 }

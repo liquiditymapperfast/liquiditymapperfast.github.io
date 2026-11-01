@@ -1,6 +1,7 @@
 import { el } from '../dom.ts';
 import { t, tn } from '../i18n.ts';
 import { button, heading, note } from '../ui.ts';
+import { toast } from '../toast.ts';
 import { explain, questionButton } from '../help.ts';
 import type { Analysis } from './lang/analysis.ts';
 import type { ScriptError } from './lang/lexer.ts';
@@ -16,6 +17,9 @@ import { aboutExample, aboutScript, exampleId, type ScriptAbout } from './about.
 export { panelClosed, type ScriptsHost, type ScriptsPanelState } from './panel-state.ts';
 
 const isError = (a: Analysis | ScriptError): a is ScriptError => !('program' in a);
+
+/** The file the page publishes the whole language in (public/script-reference.md), and the name a download of it is saved under. */
+const REFERENCE_FILE = 'script-reference.md';
 
 /**
  * The list's statuses written again where they stand, after a run: the list is not built again, so a menu, a switch or a Delete that waits
@@ -142,8 +146,9 @@ export function buildScriptsPanel(host: ScriptsHost, body: HTMLElement, redraw: 
   exportAll.disabled = !list.length;
   body.append(heading(t('More')), el('div', { class: 'layout-tools' }, button(t('Import'), () => file.click(), t('Read scripts from a file: one written by Export, an indicator file or a workspace from another charting page, or a script as text')), exportAll, file));
   body.append(heading(t('Language')), ...reference().map(line => note(line)));
-  // The whole language, as the page publishes it for people and for AI assistants.
-  body.append(el('p', { class: 'panel-note' }, el('a', { href: './script-reference.md', target: '_blank', rel: 'noopener', textContent: t('The full language reference') })));
+  // The whole language, as the page publishes it for people and for AI assistants. It is a file: a click saves it, and the page says so (Karl,
+  // 2026-11-01: a download that starts without a word is easily missed; the link used to open a blank tab that the browser turned into one).
+  body.append(el('p', { class: 'panel-note' }, el('a', { href: `./${REFERENCE_FILE}`, download: REFERENCE_FILE, rel: 'noopener', textContent: t('The full language reference'), onclick: () => toast(t('The language reference is downloading as {name}. Look in your browser\'s downloads.', { name: REFERENCE_FILE })) })));
 }
 
 /** The short reference shown under the list. */
