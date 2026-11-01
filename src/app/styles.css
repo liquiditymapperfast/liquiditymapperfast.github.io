@@ -70,9 +70,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 /* A notice lies over the top of the chart, not in the bar's flow: the bar keeps its height when one comes or goes. */
 .toolbar.cockpit { position: relative; z-index: 30; }
 .toolbar.cockpit .notice { position: absolute; left: 8px; right: 8px; top: calc(100% + 4px); z-index: 45; box-shadow: 2px 2px 0 var(--shadow); }
-/* Two at once (a venue this place cannot reach, a coin that is not on the list) lie one under the other, not on the same spot. */
-.toolbar.cockpit .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 40px); }
-.toolbar.cockpit .notice:not([hidden]) ~ .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 76px); }
+/* Several at once (a venue this place cannot reach, a coin that is not on the list, the invitation to the tour) lie one under the other, each by what the one above
+   measures: the toolbar sets each one's `top` (`#stackNotices`), as a notice that wraps is taller than a line. */
 
 .toolbar .deck { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-inline-size: 0; margin: 0; padding: 1px 4px 5px; }
 .toolbar .deck > legend { padding: 0 4px; margin-left: -2px; font-size: 10px; line-height: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
@@ -81,8 +80,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 /* The last deck's title is the page's name, in its own case. */
 .toolbar .deck.deck-tools > legend { text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--text); }
 /* The page's own deck holds how to learn the page on its first row (the Tour and the Guide, side by side) and its utilities on the second: Author, and the
-   screenshot and installing as marks. Installing keeps its place whether the browser offers it or not, so the deck never changes; where it is not offered,
-   Author takes its column. */
+   screenshot and installing as marks. The screenshot mark keeps its place whether the browser offers installing or not (Install comes in before it, beside
+   Author), so the deck's width never changes; where installing is not offered, Author takes its column. */
 .toolbar.cockpit .deck-tools .deck-row { display: grid; grid-template-columns: minmax(0, 1fr) 24px 24px; gap: 4px; }
 .toolbar.cockpit .deck-tools .deck-row > button.icon-btn { padding: 0; }
 .toolbar.cockpit .deck-tools .deck-row:first-of-type { grid-template-columns: auto minmax(0, 1fr); }

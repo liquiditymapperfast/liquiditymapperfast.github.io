@@ -417,8 +417,10 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 }
 :root[data-frame="bevel"] .guide-head > div { display: contents; }
 :root[data-frame="bevel"] .guide-head h1 { grid-column: 1; grid-row: 1; margin: 0; padding: 0 4px; height: 18px; line-height: 18px; font-size: 11px; font-weight: 700; letter-spacing: 0; color: var(--bar-text); }
-:root[data-frame="bevel"] .guide-head .guide-x { grid-column: 2; grid-row: 1; margin: 0 2px 0 0; }
-:root[data-frame="bevel"] .guide-head .sub { grid-column: 1 / -1; grid-row: 2; padding: 6px 4px 2px; font-size: 11px; color: var(--text); }
+:root[data-frame="bevel"] .guide-head .guide-x { grid-column: 2; grid-row: 1; justify-self: end; margin: 0 2px 0 0; }
+:root[data-frame="bevel"] .guide-head .sub { grid-column: 1; grid-row: 2; padding: 6px 4px 2px; font-size: 11px; color: var(--text); }
+/* The Tour button stands at the right end of the subtitle's row (placed by nobody it would be a bar the width of the window under it). */
+:root[data-frame="bevel"] .guide-head .guide-tour { grid-column: 2; grid-row: 2; align-self: end; margin: 2px 2px 0 8px; height: 22px; padding: 0 10px; font-size: 11px; }
 :root[data-frame="bevel"] .guide-head .guide-jump { grid-column: 1 / -1; grid-row: 3; margin-top: 4px; }
 :root[data-frame="bevel"] .guide-body { gap: 4px; padding: 4px; }
 :root[data-frame="bevel"] :is(.guide-toc, .guide-scroll) { background: var(--well); border: 2px solid; border-color: var(--bv-c-sunken); border-image: var(--bv-sunken) 2 / 2px; }

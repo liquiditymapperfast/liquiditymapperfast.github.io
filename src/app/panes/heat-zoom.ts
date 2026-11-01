@@ -45,9 +45,14 @@ export function holdPixel(o: { axis: 'time' | 'price'; pointer: number; size: nu
 export const TIME_SPAN_MS = { min: 30_000, max: 400 * 86_400_000 } as const;
 export const PRICE_SPAN_SHARE = { min: 1e-4, max: 2 } as const;
 
-/** `factor` (> 1 zooms out) limited so the span from `span` stays within [min, max]. */
+/**
+ * `factor` (> 1 zooms out) limited so the span from `span` stays within [min, max]. A limit stops a turn that would take the span past it and never
+ * reverses one: a span already past a limit (a chart framed wider than the price limit, a flat pair narrower than it) is held where it is by a turn
+ * further out, and goes on by a turn the other way as asked, instead of being driven back by the turn it is not in the way of.
+ */
 export function limitFactor(factor: number, span: number, min: number, max: number): number {
-  return !(span > 0) ? 1 : Math.max(min / span, Math.min(max / span, factor));
+  if (!(span > 0)) return 1;
+  return factor < 1 ? Math.min(1, Math.max(min / span, factor)) : Math.max(1, Math.min(max / span, factor));
 }
 
 /** The price the span limits are a share of: the current price, or the middle of the view before there is one. */

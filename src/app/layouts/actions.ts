@@ -59,8 +59,8 @@ export class LayoutActions {
     requestAnimationFrame(() => this.#setActive({ kind, id, shot: shotOf(this.host.arrangement(), this.store.state.show) }));
   }
   /**
-   * A page nobody has arranged yet is the Default layout, and the panel says so: nothing of the layouts is stored on a first visit (the page's own
-   * arrangement, the saved layouts and this record are all written only by something a person did).
+   * A page nobody has arranged yet is the Default layout, and the panel says so: of the layouts only this record is written on a first visit (the page's
+   * own arrangement and the saved layouts are written only by something a person did), and only when nothing else is stored.
    */
   seedDefault(): void {
     try { if (this.active() || [LAYOUTS_KEY, 'hlm-layout-v2', 'hlm-layout-v3'].some(key => window.localStorage.getItem(key) !== null)) return; } catch { return; }
@@ -136,27 +136,34 @@ export class LayoutActions {
     if (wasActive) this.#setActive({ ...this.active()!, id: name });
     return 'ok';
   }
-  /** A copy of a layout under a name that is free: "Name copy", "Name copy 2". */
-  duplicate(name: string): string | null {
+  /** A copy of a layout under a name that is free: "Name copy", "Name copy 2". Or why there is none: the list is full, or the browser did not keep it. */
+  duplicate(name: string): { ok: true; name: string } | { ok: false; why: 'full' | 'storage' } {
     const list = loadLayouts(), at = list.find(l => sameName(l.name, name));
-    if (!at || list.length >= MAX_LAYOUTS) return null;
+    if (!at || list.length >= MAX_LAYOUTS) return { ok: false, why: 'full' };
     const copy = copyName(at.name, shown => t('{name} copy', { name: shown }), candidate => list.some(l => sameName(l.name, candidate)));
-    if (!copy) return null;
-    const made = upsert(list, { ...at, name: copy, savedAt: Date.now() });
-    return made && storeLayouts(made) ? copy : null;
+    const made = copy ? upsert(list, { ...at, name: copy, savedAt: Date.now() }) : null;
+    if (!copy || !made) return { ok: false, why: 'full' };
+    return storeLayouts(made) ? { ok: true, name: copy } : { ok: false, why: 'storage' };
   }
-  /** Delete one of the person's layouts; the toast brings it back, in its place. */
-  remove(name: string, restored: () => void = () => {}): void {
+  /**
+   * Called when the list of saved layouts changes from outside the panel that shows it (the toast's Undo of a delete): the Layouts panel that is open
+   * redraws. The panel that was opened last sets it, so it is the one that is open now, not the one the deleted layout was deleted from.
+   */
+  onListChanged: (() => void) | null = null;
+  /** Delete one of the person's layouts; the toast brings it back, in its place. False when the browser did not let the page keep the change. */
+  remove(name: string): boolean {
     const list = loadLayouts(), at = list.findIndex(l => sameName(l.name, name));
-    if (at < 0) return;
+    if (at < 0) return true;
     const gone = list[at]!;
-    if (!storeLayouts(list.filter((_, i) => i !== at))) return;
+    if (!storeLayouts(list.filter((_, i) => i !== at))) return false;
     toast(t('Deleted “{name}”.', { name: gone.name }), { action: { label: t('Undo'), run: () => {
       // Brought back only where it fits: into a full list, or beside a layout that took its name since, it would push another one out or be read as a duplicate.
       const now = loadLayouts();
       if (now.length >= MAX_LAYOUTS || now.some(l => sameName(l.name, gone.name))) { toast(t('“{name}” could not be brought back: its name is taken, or there are {n} layouts already.', { name: gone.name, n: MAX_LAYOUTS })); return; }
-      storeLayouts([...now.slice(0, at), gone, ...now.slice(at)]); restored();
+      if (!storeLayouts([...now.slice(0, at), gone, ...now.slice(at)])) { toast(t('This browser did not let the page keep it.')); return; }
+      this.onListChanged?.();
     } } });
+    return true;
   }
 
   // ---- panes ------------------------------------------------------------------------------------------------------------

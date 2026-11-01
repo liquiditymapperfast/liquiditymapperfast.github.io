@@ -35,7 +35,7 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
   const look: Step = {
     id: 'look', targets: ['map'], side: 'inside', title: () => t('Look around'),
     body: () => coarse
-      ? t('Pinch to zoom time and price together; drag to look back in time. Tap anything to read it, and use Recenter to come back to now.')
+      ? t('Pinch to zoom: sideways for time, up and down for price. Drag to look back in time. Tap anything to read it, and use Recenter to come back to now.')
       : t('The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.'),
   };
   const flow: Step = {

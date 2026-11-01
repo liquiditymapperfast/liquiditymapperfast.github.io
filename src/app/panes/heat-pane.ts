@@ -565,7 +565,7 @@ export class HeatPane {
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
-  /** One step of time zoom from the keyboard (in: `dir` 1), as the wheel does over the chart: about the live edge while the map follows the market. */
+  /** One step of time zoom from the keyboard (in: `dir` 1), as the wheel does with Shift over the chart: about the live edge while the map follows the market. The price stays as it is. */
   zoomStep(dir: 1 | -1): void {
     const pw = this.plotW, v = this.view, state = this.store.state;
     if (!(pw > 0) || !(v.t1 > v.t0)) return;

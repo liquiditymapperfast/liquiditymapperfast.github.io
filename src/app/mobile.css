@@ -47,12 +47,10 @@ html[data-bar="compact"] .toolbar .status::before { width: 10px; height: 10px; m
 html[data-bar="compact"] .more-btn { order: 6; display: inline-grid; place-items: center; flex: none; width: 44px; padding: 0; }
 /* The arrow that folds the bar away, after Settings; folded, the bar keeps only the top safe area (the clock and notch above it). */
 html[data-bar="compact"] .toolbar .bar-collapse { order: 7; flex: none; width: 44px; padding: 0; }
-/* A notice lies over the top of the map, as on the desktop's bar: the compact bar keeps its height when one comes or goes, and two lie one
-   under the other. */
+/* A notice lies over the top of the map, as on the desktop's bar: the compact bar keeps its height when one comes or goes, and several lie one
+   under the other (the toolbar sets each one's `top` by what the one above measures: on a phone a notice wraps to three lines). */
 html[data-bar="compact"] .toolbar { position: relative; z-index: 30; }
 html[data-bar="compact"] .toolbar .notice { position: absolute; left: 8px; right: 8px; top: calc(100% + 4px); z-index: 45; margin: 0; box-shadow: 2px 2px 0 var(--shadow); }
-html[data-bar="compact"] .toolbar .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 40px); }
-html[data-bar="compact"] .toolbar .notice:not([hidden]) ~ .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 76px); }
 .more-btn { display: none; }
 /* Recentre is a symbol in the bar: the word would not fit beside seven timeframes. A flex box, not a grid: the hidden word is an item of its own,
    and in a grid it took a row of its own and lifted the symbol 3.8 px above the middle of the button (Karl, 2026-10-26). */

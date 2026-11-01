@@ -75,10 +75,13 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
       openMenu(more, items, '', {
         onPreview: () => {},
         onSelect: id => {
-          if (id === 'update') say(actions.update(layout.name) ? t('Updated “{name}”.', { name: layout.name }) : t('This browser did not let the page keep it.'), false);
+          if (id === 'update') { const kept = actions.update(layout.name); say(kept ? t('Updated “{name}”.', { name: layout.name }) : t('This browser did not let the page keep it.'), !kept); }
           else if (id === 'rename') { ui.renaming = layout.name; redraw(); }
-          else if (id === 'copy') { const copy = actions.duplicate(layout.name); say(copy ? t('Copied as “{name}”.', { name: copy }) : t('At most {n} layouts: delete one first.', { n: MAX_LAYOUTS }), copy === null); }
-          else { actions.remove(layout.name, redraw); ui.message = null; redraw(); }
+          else if (id === 'copy') {
+            const copy = actions.duplicate(layout.name);
+            say(copy.ok ? t('Copied as “{name}”.', { name: copy.name }) : copy.why === 'full' ? t('At most {n} layouts: delete one first.', { n: MAX_LAYOUTS }) : t('This browser did not let the page keep it.'), !copy.ok);
+          } else if (actions.remove(layout.name)) { ui.message = null; redraw(); }
+          else say(t('This browser did not let the page keep it.'), true);
         },
       }, 'right', { keepPanel: true });
     };

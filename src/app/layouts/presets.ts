@@ -34,7 +34,7 @@ export interface PresetDef {
 
 export const PRESETS: readonly PresetDef[] = [
   {
-    id: 'default', name: () => t('Default'), blurb: () => t('The flow column, the map and the order book: how the page first opens.'),
+    id: 'default', name: () => t('Default'), blurb: () => t('The map and the order book, with the flow column on a wide screen: how the page first opens.'),
     book: true, strip: [], stripShare: 0,
   },
   {

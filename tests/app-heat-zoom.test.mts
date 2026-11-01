@@ -50,6 +50,19 @@ test('a zoom stops at the limits and never goes the wrong way', () => {
   assert.equal(limitFactor(1.2, 0, 1, 2), 1, 'no span: nothing to zoom');
   const mark = 60_000;
   assert.ok(limitFactor(0.0001, 1_000, mark * PRICE_SPAN_SHARE.min, mark * PRICE_SPAN_SHARE.max) * 1_000 >= mark * PRICE_SPAN_SHARE.min - 1e-9);
+  // A span already past a limit is held by a turn further out and not driven back by it (review 2026-10-31: the wheel on a chart framed wider than the price
+  // limit zoomed IN on a turn out, then stood still), and goes on by a turn the other way as asked, not jumped to the limit.
+  assert.equal(limitFactor(1.2, 600, 10, 500), 1, 'past the most: a turn out is held');
+  assert.equal(limitFactor(0.9, 600, 10, 500), 0.9, 'past the most: a turn in goes on as asked');
+  assert.equal(limitFactor(0.001, 600, 10, 500), 10 / 600, 'past the most: and stops at the least');
+  assert.equal(limitFactor(0.9, 5, 10, 500), 1, 'under the least: a turn in is held');
+  assert.equal(limitFactor(1.2, 5, 10, 500), 1.2, 'under the least: a turn out goes on as asked');
+  assert.equal(limitFactor(1e9, 5, 10, 500), 100, 'under the least: and stops at the most');
+  for (const span of [1, 5, 10, 100, 500, 600, 5000]) for (const factor of [1e-9, 0.2, 0.9, 1, 1.1, 5, 1e9]) {
+    const f = limitFactor(factor, span, 10, 500);
+    assert.ok(factor < 1 ? f <= 1 : f >= 1, `${span} x ${factor} -> ${f}: the direction of a turn is kept`);
+    assert.ok(factor === 1 ? f === 1 : Math.abs(Math.log(f)) <= Math.abs(Math.log(factor)) + 1e-12, `${span} x ${factor} -> ${f}: never more than asked`);
+  }
 });
 
 test('zooming holds the pixel it was given: the price and the time under it stay where they were', () => {
@@ -153,6 +166,24 @@ test('one axis at its limit stops both: the shape never changes, and the other a
   assert.ok(Math.abs(wide.time!.factor - 1) < 1e-9 && wide.price!.factor === wide.time!.factor, 'the price span is at its widest');
   // On the price scale alone the time limit is nothing to it.
   assert.ok(wheelZoom(turn({ region: 'scale', view: { t0: 0, t1: TIME_SPAN_MS.min, p0: 76_000, p1: 78_000 } })).price!.factor < 1);
+});
+
+test('a chart framed wider than the price limit: a turn out is held, a turn in zooms both axes as asked (review 2026-10-31)', () => {
+  const day = 86_400_000, wide = { t0: 0, t1: 110 * day, p0: 0.1, p1: 0.1 + 0.1 * 5.44 }, mark = 0.1;
+  const out = wheelZoom(turn({ deltaY: 100, view: wide, mark, markY: 300 }));
+  assert.equal(out.time!.factor, 1); assert.equal(out.price!.factor, 1);
+  assert.equal(out.unfollow, false);
+  const inn = wheelZoom(turn({ deltaY: -100, view: wide, mark, markY: 300 }));
+  assert.ok(inn.time!.factor < 1 && inn.time!.factor === inn.price!.factor, 'in is in');
+  assert.ok(Math.abs(inn.time!.factor - Math.exp(-0.16)) < 1e-12, 'as much as the turn asks');
+  // A flat pair framed narrower than the price limit: out goes on as asked, in is held.
+  const flat = { t0: 0, t1: day, p0: 1, p1: 1 + 0.5e-4 };
+  const flatOut = wheelZoom(turn({ deltaY: 100, view: flat, mark: 1, markY: 300 }));
+  assert.ok(Math.abs(flatOut.time!.factor - Math.exp(0.16)) < 1e-12 && flatOut.price!.factor === flatOut.time!.factor);
+  const flatIn = wheelZoom(turn({ deltaY: -100, view: flat, mark: 1, markY: 300 }));
+  assert.equal(flatIn.time!.factor, 1); assert.equal(flatIn.price!.factor, 1);
+  // The price scale alone: the same rules for its own axis.
+  assert.equal(wheelZoom(turn({ region: 'scale', deltaY: 100, view: wide, mark, markY: 300 })).price!.factor, 1);
 });
 
 test('no view yet: nothing to zoom, nothing thrown', () => {

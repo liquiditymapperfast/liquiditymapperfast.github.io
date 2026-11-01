@@ -259,6 +259,8 @@ export class Layout {
         if (below.height !== undefined) this.#setHeight(below, belowStart - dy);
         if (above.height !== undefined) this.#setHeight(above, aboveStart + dy);
       });
+      // As on the columns' splitters (and the one between two side panes): a double click gives the panes it parts back their own height.
+      bar.addEventListener('dblclick', () => this.#resetHeights([above, below]));
     });
     this.#fit();
   }
@@ -400,10 +402,18 @@ export class Layout {
     const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined), i = fixed.findIndex(p => p.id === m.id), pane = fixed[i];
     if (action === 'up' && i > 0) this.#moveStrip(m.id, fixed[i - 1]!.id);
     else if (action === 'down' && i >= 0 && i < fixed.length - 1) this.#moveStrip(m.id, fixed[i + 2]?.id ?? null);
-    else if (action === 'reset' && pane) {
-      const heights = { ...this.#saved.heights }; delete heights[pane.id]; this.#saved = { ...this.#saved, heights };
-      this.#setHeight(pane, pane.height!); this.#fit(); this.#persist();
+    else if (action === 'reset' && pane) this.#resetHeights([pane]);
+  }
+
+  /** The panes under the map (those with a height of their own) given back the height they start with; the map keeps what is left. */
+  #resetHeights(panes: readonly LayoutPane[]): void {
+    const heights = { ...this.#saved.heights };
+    for (const pane of panes) {
+      if (pane.height === undefined) continue;
+      delete heights[pane.id]; this.#setHeight(pane, pane.height);
     }
+    this.#saved = { ...this.#saved, heights };
+    this.#fit(); this.#persist();
   }
 
   /** A pane under the map put before `beforeId` (the last when that is null), among the panes under the map: the map keeps its own place. */

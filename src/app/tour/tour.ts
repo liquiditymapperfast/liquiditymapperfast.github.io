@@ -119,6 +119,8 @@ function begin(restore: () => void): void {
   let poll = 0, stopMode: () => void = () => {}, over = false;
   dialog.addEventListener('cancel', event => { event.preventDefault(); end('left'); });
   dialog.addEventListener('keydown', event => {
+    // Esc leaves the tour (the dialog's own `cancel`) and goes no further: the page's other Esc listeners unpin the Bar stats and put a drawing tool away.
+    if (event.key === 'Escape') { event.stopPropagation(); return; }
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     // Tab goes round the card's buttons (a modal's own order would leave the page for the browser's controls after the last).
     if (event.key === 'Tab') {
@@ -142,6 +144,9 @@ function begin(restore: () => void): void {
   function end(how: 'done' | 'left'): void {
     if (over) return;
     dispose(); state = 'idle'; restore();
+    // The focus goes back to what started the tour; where that is gone (the invitation, the Settings sheet) the Tour button takes it, not the top of the page.
+    const held = document.activeElement;
+    if (!held || held === document.body) document.querySelector<HTMLElement>('.tour-btn')?.focus({ preventScroll: true });
     record(how === 'done' ? 'done' : 'dismissed');
   }
 

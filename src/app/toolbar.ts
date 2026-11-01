@@ -295,6 +295,11 @@ export class Toolbar {
   constructor(private store: Store, private venueControl: VenueControl) {
     // The Guide's link to the tour starts it as the Tour button does (the bar unfolded for it).
     setTourStarter(() => this.startTour());
+    // A notice that comes, goes, or wraps differently moves the ones under it.
+    if (typeof ResizeObserver === 'function') {
+      const stack = new ResizeObserver(() => this.#stackNotices());
+      for (const notice of [this.#notice.root, this.#coinNotice, this.#invite.root]) stack.observe(notice);
+    }
     const missing = coinChoice().notice;
     if (missing) {
       this.#coinNotice.append(el('span', { class: 'notice-mark mark-info', ariaHidden: 'true' }), el('span', { textContent: missing.reason === 'unreadable' ? t('The coin list could not be read, so only BTC is offered.') : t('{coin} is not on the coin list, so the page is on BTC.', { coin: missing.coin }) }),
@@ -490,6 +495,8 @@ export class Toolbar {
     // A redraw after the panel was closed (a toast's Undo, a frame later) leaves it closed.
     const build = (_tools: HTMLElement, body: HTMLElement): void => buildGallery(actions, body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui);
     const panel = togglePanel(anchor, { title: t('Layouts'), width: 560, align: 'right' }, build);
+    // The toast of a deleted layout can outlive the panel it was deleted from: its Undo redraws the Layouts panel that is open then.
+    actions.onListChanged = () => { if (panel && openedPanel() === panel) panel.render(build); };
   }
 
   /** The list of keyboard shortcuts, made from the table itself so the two cannot disagree (the status bar's Keys button, and ?). */
@@ -518,11 +525,27 @@ export class Toolbar {
     showTour({ prepare: () => {
       if (!this.store.state.barCollapsed) return () => {};
       this.store.set({ barCollapsed: false });
-      return () => this.store.set({ barCollapsed: true });
+      // The setting is written as it changes: a tab closed or reloaded in the middle of the tour must not leave the bar unfolded for good.
+      const fold = (): void => this.store.set({ barCollapsed: true });
+      window.addEventListener('pagehide', fold);
+      return () => { window.removeEventListener('pagehide', fold); fold(); };
     } });
   }
   /** Offer the tour to a visitor who has not been offered it; false when something is open over the page and it should be tried again. */
   inviteToTour(): boolean { return this.#invite.offer(); }
+
+  /**
+   * The notices lie over the top of the chart, one under the other, each under the one above by what that one measures now: a notice that wraps on a narrow
+   * screen (the blocked venues' is three lines on a phone) is taller than the fixed step the stylesheet would give it, and the next would cover its words.
+   */
+  #stackNotices(): void {
+    let top = 4;
+    for (const notice of [this.#notice.root, this.#coinNotice, this.#invite.root]) {
+      if (notice.hidden) { notice.style.top = ''; continue; }
+      notice.style.top = `calc(100% + ${top}px)`;
+      top += notice.offsetHeight + 4;
+    }
+  }
 
   /** Fold the bar away or bring it back (`state.barCollapsed`): folded, only its strip (`#expand`) and its notices show. */
   setCollapsed(collapsed: boolean): void {
@@ -563,7 +586,8 @@ export class Toolbar {
       // The name of the page is the last deck's title: what it holds is about the page itself (the guide, the author, installing it). The
       // arrow that folds the bar away sits on that deck's bottom edge, taking no width: room kept for it at the bar's end wrapped this deck
       // onto a second row at 1,600 px, doubling the bar, and the top edge holds the title.
-      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#shot, this.#install.root, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#glass, this.#status])]);
+      // Install stands before the screenshot mark, so that the mark keeps its place whether the browser offers installing or not (Install comes in beside Author).
+      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#glass, this.#status])]);
       tools.append(this.#collapse);
       this.#deckBreaks = []; this.#fitted = null; this.#fittedOrder = '';
       this.#decks = [
