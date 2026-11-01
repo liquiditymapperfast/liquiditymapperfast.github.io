@@ -26,7 +26,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText } from '../text-fit.ts';
 import { distanceText } from './ladder-info.ts';
-import { binsPerRow, liqProfile, liqRows, paintLiqStripe, standingBelow, standingHeat, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
+import { binsPerRow, dollarPriceOf, liqProfile, liqRows, paintLiqStripe, standingBelow, standingHeat, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -1362,10 +1362,7 @@ export class HeatPane {
   }
 
   /** The chart's price when it is in dollars (a dollar or a dollar stablecoin), else NaN: Liquidation levels compare it with Hyperliquid's. */
-  #dollarPrice(state: AppState): number {
-    const market = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId);
-    return market && /^(USD|USDT|USDC|UST|USDE|FDUSD|DAI|PYUSD|USD1|USDS|TUSD|RLUSD)$/i.test(market.quote ?? '') ? state.mark.price : NaN;
-  }
+  #dollarPrice(state: AppState): number { return dollarPriceOf(state); }
 
   /** The price Liquidation levels measure from: the chart's when it is in dollars, else Hyperliquid's as last read. */
   #liqPrice(state: AppState): number {

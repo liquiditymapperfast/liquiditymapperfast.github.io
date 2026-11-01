@@ -19,7 +19,6 @@
  "Depth": "Profondità",
  "Total bid and ask liquidity near the price, over time.": "Liquidità totale bid e ask vicino al prezzo, nel tempo.",
  "Open interest and how it changes with each candle.": "L'open interest e come cambia a ogni candela.",
- "The Liquidity Tracker: bid and ask liquidity near the price as two lines.": "Il Liquidity Tracker: la liquidità bid e ask vicino al prezzo come due linee.",
  "Stats": "Stats",
  "The Bar stats table: a row of numbers per statistic, a cell per candle.": "La tabella Statistiche barre: una riga di numeri per statistica, una cella per candela.",
  "Panels": "Pannelli",
@@ -441,7 +440,6 @@
  "Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.": "Scegli quali exchange alimentano la mappa. La scelta resta in questo browser; nulla cambia finché non premi Applica.",
  "Choose…": "Scegli…",
  "Tools": "Strumenti",
- "Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.": "Profondità, OI, Delta, L/S, LT e Stats aggiungono ciascuno una scheda alla barra sotto la mappa.",
  "Heatmap": "Heatmap",
  "Contrast": "Contrasto",
  "Colour range": "Intervallo colori",
@@ -2124,5 +2122,11 @@
  "They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "Sono disegnati come una striscia a destra della candela più recente, così la heatmap mantiene i suoi colori, e la loro colonna accanto a quella del profilo li somma: in ogni riga ciò che resta e, tenue dietro, tutto dal prezzo fino a quella riga, i dollari che saltano se il prezzo arriva lì. Passa il puntatore sulla colonna per confrontare i long sotto con gli short altrettanto lontani sopra.",
  "Liquidation column": "Colonna delle liquidazioni",
  "A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.": "Una colonna a sé accanto a quella del profilo: in ogni riga ciò che resta dei livelli di liquidazione e, tenue dietro, tutto dal prezzo fino a quella riga.",
- "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Dove verrebbero liquidate le posizioni BTC su Hyperliquid, a destra della candela più recente. Un livello sparisce quando il prezzo lo attraversa; la loro colonna li somma dal prezzo verso l'esterno."
+ "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Dove verrebbero liquidate le posizioni BTC su Hyperliquid, a destra della candela più recente. Un livello sparisce quando il prezzo lo attraversa; la loro colonna li somma dal prezzo verso l'esterno.",
+ "Liq": "Liq",
+ "Liquidation levels: where Hyperliquid's BTC positions would be liquidated, and how much would go if price got there.": "Livelli di liquidazione: dove verrebbero liquidate le posizioni BTC su Hyperliquid e quanto salterebbe se il prezzo arrivasse lì.",
+ "Within ±{pct} of {price}": "Entro ±{pct} da {price}",
+ "Same distance, other side": "Stessa distanza, altro lato",
+ "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "Profondità, OI, Delta, L/S e Stats aggiungono ciascuno una scheda alla barra sotto la mappa.",
+ "BTC · Hyperliquid": "BTC · Hyperliquid"
 }

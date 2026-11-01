@@ -330,6 +330,7 @@ export class Toolbar {
     this.#layer.onchange = () => this.store.set({ layer: this.#layer.value as Layer });
     for (const [key, label] of PANE_TOGGLES) {
       const button = el('button', { textContent: label, tip: HELP[key as HelpId].tip, onclick: () => this.store.set({ show: { ...this.store.state.show, [key]: !this.store.state.show[key] } }) });
+      button.dataset.pane = key;
       this.#toggleButtons.push(button); this.#toggles.append(button);
     }
     this.#settingsKeys.trades.onclick = () => {
@@ -711,7 +712,7 @@ export class Toolbar {
       this.#heatctl.replaceChildren();
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
-        section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.') })]),
+        section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
         ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')))])]),
         section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels'] as const : []), 'absorption', 'traded', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),

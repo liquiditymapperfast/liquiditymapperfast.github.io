@@ -84,7 +84,6 @@
  "Depth": "Глибина",
  "Total bid and ask liquidity near the price, over time.": "Загальна ліквідність бідів і асків біля ціни з плином часу.",
  "Open interest and how it changes with each candle.": "Відкритий інтерес і його зміна з кожною свічкою.",
- "The Liquidity Tracker: bid and ask liquidity near the price as two lines.": "Liquidity Tracker: ліквідність бідів і асків біля ціни двома лініями.",
  "Stats": "Стат.",
  "The Bar stats table: a row of numbers per statistic, a cell per candle.": "Таблиця «Статистика барів»: рядок чисел на статистику, клітинка на свічку.",
  "Panels": "Панелі",
@@ -755,7 +754,6 @@
  "Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.": "Оберіть, які біржі живлять карту. Вибір зберігається в цьому браузері; нічого не змінюється, доки ви не натиснете «Застосувати».",
  "Choose…": "Вибрати…",
  "Tools": "Інструменти",
- "Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.": "«Глибина», OI, «Дельта», L/S, LT і «Стат.» додають по вкладці на панель під картою.",
  "Heatmap": "Теплова карта",
  "Contrast": "Контраст",
  "Colour range": "Діапазон кольору",
@@ -2156,5 +2154,11 @@
  "They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "Вони малюються смугою праворуч від останньої свічки, щоб теплова карта зберегла свої кольори, а їхня власна колонка поруч із колонкою профілю їх підсумовує: у кожному рядку те, що ще стоїть, а бліде позаду — усе від ціни до цього рядка, тобто долари, які підуть, якщо ціна туди дійде. Наведіть вказівник на колонку, щоб порівняти лонги нижче із шортами на тій самій відстані вище.",
  "Liquidation column": "Колонка ліквідацій",
  "A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.": "Окрема колонка поруч із колонкою профілю: у кожному рядку те, що ще стоїть із рівнів ліквідацій, а бліде позаду — усе від ціни до цього рядка.",
- "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Де були б ліквідовані позиції BTC на Hyperliquid, праворуч від останньої свічки. Рівень зникає, щойно ціна проходить крізь нього; їхня власна колонка підсумовує їх від ціни назовні."
+ "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Де були б ліквідовані позиції BTC на Hyperliquid, праворуч від останньої свічки. Рівень зникає, щойно ціна проходить крізь нього; їхня власна колонка підсумовує їх від ціни назовні.",
+ "Liq": "Лікв.",
+ "Liquidation levels: where Hyperliquid's BTC positions would be liquidated, and how much would go if price got there.": "Рівні ліквідацій: де були б ліквідовані позиції BTC на Hyperliquid і скільки пішло б, якби ціна туди дійшла.",
+ "Within ±{pct} of {price}": "У межах ±{pct} від {price}",
+ "Same distance, other side": "Так само далеко з іншого боку",
+ "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "«Глибина», OI, «Дельта», L/S і «Стат.» додають по вкладці на панель під картою.",
+ "BTC · Hyperliquid": "BTC · Hyperliquid"
 }

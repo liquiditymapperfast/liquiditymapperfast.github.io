@@ -10,7 +10,7 @@ import { BTC, instrumentIdFor, type Coin } from '../shared/coins.ts';
 import { webGet, type Fetcher } from '../shared/history.ts';
 import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
 import { liqLevelsUrl } from './liq-url.ts';
-import type { CandleRow } from './store.ts';
+import type { AppState, CandleRow } from './store.ts';
 import type { View } from './view.ts';
 
 const MINUTE = 60_000, HOUR = 3_600_000, DAY = 24 * HOUR;
@@ -208,6 +208,25 @@ function lowerBound(a: Int32Array, v: number): number {
   let lo = 0, hi = a.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (a[mid]! < v) lo = mid + 1; else hi = mid; }
   return lo;
+}
+
+/** The quotes a chart's price is in dollars in: the dollar and the dollar stablecoins. */
+const DOLLARS = /^(USD|USDT|USDC|UST|USDE|FDUSD|DAI|PYUSD|USD1|USDS|TUSD|RLUSD)$/i;
+
+/** The chart's price when it is in dollars, else NaN: Liquidation levels compare it with Hyperliquid's. */
+export function dollarPriceOf(state: Pick<AppState, 'markets' | 'marketId' | 'mark'>): number {
+  const market = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId);
+  return market && DOLLARS.test(market.quote ?? '') ? state.mark.price : NaN;
+}
+
+/** How many positions of a side the bins in [lo, hi) hold, and the largest of them (a position sits in one bin). */
+export function binsIn(levels: LiqLevels, side: 'long' | 'short', lo: number, hi: number): { positions: number; top: number } {
+  let positions = 0, top = 0;
+  for (let i = lowerBound(levels.k, Math.floor(lo / levels.step)); i < levels.k.length && levels.k[i]! * levels.step < hi; i++) {
+    positions += side === 'long' ? levels.longWallets[i]! : levels.shortWallets[i]!;
+    top = Math.max(top, side === 'long' ? levels.longTop[i]! : levels.shortTop[i]!);
+  }
+  return { positions, top };
 }
 
 /** What still stands of each side, added up bin by bin from the lowest (sums with a leading 0), for the profile column. */

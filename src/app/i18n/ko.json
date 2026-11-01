@@ -19,7 +19,6 @@
  "Depth": "뎁스",
  "Total bid and ask liquidity near the price, over time.": "가격 근처의 매수·매도 유동성 합계를 시간에 따라 보여 줍니다.",
  "Open interest and how it changes with each candle.": "미결제약정과 캔들마다의 변화.",
- "The Liquidity Tracker: bid and ask liquidity near the price as two lines.": "Liquidity Tracker: 가격 근처의 매수·매도 유동성을 두 개의 선으로 보여 줍니다.",
  "Stats": "통계",
  "The Bar stats table: a row of numbers per statistic, a cell per candle.": "바 통계 표: 통계마다 숫자 한 줄, 캔들마다 한 칸.",
  "Panels": "패널",
@@ -429,7 +428,6 @@
  "Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.": "지도에 데이터를 공급할 거래소를 선택합니다. 선택은 이 브라우저에 저장되며, '적용'을 누르기 전에는 아무것도 바뀌지 않습니다.",
  "Choose…": "선택…",
  "Tools": "도구",
- "Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.": "뎁스, OI, 델타, L/S, LT, 통계는 각각 맵 아래 막대에 탭을 추가합니다.",
  "Heatmap": "히트맵",
  "Contrast": "대비",
  "Colour range": "색상 범위",
@@ -2018,5 +2016,11 @@
  "They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "히트맵이 제 색을 유지하도록 가장 최근 캔들 오른쪽에 띠로 그려지고, 프로파일 열 옆의 전용 열이 이를 합산합니다. 각 행에는 아직 남은 양이, 그 뒤에는 흐리게 가격부터 그 행까지의 전체, 즉 가격이 거기까지 가면 사라지는 금액이 표시됩니다. 열 위에 포인터를 올리면 아래의 롱과 같은 거리 위의 숏을 비교합니다.",
  "Liquidation column": "청산 열",
  "A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.": "프로파일 열 옆의 전용 열. 각 행에는 청산 레벨 중 아직 남은 양이, 그 뒤에는 흐리게 가격부터 그 행까지의 전체가 표시됩니다.",
- "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid의 BTC 포지션이 청산될 가격을 가장 최근 캔들 오른쪽에. 가격이 통과한 레벨은 사라지고, 전용 열이 가격에서 바깥쪽으로 합산합니다."
+ "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid의 BTC 포지션이 청산될 가격을 가장 최근 캔들 오른쪽에. 가격이 통과한 레벨은 사라지고, 전용 열이 가격에서 바깥쪽으로 합산합니다.",
+ "Liq": "청산",
+ "Liquidation levels: where Hyperliquid's BTC positions would be liquidated, and how much would go if price got there.": "청산 레벨: Hyperliquid의 BTC 포지션이 청산될 가격과, 가격이 거기까지 가면 사라질 금액.",
+ "Within ±{pct} of {price}": "{price} 기준 ±{pct} 이내",
+ "Same distance, other side": "같은 거리, 반대쪽",
+ "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "뎁스, OI, 델타, L/S, 통계는 각각 맵 아래 막대에 탭을 추가합니다.",
+ "BTC · Hyperliquid": "BTC · Hyperliquid"
 }

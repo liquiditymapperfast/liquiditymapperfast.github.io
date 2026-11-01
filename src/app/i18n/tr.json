@@ -19,7 +19,6 @@
  "Depth": "Derinlik",
  "Total bid and ask liquidity near the price, over time.": "Fiyata yakın toplam alış ve satış likiditesi, zaman içinde.",
  "Open interest and how it changes with each candle.": "Açık pozisyon ve her mumla nasıl değiştiği.",
- "The Liquidity Tracker: bid and ask liquidity near the price as two lines.": "Liquidity Tracker: fiyata yakın alış ve satış likiditesi iki çizgi olarak.",
  "Stats": "İstat.",
  "The Bar stats table: a row of numbers per statistic, a cell per candle.": "Çubuk istatistikleri tablosu: her istatistik için bir sayı satırı, her mum için bir hücre.",
  "Panels": "Paneller",
@@ -438,7 +437,6 @@
  "Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.": "Haritayı hangi borsaların beslediğini seçin. Seçim bu tarayıcıda saklanır; Uygula'ya basana kadar hiçbir şey değişmez.",
  "Choose…": "Seç…",
  "Tools": "Araçlar",
- "Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.": "Derinlik, OI, Delta, L/S, LT ve İstat., haritanın altındaki çubuğa birer sekme ekler.",
  "Heatmap": "Isı haritası",
  "Contrast": "Kontrast",
  "Colour range": "Renk aralığı",
@@ -2097,5 +2095,11 @@
  "They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "Isı haritası kendi renklerini korusun diye en yeni mumun sağında bir şerit olarak çizilir ve profil sütununun yanındaki kendi sütunları bunları toplar: her satırda hâlâ duran miktar, arkasında soluk olarak fiyattan o satıra kadar olan her şey, yani fiyat oraya gelirse giden dolarlar. Aşağıdaki long'ları aynı uzaklıktaki yukarıdaki short'larla karşılaştırmak için imleci sütunun üzerine getirin.",
  "Liquidation column": "Tasfiye sütunu",
  "A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.": "Profil sütununun yanında ayrı bir sütun: her satırda tasfiye seviyelerinden hâlâ duran miktar, arkasında soluk olarak fiyattan o satıra kadar olan her şey.",
- "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid'deki BTC pozisyonlarının tasfiye edileceği fiyatlar, en yeni mumun sağında. Fiyat bir seviyeden geçince o kaybolur; kendi sütunları bunları fiyattan dışarı doğru toplar."
+ "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid'deki BTC pozisyonlarının tasfiye edileceği fiyatlar, en yeni mumun sağında. Fiyat bir seviyeden geçince o kaybolur; kendi sütunları bunları fiyattan dışarı doğru toplar.",
+ "Liq": "Tasfiye",
+ "Liquidation levels: where Hyperliquid's BTC positions would be liquidated, and how much would go if price got there.": "Tasfiye seviyeleri: Hyperliquid'deki BTC pozisyonlarının tasfiye edileceği fiyatlar ve fiyat oraya gelirse ne kadarının gideceği.",
+ "Within ±{pct} of {price}": "{price} çevresinde ±{pct} içinde",
+ "Same distance, other side": "Aynı uzaklık, öbür taraf",
+ "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "Derinlik, OI, Delta, L/S ve İstat., haritanın altındaki çubuğa birer sekme ekler.",
+ "BTC · Hyperliquid": "BTC · Hyperliquid"
 }

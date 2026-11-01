@@ -19,7 +19,6 @@
  "Depth": "深度",
  "Total bid and ask liquidity near the price, over time.": "价格附近买盘和卖盘流动性的总量随时间的变化。",
  "Open interest and how it changes with each candle.": "持仓量，以及它随每根 K 线的变化。",
- "The Liquidity Tracker: bid and ask liquidity near the price as two lines.": "Liquidity Tracker：价格附近的买盘和卖盘流动性，以两条线显示。",
  "Stats": "统计",
  "The Bar stats table: a row of numbers per statistic, a cell per candle.": "柱统计表：每项统计一行数字，每根 K 线一格。",
  "Panels": "面板",
@@ -429,7 +428,6 @@
  "Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.": "选择哪些交易所为地图提供数据。选择保存在此浏览器中；点击“应用”之前不会有任何变化。",
  "Choose…": "选择…",
  "Tools": "工具",
- "Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.": "深度、OI、Delta、L/S、LT 和统计各会在地图下方的栏中增加一个标签页。",
  "Heatmap": "热力图",
  "Contrast": "对比度",
  "Colour range": "颜色范围",
@@ -2018,5 +2016,11 @@
  "They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "它们画成最新K线右侧的一条色带，让热力图保持自己的颜色；分布栏旁边它们自己的一栏会累加它们：每一行是仍然存在的部分，其后浅色的是从价格到该行的全部，也就是价格到达那里时会被强平的美元。将指针悬停在这一栏上，可以比较下方的多头与上方同样距离的空头。",
  "Liquidation column": "强平栏",
  "A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.": "分布栏旁边单独的一栏：每一行是强平价位中仍然存在的部分，其后浅色的是从价格到该行的全部。",
- "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid 上 BTC 头寸会被强平的价格，画在最新K线的右侧。价格穿过的价位会消失；它们自己的一栏从价格向外累加。"
+ "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid 上 BTC 头寸会被强平的价格，画在最新K线的右侧。价格穿过的价位会消失；它们自己的一栏从价格向外累加。",
+ "Liq": "强平",
+ "Liquidation levels: where Hyperliquid's BTC positions would be liquidated, and how much would go if price got there.": "强平价位：Hyperliquid 上 BTC 头寸会被强平的价格，以及价格到达那里时会被强平多少。",
+ "Within ±{pct} of {price}": "{price} 上下 ±{pct} 以内",
+ "Same distance, other side": "另一侧同样距离",
+ "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "深度、OI、Delta、L/S 和统计各会在地图下方的栏中增加一个标签页。",
+ "BTC · Hyperliquid": "BTC · Hyperliquid"
 }

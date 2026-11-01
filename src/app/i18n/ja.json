@@ -19,7 +19,6 @@
  "Depth": "デプス",
  "Total bid and ask liquidity near the price, over time.": "価格付近の買い・売りの流動性の合計を、時間の流れで表示します。",
  "Open interest and how it changes with each candle.": "建玉と、ローソク足ごとの変化。",
- "The Liquidity Tracker: bid and ask liquidity near the price as two lines.": "Liquidity Tracker：価格付近の買い・売りの流動性を 2 本の線で表示します。",
  "Stats": "統計",
  "The Bar stats table: a row of numbers per statistic, a cell per candle.": "バー統計の表：統計ごとに数値の行、ローソク足ごとにセル。",
  "Panels": "パネル",
@@ -429,7 +428,6 @@
  "Choose which exchanges feed the map. The choice is kept in this browser; nothing changes until you press Apply.": "マップにデータを供給する取引所を選びます。選択はこのブラウザーに保存され、「適用」を押すまで何も変わりません。",
  "Choose…": "選択…",
  "Tools": "ツール",
- "Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.": "デプス・OI・デルタ・L/S・LT・統計は、それぞれマップの下のバーにタブを追加します。",
  "Heatmap": "ヒートマップ",
  "Contrast": "コントラスト",
  "Colour range": "色の範囲",
@@ -2018,5 +2016,11 @@
  "They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "ヒートマップの色を保つため、最新のローソク足の右側に帯として描かれ、プロファイル列の横にある専用の列がそれを合計します。各行に残っている分、その後ろに薄く価格からその行までのすべて、つまり価格がそこまで来たら消えるドル額です。列にカーソルを置くと、下のロングと同じだけ上のショートを比べられます。",
  "Liquidation column": "清算レベル列",
  "A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.": "プロファイル列の横にある専用の列。各行に清算レベルの残っている分、その後ろに薄く価格からその行までのすべてを示します。",
- "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid の BTC ポジションが清算される価格を、最新のローソク足の右側に。価格が通過したレベルは消え、専用の列が価格から外側へ合計します。"
+ "Where Hyperliquid's BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.": "Hyperliquid の BTC ポジションが清算される価格を、最新のローソク足の右側に。価格が通過したレベルは消え、専用の列が価格から外側へ合計します。",
+ "Liq": "清算",
+ "Liquidation levels: where Hyperliquid's BTC positions would be liquidated, and how much would go if price got there.": "清算レベル：Hyperliquid の BTC ポジションが清算される価格と、価格がそこまで来たら消える額。",
+ "Within ±{pct} of {price}": "{price} の ±{pct} 以内",
+ "Same distance, other side": "反対側の同じ距離",
+ "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "デプス・OI・デルタ・L/S・統計は、それぞれマップの下のバーにタブを追加します。",
+ "BTC · Hyperliquid": "BTC · Hyperliquid"
 }
