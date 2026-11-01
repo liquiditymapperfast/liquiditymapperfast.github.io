@@ -429,3 +429,80 @@ export class LiqLevelsSource {
     return this.#derived;
   }
 }
+
+/** One side of what the seam between the liquidation column and the profile column weighs: the book against the liquidations. */
+export interface SeamSide {
+  /** The book and the standing liquidations within the pointer's band, and over every row given (the columns on screen). */
+  book: number; liq: number; bookAll: number; liqAll: number;
+  /** The rank correlation of level size with book size over the rows that hold liquidations (null under SEAM_MIN_ROWS), and how many. */
+  rho: number | null; n: number; rhoAll: number | null; nAll: number;
+}
+/** A large liquidation level and the book at its row against the rows around it (3 each way). */
+export interface SeamWall { price: number; side: 'long' | 'short'; usd: number; ratio: number }
+export interface SeamStats { below: SeamSide; above: SeamSide; walls: SeamWall[] }
+
+/** Fewer rows with liquidations than this give no correlation: a coefficient of a handful of points says nothing. */
+export const SEAM_MIN_ROWS = 8;
+
+/** Ranks from 1, ties sharing their mean rank. */
+function ranks(values: readonly number[]): number[] {
+  const order = values.map((v, i) => [v, i] as const).sort((a, b) => a[0] - b[0]), out = new Array<number>(values.length);
+  for (let i = 0; i < order.length;) {
+    let j = i; while (j + 1 < order.length && order[j + 1]![0] === order[i]![0]) j++;
+    for (let k = i; k <= j; k++) out[order[k]![1]] = (i + j) / 2 + 1;
+    i = j + 1;
+  }
+  return out;
+}
+
+/** Spearman's rank correlation of two equally long lists: null where either does not vary. */
+export function spearman(a: readonly number[], b: readonly number[]): number | null {
+  const n = Math.min(a.length, b.length);
+  if (n < 2) return null;
+  const ra = ranks(a.slice(0, n)), rb = ranks(b.slice(0, n)), mean = (n + 1) / 2;
+  let sab = 0, saa = 0, sbb = 0;
+  for (let i = 0; i < n; i++) { const x = ra[i]! - mean, y = rb[i]! - mean; sab += x * y; saa += x * x; sbb += y * y; }
+  return saa > 0 && sbb > 0 ? sab / Math.sqrt(saa * sbb) : null;
+}
+
+/**
+ * What the seam between the two columns says, from rows of both at the same prices (row i covers [(row0 + i) * step, +step)): `bid` and
+ * `ask` the book's, `long` and `short` the standing liquidations. A row is below the price when its middle is, above otherwise; the band is
+ * the rows whose middle lies within `d` of the price. Each side: the book against the liquidations in the band and over every row, and the
+ * rank correlation of level size with book size over the rows that hold liquidations (book depth thins away from the price while
+ * liquidations gather away from it, so over every row a coefficient would mostly measure that distance). And for the three largest
+ * liquidation levels, the book at their row against the mean of the three rows either side: a wall above 1, a void below.
+ */
+export function seamStats(rows: { row0: number; step: number; bid: ArrayLike<number>; ask: ArrayLike<number>; long: ArrayLike<number>; short: ArrayLike<number> }, price: number, d: number): SeamStats {
+  const n = Math.min(rows.bid.length, rows.ask.length, rows.long.length, rows.short.length);
+  const side = (below: boolean): SeamSide => {
+    const book = below ? rows.bid : rows.ask, liq = below ? rows.long : rows.short;
+    const out: SeamSide = { book: 0, liq: 0, bookAll: 0, liqAll: 0, rho: null, n: 0, rhoAll: null, nAll: 0 };
+    const band: [number[], number[]] = [[], []], all: [number[], number[]] = [[], []];
+    for (let i = 0; i < n; i++) {
+      const middle = (rows.row0 + i + 0.5) * rows.step;
+      if ((middle < price) !== below) continue;
+      const b = book[i]!, l = liq[i]!, inBand = Math.abs(middle - price) <= d;
+      out.bookAll += b; out.liqAll += l;
+      if (inBand) { out.book += b; out.liq += l; }
+      if (l > 0) { all[0].push(l); all[1].push(b); if (inBand) { band[0].push(l); band[1].push(b); } }
+    }
+    out.n = band[0].length; out.nAll = all[0].length;
+    out.rho = out.n >= SEAM_MIN_ROWS ? spearman(band[0], band[1]) : null;
+    out.rhoAll = out.nAll >= SEAM_MIN_ROWS ? spearman(all[0], all[1]) : null;
+    return out;
+  };
+  const levels: { i: number; side: 'long' | 'short'; usd: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    if (rows.long[i]! > 0) levels.push({ i, side: 'long', usd: rows.long[i]! });
+    if (rows.short[i]! > 0) levels.push({ i, side: 'short', usd: rows.short[i]! });
+  }
+  const walls = levels.sort((a, b) => b.usd - a.usd).slice(0, 3).map(({ i, side, usd }): SeamWall => {
+    const book = side === 'long' ? rows.bid : rows.ask;
+    let sum = 0, count = 0;
+    for (let k = i - 3; k <= i + 3; k++) if (k !== i && k >= 0 && k < n) { sum += book[k]!; count++; }
+    const around = count ? sum / count : 0;
+    return { price: (rows.row0 + i + 0.5) * rows.step, side, usd, ratio: book[i]! / Math.max(around, 1) };
+  });
+  return { below: side(true), above: side(false), walls };
+}

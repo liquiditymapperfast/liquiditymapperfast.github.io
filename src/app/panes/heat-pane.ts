@@ -26,7 +26,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText } from '../text-fit.ts';
 import { distanceText } from './ladder-info.ts';
-import { binsPerRow, dollarPriceOf, liqProfile, liqRows, paintLiqStripe, standingBelow, standingHeat, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
+import { binsPerRow, dollarPriceOf, liqProfile, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -223,7 +223,7 @@ export class HeatPane {
   /** Mirror-hover comparison for the pointer over the profile column, or null (read by tests, drawn on the profile). */
   mirror: MirrorStats | null = null;
   /** The pointer on one of the columns beside the map (the liquidation column or the profile column), for its Mirror comparison. */
-  #profileHover: { y: number; column: 'liq' | 'book' } | null = null;
+  #profileHover: { y: number; column: 'liq' | 'book' | 'seam' } | null = null;
   /** Where this frame's "depth recorded from" note was printed, so the liquidation levels' note can keep clear of it. */
   #historyNote: { x0: number; x1: number; top: number } | null = null;
   /** Liquidation levels' rows in view and what they were grouped for (#liqRowsInView). */
@@ -877,6 +877,7 @@ export class HeatPane {
     // The liquidation column, then the profile column: the book as it is now, not shown in replay, which has no book of its moment.
     if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph);
     if (state.show.profile && !replaying()) this.#paintProfile(ctx, state, pw, ph);
+    if (this.#profileHover?.column === 'seam' && !replaying()) this.#paintSeam(ctx, state, pw, ph);
     if (tradedShown(state)) this.#paintTraded(ctx, state, pw, ph);
     this.#paintHidden(ctx, pw, ph);
     const axisX = w - AXIS_W;
@@ -2773,6 +2774,61 @@ export class HeatPane {
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
   }
 
+  /**
+   * The seam between the liquidation column and the profile column, pointed at: the book against the liquidations from the price out to the
+   * pointer and its mirror, as one band across both columns, and a box that weighs them. Each side: what rests in the book against what
+   * would be liquidated (the bids against the longs below, the asks against the shorts above), in the band and over the columns on screen;
+   * the rank correlation of level size with book size over the rows that hold liquidations; and at the largest levels, whether the book
+   * stands as a wall or thins to a void. The liquidations are Hyperliquid's alone and some 40 minutes old; the book is every enabled
+   * venue's, now: the box says so.
+   */
+  #paintSeam(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const hv = this.#profileHover, src = this.hub.liqLevels, frame = state.levels, s = src.levels && src.state === 'ready' ? src.standing() : null;
+    if (!hv || hv.column !== 'seam' || !frame || !s || !liqColumnShown(state) || !state.show.profile) return;
+    const p = this.#palette, v = this.view, step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
+    if (!(price > 0)) return;
+    const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, v.p0, v.p1), prof = liqProfile(s, step, v.p0, v.p1, price);
+    // The two columns' rows at the same prices (both begin at floor(p0 / step), so the offset is 0 unless one of them ends sooner).
+    const long = new Float64Array(g.nBins), short = new Float64Array(g.nBins);
+    for (let i = 0; i < g.nBins; i++) { const j = g.bin0 + i - prof.row0; if (j >= 0 && j < prof.long.length) { long[i] = prof.long[j]!; short[i] = prof.short[j]!; } }
+    const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
+    const st = seamStats({ row0: g.bin0, step, bid: g.totalBid, ask: g.totalAsk, long, short }, price, d);
+    const x0 = pw, W = 2 * PROFILE_W, top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph);
+    ctx.save();
+    dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.55);
+    paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: `${usd(st.above.book)} · ${usd(st.above.liq)}` }, { y: bottom, color: p.candleDown, label: `${usd(st.below.book)} · ${usd(st.below.liq)}` }, { y0: 0, y1: ph });
+    // The seam itself, lit while it is pointed at.
+    ctx.strokeStyle = p.ui; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + PROFILE_W, 0); ctx.lineTo(x0 + PROFILE_W, ph); ctx.stroke();
+    ctx.restore();
+    const times = (r: number): string => !Number.isFinite(r) ? '∞' : r >= 100 ? `${Math.round(r)}×` : `${r >= 10 ? r.toFixed(0) : r.toFixed(1)}×`;
+    const cover = (book: number, liq: number, below: boolean): string => liq <= 0 ? t('No liquidation levels in this range')
+      : book >= liq ? (below ? t('Bids cover the longs {ratio}', { ratio: times(book / liq) }) : t('Asks cover the shorts {ratio}', { ratio: times(book / liq) }))
+      : (below ? t('Longs exceed the bids {ratio}', { ratio: times(liq / Math.max(book, 1)) }) : t('Shorts exceed the asks {ratio}', { ratio: times(liq / Math.max(book, 1)) }));
+    const rhoText = (rho: number | null, n: number): string => rho === null ? t('too few levels') : t('{rho} over {n} levels', { rho: rho.toFixed(2), n: String(n) });
+    const bp = d / price * 1e4;
+    const lines: InfoLine[] = [
+      { text: t('Book against liquidations'), bold: true },
+      { text: t('±{distance} ({bp} bp) from {mid}', { distance: fmtPrice(d), bp: bp < 10 ? bp.toFixed(1) : String(Math.round(bp)), mid: fmtPrice(price) }), color: 'muted' },
+    ];
+    for (const below of [false, true]) {
+      const side = below ? st.below : st.above;
+      lines.push({ text: below ? t('Below the price') : t('Above the price'), bold: true, rule: true });
+      lines.push({ label: below ? t('Bids') : t('Asks'), text: `$${usd(side.book)}`, color: below ? 'below' : 'above' });
+      lines.push({ label: below ? t('Long liquidations') : t('Short liquidations'), text: `$${usd(side.liq)}`, color: below ? 'sell' : 'buy' });
+      lines.push({ text: cover(side.book, side.liq, below), bold: true });
+      if (side.liqAll > 0) lines.push({ label: t('On screen'), text: cover(side.bookAll, side.liqAll, below), color: 'muted' });
+    }
+    lines.push({ text: t('Rank correlation, level size with book size'), bold: true, rule: true });
+    lines.push({ label: t('Above the price'), text: `${rhoText(st.above.rho, st.above.n)} · ${t('on screen {value}', { value: rhoText(st.above.rhoAll, st.above.nAll) })}` });
+    lines.push({ label: t('Below the price'), text: `${rhoText(st.below.rho, st.below.n)} · ${t('on screen {value}', { value: rhoText(st.below.rhoAll, st.below.nAll) })}` });
+    if (st.walls.length) {
+      lines.push({ text: t('At the largest liquidation levels'), bold: true, rule: true });
+      for (const w of st.walls) lines.push({ label: `${fmtPrice(w.price)} · $${usd(w.usd)}`, text: t('book {ratio} its neighbours', { ratio: times(w.ratio) }), color: w.side === 'long' ? 'sell' : 'buy' });
+    }
+    lines.push({ text: t('Liquidations are Hyperliquid\'s alone, the book every enabled venue\'s; the positions are about 40 minutes old, the book is now.'), color: 'muted', wrap: true, rule: true });
+    paintMirrorBox(ctx, lines, x0, hv.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'buy' ? p.candleUp : c === 'sell' ? p.candleDown : c === 'muted' ? p.muted : p.text, hv.y < ph / 2 ? 'down' : 'up');
+  }
+
   /** Mirror hover on the liquidation column: the longs that go if price falls to the pointer against the shorts that go if it rises as far. */
   #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view;
@@ -3198,9 +3254,13 @@ export class HeatPane {
     };
   }
 
-  /** Which of the columns beside the map is at `x`: the liquidation column (nearest the map), then the profile column; null for neither. */
-  #besideAt(x: number): 'liq' | 'book' | null {
+  /**
+   * Which of the columns beside the map is at `x`: the seam between the liquidation column and the profile column (a few px either side of
+   * it, while both show), the liquidation column (nearest the map), then the profile column; null for none.
+   */
+  #besideAt(x: number): 'liq' | 'book' | 'seam' | null {
     const state = this.store.state, pw = this.plotW, liq = liqColumnW(state);
+    if (liq && state.show.profile && Math.abs(x - (pw + liq)) <= 6) return 'seam';
     if (liq && x > pw && x <= pw + liq) return 'liq';
     return state.show.profile && x > pw + liq && x <= pw + liq + PROFILE_W ? 'book' : null;
   }

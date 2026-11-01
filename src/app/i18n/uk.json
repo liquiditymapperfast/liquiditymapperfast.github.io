@@ -2160,5 +2160,21 @@
  "Within ±{pct} of {price}": "У межах ±{pct} від {price}",
  "Same distance, other side": "Так само далеко з іншого боку",
  "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "«Глибина», OI, «Дельта», L/S і «Стат.» додають по вкладці на панель під картою.",
- "BTC · Hyperliquid": "BTC · Hyperliquid"
+ "BTC · Hyperliquid": "BTC · Hyperliquid",
+ "Book against liquidations": "Стакан проти ліквідацій",
+ "Below the price": "Нижче ціни",
+ "Above the price": "Вище ціни",
+ "Bids cover the longs {ratio}": "Біди покривають лонги {ratio}",
+ "Longs exceed the bids {ratio}": "Лонги перевищують біди {ratio}",
+ "Asks cover the shorts {ratio}": "Аски покривають шорти {ratio}",
+ "Shorts exceed the asks {ratio}": "Шорти перевищують аски {ratio}",
+ "on screen {value}": "на екрані {value}",
+ "Rank correlation, level size with book size": "Рангова кореляція розміру рівня і стакана",
+ "too few levels": "замало рівнів",
+ "{rho} over {n} levels": "{rho} за {n} рівнями",
+ "At the largest liquidation levels": "На найбільших рівнях ліквідацій",
+ "book {ratio} its neighbours": "стакан {ratio} від сусідів",
+ "Liquidations are Hyperliquid's alone, the book every enabled venue's; the positions are about 40 minutes old, the book is now.": "Ліквідації лише Hyperliquid, стакан усіх увімкнених бірж; позиціям близько 40 хвилин, стакан поточний.",
+ "Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.": "Наведіть вказівник на лінію між колонкою ліквідацій і колонкою профілю, щоб зважити стакан проти ліквідацій: що стоїть проти того, що було б ліквідовано, з кожного боку, наскільки збігаються ранги розміру рівня і стакана і чи стоїть стакан стіною чи рідшає до порожнечі на найбільших рівнях.",
+ "On screen": "На екрані"
 }

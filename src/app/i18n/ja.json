@@ -2022,5 +2022,21 @@
  "Within ±{pct} of {price}": "{price} の ±{pct} 以内",
  "Same distance, other side": "反対側の同じ距離",
  "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "デプス・OI・デルタ・L/S・統計は、それぞれマップの下のバーにタブを追加します。",
- "BTC · Hyperliquid": "BTC · Hyperliquid"
+ "BTC · Hyperliquid": "BTC · Hyperliquid",
+ "Book against liquidations": "ブック対清算",
+ "Below the price": "価格より下",
+ "Above the price": "価格より上",
+ "Bids cover the longs {ratio}": "買い板がロングを {ratio} カバー",
+ "Longs exceed the bids {ratio}": "ロングが買い板を {ratio} 上回る",
+ "Asks cover the shorts {ratio}": "売り板がショートを {ratio} カバー",
+ "Shorts exceed the asks {ratio}": "ショートが売り板を {ratio} 上回る",
+ "on screen {value}": "画面全体 {value}",
+ "Rank correlation, level size with book size": "順位相関：レベルの大きさとブックの厚み",
+ "too few levels": "レベルが少なすぎます",
+ "{rho} over {n} levels": "{n} レベルで {rho}",
+ "At the largest liquidation levels": "最大の清算レベル",
+ "book {ratio} its neighbours": "ブックは周囲の {ratio}",
+ "Liquidations are Hyperliquid's alone, the book every enabled venue's; the positions are about 40 minutes old, the book is now.": "清算は Hyperliquid のみ、ブックは有効なすべての取引所のものです。ポジションは約 40 分前、ブックは今のものです。",
+ "Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.": "清算列とプロファイル列の間の線を指すと、ブックと清算を比べられます。各側で待っている量と清算される量、レベルの大きさとブックの厚みの順位の揃い方、そして最大のレベルでブックが壁になっているか、薄い空白になっているかです。",
+ "On screen": "画面全体"
 }

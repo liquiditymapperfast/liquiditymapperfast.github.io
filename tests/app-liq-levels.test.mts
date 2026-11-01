@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqProfile, liqRows, liqStanding, parseLiqLevels, standingBelow, takenByCandles, type LiqLevels } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqProfile, liqRows, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, type LiqLevels } from '../src/app/liq-levels.ts';
 import { LIQ_LEVELS_URL, liqLevelsUrl, readLiqLevels } from '../src/app/liq-url.ts';
 import { BTC, type Coin } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
@@ -227,4 +227,28 @@ test('the chart\'s price takes the levels between it and the snapshot\'s mark at
   // A price that is not a number changes nothing.
   src.observe(Number.NaN);
   assert.equal(standingBelow(src.standing()!, 'long', 1000), 250);
+});
+
+test('the seam weighs the book against the liquidations each side, ranks level size with book size, and finds walls and voids', () => {
+  // Rows of 10 from 0 to 200 with the price at 100: rows 0-9 below, 10-19 above.
+  const n = 20, bid = new Array<number>(n).fill(0), ask = new Array<number>(n).fill(0), long = new Array<number>(n).fill(0), short = new Array<number>(n).fill(0);
+  for (let i = 0; i < 10; i++) { bid[i] = 100 + i * 10; long[i] = 1 + i; } // below: the bigger the level, the bigger the book (perfect agreement)
+  for (let i = 10; i < 20; i++) { ask[i] = 300 - i * 10; short[i] = 1 + i; } // above: the bigger the level, the thinner the book (perfect disagreement)
+  const s = seamStats({ row0: 0, step: 10, bid, ask, long, short }, 100, 30);
+  // The band: middles within 30 of the price, rows 7-9 below (75, 85, 95) and 10-12 above (105, 115, 125).
+  assert.equal(s.below.book, 170 + 180 + 190);
+  assert.equal(s.below.liq, 8 + 9 + 10);
+  assert.equal(s.above.book, 200 + 190 + 180);
+  assert.equal(s.below.bookAll, bid.reduce((a, b) => a + b, 0));
+  assert.equal(s.below.n, 3);
+  assert.equal(s.below.rho, null, 'three levels in the band are too few');
+  assert.equal(s.below.nAll, 10);
+  assert.ok(Math.abs(s.below.rhoAll! - 1) < 1e-12);
+  assert.ok(Math.abs(s.above.rhoAll! + 1) < 1e-12);
+  // The largest level is the top short row (19, 20 dollars): its book (110) against its three neighbours below it (120, 130, 140).
+  assert.equal(s.walls[0]!.side, 'short');
+  assert.equal(s.walls[0]!.price, 195);
+  assert.ok(Math.abs(s.walls[0]!.ratio - 110 / 130) < 1e-12);
+  assert.equal(spearman([1, 2, 3], [5, 5, 5]), null, 'a list that does not vary has no correlation');
+  assert.ok(Math.abs(spearman([1, 2, 2, 3], [10, 20, 20, 30])! - 1) < 1e-12, 'ties share their rank');
 });

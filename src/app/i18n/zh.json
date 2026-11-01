@@ -2022,5 +2022,21 @@
  "Within ±{pct} of {price}": "{price} 上下 ±{pct} 以内",
  "Same distance, other side": "另一侧同样距离",
  "Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.": "深度、OI、Delta、L/S 和统计各会在地图下方的栏中增加一个标签页。",
- "BTC · Hyperliquid": "BTC · Hyperliquid"
+ "BTC · Hyperliquid": "BTC · Hyperliquid",
+ "Book against liquidations": "订单簿对强平",
+ "Below the price": "价格下方",
+ "Above the price": "价格上方",
+ "Bids cover the longs {ratio}": "买盘覆盖多头 {ratio}",
+ "Longs exceed the bids {ratio}": "多头超过买盘 {ratio}",
+ "Asks cover the shorts {ratio}": "卖盘覆盖空头 {ratio}",
+ "Shorts exceed the asks {ratio}": "空头超过卖盘 {ratio}",
+ "on screen {value}": "整个屏幕 {value}",
+ "Rank correlation, level size with book size": "秩相关：价位大小与订单簿厚度",
+ "too few levels": "价位太少",
+ "{rho} over {n} levels": "{n} 个价位上 {rho}",
+ "At the largest liquidation levels": "最大的强平价位处",
+ "book {ratio} its neighbours": "订单簿是相邻的 {ratio}",
+ "Liquidations are Hyperliquid's alone, the book every enabled venue's; the positions are about 40 minutes old, the book is now.": "强平只来自 Hyperliquid，订单簿来自所有启用的交易所；头寸约 40 分钟前，订单簿是现在的。",
+ "Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.": "指向强平栏与分布栏之间的线，可以比较订单簿与强平：每一侧挂着的量与会被强平的量、价位大小与订单簿厚度的排序有多一致，以及在最大的价位处订单簿是一堵墙还是变薄成空档。",
+ "On screen": "整个屏幕"
 }
