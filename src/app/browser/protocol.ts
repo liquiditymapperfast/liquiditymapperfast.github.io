@@ -43,7 +43,7 @@ export type FeedsIn =
    * Start the engine on this coin with these venues (null: the recommended set); `persist` keeps recordings in this browser (IndexedDB),
    * in `database`, with `lock` held by the one tab that writes them.
    */
-  | { type: 'init'; selected: string[] | null; known: string[] | null; persist: boolean; coin: Coin; tier: number; database: string; lock: string }
+  | { type: 'init'; selected: string[] | null; known: string[] | null; persist: boolean; coin: Coin; tier: number; database: string; lock: string; history: string }
   | { type: 'select'; selected: string[] }
   /** The page is going away: write what has not been saved. */
   | { type: 'flush' }

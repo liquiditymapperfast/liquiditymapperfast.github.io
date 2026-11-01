@@ -95,6 +95,11 @@ const own = <A extends Int32Array | Float32Array>(array: A): A => array.byteLeng
 
 export interface Recordings {
   columns: ColumnStore; footprint: FootprintStore; prints: PrintStore; flow: FlowStore; absorption: AbsorptionStore; coverage: CoverageStore; liquidations: LiquidationStore; oi: OiStore;
+  /**
+   * Adds minutes recorded elsewhere (the recorded history, app/browser/history-import.ts) before the recorders start: each joins what `load`
+   * hands them, in place of a thinner copy of the same minute, and is stored as this tab's own recordings are. Returns how many it took.
+   */
+  importColumns(columns: readonly { inst: string; step: number; column: Column }[]): number;
   /** Apply what is queued now instead of at the next half second. */
   flush(): Promise<void>;
   close(): void;
@@ -306,8 +311,24 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     save: (rows, expireBefore) => enqueue(tx => { const store = tx.objectStore('oi'); for (const row of rows) store.put({ ...row } satisfies OiRow); prune(tx, 'oi', expireBefore); }),
     close: () => {},
   };
+  // Minutes recorded elsewhere join the rows `load` hands the recorder (a thinner copy of the same minute is replaced) and are stored like
+  // the recorder's own (by the tab that writes; another tab shows them and stores nothing, as it does with what it records).
+  const importColumns = (incoming: readonly { inst: string; step: number; column: Column }[]): number => {
+    const at = new Map<string, number>();
+    columnRows.forEach((row, i) => at.set(`${row.inst}|${row.t}`, i));
+    let taken = 0;
+    for (const { inst, step, column } of incoming) {
+      const key = `${inst}|${column.t}`, i = at.get(key), kept = i === undefined ? undefined : columnRows[i];
+      const row = { inst, t: column.t, step, n: column.n, bins: own(column.bins), bid: own(column.bid), ask: own(column.ask), ...(column.lt && (column.ltN ?? 0) > 0 ? { lt: own(column.lt), ltN: column.ltN! } : {}) } satisfies ColumnRow;
+      if (kept && (kept.step !== step || !fullerColumn(kept, row) || kept.n === row.n)) continue;
+      if (i === undefined) { at.set(key, columnRows.length); columnRows.push(row); } else columnRows[i] = row;
+      columns.save(inst, column, step);
+      taken++;
+    }
+    return taken;
+  };
   return {
-    columns, footprint, prints, flow, absorption, coverage, liquidations, oi,
+    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns,
     flush() { if (timer) clearTimeout(timer); return write(); },
     close() { if (timer) clearTimeout(timer); void write().finally(() => { closed = true; db.close(); }); },
   };

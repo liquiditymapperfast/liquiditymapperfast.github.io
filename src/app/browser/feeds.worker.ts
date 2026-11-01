@@ -6,6 +6,7 @@ import type { Print } from '../../shared/prints.ts';
 import { openRecordings, type Recordings } from './idb.ts';
 import type { FeedsIn, FeedsOut, RpcCall } from './protocol.ts';
 import { frameOf } from './levels-frame.ts';
+import { heldOf, importHistory } from './history-import.ts';
 
 /**
  * The data engine on its own thread: exchange sockets, book valuation, recording and the history requests all run here, and the page
@@ -47,7 +48,7 @@ function stopRecording(): void {
   post({ type: 'recording', recording: false, failed: true });
 }
 
-async function init(selected: string[] | null, known: string[] | null, persist: boolean, coin: Coin, tier: number, database: string, lock: string): Promise<void> {
+async function init(selected: string[] | null, known: string[] | null, persist: boolean, coin: Coin, tier: number, database: string, lock: string, history: string): Promise<void> {
   if (persist && typeof indexedDB !== 'undefined') {
     // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
     let failing = false;
@@ -64,6 +65,13 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
       // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
       void navigator.storage?.persist?.().catch(() => false);
       claimRecorder(lock);
+      // The recorded history (app/history-url.ts): the minutes of the day before this visit, read before the engine starts so it starts with them.
+      if (history) {
+        const kept = recordings, now = Date.now(), since = now - BROWSER_RETENTION_MS;
+        const done = await importHistory({ url: history, held: heldOf(kept.columns.load(since)), add: columns => kept.importColumns(columns), since, now });
+        if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
+        if (done.columns) console.info(`recorded history: ${done.columns} map minutes from ${done.hours} hours`);
+      }
     }
   }
   const venues = browserVenues(coin);
@@ -116,7 +124,7 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
 scope.onmessage = event => {
   const message = event.data;
   if (message.type === 'visible') { setPageShown(message.shown); return; }
-  if (message.type === 'init') { init(message.selected, message.known, message.persist, message.coin, message.tier, message.database, message.lock).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
+  if (message.type === 'init') { init(message.selected, message.known, message.persist, message.coin, message.tier, message.database, message.lock, message.history).catch(error => post({ type: 'failed', error: error instanceof Error ? error.message : String(error) })); return; }
   if (!engine) { if (message.type === 'rpc') post({ type: 'rpc', id: message.id, error: 'the engine has not started' }); return; }
   if (message.type === 'select') engine.select(message.selected);
   else if (message.type === 'flush') { engine.flush(); void recordings?.flush(); }
