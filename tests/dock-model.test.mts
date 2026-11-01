@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_BOTH_SHARE, MAX_COLUMN_SHARE, MIN_COLUMN_W, columnState, defaultPlan, fitColumns, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, readPlan, samePlan, swapSides, type DockPlan } from '../src/app/layouts/dock-model.ts';
+import { MAX_BOTH_SHARE, MAX_COLUMN_SHARE, MIN_COLUMN_W, WEIGHT_LIMITS, columnState, defaultPlan, fitColumns, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, readPlan, samePlan, splitWeights, swapSides, type DockPlan } from '../src/app/layouts/dock-model.ts';
 import { readArrangement } from '../src/app/layouts/layouts.ts';
 
 const plan = (patch: Partial<DockPlan> = {}): DockPlan => ({ ...defaultPlan(), ...patch });
@@ -89,12 +89,17 @@ test('the columns never take more of the window than the map can spare, and neve
   // One column cut to its minimum must not leave the pair over the room (a width of 4,000 px kept beside one of 150 gave a map of a quarter of the window).
   assert.deepEqual(fitColumns(4000, 150, 1500, 200, 260), [670, 260]);
   assert.deepEqual(fitColumns(100, 5000, 1280, 200, 260), [200, 593]);
+  // A pair that fits only until each is raised to what its panes need (review 2026-10-31, round 2: 150 + 480 passed unchanged, then 200 + 480 = 680 in 634.88).
+  assert.deepEqual(fitColumns(150, 480, 1024, 200, 260), [200, 434]);
+  assert.deepEqual(laidOutWidths([150, 480], [200, 260], [true, true], 1024), [200, 434]);
+  assert.deepEqual(fitColumns(480, 150, 1024, 200, 260), [374, 260], 'and the other way');
+  assert.deepEqual(fitColumns(100, 100, 1500, 200, 260), [200, 260], 'room enough: raised to the minimums');
   let seed = 7;
   const next = (): number => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
   for (let i = 0; i < 2000; i++) {
     const w = 500 + Math.floor(next() * 3500), a = 100 + Math.floor(next() * 4000), b2 = 100 + Math.floor(next() * 4000), minA = 200, minB = 260;
-    const [x, y] = fitColumns(a, b2, w, minA, minB), room = w * MAX_BOTH_SHARE;
-    if (a + b2 <= room) assert.deepEqual([x, y], [a, b2], 'as asked when there is room (laidOutWidths applies the minimums then)');
+    const [x, y] = fitColumns(a, b2, w, minA, minB), room = w * MAX_BOTH_SHARE, wa = Math.max(a, minA), wb = Math.max(b2, minB);
+    if (wa + wb <= room) assert.deepEqual([x, y], [wa, wb], 'as asked, and no less than each one needs, when there is room');
     else {
       assert.ok(x >= minA && y >= minB, `minimums: ${w} ${a} ${b2} -> ${x} ${y}`);
       assert.ok(x + y <= Math.max(room, minA + minB) + 1, `over the room: ${w} ${a} ${b2} -> ${x} ${y}`);
@@ -106,6 +111,21 @@ test('the columns never take more of the window than the map can spare, and neve
   assert.equal(minWidthOf(['book']), MIN_COLUMN_W.book);
   assert.equal(minWidthOf(['cvd', 'book']), MIN_COLUMN_W.book, 'the widest need of the panes in it');
   assert.equal(minWidthOf([]), MIN_COLUMN_W.cvd);
+});
+
+test('a split of two stacked panes is weights that add up to 2 and are read back as they were written (review 2026-10-31, round 2)', () => {
+  assert.deepEqual(splitWeights(0.5), [1, 1]);
+  assert.deepEqual(splitWeights(0.75), [1.5, 0.5]);
+  assert.deepEqual(splitWeights(0), [WEIGHT_LIMITS.min, 2], 'a share of nothing keeps the least weight');
+  assert.deepEqual(splitWeights(Number.NaN), [1, 1], 'a share that is not one is an even split');
+  for (let i = 0; i <= 1000; i++) {
+    const share = i / 1000, [a, b] = splitWeights(share);
+    assert.ok(a >= WEIGHT_LIMITS.min && a <= WEIGHT_LIMITS.max && b >= WEIGHT_LIMITS.min && b <= WEIGHT_LIMITS.max, `${share}: ${a} ${b}`);
+    // What a layout file would read back: the same weights (an imported pair of 10 and 10 dragged to 15 and 5 came back as 10 and 5).
+    const read = readPlan({ left: ['cvd', 'book'], right: [], leftW: null, rightW: null, weights: { cvd: a, book: b } })!;
+    assert.deepEqual([read.weights.cvd, read.weights.book], [a, b], `${share}`);
+    if (share >= 0.06 && share <= 0.94) assert.ok(Math.abs(a / (a + b) - share) < 0.001, `${share}: the share is kept`);
+  }
 });
 
 test('two plans are the same when the panes are in the same places and the sizes are near', () => {

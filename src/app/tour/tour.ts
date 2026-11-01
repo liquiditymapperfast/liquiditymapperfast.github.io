@@ -144,9 +144,10 @@ function begin(restore: () => void): void {
   function end(how: 'done' | 'left'): void {
     if (over) return;
     dispose(); state = 'idle'; restore();
-    // The focus goes back to what started the tour; where that is gone (the invitation, the Settings sheet) the Tour button takes it, not the top of the page.
+    // The focus goes back to what started the tour; where that is gone (the invitation, the Settings sheet) the Tour button takes it, or Settings where the Tour
+    // button lives in the sheet (a compact bar), not the top of the page.
     const held = document.activeElement;
-    if (!held || held === document.body) document.querySelector<HTMLElement>('.tour-btn')?.focus({ preventScroll: true });
+    if (!held || held === document.body) [...document.querySelectorAll<HTMLElement>('.tour-btn, .more-btn')].find(node => node.getClientRects().length > 0)?.focus({ preventScroll: true });
     record(how === 'done' ? 'done' : 'dismissed');
   }
 

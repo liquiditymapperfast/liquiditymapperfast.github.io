@@ -148,7 +148,7 @@ async function main(): Promise<void> {
   // What the person does to the layout (layouts/actions.ts): the layouts panel, a pane's close button and the edge tab of a closed side pane (the Panels row in the top bar flips the same switches).
   const layouts = new LayoutActions(store, {
     arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults(), swapSides: () => arrange.swapSides(),
-    env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200), held: store.state.show.script ? ['script' as const] : [] }),
+    env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200), held: scriptRows(store.state) ? ['script' as const] : [] }),
   });
   arrange.onClose = id => layouts.hide(id, arrange.title(id)); arrange.onOpen = id => layouts.setPane(id, true);
   toolbar.layouts = layouts;

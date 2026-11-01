@@ -39,6 +39,15 @@ export const clonePlan = (p: DockPlan): DockPlan => ({ left: [...p.left], right:
 
 export const WIDTH_LIMITS = { min: 150, max: 4_000 } as const;
 export const WEIGHT_LIMITS = { min: 0.1, max: 10 } as const;
+/**
+ * The weights of two panes stacked in a column for a split that gives the first the share `share` (0 to 1) of its height: the pair always adds up to 2, what
+ * 1 and 1 do, so that the page lays out what a file or storage reads back (`readPlan` holds a weight within `WEIGHT_LIMITS`; a pair that kept the sum of what
+ * an imported plan had, 10 and 10, was dragged to 15 and 5 and read back as 10 and 5).
+ */
+export function splitWeights(share: number): [number, number] {
+  const s = Number.isFinite(share) ? Math.max(0, Math.min(1, share)) : 0.5, { min, max } = WEIGHT_LIMITS, round = (w: number): number => Math.round(w * 1000) / 1000;
+  return [Math.max(min, Math.min(max, round(2 * s))), Math.max(min, Math.min(max, round(2 * (1 - s))))];
+}
 
 /** A column's width from storage or a file, or null (follows the window). */
 function readWidth(v: unknown): number | null {
@@ -131,11 +140,12 @@ export function maxColumnWidth(windowW: number, otherW: number, min: number): nu
 }
 
 /**
- * Two column widths that fit a window: as wanted while together they leave the map its share, else both taken down in proportion, neither
- * under its own minimum. A layout from a wider screen would otherwise squeeze the map to nothing.
+ * Two column widths that fit a window: as wanted (and no less than each one's panes need) while together they leave the map its share, else both
+ * taken down in proportion, neither under its own minimum. A layout from a wider screen would otherwise squeeze the map to nothing. The minimums come
+ * first: a pair that fits only until each is raised to what its panes need (150 and 480 px in a window of 1,024 px) is over the room.
  */
-export function fitColumns(left: number, right: number, windowW: number, minLeft: number, minRight: number): [number, number] {
-  const room = windowW * MAX_BOTH_SHARE, total = left + right;
+export function fitColumns(wantLeft: number, wantRight: number, windowW: number, minLeft: number, minRight: number): [number, number] {
+  const room = windowW * MAX_BOTH_SHARE, left = Math.max(wantLeft, minLeft), right = Math.max(wantRight, minRight), total = left + right;
   if (total <= room || total <= 0) return [left, right];
   const f = room / total;
   let l = Math.max(minLeft, Math.floor(left * f)), r = Math.max(minRight, Math.floor(right * f));

@@ -4,7 +4,7 @@ import { openMenu, type MenuItem } from './menu.ts';
 import { isPhone } from './device.ts';
 import { t } from './i18n.ts';
 import { arrangeOrder, defaultColumns, fitHeights, type PaneArrangement } from './layouts/layouts.ts';
-import { SIDES, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
+import { SIDES, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, splitWeights, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
 import { dropTarget, type Box, type DropScene, type DropTarget } from './layouts/dock-drop.ts';
 
 /**
@@ -195,12 +195,14 @@ export class Layout {
     if (kept) return kept;
     const bar = el('div', { class: 'splitter h', tip: t('Drag to resize') });
     const a = this.#sidePanes.get(above)!.root, b = this.#sidePanes.get(below)!.root;
-    let ah = 0, bh = 0, total = 1;
-    this.#drag(bar, null, () => { ah = a.getBoundingClientRect().height; bh = b.getBoundingClientRect().height; total = ((this.#plan.weights[above] ?? 1) + (this.#plan.weights[below] ?? 1)); }, () => this.#persist(), dy => {
-      const min = 90, span = ah + bh, na = Math.max(min, Math.min(span - min, ah + dy));
-      const wa = total * na / span;
-      this.#plan.weights[above] = Math.round(wa * 1000) / 1000; this.#plan.weights[below] = Math.round((total - wa) * 1000) / 1000;
-      a.style.flex = `${this.#plan.weights[above]} 1 0px`; b.style.flex = `${this.#plan.weights[below]} 1 0px`;
+    let ah = 0, bh = 0;
+    this.#drag(bar, null, () => { ah = a.getBoundingClientRect().height; bh = b.getBoundingClientRect().height; }, () => this.#persist(), dy => {
+      const min = 90, span = ah + bh;
+      if (!(span > 0)) return;
+      // The pair's weights add up to 2 whatever they were (an imported plan may hold 10 and 10, which a drag would take past the limit a file is read back at).
+      const [wa, wb] = splitWeights(Math.max(min, Math.min(span - min, ah + dy)) / span);
+      this.#plan.weights[above] = wa; this.#plan.weights[below] = wb;
+      a.style.flex = `${wa} 1 0px`; b.style.flex = `${wb} 1 0px`;
     });
     bar.addEventListener('dblclick', () => { delete this.#plan.weights[above]; delete this.#plan.weights[below]; this.#renderSides(); this.#persist(); });
     this.#stackBars.set(key, bar);
@@ -410,7 +412,8 @@ export class Layout {
     const heights = { ...this.#saved.heights };
     for (const pane of panes) {
       if (pane.height === undefined) continue;
-      delete heights[pane.id]; this.#setHeight(pane, pane.height);
+      // Kept as that height, not left out: a window too short for it shows the pane smaller (`#fit`), and what is kept is what a taller window gives back.
+      heights[pane.id] = pane.height; this.#setHeight(pane, pane.height);
     }
     this.#saved = { ...this.#saved, heights };
     this.#fit(); this.#persist();
