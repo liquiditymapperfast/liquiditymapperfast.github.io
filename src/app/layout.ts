@@ -346,9 +346,11 @@ export class Layout {
   /**
    * What a pane carries to be moved and closed: a handle to drag it by (its place is the page's to change: either side of the map for a side
    * pane, between the panes under the map for the others), a menu of the same moves for a keyboard and a touch screen (also on a right click),
-   * and a close button, which hides the pane (the page's switch for it; a side pane's edge tab brings it back). A side pane gets a title bar of its
-   * own above its header, which is crowded to the last pixel at the narrowest a column is made (and then shows no title of its own); a pane under
-   * the map carries them at the end of its header, which has the room, and is a handle all over where it holds no control.
+   * and a close button, which hides the pane (the page's switch for it; a side pane's edge tab brings it back). They sit in the pane's own header,
+   * which is a handle all over where it holds no control: a pane under the map carries them at the end of it; a side pane, whose column can be
+   * made as narrow as 200 px, keeps them on the first line behind its name (`.side-head` in styles.css) and lets its first controls join that
+   * line where the column is wide. A title bar of its own above that header (Karl, 2026-11-01: "double header rows") left the header's first line
+   * holding only the "?" and the settings key: three rows where two or one do.
    */
   #mover(m: Mover): void {
     this.#movers.set(m.id, m);
@@ -356,14 +358,16 @@ export class Layout {
     const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: t('Hide this panel'), ariaLabel: t('Hide this panel'), onclick: () => this.onClose(m.id) });
     close.dataset.pane = m.id;
     const tools = el('div', { class: 'pane-tools' }, more, ...(m.closable ? [close] : []));
-    let handle = m.head;
+    const handle = m.head;
+    handle.prepend(el('span', { class: 'grip', tip: t('Drag to move this pane') }));
     if (m.kind === 'side') {
-      // The header's own title keeps its tooltip (what the pane is) in the bar.
-      const bar = handle = el('div', { class: 'pane-head pane-bar' }, el('span', { class: 'grip', ariaHidden: 'true' }), el('strong', { textContent: m.title(), tip: m.head.querySelector('strong')?.dataset.tip ?? '' }), tools);
-      m.root.prepend(bar); m.root.classList.add('has-bar');
+      // Behind the name, where the CSS puts them on the first line; the break after them ends that line where the pane's controls do not join it.
+      handle.classList.add('side-head');
+      const name = handle.querySelector(':scope > strong');
+      const rest = [tools, el('span', { class: 'side-break', ariaHidden: 'true' })];
+      if (name) name.after(...rest); else handle.append(...rest);
     } else {
-      m.head.prepend(el('span', { class: 'grip', tip: t('Drag to move this pane') }));
-      m.head.classList.add('has-tools'); m.head.append(tools);
+      handle.classList.add('has-tools'); handle.append(tools);
     }
     handle.addEventListener('pointerdown', e => { if (!(e.target instanceof Element) || e.target.closest('button, select, input, textarea, a, label, canvas')) return; this.#startDrag(m, e); });
     handle.addEventListener('contextmenu', e => {
