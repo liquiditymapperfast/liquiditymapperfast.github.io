@@ -93,3 +93,17 @@ test('the address: none unless configured, a local stand-in or off from the page
   assert.equal(historyUrl('BTC', '?history=off'), '');
   assert.equal(historyUrl('ETH', '?history=http://127.0.0.1:8791/v1/btc'), '');
 });
+
+test('a manifest with times that are not hours, or far out, reads nothing it should not, and stops at the retention (Sol)', () => {
+  const steps = { a: 20 }, since = HOUR - 3 * HOUR_MS, now = HOUR + 5 * 60_000;
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'BTC', first: HOUR - 10 * HOUR_MS, last: 1e30, open: null, steps }, heldOf([]), since, now).map(h => (h - HOUR) / HOUR_MS), [], 'a last that is not an hour start counts as none');
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'BTC', first: 0, last: HOUR + 1000 * HOUR_MS, open: HOUR + 1000 * HOUR_MS, steps }, heldOf([]), since, now).map(h => (h - HOUR) / HOUR_MS), [-3, -2, -1, 0], 'nothing past now');
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'BTC', first: HOUR - 2 * HOUR_MS, last: HOUR - 2 * HOUR_MS, open: HOUR, steps }, heldOf([]), since, now).map(h => (h - HOUR) / HOUR_MS), [-2, -1, 0], 'a closed hour not sealed yet lies between the last sealed and the open one');
+});
+
+test('coverage is judged book by book: ten full books and one half-held still read the hour (Sol)', () => {
+  const books = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`b${i}`, 20]));
+  const rows: { instrumentId: string; step: number; column: { t: number; n: number } }[] = [];
+  for (let i = 0; i < 11; i++) for (let m = 0; m < (i === 10 ? 30 : 60); m++) rows.push({ instrumentId: `b${i}`, step: 20, column: { t: HOUR - HOUR_MS + m * 60_000, n: 12 } });
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'BTC', first: HOUR - HOUR_MS, last: HOUR - HOUR_MS, open: null, steps: books }, heldOf(rows), HOUR - HOUR_MS, HOUR + 60_000), [HOUR - HOUR_MS]);
+});

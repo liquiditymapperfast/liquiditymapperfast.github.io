@@ -86,16 +86,24 @@ export function planImport(held: Held, incoming: readonly HistoryColumn[], since
 export function hoursToRead(latest: HistoryLatest, held: Held, since: number, now: number): number[] {
   const out: number[] = [], books = Object.keys(latest.steps);
   if (!books.length) return out;
-  const from = Math.floor(since / HOUR_MS) * HOUR_MS;
+  /** An hour start the service could have: a whole number on an hour boundary (anything else in its answer is not read). */
+  const hourOrNull = (v: unknown): number | null => typeof v === 'number' && Number.isSafeInteger(v) && v % HOUR_MS === 0 ? v : null;
+  const first = hourOrNull(latest.first), last = hourOrNull(latest.last), open = hourOrNull(latest.open);
+  // Every hour from the first the service has (or the retention's) to the open one, never more than the retention: closed hours the
+  // service has not sealed yet lie between its last sealed hour and the open one, and it answers them too.
+  const from = Math.max(Math.floor(since / HOUR_MS) * HOUR_MS, first ?? -Infinity), to = Math.min(Math.floor(now / HOUR_MS) * HOUR_MS, Math.max(last ?? -Infinity, open ?? -Infinity));
+  // Each book on its own: one book holding half the hour is a reason to read it, whatever the others hold.
   const wanted = (hour: number): boolean => {
-    const minutes = Math.max(0, Math.min(60, Math.floor((Math.min(now, hour + HOUR_MS) - Math.max(hour, since)) / COLUMN_MS)));
+    const start = Math.ceil(Math.max(hour, since) / COLUMN_MS) * COLUMN_MS, end = Math.min(now, hour + HOUR_MS);
+    const minutes = Math.max(0, Math.floor((end - start) / COLUMN_MS));
     if (!minutes) return false;
-    let have = 0;
-    for (const inst of books) for (let t = Math.ceil(Math.max(hour, since) / COLUMN_MS) * COLUMN_MS; t < Math.min(now, hour + HOUR_MS); t += COLUMN_MS) if ((held.samples.get(`${inst}|${t}`) ?? 0) >= HELD_SAMPLES) have++;
-    return have < COVERED * minutes * books.length;
+    return books.some(inst => {
+      let have = 0;
+      for (let t = start; t < end; t += COLUMN_MS) if ((held.samples.get(`${inst}|${t}`) ?? 0) >= HELD_SAMPLES) have++;
+      return have < COVERED * minutes;
+    });
   };
-  if (latest.first !== null && latest.last !== null) for (let h = Math.max(from, latest.first); h <= latest.last; h += HOUR_MS) if (wanted(h)) out.push(h);
-  if (latest.open !== null && latest.open >= from && !out.includes(latest.open) && wanted(latest.open)) out.push(latest.open);
+  if (Number.isFinite(from) && Number.isFinite(to)) for (let h = from; h <= to && out.length <= 25; h += HOUR_MS) if (wanted(h)) out.push(h);
   return out;
 }
 
