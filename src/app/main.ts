@@ -22,6 +22,8 @@ import { HeatPane, gutter, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
+import { LiqPane } from './panes/liq-pane.ts';
+import { liqLevelsUrl } from './liq-url.ts';
 import { DeltaPane } from './panes/delta-pane.ts';
 import { LsPane } from './panes/ls-pane.ts';
 import { ScriptPane } from './panes/script-pane.ts';
@@ -116,7 +118,7 @@ async function main(): Promise<void> {
   const script = new ScriptPane(chart, store, heat.view, hub);
   // The scripts placed on the map draw over it, and a script's candle colours (`$price.color`) colour its candles.
   heat.scriptLayer = (ctx, pw, ph) => script.paintOnMap(ctx, pw, ph); heat.candleColor = t => script.candleColorAt(t); script.onMapChanged = () => heat.invalidate();
-  heat.scriptHover = t => script.mapHoverLines(t); heat.scriptMarkAt = (x, y, touch) => script.mapMarkAt(x, y, touch);
+  heat.scriptHover = (t, y, touch) => script.mapHoverLines(t, y, touch); heat.scriptMarkAt = (x, y, touch) => script.mapMarkAt(x, y, touch);
   // The map's legend lists the scripts drawn on it, each with its buttons (open, switch off) in a layer over the map.
   heat.scriptLegend = (t, valued) => script.mapLegend(t, valued); heat.onScriptLegend = places => script.placeLegendTools(places); heat.root.append(script.legendTools);
   // The Scripts lamp and key in the top bar: the key opens the panel (from the pane's own button too), the lamp says what the scripts do.
@@ -131,6 +133,8 @@ async function main(): Promise<void> {
   const cvd = new CvdPane(flowCol, store, hub, heat.view);
   // The phone's Candle view: a tab of its own that fills the area (panes/candle-pane.ts); it counts the markets the map's footprint counts.
   const candle = new CandlePane(main, store, hub, kernels, s => heat.footprintMarkets(s));
+  // The phone's Liq tab: the liquidation ladder, next to the Book (panes/liq-pane.ts).
+  const liq = new LiqPane(main, store, hub);
   toolbar.tapeFields = () => candle.settingsFields();
   const arrange = new Layout(main, chart, { left: flowCol, right: side }, [
     { id: 'heat', root: heat.root, min: 240 },
@@ -221,6 +225,7 @@ async function main(): Promise<void> {
   // The trade dust: asked for while the bubbles and their Live trades switch are both on; arrivals redraw the dust alone.
   // The Candle view's trail reads the same orders, so they are asked for while it is shown whatever the bubbles' switches say.
   const candleShown = (): boolean => dock.tab === 'candle' && isPhone();
+  const liqShown = (): boolean => dock.tab === 'liq' && isPhone();
   // The Flow tab fills the area as the Tape does, and the Book held upright: the map is covered under them (what the Flow draws ends now, whatever the map's window is).
   const mapCovered = (): boolean => isPhone() && fillsArea(dock.tab, axisOf(layoutMode()));
   // The glass around the chart (glass/ui-glass.ts): lit by the large orders where the map shows them.
@@ -236,7 +241,7 @@ async function main(): Promise<void> {
   const tapeWanted = (): boolean => (store.state.show.bubbles && store.state.tradeBubbles.live) || candleShown() || store.state.material === 'glass' || isPhone() || (store.state.show.book && store.state.ladderCues.look !== 'off');
   // The map is covered while a view that fills the area shows, and the book while any tab but its own does (the Tape draws its own): they draw nothing then, and catch up when they show again.
   const coverPanes = (): void => { heat.setSuspended(mapCovered()); ladder.setSuspended(isPhone() && dock.tab !== 'book'); };
-  dock.onChange = () => { candle.setShown(candleShown()); coverPanes(); hub.setTape(tapeWanted()); };
+  dock.onChange = () => { candle.setShown(candleShown()); liq.setShown(liqShown()); coverPanes(); hub.setTape(tapeWanted()); };
   hub.setTape(tapeWanted());
   hub.onTape = () => { heat.tapeArrived(); candle.tapeArrived(); glass.tapeArrived(); ladder.tapeArrived(); };
   applyMaterial();
@@ -246,6 +251,7 @@ async function main(): Promise<void> {
   // Candles that came after the first frame (an exchange blocked here, the reference market read once known) are framed, unless the map was moved.
   hub.onSeriesRefilled = () => { if (store.state.followLive) heat.fit(); lower(); };
   toolbar.keyHistory = hub.keyHistory;
+  toolbar.liqSource = hub.liqLevels;
   toolbar.profileHistory = barMs => hub.profileHistory(barMs);
   toolbar.whaleInfo = () => ({ since: hub.whale?.since ?? null, state: hub.whaleState, browser: source.kind === 'browser' });
   // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
@@ -254,7 +260,7 @@ async function main(): Promise<void> {
   hub.onAbsorptionChanged = () => { heat.invalidate(); range.refreshHeld(); };
   toolbar.absorptionInfo = () => heat.absorptionThresholdText();
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
-  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; glass.setPalette(applyTheme(name)); for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle]) p.setPalette(name); toolbar.previewTheme(name); };
+  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; glass.setPalette(applyTheme(name)); for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle, liq]) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
   // An address like #guide/mirror opens the guide there.
@@ -286,7 +292,7 @@ async function main(): Promise<void> {
   });
 
   // The profile column and axis are narrower on a phone; everything that aligns to them has to redraw when that changes.
-  onLayoutMode(() => { layout(); heat.invalidate(); lower(); drawBar.sync(); toolbar.sync(store.state, heat.window); candle.setShown(candleShown()); coverPanes(); hub.setTape(tapeWanted()); });
+  onLayoutMode(() => { layout(); heat.invalidate(); lower(); drawBar.sync(); toolbar.sync(store.state, heat.window); candle.setShown(candleShown()); liq.setShown(liqShown()); coverPanes(); hub.setTape(tapeWanted()); });
   // The columns beside the map: what the corner buttons and the replay bar keep clear of (the map's own pane sets them each frame too).
   const gutters = () => {
     const s = store.state;
@@ -301,7 +307,8 @@ async function main(): Promise<void> {
     arrange.rebuild();
     if (s.show.cvd) cvd.invalidate(); if (s.show.book) ladder.invalidate();
     // The Scripts tab, like its pane, is there only for scripts drawn in rows: those on the map need neither.
-    dock.sync({ ...s.show, script: scriptRows(s) });
+    // The Liq tab is there while Liquidation levels are on and have an address to be read from.
+    dock.sync({ ...s.show, script: scriptRows(s), liq: s.liqLevels.on && !!liqLevelsUrl() });
   };
   script.onRowsChanged = () => layout();
 
@@ -311,11 +318,12 @@ async function main(): Promise<void> {
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
     // Every time on the page is written from the one setting: say it changed, and have what shows times draw again.
     if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }
-    if (changed.has('theme')) { glass.setPalette(applyTheme(state.theme)); for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle]) p.setPalette(state.theme); }
+    if (changed.has('theme')) { glass.setPalette(applyTheme(state.theme)); for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle, liq]) p.setPalette(state.theme); }
     if (changed.has('material')) { applyMaterial(); hub.setTape(tapeWanted()); }
     if (changed.has('cvd')) cvd.settingsChanged();
     if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
-    if (changed.has('show')) layout(); else if (changed.has('traded')) gutters();
+    if (changed.has('show') || changed.has('liqLevels')) layout(); else if (changed.has('traded')) gutters();
+    if (changed.has('mark') || changed.has('liqLevels')) liq.invalidate();
     if (changed.has('marketId') || changed.has('timeframe')) {
       // A series kept from before is framed the moment it is shown; one read afresh when it comes (framing it again then would undo a pan made meanwhile).
       let framed = false;
@@ -373,7 +381,7 @@ async function main(): Promise<void> {
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'chartType'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
-  for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle]) p.setPalette(store.state.theme);
+  for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle, liq]) p.setPalette(store.state.theme);
   layout(); ladder.syncControls(); lt.refresh();
   layouts.seedDefault();
   arrange.setPaneHeight('bars', tableHeight(store.state.barStats, store.state.barStatOptions));
@@ -384,7 +392,7 @@ async function main(): Promise<void> {
   await hub.loadSeries();
   heat.fit(); lower();
   // A tab saved from the last visit is already showing: what it covers draws nothing from the start, not from the first tap (the dock only tells of a change).
-  candle.setShown(candleShown()); coverPanes();
+  candle.setShown(candleShown()); liq.setShown(liqShown()); coverPanes();
   // A reload that fails is said (the series on screen stays); the next minute asks again.
   window.setInterval(() => { hub.loadSeries(true).catch((error: unknown) => console.warn('The candles could not be read again:', error)); }, 60_000);
   // Each new open-interest reading is pushed as it lands (Hub.#oiPush); this load is the reconciliation: history, the markets added

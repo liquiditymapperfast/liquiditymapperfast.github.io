@@ -11,6 +11,7 @@ export const SELECTORS: Readonly<Record<TargetId, readonly string[]>> = {
   time: ['.deck-time'],
   panels: ['.deck-panels'],
   chart: ['.deck-chart'],
+  liqLevels: ['.liq-levels-btn'],
   flow: ['.pane.cvd', '.edge-tab[data-pane="cvd"]'],
   book: ['.pane.ladder', '.edge-tab[data-pane="book"]'],
   layouts: ['.map-layout'],

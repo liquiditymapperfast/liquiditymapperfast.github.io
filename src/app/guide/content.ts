@@ -147,6 +147,15 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
+    id: 'liq-levels', title: 'Liquidation levels',
+    blocks: [
+      { t: 'p', text: '**Liq levels**, in the Chart deck, draws where Hyperliquid\'s open BTC positions would be liquidated: **longs below the price** in the falling colour, **shorts above it** in the rising one, a row for every $10 of price. A darker row holds more dollars; a crisp edge marks the strongest, and a diamond a row where one position holds at least half. The numbers come from HyperTracker\'s snapshots of every open position, about one every half hour.' },
+      { t: 'p', text: 'A snapshot describes the positions about 40 minutes before it can be read. A level that price has traded through since then is gone, whether that happened before you opened the page or while you watch. Positions opened since come with the next snapshot.' },
+      { t: 'p', text: 'They sit as a stripe right of the newest candle, so the heatmap keeps its own colours, and the **liquidation column** beside the profile adds them up: in each row what still stands, and faint behind it everything from the price out to that row, which is what would be liquidated if price got there. Point at the column to compare the longs below with the shorts as far above, as **Mirror** does for the book. A switch in the button\'s settings hides the column.' },
+      { t: 'note', kind: 'warn', text: 'Only Hyperliquid\'s positions are in the snapshots, and only BTC for now. A level is where forced orders *could* start, not a promise: a position can be closed or topped up first, and a trade can reach a level a little before the mark price that liquidates it does.' },
+    ],
+  },
+  {
     id: 'footprint', title: 'The footprint',
     blocks: [
       { t: 'p', text: 'Zoom into the time axis until each candle is wide and the **footprint** appears. At every price inside the candle it shows how much traded **at the bid** (sellers hitting it, the left number) and **at the ask** (buyers lifting it, the right number). Bars show each row\'s volume, coloured where one side was 15% bigger. The heatmap fades as the footprint takes over: both answer the same question at different scales.' },

@@ -1,6 +1,7 @@
 import { t } from './i18n.ts';
 import type { AppState } from './store.ts';
 import type { Side } from './layouts/dock-model.ts';
+import { liqLevelsUrl } from './liq-url.ts';
 
 /**
  * Keyboard shortcuts: one table, matched by one listener (main.ts). A key does nothing while typing in a field, while a dialog is open (the
@@ -9,7 +10,7 @@ import type { Side } from './layouts/dock-model.ts';
  */
 
 /** The features a letter switches on or off, each one the switch of its lamp button. */
-export type Feature = 'footprint' | 'trades' | 'liquidations' | 'absorption' | 'traded' | 'keyLevels' | 'vwap' | 'highlights';
+export type Feature = 'footprint' | 'trades' | 'liquidations' | 'liqLevels' | 'absorption' | 'traded' | 'keyLevels' | 'vwap' | 'highlights';
 export type ShortcutAction =
   | { kind: 'timeframe'; tf: string }
   | { kind: 'recenter' }
@@ -48,6 +49,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   toggle('F', t('Footprint'), 'footprint'),
   toggle('T', t('Trades'), 'trades'),
   toggle('L', t('Liquidations'), 'liquidations'),
+  // Only where the levels file has an address (liq-url.ts); without one the Chart deck has no button for it either.
+  ...(liqLevelsUrl() ? [toggle('Q', t('Liquidation levels'), 'liqLevels')] : []),
   toggle('A', t('Absorption'), 'absorption'),
   toggle('P', t('Volume profile'), 'traded'),
   toggle('K', t('Key levels'), 'keyLevels'),
@@ -91,6 +94,7 @@ export function togglePatch(state: AppState, feature: Feature): Partial<AppState
     case 'trades': return { show: { ...state.show, bubbles: !state.show.bubbles } };
     case 'traded': return { show: { ...state.show, traded: !state.show.traded } };
     case 'liquidations': return { liquidations: { ...state.liquidations, on: !state.liquidations.on } };
+    case 'liqLevels': return { liqLevels: { ...state.liqLevels, on: !state.liqLevels.on } };
     case 'absorption': return { absorption: { ...state.absorption, on: !state.absorption.on } };
     case 'keyLevels': return { keyLevels: { ...state.keyLevels, on: !state.keyLevels.on } };
     case 'vwap': return { vwap: { ...state.vwap, on: !state.vwap.on } };

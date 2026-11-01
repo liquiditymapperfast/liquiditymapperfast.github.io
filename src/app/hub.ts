@@ -25,6 +25,7 @@ import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 import { webGet } from '../shared/history.ts';
 import { KeyLevelHistory } from './keylevels/history.ts';
+import { LiqLevelsSource } from './liq-levels.ts';
 import { TapeRing, tapeCapacity } from './tape/ring.ts';
 import { isPhone } from './device.ts';
 import type { SumRow } from '../shared/print-sums.ts';
@@ -219,6 +220,8 @@ export class Hub {
   readonly liquidations = new LiquidationBook();
   /** The hourly candles the key levels are read from, straight from the exchange (keylevels/history.ts). */
   readonly keyHistory = new KeyLevelHistory(webGet);
+  /** The Liquidation levels layer's file and the candles that take its levels away. */
+  readonly liqLevels = new LiqLevelsSource(webGet);
   readonly #vwapHistories = new Map<number, KeyLevelHistory>();
   readonly #profileHistories = new Map<string, KeyLevelHistory>();
   /**

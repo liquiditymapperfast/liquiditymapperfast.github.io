@@ -49,9 +49,11 @@ export function ratioText(ratio: number): string {
 
 export interface SideNames { above: string; below: string }
 export type MirrorLine = InfoLine;
+/** What the box says where a side holds nothing (the liquidity's words unless given). */
+export interface EmptyWords { none: string; onlyThis: string; onlyOpposite: string }
 
 /** The text printed beside the pointer. */
-export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string): MirrorLine[] {
+export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string, empty?: EmptyWords): MirrorLine[] {
   const thisName = stats.hoveredSide === 'above' ? names.above : names.below, oppName = stats.hoveredSide === 'above' ? names.below : names.above;
   const thisColor = stats.hoveredSide, oppColor = stats.hoveredSide === 'above' ? 'below' : 'above';
   const lines: MirrorLine[] = [];
@@ -59,10 +61,10 @@ export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string
   lines.push({ text: t('±{distance} ({bp} bp) from {mid}', { distance: fmtPrice(stats.distance), bp: stats.distanceBp < 10 ? stats.distanceBp.toFixed(1) : Math.round(stats.distanceBp), mid: fmtPrice(stats.mid) }), color: 'muted' });
   lines.push({ text: t('{side} (this side)  ${value}', { side: thisName, value: usd(stats.hovered) }), color: thisColor });
   lines.push({ text: t('{side} (opposite)  ${value}', { side: oppName, value: usd(stats.opposite) }), color: oppColor });
-  if (stats.dominant === 'none') lines.push({ text: t('No liquidity in this range'), color: 'muted' });
+  if (stats.dominant === 'none') lines.push({ text: empty?.none ?? t('No liquidity in this range'), color: 'muted' });
   else if (stats.dominant === 'balanced') lines.push({ text: t('Balanced'), color: 'text', bold: true });
-  else if (stats.dominant === 'this') lines.push({ text: Number.isFinite(stats.ratio) ? t('This side has {ratio} more', { ratio: ratioText(stats.ratio) }) : t('Only this side has liquidity'), color: thisColor, bold: true });
-  else lines.push({ text: Number.isFinite(stats.ratio) ? t('Opposite side has {ratio} more', { ratio: ratioText(stats.ratio) }) : t('Only the opposite side has liquidity'), color: oppColor, bold: true });
+  else if (stats.dominant === 'this') lines.push({ text: Number.isFinite(stats.ratio) ? t('This side has {ratio} more', { ratio: ratioText(stats.ratio) }) : empty?.onlyThis ?? t('Only this side has liquidity'), color: thisColor, bold: true });
+  else lines.push({ text: Number.isFinite(stats.ratio) ? t('Opposite side has {ratio} more', { ratio: ratioText(stats.ratio) }) : empty?.onlyOpposite ?? t('Only the opposite side has liquidity'), color: oppColor, bold: true });
   if (stats.clipped) lines.push({ text: t('part of the range is outside the data'), color: 'muted' });
   return lines;
 }

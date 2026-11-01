@@ -215,7 +215,6 @@ html[data-layout^="phone"] main[data-tab="depth"] .pane.depth:not([hidden]),
 html[data-layout^="phone"] main[data-tab="oi"] .pane.oi:not([hidden]),
 html[data-layout^="phone"] main[data-tab="delta"] .pane.delta:not([hidden]),
 html[data-layout^="phone"] main[data-tab="ls"] .pane.ls:not([hidden]),
-html[data-layout^="phone"] main[data-tab="lt"] .pane.lt:not([hidden]),
 html[data-layout^="phone"] main[data-tab="stats"] .pane.bars:not([hidden]),
 html[data-layout^="phone"] main[data-tab="script"] .pane.script:not([hidden]) { display: flex; flex: 0 0 var(--dock-size, 40%) !important; min-height: 0 !important; }
 
@@ -254,6 +253,52 @@ html[data-layout="phone"] .dock { padding: 0 0 var(--safe-b); }
 /* The Tape tab (panes/candle-pane.ts) and the Flow tab (panes/cvd-pane.ts) fill the area in place of the map, in either orientation, with
    nothing beside them to resize (`FULL_TABS` in dock.ts). */
 .pane.candle { display: none; }
+
+/* The Liq tab (panes/liq-pane.ts): the liquidation ladder fills the area held upright, as the Book does, and sits beside the map held
+   sideways. Only a phone has it: a desktop draws the levels on the map and in their column. */
+.pane.liq { display: none; }
+html[data-layout="phone"] main[data-tab="liq"] { display: flex; flex-direction: column; }
+html[data-layout="phone"] main[data-tab="liq"] .pane.heat, html[data-layout="phone"] main[data-tab="liq"] > .dock-grip { display: none; }
+html[data-layout="phone"]:has(main[data-tab="liq"]) .toolbar .tb-time { display: none; }
+html[data-layout="phone"] main[data-tab="liq"] > .pane.liq { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; order: 0; }
+html[data-layout="phone-landscape"] main[data-tab="liq"] > .pane.liq { display: flex; flex-direction: column; grid-column: 3; grid-row: 1; flex: none !important; min-height: 0; }
+.pane.liq .liq-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: nowrap; padding: 8px 10px 2px; min-height: 0; }
+.pane.liq .liq-head strong { font-size: 15px; letter-spacing: -.01em; }
+.pane.liq .liq-head .liq-sub { flex: 1 1 auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane.liq .liq-head button.help { align-self: center; }
+.liq-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 4px 12px 8px; }
+.liq-sum[hidden] { display: none; }
+.liq-side { display: flex; flex-direction: column; min-width: 0; }
+.liq-side.short { align-items: flex-end; text-align: right; }
+.liq-side small { font-size: 10.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.liq-usd { font-size: 24px; font-weight: 760; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.liq-usd.long { color: var(--candle-down); }
+.liq-usd.short { color: var(--candle-up); }
+.liq-balance { grid-column: 1 / -1; display: flex; gap: 3px; height: 7px; margin: 5px 0 3px; }
+.liq-balance i { display: block; flex: 1 1 0; min-width: 4px; border-radius: 4px; transition: flex-grow .7s cubic-bezier(.2, .8, .2, 1); }
+.liq-balance .long { background: linear-gradient(90deg, var(--candle-down), color-mix(in srgb, var(--candle-down) 45%, transparent)); box-shadow: 0 0 10px color-mix(in srgb, var(--candle-down) 45%, transparent); }
+.liq-balance .short { background: linear-gradient(90deg, color-mix(in srgb, var(--candle-up) 45%, transparent), var(--candle-up)); box-shadow: 0 0 10px color-mix(in srgb, var(--candle-up) 45%, transparent); }
+.liq-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.liq-ratio { font-weight: 700; white-space: nowrap; }
+.liq-ratio.long { color: var(--candle-down); }
+.liq-ratio.short { color: var(--candle-up); }
+.pane.liq .liq-range { display: flex; margin: 0 10px 8px; }
+.pane.liq .liq-range[hidden] { display: none; }
+.pane.liq .liq-range button { flex: 1 1 0; min-width: 0; min-height: 34px; font-variant-numeric: tabular-nums; }
+.pane.liq .liq-range button.on { background: var(--text); border-color: var(--text); color: var(--panel); font-weight: 650; }
+.liq-body { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; background: var(--bg); }
+.liq-body canvas { position: absolute; left: 0; top: 0; touch-action: none; }
+/* The price's pulse: a ring that swells from the price tag and fades, so the ladder reads as live (none for reduced motion). */
+.liq-pulse { position: absolute; left: 0; top: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--text) 55%, transparent), transparent 70%); }
+.liq-pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--text); animation: liq-pulse 2.4s cubic-bezier(.2, .6, .3, 1) infinite; }
+.liq-pulse[hidden] { display: none; }
+@keyframes liq-pulse { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(3.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .liq-pulse::after { animation: none; opacity: 0; } }
+.liq-foot { padding: 5px 10px 6px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.liq-foot:empty { display: none; }
+/* The Liquidity Tracker keeps no tab on a phone (Liq took its place), so its switch is not offered there. */
+html[data-layout^="phone"] .toggles button[data-pane="lt"] { display: none; }
 html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) { display: flex; flex-direction: column; }
 html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) .pane.heat, html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) > .dock-grip { display: none; }
 /* Neither has a timeframe: the map's timeframes and recentre leave the top bar while one shows. */
@@ -289,7 +334,6 @@ html[data-layout="phone-landscape"] main[data-tab="depth"] .pane.depth:not([hidd
 html[data-layout="phone-landscape"] main[data-tab="oi"] .pane.oi:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="delta"] .pane.delta:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="ls"] .pane.ls:not([hidden]),
-html[data-layout="phone-landscape"] main[data-tab="lt"] .pane.lt:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="stats"] .pane.bars:not([hidden]),
 html[data-layout="phone-landscape"] main[data-tab="script"] .pane.script:not([hidden]) { display: flex; grid-column: 3; grid-row: 1; flex: none !important; }
 html[data-layout="phone-landscape"] .dock { grid-column: 2; grid-row: 2; flex-direction: column; justify-content: flex-start; width: 60px; border-top: 0; border-left: 1px solid var(--line); padding-right: env(safe-area-inset-right); overflow-y: auto; }

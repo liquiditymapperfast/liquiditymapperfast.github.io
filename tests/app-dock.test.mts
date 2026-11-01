@@ -17,13 +17,15 @@ test('the Tape is always among the tabs, so the phone default is never turned ba
 });
 
 test('the tab a phone opens on is the leftmost of the bar (Karl, 2026-10-26), and the bar reads traded, resting, then worked out', () => {
-  const all = { ...DEFAULT_SHOW, cvd: true, book: true, depth: true, oi: true, delta: true, ls: true, lt: true, stats: true, script: false };
-  assert.deepEqual(tabsFor(all), ['candle', 'flow', 'map', 'book', 'lt', 'depth', 'oi', 'delta', 'ls', 'stats']);
+  const all = { ...DEFAULT_SHOW, cvd: true, book: true, depth: true, oi: true, delta: true, ls: true, lt: true, stats: true, script: false, liq: true };
+  assert.deepEqual(tabsFor(all), ['candle', 'flow', 'map', 'book', 'liq', 'depth', 'oi', 'delta', 'ls', 'stats']);
   assert.equal(tabsFor(all)[0], defaultTab('phone'), 'the first tab is the one a phone opens on');
   assert.equal(tabsFor({ ...all, script: true }).at(-1), 'script', 'the Scripts tab comes last, once its pane is switched on');
-  // The panes a phone starts with (Flow, LT and the Book are on, and Scripts with the heat map since 2026-10-27; the rest are one switch
-  // away) give six tabs, the Tape first and Scripts last.
-  assert.deepEqual(tabsFor({ ...DEFAULT_SHOW, cvd: true, book: true, lt: true }), ['candle', 'flow', 'map', 'book', 'lt', 'script']);
+  // The panes a phone starts with (Flow and the Book are on, Liquidation levels with an address, and Scripts with the heat map since
+  // 2026-10-27; the rest are one switch away) give six tabs, the Tape first and Scripts last. The Liquidity Tracker has no tab on a phone:
+  // Liq took its place next to the Book (Karl, 2026-11-01); without an address for the levels there is no Liq tab either.
+  assert.deepEqual(tabsFor({ ...DEFAULT_SHOW, cvd: true, book: true, lt: true, liq: true }), ['candle', 'flow', 'map', 'book', 'liq', 'script']);
+  assert.ok(!tabsFor({ ...DEFAULT_SHOW, lt: true, liq: false }).some(tab => tab === 'liq' || (tab as string) === 'lt'));
   // Every tab is in the bar once.
   assert.equal(new Set(DOCK_TABS.map(tab => tab.id)).size, DOCK_TABS.length);
 });
@@ -35,6 +37,7 @@ test('the Tape and the Flow fill the area both ways, the Book only held upright;
   }
   assert.ok(fillsArea('book', 'portrait'), 'twice the price rows upright (Karl, 2026-10-26)');
   assert.ok(!fillsArea('book', 'landscape'), 'the book stays beside the map held sideways: the screen is short, not narrow');
+  assert.ok(fillsArea('liq', 'portrait') && !fillsArea('liq', 'landscape'), 'the liquidation ladder is placed as the Book is');
   // A tab with a map beside it has a default share, and none under the room a handle leaves (the map keeps 150 px of a portrait phone).
   for (const tab of DOCK_TABS) {
     for (const axis of ['portrait', 'landscape'] as const) {
@@ -43,8 +46,6 @@ test('the Tape and the Flow fill the area both ways, the Book only held upright;
       assert.ok(share > 0.2 && share < 0.7, `${axis} ${tab.id}: ${share}`);
     }
   }
-  // The Liquidity Tracker is the pane that is looked at, so it gets the larger share.
-  assert.ok(DEFAULT_SHARE.portrait.lt! >= 0.5);
   assert.equal(clampSize(2000, 700, 'portrait'), 550, 'the map keeps its 150 px');
   assert.equal(axisOf('phone'), 'portrait'); assert.equal(axisOf('phone-landscape'), 'landscape');
 });

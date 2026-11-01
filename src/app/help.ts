@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
 
 export interface HelpTopic {
   title: string;
@@ -147,6 +147,15 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('A liquidation is a market order the exchange placed to close a position whose margin ran out, so it is also among the trade bubbles and in the Range panel\'s volume; the diamond says it was forced.'),
       t('Binance, Bybit, OKX and Deribit publish their liquidations; Binance only its largest each second, so a cascade there shows fewer than happened. Hyperliquid, Coinbase and the other exchanges publish none.'),
       t('Bybit reports the price at which the position\'s margin was gone, which can be some way from where the market traded; the diamond is drawn at the price trading when it happened, and the box gives both.')],
+  },
+  liqLevels: {
+    title: t('Liquidation levels'), guide: 'liq-levels',
+    tip: t('Where Hyperliquid\'s open BTC positions would be liquidated, from HyperTracker\'s snapshots: longs below the price in the falling colour, shorts above it in the rising one. A level goes once price trades through it.'),
+    body: [t('Each row adds up the positions whose liquidation price lies in it, in $10 steps, from HyperTracker\'s snapshots of every open Hyperliquid BTC position, about one every half hour (Powered by HyperTracker). A darker row holds more; a crisp edge marks the strongest, and a diamond a row where one position holds at least half.'),
+      t('A snapshot describes the positions about 40 minutes before it can be read, and every level price has traded through since then is gone, even if that happened before the page was opened. Positions opened since come with the next snapshot.'),
+      t('They are drawn as a stripe right of the newest candle, so the heatmap keeps its own colours, and their own column beside the profile column adds them up: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.'),
+      t('Only Hyperliquid\'s positions are known, and only for BTC. A trade can reach a level a few basis points before the mark price that liquidates it, and a position can be closed or topped up before price gets there, so a level is where forced orders could start, not a promise that they will.'),
+      t('Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.')],
   },
   highlights: {
     title: t('Highlights'), guide: 'highlights',

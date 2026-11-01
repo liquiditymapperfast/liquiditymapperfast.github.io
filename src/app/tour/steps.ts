@@ -8,7 +8,7 @@ import type { Prefer } from './place.ts';
  */
 export type Arrangement = 'desktop' | 'compact' | 'phone';
 /** What a step points at: names that `targets.ts` turns into the elements of the page that is on the screen. */
-export type TargetId = 'map' | 'market' | 'time' | 'panels' | 'chart' | 'flow' | 'book' | 'layouts' | 'tour' | 'guide' | 'coin' | 'settings' | 'tabs' | 'mapTab';
+export type TargetId = 'map' | 'market' | 'time' | 'panels' | 'chart' | 'liqLevels' | 'flow' | 'book' | 'layouts' | 'tour' | 'guide' | 'coin' | 'settings' | 'tabs' | 'mapTab';
 
 export interface Step {
   id: string;
@@ -89,6 +89,11 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
     {
       id: 'chart', targets: ['chart'], side: 'below', title: () => t('Layers on the map'),
       body: () => t('Add the footprint, trades, liquidations, key levels or VWAP to the map. The small button beside each one opens its settings.'),
+    },
+    // Only where the levels have an address: without one there is no button, and a step whose target is not on the screen is left out.
+    {
+      id: 'liq-levels', targets: ['liqLevels'], side: 'below', title: () => t('Liquidation levels'),
+      body: () => t('Where Hyperliquid\'s BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.'),
     },
     flow, book,
     {
