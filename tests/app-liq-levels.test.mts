@@ -105,6 +105,7 @@ test('rows group whole bins on the fixed grid, add up dollars and wallets, and s
   // Two bins a row: [80, 100) holds bins 8 and 9, 350 of longs whose largest position is 150: not one position's, though bin 9 alone is.
   const two = liqRows(l, null, 2, 0, 1000);
   assert.equal(two[0]!.long, 350);
+  assert.equal(two[0]!.longTop, 150, 'the largest position of the row is the largest in any of its bins');
   assert.equal(two[0]!.longOne, false);
   // Taken: the row's long side is gone once every one of its bins is.
   const tk = takenByCandles(l, candles([[101, 99], [100, 85]]));
@@ -221,6 +222,8 @@ test('the chart\'s price takes the levels between it and the snapshot\'s mark at
   const s = src.standing()!;
   assert.equal(standingBelow(s, 'long', 1000), 250, 'half of bin 9 gone');
   assert.equal(src.taken()!.long.first[1], AS_OF);
+  // Before any candle, Hyperliquid's price is the snapshot's mark.
+  assert.equal(src.lastPrice(), 100);
   // A price that is not a number changes nothing.
   src.observe(Number.NaN);
   assert.equal(standingBelow(src.standing()!, 'long', 1000), 250);

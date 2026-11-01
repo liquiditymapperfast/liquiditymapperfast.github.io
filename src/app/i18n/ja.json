@@ -1996,16 +1996,13 @@
  "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Hyperliquid の清算レベル {time} 時点 · Powered by HyperTracker",
  "Long liquidations": "ロングの清算",
  "Short liquidations": "ショートの清算",
- "Wallets": "ウォレット",
  "Isolated / cross margin": "分離 / クロス証拠金",
  "Traded through": "通過済み",
- "Still standing": "残り",
  "Liq levels": "清算レベル",
  "LIQ LEVELS": "清算レベル",
  "Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "マップに描かれるレイヤー。流動性はオーダーブックのヒートマップです。ストップロスと利益確定のレイヤーは近日対応予定です（静的なページではキーを保管できないデータが必要なため）。",
  "Liquidation levels are out of date: the newest are from {time}.": "清算レベルが古くなっています。最新のものは {time} 時点です。",
  "Hyperliquid's candles could not be read, so a level price has passed may still show.": "Hyperliquid のローソク足を読み込めなかったため、価格がすでに通過したレベルが表示されたままの場合があります。",
- "Mostly one position": "ほぼ 1 つのポジション",
  "No liquidation levels in this range": "この範囲には清算レベルがありません",
  "Only this side has liquidation levels": "この側にだけ清算レベルがあります",
  "Only the opposite side has liquidation levels": "反対側にだけ清算レベルがあります",
@@ -2017,5 +2014,10 @@
  "A snapshot describes the positions about 40 minutes before it can be read, so the bands start at that time, at a dashed line, and every level price has traded through since then is gone: its band ends where it was crossed. Positions opened since come with the next snapshot.": "スナップショットは、読み込めるようになる約 40 分前のポジションを表します。そのため帯はその時点の破線から始まり、それ以降に価格が通過したレベルはすべて消えます。帯は通過した所で終わります。その後に建てられたポジションは次のスナップショットで加わります。",
  "With the switch in its panel on, the profile column shows them in place of the order book: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "パネルのスイッチがオンなら、プロファイル列にオーダーブックの代わりにこれを表示します。各行に残っている分、その後ろに薄く価格からその行までのすべて、つまり価格がそこまで来たら消えるドル額です。列にカーソルを置くと、下のロングと同じだけ上のショートを比べられます。",
  "Only Hyperliquid's positions are known, and only for BTC. A trade can reach a level a few basis points before the mark price that liquidates it, and a position can be closed or topped up before price gets there, so a level is where forced orders could start, not a promise that they will.": "わかるのは Hyperliquid のポジションだけで、対象は BTC のみです。取引価格は、清算を決めるマーク価格より数ベーシスポイント早くレベルに届くことがあり、価格が届く前にポジションが決済されたり証拠金が追加されたりすることもあります。レベルは強制注文が始まりうる場所であって、必ず起きる約束ではありません。",
- "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Hyperliquid の BTC ポジションが清算される価格。価格が通過したレベルは消え、プロファイル列が価格から外側へ合計します。"
+ "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Hyperliquid の BTC ポジションが清算される価格。価格が通過したレベルは消え、プロファイル列が価格から外側へ合計します。",
+ "At this level": "このレベル",
+ "If price gets here": "価格がここまで来たら",
+ "Positions": "ポジション数",
+ "Largest position": "最大のポジション",
+ "{left} of {total}": "{total} のうち {left}"
 }

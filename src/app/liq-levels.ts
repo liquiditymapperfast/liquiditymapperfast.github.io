@@ -144,7 +144,8 @@ export interface LiqRow {
   p0: number; p1: number;
   long: number; longIso: number; longWallets: number;
   short: number; shortIso: number; shortWallets: number;
-  /** Whether one position holds at least half of the side's dollars in the row. */
+  /** The largest single position of each side in the row, and whether it holds at least half of the side's dollars there. */
+  longTop: number; shortTop: number;
   longOne: boolean; shortOne: boolean;
   /** Per side: first touch, all gone (NaN while any part stands), dollars still standing. */
   longFirst: number; longGone: number; longLeft: number;
@@ -168,7 +169,7 @@ export function liqRows(levels: LiqLevels, taken: { long: Taken; short: Taken } 
     const k = levels.k[i]!, g = Math.floor(k / per);
     let r = rows.get(g);
     if (!r) {
-      r = { p0: g * per * step, p1: (g + 1) * per * step, long: 0, longIso: 0, longWallets: 0, short: 0, shortIso: 0, shortWallets: 0, longOne: false, shortOne: false,
+      r = { p0: g * per * step, p1: (g + 1) * per * step, long: 0, longIso: 0, longWallets: 0, short: 0, shortIso: 0, shortWallets: 0, longTop: 0, shortTop: 0, longOne: false, shortOne: false,
         longFirst: NaN, longGone: -Infinity, longLeft: 0, shortFirst: NaN, shortGone: -Infinity, shortLeft: 0 };
       rows.set(g, r);
     }
@@ -196,6 +197,7 @@ export function liqRows(levels: LiqLevels, taken: { long: Taken; short: Taken } 
     if (!Number.isFinite(r.longGone)) r.longGone = NaN;
     if (!Number.isFinite(r.shortGone)) r.shortGone = NaN;
     const top = tops.get(g) ?? [0, 0];
+    r.longTop = top[0]; r.shortTop = top[1];
     r.longOne = r.long > 0 && top[0] >= 0.5 * r.long;
     r.shortOne = r.short > 0 && top[1] >= 0.5 * r.short;
   }
@@ -378,6 +380,13 @@ export class LiqLevelsSource {
     const now = this.now();
     if (low < seen.low) { seen.low = low; seen.lowAt = now; }
     if (high > seen.high) { seen.high = high; seen.highAt = now; }
+  }
+
+  /** Hyperliquid's price as last read (the newest candle's close), or the snapshot's mark before any candle came. */
+  lastPrice(): number {
+    const levels = this.levels, bars = this.candles.bars, last = bars[bars.length - 1];
+    if (!levels) return NaN;
+    return last && last[0] >= levels.asOf - MINUTE && Number.isFinite(last[4]) ? last[4] : levels.mark;
   }
 
   /** Whether Hyperliquid's candles could not be read lately, so levels price traded through may still show until the chart's price says so. */

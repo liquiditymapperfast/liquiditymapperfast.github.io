@@ -2129,16 +2129,13 @@
  "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Уровни ликвидаций Hyperliquid на {time} · Powered by HyperTracker",
  "Long liquidations": "Ликвидации лонгов",
  "Short liquidations": "Ликвидации шортов",
- "Wallets": "Кошельки",
  "Isolated / cross margin": "Изолированная / кросс-маржа",
  "Traded through": "Пройдено",
- "Still standing": "Ещё стоит",
  "Liq levels": "Уровни ликв.",
  "LIQ LEVELS": "УРОВНИ ЛИКВ.",
  "Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Слой, рисуемый на карте. «Ликвидность» — это тепловая карта стакана; слои стоп-лоссов и тейк-профитов ожидаются (им нужны данные, для которых статическая страница не может хранить ключ).",
  "Liquidation levels are out of date: the newest are from {time}.": "Уровни ликвидаций устарели: самые свежие — на {time}.",
  "Hyperliquid's candles could not be read, so a level price has passed may still show.": "Не удалось прочитать свечи Hyperliquid, поэтому уровень, который цена уже прошла, может ещё отображаться.",
- "Mostly one position": "Почти всё — одна позиция",
  "No liquidation levels in this range": "В этом диапазоне нет уровней ликвидаций",
  "Only this side has liquidation levels": "Уровни ликвидаций есть только у этой стороны",
  "Only the opposite side has liquidation levels": "Уровни ликвидаций есть только у противоположной стороны",
@@ -2150,5 +2147,10 @@
  "A snapshot describes the positions about 40 minutes before it can be read, so the bands start at that time, at a dashed line, and every level price has traded through since then is gone: its band ends where it was crossed. Positions opened since come with the next snapshot.": "Снимок описывает позиции примерно за 40 минут до того, как его можно прочитать, поэтому полосы начинаются с этого момента, у пунктирной линии, а каждый уровень, через который с тех пор прошла цена, исчезает: его полоса заканчивается там, где его пересекли. Позиции, открытые с тех пор, появятся со следующим снимком.",
  "With the switch in its panel on, the profile column shows them in place of the order book: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "Если переключатель в его панели включён, колонка профиля показывает их вместо стакана: в каждой строке то, что ещё стоит, а бледно позади — всё от цены до этой строки, то есть доллары, которые уйдут, если цена туда дойдёт. Наведите указатель на колонку, чтобы сравнить лонги ниже с шортами на том же расстоянии выше.",
  "Only Hyperliquid's positions are known, and only for BTC. A trade can reach a level a few basis points before the mark price that liquidates it, and a position can be closed or topped up before price gets there, so a level is where forced orders could start, not a promise that they will.": "Известны только позиции Hyperliquid и только по BTC. Сделка может достичь уровня на несколько базисных пунктов раньше марк-цены, по которой ликвидируют, а позицию могут закрыть или пополнить до того, как цена туда дойдёт, поэтому уровень — это место, где могут начаться принудительные ордера, а не обещание, что они начнутся.",
- "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Где были бы ликвидированы позиции BTC на Hyperliquid. Уровень исчезает, когда цена проходит через него, а колонка профиля суммирует их от цены наружу."
+ "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Где были бы ликвидированы позиции BTC на Hyperliquid. Уровень исчезает, когда цена проходит через него, а колонка профиля суммирует их от цены наружу.",
+ "At this level": "На этом уровне",
+ "If price gets here": "Если цена дойдёт сюда",
+ "Positions": "Позиций",
+ "Largest position": "Крупнейшая позиция",
+ "{left} of {total}": "{left} из {total}"
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_MARGINS, marginsOf, plotColorAt, plotExtent, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf } from '../src/app/script/paint.ts';
+import { DEFAULT_MARGINS, marginsOf, onPlot, plotColorAt, plotExtent, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf } from '../src/app/script/paint.ts';
 import type { PlotOut } from '../src/app/script/protocol.ts';
 import { interpolateColors, parseColor, safeColor } from '../src/app/script/lang/colors.ts';
 
@@ -32,6 +32,25 @@ test('margins are held inside the row, and a value is placed between them', () =
   const s = { min: 0, max: 10, margins: { top: 0.1, bottom: 0.1 } };
   assert.equal(yOf(10, s, 100, 100), 110);
   assert.equal(yOf(0, s, 100, 100), 190);
+});
+
+test('the pointer is on a plot only on what it draws: a line or the edge of a cloud, a bar, a candle, a cell; not a fill', () => {
+  // Three candles a minute apart, 10 px each, on a scale where y = 100 - value (no margins).
+  const time = Float64Array.from([0, 60_000, 120_000]), f = { x: (t: number) => t / 6000, barW: 10, time, top: 0, height: 100 };
+  const s = { min: 0, max: 100, margins: { top: 0, bottom: 0 } };
+  const line = plot('line', [50, 60, 70]);
+  assert.ok(onPlot(line, s, f, 0, 5, 50, 3), 'on the point at the middle of the candle');
+  assert.ok(onPlot(line, s, f, 0, 10, 45, 3), 'halfway to the point of the next candle, the line is halfway up');
+  assert.ok(!onPlot(line, s, f, 0, 5, 30, 3), 'twenty pixels off the line');
+  assert.ok(onPlot(plot('line', [50, 60, 70], { lineType: 1 }), s, f, 0, 9, 50, 3), 'a step is level across its candle');
+  const area = plot('area', [50, 60, 70]);
+  assert.ok(onPlot(area, s, f, 1, 15, 40, 3) && !onPlot(area, s, f, 1, 15, 80, 3), 'an area counts on its line, not in its fill');
+  const cloud = plot('cloudarea', [50, 60, 70]);
+  assert.ok(onPlot(cloud, s, f, 0, 5, 49, 2) && onPlot(cloud, s, f, 0, 5, 50, 2) && !onPlot(cloud, s, f, 0, 5, 70, 2), 'a cloud counts on its edges');
+  const bars = plot('histogram', [40, 0, 0]);
+  assert.ok(onPlot(bars, s, f, 0, 5, 80, 2) && !onPlot(bars, s, f, 0, 5, 40, 2), 'a histogram bar counts inside, from its base to its value');
+  assert.ok(!onPlot(plot('line', [50, 60, 70], { visible: false }), s, f, 0, 5, 50, 3), 'a hidden plot is not there');
+  assert.ok(!onPlot(line, s, f, -1, 5, 50, 3), 'no candle under the pointer, nothing');
 });
 
 test('numbers for tags and readouts are short', () => {

@@ -376,3 +376,45 @@ function fillBaseline(f: Frame, v: Float64Array, y: (v: number) => number, base:
     ctx.beginPath(); ctx.moveTo(cx(i), baseY); ctx.lineTo(cx(i), y(a)); ctx.lineTo(cx(i + 1), y(b)); ctx.lineTo(cx(i + 1), baseY); ctx.closePath(); ctx.fill();
   }
 }
+
+/**
+ * Whether the point (`px`, `py`) of a chart is on what `plot` draws at candle `i` (the one under the point), within `slop` pixels: on its
+ * line (stroked between the candles' middles, or across the candle as a step) or a cloud's edge, inside a histogram's bar, a candle's range
+ * or a broken area's cell. An area's or a baseline's fill does not count, only its line: a fill covers too much of the chart to say the
+ * pointer means it. A mark is found by `markAt`, not here.
+ */
+export function onPlot(plot: PlotOut, s: Scale, f: Pick<Frame, 'x' | 'barW' | 'time' | 'top' | 'height'>, i: number, px: number, py: number, slop: number): boolean {
+  if (plot.style.visible === false || i < 0 || i >= f.time.length) return false;
+  const y = (v: number): number => yOf(v, s, f.top, f.height);
+  const cx = (k: number): number => f.x(f.time[k]!) + f.barW / 2;
+  const near = (yy: number): boolean => Number.isFinite(yy) && Math.abs(py - yy) <= slop;
+  const inside = (a: number, b: number): boolean => py >= Math.min(a, b) - slop && py <= Math.max(a, b) + slop;
+  // A line at the point's x: between the middles of the candles either side, or level across the candle for a step (or a lone point).
+  const lineAt = (v: Float64Array, steps: boolean): number => {
+    const a = v[i]!;
+    if (steps) return Number.isFinite(a) ? y(a) : NaN;
+    const k = px >= cx(i) ? i + 1 : i - 1, b = k >= 0 && k < v.length ? v[k]! : NaN;
+    if (!Number.isFinite(a)) return NaN;
+    if (!Number.isFinite(b) || cx(k) === cx(i)) return Math.abs(px - cx(i)) <= f.barW / 2 + slop ? y(a) : NaN;
+    return y(a + (b - a) * (px - cx(i)) / (cx(k) - cx(i)));
+  };
+  switch (plot.kind) {
+    case 'line': case 'area': case 'baseline':
+      return near(lineAt(plot.fields.value!, plot.kind === 'line' && styleNum(plot.style.lineType, 0) === 1));
+    case 'cloudarea':
+      return near(lineAt(plot.fields.lowerValue!, false)) || near(lineAt(plot.fields.higherValue!, false));
+    case 'histogram': {
+      const v = plot.fields.value![i]!, w = Math.max(1, f.barW * 0.72);
+      return Number.isFinite(v) && Math.abs(px - cx(i)) <= w / 2 + slop && inside(y(styleNum(plot.style.base, 0)), y(v));
+    }
+    case 'candlestick': case 'bar': {
+      const h = plot.fields.high![i]!, l = plot.fields.low![i]!;
+      return Number.isFinite(h) && Number.isFinite(l) && inside(y(h), y(l));
+    }
+    case 'brokenarea': {
+      const a = plot.fields.lowerValue![i]!, b = plot.fields.higherValue![i]!;
+      return Number.isFinite(a) && Number.isFinite(b) && inside(y(a), y(b));
+    }
+    case 'mark': return false;
+  }
+}

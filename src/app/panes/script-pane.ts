@@ -22,7 +22,7 @@ import { starterScripts, updateStarters } from '../script/starter.ts';
 import { PLOT_FIELDS, type PlotOut, type ScriptResult, type Warning } from '../script/protocol.ts';
 import { MARK_SLOP, MARK_SLOP_TOUCH, markAt, markLines, markText, type DrawnMark } from '../script/marks.ts';
 import { AlertNews, fingerprint, type ScriptAlert } from '../script/alert-news.ts';
-import { paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf, type Frame } from '../script/paint.ts';
+import { onPlot, paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf, type Frame, type Scale } from '../script/paint.ts';
 import { errorText } from '../script/messages.ts';
 import { safeColor } from '../script/lang/colors.ts';
 import type { BarInputs, SourceFilter } from '../script/inputs.ts';
@@ -638,6 +638,8 @@ export class ScriptPane extends TimePane {
 
   /** Called when what the scripts draw on the map changed (the map draws again). */
   onMapChanged: () => void = () => {};
+  /** What paintOnMap last drew: the plot's size and each script's scales, for the popup to tell whether the pointer is on a plot. */
+  #mapDrawn: { pw: number; ph: number; scripts: Map<string, Map<string, Scale>> } = { pw: 0, ph: 0, scripts: new Map() };
   #candleColors = new Map<number, string>();
   #colorsKey = '';
   #heldGen = 0;
@@ -673,6 +675,7 @@ export class ScriptPane extends TimePane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, v = this.view, p = this.palette;
     const fallbacks = [p.vwap, p.poc, p.level, p.accent, p.bid, p.ask];
     this.#mapMarks = [];
+    this.#mapDrawn = { pw, ph, scripts: new Map() };
     for (const r of this.#records) {
       if (!r.on || r.hidden || r.place !== 'map') continue;
       const held = this.#held.get(r.id);
@@ -681,6 +684,7 @@ export class ScriptPane extends TimePane {
       if (to < from) continue;
       const scales = scalesOf(res.plots.filter(pl => scaleIdOf(pl, r.options) !== 'right'), r.options, from, to);
       scales.set('right', { min: v.p0, max: v.p1, margins: { top: 0, bottom: 0 } });
+      this.#mapDrawn.scripts.set(r.id, scales);
       const frame: Frame = { ctx, x: tt => v.xOf(tt, pw), barW: Math.max(1, v.xOf(tf, pw) - v.xOf(0, pw)), tf, time, from, to, top: 0, height: ph, w: pw, color: p.text, up: p.candleUp, down: p.candleDown };
       res.plots.forEach((plot, j) => {
         const s = scales.get(scaleIdOf(plot, r.options)), fallback = fallbacks[j % fallbacks.length]!;
@@ -699,15 +703,24 @@ export class ScriptPane extends TimePane {
     return m ? { lines: markLines(m), color: m.color, box: m.box } : null;
   }
 
-  /** The map's popup lines for the scripts drawn on it, at the candle starting at `at`: each one's name, then its plots' values there. */
-  mapHoverLines(at: number): InfoLine[] {
+  /**
+   * The map's popup lines for the scripts drawn on it that the pointer is on (`at` its time, `y` its height in the map's plot, as the map was
+   * last drawn): each one's name, then its plots' values at that candle. Anywhere else on the map a script says nothing, so the popup there
+   * stays about what the pointer is over.
+   */
+  mapHoverLines(at: number, y: number, touch: boolean): InfoLine[] {
     const state = this.store.state, out: InfoLine[] = [];
     if (!state.show.script) return out;
-    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, { pw, ph, scripts } = this.#mapDrawn, v = this.view, px = v.xOf(at, pw);
+    const frame = { x: (tt: number) => v.xOf(tt, pw), barW: Math.max(1, v.xOf(tf, pw) - v.xOf(0, pw)), top: 0, height: ph };
     for (const r of this.#records) {
       if (!r.on || r.hidden || r.place !== 'map') continue;
-      const held = this.#held.get(r.id);
-      if (held?.result.ok && this.#current(held, tf)) this.#cardLines(out, r, held.result, held.time, tf, at, shownCount(held.time, tf), false, true);
+      const held = this.#held.get(r.id), scales = scripts.get(r.id);
+      if (!held?.result.ok || !this.#current(held, tf) || !scales) continue;
+      const shown = shownCount(held.time, tf), i = indexAt(held.time, tf, at, shown);
+      const res = held.result, slop = touch ? MARK_SLOP_TOUCH + 4 : MARK_SLOP + 2;
+      const on = res.plots.some(plot => { const s = scales.get(scaleIdOf(plot, r.options)); return !!s && onPlot(plot, s, { ...frame, time: held.time }, i, px, y, slop); });
+      if (on) this.#cardLines(out, r, res, held.time, tf, at, shown, false, true);
     }
     return out;
   }

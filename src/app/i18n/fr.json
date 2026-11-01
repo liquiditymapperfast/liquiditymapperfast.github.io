@@ -2102,16 +2102,13 @@
  "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Niveaux de liquidation Hyperliquid à {time} · Powered by HyperTracker",
  "Long liquidations": "Liquidations de longs",
  "Short liquidations": "Liquidations de shorts",
- "Wallets": "Portefeuilles",
  "Isolated / cross margin": "Marge isolée / croisée",
  "Traded through": "Traversé",
- "Still standing": "Encore en place",
  "Liq levels": "Niveaux liq.",
  "LIQ LEVELS": "NIVEAUX LIQ.",
  "Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Couche dessinée sur la carte. Liquidité est la heatmap du carnet d'ordres ; les couches stop loss et take profit arrivent (elles demandent des données pour lesquelles une page statique ne peut pas garder de clé).",
  "Liquidation levels are out of date: the newest are from {time}.": "Les niveaux de liquidation sont périmés : les plus récents datent de {time}.",
  "Hyperliquid's candles could not be read, so a level price has passed may still show.": "Les bougies de Hyperliquid n'ont pas pu être lues : un niveau que le prix a déjà franchi peut encore s'afficher.",
- "Mostly one position": "Surtout une seule position",
  "No liquidation levels in this range": "Aucun niveau de liquidation dans cette plage",
  "Only this side has liquidation levels": "Seul ce côté a des niveaux de liquidation",
  "Only the opposite side has liquidation levels": "Seul le côté opposé a des niveaux de liquidation",
@@ -2123,5 +2120,10 @@
  "A snapshot describes the positions about 40 minutes before it can be read, so the bands start at that time, at a dashed line, and every level price has traded through since then is gone: its band ends where it was crossed. Positions opened since come with the next snapshot.": "Un instantané décrit les positions environ 40 minutes avant de pouvoir être lu : les bandes commencent donc à ce moment, à une ligne pointillée, et chaque niveau que le prix a traversé depuis a disparu : sa bande s'arrête là où il a été franchi. Les positions ouvertes depuis arrivent avec l'instantané suivant.",
  "With the switch in its panel on, the profile column shows them in place of the order book: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "Avec l'interrupteur de son panneau activé, la colonne du profil les montre à la place du carnet d'ordres : dans chaque ligne ce qui tient encore et, en pâle derrière, tout ce qui va du prix jusqu'à cette ligne, les dollars qui partent si le prix y arrive. Survolez la colonne pour comparer les longs en dessous aux shorts aussi loin au-dessus.",
  "Only Hyperliquid's positions are known, and only for BTC. A trade can reach a level a few basis points before the mark price that liquidates it, and a position can be closed or topped up before price gets there, so a level is where forced orders could start, not a promise that they will.": "Seules les positions de Hyperliquid sont connues, et seulement pour le BTC. Une transaction peut atteindre un niveau quelques points de base avant le prix de marque qui liquide, et une position peut être fermée ou renforcée avant que le prix n'y arrive : un niveau est donc là où des ordres forcés pourraient commencer, pas une promesse qu'ils le feront.",
- "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Où les positions BTC de Hyperliquid seraient liquidées. Un niveau disparaît quand le prix le traverse, et la colonne du profil les additionne à partir du prix."
+ "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Où les positions BTC de Hyperliquid seraient liquidées. Un niveau disparaît quand le prix le traverse, et la colonne du profil les additionne à partir du prix.",
+ "At this level": "À ce niveau",
+ "If price gets here": "Si le prix arrive ici",
+ "Positions": "Positions",
+ "Largest position": "Plus grosse position",
+ "{left} of {total}": "{left} sur {total}"
 }

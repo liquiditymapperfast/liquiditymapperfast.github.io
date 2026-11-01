@@ -1996,16 +1996,13 @@
  "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Hyperliquid 强平价位，{time} · Powered by HyperTracker",
  "Long liquidations": "多头强平",
  "Short liquidations": "空头强平",
- "Wallets": "钱包",
  "Isolated / cross margin": "逐仓 / 全仓保证金",
  "Traded through": "已穿过",
- "Still standing": "仍然存在",
  "Liq levels": "强平价位",
  "LIQ LEVELS": "强平价位",
  "Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "绘制在地图上的图层。流动性是订单簿热力图；止损和止盈图层即将推出（它们需要静态页面无法保管密钥的数据）。",
  "Liquidation levels are out of date: the newest are from {time}.": "强平价位已过时：最新的来自 {time}。",
  "Hyperliquid's candles could not be read, so a level price has passed may still show.": "无法读取 Hyperliquid 的K线，价格已越过的价位可能仍会显示。",
- "Mostly one position": "大多来自一个仓位",
  "No liquidation levels in this range": "此范围内没有强平价位",
  "Only this side has liquidation levels": "只有这一侧有强平价位",
  "Only the opposite side has liquidation levels": "只有对侧有强平价位",
@@ -2017,5 +2014,10 @@
  "A snapshot describes the positions about 40 minutes before it can be read, so the bands start at that time, at a dashed line, and every level price has traded through since then is gone: its band ends where it was crossed. Positions opened since come with the next snapshot.": "一份快照描述的是它可被读取之前约 40 分钟的头寸，所以色带从那一刻、从一条虚线开始；此后价格穿过的每个价位都会消失：它的色带在被穿过处结束。此后新开的头寸会随下一份快照出现。",
  "With the switch in its panel on, the profile column shows them in place of the order book: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "面板中的开关打开时，分布栏会显示它们而不是订单簿：每一行是仍然存在的部分，其后浅色的是从价格到该行的全部，也就是价格到达那里时会被强平的美元。将指针悬停在这一栏上，可以比较下方的多头与上方同样距离的空头。",
  "Only Hyperliquid's positions are known, and only for BTC. A trade can reach a level a few basis points before the mark price that liquidates it, and a position can be closed or topped up before price gets there, so a level is where forced orders could start, not a promise that they will.": "只知道 Hyperliquid 上的头寸，而且只有 BTC。成交价可能比决定强平的标记价格早几个基点触及某个价位，头寸也可能在价格到达之前被平掉或追加保证金，所以价位是强制订单可能开始的地方，而不是一定会发生的承诺。",
- "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Hyperliquid 上 BTC 头寸会被强平的价格。价格穿过的价位会消失，分布栏从价格向外累加它们。"
+ "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Hyperliquid 上 BTC 头寸会被强平的价格。价格穿过的价位会消失，分布栏从价格向外累加它们。",
+ "At this level": "此价位",
+ "If price gets here": "如果价格到达这里",
+ "Positions": "仓位数",
+ "Largest position": "最大仓位",
+ "{left} of {total}": "{total} 中的 {left}"
 }

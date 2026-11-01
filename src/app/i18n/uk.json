@@ -2134,16 +2134,13 @@
  "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Рівні ліквідацій Hyperliquid на {time} · Powered by HyperTracker",
  "Long liquidations": "Ліквідації лонгів",
  "Short liquidations": "Ліквідації шортів",
- "Wallets": "Гаманці",
  "Isolated / cross margin": "Ізольована / крос-маржа",
  "Traded through": "Пройдено",
- "Still standing": "Ще стоїть",
  "Liq levels": "Рівні лікв.",
  "LIQ LEVELS": "РІВНІ ЛІКВ.",
  "Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Шар, що малюється на карті. Ліквідність — це теплова карта стакана заявок; шари стоп-лосів і тейк-профітів з'являться пізніше (їм потрібні дані, для яких статична сторінка не може зберігати ключ).",
  "Liquidation levels are out of date: the newest are from {time}.": "Рівні ліквідацій застаріли: найсвіжіші — на {time}.",
  "Hyperliquid's candles could not be read, so a level price has passed may still show.": "Не вдалося прочитати свічки Hyperliquid, тож рівень, який ціна вже пройшла, може ще показуватися.",
- "Mostly one position": "Майже все — одна позиція",
  "No liquidation levels in this range": "У цьому діапазоні немає рівнів ліквідацій",
  "Only this side has liquidation levels": "Рівні ліквідацій є лише на цій стороні",
  "Only the opposite side has liquidation levels": "Рівні ліквідацій є лише на протилежній стороні",
@@ -2155,5 +2152,10 @@
  "A snapshot describes the positions about 40 minutes before it can be read, so the bands start at that time, at a dashed line, and every level price has traded through since then is gone: its band ends where it was crossed. Positions opened since come with the next snapshot.": "Знімок описує позиції приблизно за 40 хвилин до того, як його можна прочитати, тож смуги починаються з цього моменту, біля пунктирної лінії, а кожен рівень, крізь який відтоді пройшла ціна, зникає: його смуга закінчується там, де його перетнули. Позиції, відкриті відтоді, з’являться з наступним знімком.",
  "With the switch in its panel on, the profile column shows them in place of the order book: in each row what still stands, and faint behind it everything from the price out to that row, the dollars that go if price gets there. Hover the column to compare the longs below with the shorts as far above.": "Коли перемикач у його панелі ввімкнено, колонка профілю показує їх замість стакана: у кожному рядку те, що ще стоїть, а бліде позаду — усе від ціни до цього рядка, тобто долари, які підуть, якщо ціна туди дійде. Наведіть вказівник на колонку, щоб порівняти лонги нижче із шортами на тій самій відстані вище.",
  "Only Hyperliquid's positions are known, and only for BTC. A trade can reach a level a few basis points before the mark price that liquidates it, and a position can be closed or topped up before price gets there, so a level is where forced orders could start, not a promise that they will.": "Відомі лише позиції Hyperliquid і лише для BTC. Угода може досягти рівня на кілька базисних пунктів раніше за марк-ціну, за якою ліквідують, а позицію можуть закрити чи поповнити до того, як ціна туди дійде, тож рівень — це місце, де можуть початися примусові ордери, а не обіцянка, що вони почнуться.",
- "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Де були б ліквідовані позиції BTC на Hyperliquid. Рівень зникає, щойно ціна проходить крізь нього, а колонка профілю підсумовує їх від ціни назовні."
+ "Where Hyperliquid's BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.": "Де були б ліквідовані позиції BTC на Hyperliquid. Рівень зникає, щойно ціна проходить крізь нього, а колонка профілю підсумовує їх від ціни назовні.",
+ "At this level": "На цьому рівні",
+ "If price gets here": "Якщо ціна дійде сюди",
+ "Positions": "Позицій",
+ "Largest position": "Найбільша позиція",
+ "{left} of {total}": "{left} з {total}"
 }
