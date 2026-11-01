@@ -373,6 +373,42 @@ test('the left edge of a zone that runs on follows the pointer past the time of 
   assert.deepEqual(s.draw.get(id)!.points, was);
 });
 
+test('once the left edge of a zone that runs on has carried the other point (equal times), each corner at the left boundary still moves the boundary', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(1), y: y(180) }, false, false); s.draw.click({ x: x(4), y: y(130) }, false, false);
+  const id = s.draw.selected!;
+  s.draw.update(id, { extendRight: true });
+  assert.equal(s.draw.down({ x: x(1), y: (y(180) + y(130)) / 2 }, false), true, 'the middle of the left edge');
+  s.draw.move({ x: x(6), y: 200 }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 6 * H, T + 6 * H], 'the two times are equal now');
+  assert.equal(s.draw.down({ x: x(6), y: y(130) }, false), true, 'the lower left corner, where two handles overlap');
+  s.draw.move({ x: x(7), y: y(130) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 7 * H, T + 7 * H], 'the boundary follows the corner to the right');
+  s.draw.up();
+  assert.equal(s.draw.down({ x: x(7), y: y(180) }, false), true, 'the upper left corner');
+  s.draw.move({ x: x(8), y: y(180) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 8 * H, T + 8 * H]);
+  s.draw.up();
+});
+
+test('a zone that runs on and was drawn from right to left: its left edge carries the other point, and each corner at the left boundary keeps doing so', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(4), y: y(130) }, false, false); s.draw.click({ x: x(1), y: y(180) }, false, false);
+  const id = s.draw.selected!;
+  s.draw.update(id, { extendRight: true });
+  assert.equal(s.draw.down({ x: x(1), y: (y(180) + y(130)) / 2 }, false), true, 'the middle of the left edge, which is the second point\'s time');
+  s.draw.move({ x: x(6), y: 200 }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 6 * H, T + 6 * H], 'the first point went along');
+  assert.equal(s.draw.down({ x: x(6), y: y(130) }, false), true, 'the lower left corner');
+  s.draw.move({ x: x(7), y: y(130) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 7 * H, T + 7 * H]);
+  s.draw.up();
+  assert.equal(s.draw.down({ x: x(7), y: y(180) }, false), true, 'the upper left corner');
+  s.draw.move({ x: x(8), y: y(180) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 8 * H, T + 8 * H]);
+  s.draw.up();
+});
+
 test('a level pressed and wobbled does not hop to a candle; once the pointer has left the spot it does, and the ring stands on the candle', () => {
   const s = setup({ settings: { magnet: 'off' } });
   s.draw.arm('level'); s.draw.click({ x: x(7), y: y(141) }, false, false);

@@ -120,8 +120,12 @@ export function handlesOf(d: Drawing, pr: Projection, minEdge: number = EDGE_MIN
   const left = a.x <= b.x ? 0 : 1, top = a.y <= b.y ? 0 : 1;
   const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
   const out: Handle[] = [...own];
-  // A zone that runs on has no right side: what moves its left, to the right of the other point, takes that point along.
-  if (d.extendRight) out[left] = { ...own[left]!, after: [1 - left] };
+  // A zone that runs on has no right side: what moves its left, to the right of the other point, takes that point along. So does the other point's
+  // own handle where it stands at the left boundary too (equal times, after the left edge has carried it): it overlaps the corner no point is at.
+  if (d.extendRight) {
+    out[left] = { ...own[left]!, after: [1 - left] };
+    if (Math.abs(own[1 - left]!.x - own[left]!.x) < 1) out[1 - left] = { ...own[1 - left]!, after: [left] };
+  }
   // The corners no point is at: the first point's time with the second's price, and the other way round; a zone that runs on has only the one at its left.
   if (d.extendRight) out.push({ x: own[left]!.x, y: own[1 - left]!.y, t: [left], p: [1 - left], after: [1 - left] });
   else out.push({ x: a.x, y: b.y, t: [0], p: [1] }, { x: b.x, y: a.y, t: [1], p: [0] });

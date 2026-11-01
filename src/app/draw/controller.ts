@@ -1,6 +1,7 @@
 import { t, tn } from '../i18n.ts';
 import { price as fmtPrice } from '../format.ts';
 import type { View } from '../view.ts';
+import { isCoarse } from '../device.ts';
 import { ANCHORS, MAX_PER_COIN, MAX_TOTAL, capReached, duplicate as copyOf, exportText, fits, importInto, moved, newDrawing, totalOf, type Anchor, type DrawDoc, type DrawKind, type Drawing } from './model.ts';
 import { axisOf, deltaOf, edgeMinFor, handlesOf, hitDrawing, sameHit, withHandleAt, type Handle, type HandleAxis, type Hit, type Projection, type Pt } from './geometry.ts';
 import { candleTargets, snapPoint, snapTime, wallTargets, type CandleUnder, type SnapTarget } from './magnet.ts';
@@ -75,8 +76,8 @@ export class DrawController {
   #coin = '';
   #drag: Drag | null = null;
   #held: SnapTarget | null = null;
-  /** Whether the last pointer was a finger: its handles are further apart (`edgeMinFor`), here and where they are painted. */
-  #touch = false;
+  /** Whether the last pointer was a finger (before any pointer: whether the device is touch first): its handles are further apart (`edgeMinFor`), here and where they are painted. */
+  #touch = isCoarse();
   #lastMark = 0;
   tool: DrawKind | null = null;
   draft: Draft | null = null;

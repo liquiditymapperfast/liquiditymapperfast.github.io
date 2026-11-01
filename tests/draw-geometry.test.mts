@@ -137,6 +137,24 @@ test('a zone that runs on has no right side to cross: its left edge takes the ot
   assert.equal(sameHit(top, { ...top }), true); assert.equal(sameHit(top, left), false); assert.equal(sameHit(top, { id: 'x', part: 'stroke' }), false); assert.equal(sameHit(null, null), true); assert.equal(sameHit(top, null), false);
 });
 
+test('a zone that runs on whose two times are equal (the left edge carried the other point): every handle at its left boundary carries, the overlapping ones too', () => {
+  const runs = { ...newDrawing('zone', [at(3, 180), at(3, 130)], T), extendRight: true };
+  const hs = handlesOf(runs, pr);
+  assert.deepEqual(hs.slice(0, 3).map(h => [h.x, h.y, h.after ?? null]), [[300, 100, [1]], [300, 350, [0]], [300, 350, [1]]], 'both stored handles and the corner no point is at: the lower two overlap');
+  const hit = hitDrawing({ x: 300, y: 350 }, [runs], pr, 6, runs.id, size);
+  assert.equal(hit?.part, 'handle');
+  const h = hs[(hit as { index: number }).index]!;
+  assert.deepEqual(withHandleAt(runs, h, at(5, 130)).points.map(q => q.t), [at(5, 0).t, at(5, 0).t], 'pressed on the overlap and pulled right: the boundary follows');
+  assert.deepEqual(withHandleAt(runs, h, at(2, 130)).points.map(q => q.t), [at(3, 0).t, at(2, 0).t], 'pulled left: the boundary follows and the other point stays');
+  // Three px apart they are two handles: the right point's own handle moves its own point, as before.
+  const apart = handlesOf({ ...newDrawing('zone', [at(3, 180), at(3.03, 130)], T), extendRight: true }, pr);
+  assert.deepEqual(apart.slice(0, 3).map(h2 => h2.after ?? null), [[1], null, [1]]);
+  // Drawn from right to left the left point is the second one: its handle and the corner carry the first.
+  const backwards = handlesOf({ ...newDrawing('zone', [at(4, 160), at(1, 180)], T), extendRight: true }, pr).slice(0, 3);
+  assert.deepEqual(backwards.map(h2 => h2.after ?? null), [null, [0], [0]]);
+  assert.deepEqual(backwards.map(h2 => h2.t), [[0], [1], [1]]);
+});
+
 test('a finger needs its handles further apart: an edge has a middle only where it is 48 px long, a mouse\'s where it is 28', () => {
   assert.deepEqual([edgeMinFor(6), edgeMinFor(12)], [28, 48]);
   const zone = newDrawing('zone', [at(1, 180), at(1.4, 140)], T);   // 40 px wide, 200 px high
