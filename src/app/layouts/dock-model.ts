@@ -138,7 +138,14 @@ export function fitColumns(left: number, right: number, windowW: number, minLeft
   const room = windowW * MAX_BOTH_SHARE, total = left + right;
   if (total <= room || total <= 0) return [left, right];
   const f = room / total;
-  return [Math.max(minLeft, Math.floor(left * f)), Math.max(minRight, Math.floor(right * f))];
+  let l = Math.max(minLeft, Math.floor(left * f)), r = Math.max(minRight, Math.floor(right * f));
+  // A column cut down to its minimum leaves the other cut by proportion alone, and the two can still be over the room (a column of 4,000 px beside one of 150):
+  // the one that is not at its minimum gives the rest, so that the map keeps its share whenever the minimums leave it one.
+  if (l + r > room) {
+    if (r <= minRight) l = Math.max(minLeft, Math.floor(room - r));
+    else if (l <= minLeft) r = Math.max(minRight, Math.floor(room - l));
+  }
+  return [l, r];
 }
 
 /**

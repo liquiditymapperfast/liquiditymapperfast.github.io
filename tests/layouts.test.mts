@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TIMEFRAMES } from '../src/app/hub.ts';
 import { LAYOUT_KEYS, TIMEFRAME_IDS, readSettings, type AppState } from '../src/app/store.ts';
-import { MAX_FILE_CHARS, MAX_LAYOUTS, MAX_NAME, PANE_SWITCHES, arrangeOrder, carriedSettings, changedSettings, cleanName, copyName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, paneSettings, readArrangement, readLayouts, samePanes, settingsOf, settingsToApply, undoPatch, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
+import { MAX_FILE_CHARS, MAX_LAYOUTS, MAX_NAME, PANE_SWITCHES, arrangeOrder, carriedSettings, changedSettings, cleanName, completeSettings, copyName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, paneSettings, readArrangement, readLayouts, samePanes, settingsOf, settingsToApply, undoPatch, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
 
 const defaults = readSettings({});
 const state = (patch: Partial<AppState> = {}): AppState => ({ ...defaults, ...patch } as AppState);
@@ -183,6 +183,26 @@ test('Undo puts back what an action changed and what still stands as it left it,
   const next = { ...hid, show: { ...hid.show!, footprint: true } };
   assert.deepEqual(undoPatch(before, hid, next).show, { ...next.show, book: before.show!.book });
   assert.deepEqual(undoPatch(before, before, before), {}, 'an action that changed nothing puts nothing back');
+});
+
+test('Undo keeps this chart\'s VWAP anchors and the profile\'s zone: a snapshot has neither, so a patch never writes them back as missing', () => {
+  const mine = state({ vwap: { ...defaults.vwap, on: true, bands: 2, anchors: { BTC: [1, 2], ETH: [7] } }, traded: { ...defaults.traded, count: 3, zone: 'Asia/Tokyo' } });
+  const before = settingsOf(mine);
+  // A saved layout applied: bands and the profile's count changed, the anchors and the zone are the chart's own.
+  const applied = state({ ...mine, vwap: { ...mine.vwap, bands: 0 }, traded: { ...mine.traded, count: 9 } });
+  const patch = undoPatch(before, settingsOf(applied), settingsOf(applied));
+  assert.ok(!('anchors' in patch.vwap!) && !('zone' in patch.traded!), 'the bare patch is incomplete, which is why the store must not be given it');
+  const whole = completeSettings(patch, applied);
+  assert.equal(whole.vwap!.bands, 2);
+  assert.deepEqual(whole.vwap!.anchors, { BTC: [1, 2], ETH: [7] }, 'the anchors stand');
+  assert.equal(whole.traded!.count, 3);
+  assert.equal(whole.traded!.zone, 'Asia/Tokyo', 'the zone stands');
+  // Anchors drawn and a zone chosen since the action are kept, not the ones the snapshot never had.
+  const drawn = state({ ...applied, vwap: { ...applied.vwap, anchors: { BTC: [1, 2, 3] } }, traded: { ...applied.traded, zone: 'UTC' } });
+  const later = completeSettings(undoPatch(before, settingsOf(applied), settingsOf(drawn)), drawn);
+  assert.deepEqual(later.vwap!.anchors, { BTC: [1, 2, 3] });
+  assert.equal(later.traded!.zone, 'UTC');
+  assert.deepEqual(completeSettings({ timeframe: '4h' }, applied), { timeframe: '4h' }, 'a patch that names neither is left as it is');
 });
 
 test('two arrangements are the same when the order, the heights and the places match within a few pixels', () => {

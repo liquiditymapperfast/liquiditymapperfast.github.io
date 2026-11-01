@@ -52,6 +52,7 @@ html[data-bar="compact"] .toolbar .bar-collapse { order: 7; flex: none; width: 4
 html[data-bar="compact"] .toolbar { position: relative; z-index: 30; }
 html[data-bar="compact"] .toolbar .notice { position: absolute; left: 8px; right: 8px; top: calc(100% + 4px); z-index: 45; margin: 0; box-shadow: 2px 2px 0 var(--shadow); }
 html[data-bar="compact"] .toolbar .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 40px); }
+html[data-bar="compact"] .toolbar .notice:not([hidden]) ~ .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 76px); }
 .more-btn { display: none; }
 /* Recentre is a symbol in the bar: the word would not fit beside seven timeframes. A flex box, not a grid: the hidden word is an item of its own,
    and in a grid it took a row of its own and lifted the symbol 3.8 px above the middle of the button (Karl, 2026-10-26). */

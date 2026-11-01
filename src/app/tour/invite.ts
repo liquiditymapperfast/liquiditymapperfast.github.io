@@ -20,10 +20,15 @@ export class TourInvite {
       el('button', { type: 'button', class: 'tour-invite-later', textContent: t('Not now'), onclick: () => { this.root.hidden = true; record('dismissed'); toast(where()); } }));
   }
 
-  /** Offer the tour if it was never offered here, and not over something the person has opened. */
-  offer(): void {
-    if (!shouldInvite(loadRecord()) || document.querySelector('dialog[open]')) return;
+  /**
+   * Offer the tour if it was never offered here. False while something the person has opened is over the page (a window, the Settings sheet, a panel or a menu, which on
+   * a touch screen lie over the notice with a scrim): the offer waits to be made again, and is recorded as shown only when it is on the screen to be answered.
+   */
+  offer(): boolean {
+    if (!shouldInvite(loadRecord())) return true;
+    if (document.querySelector('dialog[open], .sheet, .panel, .menu')) return false;
     record('seen');
     this.root.hidden = false;
+    return true;
   }
 }

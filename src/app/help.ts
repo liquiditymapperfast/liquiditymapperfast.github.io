@@ -254,6 +254,14 @@ export const showGuide = (section?: string): void => { void lazy(() => import('.
 /** Start the tour (the quick pass over the page; `tour/tour.ts`). It is loaded on demand, like the guide. */
 export const showTour = (options?: import('./tour/tour.ts').TourOptions): void => { void lazy(() => import('./tour/tour.ts')).then(m => m?.startTour(options)); };
 
+/**
+ * The tour as the page starts it from its own controls: a top bar folded away is brought back for it, an open invitation put away. The toolbar says how
+ * (`setTourStarter`), and the Guide's link takes the tour the same way (the tour alone would point at a folded bar's missing buttons).
+ */
+let tourStarter: (() => void) | null = null;
+export const setTourStarter = (start: () => void): void => { tourStarter = start; };
+export const takeTour = (): void => { if (tourStarter) tourStarter(); else showTour(); };
+
 /** What a "?" opens: a title, its lead sentence, short paragraphs, and the section of the guide that goes further (without one, no link). */
 export interface Explanation { title: string; tip: string; body: readonly string[]; guide?: string }
 

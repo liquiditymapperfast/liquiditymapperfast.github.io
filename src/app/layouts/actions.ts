@@ -1,7 +1,7 @@
 import type { AppState, Settings, Store } from '../store.ts';
 import { t } from '../i18n.ts';
 import { toast } from '../toast.ts';
-import { LAYOUTS_KEY, MAX_LAYOUTS, changedSettings, cleanName, copyName, loadLayouts, paneSettings, samePanes, settingsOf, settingsToApply, storeLayouts, undoPatch, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
+import { LAYOUTS_KEY, MAX_LAYOUTS, changedSettings, cleanName, completeSettings, copyName, loadLayouts, paneSettings, samePanes, settingsOf, settingsToApply, storeLayouts, undoPatch, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
 import { PRESETS, buildPreset, type PresetDef, type PresetEnv } from './presets.ts';
 import { readActive, sameShot, shotOf, type Active } from './active.ts';
 import { PANE_SHOW_KEY, type Side, type SidePaneId } from './dock-model.ts';
@@ -35,7 +35,7 @@ export class LayoutActions {
   #undo(before: Snapshot, after: Snapshot): void {
     const now = this.snapshot(), untouched = samePanes(after.panes, now.panes);
     if (untouched && !samePanes(before.panes, after.panes)) this.host.apply(before.panes);
-    const patch = undoPatch(before.settings, after.settings, now.settings);
+    const patch = completeSettings(undoPatch(before.settings, after.settings, now.settings), this.store.state);
     if (Object.keys(patch).length) this.store.set(patch);
     if (untouched) this.#setActive(before.active);
   }

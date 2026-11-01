@@ -109,6 +109,17 @@ export function undoPatch(before: Partial<Settings>, after: Partial<Settings>, n
   return out as Partial<Settings>;
 }
 
+/**
+ * An Undo patch made whole for the store. A snapshot leaves out the VWAP anchors and the Volume profile's zone (`settingsOf`), so the VWAP and
+ * profile settings a patch carries would write those two back as missing: they are laid back from the chart as it stands, which an Undo never changes.
+ */
+export function completeSettings(patch: Partial<Settings>, current: AppState): Partial<Settings> {
+  const out: Partial<Settings> = { ...patch };
+  if (out.vwap) out.vwap = { ...out.vwap, anchors: current.vwap.anchors };
+  if (out.traded) out.traded = { ...out.traded, zone: current.traded.zone };
+  return out;
+}
+
 /** The same arrangement of the panes: the order, the heights and the places of the panes within a few pixels (what is measured shifts by a pixel or two). */
 export function samePanes(a: PaneArrangement, b: PaneArrangement, tolerance = 8): boolean {
   if (a.order.join() !== b.order.join()) return false;

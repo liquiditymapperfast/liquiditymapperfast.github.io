@@ -148,7 +148,7 @@ async function main(): Promise<void> {
   // What the person does to the layout (layouts/actions.ts): the layouts panel, a pane's close button and the edge tab of a closed side pane (the Panels row in the top bar flips the same switches).
   const layouts = new LayoutActions(store, {
     arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults(), swapSides: () => arrange.swapSides(),
-    env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200) }),
+    env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200), held: store.state.show.script ? ['script' as const] : [] }),
   });
   arrange.onClose = id => layouts.hide(id, arrange.title(id)); arrange.onOpen = id => layouts.setPane(id, true);
   toolbar.layouts = layouts;
@@ -390,8 +390,13 @@ async function main(): Promise<void> {
   // Each new open-interest reading is pushed as it lands (Hub.#oiPush); this load is the reconciliation: history, the markets added
   // together, a reading a push missed.
   window.setInterval(() => { void hub.loadOi(); }, 20_000);
-  // A visitor the tour was never offered to is offered it once, a moment after the page has drawn (`?tour=0` leaves it out, for pictures and tests).
-  if (new URLSearchParams(location.search).get('tour') !== '0') window.setTimeout(() => toolbar.inviteToTour(), 2500);
+  // A visitor the tour was never offered to is offered it once, a moment after the page has drawn (`?tour=0` leaves it out, for pictures and tests). With a window or the
+  // Settings sheet open over the page at that moment it asks again every few seconds, for a minute, and records nothing until the offer is on the screen.
+  if (new URLSearchParams(location.search).get('tour') !== '0') {
+    let asked = 0;
+    const offer = (): void => { if (!toolbar.inviteToTour() && ++asked < 12) window.setTimeout(offer, 5_000); };
+    window.setTimeout(offer, 2500);
+  }
   (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, cvd, candle, sounds, alerts, glass, script };
 }
 

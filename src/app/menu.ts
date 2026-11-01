@@ -16,6 +16,10 @@ export interface MenuHandlers {
   onSelect(id: string): void;
 }
 
+/** The menus that are open, so that they can be closed from outside (the tour clears the page before it points at it; a key pressed for it would reach the chart too). */
+const opened = new Set<() => void>();
+export const closeMenus = (): void => { for (const close of [...opened]) close(); };
+
 /**
  * A list of choices that previews each one while the pointer or the arrow keys are on it and keeps the choice on click or Enter.
  * Leaving the menu, Escape, or a click elsewhere puts things back as they were.
@@ -57,13 +61,13 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   const stopMode = onLayoutMode(() => { scrim.sync(); place(); });
   function close(): void {
     if (closed) return;
-    closed = true; stopMode();
+    closed = true; stopMode(); opened.delete(close);
     root.remove(); scrim.remove(); anchor.classList.remove('open');
     document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', place);
     if (!done) handlers.onPreview(null);
   }
   root.onpointerleave = () => handlers.onPreview(null);
-  anchor.classList.add('open'); scrim.sync(); place();
+  anchor.classList.add('open'); scrim.sync(); place(); opened.add(close);
   // A preview restyles the whole page, and another frame's rows are taller or shorter: the list grew past the window's edge (the last themes
   // vanished while the pointer was on it, Karl 2026-10-17) and its rows slid under a still pointer, previewing a neighbour. The menu keeps
   // the sizes it opened with, so a preview changes colours and type, never where a row is.

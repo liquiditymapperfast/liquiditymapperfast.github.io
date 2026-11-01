@@ -7,7 +7,7 @@ import { createFigure } from './figures.ts';
 import { parseInline } from './markup.ts';
 import { language, t } from '../i18n.ts';
 import { setGuideWords, tg } from './words.ts';
-import { showTour } from '../help.ts';
+import { takeTour } from '../help.ts';
 
 /** The guide's words in each language, each fetched only when the guide opens in that language (`i18n/<code>.json`, English being the text itself). */
 const packs = import.meta.glob<Record<string, string>>('./i18n/*.json', { import: 'default' });
@@ -64,10 +64,12 @@ export async function openGuide(section?: string): Promise<void> {
   opening = true;
   try { await loadWords(); } finally { opening = false; }
   if (open) { if (section) (open as { scrollTo(id: string): void }).scrollTo(section); return; }
+  // The tour was asked for while the words were being fetched: it has the page, and the guide waits to be asked again.
+  if (document.querySelector('dialog.tour')) return;
   const figures: { dispose(): void }[] = [];
   const dialog = el('dialog', { class: 'guide', ariaLabel: t('Guide') });
   const closeButton = el('button', { type: 'button', class: 'guide-x', tip: t('Close the guide (Esc)'), ariaLabel: t('Close the guide') });
-  const tourButton = el('button', { type: 'button', class: 'guide-tour', textContent: t('Take the tour'), tip: t('A one-minute tour of the page: what the map shows and where everything is. The Guide goes deeper.'), onclick: () => { close(); showTour(); } });
+  const tourButton = el('button', { type: 'button', class: 'guide-tour', textContent: t('Take the tour'), tip: t('A one-minute tour of the page: what the map shows and where everything is. The Guide goes deeper.'), onclick: () => { close(); takeTour(); } });
   const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: t('Guide') }), el('span', { class: 'sub', textContent: (isCoarse() ? t('About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.', { n: readingMinutes() }) : t('About {n} minutes to read. Pictures move: hover, pause or scrub them.', { n: readingMinutes() })) })), tourButton, closeButton);
   const toc = el('nav', { class: 'guide-toc', ariaLabel: t('Contents') });
   const select = el('select', { class: 'guide-jump', ariaLabel: t('Jump to a section') });

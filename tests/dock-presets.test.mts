@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PRESETS, buildPreset, type PresetEnv } from '../src/app/layouts/presets.ts';
-import { MAX_BOTH_SHARE, PANE_SHOW_KEY, STRIP_PANES, readPlan, stripSize } from '../src/app/layouts/dock-model.ts';
+import { MAX_BOTH_SHARE, PANE_SHOW_KEY, STRIP_PANES, readPlan, stripSize, type DockPlan } from '../src/app/layouts/dock-model.ts';
 import { readArrangement, settingsToApply, changedSettings } from '../src/app/layouts/layouts.ts';
 import { readActive, sameShot, shotOf } from '../src/app/layouts/active.ts';
 import { GAP, MAP_MIN, thumbBoxes } from '../src/app/layouts/thumb.ts';
@@ -72,6 +72,14 @@ test('a layout opens as many panes under the map as the window has room for: the
   const small = buildPreset(PRESETS.find(d => d.id === 'everything')!, { width: 1024, height: 584 }).show, large = buildPreset(PRESETS.find(d => d.id === 'everything')!, ENVS[3]!).show;
   assert.deepEqual(['bars', 'depth', 'oi', 'delta', 'ls', 'lt'].map(k => k === 'bars' ? small.stats : small[k as 'lt']), [true, true, true, true, true, false], 'a 584 px column has room for five of the six: the last of the list waits');
   assert.equal(large.lt, true);
+  // The Scripts pane stays open under any layout (it is the person's own) and takes its room first (review 2026-10-31: five panes were opened beside it in 584 px, which need 636).
+  const withScript = buildPreset(PRESETS.find(d => d.id === 'everything')!, { width: 1024, height: 584, held: ['script'] }).show;
+  assert.deepEqual(['bars', 'depth', 'oi', 'delta', 'ls', 'lt'].map(k => k === 'bars' ? withScript.stats : withScript[k as 'lt']), [true, true, true, true, false, false], 'one pane fewer, for the Scripts pane that stays');
+  for (const env of ENVS) for (const def of PRESETS) {
+    const { show } = buildPreset(def, { ...env, held: ['script'] });
+    const open = STRIP_PANES.filter(p => p.id !== 'script' && show[PANE_SHOW_KEY[p.id]!]), need = open.reduce((sum, p) => sum + p.min + 5, 240 + stripSize('script').min + 5);
+    assert.ok(need <= env.height, `${def.id} at ${env.width}x${env.height} with a script: needs ${need}`);
+  }
 });
 
 test('the panes under the map take their share of the column, each at least its own minimum, each at most a wall', () => {
@@ -122,6 +130,21 @@ test('a column that follows the window is not one dragged to a width; one pane\'
   const closedMoved = shotOf({ ...base.arrangement, dock: { ...base.arrangement.dock!, left: ['book'], right: ['cvd'] } }, { ...open, cvd: false, book: false });
   const closedHome = shotOf(base.arrangement, { ...open, cvd: false, book: false });
   assert.equal(sameShot(closedMoved, closedHome), true, 'both closed: where they would stand is not on the screen');
+});
+
+test('two panes stacked in a column divide its height, and the splitter between them dragged is a change (review 2026-10-31)', () => {
+  const base = buildPreset(PRESETS.find(d => d.id === 'everything')!, ENVS[4]!);
+  const open = { ...defaults.show, ...base.show, cvd: true, book: true };
+  const stacked = (weights: DockPlan['weights'], show = open) => shotOf({ ...base.arrangement, dock: { ...base.arrangement.dock!, left: ['cvd', 'book'], right: [], leftW: 400, weights } }, show);
+  const even = stacked({});
+  assert.equal(sameShot(even, stacked({ cvd: 1, book: 1 })), true, 'a weight of 1 is none');
+  assert.equal(sameShot(even, stacked({ cvd: 2, book: 2 })), true, 'the same division');
+  assert.equal(sameShot(even, stacked({ cvd: 1.02, book: 1 })), true, 'a pixel or two of the splitter');
+  assert.equal(sameShot(even, stacked({ cvd: 3, book: 1 })), false, 'a 75/25 division');
+  assert.equal(sameShot(stacked({ cvd: 3, book: 1 }), stacked({ cvd: 3.05, book: 1 })), true);
+  // A pane alone in its column has all of it, whatever its weight says.
+  const alone = (weights: DockPlan['weights']) => stacked(weights, { ...open, book: false });
+  assert.equal(sameShot(alone({}), alone({ cvd: 3 })), true);
 });
 
 test('the active layout is read from storage only if it is one', () => {

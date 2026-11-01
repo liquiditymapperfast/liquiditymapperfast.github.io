@@ -59,8 +59,11 @@ export const PRESETS: readonly PresetDef[] = [
   },
 ];
 
-/** The room a layout is made for: the window's width, and the height of the map's column (the map and the panes under it share it). */
-export interface PresetEnv { width: number; height: number }
+/**
+ * The room a layout is made for: the window's width, and the height of the map's column (the map and the panes under it share it). `held` are the
+ * panes under the map that stay open whatever the layout does (the Scripts pane, which is the person's own): they take room of that column too.
+ */
+export interface PresetEnv { width: number; height: number; held?: readonly StripId[] }
 export interface BuiltPreset { arrangement: PaneArrangement; show: Partial<AppState['show']> }
 
 /** The tallest a pane under the map is made by a share of the column: past it a pane is a wall of empty chart. */
@@ -72,7 +75,8 @@ const MAP_FLOOR_PX = 240, SPLITTER_PX = 5;
 
 export function buildPreset(def: PresetDef, env: PresetEnv): BuiltPreset {
   // A layout made for a large screen opens as many of its panes as the window has room for, in the order it lists them: past that the last of them would be pushed off the screen.
-  const room = (list: readonly StripId[]): number => list.reduce((sum, id) => sum + stripSize(id).min + SPLITTER_PX, MAP_FLOOR_PX);
+  const held = (env.held ?? []).filter(id => !def.strip.some(([own]) => own === id));
+  const room = (list: readonly StripId[]): number => [...held, ...list].reduce((sum, id) => sum + stripSize(id).min + SPLITTER_PX, MAP_FLOOR_PX);
   const kept = def.strip.map(([id]) => id);
   while (kept.length && room(kept) > env.height) kept.pop();
   const strip = def.strip.filter(([id]) => kept.includes(id));

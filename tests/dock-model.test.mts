@@ -86,6 +86,20 @@ test('the columns never take more of the window than the map can spare, and neve
   assert.ok(l + r <= 1200 * MAX_BOTH_SHARE + 1, `${l} + ${r}`);
   assert.ok(l >= 200 && r >= 260);
   assert.deepEqual(fitColumns(600, 700, 500, 200, 260), [200, 260], 'a window too narrow for either: the minimums');
+  // One column cut to its minimum must not leave the pair over the room (a width of 4,000 px kept beside one of 150 gave a map of a quarter of the window).
+  assert.deepEqual(fitColumns(4000, 150, 1500, 200, 260), [670, 260]);
+  assert.deepEqual(fitColumns(100, 5000, 1280, 200, 260), [200, 593]);
+  let seed = 7;
+  const next = (): number => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  for (let i = 0; i < 2000; i++) {
+    const w = 500 + Math.floor(next() * 3500), a = 100 + Math.floor(next() * 4000), b2 = 100 + Math.floor(next() * 4000), minA = 200, minB = 260;
+    const [x, y] = fitColumns(a, b2, w, minA, minB), room = w * MAX_BOTH_SHARE;
+    if (a + b2 <= room) assert.deepEqual([x, y], [a, b2], 'as asked when there is room (laidOutWidths applies the minimums then)');
+    else {
+      assert.ok(x >= minA && y >= minB, `minimums: ${w} ${a} ${b2} -> ${x} ${y}`);
+      assert.ok(x + y <= Math.max(room, minA + minB) + 1, `over the room: ${w} ${a} ${b2} -> ${x} ${y}`);
+    }
+  }
   assert.equal(maxColumnWidth(1500, 0, 260), Math.floor(1500 * MAX_COLUMN_SHARE));
   assert.equal(maxColumnWidth(1500, 600, 260), Math.floor(1500 * MAX_BOTH_SHARE - 600), 'with the other column beside it');
   assert.equal(maxColumnWidth(500, 400, 260), 260, 'never under its own minimum');
@@ -125,6 +139,12 @@ test('a column that stands alone is laid out within what its panes need and what
   assert.deepEqual(laidOutWidths([300, 420], [200, 260], [true, true], 1600), fitColumns(300, 420, 1600, 200, 260));
   const [l, r] = laidOutWidths([900, 900], [200, 260], [true, true], 1280);
   assert.ok(l + r <= 1280 * MAX_BOTH_SHARE + 2 && l >= 200 && r >= 260);
+  // A layout saved on a wide screen, an asymmetric pair at the narrowest the panes allow (review 2026-10-31: 200 + 560 in a window of 1,024 px left the map 252 px).
+  const [a, b] = laidOutWidths([200, 1500], [200, 260], [true, true], 1024);
+  assert.deepEqual([a, b], [200, 434]);
+  assert.ok(a + b <= 1024 * MAX_BOTH_SHARE && a >= 200 && b >= 260);
+  const [c, d] = laidOutWidths([1500, 200], [200, 260], [true, true], 1024);
+  assert.ok(c + d <= 1024 * MAX_BOTH_SHARE && c >= 200 && d >= 260, `${c} + ${d}`);
   // A column that is not open keeps what it is asked for (nothing is laid out there).
   assert.deepEqual(laidOutWidths([123, 456], [200, 260], [false, false], 1280), [123, 456]);
   // Sound at any window: an open column is within [its minimum, the window's share] unless the minimum is more than the share.

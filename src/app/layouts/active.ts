@@ -12,6 +12,8 @@ export interface Shot { open: Record<string, boolean>; dock: DockPlan; strip: { 
 /** The layout last applied or saved: what it was called, where it came from, and how the screen looked right after. */
 export interface Active { kind: 'preset' | 'saved'; id: string; shot: Shot }
 
+/** How far a stacked pane's share of its column may differ and still be the same layout (the splitter moves a pixel or two by itself). */
+const SHARE_TOLERANCE = 0.03;
 const JUDGED = [...SIDE_PANES, ...STRIP_PANES.map(p => p.id).filter(id => id !== 'script')] as readonly string[];
 
 export function shotOf(a: PaneArrangement, show: AppState['show']): Shot {
@@ -31,6 +33,15 @@ export function sameShot(a: Shot, b: Shot, tolerance = 8): boolean {
   const near = (x: number | null, y: number | null): boolean => x === null || y === null ? x === y : Math.abs(x - y) <= tolerance;
   if (openOf(a, 'left').length && !near(a.dock.leftW, b.dock.leftW)) return false;
   if (openOf(a, 'right').length && !near(a.dock.rightW, b.dock.rightW)) return false;
+  // Panes stacked in a column share its height by their weights: the splitter between them dragged is a change too (the lists are the same here).
+  const shares = (s: Shot, side: 'left' | 'right'): number[] => {
+    const ids = openOf(s, side), weight = (id: string): number => s.dock.weights[id as keyof DockPlan['weights']] ?? 1, sum = ids.reduce((t, id) => t + weight(id), 0);
+    return ids.map(id => weight(id) / sum);
+  };
+  for (const side of ['left', 'right'] as const) {
+    const x = shares(a, side), y = shares(b, side);
+    if (x.length > 1 && x.some((v, i) => Math.abs(v - y[i]!) > SHARE_TOLERANCE)) return false;
+  }
   if (a.strip.length !== b.strip.length) return false;
   return a.strip.every((p, i) => p.id === b.strip[i]!.id && Math.abs(p.height - b.strip[i]!.height) <= tolerance);
 }

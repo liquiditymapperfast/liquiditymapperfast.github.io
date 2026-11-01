@@ -11,7 +11,7 @@ import { lazy } from './lazy.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
-import { HELP, helpButton, showGuide, showTour, type HelpId } from './help.ts';
+import { HELP, helpButton, setTourStarter, showGuide, showTour, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
@@ -293,6 +293,8 @@ export class Toolbar {
   }
 
   constructor(private store: Store, private venueControl: VenueControl) {
+    // The Guide's link to the tour starts it as the Tour button does (the bar unfolded for it).
+    setTourStarter(() => this.startTour());
     const missing = coinChoice().notice;
     if (missing) {
       this.#coinNotice.append(el('span', { class: 'notice-mark mark-info', ariaHidden: 'true' }), el('span', { textContent: missing.reason === 'unreadable' ? t('The coin list could not be read, so only BTC is offered.') : t('{coin} is not on the coin list, so the page is on BTC.', { coin: missing.coin }) }),
@@ -519,8 +521,8 @@ export class Toolbar {
       return () => this.store.set({ barCollapsed: true });
     } });
   }
-  /** Offer the tour to a visitor who has not been offered it. */
-  inviteToTour(): void { this.#invite.offer(); }
+  /** Offer the tour to a visitor who has not been offered it; false when something is open over the page and it should be tried again. */
+  inviteToTour(): boolean { return this.#invite.offer(); }
 
   /** Fold the bar away or bring it back (`state.barCollapsed`): folded, only its strip (`#expand`) and its notices show. */
   setCollapsed(collapsed: boolean): void {

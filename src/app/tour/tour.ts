@@ -2,6 +2,9 @@ import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { compactBar, isCoarse, isPhone, onLayoutMode } from '../device.ts';
 import { showGuide } from '../help.ts';
+import { closeMenus } from '../menu.ts';
+import { closeSheet } from '../sheet.ts';
+import { closePanel } from '../ui.ts';
 import { grow, placeCard, visiblePart } from './place.ts';
 import { findAll, rectOf } from './targets.ts';
 import { stepsFor, type Arrangement } from './steps.ts';
@@ -23,18 +26,23 @@ export interface TourOptions {
 
 let state: 'idle' | 'starting' | 'running' = 'idle';
 
-/** Close what is open over the page (a panel, a menu, the guide, the settings sheet): the tour points at the page itself. */
+/**
+ * Close what is open over the page (a panel, a menu, the guide, the settings sheet): the tour points at the page itself. Each is closed by its own
+ * door, not by a key pressed for it: an Escape would reach the chart as well and cancel the drawing someone has begun, or unpin the Bar stats.
+ */
 function clearTheWay(): void {
   document.querySelector<HTMLElement>('dialog.guide .guide-x')?.click();
-  document.querySelector<HTMLElement>('.sheet .sheet-x')?.click();
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  closeSheet(); closePanel(); closeMenus();
 }
 
 export function startTour(options: TourOptions = {}): void {
   if (state !== 'idle') return;
   state = 'starting';
-  clearTheWay();
-  const restore = options.prepare?.() ?? ((): void => {});
+  let restore = (): void => {};
+  try {
+    clearTheWay();
+    restore = options.prepare?.() ?? restore;
+  } catch (error) { state = 'idle'; console.error('The tour could not be shown:', error); return; }
   // A top bar that was folded away takes a frame or two to be laid out again.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     try { begin(restore); } catch (error) { state = 'idle'; restore(); console.error('The tour could not be shown:', error); }
@@ -42,6 +50,8 @@ export function startTour(options: TourOptions = {}): void {
 }
 
 function begin(restore: () => void): void {
+  // Once more: the guide, whose words were still being fetched when the tour was asked for, may have opened in these frames.
+  clearTheWay();
   const arrangement: Arrangement = isPhone() ? 'phone' : compactBar() ? 'compact' : 'desktop';
   const steps = stepsFor(arrangement, isCoarse()).filter(step => !step.targets.length || rectOf(step.targets) !== null);
   if (!steps.length) { state = 'idle'; restore(); return; }
@@ -105,12 +115,8 @@ function begin(restore: () => void): void {
     if (dir === 1) end('done');
   }
 
-  const poll = window.setInterval(() => {
-    const step = steps[index]!;
-    if (step.targets.length && !rectOf(step.targets)) go(1); else place();
-  }, POLL_MS);
-  const stopMode = onLayoutMode(() => end('left'));
-  window.addEventListener('resize', relayout);
+  // What the tour keeps running while it is up (a timer, two listeners): set once it is showing, and all of it taken down by `dispose`.
+  let poll = 0, stopMode: () => void = () => {}, over = false;
   dialog.addEventListener('cancel', event => { event.preventDefault(); end('left'); });
   dialog.addEventListener('keydown', event => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -125,19 +131,33 @@ function begin(restore: () => void): void {
     else if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); if (index > 0) go(-1); }
   });
 
-  function end(how: 'done' | 'left'): void {
-    if (state !== 'running') return;
-    state = 'idle';
+  /** Take this tour down: its timer, its listeners, its dialog. Once, whichever way it ends or fails to begin. */
+  function dispose(): void {
+    if (over) return;
+    over = true;
     window.clearInterval(poll); window.removeEventListener('resize', relayout); if (frame) cancelAnimationFrame(frame); stopMode();
-    dialog.close(); dialog.remove(); restore();
+    if (dialog.open) dialog.close();
+    dialog.remove();
+  }
+  function end(how: 'done' | 'left'): void {
+    if (over) return;
+    dispose(); state = 'idle'; restore();
     record(how === 'done' ? 'done' : 'dismissed');
   }
 
   document.body.append(dialog);
   // The first step is placed where it stands: the glide is for the move from one step to the next.
   dialog.classList.add('settling');
-  dialog.showModal();
-  state = 'running';
-  show();
+  try {
+    dialog.showModal();
+    state = 'running';
+    poll = window.setInterval(() => {
+      const step = steps[index]!;
+      if (step.targets.length && !rectOf(step.targets)) go(1); else place();
+    }, POLL_MS);
+    stopMode = onLayoutMode(() => end('left'));
+    window.addEventListener('resize', relayout);
+    show();
+  } catch (error) { dispose(); throw error; }
   if (!reducedMotion()) requestAnimationFrame(() => requestAnimationFrame(() => dialog.classList.remove('settling'))); else dialog.classList.remove('settling');
 }
