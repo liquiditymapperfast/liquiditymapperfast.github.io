@@ -246,6 +246,7 @@ async function main(): Promise<void> {
   // Candles that came after the first frame (an exchange blocked here, the reference market read once known) are framed, unless the map was moved.
   hub.onSeriesRefilled = () => { if (store.state.followLive) heat.fit(); lower(); };
   toolbar.keyHistory = hub.keyHistory;
+  toolbar.liqSource = hub.liqLevels;
   toolbar.profileHistory = barMs => hub.profileHistory(barMs);
   toolbar.whaleInfo = () => ({ since: hub.whale?.since ?? null, state: hub.whaleState, browser: source.kind === 'browser' });
   // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
