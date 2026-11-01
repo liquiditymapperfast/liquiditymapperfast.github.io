@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EDGE_MIN, axisOf, channelLines, deltaOf, distToSegment, extendSegment, fibLevels, handlesOf, hitDrawing, strokesOf, withHandleAt, type Projection } from '../src/app/draw/geometry.ts';
+import { EDGE_MIN, axisOf, edgeMinFor, channelLines, deltaOf, distToSegment, extendSegment, fibLevels, handlesOf, hitDrawing, sameHit, strokesOf, withHandleAt, type Projection } from '../src/app/draw/geometry.ts';
 import { newDrawing } from '../src/app/draw/model.ts';
 
 const T = Date.UTC(2026, 9, 28, 0), H = 3_600_000;
@@ -91,7 +91,7 @@ test('a short edge has no middle handle; a zone that runs on has its top, bottom
   assert.deepEqual(handlesOf(wide, pr).slice(4).map(h => axisOf(h)), ['p', 'p', 't', 't']);
   const runs = { ...newDrawing('zone', [at(1, 180), at(4, 160)], T), extendRight: true };
   const hs = handlesOf(runs, pr);
-  assert.deepEqual(hs.map(h => [h.x, h.y]), [[100, 100], [400, 200], [550, 100], [550, 200], [100, 150]], 'no corner or side at a right edge it does not have; the top and bottom stand in the part in view');
+  assert.deepEqual(hs.map(h => [h.x, h.y]), [[100, 100], [400, 200], [100, 200], [550, 100], [550, 200], [100, 150]], 'the corner at its left that no point is at, the top and bottom in the part in view, the left side: nothing at a right edge it does not have');
   // The box from 8 h to 15 h is half past the right edge (1000 px), and the one from -5 h to 3 h half past the left.
   const right = handlesOf(newDrawing('zone', [at(8, 180), at(15, 160)], T), pr).slice(4);
   assert.equal(right[0]!.x, 900, 'the middle of the 800 to 1000 px that is in view');
@@ -120,4 +120,29 @@ test('a handle moves the coordinates it moves and no others', () => {
   assert.deepEqual(withHandleAt(zone, hs[4]!, at(2.5, 140)).points, [at(1, 140), at(4, 160)]);
   const vline = newDrawing('vline', [at(2, 120)], T);
   assert.deepEqual(withHandleAt(vline, handlesOf(vline, pr)[0]!, at(3, 999)).points, [{ t: at(3, 0).t, p: 120 }], 'an event line takes no price');
+});
+
+test('a zone that runs on has no right side to cross: its left edge takes the other point along; the hover knows its handle by its axis too', () => {
+  const runs = { ...newDrawing('zone', [at(1, 180), at(4, 160)], T), extendRight: true };
+  const hs = handlesOf(runs, pr);
+  assert.deepEqual(hs.map(h => h.after ?? null), [[1], null, [1], null, null, [1]], 'what moves the left point\'s time carries the right point: its own handle, the corner at the left, the left side');
+  // The left edge to 6 h, past the right point at 4 h: the right point goes to 6 h with it, so the left boundary follows the pointer.
+  assert.deepEqual(withHandleAt(runs, hs[5]!, at(6, 0)).points.map(q => q.t), [at(6, 0).t, at(6, 0).t]);
+  assert.deepEqual(withHandleAt(runs, hs[5]!, at(2, 0)).points.map(q => q.t), [at(2, 0).t, at(4, 0).t], 'short of it, the right point stays');
+  assert.deepEqual(withHandleAt(runs, hs[2]!, at(6, 150)).points.map(q => [q.t, q.p]), [[at(6, 0).t, 180], [at(6, 0).t, 150]], 'the corner at the left: the left point\'s time, the right point\'s price, the right point carried');
+  // A box with a right side flips instead, as before: nothing is carried.
+  assert.equal(handlesOf(newDrawing('zone', [at(1, 180), at(4, 160)], T), pr).every(h => h.after === undefined), true);
+  // The same place in the list is another handle after a zoom: the hover is the same only if its axis is.
+  const top = { id: 'x', part: 'handle' as const, index: 4, axis: 'p' as const }, left = { id: 'x', part: 'handle' as const, index: 4, axis: 't' as const };
+  assert.equal(sameHit(top, { ...top }), true); assert.equal(sameHit(top, left), false); assert.equal(sameHit(top, { id: 'x', part: 'stroke' }), false); assert.equal(sameHit(null, null), true); assert.equal(sameHit(top, null), false);
+});
+
+test('a finger needs its handles further apart: an edge has a middle only where it is 48 px long, a mouse\'s where it is 28', () => {
+  assert.deepEqual([edgeMinFor(6), edgeMinFor(12)], [28, 48]);
+  const zone = newDrawing('zone', [at(1, 180), at(1.4, 140)], T);   // 40 px wide, 200 px high
+  assert.equal(handlesOf(zone, pr, edgeMinFor(6)).length, 8, 'a mouse: the top and bottom have a middle');
+  assert.equal(handlesOf(zone, pr, edgeMinFor(12)).length, 6, 'a finger: only the sides');
+  assert.equal(hitDrawing({ x: 120, y: 100 }, [zone], pr, 6, zone.id, size)?.part, 'handle', 'the mouse finds the middle of the top');
+  assert.deepEqual(hitDrawing({ x: 120, y: 100 }, [zone], pr, 12, zone.id, size), { id: zone.id, part: 'stroke' }, 'the finger: no middle there, and a corner 20 px away is out of reach: the edge itself');
+  assert.deepEqual(hitDrawing({ x: 132, y: 104 }, [zone], pr, 12, zone.id, size), { id: zone.id, part: 'handle', index: 3, axis: 'both' }, 'and the corner 8 px from the press, which the middle would have been too near to tell from');
 });

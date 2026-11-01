@@ -3190,7 +3190,7 @@ export class HeatPane {
       if (onPlot && !this.#drag?.panning) this.draw?.move({ x, y }, e.altKey, false); else if (!onPlot) this.draw?.leave();
       const drawHover = onPlot && !this.draw?.placing ? this.draw?.hover ?? null : null;
       el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : this.#bands.onHeader(x, y) || this.#onHiddenTag(x, y) ? 'pointer'
-        : drawHover ? (drawHover.part === 'handle' ? (drawHover.axis === 'p' ? 'ns-resize' : drawHover.axis === 't' ? 'ew-resize' : 'grab') : drawHover.id === this.draw!.selected && drawHover.part === 'stroke' ? 'move' : 'pointer')
+        : drawHover ? (!this.draw!.canDrag(drawHover.id) ? 'pointer' : drawHover.part === 'handle' ? (drawHover.axis === 'p' ? 'ns-resize' : drawHover.axis === 't' ? 'ew-resize' : 'grab') : drawHover.id === this.draw!.selected && drawHover.part === 'stroke' ? 'move' : 'pointer')
         : overColumn || ((this.range?.armed || this.store.state.vwapAnchoring || this.draw?.placing) && onPlot) ? 'crosshair' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).

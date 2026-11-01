@@ -2,7 +2,7 @@ import { t, tn } from '../i18n.ts';
 import { price as fmtPrice } from '../format.ts';
 import type { View } from '../view.ts';
 import { ANCHORS, MAX_PER_COIN, MAX_TOTAL, capReached, duplicate as copyOf, exportText, fits, importInto, moved, newDrawing, totalOf, type Anchor, type DrawDoc, type DrawKind, type Drawing } from './model.ts';
-import { axisOf, deltaOf, handlesOf, hitDrawing, sameHit, withHandleAt, type Handle, type HandleAxis, type Hit, type Projection, type Pt } from './geometry.ts';
+import { axisOf, deltaOf, edgeMinFor, handlesOf, hitDrawing, sameHit, withHandleAt, type Handle, type HandleAxis, type Hit, type Projection, type Pt } from './geometry.ts';
 import { candleTargets, snapPoint, snapTime, wallTargets, type CandleUnder, type SnapTarget } from './magnet.ts';
 import { History } from './history.ts';
 import type { DrawStore } from './storage.ts';
@@ -60,10 +60,12 @@ export interface Cursor { at: Anchor; snap: SnapTarget | null; x: number; y: num
  * A drag of a handle holds what the handle moves as it was when the press began (the points are told apart by their place, never by which
  * is higher or further left now, so a top edge pulled under the bottom one is still the same point), or of a whole drawing.
  */
-type Drag = { mode: 'handle'; id: string; handle: Pick<Handle, 't' | 'p'>; before: readonly Drawing[]; original: Drawing } | { mode: 'move'; id: string; from: Pt; before: readonly Drawing[]; original: Drawing };
+type Drag = { mode: 'handle'; id: string; handle: Pick<Handle, 't' | 'p' | 'after'>; before: readonly Drawing[]; original: Drawing } | { mode: 'move'; id: string; from: Pt; away: boolean; before: readonly Drawing[]; original: Drawing };
 
 /** How near a stroke the pointer must be to be on it (px), with a mouse and with a finger. */
 const TOL = { mouse: 6, touch: 12 };
+/** How far (px) the pointer must leave the spot it pressed on a level or an event line before the magnet takes hold of it: a wobbling press is not a move. */
+const AWAY = { mouse: 4, touch: 8 };
 
 export class DrawController {
   #doc: DrawDoc;
@@ -73,6 +75,8 @@ export class DrawController {
   #coin = '';
   #drag: Drag | null = null;
   #held: SnapTarget | null = null;
+  /** Whether the last pointer was a finger: its handles are further apart (`edgeMinFor`), here and where they are painted. */
+  #touch = false;
   #lastMark = 0;
   tool: DrawKind | null = null;
   draft: Draft | null = null;
@@ -103,6 +107,10 @@ export class DrawController {
   shown(): readonly Drawing[] { return this.host.settings().shown ? this.list().filter(d => !d.hidden) : []; }
   get(id: string | null): Drawing | null { return id ? this.list().find(d => d.id === id) ?? null : null; }
   get dragging(): boolean { return this.#drag !== null; }
+  /** The shortest edge of a zone that has a handle in its middle now, for the pointer in use. */
+  get edgeMin(): number { return edgeMinFor(TOL[this.#touch ? 'touch' : 'mouse']); }
+  /** Whether a press on the drawing's handles or its stroke would move it: not a locked one, nor any while the drawings are read-only. */
+  canDrag(id: string): boolean { const d = this.get(id); return d !== null && !d.locked && !this.readOnly; }
   /** The axes the drag in hand moves (the pointer shows a resize arrow for one), or null when none is. */
   get dragAxis(): HandleAxis | null { const d = this.#drag; return d?.mode === 'handle' ? axisOf(d.handle) : d ? 'both' : null; }
   /** Whether a press on the map places a point (a tool is armed): a double click or a double tap does not recentre then. */
@@ -229,21 +237,22 @@ export class DrawController {
     if (axis === 'p') return { at: { t: at.t, p: snap.p }, snap, x: snap.x, y: snap.y, caught: true };
     // A level is a price: its time stays where it is placed (where a ray starts); a wall is a price at the time pointed at.
     const tt = kind === 'level' || snap.field === 'wall' ? at.t : snap.t;
-    return { at: { t: tt, p: snap.p }, snap, x: pr.x(tt), y: snap.y, caught: true };
+    return { at: { t: tt, p: snap.p }, snap, x: snap.x, y: snap.y, caught: true };
   }
 
   // ---- the pointer ------------------------------------------------------------------------------------------------------------
 
   /** A press on the map: on a handle or the stroke of the selected drawing it starts a drag (true: the map does not pan). */
   down(q: Pt, touch: boolean): boolean {
+    this.#touch = touch;
     if (this.tool || this.readOnly) return false;
     const list = this.list(), hit = hitDrawing(q, this.shown(), this.#proj(), TOL[touch ? 'touch' : 'mouse'], this.selected, this.noteSize);
     if (!hit || hit.id !== this.selected || hit.part === 'inside') return false;
     const d = this.get(hit.id); if (!d || d.locked) return false;
     if (hit.part === 'handle') {
-      const h = handlesOf(d, this.#proj())[hit.index]; if (!h) return false;
-      this.#drag = { mode: 'handle', id: d.id, handle: { t: h.t, p: h.p }, before: list, original: d };
-    } else this.#drag = { mode: 'move', id: d.id, from: q, before: list, original: d };
+      const h = handlesOf(d, this.#proj(), edgeMinFor(TOL[touch ? 'touch' : 'mouse']))[hit.index]; if (!h) return false;
+      this.#drag = { mode: 'handle', id: d.id, handle: { t: h.t, p: h.p, after: h.after }, before: list, original: d };
+    } else this.#drag = { mode: 'move', id: d.id, from: q, away: false, before: list, original: d };
     this.#held = null;
     this.host.holdStill();
     return true;
@@ -251,6 +260,7 @@ export class DrawController {
 
   /** The pointer moved: a drag moves what it holds (true); otherwise the hover and the next point's preview follow it (false). */
   move(q: Pt, alt: boolean, touch: boolean): boolean {
+    this.#touch = touch;
     const drag = this.#drag;
     if (drag) {
       const o = drag.original;
@@ -265,7 +275,8 @@ export class DrawController {
         // A level moved by its stroke lands where the magnet would put a point at the pointer (a price), an event line on a candle's time, as a
         // point dragged by its handle does; the other drawings move whole, as they were grabbed.
         this.cursor = null;
-        if (o.kind === 'level' || o.kind === 'vline') {
+        if (!drag.away && Math.hypot(q.x - drag.from.x, q.y - drag.from.y) >= AWAY[touch ? 'touch' : 'mouse']) drag.away = true;
+        if (drag.away && (o.kind === 'level' || o.kind === 'vline')) {
           const c = this.#anchorAt(q, o.kind, alt, touch, o.kind === 'level' ? 'p' : 't');
           if (c.caught) { next = withHandleAt(next, o.kind === 'level' ? { t: [], p: [0] } : { t: [0], p: [] }, c.at); this.cursor = c; }
         }
@@ -308,6 +319,7 @@ export class DrawController {
    * the drawing under it, or lets the selection go. True when it was the drawing tools' click.
    */
   click(q: Pt, alt: boolean, touch: boolean): boolean {
+    this.#touch = touch;
     if (this.#newer) return false;
     if (this.tool) {
       if (this.readOnly) { this.disarm(); return false; }
