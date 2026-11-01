@@ -2145,5 +2145,8 @@
  "Liquidations are Hyperliquid's alone, the book every enabled venue's; the positions are about 40 minutes old, the book is now.": "Le liquidazioni sono solo quelle di Hyperliquid, il libro quello di tutte le borse attive; le posizioni hanno circa 40 minuti, il libro è di adesso.",
  "Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.": "Punta la linea tra la colonna delle liquidazioni e quella del profilo per mettere il libro a confronto con le liquidazioni: ciò che attende contro ciò che verrebbe liquidato su ogni lato, come si ordinano insieme la dimensione del livello e quella del libro, e se ai livelli maggiori il libro fa da muro o si assottiglia in un vuoto.",
  "On screen": "Sullo schermo",
- "The language reference is downloading as {name}. Look in your browser's downloads.": "Il riferimento del linguaggio viene scaricato come {name}. Cercalo nei download del browser."
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Il riferimento del linguaggio viene scaricato come {name}. Cercalo nei download del browser.",
+ "Light theme": "Tema chiaro",
+ "Dark theme": "Tema scuro",
+ "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Chiaro o scuro: un tocco cambia il tema. Tutti i temi sono in Impostazioni, sotto Aspetto."
 }

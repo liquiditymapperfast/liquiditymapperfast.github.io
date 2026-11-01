@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_THEME, initialState } from '../src/app/store.ts';
+import { DEFAULT_THEME, PHONE_DARK_THEME, autoTheme, flippedTheme, initialState, themeChange } from '../src/app/store.ts';
 import { CAUTION, FRAMES, FRAME_STRENGTH, PALETTES, THEME_ORDER, chromeFor, mixHex, resolveThemeId, rgb, textOn, themeColorOf, themeVars, type Palette } from '../src/app/theme.ts';
 import { WEAK_ALPHA, emphasisRamps } from '../src/app/traded/emphasis.ts';
 
@@ -157,11 +157,50 @@ test('a page opens in Light, and a saved Terminal that was never picked (written
     assert.deepEqual(load(null), { theme: 'light', themePicked: false });
     assert.deepEqual(load({ theme: 'terminal' }), { theme: 'light', themePicked: false });
     assert.deepEqual(load({ theme: 'terminal', themePicked: true }), { theme: 'terminal', themePicked: true });
-    assert.deepEqual(load({ theme: 'dark' }), { theme: 'dark', themePicked: false });
+    // Any other theme saved without the flag was picked before the flag existed: it stays, and now counts as picked.
+    assert.deepEqual(load({ theme: 'dark' }), { theme: 'dark', themePicked: true });
     assert.deepEqual(load({ theme: 'no-such-theme' }), { theme: 'light', themePicked: false });
   } finally {
     if (real === undefined) delete (globalThis as { window?: unknown }).window; else (globalThis as { window?: unknown }).window = real;
   }
+});
+
+test('a phone follows its own light or dark setting until a theme is picked, dark being Terminal; a desktop opens in Light', () => {
+  const real = { window: (globalThis as { window?: unknown }).window, matchMedia: (globalThis as { matchMedia?: unknown }).matchMedia };
+  const load = (saved: Record<string, unknown> | null, phone: boolean, dark: boolean): { theme: string; themePicked: boolean; slots: { light: string; dark: string } } => {
+    (globalThis as { window?: unknown }).window = { innerWidth: phone ? 390 : 1600, localStorage: { getItem: () => saved ? JSON.stringify(saved) : null, setItem: () => {} } };
+    (globalThis as { matchMedia?: unknown }).matchMedia = (q: string) => ({ matches: q.includes('prefers-color-scheme: dark') && dark, addEventListener: () => {} });
+    const state = initialState(phone, phone);
+    return { theme: state.theme, themePicked: state.themePicked, slots: state.themeSlots };
+  };
+  try {
+    assert.equal(autoTheme(true, true), 'terminal'); assert.equal(autoTheme(true, false), 'light'); assert.equal(autoTheme(false, true), 'light');
+    assert.equal(PALETTES[PHONE_DARK_THEME]!.dark, true);
+    assert.deepEqual(load(null, true, true), { theme: 'terminal', themePicked: false, slots: { light: 'light', dark: 'terminal' } });
+    assert.deepEqual(load(null, true, false), { theme: 'light', themePicked: false, slots: { light: 'light', dark: 'terminal' } });
+    assert.equal(load(null, false, true).theme, 'light');
+    // The default written down with everything else follows the phone again; a pick stays whatever the phone says.
+    assert.equal(load({ theme: 'light' }, true, true).theme, 'terminal');
+    assert.equal(load({ theme: 'terminal' }, true, false).theme, 'light');
+    assert.deepEqual(load({ theme: 'light', themePicked: true }, true, true), { theme: 'light', themePicked: true, slots: { light: 'light', dark: 'terminal' } });
+    // The remembered themes keep their kind: a light one is no dark slot.
+    assert.deepEqual(load({ theme: 'midnight', themePicked: true, themeSlots: { light: 'terminal', dark: 'amber' } }, true, false).slots, { light: 'light', dark: 'midnight' });
+  } finally {
+    if (real.window === undefined) delete (globalThis as { window?: unknown }).window; else (globalThis as { window?: unknown }).window = real.window;
+    if (real.matchMedia === undefined) delete (globalThis as { matchMedia?: unknown }).matchMedia; else (globalThis as { matchMedia?: unknown }).matchMedia = real.matchMedia;
+  }
+});
+
+test('the light-or-dark key swaps the light theme and the dark one last shown', () => {
+  const slots = { light: 'light', dark: 'terminal' };
+  assert.equal(flippedTheme({ theme: 'light', themeSlots: slots }), 'terminal');
+  assert.equal(flippedTheme({ theme: 'terminal', themeSlots: slots }), 'light');
+  // Picking Midnight remembers it as the dark one: Light, then the key, brings Midnight back, not Terminal.
+  const picked = themeChange({ themeSlots: slots }, 'midnight', true);
+  assert.deepEqual(picked, { theme: 'midnight', themePicked: true, themeSlots: { light: 'light', dark: 'midnight' } });
+  const toLight = themeChange(picked, flippedTheme(picked), true);
+  assert.deepEqual(toLight.theme, 'light');
+  assert.equal(flippedTheme(toLight), 'midnight');
 });
 
 test('the stronger side of a split bar, fully one-sided, keeps its contrast in every theme, and the weaker side stays in sight', () => {

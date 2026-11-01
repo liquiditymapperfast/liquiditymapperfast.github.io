@@ -14,7 +14,7 @@ import { FlowBook } from '../src/app/flow-book.ts';
 import { Hub } from '../src/app/hub.ts';
 import { PALETTES } from '../src/app/theme.ts';
 import { View } from '../src/app/view.ts';
-import { TRADED_W, gutter, leftGutter, priceQuestions, setCompactGutters, sideColumns } from '../src/app/panes/heat-pane.ts';
+import { AXIS_W, PROFILE_STRIP_W, PROFILE_W, TRADED_W, gutter, leftGutter, priceQuestions, profileColumnW, setCompactGutters, sideColumns } from '../src/app/panes/heat-pane.ts';
 import type { ProfileAnswer } from '../src/shared/footprint.ts';
 import type { AbsorptionProfileAnswer } from '../src/shared/absorption.ts';
 
@@ -135,6 +135,21 @@ test('the columns on both sides together leave the map half the pane: the neares
     assert.deepEqual([leftGutter({ ...state, show: { traded: false, profile: true } } as AppState), sideColumns({ ...state, show: { traded: false, profile: true } } as AppState).hidden], [0, []], 'the Volume profile off: nothing drawn and nothing hidden');
     setCompactGutters(true, 400);
     assert.deepEqual([leftGutter(state), sideColumns(state).right.length, sideColumns(state).hidden.length], [0, 0, 4], 'a phone keeps no columns, as before');
+  } finally { setCompactGutters(false, 2000); }
+});
+
+test('beside the liquidation column a compact map keeps the book profile as a strip; without that column, or on a desktop, it stays whole', () => {
+  const base = { show: { traded: false, profile: true }, traded: { placements: setOf() }, liqLevels: { on: true, column: true } } as unknown as AppState;
+  const noLiq = { ...base, liqLevels: { on: false, column: true } } as unknown as AppState;
+  try {
+    setCompactGutters(true, 390);
+    assert.equal(profileColumnW(base), PROFILE_STRIP_W);
+    assert.equal(gutter(base), AXIS_W + PROFILE_W + PROFILE_STRIP_W, 'a phone: the axis, the liquidation column and the strip (Karl, 2026-11-01)');
+    assert.equal(profileColumnW(noLiq), PROFILE_W, 'no liquidation column: the profile keeps its column');
+    assert.equal(profileColumnW({ ...base, show: { traded: false, profile: false } } as unknown as AppState), 0);
+    setCompactGutters(false, 2000);
+    assert.equal(profileColumnW(base), 128);
+    assert.equal(gutter(base), 64 + 128 + 128, 'a desktop: both columns whole');
   } finally { setCompactGutters(false, 2000); }
 });
 

@@ -2177,5 +2177,8 @@
  "Liquidations are Hyperliquid's alone, the book every enabled venue's; the positions are about 40 minutes old, the book is now.": "Ліквідації лише Hyperliquid, стакан усіх увімкнених бірж; позиціям близько 40 хвилин, стакан поточний.",
  "Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.": "Наведіть вказівник на лінію між колонкою ліквідацій і колонкою профілю, щоб зважити стакан проти ліквідацій: що стоїть проти того, що було б ліквідовано, з кожного боку, наскільки збігаються ранги розміру рівня і стакана і чи стоїть стакан стіною чи рідшає до порожнечі на найбільших рівнях.",
  "On screen": "На екрані",
- "The language reference is downloading as {name}. Look in your browser's downloads.": "Довідник мови завантажується як {name}. Шукайте його в завантаженнях браузера."
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "Довідник мови завантажується як {name}. Шукайте його в завантаженнях браузера.",
+ "Light theme": "Світла тема",
+ "Dark theme": "Темна тема",
+ "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Світла чи темна: один дотик змінює тему. Усі теми — у Налаштуваннях, у розділі «Оформлення»."
 }

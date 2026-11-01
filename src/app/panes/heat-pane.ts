@@ -155,7 +155,15 @@ function axisNeed(): number {
  * the profile counted), one at least.
  */
 let COLUMNS_FIT = Infinity;
+/** Whether the map is compact (a phone's), its columns narrowed (`setCompactGutters`). */
+let COMPACT = false;
+/**
+ * The book profile of a compact map that also shows the liquidation column: a strip whose rows hold the book's depth as the strength of their
+ * side's colour (Karl, 2026-11-01: on a phone the two columns left the map too little room, and the liquidation levels are the more useful).
+ */
+export const PROFILE_STRIP_W = 16;
 export function setCompactGutters(compact: boolean, paneW = Infinity): void {
+  COMPACT = compact;
   AXIS_W = Math.max(compact ? 58 : 64, axisNeed()); PROFILE_W = compact ? 84 : 128; TRADED_W = compact ? 0 : 96;
   COLUMNS_FIT = TRADED_W > 0 ? Math.max(1, Math.floor((paneW / 2 - AXIS_W - PROFILE_W) / TRADED_W)) : 0;
 }
@@ -189,7 +197,9 @@ const COMPACT_PANE = 520;
 export const liqColumnShown = (state: AppState): boolean => { const l = state.liqLevels as AppState['liqLevels'] | undefined; return !!l && l.on && l.column && currentCoin().coin === 'BTC' && !!liqLevelsUrl(); };
 /** The width the liquidation column takes (as wide as the profile column), or 0. */
 const liqColumnW = (state: AppState): number => liqColumnShown(state) ? PROFILE_W : 0;
-export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + (state.show.profile ? PROFILE_W : 0) + sideColumns(state).right.length * TRADED_W; }
+/** The width the book profile takes: its column, the strip in a compact map beside the liquidation column (`PROFILE_STRIP_W`), or 0. */
+export function profileColumnW(state: AppState): number { return !state.show.profile ? 0 : COMPACT && liqColumnShown(state) ? PROFILE_STRIP_W : PROFILE_W; }
+export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + profileColumnW(state) + sideColumns(state).right.length * TRADED_W; }
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
 export function leftGutter(state: AppState): number { return sideColumns(state).left.length * TRADED_W; }
 /**
@@ -1716,7 +1726,7 @@ export class HeatPane {
    */
   #columnX(side: Side, i: number): number {
     const state = this.store.state;
-    return side === 'right' ? this.plotW + liqColumnW(state) + (state.show.profile ? PROFILE_W : 0) + i * TRADED_W : -(i + 1) * TRADED_W;
+    return side === 'right' ? this.plotW + liqColumnW(state) + profileColumnW(state) + i * TRADED_W : -(i + 1) * TRADED_W;
   }
   /** The volume profile column under `x`: its side, its place there and its measure; null off the columns. */
   #columnAt(x: number): { side: Side; i: number; metric: ProfileMetric } | null {
@@ -2681,24 +2691,34 @@ export class HeatPane {
     const cum = cumulative(g, state.mark.price);
     let maxLevel = 0;
     for (let i = 0; i < g.nBins; i++) maxLevel = Math.max(maxLevel, g.totalBid[i]! + g.totalAsk[i]!);
-    const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1), x0 = pw + liqColumnW(state), width = PROFILE_W - 6;
-    ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, PROFILE_W, ph); ctx.clip();
-    ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, PROFILE_W, ph);
+    const W = profileColumnW(state), strip = W < PROFILE_W;
+    const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1), x0 = pw + liqColumnW(state), width = W - 6;
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
+    ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, W, ph);
     for (let i = 0; i < g.nBins; i++) {
       const lo = (g.bin0 + i) * step, y1 = v.yOf(lo, ph), y0 = v.yOf(lo + step, ph);
       if (y1 < 0 || y0 > ph) continue;
       const hgt = Math.max(1, y1 - y0 - 0.5);
+      const b = g.totalBid[i]!, a = g.totalAsk[i]!;
+      if (strip) {
+        // The strip: each row's depth as the strength of its side's colour (by the square root, so a thin row still shows), the deepest the boldest.
+        const depth = Math.max(a, b);
+        if (depth > 0) { ctx.globalAlpha = 0.14 + 0.86 * Math.sqrt(depth / Math.max(maxLevel, 1)); ctx.fillStyle = a > b ? p.ask : p.bid; ctx.fillRect(x0 + 1, y0, W - 1, hgt); }
+        continue;
+      }
       if (cum.bid[i]! > 0) { ctx.globalAlpha = 0.16; ctx.fillStyle = p.bid; ctx.fillRect(x0, y0, cum.bid[i]! / maxCum * width, hgt); }
       if (cum.ask[i]! > 0) { ctx.globalAlpha = 0.16; ctx.fillStyle = p.ask; ctx.fillRect(x0, y0, cum.ask[i]! / maxCum * width, hgt); }
-      const b = g.totalBid[i]!, a = g.totalAsk[i]!;
       if (b > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.bid; ctx.fillRect(x0, y0, Math.max(1, b / maxLevel * width), hgt); }
       if (a > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.ask; ctx.fillRect(x0, y0, Math.max(1, a / maxLevel * width), hgt); }
     }
-    ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, PROFILE_W - 1, 28); ctx.globalAlpha = 1;
-    ctx.fillStyle = p.muted; ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 4); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 16);
+    ctx.globalAlpha = 1;
+    if (!strip) {
+      ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 28); ctx.globalAlpha = 1;
+      ctx.fillStyle = p.muted; ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 4); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 16);
+    }
     this.#profileBox = null;
-    this.#paintProfileMirror(ctx, state, g, cum, step, x0, ph);
+    this.#paintProfileMirror(ctx, state, g, cum, step, x0, ph, W);
     ctx.restore(); ctx.textBaseline = 'middle';
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintProfileMirror above
     if (box) {
@@ -2711,7 +2731,7 @@ export class HeatPane {
   }
 
   /** Mirror hover on the profile column: frame the band from the mark to the pointer and the equally wide band on the other side, and compare them. */
-  #paintProfileMirror(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>, step: number, x0: number, ph: number): void {
+  #paintProfileMirror(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>, step: number, x0: number, ph: number, W: number): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view, mark = state.mark.price;
     if (!hv || hv.column !== 'book' || !state.show.mirror || !(mark > 0)) return;
     const markBin = Math.floor(mark / step) - g.bin0, hb = Math.floor(v.pOf(hv.y, ph) / step) - g.bin0, mb = 2 * markBin - hb;
@@ -2722,8 +2742,10 @@ export class HeatPane {
     if (!stats) return;
     this.mirror = stats;
     const top = v.yOf((g.bin0 + Math.max(hb, mb) + 1) * step, ph), bottom = v.yOf((g.bin0 + Math.min(hb, mb)) * step, ph), pct = percentText(stats);
-    dimOutside(ctx, x0, PROFILE_W, 0, ph, top, bottom, p.panel, 0.6);
-    paintBand(ctx, p, x0, PROFILE_W, { y: top, color: p.ask, label: `${usd(stats.aboveUsd)} · ${pct}` }, { y: bottom, color: p.bid, label: `${usd(stats.belowUsd)} · ${pct}` }, { y0: 0, y1: ph });
+    // The strip has no room for the band's pills: its box says the same.
+    const wide = W >= PROFILE_W;
+    dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
+    paintBand(ctx, p, x0, W, { y: top, color: p.ask, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.bid, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
     this.#profileBox = { lines: mirrorLines(stats, { above: t('Asks'), below: t('Bids') }), y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
   }
 
@@ -2801,12 +2823,12 @@ export class HeatPane {
     for (let i = 0; i < g.nBins; i++) { const j = g.bin0 + i - prof.row0; if (j >= 0 && j < prof.long.length) { long[i] = prof.long[j]!; short[i] = prof.short[j]!; } }
     const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
     const st = seamStats({ row0: g.bin0, step, bid: g.totalBid, ask: g.totalAsk, long, short }, price, d);
-    const x0 = pw, W = 2 * PROFILE_W, top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph);
+    const x0 = pw, liqW = liqColumnW(state), W = liqW + profileColumnW(state), top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph);
     ctx.save();
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.55);
     paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: `${usd(st.above.book)} · ${usd(st.above.liq)}` }, { y: bottom, color: p.candleDown, label: `${usd(st.below.book)} · ${usd(st.below.liq)}` }, { y0: 0, y1: ph });
     // The seam itself, lit while it is pointed at.
-    ctx.strokeStyle = p.ui; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + PROFILE_W, 0); ctx.lineTo(x0 + PROFILE_W, ph); ctx.stroke();
+    ctx.strokeStyle = p.ui; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + liqW, 0); ctx.lineTo(x0 + liqW, ph); ctx.stroke();
     ctx.restore();
     // A neighbour row with almost nothing would make a ratio of millions: past 100 it says so and no more.
     const times = (r: number): string => !Number.isFinite(r) || r >= 100 ? '100×+' : `${r >= 10 ? r.toFixed(0) : r.toFixed(1)}×`;
@@ -3267,10 +3289,11 @@ export class HeatPane {
    * it, while both show), the liquidation column (nearest the map), then the profile column; null for none.
    */
   #besideAt(x: number): 'liq' | 'book' | 'seam' | null {
-    const state = this.store.state, pw = this.plotW, liq = liqColumnW(state);
-    if (liq && state.show.profile && Math.abs(x - (pw + liq)) <= 6) return 'seam';
+    const state = this.store.state, pw = this.plotW, liq = liqColumnW(state), book = profileColumnW(state);
+    // The seam takes a few px each side; beside a 16 px strip fewer, so most of the strip is still the book's.
+    if (liq && book && Math.abs(x - (pw + liq)) <= (book < PROFILE_W ? 4 : 6)) return 'seam';
     if (liq && x > pw && x <= pw + liq) return 'liq';
-    return state.show.profile && x > pw + liq && x <= pw + liq + PROFILE_W ? 'book' : null;
+    return book && x > pw + liq && x <= pw + liq + book ? 'book' : null;
   }
 
   /** Whether a finger's pin is what is on show now (a tap on a pane under the map replaces it with its own). */

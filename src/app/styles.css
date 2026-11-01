@@ -9,6 +9,11 @@
   --mark-help: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.2 8.6a3.9 3.9 0 1 1 5.9 3.3c-1.3.8-2.1 1.5-2.1 3'/%3E%3Cpath d='M12 19.6h.01'/%3E%3C/svg%3E");
   --mark-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Ccircle cx='5' cy='12' r='2.2'/%3E%3Ccircle cx='12' cy='12' r='2.2'/%3E%3Ccircle cx='19' cy='12' r='2.2'/%3E%3C/svg%3E");
   --mark-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E");
+  /* A list's arrow, as heavy as the settings key's sliders (the same stroke in the same box), so the two read as one column of marks. */
+  --mark-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 9l6.5 6.5L18.5 9'/%3E%3C/svg%3E");
+  /* The phone bar's light-or-dark key: the sun where a tap brings the light theme, the moon where it brings the dark one. */
+  --mark-sun: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4.2'/%3E%3Cpath d='M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.6 1.6M17.05 17.05l1.6 1.6M5.35 18.65l1.6-1.6M17.05 6.95l1.6-1.6'/%3E%3C/svg%3E");
+  --mark-moon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linejoin='round'%3E%3Cpath d='M19.8 14.6A8 8 0 1 1 9.4 4.2a6.6 6.6 0 0 0 10.4 10.4z'/%3E%3C/svg%3E");
   --ui: #2f6bff; --bid: #0fa44a; --bid-soft: #cdeed8; --ask: #e0066f; --ask-soft: #ffd0e6; --gutter: 192px;
   font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
@@ -196,7 +201,7 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .toolbar .notice-close { margin-left: auto; width: 24px; height: 22px; --cross: 9px; }
 .venue-list .blocked { color: var(--ask); }
 .seg.scope.inert { opacity: .6; }
-.seg.scope button.on { background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
+.seg:is(.scope, .zone-seg) button.on { background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
 
 /* The columns' widths until one is dragged: the golden section for the map, the rest shared (layouts/layouts.ts `defaultColumns` says the same). */
 main { --side-w: max(clamp(350px, 26.25vw, 420px), 19.1vw); --flow-w: max(clamp(260px, 18.75vw, 300px), 19.1vw); display: grid; grid-template-columns: var(--left-w) 6px minmax(0, 1fr) 6px var(--right-w); min-height: 0; }

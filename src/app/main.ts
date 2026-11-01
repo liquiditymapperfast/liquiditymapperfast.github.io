@@ -6,7 +6,7 @@ import { instrumentIdFor } from '../shared/coins.ts';
 import { withAnchor } from './vwap/settings.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
-import { Store, initialState } from './store.ts';
+import { Store, autoTheme, initialState, themeChange } from './store.ts';
 import { applyTheme } from './theme.ts';
 import { UiGlass } from './glass/ui-glass.ts';
 import { Sounds } from './sound/sounds.ts';
@@ -42,7 +42,7 @@ import { Layout } from './layout.ts';
 import { LayoutActions } from './layouts/actions.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
-import { startDevice, onLayoutMode, isPhone, layoutMode } from './device.ts';
+import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode } from './device.ts';
 import './styles.css';
 import './mobile.css';
 import './chrome.css';
@@ -79,6 +79,11 @@ async function main(): Promise<void> {
   useMarkets(() => store.state.markets);
   setTimeZone(store.state.timeZone);
   applyTheme(store.state.theme);
+  // A theme never picked follows the device's light or dark setting as it changes (a phone at dusk; `autoTheme`).
+  if (typeof matchMedia === 'function') matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    const s = store.state, id = autoTheme(isPhone() && isCoarse(), e.matches);
+    if (!s.themePicked && id !== s.theme) store.set(themeChange(s, id, false));
+  });
   installTips();
   installTouchSelects();
   const kernels = await loadKernels();

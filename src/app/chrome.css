@@ -490,7 +490,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"] .sheet .seg.toggles { gap: 6px; }
 /* The toggles are labelled in the size of the tiles beside them (15px); on the narrowest phones a long word still shrinks a little (the shared rule has the vw clause). */
 :root[data-frame="bevel"] .sheet .seg.toggles button { font-size: min(15px, 3.9vw); }
-:root[data-frame="bevel"] .sheet .seg.scope button { margin-left: 0; }
+:root[data-frame="bevel"] .sheet .seg:is(.scope, .zone-seg) button { margin-left: 0; }
 :root[data-frame="bevel"] .sheet-tiles { gap: 6px; }
 :root[data-frame="bevel"] .sheet-chips, :root[data-frame="bevel"] .sheet-chips .chips { gap: 6px; }
 :root[data-frame="bevel"][data-bar="compact"] .menu { padding: 2px 2px calc(2px + env(safe-area-inset-bottom)); }

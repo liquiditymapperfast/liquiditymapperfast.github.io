@@ -4,7 +4,7 @@ import type { TimeZone } from './format.ts';
 import { HEAT_STYLES, type HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
 import { LT_DEFAULTS, LT_OLD_HALF_LIFE_BP, type LtParams } from './lt.ts';
-import { resolveThemeId } from './theme.ts';
+import { PALETTES, resolveThemeId } from './theme.ts';
 import { readStatOptions, type StatOptions } from './stat-options.ts';
 import { readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
@@ -170,6 +170,8 @@ export interface AppState {
   defaultsRev: number;
   /** Whether the theme was picked from the menu: a saved one that was not is the page's default of the time, not a choice (`initialState`). */
   themePicked: boolean;
+  /** The light theme and the dark one that the phone bar's light-or-dark key switches between: the last of each kind shown (`themeChange`). */
+  themeSlots: { light: string; dark: string };
   /** What the chrome around the chart is made of, in any theme: solid, or glass that the market's large orders light (glass/ui-glass.ts). */
   material: 'solid' | 'glass';
   followLive: boolean;
@@ -196,7 +198,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'barCollapsed', 'material', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'defaultsRev', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'barCollapsed', 'material', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -265,8 +267,30 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
   };
 }
 
-/** The theme a page opens in, on a desktop and on a phone. */
+/** The theme a page opens in, on a desktop, and on a phone set to light. */
 export const DEFAULT_THEME = 'light';
+/** The theme a phone set to dark opens in, and the dark one its light-or-dark key brings first (Karl, 2026-11-01). */
+export const PHONE_DARK_THEME = 'terminal';
+/**
+ * The theme a page shows until one is picked: Light on a desktop; on a phone, the phone's own light or dark setting, dark being Terminal (Karl,
+ * 2026-11-01: "make the terminal theme the default for mobile ... according to whether the user has his mobile device set on dark theme or
+ * light theme"). Followed live while nothing is picked (main.ts).
+ */
+export function autoTheme(phone: boolean, dark: boolean): string { return phone && dark ? PHONE_DARK_THEME : DEFAULT_THEME; }
+/** Whether the device asks pages to be dark. */
+export const prefersDark = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+/** The change that shows theme `id`, picked or not; it is remembered as the theme of its kind, for the light-or-dark key. */
+export function themeChange(state: Pick<AppState, 'themeSlots'>, id: string, picked: boolean): Pick<AppState, 'theme' | 'themePicked' | 'themeSlots'> {
+  return { theme: id, themePicked: picked, themeSlots: { ...state.themeSlots, [PALETTES[id]?.dark ? 'dark' : 'light']: id } };
+}
+/** The theme the light-or-dark key brings: the one of the other kind last shown. */
+export function flippedTheme(state: Pick<AppState, 'theme' | 'themeSlots'>): string { return PALETTES[state.theme]?.dark ? state.themeSlots.light : state.themeSlots.dark; }
+/** A remembered theme of the given kind, or null for a name that is not one (or not of that kind). */
+function slotTheme(v: unknown, dark: boolean): string | null {
+  if (typeof v !== 'string') return null;
+  const id = resolveThemeId(v);
+  return PALETTES[id]?.dark === dark ? id : null;
+}
 /**
  * The revision of the first-visit defaults. The page saves its whole settings on any change, so a default is written down whether chosen
  * or not; when a default changes, a save from before it (an older or no revision) would keep the old one for ever. Revision 1: Depth and
@@ -295,7 +319,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null, bookGone: {},
     layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
-    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, defaultsRev: DEFAULTS_REV, material: 'solid', followLive: true, keepAwake: false, barCollapsed: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
+    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', followLive: true, keepAwake: false, barCollapsed: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };
   // A save's measure strip was read into the profile along the top (`readSettings`): it is no setting of its own any more.
@@ -307,9 +331,11 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   state.sounds = readSounds(saved.sounds);
   state.draw = readDrawSettings(saved.draw);
   state.timeZone = saved.timeZone === 'utc' ? 'utc' : 'local';
-  // Terminal was the default for a day (2026-10-17), and every save of that day wrote it down whether chosen or not: a saved Terminal that
-  // was not picked from the menu goes back to the default, and the saves since carry the pick.
+  // Every save writes the theme down whether chosen or not (Terminal for a day on 2026-10-17): one that was not picked from the menu or the
+  // light-or-dark key is the page's default of its time, and the theme follows `autoTheme` below; the saves since carry the pick.
   state.themePicked = saved.themePicked === true;
+  const slots = saved.themeSlots as { light?: unknown; dark?: unknown } | undefined;
+  state.themeSlots = { light: slotTheme(slots?.light, false) ?? DEFAULT_THEME, dark: slotTheme(slots?.dark, true) ?? PHONE_DARK_THEME };
   const rev = typeof saved.defaultsRev === 'number' ? saved.defaultsRev : 0;
   if (rev < 1 && state.show.depth && state.show.oi) state.show = { ...state.show, depth: false, oi: false };
   if (rev < 2) {
@@ -327,8 +353,12 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   // The half-life: every screen. The old default is not a choice (every save wrote it down); another value is.
   if (rev < 4 && state.lt.halfLifeBp === LT_OLD_HALF_LIFE_BP) state.lt = { ...state.lt, halfLifeBp: LT_DEFAULTS.halfLifeBp };
   state.defaultsRev = DEFAULTS_REV;
-  state.theme = resolveThemeId(state.theme);
-  if (!state.themePicked && state.theme === 'terminal') state.theme = DEFAULT_THEME;
+  const savedTheme = resolveThemeId(state.theme);
+  // A theme saved without the flag is a default of its time when it is Light or Terminal; any other was picked before the flag existed (it came
+  // on 2026-10-17), so it counts as picked, and the device's setting never replaces it.
+  if (!state.themePicked && typeof saved.theme === 'string' && savedTheme !== DEFAULT_THEME && savedTheme !== PHONE_DARK_THEME) state.themePicked = true;
+  state.theme = state.themePicked ? savedTheme : autoTheme(phone && touch, prefersDark());
+  state.themeSlots = { ...state.themeSlots, [PALETTES[state.theme]?.dark ? 'dark' : 'light']: state.theme };
   state.material = saved.material === 'glass' ? 'glass' : 'solid';
   state.barCollapsed = saved.barCollapsed === true;
   state.replay = null;

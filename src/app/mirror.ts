@@ -107,6 +107,7 @@ export function paintBand(ctx: CanvasRenderingContext2D, p: Palette, x: number, 
   for (const edge of [top, bottom]) { ctx.strokeStyle = edge.color; ctx.beginPath(); const y = Math.round(edge.y) + 0.5; ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.stroke(); }
   ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
   const pill = (edge: BandEdge, above: boolean) => {
+    if (!edge.label) return; // a column too narrow for one (a compact map's book strip) passes none
     const text = edge.label, tw = ctx.measureText(text).width + 10, h = 15, y = Math.round(edge.y) + 0.5;
     let by = above ? y - h - 1 : y + 2;
     if (above ? by < clip.y0 : by + h > clip.y1) by = above ? y + 2 : y - h - 1;

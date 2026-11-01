@@ -52,6 +52,11 @@ html[data-bar="compact"] .toolbar .bar-collapse { order: 7; flex: none; width: 4
 html[data-bar="compact"] .toolbar { position: relative; z-index: 30; }
 html[data-bar="compact"] .toolbar .notice { position: absolute; left: 8px; right: 8px; top: calc(100% + 4px); z-index: 45; margin: 0; box-shadow: 2px 2px 0 var(--shadow); }
 .more-btn { display: none; }
+/* Light or dark in one tap (Karl, 2026-11-01): a drawn sun or moon before Settings, which keeps the whole list of themes. */
+.flip-btn { display: none; }
+html[data-bar="compact"] .flip-btn { order: 6; display: inline-grid; place-items: center; flex: none; width: 44px; padding: 0; }
+html[data-bar="compact"] .flip-btn::before { content: ""; width: 20px; height: 20px; background: currentColor; -webkit-mask: var(--mark-moon) center / contain no-repeat; mask: var(--mark-moon) center / contain no-repeat; }
+html[data-bar="compact"] .flip-btn[data-to="light"]::before { -webkit-mask-image: var(--mark-sun); mask-image: var(--mark-sun); }
 /* Recentre is a symbol in the bar: the word would not fit beside seven timeframes. A flex box, not a grid: the hidden word is an item of its own,
    and in a grid it took a row of its own and lifted the symbol 3.8 px above the middle of the button (Karl, 2026-10-26). */
 html[data-bar="compact"] .tb-time > button { flex: none; width: 44px; padding: 0; font-size: 0; display: inline-flex; align-items: center; justify-content: center; }
@@ -102,6 +107,23 @@ html[data-bar="compact"] button.help::after { content: ""; position: absolute; i
 .sheet-body :is(button, select) { min-height: var(--tap); font-size: 15px; border-radius: var(--radius); padding: 0 14px; }
 /* 16px is the size below which an iPhone zooms the page in when a field takes focus; the page's own picker normally stops that from happening, and this is the backstop. */
 .sheet select { text-overflow: ellipsis; font-size: 16px; }
+/* A list's arrow is drawn, in the column of the split buttons' settings keys (its centre 22 px in from the edge, the same 18 px box and
+   stroke as their sliders; Karl, 2026-11-01: the browser's own arrow sat against the border and looked off). The select gives up its own
+   arrow and its row carries the mark, a select having no pseudo-elements. The Classic frame keeps its drawn select. */
+html:not([data-frame="bevel"]) .sheet select,
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field > select { -webkit-appearance: none; appearance: none; padding-right: 44px; }
+html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select),
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select) { position: relative; }
+html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select)::after,
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::after {
+  content: ""; position: absolute; right: 13px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); pointer-events: none;
+  background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat;
+}
+/* A settings panel's row keeps 8 px of room after its control (`.panel .field`): the mark is 22 px in from the select's own edge there too. */
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::after { right: 21px; }
+/* A stacked row (the Market) holds its select under its name: the mark sits on the select's middle (12 px of padding under a 44 px box). */
+html:not([data-frame="bevel"]) .sheet-field.stack:has(> select)::after { top: auto; bottom: 25px; transform: none; }
+html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select:disabled)::after { opacity: .4; }
 .sheet-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 8px; }
 .sheet-tiles > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 /* A split button fills its tile: the switch takes the room, the settings key a finger's width. Its tiles are wider than a plain button's
@@ -124,9 +146,9 @@ html[data-bar="compact"] button.help::after { content: ""; position: absolute; i
 /* A switched-on pane is tinted rather than filled black: these are settings, not the primary actions the desktop's inverted buttons suit. */
 .sheet .seg.toggles button.on { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); color: var(--text); font-weight: 650; }
 .sheet .seg.toggles button.on::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; background: var(--ui); -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
-.sheet .seg.scope { display: flex; width: 100%; }
-.sheet .seg.scope button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
-.sheet .seg.scope button:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; } .sheet .seg.scope button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.sheet .seg:is(.scope, .zone-seg) { display: flex; width: 100%; }
+.sheet .seg:is(.scope, .zone-seg) button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
+.sheet .seg:is(.scope, .zone-seg) button:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; } .sheet .seg:is(.scope, .zone-seg) button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .sheet .scale { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .sheet .legend { height: 20px; }
 .sheet .legend i { font-size: 11px; }
@@ -135,6 +157,13 @@ html[data-bar="compact"] button.help::after { content: ""; position: absolute; i
 .sheet-chips .chips { gap: 8px; }
 .sheet .chip { min-height: 38px; display: inline-flex; align-items: center; padding: 0 15px; font-size: 14px; border-radius: var(--radius); }
 .sheet .theme-btn { justify-content: center; }
+/* Language and Theme are lists too: the choice sits at the left as in a select, and the same arrow stands in the same column (their own
+   small caret goes). */
+html:not([data-frame="bevel"]) .sheet-field > :is(.theme-btn, .language-btn) { flex: 0 1 62%; position: relative; justify-content: flex-start; padding-right: 44px; }
+html:not([data-frame="bevel"]) .sheet-field > :is(.theme-btn, .language-btn)::after {
+  position: absolute; right: 13px; top: 50%; width: 18px; height: 18px; margin: 0; border: 0; transform: translateY(-50%); color: inherit;
+  background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat;
+}
 .sheet .icon-btn::after { content: attr(aria-label); font-size: 15px; }
 .sheet .seg.toggles + .sheet-tiles { margin-top: 10px; }
 .sheet .led-btn { padding-left: 32px; }

@@ -1,6 +1,6 @@
 import { TIMEFRAMES } from './hub.ts';
 import { PALETTES, THEME_ORDER } from './theme.ts';
-import { AVAILABLE_LAYERS, type Store, type AppState, type Layer } from './store.ts';
+import { AVAILABLE_LAYERS, autoTheme, flippedTheme, prefersDark, themeChange, type Store, type AppState, type Layer } from './store.ts';
 import { VPN_HINT, VenueNotice, blockedVenues, idleText, idleVenues } from './venue-notice.ts';
 import type { VenueEntry } from './source.ts';
 import { clock, usd, zoneName } from './format.ts';
@@ -44,7 +44,7 @@ import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
 import { CONTRAST } from './heatmap/window.ts';
 import { CHART_TYPES, chartTypeGlyph, chartTypeName, chartTypeTip, type ChartType } from './chart-type.ts';
-import { compactBar, isPhone, onLayoutMode } from './device.ts';
+import { compactBar, isCoarse, isPhone, onLayoutMode } from './device.ts';
 import { openSheet, type Sheet } from './sheet.ts';
 import { wakeLockSupported } from './wake.ts';
 import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from './i18n.ts';
@@ -232,6 +232,12 @@ export class Toolbar {
   /** The page's language: the code of the one in use, and a menu of the others (a language is chosen before the page is built, so choosing one reloads it). */
   /** Which clock the page's times are on: UTC, or the computer's own. */
   #zone = el('button', { class: 'zone-btn' });
+  /** The time zone in a phone's Settings: both clocks side by side, the one in use lit (the bar's single button names only the current one). */
+  #zoneLocal = el('button', { type: 'button', textContent: t('Local') });
+  #zoneUtc = el('button', { type: 'button', textContent: 'UTC' });
+  #zoneSeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('Time zone') }, this.#zoneLocal, this.#zoneUtc);
+  /** The compact bar's light-or-dark key (Karl, 2026-11-01): one tap swaps the light theme and the dark one last shown (`flippedTheme`). */
+  #flip = el('button', { type: 'button', class: 'flip-btn' });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
   #keys = el('button', { type: 'button', class: 'keys-btn', textContent: t('Keys'), tip: t('Keyboard shortcuts (?)'), onclick: () => this.openShortcuts() });
   /** Layouts, from the map's corner (a compact bar has it in Settings): the layout the screen is showing, the ready-made ones and the person's own (layouts/gallery.ts). `layouts` is set by main. */
@@ -411,6 +417,9 @@ export class Toolbar {
     this.#theme.onclick = () => this.#openThemes();
     this.#language.onclick = () => this.#openLanguages();
     this.#zone.onclick = () => this.store.set({ timeZone: this.store.state.timeZone === 'utc' ? 'local' : 'utc' });
+    this.#zoneLocal.onclick = () => this.store.set({ timeZone: 'local' });
+    this.#zoneUtc.onclick = () => this.store.set({ timeZone: 'utc' });
+    this.#flip.onclick = () => { const s = this.store.state; this.store.set(themeChange(s, flippedTheme(s), true)); };
     this.#recenter.onclick = () => this.onRecenter();
     // On a phone the button is in Settings, which would cover the map the selection is dragged on.
     this.#range.onclick = () => { this.#sheet?.close(); this.onRange(); };
@@ -631,7 +640,7 @@ export class Toolbar {
     this.root.replaceChildren(
       el('div', { class: 'tb-bar' },
         // The coin alone (Karl, 2026-10-17): the market is chosen in Settings, where the venues are.
-        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#spacer, this.#status, this.#more, this.#collapse),
+        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#spacer, this.#status, this.#flip, this.#more, this.#collapse),
         el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter)),
       this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
   }
@@ -726,7 +735,7 @@ export class Toolbar {
         section(t('Venues'), [field(t('Market'), this.#market, true), field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
         section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#alertSplits!.highlights, this.#alertSplits!.sound),
           field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i')))]),
-        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zone),
+        section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zoneSeg),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesLabel.textContent = t('Venues'); this.#venuesCount.hidden = false; });
     this.#more.classList.add('open');
@@ -771,6 +780,7 @@ export class Toolbar {
     if (this.#heat.hi.textContent !== hi) this.#heat.hi.textContent = hi;
     this.#showTheme(state.theme);
     this.#showZone(state.timeZone);
+    this.#showFlip(state.theme);
     const soundState = !state.sounds.on ? 'off' : state.soundState !== 'running' ? 'locked' : 'on';
     if (this.#soundButton.dataset.state !== soundState) {
       this.#soundButton.dataset.state = soundState;
@@ -876,8 +886,17 @@ export class Toolbar {
     const swatch = el('span', { class: 'swatch' }, ...[p.bg, p.panel, p.bid, p.ask].map(color => { const dot = el('i'); dot.style.background = color; return dot; }));
     this.#theme.replaceChildren(swatch, el('span', { textContent: p.label }));
   }
+  /** The light-or-dark key shows what a tap brings: the sun on a dark theme, the moon on a light one. */
+  #showFlip(id: string): void {
+    const to = PALETTES[id]?.dark ? 'light' : 'dark';
+    if (this.#flip.dataset.to === to) return;
+    this.#flip.dataset.to = to;
+    this.#flip.setAttribute('aria-label', to === 'light' ? t('Light theme') : t('Dark theme'));
+    setTip(this.#flip, t('Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.'));
+  }
   /** The zone button says the clock the page is on, and what a click does (the name of the computer's own zone is part of it). */
   #showZone(zone: AppState['timeZone']): void {
+    this.#zoneLocal.classList.toggle('on', zone !== 'utc'); this.#zoneUtc.classList.toggle('on', zone === 'utc');
     if (this.#zone.dataset.zone === zone) return;
     this.#zone.dataset.zone = zone;
     this.#zone.textContent = zone === 'utc' ? 'UTC' : t('Local');
@@ -903,8 +922,15 @@ export class Toolbar {
   }
 
   #openThemes(): void {
-    const items = THEME_ORDER.map(id => { const p = PALETTES[id]!; return { id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; });
-    openMenu(this.#theme, items, this.store.state.theme, { onPreview: id => this.onPreviewTheme(id), onSelect: id => this.store.set({ theme: id, themePicked: true }) });
+    // Automatic first, as in the language menu: the page's own choice for this screen (on a phone, its light or dark setting), followed while kept.
+    const auto = autoTheme(isPhone() && isCoarse(), prefersDark()), ap = PALETTES[auto]!;
+    const items = [{ id: 'auto', label: `${t('Automatic')} · ${ap.label}`, swatch: [ap.bg, ap.panel, ap.text, ap.bid, ap.ask] },
+      ...THEME_ORDER.map(id => { const p = PALETTES[id]!; return { id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; })];
+    const s = this.store.state;
+    openMenu(this.#theme, items, s.themePicked ? s.theme : 'auto', {
+      onPreview: id => this.onPreviewTheme(id === 'auto' ? auto : id),
+      onSelect: id => this.store.set(themeChange(this.store.state, id === 'auto' ? auto : id, id !== 'auto')),
+    });
   }
 
   #buildHighlights(_tools: HTMLElement, body: HTMLElement): void {
