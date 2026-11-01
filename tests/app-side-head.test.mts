@@ -17,6 +17,16 @@ const WIDEST = { mouse: { cvd: 387, ladder: 442 }, touch: { cvd: 496, ladder: 52
 /** The room a tier keeps beyond that: other system fonts draw the same words a few per cent wider. */
 const MARGIN = 1.05;
 
+/** A selector list split at its top-level commas (those inside parentheses belong to `:not(...)` and `:is(...)`). */
+function selectorsOf(list: string): string[] {
+  const out: string[] = []; let depth = 0, from = 0;
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i]!;
+    if (c === '(') depth++; else if (c === ')') depth--; else if (c === ',' && depth === 0) { out.push(list.slice(from, i).trim()); from = i + 1; }
+  }
+  out.push(list.slice(from).trim());
+  return out.filter(Boolean);
+}
 /** The text of the `{ ... }` block that opens at `open` (the index of its `{`), the braces inside counted. */
 function blockAt(text: string, open: number): string {
   let depth = 0;
@@ -27,8 +37,8 @@ function blockAt(text: string, open: number): string {
   throw new Error('a block that does not end');
 }
 /** Where each wide tier of the side headers starts, by the pointer it is for and the pane: the `@container sidehead (min-width: Npx)` blocks inside the two `@media` rules. */
-function tiers(): { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: number | null }[] {
-  const out: { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: number | null }[] = [];
+function tiers(): { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: number | null; body: string }[] {
+  const out: { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: number | null; body: string }[] = [];
   for (const m of css.matchAll(/@media (not all and )?\(pointer: coarse\) \{/g)) {
     const body = blockAt(css, m.index! + m[0].length - 1);
     for (const c of body.matchAll(/@container sidehead \(min-width: (\d+)px\) \{/g)) {
@@ -36,7 +46,7 @@ function tiers(): { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: num
       const pane = inner.includes('.pane.cvd .side-head') ? 'cvd' : inner.includes('.pane.ladder .side-head') ? 'ladder' : null;
       if (!pane) continue;
       const seg = /\.cvd-seg \{[^}]*min-width: (\d+)px/.exec(inner);
-      out.push({ touch: !m[1], pane, at: Number(c[1]), min: seg ? Number(seg[1]) : null });
+      out.push({ touch: !m[1], pane, at: Number(c[1]), min: seg ? Number(seg[1]) : null, body: inner });
     }
   }
   return out;
@@ -52,8 +62,9 @@ test('a side pane carries its handle, its menu and its close button in its own h
 
 test('the break and the tiers are for the desktop arrangement only: a phone keeps the header it has', () => {
   assert.match(css, /\n\.side-break \{ display: none; \}/, 'the break is nothing until the desktop shows it');
-  for (const line of css.split('\n').filter(l => l.includes('.side-head') && l.includes('{'))) {
-    assert.ok(line.trim().startsWith('html[data-layout="desktop"]'), `a side-head rule outside the desktop arrangement: ${line.slice(0, 90)}`);
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of bare.matchAll(/([^{};]*\.side-head[^{};]*)\{/g)) {
+    for (const selector of selectorsOf(m[1]!)) assert.ok(selector.startsWith('html[data-layout="desktop"]'), `a side-head selector outside the desktop arrangement: ${selector.slice(0, 90)}`);
   }
   assert.match(mobile, /html\[data-layout="desktop"\] \.pane-head\.side-head \{ --head-row-gap: 4px; \}/, 'a touch screen with the desktop arrangement keeps its tighter rows');
   assert.match(chrome, /:root\[data-frame="bevel"\]\[data-layout\^="phone"\] \.pane-head \.grip \{ display: none; \}/, 'the Bevel frame draws no handle on a phone, where the panes are tabs (its own rule for the handle is stronger than the phone\'s)');
@@ -72,6 +83,19 @@ test('each pane\'s wide tier starts where its widest first line fits in every la
   }
   const seg = (touch: boolean): number | null => found.find(t => t.pane === 'cvd' && t.touch === touch)!.min;
   assert.ok(seg(false)! >= 200 && seg(true)! >= 265, 'the span buttons keep what their own text needs (Italian: 192 px with a mouse, 261 with a finger)');
+});
+
+test('each tier block carries every rule of its pane, for a mouse and for a finger alike', () => {
+  const need = {
+    cvd: ['.cvd-seg { order: 1;', '.cvd-gear { order: 2; }', '.pane-tools { order: 3; }', '.side-break { display: none; }'],
+    ladder: ['label.ctl:first-of-type { order: 1; }', '.recenter-btn { order: 1; margin-left: 0; }'],
+  };
+  for (const t of tiers()) for (const rule of need[t.pane]) assert.ok(t.body.includes(rule), `${t.pane}${t.touch ? ' (touch)' : ''}: the tier lacks "${rule}"`);
+});
+
+test('the two columns take their minimum from the screen they are on: both calls pass isCoarse()', () => {
+  assert.equal((layout.match(/minWidthOf\([^;\n]*, isCoarse\(\)\)/g) ?? []).length, 2, 'the drag and the fitting of the columns');
+  assert.equal((layout.match(/minWidthOf\(/g) ?? []).length, 2, 'and there is no third call');
 });
 
 test('the name gives way before the first line breaks, so the menu and the close button stay on it', () => {
