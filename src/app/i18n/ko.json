@@ -399,7 +399,6 @@
  "Market": "시장",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "시장: 차트가 보여 주는 캔들, 풋프린트, 미결제약정의 주인. 여기서 무엇을 고르든 히트맵은 항상 활성화된 모든 거래소의 호가창을 합칩니다.",
  "Layer": "레이어",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "지도에 그려지는 레이어. 유동성은 호가창 히트맵이며, 청산·손절·익절 레이어는 곧 제공됩니다(정적 페이지가 키를 보관할 수 없는 데이터가 필요합니다).",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "차트를 캡처합니다(키보드: S). 영역을 선택하거나 창을 클릭하고, 그 위에 그리고, 비공개 부분은 모자이크나 흐림으로 가린 뒤 복사하거나 저장합니다.",
  "Author": "제작자",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "누가 만들었는지, 코드는 어디서 볼 수 있는지. 무료, 가입 없음, 오픈 소스.",
@@ -1989,5 +1988,18 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "완료",
  "Next": "다음",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "이 막대의 각 탭은 같은 시장을 다르게 보여 줍니다: 테이프, 플로우, 지도, 호가창 등. 나머지는 막대를 밀어서 확인하세요."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "이 막대의 각 탭은 같은 시장을 다르게 보여 줍니다: 테이프, 플로우, 지도, 호가창 등. 나머지는 막대를 밀어서 확인하세요.",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "지도에 그리는 레이어입니다. 유동성은 호가창 히트맵이고, 청산 레벨은 Hyperliquid의 미결제 BTC 포지션이 청산될 가격을 보여 줍니다(HyperTracker, 30분마다). 곧 제공으로 표시된 레이어는 아직 연결되지 않았습니다.",
+ "Liquidation levels show the live market only.": "청산 레벨은 실시간 시장에서만 표시됩니다.",
+ "Liquidation levels are for BTC only for now.": "청산 레벨은 지금은 BTC만 지원합니다.",
+ "Liquidation levels could not be read.": "청산 레벨을 읽지 못했습니다.",
+ "Liquidation levels are loading.": "청산 레벨을 불러오는 중입니다.",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Hyperliquid 청산 레벨 {time} 기준 · Powered by HyperTracker",
+ "Long liquidations": "롱 청산",
+ "Short liquidations": "숏 청산",
+ "Wallets": "지갑",
+ "Isolated / cross margin": "격리 / 교차 마진",
+ "Traded through": "통과함",
+ "Still standing": "남아 있음",
+ "Mostly one wallet": "대부분 한 지갑"
 }

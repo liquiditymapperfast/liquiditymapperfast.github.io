@@ -28,11 +28,15 @@ import type { RangeSelection } from './range/selection.ts';
 import { hasTop, readTraded, topFromStrip, type TradedSettings } from './traded/settings.ts';
 import { withTopOn } from './traded/profiles.ts';
 import { t } from './i18n.ts';
+import { liqLevelsUrl } from './liq-url.ts';
 import type { ReplayView } from './replay/clock.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
-/** Layers that can be chosen today. The others are announced in the dropdown as upcoming and need a data source that is not connected yet. */
-export const AVAILABLE_LAYERS: readonly Layer[] = ['liquidity'];
+/**
+ * Layers that can be chosen today. The others are announced in the dropdown as upcoming and need a data source that is not connected yet;
+ * Liquidation levels can be chosen once its file has an address (`liq-url.ts`).
+ */
+export const AVAILABLE_LAYERS: readonly Layer[] = liqLevelsUrl() ? ['liquidity', 'liquidation'] : ['liquidity'];
 export type LadderMode = 'aggregated' | 'single' | 'compact';
 export type LadderShow = 'levels' | 'cumulative' | 'both';
 /** Which kind of market the liquidity views draw: spot books, perpetual books, or every enabled venue. */

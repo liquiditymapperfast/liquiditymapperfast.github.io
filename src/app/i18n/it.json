@@ -411,7 +411,6 @@
  "Market": "Mercato",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "Mercato: di chi sono le candele, il footprint e l'open interest che il grafico mostra. La heatmap combina sempre il libro di ogni exchange attivato, qualunque cosa si scelga qui.",
  "Layer": "Livello grafico",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Livello disegnato sulla mappa. Liquidità è la heatmap del libro degli ordini; i livelli liquidazione, stop loss e take profit sono in arrivo (richiedono dati per cui una pagina statica non può custodire una chiave).",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "Scatta una foto del grafico (tastiera: S): seleziona un'area o clicca un pannello, disegnaci sopra, nascondi ciò che è privato con pixelizza o sfoca, poi copia o salva.",
  "Author": "Autore",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "Chi l'ha fatto e dove trovare il codice. Gratis, senza iscrizioni, open source.",
@@ -2095,5 +2094,18 @@
  "{n} of {total}": "{n} di {total}",
  "Done": "Fine",
  "Next": "Avanti",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Ogni scheda di questa barra è un’altra vista dello stesso mercato: Nastro, Flusso, Mappa, Book e altre. Scorri la barra per vedere il resto."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Ogni scheda di questa barra è un’altra vista dello stesso mercato: Nastro, Flusso, Mappa, Book e altre. Scorri la barra per vedere il resto.",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "Livello disegnato sulla mappa. Liquidità è la heatmap del book; Livelli di liquidazione mostra i prezzi che liquiderebbero le posizioni BTC aperte su Hyperliquid (HyperTracker, ogni 30 minuti). Un livello indicato come in arrivo non è ancora collegato.",
+ "Liquidation levels show the live market only.": "I livelli di liquidazione mostrano solo il mercato in tempo reale.",
+ "Liquidation levels are for BTC only for now.": "Per ora i livelli di liquidazione sono solo per BTC.",
+ "Liquidation levels could not be read.": "Non è stato possibile leggere i livelli di liquidazione.",
+ "Liquidation levels are loading.": "Caricamento dei livelli di liquidazione.",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Livelli di liquidazione di Hyperliquid alle {time} · Powered by HyperTracker",
+ "Long liquidations": "Liquidazioni long",
+ "Short liquidations": "Liquidazioni short",
+ "Wallets": "Wallet",
+ "Isolated / cross margin": "Margine isolato / cross",
+ "Traded through": "Attraversato",
+ "Still standing": "Ancora in piedi",
+ "Mostly one wallet": "Quasi tutto di un wallet"
 }

@@ -414,7 +414,6 @@
  "Market": "Рынок",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "Рынок: чьи свечи, футпринт и открытый интерес показывает график. Тепловая карта всегда объединяет стакан каждой включённой биржи, что бы здесь ни было выбрано.",
  "Layer": "Слой",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Слой, рисуемый на карте. «Ликвидность» — это тепловая карта стакана; слои ликвидаций, стоп-лоссов и тейк-профитов ожидаются (им нужны данные, для которых статическая страница не может хранить ключ).",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "Сделайте снимок графика (клавиша S): выберите область или нажмите на панель, рисуйте на нём, скройте личное пикселизацией или размытием, затем скопируйте или сохраните.",
  "Author": "Автор",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "Кто это сделал и где найти код. Бесплатно, без регистраций, с открытым кодом.",
@@ -2122,5 +2121,18 @@
  "{n} of {total}": "{n} из {total}",
  "Done": "Готово",
  "Next": "Далее",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Каждая вкладка этой панели — другой взгляд на тот же рынок: Лента, Поток, Карта, Стакан и другие. Листайте панель, чтобы увидеть остальные."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Каждая вкладка этой панели — другой взгляд на тот же рынок: Лента, Поток, Карта, Стакан и другие. Листайте панель, чтобы увидеть остальные.",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "Слой на карте. Ликвидность — тепловая карта стакана; Уровни ликвидаций показывают цены, при которых будут ликвидированы открытые позиции BTC на Hyperliquid (HyperTracker, каждые 30 минут). Слой с пометкой «скоро» ещё не подключён.",
+ "Liquidation levels show the live market only.": "Уровни ликвидаций показываются только для живого рынка.",
+ "Liquidation levels are for BTC only for now.": "Уровни ликвидаций пока есть только для BTC.",
+ "Liquidation levels could not be read.": "Не удалось прочитать уровни ликвидаций.",
+ "Liquidation levels are loading.": "Уровни ликвидаций загружаются.",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Уровни ликвидаций Hyperliquid на {time} · Powered by HyperTracker",
+ "Long liquidations": "Ликвидации лонгов",
+ "Short liquidations": "Ликвидации шортов",
+ "Wallets": "Кошельки",
+ "Isolated / cross margin": "Изолированная / кросс-маржа",
+ "Traded through": "Пройдено",
+ "Still standing": "Ещё стоит",
+ "Mostly one wallet": "Почти всё у одного кошелька"
 }

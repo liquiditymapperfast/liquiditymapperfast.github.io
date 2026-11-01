@@ -399,7 +399,6 @@
  "Market": "市場",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "市場：チャートが表示するローソク足、フットプリント、建玉の持ち主。ここでどれを選んでも、ヒートマップは常に有効なすべての取引所のブックを合成します。",
  "Layer": "レイヤー",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "マップに描かれるレイヤー。流動性はオーダーブックのヒートマップです。清算、ストップロス、利益確定のレイヤーは近日対応予定です（静的なページではキーを保管できないデータが必要なため）。",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "チャートを撮影します（キーボード：S）。範囲を選ぶかペインをクリックし、その上に描き込み、見せたくない部分はモザイクやぼかしで隠してから、コピーまたは保存します。",
  "Author": "作者",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "これを作った人と、コードの場所。無料、登録不要、オープンソース。",
@@ -1989,5 +1988,18 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "完了",
  "Next": "次へ",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "このバーのタブは、同じ市場を別の見方で表示します：歩み値、フロー、マップ、板など。残りはバーをスワイプしてください。"
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "このバーのタブは、同じ市場を別の見方で表示します：歩み値、フロー、マップ、板など。残りはバーをスワイプしてください。",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "マップに描くレイヤー。流動性は板のヒートマップ、清算レベルは Hyperliquid の未決済 BTC ポジションが清算される価格を示します（HyperTracker、30 分ごと）。近日公開と表示されたレイヤーはまだ接続されていません。",
+ "Liquidation levels show the live market only.": "清算レベルはライブ相場でのみ表示されます。",
+ "Liquidation levels are for BTC only for now.": "清算レベルは今のところ BTC のみです。",
+ "Liquidation levels could not be read.": "清算レベルを読み込めませんでした。",
+ "Liquidation levels are loading.": "清算レベルを読み込み中です。",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Hyperliquid の清算レベル {time} 時点 · Powered by HyperTracker",
+ "Long liquidations": "ロングの清算",
+ "Short liquidations": "ショートの清算",
+ "Wallets": "ウォレット",
+ "Isolated / cross margin": "分離 / クロス証拠金",
+ "Traded through": "通過済み",
+ "Still standing": "残り",
+ "Mostly one wallet": "ほぼ 1 つのウォレット"
 }

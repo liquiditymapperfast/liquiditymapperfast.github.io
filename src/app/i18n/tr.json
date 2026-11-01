@@ -408,7 +408,6 @@
  "Market": "Piyasa",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "Piyasa: grafiğin hangi piyasanın mumlarını, footprint'ini ve açık pozisyonunu gösterdiği. Isı haritası, burada ne seçilirse seçilsin her zaman etkin her borsanın defterini birleştirir.",
  "Layer": "Katman",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Haritada çizilen katman. Likidite, emir defteri ısı haritasıdır; tasfiye, zarar durdur ve kâr al katmanları yolda (statik bir sayfanın anahtar saklayamadığı veriler gerektirirler).",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "Grafiğin fotoğrafını çekin (klavye: S): bir alan seçin veya bir bölmeye tıklayın, üzerine çizin, özel olan her şeyi pikselleştirme veya bulanıklaştırmayla gizleyin, sonra kopyalayın veya kaydedin.",
  "Author": "Yazar",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "Bunu kimin yaptığı ve kodun nerede bulunacağı. Ücretsiz, üyeliksiz, açık kaynak.",
@@ -2068,5 +2067,18 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "Bitir",
  "Next": "İleri",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Bu çubuktaki her sekme aynı piyasanın başka bir görünümüdür: Şerit, Akış, Harita, Defter ve daha fazlası. Gerisi için çubuğu kaydırın."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Bu çubuktaki her sekme aynı piyasanın başka bir görünümüdür: Şerit, Akış, Harita, Defter ve daha fazlası. Gerisi için çubuğu kaydırın.",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "Haritada çizilen katman. Likidite emir defteri ısı haritasıdır; Likidasyon seviyeleri, Hyperliquid'deki açık BTC pozisyonlarını likide edecek fiyatları gösterir (HyperTracker, 30 dakikada bir). Yakında olarak işaretlenen bir katman henüz bağlı değildir.",
+ "Liquidation levels show the live market only.": "Likidasyon seviyeleri yalnızca canlı piyasayı gösterir.",
+ "Liquidation levels are for BTC only for now.": "Likidasyon seviyeleri şimdilik yalnızca BTC için.",
+ "Liquidation levels could not be read.": "Likidasyon seviyeleri okunamadı.",
+ "Liquidation levels are loading.": "Likidasyon seviyeleri yükleniyor.",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Hyperliquid likidasyon seviyeleri, {time} itibarıyla · Powered by HyperTracker",
+ "Long liquidations": "Long likidasyonları",
+ "Short liquidations": "Short likidasyonları",
+ "Wallets": "Cüzdanlar",
+ "Isolated / cross margin": "İzole / çapraz marj",
+ "Traded through": "Geçildi",
+ "Still standing": "Hâlâ duruyor",
+ "Mostly one wallet": "Çoğu tek bir cüzdanda"
 }

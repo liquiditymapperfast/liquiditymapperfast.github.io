@@ -25,6 +25,7 @@ import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText } from '../text-fit.ts';
+import { binsPerRow, liqRows, paintLiqRows } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -1297,8 +1298,54 @@ export class HeatPane {
     ctx.restore();
   }
 
+  /**
+   * The Liquidation levels layer: the prices that would liquidate Hyperliquid's open BTC positions (the levels file, a HyperTracker
+   * snapshot every 30 minutes), drawn from the snapshot's time on and taken away as Hyperliquid's price trades through them.
+   */
+  #paintLiquidationLevels(ctx: CanvasRenderingContext2D, pw: number, ph: number): void {
+    const src = this.hub.liqLevels, p = this.#palette, v = this.view;
+    src.ensure(currentCoin(), () => this.invalidate());
+    const levels = src.levels, live = !replaying() && src.state !== 'other-coin';
+    let note: string;
+    if (replaying()) note = t('Liquidation levels show the live market only.');
+    else if (src.state === 'other-coin') note = t('Liquidation levels are for BTC only for now.');
+    else if (!levels) note = src.state === 'unavailable' ? t('Liquidation levels could not be read.') : t('Liquidation levels are loading.');
+    else note = t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time: clock(levels.asOf) });
+    if (levels && live) {
+      const rows = liqRows(levels, src.taken(), binsPerRow(levels.step, v, ph), v.p0, v.p1);
+      paintLiqRows(ctx, v, pw, ph, levels, rows, { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, pageNow());
+    }
+    ctx.save();
+    ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    const label = fitText(words => ctx.measureText(words).width, note, Math.max(40, pw - 24));
+    ctx.fillStyle = p.muted; ctx.globalAlpha = 0.9; ctx.fillText(label, 8, this.#legendBox.bottom + 6);
+    ctx.restore();
+  }
+
+  /** What the Liquidation levels layer holds at the pointer's price, for the hover box. */
+  #liquidationLines(price: number, ph: number): InfoLine[] {
+    const src = this.hub.liqLevels, levels = src.levels;
+    if (!levels || replaying() || src.state === 'other-coin') return [];
+    const per = binsPerRow(levels.step, this.view, ph), span = per * levels.step;
+    const row = liqRows(levels, src.taken(), per, price - span, price + span).find(r => price >= r.p0 && price < r.p1);
+    if (!row) return [];
+    const now = pageNow(), lines: InfoLine[] = [];
+    for (const side of ['long', 'short'] as const) {
+      const total = row[side]; if (total <= 0) continue;
+      const iso = row[`${side}Iso`], gone = row[`${side}Gone`], first = row[`${side}First`];
+      lines.push({ label: side === 'long' ? t('Long liquidations') : t('Short liquidations'), text: `$${usd(total)}`, color: side === 'long' ? 'sell' : 'buy', bold: true });
+      lines.push({ label: t('Wallets'), text: String(row[`${side}Wallets`]) });
+      lines.push({ label: t('Isolated / cross margin'), text: `$${usd(iso)} / $${usd(total - iso)}` });
+      if (Number.isFinite(gone) && gone <= now) lines.push({ label: t('Traded through'), text: clock(gone), color: 'muted' });
+      else if (Number.isFinite(first) && first <= now) lines.push({ label: t('Still standing'), text: `$${usd(row[`${side}Left`])}`, color: 'muted' });
+      if (row[`${side}One`]) lines.push({ text: t('Mostly one wallet'), color: 'muted' });
+    }
+    return lines;
+  }
+
   #paintLayers(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     if (state.layer === 'liquidity') return;
+    if (state.layer === 'liquidation') { this.#paintLiquidationLevels(ctx, pw, ph); return; }
     const levels = state.layers[state.layer] ?? [];
     if (!levels.length) return;
     const max = Math.max(...levels.map(l => l.notionalUsd), 1);
@@ -2665,7 +2712,8 @@ export class HeatPane {
     } else if (ownY && here) {
       // The price and the book there, then what the scripts on the map draw at that candle.
       const scripted = this.scriptHover(hv.t);
-      if (state.layer === 'liquidity' || scripted.length) {
+      const liquidation = state.layer === 'liquidation' ? this.#liquidationLines(hv.price!, ph) : [];
+      if (state.layer === 'liquidity' || liquidation.length || scripted.length) {
         const lines: InfoLine[] = [{ label: t('Price'), text: fmtPrice(hv.price!) }];
         if (state.layer === 'liquidity') {
           const cell = this.valueAt(hv.t, hv.price!);
@@ -2673,6 +2721,7 @@ export class HeatPane {
           if (cell) lines.push({ label: side === 'ask' ? t('Ask') : t('Bid'), text: `$${usd(Math.max(cell.bid, cell.ask))}`, color: side === 'ask' ? 'above' : 'below', bold: true });
           if (source) lines.push({ label: t('Source'), text: source });
         }
+        lines.push(...liquidation);
         lines.push(...scripted);
         paintInfoBox(ctx, lines, x, touch ? y - 24 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
       }

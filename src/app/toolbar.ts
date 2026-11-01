@@ -108,7 +108,7 @@ export class Toolbar {
   #coinNotice = el('div', { class: 'notice info', role: 'status', hidden: true });
   #market = el('select', { class: 'market', ariaLabel: t('Market'), tip: t("Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.") });
   #timeframes = el('div', { class: 'seg' });
-  #layer = el('select', { ariaLabel: t('Layer'), tip: t('Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).') });
+  #layer = el('select', { ariaLabel: t('Layer'), tip: t('Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid\'s open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.') });
   #toggles = el('div', { class: 'seg toggles' });
   #chips = el('div', { class: 'chips' });
   /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */

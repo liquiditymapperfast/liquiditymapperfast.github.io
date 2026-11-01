@@ -411,7 +411,6 @@
  "Market": "Marché",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "Marché : de qui sont les bougies, le footprint et l'open interest que montre le graphique. La heatmap combine toujours le carnet de chaque plateforme activée, quel que soit ce choix.",
  "Layer": "Couche",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "Couche dessinée sur la carte. Liquidité est la heatmap du carnet d'ordres ; les couches liquidation, stop loss et take profit arrivent (elles demandent des données pour lesquelles une page statique ne peut pas garder de clé).",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "Prenez une capture du graphique (clavier : S) : sélectionnez une zone ou cliquez sur un volet, dessinez dessus, masquez le privé avec pixeliser ou flouter, puis copiez ou enregistrez.",
  "Author": "Auteur",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "Qui a fait ceci, et où trouver le code. Gratuit, sans inscription, open source.",
@@ -2095,5 +2094,18 @@
  "{n} of {total}": "{n} sur {total}",
  "Done": "Terminé",
  "Next": "Suivant",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Chaque onglet de cette barre est une autre vue du même marché : Ruban, Flux, Carte, Carnet et plus. Faites glisser la barre pour voir le reste."
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "Chaque onglet de cette barre est une autre vue du même marché : Ruban, Flux, Carte, Carnet et plus. Faites glisser la barre pour voir le reste.",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "Couche dessinée sur la carte. Liquidité est la carte de chaleur du carnet d'ordres ; Niveaux de liquidation montre les prix qui liquideraient les positions BTC ouvertes sur Hyperliquid (HyperTracker, toutes les 30 minutes). Une couche marquée à venir n'est pas encore connectée.",
+ "Liquidation levels show the live market only.": "Les niveaux de liquidation ne montrent que le marché en direct.",
+ "Liquidation levels are for BTC only for now.": "Les niveaux de liquidation ne concernent que le BTC pour l'instant.",
+ "Liquidation levels could not be read.": "Les niveaux de liquidation n'ont pas pu être lus.",
+ "Liquidation levels are loading.": "Chargement des niveaux de liquidation.",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Niveaux de liquidation Hyperliquid à {time} · Powered by HyperTracker",
+ "Long liquidations": "Liquidations de longs",
+ "Short liquidations": "Liquidations de shorts",
+ "Wallets": "Portefeuilles",
+ "Isolated / cross margin": "Marge isolée / croisée",
+ "Traded through": "Traversé",
+ "Still standing": "Encore en place",
+ "Mostly one wallet": "Surtout un seul portefeuille"
 }

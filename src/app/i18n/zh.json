@@ -399,7 +399,6 @@
  "Market": "市场",
  "Market: whose candles, footprint and open interest the chart shows. The heatmap always combines every enabled venue's book, whatever is chosen here.": "市场：图表显示谁的 K 线、footprint 和持仓量。无论这里选什么，热力图始终合并每个已启用交易所的订单簿。",
  "Layer": "图层",
- "Layer drawn on the map. Liquidity is the order-book heatmap; liquidation, stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).": "绘制在地图上的图层。流动性是订单簿热力图；爆仓、止损和止盈图层即将推出（它们需要静态页面无法保管密钥的数据）。",
  "Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.": "给图表拍一张图（键盘：S）：选择一个区域或点击一个窗格，在上面绘制，用像素化或模糊隐藏隐私内容，然后复制或保存。",
  "Author": "作者",
  "Who made this, and where to find the code. Free, no sign-ups, open source.": "这是谁做的，以及在哪里找到代码。免费，无需注册，开源。",
@@ -1989,5 +1988,18 @@
  "{n} of {total}": "{n} / {total}",
  "Done": "完成",
  "Next": "下一步",
- "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "此栏中的每个标签都是同一市场的另一种视图：逐笔、资金流、地图、订单簿等。左右滑动此栏查看其余标签。"
+ "Each tab in this bar is another view of the same market: Tape, Flow, Map, Book and more. Swipe the bar for the rest.": "此栏中的每个标签都是同一市场的另一种视图：逐笔、资金流、地图、订单簿等。左右滑动此栏查看其余标签。",
+ "Layer drawn on the map. Liquidity is the order-book heatmap; Liquidation levels shows the prices that would liquidate Hyperliquid's open BTC positions (HyperTracker, every 30 minutes). A layer marked upcoming is not connected yet.": "绘制在地图上的图层。流动性是订单簿热力图；清算价位显示 Hyperliquid 上未平仓 BTC 仓位会被清算的价格（HyperTracker，每 30 分钟）。标为即将推出的图层尚未接入。",
+ "Liquidation levels show the live market only.": "清算价位只显示实时行情。",
+ "Liquidation levels are for BTC only for now.": "清算价位目前只支持 BTC。",
+ "Liquidation levels could not be read.": "无法读取清算价位。",
+ "Liquidation levels are loading.": "正在加载清算价位。",
+ "Hyperliquid liquidation levels at {time} · Powered by HyperTracker": "Hyperliquid 清算价位，{time} · Powered by HyperTracker",
+ "Long liquidations": "多头清算",
+ "Short liquidations": "空头清算",
+ "Wallets": "钱包",
+ "Isolated / cross margin": "逐仓 / 全仓保证金",
+ "Traded through": "已穿过",
+ "Still standing": "仍然存在",
+ "Mostly one wallet": "大多来自一个钱包"
 }
