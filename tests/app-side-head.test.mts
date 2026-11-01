@@ -62,6 +62,9 @@ test('the break and the tiers are for the desktop arrangement only: a phone keep
 test('each pane\'s wide tier starts where its widest first line fits in every language, with a margin; a touch screen\'s later, with its span buttons wider', () => {
   const found = tiers();
   assert.equal(found.length, 4, 'a tier for each pane and each kind of pointer');
+  for (const pane of ['cvd', 'ladder'] as const) for (const touch of [false, true]) {
+    assert.equal(found.filter(t => t.pane === pane && t.touch === touch).length, 1, `exactly one ${touch ? 'touch' : 'mouse'} tier for ${pane}`);
+  }
   for (const t of found) {
     const need = WIDEST[t.touch ? 'touch' : 'mouse'][t.pane];
     assert.ok(t.at >= Math.ceil(need * MARGIN), `${t.pane}${t.touch ? ' (touch)' : ''}: the tier starts at ${t.at} px, the widest first line needs ${need} (x${MARGIN} = ${Math.ceil(need * MARGIN)})`);
