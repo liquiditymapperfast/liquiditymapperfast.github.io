@@ -72,6 +72,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar.cockpit .notice { position: absolute; left: 8px; right: 8px; top: calc(100% + 4px); z-index: 45; box-shadow: 2px 2px 0 var(--shadow); }
 /* Two at once (a venue this place cannot reach, a coin that is not on the list) lie one under the other, not on the same spot. */
 .toolbar.cockpit .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 40px); }
+.toolbar.cockpit .notice:not([hidden]) ~ .notice:not([hidden]) ~ .notice:not([hidden]) { top: calc(100% + 76px); }
 
 .toolbar .deck { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-inline-size: 0; margin: 0; padding: 1px 4px 5px; }
 .toolbar .deck > legend { padding: 0 4px; margin-left: -2px; font-size: 10px; line-height: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
@@ -79,14 +80,16 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar .deck-tools { margin-left: auto; }
 /* The last deck's title is the page's name, in its own case. */
 .toolbar .deck.deck-tools > legend { text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--text); }
-/* The page's own deck is a grid: what it opens on the left (Guide, Author), the tools on the right as marks (the screenshot, installing),
-   both rows on the same two columns. Installing keeps its place whether the browser offers it or not, so the deck never changes; where it
-   is not offered, Author takes the row. */
-.toolbar.cockpit .deck-tools .deck-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 4px; }
+/* The page's own deck holds how to learn the page on its first row (the Tour and the Guide, side by side) and its utilities on the second: Author, and the
+   screenshot and installing as marks. Installing keeps its place whether the browser offers it or not, so the deck never changes; where it is not offered,
+   Author takes its column. */
+.toolbar.cockpit .deck-tools .deck-row { display: grid; grid-template-columns: minmax(0, 1fr) 24px 24px; gap: 4px; }
+.toolbar.cockpit .deck-tools .deck-row > button.icon-btn { padding: 0; }
+.toolbar.cockpit .deck-tools .deck-row:first-of-type { grid-template-columns: auto minmax(0, 1fr); }
 .toolbar.cockpit .deck-tools .deck-row > button { width: 100%; min-width: 0; justify-content: center; text-align: center; }
 .toolbar.cockpit .deck-tools .deck-row > button.install { position: relative; font-size: 0; padding: 0; }
 .toolbar.cockpit .deck-tools .deck-row > button.install::before { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v11M7.5 10L12 14.5 16.5 10M4.5 15.5v4h15v-4'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v11M7.5 10L12 14.5 16.5 10M4.5 15.5v4h15v-4'/%3E%3C/svg%3E") center / contain no-repeat; }
-.toolbar.cockpit .deck-tools .deck-row:has(> button.install[hidden]) > :first-child { grid-column: 1 / -1; }
+.toolbar.cockpit .deck-tools .deck-row:has(> button.install[hidden]) > :first-child:not(.tour-btn) { grid-column: 1 / 3; }
 /* A monospaced face is wider: the text-mode bar a size smaller, so its decks fit as the others do. */
 html[data-frame="textmode"] .toolbar.cockpit { font-size: 10.5px; }
 html[data-frame="textmode"] .toolbar.cockpit :is(button, select) { padding: 2px 4px; }
@@ -543,6 +546,41 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
   .guide-article { padding: 0 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } }
+/* The tour's button: the one filled button of the page, wider than its neighbours and with a play mark (the invitation's Take the tour is the same). */
+.toolbar.cockpit .deck-tools button.tour-btn, .sheet-tiles > button.tour-btn { font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
+:is(button.tour-btn, button.guide-tour, .tour-invite-go) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+:is(button.tour-btn, button.guide-tour, .tour-invite-go)::before { content: ""; flex: none; width: 8px; height: 10px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.toolbar.cockpit .deck-tools button.tour-btn:hover, .sheet-tiles > button.tour-btn:hover { background: color-mix(in srgb, var(--ui) 86%, var(--text)); border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+/* The invitation to the tour (tour/invite.ts), a notice: its text takes the room, the buttons wrap under it on a narrow screen. */
+.toolbar .tour-invite { flex-wrap: wrap; row-gap: 6px; }
+.tour-invite-text { flex: 1 1 220px; min-width: 0; }
+.toolbar .tour-invite button { flex: none; height: 24px; padding: 0 12px; }
+.toolbar .tour-invite button.tour-invite-go { font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
+button.guide-tour { flex: none; height: 28px; padding: 0 12px; font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
+button.guide-tour:hover { background: color-mix(in srgb, var(--ui) 86%, var(--text)); border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+/* The tour (tour/tour.ts): a modal as big as the window holding the light (a hole in the dim layer, which glides from step to step) and the card. */
+dialog.tour { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); overflow: hidden; }
+dialog.tour::backdrop { background: transparent; }
+.tour-hole { position: absolute; box-sizing: border-box; border-radius: calc(var(--radius) + 2px); box-shadow: 0 0 0 100vmax rgba(8, 10, 14, .62); outline: 2px solid var(--ui); outline-offset: -1px; pointer-events: none; transition: left .3s cubic-bezier(.3, .7, .2, 1), top .3s cubic-bezier(.3, .7, .2, 1), width .3s cubic-bezier(.3, .7, .2, 1), height .3s cubic-bezier(.3, .7, .2, 1); }
+.tour-card { position: absolute; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow: auto; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); box-shadow: 3px 3px 0 var(--shadow), 0 12px 32px rgba(0, 0, 0, .28); transition: left .3s cubic-bezier(.3, .7, .2, 1), top .3s cubic-bezier(.3, .7, .2, 1); animation: tour-in .22s ease-out; }
+dialog.tour.settling :is(.tour-hole, .tour-card) { transition: none; }
+@keyframes tour-in { from { opacity: 0; transform: translateY(6px); } }
+.tour-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.tour-count { font-size: 11px; letter-spacing: .04em; color: var(--muted); }
+.tour-dots { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.tour-dots li { width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--text) 18%, transparent); }
+.tour-dots li.past { background: color-mix(in srgb, var(--ui) 45%, transparent); }
+.tour-dots li.on { background: var(--ui); transform: scale(1.35); }
+.tour-title { margin: 0 0 4px; font-size: 15px; line-height: 1.3; }
+.tour-body { margin: 0 0 12px; font-size: 13px; line-height: 1.55; }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tour-side, .tour-nav { display: flex; align-items: center; gap: 6px; }
+.tour-card button.tour-skip { padding: 4px 2px; border: 0; background: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+.tour-card button.tour-skip:hover { color: var(--text); }
+.tour-card button.tour-next { min-width: 64px; font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
+.tour-card button.tour-next:hover { background: color-mix(in srgb, var(--ui) 86%, var(--text)); border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+@media (pointer: coarse) { .tour-card button { min-height: 40px; padding-left: 14px; padding-right: 14px; } .tour-card button.tour-skip { min-height: 40px; } }
+@media (prefers-reduced-motion: reduce) { .tour-hole, .tour-card { transition: none; animation: none; } }
 
 button.icon-btn { display: inline-grid; place-items: center; padding: 3px 7px; }
 button.install { border-color: var(--ui); color: var(--ui); font-weight: 600; }

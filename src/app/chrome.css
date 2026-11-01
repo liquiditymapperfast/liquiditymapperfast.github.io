@@ -22,7 +22,7 @@
 .seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
 .seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .chip { border-radius: var(--radius); }
-.panel, .menu, dialog.venues { border: 1px solid var(--edge); border-radius: var(--radius); box-shadow: 2px 2px 0 var(--shadow); }
+.panel, .menu, dialog.venues, .tour-card { border: 1px solid var(--edge); border-radius: var(--radius); box-shadow: 2px 2px 0 var(--shadow); }
 .panel-head { gap: 6px; padding: 3px 4px 3px 10px; min-height: 26px; border-bottom: 1px solid var(--line); }
 .panel-head h3 { font-size: 12px; font-weight: 700; letter-spacing: .02em; }
 .panel-x { width: 20px; height: 20px; --cross: 8px; --weight: 1.6px; }
@@ -138,7 +138,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 .toolbar .deck { border: 3px double color-mix(in srgb, var(--edge) 55%, var(--line)); border-radius: var(--radius); }
 
 /* ==== Paper: the Editor, softer: rounder corners, windows lifted by their outline alone ============================================ */
-:where([data-frame="paper"]) .panel, :where([data-frame="paper"]) .menu, :where([data-frame="paper"]) dialog.venues { box-shadow: 0 2px 0 var(--shadow); }
+:where([data-frame="paper"]) .panel, :where([data-frame="paper"]) .menu, :where([data-frame="paper"]) dialog.venues, :where([data-frame="paper"]) .tour-card { box-shadow: 0 2px 0 var(--shadow); }
 :where([data-frame="paper"]) .toolbar { background: var(--panel); border-bottom-color: var(--line); }
 :where([data-frame="paper"]) .statusbar { background: var(--panel); border-top-color: var(--line); }
 :where([data-frame="paper"]) .pane-head { background: var(--panel); }
@@ -317,8 +317,11 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 
 
 /* ---- windows: a raised frame, a navy title bar with bold white text and a small raised close key, a face to work on ---------------------------- */
-:where([data-frame="bevel"]) :is(.panel, dialog.venues) { background: var(--face); color: var(--text); border: 2px solid; border-color: var(--bv-c-window); border-image: var(--bv-window) 2 / 2px; box-shadow: var(--bv-shadow); padding: 2px; }
-:root[data-frame="bevel"] :is(.panel, dialog.venues) { font-size: 11px; }
+:where([data-frame="bevel"]) :is(.panel, dialog.venues, .tour-card) { background: var(--face); color: var(--text); border: 2px solid; border-color: var(--bv-c-window); border-image: var(--bv-window) 2 / 2px; box-shadow: var(--bv-shadow); padding: 2px; }
+:root[data-frame="bevel"] :is(.panel, dialog.venues, .tour-card) { font-size: 11px; }
+:root[data-frame="bevel"] .tour-card { padding: 8px 12px 10px; }
+:root[data-frame="bevel"] .tour-title { font-size: 12px; }
+:root[data-frame="bevel"] .tour-body { font-size: 11px; line-height: 1.45; }
 :where([data-frame="bevel"]) .panel-head { background: var(--bar); color: var(--bar-text); border-bottom: 0; }
 :where([data-frame="bevel"]) .panel-head h3 { font-size: 11px; font-weight: 700; letter-spacing: 0; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .panel-head { gap: 2px; padding: 0 2px 0 3px; min-height: 18px; height: 18px; }
@@ -542,7 +545,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 
 /* ==== Text mode: the terminal and the DOS screen =================================================================================== */
 /* Windows and bars are ruled with double lines, a lit row is inverse video, and the keyboard's place is a plain box. */
-:where([data-frame="textmode"]) .panel, :where([data-frame="textmode"]) .menu, :where([data-frame="textmode"]) dialog.venues { border: 3px double var(--edge); box-shadow: 2px 2px 0 rgba(0, 0, 0, .6); }
+:where([data-frame="textmode"]) .panel, :where([data-frame="textmode"]) .menu, :where([data-frame="textmode"]) dialog.venues, :where([data-frame="textmode"]) .tour-card { border: 3px double var(--edge); box-shadow: 2px 2px 0 rgba(0, 0, 0, .6); }
 :where([data-frame="textmode"]) .toolbar { background: var(--panel); border-bottom: 3px double var(--edge); }
 :where([data-frame="textmode"]) .statusbar { background: var(--panel); border-top: 3px double var(--edge); }
 :where([data-frame="textmode"]) .pane-head { background: var(--panel); border-bottom-color: var(--edge); }

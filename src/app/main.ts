@@ -390,6 +390,8 @@ async function main(): Promise<void> {
   // Each new open-interest reading is pushed as it lands (Hub.#oiPush); this load is the reconciliation: history, the markets added
   // together, a reading a push missed.
   window.setInterval(() => { void hub.loadOi(); }, 20_000);
+  // A visitor the tour was never offered to is offered it once, a moment after the page has drawn (`?tour=0` leaves it out, for pictures and tests).
+  if (new URLSearchParams(location.search).get('tour') !== '0') window.setTimeout(() => toolbar.inviteToTour(), 2500);
   (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, cvd, candle, sounds, alerts, glass, script };
 }
 

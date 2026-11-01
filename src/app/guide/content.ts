@@ -31,7 +31,7 @@ export const SECTIONS: readonly Section[] = [
         '**The panes underneath** (Depth, Open Interest, Liquidity Tracker, Bar stats) share the chart\'s time axis.',
         '**The toolbar** at the top chooses what to show and how.',
       ] },
-      { t: 'note', kind: 'tip', text: 'Short on time? Read “Reading the map”, “Why the map fills in as you watch” and “Moving around”.' },
+      { t: 'note', kind: 'tip', text: 'Short on time? The **Tour** takes a minute: its button is in the toolbar (under Settings on a phone) and at the top of this window. Or read “Reading the map”, “Why the map fills in as you watch” and “Moving around”.' },
     ],
   },
   {
@@ -178,6 +178,21 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
+    id: 'layouts', title: 'Make it yours',
+    blocks: [
+      { t: 'p', text: 'Every panel can be closed, moved and resized, and the whole arrangement can be saved under a name. None of it changes what the page shows, only where things stand.' },
+      { t: 'list', items: [
+        '**Close** a panel with the × on its title bar. A side column with nothing open leaves a small tab at the window\'s edge that opens it again; the **Panels** buttons in the toolbar do the same, and [[[]] and [[]]] hide or show the left and the right column.',
+        '**Move** a panel by dragging its title bar. The flow column and the order book can stand on either side of the map, or one over the other; the panels under the map change places among themselves. The ⋯ menu on each panel offers the same moves from a keyboard or a touch screen.',
+        '**Resize** with the splitters between panels. Double-click a splitter to give back the default size.',
+        '**Layouts**, the first button in the map\'s corner (under Settings on a tablet), holds six ready-made arrangements (Default, Map only, Order book, Order flow, Positioning and Everything) and your own, each drawn as a small picture of its panels. A ready-made layout decides only which panels are open and how big they are: your colours, timeframe and venues stay as they are.',
+        '**Save** what is on the screen under a name and apply it from the same panel. Tick “With the chart’s settings” to keep the timeframe, the colours and every switch as well.',
+        '**Undo** is offered for a few seconds after applying a layout, hiding a panel or deleting a layout, and puts back only what that did.',
+      ] },
+      { t: 'note', kind: 'tip', text: 'Layouts live in this browser. **Export** writes them to a file and **Import** reads it back, to use them in another browser. On a phone the panels are tabs, so there is nothing to arrange.' },
+    ],
+  },
+  {
     id: 'venues', title: 'Exchanges, spot and perpetuals',
     blocks: [
       { t: 'p', text: 'By default the map combines eleven markets: the perpetual futures of Binance, Bybit, OKX, Bitget, Hyperliquid and Deribit, and the spot markets of Binance, Coinbase, Bybit, OKX and Bitget. **Venues** switches any of them, or MEXC, on or off, and the choice is kept in your browser.' },
@@ -200,12 +215,14 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'tools', title: 'Screenshot, themes and install',
     blocks: [
+      { t: 'p', text: '**Tour** replays the one-minute tour of the page, and **Guide** opens this one; **Author** says who made the page and where the code is. They sit together at the top right of the toolbar, and in Settings on a phone.' },
       { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click or tap a pane to take all of it (the top bar takes the whole page). Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG, and on a phone the share arrow opens the phone\'s own share sheet.' },
-      { t: 'p', text: 'The **theme** menu has eight themes: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app; an iPhone or iPad has no prompt: choose Share, then Add to Home Screen.' },
+      { t: 'p', text: 'The **theme** menu has more than twenty themes, light and dark: hover one to preview it everywhere, click or tap to keep it. **Install** appears when your browser can install this page as an app; an iPhone or iPad has no prompt: choose Share, then Add to Home Screen.' },
       { t: 'keys', rows: [
         ['[[S]]', 'Screenshot'],
         ['[[R]], [[Home]]', 'Back to the live edge'],
         ['[[?]]', 'All keys'],
+        ['[[[]], [[]]]', 'Hide or show the left and the right column'],
         ['[[Esc]]', 'Close a panel, the guide or the screenshot tool'],
       ] },
     ],

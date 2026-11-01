@@ -11,7 +11,7 @@ import { lazy } from './lazy.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
-import { HELP, helpButton, showGuide, type HelpId } from './help.ts';
+import { HELP, helpButton, showGuide, showTour, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
@@ -22,6 +22,7 @@ import { SIZE_MAX_USD } from './sizes.ts';
 import { GROUP_TITLES, SHORTCUTS, togglePatch, type Feature, type ShortcutGroup } from './shortcuts.ts';
 import { buildGallery, newGalleryState } from './layouts/gallery.ts';
 import type { LayoutActions } from './layouts/actions.ts';
+import { TourInvite } from './tour/invite.ts';
 import { clampGoTo, formatDateTime, parseDateTime } from './price-line.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
@@ -114,7 +115,11 @@ export class Toolbar {
   #blocked = el('div', { class: 'chips blocked-chips' });
   readonly #notice = new VenueNotice();
   readonly #install = new InstallButton();
-  #guide = el('button', { type: 'button', class: 'guide-btn', textContent: t('Guide'), tip: t('A ten-minute tour of what everything is and how to use it, with moving pictures. Every button also explains itself on hover.'), onclick: () => { showGuide(); } });
+  #guide = el('button', { type: 'button', class: 'guide-btn', textContent: t('Guide'), tip: t('The whole story of what everything is and how to use it, with moving pictures. Every button also explains itself on hover.'), onclick: () => { showGuide(); } });
+  /** The quick tour (tour/tour.ts), which lights the page a part at a time; beside the Guide, which is the whole story. */
+  #tour = el('button', { type: 'button', class: 'tour-btn', textContent: t('Tour'), tip: t('A one-minute tour of the page: what the map shows and where everything is. The Guide goes deeper.'), onclick: () => { this.#sheet?.close(); this.startTour(); } });
+  /** Offers the tour once to a visitor who has never been offered it (a notice under the bar). */
+  readonly #invite = new TourInvite(() => this.startTour(), () => compactBar() ? t('You can take the tour any time from Settings.') : t('You can take the tour any time with the Tour button at the top right.'));
   #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Screenshot'), tip: t('Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.'), onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: t('Author'), tip: t('Who made this, and where to find the code. Free, no sign-ups, open source.') });
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
@@ -504,6 +509,19 @@ export class Toolbar {
 
   hostStatusControls(host: HTMLElement): void { this.#statusHost = host; this.#arrange(); }
 
+  /** Take the tour (the Tour button, the invitation): a bar folded away is brought back for it and folded again after. */
+  startTour(): void {
+    // The invitation has been answered, whichever button answered it.
+    this.#invite.root.hidden = true;
+    showTour({ prepare: () => {
+      if (!this.store.state.barCollapsed) return () => {};
+      this.store.set({ barCollapsed: false });
+      return () => this.store.set({ barCollapsed: true });
+    } });
+  }
+  /** Offer the tour to a visitor who has not been offered it. */
+  inviteToTour(): void { this.#invite.offer(); }
+
   /** Fold the bar away or bring it back (`state.barCollapsed`): folded, only its strip (`#expand`) and its notices show. */
   setCollapsed(collapsed: boolean): void {
     this.root.classList.toggle('collapsed', collapsed);
@@ -543,7 +561,7 @@ export class Toolbar {
       // The name of the page is the last deck's title: what it holds is about the page itself (the guide, the author, installing it). The
       // arrow that folds the bar away sits on that deck's bottom edge, taking no width: room kept for it at the bar's end wrapped this deck
       // onto a second row at 1,600 px, doubling the bar, and the top edge holds the title.
-      const tools = deck('tools', 'LiquidityMapperFast', [this.#guide, this.#shot], [this.#author, this.#install.root, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#glass, this.#status])]);
+      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#shot, this.#install.root, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#glass, this.#status])]);
       tools.append(this.#collapse);
       this.#deckBreaks = []; this.#fitted = null; this.#fittedOrder = '';
       this.#decks = [
@@ -555,7 +573,7 @@ export class Toolbar {
         deck('chart', t('Chart'), [sp.footprint, sp.trades, sp.liquidations, sp.absorption], [sp.traded, sp.keyLevels, sp.vwap, this.#scriptsSplit, ...(inCorner ? [] : [this.#range])]),
         deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound]),
         tools];
-      this.root.replaceChildren(...this.#decks, this.#expand, this.#notice.root, this.#coinNotice);
+      this.root.replaceChildren(...this.#decks, this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
       this.#fit();
       return;
     }
@@ -569,7 +587,7 @@ export class Toolbar {
         // The coin alone (Karl, 2026-10-17): the market is chosen in Settings, where the venues are.
         el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#spacer, this.#status, this.#more, this.#collapse),
         el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter)),
-      this.#expand, this.#notice.root, this.#coinNotice);
+      this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
   }
 
   /**
@@ -649,7 +667,7 @@ export class Toolbar {
     this.#sheet = openSheet(t('Settings'), body => {
       this.#heatctl.replaceChildren();
       body.append(
-        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
+        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
         section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S, LT and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
         ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')))])]),

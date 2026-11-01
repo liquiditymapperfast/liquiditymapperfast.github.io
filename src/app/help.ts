@@ -251,6 +251,9 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
 /** Open the guide at a section. It is loaded on demand, so the page does not carry it until it is wanted. */
 export const showGuide = (section?: string): void => { void lazy(() => import('./guide/guide.ts')).then(m => m?.openGuide(section)); };
 
+/** Start the tour (the quick pass over the page; `tour/tour.ts`). It is loaded on demand, like the guide. */
+export const showTour = (options?: import('./tour/tour.ts').TourOptions): void => { void lazy(() => import('./tour/tour.ts')).then(m => m?.startTour(options)); };
+
 /** What a "?" opens: a title, its lead sentence, short paragraphs, and the section of the guide that goes further (without one, no link). */
 export interface Explanation { title: string; tip: string; body: readonly string[]; guide?: string }
 

@@ -7,6 +7,7 @@ import { createFigure } from './figures.ts';
 import { parseInline } from './markup.ts';
 import { language, t } from '../i18n.ts';
 import { setGuideWords, tg } from './words.ts';
+import { showTour } from '../help.ts';
 
 /** The guide's words in each language, each fetched only when the guide opens in that language (`i18n/<code>.json`, English being the text itself). */
 const packs = import.meta.glob<Record<string, string>>('./i18n/*.json', { import: 'default' });
@@ -66,7 +67,8 @@ export async function openGuide(section?: string): Promise<void> {
   const figures: { dispose(): void }[] = [];
   const dialog = el('dialog', { class: 'guide', ariaLabel: t('Guide') });
   const closeButton = el('button', { type: 'button', class: 'guide-x', tip: t('Close the guide (Esc)'), ariaLabel: t('Close the guide') });
-  const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: t('Guide') }), el('span', { class: 'sub', textContent: (isCoarse() ? t('About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.', { n: readingMinutes() }) : t('About {n} minutes to read. Pictures move: hover, pause or scrub them.', { n: readingMinutes() })) })), closeButton);
+  const tourButton = el('button', { type: 'button', class: 'guide-tour', textContent: t('Take the tour'), tip: t('A one-minute tour of the page: what the map shows and where everything is. The Guide goes deeper.'), onclick: () => { close(); showTour(); } });
+  const head = el('header', { class: 'guide-head' }, el('div', {}, el('h1', { textContent: t('Guide') }), el('span', { class: 'sub', textContent: (isCoarse() ? t('About {n} minutes to read. Pictures move: tap to look closer, pause or scrub them.', { n: readingMinutes() }) : t('About {n} minutes to read. Pictures move: hover, pause or scrub them.', { n: readingMinutes() })) })), tourButton, closeButton);
   const toc = el('nav', { class: 'guide-toc', ariaLabel: t('Contents') });
   const select = el('select', { class: 'guide-jump', ariaLabel: t('Jump to a section') });
   const scroller = el('div', { class: 'guide-scroll' }), article = el('article', { class: 'guide-article' });
