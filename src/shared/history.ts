@@ -12,7 +12,7 @@ import { BTC, type CoinVenue, type Listing } from './coins.ts';
  * WebSocket: `init.body` is sent as the first message and the first reply is the answer (Deribit's candle endpoint sends no CORS
  * headers, so a page cannot read it over HTTP, but its JSON-RPC socket serves the same method).
  */
-export type Fetcher = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<unknown>;
+export type Fetcher = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; cache?: 'default' | 'no-cache' | 'no-store' }) => Promise<unknown>;
 
 /** One request and its first reply over a WebSocket (see `Fetcher`). */
 function socketRequest(url: string, body: string, timeoutMs: number): Promise<unknown> {

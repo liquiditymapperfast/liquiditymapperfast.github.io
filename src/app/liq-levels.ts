@@ -344,7 +344,9 @@ export class LiqLevelsSource {
     if (!this.#pending && now >= this.#nextAt) {
       this.#pending = true;
       const asked = url;
-      void this.get(url).then(raw => {
+      // Asked of the edge every time (a 304 when nothing changed): a CDN can stretch the minute the file asks to be kept, as Cloudflare's
+      // zone default did to four hours (2026-11-01).
+      void this.get(url, { cache: 'no-cache' }).then(raw => {
         if (asked !== this.#url) return;
         const levels = parseLiqLevels(raw, BTC.coin);
         if (!levels) { this.#fail(onChange); return; }
