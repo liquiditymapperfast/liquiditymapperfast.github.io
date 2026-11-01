@@ -4,24 +4,42 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const read = (name: string): string => fs.readFileSync(path.join(process.cwd(), 'src', 'app', name), 'utf8');
-const css = read('styles.css'), mobile = read('mobile.css'), layout = read('layout.ts');
+const css = read('styles.css'), mobile = read('mobile.css'), chrome = read('chrome.css'), layout = read('layout.ts');
 
 /**
  * How wide (px, the header's content box) the first line of a side pane's header needs once the pane's first controls join it, in the widest
- * of the eleven languages: measured in headless Chrome on 2026-11-01 (Flow: its name, the "?", the span buttons at their least, the settings key,
- * the menu and the close button, Italian; Book: its name, the "?", the mode, Recenter, the menu and the close button, Russian). A tier that starts
- * under this lets the menu and the close button drop to the second line in that language.
+ * of the eleven languages, measured in headless Chrome on 2026-11-01 with the flow column's span buttons at their least (their own minimum
+ * width, which the tier's `min-width` on them then gives): Flow = its name, the "?", the span buttons, the settings key, the menu and the close
+ * button (Italian); Book = its name, the "?", the mode, Recenter, the menu and the close button (Russian). A touch screen's buttons are bigger.
+ * A tier that starts under this lets the menu and the close button drop to the second line in that language.
  */
-const WIDEST = { cvd: 405, ladder: 428 };
+const WIDEST = { mouse: { cvd: 387, ladder: 442 }, touch: { cvd: 496, ladder: 520 } };
 /** The room a tier keeps beyond that: other system fonts draw the same words a few per cent wider. */
 const MARGIN = 1.05;
 
-/** The width a pane's wide tier starts at: the `@container sidehead (min-width: Npx)` block that has the pane's rules in it. */
-function tierOf(pane: 'cvd' | 'ladder'): number {
-  const blocks = [...css.matchAll(/@container sidehead \(min-width: (\d+)px\) \{\n([\s\S]*?)\n\}/g)];
-  const mine = blocks.filter(b => b[2]!.includes(`.pane.${pane} .side-head`));
-  assert.equal(mine.length, 1, `exactly one tier for ${pane}`);
-  return Number(mine[0]![1]);
+/** The text of the `{ ... }` block that opens at `open` (the index of its `{`), the braces inside counted. */
+function blockAt(text: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}' && --depth === 0) return text.slice(open + 1, i);
+  }
+  throw new Error('a block that does not end');
+}
+/** Where each wide tier of the side headers starts, by the pointer it is for and the pane: the `@container sidehead (min-width: Npx)` blocks inside the two `@media` rules. */
+function tiers(): { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: number | null }[] {
+  const out: { touch: boolean; pane: 'cvd' | 'ladder'; at: number; min: number | null }[] = [];
+  for (const m of css.matchAll(/@media (not all and )?\(pointer: coarse\) \{/g)) {
+    const body = blockAt(css, m.index! + m[0].length - 1);
+    for (const c of body.matchAll(/@container sidehead \(min-width: (\d+)px\) \{/g)) {
+      const inner = blockAt(body, c.index! + c[0].length - 1);
+      const pane = inner.includes('.pane.cvd .side-head') ? 'cvd' : inner.includes('.pane.ladder .side-head') ? 'ladder' : null;
+      if (!pane) continue;
+      const seg = /\.cvd-seg \{[^}]*min-width: (\d+)px/.exec(inner);
+      out.push({ touch: !m[1], pane, at: Number(c[1]), min: seg ? Number(seg[1]) : null });
+    }
+  }
+  return out;
 }
 
 test('a side pane carries its handle, its menu and its close button in its own header, not in a bar of its own', () => {
@@ -34,18 +52,23 @@ test('a side pane carries its handle, its menu and its close button in its own h
 
 test('the break and the tiers are for the desktop arrangement only: a phone keeps the header it has', () => {
   assert.match(css, /\n\.side-break \{ display: none; \}/, 'the break is nothing until the desktop shows it');
-  for (const line of css.split('\n').filter(l => l.includes('.side-head'))) {
-    assert.ok(line.startsWith('html[data-layout="desktop"]') || line.startsWith('  html[data-layout="desktop"]') || line.startsWith('/*') || line.startsWith('   '), `a side-head rule outside the desktop arrangement: ${line.slice(0, 90)}`);
+  for (const line of css.split('\n').filter(l => l.includes('.side-head') && l.includes('{'))) {
+    assert.ok(line.trim().startsWith('html[data-layout="desktop"]'), `a side-head rule outside the desktop arrangement: ${line.slice(0, 90)}`);
   }
   assert.match(mobile, /html\[data-layout="desktop"\] \.pane-head\.side-head \{ --head-row-gap: 4px; \}/, 'a touch screen with the desktop arrangement keeps its tighter rows');
+  assert.match(chrome, /:root\[data-frame="bevel"\]\[data-layout\^="phone"\] \.pane-head \.grip \{ display: none; \}/, 'the Bevel frame draws no handle on a phone, where the panes are tabs (its own rule for the handle is stronger than the phone\'s)');
 });
 
-test('each pane\'s wide tier starts where its widest first line fits in every language, with a margin', () => {
-  for (const pane of ['cvd', 'ladder'] as const) {
-    const at = tierOf(pane);
-    assert.ok(at >= Math.ceil(WIDEST[pane] * MARGIN), `${pane}: the tier starts at ${at} px, the widest first line needs ${WIDEST[pane]} (x${MARGIN} = ${Math.ceil(WIDEST[pane] * MARGIN)})`);
-    assert.ok(at <= 560, `${pane}: ${at} px leaves a column of the usual 460 to 740 px in the narrow arrangement`);
+test('each pane\'s wide tier starts where its widest first line fits in every language, with a margin; a touch screen\'s later, with its span buttons wider', () => {
+  const found = tiers();
+  assert.equal(found.length, 4, 'a tier for each pane and each kind of pointer');
+  for (const t of found) {
+    const need = WIDEST[t.touch ? 'touch' : 'mouse'][t.pane];
+    assert.ok(t.at >= Math.ceil(need * MARGIN), `${t.pane}${t.touch ? ' (touch)' : ''}: the tier starts at ${t.at} px, the widest first line needs ${need} (x${MARGIN} = ${Math.ceil(need * MARGIN)})`);
+    assert.ok(t.at <= 600, `${t.pane}${t.touch ? ' (touch)' : ''}: ${t.at} px leaves the usual columns of 460 to 740 px in the narrow arrangement`);
   }
+  const seg = (touch: boolean): number | null => found.find(t => t.pane === 'cvd' && t.touch === touch)!.min;
+  assert.ok(seg(false)! >= 200 && seg(true)! >= 265, 'the span buttons keep what their own text needs (Italian: 192 px with a mouse, 261 with a finger)');
 });
 
 test('the name gives way before the first line breaks, so the menu and the close button stay on it', () => {

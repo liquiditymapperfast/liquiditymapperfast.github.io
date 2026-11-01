@@ -133,7 +133,9 @@ export function columnState(plan: DockPlan, side: Side, shown: Readonly<Record<S
 export const MAX_COLUMN_SHARE = 0.6, MAX_BOTH_SHARE = 0.62;
 /** The narrowest a column is made by a drag: what its panes need to show their controls. */
 export const MIN_COLUMN_W: Readonly<Record<SidePaneId, number>> = { cvd: 200, book: 260 };
-export const minWidthOf = (ids: readonly SidePaneId[]): number => ids.reduce((m, id) => Math.max(m, MIN_COLUMN_W[id]), 0) || MIN_COLUMN_W.cvd;
+/** The same on a touch screen, whose buttons are 30 px: the flow column's first header line (its name, the "?", the settings key, the menu and the close button) takes 236 px of them. */
+export const MIN_COLUMN_W_TOUCH: Readonly<Record<SidePaneId, number>> = { cvd: 240, book: 260 };
+export const minWidthOf = (ids: readonly SidePaneId[], touch = false): number => { const table = touch ? MIN_COLUMN_W_TOUCH : MIN_COLUMN_W; return ids.reduce((m, id) => Math.max(m, table[id]), 0) || table.cvd; };
 
 /** The widest a column may be made in a window `windowW` wide when the one on the other side is `otherW` wide (0 when it is not laid out), never under its own minimum. */
 export function maxColumnWidth(windowW: number, otherW: number, min: number): number {

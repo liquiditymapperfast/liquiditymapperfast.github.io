@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_BOTH_SHARE, MAX_COLUMN_SHARE, MIN_COLUMN_W, WEIGHT_LIMITS, columnState, defaultPlan, fitColumns, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, readPlan, samePlan, splitWeights, swapSides, type DockPlan } from '../src/app/layouts/dock-model.ts';
+import { MAX_BOTH_SHARE, MAX_COLUMN_SHARE, MIN_COLUMN_W, MIN_COLUMN_W_TOUCH, WEIGHT_LIMITS, columnState, defaultPlan, fitColumns, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, readPlan, samePlan, splitWeights, swapSides, type DockPlan } from '../src/app/layouts/dock-model.ts';
 import { readArrangement } from '../src/app/layouts/layouts.ts';
 
 const plan = (patch: Partial<DockPlan> = {}): DockPlan => ({ ...defaultPlan(), ...patch });
@@ -111,6 +111,9 @@ test('the columns never take more of the window than the map can spare, and neve
   assert.equal(minWidthOf(['book']), MIN_COLUMN_W.book);
   assert.equal(minWidthOf(['cvd', 'book']), MIN_COLUMN_W.book, 'the widest need of the panes in it');
   assert.equal(minWidthOf([]), MIN_COLUMN_W.cvd);
+  assert.equal(minWidthOf(['cvd'], true), MIN_COLUMN_W_TOUCH.cvd, 'the buttons of a touch screen need the flow column wider');
+  assert.ok(MIN_COLUMN_W_TOUCH.cvd > MIN_COLUMN_W.cvd && MIN_COLUMN_W_TOUCH.book === MIN_COLUMN_W.book);
+  assert.equal(minWidthOf(['book'], true), MIN_COLUMN_W_TOUCH.book);
 });
 
 test('a split of two stacked panes is weights that add up to 2 and are read back as they were written (review 2026-10-31, round 2)', () => {

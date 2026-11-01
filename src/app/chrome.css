@@ -447,6 +447,8 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 
 /* The handle that moves a pane or a row is a gripper: two raised lines side by side. */
 :root[data-frame="bevel"] .pane-head .grip { font-size: 0; display: inline-block; width: 7px; height: 14px; margin: 0 2px 0 0; background: var(--bv-gripper) 1px 1px / 5px 12px no-repeat; }
+/* A phone has no panes to move (the panes are tabs): the frame must not draw the handle there either (mobile.css hides it, and this rule is the stronger). */
+:root[data-frame="bevel"][data-layout^="phone"] .pane-head .grip { display: none; }
 :root[data-frame="bevel"] .panel .grip { background: var(--bv-gripper) center / 5px 12px no-repeat; }
 :root[data-frame="bevel"] .panel .grip:hover { background-color: transparent; }
 

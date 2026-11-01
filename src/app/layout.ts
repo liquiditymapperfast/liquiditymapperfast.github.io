@@ -1,7 +1,7 @@
 import { setTip } from './tip.ts';
 import { el } from './dom.ts';
 import { openMenu, type MenuItem } from './menu.ts';
-import { isPhone } from './device.ts';
+import { isCoarse, isPhone } from './device.ts';
 import { t } from './i18n.ts';
 import { arrangeOrder, defaultColumns, fitHeights, type PaneArrangement } from './layouts/layouts.ts';
 import { SIDES, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, splitWeights, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
@@ -114,7 +114,7 @@ export class Layout {
   /** A column made `w` wide, within what its panes need and what the map is to keep. */
   #setWidth(side: Side, w: number): void {
     const other = otherSide(side), otherW = columnState(this.#plan, other, this.#shown) === 'open' ? this.#width(other) : 0;
-    const min = minWidthOf(openIn(this.#plan, side, this.#shown)), max = maxColumnWidth(window.innerWidth, otherW, min);
+    const min = minWidthOf(openIn(this.#plan, side, this.#shown), isCoarse()), max = maxColumnWidth(window.innerWidth, otherW, min);
     this.#plan[side === 'left' ? 'leftW' : 'rightW'] = Math.round(Math.max(min, Math.min(max, w)));
     this.#applyColumns();
   }
@@ -233,7 +233,7 @@ export class Layout {
     if (isPhone()) { this.main.style.removeProperty('grid-template-columns'); return; }
     // The widths: the stylesheet's own (it follows the window) for a column that was not dragged, the dragged one otherwise, and both taken down together when they would leave the map too little.
     const wide = window.innerWidth;
-    const min = (side: Side): number => minWidthOf(openIn(this.#plan, side, this.#shown));
+    const min = (side: Side): number => minWidthOf(openIn(this.#plan, side, this.#shown), isCoarse());
     const [lw, rw] = laidOutWidths([this.#wanted('left'), this.#wanted('right')], [min('left'), min('right')], [states.left === 'open', states.right === 'open'], wide);
     for (const side of SIDES) {
       const own = this.#plan[side === 'left' ? 'leftW' : 'rightW'], fitted = side === 'left' ? lw : rw, asked = this.#wanted(side);
