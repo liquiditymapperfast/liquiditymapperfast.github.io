@@ -235,3 +235,224 @@ test('Find centres a level without zooming out (each press the same view); Undo 
   assert.equal(l.draw.get(lid)!.hidden, true); l.draw.update(lid, { hidden: false }); assert.equal(l.draw.get(lid)!.hidden, false);
   l.draw.update(lid, { text: 'no' }); assert.equal(l.draw.get(lid)!.text, '', 'nothing else changes it');
 });
+
+/** A zone from 1 h at 180 to 4 h at 130 (x 100 to 400, y 100 to 350), drawn with the magnet off, selected, the magnet then at `magnet`. */
+function boxed(magnet: DrawSettings['magnet'] = 'weak') {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(1), y: y(180) }, false, false); s.draw.click({ x: x(4), y: y(130) }, false, false);
+  const id = s.draw.selected!, was = s.draw.get(id)!.points.map(q => ({ ...q }));
+  s.settings = { magnet };
+  return { s, id, was };
+}
+
+test('a zone\'s bottom edge moves a price alone: the weak magnet lands it on the candle under the pointer, Alt leaves it free, one step to undo', () => {
+  const { s, id, was } = boxed();
+  assert.equal(s.draw.down({ x: x(2.5), y: y(130) }, false), true, 'the middle of the bottom edge is a handle');
+  assert.equal(s.draw.dragAxis, 'p');
+  s.draw.move({ x: x(2.5), y: y(155) + 3 }, false, false);   // 3 px under the close of 155, over the candle (200 to 300 px)
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.p), [180, 155], 'the close of the candle under the pointer');
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), was.map(q => q.t), 'no time moved');
+  assert.equal(s.draw.cursor?.snap?.field, 'close'); assert.equal(s.draw.cursor?.x, 250, 'its ring stands on the candle that was read');
+  s.draw.move({ x: x(2.5), y: y(140) + 4 }, false, false);
+  assert.equal(s.draw.get(id)!.points[1]!.p, 140, 'and on its low, with the pointer moved on');
+  s.draw.move({ x: x(2.5), y: y(155) + 3 }, true, false);
+  assert.ok(Math.abs(s.draw.get(id)!.points[1]!.p - 154.4) < 1e-9, 'Alt: where the pointer is');
+  s.draw.move({ x: x(2.5), y: y(170) }, false, false);
+  assert.equal(s.draw.get(id)!.points[1]!.p, 170, 'far from every target: where the pointer is');
+  s.draw.move({ x: x(2.5), y: y(160) + 2 }, false, false); s.draw.up();
+  assert.equal(s.draw.dragAxis, null);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.p), [180, 160], 'the high');
+  s.draw.undo();
+  assert.deepEqual(s.draw.get(id)!.points, was, 'one step back');
+  assert.equal(s.draw.canUndo, true, 'the drawing\'s own step is still there');
+});
+
+test('a zone\'s top edge, over a candle\'s body: the box from a wick to a body (the price and nothing else moves)', () => {
+  // The box starts at the low wick of 140 and is pulled up to the body: its bottom edge from the low to the open.
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: 250, y: y(140) }, false, false); s.draw.click({ x: x(5), y: y(175) }, false, false);
+  const id = s.draw.selected!;
+  s.settings = { magnet: 'weak' };
+  const [a, b] = s.draw.get(id)!.points;
+  assert.equal(s.draw.down({ x: (250 + x(5)) / 2, y: y(140) }, false), true, 'the bottom edge');
+  s.draw.move({ x: 250, y: y(150) - 2 }, false, false); s.draw.up();
+  const after = s.draw.get(id)!.points;
+  assert.deepEqual(after.map(q => q.p), [150, 175], 'the open: the body\'s edge');
+  assert.deepEqual(after.map(q => q.t), [a!.t, b!.t], 'its sides stayed');
+});
+
+test('a zone\'s sides move a time alone, to the candle\'s centre; a corner with no point takes one point\'s time and the other\'s price', () => {
+  const { s, id, was } = boxed();
+  assert.equal(s.draw.down({ x: x(1), y: (y(180) + y(130)) / 2 }, false), true, 'the left edge\'s middle');
+  assert.equal(s.draw.dragAxis, 't');
+  s.draw.move({ x: 253, y: 40 }, false, false);
+  assert.equal(s.draw.get(id)!.points[0]!.t, T + 2.5 * H, 'the candle\'s centre');
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.p), was.map(q => q.p), 'no price moved');
+  s.draw.move({ x: 253, y: 40 }, true, false);
+  assert.ok(Math.abs(s.draw.get(id)!.points[0]!.t - (T + 2.53 * H)) < 1000, 'Alt: where the pointer is');
+  s.draw.up(); s.draw.undo();
+  assert.deepEqual(s.draw.get(id)!.points, was);
+  // The corner at the first point's time and the second's price.
+  assert.equal(s.draw.down({ x: x(1), y: y(130) }, false), true);
+  assert.equal(s.draw.dragAxis, 'both');
+  s.draw.move({ x: 250, y: y(140) }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(id)!.points, [{ t: T + 2.5 * H, p: 180 }, { t: was[1]!.t, p: 140 }], 'the low of the candle, at its centre');
+});
+
+test('an edge pulled past the other edge is still the same point: the box turns over, and what was not moved stays', () => {
+  const { s, id, was } = boxed('off');
+  assert.equal(s.draw.down({ x: x(2.5), y: y(180) }, false), true, 'the top edge');
+  s.draw.move({ x: x(2.5), y: y(110) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.p), [110, 130], 'the top edge is under the bottom one');
+  s.draw.move({ x: x(2.5), y: y(190) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.p), [190, 130], 'and back over it: still the first point, not the second');
+  s.draw.up();
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), was.map(q => q.t));
+});
+
+test('a level moved by its stroke lands on what the magnet catches at the pointer, an event line on a candle\'s time; the other drawings move as they were grabbed', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('level'); s.draw.click({ x: x(5), y: y(120) }, false, false);
+  const level = s.draw.selected!;
+  s.settings = { magnet: 'weak' };
+  assert.equal(s.draw.down({ x: x(7), y: y(120) }, false), true, 'by its stroke, away from its point');
+  assert.equal(s.draw.dragAxis, 'both');
+  s.draw.move({ x: 250, y: y(140) + 4 }, false, false);
+  assert.equal(s.draw.get(level)!.points[0]!.p, 140, 'the low of the candle under the pointer');
+  assert.equal(s.draw.cursor?.snap?.field, 'low');
+  s.draw.move({ x: 250, y: y(140) + 4 }, true, false);
+  assert.ok(Math.abs(s.draw.get(level)!.points[0]!.p - 139.2) < 1e-9, 'Alt: moved by the pointer own distance, 19.2 up from 120');
+  s.draw.move({ x: x(7), y: y(130) }, false, false);
+  assert.equal(s.draw.get(level)!.points[0]!.p, 130, 'over no candle: moved by the pointer\'s own distance');
+  assert.equal(s.draw.cursor, null);
+  s.draw.up();
+  s.draw.undo();
+  assert.equal(s.draw.get(level)!.points[0]!.p, 120);
+  // An event line.
+  s.draw.arm('vline'); s.draw.click({ x: x(5), y: 100 }, false, false);
+  const line = s.draw.selected!;
+  assert.equal(s.draw.down({ x: x(5), y: 100 }, false), true);
+  s.draw.move({ x: 253, y: 100 }, false, false);
+  assert.equal(s.draw.get(line)!.points[0]!.t, T + 2.5 * H, 'on the candle\'s time');
+  s.draw.move({ x: 253, y: 100 }, true, false);
+  assert.ok(Math.abs(s.draw.get(line)!.points[0]!.t - (T + 5 * H + (253 - x(5)) / 100 * H)) < 1000, 'Alt: moved by the pointer\'s distance');
+  s.draw.up();
+  // A trend line moves whole, over the candle or not.
+  s.draw.arm('trend'); s.draw.click({ x: x(1), y: y(150) }, false, false); s.draw.click({ x: x(4), y: y(170) }, false, false);
+  const trend = s.draw.selected!, before = s.draw.get(trend)!.points.map(q => ({ ...q }));
+  assert.equal(s.draw.down({ x: x(2.5), y: y(160) }, false), true);
+  s.draw.move({ x: 250, y: y(160) + 40 }, false, false); s.draw.up();
+  const after = s.draw.get(trend)!.points;
+  assert.deepEqual(after.map((q, i) => [q.t - before[i]!.t, q.p - before[i]!.p]), after.map(() => [0, -8]), 'both points by the same amount: no catch');
+});
+
+test('hovering the middle of an edge says which way it moves', () => {
+  const { s } = boxed();
+  const axis = (): string | null => (s.draw.hover && 'axis' in s.draw.hover ? s.draw.hover.axis : null);
+  s.draw.move({ x: x(2.5), y: y(130) }, false, false);
+  assert.equal(axis(), 'p');
+  s.draw.move({ x: x(1), y: (y(180) + y(130)) / 2 }, false, false);
+  assert.equal(axis(), 't');
+  s.draw.move({ x: x(1), y: y(130) }, false, false);
+  assert.equal(axis(), 'both');
+});
+
+test('the left edge of a zone that runs on follows the pointer past the time of the other point; the right point goes with it, and Undo takes both back', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(1), y: y(180) }, false, false); s.draw.click({ x: x(4), y: y(130) }, false, false);
+  const id = s.draw.selected!, was = s.draw.get(id)!.points.map(q => ({ ...q }));
+  s.draw.update(id, { extendRight: true });
+  assert.equal(s.draw.down({ x: x(1), y: (y(180) + y(130)) / 2 }, false), true, 'the middle of the left edge');
+  s.draw.move({ x: x(6), y: 200 }, false, false);
+  const times = s.draw.get(id)!.points.map(q => q.t);
+  assert.equal(Math.min(...times), T + 6 * H, 'the left boundary is where the pointer is, not stopped at the other point');
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.p), was.map(q => q.p), 'no price moved');
+  s.draw.move({ x: x(2), y: 200 }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 2 * H, was[1]!.t], 'pulled back, the right point is where it was: nothing is kept that the pointer left');
+  s.draw.up(); s.draw.undo();
+  assert.deepEqual(s.draw.get(id)!.points, was);
+});
+
+test('once the left edge of a zone that runs on has carried the other point (equal times), each corner at the left boundary still moves the boundary', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(1), y: y(180) }, false, false); s.draw.click({ x: x(4), y: y(130) }, false, false);
+  const id = s.draw.selected!;
+  s.draw.update(id, { extendRight: true });
+  assert.equal(s.draw.down({ x: x(1), y: (y(180) + y(130)) / 2 }, false), true, 'the middle of the left edge');
+  s.draw.move({ x: x(6), y: 200 }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 6 * H, T + 6 * H], 'the two times are equal now');
+  assert.equal(s.draw.down({ x: x(6), y: y(130) }, false), true, 'the lower left corner, where two handles overlap');
+  s.draw.move({ x: x(7), y: y(130) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 7 * H, T + 7 * H], 'the boundary follows the corner to the right');
+  s.draw.up();
+  assert.equal(s.draw.down({ x: x(7), y: y(180) }, false), true, 'the upper left corner');
+  s.draw.move({ x: x(8), y: y(180) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 8 * H, T + 8 * H]);
+  s.draw.up();
+});
+
+test('a zone that runs on and was drawn from right to left: its left edge carries the other point, and each corner at the left boundary keeps doing so', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(4), y: y(130) }, false, false); s.draw.click({ x: x(1), y: y(180) }, false, false);
+  const id = s.draw.selected!;
+  s.draw.update(id, { extendRight: true });
+  assert.equal(s.draw.down({ x: x(1), y: (y(180) + y(130)) / 2 }, false), true, 'the middle of the left edge, which is the second point\'s time');
+  s.draw.move({ x: x(6), y: 200 }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 6 * H, T + 6 * H], 'the first point went along');
+  assert.equal(s.draw.down({ x: x(6), y: y(130) }, false), true, 'the lower left corner');
+  s.draw.move({ x: x(7), y: y(130) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 7 * H, T + 7 * H]);
+  s.draw.up();
+  assert.equal(s.draw.down({ x: x(7), y: y(180) }, false), true, 'the upper left corner');
+  s.draw.move({ x: x(8), y: y(180) }, false, false);
+  assert.deepEqual(s.draw.get(id)!.points.map(q => q.t), [T + 8 * H, T + 8 * H]);
+  s.draw.up();
+});
+
+test('a level pressed and wobbled does not hop to a candle; once the pointer has left the spot it does, and the ring stands on the candle', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('level'); s.draw.click({ x: x(7), y: y(141) }, false, false);
+  const id = s.draw.selected!;
+  s.settings = { magnet: 'weak' };
+  // The press is on its stroke over the candle, 1 dollar (5 px) above the candle's low: a 2 px wobble is not yet a move to a catch.
+  assert.equal(s.draw.down({ x: 250, y: y(141) }, false), true);
+  s.draw.move({ x: 252, y: y(141) + 1 }, false, false);
+  assert.ok(Math.abs(s.draw.get(id)!.points[0]!.p - 140.8) < 1e-9, 'moved by the wobble alone, 0.2 dollars');
+  assert.equal(s.draw.cursor, null);
+  s.draw.move({ x: 250, y: y(141) + 4 }, false, false);
+  assert.equal(s.draw.get(id)!.points[0]!.p, 140, 'on the candle\'s low once it is 4 px from the spot it pressed');
+  const ringX = (): number | undefined => s.draw.cursor?.x;
+  assert.equal(ringX(), 250, 'the ring on the candle');
+  s.draw.move({ x: 250, y: y(141) }, false, false);
+  assert.equal(s.draw.get(id)!.points[0]!.p, 140, 'back on the spot it pressed it still holds the candle: the leave is remembered');
+  s.draw.up();
+});
+
+test('a locked drawing cannot be dragged, and says so: canDrag is false for it and for every drawing while the drawings are read-only', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(1), y: y(180) }, false, false); s.draw.click({ x: x(4), y: y(130) }, false, false);
+  const id = s.draw.selected!;
+  assert.equal(s.draw.canDrag(id), true);
+  s.draw.update(id, { locked: true });
+  assert.equal(s.draw.canDrag(id), false); assert.equal(s.draw.down({ x: x(2.5), y: y(130) }, false), false);
+  s.draw.update(id, { locked: false });
+  s.settings = { locked: true };
+  assert.equal(s.draw.canDrag(id), false, 'Lock all');
+  assert.equal(s.draw.canDrag('nope'), false);
+});
+
+test('a finger finds its handles with the wider rule: a box 40 px wide has no top middle for it, and has one for a mouse', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.arm('zone'); s.draw.click({ x: x(1), y: y(180) }, false, false); s.draw.click({ x: x(1.4), y: y(130) }, false, false);
+  assert.equal(s.draw.edgeMin, 28);
+  s.draw.move({ x: x(1.2), y: y(130) }, false, true);
+  assert.equal(s.draw.edgeMin, 48, 'the last pointer was a finger');
+  assert.equal(s.draw.down({ x: x(1.2), y: y(130) }, true), true, 'the press finds a corner or the stroke: the middle is not there');
+  assert.notEqual(s.draw.dragAxis, 'p');
+  s.draw.up();
+  s.draw.move({ x: x(1.2), y: y(130) }, false, false);
+  assert.equal(s.draw.edgeMin, 28);
+  assert.equal(s.draw.down({ x: x(1.2), y: y(130) }, false), true);
+  assert.equal(s.draw.dragAxis, 'p', 'the mouse has the middle of the bottom');
+  s.draw.up();
+});

@@ -223,7 +223,7 @@ export function paintEditing(ctx: CanvasRenderingContext2D, draw: DrawController
   if (sel) {
     const color = colorOf(sel.style.color, p);
     strokeSegments(ctx, strokesOf(sel, pr), color, sel.style.width + 4, false, p, 0.22);
-    for (const h of handlesOf(sel, pr)) {
+    for (const h of handlesOf(sel, pr, draw.edgeMin)) {
       ctx.fillStyle = p.panel; ctx.fillRect(h.x - 4.5, h.y - 4.5, 9, 9);
       ctx.strokeStyle = sel.locked ? p.muted : color; ctx.lineWidth = 1.5; ctx.strokeRect(h.x - 4, h.y - 4, 8, 8);
     }

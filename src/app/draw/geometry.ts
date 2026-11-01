@@ -88,13 +88,63 @@ export function noteBox(d: Drawing, pr: Projection, size: { w: number; h: number
   return d.leader ? { x: x + NOTE_OFFSET.x, y: y + NOTE_OFFSET.y - size.h / 2, w: size.w, h: size.h } : { x: x + 6, y: y - size.h / 2, w: size.w, h: size.h };
 }
 
-/** Where a drawing's handles are (one a point): a vertical line's halfway down the plot, a level's at its anchor. */
-export function handlesOf(d: Drawing, pr: Projection): Pt[] {
-  return d.points.map(q => ({ x: pr.x(q.t), y: d.kind === 'vline' ? pr.h / 2 : pr.y(q.p) }));
+/**
+ * A handle of the selected drawing: where it stands, and what moving it moves: the points (by their place in the drawing) whose time follows
+ * the pointer and those whose price does. A point's handle moves both (an event line's only its time); the middle of a zone's top or bottom
+ * edge moves a price alone and the middle of its sides a time alone (Karl, 2026-11-01: a box drawn from a wick must be resizable to a body
+ * with the magnet, as on TradingView).
+ */
+export interface Handle extends Pt {
+  t: readonly number[]; p: readonly number[];
+  /** Points whose time is kept at or after the time this handle sets (a zone that runs on to the right has no right side to cross: its left edge takes the other point with it). */
+  after?: readonly number[];
+}
+/** The axes a handle moves: both, the price alone (a top or a bottom) or the time alone (a side, an event line). */
+export type HandleAxis = 'both' | 'p' | 't';
+export const axisOf = (h: Pick<Handle, 't' | 'p'>): HandleAxis => h.t.length && h.p.length ? 'both' : h.p.length ? 'p' : 't';
+
+/** How long (px) a stretch of an edge in view must be to have a handle of its own in its middle: a shorter one would sit on the corners' handles (a box one candle wide has one on its top and bottom). */
+export const EDGE_MIN = 28;
+/** The shortest edge that has a middle handle for a pointer that is on a stroke within `tol` px: 28 px for a mouse (tol 6), 48 for a finger (tol 12). */
+export const edgeMinFor = (tol: number): number => Math.max(EDGE_MIN, tol * 4);
+
+/**
+ * Where a drawing's handles are: one for each point (a vertical line's halfway down the plot, a level's at its anchor), and a zone has the
+ * corners it has no point at and the middle of each edge besides: eight in all; one that runs on to the right edge has no right side or right
+ * corners: six. A middle stands on the part of its edge that is in view, and only where that part is `minEdge` long (`EDGE_MIN`, longer for a finger).
+ */
+export function handlesOf(d: Drawing, pr: Projection, minEdge: number = EDGE_MIN): Handle[] {
+  const own: Handle[] = d.points.map((q, i) => ({ x: pr.x(q.t), y: d.kind === 'vline' ? pr.h / 2 : pr.y(q.p), t: [i], p: d.kind === 'vline' ? [] : [i] }));
+  if (d.kind !== 'zone') return own;
+  const [a, b] = own as [Handle, Handle];
+  const left = a.x <= b.x ? 0 : 1, top = a.y <= b.y ? 0 : 1;
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  const out: Handle[] = [...own];
+  // A zone that runs on has no right side: what moves its left, to the right of the other point, takes that point along. So does the other point's
+  // own handle where it stands at the left boundary too (equal times, after the left edge has carried it): it overlaps the corner no point is at.
+  if (d.extendRight) {
+    out[left] = { ...own[left]!, after: [1 - left] };
+    if (Math.abs(own[1 - left]!.x - own[left]!.x) < 1) out[1 - left] = { ...own[1 - left]!, after: [left] };
+  }
+  // The corners no point is at: the first point's time with the second's price, and the other way round; a zone that runs on has only the one at its left.
+  if (d.extendRight) out.push({ x: own[left]!.x, y: own[1 - left]!.y, t: [left], p: [1 - left], after: [1 - left] });
+  else out.push({ x: a.x, y: b.y, t: [0], p: [1] }, { x: b.x, y: a.y, t: [1], p: [0] });
+  const vx0 = Math.max(x0, 0), vx1 = d.extendRight ? pr.w : Math.min(x1, pr.w), vy0 = Math.max(y0, 0), vy1 = Math.min(y1, pr.h);
+  const inX = (x: number): boolean => x >= 0 && x <= pr.w, inY = (y: number): boolean => y >= 0 && y <= pr.h;
+  if (vx1 - vx0 >= minEdge) { const x = (vx0 + vx1) / 2; if (inY(y0)) out.push({ x, y: y0, t: [], p: [top] }); if (inY(y1)) out.push({ x, y: y1, t: [], p: [1 - top] }); }
+  if (vy1 - vy0 >= minEdge) { const y = (vy0 + vy1) / 2; if (inX(x0)) out.push({ x: x0, y, t: [left], p: [], ...(d.extendRight ? { after: [1 - left] } : {}) }); if (!d.extendRight && inX(x1)) out.push({ x: x1, y, t: [1 - left], p: [] }); }
+  return out;
 }
 
-/** What a pointer is on: a handle of the drawing selected, a drawing's stroke, a note's box, or a zone's inside (only a click selects it). */
-export type Hit = { id: string; part: 'handle'; index: number } | { id: string; part: 'stroke' | 'inside' };
+/** The drawing with the points a handle moves put at `at`: their times when it moves time, their prices when it moves price. */
+export function withHandleAt(d: Drawing, h: Pick<Handle, 't' | 'p' | 'after'>, at: Anchor): Drawing {
+  return { ...d, points: d.points.map((q, i) => ({ t: h.t.includes(i) ? at.t : h.after?.includes(i) ? Math.max(q.t, at.t) : q.t, p: h.p.includes(i) ? at.p : q.p })) };
+}
+
+/** What a pointer is on: a handle of the drawing selected (and which axes it moves), a drawing's stroke, a note's box, or a zone's inside (only a click selects it). */
+export type Hit = { id: string; part: 'handle'; index: number; axis: HandleAxis } | { id: string; part: 'stroke' | 'inside' };
+/** Whether two hits are the same thing under the pointer: the same drawing and part, and for a handle the same one (its place in the list can mean another after a zoom, so its axis counts). */
+export const sameHit = (a: Hit | null, b: Hit | null): boolean => a === b || (a !== null && b !== null && a.id === b.id && a.part === b.part && (a.part !== 'handle' || (b.part === 'handle' && a.index === b.index && a.axis === b.axis)));
 
 /**
  * What of the drawings is under `q`, within `tol` px: the selected drawing's handles first, then strokes and note boxes, the drawing drawn
@@ -103,10 +153,10 @@ export type Hit = { id: string; part: 'handle'; index: number } | { id: string; 
 export function hitDrawing(q: Pt, drawings: readonly Drawing[], pr: Projection, tol: number, selected: string | null, noteSize: (d: Drawing) => { w: number; h: number }): Hit | null {
   const sel = selected ? drawings.find(d => d.id === selected && !d.hidden) : undefined;
   if (sel) {
-    const hs = handlesOf(sel, pr);
+    const hs = handlesOf(sel, pr, edgeMinFor(tol));
     let best = -1, bestD = Infinity;
     hs.forEach((h, i) => { const dist = Math.hypot(h.x - q.x, h.y - q.y); if (dist <= tol + 2 && dist < bestD) { best = i; bestD = dist; } });
-    if (best >= 0) return { id: sel.id, part: 'handle', index: best };
+    if (best >= 0) return { id: sel.id, part: 'handle', index: best, axis: axisOf(hs[best]!) };
   }
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i]!;

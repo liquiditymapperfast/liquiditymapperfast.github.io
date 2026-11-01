@@ -2038,5 +2038,6 @@
  "book {ratio} its neighbours": "호가는 주변의 {ratio}",
  "Liquidations are Hyperliquid's alone, the book every enabled venue's; the positions are about 40 minutes old, the book is now.": "청산은 Hyperliquid만, 호가창은 켜진 모든 거래소의 것입니다. 포지션은 약 40분 전, 호가창은 지금입니다.",
  "Point at the line between the liquidation column and the profile column to weigh the book against the liquidations: what rests against what would be liquidated on each side, how level size and book size rank together, and whether the book stands as a wall or thins to a void at the largest levels.": "청산 열과 프로파일 열 사이의 선을 가리키면 호가창과 청산을 비교합니다. 양쪽에서 대기 중인 물량과 청산될 물량, 레벨 크기와 호가 크기의 순위가 함께 가는 정도, 그리고 가장 큰 레벨에서 호가창이 벽인지 빈 공간인지를 보여 줍니다.",
- "On screen": "화면 전체"
+ "On screen": "화면 전체",
+ "The language reference is downloading as {name}. Look in your browser's downloads.": "언어 레퍼런스를 {name}(으)로 다운로드하는 중입니다. 브라우저의 다운로드 목록을 확인하세요."
 }
