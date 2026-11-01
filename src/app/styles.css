@@ -111,7 +111,7 @@ html[data-frame="textmode"] .toolbar.cockpit .led-btn::before { left: 5px; }
 .toolbar .bar-collapse, .toolbar .bar-expand { display: inline-grid; place-items: center; padding: 0; color: var(--muted); cursor: pointer; }
 .toolbar .bar-collapse::before, .toolbar .bar-expand::before { content: ""; width: 14px; height: 14px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E") center / contain no-repeat; }
 .toolbar .bar-expand::before { transform: rotate(180deg); }
-.toolbar .bar-collapse:hover, .toolbar .bar-expand:hover, .toolbar .bar-expand:focus-visible { color: var(--text); }
+.toolbar .bar-collapse:hover, .toolbar .bar-expand:hover, .toolbar .bar-expand:focus-visible, .toolbar .bar-collapse:active, .toolbar .bar-expand:active { color: var(--text); }
 /* `flex: none`: the compact bar is a column, where a basis of 100% of its undetermined height fell back to the arrow's own 16 px. */
 .toolbar.collapsed > .bar-expand { display: grid; flex: none; box-sizing: border-box; width: 100%; height: 12px; min-height: 0; margin: 0; border: 0; border-radius: 0; background: var(--panel); }
 .toolbar.collapsed > .bar-expand::before { width: 12px; height: 12px; }

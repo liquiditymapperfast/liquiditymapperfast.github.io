@@ -101,6 +101,10 @@ dialog:focus-visible { outline: none; }
 :where(:root:not([data-frame="bevel"])) { accent-color: var(--ui); }
 /* A held button is a step darker than its face: a click answers. */
 :where([data-frame="editor"], [data-frame="paper"]) button:active:not(:disabled):not(.on) { background: color-mix(in srgb, var(--text) 12%, var(--face)); }
+/* Except a button that is filled with the accent (the tour's four): held, it is the same step darker as under the pointer. The Editor and Paper frames hold a
+   button in a grey and Text mode inverts it, and the accent's label (white, or near-black) cannot be read on either: "Next" lost its label for as long as
+   the mouse was down (1.3:1 at the worst; the bar's Tour button only stood because its selector is the stronger). */
+:is(.toolbar.cockpit .deck-tools button.tour-btn, .sheet-tiles > button.tour-btn, .toolbar .tour-invite button.tour-invite-go, button.guide-tour, .tour-card button.tour-next):active:not(:disabled) { background: color-mix(in srgb, var(--ui) 86%, var(--text)); color: var(--on-ui, #fff); }
 /* A control that cannot be used is dimmed, of whatever kind (the bevel embosses its labels instead). */
 :where(:root:not([data-frame="bevel"])) :where(button, select, input):disabled { opacity: .45; cursor: default; }
 /* The two lists that scrolled with the browser's own bar (the coin list, the venue dialog) take the thin one the panels have (the bevel keeps its pixel bars). */
@@ -576,13 +580,17 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 /* ==== The Glass material (glass/ui-glass.ts), in every frame ======================================================================= */
 /* One canvas over the page draws glass under the chrome, which turns see-through above it: the canvas sits between the chart, under it,
    and the chrome, over it. Here, last of all the style sheets, so a phone's own backgrounds (the dock, a compact panel) give way to it. The
-   controls keep most of their face, so their text keeps its contrast; a control whose hover or lit state is its own background (the "?", a
-   menu row, a chip) keeps that. A panel or menu lying over the bars is solid (`glass-over`, set by the canvas): the bars' controls sit above
-   the canvas, so they would show through it. */
+   controls keep most of their face, so their text keeps its contrast; a control whose hover, held or lit state is its own background (the "?",
+   a menu row, a chip, the Install mark under the pointer, any button while it is pressed: the text-mode frame inverts it) keeps that, and so
+   do the two filled buttons of the tour (`.tour-btn`, `.tour-invite-go`): the accent is their fill and what their label is written on, so
+   a pale glass face under it was white on white in the light themes and near-black on near-black in the dark ones (Karl, 2026-11-01). A
+   new control that is filled with a colour of its own is named in the list below, or the glass takes the fill and its label is lost.
+   A panel or menu lying over the bars is solid (`glass-over`, set by the canvas): the bars' controls sit above the canvas, so they would
+   show through it. */
 .ui-glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
 html[data-material="glass"] :is(.toolbar, .statusbar, .dock) { position: relative; z-index: 52; background: transparent; box-shadow: none; }
 html[data-material="glass"] main .splitter { z-index: 52; }
 html[data-material="glass"] main .splitter:not(:hover):not(.active) { background: transparent; border-color: transparent; }
 html[data-material="glass"] :is(.panel, .menu):not(.glass-over) { background: transparent; }
-html[data-material="glass"] :is(.toolbar, .statusbar, .dock, .panel, .menu) :is(button:not(.on):not(.help):not(.menu-item):not(.chip):not(.dock-tab), select) { background-color: color-mix(in srgb, var(--face) 82%, transparent); }
+html[data-material="glass"] :is(.toolbar, .statusbar, .dock, .panel, .menu) :is(button:not(.on):not(.help):not(.menu-item):not(.chip):not(.dock-tab):not(.tour-btn):not(.tour-invite-go):not(.install:hover):not(:active), select) { background-color: color-mix(in srgb, var(--face) 82%, transparent); }
 html[data-material="glass"] .panel-tools { background: color-mix(in srgb, var(--face) 70%, transparent); }
