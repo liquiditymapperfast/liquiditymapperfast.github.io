@@ -549,8 +549,11 @@ export class Toolbar {
 
   /** Fold the bar away or bring it back (`state.barCollapsed`): folded, only its strip (`#expand`) and its notices show. */
   setCollapsed(collapsed: boolean): void {
+    const held = this.root.contains(document.activeElement);
     this.root.classList.toggle('collapsed', collapsed);
     this.#collapse.setAttribute('aria-expanded', String(!collapsed));
+    // A control of the bar that held the focus goes with the fold (the Hide button, or the Tour button after a tour that had unfolded the bar): the arrow that unfolds it takes the focus.
+    if (collapsed && held) this.#expand.focus({ preventScroll: true });
   }
 
   /**
