@@ -192,6 +192,14 @@ const liqColumnW = (state: AppState): number => liqColumnShown(state) ? PROFILE_
 export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + (state.show.profile ? PROFILE_W : 0) + sideColumns(state).right.length * TRADED_W; }
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
 export function leftGutter(state: AppState): number { return sideColumns(state).left.length * TRADED_W; }
+/**
+ * The side of the book the map's hover names at a cell: the one holding more there, or none for a cell that holds nothing (right of the
+ * live edge, a gap in the recording, beyond the prices recorded), which read "Bid $0" even above the price (Karl, 2026-11-01).
+ */
+export function bookSide(cell: { bid: number; ask: number } | null): 'bid' | 'ask' | null {
+  if (!cell || !(cell.bid > 0 || cell.ask > 0)) return null;
+  return cell.ask > cell.bid ? 'ask' : 'bid';
+}
 /** Which side of the map a column is on. */
 type Side = 'right' | 'left';
 /**
@@ -2909,9 +2917,8 @@ export class HeatPane {
       if (state.layer === 'liquidity' || liquidation.length || scripted.length) {
         const lines: InfoLine[] = [{ label: t('Price'), text: fmtPrice(hv.price!) }];
         if (state.layer === 'liquidity') {
-          const cell = this.valueAt(hv.t, hv.price!);
-          const side = cell && cell.ask > cell.bid ? 'ask' : 'bid', source = cell ? this.#sourceOf(hv.t, hv.price!, side) : '';
-          if (cell) lines.push({ label: side === 'ask' ? t('Ask') : t('Bid'), text: `$${usd(Math.max(cell.bid, cell.ask))}`, color: side === 'ask' ? 'above' : 'below', bold: true });
+          const cell = this.valueAt(hv.t, hv.price!), side = bookSide(cell), source = side ? this.#sourceOf(hv.t, hv.price!, side) : '';
+          if (cell && side) lines.push({ label: side === 'ask' ? t('Ask') : t('Bid'), text: `$${usd(Math.max(cell.bid, cell.ask))}`, color: side === 'ask' ? 'above' : 'below', bold: true });
           if (source) lines.push({ label: t('Source'), text: source });
         }
         lines.push(...liquidation);
