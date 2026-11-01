@@ -3,19 +3,29 @@
  * feature's code).
  */
 
-/** The Chart deck's Liquidation levels: whether they are drawn on the map, and whether the profile column adds them up instead of the book. */
-export interface LiqLevelSettings { on: boolean; profile: boolean }
+/** The Chart deck's Liquidation levels: whether they are drawn on the map, and whether their own column stands beside the profile column. */
+export interface LiqLevelSettings { on: boolean; column: boolean }
 /** A saved setting, checked; what a save from before the feature lacks reads as on (new features start on). */
 export function readLiqLevels(saved: unknown): LiqLevelSettings {
-  const s = saved && typeof saved === 'object' ? saved as { on?: unknown; profile?: unknown } : {};
-  return { on: typeof s.on === 'boolean' ? s.on : true, profile: typeof s.profile === 'boolean' ? s.profile : true };
+  const s = saved && typeof saved === 'object' ? saved as { on?: unknown; column?: unknown } : {};
+  return { on: typeof s.on === 'boolean' ? s.on : true, column: typeof s.column === 'boolean' ? s.column : true };
 }
 
 /** The levels service's public address; empty until it exists, and then the Chart deck has no Liquidation levels button. */
 export const LIQ_LEVELS_URL = '';
 
-/** The address in use: a local service may stand in while testing (`?levels=http://127.0.0.1:8790/v1/btc/liquidations.json`). */
+let read: { search: string; url: string } | null = null;
+
+/**
+ * The address in use: a local service may stand in while testing (`?levels=http://127.0.0.1:8790/v1/btc/liquidations.json`). Read again only
+ * when the page's address changes: the map's layout asks for it with every frame.
+ */
 export function liqLevelsUrl(search: string = typeof location === 'undefined' ? '' : location.search): string {
+  if (read?.search !== search) read = { search, url: urlFrom(search) };
+  return read.url;
+}
+
+function urlFrom(search: string): string {
   const asked = new URLSearchParams(search).get('levels');
   if (asked) {
     try {

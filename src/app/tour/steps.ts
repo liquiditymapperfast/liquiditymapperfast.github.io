@@ -93,7 +93,7 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
     // Only where the levels have an address: without one there is no button, and a step whose target is not on the screen is left out.
     {
       id: 'liq-levels', targets: ['liqLevels'], side: 'below', title: () => t('Liquidation levels'),
-      body: () => t('Where Hyperliquid\'s BTC positions would be liquidated. A level goes once price trades through it, and the profile column adds them up from the price outward.'),
+      body: () => t('Where Hyperliquid\'s BTC positions would be liquidated, right of the newest candle. A level goes once price trades through it; their own column adds them up from the price outward.'),
     },
     flow, book,
     {

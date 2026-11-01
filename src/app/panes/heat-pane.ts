@@ -26,7 +26,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText } from '../text-fit.ts';
 import { distanceText } from './ladder-info.ts';
-import { binsPerRow, heatScale, liqProfile, liqRows, paintLiqRows, standingBelow, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
+import { binsPerRow, liqProfile, liqRows, paintLiqStripe, standingBelow, standingHeat, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -48,6 +48,7 @@ import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, typ
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, priceRef, regionAt, wheelZoom } from './heat-zoom.ts';
 import { t, tn } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
+import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
 import { dayStartOf } from './bar-stats.ts';
@@ -184,7 +185,11 @@ export interface ScriptLegendLine { id: string; name: string; color: string; tex
 /** A map pane narrower than this gets the narrow price axis and profile column. */
 const COMPACT_PANE = 520;
 
-export function gutter(state: AppState): number { return AXIS_W + (state.show.profile ? PROFILE_W : 0) + sideColumns(state).right.length * TRADED_W; }
+/** Whether the liquidation column stands between the map and the profile column: Liquidation levels and their column on, BTC, an address. */
+export const liqColumnShown = (state: AppState): boolean => { const l = state.liqLevels as AppState['liqLevels'] | undefined; return !!l && l.on && l.column && currentCoin().coin === 'BTC' && !!liqLevelsUrl(); };
+/** The width the liquidation column takes (as wide as the profile column), or 0. */
+const liqColumnW = (state: AppState): number => liqColumnShown(state) ? PROFILE_W : 0;
+export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + (state.show.profile ? PROFILE_W : 0) + sideColumns(state).right.length * TRADED_W; }
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
 export function leftGutter(state: AppState): number { return sideColumns(state).left.length * TRADED_W; }
 /** Which side of the map a column is on. */
@@ -217,7 +222,8 @@ export class HeatPane {
   stats = { p15: 0, p50: 0, p96: 0, max: 0 };
   /** Mirror-hover comparison for the pointer over the profile column, or null (read by tests, drawn on the profile). */
   mirror: MirrorStats | null = null;
-  #profileHover: { y: number } | null = null;
+  /** The pointer on one of the columns beside the map (the liquidation column or the profile column), for its Mirror comparison. */
+  #profileHover: { y: number; column: 'liq' | 'book' } | null = null;
   /** Where this frame's "depth recorded from" note was printed, so the liquidation levels' note can keep clear of it. */
   #historyNote: { x0: number; x1: number; top: number } | null = null;
   /** Liquidation levels' rows in view and what they were grouped for (#liqRowsInView). */
@@ -868,12 +874,9 @@ export class HeatPane {
       if (y >= 0 && y <= ph) { ctx.strokeStyle = markColor; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
     }
     // profile column, traded-volume column and price axis
-    // The profile column is the book as it is now (or, with Liquidation levels on, what stands of them): not shown in replay, which has
-    // neither of its moment.
-    if (state.show.profile && !replaying()) {
-      const standing = this.#liqProfileStanding(state);
-      if (standing) this.#paintLiqProfile(ctx, state, pw, ph, standing); else this.#paintProfile(ctx, state, pw, ph);
-    }
+    // The liquidation column, then the profile column: the book as it is now, not shown in replay, which has no book of its moment.
+    if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph);
+    if (state.show.profile && !replaying()) this.#paintProfile(ctx, state, pw, ph);
     if (tradedShown(state)) this.#paintTraded(ctx, state, pw, ph);
     this.#paintHidden(ctx, pw, ph);
     const axisX = w - AXIS_W;
@@ -1312,8 +1315,8 @@ export class HeatPane {
 
   /**
    * Liquidation levels (the Chart deck's Liq levels): the prices that would liquidate Hyperliquid's open BTC positions (the levels file,
-   * from HyperTracker's snapshots), drawn over the map from the time the positions describe and taken away as price trades through them;
-   * a note under the legend says where they come from and how old they are.
+   * from HyperTracker's snapshots), as a stripe right of the live edge so the heatmap's past keeps its own colours: what waits ahead of the
+   * price, gone once price trades through it; a note under the legend says where they come from and how old they are.
    */
   #paintLiquidationLevels(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const src = this.hub.liqLevels, p = this.#palette, v = this.view;
@@ -1328,9 +1331,11 @@ export class HeatPane {
     else if (src.state === 'stale') note = t('Liquidation levels are out of date: the newest are from {time}.', { time: clock(levels.asOf) });
     else note = t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time: clock(levels.asOf) });
     if (levels && src.state === 'ready') {
-      // Over the heatmap the fills are lighter, so the book shows through them; the crisp edges of the strongest stay.
-      const fill = state.layer === 'liquidity' && this.#lodFrame.heatmapOpacity > 0.003 ? 0.7 : 1;
-      paintLiqRows(ctx, v, pw, ph, levels, this.#liqRowsInView(levels, ph), { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, pageNow(), fill);
+      const x0 = this.#liqStripeLeft(pw);
+      if (x0 < pw - 8) {
+        const { rows, heat } = this.#liqRowsDrawn(levels, ph);
+        paintLiqStripe(ctx, v, x0, pw, ph, rows, heat, { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg });
+      }
       if (src.candlesLate()) note = `${note} · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}`;
     }
     ctx.save();
@@ -1342,15 +1347,16 @@ export class HeatPane {
     ctx.restore();
   }
 
-  /** The rows in view, grouped again only when the levels, what price has taken or the rows on screen change (not on a pointer move). */
-  #liqRowsInView(levels: LiqLevels, ph: number): readonly LiqRow[] { return this.#liqRowsDrawn(levels, ph).rows; }
-  /** The rows in view with their colour scale, as drawn. */
+  /** Where the liquidation stripe begins: the live edge (the plot's left edge when that is off to the left). */
+  #liqStripeLeft(pw: number): number { return Math.max(0, Math.round(this.view.xOf(pageNow(), pw))); }
+
+  /** The rows in view with their colour scale, as drawn; grouped again only when the levels, what price has taken or the rows on screen change. */
   #liqRowsDrawn(levels: LiqLevels, ph: number): { rows: LiqRow[]; heat: (usd: number) => number } {
     const v = this.view, per = binsPerRow(levels.step, v, ph), span = per * levels.step, g0 = Math.floor(v.p0 / span), g1 = Math.ceil(v.p1 / span);
     const key = `${this.hub.liqLevels.key()}|${per}|${g0}|${g1}`;
     if (this.#liqRows?.key !== key) {
       const rows = liqRows(levels, this.hub.liqLevels.taken(), per, g0 * span, g1 * span);
-      this.#liqRows = { key, rows, heat: heatScale(rows.flatMap(r => [r.long, r.short])) };
+      this.#liqRows = { key, rows, heat: standingHeat(rows) };
     }
     return this.#liqRows;
   }
@@ -1367,26 +1373,17 @@ export class HeatPane {
     return own > 0 ? own : this.hub.liqLevels.lastPrice();
   }
 
-  /** What the profile column adds up while Liquidation levels are on and in it, or null when it shows the book. */
-  #liqProfileStanding(state: AppState): LiqStanding | null {
-    const src = this.hub.liqLevels;
-    return state.liqLevels.on && state.liqLevels.profile && src.levels && src.state === 'ready' ? src.standing() : null;
-  }
-
   /**
-   * What a liquidation band under the pointer holds, for the hover box: only on a band as it is drawn there (its row strong enough to show,
-   * between the time the positions describe and the moment price crossed it). It says what would be liquidated at that level, how far it is
-   * from the price and how much would be liquidated on the way there (the profile column's faint bar, as a number), how many positions make
-   * it up and how big the largest is, and how much is isolated (a fixed price) or cross margin (a price that moves with the account).
+   * What a liquidation level under the pointer holds, for the hover box: only on the stripe, on a row strong enough to be drawn there. It
+   * says what would be liquidated at that level (and how much of it still stands), how far it is from the price and how much would be
+   * liquidated on the way there (the profile column's faint bar, as a number), how many positions make it up and how big the largest is, and
+   * how much is isolated (a fixed price) or cross margin (a price that moves with the account).
    */
-  #liquidationLines(state: AppState, time: number, y: number, ph: number, touch: boolean): InfoLine[] {
+  #liquidationLines(state: AppState, x: number, y: number, pw: number, ph: number, touch: boolean): InfoLine[] {
     const src = this.hub.liqLevels, levels = src.levels, v = this.view;
-    if (!levels || replaying() || src.state !== 'ready' || time < levels.asOf) return [];
-    const { rows, heat } = this.#liqRowsDrawn(levels, ph), now = pageNow(), slop = touch ? 6 : 2;
-    const shown = (r: LiqRow, side: 'long' | 'short'): boolean => {
-      const gone = r[`${side}Gone`];
-      return r[side] > 0 && heat(r[side]) > 0 && !(Number.isFinite(gone) && gone <= now && time > gone);
-    };
+    if (!levels || replaying() || src.state !== 'ready' || x < this.#liqStripeLeft(pw)) return [];
+    const { rows, heat } = this.#liqRowsDrawn(levels, ph), slop = touch ? 6 : 2;
+    const shown = (r: LiqRow, side: 'long' | 'short'): boolean => r[`${side}Left`] > 0 && heat(r[`${side}Left`]) > 0;
     let row: LiqRow | null = null, best = Infinity;
     for (const r of rows) {
       const top = v.yOf(r.p1, ph), bottom = v.yOf(r.p0, ph);
@@ -1398,20 +1395,15 @@ export class HeatPane {
     const price = this.#liqPrice(state), standing = src.standing(), lines: InfoLine[] = [];
     for (const side of ['long', 'short'] as const) {
       if (!shown(row, side)) continue;
-      const total = row[side], left = row[`${side}Left`], gone = row[`${side}Gone`], iso = row[`${side}Iso`], top = row[`${side}Top`];
+      const total = row[side], left = row[`${side}Left`], iso = row[`${side}Iso`], top = row[`${side}Top`];
       lines.push({ text: side === 'long' ? t('Long liquidations') : t('Short liquidations'), color: side === 'long' ? 'sell' : 'buy', bold: true, rule: true });
-      if (Number.isFinite(gone) && gone <= now) {
-        lines.push({ label: t('Traded through'), text: clock(gone), color: 'muted' });
-        lines.push({ label: t('At this level'), text: `$${usd(total)}` });
-      } else {
-        lines.push({ label: t('At this level'), text: left < total * 0.995 ? t('{left} of {total}', { left: `$${usd(left)}`, total: `$${usd(total)}` }) : `$${usd(total)}`, bold: true });
-        // Measured from the edge price reaches first; on the way there, everything that still stands between the price and this level.
-        const edge = side === 'long' ? row.p1 : row.p0;
-        if (price > 0) lines.push({ label: t('Distance'), text: distanceText(edge, price) });
-        if (price > 0 && standing) {
-          const way = side === 'long' ? standingBelow(standing, 'long', price) - standingBelow(standing, 'long', row.p0) : standingBelow(standing, 'short', row.p1) - standingBelow(standing, 'short', price);
-          lines.push({ label: t('If price gets here'), text: `$${usd(Math.max(0, way))}` });
-        }
+      lines.push({ label: t('At this level'), text: left < total * 0.995 ? t('{left} of {total}', { left: `$${usd(left)}`, total: `$${usd(total)}` }) : `$${usd(total)}`, bold: true });
+      // Measured from the edge price reaches first; on the way there, everything that still stands between the price and this level.
+      const edge = side === 'long' ? row.p1 : row.p0;
+      if (price > 0) lines.push({ label: t('Distance'), text: distanceText(edge, price) });
+      if (price > 0 && standing) {
+        const way = side === 'long' ? standingBelow(standing, 'long', price) - standingBelow(standing, 'long', row.p0) : standingBelow(standing, 'short', row.p1) - standingBelow(standing, 'short', price);
+        lines.push({ label: t('If price gets here'), text: `$${usd(Math.max(0, way))}` });
       }
       lines.push({ label: t('Positions'), text: String(row[`${side}Wallets`]) });
       if (top > 0) lines.push({ label: t('Largest position'), text: `$${usd(top)} (${Math.round(top / total * 100)}%)` });
@@ -1718,7 +1710,7 @@ export class HeatPane {
    */
   #columnX(side: Side, i: number): number {
     const state = this.store.state;
-    return side === 'right' ? this.plotW + (state.show.profile ? PROFILE_W : 0) + i * TRADED_W : -(i + 1) * TRADED_W;
+    return side === 'right' ? this.plotW + liqColumnW(state) + (state.show.profile ? PROFILE_W : 0) + i * TRADED_W : -(i + 1) * TRADED_W;
   }
   /** The volume profile column under `x`: its side, its place there and its measure; null off the columns. */
   #columnAt(x: number): { side: Side; i: number; metric: ProfileMetric } | null {
@@ -2683,7 +2675,7 @@ export class HeatPane {
     const cum = cumulative(g, state.mark.price);
     let maxLevel = 0;
     for (let i = 0; i < g.nBins; i++) maxLevel = Math.max(maxLevel, g.totalBid[i]! + g.totalAsk[i]!);
-    const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1), x0 = pw, width = PROFILE_W - 6;
+    const maxCum = Math.max(cum.maxBid, cum.maxAsk, 1), x0 = pw + liqColumnW(state), width = PROFILE_W - 6;
     ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, PROFILE_W, ph); ctx.clip();
     ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, PROFILE_W, ph);
     for (let i = 0; i < g.nBins; i++) {
@@ -2715,7 +2707,7 @@ export class HeatPane {
   /** Mirror hover on the profile column: frame the band from the mark to the pointer and the equally wide band on the other side, and compare them. */
   #paintProfileMirror(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>, step: number, x0: number, ph: number): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view, mark = state.mark.price;
-    if (!hv || !state.show.mirror || !(mark > 0)) return;
+    if (!hv || hv.column !== 'book' || !state.show.mirror || !(mark > 0)) return;
     const markBin = Math.floor(mark / step) - g.bin0, hb = Math.floor(v.pOf(hv.y, ph) / step) - g.bin0, mb = 2 * markBin - hb;
     if (hb === markBin) return;
     const clamp = (i: number) => Math.max(0, Math.min(g.nBins - 1, i));
@@ -2730,16 +2722,36 @@ export class HeatPane {
   }
 
   /**
-   * The profile column while Liquidation levels are on: in each row what still stands of them (longs in the falling colour, shorts in the
-   * rising one) and, faint behind it, everything from the price out to that row, so a faint bar reads "this much goes if price gets here".
+   * The liquidation column (Liquidation levels' own, between the map and the profile column): in each row what still stands of them (longs
+   * in the falling colour, shorts in the rising one) and, faint behind it, everything from the price out to that row, so a faint bar reads
+   * "this much goes if price gets here". Until the levels are there, or in a replay, it says why it is empty.
    */
-  #paintLiqProfile(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number, s: LiqStanding): void {
-    const p = this.#palette, v = this.view, step = niceStep(v.p1 - v.p0, ph / 3);
-    const price = this.#liqPrice(state);
+  #paintLiqColumn(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const p = this.#palette, v = this.view, src = this.hub.liqLevels, x0 = pw, W = PROFILE_W;
+    const s = src.levels && src.state === 'ready' && !replaying() ? src.standing() : null;
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
+    ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, W, ph);
+    ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const wide = (words: string): number => ctx.measureText(words).width;
+    if (!s) {
+      const why = replaying() ? t('Liquidation levels show the live market only.') : src.state === 'unavailable' ? t('Liquidation levels could not be read.')
+        : src.state === 'stale' && src.levels ? t('Liquidation levels are out of date: the newest are from {time}.', { time: clock(src.levels.asOf) }) : t('Liquidation levels are loading.');
+      ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
+      // The reason, word-wrapped to the column's width.
+      ctx.fillStyle = p.muted;
+      let line = '', y = 18;
+      for (const word of why.split(' ')) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && wide(next) > W - 8) { ctx.fillText(line, x0 + 4, y); y += 12; line = word; } else line = next;
+      }
+      if (line) ctx.fillText(fitText(wide, line, W - 8), x0 + 4, y);
+      ctx.restore();
+      ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
+      return;
+    }
+    const step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
     const prof = liqProfile(s, step, v.p0, v.p1, price);
-    const maxLevel = Math.max(prof.maxLevel, 1), maxCum = Math.max(prof.maxCum, 1), x0 = pw, width = PROFILE_W - 6;
-    ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, PROFILE_W, ph); ctx.clip();
-    ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, PROFILE_W, ph);
+    const maxLevel = Math.max(prof.maxLevel, 1), maxCum = Math.max(prof.maxCum, 1), width = W - 6;
     for (let r = 0; r < prof.long.length; r++) {
       const lo = (prof.row0 + r) * step, y1 = v.yOf(lo, ph), y0 = v.yOf(lo + step, ph);
       if (y1 < 0 || y0 > ph) continue;
@@ -2749,14 +2761,13 @@ export class HeatPane {
       if (long > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, Math.max(1, long / maxLevel * width), hgt); }
       if (short > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, Math.max(1, short / maxLevel * width), hgt); }
     }
-    ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, PROFILE_W - 1, 40); ctx.globalAlpha = 1;
-    ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillStyle = p.text; ctx.fillText(fitText(words => ctx.measureText(words).width, t('LIQ LEVELS'), PROFILE_W - 8), x0 + 4, 4);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 40); ctx.globalAlpha = 1;
+    ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
     ctx.fillStyle = p.muted; ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 16); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 28);
     this.#profileBox = null;
-    this.#paintLiqProfileMirror(ctx, state, s, price, x0, ph);
+    this.#paintLiqColumnMirror(ctx, state, s, price, x0, ph);
     ctx.restore(); ctx.textBaseline = 'middle';
-    const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqProfileMirror above
+    const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
     if (box) {
       this.#profileBox = null;
       paintMirrorBox(ctx, box.lines, x0, box.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? p.candleUp : c === 'below' ? p.candleDown : c === 'muted' ? p.muted : p.text, box.placement);
@@ -2766,9 +2777,9 @@ export class HeatPane {
   }
 
   /** Mirror hover on the liquidation column: the longs that go if price falls to the pointer against the shorts that go if it rises as far. */
-  #paintLiqProfileMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number): void {
+  #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view;
-    if (!hv || !state.show.mirror || !(price > 0)) return;
+    if (!hv || hv.column !== 'liq' || !state.show.mirror || !(price > 0)) return;
     const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
     const below = Math.max(0, standingBelow(s, 'long', price) - standingBelow(s, 'long', price - d));
     const above = Math.max(0, standingBelow(s, 'short', price + d) - standingBelow(s, 'short', price));
@@ -2840,7 +2851,7 @@ export class HeatPane {
     } else if (ownY && here) {
       // The price and the book there, then what the scripts on the map draw at that candle.
       const scripted = this.scriptHover(hv.t, y, touch);
-      const liquidation = state.liqLevels.on ? this.#liquidationLines(state, hv.t, y, ph, touch) : [];
+      const liquidation = state.liqLevels.on ? this.#liquidationLines(state, x, y, pw, ph, touch) : [];
       if (state.layer === 'liquidity' || liquidation.length || scripted.length) {
         const lines: InfoLine[] = [{ label: t('Price'), text: fmtPrice(hv.price!) }];
         if (state.layer === 'liquidity') {
@@ -3190,6 +3201,13 @@ export class HeatPane {
     };
   }
 
+  /** Which of the columns beside the map is at `x`: the liquidation column (nearest the map), then the profile column; null for neither. */
+  #besideAt(x: number): 'liq' | 'book' | null {
+    const state = this.store.state, pw = this.plotW, liq = liqColumnW(state);
+    if (liq && x > pw && x <= pw + liq) return 'liq';
+    return state.show.profile && x > pw + liq && x <= pw + liq + PROFILE_W ? 'book' : null;
+  }
+
   /** Whether a finger's pin is what is on show now (a tap on a pane under the map replaces it with its own). */
   #pinActive(): boolean { const hv = this.store.state.hover; return this.#pin !== null && (this.#profileHover !== null || this.#tradedHover !== null || (hv?.touch === true && hv.source === 'heat')); }
   /** Drop the pinned crosshair (and the profile comparison), if any. */
@@ -3208,8 +3226,8 @@ export class HeatPane {
     if (p.x >= 0 && p.x <= pw && p.y >= 0 && p.y <= ph) {
       this.#profileHover = null;
       this.store.set({ hover: { t: v.tOf(p.x, pw), price: v.pOf(p.y, ph), y: p.y, source: 'heat', touch: true } });
-    } else if (this.store.state.show.profile && p.x > pw && p.x <= pw + PROFILE_W && p.y >= 0 && p.y <= ph) {
-      this.#profileHover = { y: p.y }; this.store.set({ hover: null });
+    } else if (this.#besideAt(p.x) && p.y >= 0 && p.y <= ph) {
+      this.#profileHover = { y: p.y, column: this.#besideAt(p.x)! }; this.store.set({ hover: null });
     } else if (column && p.y >= 0 && p.y <= ph) {
       this.#profileHover = null; this.#tradedHover = { y: p.y, side: column.side, i: column.i }; this.store.set({ hover: null });
     } else { this.#pin = null; this.#profileHover = null; this.store.set({ hover: null }); }
@@ -3386,8 +3404,8 @@ export class HeatPane {
       }
       if (x >= 0 && x <= this.plotW && y <= this.plotH) this.store.set({ hover: { t: this.view.tOf(x, this.plotW), price: this.view.pOf(y, this.plotH), y, source: 'heat' } });
       else this.store.set({ hover: null });
-      const onProfile = this.store.state.show.profile && x > this.plotW && x <= this.plotW + PROFILE_W, column = this.#columnAt(x);
-      this.#profileHover = !this.#drag && onProfile && y >= 0 && y <= this.plotH ? { y } : null;
+      const beside = this.#besideAt(x), column = this.#columnAt(x);
+      this.#profileHover = !this.#drag && beside && y >= 0 && y <= this.plotH ? { y, column: beside } : null;
       this.#tradedHover = !this.#drag && column && y >= 0 && y <= this.plotH ? { y, side: column.side, i: column.i } : null;
       this.invalidate();
     });

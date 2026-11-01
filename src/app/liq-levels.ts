@@ -1,8 +1,8 @@
 /**
  * Liquidation levels (the Chart deck's Liq levels): the prices that would liquidate Hyperliquid's open BTC positions, read from the levels
- * service (HyperLiquidMap_Levels, format 2: HyperTracker's position snapshots, about one every 29 minutes, binned per $10). They are drawn
- * over the map from the time the positions describe (about 35 minutes before HyperTracker stamps its snapshot) and added up in the profile
- * column. From that time on a level is taken away as Hyperliquid's price trades through it: Hyperliquid's 1-minute candles say how far and
+ * service (HyperLiquidMap_Levels, format 2: HyperTracker's position snapshots, about one every 29 minutes, binned per $10). They are drawn as
+ * a stripe right of the live edge, beside the profile column, which adds them up. From the time the positions describe (about 35 minutes
+ * before HyperTracker stamps its snapshot) a level is taken away as Hyperliquid's price trades through it: Hyperliquid's 1-minute candles say how far and
  * when, and the chart's own price says it at once (a trade low can reach a few basis points past the mark price liquidations use, so a
  * level can go a little early in a fast fall).
  */
@@ -260,45 +260,38 @@ export function heatScale(values: readonly number[]): (usd: number) => number {
 
 export interface LiqColors { long: string; short: string; text: string; muted: string; bg: string }
 
+/** The colour strength of what still stands of the rows in view (heatScale over each side's standing dollars). */
+export const standingHeat = (rows: readonly LiqRow[]): ((usd: number) => number) => heatScale(rows.flatMap(r => [r.longLeft, r.shortLeft]));
+
 /**
- * Draws the rows from the snapshot's time to the right edge. A row stays at full strength until price first trades into it, then shows
- * what is left of it, and ends where price had traded through all of it. Where one position holds most of a large row, a small diamond sits
- * at the row's start. `fill` scales the fills (lower over the heatmap, which shows through); the crisp edges keep their strength.
+ * Draws the rows as a stripe from `x0` (the live edge) to the plot's right edge, beside the profile column: what still stands of each row,
+ * the more the darker, with a crisp edge on the strongest on the side facing the price, and a small diamond at the start of a large row one
+ * position holds at least half of. A level price has traded through is gone; nothing is drawn over the heatmap's past.
  */
-export function paintLiqRows(ctx: CanvasRenderingContext2D, view: View, pw: number, ph: number, levels: LiqLevels, rows: readonly LiqRow[], colors: LiqColors, now: number, fill = 1): void {
-  const xs = Math.max(0, view.xOf(levels.asOf, pw));
-  if (xs >= pw) return;
-  const heat = heatScale(rows.flatMap(r => [r.long, r.short]));
-  const xAt = (t: number): number => Math.min(pw, Math.max(xs, view.xOf(t, pw)));
+export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: number, pw: number, ph: number, rows: readonly LiqRow[], heat: (usd: number) => number, colors: LiqColors): void {
+  const w = pw - x0;
+  if (w < 2) return;
   ctx.save();
   for (const r of rows) {
     const y0 = view.yOf(r.p1, ph), y1 = view.yOf(r.p0, ph);
     if (y1 < 0 || y0 > ph) continue;
     const h = Math.max(1, y1 - y0 - (y1 - y0 > 3 ? 0.5 : 0));
     for (const side of ['long', 'short'] as const) {
-      const usd = r[side]; if (usd <= 0) continue;
+      const usd = r[`${side}Left`]; if (usd <= 0) continue;
       const a = heat(usd); if (a <= 0) continue;
-      const first = r[`${side}First`], gone = r[`${side}Gone`], left = r[`${side}Left`];
-      const end = Number.isFinite(gone) && gone <= now ? xAt(gone) : pw, touch = Number.isFinite(first) && first <= now ? xAt(first) : end;
       ctx.fillStyle = side === 'long' ? colors.long : colors.short;
-      ctx.globalAlpha = a * fill; ctx.fillRect(xs, y0, touch - xs, h);
-      if (end > touch) { ctx.globalAlpha = a * fill * Math.max(0.15, left / usd); ctx.fillRect(touch, y0, end - touch, h); }
+      ctx.globalAlpha = a; ctx.fillRect(x0, y0, w, h);
       // A strong level gets a crisp edge on the side facing the price, so the clusters read as lines.
       if (a >= 0.45) {
         const edge = side === 'long' ? Math.round(y0) : Math.round(y0 + h) - 1;
-        ctx.globalAlpha = Math.min(1, a + 0.15); ctx.fillRect(xs, edge, touch - xs, 1);
+        ctx.globalAlpha = Math.min(1, a + 0.15); ctx.fillRect(x0, edge, w, 1);
       }
-      if (r[`${side}One`] && usd >= 3e6 && end - xs > 14) {
-        const cx = xs + 9, cy = (y0 + y1) / 2, s = Math.min(4, Math.max(2.5, h / 2 + 1));
+      if (r[`${side}One`] && usd >= 3e6 && w > 14) {
+        const cx = x0 + 9, cy = (y0 + y1) / 2, s = Math.min(4, Math.max(2.5, h / 2 + 1));
         ctx.globalAlpha = 0.95; ctx.fillStyle = colors.text;
         ctx.beginPath(); ctx.moveTo(cx, cy - s); ctx.lineTo(cx + s, cy); ctx.lineTo(cx, cy + s); ctx.lineTo(cx - s, cy); ctx.closePath(); ctx.fill();
       }
     }
-  }
-  // The snapshot's time, as a faint dashed line the bands start from.
-  if (xs > 0) {
-    ctx.globalAlpha = 0.5; ctx.strokeStyle = colors.muted; ctx.setLineDash([3, 4]);
-    ctx.beginPath(); ctx.moveTo(Math.round(xs) + 0.5, 0); ctx.lineTo(Math.round(xs) + 0.5, ph); ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.restore();
 }
