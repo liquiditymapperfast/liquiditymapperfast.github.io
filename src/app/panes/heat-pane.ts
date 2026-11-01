@@ -2847,17 +2847,19 @@ export class HeatPane {
       lines.push({ label: below ? t('Bids') : t('Asks'), text: `$${usd(side.book)}`, color: below ? 'below' : 'above' });
       lines.push({ label: below ? t('Long liquidations') : t('Short liquidations'), text: `$${usd(side.liq)}`, color: below ? 'sell' : 'buy' });
       lines.push({ text: cover(side.book, side.liq, below), bold: true });
-      if (side.liqAll > 0) lines.push({ label: t('On screen'), text: cover(side.bookAll, side.liqAll, below), color: 'muted' });
+      if (side.liqAll > 0) lines.push({ label: t('On screen'), text: cover(side.bookAll, side.liqAll, below), color: 'muted', wrap: COMPACT });
     }
+    // A phone's map is narrower than this box: there its long lines wrap under their labels, and the box may lie over the two columns.
     lines.push({ text: t('Rank correlation, level size with book size'), bold: true, rule: true });
-    lines.push({ label: t('Above the price'), text: `${rhoText(st.above.rho, st.above.n)} · ${t('on screen {value}', { value: rhoText(st.above.rhoAll, st.above.nAll) })}` });
-    lines.push({ label: t('Below the price'), text: `${rhoText(st.below.rho, st.below.n)} · ${t('on screen {value}', { value: rhoText(st.below.rhoAll, st.below.nAll) })}` });
+    lines.push({ label: t('Above the price'), text: `${rhoText(st.above.rho, st.above.n)} · ${t('on screen {value}', { value: rhoText(st.above.rhoAll, st.above.nAll) })}`, wrap: COMPACT });
+    lines.push({ label: t('Below the price'), text: `${rhoText(st.below.rho, st.below.n)} · ${t('on screen {value}', { value: rhoText(st.below.rhoAll, st.below.nAll) })}`, wrap: COMPACT });
     if (st.walls.length) {
       lines.push({ text: t('At the largest liquidation levels'), bold: true, rule: true });
-      for (const w of st.walls) lines.push({ label: `${fmtPrice(w.price)} · $${usd(w.usd)}`, text: t('book {ratio} its neighbours', { ratio: times(w.ratio) }), color: w.side === 'long' ? 'sell' : 'buy' });
+      for (const w of st.walls) lines.push({ label: `${fmtPrice(w.price)} · $${usd(w.usd)}`, text: t('book {ratio} its neighbours', { ratio: times(w.ratio) }), color: w.side === 'long' ? 'sell' : 'buy', wrap: COMPACT });
     }
     lines.push({ text: t('Liquidations are Hyperliquid\'s alone, the book every enabled venue\'s; the positions are about 40 minutes old, the book is now.'), color: 'muted', wrap: true, rule: true });
-    paintMirrorBox(ctx, lines, x0, hv.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'buy' ? p.candleUp : c === 'sell' ? p.candleDown : c === 'muted' ? p.muted : p.text, hv.y < ph / 2 ? 'down' : 'up');
+    // On a phone the box also keeps below the legend, whose buttons lie over the canvas and would hide its first lines.
+    paintMirrorBox(ctx, lines, x0, hv.y, { x0: 0, y0: COMPACT ? Math.min(this.#legendBox.bottom + 4, ph / 3) : 0, x1: COMPACT ? pw + W : pw, y1: ph }, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'buy' ? p.candleUp : c === 'sell' ? p.candleDown : c === 'muted' ? p.muted : p.text, hv.y < ph / 2 ? 'down' : 'up');
   }
 
   /** Mirror hover on the liquidation column: the longs that go if price falls to the pointer against the shorts that go if it rises as far. */

@@ -121,8 +121,20 @@ html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::
 }
 /* A settings panel's row keeps 8 px of room after its control (`.panel .field`): the mark is 22 px in from the select's own edge there too. */
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::after { right: 21px; }
-/* A stacked row (the Market) holds its select under its name: the mark sits on the select's middle (12 px of padding under a 44 px box). */
-html:not([data-frame="bevel"]) .sheet-field.stack:has(> select)::after { top: auto; bottom: 25px; transform: none; }
+/* A stacked row (the Market) holds its select under its name: the mark sits on the select's middle (12 px of padding under a 44 px box).
+   `.sheet` keeps this as heavy as the rule above, whose :is() weighs as its heaviest argument, so it wins by coming later. */
+html:not([data-frame="bevel"]) .sheet .sheet-field.stack:has(> select)::after { top: auto; bottom: 25px; transform: none; }
+/* A size field's menu of common sizes is a list of its own: the same arrow, in the middle of its own box (44 px in Settings, 40 in a panel). */
+html:not([data-frame="bevel"]) .sheet .size-ctl .size-menu,
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl .size-menu { -webkit-appearance: none; appearance: none; }
+html:not([data-frame="bevel"]) .sheet .size-ctl:has(> .size-menu),
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl:has(> .size-menu) { position: relative; }
+html:not([data-frame="bevel"]) .sheet .size-ctl:has(> .size-menu)::after,
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl:has(> .size-menu)::after {
+  content: ""; position: absolute; right: 13px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); pointer-events: none;
+  background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat;
+}
+html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl:has(> .size-menu)::after { right: 11px; }
 html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select:disabled)::after { opacity: .4; }
 .sheet-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 8px; }
 .sheet-tiles > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
