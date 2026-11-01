@@ -3170,7 +3170,7 @@ export class HeatPane {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
       if (this.#scaleDrag) { this.#dragScale(y); return; }
-      if (this.draw?.dragging) { this.draw.move({ x, y }, e.altKey, false); el.style.cursor = 'grabbing'; return; }
+      if (this.draw?.dragging) { this.draw.move({ x, y }, e.altKey, false); const axis = this.draw.dragAxis; el.style.cursor = axis === 'p' ? 'ns-resize' : axis === 't' ? 'ew-resize' : 'grabbing'; return; }
       const press = this.#press;
       if (press && !press.moved && Math.hypot(x - press.x, y - press.y) >= DRAG_MIN_PX) press.moved = true;
       if (this.#columnSelect && this.range) {
@@ -3190,7 +3190,7 @@ export class HeatPane {
       if (onPlot && !this.#drag?.panning) this.draw?.move({ x, y }, e.altKey, false); else if (!onPlot) this.draw?.leave();
       const drawHover = onPlot && !this.draw?.placing ? this.draw?.hover ?? null : null;
       el.style.cursor = this.#onScale(x, y) ? 'ns-resize' : this.#bands.onHeader(x, y) || this.#onHiddenTag(x, y) ? 'pointer'
-        : drawHover ? (drawHover.part === 'handle' ? 'grab' : drawHover.id === this.draw!.selected && drawHover.part === 'stroke' ? 'move' : 'pointer')
+        : drawHover ? (drawHover.part === 'handle' ? (drawHover.axis === 'p' ? 'ns-resize' : drawHover.axis === 't' ? 'ew-resize' : 'grab') : drawHover.id === this.draw!.selected && drawHover.part === 'stroke' ? 'move' : 'pointer')
         : overColumn || ((this.range?.armed || this.store.state.vwapAnchoring || this.draw?.placing) && onPlot) ? 'crosshair' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).

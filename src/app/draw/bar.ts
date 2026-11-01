@@ -5,7 +5,7 @@ import { compactBar, isCoarse } from '../device.ts';
 import { togglePanel, switchRow, segmented, heading, note, button, type Panel } from '../ui.ts';
 import { DRAW_COLORS, DRAW_WIDTHS, MAX_IMPORT_CHARS, type DrawColor, type DrawKind, type Drawing } from './model.ts';
 import { MAGNET_MODES, type MagnetMode } from './magnet.ts';
-import { handlesOf, noteBox, type Projection } from './geometry.ts';
+import { handlesOf, noteBox, type Projection, type Pt } from './geometry.ts';
 import type { DrawController } from './controller.ts';
 import type { DrawSettings } from './settings.ts';
 import { colorOf } from './paint.ts';
@@ -135,7 +135,7 @@ export function readout(d: Drawing, mark: number, resting: { bid: number; ask: n
  * Null where none of it is in view.
  */
 export function editorPlace(d: Drawing, pr: Projection, size: { w: number; h: number }, top: number, left = 4, note?: { w: number; h: number }): { x: number; y: number } | null {
-  const hs = handlesOf(d, pr);
+  const hs: Pt[] = handlesOf(d, pr);
   if (d.kind === 'note' && note) { const b = noteBox(d, pr, note); hs.push({ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y + b.h }); }
   let x0 = Math.min(...hs.map(h => h.x)), x1 = Math.max(...hs.map(h => h.x)), y0 = Math.min(...hs.map(h => h.y)), y1 = Math.max(...hs.map(h => h.y));
   if (d.kind === 'level') { x0 = d.extendLeft ? 0 : Math.max(0, x0); x1 = pr.w; }
