@@ -149,6 +149,10 @@ test('a zone that runs on whose two times are equal (the left edge carried the o
   // Three px apart they are two handles: the right point's own handle moves its own point, as before.
   const apart = handlesOf({ ...newDrawing('zone', [at(3, 180), at(3.03, 130)], T), extendRight: true }, pr);
   assert.deepEqual(apart.slice(0, 3).map(h2 => h2.after ?? null), [[1], null, [1]]);
+  // The line is drawn at 1 px: half a pixel apart the two stored handles are one to the eye and both carry; one and a half pixels apart they are not.
+  const carries = (hours: number): (readonly number[] | null)[] => handlesOf({ ...newDrawing('zone', [at(3, 180), at(hours, 130)], T), extendRight: true }, pr).slice(0, 3).map(h2 => h2.after ?? null);
+  assert.deepEqual(carries(3.005), [[1], [0], [1]], '0.5 px apart');
+  assert.deepEqual(carries(3.015), [[1], null, [1]], '1.5 px apart');
   // Drawn from right to left the left point is the second one: its handle and the corner carry the first.
   const backwards = handlesOf({ ...newDrawing('zone', [at(4, 160), at(1, 180)], T), extendRight: true }, pr).slice(0, 3);
   assert.deepEqual(backwards.map(h2 => h2.after ?? null), [null, [0], [0]]);
