@@ -116,11 +116,14 @@ test('the columns never take more of the window than the map can spare, and neve
 test('a split of two stacked panes is weights that add up to 2 and are read back as they were written (review 2026-10-31, round 2)', () => {
   assert.deepEqual(splitWeights(0.5), [1, 1]);
   assert.deepEqual(splitWeights(0.75), [1.5, 0.5]);
-  assert.deepEqual(splitWeights(0), [WEIGHT_LIMITS.min, 2], 'a share of nothing keeps the least weight');
+  assert.deepEqual(splitWeights(0), [WEIGHT_LIMITS.min, 1.9], 'a share of nothing keeps the least weight, and the pair still adds up to 2');
+  assert.deepEqual(splitWeights(1), [1.9, WEIGHT_LIMITS.min]);
+  assert.deepEqual(splitWeights(0.04), [WEIGHT_LIMITS.min, 1.9], 'a 2,250 px stack dragged to the 90 px minimum (review round 3: it came to 0.1 + 1.92)');
   assert.deepEqual(splitWeights(Number.NaN), [1, 1], 'a share that is not one is an even split');
   for (let i = 0; i <= 1000; i++) {
     const share = i / 1000, [a, b] = splitWeights(share);
     assert.ok(a >= WEIGHT_LIMITS.min && a <= WEIGHT_LIMITS.max && b >= WEIGHT_LIMITS.min && b <= WEIGHT_LIMITS.max, `${share}: ${a} ${b}`);
+    assert.ok(Math.abs(a + b - 2) < 1e-9, `${share}: ${a} + ${b} adds up to 2`);
     // What a layout file would read back: the same weights (an imported pair of 10 and 10 dragged to 15 and 5 came back as 10 and 5).
     const read = readPlan({ left: ['cvd', 'book'], right: [], leftW: null, rightW: null, weights: { cvd: a, book: b } })!;
     assert.deepEqual([read.weights.cvd, read.weights.book], [a, b], `${share}`);

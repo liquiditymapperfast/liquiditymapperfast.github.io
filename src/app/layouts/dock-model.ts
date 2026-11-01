@@ -45,8 +45,9 @@ export const WEIGHT_LIMITS = { min: 0.1, max: 10 } as const;
  * an imported plan had, 10 and 10, was dragged to 15 and 5 and read back as 10 and 5).
  */
 export function splitWeights(share: number): [number, number] {
-  const s = Number.isFinite(share) ? Math.max(0, Math.min(1, share)) : 0.5, { min, max } = WEIGHT_LIMITS, round = (w: number): number => Math.round(w * 1000) / 1000;
-  return [Math.max(min, Math.min(max, round(2 * s))), Math.max(min, Math.min(max, round(2 * (1 - s))))];
+  // The share is held where both weights stay at the least one (a pane of a tenth of the other's height at most), then the pair is derived: it adds up to 2 always.
+  const lo = WEIGHT_LIMITS.min / 2, s = Number.isFinite(share) ? Math.max(lo, Math.min(1 - lo, share)) : 0.5, a = Math.round(2 * s * 1000) / 1000;
+  return [a, Math.round((2 - a) * 1000) / 1000];
 }
 
 /** A column's width from storage or a file, or null (follows the window). */
