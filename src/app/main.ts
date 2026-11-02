@@ -68,7 +68,7 @@ async function chooseSource(params: URLSearchParams, choice: CoinChoice, phoneHi
   const wanted = params.get('source');
   if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && await serverAnswers()))) return new ServerSource();
   // A phone in the hand reads a few hours of the recorded history, not the day (app/history-window.ts).
-  const historyHoursToRead = historyHours(isHandheldPhone(), phoneHistory, savesData());
+  const historyHoursToRead = historyHours(isHandheldPhone(), isCoarse(), phoneHistory, savesData());
   return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier, historyHours: historyHoursToRead });
 }
 

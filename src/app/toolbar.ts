@@ -46,7 +46,7 @@ import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.t
 import { CONTRAST } from './heatmap/window.ts';
 import { CHART_TYPES, chartTypeGlyph, chartTypeName, chartTypeTip, type ChartType } from './chart-type.ts';
 import { compactBar, isCoarse, isPhone, onLayoutMode } from './device.ts';
-import { isHandheldPhone, type PhoneHistory } from './history-window.ts';
+import { effectiveChoice, isHandheldPhone, type PhoneHistory } from './history-window.ts';
 import { openSheet, type Sheet } from './sheet.ts';
 import { wakeLockSupported } from './wake.ts';
 import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from './i18n.ts';
@@ -243,8 +243,8 @@ export class Toolbar {
   #zoneUtc = el('button', { type: 'button', textContent: 'UTC' });
   #zoneSeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('Time zone') }, this.#zoneLocal, this.#zoneUtc);
   /** A phone's Settings: how much recorded history it reads when the page opens (app/history-window.ts). */
-  #historyChoices = new Map<PhoneHistory, HTMLButtonElement>([['recent', el('button', { type: 'button', textContent: t('3 h') })], ['day', el('button', { type: 'button', textContent: t('Day') })], ['off', el('button', { type: 'button', textContent: t('Off') })]]);
-  #historySeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('History'), tip: t('How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.') }, ...this.#historyChoices.values());
+  #historyChoices = new Map<Exclude<PhoneHistory, 'auto'>, HTMLButtonElement>([['recent', el('button', { type: 'button', textContent: t('3 h') })], ['day', el('button', { type: 'button', textContent: t('Day') })], ['off', el('button', { type: 'button', textContent: t('Off') })]]);
+  #historySeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('History'), tip: t('How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.') }, ...this.#historyChoices.values());
   /** The compact bar's light-or-dark key (Karl, 2026-11-01): one tap swaps the light theme and the dark one last shown (`flippedTheme`). */
   #flip = el('button', { type: 'button', class: 'flip-btn' });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
@@ -785,8 +785,8 @@ export class Toolbar {
           field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i')))]),
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zoneSeg),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : []),
-          // A phone in the hand reads only the last hours of the recorded history on opening (app/history-window.ts); elsewhere this has no effect.
-          ...(isHandheldPhone() ? [field(t('History'), this.#historySeg)] : [])]));
+          // A phone in the hand reads only the last hours of the recorded history on opening, any touch screen what it chose (app/history-window.ts).
+          ...(isCoarse() ? [field(t('History'), this.#historySeg)] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesLabel.textContent = t('Venues'); this.#venuesCount.hidden = false; });
     this.#more.classList.add('open');
   }
@@ -819,7 +819,9 @@ export class Toolbar {
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
     lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#liqLevels, state.liqLevels.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#scripts, state.show.script); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
-    for (const [choice, b] of this.#historyChoices) { b.classList.toggle('on', state.phoneHistory === choice); b.setAttribute('aria-pressed', String(state.phoneHistory === choice)); }
+    // The choice that applies here: before one is made, a phone's last hours or a tablet's day (`effectiveChoice`).
+    const historyNow = effectiveChoice(isHandheldPhone(), isCoarse(), state.phoneHistory);
+    for (const [choice, b] of this.#historyChoices) { b.classList.toggle('on', historyNow === choice); b.setAttribute('aria-pressed', String(historyNow === choice)); }
     lamp(this.#glass, state.material === 'glass');
     if (this.#glassSwitch.checked !== (state.material === 'glass')) this.#glassSwitch.checked = state.material === 'glass';
     setValue(this.#heat.smooth, state.heat.smooth);

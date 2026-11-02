@@ -322,7 +322,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null, bookGone: {},
     layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
-    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', followLive: true, keepAwake: false, phoneHistory: 'recent', barCollapsed: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
+    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', followLive: true, keepAwake: false, phoneHistory: 'auto', barCollapsed: false, timeZone: 'local', hover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };
   // A save's measure strip was read into the profile along the top (`readSettings`): it is no setting of its own any more.
