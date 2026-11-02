@@ -14,36 +14,28 @@ test('everything on the identity line when it fits there, a grid of its own when
   assert.equal(grid.cols, 3, 'all three side by side under it');
 });
 
-test('the first cells join the identity line when that saves a row under it', () => {
-  // Seven cells of 100 px in 420 px: three rows of 3 + 3 + 1 under the line, or two once one or two of them sit on the line (210 px free).
-  const fit = chooseFit(cells(100, 100, 100, 100, 100, 100, 100), 420, 8, 210);
-  assert.equal(fit.rows, 2);
-  assert.ok(fit.lead === 1 || fit.lead === 2, `lead ${fit.lead}`);
-  assert.equal(fit.spans.slice(0, fit.lead).every(s => s === 1), true);
-  // Never more on the line than fits there.
-  assert.equal(chooseFit(cells(100, 100, 100, 100, 100, 100, 100), 420, 8, 90).lead, 0);
+test('only the cells marked for the identity line join it, all of them or none (or every cell, when they all fit there)', () => {
+  const marked = [{ width: 100, lead: true }, { width: 100 }, { width: 100 }, { width: 100 }];
+  const fit = chooseFit(marked, 420, 8, 210);
+  assert.equal(fit.lead, 1, 'the marked cell, not the first two that would fit');
+  assert.equal(fit.rows, 1, 'the other three in one row');
+  assert.equal(chooseFit(marked, 420, 8, 90).lead, 0, 'never more on the line than fits there');
+  assert.equal(chooseFit(cells(100, 100, 100, 100), 420, 8, 210).lead, 0, 'unmarked cells stay in the grid unless every one fits on the line');
+  assert.equal(chooseFit(marked, 420, 8, 430).inline, true);
 });
 
-test('the fewest rows that fit, in aligned columns; the last row has no hole: its cells share the spare columns', () => {
+test('the fewest rows that fit, in columns shared out evenly: the column count changes only with the row count', () => {
   const fit = chooseFit(cells(80, 80, 80, 80, 80, 80, 80), 400, 8);
-  assert.equal(fit.cols, 4);
-  assert.equal(fit.rows, 2, '4 + 3, never 6 + 1 or 5 + 2 that does not fit');
-  assert.deepEqual(fit.spans, [1, 1, 1, 1, 1, 1, 2], 'the last cell takes the column the last row leaves over');
-});
-
-test('a lone cell on the last row is avoided when another column count costs no extra row', () => {
-  // Four columns fit (424 px) but leave the fifth cell alone; three columns fit in two rows as well, 3 + 2.
-  const fit = chooseFit(cells(100, 100, 100, 100, 100), 430, 8);
   assert.equal(fit.rows, 2);
-  assert.equal(fit.cols, 3);
-  assert.deepEqual(fit.spans, [1, 1, 1, 1, 2]);
-});
-
-test('a lone cell is accepted when avoiding it would cost a row', () => {
-  // Three cells: two columns give 2 + 1, one column three rows. Fewer rows win.
-  const fit = chooseFit(cells(150, 150, 150), 320, 8);
-  assert.equal(fit.rows, 2);
-  assert.deepEqual(fit.spans, [1, 1, 2], 'and it spans the row, so it reads as one wide control, not a stray');
+  assert.equal(fit.cols, 4, '4 + 3');
+  assert.deepEqual(fit.spans, [1, 1, 1, 1, 1, 1, 1], 'no cell is stretched over the columns a short row leaves');
+  // Six cells: 6, then 3 + 3 (never 5 + 1 or 4 + 2), then 2 + 2 + 2.
+  const six = (avail: number) => chooseFit(cells(100, 100, 100, 100, 100, 100), avail, 8).cols;
+  assert.equal(six(640), 6);
+  assert.equal(six(600), 3, '5 columns would fit 600 px but leave a lone cell');
+  assert.equal(six(420), 3);
+  assert.equal(six(300), 2);
+  assert.equal(six(150), 1);
 });
 
 test('a cell that asks for a row gets one, the others are laid out around it', () => {
@@ -54,6 +46,11 @@ test('a cell that asks for a row gets one, the others are laid out around it', (
   assert.equal(flow.inline, false);
   assert.equal(flow.rows, 1);
   assert.equal(chooseFit([{ width: 300, row: true }], 250, 8, 320).inline, true, 'and sits on the identity line when it fits there');
+  // [a][ROW][b][c][d], 200 px, two columns of 80: a, the strip, then b c / d: four rows.
+  const runs = chooseFit([{ width: 80 }, { width: 300, row: true }, { width: 80 }, { width: 80 }, { width: 80 }], 200, 8);
+  assert.equal(runs.cols, 2);
+  assert.equal(runs.rows, 4);
+  assert.deepEqual(runs.spans, [1, 2, 1, 1, 1]);
 });
 
 test('a cell wider than the grid still gets a place, one column; columns take the widest cell of each', () => {
@@ -63,7 +60,7 @@ test('a cell wider than the grid still gets a place, one column; columns take th
   assert.equal(chooseFit(cells(200, 50, 40, 50), 250, 8).cols, 1);
 });
 
-test('captions of a column take its widest caption, so its controls start together; the column is made wide enough for that', () => {
+test('captions of a column take its widest caption, so its controls start together, unless that costs a row', () => {
   const cap = (caption: number, control: number) => ({ width: caption + 5 + control, cap: { caption, gap: 5, control } });
   // Column 1: "Mode" 30 + select 100, "Venue lines" 60 + select 60. Widest cells 135 and 125, but aligned they need 60 + 5 + 100.
   const fit = chooseFit([cap(30, 100), { width: 90 }, cap(60, 60), { width: 90 }], 270, 8);
@@ -72,40 +69,10 @@ test('captions of a column take its widest caption, so its controls start togeth
   const tight = chooseFit([cap(30, 100), { width: 90 }, cap(60, 60), { width: 90 }], 250, 8);
   assert.equal(tight.cols, 2, 'where the aligned column would not fit, the captions keep their own widths rather than cost a row (135 + 8 + 90)');
   assert.deepEqual(tight.caps, [0, 0, 0, 0]);
-  // A last row whose cells span: each caption takes the column it starts in.
-  const last = chooseFit([cap(10, 50), cap(20, 50), cap(30, 50), cap(40, 50), cap(25, 50)], 300, 8);
-  assert.equal(last.cols, 3);
-  assert.deepEqual(last.spans, [1, 1, 1, 1, 2]);
-  assert.deepEqual(last.caps, [40, 25, 30, 40, 25], 'the fifth spans the second and third columns and shares the second column\'s caption');
-  // A spanning cell wider than its columns widens them rather than spilling out of the grid.
-  const wide = chooseFit([{ width: 50 }, { width: 50 }, { width: 200 }], 200, 8);
-  assert.equal(wide.cols, 2, '50 + 142 + 8: the second column grows by what the third cell lacks');
-  assert.deepEqual(wide.spans, [1, 1, 2]);
-});
-
-test('where aligned columns cannot save the rows, the cells are packed row by row instead', () => {
-  // 130 + 80 and 150 + 60 fit a row of 220 px, but two aligned columns (150 + 8 + 80) do not: one column would take five rows.
-  const fit = chooseFit(cells(130, 80, 150, 60, 120), 220, 8);
-  assert.equal(fit.packed, true);
-  assert.equal(fit.rows, 3, '130 + 80, 150 + 60, 120');
-  assert.equal(chooseFit(cells(100, 100, 100, 100), 220, 8).packed, false, 'two aligned columns do as well: aligned');
-});
-
-test('aligned captions that would make even one column wider than the grid are dropped, not spilled past its edge', () => {
-  const cap = (caption: number, control: number) => ({ width: caption + 5 + control, cap: { caption, gap: 5, control } });
   // Long captions with short selects and short captions with long selects: each cell fits 240 px, the aligned column (110 + 5 + 150) does not.
-  const fit = chooseFit([cap(110, 60), cap(40, 150), cap(100, 70)], 240, 8);
-  assert.equal(fit.cols, 1);
-  assert.deepEqual(fit.caps, [0, 0, 0]);
-});
-
-test('a row cell between plain cells: each run on rows of its own, the counts and spans as the grid places them', () => {
-  // [a][ROW][b][c][d], 200 px, two columns of 80: a alone (spanning both), the strip, then b c / d spanning both: four rows.
-  const fit = chooseFit([{ width: 80 }, { width: 300, row: true }, { width: 80 }, { width: 80 }, { width: 80 }], 200, 8);
-  assert.equal(fit.cols, 2);
-  assert.equal(fit.rows, 4);
-  assert.deepEqual(fit.spans, [2, 2, 1, 1, 2]);
-  // Every run's rows sum to the column count, so no row has a hole and nothing wraps where the chooser did not count a row.
+  const one = chooseFit([cap(110, 60), cap(40, 150), cap(100, 70)], 240, 8);
+  assert.equal(one.cols, 1);
+  assert.deepEqual(one.caps, [0, 0, 0]);
 });
 
 test('the deck aligner counts its ways before making them: long rows fall back at once', () => {

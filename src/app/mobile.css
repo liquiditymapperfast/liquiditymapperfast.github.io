@@ -463,7 +463,9 @@ html[data-layout^="phone"] .pane-head.tuned .rest { display: none; }
 html[data-layout^="phone"] .pane-head.tuned > .tune-btn { display: inline-grid; place-items: center; order: 5; flex: none; width: var(--ph-key-w); min-height: var(--ph-ctl-h); padding: 0; margin-left: auto; align-self: flex-end; }
 html[data-layout^="phone"] .pane-head.tuned > .tune-btn.open { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); }
 html[data-layout^="phone"] .pane-head.tuned > button.help { order: 6; align-self: flex-end; }
-html[data-layout^="phone"] .pane-head.tuned { align-items: flex-end; padding-bottom: 0; }
+/* The keys at the foot of the row stand clear of what is drawn under it (Karl, 2026-11-02: the Book's keys touched its legend), by the gap
+   the Flow tab's keys keep above its figures. */
+html[data-layout^="phone"] .pane-head.tuned { align-items: flex-end; padding-bottom: 6px; }
 html[data-layout^="phone"] .pane-head.tuned > strong { align-self: center; }
 /* In the sheet each control is a row: its name at the left, the control at the right, a finger's height. */
 .sheet .tune-body > .ctl { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; min-height: 54px; border-top: 1px solid var(--line); color: var(--text); font-size: 15px; font-weight: 400; letter-spacing: 0; text-transform: none; }

@@ -4,138 +4,97 @@
  * A header has an identity line (the grip, the name, the "?", a settings key, the menu and the close button) and a set of cells (a caption
  * with its select, or a button), in their order. Each cell's natural width is measured; then:
  *
- *  1. The first cells that fit on the identity line beside it go there (all of them when they all fit: then the header is one line). That
- *     line is there anyway, so what it holds costs no row.
- *  2. The others take a grid of their own under it. A cell that asks for a whole row (`data-fit="row"`: a strip of buttons) gets one; the
- *     others are laid out row by row in `c` aligned columns, every column as wide as its widest cell and stretched so that each row ends flush
- *     at the right. A shorter last row's cells share the columns it leaves over (`span`), so no row has a hole at its end.
- *  3. A caption and its control (`cap`: the caption's width, the gap, the control's) are laid out within their column as the column's others
- *     are: the captions of a column as wide as its widest, so the controls under one another start at the same place, unless that costs a row.
- *  4. Where no column count saves as many rows (a column too narrow for two columns of the widest cells), the cells are packed instead:
- *     row by row in their order, as many as fit, each row stretched to end flush (`packed`), its columns not aligned with the next row's.
+ *  1. When every cell fits on the identity line beside it, the header is that one line. Otherwise the cells marked as the line's own
+ *     (`data-fit="lead"`, the first ones: the Book's Mode) go there when they fit, all of them or none, and the others take a grid under it.
+ *     Which cells sit on the line therefore changes at two widths at most, not with every few pixels.
+ *  2. In the grid a cell that asks for a whole row (`data-fit="row"`: a strip of buttons) gets one; the others are laid out row by row in
+ *     `c` aligned columns, each as wide as its widest cell. Every cell keeps its own width (nothing is stretched: a button is as wide as its
+ *     label), the rows start at the left edge and a short row simply ends sooner.
+ *  3. The fewest rows win, and the columns are as even as those rows allow (`c` = the cells over the rows, rounded up), so the column count
+ *     changes only when the number of rows does: six cells go 6, then 3 + 3, then 2 + 2 + 2.
+ *  4. A caption and its control (`cap`: the caption's width, the gap, the control's) are laid out within their column: the captions of a
+ *     column as wide as its widest, so the controls under one another start at the same place, unless that costs a row.
  *
- * Of every split between the line and the grid, and every column count that fits, the one with the lowest score is taken:
- *
- *   score = 10 per row under the identity line + 6 when the grid's last row of two or more columns holds a single cell
- *           + 5 x (how empty the grid's emptiest row would be without stretching) + 5 when packed
- *
- * so fewer rows win, a lone cell on the last row is avoided unless it costs another row, and of two equal layouts the evener one wins.
  * A new control is one more cell: the rule places it, with no new breakpoint.
  */
 
-/** One cell to place: its natural width (px) and whether it takes a whole row of its own when it cannot sit on the identity line. */
-export interface FitCell { width: number; row?: boolean; cap?: { caption: number; gap: number; control: number } }
+/**
+ * One cell to place: its natural width (px), whether it takes a whole row of its own when it cannot sit on the identity line, whether it
+ * belongs on the identity line (`lead`, only the first cells) and its caption, gap and control widths.
+ */
+export interface FitCell { width: number; row?: boolean; lead?: boolean; cap?: { caption: number; gap: number; control: number } }
 /**
  * The layout chosen: the first `lead` cells on the identity line (`inline`: all of them), the others in a grid of `cols` columns and `rows`
- * rows (the identity line not counted); each cell's column span (row cells span all; a cell on the identity line 1) and the width its caption
- * takes (0: as its own).
+ * rows (the identity line not counted); each cell's column span (row cells span all; any other cell 1) and the width its caption takes (0:
+ * as its own).
  */
-export interface FitChoice { lead: number; inline: boolean; packed: boolean; cols: number; rows: number; spans: number[]; caps: number[]; score: number }
+export interface FitChoice { lead: number; inline: boolean; cols: number; rows: number; spans: number[]; caps: number[] }
 
-const ROW_COST = 10, ORPHAN_COST = 6, UNEVEN_COST = 5, PACKED_COST = 5;
-
-/**
- * The best grid for `cells` in `avail` px (none of them on the identity line), the captions of a column aligned when `withCaps`. Without
- * captions there is always one (a cell wider than the grid gets a column of its own); with them, none when aligning them would make even a
- * single column wider than the grid (null).
- */
-function gridOf(cells: readonly FitCell[], avail: number, gap: number, withCaps: boolean): Omit<FitChoice, 'lead' | 'inline' | 'packed'> | null {
-  const n = cells.length;
-  const plain = cells.map((c, i) => ({ width: c.width, cap: withCaps ? c.cap : undefined, i })).filter((_, i) => !cells[i]!.row), rowCells = n - plain.length;
-  const m = plain.length;
-  if (!m) return { cols: 1, rows: rowCells, spans: cells.map(() => 1), caps: cells.map(() => 0), score: ROW_COST * rowCells };
-  // The runs of plain cells between row cells (indices into `plain`): each starts on a row of its own.
-  const runs: number[][] = [[]];
-  cells.forEach((c, i) => { if (c.row) runs.push([]); else runs[runs.length - 1]!.push(plain.findIndex(p => p.i === i)); });
-  const filled = runs.filter(r => r.length), longest = Math.max(...filled.map(r => r.length));
-  let best: Omit<FitChoice, 'lead' | 'inline' | 'packed'> | null = null;
-  for (let cols = longest; cols >= 1; cols--) {
-    const spans = cells.map(c => (c.row ? 0 : 1)), start = new Array<number>(m).fill(0);
-    let rows = 0, orphan = 0;
-    const rowsOf: number[][] = [];
-    for (const run of filled) {
-      const r = Math.ceil(run.length / cols), last = run.length - (r - 1) * cols, spare = cols - last;
-      rows += r;
-      if (cols > 1 && last === 1 && (r > 1 || filled.length > 1)) orphan = 1;
-      // The spare columns go to the last row's cells from its end, one each in turn, so the widest stretch is never more than one column.
-      if (spare > 0) for (let k = 0; k < spare; k++) spans[plain[run[(r - 1) * cols + last - 1 - (k % last)]!]!.i]! += 1;
-      // The column each cell starts in (a spanning cell of the last row can start further right than k % cols).
-      for (let k = 0, col = 0; k < run.length; k++) { if (k % cols === 0) { col = 0; rowsOf.push([]); } start[run[k]!] = col; col += spans[plain[run[k]!]!.i]!; rowsOf[rowsOf.length - 1]!.push(run[k]!); }
-    }
-    // Columns as wide as their widest single cell. A column with captioned controls also needs its widest caption (of every cell starting
-    // there) beside its widest control, which may be more than its widest cell; a spanning cell widens the last of its columns if it must.
-    const widths = new Array<number>(cols).fill(0), capW = new Array<number>(cols).fill(0), ctlW = new Array<number>(cols).fill(0), capGap = new Array<number>(cols).fill(0);
-    for (let k = 0; k < m; k++) {
-      const c = plain[k]!, col = start[k]!, one = spans[c.i] === 1;
-      if (one) widths[col] = Math.max(widths[col]!, c.width);
-      if (c.cap) { capW[col] = Math.max(capW[col]!, c.cap.caption); capGap[col] = Math.max(capGap[col]!, c.cap.gap); if (one) ctlW[col] = Math.max(ctlW[col]!, c.cap.control); }
-    }
-    for (let col = 0; col < cols; col++) if (capW[col]) widths[col] = Math.max(widths[col]!, capW[col]! + capGap[col]! + ctlW[col]!);
-    for (let k = 0; k < m; k++) {
-      const c = plain[k]!, span = spans[c.i]!, col = start[k]!;
-      if (span < 2) continue;
-      const own = c.cap ? capW[col]! + capGap[col]! + c.cap.control : c.width;
-      const room = widths.slice(col, col + span).reduce((s, w) => s + w, 0) + gap * (span - 1);
-      if (own > room) widths[col + span - 1]! += own - room;
-    }
-    const need = widths.reduce((s, w) => s + w, 0) + gap * (cols - 1);
-    if (need > avail && (cols > 1 || capW.some(w => w > 0))) continue;
-    let emptiest = 1;
-    for (const row of rowsOf) {
-      const used = row.reduce((s, k) => s + plain[k]!.width, 0) + gap * (row.length - 1);
-      emptiest = Math.min(emptiest, avail > 0 ? used / avail : 1);
-    }
-    const allRows = rows + rowCells;
-    const score = ROW_COST * allRows + ORPHAN_COST * orphan + UNEVEN_COST * (1 - Math.min(1, emptiest));
-    const caps = cells.map(() => 0);
-    for (let k = 0; k < m; k++) if (plain[k]!.cap) caps[plain[k]!.i] = capW[start[k]!]!;
-    if (!best || score < best.score - 1e-9) best = { cols, rows: allRows, spans: spans.map(s => s || cols), caps, score };
+/** The columns of a grid of `cells` in `cols` columns (their widths and each cell's caption width), with the captions aligned when `withCaps`. */
+function columns(cells: readonly FitCell[], runs: readonly number[][], cols: number, withCaps: boolean): { widths: number[]; caps: number[] } {
+  const widths = new Array<number>(cols).fill(0), capW = new Array<number>(cols).fill(0), ctlW = new Array<number>(cols).fill(0), capGap = new Array<number>(cols).fill(0);
+  const colOf = new Map<number, number>();
+  for (const run of runs) run.forEach((i, k) => colOf.set(i, k % cols));
+  for (const [i, col] of colOf) {
+    const c = cells[i]!;
+    widths[col] = Math.max(widths[col]!, c.width);
+    if (withCaps && c.cap) { capW[col] = Math.max(capW[col]!, c.cap.caption); capGap[col] = Math.max(capGap[col]!, c.cap.gap); ctlW[col] = Math.max(ctlW[col]!, c.cap.control); }
   }
-  return best;
+  // A column with captioned controls needs its widest caption beside its widest control, which may be more than its widest cell.
+  for (let col = 0; col < cols; col++) if (capW[col]) widths[col] = Math.max(widths[col]!, capW[col]! + capGap[col]! + ctlW[col]!);
+  const caps = cells.map((c, i) => (withCaps && c.cap && colOf.has(i) ? capW[colOf.get(i)!]! : 0));
+  return { widths, caps };
 }
 
-/** How many rows `cells` take packed: row by row, as many as fit in `avail`; a row cell on a row of its own. */
-function packedRows(cells: readonly FitCell[], avail: number, gap: number): number {
-  let rows = 0, used = -1;
-  for (const c of cells) {
-    if (c.row) { rows++; used = -1; continue; }
-    if (used >= 0 && used + gap + c.width <= avail) used += gap + c.width;
-    else { rows++; used = c.width; }
+/**
+ * The grid for `cells` in `avail` px (none of them on the identity line): the most columns that fit, of the counts that share the cells
+ * out evenly over their rows, with the captions aligned when that fits as well. One column always fits (a cell wider than it shrinks).
+ */
+function gridOf(cells: readonly FitCell[], avail: number, gap: number): Omit<FitChoice, 'lead' | 'inline'> {
+  const n = cells.length, rowCells = cells.filter(c => c.row).length;
+  // The runs of plain cells between row cells (indices into `cells`): each starts on a row of its own.
+  const runs: number[][] = [[]];
+  cells.forEach((c, i) => { if (c.row) runs.push([]); else runs[runs.length - 1]!.push(i); });
+  const filled = runs.filter(r => r.length), longest = Math.max(0, ...filled.map(r => r.length));
+  const spans = (cols: number): number[] => cells.map(c => (c.row ? cols : 1));
+  if (!longest) return { cols: 1, rows: rowCells, spans: spans(1), caps: cells.map(() => 0) };
+  for (let cols = longest; cols >= 1; cols--) {
+    // Only an even count: 6 cells in 4 columns take two rows as 3 columns do, with a short second row.
+    if (Math.ceil(longest / Math.ceil(longest / cols)) !== cols) continue;
+    const rows = filled.reduce((s, r) => s + Math.ceil(r.length / cols), 0) + rowCells;
+    for (const withCaps of [true, false]) {
+      const { widths, caps } = columns(cells, filled, cols, withCaps);
+      if (cols > 1 && widths.reduce((s, w) => s + w, 0) + gap * (cols - 1) > avail) continue;
+      if (cols === 1 && withCaps && widths[0]! > avail) continue;
+      return { cols, rows, spans: spans(cols), caps };
+    }
   }
-  return rows;
+  return { cols: 1, rows: filled.reduce((s, r) => s + r.length, 0) + rowCells, spans: spans(1), caps: cells.map(() => 0) };
 }
 
 /**
  * The layout for `cells` given the grid's width `avail`, the gap between cells and, where the header has one, the room left on its identity
- * line (`inlineAvail`, null: none) and the gap between cells there (`lineGap`). A cell wider than the grid still gets a row of its own (it is
- * clipped, as it would be anyway).
+ * line (`inlineAvail`, null: none) and the gap between cells there (`lineGap`).
  */
 export function chooseFit(cells: readonly FitCell[], avail: number, gap: number, inlineAvail: number | null = null, lineGap = gap): FitChoice {
   const n = cells.length;
-  if (!n) return { lead: 0, inline: false, packed: false, cols: 1, rows: 0, spans: [], caps: [], score: 0 };
-  let best: FitChoice | null = null;
-  // More cells on the identity line first, so that of two layouts that score the same the one with the fewer cells under it is kept.
-  for (let lead = inlineAvail === null ? 0 : n; lead >= 0; lead--) {
+  if (!n) return { lead: 0, inline: false, cols: 1, rows: 0, spans: [], caps: [] };
+  const own = cells.findIndex(c => !c.lead), leads = own < 0 ? n : own;
+  // Every cell on the line, then the line's own cells, then none: the first that fits.
+  const options = inlineAvail === null ? [0] : [...new Set([n, leads, 0])];
+  for (const lead of options) {
     const along = lead ? cells.slice(0, lead).reduce((s, c) => s + c.width, 0) + lineGap * (lead - 1) : 0;
     if (lead && along > inlineAvail!) continue;
     const rest = cells.slice(lead);
-    let grid = { packed: false, cols: 1, rows: 0, spans: [] as number[], caps: [] as number[], score: 0 };
-    if (rest.length) {
-      const aligned = gridOf(rest, avail, gap, true), plainGrid = gridOf(rest, avail, gap, false)!;
-      grid = { packed: false, ...(aligned && aligned.rows <= plainGrid.rows ? aligned : plainGrid) };
-      const packed = packedRows(rest, avail, gap);
-      if (packed < grid.rows) grid = { packed: true, cols: 1, rows: packed, spans: rest.map(() => 1), caps: rest.map(() => 0), score: ROW_COST * packed + PACKED_COST };
-    }
-    if (!best || grid.score < best.score - 1e-9) {
-      best = { lead, inline: lead === n, packed: grid.packed, cols: grid.cols, rows: grid.rows, spans: [...new Array<number>(lead).fill(1), ...grid.spans], caps: [...new Array<number>(lead).fill(0), ...grid.caps], score: grid.score };
-    }
+    const grid = rest.length ? gridOf(rest, avail, gap) : { cols: 1, rows: 0, spans: [], caps: [] };
+    return { lead, inline: lead === n, cols: grid.cols, rows: grid.rows, spans: [...new Array<number>(lead).fill(1), ...grid.spans], caps: [...new Array<number>(lead).fill(0), ...grid.caps] };
   }
-  return best!;
+  return { lead: 0, inline: false, cols: 1, rows: 0, spans: [], caps: [] };
 }
 
 /** Two choices that lay the cells out the same way. */
 export const sameFit = (a: FitChoice | null, b: FitChoice | null): boolean =>
-  !!a && !!b && a.lead === b.lead && a.packed === b.packed && a.cols === b.cols && a.spans.join() === b.spans.join() && a.caps.join() === b.caps.join();
+  !!a && !!b && a.lead === b.lead && a.cols === b.cols && a.spans.join() === b.spans.join() && a.caps.join() === b.caps.join();
 
 /** A width change smaller than this keeps the layout as it is (a select's text changing must not flip the rows back and forth). */
 const REFIT_PX = 4;
@@ -241,7 +200,7 @@ export class FitGrid {
     this.#quiet();
     // The room left beside it, with the gap before the first cell there.
     const room = Math.max(0, inner - line - gap);
-    const choice = chooseFit(shown.map((c, i) => ({ width: widths[i]!, row: c.dataset.fit === 'row', ...(caps[i] ? { cap: caps[i] } : {}) })), inner, cellGap, room, gap);
+    const choice = chooseFit(shown.map((c, i) => ({ width: widths[i]!, row: c.dataset.fit === 'row', lead: c.dataset.fit === 'lead', ...(caps[i] ? { cap: caps[i] } : {}) })), inner, cellGap, room, gap);
     const sameCells = shown.length === this.#placed.length && shown.every((c, i) => c === this.#placed[i]);
     if (sameFit(choice, this.#choice) && sameCells && !force) return;
     this.#choice = choice; this.#placed = shown;
@@ -250,13 +209,17 @@ export class FitGrid {
     this.#place(all.slice(0, lastLead + 1));
     this.head.classList.toggle('fit-inline', choice.inline);
     this.head.classList.toggle('fit-has-lead', choice.lead > 0);
-    this.cells.classList.toggle('fit-packed', choice.packed);
-    // One column is the grid's whole width and no wider: a cell wider than it shrinks rather than spill past the header's edge.
-    if (choice.packed) this.cells.style.removeProperty('grid-template-columns');
-    else this.cells.style.gridTemplateColumns = `repeat(${choice.cols}, minmax(${choice.cols === 1 ? 0 : 'max-content'}, 1fr))`;
+    // Columns as wide as their contents and no wider (a cell that no longer fits shrinks rather than spill past the header's edge), each cell
+    // in its column; where a cell takes a whole row, one more column takes up the rest of the width, so that the row reaches the right edge.
+    const grid = shown.slice(choice.lead), whole = grid.some(c => c.dataset.fit === 'row'), tracks = [`repeat(${choice.cols}, minmax(0, max-content))`];
+    if (whole) tracks.push(`minmax(0, 1fr)`);
+    this.cells.style.gridTemplateColumns = tracks.join(' ');
+    let col = 0;
     shown.forEach((c, i) => {
-      const span = choice.spans[i]!, cap = choice.caps[i]!;
-      c.style.gridColumn = i >= choice.lead && span > 1 ? `span ${span}` : '';
+      const cap = choice.caps[i]!;
+      if (i < choice.lead) c.style.removeProperty('grid-column');
+      else if (c.dataset.fit === 'row') { c.style.gridColumn = '1 / -1'; col = 0; }
+      else { c.style.gridColumn = String(col + 1); col = (col + 1) % choice.cols; }
       if (cap) c.style.setProperty('--fit-cap', `${cap}px`); else c.style.removeProperty('--fit-cap');
     });
     this.#quiet();
@@ -281,7 +244,6 @@ export class FitGrid {
     this.#choice = null; this.#width = -1; this.#signature = ''; this.#placed = [];
     this.#place([]);
     this.head.classList.remove('fit-inline', 'fit-has-lead');
-    this.cells.classList.remove('fit-packed');
     this.cells.style.removeProperty('grid-template-columns');
     for (const c of this.cells.children) if (c instanceof HTMLElement) { c.style.removeProperty('grid-column'); c.style.removeProperty('--fit-cap'); }
     this.#quiet();

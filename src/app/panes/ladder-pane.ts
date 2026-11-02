@@ -376,9 +376,11 @@ export class LadderPane {
     setTip(this.#cuesButton, t('What lights in the book when a venue\'s displayed depth changes, and the heat strip under each cell. Hover a cell, or the mark beside a row, to see what changed.'));
     this.#cuesButton.onclick = () => { this.#cuesPanel = togglePanel(this.#cuesButton, { title: t('Order book cues'), width: 340, align: 'right', onClose: () => { this.#cuesPanel = null; } }, (_tools, body) => this.#buildCues(body)); };
     const show = this.#select(t('Show'), [['both', t('Levels + cum')], ['levels', t('Levels')], ['cumulative', t('Cumulative')]], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] }));
-    // The controls are one fit grid (ui/fit-grid.ts): on the title's line when they all fit there, otherwise in aligned rows under it.
-    const cells = el('div', {}, this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
-      recenter, group, curves, show, pull, this.#cuesButton, this.#booksButton);
+    // The controls are one fit grid (ui/fit-grid.ts): on the title's line when they all fit there, otherwise the mode there (when it fits) and
+    // the others in aligned rows under it.
+    const mode = this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] }));
+    mode.dataset.fit = 'lead';
+    const cells = el('div', {}, mode, recenter, group, curves, show, pull, this.#cuesButton, this.#booksButton);
     this.controls.append(title, helpButton('orderBook'), cells);
     this.#fit = new FitGrid(this.controls, cells, this.root);
     this.syncVenues();

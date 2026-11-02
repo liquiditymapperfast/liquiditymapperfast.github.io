@@ -737,9 +737,11 @@ export class Toolbar {
     decks.forEach((d, k) => {
       const { cols, spans, width, natural } = alignRows(widths[k]!, gaps[k]!);
       if (width > natural + ALIGN_SLACK_PX) { d.classList.add('deck-flush'); return; }
+      // A column never narrower than its controls: they are measured at zoom 1, and text drawn at the bar's fractional zoom is a little wider
+      // (Liq levels went onto two lines at 1536-1680 px, Karl 2026-11-02), so each track may grow to its contents.
       const px = cols.map(w => `${w.toFixed(2)}px`);
-      d.style.setProperty('--deck-cols-px', px.join(' '));
-      d.style.setProperty('--deck-cols-fr', cols.map((w, i) => `minmax(${px[i]}, ${Math.max(1, w).toFixed(2)}fr)`).join(' '));
+      d.style.setProperty('--deck-cols-px', px.map(p => `minmax(${p}, max-content)`).join(' '));
+      d.style.setProperty('--deck-cols-fr', cols.map(w => `minmax(max-content, ${Math.max(1, w).toFixed(2)}fr)`).join(' '));
       rows[k]!.forEach((r, i) => r.forEach((c, j) => { const span = spans[i]![j]!; if (span > 1) { c.style.gridColumn = `span ${span}`; this.#spanned.push(c); } }));
       d.classList.add('deck-grid');
     });

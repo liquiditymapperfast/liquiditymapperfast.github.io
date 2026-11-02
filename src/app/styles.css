@@ -347,10 +347,11 @@ html[data-bar="compact"] .toast { bottom: 76px; }
 .cvd-wrap canvas.cvd-flash { pointer-events: none; }
 .pane.cvd .cvd-span-select { display: none; }
 /* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop they are a grid of aligned columns
-   under the first line, as few rows as fit, each row ending flush at the right (a shorter last row's cells share its spare columns), or on the first line itself when all of
-   them fit there (the header's fit-inline class), or the first of them there and the others under it. The script sets the columns and the spans; this sets the grid. On a phone the container is not a box at all, and the header keeps its own layout. */
+   under the first line, as few rows as fit, every control at its own width from the left edge, or on the first line itself when all of them fit there (the
+   header's fit-inline class), or the line's own ones there (data-fit="lead") and the others under it. The script sets the columns; this sets the grid. On a
+   phone the container is not a box at all, and the header keeps its own layout. */
 .fit-cells { display: contents; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells { display: grid; order: 4; flex: 1 0 100%; column-gap: 8px; row-gap: var(--head-row-gap, 5px); align-items: center; min-width: 0; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells { display: grid; order: 4; flex: 1 0 100%; column-gap: 8px; row-gap: var(--head-row-gap, 5px); align-items: center; justify-content: start; min-width: 0; }
 /* The cells that fit on the first line are moved there (fit-lead), behind the "?", at their own width: the room left over is the name's, then
    the menu's. With all of them there the grid is empty and is no line at all. */
 html[data-layout="desktop"] .pane .pane-head > .fit-lead { order: 1; flex: none; margin: 0; }
@@ -362,15 +363,14 @@ html[data-layout="desktop"] .pane .pane-head > .fit-lead[data-fit="row"] > butto
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .fit-cells:not(.fit-measuring) { display: none; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .side-break { display: none; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .pane-tools { order: 3; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells > * { margin: 0; min-width: 0; justify-self: stretch; }
-/* A caption and its select are one cell: the caption as wide as the widest of its column (--fit-cap), then the select taking the rest, so the
-   selects of a column start and end at the same place. Measured, it is the caption at its own width. */
+/* Every control at its own width (a button as wide as its label), a caption never on two lines. A strip that takes a whole row spans it. */
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > * { margin: 0; min-width: 0; justify-self: start; white-space: nowrap; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > :is([data-fit="row"], label.ctl) { justify-self: stretch; }
+html[data-layout="desktop"] .pane .pane-head > .fit-lead { white-space: nowrap; }
+/* A caption and its select are one cell: the caption as wide as the widest of its column (--fit-cap), then the select to the column's end, so the
+   selects of a column start and end at the same place (as wide as the widest of them). Measured, it is the caption at its own width. */
 html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl:not([hidden]) { display: grid; grid-template-columns: var(--fit-cap, max-content) minmax(0, 1fr); }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl:not([hidden]) { display: inline-flex; }
-/* Packed (a column too narrow for aligned columns): rows filled in order, each stretched to end flush; a row cell on a row of its own. */
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed { display: flex; flex-wrap: wrap; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed > * { flex: 1 1 auto; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed > [data-fit="row"] { flex-basis: 100%; }
 /* How wide the first line is on its own (ui/fit-grid.ts measures it for a moment): one line as wide as its content, without the cells. */
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line { width: max-content !important; flex-wrap: nowrap !important; }
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line > :is(.fit-cells, .fit-lead, .side-break) { display: none !important; }
