@@ -20,15 +20,17 @@ export const DAY_HOURS = 24;
 
 /**
  * What the choice comes to here: `auto` is the last hours on a phone in the hand or in a browser set to save data, and the day anywhere
- * else. A choice made holds on every screen, however the device is held or pointed at (a folding phone opened out, a tablet given a mouse).
- * Settings lights exactly this, so what it shows is what the next opening reads.
+ * else. A choice made holds wherever Settings can change it (`choosable`: the compact bar, whose Settings sheet holds it), however the
+ * device is held (a folding phone opened out). Where the desktop's full bar is up there is no Settings sheet, so a choice made does not
+ * apply there and the page reads as any desktop does: a choice that could not be changed back would be stuck. Settings lights exactly
+ * this, so what it shows is what the next opening reads.
  */
-export const effectiveChoice = (phone: boolean, choice: PhoneHistory, saveData: boolean): Exclude<PhoneHistory, 'auto'> =>
-  choice !== 'auto' ? choice : phone || saveData ? 'recent' : 'day';
+export const effectiveChoice = (phone: boolean, choice: PhoneHistory, saveData: boolean, choosable: boolean): Exclude<PhoneHistory, 'auto'> =>
+  choosable && choice !== 'auto' ? choice : phone || saveData ? 'recent' : 'day';
 
 /** The hours of history to read on opening: 0 reads none. `phone` is a phone in the hand (`isHandheldPhone`). */
-export function historyHours(phone: boolean, choice: PhoneHistory, saveData: boolean): number {
-  const chosen = effectiveChoice(phone, choice, saveData);
+export function historyHours(phone: boolean, choice: PhoneHistory, saveData: boolean, choosable: boolean): number {
+  const chosen = effectiveChoice(phone, choice, saveData, choosable);
   return chosen === 'off' ? 0 : chosen === 'recent' ? PHONE_RECENT_HOURS : DAY_HOURS;
 }
 

@@ -42,7 +42,7 @@ import { Layout } from './layout.ts';
 import { LayoutActions } from './layouts/actions.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
-import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode } from './device.ts';
+import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode, compactBar } from './device.ts';
 import './styles.css';
 import './mobile.css';
 import './chrome.css';
@@ -68,7 +68,7 @@ async function chooseSource(params: URLSearchParams, choice: CoinChoice, phoneHi
   const wanted = params.get('source');
   if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && await serverAnswers()))) return new ServerSource();
   // A phone in the hand reads a few hours of the recorded history, not the day (app/history-window.ts).
-  const historyHoursToRead = historyHours(isHandheldPhone(), phoneHistory, savesData());
+  const historyHoursToRead = historyHours(isHandheldPhone(), phoneHistory, savesData(), compactBar());
   return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier, historyHours: historyHoursToRead });
 }
 
