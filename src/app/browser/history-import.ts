@@ -155,7 +155,7 @@ export async function importHistory({ url, held, add, since, now, budgetMs = 5_0
       if (!response.ok) return { ...done, error: `latest.json: HTTP ${response.status}` };
       latest = await response.json() as HistoryLatest;
     } finally { clearTimeout(firstTimer); abort.signal.removeEventListener('abort', stop); }
-    if (!latest || latest.v !== 1 || typeof latest.steps !== 'object' || latest.steps === null) return { ...done, error: 'latest.json: not version 1' };
+    if (!latest || latest.v !== 1 || typeof latest.steps !== 'object' || latest.steps === null) return { ...done, error: `latest.json: version ${String((latest as { v?: unknown } | null)?.v)}` };
     const steps: Record<string, number> = {};
     for (const [inst, step] of Object.entries(latest.steps)) if (typeof step === 'number' && step > 0 && Number.isFinite(step)) steps[inst] = step;
     latest = { ...latest, steps };
