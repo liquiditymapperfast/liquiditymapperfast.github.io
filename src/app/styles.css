@@ -47,11 +47,20 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 /* Grids share the room evenly, each column never narrower than what it holds: a deck is never wider than its row gives it. */
 .toolbar.cockpit.wrapped:not(.fitting) .deck-time .seg { grid-template-columns: repeat(4, minmax(max-content, 1fr)); }
 .toolbar.cockpit.wrapped:not(.fitting) .deck-panels .seg.toggles { grid-template-columns: repeat(6, minmax(max-content, 1fr)); }
-/* The Chart deck's switches in columns of one width where the room allows, its two rows alike. */
-.toolbar.cockpit.wrapped:not(.fitting) .deck-chart .deck-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); }
-/* The heatmap's three menus of one width; its colour scale the widest of the row under them. */
-.toolbar.cockpit.wrapped:not(.fitting) .deck-heat .deck-row:first-of-type > select { flex: 1 1 0; min-width: 0; max-width: none; }
-.toolbar.cockpit.wrapped:not(.fitting) .deck-heat .scale { flex: 2 1 120px; }
+/* The Chart, Heatmap and Alerts decks: their rows one grid of aligned columns (toolbar.ts #alignDecks writes the columns and the spans), at the
+   deck's own width or, grown with its row, sharing the room by the columns' own proportions. Each control fills its column. */
+.toolbar .deck.deck-grid { display: grid; grid-template-columns: var(--deck-cols-px); align-content: center; gap: 4px; }
+.toolbar.cockpit.wrapped:not(.fitting) .deck.deck-grid { grid-template-columns: var(--deck-cols-fr); }
+.toolbar .deck.deck-grid > .deck-row { display: contents; }
+.toolbar .deck.deck-grid > .deck-row > * { width: auto; max-width: none; min-width: 0; justify-self: stretch; }
+.toolbar .deck.deck-grid .split > button:first-child { flex: 1 1 auto; min-width: 0; }
+/* Where aligning would widen a deck: each row's controls share the room to its end (the coin's button keeps its size). */
+.toolbar .deck.deck-flush > .deck-row > :is(button, select, .seg, .split, .scale):not(.coin-btn) { flex: 1 1 auto; }
+.toolbar .deck.deck-flush .split > button:first-child { flex: 1 1 auto; }
+.toolbar .deck.deck-flush .seg:not(.toggles) > button { flex: 1 1 0; }
+/* The heatmap's three menus of one width once its deck has grown with its row (their own cap is for the bar at its own size); its colour scale the widest of the row under them. */
+.toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .deck-row:first-of-type > select { flex: 1 1 0; min-width: 0; max-width: none; }
+.toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .scale { flex: 2 1 120px; }
 .toolbar.cockpit.fitting { zoom: var(--fit-zoom, 1); flex-wrap: nowrap; }
 .toolbar.cockpit.fitting > .deck { flex: none; }
 .toolbar.cockpit > .deck-break { flex: 0 0 100%; height: 0; margin-top: -4px; }
@@ -230,10 +239,9 @@ html[data-layout="desktop"] .pane-head.has-tools { position: relative; padding-r
 .pane-tools { position: absolute; top: 3px; right: 4px; z-index: 7; display: flex; gap: 2px; }
 html[data-layout^="phone"] .pane-tools { display: none; }
 /* A side pane's header (layout.ts #mover) is one header: its handle, its name, the "?", the menu and the close button on the first line, whatever the width of its column (it can
-   be made as narrow as 200 px), the pane's first controls joining that line where the column is wide (the @container rules, here and under each pane), the others on the lines
-   under it. A title bar of its own above the header (Karl, 2026-11-01) left the header's first line holding the "?" and the settings key alone: three rows where two or one do. */
+   be made as narrow as 200 px), its controls joining that line when they all fit there and otherwise in rows under it (the fit grid, below). A title bar of its own above the header (Karl, 2026-11-01) left the header's first line holding the "?" and the settings key alone: three rows where two or one do. */
 .side-break { display: none; }
-html[data-layout="desktop"] .pane-head.side-head { --head-row-gap: 5px; row-gap: var(--head-row-gap); container: sidehead / inline-size; cursor: grab; touch-action: none; user-select: none; }
+html[data-layout="desktop"] .pane-head.side-head { --head-row-gap: 5px; row-gap: var(--head-row-gap); cursor: grab; touch-action: none; user-select: none; }
 html[data-layout="desktop"] .side-head > .grip { order: -2; }
 /* The name takes the room it needs and no more, and gives way (ending in "…") before the line breaks, so that the menu and the close button never leave the first line. */
 html[data-layout="desktop"] .side-head > strong { order: -1; flex: 1 1 0; min-width: 2.2em; max-width: max-content; overflow: hidden; text-overflow: ellipsis; }
@@ -338,44 +346,38 @@ html[data-bar="compact"] .toast { bottom: 76px; }
 .cvd-wrap canvas { position: absolute; left: 0; top: 0; display: block; }
 .cvd-wrap canvas.cvd-flash { pointer-events: none; }
 .pane.cvd .cvd-span-select { display: none; }
-/* On the desktop the first line of the flow column holds its name, the "?", the settings key and the menu and the close button, and the span buttons take the second line
-   whole; where the column is wide enough they join the first line, between the "?" and the settings key (a phone swaps the buttons for a select). */
+/* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop they are a grid of aligned columns
+   under the first line, as few rows as fit, each row ending flush at the right (a shorter last row's cells share its spare columns), or on the first line itself when all of
+   them fit there (the header's fit-inline class), or the first of them there and the others under it. The script sets the columns and the spans; this sets the grid. On a phone the container is not a box at all, and the header keeps its own layout. */
+.fit-cells { display: contents; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells { display: grid; order: 4; flex: 1 0 100%; column-gap: 8px; row-gap: var(--head-row-gap, 5px); align-items: center; min-width: 0; }
+/* The cells that fit on the first line are moved there (fit-lead), behind the "?", at their own width: the room left over is the name's, then
+   the menu's. With all of them there the grid is empty and is no line at all. */
+html[data-layout="desktop"] .pane .pane-head > .fit-lead { order: 1; flex: none; margin: 0; }
+html[data-layout="desktop"] .pane .pane-head.fit-inline > .fit-cells:not(.fit-measuring) { display: none; }
+html[data-layout="desktop"] .pane .pane-head.fit-inline > .side-break { display: none; }
+html[data-layout="desktop"] .pane .pane-head.fit-inline > .pane-tools { order: 3; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > * { margin: 0; min-width: 0; justify-self: stretch; }
+/* A caption and its select are one cell: the caption as wide as the widest of its column (--fit-cap), then the select taking the rest, so the
+   selects of a column start and end at the same place. Measured, it is the caption at its own width. */
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl { display: grid; grid-template-columns: var(--fit-cap, max-content) minmax(0, 1fr); }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl { display: inline-flex; }
+/* Packed (a column too narrow for aligned columns): rows filled in order, each stretched to end flush; a row cell on a row of its own. */
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed { display: flex; flex-wrap: wrap; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed > * { flex: 1 1 auto; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed > [data-fit="row"] { flex-basis: 100%; }
+/* How wide the first line is on its own (ui/fit-grid.ts measures it for a moment): one line as wide as its content, without the cells. */
+html[data-layout="desktop"] .pane .pane-head.fit-measuring-line { width: max-content !important; flex-wrap: nowrap !important; }
+html[data-layout="desktop"] .pane .pane-head.fit-measuring-line > :is(.fit-cells, .fit-lead, .side-break) { display: none !important; }
+/* How wide each cell is on its own: measured for a moment side by side, out of the header's flow and unseen. */
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring { position: absolute; visibility: hidden; display: flex; flex-wrap: nowrap; width: max-content; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > * { flex: none; }
+/* The flow column: its settings key beside the "?" on the first line; the span buttons are its one cell, a whole row under that line or between the "?" and the key. */
 html[data-layout="desktop"] .pane.cvd .side-head > .cvd-gear { order: 1; margin-left: 0; }
-html[data-layout="desktop"] .pane.cvd .side-head > .cvd-seg { order: 4; flex: 1 1 100%; }
-html[data-layout="desktop"] .pane.cvd .side-head > .cvd-seg button { flex: 1 1 0; }
-/* The width a tier starts at is the widest first line of the eleven languages (measured in headless Chrome, 2026-11-01) and 5 % more; a touch screen's buttons are bigger, so its tier starts later
-   (tests/app-side-head.test.mts keeps the numbers). */
-@media not all and (pointer: coarse) {
-  @container sidehead (min-width: 440px) {
-    html[data-layout="desktop"] .pane.cvd .side-head > .cvd-seg { order: 1; flex: 1 1 200px; min-width: 200px; }
-    html[data-layout="desktop"] .pane.cvd .side-head > .cvd-gear { order: 2; }
-    html[data-layout="desktop"] .pane.cvd .side-head > .pane-tools { order: 3; }
-    html[data-layout="desktop"] .pane.cvd .side-head > .side-break { display: none; }
-  }
-}
-@media (pointer: coarse) {
-  @container sidehead (min-width: 525px) {
-    html[data-layout="desktop"] .pane.cvd .side-head > .cvd-seg { order: 1; flex: 1 1 265px; min-width: 265px; }
-    html[data-layout="desktop"] .pane.cvd .side-head > .cvd-gear { order: 2; }
-    html[data-layout="desktop"] .pane.cvd .side-head > .pane-tools { order: 3; }
-    html[data-layout="desktop"] .pane.cvd .side-head > .side-break { display: none; }
-  }
-}
-/* The book's Recenter sits at the end of its first line of controls, beside the mode, not alone on the last one: under the name and the "?" where the column is narrow, beside
-   the name, the "?" and the mode where it is wide. (All its controls on one line take about 950 px: not a width a column is made to.) */
+html[data-layout="desktop"] .pane.cvd .pane-head.fit-inline > .cvd-gear { order: 2; }
+html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg { display: flex; }
+html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; }
 .pane.ladder .pane-head .recenter-btn { margin-left: auto; }
-@media not all and (pointer: coarse) {
-  @container sidehead (min-width: 470px) {
-    html[data-layout="desktop"] .pane.ladder .side-head > label.ctl:first-of-type { order: 1; }
-    html[data-layout="desktop"] .pane.ladder .side-head > .recenter-btn { order: 1; margin-left: 0; }
-  }
-}
-@media (pointer: coarse) {
-  @container sidehead (min-width: 560px) {
-    html[data-layout="desktop"] .pane.ladder .side-head > label.ctl:first-of-type { order: 1; }
-    html[data-layout="desktop"] .pane.ladder .side-head > .recenter-btn { order: 1; margin-left: 0; }
-  }
-}
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 
 .pane-head { display: flex; align-items: center; gap: 10px; min-height: 26px; padding: 2px 10px; flex: 0 0 auto; flex-wrap: wrap; border-bottom: 1px solid var(--line); font-size: 11px; }

@@ -8,6 +8,7 @@ import { venueLabel } from './panes/ladder-pane.ts';
 import { el } from './dom.ts';
 import { BAR_ZOOM_FLOOR, arrangeBar, type BarFit } from './bar-fit.ts';
 import { lazy } from './lazy.ts';
+import { alignRows } from './ui/fit-grid.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
@@ -96,6 +97,9 @@ function settingsKey(name: string): HTMLButtonElement {
  * One deck of the full top bar: a framed group (a fieldset, whose legend sits in the frame line) of up to two rows of controls. Its frame is
  * the theme's (chrome.css): an etched group box on the bevel, a double rule in text mode, a hairline pair in the editor.
  */
+/** The decks whose rows end together, in aligned columns where that costs no width (Toolbar #alignDecks), and how much width is no cost. */
+const ALIGNED_DECKS = new Set(['market', 'heat', 'chart', 'alerts']), ALIGN_SLACK_PX = 4;
+
 function deck(id: string, title: string, ...rows: HTMLElement[][]): HTMLElement {
   const box = el('fieldset', { class: `deck deck-${id}` }, el('legend', { textContent: title }),
     ...rows.filter(r => r.length).map(r => el('div', { class: 'deck-row' }, ...r)));
@@ -281,6 +285,8 @@ export class Toolbar {
   #fitted: BarFit | null = null; #fittedOrder = ''; #deckBreaks: HTMLElement[] = []; #fitFrame = 0;
   /** The full bar's decks in their own order (the one row's); in rows they stand in `ROWS_ORDER` (bar-fit.ts). */
   #decks: HTMLElement[] = [];
+  /** The controls given a span by #alignDecks, so that it can be taken back when they leave their deck. */
+  #spanned: HTMLElement[] = [];
   /** Settings' "Keep screen on" switch (only where the browser can hold the screen awake). */
   #awake = el('input', { type: 'checkbox' });
   #recenter = el('button', { textContent: t('Recenter'), tip: t('Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).') });
@@ -655,6 +661,7 @@ export class Toolbar {
     const bar = this.root;
     // A bar folded away has no decks to measure (they are not laid out): its fit stays, and is right again the moment it unfolds.
     if (!bar.classList.contains('cockpit') || !bar.isConnected || bar.classList.contains('collapsed')) return;
+    this.#alignDecks();
     const decks = this.#decks.filter(d => d.parentElement === bar), ids = decks.map(d => d.dataset.deck ?? ''), style = getComputedStyle(bar);
     const gap = parseFloat(style.columnGap) || 0, pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
     // The decks' own widths with the bar scaled by `zoom`, in the bar's own px: text drawn at a fractional zoom is a little wider than the
@@ -704,8 +711,41 @@ export class Toolbar {
     }
     bar.classList.toggle('wrapped', this.#deckBreaks.length > 0);
   }
+  /**
+   * A deck's rows end together at both its edges (Karl, 2026-11-01: a deck's two rows did not line up, and a row shorter than the other ended
+   * short of the deck's edge). Where it costs the deck no width (at most ALIGN_SLACK_PX), its rows are one grid (fit-grid.ts `alignRows`): as
+   * many columns as the longest row has controls, each as wide as the widest control in it, a shorter row's spare column given to the control
+   * that costs least, written as `--deck-cols-px` (the deck at its own width) and `--deck-cols-fr` (a deck grown with its row shares the room
+   * by the same proportions). Where aligning would widen the deck, and so break the bar into rows sooner, each row's controls only share the
+   * room to its end (`deck-flush`). The controls are measured at their own size (the deck laid out in rows, the bar as it is measured). Time,
+   * Panels and Tools are grids of their own.
+   */
+  #alignDecks(): void {
+    const bar = this.root, decks = this.#decks.filter(d => ALIGNED_DECKS.has(d.dataset.deck ?? '') && d.parentElement === bar);
+    for (const c of this.#spanned.splice(0)) c.style.removeProperty('grid-column');
+    if (!decks.length) return;
+    const zoom = bar.style.getPropertyValue('--fit-zoom');
+    bar.style.setProperty('--fit-zoom', '1'); bar.classList.add('fitting');
+    for (const d of decks) d.classList.remove('deck-grid', 'deck-flush');
+    const shown = (c: Element): c is HTMLElement => c instanceof HTMLElement && !c.hidden && getComputedStyle(c).display !== 'none';
+    const rows = decks.map(d => [...d.querySelectorAll(':scope > .deck-row')].map(r => [...r.children].filter(shown)).filter(r => r.length));
+    const widths = rows.map(rs => rs.map(r => r.map(c => c.getBoundingClientRect().width)));
+    const gaps = decks.map(d => { const r = d.querySelector(':scope > .deck-row'); return r ? parseFloat(getComputedStyle(r).columnGap) || 0 : 0; });
+    bar.classList.remove('fitting');
+    if (zoom) bar.style.setProperty('--fit-zoom', zoom); else bar.style.removeProperty('--fit-zoom');
+    decks.forEach((d, k) => {
+      const { cols, spans, width, natural } = alignRows(widths[k]!, gaps[k]!);
+      if (width > natural + ALIGN_SLACK_PX) { d.classList.add('deck-flush'); return; }
+      const px = cols.map(w => `${w.toFixed(2)}px`);
+      d.style.setProperty('--deck-cols-px', px.join(' '));
+      d.style.setProperty('--deck-cols-fr', cols.map((w, i) => `minmax(${px[i]}, ${Math.max(1, w).toFixed(2)}fr)`).join(' '));
+      rows[k]!.forEach((r, i) => r.forEach((c, j) => { const span = spans[i]![j]!; if (span > 1) { c.style.gridColumn = `span ${span}`; this.#spanned.push(c); } }));
+      d.classList.add('deck-grid');
+    });
+  }
   /** The compact bar is not scaled or broken: what the full bar applied is let go. */
   #unfit(): void {
+    for (const c of this.#spanned.splice(0)) c.style.removeProperty('grid-column');
     this.root.style.removeProperty('--bar-zoom'); this.root.classList.remove('fitting', 'wrapped');
     for (const b of this.#deckBreaks) b.remove();
     this.#deckBreaks = []; this.#fitted = null; this.#fittedOrder = '';

@@ -38,6 +38,7 @@ import { drawVenueMark } from '../venue-marks.ts';
 import type { RangeTool } from '../range/tool.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
 import { flowEndChange, type FlowEnd } from '../cvd/flash.ts';
+import { FitGrid } from '../ui/fit-grid.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const PAD = 6, LINE_H = 12;
@@ -123,6 +124,8 @@ export class CvdPane {
    */
   #scrub: { x: number; y: number } | null = null; #pin: { t: number; y: number } | null = null;
   #readout = el('span', { class: 'readout' });
+  /** The header's layout (ui/fit-grid.ts). */
+  #fit: FitGrid | null = null;
   /** A fling after a vertical drag (the frame running it), and the finger separation a pinch counts its steps from. */
   #fling = 0; #pinchBase = 0;
   /** The Range tool (set by the page): a sideways drag across the lines selects that stretch of time. */
@@ -248,7 +251,11 @@ export class CvdPane {
     this.#spanSelect.onchange = () => this.#set({ span: this.#spanSelect.value as CvdSpan });
     this.#gear.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
     this.#gear.onclick = () => { this.#panel = togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#buildSettings(body)); };
-    this.controls.append(el('strong', { textContent: t('Flow'), tip: t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.') }), seg, this.#spanSelect, this.#gear, helpButton('cvd'), this.#readout);
+    // The span buttons are the header's one cell (ui/fit-grid.ts): on the title's line when they fit there, a whole row under it when not.
+    seg.dataset.fit = 'row';
+    const cells = el('div', {}, seg);
+    this.controls.append(el('strong', { textContent: t('Flow'), tip: t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.') }), cells, this.#spanSelect, this.#gear, helpButton('cvd'), this.#readout);
+    this.#fit = new FitGrid(this.controls, cells, this.root);
     this.#syncControls();
   }
   #syncControls(): void {

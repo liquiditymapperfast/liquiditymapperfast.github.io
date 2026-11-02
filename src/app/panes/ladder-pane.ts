@@ -30,6 +30,7 @@ import { PullHistory, pullBase, readPullWindow, type PullRows } from './pull-sta
 import { lineSide } from '../price-line.ts';
 import { t } from '../i18n.ts';
 import { replaying } from '../replay/clock.ts';
+import { FitGrid } from '../ui/fit-grid.ts';
 
 const ROW_H = 17;
 const HEAD_H = 20;
@@ -139,6 +140,8 @@ export class LadderPane {
   curveOverBars = CURVE_OVER_BAR_SHARE;
   /** The line that was under the pointer in the frame before this one (`hoveredCurve` is cleared as a frame starts): its dashes are drawn, so they answer the pointer. */
   #heldCurve: number | null = null;
+  /** The header's layout (ui/fit-grid.ts). */
+  #fit: FitGrid | null = null;
 
   constructor(host: HTMLElement, private store: Store, private kernels: Kernels, private hub: Pick<Hub, 'flow' | 'ensureFlow' | 'tape'> | null = null) {
     this.root.className = 'pane ladder';
@@ -373,13 +376,11 @@ export class LadderPane {
     setTip(this.#cuesButton, t('What lights in the book when a venue\'s displayed depth changes, and the heat strip under each cell. Hover a cell, or the mark beside a row, to see what changed.'));
     this.#cuesButton.onclick = () => { this.#cuesPanel = togglePanel(this.#cuesButton, { title: t('Order book cues'), width: 340, align: 'right', onClose: () => { this.#cuesPanel = null; } }, (_tools, body) => this.#buildCues(body)); };
     const show = this.#select(t('Show'), [['both', t('Levels + cum')], ['levels', t('Levels')], ['cumulative', t('Cumulative')]], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] }));
-    this.controls.append(title, helpButton('orderBook'),
-      this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
-      // The header's one action is on its first line, beside the title, the "?" and the mode: alone on the last line it read as an afterthought.
-      recenter,
-      group, curves,
-      show,
-      pull, this.#cuesButton, this.#booksButton);
+    // The controls are one fit grid (ui/fit-grid.ts): on the title's line when they all fit there, otherwise in aligned rows under it.
+    const cells = el('div', {}, this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] })),
+      recenter, group, curves, show, pull, this.#cuesButton, this.#booksButton);
+    this.controls.append(title, helpButton('orderBook'), cells);
+    this.#fit = new FitGrid(this.controls, cells, this.root);
     this.syncVenues();
     // On a phone the mode and the grouping stay in the row; the rest waits behind the key at its end (pane-tune.ts).
     addTune(this.controls, [curves, show, pull, this.#cuesButton, this.#booksButton], t('Order Book'));
