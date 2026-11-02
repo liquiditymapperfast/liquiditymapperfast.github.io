@@ -69,9 +69,9 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
       // The recorded history (app/history-url.ts): the minutes of the day before this visit, read before the engine starts so it starts with them.
       if (history) {
         const kept = recordings, now = Date.now(), since = now - BROWSER_RETENTION_MS, held = heldOf(kept.columns.load(since));
-        const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), since, now });
+        const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now });
         if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
-        if (done.columns) console.info(`recorded history: ${done.columns} map minutes from ${done.hours} hours`);
+        if (done.columns || done.rows) console.info(`recorded history: ${done.columns} map minutes and ${done.rows} other records from ${done.hours} hours`);
         // A book this page holds nothing of (and was given nothing of in time) records on the service's grid, so the next visit can show
         // the service's minutes with its own.
         for (const [inst, step] of Object.entries(done.steps ?? {})) if (!held.steps.has(inst)) gridSteps.set(inst, step);

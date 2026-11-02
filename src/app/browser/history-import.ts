@@ -1,11 +1,22 @@
 import { COLUMN_MS, type Column } from '../../shared/recorder.ts';
+import type { FlowMinuteRow } from '../../shared/flow.ts';
+import type { Liquidation } from '../../shared/liquidations.ts';
+import type { Print } from '../../shared/prints.ts';
+import type { CoverageRow, SeamTrade } from '../../shared/coverage.ts';
+import type { OiReading } from '../../shared/engine.ts';
 
 /**
- * The recorded map history (hlm-history): minute columns of the default books, recorded on a server by the same rules as this page records
- * them, one gzip file per hour. Read once when the page opens, before the engine starts, so the map shows the day before the visit instead
- * of starting empty. A minute the page already holds with at least as many samples stays as it is, and a book whose minutes here lie on
- * another grid step than the page's own keeps its own (the engine holds one step per book).
+ * The recorded history (hlm-history): minute columns of the default books, and their taker flow, liquidations, open interest, large trades
+ * and the stretches their trades were recorded over, recorded on a server by the same rules as this page records them, one gzip file per
+ * hour. Read once when the page opens, before the engine starts, so the panes show the day before the visit instead of starting empty. A
+ * minute the page already holds with at least as many samples stays as it is, and a book whose minutes here lie on another grid step than
+ * the page's own keeps its own (the engine holds one step per book).
  */
+
+/** The other recordings an hour file holds (hlm-history's rows.rs), as the page's stores keep them. */
+export interface HistoryRows { flow: FlowMinuteRow[]; liquidations: Liquidation[]; oi: OiReading[]; prints: Print[]; coverage: CoverageRow[] }
+export const noRows = (): HistoryRows => ({ flow: [], liquidations: [], oi: [], prints: [], coverage: [] });
+const finite = (...v: number[]): boolean => v.every(Number.isFinite);
 
 export const HOUR_MS = 3_600_000;
 /** Hour files read at once. */
@@ -25,20 +36,61 @@ export interface HistoryLatest { v: 1; coin: string; first: number | null; last:
  * null for a file that is not one. A record cut short at the end (the open hour, read while it is written) ends the list; a record that is
  * whole but does not hold a sane minute (of this hour, bins ascending, amounts finite and not negative) is left out, the rest kept.
  */
-export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: HistoryColumn[] } | null {
+export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: HistoryColumn[]; rows: HistoryRows } | null {
   const view = new DataView(buffer), size = buffer.byteLength;
   if (size < 16 || view.getUint32(0, false) !== 0x484c4d43 || view.getUint16(4, true) !== 1) return null;
-  const hour = Number(view.getBigInt64(8, true)), text = new TextDecoder(), columns: HistoryColumn[] = [];
+  const hour = Number(view.getBigInt64(8, true)), text = new TextDecoder(), columns: HistoryColumn[] = [], rows = noRows();
   for (let at = 16; at + 4 <= size;) {
     const length = view.getUint32(at, true), end = at + 4 + length;
     // The smallest record is 31 bytes (kind, id length, a one-letter id, time, samples, step, count, tracker samples): a shorter length is
     // not a record boundary (a zero-filled tail after a crash), and nothing after it can be trusted.
     if (end > size || length < 31) break;
-    const column = record(view, buffer, text, at + 4, end, hour);
-    if (column) columns.push(column);
+    if (view.getUint8(at + 4) === 1) { const column = record(view, buffer, text, at + 4, end, hour); if (column) columns.push(column); }
+    else other(view, buffer, text, at + 4, end, rows);
     at = end;
   }
-  return { hour, columns };
+  return { hour, columns, rows };
+}
+
+/**
+ * A record of another kind (rows.rs): 2 a flow minute, 3 a liquidation, 4 an open-interest reading, 5 a large trade, 6 a stretch of trade
+ * coverage, into `rows` when it is whole and sane; a kind this page does not know is passed over.
+ */
+function other(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: number, end: number, rows: HistoryRows): void {
+  const kind = view.getUint8(from), idLength = view.getUint8(from + 1);
+  let p = from + 2;
+  if (!idLength || p + idLength > end) return;
+  const id = text.decode(new Uint8Array(buffer, p, idLength)); p += idLength;
+  const has = (n: number): boolean => p + n <= end;
+  const i64 = (): number => { const v = Number(view.getBigInt64(p, true)); p += 8; return v; };
+  const f64 = (): number => { const v = view.getFloat64(p, true); p += 8; return v; };
+  const u8 = (): number => view.getUint8(p++);
+  const f32s = (): Float32Array => { const v = new Float32Array(buffer.slice(p, p + 240)); p += 240; return v; };
+  if (kind === 2 && has(8 + 720)) {
+    const t = i64(), buy = f32s(), sell = f32s(), px = f32s();
+    const sane = (a: Float32Array): boolean => a.every(v => v >= 0 && Number.isFinite(v));
+    if (t % COLUMN_MS === 0 && sane(buy) && sane(sell) && sane(px)) rows.flow.push({ inst: id, t, buy, sell, px });
+  } else if (kind === 3 && has(34)) {
+    const t = i64(), long = u8() === 1, price = f64(), usd = f64(), reported = f64(), bankruptcy = u8() === 1;
+    if (finite(t, price, usd, reported) && price > 0 && usd > 0 && reported > 0) rows.liquidations.push({ t, id, side: long ? 'long' : 'short', price, usd, reported, kind: bankruptcy ? 'bankruptcy' : 'fill' });
+  } else if (kind === 4 && has(33)) {
+    const t = i64(), at = i64(), base = f64(), quoted = u8() === 1, quote = f64();
+    if (finite(t, at, base) && base > 0 && t % COLUMN_MS === 0 && (!quoted || (quote > 0 && Number.isFinite(quote)))) rows.oi.push({ venue: id, t, at, base, ...(quoted ? { quote } : {}) });
+  } else if (kind === 5 && has(46)) {
+    const t = i64(), buy = u8() === 1, price = f64(), usd = f64(), span = u8() === 1, lo = f64(), hi = f64(), n = view.getUint32(p, true);
+    if (finite(t, price, usd) && price > 0 && usd > 0 && (!span || (lo > 0 && hi >= lo && Number.isFinite(hi) && n > 0))) rows.prints.push({ t, id, side: buy ? 'buy' : 'sell', price, usd, ...(span ? { lo, hi, n } : {}) });
+  } else if (kind === 6 && has(17)) {
+    const fromT = i64(), to = i64(), recovered = u8() === 1, seams: (SeamTrade | null)[] = [];
+    for (let k = 0; k < 2; k++) {
+      if (!has(2)) return;
+      const present = u8() === 1, length = u8();
+      if (!has(length + 8)) return;
+      const seamId = text.decode(new Uint8Array(buffer, p, length)); p += length;
+      const t = i64();
+      seams.push(present && seamId && Number.isFinite(t) ? { id: seamId, t } : null);
+    }
+    if (finite(fromT, to) && to > fromT) rows.coverage.push({ inst: id, metric: 'trades', from: fromT, to, kind: recovered ? 'recovered' : 'live', ...(seams[0] ? { first: seams[0] } : {}), ...(seams[1] ? { last: seams[1] } : {}) });
+  }
 }
 
 /** One record of an hour file, or null when it is not a column of this hour that can be shown. */
@@ -121,6 +173,17 @@ export function hoursToRead(latest: HistoryLatest, held: Held, since: number, no
   return out;
 }
 
+/**
+ * The rows of [since, before): the minute under way is the page's own (its trades arrive live), and a stretch of coverage is cut at it.
+ */
+export function within(rows: HistoryRows, since: number, before: number): HistoryRows {
+  const inside = (t: number): boolean => t >= since && t < before;
+  return {
+    flow: rows.flow.filter(r => inside(r.t)), liquidations: rows.liquidations.filter(r => inside(r.t)), oi: rows.oi.filter(r => inside(r.t)), prints: rows.prints.filter(r => inside(r.t)),
+    coverage: rows.coverage.filter(r => r.to > since && r.from < before).map(r => r.to > before ? { ...r, to: before, ...(r.last && r.last.t >= before ? { last: undefined } : {}) } : r).map(r => { if (r.last === undefined) { const { last: _last, ...rest } = r; return rest; } return r; }),
+  };
+}
+
 type Fetch = (url: string, init: { signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; arrayBuffer(): Promise<ArrayBuffer> }>;
 
 export interface ImportOptions {
@@ -130,6 +193,8 @@ export interface ImportOptions {
   held: Held;
   /** Adds columns to the recordings (memory and storage); returns how many it took. */
   add: (columns: HistoryColumn[]) => number;
+  /** Adds the other recordings (flow, liquidations, open interest, large trades, trade coverage) the same way; returns how many it took. */
+  addRows?: (rows: HistoryRows) => number;
   since: number; now: number;
   /**
    * The whole import gives up after this, and the service's `latest.json` after `latestMs`: the page's map waits for it, so a service that
@@ -143,9 +208,9 @@ export interface ImportOptions {
  * Reads the hours the page lacks, newest first (what runs out of time is the oldest), and adds their minutes; resolves with what it did and
  * the service's grid steps, never rejects.
  */
-export async function importHistory({ url, held, add, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; failed: number; steps?: Record<string, number>; error?: string }> {
+export async function importHistory({ url, held, add, addRows, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; rows: number; failed: number; steps?: Record<string, number>; error?: string }> {
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), budgetMs);
-  const done = { hours: 0, columns: 0, failed: 0 };
+  const done = { hours: 0, columns: 0, rows: 0, failed: 0 };
   try {
     const first = new AbortController(), firstTimer = setTimeout(() => first.abort(), latestMs), stop = (): void => first.abort();
     abort.signal.addEventListener('abort', stop);
@@ -170,7 +235,9 @@ export async function importHistory({ url, held, add, since, now, budgetMs = 5_0
           const take = planImport(held, file.columns, since, before, latest.steps);
           // What is added counts as held, so a later hour (or a minute sent twice) is judged against it.
           for (const c of take) { held.samples.set(`${c.inst}|${c.column.t}`, c.column.n); if (!held.steps.has(c.inst)) held.steps.set(c.inst, c.step); }
-          done.columns += add(take); done.hours++;
+          done.columns += add(take);
+          if (addRows) done.rows += addRows(within(file.rows, since, before));
+          done.hours++;
         } catch { done.failed++; }
       }
     };

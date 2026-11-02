@@ -7,6 +7,7 @@ import { hoursOf, peakOf, type AbsorptionGroup, type AbsorptionMinute, type Abso
 import type { CoverageRow, CoverageStore } from '../../shared/coverage.ts';
 import { largestLiquidations, liquidationKey, type Liquidation, type LiquidationStore } from '../../shared/liquidations.ts';
 import type { OiReading, OiStore } from '../../shared/engine.ts';
+import type { HistoryRows } from './history-import.ts';
 
 /**
  * Recordings kept in this browser (IndexedDB): the same four stores the server keeps in SQLite. The recorders read everything they
@@ -100,6 +101,12 @@ export interface Recordings {
    * hands them, in place of a thinner copy of the same minute, and is stored as this tab's own recordings are. Returns how many it took.
    */
   importColumns(columns: readonly { inst: string; step: number; column: Column }[]): number;
+  /**
+   * The same for the other recordings: a flow minute joins second by second where it is the fuller copy, a liquidation or an open-interest
+   * reading the page does not hold is added, a large trade only outside the stretches this page recorded itself (where its own are the ones
+   * to keep: an order rebuilt from the same fills elsewhere may differ in its price), and the stretches of trade coverage are added.
+   */
+  importRows(rows: HistoryRows): number;
   /** Apply what is queued now instead of at the next half second. */
   flush(): Promise<void>;
   close(): void;
@@ -327,8 +334,44 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     }
     return taken;
   };
+  const importRows = (incoming: HistoryRows): number => {
+    let taken = 0;
+    // Flow: second by second, the fuller copy (as two tabs' copies of a minute are merged).
+    const flowAt = new Map<string, number>();
+    flowRows.forEach((row, i) => flowAt.set(`${row.inst}|${row.t}`, i));
+    for (const row of incoming.flow) {
+      const i = flowAt.get(`${row.inst}|${row.t}`), merged = fullerFlowMinute(i === undefined ? undefined : flowRows[i], row);
+      if (!merged) continue;
+      if (i === undefined) { flowAt.set(`${row.inst}|${row.t}`, flowRows.length); flowRows.push(merged); } else flowRows[i] = merged;
+      taken++;
+    }
+    if (incoming.flow.length) flow.save(incoming.flow, since);
+    // Liquidations and open-interest readings the page does not hold (a liquidation is known by the venue's own facts).
+    const newLiquidations = incoming.liquidations.filter(row => !everyLiquidation.has(liquidationKey(row)));
+    for (const row of newLiquidations) { const k = liquidationKey(row); everyLiquidation.set(k, { ...row, k }); liquidationRows.push({ ...row, k }); }
+    if (newLiquidations.length) { liquidationRows.sort((a, b) => a.t - b.t); liquidations.save(newLiquidations, since); taken += newLiquidations.length; }
+    const oiHeld = new Set(oiRows.map(row => `${row.venue}|${row.t}`));
+    const newOi = incoming.oi.filter(row => !oiHeld.has(`${row.venue}|${row.t}`));
+    if (newOi.length) { oiRows.push(...newOi); oi.save(newOi, since); taken += newOi.length; }
+    // Large trades only where this page did not record the trades itself.
+    const own = new Map<string, [number, number][]>();
+    for (const row of coverRows) if (row.metric === 'trades') { let list = own.get(row.inst); if (!list) own.set(row.inst, list = []); list.push([row.from, row.to]); }
+    const ownsIt = (id: string, t: number): boolean => (own.get(id) ?? []).some(([a, b]) => t >= a && t < b);
+    const newPrints = incoming.prints.filter(row => !ownsIt(row.id, row.t) && !everyPrint.has(printKey(row)));
+    if (newPrints.length) {
+      for (const row of newPrints) printRows.push({ ...row, k: printKey(row) });
+      printRows.sort((a, b) => a.t - b.t);
+      prints.save(newPrints, since); taken += newPrints.length;
+    }
+    // The stretches the service recorded trades over: a gap there is not one this page recovers or reports.
+    if (incoming.coverage.length) {
+      for (const row of incoming.coverage) coverRows.push({ ...row, t: row.to });
+      coverage.save(incoming.coverage, since); taken += incoming.coverage.length;
+    }
+    return taken;
+  };
   return {
-    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns,
+    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns, importRows,
     flush() { if (timer) clearTimeout(timer); return write(); },
     close() { if (timer) clearTimeout(timer); void write().finally(() => { closed = true; db.close(); }); },
   };
