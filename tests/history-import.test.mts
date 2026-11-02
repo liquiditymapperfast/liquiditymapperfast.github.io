@@ -87,7 +87,7 @@ test('the whole import against a stand-in service: the hours it lacks, then a fi
 });
 
 test('the address: none unless configured, a local stand-in or off from the page address, and only for coins the service records', () => {
-  assert.equal(historyUrl('BTC', ''), '');
+  assert.equal(historyUrl('BTC', ''), 'https://history.hiverust.dev/v1/btc', 'the service on hiverust');
   assert.equal(historyUrl('BTC', '?history=http://127.0.0.1:8791/v1/btc/'), 'http://127.0.0.1:8791/v1/btc');
   assert.equal(historyUrl('BTC', '?history=https://evil.example/v1/btc'), '', 'only a local stand-in may replace it');
   assert.equal(historyUrl('BTC', '?history=off'), '');

@@ -1,9 +1,9 @@
 /**
- * Where the recorded map history is read (hlm-history on hiverust behind a Cloudflare tunnel): the address of its folder for this coin,
+ * Where the recorded map history is read (hlm-history on hiverust behind a Cloudflare tunnel, 2026-11-02): the address of its folder for this coin,
  * with `latest.json` and one file per hour under it. Empty means no service: the page records what it sees from the moment it opens, as
  * it always did.
  */
-export const HISTORY_URL = '';
+export const HISTORY_URL = 'https://history.hiverust.dev/v1/btc';
 
 /** The coins the service records (its folders are named by them, in lower case). */
 const RECORDED = new Set(['BTC']);
