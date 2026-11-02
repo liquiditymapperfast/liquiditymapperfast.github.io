@@ -221,7 +221,7 @@ export class CvdPane {
   }
   /** Trades that printed just now, for the blink of the dot rows. */
   flash(prints: readonly Print[]): void { this.#strip.flash(prints); }
-  dispose(): void { window.clearInterval(this.#timer); window.clearTimeout(this.#flashTimer); this.#stopFling(); for (const off of this.#off) off(); this.#off = []; this.#strip.dispose(); }
+  dispose(): void { window.clearInterval(this.#timer); window.clearTimeout(this.#flashTimer); this.#stopFling(); for (const off of this.#off) off(); this.#off = []; this.#strip.dispose(); this.#fit?.disconnect(); }
 
   /** What the last frame drew. */
   get snapshot(): CvdSnapshot {

@@ -502,7 +502,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"][data-bar="compact"] button.help { margin: 0 2px; }
 :root[data-frame="bevel"][data-bar="compact"] .sheet-sec-head button.help, :root[data-frame="bevel"][data-bar="compact"] .panel-tools button.help { width: 28px; height: 28px; }
 :root[data-frame="bevel"][data-bar="compact"] :is(.sheet-sec-head, .panel-tools) button.help::before { left: calc(50% - 6px); top: calc(50% - 9px); width: 12px; height: 18px; -webkit-mask-size: 12px 18px; mask-size: 12px 18px; }
-:root[data-frame="bevel"][data-layout^="phone"] .pane-head button.help { width: 22px; height: 22px; }
+:root[data-frame="bevel"][data-layout^="phone"] :is(.pane-head, .liq-head) button.help { width: var(--ph-key-w); height: var(--ph-ctl-h); margin: 0; }
 :root[data-frame="bevel"][data-bar="compact"] .pane-head button.help::before { left: calc(50% - 3px); top: calc(50% - 5px); }
 /* A lamp is a check box of 20 px on a phone, its check drawn at twice the size; so are the plain check boxes. */
 :root[data-frame="bevel"] .sheet .led-btn { padding-left: 40px; }

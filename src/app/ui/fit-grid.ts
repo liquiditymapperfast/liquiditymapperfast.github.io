@@ -157,6 +157,7 @@ export class FitGrid {
   #leads: { cell: HTMLElement; mark: Comment }[] = [];
   readonly #changes: MutationObserver;
   readonly #observers: { disconnect(): void }[] = [];
+  #gone = false;
 
   constructor(private readonly head: HTMLElement, readonly cells: HTMLElement, watch: HTMLElement = head) {
     cells.classList.add('fit-cells');
@@ -169,9 +170,11 @@ export class FitGrid {
     this.#changes.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'], attributeOldValue: true, characterData: true, characterDataOldValue: true });
     // The arrangement (desktop or phone), the frame and theme (their faces and sizes) and the language are attributes of the root element.
     this.#changes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-layout', 'data-frame', 'data-theme', 'lang'] });
-    document.fonts?.addEventListener?.('loadingdone', () => this.refit(false, true));
+    const fonts = (): void => { if (!this.#gone) this.refit(false, true); };
+    document.fonts?.addEventListener?.('loadingdone', fonts);
+    this.#observers.push({ disconnect: () => document.fonts?.removeEventListener?.('loadingdone', fonts) });
     this.#observers.push(resize, this.#changes);
-    void document.fonts?.ready.then(() => this.refit(true));
+    void document.fonts?.ready.then(() => { if (!this.#gone) this.refit(true); });
   }
 
   /** The layout in use (null on a phone, or before the first fit), for tests. */
@@ -284,7 +287,7 @@ export class FitGrid {
     this.#quiet();
   }
 
-  disconnect(): void { for (const o of this.#observers) o.disconnect(); }
+  disconnect(): void { this.#gone = true; for (const o of this.#observers.splice(0)) o.disconnect(); }
 }
 
 /** Every way to give `spare` more columns to `k` controls, those giving them to the last controls first. */

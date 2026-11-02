@@ -383,7 +383,9 @@ html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > * { fl
 html[data-layout="desktop"] .pane.cvd .side-head > .cvd-gear { order: 1; margin-left: 0; }
 html[data-layout="desktop"] .pane.cvd .pane-head.fit-inline > .cvd-gear { order: 2; }
 html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg:not([hidden]) { display: flex; }
-html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; padding-left: 2px; padding-right: 2px; }
+html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; }
+/* Its buttons padded alike in the grid and on the first line, so that it is as wide as it was measured wherever it goes. */
+html[data-layout="desktop"] .pane.cvd .pane-head > :is(.fit-cells > .cvd-seg, .cvd-seg.fit-lead) button { padding-left: 2px; padding-right: 2px; }
 .pane.ladder .pane-head .recenter-btn { margin-left: auto; }
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 

@@ -432,6 +432,10 @@ html[data-layout^="phone"] .pane-head .ctl input[type=checkbox] { width: 20px; h
 html[data-layout^="phone"] .pane-head :is(select, button:not(.help)) { font-size: 14px; min-height: var(--ph-ctl-h); padding: 0 8px; border-radius: var(--radius); }
 /* The "?" is a key like the others, not a small box beside them. */
 html[data-layout^="phone"] :is(.pane-head, .liq-head) button.help { box-sizing: border-box; width: var(--ph-key-w); height: var(--ph-ctl-h); min-height: 0; margin: 0; padding: 0; font-size: 15px; line-height: calc(var(--ph-ctl-h) - 2px); }
+/* A "?" right after the title goes to the end of the title's line, where it is on every tab (the controls under it, when they do not fit beside it). */
+html[data-layout^="phone"] .pane-head:not(.tuned) > strong + button.help { margin-left: auto; }
+/* It is a key of full size: its touch area is the key itself (the small "?" elsewhere reaches 9 px around it, here over its neighbour). */
+html[data-layout^="phone"] :is(.pane-head, .liq-head) button.help::after { inset: 0; }
 html[data-layout^="phone"] .pane-head .ctl .size-ctl .size-value { width: 76px; min-height: 32px; font-size: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 html[data-layout^="phone"] .pane-head .ctl .size-ctl .size-menu { width: 30px; padding: 0 2px; }
 /* The Order Book's own header: the tab already says "Book", and its choices wrap onto the rows their words need (five side by side cut every value). */
@@ -478,7 +482,7 @@ html[data-layout^="phone"] .pane.lt .pane-head .lt-halves { display: flex; flex:
 html[data-layout^="phone"] .pane.lt .pane-head > strong { display: none; }
 html[data-layout^="phone"] .pane.lt .lt-halves .cap { display: block; }
 html[data-layout^="phone"] .pane.lt .lt-halves .seg { display: flex; }
-html[data-layout^="phone"] .pane.lt .lt-halves .seg button { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 2px; font-size: 14px; }
+html[data-layout^="phone"] .pane.lt .lt-halves .seg button { flex: 1 1 0; min-width: 0; min-height: var(--ph-ctl-h); padding: 0 2px; font-size: 14px; }
 html[data-layout^="phone"] .pane.lt .lt-halves .seg button.far:not(.on) { display: none; }
 html[data-layout^="phone"] .pane.lt .lt-halves .seg button.on { background: var(--text); border-color: var(--text); color: var(--panel); font-weight: 650; }
 /* Where there is room (a phone held sideways) the half-life says its name beside the chips. */
