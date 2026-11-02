@@ -6,7 +6,8 @@ import type { Print } from '../../shared/prints.ts';
 import { openRecordings, type Recordings } from './idb.ts';
 import type { FeedsIn, FeedsOut, RpcCall } from './protocol.ts';
 import { frameOf } from './levels-frame.ts';
-import { HOUR_MS, heldOf, importHistory } from './history-import.ts';
+import { heldOf, importHistory } from './history-import.ts';
+import { importSince } from '../history-window.ts';
 
 /**
  * The data engine on its own thread: exchange sockets, book valuation, recording and the history requests all run here, and the page
@@ -67,9 +68,9 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
       void navigator.storage?.persist?.().catch(() => false);
       claimRecorder(lock);
       // The recorded history (app/history-url.ts): the minutes of the day before this visit, read before the engine starts so it starts with them;
-      // a phone reads its last few hours only (app/history-window.ts). The recordings keep their day either way.
+      // a phone reads its last few hours only, from the start of the oldest one (app/history-window.ts). The recordings keep their day either way.
       if (history && historyHours > 0) {
-        const kept = recordings, now = Date.now(), since = now - Math.min(BROWSER_RETENTION_MS, historyHours * HOUR_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours()), epoch = kept.writeEpoch();
+        const kept = recordings, now = Date.now(), since = importSince(now, historyHours, BROWSER_RETENTION_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours()), epoch = kept.writeEpoch();
         const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now });
         if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
         if (done.read?.length) void kept.markImported(done.read, epoch);
