@@ -12,10 +12,10 @@ export const HISTORY_BASE = 'https://history.hiverust.dev/v1';
  */
 export const RECORDED_COINS: readonly string[] = ['BTC', 'ETH', 'SOL', 'ZEC', 'HYPE', 'PEPE', 'XRP', 'NEAR', 'TRUMP', 'XPL', 'LIT', 'UNI', 'DOGE', 'BNB', 'PUMP', 'AAVE', 'ENA', 'LINK', 'WLD', 'TRX', 'SUI'];
 /**
- * Whether the public address serves the other coins' folders: the tunnel's route passes `/v1/btc` only until it is widened to every coin's
- * folder (hlm-history docs/DEPLOY.md). Until then the other coins read history only from a local stand-in.
+ * Whether the public address serves the other coins' folders: the tunnel's route passes every coin's folder since 2026-11-02
+ * (hlm-history docs/DEPLOY.md). `false` sends the other coins back to a local stand-in only.
  */
-export const OTHER_COINS_SERVED = false;
+export const OTHER_COINS_SERVED = true;
 const RECORDED = new Set(RECORDED_COINS);
 
 /**
