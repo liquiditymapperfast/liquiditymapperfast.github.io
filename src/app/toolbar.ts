@@ -97,8 +97,9 @@ function settingsKey(name: string): HTMLButtonElement {
  * One deck of the full top bar: a framed group (a fieldset, whose legend sits in the frame line) of up to two rows of controls. Its frame is
  * the theme's (chrome.css): an etched group box on the bevel, a double rule in text mode, a hairline pair in the editor.
  */
-/** The decks whose rows end together, in aligned columns where that costs no width (Toolbar #alignDecks), and how much width is no cost. */
-const ALIGNED_DECKS = new Set(['market', 'heat', 'chart', 'alerts']), ALIGN_SLACK_PX = 4;
+/** The decks whose rows end together, in aligned columns where that costs no width (Toolbar #alignDecks), and how much width is rounding: any
+ *  more would widen the deck, and the bar would zoom or break sooner. */
+const ALIGNED_DECKS = new Set(['market', 'heat', 'chart', 'alerts']), ALIGN_SLACK_PX = 0.5;
 
 function deck(id: string, title: string, ...rows: HTMLElement[][]): HTMLElement {
   const box = el('fieldset', { class: `deck deck-${id}` }, el('legend', { textContent: title }),
@@ -713,7 +714,7 @@ export class Toolbar {
   }
   /**
    * A deck's rows end together at both its edges (Karl, 2026-11-01: a deck's two rows did not line up, and a row shorter than the other ended
-   * short of the deck's edge). Where it costs the deck no width (at most ALIGN_SLACK_PX), its rows are one grid (fit-grid.ts `alignRows`): as
+   * short of the deck's edge). Where it costs the deck no width (ALIGN_SLACK_PX: rounding), its rows are one grid (fit-grid.ts `alignRows`): as
    * many columns as the longest row has controls, each as wide as the widest control in it, a shorter row's spare column given to the control
    * that costs least, written as `--deck-cols-px` (the deck at its own width) and `--deck-cols-fr` (a deck grown with its row shares the room
    * by the same proportions). Where aligning would widen the deck, and so break the bar into rows sooner, each row's controls only share the

@@ -354,14 +354,19 @@ html[data-layout="desktop"] .pane .pane-head > .fit-cells { display: grid; order
 /* The cells that fit on the first line are moved there (fit-lead), behind the "?", at their own width: the room left over is the name's, then
    the menu's. With all of them there the grid is empty and is no line at all. */
 html[data-layout="desktop"] .pane .pane-head > .fit-lead { order: 1; flex: none; margin: 0; }
+/* A strip of buttons on the first line takes the room left there (its buttons alike), rather than leave it empty before the menu; the name keeps its
+   whole text first (the rule puts cells on that line only when it fits whole). */
+html[data-layout="desktop"] .pane .pane-head.fit-has-lead > strong { flex: 0 1 auto; }
+html[data-layout="desktop"] .pane .pane-head > .fit-lead[data-fit="row"]:not([hidden]) { flex: 1 1 auto; display: flex; }
+html[data-layout="desktop"] .pane .pane-head > .fit-lead[data-fit="row"] > button { flex: 1 1 0; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .fit-cells:not(.fit-measuring) { display: none; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .side-break { display: none; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .pane-tools { order: 3; }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells > * { margin: 0; min-width: 0; justify-self: stretch; }
 /* A caption and its select are one cell: the caption as wide as the widest of its column (--fit-cap), then the select taking the rest, so the
    selects of a column start and end at the same place. Measured, it is the caption at its own width. */
-html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl { display: grid; grid-template-columns: var(--fit-cap, max-content) minmax(0, 1fr); }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl { display: inline-flex; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl:not([hidden]) { display: grid; grid-template-columns: var(--fit-cap, max-content) minmax(0, 1fr); }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl:not([hidden]) { display: inline-flex; }
 /* Packed (a column too narrow for aligned columns): rows filled in order, each stretched to end flush; a row cell on a row of its own. */
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed { display: flex; flex-wrap: wrap; }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed > * { flex: 1 1 auto; }
@@ -369,14 +374,16 @@ html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-packed > [data-fit
 /* How wide the first line is on its own (ui/fit-grid.ts measures it for a moment): one line as wide as its content, without the cells. */
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line { width: max-content !important; flex-wrap: nowrap !important; }
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line > :is(.fit-cells, .fit-lead, .side-break) { display: none !important; }
+/* The cells on the first line measured at their own width (a strip of buttons there has grown into the room left over). */
+html[data-layout="desktop"] .pane .pane-head.fit-measuring-lead > .fit-lead, html[data-layout="desktop"] .pane .pane-head.fit-measuring-lead > .fit-lead > button { flex: none !important; }
 /* How wide each cell is on its own: measured for a moment side by side, out of the header's flow and unseen. */
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring { position: absolute; visibility: hidden; display: flex; flex-wrap: nowrap; width: max-content; }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > * { flex: none; }
 /* The flow column: its settings key beside the "?" on the first line; the span buttons are its one cell, a whole row under that line or between the "?" and the key. */
 html[data-layout="desktop"] .pane.cvd .side-head > .cvd-gear { order: 1; margin-left: 0; }
 html[data-layout="desktop"] .pane.cvd .pane-head.fit-inline > .cvd-gear { order: 2; }
-html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg { display: flex; }
-html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; }
+html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg:not([hidden]) { display: flex; }
+html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; padding-left: 2px; padding-right: 2px; }
 .pane.ladder .pane-head .recenter-btn { margin-left: auto; }
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 

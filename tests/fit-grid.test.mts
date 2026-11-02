@@ -91,6 +91,31 @@ test('where aligned columns cannot save the rows, the cells are packed row by ro
   assert.equal(chooseFit(cells(100, 100, 100, 100), 220, 8).packed, false, 'two aligned columns do as well: aligned');
 });
 
+test('aligned captions that would make even one column wider than the grid are dropped, not spilled past its edge', () => {
+  const cap = (caption: number, control: number) => ({ width: caption + 5 + control, cap: { caption, gap: 5, control } });
+  // Long captions with short selects and short captions with long selects: each cell fits 240 px, the aligned column (110 + 5 + 150) does not.
+  const fit = chooseFit([cap(110, 60), cap(40, 150), cap(100, 70)], 240, 8);
+  assert.equal(fit.cols, 1);
+  assert.deepEqual(fit.caps, [0, 0, 0]);
+});
+
+test('a row cell between plain cells: each run on rows of its own, the counts and spans as the grid places them', () => {
+  // [a][ROW][b][c][d], 200 px, two columns of 80: a alone (spanning both), the strip, then b c / d spanning both: four rows.
+  const fit = chooseFit([{ width: 80 }, { width: 300, row: true }, { width: 80 }, { width: 80 }, { width: 80 }], 200, 8);
+  assert.equal(fit.cols, 2);
+  assert.equal(fit.rows, 4);
+  assert.deepEqual(fit.spans, [2, 2, 1, 1, 2]);
+  // Every run's rows sum to the column count, so no row has a hole and nothing wraps where the chooser did not count a row.
+});
+
+test('the deck aligner counts its ways before making them: long rows fall back at once', () => {
+  const t0 = Date.now();
+  const r = alignRows([new Array(30).fill(40), new Array(15).fill(40)], 4);
+  assert.ok(Date.now() - t0 < 500, 'no millions of candidates');
+  assert.equal(r.spans[1]!.reduce((a, b) => a + b, 0), 30, 'the short row still fills every column');
+  assert.equal(alignRows([[100, 100], [103, 97]], 4).width > alignRows([[100, 100], [103, 97]], 4).natural, true, 'aligning these costs width (the toolbar then only stretches them)');
+});
+
 test('nothing to place is an empty grid; two layouts are the same when their columns and spans are', () => {
   assert.equal(chooseFit([], 300, 8).rows, 0);
   assert.equal(sameFit(chooseFit(cells(80, 80), 400, 8), chooseFit(cells(81, 79), 400, 8)), true);
