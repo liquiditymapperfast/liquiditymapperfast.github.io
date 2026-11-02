@@ -370,6 +370,11 @@ export class DeribitConnector extends MarketBook {
   #changeId = -1;
   protected url() { return 'wss://www.deribit.com/ws/api/v2'; }
   protected open(send: (p: unknown) => void) { send({ jsonrpc: '2.0', id: 1, method: 'public/subscribe', params: { channels: [`book.${this.symbol}.100ms`, `trades.${this.symbol}.100ms`] } }); }
+  /**
+   * Deribit closes a socket that only listens every 10 minutes (measured 2026-11-01 from hiverust: 23:41:38, 23:51:39, 00:01:41, ...); a
+   * small request a minute keeps it open. Its answer carries no `params` and is passed over.
+   */
+  override keepalive() { return { everyMs: 60_000, frame: () => ({ jsonrpc: '2.0', id: 2, method: 'public/test' }) }; }
   protected override usdOf(price: number, size: number) { return this.market.inverse ? size : price * size; }
   /**
    * A full-book side as [price, amount] rows: a deleted level is 0, which takes it away. A row that cannot be read throws (the frame is
