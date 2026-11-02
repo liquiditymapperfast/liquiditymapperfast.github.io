@@ -258,18 +258,19 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     if (to > rest) out.push(IDBKeyRange.bound(rest, Number.isFinite(to) ? to : Number.MAX_SAFE_INTEGER, false, true));
     return out;
   };
-  const readHours = async <Row>(name: Name, from: number, to: number, take: (rows: Row[]) => void): Promise<void> => {
+  /** Each range's rows, with the range's own bounds [lo, hi). */
+  const readHours = async <Row>(name: Name, from: number, to: number, take: (rows: Row[], lo: number, hi: number) => void): Promise<void> => {
     for (const range of hourRanges(from, to)) take(await new Promise<Row[]>((resolve, reject) => {
       const request = db.transaction(name, 'readonly').objectStore(name).index('t').getAll(range);
       request.onsuccess = () => resolve(request.result as Row[]);
       request.onerror = () => reject(request.error);
-    }));
+    }), range.lower as number, range.upper as number);
   };
   /**
-   * Absorption minutes taken from the recorded history older than what the recorder opens with, with their groups (`inst|minute`), kept for
-   * the session: the recorder reads that part back from the store (`eachHour`, `query`, `minutes`), and a tab that may not write never stores
-   * it. Every read lays them over what the store answers: the store's rows of such a minute (the page's own part of it, or the same rows
-   * once written) give way to them.
+   * Absorption minutes taken from the recorded history, with their groups (`inst|minute`), kept for the session: the recorder reads what is
+   * older than its first two hours back from the store (`eachHour`, `query`, `minutes`), and a tab that may not write never stores them.
+   * Every read lays them over what the store answers: the store's rows of such a minute (the page's own part of it, or the same rows once
+   * written) give way to them.
    */
   const overlay = new Map<string, { minute: AbsorptionMinute; groups: AbsorptionGroup[] }>();
   const minuteKey = (inst: string, t: number): string => `${inst}|${Math.floor(t / MINUTE) * MINUTE}`;
@@ -295,12 +296,12 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     query: async (ids, mins, from, to, limit) => {
       const min = new Map(ids.map((id, i) => [id, mins[i] ?? Infinity])), byId = new Map<string, AbsorptionRow[]>();
       const take = (row: AbsorptionRow): void => { if (row.peak >= (min.get(row.inst) ?? Infinity)) { let list = byId.get(row.inst); if (!list) { list = []; byId.set(row.inst, list); } list.push(row); } };
-      await readHours<AbsorptionRow>('absorption', from, to, rows => { for (const row of overlaid(rows, from, to).groups) take(row); });
+      await readHours<AbsorptionRow>('absorption', from, to, (rows, lo, hi) => { for (const row of overlaid(rows, lo, hi).groups) take(row); });
       return [...byId.values()].flatMap(list => list.sort((a, b) => b.peak - a.peak).slice(0, limit).map(toGroup));
     },
     minutes: async (ids, from, to) => {
       const wanted = new Set(ids), out: AbsorptionMinute[] = [];
-      await readHours<AbsorptionMinuteRow>('absorptionMinutes', from, to, rows => { for (const row of overlaid([], from, to, rows).minutes) if (wanted.has(row.inst)) out.push(toMinute(row)); });
+      await readHours<AbsorptionMinuteRow>('absorptionMinutes', from, to, (rows, lo, hi) => { for (const row of overlaid([], lo, hi, rows).minutes) if (wanted.has(row.inst)) out.push(toMinute(row)); });
       return out;
     },
     // The column's read, and the recorder's reading its day back (`ids` null): each hour's groups and minutes in one transaction, so they are
@@ -425,7 +426,10 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       absorptionRows.length = 0; absorptionRows.push(...keptGroups);
       const minuteAt = new Map(absorptionMinuteRows.map((row, i) => [`${row.inst}|${row.t}`, i]));
       for (const [key, { minute, groups }] of absorbed) {
-        if (minute.t < absorptionSince) { overlay.set(key, { minute, groups }); continue; }
+        // Every one is laid over the store too: the recorder's own cut (two hours before it starts, a moment after this) can leave a
+        // minute of the opening arrays out, and a tab that may not write keeps no copy in the store.
+        overlay.set(key, { minute, groups });
+        if (minute.t < absorptionSince) continue;
         const i = minuteAt.get(key);
         if (i === undefined) absorptionMinuteRows.push(minuteRow(minute)); else absorptionMinuteRows[i] = minuteRow(minute);
         for (const g of groups) absorptionRows.push(groupRow(g));
