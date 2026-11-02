@@ -259,13 +259,13 @@ export function hoursToRead(latest: HistoryLatest, held: Held, since: number, no
  * merged in from the service must not count), each market's footprint step (the page's own, else the first the service gave: the recorder
  * keeps one step a market) and the service's step for each market from the newest hour read that has its minutes.
  */
-export interface TradeImport { own: Map<string, { from: number; to: number }[]>; steps: Map<string, number>; serviceSteps: Map<string, number> }
+export interface TradeImport { own: Map<string, { from: number; to: number }[]>; steps: Map<string, number> }
 export function tradeImport(coverage: Iterable<{ inst: string; metric: string; from: number; to: number }>, footprint: Iterable<Pick<FootprintMinuteRow, 'inst' | 'step'>>): TradeImport {
   const own = new Map<string, { from: number; to: number }[]>(), steps = new Map<string, number>();
   for (const row of coverage) if (row.metric === 'trades' && row.to > row.from) { let list = own.get(row.inst); if (!list) own.set(row.inst, list = []); list.push({ from: row.from, to: row.to }); }
   // The newest row's step, as the recorder keeps it (its rows come oldest first).
   for (const row of footprint) steps.set(row.inst, row.step);
-  return { own, steps, serviceSteps: new Map() };
+  return { own, steps };
 }
 /** Whether the page recorded `id`'s trades at `t` itself. */
 export const ownsTime = (state: TradeImport, id: string, t: number): boolean => (state.own.get(id) ?? []).some(s => t >= s.from && t < s.to);
@@ -324,13 +324,10 @@ export function planAbsorption(state: TradeImport, minutes: readonly AbsorptionM
  */
 export function planCoverage(state: TradeImport, rows: Pick<HistoryRows, 'coverage' | 'footprint'>): CoverageRow[] {
   if (!rows.footprint.length) return [];
+  // A market whose minutes in this hour lie on another step than the page's is left out here; one with no minute in this hour (a quiet
+  // one) waits: `clipCoverage` takes it only once a footprint minute of it on the page's step has been seen, in any hour of the import.
   const fileSteps = new Map(rows.footprint.map(row => [row.inst, row.step]));
-  const out = rows.coverage.filter(row => {
-    const step = fileSteps.get(row.inst) ?? state.serviceSteps.get(row.inst);
-    return step !== undefined && step === state.steps.get(row.inst);
-  });
-  for (const [inst, step] of fileSteps) if (!state.serviceSteps.has(inst)) state.serviceSteps.set(inst, step);
-  return out;
+  return rows.coverage.filter(row => { const step = fileSteps.get(row.inst); return step === undefined || step === state.steps.get(row.inst); });
 }
 
 /**

@@ -103,11 +103,13 @@ test('the service coverage joins only for markets whose footprint it records on 
   // An hour from before the service recorded the footprint: nothing joins.
   assert.deepEqual(planCoverage(state, { coverage: [stretch('a')], footprint: [] }), []);
   const rows = { coverage: [stretch('a'), stretch('b'), stretch('c'), stretch('q')], footprint: [fpRow('a', HOUR, 1), fpRow('b', HOUR, 1, 1), fpRow('c', HOUR, 1)] };
-  // `b` lies on another step than the page's; `c` was taken (its step is the service's); `q` has no minute anywhere yet.
+  // `b` lies on another step than the page's here; `c` was taken (its step is the service's); `q` has no minute in this hour: it waits for
+  // `clipCoverage`, which takes it only once a footprint minute of it on the page's step is seen (Sol round 4: a quiet market in a newer
+  // hour whose step an older hour gives).
   planFootprint(state, rows.footprint.filter(r => r.inst !== 'b'), () => undefined);
   state.steps.set('b', 0.5);
-  assert.deepEqual(planCoverage(state, rows).map(r => r.inst), ['a', 'c']);
-  // An older hour in which `a` traded nothing: its stretch joins on the step a newer hour gave.
+  assert.deepEqual(planCoverage(state, rows).map(r => r.inst), ['a', 'c', 'q']);
+  // An hour in which `a` traded nothing: its stretch is kept for the clip too.
   assert.deepEqual(planCoverage(state, { coverage: [stretch('a')], footprint: [fpRow('c', HOUR, 1)] }).map(r => r.inst), ['a']);
 });
 
