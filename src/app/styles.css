@@ -371,11 +371,11 @@ html[data-layout="desktop"] .pane .pane-head > .fit-lead { white-space: nowrap; 
    selects of a column start and end at the same place (as wide as the widest of them). Measured, it is the caption at its own width. */
 html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl:not([hidden]) { display: grid; grid-template-columns: var(--fit-cap, max-content) minmax(0, 1fr); }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl:not([hidden]) { display: inline-flex; }
-/* Captions above their selects (a narrow column, ui/fit-grid.ts rule 5), as on a phone: each cell as wide as the wider of the two, the
-   buttons level with the selects. */
+/* Captions above their selects (a narrow column, ui/fit-grid.ts rule 5), as on a phone: each cell as wide as the wider of the two, every
+   cell at the foot of its row, so the selects and buttons of a row stand level (a caption missing or shorter lifts nothing). */
 html[data-layout="desktop"] .pane .pane-head > .fit-cells { --fit-stack-gap: 2px; }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-stacked:not(.fit-measuring) > label.ctl:not([hidden]) { grid-template-columns: minmax(0, 1fr); row-gap: var(--fit-stack-gap); }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-stacked:not(.fit-measuring) > :not(label) { align-self: end; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-stacked:not(.fit-measuring) > * { align-self: end; }
 /* How wide the first line is on its own (ui/fit-grid.ts measures it for a moment): one line as wide as its content, without the cells. */
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line { width: max-content !important; flex-wrap: nowrap !important; }
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line > :is(.fit-cells, .fit-lead, .side-break) { display: none !important; }
