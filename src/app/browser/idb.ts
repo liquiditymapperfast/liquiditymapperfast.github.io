@@ -363,11 +363,9 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       printRows.sort((a, b) => a.t - b.t);
       prints.save(newPrints, since); taken += newPrints.length;
     }
-    // The stretches the service recorded trades over: a gap there is not one this page recovers or reports.
-    if (incoming.coverage.length) {
-      for (const row of incoming.coverage) coverRows.push({ ...row, t: row.to });
-      coverage.save(incoming.coverage, since); taken += incoming.coverage.length;
-    }
+    // The stretches the service recorded trades over are not taken into this page's own: the page's coverage says where its footprint holds
+    // every trade (the Candle tab judges a bar only over markets covered since it opened, and a recovery fills what it lacks), and the
+    // service records no footprint.
     return taken;
   };
   return {
