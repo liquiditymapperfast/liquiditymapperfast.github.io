@@ -378,7 +378,10 @@ html[data-layout="desktop"] .pane .pane-head { --head-key: 22px; }
 html[data-layout="desktop"] .pane .side-head > [data-fit="key"] { order: 1; }
 html[data-layout="desktop"] .pane .pane-head > [data-fit="key"] { position: relative; flex: none; box-sizing: border-box; width: var(--head-key); height: var(--head-key); min-height: 0; padding: 0; margin: 0 0 0 auto; font-size: 0; line-height: 0; }
 html[data-layout="desktop"] .pane .pane-head > [data-fit="key"]:not([hidden]) ~ [data-fit="key"] { margin-left: 0; }
-html[data-layout="desktop"] .pane .side-head:has(> [data-fit="key"]:not([hidden])) > .pane-tools { margin-left: 0; }
+html[data-layout="desktop"] .pane .side-head:not(.fit-keys-below):has(> [data-fit="key"]:not([hidden])) > .pane-tools { margin-left: 0; }
+/* A long name in a narrow column: the keys take a short row of their own under the first line, at its right end (behind the break); the menu
+   stays at the end of the first line. */
+html[data-layout="desktop"] .pane .side-head.fit-keys-below > [data-fit="key"] { order: 3; }
 html[data-layout="desktop"] .pane .pane-head > [data-fit="key"]::before { content: ""; position: absolute; inset: 0; margin: auto; width: calc(var(--head-key) * .68); height: calc(var(--head-key) * .68); background: currentColor; -webkit-mask: var(--key-mark) center / contain no-repeat; mask: var(--key-mark) center / contain no-repeat; }
 html[data-layout="desktop"] .pane .pane-head > .recenter-btn { --key-mark: var(--icon-recenter); }
 html[data-layout="desktop"] .pane .pane-head > .cues-btn { --key-mark: var(--mark-cues); }

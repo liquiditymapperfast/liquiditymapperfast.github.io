@@ -107,11 +107,16 @@ export class FitGrid {
     this.#changes = new MutationObserver(records => { if (records.some(r => this.#changed(r) && this.#concerns(r.target))) this.refit(false, true); });
     // The whole header: a cell on the identity line is no longer inside `cells`. What this class changes itself is taken back (#quiet).
     this.#changes.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'data-fit'], attributeOldValue: true, characterData: true, characterDataOldValue: true });
-    // The arrangement (desktop or phone), the frame and theme (their faces and sizes) and the language are attributes of the root element.
-    this.#changes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-layout', 'data-frame', 'data-theme', 'lang'] });
+    // The arrangement (desktop or phone), the bar, the frame and theme (their faces and sizes) and the language are attributes of the root element.
+    this.#changes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-layout', 'data-bar', 'data-frame', 'data-theme', 'lang'] });
     const fonts = (): void => { if (!this.#gone) this.refit(false, true); };
     document.fonts?.addEventListener?.('loadingdone', fonts);
     this.#observers.push({ disconnect: () => document.fonts?.removeEventListener?.('loadingdone', fonts) });
+    // A mouse and a finger draw the controls at different sizes (a touch screen's are taller) at the same width: measured again when it changes.
+    const pointer = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+    const repoint = (): void => { if (!this.#gone) this.refit(false, true); };
+    pointer?.addEventListener?.('change', repoint);
+    this.#observers.push({ disconnect: () => pointer?.removeEventListener?.('change', repoint) });
     this.#observers.push(resize, this.#changes);
     void document.fonts?.ready.then(() => { if (!this.#gone) this.refit(true); });
   }
@@ -188,6 +193,10 @@ export class FitGrid {
     const line = this.head.clientWidth - pad;
     this.head.classList.remove('fit-measuring-line');
     this.#quiet();
+    // Where the name and the keys do not fit on one line (a long name in a narrow column), the keys take a short row of their own under it,
+    // at its right end, rather than cut the name.
+    this.head.classList.toggle('fit-keys-below', line > inner + 0.5 && this.#keys().some(FitGrid.#visible));
+    this.#quiet();
     // The room left beside it, with the gap before the first cell there.
     const room = Math.max(0, inner - line - gap);
     const choice = chooseFit(shown.map((c, i) => ({ width: widths[i]!, tile: tiles[i]!, row: c.dataset.fit === 'row', lead: c.dataset.fit === 'lead' })), inner, cellGap, room, gap);
@@ -228,7 +237,7 @@ export class FitGrid {
     if (!this.#choice) return;
     this.#choice = null; this.#width = -1; this.#signature = ''; this.#placed = []; this.#roles = '';
     this.#place([]);
-    this.head.classList.remove('fit-inline', 'fit-has-lead');
+    this.head.classList.remove('fit-inline', 'fit-has-lead', 'fit-keys-below');
     this.head.style.removeProperty('--head-key');
     this.cells.style.removeProperty('grid-template-columns');
     for (const c of this.cells.children) if (c instanceof HTMLElement) c.style.removeProperty('grid-column');
