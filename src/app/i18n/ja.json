@@ -2044,6 +2044,6 @@
  "Dark theme": "ダークテーマ",
  "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "ライトかダークか：1回のタップでテーマが切り替わります。すべてのテーマは設定の「外観」にあります。",
  "3 h": "3時間",
- "History on opening": "起動時の履歴",
+ "History": "履歴",
  "How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "ページを開いたときにこのスマートフォンがダウンロードする記録済み履歴の量：直近3時間（数MB）、1日分（数十MB）、またはなし。次にページを開いたときから適用されます。"
 }

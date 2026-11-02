@@ -53,5 +53,5 @@ test('the worker reads only the hours asked for, and none at 0; its recordings k
   assert.match(main, /'chartType', 'phoneHistory'\]\.some\(k => changed\.has\(k as never\)\)\) toolbar\.sync/, 'choosing redraws the choice');
   const toolbar = fs.readFileSync('src/app/toolbar.ts', 'utf8');
   assert.match(toolbar, /setAttribute\('aria-pressed', String\(state\.phoneHistory === choice\)\)/, 'a screen reader hears which is chosen');
-  assert.match(toolbar, /\.\.\.\(isHandheldPhone\(\) \? \[field\(t\('History on opening'\)/, 'the control shows where the rule applies');
+  assert.match(toolbar, /\.\.\.\(isHandheldPhone\(\) \? \[field\(t\('History'\)/, 'the control shows where the rule applies');
 });

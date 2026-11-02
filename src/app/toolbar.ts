@@ -244,7 +244,7 @@ export class Toolbar {
   #zoneSeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('Time zone') }, this.#zoneLocal, this.#zoneUtc);
   /** A phone's Settings: how much recorded history it reads when the page opens (app/history-window.ts). */
   #historyChoices = new Map<PhoneHistory, HTMLButtonElement>([['recent', el('button', { type: 'button', textContent: t('3 h') })], ['day', el('button', { type: 'button', textContent: t('Day') })], ['off', el('button', { type: 'button', textContent: t('Off') })]]);
-  #historySeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('History on opening'), tip: t('How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.') }, ...this.#historyChoices.values());
+  #historySeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('History'), tip: t('How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.') }, ...this.#historyChoices.values());
   /** The compact bar's light-or-dark key (Karl, 2026-11-01): one tap swaps the light theme and the dark one last shown (`flippedTheme`). */
   #flip = el('button', { type: 'button', class: 'flip-btn' });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
@@ -786,7 +786,7 @@ export class Toolbar {
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zoneSeg),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : []),
           // A phone in the hand reads only the last hours of the recorded history on opening (app/history-window.ts); elsewhere this has no effect.
-          ...(isHandheldPhone() ? [field(t('History on opening'), this.#historySeg)] : [])]));
+          ...(isHandheldPhone() ? [field(t('History'), this.#historySeg)] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesLabel.textContent = t('Venues'); this.#venuesCount.hidden = false; });
     this.#more.classList.add('open');
   }
