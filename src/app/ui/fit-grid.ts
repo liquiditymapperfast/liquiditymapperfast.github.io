@@ -1,125 +1,88 @@
 /**
  * The fit grid: how a header lays out its controls at any width, from one rule instead of breakpoints.
  *
- * A header has an identity line (the grip, the name, the "?", a settings key, the menu and the close button) and a set of cells (a caption
- * with its select, or a button), in their order. Each cell's natural width is measured; then:
+ * A row reads as ordered when what is in it is alike: the same width, the same height, the same make-up. Controls of different shapes (a
+ * short caption over a wide list, a long caption over a short one, buttons of two lengths) can only fill a row by being stretched unevenly,
+ * or keep their own widths and leave holes (Karl, 2026-11-02, after both). So a header is made of two kinds of thing that are each alike:
  *
- *  1. When every cell fits on the identity line beside it, the header is that one line. Otherwise the cells marked as the line's own
+ *  - Keys (`data-fit="key"`: square buttons with a drawn mark, such as the Book's recentre) sit on the identity line, at its right end beside
+ *    the menu and the close button. They are children of the header, not cells.
+ *  - Cells (a caption with its select, or a strip of buttons) are laid out by this rule:
+ *
+ *  1. When every cell fits on the identity line beside the name, the header is that one line. Otherwise the cells marked as the line's own
  *     (`data-fit="lead"`, the first ones: the Book's Mode) go there when they fit, all of them or none, and the others take a grid under it.
- *     Which cells sit on the line therefore changes at two widths at most, not with every few pixels.
- *  2. In the grid a cell that asks for a whole row (`data-fit="row"`: a strip of buttons) gets one; the others are laid out row by row in
- *     `c` aligned columns, each as wide as its widest cell. Every cell keeps its own width (nothing is stretched: a button is as wide as its
- *     label), the rows start at the left edge and a short row simply ends sooner.
- *  3. The fewest rows win, and the columns are as even as those rows allow (`c` = the cells over the rows, rounded up), so the column count
- *     changes only when the number of rows does: six cells go 6, then 3 + 3, then 2 + 2 + 2.
- *  4. A caption and its control (`cap`: the caption's width, the gap, the control's) are laid out within their column: the captions of a
- *     column as wide as its widest, so the controls under one another start at the same place, unless that costs a row.
- *  5. In a narrow column, long captions beside their selects can leave room for one column only (German at 300 px: eight rows). The
- *     captions then go above their selects (`stacked`, as on a phone), where a cell is only as wide as the wider of the two: taller rows,
- *     but fewer of them. That is taken when the captions beside would leave a single column and above it is no taller, or when it makes
- *     the grid lower by more than half a row, so that it does not come and go with a few px.
+ *     A lead cell that does not fit takes a whole row of the grid.
+ *  2. In the grid a cell that asks for a whole row (`data-fit="row"`: a strip of buttons) gets one. Every other cell is a tile, its caption
+ *     above its select: all tiles are as wide as each other, `c` to a row, filling the row from edge to edge.
+ *  3. `c` is as many tiles as fit at the widest tile's own width (the wider of its caption and its select), shared out evenly over the rows
+ *     that takes (`c` = the tiles over the rows, rounded up): four tiles go 4, then 2 + 2, then 1 + 1 + 1 + 1.
  *
- * A new control is one more cell: the rule places it, with no new breakpoint.
+ * A new choice is one more tile, a new action one more key: the rule places it, with no new breakpoint.
  */
 
 /**
- * One cell to place: its natural width (px), whether it takes a whole row of its own when it cannot sit on the identity line, whether it
- * belongs on the identity line (`lead`, only the first cells) and its caption, gap and control widths.
+ * One cell to place: its width beside the name (px; a caption beside its select), its width as a tile (the wider of its caption and its
+ * select; its own width when it has no caption), whether it takes a whole row of its own and whether it belongs on the identity line
+ * (`lead`, only the first cells).
  */
-export interface FitCell { width: number; row?: boolean; lead?: boolean; cap?: { caption: number; gap: number; control: number } }
+export interface FitCell { width: number; tile?: number; row?: boolean; lead?: boolean }
 /**
- * The layout chosen: the first `lead` cells on the identity line (`inline`: all of them), the others in a grid of `cols` columns and `rows`
- * rows (the identity line not counted); each cell's column span (row cells span all; any other cell 1) and the width its caption takes (0:
- * as its own).
+ * The layout chosen: the first `lead` cells on the identity line (`inline`: all of them), the others in a grid of `cols` tiles to a row and
+ * `rows` rows (the identity line not counted), and each cell's span (a cell taking a whole row spans `cols`; a cell on the identity line and a
+ * tile 1).
  */
-export interface FitChoice { lead: number; inline: boolean; stacked: boolean; cols: number; rows: number; spans: number[]; caps: number[] }
-/** How tall a row of the grid is with the captions beside their controls (`row`) and above them (`stacked`), and the gap between rows. */
-export interface FitHeights { row: number; stacked: number; gap: number }
+export interface FitChoice { lead: number; inline: boolean; cols: number; rows: number; spans: number[] }
 
-/** The columns of a grid of `cells` in `cols` columns (their widths and each cell's caption width), with the captions aligned when `withCaps`. */
-function columns(cells: readonly FitCell[], runs: readonly number[][], cols: number, withCaps: boolean): { widths: number[]; caps: number[] } {
-  const widths = new Array<number>(cols).fill(0), capW = new Array<number>(cols).fill(0), ctlW = new Array<number>(cols).fill(0), capGap = new Array<number>(cols).fill(0);
-  const colOf = new Map<number, number>();
-  for (const run of runs) run.forEach((i, k) => colOf.set(i, k % cols));
-  for (const [i, col] of colOf) {
-    const c = cells[i]!;
-    widths[col] = Math.max(widths[col]!, c.width);
-    if (withCaps && c.cap) { capW[col] = Math.max(capW[col]!, c.cap.caption); capGap[col] = Math.max(capGap[col]!, c.cap.gap); ctlW[col] = Math.max(ctlW[col]!, c.cap.control); }
+/** The grid for `cells` in `avail` px (none of them on the identity line). One tile to a row always fits (a tile wider than it shrinks). */
+function gridOf(cells: readonly FitCell[], avail: number, gap: number): Omit<FitChoice, 'lead' | 'inline'> {
+  const whole = (c: FitCell): boolean => !!(c.row || c.lead);
+  // The runs of tiles between whole-row cells: each starts on a row of its own.
+  const runs: number[] = [0];
+  for (const c of cells) { if (whole(c)) runs.push(0); else runs[runs.length - 1]! += 1; }
+  const filled = runs.filter(n => n > 0), longest = Math.max(0, ...filled), rowCells = cells.filter(whole).length;
+  let cols = 1;
+  if (longest) {
+    const widest = Math.max(...cells.filter(c => !whole(c)).map(c => c.tile ?? c.width));
+    cols = Math.max(1, Math.min(longest, Math.floor((avail + gap) / (widest + gap))));
+    // Shared out evenly: 4 tiles that fit 3 to a row go 2 + 2, not 3 + 1.
+    cols = Math.ceil(longest / Math.ceil(longest / cols));
   }
-  // A column with captioned controls needs its widest caption beside its widest control, which may be more than its widest cell.
-  for (let col = 0; col < cols; col++) if (capW[col]) widths[col] = Math.max(widths[col]!, capW[col]! + capGap[col]! + ctlW[col]!);
-  const caps = cells.map((c, i) => (withCaps && c.cap && colOf.has(i) ? capW[colOf.get(i)!]! : 0));
-  return { widths, caps };
+  const rows = filled.reduce((s, n) => s + Math.ceil(n / cols), 0) + rowCells;
+  return { cols, rows, spans: cells.map(c => (whole(c) ? cols : 1)) };
 }
 
 /**
- * The grid for `cells` in `avail` px (none of them on the identity line): the most columns that fit, of the counts that share the cells
- * out evenly over their rows, with the captions aligned when that fits as well. One column always fits (a cell wider than it shrinks).
+ * The layout for `cells` given the grid's width `avail`, the gap between tiles and, where the header has one, the room left on its identity
+ * line (`inlineAvail`, null: none) and the gap between cells there (`lineGap`).
  */
-function gridOf(cells: readonly FitCell[], avail: number, gap: number): Omit<FitChoice, 'lead' | 'inline' | 'stacked'> {
-  const n = cells.length, rowCells = cells.filter(c => c.row).length;
-  // The runs of plain cells between row cells (indices into `cells`): each starts on a row of its own.
-  const runs: number[][] = [[]];
-  cells.forEach((c, i) => { if (c.row) runs.push([]); else runs[runs.length - 1]!.push(i); });
-  const filled = runs.filter(r => r.length), longest = Math.max(0, ...filled.map(r => r.length));
-  const spans = (cols: number): number[] => cells.map(c => (c.row ? cols : 1));
-  if (!longest) return { cols: 1, rows: rowCells, spans: spans(1), caps: cells.map(() => 0) };
-  // With a row cell the grid has one more column, the rest of the width, behind one more gap (FitGrid.refit).
-  const room = rowCells ? avail - gap : avail;
-  for (let cols = longest; cols >= 1; cols--) {
-    // Only an even count: 6 cells in 4 columns take two rows as 3 columns do, with a short second row.
-    if (Math.ceil(longest / Math.ceil(longest / cols)) !== cols) continue;
-    const rows = filled.reduce((s, r) => s + Math.ceil(r.length / cols), 0) + rowCells;
-    for (const withCaps of [true, false]) {
-      const { widths, caps } = columns(cells, filled, cols, withCaps);
-      if (cols > 1 && widths.reduce((s, w) => s + w, 0) + gap * (cols - 1) > room) continue;
-      if (cols === 1 && withCaps && widths[0]! > room) continue;
-      return { cols, rows, spans: spans(cols), caps };
-    }
-  }
-  return { cols: 1, rows: filled.reduce((s, r) => s + r.length, 0) + rowCells, spans: spans(1), caps: cells.map(() => 0) };
-}
-
-/**
- * The layout for `cells` given the grid's width `avail`, the gap between cells and, where the header has one, the room left on its identity
- * line (`inlineAvail`, null: none) and the gap between cells there (`lineGap`). With the rows' `heights`, the captions may go above their
- * controls (rule 5); without, they never do.
- */
-export function chooseFit(cells: readonly FitCell[], avail: number, gap: number, inlineAvail: number | null = null, lineGap = gap, heights: FitHeights | null = null): FitChoice {
+export function chooseFit(cells: readonly FitCell[], avail: number, gap: number, inlineAvail: number | null = null, lineGap = gap): FitChoice {
   const n = cells.length;
-  if (!n) return { lead: 0, inline: false, stacked: false, cols: 1, rows: 0, spans: [], caps: [] };
+  if (!n) return { lead: 0, inline: false, cols: 1, rows: 0, spans: [] };
   const own = cells.findIndex(c => !c.lead), leads = own < 0 ? n : own;
   // Every cell on the line, then the line's own cells, then none: the first that fits.
   const options = inlineAvail === null ? [0] : [...new Set([n, leads, 0])];
   for (const lead of options) {
     const along = lead ? cells.slice(0, lead).reduce((s, c) => s + c.width, 0) + lineGap * (lead - 1) : 0;
     if (lead && along > inlineAvail!) continue;
-    const rest = cells.slice(lead);
-    let grid = rest.length ? gridOf(rest, avail, gap) : { cols: 1, rows: 0, spans: [], caps: [] }, stacked = false;
-    if (heights && rest.some(c => c.cap)) {
-      const tall = gridOf(rest.map(c => (c.cap ? { width: Math.max(c.cap.caption, c.cap.control), row: c.row } : c)), avail, gap);
-      const height = (rows: number, row: number): number => rows * row + Math.max(0, rows - 1) * heights.gap;
-      const above = height(tall.rows, heights.stacked), beside = height(grid.rows, heights.row);
-      if ((grid.cols === 1 && tall.cols > 1 && above <= beside) || above < beside - heights.row / 2) { grid = { ...tall, caps: rest.map(() => 0) }; stacked = true; }
-    }
-    return { lead, inline: lead === n, stacked, cols: grid.cols, rows: grid.rows, spans: [...new Array<number>(lead).fill(1), ...grid.spans], caps: [...new Array<number>(lead).fill(0), ...grid.caps] };
+    const grid = lead < n ? gridOf(cells.slice(lead), avail, gap) : { cols: 1, rows: 0, spans: [] };
+    return { lead, inline: lead === n, cols: grid.cols, rows: grid.rows, spans: [...new Array<number>(lead).fill(1), ...grid.spans] };
   }
-  return { lead: 0, inline: false, stacked: false, cols: 1, rows: 0, spans: [], caps: [] };
+  return { lead: 0, inline: false, cols: 1, rows: 0, spans: [] };
 }
 
 /** Two choices that lay the cells out the same way. */
 export const sameFit = (a: FitChoice | null, b: FitChoice | null): boolean =>
-  !!a && !!b && a.lead === b.lead && a.stacked === b.stacked && a.cols === b.cols && a.spans.join() === b.spans.join() && a.caps.join() === b.caps.join();
+  !!a && !!b && a.lead === b.lead && a.cols === b.cols && a.spans.join() === b.spans.join();
 
 /** A width change smaller than this keeps the layout as it is (a select's text changing must not flip the rows back and forth). */
 const REFIT_PX = 4;
 
 /**
  * The rule applied to a header (`head`) on the desktop arrangement: `cells` is the element holding its cells (on a phone it is
- * `display: contents`, and the header keeps the layout it has there). The identity line is every other visible child of the header; the cells
- * that join it are moved out of `cells` into the header (class `fit-lead`), each leaving a mark where it was, and put back from there when
- * they no longer fit or on a phone. The layout is chosen again when `watch` (the pane, whose width the header follows) changes width by more
- * than a few pixels, when a cell appears, goes or changes its text, and when the fonts have loaded.
+ * `display: contents`, and the header keeps the layout it has there). The identity line is every other visible child of the header, its keys
+ * among them; the cells that join it are moved out of `cells` into the header (class `fit-lead`), each leaving a mark where it was, and put back
+ * from there when they no longer fit or on a phone. The layout is chosen again when `watch` (the pane, whose width the header follows) changes
+ * width by more than a few pixels, when a cell or a key appears, goes or changes its text, and when the fonts have loaded.
  */
 export class FitGrid {
   #choice: FitChoice | null = null;
@@ -139,8 +102,8 @@ export class FitGrid {
     cells.classList.add('fit-cells');
     const resize = new ResizeObserver(() => this.refit());
     resize.observe(watch);
-    // A change inside a cell or the name is measured again whatever the width (a select's choices, a caption's text, a cell shown or hidden);
-    // other changes in the header (a readout's figures) are not the layout's.
+    // A change inside a cell, a key or the name is measured again whatever the width (a select's choices, a caption's text, a cell or a key
+    // shown or hidden); other changes in the header (a readout's figures) are not the layout's.
     this.#changes = new MutationObserver(records => { if (records.some(r => this.#changed(r) && this.#concerns(r.target))) this.refit(false, true); });
     // The whole header: a cell on the identity line is no longer inside `cells`. What this class changes itself is taken back (#quiet).
     this.#changes.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'data-fit'], attributeOldValue: true, characterData: true, characterDataOldValue: true });
@@ -161,76 +124,73 @@ export class FitGrid {
     return [...this.#leads.map(l => l.cell), ...[...this.cells.children].filter((c): c is HTMLElement => c instanceof HTMLElement)];
   }
 
+  /** The keys on the identity line (the header's own children): how many are shown changes the room left there. */
+  #keys(): HTMLElement[] {
+    return [...this.head.children].filter((c): c is HTMLElement => c instanceof HTMLElement && c.dataset.fit === 'key');
+  }
+
   static #visible(c: HTMLElement): boolean { return !c.hidden && getComputedStyle(c).display !== 'none'; }
 
-  /** Whether a record changed anything: a pane sets an attribute or a text to what it already was (the Books button's `hidden`, several times a second). */
+  /** Whether a record changed anything: a pane sets an attribute or a text to what it already was (the Books key's `hidden`, several times a second). */
   #changed(r: MutationRecord): boolean {
     if (r.type === 'attributes') return (r.target as Element).getAttribute(r.attributeName!) !== r.oldValue;
     if (r.type === 'characterData') return r.target.nodeValue !== r.oldValue;
     return true;
   }
 
-  /** Whether a change at `node` can change the layout: the root element, the header itself, its name, or anything in a cell. */
+  /** Whether a change at `node` can change the layout: the root element, the header itself, its name, a key, or anything in a cell. */
   #concerns(node: Node): boolean {
     if (node === document.documentElement || node === this.head || node === this.cells) return true;
     const el = node instanceof Element ? node : node.parentElement;
     if (!el) return false;
     if (el.closest('strong') && this.head.contains(el)) return true;
-    return this.#all().some(c => c.contains(el));
+    return [...this.#all(), ...this.#keys()].some(c => c.contains(el));
   }
 
   /** Takes back the records of this class's own changes, so that they do not choose the layout again. */
   #quiet(): void { this.#changes.takeRecords(); }
 
   /**
-   * Chooses the layout again: on a width change of more than a few pixels, on any change `measure` says the cells or the name had (measured
-   * again whatever the width), or always (`force`).
+   * Chooses the layout again: on a width change of more than a few pixels, on any change `measure` says the cells, the keys or the name had
+   * (measured again whatever the width), or always (`force`).
    */
   refit(force = false, measure = false): void {
     const desktop = document.documentElement.dataset.layout === 'desktop';
     if (!desktop) { this.#clear(); return; }
     const width = this.head.clientWidth, all = this.#all(), shown = all.filter(FitGrid.#visible);
-    const signature = all.map(c => `${c.tagName}:${FitGrid.#visible(c) ? 1 : 0}:${c.textContent?.length ?? 0}:${c.dataset.fit ?? ''}`).join('|');
+    const signature = [...all, ...this.#keys()].map(c => `${c.tagName}:${FitGrid.#visible(c) ? 1 : 0}:${c.textContent?.length ?? 0}:${c.dataset.fit ?? ''}`).join('|');
     if (!force && !measure && this.#choice && signature === this.#signature && Math.abs(width - this.#width) <= REFIT_PX) return;
     this.#signature = signature; this.#width = width;
     // Natural widths: the cells on the identity line where they are (at their own width), the others side by side at their own size, out of
-    // the header's flow for the moment of measuring.
+    // the header's flow for the moment of measuring; a caption beside its select, so its width as a tile is the wider of the two.
     this.cells.classList.add('fit-measuring'); this.head.classList.add('fit-measuring-lead');
     const widths = shown.map(c => Math.ceil(c.getBoundingClientRect().width));
-    // A caption and its control: a label whose last child is its select (the caption is the text before it).
-    const caps = shown.map((c, i) => {
+    const tiles = shown.map((c, i) => {
       const control = c.tagName === 'LABEL' ? c.lastElementChild : null;
-      if (!(control instanceof HTMLElement)) return undefined;
+      if (!(control instanceof HTMLElement)) return widths[i]!;
       const w = Math.ceil(control.getBoundingClientRect().width), gap = parseFloat(getComputedStyle(c).columnGap) || 0;
-      return { caption: Math.max(0, widths[i]! - w - gap), gap, control: w };
+      return Math.max(w, widths[i]! - w - gap);
     });
-    // How tall a row is with the captions beside their controls (the tallest cell), and with them above: the tallest control, a caption's
-    // line and the gap between the two (rule 5).
-    let row = 0, control = 0, caption = 0;
-    shown.forEach((c, i) => {
-      row = Math.max(row, c.getBoundingClientRect().height);
-      const ctl = caps[i] ? c.lastElementChild : null;
-      if (!ctl) { control = Math.max(control, c.getBoundingClientRect().height); return; }
-      control = Math.max(control, ctl.getBoundingClientRect().height);
-      const text = [...c.childNodes].find(k => k.nodeType === Node.TEXT_NODE && k.textContent?.trim());
-      if (text) { const range = document.createRange(); range.selectNodeContents(text); caption = Math.max(caption, range.getBoundingClientRect().height); }
-    });
-    const cellStyle = getComputedStyle(this.cells), rowGap = parseFloat(cellStyle.rowGap) || 0, capGap = parseFloat(cellStyle.getPropertyValue('--fit-stack-gap')) || 0;
+    // The keys as tall as the selects (each frame and a touch screen draw these at their own height), square.
+    const select = shown.map(c => c.querySelector('select')).find(s => s !== null)?.getBoundingClientRect().height ?? 0;
+    if (select > 0) {
+      const key = `${Math.round(select)}px`;
+      if (this.head.style.getPropertyValue('--head-key') !== key) this.head.style.setProperty('--head-key', key);
+    }
     this.cells.classList.remove('fit-measuring'); this.head.classList.remove('fit-measuring-lead');
     this.#quiet();
     const style = getComputedStyle(this.head), gap = parseFloat(style.columnGap) || 0;
     const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0), inner = width - pad;
     const cellGap = parseFloat(getComputedStyle(this.cells).columnGap) || gap;
-    // The identity line at its natural width: the header laid out for a moment as one line as wide as its content, without the cells, the
-    // cells already on the line or the break (every margin, gap and the name's whole text counted, an `auto` margin as nothing).
+    // The identity line at its natural width: the header laid out for a moment as one line as wide as its content (its keys among it), without
+    // the cells, the cells already on the line or the break (every margin, gap and the name's whole text counted, an `auto` margin as nothing).
     this.head.classList.add('fit-measuring-line');
     const line = this.head.clientWidth - pad;
     this.head.classList.remove('fit-measuring-line');
     this.#quiet();
     // The room left beside it, with the gap before the first cell there.
     const room = Math.max(0, inner - line - gap);
-    const heights = caption > 0 ? { row, stacked: Math.max(row, control + capGap + caption), gap: rowGap } : null;
-    const choice = chooseFit(shown.map((c, i) => ({ width: widths[i]!, row: c.dataset.fit === 'row', lead: c.dataset.fit === 'lead', ...(caps[i] ? { cap: caps[i] } : {}) })), inner, cellGap, room, gap, heights);
+    const choice = chooseFit(shown.map((c, i) => ({ width: widths[i]!, tile: tiles[i]!, row: c.dataset.fit === 'row', lead: c.dataset.fit === 'lead' })), inner, cellGap, room, gap);
     // The same cells in the same roles (a cell that now takes a whole row is placed differently in an otherwise equal choice).
     const roles = shown.map(c => c.dataset.fit ?? '').join('|');
     const sameCells = shown.length === this.#placed.length && shown.every((c, i) => c === this.#placed[i]) && roles === this.#roles;
@@ -241,19 +201,11 @@ export class FitGrid {
     this.#place(all.slice(0, lastLead + 1));
     this.head.classList.toggle('fit-inline', choice.inline);
     this.head.classList.toggle('fit-has-lead', choice.lead > 0);
-    this.cells.classList.toggle('fit-stacked', choice.stacked);
-    // Columns as wide as their contents and no wider (a cell that no longer fits shrinks rather than spill past the header's edge), each cell
-    // in its column; where a cell takes a whole row, one more column takes up the rest of the width, so that the row reaches the right edge.
-    const grid = shown.slice(choice.lead), whole = grid.some(c => c.dataset.fit === 'row'), tracks = [`repeat(${choice.cols}, minmax(0, max-content))`];
-    if (whole) tracks.push(`minmax(0, 1fr)`);
-    this.cells.style.gridTemplateColumns = tracks.join(' ');
-    let col = 0;
+    // Tiles as wide as each other, filling the row; a cell that takes a whole row (or a lead cell that did not fit beside the name) spans it.
+    this.cells.style.gridTemplateColumns = `repeat(${choice.cols}, minmax(0, 1fr))`;
     shown.forEach((c, i) => {
-      const cap = choice.caps[i]!;
-      if (i < choice.lead) c.style.removeProperty('grid-column');
-      else if (c.dataset.fit === 'row') { c.style.gridColumn = '1 / -1'; col = 0; }
-      else { c.style.gridColumn = String(col + 1); col = (col + 1) % choice.cols; }
-      if (cap) c.style.setProperty('--fit-cap', `${cap}px`); else c.style.removeProperty('--fit-cap');
+      if (i >= choice.lead && choice.spans[i]! > 1) c.style.gridColumn = '1 / -1';
+      else c.style.removeProperty('grid-column');
     });
     this.#quiet();
   }
@@ -277,9 +229,9 @@ export class FitGrid {
     this.#choice = null; this.#width = -1; this.#signature = ''; this.#placed = []; this.#roles = '';
     this.#place([]);
     this.head.classList.remove('fit-inline', 'fit-has-lead');
-    this.cells.classList.remove('fit-stacked');
+    this.head.style.removeProperty('--head-key');
     this.cells.style.removeProperty('grid-template-columns');
-    for (const c of this.cells.children) if (c instanceof HTMLElement) { c.style.removeProperty('grid-column'); c.style.removeProperty('--fit-cap'); }
+    for (const c of this.cells.children) if (c instanceof HTMLElement) c.style.removeProperty('grid-column');
     this.#quiet();
   }
 

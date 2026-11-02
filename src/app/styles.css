@@ -14,6 +14,9 @@
   /* The phone bar's light-or-dark key: the sun where a tap brings the light theme, the moon where it brings the dark one. */
   --mark-sun: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4.2'/%3E%3Cpath d='M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.6 1.6M17.05 17.05l1.6 1.6M5.35 18.65l1.6-1.6M17.05 6.95l1.6-1.6'/%3E%3C/svg%3E");
   --mark-moon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linejoin='round'%3E%3Cpath d='M19.8 14.6A8 8 0 1 1 9.4 4.2a6.6 6.6 0 0 0 10.4 10.4z'/%3E%3C/svg%3E");
+  /* The Order Book's keys (styles.css, the fit grid): its cues, a spark where depth changes; its books, one column per venue. */
+  --mark-cues: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M12 2.5l2.2 7.3 7.3 2.2-7.3 2.2-2.2 7.3-2.2-7.3L2.5 12l7.3-2.2z'/%3E%3C/svg%3E");
+  --mark-books: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linejoin='round'%3E%3Crect x='3.5' y='4.5' width='4.5' height='15' rx='.8'/%3E%3Crect x='9.75' y='4.5' width='4.5' height='15' rx='.8'/%3E%3Crect x='16' y='4.5' width='4.5' height='15' rx='.8'/%3E%3C/svg%3E");
   --ui: #2f6bff; --bid: #0fa44a; --bid-soft: #cdeed8; --ask: #e0066f; --ask-soft: #ffd0e6; --gutter: 192px;
   font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
@@ -346,15 +349,15 @@ html[data-bar="compact"] .toast { bottom: 76px; }
 .cvd-wrap canvas { position: absolute; left: 0; top: 0; display: block; }
 .cvd-wrap canvas.cvd-flash { pointer-events: none; }
 .pane.cvd .cvd-span-select { display: none; }
-/* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop they are a grid of aligned columns
-   under the first line, as few rows as fit, every control at its own width from the left edge, or on the first line itself when all of them fit there (the
-   header's fit-inline class), or the line's own ones there (data-fit="lead") and the others under it. The script sets the columns; this sets the grid. On a
-   phone the container is not a box at all, and the header keeps its own layout. */
+/* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop the choices are tiles of one width under
+   the first line, their captions above them, as many to a row as fit and filling it; or on the first line itself when all of them fit there (the header's
+   fit-inline class), or the line's own ones there (data-fit="lead") and the others under it. Keys (data-fit="key") sit at the first line's right end, beside
+   the menu. The script sets the number of tiles to a row; this sets the grid. On a phone the container is not a box at all, and the header keeps its own layout. */
 .fit-cells { display: contents; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells { display: grid; order: 4; flex: 1 0 100%; column-gap: 8px; row-gap: var(--head-row-gap, 5px); align-items: center; justify-content: start; min-width: 0; }
-/* The cells that fit on the first line are moved there (fit-lead), behind the "?", at their own width: the room left over is the name's, then
-   the menu's. With all of them there the grid is empty and is no line at all. */
-html[data-layout="desktop"] .pane .pane-head > .fit-lead { order: 1; flex: none; margin: 0; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells { display: grid; order: 4; flex: 1 0 100%; column-gap: 8px; row-gap: var(--head-row-gap, 5px); align-items: end; min-width: 0; }
+/* The cells that fit on the first line are moved there (fit-lead), behind the "?", at their own width, a caption beside its select: the room left over
+   is the name's, then the keys' and the menu's. With all of them there the grid is empty and is no line at all. */
+html[data-layout="desktop"] .pane .pane-head > .fit-lead { order: 1; flex: none; margin: 0; white-space: nowrap; }
 /* A strip of buttons on the first line takes the room left there (its buttons alike), rather than leave it empty before the menu; the name keeps its
    whole text first (the rule puts cells on that line only when it fits whole). */
 html[data-layout="desktop"] .pane .pane-head.fit-has-lead > strong { flex: 0 1 auto; }
@@ -363,19 +366,23 @@ html[data-layout="desktop"] .pane .pane-head > .fit-lead[data-fit="row"] > butto
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .fit-cells:not(.fit-measuring) { display: none; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .side-break { display: none; }
 html[data-layout="desktop"] .pane .pane-head.fit-inline > .pane-tools { order: 3; }
-/* Every control at its own width (a button as wide as its label), a caption never on two lines. A strip that takes a whole row spans it. */
-html[data-layout="desktop"] .pane .pane-head > .fit-cells > * { margin: 0; min-width: 0; justify-self: start; white-space: nowrap; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells > :is([data-fit="row"], label.ctl) { justify-self: stretch; }
-html[data-layout="desktop"] .pane .pane-head > .fit-lead { white-space: nowrap; }
-/* A caption and its select are one cell: the caption as wide as the widest of its column (--fit-cap), then the select to the column's end, so the
-   selects of a column start and end at the same place (as wide as the widest of them). Measured, it is the caption at its own width. */
-html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl:not([hidden]) { display: grid; grid-template-columns: var(--fit-cap, max-content) minmax(0, 1fr); }
+/* A tile: its caption above its select, the select as wide as the tile; every tile of a row as wide as the others. A cell that takes a whole row spans it. */
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > * { margin: 0; min-width: 0; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 2px; white-space: nowrap; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells > label.ctl > select { width: 100%; min-width: 0; margin: 0; }
 html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl:not([hidden]) { display: inline-flex; }
-/* Captions above their selects (a narrow column, ui/fit-grid.ts rule 5), as on a phone: each cell as wide as the wider of the two, every
-   cell at the foot of its row, so the selects and buttons of a row stand level (a caption missing or shorter lifts nothing). */
-html[data-layout="desktop"] .pane .pane-head > .fit-cells { --fit-stack-gap: 2px; }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-stacked:not(.fit-measuring) > label.ctl:not([hidden]) { grid-template-columns: minmax(0, 1fr); row-gap: var(--fit-stack-gap); }
-html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-stacked:not(.fit-measuring) > * { align-self: end; }
+html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > label.ctl > select { width: auto; }
+/* Keys: square and as tall as the selects (ui/fit-grid.ts sets --head-key from them), a drawn mark in the text's colour, at the first line's right end
+   beside the menu (the first one shown takes the room before them). */
+html[data-layout="desktop"] .pane .pane-head { --head-key: 22px; }
+html[data-layout="desktop"] .pane .side-head > [data-fit="key"] { order: 1; }
+html[data-layout="desktop"] .pane .pane-head > [data-fit="key"] { position: relative; flex: none; box-sizing: border-box; width: var(--head-key); height: var(--head-key); min-height: 0; padding: 0; margin: 0 0 0 auto; font-size: 0; line-height: 0; }
+html[data-layout="desktop"] .pane .pane-head > [data-fit="key"]:not([hidden]) ~ [data-fit="key"] { margin-left: 0; }
+html[data-layout="desktop"] .pane .side-head:has(> [data-fit="key"]:not([hidden])) > .pane-tools { margin-left: 0; }
+html[data-layout="desktop"] .pane .pane-head > [data-fit="key"]::before { content: ""; position: absolute; inset: 0; margin: auto; width: calc(var(--head-key) * .68); height: calc(var(--head-key) * .68); background: currentColor; -webkit-mask: var(--key-mark) center / contain no-repeat; mask: var(--key-mark) center / contain no-repeat; }
+html[data-layout="desktop"] .pane .pane-head > .recenter-btn { --key-mark: var(--icon-recenter); }
+html[data-layout="desktop"] .pane .pane-head > .cues-btn { --key-mark: var(--mark-cues); }
+html[data-layout="desktop"] .pane .pane-head > .books-btn { --key-mark: var(--mark-books); }
 /* How wide the first line is on its own (ui/fit-grid.ts measures it for a moment): one line as wide as its content, without the cells. */
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line { width: max-content !important; flex-wrap: nowrap !important; }
 html[data-layout="desktop"] .pane .pane-head.fit-measuring-line > :is(.fit-cells, .fit-lead, .side-break) { display: none !important; }
@@ -391,7 +398,6 @@ html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg:not([hi
 html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; }
 /* Its buttons padded alike in the grid and on the first line, so that it is as wide as it was measured wherever it goes. */
 html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button, html[data-layout="desktop"] .pane.cvd .pane-head > .cvd-seg.fit-lead button { padding-left: 2px; padding-right: 2px; }
-.pane.ladder .pane-head .recenter-btn { margin-left: auto; }
 .pane > canvas { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
 
 .pane-head { display: flex; align-items: center; gap: 10px; min-height: 26px; padding: 2px 10px; flex: 0 0 auto; flex-wrap: wrap; border-bottom: 1px solid var(--line); font-size: 11px; }

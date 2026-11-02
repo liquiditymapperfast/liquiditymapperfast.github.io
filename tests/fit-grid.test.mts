@@ -14,43 +14,39 @@ test('everything on the identity line when it fits there, a grid of its own when
   assert.equal(grid.cols, 3, 'all three side by side under it');
 });
 
-test('only the cells marked for the identity line join it, all of them or none (or every cell, when they all fit there)', () => {
+test('only the cells marked for the identity line join it, all of them or none; a marked cell that does not fit takes a whole row', () => {
   const marked = [{ width: 100, lead: true }, { width: 100 }, { width: 100 }, { width: 100 }];
   const fit = chooseFit(marked, 420, 8, 210);
   assert.equal(fit.lead, 1, 'the marked cell, not the first two that would fit');
   assert.equal(fit.rows, 1, 'the other three in one row');
-  assert.equal(chooseFit(marked, 420, 8, 90).lead, 0, 'never more on the line than fits there');
+  const narrow = chooseFit(marked, 420, 8, 90);
+  assert.equal(narrow.lead, 0, 'never more on the line than fits there');
+  assert.deepEqual(narrow.spans, [3, 1, 1, 1], 'the mode spans the grid\'s row above the tiles');
+  assert.equal(narrow.rows, 2);
   assert.equal(chooseFit(cells(100, 100, 100, 100), 420, 8, 210).lead, 0, 'unmarked cells stay in the grid unless every one fits on the line');
   assert.equal(chooseFit(marked, 420, 8, 430).inline, true);
-  // Two marked cells: both or neither, never the first alone.
   const two = [{ width: 100, lead: true }, { width: 100, lead: true }, { width: 100 }];
   assert.equal(chooseFit(two, 420, 8, 150).lead, 0);
   assert.equal(chooseFit(two, 420, 8, 208).lead, 2);
 });
 
-test('with a row cell the grid has a filler column behind one more gap, and the columns leave room for it', () => {
-  // Two cells of 80 beside each other need 168 px; with the filler column and its gap 176.
-  const fit = chooseFit([{ width: 300, row: true }, { width: 80 }, { width: 80 }], 168, 8);
-  assert.equal(fit.cols, 1);
-  assert.equal(chooseFit([{ width: 300, row: true }, { width: 80 }, { width: 80 }], 176, 8).cols, 2);
-  assert.equal(chooseFit(cells(80, 80), 168, 8).cols, 2, 'without a row cell there is no filler');
+test('tiles: as many as fit at the widest tile\'s width, shared out evenly over the rows; all of one width', () => {
+  // Four selects whose tiles are at most 110 px: 4 to a row from 464 px, then 2 + 2 (3 would fit but leave one alone), then 1.
+  const four = (avail: number) => chooseFit([{ width: 160, tile: 90 }, { width: 170, tile: 80 }, { width: 190, tile: 110 }, { width: 150, tile: 70 }], avail, 8);
+  assert.equal(four(464).cols, 4);
+  assert.equal(four(463).cols, 2, '3 to a row would leave a lone tile');
+  assert.equal(four(463).rows, 2);
+  assert.equal(four(228).cols, 2);
+  assert.equal(four(227).cols, 1);
+  assert.deepEqual(four(464).spans, [1, 1, 1, 1], 'a tile spans one column; the grid makes every column as wide');
+  // A tile is as wide as the wider of its caption and its select: the width beside does not count.
+  assert.equal(chooseFit([{ width: 300, tile: 100 }, { width: 300, tile: 100 }], 210, 8).cols, 2);
+  // Without a tile width, a cell's own width is its tile's.
+  assert.equal(chooseFit(cells(100, 100), 210, 8).cols, 2);
+  assert.equal(chooseFit(cells(500, 40), 300, 8).cols, 1, 'a tile wider than the grid still gets a place, alone in its row');
 });
 
-test('the fewest rows that fit, in columns shared out evenly: the column count changes only with the row count', () => {
-  const fit = chooseFit(cells(80, 80, 80, 80, 80, 80, 80), 400, 8);
-  assert.equal(fit.rows, 2);
-  assert.equal(fit.cols, 4, '4 + 3');
-  assert.deepEqual(fit.spans, [1, 1, 1, 1, 1, 1, 1], 'no cell is stretched over the columns a short row leaves');
-  // Six cells: 6, then 3 + 3 (never 5 + 1 or 4 + 2), then 2 + 2 + 2.
-  const six = (avail: number) => chooseFit(cells(100, 100, 100, 100, 100, 100), avail, 8).cols;
-  assert.equal(six(640), 6);
-  assert.equal(six(600), 3, '5 columns would fit 600 px but leave a lone cell');
-  assert.equal(six(420), 3);
-  assert.equal(six(300), 2);
-  assert.equal(six(150), 1);
-});
-
-test('a cell that asks for a row gets one, the others are laid out around it', () => {
+test('a cell that asks for a row gets one, the tiles are laid out around it', () => {
   const fit = chooseFit([{ width: 300, row: true }, { width: 60 }, { width: 60 }], 280, 8);
   assert.equal(fit.rows, 2);
   assert.equal(fit.spans[0], fit.cols, 'the strip spans every column');
@@ -58,50 +54,11 @@ test('a cell that asks for a row gets one, the others are laid out around it', (
   assert.equal(flow.inline, false);
   assert.equal(flow.rows, 1);
   assert.equal(chooseFit([{ width: 300, row: true }], 250, 8, 320).inline, true, 'and sits on the identity line when it fits there');
-  // [a][ROW][b][c][d], 200 px, two columns of 80: a, the strip, then b c / d: four rows.
+  // [a][ROW][b][c][d], 200 px, two tiles of 80 to a row: a, the strip, then b c / d: four rows.
   const runs = chooseFit([{ width: 80 }, { width: 300, row: true }, { width: 80 }, { width: 80 }, { width: 80 }], 200, 8);
   assert.equal(runs.cols, 2);
   assert.equal(runs.rows, 4);
   assert.deepEqual(runs.spans, [1, 2, 1, 1, 1]);
-});
-
-test('a cell wider than the grid still gets a place, one column; columns take the widest cell of each', () => {
-  assert.equal(chooseFit(cells(500, 40), 300, 8).cols, 1);
-  // Column widths 200 + 50: two columns need 258 px, which fits 260.
-  assert.equal(chooseFit(cells(200, 50, 40, 50), 260, 8).cols, 2);
-  assert.equal(chooseFit(cells(200, 50, 40, 50), 250, 8).cols, 1);
-});
-
-test('captions of a column take its widest caption, so its controls start together, unless that costs a row', () => {
-  const cap = (caption: number, control: number) => ({ width: caption + 5 + control, cap: { caption, gap: 5, control } });
-  // Column 1: "Mode" 30 + select 100, "Venue lines" 60 + select 60. Widest cells 135 and 125, but aligned they need 60 + 5 + 100.
-  const fit = chooseFit([cap(30, 100), { width: 90 }, cap(60, 60), { width: 90 }], 270, 8);
-  assert.equal(fit.cols, 2, '165 + 8 + 90 = 263 fits 270');
-  assert.deepEqual(fit.caps, [60, 0, 60, 0]);
-  const tight = chooseFit([cap(30, 100), { width: 90 }, cap(60, 60), { width: 90 }], 250, 8);
-  assert.equal(tight.cols, 2, 'where the aligned column would not fit, the captions keep their own widths rather than cost a row (135 + 8 + 90)');
-  assert.deepEqual(tight.caps, [0, 0, 0, 0]);
-  // Long captions with short selects and short captions with long selects: each cell fits 240 px, the aligned column (110 + 5 + 150) does not.
-  const one = chooseFit([cap(110, 60), cap(40, 150), cap(100, 70)], 240, 8);
-  assert.equal(one.cols, 1);
-  assert.deepEqual(one.caps, [0, 0, 0]);
-});
-
-test('captions go above their selects where beside them only one column fits, or where that is lower by more than half a row', () => {
-  const cap = (caption: number, control: number) => ({ width: caption + 5 + control, cap: { caption, gap: 5, control } });
-  const heights = { row: 21, stacked: 38, gap: 5 };
-  // The German Book at 300 px: beside, one column of seven (177 px); above, two columns of four rows (167 px).
-  const de = [cap(34, 87), { width: 65 }, cap(37, 78), cap(60, 61), cap(39, 110), cap(48, 65), { width: 58 }];
-  const fit = chooseFit(de, 280, 8, 0, 8, heights);
-  assert.equal(fit.stacked, true);
-  assert.equal(fit.cols, 2);
-  assert.deepEqual(fit.caps, [0, 0, 0, 0, 0, 0, 0], 'no caption column above');
-  assert.equal(chooseFit(de, 280, 8, 0, 8).stacked, false, 'never without the heights');
-  // Two columns beside fit: above would be lower by only 3 px, so the captions stay beside.
-  const en = [{ width: 56 }, cap(30, 75), cap(60, 65), cap(30, 110), cap(50, 60), { width: 40 }];
-  const wide = chooseFit(en, 320, 8, 0, 8, heights);
-  assert.equal(wide.stacked, false);
-  assert.equal(wide.cols, 2);
 });
 
 test('the deck aligner counts its ways before making them: long rows fall back at once', () => {

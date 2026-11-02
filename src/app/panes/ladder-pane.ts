@@ -362,9 +362,11 @@ export class LadderPane {
   #buildControls(): void {
     const s = () => this.store.state;
     const title = document.createElement('strong'); title.textContent = t('Order Book');
-    this.#booksButton.className = 'books-btn'; this.#booksButton.textContent = t('Books'); setTip(this.#booksButton, t('Choose which venues get their own book (Single mode)'));
+    // Recentre, Cues and Books are keys at the end of the title's line (ui/fit-grid.ts): a drawn mark on the desktop, their word on a phone's sheet.
+    this.#booksButton.className = 'books-btn head-key'; this.#booksButton.dataset.fit = 'key'; this.#booksButton.textContent = t('Books'); setTip(this.#booksButton, t('Choose which venues get their own book (Single mode)'));
     this.#booksButton.onclick = () => { this.#panel = togglePanel(this.#booksButton, { title: t('Order books'), width: 340, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#buildBooks(tools, body)); };
-    const recenter = document.createElement('button'); recenter.className = 'recenter-btn'; recenter.textContent = t('Recenter'); recenter.onclick = () => this.recenter();
+    const recenter = document.createElement('button'); recenter.className = 'recenter-btn head-key'; recenter.dataset.fit = 'key'; recenter.textContent = t('Recenter'); recenter.onclick = () => this.recenter();
+    setTip(recenter, t('Recenter'));
     const group = this.#select(t('Group'), [['auto', t('Auto')], ...this.#groups.map(g => [String(g), stepText(g)] as [string, string])], () => String(this.#grouping(s().grouping)), v => this.store.set({ grouping: v === 'auto' ? 'auto' : Number(v) }));
     setTip(group, t('Price step per row. Scroll over the book, or drag its price column up and down, to zoom; drag the book to move it; double-click to reset.'));
     this.#autoOption = group.querySelector('option[value="auto"]');
@@ -372,16 +374,16 @@ export class LadderPane {
     setTip(pull, t('How much resting liquidity each price gained (+, stacked) or lost (−, pulled) over this window. Grey: the price traded there in the window, where a fill takes liquidity away just as a pull does.'));
     const curves = this.#curvesControl = this.#select(t('Venue lines'), LADDER_CURVES.map(n => [String(n), n === 0 ? t('off') : t('top {n}', { n })] as [string, string]), () => String(s().ladderCurves), v => this.store.set({ ladderCurves: Number(v) as AppState['ladderCurves'] }));
     setTip(curves, t('Compact: a running-total line for each of the largest venues, ranked by traded volume over the flow column\'s ranking window. Hover a line to see it alone.'));
-    this.#cuesButton.className = 'cues-btn'; this.#cuesButton.textContent = t('Cues');
+    this.#cuesButton.className = 'cues-btn head-key'; this.#cuesButton.dataset.fit = 'key'; this.#cuesButton.textContent = t('Cues');
     setTip(this.#cuesButton, t('What lights in the book when a venue\'s displayed depth changes, and the heat strip under each cell. Hover a cell, or the mark beside a row, to see what changed.'));
     this.#cuesButton.onclick = () => { this.#cuesPanel = togglePanel(this.#cuesButton, { title: t('Order book cues'), width: 340, align: 'right', onClose: () => { this.#cuesPanel = null; } }, (_tools, body) => this.#buildCues(body)); };
     const show = this.#select(t('Show'), [['both', t('Levels + cum')], ['levels', t('Levels')], ['cumulative', t('Cumulative')]], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] }));
-    // The controls are one fit grid (ui/fit-grid.ts): on the title's line when they all fit there, otherwise the mode there (when it fits) and
-    // the others in aligned rows under it.
+    // The choices are one fit grid (ui/fit-grid.ts): on the title's line when they all fit there, otherwise the mode there (when it fits) and
+    // the others as tiles of one width under it.
     const mode = this.#select(t('Mode'), [['aggregated', t('Aggregated')], ['single', t('Single')], ['compact', t('Compact')]], () => s().ladderMode, v => this.store.set({ ladderMode: v as AppState['ladderMode'] }));
     mode.dataset.fit = 'lead';
-    const cells = el('div', {}, mode, recenter, group, curves, show, pull, this.#cuesButton, this.#booksButton);
-    this.controls.append(title, helpButton('orderBook'), cells);
+    const cells = el('div', {}, mode, group, curves, show, pull);
+    this.controls.append(title, helpButton('orderBook'), cells, recenter, this.#cuesButton, this.#booksButton);
     this.#fit = new FitGrid(this.controls, cells, this.root);
     this.syncVenues();
     // On a phone the mode and the grouping stay in the row; the rest waits behind the key at its end (pane-tune.ts).

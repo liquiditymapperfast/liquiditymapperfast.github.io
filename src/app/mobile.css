@@ -501,6 +501,7 @@ html[data-layout^="phone"] .pane.lt .lt-halves .seg button.on { background: var(
   html[data-layout="desktop"] .pane-head.side-head { --head-row-gap: 4px; }
   html[data-layout="desktop"] .pane-head :is(select, button:not(.help)) { font-size: 13px; min-height: 32px; padding: 0 10px; border-radius: var(--radius); }
   html[data-layout="desktop"] .pane-head button.help { width: 24px; height: 24px; font-size: 0; line-height: 0; }
+  html[data-layout="desktop"] .pane .pane-head { --head-key: 32px; }
   html[data-layout="desktop"] .pane-head .ctl input[type=checkbox] { width: 20px; height: 20px; }
 }
 

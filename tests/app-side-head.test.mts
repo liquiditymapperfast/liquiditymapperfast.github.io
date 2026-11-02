@@ -66,3 +66,17 @@ test('the two columns take their minimum from the screen they are on: both calls
 test('the name gives way before the first line breaks, so the menu and the close button stay on it', () => {
   assert.match(css, /\.side-head > strong \{ order: -1; flex: 1 1 0; min-width: 2\.2em; max-width: max-content;/);
 });
+
+test('the book\'s recentre, cues and books are keys on the title\'s line, square marks on the desktop only, words on a phone\'s sheet', () => {
+  const ladder = read('panes/ladder-pane.ts');
+  for (const key of ['recenter.dataset.fit = \'key\'', 'this.#cuesButton.dataset.fit = \'key\'', 'this.#booksButton.dataset.fit = \'key\'']) assert.ok(ladder.includes(key), `${key} marks a key`);
+  assert.ok(ladder.includes('const cells = el(\'div\', {}, mode, group, curves, show, pull);'), 'the cells are the choices only');
+  assert.ok(ladder.includes('cells, recenter, this.#cuesButton, this.#booksButton);'), 'the keys are the header\'s own children, after the cells');
+  let seen = 0;
+  for (const m of bare.matchAll(/([^{};]*data-fit="key"[^{};]*)\{/g)) {
+    for (const selector of selectorsOf(m[1]!)) { seen++; assert.ok(selector.startsWith('html[data-layout="desktop"]'), `a key selector outside the desktop arrangement: ${selector.slice(0, 90)}`); }
+  }
+  assert.ok(seen >= 4, 'the key rules are there');
+  assert.match(css, /--mark-cues: url\(/);
+  assert.match(css, /--mark-books: url\(/);
+});
