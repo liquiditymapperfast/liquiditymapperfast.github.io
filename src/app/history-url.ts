@@ -11,6 +11,11 @@ export const HISTORY_BASE = 'https://history.hiverust.dev/v1';
  * the twenty most traded after BTC when it was set (2026-11-02).
  */
 export const RECORDED_COINS: readonly string[] = ['BTC', 'ETH', 'SOL', 'ZEC', 'HYPE', 'PEPE', 'XRP', 'NEAR', 'TRUMP', 'XPL', 'LIT', 'UNI', 'DOGE', 'BNB', 'PUMP', 'AAVE', 'ENA', 'LINK', 'WLD', 'TRX', 'SUI'];
+/**
+ * Whether the public address serves the other coins' folders: the tunnel's route passes `/v1/btc` only until it is widened to every coin's
+ * folder (hlm-history docs/DEPLOY.md). Until then the other coins read history only from a local stand-in.
+ */
+export const OTHER_COINS_SERVED = false;
 const RECORDED = new Set(RECORDED_COINS);
 
 /**
@@ -28,6 +33,6 @@ export function historyUrl(coin: string, search: string = typeof location === 'u
       if ((url.protocol === 'http:' || url.protocol === 'https:') && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) return url.href.replace(/\/+$/, '').replace(/(\/v1)\/[^/]+$/, '$1') + folder;
     } catch { /* not a URL: the configured address stands */ }
   }
-  // No service configured (HISTORY_BASE ''): off, unless a local one stands in above.
-  return HISTORY_BASE ? HISTORY_BASE + folder : '';
+  // No service configured (HISTORY_BASE ''), or one that does not serve this coin yet: off, unless a local one stands in above.
+  return HISTORY_BASE && (coin === 'BTC' || OTHER_COINS_SERVED) ? HISTORY_BASE + folder : '';
 }

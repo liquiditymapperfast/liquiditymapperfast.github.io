@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
-import { historyUrl } from '../src/app/history-url.ts';
+import { OTHER_COINS_SERVED, historyUrl } from '../src/app/history-url.ts';
 
 /** The first three minutes of an hour file written by hlm-history on 2026-11-01 (23:14-23:16Z, the eleven default books). */
 const fixture = (): ArrayBuffer => { const b = fs.readFileSync(path.join(process.cwd(), 'tests', 'fixtures', 'history-hour.bin')); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; };
@@ -93,7 +93,7 @@ test('the address: the service on hiverust, a local stand-in or off from the pag
   assert.equal(historyUrl('BTC', '?history=off'), '');
   assert.equal(historyUrl('ADA', '?history=http://127.0.0.1:8791/v1/btc'), '', 'a coin the service does not record');
   // The other coins the service records (their trade side): each its own folder, on the service or a local stand-in.
-  assert.equal(historyUrl('ETH', ''), 'https://history.hiverust.dev/v1/eth');
+  assert.equal(historyUrl('ETH', ''), OTHER_COINS_SERVED ? 'https://history.hiverust.dev/v1/eth' : '', 'the public address serves the other coins once its route does');
   assert.equal(historyUrl('PEPE', '?history=http://127.0.0.1:8791/v1/btc'), 'http://127.0.0.1:8791/v1/pepe', 'the folder of one coin names the service');
   assert.equal(historyUrl('SOL', '?history=http://127.0.0.1:8791/v1/'), 'http://127.0.0.1:8791/v1/sol');
 });
