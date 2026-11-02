@@ -7,7 +7,7 @@ import { hoursOf, peakOf, type AbsorptionGroup, type AbsorptionMinute, type Abso
 import type { CoverageRow, CoverageStore } from '../../shared/coverage.ts';
 import { largestLiquidations, liquidationKey, type Liquidation, type LiquidationStore } from '../../shared/liquidations.ts';
 import type { OiReading, OiStore } from '../../shared/engine.ts';
-import type { HistoryRows } from './history-import.ts';
+import { footprintVolume, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, type HistoryRows } from './history-import.ts';
 
 /**
  * Recordings kept in this browser (IndexedDB): the same four stores the server keeps in SQLite. The recorders read everything they
@@ -34,7 +34,7 @@ type OiRow = OiReading;
  * recorders) marks an hour of the recorded history read whole (`markImported`): an hour already taken is not read again.
  */
 interface CoverRow extends Omit<CoverageRow, 'metric'> { metric: CoverageRow['metric'] | 'history'; t: number }
-const IMPORTED = 'history', IMPORTED_INST = '', HOUR = 3_600_000;
+const IMPORTED = 'history', IMPORTED_INST = '', HOUR = 3_600_000, MINUTE = 60_000;
 
 /** `name` is the coin's database (app/coin.ts recordingsName): each coin's recordings are kept and read apart. */
 function openDatabase(name: string): Promise<IDBDatabase> {
@@ -108,8 +108,9 @@ export interface Recordings {
   /**
    * The same for the other recordings: a flow minute joins second by second where it is the fuller copy, a liquidation or an open-interest
    * reading the page does not hold is added, a large trade only outside the stretches this page recorded itself (where its own are the ones
-   * to keep: an order rebuilt from the same fills elsewhere may differ in its price); the service's stretches of trade coverage are not
-   * taken into the page's own (see `importRows`).
+   * to keep: an order rebuilt from the same fills elsewhere may differ in its price), a footprint minute or an absorption minute (with its
+   * groups) only where this page did not record the whole minute itself; the service's stretches of trade coverage join the page's own for
+   * the instruments whose footprint minutes were taken (see `importRows`).
    */
   importRows(rows: HistoryRows): number;
   /** The hours of the recorded history read whole (kept as the coverage record is, so they go with it), and marking more. */
@@ -332,9 +333,13 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     save: (rows, expireBefore) => enqueue(tx => { const store = tx.objectStore('oi'); for (const row of rows) store.put({ ...row } satisfies OiRow); prune(tx, 'oi', expireBefore); }),
     close: () => {},
   };
+  // What the import of the trade side judges by (history-import.ts `TradeImport`): taken now, before anything is imported.
+  const trade = tradeImport(coverRows, footprintRows);
+  const footprintAt = new Map<string, number>();
+  footprintRows.forEach((row, i) => footprintAt.set(`${row.inst}|${row.t}`, i));
   // Minutes recorded elsewhere join the rows `load` hands the recorder (a thinner copy of the same minute is replaced) and are stored like
   // the recorder's own (by the tab that writes; another tab shows them and stores nothing, as it does with what it records).
-  const importColumns = (incoming: readonly { inst: string; step: number; column: Column }[]): number => {
+  const importColumns =(incoming: readonly { inst: string; step: number; column: Column }[]): number => {
     const at = new Map<string, number>();
     columnRows.forEach((row, i) => at.set(`${row.inst}|${row.t}`, i));
     let taken = 0;
@@ -374,18 +379,63 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     }
     if (newOi.length) { oi.save(newOi, since); taken += newOi.length; }
     // Large trades only where this page did not record the trades itself.
-    const own = new Map<string, [number, number][]>();
-    for (const row of coverRows) if (row.metric === 'trades') { let list = own.get(row.inst); if (!list) own.set(row.inst, list = []); list.push([row.from, row.to]); }
-    const ownsIt = (id: string, t: number): boolean => (own.get(id) ?? []).some(([a, b]) => t >= a && t < b);
-    const newPrints = incoming.prints.filter(row => !ownsIt(row.id, row.t) && !everyPrint.has(printKey(row)));
+    const newPrints = incoming.prints.filter(row => !ownsTime(trade, row.id, row.t) && !everyPrint.has(printKey(row)));
     if (newPrints.length) {
       for (const row of newPrints) printRows.push({ ...row, k: printKey(row) });
       printRows.sort((a, b) => a.t - b.t);
       prints.save(newPrints, since); taken += newPrints.length;
     }
-    // The stretches the service recorded trades over are not taken into this page's own: the page's coverage says where its footprint holds
-    // every trade (the Candle tab judges a bar only over markets covered since it opened, and a recovery fills what it lacks), and the
-    // service records no footprint.
+    // Footprint minutes where this page did not record the whole minute, on its step, the fuller copy (`planFootprint`).
+    const newFootprint = planFootprint(trade, incoming.footprint, key => { const i = footprintAt.get(key); return i === undefined ? undefined : footprintVolume(footprintRows[i]!); });
+    for (const row of newFootprint) {
+      const key = `${row.inst}|${row.t}`, i = footprintAt.get(key);
+      if (i === undefined) { footprintAt.set(key, footprintRows.length); footprintRows.push(row); } else footprintRows[i] = row;
+    }
+    if (newFootprint.length) { footprint.save(newFootprint, since); taken += newFootprint.length; }
+    // Absorption minutes where this page did not record the whole minute, with their groups (`planAbsorption`). The page's own groups of
+    // such a minute, found in a part of it, go first: no group is counted twice.
+    const absorbed = planAbsorption(trade, incoming.absorptionMinutes, incoming.absorption);
+    if (absorbed.size) {
+      const minuteOf = (inst: string, t0: number): string => `${inst}|${Math.floor(t0 / MINUTE) * MINUTE}`;
+      const groupRow = (g: AbsorptionGroup): AbsorptionRow => ({ inst: g.id, t0: g.t0, side: g.side, price: g.price, peak: peakOf(g), steps: g.steps });
+      const minuteRow = (m: AbsorptionMinute): AbsorptionMinuteRow => ({ inst: m.id, t: m.t, n: m.n, mean: m.mean, m2: m.m2, floor: m.floor });
+      // What the recorder opens with (the last two hours) is changed the same way.
+      const keptGroups = absorptionRows.filter(row => !absorbed.has(minuteOf(row.inst, row.t0)));
+      absorptionRows.length = 0; absorptionRows.push(...keptGroups);
+      const minuteAt = new Map(absorptionMinuteRows.map((row, i) => [`${row.inst}|${row.t}`, i]));
+      for (const [key, { minute, groups }] of absorbed) {
+        if (minute.t < absorptionSince) continue;
+        const i = minuteAt.get(key);
+        if (i === undefined) absorptionMinuteRows.push(minuteRow(minute)); else absorptionMinuteRows[i] = minuteRow(minute);
+        for (const g of groups) absorptionRows.push(groupRow(g));
+      }
+      enqueue(tx => {
+        const store = tx.objectStore('absorption'), perMinute = tx.objectStore('absorptionMinutes');
+        for (const { minute, groups } of absorbed.values()) {
+          perMinute.put(minuteRow(minute));
+          // The minute's groups go in once the page's own are deleted: a cursor still walking the minute would delete them too.
+          const request = store.index('t').openCursor(IDBKeyRange.bound(minute.t, minute.t + MINUTE, false, true));
+          request.onsuccess = () => {
+            const cursor = request.result;
+            if (cursor) { if ((cursor.value as AbsorptionRow).inst === minute.id) cursor.delete(); cursor.continue(); return; }
+            for (const g of groups) store.put(groupRow(g));
+          };
+        }
+      });
+      taken += absorbed.size;
+    }
+    // The service's stretches of trade coverage join the page's own where its footprint minutes were taken (`planCoverage`). A stretch is
+    // written again as it grows (its start is its key): the longest copy stays.
+    const coverAt = new Map(coverRows.map((row, i) => [`${row.inst}|${row.metric}|${row.from}`, i]));
+    const newCover: CoverRow[] = [];
+    for (const row of planCoverage(trade, incoming)) {
+      const key = `${row.inst}|${row.metric}|${row.from}`, i = coverAt.get(key);
+      if (i !== undefined && coverRows[i]!.to >= row.to) continue;
+      const stored: CoverRow = { ...row, t: row.to };
+      if (i === undefined) { coverAt.set(key, coverRows.length); coverRows.push(stored); } else coverRows[i] = stored;
+      newCover.push(stored);
+    }
+    if (newCover.length) { enqueue(tx => { const store = tx.objectStore('coverage'); for (const row of newCover) store.put(row); }); taken += newCover.length; }
     return taken;
   };
   const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED).map(row => row.from);
