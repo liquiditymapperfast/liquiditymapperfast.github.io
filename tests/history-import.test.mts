@@ -241,9 +241,15 @@ test('an hour read whole is not read again; the open hour and one still under wa
   const file = tradesFixture();
   const fetcher = async (url: string) => url.endsWith('/latest.json')
     ? { ok: true, status: 200, json: async () => ({ v: 1, coin: 'BTC', first: TRADES_HOUR, last: TRADES_HOUR, open: TRADES_HOUR + HOUR_MS, steps: {}, trades: ['binance:BTCUSDT'] }) as unknown, arrayBuffer: async () => new ArrayBuffer(0) }
-    : url.endsWith(`/m1/${TRADES_HOUR}.bin`) ? { ok: true, status: 200, json: async () => null as unknown, arrayBuffer: async () => file.slice(0) } : { ok: false, status: 404, json: async () => null as unknown, arrayBuffer: async () => new ArrayBuffer(0) };
+    : url.endsWith(`/m1/${TRADES_HOUR}.bin`) ? { ok: true, status: 200, headers: { get: (n: string) => n === 'cache-control' ? cache : null }, json: async () => null as unknown, arrayBuffer: async () => file.slice(0) } : { ok: false, status: 404, json: async () => null as unknown, arrayBuffer: async () => new ArrayBuffer(0) };
+  let cache = 'public, max-age=31536000, immutable';
   const after = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, addRows: () => 0, since: TRADES_HOUR - HOUR_MS, now: TRADES_HOUR + HOUR_MS + 60_000, fetcher });
-  assert.deepEqual(after.read, [TRADES_HOUR], 'a finished hour is marked read');
+  assert.deepEqual(after.read, [TRADES_HOUR], 'a sealed hour is marked read');
+  // Just after the hour turned, a cache may still hand out the copy it kept while the hour was open: read, not marked (Sol round 3).
+  cache = 'public, max-age=30, stale-while-revalidate=30';
+  const early = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, addRows: () => 0, since: TRADES_HOUR - HOUR_MS, now: TRADES_HOUR + HOUR_MS + 60_000, fetcher });
+  assert.equal(early.hours, 1);
+  assert.deepEqual(early.read, []);
   const during = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, addRows: () => 0, since: TRADES_HOUR - HOUR_MS, now: TRADES_HOUR + 40 * 60_000, fetcher: async (url: string) => url.endsWith('/latest.json') ? { ok: true, status: 200, json: async () => ({ v: 1, coin: 'BTC', first: null, last: null, open: TRADES_HOUR, steps: {}, trades: ['binance:BTCUSDT'] }) as unknown, arrayBuffer: async () => new ArrayBuffer(0) } : fetcher(url) });
   assert.equal(during.hours, 1);
   assert.deepEqual(during.read, [], 'the open hour is read again next time');

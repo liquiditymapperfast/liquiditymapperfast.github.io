@@ -114,7 +114,9 @@ export interface Recordings {
   importRows(rows: HistoryRows): number;
   /** The hours of the recorded history read whole (kept as the coverage record is, so they go with it), and marking more. */
   importedHours(): number[];
-  markImported(hours: readonly number[]): void;
+  /** `since`: `writeEpoch()` before the import; the hours are marked only when every write since went through. */
+  markImported(hours: readonly number[], since: number): Promise<void>;
+  writeEpoch(): number;
   /** Apply what is queued now instead of at the next half second. */
   flush(): Promise<void>;
   close(): void;
@@ -137,13 +139,17 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     readSince<AbsorptionRow>(db, 'absorption', absorptionSince), readSince<AbsorptionMinuteRow>(db, 'absorptionMinutes', absorptionSince), readSince<CoverRow>(db, 'coverage', since), readSince<LiquidationRow>(db, 'liquidations', since), readSince<OiRow>(db, 'oi', since)]);
   console.info(`recordings read back in ${Math.round(performance.now() - started)} ms: ${columnRows.length} map minutes, ${footprintRows.length} footprint minutes, ${printRows.length} trades, ${liquidationRows.length} liquidations, ${oiRows.length} open-interest readings`);
   let queue: ((tx: IDBTransaction) => void)[] = [], timer: ReturnType<typeof setTimeout> | null = null, failed = false, closed = false, failures = 0;
+  // Counts every write let go (not this tab's to make, or a batch that failed): a mark that an hour was imported is kept only when nothing
+  // was let go while it was imported (`markImported`). `writing` is the batch in flight.
+  let epoch = 0, writing: Promise<void> = Promise.resolve();
   const schedule = (): void => { if (!timer) timer = setTimeout(() => { void write(); }, failures ? Math.min(RETRY_MAX_MS, WRITE_DELAY_MS * 2 ** failures) : WRITE_DELAY_MS); };
 
   const prune = (tx: IDBTransaction, name: Name, before: number): void => {
     const store = tx.objectStore(name), request = store.index('t').openKeyCursor(IDBKeyRange.upperBound(before, true));
     request.onsuccess = () => { const cursor = request.result; if (cursor) { store.delete(cursor.primaryKey); cursor.continue(); } };
   };
-  const write = async (): Promise<void> => {
+  const write = (): Promise<void> => { const run = writing.then(writeNow); writing = run; return run; };
+  const writeNow = async (): Promise<void> => {
     timer = null;
     const ops = queue; queue = [];
     if (!ops.length || failed || closed) return;
@@ -165,7 +171,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       // The batch is let go (what it held stays on screen, and a minute that changes again is written again) and writing goes on after a
       // pause that grows. One failed write used to end saving for the session, so a page left open for days could reload to nothing.
       if (error instanceof DOMException && error.name === 'InvalidStateError') lost = true;
-      failures++;
+      failures++; epoch++;
       events.failed?.(error, false);
       if (queue.length) schedule();
     }
@@ -180,7 +186,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     request.onsuccess = () => { const chosen = fuller(request.result as Row | undefined, row); if (chosen) store.put(chosen); };
   };
   const enqueue = (op: (tx: IDBTransaction) => void): void => {
-    if (failed || closed || !canWrite()) return;
+    if (failed || closed || !canWrite()) { epoch++; return; }
     queue.push(op);
     schedule();
   };
@@ -383,14 +389,20 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     return taken;
   };
   const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED).map(row => row.from);
-  const markImported = (hours: readonly number[]): void => {
+  // Written once what the import queued has been written (or let go), and only when nothing was let go since `since` (`writeEpoch()`
+  // before the import): a mark without its rows would keep the hour from being read again.
+  const markImported = async (hours: readonly number[], since: number): Promise<void> => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    await write();
+    if (epoch !== since || failed || closed || !canWrite()) return;
     const held = new Set(importedHours()), rows = hours.filter(h => !held.has(h)).map(h => ({ inst: IMPORTED_INST, metric: IMPORTED, from: h, to: h + HOUR, kind: 'live' as const, t: h + HOUR }) satisfies CoverRow);
     if (!rows.length) return;
-    coverRows.push(...rows);
     enqueue(tx => { const store = tx.objectStore('coverage'); for (const row of rows) store.put(row); });
+    await write();
+    if (epoch === since) coverRows.push(...rows);
   };
   return {
-    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns, importRows, importedHours, markImported,
+    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns, importRows, importedHours, markImported, writeEpoch: () => epoch,
     flush() { if (timer) clearTimeout(timer); return write(); },
     close() { if (timer) clearTimeout(timer); void write().finally(() => { closed = true; db.close(); }); },
   };

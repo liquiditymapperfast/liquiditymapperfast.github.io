@@ -201,7 +201,7 @@ export function within(rows: HistoryRows, since: number, before: number): Histor
   };
 }
 
-type Fetch = (url: string, init: { signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; arrayBuffer(): Promise<ArrayBuffer> }>;
+type Fetch = (url: string, init: { signal: AbortSignal }) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; json(): Promise<unknown>; arrayBuffer(): Promise<ArrayBuffer> }>;
 
 export interface ImportOptions {
   /** The service's folder for the coin (`historyUrl`). */
@@ -255,8 +255,9 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
           done.columns += add(take);
           if (addRows) done.rows += addRows(within(file.rows, since, before));
           done.hours++;
-          // An hour that has ended, and before the open one, will not change: it is not read again (`Held.imported`).
-          if (hour + HOUR_MS <= before && hour !== latest.open) { done.read.push(hour); held.imported.add(hour); }
+          // A sealed hour (the service answers it `immutable`; an hour still open, or a copy of it a cache kept, is not) will not change:
+          // it is not read again (`Held.imported`).
+          if (hour + HOUR_MS <= before && hour !== latest.open && /\bimmutable\b/.test(r.headers?.get('cache-control') ?? '')) { done.read.push(hour); held.imported.add(hour); }
         } catch { done.failed++; }
       }
     };
