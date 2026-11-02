@@ -85,6 +85,12 @@ export interface EngineOptions {
   ping?: (url: string, init?: { method: string; headers: Record<string, string>; body: string }) => Promise<boolean>;
   columns?: ColumnStore | null; footprint?: FootprintStore | null; prints?: PrintStore | null; flow?: FlowStore | null; absorption?: AbsorptionStore | null; coverage?: CoverageStore | null; liquidations?: LiquidationStore | null; oi?: OiStore | null;
   retentionMs?: number;
+  /**
+   * Grid steps for books the recordings hold nothing of (the recorded history's, app/browser/history-import.ts): such a book records on
+   * the history's grid from its first minute, so the history it is shown with lies on its grid. A book the recordings hold keeps the step
+   * of its oldest minute, as always.
+   */
+  gridSteps?: ReadonlyMap<string, number>;
   /** How a recovery reads a venue's trade history (shared/recovery.ts), and its budget; a test gives its own. */
   historyFetch?: HistoryFetch; recoveryBudget?: RecoveryBudget;
 }
@@ -197,7 +203,7 @@ export class Engine {
   #timer: ReturnType<typeof setInterval> | null = null;
   #hydration: ReturnType<typeof setTimeout> | null = null;
 
-  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = webGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, coverage = null, liquidations = null, oi = null, retentionMs = BROWSER_RETENTION_MS, historyFetch = webHistoryFetch, recoveryBudget = RECOVERY_BUDGET }: EngineOptions = {}) {
+  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = webGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, coverage = null, liquidations = null, oi = null, retentionMs = BROWSER_RETENTION_MS, historyFetch = webHistoryFetch, recoveryBudget = RECOVERY_BUDGET, gridSteps }: EngineOptions = {}) {
     this.#oiStore = oi; this.#retentionMs = retentionMs;
     if (oi) {
       // One row per venue and minute, at the minute's start, as `#applyLiveOi` keeps them: of a minute's rows the newest reading by its
@@ -219,7 +225,7 @@ export class Engine {
     // A coin that trades less than BTC keeps smaller trades, groups and map cells (shared/coins.ts SCALES); BTC's are 1.
     const scale = SCALES[tier] ?? 1;
     // A page keeps far fewer merged windows than a server (about 6 MB at most): it holds a day, and it may be a phone.
-    this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale, mergedCacheBins: 500_000 });
+    this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale, mergedCacheBins: 500_000, ...(gridSteps?.size ? { steps: new Map(gridSteps) } : {}) });
     this.footprints = new FootprintRecorder(footprint, now, retentionMs, scale);
     this.printStream = new PrintStream(prints, now, retentionMs, PRINT_FLOOR_USD * scale);
     // Minutes kept from before the footprint kept its lists of large orders get them from the prints kept beside them (a day at most, in

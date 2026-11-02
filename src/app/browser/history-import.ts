@@ -22,7 +22,8 @@ export interface HistoryLatest { v: 1; coin: string; first: number | null; last:
 
 /**
  * An hour file's columns (layout in hlm-history's store.rs: a 16-byte header `HLMC`, version 1, the hour; then length-prefixed records), or
- * null for a file that is not one. A record cut short at the end (the open hour, read while it is written) ends the list.
+ * null for a file that is not one. A record cut short at the end (the open hour, read while it is written) ends the list; a record that is
+ * whole but does not hold a sane minute (of this hour, bins ascending, amounts finite and not negative) is left out, the rest kept.
  */
 export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: HistoryColumn[] } | null {
   const view = new DataView(buffer), size = buffer.byteLength;
@@ -30,25 +31,38 @@ export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: Histor
   const hour = Number(view.getBigInt64(8, true)), text = new TextDecoder(), columns: HistoryColumn[] = [];
   for (let at = 16; at + 4 <= size;) {
     const length = view.getUint32(at, true), end = at + 4 + length;
-    if (end > size) break;
-    let p = at + 4;
-    if (view.getUint8(p) === 1) {
-      const idLength = view.getUint8(p + 1); p += 2;
-      const inst = text.decode(new Uint8Array(buffer, p, idLength)); p += idLength;
-      const t = Number(view.getBigInt64(p, true)), n = view.getUint32(p + 8, true), step = view.getFloat64(p + 12, true), count = view.getUint32(p + 20, true); p += 24;
-      if (p + count * 12 + 4 > end) return null;
-      // Copied out: the records sit at any byte offset, and a typed array over the file's buffer would keep the whole file alive.
-      const bins = new Int32Array(buffer.slice(p, p + count * 4)), bid = new Float32Array(buffer.slice(p + count * 4, p + count * 8)), ask = new Float32Array(buffer.slice(p + count * 8, p + count * 12));
-      p += count * 12;
-      const ltN = view.getUint32(p, true); p += 4;
-      const lt = ltN > 0 && p + 128 <= end ? new Float32Array(buffer.slice(p, p + 128)) : null;
-      if (lt) p += 128;
-      if (p !== end || !(step > 0) || !Number.isFinite(t) || n < 1) return null;
-      columns.push({ inst, step, column: { t, n, bins, bid, ask, ...(lt ? { lt, ltN } : {}) } });
-    }
+    // The smallest record is 31 bytes (kind, id length, a one-letter id, time, samples, step, count, tracker samples): a shorter length is
+    // not a record boundary (a zero-filled tail after a crash), and nothing after it can be trusted.
+    if (end > size || length < 31) break;
+    const column = record(view, buffer, text, at + 4, end, hour);
+    if (column) columns.push(column);
     at = end;
   }
   return { hour, columns };
+}
+
+/** One record of an hour file, or null when it is not a column of this hour that can be shown. */
+function record(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: number, end: number, hour: number): HistoryColumn | null {
+  let p = from;
+  if (view.getUint8(p) !== 1) return null;
+  const idLength = view.getUint8(p + 1); p += 2;
+  if (!idLength || p + idLength + 28 > end) return null;
+  const inst = text.decode(new Uint8Array(buffer, p, idLength)); p += idLength;
+  const t = Number(view.getBigInt64(p, true)), n = view.getUint32(p + 8, true), step = view.getFloat64(p + 12, true), count = view.getUint32(p + 20, true); p += 24;
+  if (p + count * 12 + 4 > end) return null;
+  // Copied out: the records sit at any byte offset, and a typed array over the file's buffer would keep the whole file alive.
+  const bins = new Int32Array(buffer.slice(p, p + count * 4)), bid = new Float32Array(buffer.slice(p + count * 4, p + count * 8)), ask = new Float32Array(buffer.slice(p + count * 8, p + count * 12));
+  p += count * 12;
+  const ltN = view.getUint32(p, true); p += 4;
+  const lt = ltN > 0 && p + 128 <= end ? new Float32Array(buffer.slice(p, p + 128)) : null;
+  if (lt) p += 128;
+  if (p !== end || !(step > 0) || !Number.isFinite(step) || t < hour || t >= hour + HOUR_MS || t % COLUMN_MS !== 0 || n < 1 || n > 13) return null;
+  for (let i = 0; i < count; i++) {
+    if (i && !(bins[i]! > bins[i - 1]!)) return null;
+    if (!(bid[i]! >= 0) || !(ask[i]! >= 0) || !Number.isFinite(bid[i]!) || !Number.isFinite(ask[i]!)) return null;
+  }
+  if (lt && !lt.every(Number.isFinite)) return null;
+  return { inst, step, column: { t, n, bins, bid, ask, ...(lt ? { lt, ltN } : {}) } };
 }
 
 /** What the page holds: per book, the step of its oldest minute (the step the engine keeps) and each minute's samples. */
@@ -117,22 +131,36 @@ export interface ImportOptions {
   /** Adds columns to the recordings (memory and storage); returns how many it took. */
   add: (columns: HistoryColumn[]) => number;
   since: number; now: number;
-  /** The whole import gives up after this (the engine starts with what has arrived). */
-  budgetMs?: number;
+  /**
+   * The whole import gives up after this, and the service's `latest.json` after `latestMs`: the page's map waits for it, so a service that
+   * is slow or gone costs a visit a few seconds at most (the engine starts with what has arrived).
+   */
+  budgetMs?: number; latestMs?: number;
   fetcher?: Fetch;
 }
 
-/** Reads the hours the page lacks and adds their minutes; resolves with what it did, never rejects. */
-export async function importHistory({ url, held, add, since, now, budgetMs = 8_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; failed: number; error?: string }> {
+/**
+ * Reads the hours the page lacks, newest first (what runs out of time is the oldest), and adds their minutes; resolves with what it did and
+ * the service's grid steps, never rejects.
+ */
+export async function importHistory({ url, held, add, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; failed: number; steps?: Record<string, number>; error?: string }> {
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), budgetMs);
   const done = { hours: 0, columns: 0, failed: 0 };
   try {
-    const response = await fetcher(`${url}/latest.json`, { signal: abort.signal });
-    if (!response.ok) return { ...done, error: `latest.json: HTTP ${response.status}` };
-    const latest = await response.json() as HistoryLatest;
+    const first = new AbortController(), firstTimer = setTimeout(() => first.abort(), latestMs), stop = (): void => first.abort();
+    abort.signal.addEventListener('abort', stop);
+    let latest: HistoryLatest;
+    try {
+      const response = await fetcher(`${url}/latest.json`, { signal: first.signal });
+      if (!response.ok) return { ...done, error: `latest.json: HTTP ${response.status}` };
+      latest = await response.json() as HistoryLatest;
+    } finally { clearTimeout(firstTimer); abort.signal.removeEventListener('abort', stop); }
     if (!latest || latest.v !== 1 || typeof latest.steps !== 'object' || latest.steps === null) return { ...done, error: 'latest.json: not version 1' };
+    const steps: Record<string, number> = {};
+    for (const [inst, step] of Object.entries(latest.steps)) if (typeof step === 'number' && step > 0 && Number.isFinite(step)) steps[inst] = step;
+    latest = { ...latest, steps };
     const before = Math.floor(now / COLUMN_MS) * COLUMN_MS;
-    const queue = hoursToRead(latest, held, since, now);
+    const queue = hoursToRead(latest, held, since, now).reverse();
     const worker = async (): Promise<void> => {
       for (let hour = queue.shift(); hour !== undefined && !abort.signal.aborted; hour = queue.shift()) {
         try {
@@ -147,7 +175,7 @@ export async function importHistory({ url, held, add, since, now, budgetMs = 8_0
       }
     };
     await Promise.all(Array.from({ length: PARALLEL }, worker));
-    return done;
+    return { ...done, steps };
   } catch (error) {
     return { ...done, error: error instanceof Error ? error.message : String(error) };
   } finally { clearTimeout(timer); }

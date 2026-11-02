@@ -107,3 +107,32 @@ test('coverage is judged book by book: ten full books and one half-held still re
   for (let i = 0; i < 11; i++) for (let m = 0; m < (i === 10 ? 30 : 60); m++) rows.push({ instrumentId: `b${i}`, step: 20, column: { t: HOUR - HOUR_MS + m * 60_000, n: 12 } });
   assert.deepEqual(hoursToRead({ v: 1, coin: 'BTC', first: HOUR - HOUR_MS, last: HOUR - HOUR_MS, open: null, steps: books }, heldOf(rows), HOUR - HOUR_MS, HOUR + 60_000), [HOUR - HOUR_MS]);
 });
+
+test('newest hours first, a stalled latest.json gives up at its own deadline, the service\'s steps come back (Sonnet)', async () => {
+  const file = fixture(), asked: string[] = [];
+  const steps = Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, 20]));
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: HOUR - 3 * HOUR_MS, last: HOUR - HOUR_MS, open: HOUR, steps: { ...steps, bad: -1 } as Record<string, number> };
+  const fetcher = async (url: string) => {
+    asked.push(url.slice(url.lastIndexOf('/') + 1));
+    return url.endsWith('/latest.json') ? { ok: true, status: 200, json: async () => latest, arrayBuffer: async () => new ArrayBuffer(0) } : { ok: false, status: 404, json: async () => null, arrayBuffer: async () => new ArrayBuffer(0) };
+  };
+  const done = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: () => 0, since: HOUR - 3 * HOUR_MS, now: HOUR + 60_000, fetcher });
+  assert.deepEqual(asked.slice(1, 3), [`${HOUR}.bin`, `${HOUR - HOUR_MS}.bin`], 'the open hour, then the one before');
+  assert.deepEqual(done.steps, steps, 'a step that is not a positive number is dropped');
+  const stalled = (url: string, init: { signal: AbortSignal }) => url.endsWith('/latest.json') ? new Promise<never>((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted')))) : fetcher(url);
+  const started = Date.now();
+  const late = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: () => 0, since: HOUR - HOUR_MS, now: HOUR, latestMs: 40, budgetMs: 5_000, fetcher: stalled });
+  assert.ok(late.error && Date.now() - started < 1_000, 'gave up at the latest.json deadline, not the whole budget');
+});
+
+test('a whole record that is not a sane minute is left out; the rest of the hour stays (Sonnet)', () => {
+  const bytes = new Uint8Array(fixture()), view = new DataView(bytes.buffer);
+  // The first record: its samples field (after length, kind, id length, id and time) set to 0.
+  const idLength = bytes[16 + 5]!, nAt = 16 + 4 + 2 + idLength + 8;
+  view.setUint32(nAt, 0, true);
+  const file = decodeHour(bytes.buffer);
+  assert.equal(file?.columns.length, 32);
+  // A zero-filled tail (a crash) ends the list without reading into it.
+  const tail = new Uint8Array(fixture().byteLength + 64); tail.set(new Uint8Array(fixture()));
+  assert.equal(decodeHour(tail.buffer)?.columns.length, 33);
+});

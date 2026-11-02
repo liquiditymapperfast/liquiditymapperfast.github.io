@@ -49,6 +49,7 @@ function stopRecording(): void {
 }
 
 async function init(selected: string[] | null, known: string[] | null, persist: boolean, coin: Coin, tier: number, database: string, lock: string, history: string): Promise<void> {
+  const gridSteps = new Map<string, number>();
   if (persist && typeof indexedDB !== 'undefined') {
     // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
     let failing = false;
@@ -67,15 +68,18 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
       claimRecorder(lock);
       // The recorded history (app/history-url.ts): the minutes of the day before this visit, read before the engine starts so it starts with them.
       if (history) {
-        const kept = recordings, now = Date.now(), since = now - BROWSER_RETENTION_MS;
-        const done = await importHistory({ url: history, held: heldOf(kept.columns.load(since)), add: columns => kept.importColumns(columns), since, now });
+        const kept = recordings, now = Date.now(), since = now - BROWSER_RETENTION_MS, held = heldOf(kept.columns.load(since));
+        const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), since, now });
         if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
         if (done.columns) console.info(`recorded history: ${done.columns} map minutes from ${done.hours} hours`);
+        // A book this page holds nothing of (and was given nothing of in time) records on the service's grid, so the next visit can show
+        // the service's minutes with its own.
+        for (const [inst, step] of Object.entries(done.steps ?? {})) if (!held.steps.has(inst)) gridSteps.set(inst, step);
       }
     }
   }
   const venues = browserVenues(coin);
-  const next = new Engine({ coin, tier, venues, columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null, absorption: recordings?.absorption ?? null, coverage: recordings?.coverage ?? null, liquidations: recordings?.liquidations ?? null, oi: recordings?.oi ?? null });
+  const next = new Engine({ coin, tier, venues, columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null, absorption: recordings?.absorption ?? null, coverage: recordings?.coverage ?? null, liquidations: recordings?.liquidations ?? null, oi: recordings?.oi ?? null, gridSteps });
   next.onLevels = (books, asOf) => post({ type: 'levels', frame: frameOf(books, asOf) });
   next.onTick = tick => post({ type: 'tick', tick });
   next.onPrints = (items: Print[]) => post({ type: 'prints', items });
