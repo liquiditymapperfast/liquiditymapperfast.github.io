@@ -64,14 +64,16 @@ function gridOf(cells: readonly FitCell[], avail: number, gap: number): Omit<Fit
   const filled = runs.filter(r => r.length), longest = Math.max(0, ...filled.map(r => r.length));
   const spans = (cols: number): number[] => cells.map(c => (c.row ? cols : 1));
   if (!longest) return { cols: 1, rows: rowCells, spans: spans(1), caps: cells.map(() => 0) };
+  // With a row cell the grid has one more column, the rest of the width, behind one more gap (FitGrid.refit).
+  const room = rowCells ? avail - gap : avail;
   for (let cols = longest; cols >= 1; cols--) {
     // Only an even count: 6 cells in 4 columns take two rows as 3 columns do, with a short second row.
     if (Math.ceil(longest / Math.ceil(longest / cols)) !== cols) continue;
     const rows = filled.reduce((s, r) => s + Math.ceil(r.length / cols), 0) + rowCells;
     for (const withCaps of [true, false]) {
       const { widths, caps } = columns(cells, filled, cols, withCaps);
-      if (cols > 1 && widths.reduce((s, w) => s + w, 0) + gap * (cols - 1) > avail) continue;
-      if (cols === 1 && withCaps && widths[0]! > avail) continue;
+      if (cols > 1 && widths.reduce((s, w) => s + w, 0) + gap * (cols - 1) > room) continue;
+      if (cols === 1 && withCaps && widths[0]! > room) continue;
       return { cols, rows, spans: spans(cols), caps };
     }
   }
@@ -125,6 +127,8 @@ export class FitGrid {
   #signature = '';
   /** The cells the layout was applied to, in their order. */
   #placed: HTMLElement[] = [];
+  /** Their roles (`data-fit`) when it was applied. */
+  #roles = '';
   /** The cells on the identity line, in their order, each with the mark it left in `cells`. */
   #leads: { cell: HTMLElement; mark: Comment }[] = [];
   readonly #changes: MutationObserver;
@@ -139,7 +143,7 @@ export class FitGrid {
     // other changes in the header (a readout's figures) are not the layout's.
     this.#changes = new MutationObserver(records => { if (records.some(r => this.#changed(r) && this.#concerns(r.target))) this.refit(false, true); });
     // The whole header: a cell on the identity line is no longer inside `cells`. What this class changes itself is taken back (#quiet).
-    this.#changes.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'], attributeOldValue: true, characterData: true, characterDataOldValue: true });
+    this.#changes.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'data-fit'], attributeOldValue: true, characterData: true, characterDataOldValue: true });
     // The arrangement (desktop or phone), the frame and theme (their faces and sizes) and the language are attributes of the root element.
     this.#changes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-layout', 'data-frame', 'data-theme', 'lang'] });
     const fonts = (): void => { if (!this.#gone) this.refit(false, true); };
@@ -186,7 +190,7 @@ export class FitGrid {
     const desktop = document.documentElement.dataset.layout === 'desktop';
     if (!desktop) { this.#clear(); return; }
     const width = this.head.clientWidth, all = this.#all(), shown = all.filter(FitGrid.#visible);
-    const signature = all.map(c => `${c.tagName}:${FitGrid.#visible(c) ? 1 : 0}:${c.textContent?.length ?? 0}`).join('|');
+    const signature = all.map(c => `${c.tagName}:${FitGrid.#visible(c) ? 1 : 0}:${c.textContent?.length ?? 0}:${c.dataset.fit ?? ''}`).join('|');
     if (!force && !measure && this.#choice && signature === this.#signature && Math.abs(width - this.#width) <= REFIT_PX) return;
     this.#signature = signature; this.#width = width;
     // Natural widths: the cells on the identity line where they are (at their own width), the others side by side at their own size, out of
@@ -227,9 +231,11 @@ export class FitGrid {
     const room = Math.max(0, inner - line - gap);
     const heights = caption > 0 ? { row, stacked: Math.max(row, control + capGap + caption), gap: rowGap } : null;
     const choice = chooseFit(shown.map((c, i) => ({ width: widths[i]!, row: c.dataset.fit === 'row', lead: c.dataset.fit === 'lead', ...(caps[i] ? { cap: caps[i] } : {}) })), inner, cellGap, room, gap, heights);
-    const sameCells = shown.length === this.#placed.length && shown.every((c, i) => c === this.#placed[i]);
+    // The same cells in the same roles (a cell that now takes a whole row is placed differently in an otherwise equal choice).
+    const roles = shown.map(c => c.dataset.fit ?? '').join('|');
+    const sameCells = shown.length === this.#placed.length && shown.every((c, i) => c === this.#placed[i]) && roles === this.#roles;
     if (sameFit(choice, this.#choice) && sameCells && !force) return;
-    this.#choice = choice; this.#placed = shown;
+    this.#choice = choice; this.#placed = shown; this.#roles = roles;
     // The cells on the identity line: the first `lead` shown ones, with any hidden cell among them (a hidden cell stays where its neighbours are).
     const lastLead = choice.lead ? all.indexOf(shown[choice.lead - 1]!) : -1;
     this.#place(all.slice(0, lastLead + 1));
@@ -268,7 +274,7 @@ export class FitGrid {
 
   #clear(): void {
     if (!this.#choice) return;
-    this.#choice = null; this.#width = -1; this.#signature = ''; this.#placed = [];
+    this.#choice = null; this.#width = -1; this.#signature = ''; this.#placed = []; this.#roles = '';
     this.#place([]);
     this.head.classList.remove('fit-inline', 'fit-has-lead');
     this.cells.classList.remove('fit-stacked');

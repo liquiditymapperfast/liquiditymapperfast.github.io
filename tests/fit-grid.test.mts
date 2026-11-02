@@ -22,6 +22,18 @@ test('only the cells marked for the identity line join it, all of them or none (
   assert.equal(chooseFit(marked, 420, 8, 90).lead, 0, 'never more on the line than fits there');
   assert.equal(chooseFit(cells(100, 100, 100, 100), 420, 8, 210).lead, 0, 'unmarked cells stay in the grid unless every one fits on the line');
   assert.equal(chooseFit(marked, 420, 8, 430).inline, true);
+  // Two marked cells: both or neither, never the first alone.
+  const two = [{ width: 100, lead: true }, { width: 100, lead: true }, { width: 100 }];
+  assert.equal(chooseFit(two, 420, 8, 150).lead, 0);
+  assert.equal(chooseFit(two, 420, 8, 208).lead, 2);
+});
+
+test('with a row cell the grid has a filler column behind one more gap, and the columns leave room for it', () => {
+  // Two cells of 80 beside each other need 168 px; with the filler column and its gap 176.
+  const fit = chooseFit([{ width: 300, row: true }, { width: 80 }, { width: 80 }], 168, 8);
+  assert.equal(fit.cols, 1);
+  assert.equal(chooseFit([{ width: 300, row: true }, { width: 80 }, { width: 80 }], 176, 8).cols, 2);
+  assert.equal(chooseFit(cells(80, 80), 168, 8).cols, 2, 'without a row cell there is no filler');
 });
 
 test('the fewest rows that fit, in columns shared out evenly: the column count changes only with the row count', () => {
