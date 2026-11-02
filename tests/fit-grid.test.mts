@@ -75,6 +75,23 @@ test('captions of a column take its widest caption, so its controls start togeth
   assert.deepEqual(one.caps, [0, 0, 0]);
 });
 
+test('captions go above their selects where beside them only one column fits, or where that is lower by more than half a row', () => {
+  const cap = (caption: number, control: number) => ({ width: caption + 5 + control, cap: { caption, gap: 5, control } });
+  const heights = { row: 21, stacked: 38, gap: 5 };
+  // The German Book at 300 px: beside, one column of seven (177 px); above, two columns of four rows (167 px).
+  const de = [cap(34, 87), { width: 65 }, cap(37, 78), cap(60, 61), cap(39, 110), cap(48, 65), { width: 58 }];
+  const fit = chooseFit(de, 280, 8, 0, 8, heights);
+  assert.equal(fit.stacked, true);
+  assert.equal(fit.cols, 2);
+  assert.deepEqual(fit.caps, [0, 0, 0, 0, 0, 0, 0], 'no caption column above');
+  assert.equal(chooseFit(de, 280, 8, 0, 8).stacked, false, 'never without the heights');
+  // Two columns beside fit: above would be lower by only 3 px, so the captions stay beside.
+  const en = [{ width: 56 }, cap(30, 75), cap(60, 65), cap(30, 110), cap(50, 60), { width: 40 }];
+  const wide = chooseFit(en, 320, 8, 0, 8, heights);
+  assert.equal(wide.stacked, false);
+  assert.equal(wide.cols, 2);
+});
+
 test('the deck aligner counts its ways before making them: long rows fall back at once', () => {
   const t0 = Date.now();
   const r = alignRows([new Array(30).fill(40), new Array(15).fill(40)], 4);
