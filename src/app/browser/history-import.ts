@@ -19,8 +19,10 @@ import type { AbsorptionGroup, AbsorptionMinute, AbsorptionStep } from '../../sh
 export interface HistoryRows {
   flow: FlowMinuteRow[]; liquidations: Liquidation[]; oi: OiReading[]; prints: Print[]; coverage: CoverageRow[];
   footprint: FootprintMinuteRow[]; absorption: AbsorptionGroup[]; absorptionMinutes: AbsorptionMinute[];
+  /** The hour of the file they came from (null: none). */
+  hour: number | null;
 }
-export const noRows = (): HistoryRows => ({ flow: [], liquidations: [], oi: [], prints: [], coverage: [], footprint: [], absorption: [], absorptionMinutes: [] });
+export const noRows = (): HistoryRows => ({ flow: [], liquidations: [], oi: [], prints: [], coverage: [], footprint: [], absorption: [], absorptionMinutes: [], hour: null });
 const finite = (...v: number[]): boolean => v.every(Number.isFinite);
 
 export const HOUR_MS = 3_600_000;
@@ -57,6 +59,7 @@ export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: Histor
     else other(view, buffer, text, at + 4, end, rows);
     at = end;
   }
+  rows.hour = hour;
   return { hour, columns, rows };
 }
 
@@ -269,19 +272,33 @@ export const ownsTime = (state: TradeImport, id: string, t: number): boolean => 
 /** Whether the page recorded `id`'s trades over the whole minute from `t` itself. */
 export const ownsMinute = (state: TradeImport, id: string, t: number): boolean => coveredMs(union(state.own.get(id) ?? [], t, t + COLUMN_MS), t, t + COLUMN_MS) >= COLUMN_MS;
 export const footprintVolume = (row: Pick<FootprintMinuteRow, 'bins'>): number => { let sum = 0; for (const bin of row.bins) sum += bin[1] + bin[2]; return sum; };
+/**
+ * Whether `next` is a fuller copy of a footprint minute than `kept`: more volume, or as much and more of its market orders counted (a
+ * minute is written while its last order is still open, and written again once that order is counted, with the same trades).
+ */
+export function fullerFootprint(kept: Pick<FootprintMinuteRow, 'bins' | 'stats'>, next: Pick<FootprintMinuteRow, 'bins' | 'stats'>): boolean {
+  const a = footprintVolume(kept), b = footprintVolume(next);
+  if (b !== a) return b > a;
+  const orders = (row: Pick<FootprintMinuteRow, 'bins' | 'stats'>): [number, number] => {
+    let onRows = 0; for (const bin of row.bins) onRows += (bin[3] ?? 0) + (bin[4] ?? 0);
+    return [row.stats ? row.stats.buyN + row.stats.sellN : -1, onRows];
+  };
+  const [x0, x1] = orders(kept), [y0, y1] = orders(next);
+  return y0 !== x0 ? y0 > x0 : y1 > x1;
+}
 
 /**
  * The footprint minutes of an hour worth taking: where the page did not record the whole minute itself, on the page's step for the market
- * (rows on another step are not re-binned), and fuller (more volume) than the copy the page holds (`held`: its volume, or undefined), the
- * fuller of two copies the service wrote of a minute it restarted in. Taking one fixes the market's step (`state.steps`).
+ * (rows on another step are not re-binned), and fuller (`fullerFootprint`) than the copy the page holds (`held`, or undefined), the fuller
+ * of two copies the service wrote of a minute. Taking one fixes the market's step (`state.steps`).
  */
-export function planFootprint(state: TradeImport, rows: readonly FootprintMinuteRow[], held: (key: string) => number | undefined): FootprintMinuteRow[] {
+export function planFootprint(state: TradeImport, rows: readonly FootprintMinuteRow[], held: (key: string) => FootprintMinuteRow | undefined): FootprintMinuteRow[] {
   const chosen = new Map<string, FootprintMinuteRow>();
   for (const row of rows) {
     const step = state.steps.get(row.inst) ?? row.step;
     if (row.step !== step || ownsMinute(state, row.inst, row.t)) continue;
-    const key = `${row.inst}|${row.t}`, other = chosen.get(key), have = other ? footprintVolume(other) : held(key);
-    if (have !== undefined && !(footprintVolume(row) > have)) continue;
+    const key = `${row.inst}|${row.t}`, have = chosen.get(key) ?? held(key);
+    if (have && !fullerFootprint(have, row)) continue;
     state.steps.set(row.inst, step);
     chosen.set(key, row);
   }
@@ -300,10 +317,10 @@ export function planAbsorption(state: TradeImport, minutes: readonly AbsorptionM
 }
 
 /**
- * The service's stretches of trade coverage that join the page's own: for a market whose footprint the service records on the page's step,
- * from an hour written by a build that records the footprint (`rows.footprint` not empty). The page then holds the trades such a stretch
- * says were recorded, which is what the coverage record means (value areas and bar statistics judge a market's share by it, and a recovery
- * fills only what it lacks). Call after `planFootprint` for the same hour.
+ * The service's stretches of trade coverage that may join the page's own: for a market whose footprint the service records on the page's
+ * step, from an hour written by a build that records the footprint (`rows.footprint` not empty). Where the page then holds the trades such a
+ * stretch says were recorded (`clipCoverage`), that is what the coverage record means (value areas and bar statistics judge a market's
+ * share by it, and a recovery fills only what it lacks). Call after `planFootprint` for the same hour.
  */
 export function planCoverage(state: TradeImport, rows: Pick<HistoryRows, 'coverage' | 'footprint'>): CoverageRow[] {
   if (!rows.footprint.length) return [];
@@ -317,6 +334,28 @@ export function planCoverage(state: TradeImport, rows: Pick<HistoryRows, 'covera
 }
 
 /**
+ * The parts of the stretches inside the hours `holds` says the page has the footprint of: a stretch in a newer hour reaches back over hours
+ * that may not have been read (the import ran out of time, or a file failed), and there the page does not hold what it says was recorded.
+ * A part keeps a seam trade that lies inside it. `holds(hour)` should require the next hour too: a minute's footprint can be written into the
+ * hour after its own.
+ */
+export function clipCoverage(rows: readonly CoverageRow[], holds: (hour: number) => boolean): CoverageRow[] {
+  const out: CoverageRow[] = [];
+  for (const row of rows) {
+    for (let hour = Math.floor(row.from / HOUR_MS) * HOUR_MS; hour < row.to;) {
+      if (!holds(hour)) { hour += HOUR_MS; continue; }
+      let end = hour + HOUR_MS;
+      while (end < row.to && holds(end)) end += HOUR_MS;
+      const from = Math.max(row.from, hour), to = Math.min(row.to, end);
+      const inside = (seam: SeamTrade | undefined): seam is SeamTrade => seam !== undefined && seam.t >= from && seam.t < to;
+      out.push({ inst: row.inst, metric: row.metric, from, to, kind: row.kind, ...(inside(row.first) ? { first: row.first } : {}), ...(inside(row.last) ? { last: row.last } : {}) });
+      hour = end;
+    }
+  }
+  return out;
+}
+
+/**
  * The rows of [since, before): the minute under way is the page's own (its trades arrive live), and a stretch of coverage is cut at it.
  */
 export function within(rows: HistoryRows, since: number, before: number): HistoryRows {
@@ -325,7 +364,7 @@ export function within(rows: HistoryRows, since: number, before: number): Histor
     flow: rows.flow.filter(r => inside(r.t)), liquidations: rows.liquidations.filter(r => inside(r.t)), oi: rows.oi.filter(r => inside(r.t)), prints: rows.prints.filter(r => inside(r.t)),
     // A group belongs to the minute of its first fill, as the recorder keeps it.
     footprint: rows.footprint.filter(r => inside(r.t)), absorptionMinutes: rows.absorptionMinutes.filter(r => inside(r.t)),
-    absorption: rows.absorption.filter(r => inside(Math.floor(r.t0 / COLUMN_MS) * COLUMN_MS)),
+    absorption: rows.absorption.filter(r => inside(Math.floor(r.t0 / COLUMN_MS) * COLUMN_MS)), hour: rows.hour,
     coverage: rows.coverage.filter(r => r.to > since && r.from < before).map(r => r.to > before ? { ...r, to: before, ...(r.last && r.last.t >= before ? { last: undefined } : {}) } : r).map(r => { if (r.last === undefined) { const { last: _last, ...rest } = r; return rest; } return r; }),
   };
 }

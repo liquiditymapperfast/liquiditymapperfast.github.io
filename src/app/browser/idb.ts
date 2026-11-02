@@ -7,7 +7,7 @@ import { hoursOf, peakOf, type AbsorptionGroup, type AbsorptionMinute, type Abso
 import type { CoverageRow, CoverageStore } from '../../shared/coverage.ts';
 import { largestLiquidations, liquidationKey, type Liquidation, type LiquidationStore } from '../../shared/liquidations.ts';
 import type { OiReading, OiStore } from '../../shared/engine.ts';
-import { footprintVolume, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, type HistoryRows } from './history-import.ts';
+import { clipCoverage, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, type HistoryRows } from './history-import.ts';
 
 /**
  * Recordings kept in this browser (IndexedDB): the same four stores the server keeps in SQLite. The recorders read everything they
@@ -34,7 +34,11 @@ type OiRow = OiReading;
  * recorders) marks an hour of the recorded history read whole (`markImported`): an hour already taken is not read again.
  */
 interface CoverRow extends Omit<CoverageRow, 'metric'> { metric: CoverageRow['metric'] | 'history'; t: number }
-const IMPORTED = 'history', IMPORTED_INST = '', HOUR = 3_600_000, MINUTE = 60_000;
+/**
+ * The mark of an hour of the recorded history read whole is a coverage row of metric `history` whose instrument names the reader's version:
+ * `v2` reads the footprint and absorption too. An hour an older page read (instrument '') is read again once, for what that page passed over.
+ */
+const IMPORTED = 'history', IMPORTED_INST = 'v2', HOUR = 3_600_000, MINUTE = 60_000;
 
 /** `name` is the coin's database (app/coin.ts recordingsName): each coin's recordings are kept and read apart. */
 function openDatabase(name: string): Promise<IDBDatabase> {
@@ -261,6 +265,25 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       request.onerror = () => reject(request.error);
     }));
   };
+  /**
+   * Absorption minutes taken from the recorded history older than what the recorder opens with, with their groups (`inst|minute`), kept for
+   * the session: the recorder reads that part back from the store (`eachHour`, `query`, `minutes`), and a tab that may not write never stores
+   * it. Every read lays them over what the store answers: the store's rows of such a minute (the page's own part of it, or the same rows
+   * once written) give way to them.
+   */
+  const overlay = new Map<string, { minute: AbsorptionMinute; groups: AbsorptionGroup[] }>();
+  const minuteKey = (inst: string, t: number): string => `${inst}|${Math.floor(t / MINUTE) * MINUTE}`;
+  const groupRow = (g: AbsorptionGroup): AbsorptionRow => ({ inst: g.id, t0: g.t0, side: g.side, price: g.price, peak: peakOf(g), steps: g.steps });
+  const minuteRow = (m: AbsorptionMinute): AbsorptionMinuteRow => ({ inst: m.id, t: m.t, n: m.n, mean: m.mean, m2: m.m2, floor: m.floor });
+  const overlaid = (groups: readonly AbsorptionRow[], from: number, to: number, minutes: readonly AbsorptionMinuteRow[] = []): { groups: AbsorptionRow[]; minutes: AbsorptionMinuteRow[] } => {
+    if (!overlay.size) return { groups: [...groups], minutes: [...minutes] };
+    const outGroups = groups.filter(row => !overlay.has(minuteKey(row.inst, row.t0))), outMinutes = minutes.filter(row => !overlay.has(minuteKey(row.inst, row.t)));
+    for (const { minute, groups: list } of overlay.values()) {
+      if (minute.t >= from && minute.t < to) outMinutes.push(minuteRow(minute));
+      for (const g of list) if (g.t0 >= from && g.t0 < to) outGroups.push(groupRow(g));
+    }
+    return { groups: outGroups, minutes: outMinutes };
+  };
   const absorption: AbsorptionStore = {
     load: () => ({ groups: absorptionRows.map(toGroup), minutes: absorptionMinuteRows.map(toMinute) }),
     save: (groups, minutes, expireBefore) => enqueue(tx => {
@@ -271,14 +294,13 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     }),
     query: async (ids, mins, from, to, limit) => {
       const min = new Map(ids.map((id, i) => [id, mins[i] ?? Infinity])), byId = new Map<string, AbsorptionRow[]>();
-      await readHours<AbsorptionRow>('absorption', from, to, rows => {
-        for (const row of rows) if (row.peak >= (min.get(row.inst) ?? Infinity)) { let list = byId.get(row.inst); if (!list) { list = []; byId.set(row.inst, list); } list.push(row); }
-      });
+      const take = (row: AbsorptionRow): void => { if (row.peak >= (min.get(row.inst) ?? Infinity)) { let list = byId.get(row.inst); if (!list) { list = []; byId.set(row.inst, list); } list.push(row); } };
+      await readHours<AbsorptionRow>('absorption', from, to, rows => { for (const row of overlaid(rows, from, to).groups) take(row); });
       return [...byId.values()].flatMap(list => list.sort((a, b) => b.peak - a.peak).slice(0, limit).map(toGroup));
     },
     minutes: async (ids, from, to) => {
       const wanted = new Set(ids), out: AbsorptionMinute[] = [];
-      await readHours<AbsorptionMinuteRow>('absorptionMinutes', from, to, rows => { for (const row of rows) if (wanted.has(row.inst)) out.push(toMinute(row)); });
+      await readHours<AbsorptionMinuteRow>('absorptionMinutes', from, to, rows => { for (const row of overlaid([], from, to, rows).minutes) if (wanted.has(row.inst)) out.push(toMinute(row)); });
       return out;
     },
     // The column's read, and the recorder's reading its day back (`ids` null): each hour's groups and minutes in one transaction, so they are
@@ -294,9 +316,9 @@ export async function openRecordings(name: string, since: number, canWrite: () =
           const failed = (): void => reject(tx.error ?? new Error('the absorption read was aborted'));
           tx.onerror = failed; tx.onabort = failed;
         });
-        const groups: AbsorptionGroup[] = [], minutes: AbsorptionMinute[] = [];
-        for (const row of rows) if (passes(row.inst, row.peak)) groups.push(toGroup(row));
-        for (const row of minuteRows) if (passes(row.inst, row.floor)) minutes.push(toMinute(row));
+        const groups: AbsorptionGroup[] = [], minutes: AbsorptionMinute[] = [], held = overlaid(rows, range.lower as number, range.upper as number, minuteRows);
+        for (const row of held.groups) if (passes(row.inst, row.peak)) groups.push(toGroup(row));
+        for (const row of held.minutes) if (passes(row.inst, row.floor)) minutes.push(toMinute(row));
         take(groups, minutes);
       }
     },
@@ -335,6 +357,8 @@ export async function openRecordings(name: string, since: number, canWrite: () =
   };
   // What the import of the trade side judges by (history-import.ts `TradeImport`): taken now, before anything is imported.
   const trade = tradeImport(coverRows, footprintRows);
+  /** The hours read in this import, and the service's stretches waiting to join the page's coverage over them. */
+  const coverHours = new Set<number>(), pendingCover: CoverageRow[] = [];
   const footprintAt = new Map<string, number>();
   footprintRows.forEach((row, i) => footprintAt.set(`${row.inst}|${row.t}`, i));
   // Minutes recorded elsewhere join the rows `load` hands the recorder (a thinner copy of the same minute is replaced) and are stored like
@@ -386,7 +410,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       prints.save(newPrints, since); taken += newPrints.length;
     }
     // Footprint minutes where this page did not record the whole minute, on its step, the fuller copy (`planFootprint`).
-    const newFootprint = planFootprint(trade, incoming.footprint, key => { const i = footprintAt.get(key); return i === undefined ? undefined : footprintVolume(footprintRows[i]!); });
+    const newFootprint = planFootprint(trade, incoming.footprint, key => { const i = footprintAt.get(key); return i === undefined ? undefined : footprintRows[i]; });
     for (const row of newFootprint) {
       const key = `${row.inst}|${row.t}`, i = footprintAt.get(key);
       if (i === undefined) { footprintAt.set(key, footprintRows.length); footprintRows.push(row); } else footprintRows[i] = row;
@@ -396,15 +420,12 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     // such a minute, found in a part of it, go first: no group is counted twice.
     const absorbed = planAbsorption(trade, incoming.absorptionMinutes, incoming.absorption);
     if (absorbed.size) {
-      const minuteOf = (inst: string, t0: number): string => `${inst}|${Math.floor(t0 / MINUTE) * MINUTE}`;
-      const groupRow = (g: AbsorptionGroup): AbsorptionRow => ({ inst: g.id, t0: g.t0, side: g.side, price: g.price, peak: peakOf(g), steps: g.steps });
-      const minuteRow = (m: AbsorptionMinute): AbsorptionMinuteRow => ({ inst: m.id, t: m.t, n: m.n, mean: m.mean, m2: m.m2, floor: m.floor });
-      // What the recorder opens with (the last two hours) is changed the same way.
-      const keptGroups = absorptionRows.filter(row => !absorbed.has(minuteOf(row.inst, row.t0)));
+      // What the recorder opens with (the last two hours) is changed the same way; the older part is laid over the store (`overlay`).
+      const keptGroups = absorptionRows.filter(row => !absorbed.has(minuteKey(row.inst, row.t0)));
       absorptionRows.length = 0; absorptionRows.push(...keptGroups);
       const minuteAt = new Map(absorptionMinuteRows.map((row, i) => [`${row.inst}|${row.t}`, i]));
       for (const [key, { minute, groups }] of absorbed) {
-        if (minute.t < absorptionSince) continue;
+        if (minute.t < absorptionSince) { overlay.set(key, { minute, groups }); continue; }
         const i = minuteAt.get(key);
         if (i === undefined) absorptionMinuteRows.push(minuteRow(minute)); else absorptionMinuteRows[i] = minuteRow(minute);
         for (const g of groups) absorptionRows.push(groupRow(g));
@@ -424,11 +445,17 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       });
       taken += absorbed.size;
     }
-    // The service's stretches of trade coverage join the page's own where its footprint minutes were taken (`planCoverage`). A stretch is
-    // written again as it grows (its start is its key): the longest copy stays.
+    // The service's stretches of trade coverage join the page's own where its footprint minutes were taken (`planCoverage`), only over the
+    // hours whose footprint this page holds (`clipCoverage`): read in this import, or marked read whole by an earlier one, and the hour
+    // after them too (a minute's rows can be written into the next hour), or that hour not over yet. A stretch is written again as it grows
+    // (its start is its key): the longest copy stays.
+    if (incoming.hour !== null) coverHours.add(incoming.hour);
+    pendingCover.push(...planCoverage(trade, incoming));
+    const known = new Set([...coverHours, ...importedHours()]), now = Date.now();
+    const holds = (hour: number): boolean => known.has(hour) && (known.has(hour + HOUR) || hour + 2 * HOUR > now);
     const coverAt = new Map(coverRows.map((row, i) => [`${row.inst}|${row.metric}|${row.from}`, i]));
     const newCover: CoverRow[] = [];
-    for (const row of planCoverage(trade, incoming)) {
+    for (const row of clipCoverage(pendingCover, holds)) {
       const key = `${row.inst}|${row.metric}|${row.from}`, i = coverAt.get(key);
       if (i !== undefined && coverRows[i]!.to >= row.to) continue;
       const stored: CoverRow = { ...row, t: row.to };
@@ -438,7 +465,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     if (newCover.length) { enqueue(tx => { const store = tx.objectStore('coverage'); for (const row of newCover) store.put(row); }); taken += newCover.length; }
     return taken;
   };
-  const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED).map(row => row.from);
+  const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED && row.inst === IMPORTED_INST).map(row => row.from);
   // Written once what the import queued has been written (or let go), and only when nothing was let go since `since` (`writeEpoch()`
   // before the import): a mark without its rows would keep the hour from being read again.
   const markImported = async (hours: readonly number[], since: number): Promise<void> => {

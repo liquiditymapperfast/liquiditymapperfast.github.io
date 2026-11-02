@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeHour, footprintVolume, ownsMinute, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, within } from '../src/app/browser/history-import.ts';
+import { clipCoverage, decodeHour, footprintVolume, fullerFootprint, ownsMinute, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, within } from '../src/app/browser/history-import.ts';
 import type { FootprintMinuteRow } from '../src/shared/footprint.ts';
 import type { AbsorptionGroup, AbsorptionMinute } from '../src/shared/absorption.ts';
 import type { CoverageRow } from '../src/shared/coverage.ts';
+import { HOUR_MS } from '../src/app/browser/history-import.ts';
 
 const HOUR = 1_793_574_000_000;
 
@@ -49,6 +50,7 @@ function footprintFile(hour: number): ArrayBuffer {
 test('footprint minutes and absorption groups and minutes read back as the page stores them; insane ones are left out', () => {
   const rows = decodeHour(footprintFile(HOUR))!.rows;
   assert.equal(rows.footprint.length, 2);
+  assert.equal(rows.hour, HOUR);
   const [a, b] = rows.footprint;
   assert.deepEqual(a, {
     inst: 'bybit:BTCUSDT', t: HOUR + 60_000, step: 0.5, bins: [[156_000, 30_000, 0, 1, 0], [156_001, 0, 1_250.5, 0, 2]],
@@ -68,7 +70,7 @@ test('footprint minutes are taken where the page did not record the whole minute
   const t0 = HOUR;
   // The page recorded bybit from 00:01:30 on, on a step of 0.5.
   const state = tradeImport([{ inst: 'bybit:BTCUSDT', metric: 'trades', from: t0 + 90_000, to: t0 + 600_000 }, { inst: 'x', metric: 'depth', from: 0, to: Infinity }], [{ inst: 'bybit:BTCUSDT', step: 0.5 }]);
-  const held = new Map([[`bybit:BTCUSDT|${t0 + 60_000}`, 500]]);
+  const held = new Map([[`bybit:BTCUSDT|${t0 + 60_000}`, fpRow('bybit:BTCUSDT', t0 + 60_000, 500)]]);
   const taken = planFootprint(state, [
     fpRow('bybit:BTCUSDT', t0, 100), // before the page: taken
     fpRow('bybit:BTCUSDT', t0 + 60_000, 400), // the page's part of the minute holds more: not taken
@@ -107,4 +109,31 @@ test('the service coverage joins only for markets whose footprint it records on 
   assert.deepEqual(planCoverage(state, rows).map(r => r.inst), ['a', 'c']);
   // An older hour in which `a` traded nothing: its stretch joins on the step a newer hour gave.
   assert.deepEqual(planCoverage(state, { coverage: [stretch('a')], footprint: [fpRow('c', HOUR, 1)] }).map(r => r.inst), ['a']);
+});
+
+test('of two copies of a minute with the same trades, the one with more of its orders counted is the fuller (Sol round 1)', () => {
+  const stats = (n: number) => ({ buyN: n, sellN: 0, buy: [30_000 * n, 0, 0, 0, 0, 0, 0, 0], sell: [0, 0, 0, 0, 0, 0, 0, 0], v: 2, big: [] });
+  const early: FootprintMinuteRow = { inst: 'a', t: HOUR, step: 0.5, bins: [[1, 30_000, 0, 0, 0]], stats: stats(0) };
+  const late: FootprintMinuteRow = { ...early, bins: [[1, 30_000, 0, 1, 0]], stats: stats(1) };
+  assert.ok(fullerFootprint(early, late) && !fullerFootprint(late, early) && !fullerFootprint(late, late));
+  assert.ok(fullerFootprint(late, { ...early, bins: [[1, 30_001, 0, 0, 0]] }), 'more volume wins first');
+  // Within one hour (the later copy second) and against the page's copy.
+  const state = tradeImport([], []);
+  assert.deepEqual(planFootprint(state, [early, late], () => undefined), [late]);
+  assert.deepEqual(planFootprint(tradeImport([], []), [late, early], () => undefined), [late]);
+  assert.deepEqual(planFootprint(tradeImport([], []), [late], () => early), [late]);
+  assert.deepEqual(planFootprint(tradeImport([], []), [early], () => late), []);
+});
+
+test('the service coverage joins only over hours whose footprint the page holds (Sol round 1)', () => {
+  const H = HOUR_MS;
+  const stretch: CoverageRow = { inst: 'a', metric: 'trades', from: HOUR + 600_000, to: HOUR + 4 * H, kind: 'live', first: { id: 'f', t: HOUR + 600_001 }, last: { id: 'l', t: HOUR + 4 * H - 1 } };
+  // Hours 0, 2 and 3 are held (1 is not): two parts, each keeping only the seam inside it.
+  const held = new Set([HOUR, HOUR + 2 * H, HOUR + 3 * H]);
+  assert.deepEqual(clipCoverage([stretch], h => held.has(h)), [
+    { inst: 'a', metric: 'trades', from: HOUR + 600_000, to: HOUR + H, kind: 'live', first: { id: 'f', t: HOUR + 600_001 } },
+    { inst: 'a', metric: 'trades', from: HOUR + 2 * H, to: HOUR + 4 * H, kind: 'live', last: { id: 'l', t: HOUR + 4 * H - 1 } },
+  ]);
+  assert.deepEqual(clipCoverage([stretch], () => false), []);
+  assert.deepEqual(clipCoverage([stretch], () => true), [stretch]);
 });
