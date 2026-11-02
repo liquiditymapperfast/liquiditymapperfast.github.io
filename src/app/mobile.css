@@ -101,7 +101,7 @@ html[data-bar="compact"] :is(dialog.venues h3, .guide-head) { cursor: auto; touc
 .sheet-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; min-height: 28px; }
 .sheet-sec-head h4 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 .sheet-sec-head button { min-height: 34px; padding: 0 14px; border-radius: var(--radius); font-size: 13px; }
-.sheet-sec-head button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 13px; line-height: 24px; }
+.sheet-sec-head button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 0; line-height: 0; }
 /* The small "?" keeps its look but has a finger's reach: an invisible ring around it takes the touch (the drawn glyph is its ::before). */
 html[data-bar="compact"] button.help::after { content: ""; position: absolute; inset: -9px; }
 .sheet-body :is(button, select) { min-height: var(--tap); font-size: 15px; border-radius: var(--radius); padding: 0 14px; }
@@ -195,9 +195,9 @@ html[data-bar="compact"] .panel-head h3 { font-size: 18px; }
 html[data-bar="compact"] .panel-body { overscroll-behavior: contain; padding-bottom: 16px; }
 html[data-bar="compact"] .panel :is(button, select, input[type=number]) { min-height: 40px; }
 /* The ? among a panel's tools is the round button of the sheet's section heads, not a 40 px strip one help-button wide. */
-html[data-bar="compact"] .panel-tools button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 13px; line-height: 24px; }
+html[data-bar="compact"] .panel-tools button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 0; line-height: 0; }
 /* So is a script's ? in the Scripts panel's rows (its invisible ring gives it a finger's reach). */
-html[data-bar="compact"] .panel-body .layout-row > button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 13px; line-height: 24px; }
+html[data-bar="compact"] .panel-body .layout-row > button.help { width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; font-size: 0; line-height: 0; }
 html[data-bar="compact"] .panel .opt, html[data-bar="compact"] .panel .field { padding-top: 9px; padding-bottom: 9px; }
 html[data-bar="compact"] .panel .field > select, html[data-bar="compact"] .panel .field > input[type=number] { width: 140px; }
 html[data-bar="compact"] .panel .field.pin-field > select { width: 100%; }
@@ -431,7 +431,7 @@ html[data-layout^="phone"] .pane-head .ctl:has(input[type=checkbox]) { flex-dire
 html[data-layout^="phone"] .pane-head .ctl input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
 html[data-layout^="phone"] .pane-head :is(select, button:not(.help)) { font-size: 14px; min-height: var(--ph-ctl-h); padding: 0 8px; border-radius: var(--radius); }
 /* The "?" is a key like the others, not a small box beside them. */
-html[data-layout^="phone"] :is(.pane-head, .liq-head) button.help { box-sizing: border-box; width: var(--ph-key-w); height: var(--ph-ctl-h); min-height: 0; margin: 0; padding: 0; font-size: 15px; line-height: calc(var(--ph-ctl-h) - 2px); }
+html[data-layout^="phone"] :is(.pane-head, .liq-head) button.help { box-sizing: border-box; width: var(--ph-key-w); height: var(--ph-ctl-h); min-height: 0; margin: 0; padding: 0; font-size: 0; line-height: 0; }
 /* A "?" right after the title goes to the end of the title's line, where it is on every tab (the controls under it, when they do not fit beside it). */
 html[data-layout^="phone"] .pane-head:not(.tuned) > strong + button.help { margin-left: auto; }
 /* It is a key of full size: its touch area is the key itself (the small "?" elsewhere reaches 9 px around it, here over its neighbour). */
@@ -500,7 +500,7 @@ html[data-layout^="phone"] .pane.lt .lt-halves .seg button.on { background: var(
   html[data-layout="desktop"] .pane-head { min-height: 42px; gap: 4px 10px; }
   html[data-layout="desktop"] .pane-head.side-head { --head-row-gap: 4px; }
   html[data-layout="desktop"] .pane-head :is(select, button:not(.help)) { font-size: 13px; min-height: 32px; padding: 0 10px; border-radius: var(--radius); }
-  html[data-layout="desktop"] .pane-head button.help { width: 24px; height: 24px; font-size: 12px; line-height: 22px; }
+  html[data-layout="desktop"] .pane-head button.help { width: 24px; height: 24px; font-size: 0; line-height: 0; }
   html[data-layout="desktop"] .pane-head .ctl input[type=checkbox] { width: 20px; height: 20px; }
 }
 
