@@ -104,7 +104,8 @@ export interface Recordings {
   /**
    * The same for the other recordings: a flow minute joins second by second where it is the fuller copy, a liquidation or an open-interest
    * reading the page does not hold is added, a large trade only outside the stretches this page recorded itself (where its own are the ones
-   * to keep: an order rebuilt from the same fills elsewhere may differ in its price), and the stretches of trade coverage are added.
+   * to keep: an order rebuilt from the same fills elsewhere may differ in its price); the service's stretches of trade coverage are not
+   * taken into the page's own (see `importRows`).
    */
   importRows(rows: HistoryRows): number;
   /** Apply what is queued now instead of at the next half second. */

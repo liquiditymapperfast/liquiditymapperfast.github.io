@@ -2,7 +2,7 @@ import { COLUMN_MS, type Column } from '../../shared/recorder.ts';
 import type { FlowMinuteRow } from '../../shared/flow.ts';
 import type { Liquidation } from '../../shared/liquidations.ts';
 import type { Print } from '../../shared/prints.ts';
-import type { CoverageRow, SeamTrade } from '../../shared/coverage.ts';
+import { coveredMs, union, type CoverageRow, type SeamTrade } from '../../shared/coverage.ts';
 import type { OiReading } from '../../shared/engine.ts';
 
 /**
@@ -28,8 +28,11 @@ const HELD_SAMPLES = 6;
 
 /** One minute of one book, with the grid step it lies on. */
 export interface HistoryColumn { inst: string; step: number; column: Column }
-/** What the service says it has: finished hours from `first` to `last` (null when none), the open hour, and each book's grid step. */
-export interface HistoryLatest { v: 1; coin: string; first: number | null; last: number | null; open: number | null; steps: Record<string, number> }
+/**
+ * What the service says it has: finished hours from `first` to `last` (null when none), the open hour, each book's grid step, and the
+ * instruments whose trade side it records (`trades`: for a coin it records no books of, the only ones).
+ */
+export interface HistoryLatest { v: 1; coin: string; first: number | null; last: number | null; open: number | null; steps: Record<string, number>; trades?: string[] }
 
 /**
  * An hour file's columns (layout in hlm-history's store.rs: a 16-byte header `HLMC`, version 1, the hour; then length-prefixed records), or
@@ -118,14 +121,20 @@ function record(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: nu
 }
 
 /** What the page holds: per book, the step of its oldest minute (the step the engine keeps) and each minute's samples. */
-export interface Held { steps: Map<string, number>; samples: Map<string, number> }
-export function heldOf(rows: Iterable<{ instrumentId: string; step: number; column: { t: number; n: number } }>): Held {
-  const steps = new Map<string, number>(), oldest = new Map<string, number>(), samples = new Map<string, number>();
+/** `trades`: the stretches over which this page recorded each instrument's trades itself (its own trade coverage). */
+export interface Held { steps: Map<string, number>; samples: Map<string, number>; trades: Map<string, { from: number; to: number }[]> }
+export function heldOf(rows: Iterable<{ instrumentId: string; step: number; column: { t: number; n: number } }>, coverage: Iterable<Pick<CoverageRow, 'inst' | 'metric' | 'from' | 'to'>> = []): Held {
+  const steps = new Map<string, number>(), oldest = new Map<string, number>(), samples = new Map<string, number>(), trades = new Map<string, { from: number; to: number }[]>();
   for (const { instrumentId, step, column } of rows) {
     samples.set(`${instrumentId}|${column.t}`, column.n);
     if (!(column.t >= (oldest.get(instrumentId) ?? Infinity))) { oldest.set(instrumentId, column.t); steps.set(instrumentId, step); }
   }
-  return { steps, samples };
+  for (const { inst, metric, from, to } of coverage) {
+    if (metric !== 'trades' || !(to > from)) continue;
+    let list = trades.get(inst); if (!list) trades.set(inst, list = []);
+    list.push({ from, to });
+  }
+  return { steps, samples, trades };
 }
 
 /**
@@ -148,10 +157,15 @@ export function planImport(held: Held, incoming: readonly HistoryColumn[], since
   return [...chosen.values()];
 }
 
-/** The hours worth reading: inside the retention, held by the service, and not already held by the page for every book it records. */
+/**
+ * The hours worth reading: inside the retention, held by the service, and not already held by the page for every book it records, or for
+ * every instrument whose trades it records (the page's own trade coverage: a page that held the books while a trade socket was down still
+ * lacks that hour's trade side).
+ */
 export function hoursToRead(latest: HistoryLatest, held: Held, since: number, now: number): number[] {
   const out: number[] = [], books = Object.keys(latest.steps);
-  if (!books.length) return out;
+  const trades = Array.isArray(latest.trades) ? latest.trades.filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, 64) : [];
+  if (!books.length && !trades.length) return out;
   /** An hour start the service could have: a whole number on an hour boundary (anything else in its answer is not read). */
   const hourOrNull = (v: unknown): number | null => typeof v === 'number' && Number.isSafeInteger(v) && v % HOUR_MS === 0 ? v : null;
   const first = hourOrNull(latest.first), last = hourOrNull(latest.last), open = hourOrNull(latest.open);
@@ -167,7 +181,7 @@ export function hoursToRead(latest: HistoryLatest, held: Held, since: number, no
       let have = 0;
       for (let t = start; t < end; t += COLUMN_MS) if ((held.samples.get(`${inst}|${t}`) ?? 0) >= HELD_SAMPLES) have++;
       return have < COVERED * minutes;
-    });
+    }) || trades.some(inst => coveredMs(union(held.trades.get(inst) ?? [], start, end), start, end) < COVERED * (end - start));
   };
   if (Number.isFinite(from) && Number.isFinite(to)) for (let h = from; h <= to && out.length <= 25; h += HOUR_MS) if (wanted(h)) out.push(h);
   return out;

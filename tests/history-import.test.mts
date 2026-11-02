@@ -91,7 +91,26 @@ test('the address: the service on hiverust, a local stand-in or off from the pag
   assert.equal(historyUrl('BTC', '?history=http://127.0.0.1:8791/v1/btc/'), 'http://127.0.0.1:8791/v1/btc');
   assert.equal(historyUrl('BTC', '?history=https://evil.example/v1/btc'), 'https://history.hiverust.dev/v1/btc', 'only a local stand-in may replace it');
   assert.equal(historyUrl('BTC', '?history=off'), '');
-  assert.equal(historyUrl('ETH', '?history=http://127.0.0.1:8791/v1/btc'), '');
+  assert.equal(historyUrl('ADA', '?history=http://127.0.0.1:8791/v1/btc'), '', 'a coin the service does not record');
+  // The other coins the service records (their trade side): each its own folder, on the service or a local stand-in.
+  assert.equal(historyUrl('ETH', ''), 'https://history.hiverust.dev/v1/eth');
+  assert.equal(historyUrl('PEPE', '?history=http://127.0.0.1:8791/v1/btc'), 'http://127.0.0.1:8791/v1/pepe', 'the folder of one coin names the service');
+  assert.equal(historyUrl('SOL', '?history=http://127.0.0.1:8791/v1/'), 'http://127.0.0.1:8791/v1/sol');
+});
+
+test('the trade side is judged on its own: a page that held the books while its trade sockets were down still reads the hour (Sol)', () => {
+  const since = HOUR - HOUR_MS, now = HOUR + HOUR_MS + 5 * 60_000;
+  const books = Array.from({ length: 60 }, (_, i) => ({ instrumentId: 'a', step: 20, column: { t: HOUR + i * 60_000, n: 12 } }));
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: HOUR, last: HOUR, open: HOUR + HOUR_MS, steps: { a: 20 } };
+  assert.deepEqual(hoursToRead(latest, heldOf(books), since, now), [HOUR + HOUR_MS], 'a service that names no trades: the books decide (the old manifest)');
+  assert.deepEqual(hoursToRead({ ...latest, trades: ['t'] }, heldOf(books), since, now), [HOUR, HOUR + HOUR_MS], 'the books are held, the trades are not');
+  const own = [{ inst: 't', metric: 'trades' as const, from: HOUR - 1_000, to: HOUR + HOUR_MS + 10 * 60_000 }];
+  assert.deepEqual(hoursToRead({ ...latest, trades: ['t'] }, heldOf(books, own), since, now), [HOUR + HOUR_MS], 'held both ways: only the hour whose books it lacks');
+  // A coin the service records no books of: its trades alone decide.
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'ETH', first: HOUR, last: HOUR, open: HOUR + HOUR_MS, steps: {}, trades: ['t'] }, heldOf([], own), since, now), []);
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'ETH', first: HOUR, last: HOUR, open: HOUR + HOUR_MS, steps: {}, trades: ['t'] }, heldOf([]), since, now), [HOUR, HOUR + HOUR_MS]);
+  // A depth stretch is not a trade one; a manifest naming something that is not an id reads nothing for it.
+  assert.deepEqual(hoursToRead({ v: 1, coin: 'ETH', first: HOUR, last: HOUR, open: null, steps: {}, trades: [7 as unknown as string] }, heldOf([]), since, now), []);
 });
 
 test('a manifest with times that are not hours, or far out, reads nothing it should not, and stops at the retention (Sol)', () => {
