@@ -365,7 +365,11 @@ export function within(rows: HistoryRows, since: number, before: number): Histor
     // A group belongs to the minute of its first fill, as the recorder keeps it.
     footprint: rows.footprint.filter(r => inside(r.t)), absorptionMinutes: rows.absorptionMinutes.filter(r => inside(r.t)),
     absorption: rows.absorption.filter(r => inside(Math.floor(r.t0 / COLUMN_MS) * COLUMN_MS)), hour: rows.hour,
-    coverage: rows.coverage.filter(r => r.to > since && r.from < before).map(r => r.to > before ? { ...r, to: before, ...(r.last && r.last.t >= before ? { last: undefined } : {}) } : r).map(r => { if (r.last === undefined) { const { last: _last, ...rest } = r; return rest; } return r; }),
+    // Cut at both ends (a stretch from before `since` would say the page holds trades it did not import), keeping a seam inside it.
+    coverage: rows.coverage.filter(r => r.to > since && r.from < before).map(r => {
+      const from = Math.max(r.from, since), to = Math.min(r.to, before), { first, last, ...rest } = r;
+      return { ...rest, from, to, ...(first && first.t >= from && first.t < to ? { first } : {}), ...(last && last.t >= from && last.t < to ? { last } : {}) };
+    }),
   };
 }
 
