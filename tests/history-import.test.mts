@@ -233,3 +233,18 @@ test('the import hands the trade side to the recordings, cut at the minute under
   assert.deepEqual([got[0]!.flow.length, got[0]!.liquidations.length, got[0]!.oi.length, got[0]!.prints.length, got[0]!.coverage.length], [4, 0, 6, 6, 4]);
   assert.equal(done.rows, 20);
 });
+
+test('an hour read whole is not read again; the open hour and one still under way are (Sol round 2)', async () => {
+  const since = HOUR - HOUR_MS, now = HOUR + HOUR_MS + 5 * 60_000;
+  const latest: HistoryLatest = { v: 1, coin: 'ETH', first: HOUR - HOUR_MS, last: HOUR, open: HOUR + HOUR_MS, steps: {}, trades: ['t'] };
+  assert.deepEqual(hoursToRead(latest, heldOf([], [], [HOUR]), since, now), [HOUR - HOUR_MS, HOUR + HOUR_MS], 'the hour already read is left out');
+  const file = tradesFixture();
+  const fetcher = async (url: string) => url.endsWith('/latest.json')
+    ? { ok: true, status: 200, json: async () => ({ v: 1, coin: 'BTC', first: TRADES_HOUR, last: TRADES_HOUR, open: TRADES_HOUR + HOUR_MS, steps: {}, trades: ['binance:BTCUSDT'] }) as unknown, arrayBuffer: async () => new ArrayBuffer(0) }
+    : url.endsWith(`/m1/${TRADES_HOUR}.bin`) ? { ok: true, status: 200, json: async () => null as unknown, arrayBuffer: async () => file.slice(0) } : { ok: false, status: 404, json: async () => null as unknown, arrayBuffer: async () => new ArrayBuffer(0) };
+  const after = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, addRows: () => 0, since: TRADES_HOUR - HOUR_MS, now: TRADES_HOUR + HOUR_MS + 60_000, fetcher });
+  assert.deepEqual(after.read, [TRADES_HOUR], 'a finished hour is marked read');
+  const during = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, addRows: () => 0, since: TRADES_HOUR - HOUR_MS, now: TRADES_HOUR + 40 * 60_000, fetcher: async (url: string) => url.endsWith('/latest.json') ? { ok: true, status: 200, json: async () => ({ v: 1, coin: 'BTC', first: null, last: null, open: TRADES_HOUR, steps: {}, trades: ['binance:BTCUSDT'] }) as unknown, arrayBuffer: async () => new ArrayBuffer(0) } : fetcher(url) });
+  assert.equal(during.hours, 1);
+  assert.deepEqual(during.read, [], 'the open hour is read again next time');
+});

@@ -28,5 +28,6 @@ export function historyUrl(coin: string, search: string = typeof location === 'u
       if ((url.protocol === 'http:' || url.protocol === 'https:') && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) return url.href.replace(/\/+$/, '').replace(/(\/v1)\/[^/]+$/, '$1') + folder;
     } catch { /* not a URL: the configured address stands */ }
   }
-  return HISTORY_BASE + folder;
+  // No service configured (HISTORY_BASE ''): off, unless a local one stands in above.
+  return HISTORY_BASE ? HISTORY_BASE + folder : '';
 }

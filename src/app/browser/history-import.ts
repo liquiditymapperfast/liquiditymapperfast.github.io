@@ -121,9 +121,12 @@ function record(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: nu
 }
 
 /** What the page holds: per book, the step of its oldest minute (the step the engine keeps) and each minute's samples. */
-/** `trades`: the stretches over which this page recorded each instrument's trades itself (its own trade coverage). */
-export interface Held { steps: Map<string, number>; samples: Map<string, number>; trades: Map<string, { from: number; to: number }[]> }
-export function heldOf(rows: Iterable<{ instrumentId: string; step: number; column: { t: number; n: number } }>, coverage: Iterable<Pick<CoverageRow, 'inst' | 'metric' | 'from' | 'to'>> = []): Held {
+/**
+ * `trades`: the stretches over which this page recorded each instrument's trades itself (its own trade coverage); `imported`: the hours of
+ * the service it has read whole already.
+ */
+export interface Held { steps: Map<string, number>; samples: Map<string, number>; trades: Map<string, { from: number; to: number }[]>; imported: Set<number> }
+export function heldOf(rows: Iterable<{ instrumentId: string; step: number; column: { t: number; n: number } }>, coverage: Iterable<Pick<CoverageRow, 'inst' | 'metric' | 'from' | 'to'>> = [], imported: Iterable<number> = []): Held {
   const steps = new Map<string, number>(), oldest = new Map<string, number>(), samples = new Map<string, number>(), trades = new Map<string, { from: number; to: number }[]>();
   for (const { instrumentId, step, column } of rows) {
     samples.set(`${instrumentId}|${column.t}`, column.n);
@@ -134,7 +137,7 @@ export function heldOf(rows: Iterable<{ instrumentId: string; step: number; colu
     let list = trades.get(inst); if (!list) trades.set(inst, list = []);
     list.push({ from, to });
   }
-  return { steps, samples, trades };
+  return { steps, samples, trades, imported: new Set(imported) };
 }
 
 /**
@@ -183,7 +186,7 @@ export function hoursToRead(latest: HistoryLatest, held: Held, since: number, no
       return have < COVERED * minutes;
     }) || trades.some(inst => coveredMs(union(held.trades.get(inst) ?? [], start, end), start, end) < COVERED * (end - start));
   };
-  if (Number.isFinite(from) && Number.isFinite(to)) for (let h = from; h <= to && out.length <= 25; h += HOUR_MS) if (wanted(h)) out.push(h);
+  if (Number.isFinite(from) && Number.isFinite(to)) for (let h = from; h <= to && out.length <= 25; h += HOUR_MS) if (!held.imported.has(h) && wanted(h)) out.push(h);
   return out;
 }
 
@@ -222,9 +225,9 @@ export interface ImportOptions {
  * Reads the hours the page lacks, newest first (what runs out of time is the oldest), and adds their minutes; resolves with what it did and
  * the service's grid steps, never rejects.
  */
-export async function importHistory({ url, held, add, addRows, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; rows: number; failed: number; steps?: Record<string, number>; error?: string }> {
+export async function importHistory({ url, held, add, addRows, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; rows: number; failed: number; read: number[]; steps?: Record<string, number>; error?: string }> {
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), budgetMs);
-  const done = { hours: 0, columns: 0, rows: 0, failed: 0 };
+  const done = { hours: 0, columns: 0, rows: 0, failed: 0, read: [] as number[] };
   try {
     const first = new AbortController(), firstTimer = setTimeout(() => first.abort(), latestMs), stop = (): void => first.abort();
     abort.signal.addEventListener('abort', stop);
@@ -252,6 +255,8 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
           done.columns += add(take);
           if (addRows) done.rows += addRows(within(file.rows, since, before));
           done.hours++;
+          // An hour that has ended, and before the open one, will not change: it is not read again (`Held.imported`).
+          if (hour + HOUR_MS <= before && hour !== latest.open) { done.read.push(hour); held.imported.add(hour); }
         } catch { done.failed++; }
       }
     };

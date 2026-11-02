@@ -29,8 +29,12 @@ interface PrintRow extends Print { k: string }
 interface LiquidationRow extends Liquidation { k: string }
 /** An open-interest reading (shared/engine.ts `OiReading`): about one a minute for each of six venues, some 8,600 a day. */
 type OiRow = OiReading;
-/** A stretch of the coverage record, with its end as `t` (the time index every store prunes by). */
-interface CoverRow extends CoverageRow { t: number }
+/**
+ * A stretch of the coverage record, with its end as `t` (the time index every store prunes by). Metric `history` (never handed to the
+ * recorders) marks an hour of the recorded history read whole (`markImported`): an hour already taken is not read again.
+ */
+interface CoverRow extends Omit<CoverageRow, 'metric'> { metric: CoverageRow['metric'] | 'history'; t: number }
+const IMPORTED = 'history', IMPORTED_INST = '', HOUR = 3_600_000;
 
 /** `name` is the coin's database (app/coin.ts recordingsName): each coin's recordings are kept and read apart. */
 function openDatabase(name: string): Promise<IDBDatabase> {
@@ -108,6 +112,9 @@ export interface Recordings {
    * taken into the page's own (see `importRows`).
    */
   importRows(rows: HistoryRows): number;
+  /** The hours of the recorded history read whole (kept as the coverage record is, so they go with it), and marking more. */
+  importedHours(): number[];
+  markImported(hours: readonly number[]): void;
   /** Apply what is queued now instead of at the next half second. */
   flush(): Promise<void>;
   close(): void;
@@ -290,7 +297,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
   };
   // The coverage record: a stretch is written again as it grows (its start is its key), cut at the minute still open (shared/coverage.ts).
   const coverage: CoverageStore = {
-    load: () => coverRows.map(({ t: _t, ...row }) => row),
+    load: () => coverRows.flatMap(({ t: _t, ...row }) => row.metric === IMPORTED ? [] : [row as CoverageRow]),
     save: (rows, expireBefore) => enqueue(tx => { const store = tx.objectStore('coverage'); for (const row of rows) store.put({ ...row, t: row.to } satisfies CoverRow); prune(tx, 'coverage', expireBefore); }),
     close: () => {},
   };
@@ -351,9 +358,15 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     const newLiquidations = incoming.liquidations.filter(row => !everyLiquidation.has(liquidationKey(row)));
     for (const row of newLiquidations) { const k = liquidationKey(row); everyLiquidation.set(k, { ...row, k }); liquidationRows.push({ ...row, k }); }
     if (newLiquidations.length) { liquidationRows.sort((a, b) => a.t - b.t); liquidations.save(newLiquidations, since); taken += newLiquidations.length; }
-    const oiHeld = new Set(oiRows.map(row => `${row.venue}|${row.t}`));
-    const newOi = incoming.oi.filter(row => !oiHeld.has(`${row.venue}|${row.t}`));
-    if (newOi.length) { oiRows.push(...newOi); oi.save(newOi, since); taken += newOi.length; }
+    // An open-interest minute keeps its newest reading (the minute's last, as the recorders keep it): the service's when it was read later.
+    const oiAt = new Map(oiRows.map((row, i) => [`${row.venue}|${row.t}`, i]));
+    const newOi: OiRow[] = [];
+    for (const row of incoming.oi) {
+      const key = `${row.venue}|${row.t}`, i = oiAt.get(key);
+      if (i === undefined) { oiAt.set(key, oiRows.length); oiRows.push(row); newOi.push(row); }
+      else if ((row.at ?? 0) > (oiRows[i]!.at ?? 0)) { oiRows[i] = row; newOi.push(row); }
+    }
+    if (newOi.length) { oi.save(newOi, since); taken += newOi.length; }
     // Large trades only where this page did not record the trades itself.
     const own = new Map<string, [number, number][]>();
     for (const row of coverRows) if (row.metric === 'trades') { let list = own.get(row.inst); if (!list) own.set(row.inst, list = []); list.push([row.from, row.to]); }
@@ -369,8 +382,15 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     // service records no footprint.
     return taken;
   };
+  const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED).map(row => row.from);
+  const markImported = (hours: readonly number[]): void => {
+    const held = new Set(importedHours()), rows = hours.filter(h => !held.has(h)).map(h => ({ inst: IMPORTED_INST, metric: IMPORTED, from: h, to: h + HOUR, kind: 'live' as const, t: h + HOUR }) satisfies CoverRow);
+    if (!rows.length) return;
+    coverRows.push(...rows);
+    enqueue(tx => { const store = tx.objectStore('coverage'); for (const row of rows) store.put(row); });
+  };
   return {
-    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns, importRows,
+    columns, footprint, prints, flow, absorption, coverage, liquidations, oi, importColumns, importRows, importedHours, markImported,
     flush() { if (timer) clearTimeout(timer); return write(); },
     close() { if (timer) clearTimeout(timer); void write().finally(() => { closed = true; db.close(); }); },
   };
