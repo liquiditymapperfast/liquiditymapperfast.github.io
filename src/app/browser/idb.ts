@@ -429,7 +429,8 @@ export async function openRecordings(name: string, since: number, canWrite: () =
         // Every one is laid over the store too: the recorder's own cut (two hours before it starts, a moment after this) can leave a
         // minute of the opening arrays out, and a tab that may not write keeps no copy in the store.
         overlay.set(key, { minute, groups });
-        if (minute.t < absorptionSince) continue;
+        // A minute that reaches past the opening cut goes into the arrays too: the recorder answers its later part from memory.
+        if (minute.t + MINUTE <= absorptionSince) continue;
         const i = minuteAt.get(key);
         if (i === undefined) absorptionMinuteRows.push(minuteRow(minute)); else absorptionMinuteRows[i] = minuteRow(minute);
         for (const g of groups) absorptionRows.push(groupRow(g));
