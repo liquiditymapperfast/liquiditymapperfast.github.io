@@ -334,19 +334,24 @@ export function planCoverage(state: TradeImport, rows: Pick<HistoryRows, 'covera
 }
 
 /**
- * The parts of the stretches inside the hours `holds` says the page has the footprint of: a stretch in a newer hour reaches back over hours
- * that may not have been read (the import ran out of time, or a file failed), and there the page does not hold what it says was recorded.
- * A part keeps a seam trade that lies inside it. `holds(hour)` should require the next hour too: a minute's footprint can be written into the
- * hour after its own.
+ * The parts of the stretches inside the hours `holds` says the page has the footprint of, and after `start(inst)`: a stretch in a newer hour
+ * reaches back over hours that may not have been read (the import ran out of time, or a file failed) or that the service recorded before it
+ * recorded the footprint (a restart onto a build that does writes the old run's stretches into the new run's first hour), and there the page
+ * does not hold what it says was recorded. A part keeps a seam trade that lies inside it. `holds(hour)` should require the next hour too: a
+ * minute's footprint can be written into the hour after its own. A market with no `start` (no footprint minute seen) gets nothing.
  */
-export function clipCoverage(rows: readonly CoverageRow[], holds: (hour: number) => boolean): CoverageRow[] {
+export function clipCoverage(rows: readonly CoverageRow[], holds: (hour: number) => boolean, start: (inst: string) => number | undefined): CoverageRow[] {
   const out: CoverageRow[] = [];
   for (const row of rows) {
-    for (let hour = Math.floor(row.from / HOUR_MS) * HOUR_MS; hour < row.to;) {
+    const first = start(row.inst);
+    if (first === undefined) continue;
+    const begin = Math.max(row.from, first);
+    for (let hour = Math.floor(begin / HOUR_MS) * HOUR_MS; hour < row.to;) {
       if (!holds(hour)) { hour += HOUR_MS; continue; }
       let end = hour + HOUR_MS;
       while (end < row.to && holds(end)) end += HOUR_MS;
-      const from = Math.max(row.from, hour), to = Math.min(row.to, end);
+      const from = Math.max(begin, hour), to = Math.min(row.to, end);
+      if (!(to > from)) { hour = end; continue; }
       const inside = (seam: SeamTrade | undefined): seam is SeamTrade => seam !== undefined && seam.t >= from && seam.t < to;
       out.push({ inst: row.inst, metric: row.metric, from, to, kind: row.kind, ...(inside(row.first) ? { first: row.first } : {}), ...(inside(row.last) ? { last: row.last } : {}) });
       hour = end;

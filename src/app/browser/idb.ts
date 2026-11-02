@@ -358,8 +358,11 @@ export async function openRecordings(name: string, since: number, canWrite: () =
   };
   // What the import of the trade side judges by (history-import.ts `TradeImport`): taken now, before anything is imported.
   const trade = tradeImport(coverRows, footprintRows);
-  /** The hours read in this import, and the service's stretches waiting to join the page's coverage over them. */
-  const coverHours = new Set<number>(), pendingCover: CoverageRow[] = [];
+  /**
+   * The hours read in this import, those of them whose file held footprint minutes, each market's first footprint minute in them (on its
+   * step), and the service's stretches waiting to join the page's coverage.
+   */
+  const hoursRead = new Set<number>(), footprintHours = new Set<number>(), firstFootprint = new Map<string, number>(), pendingCover: CoverageRow[] = [];
   const footprintAt = new Map<string, number>();
   footprintRows.forEach((row, i) => footprintAt.set(`${row.inst}|${row.t}`, i));
   // Minutes recorded elsewhere join the rows `load` hands the recorder (a thinner copy of the same minute is replaced) and are stored like
@@ -454,13 +457,16 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     // hours whose footprint this page holds (`clipCoverage`): read in this import, or marked read whole by an earlier one, and the hour
     // after them too (a minute's rows can be written into the next hour), or that hour not over yet. A stretch is written again as it grows
     // (its start is its key): the longest copy stays.
-    if (incoming.hour !== null) coverHours.add(incoming.hour);
+    if (incoming.hour !== null) { hoursRead.add(incoming.hour); if (incoming.footprint.length) footprintHours.add(incoming.hour); }
+    for (const row of incoming.footprint) if (row.step === trade.steps.get(row.inst) && !(row.t >= (firstFootprint.get(row.inst) ?? Infinity))) firstFootprint.set(row.inst, row.t);
     pendingCover.push(...planCoverage(trade, incoming));
-    const known = new Set([...coverHours, ...importedHours()]), now = Date.now();
-    const holds = (hour: number): boolean => known.has(hour) && (known.has(hour + HOUR) || hour + 2 * HOUR > now);
+    // An hour counts when its own file held footprint minutes, and the next hour was read too (or marked read earlier, or is not over).
+    const known = new Set([...hoursRead, ...importedHours()]), now = Date.now();
+    const holds = (hour: number): boolean => footprintHours.has(hour) && (known.has(hour + HOUR) || hour + 2 * HOUR > now);
+    // From the minute after a market's first footprint minute: the run that recorded it may have started inside that minute.
     const coverAt = new Map(coverRows.map((row, i) => [`${row.inst}|${row.metric}|${row.from}`, i]));
     const newCover: CoverRow[] = [];
-    for (const row of clipCoverage(pendingCover, holds)) {
+    for (const row of clipCoverage(pendingCover, holds, inst => { const t = firstFootprint.get(inst); return t === undefined ? undefined : t + MINUTE; })) {
       const key = `${row.inst}|${row.metric}|${row.from}`, i = coverAt.get(key);
       if (i !== undefined && coverRows[i]!.to >= row.to) continue;
       const stored: CoverRow = { ...row, t: row.to };

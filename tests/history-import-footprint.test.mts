@@ -130,10 +130,26 @@ test('the service coverage joins only over hours whose footprint the page holds 
   const stretch: CoverageRow = { inst: 'a', metric: 'trades', from: HOUR + 600_000, to: HOUR + 4 * H, kind: 'live', first: { id: 'f', t: HOUR + 600_001 }, last: { id: 'l', t: HOUR + 4 * H - 1 } };
   // Hours 0, 2 and 3 are held (1 is not): two parts, each keeping only the seam inside it.
   const held = new Set([HOUR, HOUR + 2 * H, HOUR + 3 * H]);
-  assert.deepEqual(clipCoverage([stretch], h => held.has(h)), [
+  const any = (): number => 0;
+  assert.deepEqual(clipCoverage([stretch], h => held.has(h), any), [
     { inst: 'a', metric: 'trades', from: HOUR + 600_000, to: HOUR + H, kind: 'live', first: { id: 'f', t: HOUR + 600_001 } },
     { inst: 'a', metric: 'trades', from: HOUR + 2 * H, to: HOUR + 4 * H, kind: 'live', last: { id: 'l', t: HOUR + 4 * H - 1 } },
   ]);
-  assert.deepEqual(clipCoverage([stretch], () => false), []);
-  assert.deepEqual(clipCoverage([stretch], () => true), [stretch]);
+  assert.deepEqual(clipCoverage([stretch], () => false, any), []);
+  assert.deepEqual(clipCoverage([stretch], () => true, any), [stretch]);
+  // A market with no footprint minute seen gets nothing.
+  assert.deepEqual(clipCoverage([stretch], () => true, () => undefined), []);
+});
+
+test('a restart onto the footprint build: the old run\'s stretch is claimed only from the new run\'s first footprint minute on (advisor)', () => {
+  const H = HOUR_MS;
+  // The old run (no footprint) recorded from hour 0 to 2:10; its last stretch lands in hour 2's file, written by the new run, whose
+  // footprint begins at 2:10 (minute 2:10 is its first). Hours 0 and 1 were read, but their files held no footprint.
+  const old: CoverageRow = { inst: 'a', metric: 'trades', from: HOUR, to: HOUR + 2 * H + 600_000, kind: 'live' };
+  const fresh: CoverageRow = { inst: 'a', metric: 'trades', from: HOUR + 2 * H + 600_500, to: HOUR + 3 * H, kind: 'live' };
+  const footprintHours = new Set([HOUR + 2 * H]);
+  const firstMinute = HOUR + 2 * H + 600_000;
+  const parts = clipCoverage([old, fresh], h => footprintHours.has(h), () => firstMinute + 60_000);
+  // Nothing of the old run's stretch (it ends before the new run's second minute), and the new one from its second minute on.
+  assert.deepEqual(parts.map(r => [r.from - HOUR, r.to - HOUR]), [[2 * H + 660_000, 3 * H]]);
 });
