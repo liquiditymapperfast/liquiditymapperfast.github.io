@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, type HistoryColumn, type HistoryLatest } from '../src/app/browser/history-import.ts';
+import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
 import { historyUrl } from '../src/app/history-url.ts';
 
 /** The first three minutes of an hour file written by hlm-history on 2026-11-01 (23:14-23:16Z, the eleven default books). */
@@ -135,4 +135,82 @@ test('a whole record that is not a sane minute is left out; the rest of the hour
   // A zero-filled tail (a crash) ends the list without reading into it.
   const tail = new Uint8Array(fixture().byteLength + 64); tail.set(new Uint8Array(fixture()));
   assert.equal(decodeHour(tail.buffer)?.columns.length, 33);
+});
+
+/** Whole records of every kind cut from an hour file hlm-history wrote on 2026-11-02 (02:21-02:31Z): four minute columns, four flow minutes, two liquidations, six open-interest readings, six large trades, four stretches of trade coverage. */
+const tradesFixture = (): ArrayBuffer => { const b = fs.readFileSync(path.join(process.cwd(), 'tests', 'fixtures', 'history-hour-trades.bin')); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; };
+const TRADES_HOUR = 1_793_584_800_000, MINUTE = 60_000;
+
+test('the trade side of an hour file reads back whole: flow minutes, liquidations, open interest, large trades and coverage', () => {
+  const file = decodeHour(tradesFixture());
+  assert.ok(file);
+  assert.equal(file.hour, TRADES_HOUR);
+  assert.equal(file.columns.length, 4, 'the minute columns beside them still read');
+  const { flow, liquidations, oi, prints, coverage } = file.rows;
+  assert.equal(flow.length, 4);
+  for (const row of flow) {
+    assert.equal(row.t % MINUTE, 0);
+    assert.ok(row.t >= TRADES_HOUR && row.t < TRADES_HOUR + HOUR_MS);
+    assert.ok(row.buy.length === 60 && row.sell.length === 60 && row.px!.length === 60);
+    // A second with trades has a price near BTC's then; one without has none.
+    for (let i = 0; i < 60; i++) {
+      if (row.buy[i]! + row.sell[i]! > 0) assert.ok(row.px![i]! > 70_000 && row.px![i]! < 90_000, `${row.inst} second ${i}`);
+      else assert.equal(row.px![i], 0);
+    }
+  }
+  assert.deepEqual(liquidations.map(l => [l.id, l.side, l.kind]), [['binance:BTCUSDT', 'short', 'fill'], ['binance:BTCUSDT', 'short', 'fill']]);
+  for (const l of liquidations) assert.ok(l.usd >= 100 && l.price === l.reported, 'a fill price is where it is drawn');
+  assert.deepEqual(oi.map(r => r.venue), ['binance', 'bitget', 'bybit', 'deribit', 'hyperliquid', 'okx']);
+  for (const r of oi) assert.ok(r.t % MINUTE === 0 && r.at! >= r.t && r.at! < r.t + MINUTE && r.base > 1_000);
+  assert.ok(oi.find(r => r.venue === 'deribit')!.quote! > 1e8, 'an inverse market says its USD too');
+  assert.ok(oi.filter(r => r.venue !== 'deribit').every(r => r.quote === undefined));
+  assert.equal(prints.length, 6);
+  for (const p of prints) {
+    assert.ok(p.usd >= 25_000, 'the print floor');
+    if (p.n !== undefined) assert.ok(p.n >= 2 && p.lo! <= p.price + 1e-6 && p.price <= p.hi! + 1e-6, 'an order of several fills keeps its span');
+  }
+  assert.equal(prints.filter(p => p.n !== undefined).length, 3);
+  assert.equal(coverage.length, 4);
+  for (const c of coverage) {
+    assert.equal(c.metric, 'trades');
+    assert.equal(c.kind, 'live');
+    assert.ok(c.to > c.from && c.first && c.last && c.first.t >= c.from && c.last.t < c.to, `${c.inst}: seams inside the stretch`);
+  }
+  // Hyperliquid's trade id is the page's own (time, coin and the venue's trade id).
+  assert.match(coverage.find(c => c.inst === 'hyperliquid:BTC-PERP')!.first!.id, /^\d{13}:BTC:\d+$/);
+});
+
+test('rows of the trade side are kept inside the window: the minute under way is the page\'s own, a stretch is cut at it', () => {
+  const rows = decodeHour(tradesFixture())!.rows;
+  const all = within(rows, 0, Infinity);
+  assert.deepEqual([all.flow.length, all.liquidations.length, all.oi.length, all.prints.length, all.coverage.length], [4, 2, 6, 6, 4]);
+  // Before the second liquidation (02:30:30Z): the first stays, the second and every later row goes.
+  const before = rows.liquidations[1]!.t;
+  const cut = within(rows, 0, before);
+  assert.equal(cut.liquidations.length, 1);
+  assert.ok(cut.prints.every(p => p.t < before) && cut.flow.every(r => r.t < before));
+  // A stretch that reaches past the window ends at it, and loses a last trade it no longer holds.
+  const minute = rows.coverage[0]!.from - (rows.coverage[0]!.from % MINUTE) + MINUTE / 2;
+  const short = within(rows, 0, minute);
+  for (const c of short.coverage) { assert.ok(c.to <= minute); if (c.last) assert.ok(c.last.t < minute); }
+  assert.ok(short.coverage.some(c => !c.last));
+  // A window that starts after the hour holds nothing of it.
+  const later = within(rows, TRADES_HOUR + HOUR_MS, Infinity);
+  assert.deepEqual([later.flow.length, later.liquidations.length, later.oi.length, later.prints.length, later.coverage.length], [0, 0, 0, 0, 0]);
+});
+
+test('the import hands the trade side to the recordings, cut at the minute under way', async () => {
+  const file = tradesFixture();
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: TRADES_HOUR, last: null, open: TRADES_HOUR, steps: Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, c.step])) };
+  const fetcher = async (url: string) => url.endsWith('/latest.json')
+    ? { ok: true, status: 200, json: async () => latest as unknown, arrayBuffer: async () => new ArrayBuffer(0) }
+    : url.endsWith(`/m1/${TRADES_HOUR}.bin`) ? { ok: true, status: 200, json: async () => null as unknown, arrayBuffer: async () => file.slice(0) } : { ok: false, status: 404, json: async () => null as unknown, arrayBuffer: async () => new ArrayBuffer(0) };
+  const got: HistoryRows[] = [];
+  // The page opens at 02:30:20Z: the first liquidation (02:30:14Z) is inside the minute under way, so it is the page's own.
+  const now = Date.UTC(2026, 10, 2, 2, 30, 20);
+  const done = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, addRows: rows => { got.push(rows); return rows.flow.length + rows.liquidations.length + rows.oi.length + rows.prints.length + rows.coverage.length; }, since: now - 24 * HOUR_MS, now, fetcher });
+  assert.equal(done.hours, 1);
+  assert.equal(got.length, 1);
+  assert.deepEqual([got[0]!.flow.length, got[0]!.liquidations.length, got[0]!.oi.length, got[0]!.prints.length, got[0]!.coverage.length], [4, 0, 6, 6, 4]);
+  assert.equal(done.rows, 20);
 });
