@@ -48,6 +48,7 @@ import './mobile.css';
 import './chrome.css';
 import { t } from './i18n.ts';
 import { useMarkets } from './venue-marks.ts';
+import { historyHours, savesData, type PhoneHistory } from './history-window.ts';
 
 /** True when the page is being served by the local server (its state endpoint answers with JSON on this very origin). */
 async function serverAnswers(): Promise<boolean> {
@@ -63,10 +64,12 @@ async function serverAnswers(): Promise<boolean> {
  * `?source=server` chooses explicitly (`?persist=0` keeps a browser-source session from saving recordings). The server records BTC only,
  * so a page on another coin reads the exchanges itself wherever it is served from.
  */
-async function chooseSource(params: URLSearchParams, choice: CoinChoice): Promise<DataSource> {
+async function chooseSource(params: URLSearchParams, choice: CoinChoice, phoneHistory: PhoneHistory): Promise<DataSource> {
   const wanted = params.get('source');
   if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && await serverAnswers()))) return new ServerSource();
-  return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier });
+  // A phone in the hand reads a few hours of the recorded history, not the day (app/history-window.ts).
+  const historyHoursToRead = historyHours(isPhone() && isCoarse(), phoneHistory, savesData());
+  return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier, historyHours: historyHoursToRead });
 }
 
 async function main(): Promise<void> {
@@ -88,7 +91,7 @@ async function main(): Promise<void> {
   installTouchSelects();
   const kernels = await loadKernels();
   keepCoinRecordings();
-  const source = await chooseSource(params, choice);
+  const source = await chooseSource(params, choice, store.state.phoneHistory);
   const hub = new Hub(store, source);
   const wake = new ScreenWake(); wake.set(store.state.keepAwake);
 

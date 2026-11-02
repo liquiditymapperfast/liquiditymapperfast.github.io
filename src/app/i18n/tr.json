@@ -2121,5 +2121,8 @@
  "The language reference is downloading as {name}. Look in your browser's downloads.": "Dil başvuru kılavuzu {name} olarak indiriliyor. Tarayıcının indirilenler bölümüne bak.",
  "Light theme": "Açık tema",
  "Dark theme": "Koyu tema",
- "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Açık ya da koyu: tek dokunuş temayı değiştirir. Tüm temalar Ayarlar'da, Görünüm altında."
+ "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Açık ya da koyu: tek dokunuş temayı değiştirir. Tüm temalar Ayarlar'da, Görünüm altında.",
+ "3 h": "3 sa",
+ "History on opening": "Açılışta geçmiş",
+ "How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "Sayfa açıldığında bu telefonun ne kadar kayıtlı geçmiş indirdiği: son 3 saat (birkaç MB), bütün gün (onlarca MB) ya da hiç. Sayfa bir sonraki açılışında geçerli olur."
 }

@@ -23,6 +23,7 @@ import { t } from './i18n.ts';
 import { BTC, EARLIER_BROWSER_VENUES, type Coin } from '../shared/coins.ts';
 import { recorderLockName, recordingsName } from './coin.ts';
 import { historyUrl } from './history-url.ts';
+import { DAY_HOURS } from './history-window.ts';
 
 /** Where a person's venue choice is kept between visits, and the venues there were when it was made (so ones added since can start). */
 const SELECTION_KEY = 'lmf.venues', KNOWN_KEY = 'lmf.venues.known';
@@ -102,7 +103,8 @@ export class BrowserSource implements DataSource, VenueControl {
   storageFailed = false;
   #readyAt = 0;
 
-  constructor(worker: Worker, { persist = true, coin = BTC, tier = 0 }: { persist?: boolean; coin?: Coin; tier?: number } = {}) {
+  /** `historyHours`: how many of the recorded history's latest hours the worker reads on opening (app/history-window.ts), a day by default. */
+  constructor(worker: Worker, { persist = true, coin = BTC, tier = 0, historyHours = DAY_HOURS }: { persist?: boolean; coin?: Coin; tier?: number; historyHours?: number } = {}) {
     this.#coin = coin;
     this.#longShort = new LongShortCache(webGet, true, undefined, undefined, undefined, undefined, undefined, persist ? new IdbLsStore() : null);
     this.#worker = worker;
@@ -153,7 +155,7 @@ export class BrowserSource implements DataSource, VenueControl {
       // outstanding is failed either way (it may never be answered), and only the first case closes the door.
       if (this.#started) this.#rejectCalls(error); else this.#fail(error);
     };
-    this.#post({ type: 'init', selected: savedSelection(), known: savedKnown(), persist, coin, tier, database: recordingsName(coin.coin), lock: recorderLockName(coin.coin), history: historyUrl(coin.coin) });
+    this.#post({ type: 'init', selected: savedSelection(), known: savedKnown(), persist, coin, tier, database: recordingsName(coin.coin), lock: recorderLockName(coin.coin), history: historyUrl(coin.coin), historyHours });
     // Recordings still queued are written as the page goes away.
     addEventListener('pagehide', () => this.#post({ type: 'flush' }));
     // The worker has no document: it is told whether the page is shown, so a hidden tab reads no far books (about 220 KB per OKX book every 15 s).

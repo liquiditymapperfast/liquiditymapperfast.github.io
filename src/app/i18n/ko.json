@@ -2042,5 +2042,8 @@
  "The language reference is downloading as {name}. Look in your browser's downloads.": "언어 레퍼런스를 {name}(으)로 다운로드하는 중입니다. 브라우저의 다운로드 목록을 확인하세요.",
  "Light theme": "라이트 테마",
  "Dark theme": "다크 테마",
- "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "라이트 또는 다크: 한 번 탭하면 테마가 바뀝니다. 모든 테마는 설정의 화면 모양에 있습니다."
+ "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "라이트 또는 다크: 한 번 탭하면 테마가 바뀝니다. 모든 테마는 설정의 화면 모양에 있습니다.",
+ "3 h": "3시간",
+ "History on opening": "열 때 기록",
+ "How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "페이지를 열 때 이 휴대폰이 내려받는 기록된 내역의 양: 최근 3시간(몇 MB), 하루 전체(수십 MB) 또는 없음. 다음에 페이지를 열 때부터 적용됩니다."
 }

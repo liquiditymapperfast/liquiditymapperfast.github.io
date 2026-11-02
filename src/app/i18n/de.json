@@ -2121,5 +2121,8 @@
  "The language reference is downloading as {name}. Look in your browser's downloads.": "Die Sprachreferenz wird als {name} heruntergeladen. Sie liegt in den Downloads deines Browsers.",
  "Light theme": "Helles Design",
  "Dark theme": "Dunkles Design",
- "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Hell oder dunkel: Ein Tippen wechselt das Design. Alle Designs stehen in den Einstellungen unter Darstellung."
+ "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Hell oder dunkel: Ein Tippen wechselt das Design. Alle Designs stehen in den Einstellungen unter Darstellung.",
+ "3 h": "3 Std.",
+ "History on opening": "Verlauf beim Öffnen",
+ "How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "Wie viel aufgezeichneter Verlauf dieses Handy beim Öffnen der Seite lädt: die letzten 3 Stunden (einige MB), den ganzen Tag (einige zehn MB) oder nichts. Gilt ab dem nächsten Öffnen der Seite."
 }

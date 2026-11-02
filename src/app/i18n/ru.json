@@ -2175,5 +2175,8 @@
  "The language reference is downloading as {name}. Look in your browser's downloads.": "Справочник языка скачивается как {name}. Ищите его в загрузках браузера.",
  "Light theme": "Светлая тема",
  "Dark theme": "Тёмная тема",
- "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Светлая или тёмная: одно касание меняет тему. Все темы — в Настройках, в разделе «Оформление»."
+ "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Светлая или тёмная: одно касание меняет тему. Все темы — в Настройках, в разделе «Оформление».",
+ "3 h": "3 ч",
+ "History on opening": "История при открытии",
+ "How much recorded history this phone downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "Сколько записанной истории этот телефон загружает при открытии страницы: последние 3 часа (несколько МБ), весь день (десятки МБ) или ничего. Действует со следующего открытия страницы."
 }
