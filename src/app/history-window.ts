@@ -3,7 +3,7 @@
  * the last few hours, which cover the map it opens on (about 75 minutes) with room to look back, at a few MB instead of the day's tens of
  * MB on a phone's data plan (Karl, 2026-11-02). A phone cannot be asked whether it is on Wi-Fi (iPhones say nothing about the network), so
  * the phone itself is the sign, and Settings on any touch screen can ask for the last hours, the whole day or none. A browser set to save
- * data reads one hour on a phone and three on a desktop.
+ * data reads the last hours too, wherever it runs.
  */
 
 import { isCoarse } from './device.ts';
@@ -13,31 +13,23 @@ export type PhoneHistory = 'auto' | 'recent' | 'day' | 'off';
 export const PHONE_HISTORY: readonly PhoneHistory[] = ['auto', 'recent', 'day', 'off'];
 export const readPhoneHistory = (v: unknown): PhoneHistory => PHONE_HISTORY.includes(v as PhoneHistory) ? v as PhoneHistory : 'auto';
 
-/** The hours a phone reads by default. */
+/** The last hours: what a phone reads by default. */
 export const PHONE_RECENT_HOURS = 3;
-/** The hours read where the browser is set to save data: a phone's default, and a desktop's. */
-export const SAVE_DATA_PHONE_HOURS = 1;
-export const SAVE_DATA_DESKTOP_HOURS = 3;
 /** A day: everything the page keeps (shared/recorder.ts BROWSER_RETENTION_MS). */
 export const DAY_HOURS = 24;
 
 /**
- * What a choice comes to on this screen: `auto` is the last hours on a phone in the hand and the day anywhere else. A choice made is kept
- * on every touch screen, so a folding phone opened out keeps the "Off" it was given folded (Settings shows the choice there too).
+ * What the choice comes to here: `auto` is the last hours on a phone in the hand or in a browser set to save data, and the day anywhere
+ * else. A choice made holds on every screen, however the device is held or pointed at (a folding phone opened out, a tablet given a mouse).
+ * Settings lights exactly this, so what it shows is what the next opening reads.
  */
-export const effectiveChoice = (phone: boolean, touch: boolean, choice: PhoneHistory): Exclude<PhoneHistory, 'auto'> =>
-  touch && choice !== 'auto' ? choice : phone ? 'recent' : 'day';
+export const effectiveChoice = (phone: boolean, choice: PhoneHistory, saveData: boolean): Exclude<PhoneHistory, 'auto'> =>
+  choice !== 'auto' ? choice : phone || saveData ? 'recent' : 'day';
 
-/**
- * The hours of history to read on opening: 0 reads none. `phone` is a phone in the hand (`isHandheldPhone`), `touch` a touch screen (the
- * only screens that show the choice: a desktop reads the day whatever a save says).
- */
-export function historyHours(phone: boolean, touch: boolean, choice: PhoneHistory, saveData: boolean): number {
-  const chosen = effectiveChoice(phone, touch, choice);
-  if (chosen === 'off') return 0;
-  if (chosen === 'recent') return saveData ? SAVE_DATA_PHONE_HOURS : PHONE_RECENT_HOURS;
-  // The day, unless the browser saves data and nobody asked for the day.
-  return saveData && !(touch && choice === 'day') ? SAVE_DATA_DESKTOP_HOURS : DAY_HOURS;
+/** The hours of history to read on opening: 0 reads none. `phone` is a phone in the hand (`isHandheldPhone`). */
+export function historyHours(phone: boolean, choice: PhoneHistory, saveData: boolean): number {
+  const chosen = effectiveChoice(phone, choice, saveData);
+  return chosen === 'off' ? 0 : chosen === 'recent' ? PHONE_RECENT_HOURS : DAY_HOURS;
 }
 
 const HOUR_MS = 3_600_000;

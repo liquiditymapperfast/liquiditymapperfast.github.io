@@ -46,7 +46,7 @@ import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.t
 import { CONTRAST } from './heatmap/window.ts';
 import { CHART_TYPES, chartTypeGlyph, chartTypeName, chartTypeTip, type ChartType } from './chart-type.ts';
 import { compactBar, isCoarse, isPhone, onLayoutMode } from './device.ts';
-import { effectiveChoice, isHandheldPhone, type PhoneHistory } from './history-window.ts';
+import { effectiveChoice, isHandheldPhone, savesData, type PhoneHistory } from './history-window.ts';
 import { openSheet, type Sheet } from './sheet.ts';
 import { wakeLockSupported } from './wake.ts';
 import { LANGUAGES, language, pickLanguage, saveLanguage, savedLanguage } from './i18n.ts';
@@ -785,8 +785,9 @@ export class Toolbar {
           field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i')))]),
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zoneSeg),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : []),
-          // A phone in the hand reads only the last hours of the recorded history on opening, any touch screen what it chose (app/history-window.ts).
-          ...(isCoarse() ? [field(t('History'), this.#historySeg)] : [])]));
+          // A phone in the hand reads only the last hours of the recorded history on opening, any screen what it chose (app/history-window.ts):
+          // every touch screen can choose, and one that chose keeps the control whatever it is pointed with now.
+          ...(isCoarse() || this.store.state.phoneHistory !== 'auto' ? [field(t('History'), this.#historySeg)] : [])]));
     }, () => { this.#sheet = null; this.#more.classList.remove('open'); this.#venuesLabel.textContent = t('Venues'); this.#venuesCount.hidden = false; });
     this.#more.classList.add('open');
   }
@@ -820,7 +821,7 @@ export class Toolbar {
     lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#liqLevels, state.liqLevels.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#scripts, state.show.script); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     // The choice that applies here: before one is made, a phone's last hours or a tablet's day (`effectiveChoice`).
-    const historyNow = effectiveChoice(isHandheldPhone(), isCoarse(), state.phoneHistory);
+    const historyNow = effectiveChoice(isHandheldPhone(), state.phoneHistory, savesData());
     for (const [choice, b] of this.#historyChoices) { b.classList.toggle('on', historyNow === choice); b.setAttribute('aria-pressed', String(historyNow === choice)); }
     lamp(this.#glass, state.material === 'glass');
     if (this.#glassSwitch.checked !== (state.material === 'glass')) this.#glassSwitch.checked = state.material === 'glass';
