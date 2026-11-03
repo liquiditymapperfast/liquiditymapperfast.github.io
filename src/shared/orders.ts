@@ -53,8 +53,11 @@ export class OrderBuilder {
 
   constructor(private now: () => number = Date.now, private quietMs = ORDER_QUIET_MS) {}
 
-  /** Take fills not seen before; returns them, normalised (the absorption detector takes the same fills, once each). */
-  add(fills: Iterable<FillLike>): TakenFill[] {
+  /**
+   * Take fills not seen before; returns them, normalised (the absorption detector takes the same fills, once each). `now`: when they came
+   * (the builder's clock unless the caller knows it: a page's engine plays fills in again later, at the moment they came).
+   */
+  add(fills: Iterable<FillLike>, now = this.now()): TakenFill[] {
     const taken: TakenFill[] = [];
     for (const fill of fills) {
       const id = String(fill.instrumentId ?? ''), tradeId = String(fill.tradeId ?? '');
@@ -69,19 +72,18 @@ export class OrderBuilder {
       if (open && open.key === key) {
         const o = open.order;
         o.usd += usd; o.fills++; o.lo = Math.min(o.lo, price); o.hi = Math.max(o.hi, price); o.t = Math.min(o.t, t);
-        open.base += base; o.price = o.usd / open.base; open.at = this.now();
+        open.base += base; o.price = o.usd / open.base; open.at = now;
       } else {
         if (open) this.#done.push(open.order);
-        this.#open.set(id, { key, base, at: this.now(), order: { instrumentId: id, tradeId, side, t, price, lo: price, hi: price, usd, fills: 1 } });
+        this.#open.set(id, { key, base, at: now, order: { instrumentId: id, tradeId, side, t, price, lo: price, hi: price, usd, fills: 1 } });
       }
       taken.push({ instrumentId: id, side, price, usd, t });
     }
     return taken;
   }
 
-  /** The orders that are complete (closed by another order, or quiet for long enough), oldest first; with `all`, the open ones too. */
-  drain(all = false): MarketOrder[] {
-    const now = this.now();
+  /** The orders that are complete (closed by another order, or quiet for long enough by `now`), oldest first; with `all`, the open ones too. */
+  drain(all = false, now = this.now()): MarketOrder[] {
     for (const [id, open] of this.#open) if (all || now - open.at >= this.quietMs) { this.#done.push(open.order); this.#open.delete(id); }
     const out = this.#done; this.#done = [];
     return out.sort((a, b) => a.t - b.t);

@@ -6,6 +6,7 @@ import type { BrowserVenue } from '../src/shared/venues.ts';
 import type { FootprintMinuteRow, FootprintStore } from '../src/shared/footprint.ts';
 import type { FlowMinuteRow, FlowStore } from '../src/shared/flow.ts';
 import type { Print } from '../src/shared/prints.ts';
+import type { OiReading } from '../src/shared/engine.ts';
 
 // A page starts its engine on the venues' sockets at once and hands it the recordings once they are read (`deferred`, then `attach`): what
 // came meanwhile is counted once, a trade the recordings hold is not counted again, and nothing is handed on as new a second time.
@@ -21,6 +22,7 @@ class Fake extends BookConnector {
   protected url() { return 'ws://127.0.0.1:1'; }
   protected open() {}
   onMessage() {}
+  oi(t: number, base: number) { this.onOi({ instrumentId: this.instrumentId, t, base }); }
   trade(t: Partial<TradeEvent> & { tradeId: string; t: number }) { const price = t.price ?? 100, amount = t.amount ?? 1; this.onTrade({ instrumentId: this.instrumentId, side: 'buy', price, amount, notionalUsd: price * amount, ...t }); }
 }
 
@@ -102,5 +104,109 @@ test('an engine started with its recordings is not waiting, and a hand-over to i
   const recorder = page.engine.footprints;
   page.engine.attach({ ...noStores, ...memoryStores() });
   assert.equal(page.engine.footprints, recorder);
+  page.engine.stop();
+});
+
+/** A copy of the stores as they stand (each engine of a comparison writes its own). */
+function copyStores(stores: ReturnType<typeof memoryStores>): ReturnType<typeof memoryStores> {
+  const copy = memoryStores();
+  copy.footprint.save([...stores.footprint.load(0)], 0); copy.flow.save([...stores.flow.load(0)], 0);
+  return copy;
+}
+
+test('handed its recordings a minute late, an engine ends where one started with them ends: footprint, flow, prints and coverage', () => {
+  const T = Date.UTC(2026, 10, 3, 12, 0, 20), stores = memoryStores();
+  // The visit before: trades over the two minutes before this one, written when that page went away.
+  const prior = { now: T - 150_000 }, before = open(prior, { stores });
+  before.venue.state = 'live';
+  for (let i = 0; i < 40; i++) {
+    prior.now += 3_000;
+    before.venue.trade({ tradeId: `p${i}`, side: i % 3 ? 'buy' : 'sell', price: 100 + (i % 5), amount: i % 7 === 0 ? 400 : 20, t: prior.now });
+    before.engine.step(prior.now);
+  }
+  before.engine.stop();
+
+  // Two engines from this visit's start, fed the same: one with the recordings from the start, one handed them at +60 s.
+  const clockA = { now: T }, clockB = { now: T };
+  const a = open(clockA, { stores: copyStores(stores) }), b = open(clockB, { deferred: true });
+  a.venue.state = 'live'; b.venue.state = 'live';
+  const late = copyStores(stores);
+  const both = (fn: (page: ReturnType<typeof open>) => void): void => { fn(a); fn(b); };
+  // The venue first sends again the last twenty trades of the visit before (it does on connecting), then new ones.
+  both(page => { for (let i = 20; i < 40; i++) page.venue.trade({ tradeId: `p${i}`, side: i % 3 ? 'buy' : 'sell', price: 100 + (i % 5), amount: i % 7 === 0 ? 400 : 20, t: T - 150_000 + (i + 1) * 3_000 }); });
+  for (let k = 0; k < 480; k++) {   // two minutes, a pass every 250 ms
+    const now = T + (k + 1) * 250;
+    if (k % 3 === 0) both(page => page.venue.trade({ tradeId: `n${k}`, side: k % 2 ? 'buy' : 'sell', price: 101 + (k % 4), amount: k % 11 === 0 ? 600 : 15, t: now - 40 }));
+    if (k % 9 === 0) both(page => page.venue.trade({ tradeId: `n${k}b`, side: 'buy', price: 102, amount: 300, t: now - 40, order: `o${Math.floor(k / 18)}` }));
+    clockA.now = now; clockB.now = now;
+    a.engine.step(now); b.engine.step(now);
+    if (k === 240) b.engine.attach({ ...noStores, ...late });
+  }
+  const from = T - 4 * MIN, to = T + 4 * MIN;
+  assert.deepEqual(profile(b.engine, from, to), profile(a.engine, from, to), 'footprint');
+  const flowA = a.engine.flows.frame([ID], from, to).instruments[0]!, flowB = b.engine.flows.frame([ID], from, to).instruments[0]!;
+  assert.deepEqual([...flowB.buy], [...flowA.buy], 'flow, second by second (buys)'); assert.deepEqual([...flowB.sell], [...flowA.sell], 'flow (sells)');
+  assert.deepEqual(b.engine.prints(from, to), a.engine.prints(from, to), 'large trades');
+  assert.deepEqual(b.engine.tradeCoverage.covered(ID, from, to), a.engine.tradeCoverage.covered(ID, from, to), 'coverage');
+  assert.ok(a.engine.prints(from, to).length > 3, 'the comparison has large trades in it');
+  a.engine.stop(); b.engine.stop();
+});
+
+test('an order completed before the hand-over is not announced again after it, however late in the pass it was taken', () => {
+  const T = Date.UTC(2026, 10, 3, 12, 0, 20), from = T - MIN, to = T + MIN;
+  // The pass begins 149 ms after the fill and the orders are taken at 154 ms (the books took a moment): complete by then.
+  const late = { now: T }, a = open(late, { deferred: true });
+  a.venue.trade({ tradeId: 'w1', side: 'buy', price: 101, amount: 1_000, t: T });
+  late.now = T + 154; a.engine.step(T + 149);
+  assert.equal(a.fresh.length, 1);
+  a.engine.attach(null);
+  late.now = T + 2_000; a.engine.step(late.now);
+  assert.equal(a.fresh.length, 1, 'shown once');
+  assert.equal(a.engine.prints(from, to).length, 1);
+  // A flush (the page going away, or the worker told to write) takes every order, the open one too.
+  const flushed = { now: T }, b = open(flushed, { deferred: true });
+  b.venue.trade({ tradeId: 'w2', side: 'sell', price: 99, amount: 1_000, t: T });
+  b.engine.flush(); flushed.now = T + 10; b.engine.step(flushed.now);
+  assert.equal(b.fresh.length, 1);
+  b.engine.attach(null);
+  flushed.now = T + 2_000; b.engine.step(flushed.now);
+  assert.equal(b.fresh.length, 1, 'shown once');
+  a.engine.stop(); b.engine.stop();
+});
+
+test('open interest: of a minute read live and kept by another tab, the newer reading stays and the older is not written over it', async () => {
+  const T = Date.UTC(2026, 10, 3, 12, 0, 40), minute = Math.floor(T / MIN) * MIN, clock = { now: T };
+  const rows = new Map<string, OiReading>([[`binance|${minute}`, { venue: 'binance', t: minute, at: minute + 29_500, base: 200 }], [`binance|${minute - MIN}`, { venue: 'binance', t: minute - MIN, at: minute - 1_000, base: 150 }]]);
+  const oi = { load: () => [...rows.values()], save: (list: OiReading[]) => { for (const r of list) rows.set(`${r.venue}|${r.t}`, { ...r }); }, close() {} };
+  const page = open(clock, { deferred: true });
+  page.venue.oi(minute + 29_000, 100);   // read live: older than the one another tab kept for this minute
+  page.venue.oi(minute + 35_000 - MIN * 0, 300);   // and a later one, newer than any kept
+  page.engine.attach({ ...noStores, oi });
+  assert.equal(rows.get(`binance|${minute}`)!.base, 300, 'the newest reading of the minute is the one kept');
+  const page2 = open(clock, { deferred: true }), rows2 = new Map(rows), oi2 = { ...oi, load: () => [...rows2.values()], save: (list: OiReading[]) => { for (const r of list) rows2.set(`${r.venue}|${r.t}`, { ...r }); } };
+  rows2.set(`binance|${minute}`, { venue: 'binance', t: minute, at: minute + 40_000, base: 500 });
+  page2.venue.oi(minute + 29_000, 100);
+  page2.engine.attach({ ...noStores, oi: oi2 });
+  assert.equal(rows2.get(`binance|${minute}`)!.base, 500, 'an older live reading is not written over a newer kept one');
+  const bars = await page2.engine.oi(ID, MIN, minute - 2 * MIN, minute + MIN);
+  assert.deepEqual(bars.map(b => b[4]), [150, 500], 'and the series shows the newer');
+  page.engine.stop(); page2.engine.stop();
+});
+
+test('past the most it keeps before the hand-over, what was kept is played in and the trades are not covered past it', () => {
+  const T = Date.UTC(2026, 10, 3, 12, 0, 20), clock = { now: T }, page = open(clock, { deferred: true });
+  page.venue.state = 'live';
+  page.venue.trade({ tradeId: 'a', side: 'buy', price: 100, amount: 1, t: T });
+  for (let k = 0; k < 4; k++) { clock.now += 250; page.engine.step(clock.now); }
+  // A venue sending one trade again and again until nothing more is kept, then a new trade.
+  for (let i = 0; i < 100_000; i++) page.venue.trade({ tradeId: 'a', side: 'buy', price: 100, amount: 1, t: T });
+  const lastKept = clock.now;
+  clock.now += 2_000; page.engine.step(clock.now);
+  page.venue.trade({ tradeId: 'b', side: 'sell', price: 100, amount: 1, t: clock.now });
+  clock.now += 2_000; page.engine.step(clock.now);
+  page.engine.attach(null);
+  assert.deepEqual(profile(page.engine, T - MIN, T + MIN), [[100, 100, 0]], 'the trade kept is there, once');
+  const covered = page.engine.tradeCoverage.covered(ID, T - MIN, clock.now);
+  assert.ok(covered.length > 0 && covered.at(-1)![1] <= lastKept, `not covered past the last kept note: ${JSON.stringify(covered)}`);
   page.engine.stop();
 });

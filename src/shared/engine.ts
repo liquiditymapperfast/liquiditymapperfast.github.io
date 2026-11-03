@@ -108,14 +108,19 @@ export interface EngineStores {
 
 /**
  * What an engine started without its recordings (`deferred`) was given until `attach`, in order: each trade and liquidation as it came (with
- * the price the liquidation was placed at), and each pass's coverage of the trades and the books it sampled (with the step each was valued on).
+ * the price the liquidation was placed at), each pass's coverage of the trades and the books it sampled, and each time the market orders were
+ * taken (the moment they were judged complete by, and whether all were: a flush), so the replay completes the same orders as the live run.
  */
 type Note =
   | { k: 'trade'; at: number; trade: TradeEvent }
   | { k: 'liquidation'; at: number; event: LiquidationEvent; price: { price: number; at: number } | null }
   | { k: 'pass'; at: number; passes: [id: string, live: boolean, last: number][]; books: ValuedBook[] | null }
+  | { k: 'drain'; at: number; all: boolean }
   | { k: 'end'; at: number; id: string };
-/** At most this many notes are kept; past that they are let go, and `attach` builds the recorders from the recordings alone. */
+/**
+ * At most this many notes are kept. Past that nothing more is kept: `attach` plays in what was, and the trades' coverage stops where the
+ * notes do, so what came after is a gap the page can recover rather than a stretch that says it was recorded.
+ */
 const NOTES_MAX = 100_000;
 /**
  * Before `attach`, a trade stamped this long before the engine started is not taken live (a venue sending its recent trades again as it
@@ -177,8 +182,8 @@ export class Engine {
   #recorded!: RecordedBefore;
   /** Whether the recordings are still to come (`deferred`, until `attach`). */
   #waiting = false;
-  /** What came since the start while they are (null when not, or once more came than `NOTES_MAX`). */
-  #notes: Note[] | null = null;
+  /** What came since the start while they are (null when not); `#notesFull` once `NOTES_MAX` were kept. */
+  #notes: Note[] | null = null; #notesFull = false;
   /** Open-interest readings taken before the recordings were attached: they are written when they are. */
   #oiUnsaved: OiReading[] = [];
   /** When this engine was made (its clock). */
@@ -252,6 +257,7 @@ export class Engine {
     this.#startedAt = now();
     this.orders = new OrderBuilder(now);
     this.#build({ columns, footprint, prints, flow, absorption, coverage, liquidations, oi }, gridSteps);
+    if (oi) this.#loadOi(oi);
     if (deferred) { this.#waiting = true; this.#notes = []; }
   }
 
@@ -275,13 +281,13 @@ export class Engine {
     for (const id of this.footprints.instruments) this.#loadedThrough.set(id, this.footprints.lastMinute(id) + COLUMN_MS);
     this.#recorded = new RecordedBefore(this.flows, this.footprints);
     this.#oiStore = oi;
-    if (oi) this.#loadOi(oi);
   }
 
   /**
    * The open-interest readings kept, into the live series: one row per venue and minute, at the minute's start, as `#applyLiveOi` keeps them:
    * of a minute's rows the newest reading by its own time (`at`; an older build's row has none and was stored at the reading's own time),
-   * whichever build or tab wrote it. A minute already read live (the recordings came after the start) keeps that reading.
+   * whichever build or tab wrote it. A minute already read live (the recordings came after the start: `#oiUnsaved`) keeps the newer of the
+   * two, and a live reading that loses is not written over the newer one kept.
    */
   #loadOi(oi: OiStore): void {
     const minutes = new Map<string, { row: OiReading; at: number }>();
@@ -290,10 +296,17 @@ export class Engine {
       const key = `${r.venue}|${Math.floor(r.t / 60_000) * 60_000}`, held = minutes.get(key);
       if (!held || at > held.at) minutes.set(key, { row: r, at });
     }
-    const live = new Set<string>();
-    for (const [venue, list] of this.#oiLive) for (const row of list) live.add(`${venue}|${Number(row.observationTimestamp)}`);
+    const live = new Map<string, OiRow>(), liveAt = new Map(this.#oiUnsaved.map(r => [`${r.venue}|${r.t}`, r.at ?? r.t]));
+    for (const [venue, list] of this.#oiLive) for (const row of list) live.set(`${venue}|${Number(row.observationTimestamp)}`, row);
     for (const [key, { row: r, at }] of minutes) {
-      if (live.has(key)) continue;
+      const mine = live.get(key);
+      if (mine) {
+        if (!(at > (liveAt.get(key) ?? Infinity))) continue;
+        mine.base = r.base; if (r.quote !== undefined) mine.quote = r.quote; else delete mine.quote;
+        this.#oiUnsaved = this.#oiUnsaved.filter(u => `${u.venue}|${u.t}` !== key);
+        this.#oiNewest.set(r.venue, Math.max(this.#oiNewest.get(r.venue) ?? 0, at));
+        continue;
+      }
       let list = this.#oiLive.get(r.venue); if (!list) { list = []; this.#oiLive.set(r.venue, list); }
       list.push({ observationTimestamp: Math.floor(r.t / 60_000) * 60_000, base: r.base, ...(r.quote !== undefined ? { quote: r.quote } : {}) });
       this.#oiNewest.set(r.venue, Math.max(this.#oiNewest.get(r.venue) ?? 0, at));
@@ -301,11 +314,13 @@ export class Engine {
     for (const list of this.#oiLive.values()) list.sort((a, b) => Number(a.observationTimestamp) - Number(b.observationTimestamp));
   }
 
-  /** Keep `note` for `attach`, while the recordings are still to come; past `NOTES_MAX` the notes are let go. */
+  /** Whether what comes is kept for `attach` (the recordings are still to come, and `NOTES_MAX` is not reached). */
+  get #keeping(): boolean { return this.#notes !== null && !this.#notesFull; }
+  /** Keep `note` for `attach`; past `NOTES_MAX` nothing more is kept (see there). */
   #note(note: Note): void {
-    if (!this.#notes) return;
-    if (this.#notes.length < NOTES_MAX) this.#notes.push(note);
-    else { this.#notes = null; console.warn(`more than ${NOTES_MAX} trades came before the recordings: what came meanwhile is kept from the live recording alone`); }
+    if (!this.#keeping) return;
+    if (this.#notes!.length < NOTES_MAX) this.#notes!.push(note);
+    else { this.#notesFull = true; console.warn(`more than ${NOTES_MAX} events came before the recordings: what comes until they do is not recorded`); }
   }
 
   /** Whether the recordings are still to come (`deferred`, before `attach`). */
@@ -320,17 +335,18 @@ export class Engine {
    */
   attach(stores: EngineStores | null, gridSteps?: ReadonlyMap<string, number>): void {
     if (!this.#waiting) return;
-    // Notes let go (`NOTES_MAX`): what came meanwhile is not in the recorders built here (a gap the page can recover).
-    const notes = this.#notes ?? [], live = this.recorder.steps;
-    this.#waiting = false; this.#notes = null;
+    const notes = this.#notes ?? [], full = this.#notesFull, live = this.recorder.steps;
+    this.#waiting = false; this.#notes = null; this.#notesFull = false;
     this.#build(stores ?? { columns: null, footprint: null, prints: null, flow: null, absorption: null, coverage: null, liquidations: null, oi: null }, gridSteps);
-    const orders = new OrderBuilder(this.#clock);
+    if (stores?.oi) this.#loadOi(stores.oi);
+    const orders = new OrderBuilder(this.#clock), passed = new Set<string>();
     try {
       for (const note of notes) {
         this.#replayAt = note.at;
         if (note.k === 'trade') this.#take(note.trade, orders, note.at);
         else if (note.k === 'liquidation') this.liquidationStream.ingest([note.event], () => note.price);
         else if (note.k === 'end') this.tradeCoverage.end(note.id, note.at);
+        else if (note.k === 'drain') this.#record(orders.drain(note.all, note.at), false);
         else {
           for (const [id, isLive, last] of note.passes) this.tradeCoverage.pass(id, isLive, note.at, last);
           // A book sampled on another step than the recordings keep for it now (its first minutes were recorded on another) is left out, and
@@ -342,10 +358,13 @@ export class Engine {
             return (step === undefined || step === live.get(book.instrumentId)) && !((held?.[held.length - 1]?.t ?? -Infinity) > minute);
           });
           if (books?.length) this.recorder.sample(books, note.at);
-          this.#record(orders.drain(false), false);
           this.absorption.step();
+          for (const [id] of note.passes) passed.add(id);
         }
       }
+      // The notes stopped short of now (`NOTES_MAX`): the trades are not covered past the last one.
+      const last = notes[notes.length - 1];
+      if (full && last) for (const id of passed) this.tradeCoverage.end(id, last.at);
     } finally { this.#replayAt = null; }
     this.orders = orders;
     // Already shown as they came, or (held back) not live: the page asks for the history again.
@@ -417,7 +436,7 @@ export class Engine {
 
   /** One pass: value the books, record, and tell the page what changed. */
   step(now = this.#now()): void {
-    const books = this.#value(now), note: Extract<Note, { k: 'pass' }> | null = this.#notes ? { k: 'pass', at: now, passes: [], books: null } : null;
+    const books = this.#value(now), note: Extract<Note, { k: 'pass' }> | null = this.#keeping ? { k: 'pass', at: now, passes: [], books: null } : null;
     // The trades of each instrument are covered while every feed carrying them is live (a failed one up to its last message).
     for (const run of this.#runs.values()) {
       const live = run.trades.every(c => c.state === 'live'), last = Math.min(...run.trades.map(c => c.lastUpdate || now));
@@ -453,7 +472,11 @@ export class Engine {
   flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); this.absorption.step(true); this.absorption.flush(); this.tradeCoverage.flush(true); }
 
   /** Hand the market orders that are complete (all of them with `all`) to the prints and the size statistics. */
-  #takeOrders(all: boolean): void { this.#record(this.orders.drain(all), true); }
+  #takeOrders(all: boolean): void {
+    const at = this.#now();
+    this.#note({ k: 'drain', at, all });
+    this.#record(this.orders.drain(all, at), true);
+  }
   /** Completed market orders into the prints and the size statistics; `live`: handed on as they come (the trade dust, new prints), not played again (`attach`). */
   #record(orders: MarketOrder[], live: boolean): void {
     if (!orders.length) return;
@@ -481,7 +504,7 @@ export class Engine {
 
   readonly #trade = (trade: TradeEvent): void => {
     const now = this.#now();
-    if (this.#notes) {
+    if (this.#keeping) {
       this.#note({ k: 'trade', at: now, trade: { ...trade } });
       if (trade.t < this.#startedAt - RESENT_MS) return;
     }
@@ -504,7 +527,7 @@ export class Engine {
     if (this.footprints.ingest([row]) === 0) return false;
     this.tradeCoverage.trade(trade.instrumentId, trade.tradeId, trade.t, now);
     // The fill joins its market order; prints and size statistics are taken from orders once they are complete (`step`).
-    for (const f of orders.add([{ ...row, order: trade.order }])) this.absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side);
+    for (const f of orders.add([{ ...row, order: trade.order }], now)) this.absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side);
     return true;
   }
 
