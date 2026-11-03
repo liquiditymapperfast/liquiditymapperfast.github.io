@@ -3,7 +3,7 @@ import type { OiPart } from './oi-change.ts';
 import type { TimeZone } from './format.ts';
 import { HEAT_STYLES, type HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
-import { LT_DEFAULTS, LT_OLD_HALF_LIFE_BP, type LtParams } from './lt.ts';
+import { LT_DEFAULTS, LT_REV4_HALF_LIFE_BP, type LtParams } from './lt.ts';
 import { PALETTES, resolveThemeId } from './theme.ts';
 import { readStatOptions, type StatOptions } from './stat-options.ts';
 import { readHighlight, type HighlightOptions } from './anomaly.ts';
@@ -308,14 +308,18 @@ function slotTheme(v: unknown, dark: boolean): string | null {
  * strip on (on a desktop): they get the profile along the top, and with it the Volume profile.
  * Revision 4 (2026-10-26, Karl: the phone's tab bar and "the liquidity tracker is very useful ... set it to 100 basis points by default", then
  * "set desktop to the same 100 bp as well"): the Liquidity Tracker's half-life is 100 bp on every screen, and on a phone the Flow and LT tabs are
- * always there at first. A save from before it holds a half-life of 10 bp, the old default that every save wrote down: it reads as 100 once
- * (any other, and any chosen since, is kept). A touch screen's save from before it also has the Flow and LT panes on once (the tab bar hides
+ * always there at first. A save from before it held a half-life of 10 bp, the old default that every save wrote down: it read as 100 once
+ * (any other, and any chosen since, was kept; revision 5 has 10 again). A touch screen's save from before it also has the Flow and LT panes on once (the tab bar hides
  * a tab whose pane is off, and a Flow saved off was never found again); a desktop, and a desktop window that happens to be narrow, keeps its panes.
  * No revision for 2026-10-28 (Karl: the daily profile off by default, and the profile along the top): a first visit draws the days' lines
  * without their profiles and the Volume profile's column without the band along the top, and a save from before revision 2 has no
  * profiles either; a save since holds both as it saved them, as Scripts switched on by default left a saved off.
+ * Revision 5 (2026-11-03, Karl: "set the liquidity tracker to 10bp as default, it is currently 100bp"): the half-life is 10 bp again on every
+ * screen. A save of revision 4 holding 100 bp, its default that every save wrote down, reads as 10 once; a revision-4 save whose owner chose
+ * 100 cannot be told apart and reads 10 too, once. Any other half-life is kept, and so is a 100 in an older save (10 was the default then,
+ * so 100 was a choice) or in a save of revision 5.
  */
-export const DEFAULTS_REV = 4;
+export const DEFAULTS_REV = 5;
 
 export function initialState(phone: boolean = isPhone(), touch: boolean = isCoarse()): AppState {
   const saved = readSaved();
@@ -357,8 +361,8 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   // something to switch on (Karl), so neither a first visit nor an old save has it turned on, nor a tablet that has the phone's arrangement
   // since 2026-11-03 (Sol).
   if (rev < 4 && phone && touch) state.show = { ...state.show, cvd: true };
-  // The half-life: every screen. The old default is not a choice (every save wrote it down); another value is.
-  if (rev < 4 && state.lt.halfLifeBp === LT_OLD_HALF_LIFE_BP) state.lt = { ...state.lt, halfLifeBp: LT_DEFAULTS.halfLifeBp };
+  // The half-life: every screen. Revision 4's default is not a choice (every save of it wrote it down); another value is.
+  if (rev === 4 && state.lt.halfLifeBp === LT_REV4_HALF_LIFE_BP) state.lt = { ...state.lt, halfLifeBp: LT_DEFAULTS.halfLifeBp };
   state.defaultsRev = DEFAULTS_REV;
   const savedTheme = resolveThemeId(state.theme);
   // A theme saved without the flag is a default of its time when it is Light or Terminal; any other was picked before the flag existed (it came

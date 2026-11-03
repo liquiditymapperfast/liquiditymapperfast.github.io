@@ -579,7 +579,7 @@ export class OiPane extends TimePane {
 /** The Liquidity Tracker's size filters' menus (any size can be typed; the menus' "any" and "no cap" are 0). */
 const MIN_SIZES = [10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000];
 const MAX_SIZES = [100_000, 250_000, 500_000, 1_000_000, 5_000_000];
-/** The half-lives a phone has a chip for (the others are in the sheet's menu): 100 bp is the one Karl found best. */
+/** The half-lives a phone has a chip for (the others are in the sheet's menu); 10 bp is the default (Karl, 2026-11-03). */
 const LT_CHIPS: readonly number[] = [10, 25, 50, 100, 250];
 const MINUTE = 60_000;
 
@@ -629,8 +629,8 @@ export class LtPane extends TimePane {
     this.#sync.push(() => { bellBox.checked = panelSwitchOn(this.store, 'depth'); });
     this.#sync.push(() => { if (box.checked !== lt().average) box.checked = lt().average; });
     const viewChoice = select(t('View'), t('Bid and ask lines, or the imbalance (bid - ask) / (bid + ask)'), [['lines', t('Bid & ask')], ['imbalance', t('Imbalance')]], () => lt().view, v => patch({ view: v as AppState['lt']['view'] }));
-    // On a phone the half-life is a row of chips, one tap to each (Karl, 2026-10-26: 100 bp is "the best setting", and a menu is a long way to
-    // it), and the rest of the controls wait behind the key at the row's end. The select stays, in the sheet, for the half-lives with no chip.
+    // On a phone the half-life is a row of chips, one tap to each (Karl, 2026-10-26: a menu is a long way to the one wanted), and the rest
+    // of the controls wait behind the key at the row's end. The select stays, in the sheet, for the half-lives with no chip.
     const chips = el('div', { class: 'ctl lt-halves', role: 'group', ariaLabel: t('Half-life') }, el('span', { class: 'cap', textContent: `${t('Half-life')} · bp` }));
     const seg = el('div', { class: 'seg' });
     for (const bp of LT_HALF_LIVES) {

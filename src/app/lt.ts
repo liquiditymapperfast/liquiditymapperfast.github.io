@@ -27,9 +27,12 @@ export interface LtParams {
   /** Divide by the sum of weights over the non-empty bins, as if each had size 1 (pooled over the venues). */
   average: boolean;
 }
-/** 100 bp is the half-life Karl found best (2026-10-26, "the best setting"), on a phone and on a desktop: it was 10 before, and `LT_OLD_HALF_LIFE_BP` is what a save of that time holds. */
-export const LT_DEFAULTS: LtParams = { halfLifeBp: 100, minUsd: 0, maxUsd: 0, average: false };
-export const LT_OLD_HALF_LIFE_BP = 10;
+/**
+ * 10 bp is the half-life by default, on a phone and on a desktop (Karl, 2026-11-03: "set the liquidity tracker to 10bp as default"). It was
+ * 10 until 2026-10-26 and 100 from then ("the best setting"); `LT_REV4_HALF_LIFE_BP` is what a save of that time holds.
+ */
+export const LT_DEFAULTS: LtParams = { halfLifeBp: 10, minUsd: 0, maxUsd: 0, average: false };
+export const LT_REV4_HALF_LIFE_BP = 100;
 
 /** Sparse columns of one instrument on its own grid: entry e of column c covers price bin `bins[e]` of width `step`. */
 export interface LtStore {

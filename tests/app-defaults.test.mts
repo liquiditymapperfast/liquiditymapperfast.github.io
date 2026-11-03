@@ -77,31 +77,40 @@ test('revision 3: a save of revision 2 carries its measure strip into the profil
   // off" rule does not switch off what the strip carried in.
   saved({ defaultsRev: 2, show: { ...DEFAULT_SHOW, traded: false }, measureStrip: { on: true, kind: 'oi' } }, () => { const s = initialState(); assert.deepEqual([topOf(s.traded), s.show.traded], [{ on: true, metric: 'oi' }, true]); });
   saved({ defaultsRev: 2, show: { ...DEFAULT_SHOW, traded: true }, measureStrip: { on: false, kind: 'oi' } }, () => assert.equal(initialState().show.traded, false, 'with the strip off, the old rule stands'));
-  assert.equal(DEFAULTS_REV, 4);
 });
 
-test('revision 4: the Liquidity Tracker is at 100 bp on every screen unless another half-life was chosen, and a touch screen has the Flow and LT panes on once', () => {
-  // Karl, 2026-10-26: the phone's Flow and LT are tabs of the bar, and 100 bp is "the best setting" (then: on the desktop too). A save of revision 3 holds 10 bp, the old default, written down by every save.
+test('revision 4: a touch screen has the Flow pane on once; LT is left as saved', () => {
+  // Karl, 2026-10-26: the phone's Flow and LT were tabs of the bar. A save of revision 3 with the Flow off has it on once.
   const rev3 = { defaultsRev: 3, show: { ...DEFAULT_SHOW, cvd: false, lt: false }, lt: { halfLifeBp: 10, minUsd: 0, maxUsd: 0, average: false, view: 'lines' } };
   saved(rev3, () => {
     const s = initialState(true, true);
     // LT is left as saved since 2026-11-03: it has no tab now, and switched on it sits under the map (an old tablet save that has the
     // phone's arrangement since then would otherwise find it forced on, Sol).
-    assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp, s.defaultsRev], [true, false, 100, DEFAULTS_REV]);
+    assert.deepEqual([s.show.cvd, s.show.lt, s.defaultsRev], [true, false, DEFAULTS_REV]);
   });
   saved({ ...rev3, show: { ...rev3.show, lt: true } }, () => assert.equal(initialState(true, true).show.lt, true, 'one saved on stays on'));
-  // A first visit on a phone: the Flow, the same half-life, and LT off (Karl, 2026-11-03: Liq took its tab, and switched on it sits under
-  // the map; it is something to switch on).
-  saved(null, () => { const s = initialState(true, true); assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp], [true, false, 100]); });
-  // Another half-life was a choice, and anything saved under the new revision is read as it is.
-  saved({ ...rev3, lt: { ...rev3.lt, halfLifeBp: 25 } }, () => assert.equal(initialState(true, true).lt.halfLifeBp, 25));
-  saved({ ...rev3, defaultsRev: DEFAULTS_REV, lt: { ...rev3.lt, halfLifeBp: 10 } }, () => { const s = initialState(true, true); assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp], [false, false, 10]); });
-  // A desktop keeps its panes, and so does a desktop window that is only narrow (a phone's layout without a finger), but the half-life is the same 100.
-  saved(rev3, () => { for (const s of [initialState(false, false), initialState(true, false), initialState(false, true)]) assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp], [false, false, 100]); });
-  saved(null, () => assert.equal(initialState(false, false).lt.halfLifeBp, 100));
-  // A desktop's own choice of another half-life, and a 10 chosen under revision 4, are kept.
-  saved({ ...rev3, lt: { ...rev3.lt, halfLifeBp: 50 } }, () => assert.equal(initialState(false, false).lt.halfLifeBp, 50));
-  saved({ ...rev3, defaultsRev: DEFAULTS_REV }, () => assert.equal(initialState(false, false).lt.halfLifeBp, 10));
+  // A first visit on a phone: the Flow, and LT off (Karl, 2026-11-03: Liq took its tab, and switched on it sits under the map).
+  saved(null, () => { const s = initialState(true, true); assert.deepEqual([s.show.cvd, s.show.lt], [true, false]); });
+  // A desktop keeps its panes, and so does a desktop window that is only narrow (a phone's layout without a finger).
+  saved(rev3, () => { for (const s of [initialState(false, false), initialState(true, false), initialState(false, true)]) assert.deepEqual([s.show.cvd, s.show.lt], [false, false]); });
+  saved({ ...rev3, defaultsRev: DEFAULTS_REV }, () => assert.equal(initialState(true, true).show.cvd, false, 'anything saved under the new revision is read as it is'));
+});
+
+test('revision 5: the Liquidity Tracker is at 10 bp on every screen (Karl, 2026-11-03), a revision-4 save holding its default 100 reads 10 once', () => {
+  assert.equal(DEFAULTS_REV, 5);
+  const lt = (halfLifeBp: number) => ({ halfLifeBp, minUsd: 0, maxUsd: 0, average: false, view: 'lines' });
+  const screens = (): AppState[] => [initialState(true, true), initialState(false, false), initialState(true, false), initialState(false, true)];
+  // A first visit: 10 on a phone, a desktop, a narrow window and a tablet.
+  saved(null, () => { for (const s of screens()) assert.equal(s.lt.halfLifeBp, 10); });
+  // Revision 4's default, written down by every save of it, reads 10 once; another half-life of that time was a choice and is kept.
+  saved({ defaultsRev: 4, lt: lt(100) }, () => { for (const s of screens()) assert.equal(s.lt.halfLifeBp, 10); });
+  saved({ defaultsRev: 4, lt: lt(25) }, () => { for (const s of screens()) assert.equal(s.lt.halfLifeBp, 25); });
+  saved({ defaultsRev: 4, lt: lt(10) }, () => assert.equal(initialState(false, false).lt.halfLifeBp, 10));
+  // Older saves held 10 by default, so a 100 there was a choice: kept, as is the 10 they hold (no longer read as 100).
+  saved({ defaultsRev: 3, lt: lt(10) }, () => { for (const s of screens()) assert.equal(s.lt.halfLifeBp, 10); });
+  saved({ defaultsRev: 3, lt: lt(100) }, () => assert.equal(initialState(false, false).lt.halfLifeBp, 100));
+  // 100 chosen under revision 5 stays 100.
+  saved({ defaultsRev: DEFAULTS_REV, lt: lt(100) }, () => { for (const s of screens()) assert.equal(s.lt.halfLifeBp, 100); });
 });
 
 test('the columns begin at the golden section of the window, as wide as before from 1,600 px up, and narrower in proportion under it, to a floor', () => {
