@@ -182,6 +182,31 @@ export function sideColumns(state: AppState): ReturnType<typeof arrangeSides> {
   return sidesMemo.sides;
 }
 const TIME_H = 22;
+/**
+ * How many candles before the view's left edge the scripts read, so a line that needs a window of candles is already worked out there: the
+ * VWAP script's 48 and a 200-candle average both fit. A longer window shows its first candles on the screen, as on any chart.
+ */
+export const SCRIPT_WARM_BARS = 200;
+/**
+ * What the chart's candles cover, for the history rows' memos: how many, the first and last start, and the sum of every start, so a gap that
+ * moved inside the series counts as a change (count and ends alone missed it, and the map kept a candle twice: Sol, 2026-11-03), never the
+ * forming candle's prices. `cut` is the replay's candle.
+ */
+export function coverageKey(candles: readonly CandleRow[], cut: number): string {
+  const first = candles[0]?.[0] ?? 0;
+  let sum = 0; for (const c of candles) sum += (c[0] - first) / 60_000;
+  return `${candles.length}|${first}|${candles[candles.length - 1]?.[0] ?? 0}|${sum}|${cut}`;
+}
+/** The exchange's candles of the chart's timeframe where the chart's own do not reach (before them, in their holes); in a replay, those closed by `at`. */
+function historyRows(answer: PriceHistoryAnswer, candles: readonly CandleRow[], tf: number, at: number, replay: boolean): CandleRow[] {
+  const starts = new Set(candles.map(c => c[0])), last = candles[candles.length - 1]?.[0] ?? Infinity;
+  return answer.candles.filter(c => c[0] < last && !starts.has(c[0]) && (!replay || c[0] + tf <= at)) as CandleRow[];
+}
+/** The chart's candles with `history` before them and in their holes, in time order. */
+function withHistory(history: readonly CandleRow[], candles: readonly CandleRow[]): CandleRow[] {
+  const before = !candles.length || history[history.length - 1]![0] < candles[0]![0];
+  return before ? [...history, ...candles] : [...history, ...candles].sort((a, b) => a[0] - b[0]);
+}
 
 /** A plot narrower than this (a phone, a split screen) gets the compact legend, whole-dollar prices and a shorter history note. */
 const NARROW_PLOT = 420;
@@ -256,6 +281,8 @@ export class HeatPane {
   #gutterCss = ''; #leftCss = '';
   onStats: () => void = () => {};
   onView: () => void = () => {};
+  /** Whether scripts are running and read the candles (main.ts): then the price history reaches `SCRIPT_WARM_BARS` before the view too. */
+  scriptsReading: () => boolean = () => false;
   onFrame: () => void = () => {};
   /** The Delta pane's price/CVD divergences in view (set in main; none while that pane is not drawn). */
   divergences: () => readonly Divergence[] = () => [];
@@ -301,8 +328,10 @@ export class HeatPane {
   /** When the map was last drawn: the countdown redraws it once a second only when nothing else has (a quiet market). */
   #lastRender = 0;
   #overview = false;
+  /** Whether the price history read is shown (its legend and line): not when it was read only for the scripts' warm-up before the view. */
+  #overviewShown = false;
   #overviewTarget: PriceTarget | null = null;
-  #overviewContext: { key: string; candles: readonly CandleRow[]; window: PriceWindow | null } | null = null;
+  #overviewContext: { key: string; candles: readonly CandleRow[]; window: PriceWindow | null; shown: boolean } | null = null;
   #overviewPoints: { answer: PriceHistoryAnswer; cut: number; runs: PricePoint[][] } | null = null;
   /** The line as drawn: the runs without the parts the chart's candles cover, worked out again only when the answer or what the candles cover changes. */
   #overviewDrawn: { runs: PricePoint[][]; key: string; drawn: { t: number; price: number }[][]; covered: Covered[] } | null = null;
@@ -1169,18 +1198,25 @@ export class HeatPane {
 
   /** Plan only when the data or a whole minute of the view changes; pointer redraws never scan coverage or start a read. */
   #ensureOverview(state: AppState): void {
-    if (!state.show.candles || this.#suspended || this.root.hidden || document.hidden) { this.#overview = false; this.hub.priceHistory.stop(); return; }
+    if (!state.show.candles || this.#suspended || this.root.hidden || document.hidden) { this.#overview = false; this.#overviewShown = false; this.hub.priceHistory.stop(); return; }
     const v = this.view, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = Date.now(), history = this.hub.priceHistory;
-    const key = `${state.marketId}|${state.seriesInstrument}|${tf}|${Math.floor(v.t0 / 60_000)}|${Math.ceil(v.t1 / 60_000)}|${Math.floor(now / 60_000)}|${this.plotW}|${history.answer?.tfMs ?? 0}`;
+    // While scripts run they read the candles drawn (`candlesDrawn`) and some before the left edge, so a line is already worked out where the view
+    // begins (Karl, 2026-11-03: the VWAP script began at the 500th candle back, wherever that fell): those are asked for too.
+    const warm = this.scriptsReading() ? SCRIPT_WARM_BARS : 0;
+    const key = `${state.marketId}|${state.seriesInstrument}|${tf}|${Math.floor(v.t0 / 60_000)}|${Math.ceil(v.t1 / 60_000)}|${Math.floor(now / 60_000)}|${this.plotW}|${history.answer?.tfMs ?? 0}|${warm}`;
     let context = this.#overviewContext;
     if (!context || context.key !== key || context.candles !== state.candles) {
-      // The candles that are drawn, whichever market they are of: the line is cut on exactly these, so a line is planned only where it will show.
-      const wanted = priceOverviewNeeded(state.candles, tf, v, this.plotW, now);
+      // The candles that are drawn, whichever market they are of: the line is cut on exactly these, so a line is planned only where it will show
+      // (and, for the scripts, where their warm-up before the view lies: drawn there, it is off the screen).
+      const wanted = priceOverviewNeeded(state.candles, tf, { t0: v.t0 - warm * tf, t1: v.t1 }, this.plotW, now);
       this.#overviewTarget = wanted ? priceTarget(currentCoin(), state.marketId, kindOf(state.markets, state.marketId) ?? 'perp') : null;
-      const window = wanted && this.#overviewTarget ? priceWindow(v, this.plotW, now, history.answer?.tfMs, tf) : null;
-      context = this.#overviewContext = { key, candles: state.candles, window };
+      const window = wanted && this.#overviewTarget ? priceWindow(v, this.plotW, now, history.answer?.tfMs, tf, warm) : null;
+      // Shown (its legend, its line) only where the view itself needs it, not for the scripts' warm-up alone, which lies off the screen (Sol).
+      const shown = warm > 0 ? priceOverviewNeeded(state.candles, tf, v, this.plotW, now) : wanted;
+      context = this.#overviewContext = { key, candles: state.candles, window, shown };
     }
     this.#overview = context.window !== null && this.#overviewTarget !== null;
+    this.#overviewShown = this.#overview && context.shown;
     if (this.#overview && context.window && this.#overviewTarget) history.ensure(this.#overviewTarget, context.window, () => { this.#fitOverview(); this.invalidate(); });
     else history.stop();
     if (this.#overview) this.#fitOverview();
@@ -1220,11 +1256,8 @@ export class HeatPane {
     const answer = this.hub.priceHistory.answer, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     if (!this.#overview || !answer || !answer.candles.length || !this.#historyAsCandles(state, answer)) return [];
     const candles = state.candles, at = pageNow(), replay = replaying(), cut = replay ? Math.floor(at / tf) : 0;
-    const key = `${candles.length}|${candles[0]?.[0] ?? 0}|${candles[candles.length - 1]?.[0] ?? 0}|${cut}`;
-    if (this.#history?.answer !== answer || this.#history.key !== key) {
-      const starts = new Set(candles.map(c => c[0])), last = candles[candles.length - 1]?.[0] ?? Infinity;
-      this.#history = { answer, key, rows: answer.candles.filter(c => c[0] < last && !starts.has(c[0]) && (!replay || c[0] + tf <= at)) as CandleRow[] };
-    }
+    const key = coverageKey(candles, cut);
+    if (this.#history?.answer !== answer || this.#history.key !== key) this.#history = { answer, key, rows: historyRows(answer, candles, tf, at, replay) };
     return this.#history.rows;
   }
 
@@ -1232,12 +1265,26 @@ export class HeatPane {
   candlesDrawn(state: AppState): readonly CandleRow[] {
     const history = this.historyCandles(state), candles = state.candles;
     if (!history.length) return candles;
-    if (this.#allCandles?.history !== history || this.#allCandles.candles !== candles) {
-      const before = !candles.length || history[history.length - 1]![0] < candles[0]![0];
-      this.#allCandles = { history, candles, rows: before ? [...history, ...candles] : [...history, ...candles].sort((a, b) => a[0] - b[0]) };
-    }
+    if (this.#allCandles?.history !== history || this.#allCandles.candles !== candles) this.#allCandles = { history, candles, rows: withHistory(history, candles) };
     return this.#allCandles.rows;
   }
+
+  /**
+   * `candlesDrawn` for the scripts, with a memo of its own: they read the store's candles, and the map draws a replay from candles cut to its
+   * moment, so one memo for both was built again at every frame and the scripts ran as often (Sol, 2026-11-03). The same series either way.
+   */
+  scriptCandles(state: AppState): readonly CandleRow[] {
+    const answer = this.hub.priceHistory.answer, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, candles = state.candles;
+    if (!this.#overview || !answer || !answer.candles.length || !this.#historyAsCandles(state, answer)) return candles;
+    const at = pageNow(), replay = replaying(), cut = replay ? Math.floor(at / tf) : 0, held = this.#scriptRows;
+    if (held?.answer === answer && held.candles === candles && held.cut === cut) return held.rows;
+    // The history rows as the map holds them when its coverage is the same (`coverageKey`), so the scripts read the series the map draws.
+    const key = coverageKey(candles, cut), history = held?.answer === answer && held.key === key ? held.history : historyRows(answer, candles, tf, at, replay);
+    const rows = history.length ? withHistory(history, candles) : candles;
+    this.#scriptRows = { answer, candles, cut, key, history, rows };
+    return rows;
+  }
+  #scriptRows: { answer: PriceHistoryAnswer; candles: readonly CandleRow[]; cut: number; key: string; history: readonly CandleRow[]; rows: readonly CandleRow[] } | null = null;
 
   #fitOverview(): void {
     // Not while the tour's picture has the view: it is put back as it was, and the fit is made then (Sol, 2026-11-03).
@@ -1252,7 +1299,7 @@ export class HeatPane {
   }
 
   #overviewLegend(state: AppState): string {
-    if (!this.#overview) return '';
+    if (!this.#overviewShown) return '';
     const h = this.hub.priceHistory, a = h.answer, target = this.#overviewTarget;
     let text = '';
     if (a?.candles.length && target) {
@@ -1271,7 +1318,7 @@ export class HeatPane {
 
   /** A true price series; separate paths preserve exchange gaps and never splice a reference market into the selected market's live trades. */
   #paintOverview(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
-    const answer = this.hub.priceHistory.answer; if (!this.#overview || !answer || this.#historyAsCandles(state, answer)) return;
+    const answer = this.hub.priceHistory.answer; if (!this.#overviewShown || !answer || this.#historyAsCandles(state, answer)) return;
     const runs = this.#overviewLine(state), v = this.view, p = this.#palette;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip(); ctx.lineJoin = 'round';
     ctx.globalAlpha = 0.9 * (1 - 0.85 * this.#lodFrame.barAlpha);

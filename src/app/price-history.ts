@@ -37,13 +37,15 @@ export function candlePriceRange(candles: readonly CandleRow[], tfMs: number, t0
  * past that at most a few hundred native bars, drawn as a line: daily for month-scale context, never finer than the selected candles,
  * retaining a resolution near its changeover.
  */
-export function priceWindow(view: Window, width: number, now: number, previousMs = 0, chartMs = 0): PriceWindow | null {
+export function priceWindow(view: Window, width: number, now: number, previousMs = 0, chartMs = 0, warmBars = 0): PriceWindow | null {
   const span = view.t1 - view.t0;
   if (!(span > 0 && width > 0 && Number.isFinite(span) && view.t0 < now)) return null;
   const own = Object.entries(TIMEFRAMES).find(([, ms]) => ms === chartMs);
   if (own) {
     const from = Math.max(0, Math.floor((view.t0 - span * 0.15) / chartMs) * chartMs - chartMs), to = Math.ceil(Math.min(view.t1 + span * 0.15, now + 1) / chartMs) * chartMs;
-    if (to > from && to - from <= PRICE_QUERY_BARS * chartMs) return { tf: own[0], tfMs: chartMs, from, to };
+    // `warmBars` more before it (what the scripts read before the left edge, `SCRIPT_WARM_BARS`), as many as the read's ceiling leaves: the
+    // warm-up gives way first, so a view that is drawn as its own candles stays so (one bar over the ceiling and it would be a coarser line).
+    if (to > from && to - from <= PRICE_QUERY_BARS * chartMs) return { tf: own[0], tfMs: chartMs, from: Math.max(0, to - PRICE_QUERY_BARS * chartMs, from - Math.max(0, Math.floor(warmBars)) * chartMs), to };
   }
   const budget = Math.max(100, Math.min(400, Math.floor(width / 4)));
   const minimum = Math.max(chartMs, span >= 30 * DAY ? DAY : 0);

@@ -127,6 +127,10 @@ async function main(): Promise<void> {
   const ls = new LsPane(chart, store, heat.view, hub);
   const lt = new LtPane(chart, store, heat.view, hub);
   const script = new ScriptPane(chart, store, heat.view, hub);
+  // Scripts read the candles the chart draws, its own and the exchange's before them, and the map asks for some before its left edge while they
+  // run (Karl, 2026-11-03: a script's line began wherever the 500th candle back fell).
+  script.candlesOf = state => heat.scriptCandles(state);
+  heat.scriptsReading = () => script.reading;
   // The scripts placed on the map draw over it, and a script's candle colours (`$price.color`) colour its candles.
   heat.scriptLayer = (ctx, pw, ph) => script.paintOnMap(ctx, pw, ph); heat.candleColor = t => script.candleColorAt(t); script.onMapChanged = () => heat.invalidate();
   heat.scriptHover = (t, y, touch) => script.mapHoverLines(t, y, touch); heat.scriptMarkAt = (x, y, touch) => script.mapMarkAt(x, y, touch);

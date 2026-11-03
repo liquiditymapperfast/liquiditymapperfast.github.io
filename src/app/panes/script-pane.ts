@@ -1,7 +1,7 @@
 import type { Hub } from '../hub.ts';
 import { TIMEFRAMES } from '../hub.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
-import type { Store } from '../store.ts';
+import type { AppState, CandleRow, Store } from '../store.ts';
 import type { View } from '../view.ts';
 import { helpButton, toggleExplanation } from '../help.ts';
 import { setTip } from '../tip.ts';
@@ -143,6 +143,10 @@ export class ScriptPane extends TimePane {
   }
   /** Whether Scripts is on: the scripts run and draw. */
   get running(): boolean { return this.store.state.show.script; }
+  /** Whether a script is running and reads the candles: the map then asks for some before its left edge (HeatPane.scriptsReading). */
+  get reading(): boolean { return this.store.state.show.script && this.#records.some(r => r.on); }
+  /** The candles the scripts read: the chart's drawn ones (main.ts gives HeatPane.candlesDrawn), its own and the exchange's before them. */
+  candlesOf: (state: AppState) => readonly CandleRow[] = state => state.candles;
   /** Switch Scripts on: a script was added or switched on, and should be seen. */
   showScripts(): void { const show = this.store.state.show; if (!show.script) this.store.set({ show: { ...show, script: true } }); }
 
@@ -350,7 +354,8 @@ export class ScriptPane extends TimePane {
     // A run under way is waited for; one still waiting for its worker to load is replaced by a newer request; one being asked for is not asked twice.
     if (this.#starting || (this.#running && !this.#host.loading)) return;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    const seen = { candles: state.candles, loads: this.hub.flow.loads, data: this.#data.version, version: this.#version, tf: state.timeframe, markets: state.markets, venues: state.disabledVenues, scope: state.scope, inst: state.seriesInstrument, replay: replayKey(tf), oi: state.oi, oiParts: state.oiParts, theme: this.#theme, taker: this.hub.candleTaker(tf).version };
+    const drawn = this.candlesOf(state);
+    const seen = { candles: drawn, loads: this.hub.flow.loads, data: this.#data.version, version: this.#version, tf: state.timeframe, markets: state.markets, venues: state.disabledVenues, scope: state.scope, inst: state.seriesInstrument, replay: replayKey(tf), oi: state.oi, oiParts: state.oiParts, theme: this.#theme, taker: this.hub.candleTaker(tf).version };
     const was = this.#seen, now = Date.now();
     const changed = !was || Object.keys(seen).some(k => (seen as Record<string, unknown>)[k] !== (was as Record<string, unknown>)[k]);
     const context = `${state.timeframe}|${state.candlesTimeframe ?? ''}|${state.marketId}|${state.seriesInstrument}|${state.scope}|${state.disabledVenues.join(',')}`;
@@ -415,7 +420,7 @@ export class ScriptPane extends TimePane {
     if (!('program' in a)) return { result: { id: 'trial', ok: false, error: a }, warnings: [], candles: 0 };
     if (this.#trialBusy) return 'busy';
     const state = this.store.state, filters = new Map<string, SourceFilter>([['', {}], ...sourcesWith(a, options)]);
-    const inputs = this.#withTheme(this.#data.inputs(state, filters, a.inputs.has('oichg'), readsFlow(a)));
+    const inputs = this.#withTheme(this.#data.inputs(state, filters, a.inputs.has('oichg'), readsFlow(a), this.candlesOf(state)));
     if (!inputs) return null;
     const warnings = this.#pageWarnings(a, options, this.#data.markets(state, filters));
     // Counted now: the run hands the inputs' arrays over to the worker, which leaves them empty here.
@@ -473,7 +478,7 @@ export class ScriptPane extends TimePane {
     if (!runnable.length) { this.#host.dropUnsent(); this.#lastRun = Date.now(); return; }
     // The change in open interest is worked out only for a run in which a script reads it.
     const read = runnable.map(r => this.#analyze(r.source) as Analysis);
-    const inputs = this.#withTheme(this.#data.inputs(state, filters, read.some(a => a.inputs.has('oichg')), read.some(readsFlow)));
+    const inputs = this.#withTheme(this.#data.inputs(state, filters, read.some(a => a.inputs.has('oichg')), read.some(readsFlow), this.candlesOf(state)));
     if (!inputs) { this.#host.dropUnsent(); return; }
     // The order book, for a run in which a script reads it: kept up to date, and what the worker lacks of it posted before the run.
     const depth = read.some(a => a.inputs.has('depth')) ? this.#data.depth.sync(state, inputs.time, inputs.tf) : null;

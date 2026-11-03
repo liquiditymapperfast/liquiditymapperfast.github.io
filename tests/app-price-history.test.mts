@@ -263,3 +263,24 @@ test('a fit to the candles on screen takes their lowest low and highest high, an
   assert.equal(candlePriceRange([[T0, 100, 100, 100, 100, 1, 1]], HOUR, T0, T0 + HOUR), null, 'a flat price has no range to fit');
   assert.equal(candlePriceRange([], HOUR, T0, T0 + HOUR), null);
 });
+
+test('scripts reach before the view: the chart\'s own candles the warm-up asks for, never past the read\'s ceiling, never a coarser interval for it', () => {
+  // Karl, 2026-11-03: the VWAP script began at the 500th candle back, wherever that fell; while scripts run the chart reads 200 candles more before its edge.
+  const month = { t0: NOW - 29 * DAY, t1: NOW + DAY };
+  const plain = priceWindow(month, 1_500, NOW, 0, HOUR)!, warm = priceWindow(month, 1_500, NOW, 0, HOUR, 200)!;
+  assert.deepEqual([plain.tf, warm.tf, warm.to], ['1h', '1h', plain.to]);
+  assert.equal(plain.from - warm.from, 200 * HOUR, 'two hundred candles more, before the edge');
+  // Near the ceiling the warm-up gives way: the read stays the chart's own candles, as many as the ceiling allows.
+  const near = { t0: NOW - 1_600 * HOUR, t1: NOW };
+  const nearPlain = priceWindow(near, 1_500, NOW, 0, HOUR)!, nearWarm = priceWindow(near, 1_500, NOW, 0, HOUR, 200)!;
+  assert.equal(nearWarm.tf, '1h'); assert.ok(nearWarm.from <= nearPlain.from);
+  assert.equal((nearWarm.to - nearWarm.from) / HOUR, 2_000, 'up to the ceiling, not past it');
+  // A view the chart's candles cannot hold is read coarser with or without the warm-up: it changes nothing there.
+  const far = { t0: NOW - 120 * DAY, t1: NOW };
+  assert.deepEqual(priceWindow(far, 1_500, NOW, 0, HOUR, 200), priceWindow(far, 1_500, NOW, 0, HOUR));
+  // The overview is asked for when the candles cover the view but not the warm-up before it.
+  const bars: CandleRow[] = Array.from({ length: 100 }, (_, i) => candle(i));
+  const view = { t0: T0 + 10 * HOUR, t1: T0 + 100 * HOUR };
+  assert.equal(priceOverviewNeeded(bars, HOUR, view, 1_000, NOW), false);
+  assert.equal(priceOverviewNeeded(bars, HOUR, { t0: view.t0 - 200 * HOUR, t1: view.t1 }, 1_000, NOW), true);
+});

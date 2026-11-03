@@ -1,6 +1,6 @@
 import type { Hub } from '../hub.ts';
 import { TIMEFRAMES } from '../hub.ts';
-import type { AppState } from '../store.ts';
+import type { AppState, CandleRow } from '../store.ts';
 import { FlowCache } from '../delta/candles.ts';
 import { deltaFlows, deltaIds, ensureDeltaFlow } from '../delta/flows.ts';
 import { flowFeedSpotId, flowLoadIds } from '../cvd/ids.ts';
@@ -50,13 +50,15 @@ export class ScriptData {
    * `withCandleFlow` (a script reads the flow), a candle whose flow the page did not record takes the chart market's own candle's buys and
    * sells, in each set that holds that market (`sourceInputs`).
    */
-  inputs(state: AppState, filters: ReadonlyMap<string, SourceFilter>, withOi = false, withCandleFlow = false): BarInputs | null {
+  inputs(state: AppState, filters: ReadonlyMap<string, SourceFilter>, withOi = false, withCandleFlow = false, drawn: readonly CandleRow[] = state.candles): BarInputs | null {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = pageNow();
     // Right after a change of timeframe the candles of the one before are still there: read under the new one, they would be paired with
     // its flow and its market candles. Nothing until the new ones land.
     if (state.candlesTimeframe !== undefined && state.candlesTimeframe !== state.timeframe) return null;
-    // In a replay a script reads only the candles that had closed by its moment: the candle under way then is not known yet, nor anything after.
-    const rows = replaying() ? state.candles.filter(r => r[0] + tf <= now) : state.candles;
+    // The candles the chart draws (`drawn`, HeatPane.candlesDrawn): its own and the exchange's before them, so a script reaches back as far as the
+    // chart does (Karl, 2026-11-03), not only to the 500th candle. In a replay only those that had closed by its moment: the one under way then
+    // is not known yet, nor anything after.
+    const rows = replaying() ? drawn.filter(r => r[0] + tf <= now) : drawn;
     const candles = candleArrays(rows, tf, now);
     const n = candles.time.length;
     if (!n) return null;
@@ -68,7 +70,11 @@ export class ScriptData {
     this.liquidationsCut = false;
     // The chart's market as the sets name it: Binance spot is `binance:BTCUSDT:spot` on the chart, `binancespot:BTCUSDT` in the flow feeds.
     const chart = state.seriesInstrument || state.marketId, chartSpot = flowFeedSpotId(chart);
-    const taker = withCandleFlow ? this.#taker.get(this.hub, state, tf, starts[0]!, () => { this.version++; this.changed(); }) : null;
+    // The chart market's own buys and sells are asked for over the chart's own candles only, as before the scripts read further back: from an older
+    // start the loader would read every candle from there to now (a 1m chart panned 60 days back: 87,000 candles, Sol 2026-11-03).
+    // None while the chart has no candles of its own (a market or timeframe on its way): the start would be the history's again (Sol, round 2).
+    const own = state.candles[0]?.[0];
+    const taker = withCandleFlow && own !== undefined ? this.#taker.get(this.hub, state, tf, Math.max(starts[0]!, own), () => { this.version++; this.changed(); }) : null;
     const sides = (start: number): readonly [number, number] | null => {
       const own = taker?.get(start), s = own ? candleSides(own, candleUsd(own)) : null;
       return s ? [s.buy, s.sell] : null;
