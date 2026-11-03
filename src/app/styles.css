@@ -233,6 +233,8 @@ main { --left-w: var(--flow-w); --right-w: var(--side-w); --rail-w: 22px; }
 .edge-tab span { writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .flow-col .edge-tab span { transform: rotate(180deg); }
 .edge-tab:hover, .edge-tab:focus-visible { color: var(--text); border-color: var(--edge); background: color-mix(in srgb, var(--ui) 14%, var(--panel)); }
+/* A pane folded to leave the map room (layout.ts `chooseFold`), not closed: its tab in the accent, dashed, so it reads as put aside for space. */
+.edge-tab.folded { color: var(--ui); border: 1px dashed color-mix(in srgb, var(--ui) 55%, transparent); }
 .edge-chev { flex: none; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.6px 1.6px 0; }
 .flow-col .edge-chev { transform: rotate(-45deg); }
 .side-col .edge-chev { transform: rotate(135deg); }

@@ -173,6 +173,62 @@ export function laidOutWidths(want: readonly [number, number], min: readonly [nu
   return [size(0), size(1)];
 }
 
+/**
+ * The narrowest plot a desktop's map is left with before its side columns fold to their edge tabs (Karl, 2026-11-03: "let desktop minimize
+ * side panes if needed"). An iPad Air on its side (1,180 px) with the Flow and the Book open left the map 144 px (378 with the Flow folded);
+ * a 1,440 px window 359 (618). The page's own first visits at 1,500 px (where the Flow first opens: 391) and 1,600 px (the width the columns
+ * were designed at: 446) keep theirs. Only the Flow's column folds: the Book is the product, so the person closes it, never the rule.
+ */
+export const MAP_PLOT_FLOOR = 360;
+/** One column as `chooseFold` weighs it. */
+export interface FoldSide {
+  /** What the column is by the page's switches: a pane open in it, only closed ones (edge tabs), or none. */
+  state: ColumnState;
+  /** The width it is asked for, and the least its open panes need. */
+  want: number; min: number;
+  /** The width the stylesheet gives it, unrounded, when it was not dragged: laid out at its asked width, it is that wide. */
+  exact?: number;
+  /** It holds the book open: it never folds. */
+  book: boolean;
+}
+export interface FoldInput {
+  windowW: number;
+  sides: Readonly<Record<Side, FoldSide>>;
+  /** The width of a column's splitter, and of a column folded to its edge tabs. */
+  splitW: number; railW: number;
+  /** The plot a map pane this wide is left with, its own columns taken off (they narrow under a width, so a narrower pane can have the wider plot). */
+  plotAt: (paneW: number) => number;
+  floor: number;
+}
+/**
+ * Whether to fold the open column without the book so the map keeps `floor` of plot: not if the map already has it, or if folding would
+ * leave it less. Each is weighed with the plot its own pane width gives (the map's columns narrow under a width, so folding can leave the
+ * plot smaller: a 478 px pane with compact columns has 388 px of plot, a 722 px one with full columns 306). A column holding the book never
+ * folds (`MAP_PLOT_FLOOR`).
+ */
+export function chooseFold(input: FoldInput): { fold: Side[]; plot: number } {
+  const { windowW, sides, splitW, railW, plotAt, floor } = input;
+  const candidates: Side[][] = [[], ...SIDES.filter(s => sides[s].state === 'open' && !sides[s].book).map(s => [s])];
+  const plotOf = (fold: readonly Side[]): number => {
+    const open = SIDES.map(s => sides[s].state === 'open' && !fold.includes(s)) as [boolean, boolean];
+    const widths = laidOutWidths([sides.left.want, sides.right.want], [sides.left.min, sides.right.min], open, windowW);
+    let pane = windowW;
+    SIDES.forEach((s, i) => {
+      const own = sides[s], w = widths[i]! === own.want && own.exact !== undefined ? own.exact : widths[i]!;
+      if (open[i]) pane -= w + splitW; else if (own.state !== 'none') pane -= railW;
+    });
+    // The map measures its pane in whole pixels, rounded down (panes/heat-pane.ts): at 519.6 px its columns are already the compact ones.
+    return plotAt(Math.max(1, Math.floor(pane)));
+  };
+  let best = { fold: [] as Side[], plot: -Infinity };
+  for (const fold of candidates) {
+    const plot = plotOf(fold);
+    if (plot >= floor) return { fold, plot };
+    if (plot > best.plot) best = { fold, plot };
+  }
+  return best;
+}
+
 /** The pane whose default width a column has: the book (the wider) when it is open there, else the first pane that is open, else the first it holds. */
 export function leadOf(plan: DockPlan, side: Side, shown: Readonly<Record<SidePaneId, boolean>>): SidePaneId | undefined {
   const open = openIn(plan, side, shown);

@@ -59,8 +59,8 @@ test('the fit grid is a box on the desktop only: on a phone its container is no 
 });
 
 test('the two columns take their minimum from the screen they are on: both calls pass isCoarse()', () => {
-  assert.equal((layout.match(/minWidthOf\([^;\n]*, isCoarse\(\)\)/g) ?? []).length, 2, 'the drag and the fitting of the columns');
-  assert.equal((layout.match(/minWidthOf\(/g) ?? []).length, 2, 'and there is no third call');
+  assert.equal((layout.match(/minWidthOf\([^;\n]*, isCoarse\(\)\)/g) ?? []).length, 3, 'the drag, the fitting of the columns and the fold that weighs them (2026-11-03)');
+  assert.equal((layout.match(/minWidthOf\(/g) ?? []).length, 3, 'and there is no fourth call');
 });
 
 test('the name gives way before the first line breaks, so the menu and the close button stay on it', () => {

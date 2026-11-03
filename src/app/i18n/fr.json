@@ -2153,5 +2153,6 @@
  "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Clair ou sombre : un appui change de thème. Tous les thèmes sont dans Réglages, sous Apparence.",
  "3 h": "3 h",
  "History": "Historique",
- "How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "La quantité d’historique enregistré que cet appareil télécharge à l’ouverture de la page : les 3 dernières heures (quelques Mo), la journée entière (des dizaines de Mo) ou rien. S’applique à la prochaine ouverture de la page."
+ "How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "La quantité d’historique enregistré que cet appareil télécharge à l’ouverture de la page : les 3 dernières heures (quelques Mo), la journée entière (des dizaines de Mo) ou rien. S’applique à la prochaine ouverture de la page.",
+ "{name} is folded to leave the map room. Show it anyway": "{name} est replié pour laisser de la place à la carte. L’afficher quand même"
 }

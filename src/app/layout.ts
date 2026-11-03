@@ -3,8 +3,8 @@ import { el } from './dom.ts';
 import { openMenu, type MenuItem } from './menu.ts';
 import { isCoarse, isPhone } from './device.ts';
 import { t } from './i18n.ts';
-import { arrangeOrder, defaultColumns, fitHeights, type PaneArrangement } from './layouts/layouts.ts';
-import { SIDES, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, splitWeights, swapSides, type DockPlan, type Side, type SidePaneId } from './layouts/dock-model.ts';
+import { arrangeOrder, defaultColumns, fitHeights, stylesheetColumns, type PaneArrangement } from './layouts/layouts.ts';
+import { MAP_PLOT_FLOOR, SIDES, chooseFold, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, splitWeights, swapSides, type DockPlan, type FoldSide, type Side, type SidePaneId } from './layouts/dock-model.ts';
 import { dropTarget, type Box, type DropScene, type DropTarget } from './layouts/dock-drop.ts';
 
 /**
@@ -52,6 +52,15 @@ export class Layout {
   #plan: DockPlan;
   /** Which of the side panes are open (the page's switches). */
   #shown: Record<SidePaneId, boolean> = { cvd: true, book: true };
+  /**
+   * The side columns folded to their edge tabs to leave the map its plot (`chooseFold`, Karl 2026-11-03: "let desktop minimize side panes if
+   * needed"). Not a switch and not the plan: nothing of it is saved, so a narrow window never rewrites a wide one's layout.
+   */
+  #folded = new Set<Side>();
+  /** A folded column's tab was pressed: nothing folds until the window no longer needs it (then the rule is back). */
+  #foldOff = false;
+  /** The plot a map pane this wide is left with (the map's own columns taken off, `gutterAt`); until the page gives it nothing folds. */
+  plotAt: ((paneW: number) => number) | null = null;
   readonly #sidePanes = new Map<SidePaneId, SidePane>();
   /** The columns beside the map, the splitter between each and the map, and the tabs a column with nothing open shows. */
   readonly #regions: Record<Side, HTMLElement>;
@@ -87,8 +96,8 @@ export class Layout {
       const bar = this.#vsplit[side] = el('div', { class: 'splitter v', tip: t('Drag to resize') });
       this.main.insertBefore(bar, side === 'left' ? this.chart : regions.right);
       let start = 0;
-      this.#drag(bar, dx => this.#setWidth(side, side === 'left' ? start + dx : start - dx), () => { start = this.#width(side); }, () => this.#persist());
-      bar.addEventListener('dblclick', () => { this.#plan[side === 'left' ? 'leftW' : 'rightW'] = null; this.#applyColumns(); this.#persist(); });
+      this.#drag(bar, dx => this.#setWidth(side, side === 'left' ? start + dx : start - dx), () => { start = this.#width(side); }, () => { this.#afterDrag(side); this.#persist(); });
+      bar.addEventListener('dblclick', () => { this.#plan[side === 'left' ? 'leftW' : 'rightW'] = null; this.#relayout(); this.#persist(); });
       const rail = this.#rails[side] = el('div', { class: 'edge-rail' });
       regions[side].append(rail);
     }
@@ -96,7 +105,8 @@ export class Layout {
     this.#renderSides();
     // A window that becomes a phone (or stops being one) is laid out again: a phone arranges its panes by tab, and the weights of a stack are the desktop's.
     let phone = isPhone();
-    window.addEventListener('resize', () => { this.#fit(); if (isPhone() !== phone) { phone = !phone; this.#renderSides(); } else this.#applyColumns(); });
+    // A window resized may fold a column, or open one again: the sides are laid out again then, the widths alone otherwise.
+    window.addEventListener('resize', () => { this.#fit(); if (isPhone() !== phone) { phone = !phone; this.#renderSides(); } else this.#relayout(); });
   }
 
   /** What a column is now: its width as it is laid out; one that is not laid out has none, so the width it keeps or the window's. */
@@ -113,8 +123,8 @@ export class Layout {
   }
   /** A column made `w` wide, within what its panes need and what the map is to keep. */
   #setWidth(side: Side, w: number): void {
-    const other = otherSide(side), otherW = columnState(this.#plan, other, this.#shown) === 'open' ? this.#width(other) : 0;
-    const min = minWidthOf(openIn(this.#plan, side, this.#shown), isCoarse()), max = maxColumnWidth(window.innerWidth, otherW, min);
+    const vis = this.#visible(), other = otherSide(side), otherW = columnState(this.#plan, other, vis) === 'open' ? this.#width(other) : 0;
+    const min = minWidthOf(openIn(this.#plan, side, vis), isCoarse()), max = maxColumnWidth(window.innerWidth, otherW, min);
     this.#plan[side === 'left' ? 'leftW' : 'rightW'] = Math.round(Math.max(min, Math.min(max, w)));
     this.#applyColumns();
   }
@@ -154,6 +164,45 @@ export class Layout {
     });
   }
 
+  /** The side panes laid out: open by the page's switches and not in a folded column. */
+  #visible(): Record<SidePaneId, boolean> {
+    const folded = (id: SidePaneId): boolean => this.#folded.has(sideOf(this.#plan, id));
+    return { cvd: this.#shown.cvd && !folded('cvd'), book: this.#shown.book && !folded('book') };
+  }
+  /** Which columns the rule folds at this window, the page's switches and its map's columns (none on a phone, or before `plotAt`). */
+  #foldRule(): Side[] {
+    if (!this.plotAt || isPhone()) return [];
+    const rail = parseFloat(getComputedStyle(this.main).getPropertyValue('--rail-w')) || 22;
+    const css = stylesheetColumns(window.innerWidth);
+    const side = (s: Side): FoldSide => {
+      const open = openIn(this.#plan, s, this.#shown), dragged = this.#plan[s === 'left' ? 'leftW' : 'rightW'] !== null;
+      const exact = dragged ? undefined : leadOf(this.#plan, s, this.#shown) === 'book' ? css.sideW : css.flowW;
+      return { state: columnState(this.#plan, s, this.#shown), want: this.#wanted(s), min: minWidthOf(open, isCoarse()), book: open.includes('book'), exact };
+    };
+    return chooseFold({ windowW: window.innerWidth, sides: { left: side('left'), right: side('right') }, splitW: SPLIT_W, railW: rail, plotAt: this.plotAt, floor: MAP_PLOT_FLOOR }).fold;
+  }
+  /** Fold what the rule folds (unless a folded tab was pressed and the rule still wants it); true when that changed. */
+  #refold(): boolean {
+    const rule = this.#foldRule();
+    if (!rule.length) this.#foldOff = false;
+    const before = [...this.#folded].sort().join();
+    this.#folded = new Set(this.#foldOff ? [] : rule);
+    return [...this.#folded].sort().join() !== before;
+  }
+  /** Weigh the fold again after something that changes the map's own columns (the volume profile's places, the market): laid out again only when it changed. */
+  refit(): void { if (this.#refold()) this.#renderSides(); }
+  /** The columns laid out again after their widths changed (a resize, a column given back its own width): the sides too when the fold changed. */
+  #relayout(): void { if (this.#refold()) this.#renderSides(); else this.#applyColumns(); }
+  /**
+   * A column's width let go of (a drag, or the arrow keys on its splitter): the fold is weighed then, not under the pointer (Sol, 2026-11-03:
+   * the Book dragged to 500 px at 1,500 left the map 285 px; the Flow folded gives it 556). The column dragged is the person's choice: when
+   * it is the one the rule would fold, it stays open, as when its folded tab is pressed.
+   */
+  #afterDrag(side: Side): void {
+    if (this.#foldRule().includes(side)) this.#foldOff = true;
+    this.#relayout();
+  }
+
   /**
    * Tell the layout which of the side panes are open. A column with an open pane is laid out; one with none shows an edge tab for each pane it
    * holds (a pane that was closed keeps its place); one that holds none is not there. All instant: nothing is rebuilt, a pane or a column that
@@ -161,26 +210,28 @@ export class Layout {
    */
   sides(shown: Readonly<Record<SidePaneId, boolean>>): void {
     this.#shown = { cvd: shown.cvd, book: shown.book };
-    for (const pane of this.#sidePanes.values()) pane.root.hidden = !shown[pane.id];
     this.#renderSides();
   }
 
   /** Put each side pane in its column, in the plan's order, with a splitter between two that are open and the edge tabs of a column that has none open. */
   #renderSides(): void {
+    this.#refold();
+    const vis = this.#visible();
+    for (const pane of this.#sidePanes.values()) pane.root.hidden = !vis[pane.id];
     for (const side of SIDES) {
-      const region = this.#regions[side], list = this.#plan[side], open = openIn(this.#plan, side, this.#shown);
+      const region = this.#regions[side], list = this.#plan[side], open = openIn(this.#plan, side, vis);
       const nodes: HTMLElement[] = [];
       let above: SidePaneId | null = null;
       for (const id of list) {
         const pane = this.#sidePanes.get(id); if (!pane) continue;
-        if (this.#shown[id] && above !== null) nodes.push(this.#stackBar(above, id));
+        if (vis[id] && above !== null) nodes.push(this.#stackBar(above, id));
         nodes.push(pane.root);
         // A phone shows one pane at a time and sizes it in the stylesheet: a share written here would beat that and leave the pane short of the area.
         pane.root.style.flex = open.length > 1 && !isPhone() ? `${this.#plan.weights[id] ?? 1} 1 0px` : '';
-        if (this.#shown[id]) above = id;
+        if (vis[id]) above = id;
       }
-      const closed = list.filter(id => !this.#shown[id]);
-      this.#railTabs(side, closed);
+      const closed = list.filter(id => !vis[id]);
+      this.#railTabs(side, closed, this.#folded.has(side) ? closed.filter(id => this.#shown[id]) : []);
       nodes.push(this.#rails[side]);
       // Only what is out of place is moved: a pane taken out of the page and put back loses what it scrolls and what it has focused.
       for (const old of [...region.children]) if (!nodes.includes(old as HTMLElement)) old.remove();
@@ -209,14 +260,19 @@ export class Layout {
     return bar;
   }
 
-  /** An edge tab for each closed pane of a column: the column is a strip along the window's edge until one is pressed. */
-  #railTabs(side: Side, closed: readonly SidePaneId[]): void {
-    const key = closed.join();
+  /**
+   * An edge tab for each closed pane of a column: the column is a strip along the window's edge until one is pressed. A pane folded to leave the
+   * map room (`folded`) says so, never put away without a word (Karl's rule); pressing it shows it anyway, the map narrower.
+   */
+  #railTabs(side: Side, closed: readonly SidePaneId[], folded: readonly SidePaneId[] = []): void {
+    const key = `${closed.join()}|${folded.join()}`;
     if (this.#railKeys[side] === key) return;
     this.#railKeys[side] = key;
     this.#rails[side].replaceChildren(...closed.map(id => {
       const title = this.#sidePanes.get(id)?.title ?? id;
-      const tab = el('button', { type: 'button', class: 'edge-tab', tip: t('Show {name}', { name: title }), ariaLabel: t('Show {name}', { name: title }), onclick: () => this.onOpen(id) }, el('i', { class: 'edge-chev', ariaHidden: 'true' }), el('span', { textContent: title }));
+      const fold = folded.includes(id), words = fold ? t('{name} is folded to leave the map room. Show it anyway', { name: title }) : t('Show {name}', { name: title });
+      const open = (): void => { if (fold) { this.#foldOff = true; this.#renderSides(); } else this.onOpen(id); };
+      const tab = el('button', { type: 'button', class: fold ? 'edge-tab folded' : 'edge-tab', tip: words, ariaLabel: words, onclick: open }, el('i', { class: 'edge-chev', ariaHidden: 'true' }), el('span', { textContent: title }));
       tab.dataset.pane = id;
       return tab;
     }));
@@ -224,7 +280,7 @@ export class Layout {
 
   /** Lay the columns out: which are there, how wide, and the grid of the page that holds them. */
   #applyColumns(): void {
-    const states = { left: columnState(this.#plan, 'left', this.#shown), right: columnState(this.#plan, 'right', this.#shown) };
+    const vis = this.#visible(), states = { left: columnState(this.#plan, 'left', vis), right: columnState(this.#plan, 'right', vis) };
     for (const side of SIDES) {
       this.#regions[side].hidden = states[side] === 'none'; this.#regions[side].dataset.state = states[side]; this.#regions[side].dataset.side = side;
       this.#vsplit[side].hidden = states[side] !== 'open';
@@ -233,7 +289,7 @@ export class Layout {
     if (isPhone()) { this.main.style.removeProperty('grid-template-columns'); return; }
     // The widths: the stylesheet's own (it follows the window) for a column that was not dragged, the dragged one otherwise, and both taken down together when they would leave the map too little.
     const wide = window.innerWidth;
-    const min = (side: Side): number => minWidthOf(openIn(this.#plan, side, this.#shown), isCoarse());
+    const min = (side: Side): number => minWidthOf(openIn(this.#plan, side, vis), isCoarse());
     const [lw, rw] = laidOutWidths([this.#wanted('left'), this.#wanted('right')], [min('left'), min('right')], [states.left === 'open', states.right === 'open'], wide);
     for (const side of SIDES) {
       const own = this.#plan[side === 'left' ? 'leftW' : 'rightW'], fitted = side === 'left' ? lw : rw, asked = this.#wanted(side);
@@ -440,7 +496,7 @@ export class Layout {
     const box = (node: Element): Box => { const r = node.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
     const column = (side: Side): DropScene['columns'][Side] => {
       const region = this.#regions[side], open = region.dataset.state === 'open';
-      return { box: box(region), open, panes: open ? openIn(this.#plan, side, this.#shown).map(id => ({ id, box: box(this.#sidePanes.get(id)!.root) })) : [] };
+      return { box: box(region), open, panes: open ? openIn(this.#plan, side, this.#visible()).map(id => ({ id, box: box(this.#sidePanes.get(id)!.root) })) : [] };
     };
     return {
       main: box(this.main), edge: Math.max(260, Math.round(window.innerWidth * 0.2)), columns: { left: column('left'), right: column('right') },

@@ -18,7 +18,7 @@ import { installTips } from './tip.ts';
 import { installTouchSelects } from './touch-select.ts';
 import { lazy, preload } from './lazy.ts';
 import { ScreenWake } from './wake.ts';
-import { HeatPane, gutter, leftGutter } from './panes/heat-pane.ts';
+import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
@@ -170,6 +170,8 @@ async function main(): Promise<void> {
     env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200), held: scriptRows(store.state) ? ['script' as const] : [] }),
   });
   arrange.onClose = id => layouts.hide(id, arrange.title(id)); arrange.onOpen = id => layouts.setPane(id, true);
+  // A desktop folds its side columns to their edge tabs when the map would be left too little plot (layouts/dock-model.ts `chooseFold`).
+  arrange.plotAt = paneW => paneW - gutterAt(paneW, store.state);
   toolbar.layouts = layouts;
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
@@ -337,7 +339,9 @@ async function main(): Promise<void> {
     if (changed.has('material')) { applyMaterial(); hub.setTape(tapeWanted()); }
     if (changed.has('cvd')) cvd.settingsChanged();
     if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
-    if (changed.has('show') || changed.has('liqLevels')) layout(); else if (changed.has('traded')) gutters();
+    if (changed.has('show') || changed.has('liqLevels')) layout(); else if (changed.has('traded')) { gutters(); arrange.refit(); }
+    // The map's own columns change with the market too (the liquidation column is BTC's, the price axis as wide as its prices).
+    if (changed.has('marketId')) arrange.refit();
     if (changed.has('mark') || changed.has('liqLevels')) liq.invalidate();
     if (changed.has('marketId') || changed.has('timeframe')) {
       // A series kept from before is framed the moment it is shown; one read afresh when it comes (framing it again then would undo a pan made meanwhile).

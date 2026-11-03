@@ -231,6 +231,19 @@ export function gutter(state: AppState): number { return AXIS_W + liqColumnW(sta
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
 export function leftGutter(state: AppState): number { return sideColumns(state).left.length * TRADED_W; }
 /**
+ * What `gutter` and `leftGutter` together would be for a map pane `paneW` wide, without setting anything: the desktop's layout asks it
+ * of the widths it could give the map before it gives one (layouts/dock-model.ts `chooseFold`). Under `COMPACT_PANE` the columns are
+ * narrowed and the traded ones go, so a narrower pane can have the wider plot (500 px: 90 of gutter; 560 px: 416).
+ */
+export function gutterAt(paneW: number, state: AppState): number {
+  const compact = paneW < COMPACT_PANE, axis = Math.max(compact ? 58 : 64, axisNeed()), profile = compact ? 84 : 128, traded = compact ? 0 : 96;
+  const fit = traded > 0 ? Math.max(1, Math.floor((paneW / 2 - axis - profile) / traded)) : 0;
+  const liq = liqColumnShown(state), liqW = !liq ? 0 : compact ? PROFILE_STRIP_W : profile;
+  const book = !state.show.profile ? 0 : compact && liq ? PROFILE_STRIP_W : profile;
+  const sides = state.show.traded && fit > 0 ? arrangeSides(state.traded.placements, fit) : NO_SIDES;
+  return axis + liqW + book + (sides.right.length + sides.left.length) * traded;
+}
+/**
  * The side of the book the map's hover names at a cell: the one holding more there, or none for a cell that holds nothing (right of the
  * live edge, a gap in the recording, beyond the prices recorded), which read "Bid $0" even above the price (Karl, 2026-11-01).
  */
@@ -892,6 +905,8 @@ export class HeatPane {
 
   #paintOverlay(state: AppState): void {
     const ctx = this.#ctx, w = this.#w, h = this.#h, pw = this.plotW, ph = this.plotH, v = this.view, p = this.#palette, left = this.#left;
+    // The plot's width, for a probe of the layout (it reads the page, not arithmetic).
+    if (this.root.dataset.plotW !== String(pw)) this.root.dataset.plotW = String(pw);
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.clearRect(0, 0, this.#paneW, h);
     // Everything is drawn in the plot's coordinates: the plot starts at 0, the columns left of the map are at negative x.

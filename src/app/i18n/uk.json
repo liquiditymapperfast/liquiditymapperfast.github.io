@@ -2185,5 +2185,6 @@
  "Light or dark: one tap switches the theme. Every theme is in Settings, under Appearance.": "Світла чи темна: один дотик змінює тему. Усі теми — у Налаштуваннях, у розділі «Оформлення».",
  "3 h": "3 год",
  "History": "Історія",
- "How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "Скільки записаної історії цей пристрій завантажує під час відкриття сторінки: останні 3 години (кілька МБ), увесь день (десятки МБ) або нічого. Діє з наступного відкриття сторінки."
+ "How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "Скільки записаної історії цей пристрій завантажує під час відкриття сторінки: останні 3 години (кілька МБ), увесь день (десятки МБ) або нічого. Діє з наступного відкриття сторінки.",
+ "{name} is folded to leave the map room. Show it anyway": "{name}: згорнуто, щоб звільнити місце для карти. Усе одно показати"
 }

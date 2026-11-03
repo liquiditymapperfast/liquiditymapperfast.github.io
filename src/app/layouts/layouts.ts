@@ -35,6 +35,15 @@ export function defaultColumns(width: number): { flowW: number; sideW: number } 
   const scaled = (full: number, floor: number): number => Math.round(Math.min(full, Math.max(floor, w * full / FULL_WIDTH)));
   return { flowW: Math.max(scaled(MIN_FLOW_W, FLOW_FLOOR_W), share), sideW: Math.max(scaled(MIN_SIDE_W, SIDE_FLOOR_W), share) };
 }
+/**
+ * The same widths as the stylesheet lays them out (`--flow-w`, `--side-w` in styles.css), unrounded: a column that was not dragged is that
+ * wide, to the fraction of a pixel. The desktop's fold weighs the map's pane with them (Sol, 2026-11-03: a pane predicted at 520 px was 519).
+ */
+export function stylesheetColumns(width: number): { flowW: number; sideW: number } {
+  const w = Math.max(0, width), share = w * COLUMN_SHARE;
+  const scaled = (full: number, floor: number): number => Math.min(full, Math.max(floor, w * full / FULL_WIDTH));
+  return { flowW: Math.max(scaled(MIN_FLOW_W, FLOW_FLOOR_W), share), sideW: Math.max(scaled(MIN_SIDE_W, SIDE_FLOOR_W), share) };
+}
 
 /** A name as it is kept: spaces collapsed and trimmed, at most `MAX_NAME` characters; null when nothing is left. */
 export function cleanName(raw: unknown): string | null {
