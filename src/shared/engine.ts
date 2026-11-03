@@ -127,6 +127,9 @@ const NOTES_MAX = 100_000;
  * connects, hours of them from dYdX): only the recordings can say whether it was counted already, and `attach` plays it in with them.
  */
 const RESENT_MS = 10_000;
+/** At most this many orders announced before the hand-over are remembered (`#announced`). */
+const ANNOUNCED_MAX = 200_000;
+const orderKey = (o: MarketOrder): string => `${o.instrumentId}|${o.tradeId}`;
 
 /** What a page asks a recovery for: its markets, the most wanted first (the chart market), and the windows to fill, in order (the bar under way, then the one before). */
 export interface RecoveryRequest { ids: string[]; windows: { from: number; to: number }[] }
@@ -184,6 +187,14 @@ export class Engine {
   #waiting = false;
   /** What came since the start while they are (null when not); `#notesFull` once `NOTES_MAX` were kept. */
   #notes: Note[] | null = null; #notesFull = false;
+  /**
+   * An engine that started without its recordings: the orders it announced before they came (the trade dust, new prints), by their first
+   * fill. The replay can leave one of them open (a fill the live run took and the recordings hold, a note past `NOTES_MAX`) and complete it
+   * again later: it is recorded then, not announced a second time.
+   */
+  #announced: Set<string> | null = null;
+  /** Orders stamped before this (an engine that started without its recordings: shortly before it started) are the past, never announced. */
+  #newsFrom = -Infinity;
   /** Open-interest readings taken before the recordings were attached: they are written when they are. */
   #oiUnsaved: OiReading[] = [];
   /** When this engine was made (its clock). */
@@ -258,7 +269,7 @@ export class Engine {
     this.orders = new OrderBuilder(now);
     this.#build({ columns, footprint, prints, flow, absorption, coverage, liquidations, oi }, gridSteps);
     if (oi) this.#loadOi(oi);
-    if (deferred) { this.#waiting = true; this.#notes = []; }
+    if (deferred) { this.#waiting = true; this.#notes = []; this.#announced = new Set(); this.#newsFrom = this.#startedAt - RESENT_MS; }
   }
 
   /** The recorders, built from the recordings (at the start, or when they come later: `attach`). */
@@ -480,8 +491,14 @@ export class Engine {
   /** Completed market orders into the prints and the size statistics; `live`: handed on as they come (the trade dust, new prints), not played again (`attach`). */
   #record(orders: MarketOrder[], live: boolean): void {
     if (!orders.length) return;
-    if (live && this.onTape) this.onTape(packTape(orders, this.#tapeSeq++));
-    this.printStream.ingest(orders.map(orderRow), live);
+    // What is announced: not an order from before the start, nor (after the hand-over) one announced already (`#announced`).
+    const announced = this.#announced, waiting = this.#waiting;
+    const news = !live ? [] : orders.filter(o => o.t >= this.#newsFrom && !(announced && !waiting && announced.has(orderKey(o))));
+    if (announced && waiting) for (const o of news) if (announced.size < ANNOUNCED_MAX) announced.add(orderKey(o));
+    if (news.length && this.onTape) this.onTape(packTape(news, this.#tapeSeq++));
+    const fresh = new Set(news);
+    if (news.length) this.printStream.ingest(news.map(orderRow), true);
+    if (news.length < orders.length) this.printStream.ingest(orders.filter(o => !fresh.has(o)).map(orderRow), false);
     this.footprints.countOrders(orders);
   }
 

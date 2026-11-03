@@ -40,10 +40,11 @@ function open(clock: { now: number }, options: { stores?: ReturnType<typeof memo
   let venue: Fake | null = null;
   const venues: BrowserVenue[] = [{ id: 'binance', name: 'binance', kind: 'perp', recommended: true, listed: true, probe: { url: 'https://binance.example/ping' }, make: () => { venue = new Fake('binance'); return { book: venue, feeds: [] }; } }];
   const engine = new Engine({ venues, now: () => clock.now, ping: async () => true, get: async () => { throw new Error('offline'); }, footprint: options.stores?.footprint ?? null, flow: options.stores?.flow ?? null, deferred: options.deferred ?? false });
-  const fresh: Print[] = [];
+  const fresh: Print[] = [], tape: number[] = [];
   engine.onPrints = items => fresh.push(...items);
+  engine.onTape = batch => tape.push(...batch.usd);
   engine.select(['binance']);
-  return { engine, venue: venue! as Fake, fresh };
+  return { engine, venue: venue! as Fake, fresh, tape };
 }
 const profile = (engine: Engine, from: number, to: number) => engine.footprints.profile([ID], from, to, 1).instruments[0]?.rows.map(([price, buy, sell]) => [price, buy, sell]) ?? [];
 const flowTotals = (engine: Engine, from: number, to: number) => { const f = engine.flows.frame([ID], from, to).instruments[0]; return f ? [f.buy.reduce((a, x) => a + x, 0), f.sell.reduce((a, x) => a + x, 0)] : [0, 0]; };
@@ -208,5 +209,49 @@ test('past the most it keeps before the hand-over, what was kept is played in an
   assert.deepEqual(profile(page.engine, T - MIN, T + MIN), [[100, 100, 0]], 'the trade kept is there, once');
   const covered = page.engine.tradeCoverage.covered(ID, T - MIN, clock.now);
   assert.ok(covered.length > 0 && covered.at(-1)![1] <= lastKept, `not covered past the last kept note: ${JSON.stringify(covered)}`);
+  page.engine.stop();
+});
+
+test('an order announced before the hand-over is announced once, however the replay completes it', () => {
+  const T = Date.UTC(2026, 10, 3, 12, 0, 20), from = T - MIN, to = T + MIN, stores = memoryStores();
+  // A trade recorded on the visit before, five seconds before this one started.
+  const prior = { now: T - 5_000 }, before = open(prior, { stores });
+  before.venue.trade({ tradeId: 'r', side: 'sell', price: 99, amount: 10, t: T - 5_000 });
+  before.engine.stop();
+  // A large new order, then the venue sending that recorded trade again: live, it closes the new order, which is announced at once; the
+  // replay drops the resend (the recordings hold it), so the new order is completed again later.
+  const clock = { now: T }, page = open(clock, { deferred: true });
+  page.venue.trade({ tradeId: 'n', side: 'buy', price: 101, amount: 1_000, t: T + 100 });
+  clock.now = T + 110; page.venue.trade({ tradeId: 'r', side: 'sell', price: 99, amount: 10, t: T - 5_000 });
+  clock.now = T + 120; page.engine.step(clock.now);
+  assert.deepEqual(page.fresh.map(p => p.usd), [101_000]);
+  page.engine.attach({ ...noStores, ...stores });
+  clock.now = T + 1_000; page.engine.step(clock.now);
+  assert.deepEqual(page.fresh.map(p => p.usd), [101_000], 'one new print');
+  assert.equal(page.tape.filter(usd => usd === 101_000).length, 1, 'one order in the trade dust');
+  assert.deepEqual(page.engine.prints(from, to).map(p => p.usd), [101_000], 'recorded once');
+
+  // Past the most it keeps: the last kept note is a large trade whose taking was not kept.
+  const c2 = { now: T }, full = open(c2, { deferred: true });
+  full.venue.trade({ tradeId: 'a', side: 'sell', price: 100, amount: 1, t: T });
+  full.venue.trade({ tradeId: 'L', side: 'buy', price: 102, amount: 1_000, t: T + 1 });
+  for (let i = 0; i < 100_000; i++) full.venue.trade({ tradeId: 'a', side: 'sell', price: 100, amount: 1, t: T });
+  c2.now = T + 1_000; full.engine.step(c2.now);
+  assert.deepEqual(full.fresh.map(p => p.usd), [102_000]);
+  full.engine.attach(null);
+  c2.now = T + 2_000; full.engine.step(c2.now);
+  assert.deepEqual(full.fresh.map(p => p.usd), [102_000], 'one new print');
+  assert.equal(full.tape.filter(usd => usd === 102_000).length, 1, 'one order in the trade dust');
+  page.engine.stop(); full.engine.stop();
+});
+
+test('an order from before the page opened, played in at the hand-over and completed after it, is recorded and never announced', () => {
+  const T = Date.UTC(2026, 10, 3, 12, 0, 20), clock = { now: T }, page = open(clock, { deferred: true });
+  clock.now = T + 50; page.venue.trade({ tradeId: 'h', side: 'buy', price: 101, amount: 1_000, t: T - 20_000 });
+  clock.now = T + 60; page.engine.attach(null);
+  clock.now = T + 1_000; page.engine.step(clock.now);
+  assert.deepEqual(page.fresh, []);
+  assert.deepEqual(page.tape, []);
+  assert.deepEqual(page.engine.prints(T - MIN, T + MIN).map(p => p.usd), [101_000], 'recorded');
   page.engine.stop();
 });
