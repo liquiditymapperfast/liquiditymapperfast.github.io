@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { DEFAULT_SHARE, DOCK_TABS, axisOf, clampSize, defaultTab, fillsArea, resolveTab, tabsFor } from '../src/app/dock.ts';
 import { DEFAULT_SHOW } from '../src/app/store.ts';
 
@@ -53,4 +54,10 @@ test('the Tape and the Flow fill the area both ways, the Book only held upright;
 test('the Stats tab follows the table\'s own switch, not the footprint\'s', () => {
   assert.ok(tabsFor({ ...DEFAULT_SHOW, stats: true }).includes('stats'));
   assert.ok(!tabsFor({ ...DEFAULT_SHOW, footprint: true, stats: false }).includes('stats'));
+});
+
+test('LT has no tab on a phone, but its switch stays in Settings > Panels there, so it can be switched on (Karl, 2026-11-03)', () => {
+  assert.ok(!DOCK_TABS.some(tab => (tab.id as string) === 'lt'), 'Liq took its tab');
+  const css = fs.readFileSync('src/app/mobile.css', 'utf8');
+  assert.doesNotMatch(css, /\.toggles button\[data-pane="lt"\]\s*\{\s*display:\s*none/, 'the phone keeps the LT switch');
 });
