@@ -1963,6 +1963,8 @@
  "Look around": "四处看看",
  "Pinch to zoom: sideways for time, up and down for price. Drag to look back in time. Tap anything to read it, and use Recenter to come back to now.": "双指捏合可缩放：横向缩放时间，纵向缩放价格。拖动可回看过去。点按任意位置即可查看数值，点“重新居中”回到当前。",
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "滚轮可同时缩放时间和价格，拖动可回看过去。指向任意位置即可查看数值，按 R 回到当前。",
+ "Right-drag to zoom": "右键拖动缩放",
+ "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "在图表上按住鼠标右键拖动：左右缩放时间，上下缩放价格。滚轮同时缩放两者，左键拖动回看过去，按 R 回到当前。",
  "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "谁在以市价买入、卖出，按交易所分别显示。目前已关闭：点边缘的标签即可打开。",
  "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "谁在以市价买入、卖出，按交易所和时间分别显示。同一时刻会在地图上标出。",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "实时订单簿，按价格逐级排列。目前已关闭：点边缘的标签即可打开。",

@@ -2042,6 +2042,8 @@
  "Look around": "Etrafa bakın",
  "Pinch to zoom: sideways for time, up and down for price. Drag to look back in time. Tap anything to read it, and use Recenter to come back to now.": "Yakınlaştırmak için parmaklarınızı sıkıştırıp açın: yatay hareket zamanı, dikey hareket fiyatı değiştirir. Geçmişe bakmak için sürükleyin. Değerini okumak için herhangi bir şeye dokunun, şimdiye dönmek için Yeniden ortala düğmesini kullanın.",
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "Fare tekerleği zamanı ve fiyatı birlikte yakınlaştırır; geçmişe bakmak için sürükleyin. Değerini okumak için herhangi bir şeyin üzerine gelin, şimdiye dönmek için R tuşuna basın.",
+ "Right-drag to zoom": "Sağ sürükleyerek yakınlaştır",
+ "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "Grafikte sağ tuşu basılı tutup sürükleyin: sağa veya sola zamanı, yukarı veya aşağı fiyatı yakınlaştırır. Tekerlek ikisini birden, sol sürükleme geçmişe bakar, R şimdiye döner.",
  "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "Piyasa emriyle kimin alıp sattığı, borsa borsa. Bu panel şu an kapalı; kenardaki sekme onu açar.",
  "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "Piyasa emriyle kimin alıp sattığı, borsa borsa ve ne zaman. Aynı an haritada da işaretlenir.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "Canlı emir defteri, fiyat merdiveni biçiminde. Şu an kapalı; kenardaki sekme onu açar.",

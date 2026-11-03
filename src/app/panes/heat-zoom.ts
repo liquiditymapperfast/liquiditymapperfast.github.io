@@ -98,3 +98,20 @@ export function wheelZoom(o: WheelInput): WheelZoom {
     price: axes.includes('price') ? { factor, hold: holdPixel({ ...held, axis: 'price', pointer: o.y, size: o.plotH, holdMark: o.region === 'scale' || o.follow }) } : null,
   };
 }
+
+/** How fast a right-button drag zooms: exp(0.006 per pixel), so 120 px is about half or twice the span. */
+export const DRAG_ZOOM_K = 0.006;
+
+/**
+ * The view a right-button drag on the chart gives: pressed at `press` on the view `v0` and now at `at` (plot pixels). Right zooms time in, up zooms
+ * price in (left and down zoom out), each about the point pressed, which stays under the pointer's start; time no shorter than 30 s, price no
+ * narrower than its share of `ref`. The drag itself and the tour's demonstration of it both use this, so the one shown is the one done.
+ */
+export function zoomedView(v0: { t0: number; t1: number; p0: number; p1: number }, press: { x: number; y: number }, at: { x: number; y: number }, plotW: number, plotH: number, ref: number): { t0: number; t1: number; p0: number; p1: number } {
+  const fx = Math.exp(-(at.x - press.x) * DRAG_ZOOM_K), fy = Math.exp((at.y - press.y) * DRAG_ZOOM_K);
+  const ax = Math.min(press.x, plotW) / plotW, ay = Math.min(press.y, plotH) / plotH;
+  const tAnchor = v0.t0 + ax * (v0.t1 - v0.t0), pAnchor = v0.p0 + (1 - ay) * (v0.p1 - v0.p0);
+  const tSpan = Math.max(TIME_SPAN_MS.min, (v0.t1 - v0.t0) * fx), pSpan = Math.max((v0.p1 - v0.p0) * fy, ref * PRICE_SPAN_SHARE.min);
+  const t0 = tAnchor - ax * tSpan, p1 = pAnchor + ay * pSpan;
+  return { t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 };
+}

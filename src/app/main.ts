@@ -23,6 +23,7 @@ import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
 import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
 import { LiqPane } from './panes/liq-pane.ts';
+import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import { DeltaPane } from './panes/delta-pane.ts';
 import { LsPane } from './panes/ls-pane.ts';
@@ -116,6 +117,8 @@ async function main(): Promise<void> {
 
   const heat = new HeatPane(chart, store, hub, kernels);
   toolbar.placeRecenter(heat.root);
+  // The tour's moving picture of the right-button drag moves this chart (tour/demo.ts), and puts its view back when its step is left.
+  setTourDemo({ plotRect: () => heat.plotRect(), zoom: (press, at) => heat.demoZoom(press, at), end: () => heat.endDemo() });
   const bars = new BarStatsPane(chart, store, heat.view, heat, hub);
   const depth = new DepthPane(chart, store, heat.view, hub);
   const oi = new OiPane(chart, store, heat.view, hub.flow);

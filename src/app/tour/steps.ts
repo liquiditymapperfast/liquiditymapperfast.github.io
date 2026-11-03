@@ -21,6 +21,8 @@ export interface Step {
   body: (tab: boolean) => string;
   /** The last step offers the Guide beside Done. */
   guide?: boolean;
+  /** A moving picture over what is lit: the right-button drag shown on the chart itself (`demo.ts`). */
+  demo?: 'rightDrag';
 }
 
 /** The most a step may say (characters): a tour that is read, not skimmed past, is one that fits on a card. A test holds every step to it. */
@@ -45,6 +47,12 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
   const book: Step = {
     id: 'book', targets: ['book'], side: 'auto', title: () => t('Order book'),
     body: tab => tab ? t('The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.') : t('The live order book as a ladder of prices: what waits above and below the price right now.'),
+  };
+  // The gesture Karl uses all the time (2026-11-03), shown first, on the chart itself, with what `look` says for a mouse; a finger has no right button, so a touch
+  // screen keeps `look` (pinch) instead.
+  const zoom: Step = {
+    id: 'zoom', targets: ['map'], side: 'inside', demo: 'rightDrag', title: () => t('Right-drag to zoom'),
+    body: () => t('Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.'),
   };
   const coin: Step = {
     id: 'coin', targets: ['coin'], side: 'below', title: () => t('Coin'),
@@ -77,7 +85,7 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
     ];
   }
   return [
-    map, look,
+    ...(coarse ? [map, look] : [zoom, map]),
     {
       id: 'market', targets: ['market', 'time'], side: 'below', title: () => t('Coin, venues, timeframe'),
       body: () => t('Pick the coin, choose which exchanges feed the map under Venues, and set how long each candle is.'),

@@ -9,6 +9,7 @@ import { grow, placeCard, visiblePart } from './place.ts';
 import { findAll, rectOf } from './targets.ts';
 import { stepsFor, type Arrangement } from './steps.ts';
 import { record } from './record.ts';
+import { demoReady, playRightDrag } from './demo.ts';
 
 /**
  * The tour: a modal over the page that lights one thing at a time and says in a sentence or two what it is for. Modal, so that the page under it
@@ -53,7 +54,8 @@ function begin(restore: () => void): void {
   // Once more: the guide, whose words were still being fetched when the tour was asked for, may have opened in these frames.
   clearTheWay();
   const arrangement: Arrangement = isPhone() ? 'phone' : compactBar() ? 'compact' : 'desktop';
-  const steps = stepsFor(arrangement, isCoarse()).filter(step => !step.targets.length || rectOf(step.targets) !== null);
+  // A step with a moving picture needs the chart lent to it (`demo.ts`); without one it is left out.
+  const steps = stepsFor(arrangement, isCoarse()).filter(step => (!step.targets.length || rectOf(step.targets) !== null) && (!step.demo || demoReady()));
   if (!steps.length) { state = 'idle'; restore(); return; }
   let index = 0, signature = '', frame = 0;
 
@@ -99,8 +101,11 @@ function begin(restore: () => void): void {
   }
   const relayout = (): void => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; place(); }); };
 
+  // The moving picture of the step shown: stopped (the chart's view put back) whenever the step is left, whichever way.
+  let stopDemo: () => void = () => {};
   function show(): void {
     const step = steps[index]!;
+    stopDemo(); stopDemo = step.demo === 'rightDrag' ? playRightDrag(dialog, reducedMotion()) : () => {};
     // A target the window does not show all of (a tab in a row that scrolls) is brought into view first.
     for (const node of findAll(step.targets)) { const r = node.getBoundingClientRect(); if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) node.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
     render(); signature = ''; place();
@@ -137,7 +142,7 @@ function begin(restore: () => void): void {
   function dispose(): void {
     if (over) return;
     over = true;
-    window.clearInterval(poll); window.removeEventListener('resize', relayout); if (frame) cancelAnimationFrame(frame); stopMode();
+    window.clearInterval(poll); window.removeEventListener('resize', relayout); if (frame) cancelAnimationFrame(frame); stopMode(); stopDemo();
     if (dialog.open) dialog.close();
     dialog.remove();
   }

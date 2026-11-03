@@ -87,10 +87,16 @@ test('each arrangement has its own way in: the map on a desktop, the tabs on a p
   assert.deepEqual(stepsFor('phone', true)[0]!.targets, ['tabs']);
   assert.ok(stepsFor('desktop', false).some(s => s.id === 'layouts'));
   assert.ok(!stepsFor('compact', true).some(s => s.id === 'layouts') && !stepsFor('phone', true).some(s => s.id === 'layouts'));
-  // The words for moving about are the pointer's or the finger's.
-  const look = (coarse: boolean): string => stepsFor('desktop', coarse).find(s => s.id === 'look')!.body(false);
-  assert.match(look(false), /wheel/i); assert.doesNotMatch(look(false), /pinch|tap/i);
-  assert.match(look(true), /pinch/i); assert.doesNotMatch(look(true), /wheel/i);
+  // The words for moving about are the pointer's or the finger's. With a mouse the tour opens on the right-button drag shown on the chart (Karl,
+  // 2026-11-03), which says what `look` said; a finger has no right button and keeps `look`.
+  const desk = stepsFor('desktop', false), touch = stepsFor('desktop', true);
+  assert.deepEqual(desk.slice(0, 2).map(s => s.id), ['zoom', 'map']);
+  assert.equal(desk[0]!.demo, 'rightDrag');
+  assert.match(desk[0]!.body(false), /right mouse button/i); assert.match(desk[0]!.body(false), /wheel/i); assert.doesNotMatch(desk[0]!.body(false), /pinch|tap/i);
+  assert.ok(!desk.some(s => s.id === 'look'));
+  const look = touch.find(s => s.id === 'look')!.body(false);
+  assert.match(look, /pinch/i); assert.doesNotMatch(look, /wheel/i);
+  for (const arrangement of ARRANGEMENTS) assert.ok(!stepsFor(arrangement, true).some(s => s.demo), `${arrangement}: no right-button picture for a finger`);
   // Nothing in the tour says what a phone cannot do.
   for (const s of stepsFor('phone', true)) assert.doesNotMatch(s.body(false), /wheel|hover|point at/i, s.id);
 });

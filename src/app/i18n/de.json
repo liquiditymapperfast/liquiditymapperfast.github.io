@@ -2042,6 +2042,8 @@
  "Look around": "Sich umsehen",
  "Pinch to zoom: sideways for time, up and down for price. Drag to look back in time. Tap anything to read it, and use Recenter to come back to now.": "Zoome mit zwei Fingern: seitwärts die Zeit, auf und ab den Preis. Ziehe, um in der Zeit zurückzublicken. Tippe auf etwas, um es abzulesen, und nutze „Zentrieren“, um zum Jetzt zurückzukehren.",
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "Das Mausrad zoomt Zeit und Preis gleichzeitig; ziehe, um in der Zeit zurückzublicken. Zeige auf etwas, um es abzulesen, und drücke R, um zum Jetzt zurückzukehren.",
+ "Right-drag to zoom": "Rechts ziehen zum Zoomen",
+ "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "Halte die rechte Maustaste auf dem Chart und ziehe: rechts oder links zoomt die Zeit, hoch oder runter den Preis. Das Mausrad zoomt beides, links ziehen blickt zurück, R kehrt zum Jetzt zurück.",
  "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "Wer zum Marktpreis kauft und verkauft, Börse für Börse. Dieser Bereich ist gerade geschlossen: Der Reiter am Rand öffnet ihn.",
  "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "Wer zum Marktpreis kauft und verkauft, Börse für Börse, und wann. Derselbe Moment ist auf der Karte markiert.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "Das Live-Orderbuch als Preisleiter. Es ist gerade geschlossen: Der Reiter am Rand öffnet es.",

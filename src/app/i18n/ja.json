@@ -1963,6 +1963,8 @@
  "Look around": "見て回る",
  "Pinch to zoom: sideways for time, up and down for price. Drag to look back in time. Tap anything to read it, and use Recenter to come back to now.": "ピンチで拡大・縮小します。横方向は時間、縦方向は価格です。ドラッグで過去をさかのぼれます。気になる所をタップすると内容が読め、「中央に戻す」で現在に戻れます。",
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "ホイールで時間と価格をまとめて拡大・縮小し、ドラッグで過去をさかのぼれます。気になる所にポインタを合わせると内容が読め、Rキーで現在に戻れます。",
+ "Right-drag to zoom": "右ドラッグで拡大・縮小",
+ "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "チャート上で右ボタンを押したままドラッグ：左右で時間、上下で価格を拡大・縮小します。ホイールは両方、左ドラッグで過去をさかのぼり、Rキーで現在に戻ります。",
  "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "成行で買っている人と売っている人を、取引所ごとに表示します。今は閉じていて、端のタブから開けます。",
  "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "成行で買っている人と売っている人を、取引所ごと・時刻ごとに表示します。同じ時点がマップにも印で示されます。",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "価格ごとに縦に並べた、リアルタイムのオーダーブックです。今は閉じていて、端のタブから開けます。",

@@ -45,7 +45,7 @@ import { FOOTPRINT_SETTLE_MS, FootprintData, FootprintLod, VENUE_LINES, candleBo
 import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
-import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, priceRef, regionAt, wheelZoom } from './heat-zoom.ts';
+import { PRICE_SPAN_SHARE, TIME_SPAN_MS, holdPixel, limitFactor, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
 import { t, tn } from '../i18n.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
@@ -572,6 +572,7 @@ export class HeatPane {
 
   /** Frame the most recent candles, centred on the mark. */
   fit(): void {
+    this.#demo = null;
     if (replaying()) { this.placeAt(pageNow()); return; }
     this.#forceBaseline = true;
     const { candles, mark, timeframe } = this.store.state;
@@ -596,6 +597,36 @@ export class HeatPane {
     this.view.set({ t0: now + this.#liveMargin - span, t1: now + this.#liveMargin, p0: lo - pad, p1: hi + pad });
     this.store.set({ followLive: true });
     this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
+  /**
+   * What the tour's demonstration of the right-button drag found and puts back: the view, and how far ahead of now the live edge was. A view framed
+   * anew meanwhile (`fit`, `placeAt`, `goTo`, `focusOn`: another market, a timeframe, a recentre) forgets it, so the picture goes on from that view
+   * and puts that one back, not the old (Sol, 2026-11-03).
+   */
+  #demo: { view: Bounds; liveMargin: number } | null = null;
+  /** The chart's plot on the page (CSS pixels), where the tour's hand moves: right of the columns placed left of it, above the time strip. */
+  plotRect(): { x: number; y: number; w: number; h: number } | null {
+    const r = this.overlay.getBoundingClientRect();
+    return r.width > 0 ? { x: r.left + this.#left, y: r.top, w: this.plotW, h: this.plotH } : null;
+  }
+  /**
+   * The tour's demonstration of the right-button drag: the view the drag would give, pressed at `press` and now at `at` (plot pixels), from the
+   * view the demonstration began on (`zoomedView`, the drag's own rule). The first call keeps that view and the live edge's margin; `endDemo`
+   * puts both back, so the page is as it was whatever the demonstration did.
+   */
+  demoZoom(press: { x: number; y: number }, at: { x: number; y: number }): void {
+    this.#demo ??= { view: this.view.clone(), liveMargin: this.#liveMargin };
+    this.view.set(zoomedView(this.#demo.view, press, at, this.plotW, this.plotH, this.#priceRef(this.store.state.mark.price)));
+    this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+  /** The view as it was before the demonstration, moved on by the time that has passed while the map follows the market. */
+  endDemo(): void {
+    const demo = this.#demo; if (!demo) return;
+    this.#demo = null;
+    const shift = this.store.state.followLive ? pageNow() + demo.liveMargin - demo.view.t1 : 0;
+    this.view.set({ ...demo.view, t0: demo.view.t0 + shift, t1: demo.view.t1 + shift });
+    this.#liveMargin = demo.liveMargin; this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   /** One step of time zoom from the keyboard (in: `dir` 1), as the wheel does with Shift over the chart: about the live edge while the map follows the market. The price stays as it is. */
@@ -664,6 +695,7 @@ export class HeatPane {
 
   /** Replay: its moment becomes the map's live edge (at the span the map has), followed as it moves on. */
   placeAt(t: number): void {
+    this.#demo = null;
     const v = this.view, span = v.t1 - v.t0, margin = span * 0.08;
     let lo = Infinity, hi = -Infinity;
     const tf = TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000;
@@ -674,6 +706,7 @@ export class HeatPane {
   }
 
   goTo(t: number): void {
+    this.#demo = null;
     const v = this.view, span = v.t1 - v.t0, t0 = t - span / 2, t1 = t + span / 2;
     const state = this.store.state, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     // Fitted to the candles that are drawn, whichever series they are of (the line is cut on them, so they are what is on screen; a view they
@@ -1021,6 +1054,7 @@ export class HeatPane {
 
   /** Centre the map on a stretch of time and prices (a drawing found in its list), widening the view where it does not fit. */
   focusOn(box: { t0: number; t1: number; p0: number; p1: number }): void {
+    this.#demo = null;
     const v = this.view, span = Math.max(v.t1 - v.t0, (box.t1 - box.t0) * 1.4), pSpan = Math.max(v.p1 - v.p0, (box.p1 - box.p0) * 1.4);
     const tm = (box.t0 + box.t1) / 2, pm = (box.p0 + box.p1) / 2;
     v.set({ t0: tm - span / 2, t1: tm + span / 2, p0: pm - pSpan / 2, p1: pm + pSpan / 2 });
@@ -1206,6 +1240,8 @@ export class HeatPane {
   }
 
   #fitOverview(): void {
+    // Not while the tour's picture has the view: it is put back as it was, and the fit is made then (Sol, 2026-11-03).
+    if (this.#demo) return;
     const pending = this.#priceFit, v = this.view, answer = this.hub.priceHistory.answer;
     if (!pending || !answer || !this.#overviewTarget) return;
     if (v.t0 !== pending.t0 || v.t1 !== pending.t1 || v.p0 !== pending.p0 || v.p1 !== pending.p1) { this.#priceFit = null; return; }
@@ -3499,12 +3535,8 @@ export class HeatPane {
         : overColumn || ((this.range?.armed || this.store.state.vwapAnchoring || this.draw?.placing) && onPlot) ? 'crosshair' : '';
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
-        const z = this.#zoomDrag, k = 0.006, pw = this.plotW, ph = this.plotH;
-        const fx = Math.exp(-(x - z.x) * k), fy = Math.exp((y - z.y) * k);
-        const v0 = z.view, tAnchor = v0.t0 + Math.min(z.x, pw) / pw * (v0.t1 - v0.t0), pAnchor = v0.p0 + (1 - Math.min(z.y, ph) / ph) * (v0.p1 - v0.p0);
-        const tSpan = Math.max(30_000, (v0.t1 - v0.t0) * fx), pSpan = Math.max((v0.p1 - v0.p0) * fy, this.#priceRef(this.store.state.mark.price) * PRICE_SPAN_SHARE.min);
-        const t0 = tAnchor - Math.min(z.x, pw) / pw * tSpan, p1 = pAnchor + Math.min(z.y, ph) / ph * pSpan;
-        this.view.set({ t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 });
+        const z = this.#zoomDrag;
+        this.view.set(zoomedView(z.view, z, { x, y }, this.plotW, this.plotH, this.#priceRef(this.store.state.mark.price)));
         this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
         return;
       }

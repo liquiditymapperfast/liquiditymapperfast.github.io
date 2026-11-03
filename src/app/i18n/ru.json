@@ -2096,6 +2096,8 @@
  "Look around": "Осмотритесь",
  "Pinch to zoom: sideways for time, up and down for price. Drag to look back in time. Tap anything to read it, and use Recenter to come back to now.": "Сводите и разводите пальцы, чтобы менять масштаб: по горизонтали — время, по вертикали — цена. Тяните, чтобы заглянуть в прошлое. Коснитесь чего угодно, чтобы прочитать, и нажмите «Центрировать», чтобы вернуться в настоящее.",
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "Колесо мыши меняет масштаб времени и цены вместе; тяните, чтобы заглянуть в прошлое. Наведите курсор на что угодно, чтобы прочитать, и нажмите R, чтобы вернуться в настоящее.",
+ "Right-drag to zoom": "Масштаб правой кнопкой",
+ "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "Зажмите правую кнопку мыши на графике и тяните: вправо или влево меняется масштаб времени, вверх или вниз — цены. Колесо меняет оба, левая кнопка листает назад, R возвращает в настоящее.",
  "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "Кто покупает и продаёт по рынку, биржа за биржей. Сейчас панель закрыта: её открывает вкладка у края.",
  "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "Кто покупает и продаёт по рынку, биржа за биржей, и когда. Тот же момент отмечен на карте.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "Стакан заявок в реальном времени в виде лестницы цен. Сейчас он закрыт: его открывает вкладка у края.",
