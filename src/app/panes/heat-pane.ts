@@ -195,8 +195,11 @@ const COMPACT_PANE = 520;
 
 /** Whether the liquidation column stands between the map and the profile column: Liquidation levels and their column on, BTC, an address. */
 export const liqColumnShown = (state: AppState): boolean => { const l = state.liqLevels as AppState['liqLevels'] | undefined; return !!l && l.on && l.column && currentCoin().coin === 'BTC' && !!liqLevelsUrl(); };
-/** The width the liquidation column takes (as wide as the profile column), or 0. */
-const liqColumnW = (state: AppState): number => liqColumnShown(state) ? PROFILE_W : 0;
+/**
+ * The width the liquidation column takes (as wide as the profile column), or 0. A compact map has it as a strip like the book's (Karl,
+ * 2026-11-03: the column took a phone's map 84 px; the Liq tab holds the whole ladder): the two strips beside each other.
+ */
+const liqColumnW = (state: AppState): number => !liqColumnShown(state) ? 0 : COMPACT ? PROFILE_STRIP_W : PROFILE_W;
 /** The width the book profile takes: its column, the strip in a compact map beside the liquidation column (`PROFILE_STRIP_W`), or 0. */
 export function profileColumnW(state: AppState): number { return !state.show.profile ? 0 : COMPACT && liqColumnShown(state) ? PROFILE_STRIP_W : PROFILE_W; }
 export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + profileColumnW(state) + sideColumns(state).right.length * TRADED_W; }
@@ -2755,12 +2758,14 @@ export class HeatPane {
    * "this much goes if price gets here". Until the levels are there, or in a replay, it says why it is empty.
    */
   #paintLiqColumn(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
-    const p = this.#palette, v = this.view, src = this.hub.liqLevels, x0 = pw, W = PROFILE_W;
+    const p = this.#palette, v = this.view, src = this.hub.liqLevels, x0 = pw, W = liqColumnW(state), strip = W < PROFILE_W;
     const s = src.levels && src.state === 'ready' && !replaying() ? src.standing() : null;
     ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
     ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, W, ph);
     ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     const wide = (words: string): number => ctx.measureText(words).width;
+    // The strip has no room for words: until the levels are there it is empty (the Liq tab says why).
+    if (!s && strip) { ctx.restore(); ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke(); return; }
     if (!s) {
       const why = replaying() ? t('Liquidation levels show the live market only.') : src.state === 'unavailable' ? t('Liquidation levels could not be read.')
         : src.state === 'stale' && src.levels ? t('Liquidation levels are out of date: the newest are from {time}.', { time: clock(src.levels.asOf) }) : t('Liquidation levels are loading.');
@@ -2784,16 +2789,27 @@ export class HeatPane {
       const lo = (prof.row0 + r) * step, y1 = v.yOf(lo, ph), y0 = v.yOf(lo + step, ph);
       if (y1 < 0 || y0 > ph) continue;
       const hgt = Math.max(1, y1 - y0 - 0.5), long = prof.long[r]!, short = prof.short[r]!, cumLong = prof.cumLong[r]!, cumShort = prof.cumShort[r]!;
+      if (strip) {
+        // The strip, as the book's: each row's levels as the strength of their side's colour, the largest the boldest; longs below the price,
+        // shorts above, in the candles' colours as in the column. By the logarithm, not the book's square root: the levels are a few spikes
+        // (one of 24M made a 100K row 19 % strong, too faint to see), and this gives that row about 40 %.
+        const level = Math.max(long, short);
+        if (level > 0) { ctx.globalAlpha = 0.22 + 0.78 * Math.log1p(level / (maxLevel / 1000)) / Math.log1p(1000); ctx.fillStyle = long >= short ? p.candleDown : p.candleUp; ctx.fillRect(x0 + 1, y0, W - 1, hgt); }
+        continue;
+      }
       if (cumLong > 0) { ctx.globalAlpha = 0.16; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, cumLong / maxCum * width, hgt); }
       if (cumShort > 0) { ctx.globalAlpha = 0.16; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, cumShort / maxCum * width, hgt); }
       if (long > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, Math.max(1, long / maxLevel * width), hgt); }
       if (short > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, Math.max(1, short / maxLevel * width), hgt); }
     }
-    ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 40); ctx.globalAlpha = 1;
-    ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
-    ctx.fillStyle = p.muted; ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 16); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 28);
+    ctx.globalAlpha = 1;
+    if (!strip) {
+      ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 40); ctx.globalAlpha = 1;
+      ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
+      ctx.fillStyle = p.muted; ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 16); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 28);
+    }
     this.#profileBox = null;
-    this.#paintLiqColumnMirror(ctx, state, s, price, x0, ph);
+    this.#paintLiqColumnMirror(ctx, state, s, price, x0, ph, W);
     ctx.restore(); ctx.textBaseline = 'middle';
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
     if (box) {
@@ -2826,7 +2842,9 @@ export class HeatPane {
     const x0 = pw, liqW = liqColumnW(state), W = liqW + profileColumnW(state), top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph);
     ctx.save();
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.55);
-    paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: `${usd(st.above.book)} · ${usd(st.above.liq)}` }, { y: bottom, color: p.candleDown, label: `${usd(st.below.book)} · ${usd(st.below.liq)}` }, { y0: 0, y1: ph });
+    // Two strips (a compact map) have no room for the band's pills: the box says the same.
+    const pills = liqW >= PROFILE_W;
+    paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: pills ? `${usd(st.above.book)} · ${usd(st.above.liq)}` : '' }, { y: bottom, color: p.candleDown, label: pills ? `${usd(st.below.book)} · ${usd(st.below.liq)}` : '' }, { y0: 0, y1: ph });
     // The seam itself, lit while it is pointed at.
     ctx.strokeStyle = p.ui; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + liqW, 0); ctx.lineTo(x0 + liqW, ph); ctx.stroke();
     ctx.restore();
@@ -2863,7 +2881,7 @@ export class HeatPane {
   }
 
   /** Mirror hover on the liquidation column: the longs that go if price falls to the pointer against the shorts that go if it rises as far. */
-  #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number): void {
+  #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number, W: number): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view;
     if (!hv || hv.column !== 'liq' || !state.show.mirror || !(price > 0)) return;
     const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
@@ -2872,8 +2890,10 @@ export class HeatPane {
     const stats = mirrorStats(price, at, above, below);
     if (!stats) return;
     const top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph), pct = percentText(stats);
-    dimOutside(ctx, x0, PROFILE_W, 0, ph, top, bottom, p.panel, 0.6);
-    paintBand(ctx, p, x0, PROFILE_W, { y: top, color: p.candleUp, label: `${usd(stats.aboveUsd)} · ${pct}` }, { y: bottom, color: p.candleDown, label: `${usd(stats.belowUsd)} · ${pct}` }, { y0: 0, y1: ph });
+    // The strip has no room for the band's pills: its box says the same.
+    const wide = W >= PROFILE_W;
+    dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
+    paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
     const empty = { none: t('No liquidation levels in this range'), onlyThis: t('Only this side has liquidation levels'), onlyOpposite: t('Only the opposite side has liquidation levels') };
     this.#profileBox = { lines: mirrorLines(stats, { above: t('Short liquidations'), below: t('Long liquidations') }, undefined, empty), y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
   }

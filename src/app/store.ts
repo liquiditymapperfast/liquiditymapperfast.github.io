@@ -348,11 +348,15 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
     // profile with its column and no band (off by default since 2026-10-28); a save this old gets the band it was given then.
     if (!phone) {
       if (Object.keys(saved).length) state.traded = { ...state.traded, placements: withTopOn(state.traded.placements) };
-      state.show = { ...state.show, traded: true };
+      // Not on a touch screen's first visit, as not on a phone's (Karl, 2026-11-03: the volume profile is not on by default on any mobile).
+      if (!touch || Object.keys(saved).length) state.show = { ...state.show, traded: true };
     }
   }
   // The panes: a touch screen only (a desktop browser window that was narrow once is not a phone, and its panes stay as it chose them).
-  if (rev < 4 && phone && touch) state.show = { ...state.show, cvd: true, lt: true };
+  // LT was turned on here too while it had a tab; it has none since 2026-11-01 and, switched on, sits under the map (2026-11-03): it is
+  // something to switch on (Karl), so neither a first visit nor an old save has it turned on, nor a tablet that has the phone's arrangement
+  // since 2026-11-03 (Sol).
+  if (rev < 4 && phone && touch) state.show = { ...state.show, cvd: true };
   // The half-life: every screen. The old default is not a choice (every save wrote it down); another value is.
   if (rev < 4 && state.lt.halfLifeBp === LT_OLD_HALF_LIFE_BP) state.lt = { ...state.lt, halfLifeBp: LT_DEFAULTS.halfLifeBp };
   state.defaultsRev = DEFAULTS_REV;

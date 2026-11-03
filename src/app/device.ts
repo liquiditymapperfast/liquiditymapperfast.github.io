@@ -4,10 +4,11 @@
  * browser's user-agent string.
  *
  * The panes' arrangement (`data-layout`):
- *   phone            a narrow window, or a touch screen held upright that is not wide (a tablet in portrait): the map on top, one pane at a
- *                    time under it, a tab bar at the bottom
- *   phone-landscape  a short touch screen held sideways: the map on the left, the chosen pane on the right, a rail of tabs at the edge
- *   desktop          everything else, tablets in landscape included: the map with its panes in a column and the order book beside them
+ *   phone            a narrow window, or a touch screen held upright up to a large tablet's width: the map on top, one pane at a time
+ *                    under it, a tab bar at the bottom
+ *   phone-landscape  a short touch screen held sideways, or one up to a large tablet's width: the map on the left, the chosen pane on the
+ *                    right, a rail of tabs at the edge
+ *   desktop          everything else, wide tablets on their side included: the map with its panes in a column and the order book beside them
  *
  * The controls' arrangement (`data-bar`): `compact` wherever a finger is the main pointer (and in every phone arrangement): a slim
  * top bar with the few controls that are used all the time, and the rest in a Settings sheet; panels and menus become bottom sheets.
@@ -17,14 +18,21 @@ export type LayoutMode = 'phone' | 'phone-landscape' | 'desktop';
 
 export const PHONE_MAX_WIDTH = 640;
 export const LANDSCAPE_MAX_HEIGHT = 520;
-/** A touch screen held upright up to this wide (a tablet in portrait) gets the phone arrangement: its map is wide, but the desktop's two columns would not fit. */
-export const PORTRAIT_TABLET_MAX_WIDTH = 900;
+/**
+ * A touch screen up to this wide, held either way, gets a phone arrangement (Karl, 2026-11-03, on the iPad Pro). The desktop's columns
+ * beside the map (price axis, liquidation and profile columns, traded volume: 416 px) and the order book (350 px) left a 1024 px tablet
+ * a map of about 220 px, a Surface Pro 7 upright (912) 110 px and a Galaxy Z Fold 5 opened on its side (829) 130 px. Wider (an iPad Air
+ * on its side, 1180) keeps the desktop's.
+ */
+export const TABLET_MAX_WIDTH = 1100;
 
 /** The panes' arrangement for a window of `width` x `height` CSS pixels. `coarse` is a touch-first pointer; `landscape` is how the screen is held. */
 export function layoutFor(width: number, height: number, coarse: boolean, landscape: boolean = width > height): LayoutMode {
-  if (coarse && landscape && height <= LANDSCAPE_MAX_HEIGHT) return 'phone-landscape';
+  if (coarse && landscape && width > height && height <= LANDSCAPE_MAX_HEIGHT) return 'phone-landscape';
   if (width <= PHONE_MAX_WIDTH) return 'phone';
-  if (coarse && !landscape && width <= PORTRAIT_TABLET_MAX_WIDTH) return 'phone';
+  // A tablet's window that is itself wider than tall has the map left and the pane right; a narrow split-screen window on a tablet held
+  // sideways is upright, so it has the phone's (Sol, 2026-11-03).
+  if (coarse && width <= TABLET_MAX_WIDTH) return landscape && width > height ? 'phone-landscape' : 'phone';
   return 'desktop';
 }
 

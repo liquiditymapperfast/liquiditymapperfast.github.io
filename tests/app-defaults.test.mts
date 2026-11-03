@@ -34,6 +34,17 @@ test('a save written under the old defaults (Depth and Open interest both on, no
   saved({ defaultsRev: DEFAULTS_REV, show: { ...DEFAULT_SHOW, depth: true, oi: true } }, () => assert.deepEqual([initialState().show.depth, initialState().show.oi], [true, true]));
 });
 
+test('the volume profile is on at a first visit with a mouse only: never on a phone or any touch screen (Karl, 2026-11-03)', () => {
+  saved(null, () => {
+    assert.equal(initialState(false, false).show.traded, true, 'a desktop with a mouse');
+    assert.equal(initialState(false, true).show.traded, false, 'a tablet on its side, in the desktop arrangement');
+    assert.equal(initialState(true, true).show.traded, false, 'a phone');
+    assert.equal(initialState(true, false).show.traded, false, 'a narrow window');
+  });
+  // A save keeps what it holds.
+  saved({ defaultsRev: DEFAULTS_REV, show: { ...DEFAULT_SHOW, traded: true }, traded: { lines: ['day'] } }, () => assert.equal(initialState(false, true).show.traded, true));
+});
+
 test('a save from before revision 2 shows what was new: days on the chart (their profiles off since 10-28), and the strip, now the profile along the top', () => {
   // A save of the day before: the volume profile off, no period on the chart and no profile (the choice came that day), the strip off.
   const before = { defaultsRev: 1, show: { ...DEFAULT_SHOW, traded: false }, traded: { lines: [], profiles: null, metrics: ['volume', 'oi'] }, measureStrip: { on: false, kind: 'oi' } };
@@ -74,10 +85,14 @@ test('revision 4: the Liquidity Tracker is at 100 bp on every screen unless anot
   const rev3 = { defaultsRev: 3, show: { ...DEFAULT_SHOW, cvd: false, lt: false }, lt: { halfLifeBp: 10, minUsd: 0, maxUsd: 0, average: false, view: 'lines' } };
   saved(rev3, () => {
     const s = initialState(true, true);
-    assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp, s.defaultsRev], [true, true, 100, DEFAULTS_REV]);
+    // LT is left as saved since 2026-11-03: it has no tab now, and switched on it sits under the map (an old tablet save that has the
+    // phone's arrangement since then would otherwise find it forced on, Sol).
+    assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp, s.defaultsRev], [true, false, 100, DEFAULTS_REV]);
   });
-  // A first visit on a phone: the same.
-  saved(null, () => { const s = initialState(true, true); assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp], [true, true, 100]); });
+  saved({ ...rev3, show: { ...rev3.show, lt: true } }, () => assert.equal(initialState(true, true).show.lt, true, 'one saved on stays on'));
+  // A first visit on a phone: the Flow, the same half-life, and LT off (Karl, 2026-11-03: Liq took its tab, and switched on it sits under
+  // the map; it is something to switch on).
+  saved(null, () => { const s = initialState(true, true); assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp], [true, false, 100]); });
   // Another half-life was a choice, and anything saved under the new revision is read as it is.
   saved({ ...rev3, lt: { ...rev3.lt, halfLifeBp: 25 } }, () => assert.equal(initialState(true, true).lt.halfLifeBp, 25));
   saved({ ...rev3, defaultsRev: DEFAULTS_REV, lt: { ...rev3.lt, halfLifeBp: 10 } }, () => { const s = initialState(true, true); assert.deepEqual([s.show.cvd, s.show.lt, s.lt.halfLifeBp], [false, false, 10]); });

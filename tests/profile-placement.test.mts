@@ -144,7 +144,9 @@ test('beside the liquidation column a compact map keeps the book profile as a st
   try {
     setCompactGutters(true, 390);
     assert.equal(profileColumnW(base), PROFILE_STRIP_W);
-    assert.equal(gutter(base), AXIS_W + PROFILE_W + PROFILE_STRIP_W, 'a phone: the axis, the liquidation column and the strip (Karl, 2026-11-01)');
+    // A phone: the axis and two strips, the liquidation levels' and the book's (Karl, 2026-11-01 the book's, 2026-11-03 the levels').
+    assert.equal(gutter(base), AXIS_W + 2 * PROFILE_STRIP_W, 'a phone: the axis and the two strips');
+    assert.equal(gutter(base), 58 + 32, 'a 390 px map loses 90 px to them, not 158');
     assert.equal(profileColumnW(noLiq), PROFILE_W, 'no liquidation column: the profile keeps its column');
     assert.equal(profileColumnW({ ...base, show: { traded: false, profile: false } } as unknown as AppState), 0);
     setCompactGutters(false, 2000);
