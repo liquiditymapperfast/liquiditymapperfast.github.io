@@ -60,4 +60,6 @@ test('LT has no tab on a phone, but its switch stays in Settings > Panels there,
   assert.ok(!DOCK_TABS.some(tab => (tab.id as string) === 'lt'), 'Liq took its tab');
   const css = fs.readFileSync('src/app/mobile.css', 'utf8');
   assert.doesNotMatch(css, /\.toggles button\[data-pane="lt"\]\s*\{\s*display:\s*none/, 'the phone keeps the LT switch');
+  // Switched on, it shows: under the map on the Map tab, as on a desktop (Karl, 2026-11-03: a switch that shows nothing is no use).
+  assert.match(css, /main\[data-tab="map"\] \.pane\.lt:not\(\[hidden\]\) \{ display: flex;/, 'LT sits under the map on the Map tab');
 });
