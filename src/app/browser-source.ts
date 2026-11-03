@@ -103,6 +103,8 @@ export class BrowserSource implements DataSource, VenueControl {
   storageFailed = false;
   /** When the worker said whether its recordings opened (0: not yet). */
   #openedAt = 0;
+  /** The worker has said its recorded history is in: handlers connected after that are told at once (what they asked before may predate it). */
+  #historyIn = false;
 
   /** `historyHours`: how many of the recorded history's latest hours the worker reads on opening (app/history-window.ts), a day by default. */
   constructor(worker: Worker, { persist = true, coin = BTC, tier = 0, historyHours = DAY_HOURS }: { persist?: boolean; coin?: Coin; tier?: number; historyHours?: number } = {}) {
@@ -123,7 +125,7 @@ export class BrowserSource implements DataSource, VenueControl {
       switch (message.type) {
         case 'ready': this.#started = true; ready(); break;
         case 'recordings': this.persisted = message.persisted; this.#openedAt = Date.now(); break;
-        case 'history': this.#handlers?.onHistory?.(); break;
+        case 'history': this.#historyIn = true; this.#handlers?.onHistory?.(); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
@@ -225,6 +227,7 @@ export class BrowserSource implements DataSource, VenueControl {
       handlers.onOpen();
       if (this.#levels) handlers.onLevels(this.#levels);
       if (this.#tick) handlers.onTick(this.#tick);
+      if (this.#historyIn) handlers.onHistory?.();
     });
     return { close: () => { if (this.#handlers === handlers) this.#handlers = null; }, tape: on => { this.#tapeOn = on; } };
   }
