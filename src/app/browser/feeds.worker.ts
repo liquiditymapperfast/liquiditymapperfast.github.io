@@ -49,40 +49,26 @@ function stopRecording(): void {
   post({ type: 'recording', recording: false, failed: true });
 }
 
+/**
+ * Settled once the engine has its recordings and the recorded history (or will have none): the questions about what was recorded wait for
+ * it (`HISTORY_WAITS`), so they are answered with the day, not with the seconds since the page opened.
+ */
+let historyIn!: () => void, historyDone = false;
+const historyLanded = new Promise<void>(resolve => { historyIn = resolve; });
+/**
+ * What waits for the history. The others are answered at once: the market list, the venues' own candles and open interest, and the taker
+ * flow, whose pane holds the live seconds back while its question is out (app/flow-book.ts): it is asked again when the history lands.
+ */
+const HISTORY_WAITS: ReadonlySet<RpcCall['method']> = new Set(['columns', 'footprint', 'prints', 'liquidations', 'printSums', 'sizes', 'profile', 'oiProfile', 'range', 'valueAreas', 'absorption', 'absorptionProfile', 'coverage', 'recover']);
+
+/**
+ * The engine starts at once, on the venues' sockets alone, so the book, the price, the trades and the flow move within a second of the
+ * page opening; the recordings and the recorded history are read meanwhile and handed to it when they are in (`Engine.attach`).
+ */
 async function init(selected: string[] | null, known: string[] | null, persist: boolean, coin: Coin, tier: number, database: string, lock: string, history: string, historyHours: number): Promise<void> {
-  const gridSteps = new Map<string, number>();
-  if (persist && typeof indexedDB !== 'undefined') {
-    // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
-    let failing = false;
-    const events = {
-      failed: (error: unknown, fatal: boolean): void => {
-        if (fatal) { console.warn('recordings are no longer being saved:', error); stopRecording(); return; }
-        if (!failing) { failing = true; console.warn('a recording could not be saved; trying again:', error); post({ type: 'recording', recording, failed: true }); }
-      },
-      recovered: (): void => { failing = false; console.info('recordings are being saved again'); post({ type: 'recording', recording }); },
-    };
-    try { recordings = await openRecordings(database, Date.now() - BROWSER_RETENTION_MS, () => recording, events); }
-    catch (error) { console.warn('recordings are not kept this session:', error); }
-    if (recordings) {
-      // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
-      void navigator.storage?.persist?.().catch(() => false);
-      claimRecorder(lock);
-      // The recorded history (app/history-url.ts): the minutes of the day before this visit, read before the engine starts so it starts with them;
-      // a phone reads its last few hours only, from the start of the oldest one (app/history-window.ts). The recordings keep their day either way.
-      if (history && historyHours > 0) {
-        const kept = recordings, now = Date.now(), since = importSince(now, historyHours, BROWSER_RETENTION_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours()), epoch = kept.writeEpoch();
-        const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now });
-        if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
-        if (done.read?.length) void kept.markImported(done.read, epoch);
-        if (done.columns || done.rows) console.info(`recorded history: ${done.columns} map minutes and ${done.rows} other records from ${done.hours} hours`);
-        // A book this page holds nothing of (and was given nothing of in time) records on the service's grid, so the next visit can show
-        // the service's minutes with its own.
-        for (const [inst, step] of Object.entries(done.steps ?? {})) if (!held.steps.has(inst)) gridSteps.set(inst, step);
-      }
-    }
-  }
+  const keeps = persist && typeof indexedDB !== 'undefined';
   const venues = browserVenues(coin);
-  const next = new Engine({ coin, tier, venues, columns: recordings?.columns ?? null, footprint: recordings?.footprint ?? null, prints: recordings?.prints ?? null, flow: recordings?.flow ?? null, absorption: recordings?.absorption ?? null, coverage: recordings?.coverage ?? null, liquidations: recordings?.liquidations ?? null, oi: recordings?.oi ?? null, gridSteps });
+  const next = new Engine({ coin, tier, venues, deferred: keeps });
   next.onLevels = (books, asOf) => post({ type: 'levels', frame: frameOf(books, asOf) });
   next.onTick = tick => post({ type: 'tick', tick });
   next.onPrints = (items: Print[]) => post({ type: 'prints', items });
@@ -96,10 +82,53 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
   next.select(restoreSelection(selected, known, venues) ?? venues.filter(v => v.recommended).map(v => v.id));
   next.start();
   engine = next;
-  post({ type: 'ready', persisted: recordings !== null });
+  post({ type: 'ready' });
+  if (!keeps) { post({ type: 'recordings', persisted: false }); historyDone = true; historyIn(); return; }
+  const gridSteps = new Map<string, number>();
+  // The engine runs whatever becomes of them: a failure here is not the engine's.
+  try { await readRecordings(database, lock, history, historyHours, gridSteps); }
+  catch (error) { console.warn('the recordings could not be read:', error); }
+  try { next.attach(recordings, gridSteps); }
+  catch (error) { console.error('the recordings could not be handed to the engine:', error); }
+  // A pass of the live feeds first: the hand-over and the questions held for it each take a moment of this thread.
+  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history' }); }, 0);
+}
+
+/** Open the recordings and read the recorded history into them (`gridSteps`: the service's grid for books they hold nothing of). */
+async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>): Promise<void> {
+  // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
+  let failing = false;
+  const events = {
+    failed: (error: unknown, fatal: boolean): void => {
+      if (fatal) { console.warn('recordings are no longer being saved:', error); stopRecording(); return; }
+      if (!failing) { failing = true; console.warn('a recording could not be saved; trying again:', error); post({ type: 'recording', recording, failed: true }); }
+    },
+    recovered: (): void => { failing = false; console.info('recordings are being saved again'); post({ type: 'recording', recording }); },
+  };
+  try { recordings = await openRecordings(database, Date.now() - BROWSER_RETENTION_MS, () => recording, events); }
+  catch (error) { console.warn('recordings are not kept this session:', error); }
+  post({ type: 'recordings', persisted: recordings !== null });
+  if (!recordings) return;
+  // Ask the browser not to evict the recordings when disk is short (it may decline, and some browsers ask the person).
+  void navigator.storage?.persist?.().catch(() => false);
+  claimRecorder(lock);
+  // The recorded history (app/history-url.ts): the minutes of the day before this visit, read into the recordings before the engine is given
+  // them; a phone reads its last few hours only, from the start of the oldest one (app/history-window.ts). The recordings keep their day either way.
+  if (history && historyHours > 0) {
+    const kept = recordings, now = Date.now(), since = importSince(now, historyHours, BROWSER_RETENTION_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours()), epoch = kept.writeEpoch();
+    const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now });
+    if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
+    if (done.read?.length) void kept.markImported(done.read, epoch);
+    if (done.columns || done.rows) console.info(`recorded history: ${done.columns} map minutes and ${done.rows} other records from ${done.hours} hours`);
+    // A book this page holds nothing of (and was given nothing of in time) records on the service's grid, so the next visit can show
+    // the service's minutes with its own.
+    for (const [inst, step] of Object.entries(done.steps ?? {})) if (!held.steps.has(inst)) gridSteps.set(inst, step);
+  }
 }
 
 async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; transfer: Transferable[] }> {
+  // The questions held for the history are answered a task each, so the live feeds' passes run between them.
+  if (HISTORY_WAITS.has(call.method) && !historyDone) { await historyLanded; await new Promise(resolve => setTimeout(resolve, 0)); }
   switch (call.method) {
     case 'bootstrap': return { result: run.bootstrap(), transfer: [] };
     case 'columns': {

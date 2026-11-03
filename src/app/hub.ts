@@ -497,6 +497,9 @@ export class Hub {
       onAbsorption: (groups, minutes) => { this.absorption.add(groups); this.absorption.addMinutes(minutes); this.onAbsorptionChanged(); },
       // The large orders of the stretch are in the recording now, not among the fresh ones: the window held is asked for again.
       onRecovered: (id, from, to) => { this.#printsWindow = null; this.#dropValueAreas(id, from, to); this.onRecovered(id, from, to); },
+      // The browser's recordings came after its feeds: the flow held is the live seconds alone, the open interest lacks the readings kept
+      // (read whole once, then only its newest bars), and the recording begins earlier than it said.
+      onHistory: () => { this.flow.invalidate(); this.onFlowChanged(); this.#oiGen++; this.#oiHeld = null; void this.loadOi().catch(() => undefined); void this.refreshMarkets(); },
       onPrints: items => {
         const fresh = this.prints.add(items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; }));
         if (fresh.length) { this.#whaleTake(fresh); this.onPrints(fresh); this.onPrintsChanged(); }

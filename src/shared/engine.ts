@@ -4,7 +4,7 @@ import { FootprintRecorder, MAX_CUT_USD, MAX_CUTS, MAX_PROFILE_INSTRUMENTS, type
 import { PRINT_FLOOR_USD, PRINTS_PER_ANSWER, PrintStream, type Print, type PrintStore } from './prints.ts';
 import type { PrintSumsAnswer } from './print-sums.ts';
 import { LIQUIDATION_FLOOR_USD, LIQUIDATIONS_PER_ANSWER, LiquidationStream, type Liquidation, type LiquidationEvent, type LiquidationStore } from './liquidations.ts';
-import { OrderBuilder, orderRow } from './orders.ts';
+import { OrderBuilder, orderRow, type MarketOrder } from './orders.ts';
 import { packTape, type TapeBatch } from './tape.ts';
 import { RecordedBefore } from './restart.ts';
 import { AbsorptionRecorder, GROUP_FLOOR_USD, type AbsorptionAnswer, type AbsorptionProfileAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStore } from './absorption.ts';
@@ -93,7 +93,35 @@ export interface EngineOptions {
   gridSteps?: ReadonlyMap<string, number>;
   /** How a recovery reads a venue's trade history (shared/recovery.ts), and its budget; a test gives its own. */
   historyFetch?: HistoryFetch; recoveryBudget?: RecoveryBudget;
+  /**
+   * The recordings come later (`attach`): the engine starts at once without them, and keeps what it is given meanwhile to play it into the
+   * recorders `attach` builds. A page opens its sockets this way while it reads its recordings and the recorded history.
+   */
+  deferred?: boolean;
 }
+
+/** The recordings an engine reads when it starts and writes to (the stores of `EngineOptions`), as `attach` takes them. */
+export interface EngineStores {
+  columns: ColumnStore | null; footprint: FootprintStore | null; prints: PrintStore | null; flow: FlowStore | null; absorption: AbsorptionStore | null;
+  coverage: CoverageStore | null; liquidations: LiquidationStore | null; oi: OiStore | null;
+}
+
+/**
+ * What an engine started without its recordings (`deferred`) was given until `attach`, in order: each trade and liquidation as it came (with
+ * the price the liquidation was placed at), and each pass's coverage of the trades and the books it sampled (with the step each was valued on).
+ */
+type Note =
+  | { k: 'trade'; at: number; trade: TradeEvent }
+  | { k: 'liquidation'; at: number; event: LiquidationEvent; price: { price: number; at: number } | null }
+  | { k: 'pass'; at: number; passes: [id: string, live: boolean, last: number][]; books: ValuedBook[] | null }
+  | { k: 'end'; at: number; id: string };
+/** At most this many notes are kept; past that they are let go, and `attach` builds the recorders from the recordings alone. */
+const NOTES_MAX = 100_000;
+/**
+ * Before `attach`, a trade stamped this long before the engine started is not taken live (a venue sending its recent trades again as it
+ * connects, hours of them from dYdX): only the recordings can say whether it was counted already, and `attach` plays it in with them.
+ */
+const RESENT_MS = 10_000;
 
 /** What a page asks a recovery for: its markets, the most wanted first (the chart market), and the windows to fill, in order (the bar under way, then the one before). */
 export interface RecoveryRequest { ids: string[]; windows: { from: number; to: number }[] }
@@ -133,19 +161,32 @@ export function packColumns(results: readonly { instrumentId: string; step: numb
 }
 
 export class Engine {
-  readonly recorder: DepthRecorder;
-  readonly footprints: FootprintRecorder;
-  readonly printStream: PrintStream;
+  // The recorders are built again when the recordings come after the start (`attach`).
+  recorder!: DepthRecorder;
+  footprints!: FootprintRecorder;
+  printStream!: PrintStream;
   /** Taker buys and sells per instrument per second (the CVD column). */
-  readonly flows: FlowRecorder;
+  flows!: FlowRecorder;
   /** Market orders rebuilt from their fills: the prints and the size statistics count these. */
-  readonly orders: OrderBuilder;
+  orders: OrderBuilder;
   /** Absorption candidates and window statistics, from every fill once. */
-  readonly absorption: AbsorptionRecorder;
+  absorption!: AbsorptionRecorder;
   /** When each instrument's trades were recorded (shared/coverage.ts): a minute with nothing in it told apart from one nobody recorded. */
-  readonly tradeCoverage: TradeCoverage;
+  tradeCoverage!: TradeCoverage;
   /** How far the recordings reached when this engine started (see shared/restart.ts). */
-  readonly #recorded: RecordedBefore;
+  #recorded!: RecordedBefore;
+  /** Whether the recordings are still to come (`deferred`, until `attach`). */
+  #waiting = false;
+  /** What came since the start while they are (null when not, or once more came than `NOTES_MAX`). */
+  #notes: Note[] | null = null;
+  /** Open-interest readings taken before the recordings were attached: they are written when they are. */
+  #oiUnsaved: OiReading[] = [];
+  /** When this engine was made (its clock). */
+  readonly #startedAt: number;
+  /** The time of the note being played again (`attach`): the recorders read it as theirs meanwhile. */
+  #replayAt: number | null = null;
+  readonly #clock = (): number => this.#replayAt ?? this.#now();
+  readonly #scale: number;
   /** Absorption groups found and minutes settled since the last pass. */
   onAbsorption: (found: { groups: AbsorptionGroup[]; minutes: AbsorptionMinute[] }) => void = () => {};
   /** Called with the books that changed since the last call (the full current set), about four times a second at most. */
@@ -156,7 +197,7 @@ export class Engine {
   /** Liquidations that are new. */
   onLiquidations: (fresh: Liquidation[]) => void = () => {};
   /** Liquidations reported by the venues that publish them, kept with the other recordings (in this browser, a day of them). */
-  readonly liquidationStream: LiquidationStream;
+  liquidationStream!: LiquidationStream;
   /** Every market order completed since the last pass, for the trade dust (never stored); null when nobody draws it. */
   onTape: ((batch: TapeBatch) => void) | null = null;
   /** A new open-interest reading, the moment it lands (the venue's socket or its REST poll): the page shows it at once instead of asking. */
@@ -188,7 +229,7 @@ export class Engine {
   readonly #candles = new Map<string, LiveCandle>();
   readonly #oiLive = new Map<string, OiRow[]>();
   /** Where the open-interest readings outlive the page (the browser's recordings), and how long they are kept there. */
-  readonly #oiStore: OiStore | null;
+  #oiStore: OiStore | null = null;
   readonly #retentionMs: number;
   readonly #oiAsked = new Map<string, number>();
   /** When (on this clock) each venue's socket last brought an open-interest reading: the WS venues skip REST while this is fresh. */
@@ -203,27 +244,20 @@ export class Engine {
   #timer: ReturnType<typeof setInterval> | null = null;
   #hydration: ReturnType<typeof setTimeout> | null = null;
 
-  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = webGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, coverage = null, liquidations = null, oi = null, retentionMs = BROWSER_RETENTION_MS, historyFetch = webHistoryFetch, recoveryBudget = RECOVERY_BUDGET, gridSteps }: EngineOptions = {}) {
-    this.#oiStore = oi; this.#retentionMs = retentionMs;
-    if (oi) {
-      // One row per venue and minute, at the minute's start, as `#applyLiveOi` keeps them: of a minute's rows the newest reading by its
-      // own time (`at`; an older build's row has none and was stored at the reading's own time), whichever build or tab wrote it.
-      const minutes = new Map<string, { row: OiReading; at: number }>();
-      for (const r of oi.load(now() - retentionMs)) {
-        const at = typeof r.at === 'number' && Number.isFinite(r.at) && r.at > 0 ? r.at : r.t;
-        const key = `${r.venue}|${Math.floor(r.t / 60_000) * 60_000}`, held = minutes.get(key);
-        if (!held || at > held.at) minutes.set(key, { row: r, at });
-      }
-      for (const { row: r, at } of minutes.values()) {
-        let list = this.#oiLive.get(r.venue); if (!list) { list = []; this.#oiLive.set(r.venue, list); }
-        list.push({ observationTimestamp: Math.floor(r.t / 60_000) * 60_000, base: r.base, ...(r.quote !== undefined ? { quote: r.quote } : {}) });
-        this.#oiNewest.set(r.venue, Math.max(this.#oiNewest.get(r.venue) ?? 0, at));
-      }
-      for (const list of this.#oiLive.values()) list.sort((a, b) => Number(a.observationTimestamp) - Number(b.observationTimestamp));
-    }
+  constructor({ coin = BTC, tier = coin.tier, venues = browserVenues(coin), now = Date.now, get = webGet, ping = defaultPing, columns = null, footprint = null, prints = null, flow = null, absorption = null, coverage = null, liquidations = null, oi = null, retentionMs = BROWSER_RETENTION_MS, historyFetch = webHistoryFetch, recoveryBudget = RECOVERY_BUDGET, gridSteps, deferred = false }: EngineOptions = {}) {
+    this.#retentionMs = retentionMs;
     this.#coin = coin; this.#venues = venues; this.#now = now; this.#get = get; this.#ping = ping; this.#historyFetch = historyFetch; this.#recoveryBudget = recoveryBudget;
     // A coin that trades less than BTC keeps smaller trades, groups and map cells (shared/coins.ts SCALES); BTC's are 1.
-    const scale = SCALES[tier] ?? 1;
+    this.#scale = SCALES[tier] ?? 1;
+    this.#startedAt = now();
+    this.orders = new OrderBuilder(now);
+    this.#build({ columns, footprint, prints, flow, absorption, coverage, liquidations, oi }, gridSteps);
+    if (deferred) { this.#waiting = true; this.#notes = []; }
+  }
+
+  /** The recorders, built from the recordings (at the start, or when they come later: `attach`). */
+  #build({ columns, footprint, prints, flow, absorption, coverage, liquidations, oi }: EngineStores, gridSteps?: ReadonlyMap<string, number>): void {
+    const now = this.#clock, retentionMs = this.#retentionMs, scale = this.#scale;
     // A page keeps far fewer merged windows than a server (about 6 MB at most): it holds a day, and it may be a phone.
     this.recorder = new DepthRecorder({ store: columns, now, retentionMs, minBinUsd: MIN_BIN_USD * scale, mergedCacheBins: 500_000, ...(gridSteps?.size ? { steps: new Map(gridSteps) } : {}) });
     this.footprints = new FootprintRecorder(footprint, now, retentionMs, scale);
@@ -234,12 +268,92 @@ export class Engine {
     if (unknown) { const list: Print[] = []; this.printStream.eachIn(unknown.from, unknown.to, p => list.push(p)); this.footprints.fillLists(unknown.from, unknown.to, list); }
     this.liquidationStream = new LiquidationStream(liquidations, now, retentionMs, LIQUIDATION_FLOOR_USD * scale);
     this.flows = new FlowRecorder(flow, now, Math.min(retentionMs, FLOW_MEMORY_MS), retentionMs);
-    this.orders = new OrderBuilder(now);
     // It holds the whole day the page keeps, to answer the absorption column without reading the recordings (`start` reads it back).
     this.absorption = new AbsorptionRecorder(absorption, now, { retentionMs, floorUsd: GROUP_FLOOR_USD * scale, memoryMs: retentionMs });
     this.tradeCoverage = new TradeCoverage(coverage, now, retentionMs);
+    this.#loadedThrough.clear();
     for (const id of this.footprints.instruments) this.#loadedThrough.set(id, this.footprints.lastMinute(id) + COLUMN_MS);
     this.#recorded = new RecordedBefore(this.flows, this.footprints);
+    this.#oiStore = oi;
+    if (oi) this.#loadOi(oi);
+  }
+
+  /**
+   * The open-interest readings kept, into the live series: one row per venue and minute, at the minute's start, as `#applyLiveOi` keeps them:
+   * of a minute's rows the newest reading by its own time (`at`; an older build's row has none and was stored at the reading's own time),
+   * whichever build or tab wrote it. A minute already read live (the recordings came after the start) keeps that reading.
+   */
+  #loadOi(oi: OiStore): void {
+    const minutes = new Map<string, { row: OiReading; at: number }>();
+    for (const r of oi.load(this.#now() - this.#retentionMs)) {
+      const at = typeof r.at === 'number' && Number.isFinite(r.at) && r.at > 0 ? r.at : r.t;
+      const key = `${r.venue}|${Math.floor(r.t / 60_000) * 60_000}`, held = minutes.get(key);
+      if (!held || at > held.at) minutes.set(key, { row: r, at });
+    }
+    const live = new Set<string>();
+    for (const [venue, list] of this.#oiLive) for (const row of list) live.add(`${venue}|${Number(row.observationTimestamp)}`);
+    for (const [key, { row: r, at }] of minutes) {
+      if (live.has(key)) continue;
+      let list = this.#oiLive.get(r.venue); if (!list) { list = []; this.#oiLive.set(r.venue, list); }
+      list.push({ observationTimestamp: Math.floor(r.t / 60_000) * 60_000, base: r.base, ...(r.quote !== undefined ? { quote: r.quote } : {}) });
+      this.#oiNewest.set(r.venue, Math.max(this.#oiNewest.get(r.venue) ?? 0, at));
+    }
+    for (const list of this.#oiLive.values()) list.sort((a, b) => Number(a.observationTimestamp) - Number(b.observationTimestamp));
+  }
+
+  /** Keep `note` for `attach`, while the recordings are still to come; past `NOTES_MAX` the notes are let go. */
+  #note(note: Note): void {
+    if (!this.#notes) return;
+    if (this.#notes.length < NOTES_MAX) this.#notes.push(note);
+    else { this.#notes = null; console.warn(`more than ${NOTES_MAX} trades came before the recordings: what came meanwhile is kept from the live recording alone`); }
+  }
+
+  /** Whether the recordings are still to come (`deferred`, before `attach`). */
+  get waiting(): boolean { return this.#waiting; }
+
+  /**
+   * The recordings, for an engine started without them (`deferred`): the recorders are built from them as a start with them builds them, and
+   * what came since the start is played into those recorders in order, each at its own time, as if the recordings had been there all along:
+   * a trade they hold already is not counted again (shared/restart.ts), and nothing recorded live is lost. What the replay finds is not
+   * handed on as new (the page asks for the history again: it was answered from the live recording meanwhile). Null: no recordings come
+   * (they could not be opened), and the recorders are built afresh all the same, so the trades held back (`RESENT_MS`) are taken.
+   */
+  attach(stores: EngineStores | null, gridSteps?: ReadonlyMap<string, number>): void {
+    if (!this.#waiting) return;
+    // Notes let go (`NOTES_MAX`): what came meanwhile is not in the recorders built here (a gap the page can recover).
+    const notes = this.#notes ?? [], live = this.recorder.steps;
+    this.#waiting = false; this.#notes = null;
+    this.#build(stores ?? { columns: null, footprint: null, prints: null, flow: null, absorption: null, coverage: null, liquidations: null, oi: null }, gridSteps);
+    const orders = new OrderBuilder(this.#clock);
+    try {
+      for (const note of notes) {
+        this.#replayAt = note.at;
+        if (note.k === 'trade') this.#take(note.trade, orders, note.at);
+        else if (note.k === 'liquidation') this.liquidationStream.ingest([note.event], () => note.price);
+        else if (note.k === 'end') this.tradeCoverage.end(note.id, note.at);
+        else {
+          for (const [id, isLive, last] of note.passes) this.tradeCoverage.pass(id, isLive, note.at, last);
+          // A book sampled on another step than the recordings keep for it now (its first minutes were recorded on another) is left out, and
+          // so is one whose minute the recordings hold a later minute after (the recorded history reached past it): only the newest held
+          // minute takes more samples.
+          const minute = Math.floor(note.at / COLUMN_MS) * COLUMN_MS;
+          const books = note.books?.filter(book => {
+            const step = this.recorder.steps.get(book.instrumentId), held = this.recorder.columns.get(book.instrumentId);
+            return (step === undefined || step === live.get(book.instrumentId)) && !((held?.[held.length - 1]?.t ?? -Infinity) > minute);
+          });
+          if (books?.length) this.recorder.sample(books, note.at);
+          this.#record(orders.drain(false), false);
+          this.absorption.step();
+        }
+      }
+    } finally { this.#replayAt = null; }
+    this.orders = orders;
+    // Already shown as they came, or (held back) not live: the page asks for the history again.
+    this.printStream.takeFresh(); this.liquidationStream.takeFresh(); this.flows.take(); this.absorption.takeFresh();
+    if (this.#oiStore && this.#oiUnsaved.length) this.#oiStore.save(this.#oiUnsaved, this.#now() - this.#retentionMs);
+    this.#oiUnsaved = [];
+    this.#lastStatus = ''; this.#lastTick = '';
+    if (this.#timer) this.#hydrateLater();
   }
 
   // ---- Venues ---------------------------------------------------------------------------------------------------------------------
@@ -258,6 +372,7 @@ export class Engine {
         this.#runs.delete(venue.id);
         const id = running.book.instrumentId;
         this.tradeCoverage.end(id, now);
+        this.#note({ k: 'end', at: now, id });
         this.#last.delete(id); this.#candles.delete(id);
       }
     }
@@ -286,7 +401,12 @@ export class Engine {
 
   start(intervalMs = 250): void {
     if (!this.#timer) this.#timer = setInterval(() => this.step(), intervalMs);
-    if (!this.#hydration) { this.#hydration = setTimeout(() => { void this.absorption.hydrate(); }, HYDRATE_AFTER_MS); (this.#hydration as { unref?: () => void }).unref?.(); }
+    if (!this.#hydration) this.#hydrateLater();
+  }
+  /** The absorption recorder reads the rest of its day back a moment from now (again after `attach`, from the recordings it brought). */
+  #hydrateLater(): void {
+    if (this.#hydration) clearTimeout(this.#hydration);
+    this.#hydration = setTimeout(() => { void this.absorption.hydrate(); }, HYDRATE_AFTER_MS); (this.#hydration as { unref?: () => void }).unref?.();
   }
   stop(): void {
     if (this.#timer) clearInterval(this.#timer); this.#timer = null;
@@ -297,11 +417,16 @@ export class Engine {
 
   /** One pass: value the books, record, and tell the page what changed. */
   step(now = this.#now()): void {
-    const books = this.#value(now);
+    const books = this.#value(now), note: Extract<Note, { k: 'pass' }> | null = this.#notes ? { k: 'pass', at: now, passes: [], books: null } : null;
     // The trades of each instrument are covered while every feed carrying them is live (a failed one up to its last message).
-    for (const run of this.#runs.values()) this.tradeCoverage.pass(run.book.instrumentId, run.trades.every(c => c.state === 'live'), now, Math.min(...run.trades.map(c => c.lastUpdate || now)));
+    for (const run of this.#runs.values()) {
+      const live = run.trades.every(c => c.state === 'live'), last = Math.min(...run.trades.map(c => c.lastUpdate || now));
+      this.tradeCoverage.pass(run.book.instrumentId, live, now, last);
+      note?.passes.push([run.book.instrumentId, live, last]);
+    }
     // A pass with no book yet must not use up the sample interval, or the first real sample waits five seconds.
-    if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); }
+    if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); if (note) note.books = books; }
+    if (note) this.#note(note);
     if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.liquidationStream.flush(); this.flows.flush(); this.absorption.flush(); this.tradeCoverage.flush(); }
     if (now - this.#lastFlowPush >= FLOW_SEC) { this.#lastFlowPush = now; const items = this.flows.take(); if (items.length) this.onFlow(items); }
     if (now - this.#lastPrune >= PRUNE_MS) { this.#lastPrune = now; this.recorder.prune(now); }
@@ -328,11 +453,12 @@ export class Engine {
   flush(): void { this.#takeOrders(true); this.recorder.flush(); this.footprints.flush(true); this.printStream.flush(); this.flows.flush(true); this.absorption.step(true); this.absorption.flush(); this.tradeCoverage.flush(true); }
 
   /** Hand the market orders that are complete (all of them with `all`) to the prints and the size statistics. */
-  #takeOrders(all: boolean): void {
-    const orders = this.orders.drain(all);
+  #takeOrders(all: boolean): void { this.#record(this.orders.drain(all), true); }
+  /** Completed market orders into the prints and the size statistics; `live`: handed on as they come (the trade dust, new prints), not played again (`attach`). */
+  #record(orders: MarketOrder[], live: boolean): void {
     if (!orders.length) return;
-    if (this.onTape) this.onTape(packTape(orders, this.#tapeSeq++));
-    this.printStream.ingest(orders.map(orderRow));
+    if (live && this.onTape) this.onTape(packTape(orders, this.#tapeSeq++));
+    this.printStream.ingest(orders.map(orderRow), live);
     this.footprints.countOrders(orders);
   }
 
@@ -354,24 +480,40 @@ export class Engine {
   // ---- Trades ---------------------------------------------------------------------------------------------------------------------
 
   readonly #trade = (trade: TradeEvent): void => {
-    // A trade the recordings already hold (a venue sending its recent trades again after a reload) is counted nowhere a second time.
-    if (this.#recorded.holds(trade.instrumentId, trade.t)) return;
-    const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
-    this.flows.ingest([row]);
-    // A trade seen before (a feed that replays after a reconnect) is in the footprint already, and must not count twice in the candle either.
-    if (this.footprints.ingest([row]) === 0) return;
-    this.tradeCoverage.trade(trade.instrumentId, trade.tradeId, trade.t, this.#now());
-    // The fill joins its market order; prints and size statistics are taken from orders once they are complete (`step`).
-    for (const f of this.orders.add([{ ...row, order: trade.order }])) this.absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side);
     const now = this.#now();
+    if (this.#notes) {
+      this.#note({ k: 'trade', at: now, trade: { ...trade } });
+      if (trade.t < this.#startedAt - RESENT_MS) return;
+    }
+    if (!this.#take(trade, this.orders, now)) return;
     this.#last.set(trade.instrumentId, { price: trade.price, at: now, t: trade.t });
     const start = Math.floor(trade.t / COLUMN_MS) * COLUMN_MS, candle = this.#candles.get(trade.instrumentId);
     if (!candle || start > candle[0]) this.#candles.set(trade.instrumentId, [start, trade.price, trade.price, trade.price, trade.price, trade.amount]);
     else if (start === candle[0]) { candle[2] = Math.max(candle[2], trade.price); candle[3] = Math.min(candle[3], trade.price); candle[4] = trade.price; candle[5] += trade.amount; }
   };
 
+  /**
+   * A trade into the recordings (`orders` builds its market order): false when they hold it already. A trade the recordings already hold (a
+   * venue sending its recent trades again after a reload) is counted nowhere a second time.
+   */
+  #take(trade: TradeEvent, orders: OrderBuilder, now: number): boolean {
+    if (this.#recorded.holds(trade.instrumentId, trade.t)) return false;
+    const row = { instrumentId: trade.instrumentId, tradeId: trade.tradeId, side: trade.side, price: trade.price, notionalUsd: trade.notionalUsd, sourceTimestamp: trade.t };
+    this.flows.ingest([row]);
+    // A trade seen before (a feed that replays after a reconnect) is in the footprint already, and must not count twice in the candle either.
+    if (this.footprints.ingest([row]) === 0) return false;
+    this.tradeCoverage.trade(trade.instrumentId, trade.tradeId, trade.t, now);
+    // The fill joins its market order; prints and size statistics are taken from orders once they are complete (`step`).
+    for (const f of orders.add([{ ...row, order: trade.order }])) this.absorption.add(f.instrumentId, f.t, f.price, f.usd, f.side);
+    return true;
+  }
+
   /** A liquidation a venue reported: placed at the instrument's last traded price when the venue gives a bankruptcy price. */
-  readonly #liquidation = (event: LiquidationEvent): void => { this.liquidationStream.ingest([event], id => { const last = this.#last.get(id); return last ? { price: last.price, at: last.t } : null; }); };
+  readonly #liquidation = (event: LiquidationEvent): void => {
+    const last = this.#last.get(event.instrumentId), price = last ? { price: last.price, at: last.t } : null;
+    this.#note({ k: 'liquidation', at: this.#now(), event: { ...event }, price });
+    this.liquidationStream.ingest([event], id => id === event.instrumentId ? price : null);
+  };
 
   /** An open-interest reading a venue's socket pushed (Bybit's ticker, OKX's open-interest channel): taken straight into the live series. */
   readonly #oiReading = (event: OiEvent): void => { this.#applyLiveOi(venueOf(event.instrumentId), event, true, event.instrumentId); };
@@ -593,7 +735,10 @@ export class Engine {
       list.push({ observationTimestamp: minute, base: reading.base, ...quote });
       while (list.length && Number(list[0]!.observationTimestamp) < reading.t - OI_KEEP_MS) list.shift();
     }
-    this.#oiStore?.save([{ venue, t: minute, at: reading.t, base: reading.base, ...quote }], reading.t - this.#retentionMs);
+    const row = { venue, t: minute, at: reading.t, base: reading.base, ...quote };
+    // Before the recordings come (`attach`) the reading waits to be written with them: one a venue and minute, the minute's newest.
+    if (this.#waiting) { const i = this.#oiUnsaved.findIndex(r => r.venue === venue && r.t === minute); if (i < 0) this.#oiUnsaved.push(row); else this.#oiUnsaved[i] = row; }
+    else this.#oiStore?.save([row], reading.t - this.#retentionMs);
     if (instrumentId) this.onOiLive(instrumentId, { t: reading.t, base: reading.base, ...quote });
   }
 

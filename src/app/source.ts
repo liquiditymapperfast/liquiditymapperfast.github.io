@@ -48,6 +48,11 @@ export interface LiveHandlers {
   onOiPush?(items: unknown[]): void;
   /** A gap of `id` was filled from the venue's trade history over [from, to): recovered trades, never to flash or sound. */
   onRecovered?(id: string, from: number, to: number): void;
+  /**
+   * The source's recordings and recorded history are in (the browser reads them after its feeds start): where the recording begins has
+   * moved back, and the flow, answered from the live seconds alone until now, is asked for again.
+   */
+  onHistory?(): void;
 }
 
 /** Executions per candle for a window, as the footprint draws them. */

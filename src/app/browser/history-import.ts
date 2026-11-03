@@ -10,7 +10,8 @@ import type { AbsorptionGroup, AbsorptionMinute, AbsorptionStep } from '../../sh
 /**
  * The recorded history (hlm-history): minute columns of the default books, and their taker flow, liquidations, open interest, large trades,
  * footprint minutes, absorption candidates and the stretches their trades were recorded over, recorded on a server by the same rules as this
- * page records them, one compressed file per hour. Read once when the page opens, before the engine starts, so the panes show the day before the visit instead of starting empty. A
+ * page records them, one compressed file per hour. Read once when the page opens, into the recordings, while the engine already runs on the
+ * live feeds; the engine is given them when they are in (shared/engine.ts `attach`), so the panes show the day before the visit. A
  * minute the page already holds with at least as many samples stays as it is, and a book whose minutes here lie on another grid step than
  * the page's own keeps its own (the engine holds one step per book).
  */
@@ -395,6 +396,9 @@ export interface ImportOptions {
   fetcher?: Fetch;
 }
 
+/** The next task: what runs on this thread between (the engine's passes) gets its turn. */
+const nextTask = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
+
 /**
  * Reads the hours the page lacks, newest first (what runs out of time is the oldest), and adds their minutes; resolves with what it did and
  * the service's grid steps, never rejects.
@@ -423,11 +427,14 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
           const r = await fetcher(`${url}/m1/${String(hour).padStart(13, '0')}.bin`, { signal: abort.signal });
           const file = r.ok ? decodeHour(await r.arrayBuffer()) : null;
           if (!file || file.hour !== hour) { done.failed++; continue; }
+          // Decoding, taking the columns and taking the rest are each a task of their own: the page's engine runs its live feeds on this
+          // thread meanwhile, and an hour in one go held the book still for a few hundred milliseconds.
+          await nextTask();
           const take = planImport(held, file.columns, since, before, latest.steps);
           // What is added counts as held, so a later hour (or a minute sent twice) is judged against it.
           for (const c of take) { held.samples.set(`${c.inst}|${c.column.t}`, c.column.n); if (!held.steps.has(c.inst)) held.steps.set(c.inst, c.step); }
           done.columns += add(take);
-          if (addRows) done.rows += addRows(within(file.rows, since, before));
+          if (addRows) { await nextTask(); done.rows += addRows(within(file.rows, since, before)); }
           done.hours++;
           // A sealed hour (the service answers it `immutable`; an hour still open, or a copy of it a cache kept, is not) will not change:
           // it is not read again (`Held.imported`).

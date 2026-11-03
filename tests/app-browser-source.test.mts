@@ -39,7 +39,7 @@ test('an engine that could not start says so, and nothing waits for it', async (
 test('an error in a worker that was running fails what was outstanding, and the worker is still asked after that', async () => {
   await quiet(async () => {
     const { worker, source } = make();
-    say(worker, { type: 'ready', persisted: false });
+    say(worker, { type: 'ready' });
     const pending = source.candles('x:BTC', '1m', 0, 1);
     await turn();
     assert.equal(worker.posted.filter(m => m.type === 'rpc').length, 1, 'the request was sent');
@@ -58,8 +58,10 @@ test('the source says what becomes of the recordings of this tab: not known yet,
   const later = Date.now() + 60_000;
   const { worker, source } = make();
   assert.equal(source.saving(later), 'starting', 'before the worker is ready');
-  say(worker, { type: 'ready', persisted: true });
-  assert.equal(source.saving(Date.now()), 'starting', 'ready, but the recorder role is asked for as the engine starts and takes a moment');
+  say(worker, { type: 'ready' });
+  assert.equal(source.saving(later), 'starting', 'ready, but the recordings are still being opened (the engine runs on the live feeds meanwhile)');
+  say(worker, { type: 'recordings', persisted: true });
+  assert.equal(source.saving(Date.now()), 'starting', 'open, but the recorder role is asked for once they are and takes a moment');
   assert.equal(source.saving(later), 'other', 'a minute on, still without the role: another tab has it');
   say(worker, { type: 'recording', recording: true });
   assert.equal(source.saving(later), 'here');
@@ -72,7 +74,8 @@ test('the source says what becomes of the recordings of this tab: not known yet,
   say(worker, { type: 'recording', recording: false, failed: true });
   assert.equal(source.saving(later), 'failed', 'its storage stopped, which is not another tab having the role');
   const memory = make();
-  say(memory.worker, { type: 'ready', persisted: false });
+  say(memory.worker, { type: 'ready' });
+  say(memory.worker, { type: 'recordings', persisted: false });
   assert.equal(memory.source.saving(later), 'memory', 'nothing is kept: saving is off or the browser does not allow it');
 });
 
@@ -104,4 +107,15 @@ test('a start that expects a listed market does not wait for a price, says every
   const two = await second;
   assert.equal(two.recorded['b:BTC']!.first, start, 'no venue of it live yet: still from the start');
   assert.equal(two.recorded['a:BTC']!.first, start + 60_000, 'its own, once it says it');
+});
+
+test('the worker says when the recorded history has landed, and the live handlers are told', () => {
+  const { worker, source } = make();
+  let told = 0;
+  source.connect({ onOpen() {}, onClose() {}, onLevels() {}, onTick() {}, onLayers() {}, onPrints() {}, onHistory: () => { told++; } });
+  say(worker, { type: 'ready' });
+  say(worker, { type: 'recordings', persisted: true });
+  assert.equal(told, 0);
+  say(worker, { type: 'history' });
+  assert.equal(told, 1);
 });

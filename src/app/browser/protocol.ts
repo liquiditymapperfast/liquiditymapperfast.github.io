@@ -53,7 +53,15 @@ export type FeedsIn =
   | ({ type: 'rpc'; id: number } & RpcCall);
 
 export type FeedsOut =
-  | { type: 'ready'; persisted: boolean }
+  /** The engine runs on the venues' sockets: the market list, the venues' candles, the open interest and the flow are answered from now on. */
+  | { type: 'ready' }
+  /** The recordings were opened (or cannot be: nothing is kept this session); the history is still being read. */
+  | { type: 'recordings'; persisted: boolean }
+  /**
+   * The engine has its recordings and the recorded history (or will have none): the questions about what was recorded, held until now, are
+   * answered, and the flow, answered meanwhile from the seconds since the page opened, is to be asked for again.
+   */
+  | { type: 'history' }
   /** The engine could not be started: nothing will be answered, so the page should say so instead of waiting. */
   | { type: 'failed'; error: string }
   | { type: 'levels'; frame: LevelsFrame }

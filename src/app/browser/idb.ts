@@ -11,8 +11,9 @@ import { clipCoverage, ownsTime, planAbsorption, planCoverage, planFootprint, tr
 
 /**
  * Recordings kept in this browser (IndexedDB): the same four stores the server keeps in SQLite. The recorders read everything they
- * need once at start (`load` is synchronous), so the database is read before the engine is built, and writes are queued and applied in
- * one transaction every half second or so. A write that fails is let go and writing is tried again after a growing pause (the connection
+ * need once at start (`load` is synchronous), so the database is read before the recorders are built (an engine that started without them
+ * builds them again when they come: shared/engine.ts `attach`), and writes are queued and applied every half second or so, in short
+ * transactions (`SLICE_MS`). A write that fails is let go and writing is tried again after a growing pause (the connection
  * opened again if the browser closed it), so a page open for days keeps saving; only a newer page taking the database over ends it.
  */
 
@@ -79,6 +80,14 @@ const withTimeout = <T>(work: Promise<T>, ms: number, late: Error): Promise<T> =
 const OPEN_TIMEOUT_MS = 10_000;
 /** After a failed write the next waits twice as long each time, up to this. */
 const RETRY_MAX_MS = 60_000;
+/**
+ * How long a write issues its requests before that slice is committed and the rest waits for the next task. The worker that writes runs
+ * the live feeds too: the recorded history read in made batches of thousands of requests, each holding the book and the flow still for
+ * most of a second (2026-11-03).
+ */
+const SLICE_MS = 8;
+/** At most this many rows are put by one queued write (`SLICE_MS` can cut only between writes). */
+const PUTS_PER_WRITE = 250;
 
 /**
  * What becomes of the writing: `failed` after a write that did not go through (`fatal`: a newer page took the database over, and this one
@@ -154,6 +163,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     request.onsuccess = () => { const cursor = request.result; if (cursor) { store.delete(cursor.primaryKey); cursor.continue(); } };
   };
   const write = (): Promise<void> => { const run = writing.then(writeNow); writing = run; return run; };
+  /** A batch is written a slice at a time (`SLICE_MS`), each slice its own transaction. */
   const writeNow = async (): Promise<void> => {
     timer = null;
     const ops = queue; queue = [];
@@ -168,9 +178,11 @@ export async function openRecordings(name: string, since: number, canWrite: () =
         }
         lost = false; watch(db);
       }
-      const tx = db.transaction(STORES, 'readwrite');
-      for (const op of ops) op(tx);
-      await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+      for (let at = 0; at < ops.length;) {
+        const tx = db.transaction(STORES, 'readwrite'), started = performance.now();
+        do ops[at++]!(tx); while (at < ops.length && performance.now() - started < SLICE_MS);
+        await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+      }
       if (failures) { failures = 0; events.recovered?.(); }
     } catch (error) {
       // The batch is let go (what it held stays on screen, and a minute that changes again is written again) and writing goes on after a
@@ -233,7 +245,12 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     save: (rows, expireBefore) => {
       for (const row of rows) everyPrint.set(printKey(row), { ...row, k: printKey(row) });
       for (const [key, row] of everyPrint) if (row.t < expireBefore) everyPrint.delete(key);
-      enqueue(tx => { const store = tx.objectStore('prints'); for (const row of rows) store.put({ ...row, k: printKey(row) } satisfies PrintRow); prune(tx, 'prints', expireBefore); });
+      // A few hundred to a write: an hour of the recorded history brings thousands, and a write is cut into slices only between them.
+      for (let i = 0; i < rows.length; i += PUTS_PER_WRITE) {
+        const part = rows.slice(i, i + PUTS_PER_WRITE);
+        enqueue(tx => { const store = tx.objectStore('prints'); for (const row of part) store.put({ ...row, k: printKey(row) } satisfies PrintRow); });
+      }
+      enqueue(tx => prune(tx, 'prints', expireBefore));
     },
     close: () => {},
   };

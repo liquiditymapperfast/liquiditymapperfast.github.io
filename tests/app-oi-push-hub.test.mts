@@ -157,3 +157,18 @@ test('oiTail: the tail from its first bar on, the held ones before it and from w
   assert.deepEqual(oiTail(held, [bar(4, 40)], 3, 0), [bar(1, 1), bar(2, 2), bar(3, 3), bar(4, 40)], 'a tail starting later keeps the held bar before it');
   assert.deepEqual(oiTail(held, [], 3, 2), [bar(2, 2), bar(3, 3), bar(4, 4)], 'nothing read: the held ones');
 });
+
+test('when the recordings and the recorded history land (the browser reads them after its feeds start), open interest is read whole again and the flow asked for again', async () => {
+  const r = await rig('binance:BTCUSDT');
+  await load(r, history(100));
+  // The 20-second refresh would read only the newest bars: what the recordings kept further back would never be shown.
+  const loads = r.hub.flow.loads;
+  r.source.handlers!.onHistory!();
+  await turn();
+  const asked = r.source.asked.shift();
+  assert.ok(asked, 'open interest is asked for again');
+  assert.equal(asked.to - asked.from, 501 * MIN, 'whole, not only its last bars');
+  asked.resolve(history(200)); await turn();
+  assert.deepEqual(r.store.state.oi.at(0), [now0 - 39 * MIN, 200, 200, 200, 200]);
+  assert.ok(r.hub.flow.loads > loads, 'the flow held (the live seconds alone) is asked for again');
+});

@@ -101,7 +101,8 @@ export class BrowserSource implements DataSource, VenueControl {
   recording = false; persisted = false;
   /** This tab's storage stopped working: nothing it records is kept from here on. */
   storageFailed = false;
-  #readyAt = 0;
+  /** When the worker said whether its recordings opened (0: not yet). */
+  #openedAt = 0;
 
   /** `historyHours`: how many of the recorded history's latest hours the worker reads on opening (app/history-window.ts), a day by default. */
   constructor(worker: Worker, { persist = true, coin = BTC, tier = 0, historyHours = DAY_HOURS }: { persist?: boolean; coin?: Coin; tier?: number; historyHours?: number } = {}) {
@@ -120,7 +121,9 @@ export class BrowserSource implements DataSource, VenueControl {
     worker.onmessage = (event: MessageEvent<FeedsOut>) => {
       const message = event.data;
       switch (message.type) {
-        case 'ready': this.#started = true; this.persisted = message.persisted; this.#readyAt = Date.now(); ready(); break;
+        case 'ready': this.#started = true; ready(); break;
+        case 'recordings': this.persisted = message.persisted; this.#openedAt = Date.now(); break;
+        case 'history': this.#handlers?.onHistory?.(); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
@@ -166,15 +169,15 @@ export class BrowserSource implements DataSource, VenueControl {
   }
 
   /**
-   * What becomes of what this tab records, for the status bar. A moment after the worker is ready it may not have been given the recorder
-   * role yet (the role is asked for as the engine starts), and that moment is not the same as another tab holding it.
+   * What becomes of what this tab records, for the status bar. The engine runs before its recordings are open (they are read meanwhile), and
+   * a moment after they are it may not have been given the recorder role yet: neither moment is the same as another tab holding it.
    */
   saving(now: number): SavingState {
-    if (!this.#started) return 'starting';
+    if (!this.#started || !this.#openedAt) return 'starting';
     if (!this.persisted) return 'memory';
     if (this.storageFailed) return 'failed';
     if (this.recording) return 'here';
-    return now - this.#readyAt < 3_000 ? 'starting' : 'other';
+    return now - this.#openedAt < 3_000 ? 'starting' : 'other';
   }
 
   #fail: (error: Error) => void = () => {};
