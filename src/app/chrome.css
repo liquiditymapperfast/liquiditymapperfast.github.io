@@ -493,7 +493,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
    and figures on 14 px lines, the keys of the title bar 16 x 14. */
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane .pane-head { --head-key: 20px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(select, button:not(.help, .pane-x, .pane-more, [data-fit="key"])) { box-sizing: border-box; height: 20px; min-height: 0; padding-top: 0; padding-bottom: 0; }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(strong, .ctl, .readout) { line-height: 14px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(.ctl, .readout) { line-height: 14px; }
 /* A pane's name in the desktop's title type: bold at the system size (8 pt, 11 px), as the bar's deck names and a window's title are, on a line
    as tall as the controls, so the first line is 20 px in every pane. The title-bar keys of a pane under the map stand outside the line (absolute):
    their own 20 px box from the same top centres them on it (at top: 3px they sat 3 to 4 px above the name). */
