@@ -1222,7 +1222,9 @@ export class HeatPane {
     this.#legendNeed = Math.min(LEGEND_NEED_PX, Math.ceil(Math.max(detailNatural, wide(phone ? `${name}  ${state.timeframe}` : title) + tailW) / 16) * 16);
     const plateW = Math.max(titleW + tailW, detailW, noteW, scriptsW) + 14, plateH = textH + (scriptRows ? scriptRows * lineH + 2 : 0);
     this.#legendBox = { right: 6 + plateW, bottom: 6 + dy + plateH };
-    ctx.save(); ctx.translate(0, dy);
+    // Shifted by a translation alone, undone after: a save and restore here would also take back the font, alignment and colours this leaves set,
+    // which what is drawn after the legend inherits (Sol: the crosshair's labels took the title's 600 12px).
+    if (dy) ctx.translate(0, dy);
     ctx.globalAlpha = 0.82; ctx.fillStyle = p.panel; ctx.beginPath(); ctx.roundRect(6, 6, plateW, plateH, Math.min(6, this.#radius * 2)); ctx.fill(); ctx.globalAlpha = 1;
     ctx.textAlign = 'left'; ctx.fillStyle = p.text; ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
     ctx.fillText(shownTitle, 12, 16);
@@ -1243,7 +1245,7 @@ export class HeatPane {
       y += lineH;
     });
     if (moreScripts) { ctx.fillStyle = p.muted; ctx.fillText(moreScripts, 12, y); }
-    ctx.restore();
+    if (dy) ctx.translate(0, -dy);
     // The buttons are page elements over this canvas, placed in the pane's own pixels (the plot starts after the columns left of it).
     const canvas = ctx.canvas as HTMLCanvasElement;
     this.onScriptLegend(places.map(q => ({ id: q.id, x: canvas.offsetLeft + this.#left + q.x, y: canvas.offsetTop + dy + q.y })));

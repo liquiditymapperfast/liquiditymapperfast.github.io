@@ -142,7 +142,9 @@ export class UiGlass {
   });
   #moves = new MutationObserver(() => this.schedule());
   #resize = (): void => { this.#size(); this.schedule(); };
-  #visible = (): void => { if (!document.hidden) this.schedule(); };
+  #visible = (): void => { if (document.hidden) this.#letGo(); else this.schedule(); };
+  /** The hand leaves the glass: what it did last is not laid later (a page hidden, a context lost, the glass off). */
+  #letGo(): void { this.#hand = null; this.#wakeFrom = null; this.#pushed = null; }
   /**
    * The hand over the glass (glass/touch.ts): where the pointer is (window CSS px, its event's time), and where its wake was last laid to;
    * both null while it is away from the glass. The splitter being dragged, and where its middle line was a frame ago.
@@ -173,7 +175,7 @@ export class UiGlass {
     this.canvas.addEventListener('webglcontextlost', event => {
       event.preventDefault();
       if (this.#frame) cancelAnimationFrame(this.#frame); this.#frame = 0;
-      this.#gl = null; this.#prog = null; this.#over = null; this.#field = null; this.#mediumKey = ''; this.#loc.clear(); this.#overLoc.clear();
+      this.#gl = null; this.#prog = null; this.#over = null; this.#field = null; this.#mediumKey = ''; this.#loc.clear(); this.#overLoc.clear(); this.#letGo();
       if (this.#on) document.documentElement.dataset.material = 'solid';
     });
     this.canvas.addEventListener('webglcontextrestored', () => {
@@ -225,7 +227,7 @@ export class UiGlass {
       document.removeEventListener('visibilitychange', this.#visible);
       document.removeEventListener('pointermove', this.#onMove, { capture: true });
       document.removeEventListener('pointerdown', this.#onDown, { capture: true });
-      this.#hand = null; this.#wakeFrom = null; this.#pushed = null;
+      this.#letGo();
       window.clearInterval(this.#poll);
       if (this.#frame) cancelAnimationFrame(this.#frame); this.#frame = 0;
       this.#sparks = [];
@@ -295,7 +297,9 @@ export class UiGlass {
     if (!this.#touching()) { this.#pushed = null; return; }
     const hand = this.#hand, from = this.#wakeFrom;
     if (hand && from) {
-      const px = Math.hypot(hand.x - from.x, hand.y - from.y), amp = wakeAmp(px, frameMs);
+      // A move older than a break (the page was hidden, the card lost its context, motion was reduced, between the move and this frame) is
+      // the past: the wake starts again from where the hand is, never laid now as if it had just happened (Sol).
+      const px = Math.hypot(hand.x - from.x, hand.y - from.y), amp = now - hand.at > WAKE_BREAK_MS ? 0 : wakeAmp(px, frameMs);
       if (amp > 0) field.addPath({ x0: from.x, y0: from.y, x1: hand.x, y1: hand.y, amp, width: WAKE_WIDTH }, now);
       this.#wakeFrom = { x: hand.x, y: hand.y };
     }
