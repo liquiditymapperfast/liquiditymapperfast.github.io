@@ -239,6 +239,31 @@ test('legacy OI migration freezes its rowid cutoff and preserves later receipt-t
   }
 });
 
+test('legacy Hyperliquid OI samples still waiting to become bars are halved once, with their USD, however many starts the migration takes', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hlm-oi-hl-legacy-')); const filePath = path.join(directory, 'history.sqlite');
+  const db = new DatabaseSync(filePath);
+  db.exec('CREATE TABLE oi_samples (instrument_id TEXT NOT NULL, source_timestamp INTEGER NOT NULL, received_at INTEGER NOT NULL, base REAL NOT NULL, quote REAL, quality TEXT NOT NULL, PRIMARY KEY (instrument_id, source_timestamp));');
+  const insert = db.prepare('INSERT INTO oi_samples VALUES (?, ?, ?, ?, ?, ?)');
+  // Hyperliquid's own two-sided figure, a minute apart, as a build from before both migrations stored its readings.
+  for (let index = 1; index <= 3; index += 1) insert.run('hyperliquid:BTC-PERP', index * 60_000, index * 60_000 + 1, 100 * index, 8_000_000 * index, 'native');
+  db.close();
+  let store: HistoryStore | null = null;
+  try {
+    for (let start = 0; start < 10; start += 1) {
+      store = new HistoryStore({ filePath, legacyOiMigrationMaxRows: 1 });
+      assert.equal(fields(store.db.prepare("SELECT value FROM migration_state WHERE key = 'hyperliquid-oi-single'").get() ?? {}).value, '1', 'marked at the first start');
+      const left = Number(fields(store.db.prepare('SELECT COUNT(*) AS count FROM oi_samples').get()).count);
+      if (left === 0) break;
+      store.close(); store = null;
+    }
+    const bars = defined(store).listOi('hyperliquid:BTC-PERP') as { close?: number; quote?: number | null }[];
+    assert.deepEqual(bars.map(bar => [bar.close, bar.quote]), [[50, 4_000_000], [100, 8_000_000], [150, 12_000_000]], 'one side, never a quarter');
+  } finally {
+    try { store?.close(); } catch {}
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('durable candles strip provider payloads while retaining closed/native provenance', () => {
   const history = new HistoryStore({ filePath: ':memory:' });
   try {
