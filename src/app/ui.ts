@@ -115,6 +115,9 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
     if (event.key !== 'Escape') return;
     const dialog = document.querySelector('dialog[open]');
     if (dialog && !dialog.contains(root)) return;
+    // A menu or a dropdown's list opened from a control inside the panel takes its own Escape first, and the panel stays (as the desktop's
+    // dropdown did): this listener was added before the menu's, so it would run first and close both.
+    if (document.querySelector('.menu')) return;
     event.preventDefault(); panel.close();
   };
   const onResize = (): void => { scrim.sync(); reposition(true); };
