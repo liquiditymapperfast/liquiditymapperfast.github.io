@@ -1025,6 +1025,7 @@ export class HeatPane {
       ctx.fillStyle = p.text; ctx.textAlign = 'center'; ctx.fillText(emptyScope, pw / 2, ph / 2); ctx.textAlign = 'left'; ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     }
     this.#paintRange(ctx, state, pw, ph);
+    this.#paintBookRow(ctx, state, pw, ph);
     this.#paintCrosshair(ctx, state, pw, ph);
     this.#paintDrawEdit();
   }
@@ -3034,6 +3035,27 @@ export class HeatPane {
     paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
     const empty = { none: t('No liquidation levels in this range'), onlyThis: t('Only this side has liquidation levels'), onlyOpposite: t('Only the opposite side has liquidation levels') };
     this.#profileBox = { lines: mirrorLines(stats, { above: t('Short liquidations'), below: t('Long liquidations') }, undefined, empty), y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
+  }
+
+  /**
+   * The order book's row under the pointer (`bookHover`; Karl, 2026-11-04: "if hovering with the mouse over the order book, make horizontal
+   * lines appear on the main chart"): its price across the map and through its columns to the axis, in its side's colour, the row's prices
+   * shaded where the book's grouping is wider than a few pixels here, and on the axis the price the book writes for it. A price above or below
+   * the view keeps its tag at that edge. Not in a replay, which has no book.
+   */
+  #paintBookRow(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const b = state.bookHover; if (!b || replaying()) return;
+    const v = this.view, p = this.#palette, color = b.side === 'ask' ? p.ask : p.bid, axisX = this.#w - AXIS_W;
+    const yHi = v.yOf(b.lo + b.step, ph), yLo = v.yOf(b.lo, ph), y = Math.round(v.yOf(b.lo + b.step / 2, ph)) + 0.5, inView = y >= 0 && y <= ph;
+    if (yLo - yHi >= 3 && yLo > 0 && yHi < ph) { ctx.fillStyle = color; ctx.globalAlpha = 0.1; ctx.fillRect(0, Math.max(0, yHi), axisX, Math.min(ph, yLo) - Math.max(0, yHi)); }
+    if (inView) { ctx.strokeStyle = color; ctx.globalAlpha = 0.85; ctx.setLineDash([6, 3]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(axisX, y); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.globalAlpha = 1;
+    const ty = Math.min(ph - 9, Math.max(9, y)), ink = textOn(color, 1, p);
+    ctx.fillStyle = color; ctx.fillRect(axisX + 1, ty - 9, AXIS_W - 1, 18);
+    ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillText(fmtPrice(b.lo, b.step), axisX + (inView ? 6 : 10), ty);
+    // Beyond the view, a small arrowhead at the tag's left says which way.
+    if (!inView) { const up = y < 0; ctx.beginPath(); ctx.moveTo(axisX + 3, ty + (up ? 2 : -2)); ctx.lineTo(axisX + 8, ty + (up ? 2 : -2)); ctx.lineTo(axisX + 5.5, ty + (up ? -3 : 3)); ctx.closePath(); ctx.fill(); }
   }
 
   #paintCrosshair(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {

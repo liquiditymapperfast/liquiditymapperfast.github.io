@@ -389,6 +389,8 @@ async function main(): Promise<void> {
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderCurves') || changed.has('cvd') || changed.has('pullStack') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.invalidate(); }
     if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.syncHover(); }
+    // The order book's row under the pointer: the map and the flow column's price strip draw its price.
+    if (changed.has('bookHover')) { heat.invalidate(); cvd.syncBookHover(); }
     if (changed.has('delta')) delta.settingsChanged();
     if ((changed.has('oi') || changed.has('oiParts')) && topShown(state)) heat.invalidate();
     if (changed.has('marketId')) candle.marketChanged();

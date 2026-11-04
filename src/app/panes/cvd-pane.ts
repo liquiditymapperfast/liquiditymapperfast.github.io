@@ -136,6 +136,8 @@ export class CvdPane {
   #empty: string | null = null;
   /** Where the plot was drawn, and where the line for another pane's pointer was (null: none), so a pointer elsewhere redraws only when that line moves. */
   #plot = { x: 0, w: 0 }; #sharedX: number | null = null;
+  /** The price strip's scale as last drawn (its prices from `lo` to `hi` over its inner `y`, `h`), and the height of the order book's row's line in it. */
+  #priceScale: { lo: number; hi: number; y: number; h: number } | null = null; #bookY: number | null = null;
   #spanButtons = new Map<CvdSpan, HTMLButtonElement>();
   #spanSelect = el('select', { class: 'cvd-span-select', ariaLabel: t('Time span') });
   #gear = el('button', { type: 'button', class: 'icon-btn cvd-gear', ariaLabel: t('Settings'), tip: t('How the column ranks and draws the exchanges.') });
@@ -191,6 +193,22 @@ export class CvdPane {
    * The pointer of another pane moved (the map, or one of the panes under it): the column draws a vertical line at the same moment, and
    * redraws only when that line would move to another pixel (or appear, or go).
    */
+  /**
+   * The order book's row under the pointer changed (`bookHover`): the price strip draws a line at its price, and the column redraws only when
+   * that line would move to another pixel (or appear, or go). The flow rows have no price to show it on.
+   */
+  syncBookHover(): void {
+    const y = this.#bookLineY();
+    if (y === this.#bookY) return;
+    this.#bookY = y; this.invalidate();
+  }
+  /** The height of the line for the book's row in the price strip as last drawn, or null when there is none or its price is out of the strip's range. */
+  #bookLineY(): number | null {
+    const b = this.store.state.bookHover, s = this.#priceScale;
+    if (!b || !s || !(s.hi > s.lo) || replaying()) return null;
+    const price = b.lo + b.step / 2;
+    return price < s.lo || price > s.hi ? null : Math.round(s.y + s.h - (price - s.lo) / (s.hi - s.lo) * s.h);
+  }
   syncHover(): void {
     const x = this.#sharedLineX();
     if (x === this.#sharedX) return;
@@ -759,6 +777,7 @@ export class CvdPane {
     const sec = Math.floor(pageNow() / 1000) - 1, last = replaying() ? (track ? track.priceAt(track.settled(sec)) : NaN) : st.mark.price, ly = y + h / 2;
     ctx.font = `600 11px ${SANS}`; ctx.fillStyle = p.text; ctx.fillText(t('PRICE'), PAD, ly - LINE_H / 2);
     ctx.font = `11px ${MONO}`; ctx.fillStyle = p.muted; ctx.fillText(fit(ctx, last > 0 ? fmtPrice(last) : '–', this.#gutter - 10), PAD, ly + LINE_H / 2);
+    this.#priceScale = null;
     if (cols.min <= cols.max) {
       const pad = (cols.max - cols.min) * 0.12 || cols.max * 0.0005, lo = cols.min - pad, hi = cols.max + pad, inner = { y: y + 7, h: h - 14 };
       ctx.strokeStyle = p.text; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.3; ctx.beginPath();
@@ -769,6 +788,13 @@ export class CvdPane {
         if (pen) ctx.lineTo(x, yy); else { ctx.moveTo(x, yy); pen = true; }
       }
       ctx.stroke(); ctx.globalAlpha = 1;
+      this.#priceScale = { lo, hi, y: inner.y, h: inner.h };
+    }
+    // The order book's row under the pointer, across the strip at its price, in its side's colour (the map draws it too).
+    this.#bookY = this.#bookLineY();
+    if (this.#bookY !== null) {
+      ctx.strokeStyle = this.store.state.bookHover?.side === 'ask' ? p.ask : p.bid; ctx.lineWidth = 1; ctx.globalAlpha = 0.9; ctx.setLineDash([5, 3]);
+      ctx.beginPath(); ctx.moveTo(plot.x, this.#bookY + 0.5); ctx.lineTo(plot.x + plot.w, this.#bookY + 0.5); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
     ctx.restore();
   }

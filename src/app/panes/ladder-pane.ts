@@ -112,6 +112,8 @@ export class LadderPane {
   /** The Compact bar's venue order, the venues it was made for and when (see `#venueOrder`). */
   #order: { key: string; order: string[]; at: number } | null = null;
   #hover: { x: number; y: number } | null = null;
+  /** Where a mouse pointer is over the book (canvas px, null when it is not): its row's price is shared with the map (`#shareRow`). */
+  #mouseY: number | null = null;
   /** One notch per mouse click, one per 40 px of a touchpad, and a limit in time on both, so a spin or a swipe cannot throw the zoom to the end (see ladderWheel). */
   #notches = ladderWheel();
   /** Touch: where a finger pinned the mirror comparison, the pinch in progress, and the fling after a lift. */
@@ -190,19 +192,20 @@ export class LadderPane {
       if (e.pointerType === 'touch' || e.button !== 0 || !(this.#layout.step > 0)) return;
       const { x, y } = local(e), row = this.#rowAt(y);
       this.#drag = this.#onAxis(x) ? { kind: 'zoom', y, step: this.#layout.step, ...this.#anchor(row, e.altKey) } : { kind: 'pan', y, offset: this.#offsetRows };
-      c.setPointerCapture(e.pointerId); this.#hover = null; this.#cursor(x); this.invalidate();
+      c.setPointerCapture(e.pointerId); this.#hover = null; this.#cursor(x); this.#shareRow(null); this.invalidate();
     });
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e), drag = this.#drag;
+      this.#mouseY = y;
       if (drag?.kind === 'zoom') this.#zoomDrag(drag, y); // up zooms in, down out
       else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((y - drag.y) / ROW_H); this.invalidate(); }
-      else this.#hover = { x, y };
+      else { this.#hover = { x, y }; this.#shareRow(y); }
       this.#cursor(x); this.invalidate();
     });
     const release = (e: PointerEvent) => { if (e.pointerType === 'touch') return; this.#drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); this.#cursor(local(e).x); this.invalidate(); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
-    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.invalidate(); });
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.#mouseY = null; this.#shareRow(null); this.invalidate(); });
     c.addEventListener('dblclick', () => this.#reset());
     bindTouch(c, new GestureRecognizer(this.#touchHandlers()));
   }
@@ -296,7 +299,23 @@ export class LadderPane {
     l.step = step; // later events in the same frame build on this one
     this.store.set({ grouping: step });
   }
-  invalidate(): void { if (this.#suspended) { this.#owed = true; return; } if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#render(); }); }
+  invalidate(): void { if (this.#suspended) { this.#owed = true; return; } if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#rowsDrawn = false; this.#render(); this.#shareRow(this.#mouseY); }); }
+
+  /** Whether the last frame drew the book's rows (`#layout` is theirs): not while it waits for a book, in a replay, or with no venue on. */
+  #rowsDrawn = false;
+  /**
+   * Share the book's row at canvas height `y` (null: none) with the page (`bookHover`), as the map shares its pointer's moment: the map and
+   * the flow column's price strip draw its price. Only over rows drawn and while nothing is dragged; the store is told only when the row, its
+   * grouping or its side changed. Looked at again after every frame, since the book moves under a pointer resting on it as the price moves.
+   */
+  #shareRow(y: number | null): void {
+    const l = this.#layout, row = y === null || !this.#rowsDrawn || this.#drag || !(l.step > 0) || y < l.head ? -1 : Math.floor((y - l.head) / ROW_H);
+    let next: AppState['bookHover'] = null;
+    if (row >= 0 && row < l.rows) { const mid = this.#priceAt(row); next = { lo: mid - l.step / 2, step: l.step, side: mid > l.mark ? 'ask' : 'bid' }; }
+    const cur = this.store.state.bookHover;
+    if (next === cur || (next && cur && Math.abs(next.lo - cur.lo) < next.step * 1e-6 && next.step === cur.step && next.side === cur.side)) return;
+    this.store.set({ bookHover: next });
+  }
   /** Covered by a view of its own (the phone's Candle tab): nothing is drawn until it shows again (pull/stack still takes its snapshots as the frames arrive). */
   #suspended = false; #owed = false;
   /**
@@ -485,7 +504,7 @@ export class LadderPane {
     const head = (cells && cellW < 20 ? HEAD_TALL : HEAD_H) + balanceH;
     const rows = Math.max(6, Math.floor((h - head) / ROW_H));
     const grouping = this.#grouping(state.grouping), step = grouping === 'auto' ? niceStep(mark * 0.012, rows / 2) : grouping;
-    this.#layout = { step, rows, head, colW: width / columns, mark };
+    this.#layout = { step, rows, head, colW: width / columns, mark }; this.#rowsDrawn = true;
     if (this.#autoOption) { const text = grouping === 'auto' ? `${t('Auto')} · ${stepText(step)}` : t('Auto'); if (this.#autoOption.text !== text) this.#autoOption.text = text; }
     const centerBin = Math.floor(mark / step) + this.#offsetRows;
     const p0 = (centerBin - rows / 2) * step, p1 = (centerBin + rows / 2 + 1) * step;
