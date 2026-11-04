@@ -1,4 +1,4 @@
-import { openMenu, type MenuItem } from './menu.ts';
+import { closeMenus, openMenu, type MenuItem } from './menu.ts';
 
 /**
  * Dropdowns on a touch screen. The browser's own list is a system dialog in the system's colours and type size (a light one over a dark
@@ -24,8 +24,8 @@ export function itemsOf(select: HTMLSelectElement): MenuItem[] {
   return [...select.options].map((option, index) => ({ id: String(index), label: option.text, disabled: option.disabled }));
 }
 
-/** Open the menu for `select` and write the choice back. */
-export function openSelectMenu(select: HTMLSelectElement): { close(): void } {
+/** Open the menu for `select` and write the choice back (`list`: drawn as the dropdown's own list, not a menu). */
+export function openSelectMenu(select: HTMLSelectElement, list = false): { close(): void } {
   return openMenu(select, itemsOf(select), String(select.selectedIndex), {
     onPreview: () => {},
     onSelect: id => {
@@ -35,7 +35,39 @@ export function openSelectMenu(select: HTMLSelectElement): { close(): void } {
       select.dispatchEvent(new Event('input', { bubbles: true }));
       select.dispatchEvent(new Event('change', { bubbles: true }));
     },
-  }, 'left', { title: selectTitle(select), keepPanel: true });
+  }, 'left', { title: selectTitle(select), keepPanel: true, list });
+}
+
+/**
+ * Dropdowns in the Classic 95 frame with a mouse (Karl, 2026-11-03: is everything "how it used to be in Windows 95"?). The box was drawn as
+ * the desktop's, but the list it opened was the browser's of today. A press on a select, or F4 or Alt with an arrow key on one (the desktop's
+ * keys for it), opens the page's own list instead, drawn as the desktop's dropdown list (`.menu.list`) and written back like the touch
+ * menu above. The arrow keys alone still step through the choices in place, as they did on the desktop; other frames keep the native list.
+ */
+export function installClassicSelects(doc: Document = document): () => void {
+  const classic = (): boolean => doc.documentElement.dataset.frame === 'bevel' && doc.documentElement.dataset.bar !== 'compact';
+  const target = (node: EventTarget | null): HTMLSelectElement | null => {
+    const select = node instanceof Element ? node.closest('select') : null;
+    return select && !select.disabled && !select.multiple && select.size <= 1 ? select : null;
+  };
+  const down = (event: MouseEvent): void => {
+    if (event.button !== 0 || !classic()) return;
+    const select = target(event.target); if (!select) return;
+    event.preventDefault();
+    // A press on the box of an open list closes it, as on the desktop (the list keeps an `open` mark on its box while it is open).
+    if (select.classList.contains('open')) { closeMenus(); return; }
+    select.focus({ preventScroll: true });
+    openSelectMenu(select, true);
+  };
+  const key = (event: KeyboardEvent): void => {
+    if (!classic() || !(event.key === 'F4' || (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')))) return;
+    const select = target(event.target); if (!select) return;
+    event.preventDefault();
+    openSelectMenu(select, true);
+  };
+  doc.addEventListener('mousedown', down, true);
+  doc.addEventListener('keydown', key, true);
+  return () => { doc.removeEventListener('mousedown', down, true); doc.removeEventListener('keydown', key, true); };
 }
 
 const TAP_SLOP = 10, TAP_MAX_MS = 380;

@@ -9,6 +9,8 @@ export interface MenuOptions {
   title?: string;
   /** Leave an open panel alone: the menu belongs to a control inside it. */
   keepPanel?: boolean;
+  /** A dropdown's list rather than a menu: at least as wide as what opened it, in the frame's list look (`.menu.list`). */
+  list?: boolean;
 }
 export interface MenuHandlers {
   /** The pointer or keyboard is on an item (`id`), or has left the menu without choosing (`null`). */
@@ -28,6 +30,7 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   if (!options.keepPanel) closePanel();
   let done = false, closed = false;
   const root = el('div', { class: 'menu', role: 'listbox' });
+  if (options.list) { root.classList.add('list'); if (!compactBar()) root.style.minWidth = `${Math.round(anchor.getBoundingClientRect().width)}px`; }
   if (options.title) root.append(el('div', { class: 'menu-title', textContent: options.title }));
   const rows = items.map(item => {
     const isCurrent = item.id === current;

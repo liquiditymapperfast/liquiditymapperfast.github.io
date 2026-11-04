@@ -15,7 +15,7 @@ import { Toolbar } from './toolbar.ts';
 import { StatusBar } from './statusbar.ts';
 import { setTimeZone } from './format.ts';
 import { installTips } from './tip.ts';
-import { installTouchSelects } from './touch-select.ts';
+import { installClassicSelects, installTouchSelects } from './touch-select.ts';
 import { lazy, preload } from './lazy.ts';
 import { ScreenWake } from './wake.ts';
 import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
@@ -90,6 +90,7 @@ async function main(): Promise<void> {
   });
   installTips();
   installTouchSelects();
+  installClassicSelects();
   const kernels = await loadKernels();
   keepCoinRecordings();
   const source = await chooseSource(params, choice, store.state.phoneHistory);
