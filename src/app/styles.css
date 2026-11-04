@@ -398,6 +398,8 @@ html[data-layout="desktop"] .pane .pane-head > .fit-cells.fit-measuring > * { fl
 /* The flow column: its settings key beside the "?" on the first line; the span buttons are its one cell, a whole row under that line or between the "?" and the key. */
 html[data-layout="desktop"] .pane.cvd .side-head > .cvd-gear { order: 1; margin-left: 0; }
 html[data-layout="desktop"] .pane.cvd .pane-head.fit-inline > .cvd-gear { order: 2; }
+/* It is a header key like the book's (square, as tall as the keys there): at its own 31 x 23 it stood out beside them and the 20 px menu keys. */
+html[data-layout="desktop"] .pane.cvd .pane-head > .cvd-gear { box-sizing: border-box; width: var(--head-key); height: var(--head-key); min-height: 0; padding: 0; }
 html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg:not([hidden]) { display: flex; }
 html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button { flex: 1 1 0; }
 /* Its buttons padded alike in the grid and on the first line, so that it is as wide as it was measured wherever it goes. */
