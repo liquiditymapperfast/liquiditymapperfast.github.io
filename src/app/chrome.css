@@ -399,15 +399,17 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item .tick { order: -1; height: 14px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current .label { font-weight: 400; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current .tick { background: var(--bv-bullet) center / 6px 6px no-repeat; }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current:is(:hover, :focus-visible) .tick { background-image: var(--bv-bullet-white); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current:is(:hover:focus, :focus-visible) .tick { background-image: var(--bv-bullet-white); }
+/* One highlight, where the pointer or the keyboard last was (the desktop had one): a row takes the focus as the pointer comes to it (menu.ts), so a
+   row the arrow keys have left is not lit for the pointer still resting on it (Sol). */
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu .menu-item:hover:not(:focus):not(:disabled) { background: transparent; color: var(--text); }
 /* A dropdown's list (touch-select.ts installClassicSelects) is the desktop's list, not a menu: white, a one-pixel black frame, as wide as its box,
-   rows the height of a line of text, the chosen one lit in navy until the pointer or the keyboard is on another, no mark. */
+   rows the height of a line of text, no mark, the focused row lit in navy (the chosen one as it opens, then wherever the pointer or the keys go). */
 :root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list { min-width: 0; padding: 0; background: var(--well); border: 1px solid #000; border-image: none; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list .menu-item { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 1px 6px 1px 3px; line-height: 13px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list .menu-item .tick { display: none; }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list .menu-item.current { background: var(--bar); color: var(--bar-text); }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list:hover .menu-item:not(:hover):not(:disabled),
-:root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list:not(:hover):has(.menu-item:focus-visible) .menu-item.current:not(:focus-visible) { background: transparent; color: var(--text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list .menu-item:focus { background: var(--bar); color: var(--bar-text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu.list .menu-item:not(:focus):not(:disabled) { background: transparent; color: var(--text); }
 :where([data-frame="bevel"]) .menu-title { color: var(--text); font-weight: 700; letter-spacing: 0; text-transform: none; border-bottom: 1px solid var(--edge-lit); box-shadow: inset 0 -1px 0 var(--lo); }
 :where([data-frame="bevel"]) .swatch { border: 1px solid var(--edge); }
 

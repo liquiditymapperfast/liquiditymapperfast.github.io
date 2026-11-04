@@ -30,6 +30,8 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   if (!options.keepPanel) closePanel();
   let done = false, closed = false;
   const root = el('div', { class: 'menu', role: 'listbox' });
+  // Named for a screen reader by what it chooses (the select's or the button's caption), shown or not.
+  if (options.title) root.setAttribute('aria-label', options.title);
   if (options.list) { root.classList.add('list'); if (!compactBar()) root.style.minWidth = `${Math.round(anchor.getBoundingClientRect().width)}px`; }
   if (options.title) root.append(el('div', { class: 'menu-title', textContent: options.title }));
   const rows = items.map(item => {
@@ -37,7 +39,9 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     const swatch = item.swatch ? [el('span', { class: 'swatch' }, ...item.swatch.map(color => { const dot = el('i'); dot.style.background = color; return dot; }))] : [];
     const row = el('button', { type: 'button', class: (isCurrent ? 'menu-item current' : 'menu-item') + (swatch.length ? '' : ' plain'), role: 'option', disabled: item.disabled === true }, ...swatch, el('span', { class: 'label', textContent: item.label }), el('span', { class: 'tick' }));
     row.setAttribute('aria-selected', String(isCurrent)); row.dataset.id = item.id;
-    row.onpointerenter = () => handlers.onPreview(item.id);
+    // With a mouse the row under the pointer takes the focus too: the pointer and the keyboard move one place, so the keys go on from where
+    // the pointer is, and a row the keys have left is not lit for the pointer still resting on it (the frames light the focused row).
+    row.onpointerenter = () => { handlers.onPreview(item.id); if (!compactBar() && !row.disabled) row.focus({ preventScroll: true }); };
     row.onfocus = () => handlers.onPreview(item.id);
     row.onclick = () => { done = true; handlers.onSelect(item.id); close(); };
     root.append(row);
@@ -64,16 +68,22 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); rows[event.key === 'Home' ? 0 : rows.length - 1]?.focus(); }
     else if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       // A letter goes to the next row whose name begins with it, round to the first again, as the desktop's lists and the browser's own did.
+      // The menu has the keyboard while it is open: a letter it has no row for is used up too, so it starts no shortcut of the page (Sol: G
+      // in the market's list opened Go to).
+      event.preventDefault();
       const letter = event.key.toLocaleLowerCase(), order = [...rows.slice(at + 1), ...rows.slice(0, at + 1)];
-      const hit = order.find(row => !row.disabled && (row.querySelector('.label')?.textContent ?? '').trim().toLocaleLowerCase().startsWith(letter));
-      if (hit) { event.preventDefault(); hit.focus(); }
+      order.find(row => !row.disabled && (row.querySelector('.label')?.textContent ?? '').trim().toLocaleLowerCase().startsWith(letter))?.focus();
     }
   };
   const stopMode = onLayoutMode(() => { scrim.sync(); place(); });
   function close(): void {
     if (closed) return;
     closed = true; stopMode(); opened.delete(close);
+    // The keyboard goes back to what opened the menu when it was in the menu (a choice made with Enter left it nowhere, Sol); not on a phone,
+    // where a select taking the focus zooms an iPhone's page in.
+    const hadFocus = root.contains(document.activeElement);
     root.remove(); scrim.remove(); anchor.classList.remove('open');
+    if (hadFocus && anchor.isConnected && !compactBar()) anchor.focus({ preventScroll: true });
     document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', place);
     if (!done) handlers.onPreview(null);
   }
