@@ -42,7 +42,7 @@ interface Held { result: ScriptResult; time: Float64Array; tf: number; inst: str
  * A script the Scripts panel's list shows on the map while its row is pointed at (`ScriptPane.preview`): one of the person's (`rec:` and its
  * id) or one of the examples (`ex:` and its key), with what it runs and where it draws. `id` is the person's script's own, null for an example.
  */
-interface PreviewTarget { key: string; name: string; source: string; options: Record<string, OptionValue>; api: number; place: ScriptRecord['place']; height: number; id: string | null }
+interface PreviewTarget { key: string; name: string; source: string; options: Record<string, OptionValue>; api: number; place: ScriptRecord['place']; height: number; id: string | null; /** What it runs (`ScriptPane.#contentKey`). */ ck: string }
 /**
  * A preview's answer: as a run's (`Held`), with the theme it read, the markets it read over (the scope and the venues switched off, and the
  * page's market list), what the page held when it was asked for (`ScriptData.version`), when it came back (wall clock) and how long its run
@@ -794,12 +794,32 @@ export class ScriptPane extends TimePane {
     if (key.startsWith('ex:')) { const ex = examples().find(x => x.key === key.slice(3)); return ex ? this.#exampleTarget(ex) : null; }
     return null;
   }
-  #recordTarget(r: ScriptRecord): PreviewTarget { return { key: `rec:${r.id}`, name: r.name, source: r.source, options: r.options, api: r.api, place: r.place, height: r.height, id: r.id }; }
+  #recordTarget(r: ScriptRecord): PreviewTarget {
+    let ck = this.#pvKeys.get(r);
+    if (ck === undefined) { ck = this.#joinKey(r.api, r.options, r.source); this.#pvKeys.set(r, ck); }
+    return { key: `rec:${r.id}`, name: r.name, source: r.source, options: r.options, api: r.api, place: r.place, height: r.height, id: r.id, ck };
+  }
   #exampleTarget(ex: ReturnType<typeof examples>[number]): PreviewTarget {
-    return { key: `ex:${ex.key}`, name: ex.name, source: ex.source, options: {}, api: SCRIPT_API, place: ex.place ?? 'pane', height: exampleHeight(ex.source) ?? ROW_DEFAULT, id: null };
+    let ck = this.#pvExampleKeys.get(ex.source);
+    if (ck === undefined) { ck = this.#joinKey(SCRIPT_API, {}, ex.source); this.#pvExampleKeys.set(ex.source, ck); }
+    return { key: `ex:${ex.key}`, name: ex.name, source: ex.source, options: {}, api: SCRIPT_API, place: ex.place ?? 'pane', height: exampleHeight(ex.source) ?? ROW_DEFAULT, id: null, ck };
   }
   /** What a script runs, as the worker tells one from another: its language version, its options and its text. */
-  #contentKey(target: PreviewTarget): string { return `${target.api}\u0001${JSON.stringify(target.options)}\u0001${target.source}`; }
+  #joinKey(api: number, options: Readonly<Record<string, OptionValue>>, source: string): string { return `${api}\u0001${JSON.stringify(options)}\u0001${source}`; }
+  /**
+   * The same, made once for each record (records are replaced, never changed) and each example and kept, so a look at the list does not
+   * join and hash every script's text again (a key used again is hashed once); and the id each runs under in the worker (`#pvIdOf`).
+   */
+  #pvKeys = new WeakMap<ScriptRecord, string>();
+  #pvExampleKeys = new Map<string, string>();
+  #pvIds = new Map<string, string>();
+  #contentKey(target: PreviewTarget): string { return target.ck; }
+  /** The id a script runs under in the previews' worker: one of its own text, so the worker keeps what it read of it while it is shown again. */
+  #pvIdOf(key: string): string {
+    let id = this.#pvIds.get(key);
+    if (id === undefined) { if (this.#pvIds.size >= 64) this.#pvIds.clear(); id = `preview-${fingerprint(key)}`; this.#pvIds.set(key, id); }
+    return id;
+  }
 
   /** The answer of one of the person's scripts that is on, for the chart as it is (Scripts on): its preview needs no run of its own. */
   #pvOwn(target: PreviewTarget): Held | null {
@@ -837,8 +857,13 @@ export class ScriptPane extends TimePane {
     return Math.max(0, Math.max(had.data === this.#data.version ? REFRESH : PREVIEW_DATA_MS, 4 * had.took) - (Date.now() - had.ranAt));
   }
 
-  /** Whether the last look wanted a run the chart had no candles for: the map's next frames look again (`#pvFollow`), until it has. */
-  #pvWaiting = false;
+  /**
+   * The chart's candles as they stood when a look wanted a run and found none to run over (null: it did not): the map's frames look again
+   * once they change (`#pvFollow`), not at every frame (a replay held before its first candle closed keeps none for as long as it is held).
+   */
+  #pvWaitFor: readonly unknown[] | null = null;
+  /** What decides whether the chart has candles to run over: its timeframe, its candles' own, the rows the scripts read, a replay's candle. */
+  #pvCandles(): readonly unknown[] { const s = this.store.state; return [s.timeframe, s.candlesTimeframe, this.candlesOf(s), replayKey(TIMEFRAMES[s.timeframe] ?? 3_600_000)]; }
   /**
    * Start the next run of the previews' worker, unless one is out: the preview shown when it is due; else, while the panel's list shows,
    * every row whose preview is missing, in one run (not those that read the order book: each would start reading it; they run when pointed
@@ -847,10 +872,10 @@ export class ScriptPane extends TimePane {
    */
   #pvPump(): void {
     window.clearTimeout(this.#pvTimer); this.#pvTimer = 0;
-    this.#pvWaiting = false;
+    this.#pvWaitFor = null;
     if (this.#pvBusy) return;
     const shown = this.#pv, wait = shown ? this.#pvDueIn(shown) : Infinity;
-    const start = (targets: readonly PreviewTarget[]): boolean => { const r = this.#pvRun(targets); if (r === 'no-candles') this.#pvWaiting = true; return r === 'started'; };
+    const start = (targets: readonly PreviewTarget[]): boolean => { const r = this.#pvRun(targets); if (r === 'no-candles') this.#pvWaitFor = this.#pvCandles(); return r === 'started'; };
     if (shown && wait === 0 && start([shown])) return;
     if (this.#panel && !this.#ui.editing) {
       const want = this.#pvTargets().filter(target => { const a = this.#analyze(target.source); return 'program' in a && !a.inputs.has('depth') && this.#pvMissing(target); });
@@ -868,9 +893,8 @@ export class ScriptPane extends TimePane {
     const state = this.store.state, filters = new Map<string, SourceFilter>([['', {}]]), ids = new Set<string>();
     const jobs: { key: string; id: string; target: PreviewTarget; a: Analysis }[] = [];
     for (const target of targets) {
-      // Each under an id of its own text, so the worker keeps what it read of a script while it is shown (two texts that make the same
-      // id in one run: the second waits until it is pointed at).
-      const key = this.#contentKey(target), id = `preview-${fingerprint(key)}`;
+      // Each under its id (`#pvIdOf`); two texts that make the same id in one run: the second waits until it is pointed at.
+      const key = this.#contentKey(target), id = this.#pvIdOf(key);
       if (target.api > SCRIPT_API || ids.has(id)) continue;
       const a = this.#analyze(target.source);
       if (!('program' in a)) continue;
@@ -905,13 +929,14 @@ export class ScriptPane extends TimePane {
 
   /**
    * What the list's previews were last looked at for while the panel is open: when the chart (its timeframe, market, theme, its candles'
-   * timeframe, a replay) or its markets change, or the last look found no candles to run over (`#pvWaiting`), they are looked at again, just
+   * timeframe, a replay) or its markets change, or the candles a look found none of change (`#pvWaitFor`), they are looked at again, just
    * after the map's frame (what they read is not gathered inside a drawing).
    */
   #pvChart = ''; #pvChartMarkets: unknown = null; #pvFollowing = 0;
   #pvFollow(): void {
     const s = this.store.state, chart = `${s.timeframe}|${s.candlesTimeframe ?? ''}|${s.seriesInstrument}|${this.#theme}|${replaying() ? 'replay' : 'live'}|${this.#pvMarkets().scope}`;
-    if ((chart === this.#pvChart && s.markets === this.#pvChartMarkets && !this.#pvWaiting) || this.#pvFollowing) return;
+    const waited = this.#pvWaitFor, landed = waited !== null && this.#pvCandles().some((v, i) => v !== waited[i]);
+    if ((chart === this.#pvChart && s.markets === this.#pvChartMarkets && !landed) || this.#pvFollowing) return;
     this.#pvChart = chart; this.#pvChartMarkets = s.markets;
     this.#pvFollowing = window.setTimeout(() => { this.#pvFollowing = 0; if (this.#panel) this.#pvPump(); }, 0);
   }
@@ -961,7 +986,7 @@ export class ScriptPane extends TimePane {
    */
   #pvEnd(): void {
     window.clearTimeout(this.#pvTimer); this.#pvTimer = 0; window.clearTimeout(this.#pvGap); this.#pvGap = 0; window.clearTimeout(this.#pvFollowing); this.#pvFollowing = 0;
-    this.#pvGen++; this.#pvCache.clear(); this.#pvChart = ''; this.#pvChartMarkets = null;
+    this.#pvGen++; this.#pvCache.clear(); this.#pvChart = ''; this.#pvChartMarkets = null; this.#pvWaitFor = null;
     this.#pvPointer = null; this.#pvFocus = null; this.#pvAt = null;
     this.#pvHost?.dropUnsent();
     if (this.#pv) { this.#pv = null; this.onMapChanged(); }
