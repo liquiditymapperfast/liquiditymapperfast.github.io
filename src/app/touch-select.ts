@@ -57,7 +57,7 @@ export function installClassicSelects(doc: Document = document): () => void {
     const select = target(event.target); if (!select) return;
     event.preventDefault();
     // A press on the box of an open list closes it, as on the desktop (the list keeps an `open` mark on its box while it is open).
-    if (select.classList.contains('open')) { closeMenus(); return; }
+    if (select.classList.contains('open')) { closeMenus(); select.focus({ preventScroll: true }); return; }
     select.focus({ preventScroll: true });
     openSelectMenu(select, true);
   };

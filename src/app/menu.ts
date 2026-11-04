@@ -79,11 +79,12 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   function close(): void {
     if (closed) return;
     closed = true; stopMode(); opened.delete(close);
-    // The keyboard goes back to what opened the menu when it was in the menu (a choice made with Enter left it nowhere, Sol); not on a phone,
-    // where a select taking the focus zooms an iPhone's page in.
+    // After a choice the keyboard goes back to what opened the menu when it was in the menu (Enter left it nowhere, Sol); not after a press
+    // elsewhere, which puts it where that press was (on a select left focused, the arrow keys would change it unseen), nor on a phone, where
+    // a select taking the focus zooms an iPhone's page in. Escape gives it back itself.
     const hadFocus = root.contains(document.activeElement);
     root.remove(); scrim.remove(); anchor.classList.remove('open');
-    if (hadFocus && anchor.isConnected && !compactBar()) anchor.focus({ preventScroll: true });
+    if (done && hadFocus && anchor.isConnected && !compactBar()) anchor.focus({ preventScroll: true });
     document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', place);
     if (!done) handlers.onPreview(null);
   }
