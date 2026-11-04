@@ -229,6 +229,9 @@ export function selectRow(name: string, description: string, options: readonly [
   const select = el('select');
   for (const [v, label] of options) select.append(new Option(label, v));
   select.value = value; select.onchange = () => onChange(select.value);
+  // Its key for the keyboard (`data-focus`): a choice that rebuilds the panel leaves the focus on the new select in its place, whether the
+  // choice was made with the arrows or in the dropdown's list (menu.ts gives it back there after a choice).
+  select.dataset.focus = `select:${name}`;
   // A long choice ("Aggregated: every market switched on") does not fit the 150 px select beside the name: the select takes a line of its own under it (pin-field).
   const row = el('label', { class: 'field', tip: description },
     el('span', { class: 'label' }, el('span', { class: 'name', textContent: name }), el('span', { class: 'desc', textContent: description })), select);
