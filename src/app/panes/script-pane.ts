@@ -43,8 +43,11 @@ interface Held { result: ScriptResult; time: Float64Array; tf: number; inst: str
  * id) or one of the examples (`ex:` and its key), with what it runs and where it draws. `id` is the person's script's own, null for an example.
  */
 interface PreviewTarget { key: string; name: string; source: string; options: Record<string, OptionValue>; api: number; place: ScriptRecord['place']; height: number; id: string | null }
-/** A preview's answer: as a run's (`Held`), with the theme it read, when it was worked out (wall clock) and what the page held then (`ScriptData.version`). */
-interface PreviewHeld extends Held { theme: string; ranAt: number; data: number }
+/**
+ * A preview's answer: as a run's (`Held`), with the theme it read, the markets it read over (the scope and the venues switched off, and the
+ * page's market list), when it was worked out (wall clock) and what the page held then (`ScriptData.version`).
+ */
+interface PreviewHeld extends Held { theme: string; scope: string; markets: unknown; ranAt: number; data: number }
 
 /** A script worker: the pane's own runs have one, an agent's trials another. */
 const spawnScriptWorker = (): WorkerLike => new Worker(new URL('../script/script.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
@@ -355,7 +358,7 @@ export class ScriptPane extends TimePane {
    * What the scripts read changed, or a run may be due: draw again and look whether to run, now. A run is not left to a drawing: while only
    * scripts on the map are on the pane is not laid out and draws nothing.
    */
-  refresh(): void { this.invalidate(); this.#maybeRun(); if (this.#pv) this.#pvEnsure(this.#pv); }
+  refresh(): void { this.invalidate(); this.#maybeRun(); if (this.#pv || this.#panel) this.#pvPump(); }
 
   /** Scripts was switched on or off: off, a run still waiting for its worker to load is dropped; the list's statuses and the lamp follow at once. */
   showChanged(): void {
@@ -755,10 +758,14 @@ export class ScriptPane extends TimePane {
 
   /** The previews' own worker: a preview neither waits behind the pane's runs nor takes their place, nor an agent's trials'. */
   #pvHost: ScriptHost | null = null;
-  /** The preview shown (null: none), what has been worked out for the list's rows (by what they run, `#contentKey`), and what is being. */
+  /** The preview shown (null: none), and what has been worked out for the list's rows, by what they run (`#contentKey`). */
   #pv: PreviewTarget | null = null;
   #pvCache = new Map<string, PreviewHeld>();
-  #pvRunning = new Set<string>();
+  /**
+   * Whether a run of the previews' worker is out. One at a time, the next chosen here when it comes back (`#pvPump`): the worker's host keeps
+   * one request waiting and drops it for a newer one, so a preview pointed at and the list's run asked for there would drop each other.
+   */
+  #pvBusy = false;
   /** Counts the panel's closings: an answer that comes after the panel closed is not kept. */
   #pvGen = 0;
   #pvTimer = 0; #pvGap = 0;
@@ -775,8 +782,7 @@ export class ScriptPane extends TimePane {
     const target = key ? this.#pvTargetOf(key) : null, was = this.#pv;
     if (target?.key === was?.key && (!target || this.#contentKey(target) === this.#contentKey(was!))) return;
     this.#pv = target;
-    window.clearTimeout(this.#pvTimer); this.#pvTimer = 0;
-    if (target) this.#pvEnsure(target);
+    this.#pvPump();
     this.onMapChanged();
   }
 
@@ -807,27 +813,50 @@ export class ScriptPane extends TimePane {
     const kept = this.#pvCache.get(this.#contentKey(target));
     return this.#pvOwn(target) ?? (kept && this.#pvCurrent(kept) ? kept : null);
   }
+  /** The markets a preview reads over, as the page has them: the scope and the venues switched off, and the markets it lists. */
+  #pvMarkets(): Pick<PreviewHeld, 'scope' | 'markets'> { const s = this.store.state; return { scope: `${s.scope}|${s.disabledVenues.join(',')}`, markets: s.markets }; }
+  /**
+   * Whether `target` has no preview worth drawing as it is: none for the chart as it is, or one worked out over other markets (Spot, Perp,
+   * venues switched; drawn until the new one comes, as a run's answer is). Not a script that is on (its own answer is drawn).
+   */
+  #pvMissing(target: PreviewTarget): boolean {
+    if (this.#pvOwn(target)) return false;
+    const had = this.#pvCache.get(this.#contentKey(target)), m = this.#pvMarkets();
+    return !had || !this.#pvCurrent(had) || had.scope !== m.scope || had.markets !== m.markets;
+  }
+  /**
+   * How long until the preview shown is worked out again (0: now): at once when it is missing, a second after it was worked out once the page
+   * holds more of what it reads (the newest candles, the depth bands filling in back in time), at the pane's refresh otherwise.
+   */
+  #pvDueIn(target: PreviewTarget): number {
+    if (this.#pvOwn(target)) return Infinity;
+    const had = this.#pvCache.get(this.#contentKey(target));
+    if (!had || this.#pvMissing(target)) return 0;
+    return Math.max(0, (had.data === this.#data.version ? REFRESH : PREVIEW_DATA_MS) - (Date.now() - had.ranAt));
+  }
 
   /**
-   * Work out the preview shown unless its answer is at hand and fresh: none yet, another chart's, older than the pane's refresh, or (a second
-   * after it was worked out) the page holds more of what it reads. When it is fresh, it is looked at again when it will not be.
+   * Start the next run of the previews' worker, unless one is out: the preview shown when it is due; else, while the panel's list shows,
+   * every row whose preview is missing, in one run (not those that read the order book: each would start reading it; they run when pointed
+   * at). A preview shown that is fresh is looked at again when it will not be. Called when what is shown, the list, the chart or what the
+   * page holds changes, and when a run comes back.
    */
-  #pvEnsure(target: PreviewTarget): void {
+  #pvPump(): void {
     window.clearTimeout(this.#pvTimer); this.#pvTimer = 0;
-    const key = this.#contentKey(target);
-    if (this.#pvOwn(target) || this.#pvRunning.has(key)) return;
-    const had = this.#pvCache.get(key), age = had ? Date.now() - had.ranAt : Infinity;
-    if (had && this.#pvCurrent(had)) {
-      const due = had.data === this.#data.version ? REFRESH : PREVIEW_DATA_MS;
-      if (age < due) { this.#pvTimer = window.setTimeout(() => { this.#pvTimer = 0; if (this.#pv) this.#pvEnsure(this.#pv); }, due - age); return; }
+    if (this.#pvBusy) return;
+    const shown = this.#pv, wait = shown ? this.#pvDueIn(shown) : Infinity;
+    if (shown && wait === 0 && this.#pvRun([shown])) return;
+    if (this.#panel && !this.#ui.editing) {
+      const want = this.#pvTargets().filter(target => { const a = this.#analyze(target.source); return 'program' in a && !a.inputs.has('depth') && this.#pvMissing(target); });
+      if (want.length && this.#pvRun(want)) return;
     }
-    this.#pvRun([target]);
+    if (shown && wait > 0 && wait < Infinity) this.#pvTimer = window.setTimeout(() => { this.#pvTimer = 0; this.#pvPump(); }, wait);
   }
 
   /**
    * Work out the previews of `targets` in one run of the previews' worker, over what the pane's runs read (a script that does not read, or
-   * is for a newer page, shows nothing). Kept by what each runs; drawn if it is the one shown. False when the chart has no candles to run them
-   * over (nothing was started).
+   * is for a newer page, shows nothing). Kept by what each runs; drawn if it is the one shown. False when nothing was started (none of them
+   * can run, or the chart has no candles to run them over).
    */
   #pvRun(targets: readonly PreviewTarget[]): boolean {
     const state = this.store.state, filters = new Map<string, SourceFilter>([['', {}]]), ids = new Set<string>();
@@ -836,63 +865,53 @@ export class ScriptPane extends TimePane {
       // Each under an id of its own text, so the worker keeps what it read of a script while it is shown (two texts that make the same
       // id in one run: the second waits until it is pointed at).
       const key = this.#contentKey(target), id = `preview-${fingerprint(key)}`;
-      if (target.api > SCRIPT_API || this.#pvRunning.has(key) || ids.has(id)) continue;
+      if (target.api > SCRIPT_API || ids.has(id)) continue;
       const a = this.#analyze(target.source);
       if (!('program' in a)) continue;
       for (const [k, f] of sourcesWith(a, target.options)) filters.set(k, f);
       ids.add(id); jobs.push({ key, id, target, a });
     }
-    if (!jobs.length) return true;
+    if (!jobs.length) return false;
     const inputs = this.#withTheme(this.#data.inputs(state, filters, jobs.some(j => j.a.inputs.has('oichg')), jobs.some(j => readsFlow(j.a)), this.candlesOf(state)));
     if (!inputs) return false;
     const host = this.#pvHost ??= new ScriptHost({ spawn: spawnScriptWorker });
     const depth = jobs.some(j => j.a.inputs.has('depth')) ? this.#data.depth.sync(state, inputs.time, inputs.tf) : null;
     if (depth) this.#data.depth.deliver(host);
     // Taken before the run, which hands the inputs' arrays over to the worker and leaves them empty here.
-    const ran: Omit<PreviewHeld, 'result'> = { time: inputs.time.slice(), tf: inputs.tf, inst: state.seriesInstrument, at: replaying() ? pageNow() : Infinity, theme: this.#theme, ranAt: Date.now(), data: this.#data.version };
+    const ran: Omit<PreviewHeld, 'result'> = { time: inputs.time.slice(), tf: inputs.tf, inst: state.seriesInstrument, at: replaying() ? pageNow() : Infinity, theme: this.#theme, ...this.#pvMarkets(), ranAt: Date.now(), data: this.#data.version };
     const gen = this.#pvGen;
-    for (const j of jobs) this.#pvRunning.add(j.key);
+    this.#pvBusy = true;
     void host.run(jobs.map(j => ({ id: j.id, source: j.target.source, options: j.target.options, api: j.target.api })), inputs, depth ?? undefined).then(({ results, depthBehind }) => {
-      for (const j of jobs) this.#pvRunning.delete(j.key);
-      if (gen !== this.#pvGen) return;
-      // A worker that did not hold the order book it was told of read none: those answers are not kept, and it is sent everything next time.
-      if (depthBehind) this.#data.depth.forget(host);
-      results.forEach((result, k) => { const j = jobs[k]; if (j && !(depthBehind && j.a.inputs.has('depth'))) this.#pvCache.set(j.key, { ...ran, result }); });      const shown = this.#pv;
-      if (shown && jobs.some(j => j.key === this.#contentKey(shown))) { this.onMapChanged(); this.#pvEnsure(shown); }
+      this.#pvBusy = false;
+      if (gen === this.#pvGen) {
+        // A worker that did not hold the order book it was told of read none: it is sent everything next time, and those answers are kept as
+        // if the page held more since (worked out again a second later, not at once).
+        if (depthBehind) this.#data.depth.forget(host);
+        results.forEach((result, k) => { const j = jobs[k]; if (j) this.#pvCache.set(j.key, { ...ran, ...(depthBehind && j.a.inputs.has('depth') ? { data: -1 } : {}), result }); });
+        const shown = this.#pv;
+        if (shown && jobs.some(j => j.key === this.#contentKey(shown))) this.onMapChanged();
+      }
+      this.#pvPump();
     });
     return true;
   }
 
   /**
-   * As the list is shown, the previews of its rows not yet worked out for the chart as it is, in one run: a row pointed at then shows at once.
-   * Not those that read the order book (each would start reading it): they are worked out when they are pointed at. Whether nothing is left
-   * to start (false while the chart has no candles to run them over, as right after a change of timeframe).
+   * What the list's previews were last looked at for while the panel is open: when the chart (its timeframe, market, theme, its candles'
+   * timeframe, a replay) or its markets change, they are looked at again, just after the map's frame (what they read is not gathered inside
+   * a drawing).
    */
-  #pvPrefetch(): boolean {
-    if (!this.#panel || this.#ui.editing) return true;
-    const want = this.#pvTargets().filter(target => {
-      if (this.#pvOwn(target)) return false;
-      const had = this.#pvCache.get(this.#contentKey(target));
-      if (had && this.#pvCurrent(had) && Date.now() - had.ranAt < REFRESH) return false;
-      const a = this.#analyze(target.source);
-      return 'program' in a && !a.inputs.has('depth');
-    });
-    return !want.length || this.#pvRun(want);
-  }
-
-  /**
-   * The chart the list's previews were last worked out for: another one (its timeframe, market, theme) works them out again while the panel
-   * is open, just after the map's frame (gathering what they read is not done inside a drawing), until the chart has candles to run them over.
-   */
-  #pvChart = ''; #pvFollowing = 0;
+  #pvChart = ''; #pvChartMarkets: unknown = null; #pvFollowing = 0;
   #pvFollow(): void {
-    const s = this.store.state, chart = `${s.timeframe}|${s.candlesTimeframe ?? ''}|${s.seriesInstrument}|${this.#theme}|${replaying() ? 'replay' : 'live'}`;
-    if (chart === this.#pvChart || this.#pvFollowing) return;
-    this.#pvFollowing = window.setTimeout(() => { this.#pvFollowing = 0; if (this.#panel && this.#pvPrefetch()) this.#pvChart = chart; }, 0);
+    const s = this.store.state, chart = `${s.timeframe}|${s.candlesTimeframe ?? ''}|${s.seriesInstrument}|${this.#theme}|${replaying() ? 'replay' : 'live'}|${this.#pvMarkets().scope}`;
+    if ((chart === this.#pvChart && s.markets === this.#pvChartMarkets) || this.#pvFollowing) return;
+    this.#pvChart = chart; this.#pvChartMarkets = s.markets;
+    this.#pvFollowing = window.setTimeout(() => { this.#pvFollowing = 0; if (this.#panel) this.#pvPump(); }, 0);
   }
 
-  /** The row whose script the map shows now (null: none), for checks. */
+  /** The row whose script the map shows now (null: none), and the markets its answer was worked out over ('own': the script's own answer), for checks. */
   get previewShown(): string | null { return this.#pv && this.#pvShown(this.#pv) ? this.#pv.key : null; }
+  get previewScope(): string | null { const pv = this.#pv; return !pv ? null : this.#pvOwn(pv) ? 'own' : this.#pvCache.get(this.#contentKey(pv))?.scope ?? null; }
 
   /** The preview shown: the row under the pointer, else the one with the keyboard; none while a script is being written. */
   #pvShow(): void { this.preview(this.#ui.editing ? null : this.#pvPointer ?? this.#pvFocus); }
@@ -926,13 +945,16 @@ export class ScriptPane extends TimePane {
     this.#pvPointer = under && panel.body.contains(under) ? rowKeyOf(under) : null;
     this.#pvFocus = active instanceof HTMLElement && panel.body.contains(active) && active.matches(':focus-visible') ? rowKeyOf(active) : null;
     this.#pvShow();
-    this.#pvPrefetch();
+    this.#pvPump();
   }
 
-  /** The panel closed: no preview, nothing kept of the list's (an opening works them out again), and an answer still on its way is let go. */
+  /**
+   * The panel closed: no preview, nothing kept of the list's (an opening works them out again), and an answer still on its way is let go
+   * (a run out still holds the worker until it comes back; the next opening's runs wait for it).
+   */
   #pvEnd(): void {
     window.clearTimeout(this.#pvTimer); this.#pvTimer = 0; window.clearTimeout(this.#pvGap); this.#pvGap = 0; window.clearTimeout(this.#pvFollowing); this.#pvFollowing = 0;
-    this.#pvGen++; this.#pvCache.clear(); this.#pvRunning.clear(); this.#pvChart = '';
+    this.#pvGen++; this.#pvCache.clear(); this.#pvChart = ''; this.#pvChartMarkets = null;
     this.#pvPointer = null; this.#pvFocus = null; this.#pvAt = null;
     this.#pvHost?.dropUnsent();
     if (this.#pv) { this.#pv = null; this.onMapChanged(); }

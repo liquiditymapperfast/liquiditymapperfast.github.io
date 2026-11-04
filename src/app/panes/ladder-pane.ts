@@ -113,7 +113,7 @@ export class LadderPane {
   #order: { key: string; order: string[]; at: number } | null = null;
   #hover: { x: number; y: number } | null = null;
   /** Where a mouse pointer is over the book (canvas px, null when it is not): its row's price is shared with the map (`#shareRow`). */
-  #mouseY: number | null = null;
+  #mouse: { x: number; y: number } | null = null;
   /** One notch per mouse click, one per 40 px of a touchpad, and a limit in time on both, so a spin or a swipe cannot throw the zoom to the end (see ladderWheel). */
   #notches = ladderWheel();
   /** Touch: where a finger pinned the mirror comparison, the pinch in progress, and the fling after a lift. */
@@ -197,15 +197,15 @@ export class LadderPane {
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e), drag = this.#drag;
-      this.#mouseY = y;
+      this.#mouse = { x, y };
       if (drag?.kind === 'zoom') this.#zoomDrag(drag, y); // up zooms in, down out
       else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((y - drag.y) / ROW_H); this.invalidate(); }
-      else { this.#hover = { x, y }; this.#shareRow(y); }
+      else { this.#hover = { x, y }; this.#shareRow(this.#mouse); }
       this.#cursor(x); this.invalidate();
     });
     const release = (e: PointerEvent) => { if (e.pointerType === 'touch') return; this.#drag = null; if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); this.#cursor(local(e).x); this.invalidate(); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
-    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.#mouseY = null; this.#shareRow(null); this.invalidate(); });
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.#mouse = null; this.#shareRow(null); this.invalidate(); });
     c.addEventListener('dblclick', () => this.#reset());
     bindTouch(c, new GestureRecognizer(this.#touchHandlers()));
   }
@@ -299,19 +299,26 @@ export class LadderPane {
     l.step = step; // later events in the same frame build on this one
     this.store.set({ grouping: step });
   }
-  invalidate(): void { if (this.#suspended) { this.#owed = true; return; } if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#rowsDrawn = false; this.#render(); this.#shareRow(this.#mouseY); }); }
+  invalidate(): void { if (this.#suspended) { this.#owed = true; return; } if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#rowsDrawn = false; this.#markRowAsk.clear(); this.#render(); this.#shareRow(this.#mouse); }); }
 
   /** Whether the last frame drew the book's rows (`#layout` is theirs): not while it waits for a book, in a replay, or with no venue on. */
   #rowsDrawn = false;
+  /** The side each book's column drew the price's own row in (true: asks), by column: it is the side that holds more there. */
+  #markRowAsk = new Map<number, boolean>();
   /**
-   * Share the book's row at canvas height `y` (null: none) with the page (`bookHover`), as the map shares its pointer's moment: the map and
-   * the flow column's price strip draw its price. Only over rows drawn and while nothing is dragged; the store is told only when the row, its
-   * grouping or its side changed. Looked at again after every frame, since the book moves under a pointer resting on it as the price moves.
+   * Share the book's row under the pointer at `at` (canvas px; null: none) with the page (`bookHover`), as the map shares its pointer's
+   * moment: the map and the flow column's price strip draw its price, in the side's colour the book drew it in. Only over rows drawn and while
+   * nothing is dragged; the store is told only when the row, its grouping or its side changed. Looked at again after every frame, since the
+   * book moves under a pointer resting on it as the price moves.
    */
-  #shareRow(y: number | null): void {
-    const l = this.#layout, row = y === null || !this.#rowsDrawn || this.#drag || !(l.step > 0) || y < l.head ? -1 : Math.floor((y - l.head) / ROW_H);
+  #shareRow(at: { x: number; y: number } | null): void {
+    const l = this.#layout, row = at === null || !this.#rowsDrawn || this.#drag || !(l.step > 0) || at.y < l.head ? -1 : Math.floor((at.y - l.head) / ROW_H);
     let next: AppState['bookHover'] = null;
-    if (row >= 0 && row < l.rows) { const mid = this.#priceAt(row); next = { lo: mid - l.step / 2, step: l.step, side: mid > l.mark ? 'ask' : 'bid' }; }
+    if (at && row >= 0 && row < l.rows) {
+      const mid = this.#priceAt(row), bin = Math.floor(mid / l.step), markBin = Math.floor(l.mark / l.step);
+      const ask = bin > markBin || (bin === markBin && (this.#markRowAsk.get(Math.floor(at.x / Math.max(1, l.colW))) ?? mid > l.mark));
+      next = { lo: mid - l.step / 2, step: l.step, side: ask ? 'ask' : 'bid' };
+    }
     const cur = this.store.state.bookHover;
     if (next === cur || (next && cur && Math.abs(next.lo - cur.lo) < next.step * 1e-6 && next.step === cur.step && next.side === cur.side)) return;
     this.store.set({ bookHover: next });
@@ -1048,6 +1055,8 @@ export class LadderPane {
         continue;
       }
       const bid = g.totalBid[bin]!, ask = g.totalAsk[bin]!, isAsk = bin > markBin || (bin === markBin && ask > bid);
+      // The price's own row takes the side that holds more there: kept for its book's column, so the row shared with the map has its colour.
+      if (bin === markBin) this.#markRowAsk.set(Math.round(x0 / Math.max(1, this.#layout.colW)), isAsk);
       const value = isAsk ? ask : bid, color = isAsk ? p.ask : p.bid, f = weight(bin, !isAsk);
       if (ends && value > 0 && state.ladderShow !== 'cumulative') ends[r] = barX + Math.max(1, value / maxLevel * barW);
       if (bin === markBin) { mat.fillStyle = p.line; mat.fillRect(x0, y, w, ROW_H); }
