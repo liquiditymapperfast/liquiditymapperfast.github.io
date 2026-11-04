@@ -324,6 +324,12 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand:active::before { border-width: 2px 0 0 2px; border-color: var(--bv-c-pressed); border-image: var(--bv-pressed) 2 / 2px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand:active::after { top: calc(50% - 4px); right: 6px; }
 @media (pointer: coarse) { :root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand { height: 22px; } }
+/* A phone's bar folds with the same two keys' marks, twice their size (a finger's key is twice the desktop's): the minimize bar low in the key,
+   the restore windows in the middle of the folded strip. */
+:root[data-frame="bevel"][data-bar="compact"] .toolbar :is(.bar-collapse, .bar-expand) { color: var(--text); }
+:root[data-frame="bevel"][data-bar="compact"] .toolbar.collapsed > .bar-expand { background: var(--face); }
+:root[data-frame="bevel"][data-bar="compact"] .toolbar .bar-collapse::before { align-self: end; width: 12px; height: 4px; margin-bottom: 9px; -webkit-mask: var(--bv-minimize) 0 0 / 12px 4px no-repeat; mask: var(--bv-minimize) 0 0 / 12px 4px no-repeat; }
+:root[data-frame="bevel"][data-bar="compact"] .toolbar.collapsed > .bar-expand::before { width: 16px; height: 18px; transform: none; -webkit-mask: var(--bv-restore) 0 0 / 16px 18px no-repeat; mask: var(--bv-restore) 0 0 / 16px 18px no-repeat; }
 /* A small triangle after a button's name is drawn, not typed. */
 :root[data-frame="bevel"] :is(.coin-btn, .theme-btn, .language-btn)::after {
   content: ""; display: inline-block; flex: none; width: 7px; height: 4px; border: 0; margin: 0 0 0 5px; vertical-align: middle; font-size: 0; opacity: 1; color: var(--text); background: currentColor;
