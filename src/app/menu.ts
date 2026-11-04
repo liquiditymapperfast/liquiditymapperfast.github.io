@@ -45,8 +45,10 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     // On a phone the stylesheet makes the menu a bottom sheet.
     if (compactBar()) { root.style.top = ''; root.style.left = ''; root.style.maxHeight = ''; return; }
     const a = anchor.getBoundingClientRect(), w = root.offsetWidth, height = root.offsetHeight;
+    // The room between the menu and what opened it is the frame's (`--menu-gap`): the Classic frame opens it flush, as the desktop did.
+    const gapCss = parseFloat(getComputedStyle(root).getPropertyValue('--menu-gap')), gap = Number.isFinite(gapCss) ? gapCss : 4;
     const below = window.innerHeight - a.bottom - 8, up = below < height && a.top > below;
-    root.style.top = `${Math.max(8, up ? a.top - 4 - height : a.bottom + 4)}px`;
+    root.style.top = `${Math.max(8, up ? a.top - gap - height : a.bottom + gap)}px`;
     root.style.left = `${Math.min(Math.max(8, align === 'right' ? a.right - w : a.left), window.innerWidth - w - 8)}px`;
     root.style.maxHeight = `${Math.max(160, up ? a.top - 12 : below)}px`;
   };

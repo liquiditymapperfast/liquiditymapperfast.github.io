@@ -56,8 +56,8 @@ button.help:hover, button.help.open { color: var(--bg); background: var(--text);
 .theme-btn::after { content: ""; flex: none; width: 0; height: 0; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; margin-left: 2px; }
 
 /* Over the map: nothing that blurs or softens what is painted underneath, which repaints all the time. */
-.pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto, .pane.heat .map-layout { border-radius: var(--radius); background: var(--face); -webkit-backdrop-filter: none; backdrop-filter: none; }
-.pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover, .pane.heat .map-layout:hover { background: var(--face); border-color: var(--text); }
+.pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout) { border-radius: var(--radius); background: var(--face); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout):hover { background: var(--face); border-color: var(--text); }
 
 /* Numbers that label things are squares, not discs. */
 .guide-link .num, .guide-section h2 .num { border-radius: var(--radius); }
@@ -196,6 +196,14 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
   --bv-question: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='6'%20height='9'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%230a0a0a'%20d='M1%200h4v1h-4zM0%201h2v1h-2zM4%201h2v1h-2zM0%202h2v1h-2zM4%202h2v1h-2zM3%203h2v1h-2zM2%204h2v1h-2zM2%205h2v1h-2zM2%207h2v1h-2zM2%208h2v1h-2z'/%3E%3C/svg%3E");
   --bv-grip: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='12'%20height='12'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%23808080'%20d='M11%202h1v1h-1zM10%203h1v1h-1zM9%204h1v1h-1zM8%205h1v1h-1zM7%206h1v1h-1zM11%206h1v1h-1zM6%207h1v1h-1zM10%207h1v1h-1zM5%208h1v1h-1zM9%208h1v1h-1zM4%209h1v1h-1zM8%209h1v1h-1zM3%2010h1v1h-1zM7%2010h1v1h-1zM11%2010h1v1h-1zM2%2011h1v1h-1zM6%2011h1v1h-1zM10%2011h1v1h-1z'/%3E%3Cpath%20fill='%23ffffff'%20d='M11%203h1v1h-1zM10%204h1v1h-1zM9%205h1v1h-1zM8%206h1v1h-1zM7%207h1v1h-1zM11%207h1v1h-1zM6%208h1v1h-1zM10%208h1v1h-1zM5%209h1v1h-1zM9%209h1v1h-1zM4%2010h1v1h-1zM8%2010h1v1h-1zM3%2011h1v1h-1zM7%2011h1v1h-1zM11%2011h1v1h-1z'/%3E%3C/svg%3E");
   --bv-gripper: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='5'%20height='12'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%23ffffff'%20d='M0%200h1v1h-1zM3%200h1v1h-1zM0%201h1v1h-1zM3%201h1v1h-1zM0%202h1v1h-1zM3%202h1v1h-1zM0%203h1v1h-1zM3%203h1v1h-1zM0%204h1v1h-1zM3%204h1v1h-1zM0%205h1v1h-1zM3%205h1v1h-1zM0%206h1v1h-1zM3%206h1v1h-1zM0%207h1v1h-1zM3%207h1v1h-1zM0%208h1v1h-1zM3%208h1v1h-1zM0%209h1v1h-1zM3%209h1v1h-1zM0%2010h1v1h-1zM3%2010h1v1h-1zM0%2011h1v1h-1zM3%2011h1v1h-1z'/%3E%3Cpath%20fill='%23808080'%20d='M1%200h1v1h-1zM4%200h1v1h-1zM1%201h1v1h-1zM4%201h1v1h-1zM1%202h1v1h-1zM4%202h1v1h-1zM1%203h1v1h-1zM4%203h1v1h-1zM1%204h1v1h-1zM4%204h1v1h-1zM1%205h1v1h-1zM4%205h1v1h-1zM1%206h1v1h-1zM4%206h1v1h-1zM1%207h1v1h-1zM4%207h1v1h-1zM1%208h1v1h-1zM4%208h1v1h-1zM1%209h1v1h-1zM4%209h1v1h-1zM1%2010h1v1h-1zM4%2010h1v1h-1zM1%2011h1v1h-1zM4%2011h1v1h-1z'/%3E%3C/svg%3E");
+  /* Keys of a window's title bar and marks of a menu (maps in newglyphs.py beside build.py): the minimize key's bar, the restore key's two
+     windows, three dots for a key that opens a menu, the bullet beside the one chosen of a list, and sliders for a key that opens settings. */
+  --bv-minimize: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='6'%20height='2'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%230a0a0a'%20d='M0%200h6v1h-6zM0%201h6v1h-6z'/%3E%3C/svg%3E");
+  --bv-restore: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='8'%20height='9'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%230a0a0a'%20d='M2%200h6v1h-6zM2%201h6v1h-6zM2%202h1v1h-1zM7%202h1v1h-1zM0%203h6v1h-6zM7%203h1v1h-1zM0%204h6v1h-6zM7%204h1v1h-1zM0%205h1v1h-1zM5%205h3v1h-3zM0%206h1v1h-1zM5%206h1v1h-1zM0%207h1v1h-1zM5%207h1v1h-1zM0%208h6v1h-6z'/%3E%3C/svg%3E");
+  --bv-more: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='8'%20height='2'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%230a0a0a'%20d='M0%200h2v1h-2zM3%200h2v1h-2zM6%200h2v1h-2zM0%201h2v1h-2zM3%201h2v1h-2zM6%201h2v1h-2z'/%3E%3C/svg%3E");
+  --bv-bullet: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='6'%20height='6'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%230a0a0a'%20d='M1%200h4v1h-4zM0%201h6v1h-6zM0%202h6v1h-6zM0%203h6v1h-6zM0%204h6v1h-6zM1%205h4v1h-4z'/%3E%3C/svg%3E");
+  --bv-sliders: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='11'%20height='9'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%230a0a0a'%20d='M3%200h3v1h-3zM0%201h11v1h-11zM3%202h3v1h-3zM7%203h3v1h-3zM0%204h11v1h-11zM7%205h3v1h-3zM1%206h3v1h-3zM0%207h11v1h-11zM1%208h3v1h-3z'/%3E%3C/svg%3E");
+  --bv-bullet-white: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='6'%20height='6'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%23ffffff'%20d='M1%200h4v1h-4zM0%201h6v1h-6zM0%202h6v1h-6zM0%203h6v1h-6zM0%204h6v1h-6zM1%205h4v1h-4z'/%3E%3C/svg%3E");
   --bv-tip: #ffffe1;
   /* A window, a menu and a note cast no shadow in this look (the desktop of the time drew none: a window is told from what lies under it by its dark lower
      and right edges). For the hard offset shadow of the earlier look, set this to `2px 2px 0 var(--shadow)`. */
@@ -223,11 +231,13 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"] button.guide-btn { font-weight: 700; }
 /* A split button's two parts are two buttons side by side, each with its whole bevel (an overlap would hide the switch's dark right edge). */
 :root[data-frame="bevel"] .split > .split-cfg { margin-left: 0; width: 18px; }
-:root[data-frame="bevel"] .split > .split-cfg::before { width: 11px; height: 11px; }
 /* A small "?" is a raised key with a bold question mark drawn on it. */
 :where([data-frame="bevel"]) button.help { border: 1px solid; border-color: var(--bv-c-raised); border-image: var(--bv-raised) 2 / 2px; background: var(--face); color: var(--text); }
 :where([data-frame="bevel"]) button.help:hover { background: var(--face); color: var(--text); border-color: transparent; }
 :root[data-frame="bevel"] button.help { width: 16px; height: 16px; margin-left: 2px; margin-right: 4px; }
+/* Beside a name it is the desktop's help key, as large as the other keys of a title bar (16 x 14), its mark where the desktop drew it. */
+:root[data-frame="bevel"]:not([data-bar="compact"]) button.help { height: 14px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) button.help::before { top: 1px; }
 :root[data-frame="bevel"] button.help::before { inset: auto; left: 4px; top: 2px; width: 6px; height: 9px; -webkit-mask: var(--bv-question) 0 0 / 6px 9px no-repeat; mask: var(--bv-question) 0 0 / 6px 9px no-repeat; }
 
 /* ---- the lamp of a feature's button is a check box in this look: a white sunken square, a black check when it is on --------------------------- */
@@ -297,6 +307,23 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
    border, so the title's own gap in it is made by the browser and nothing has to be painted over the lines. */
 :where([data-frame="bevel"]) .toolbar .deck { border: 2px solid; border-color: var(--bv-c-sunken); border-image: var(--bv-etched) 2 / 2px; box-shadow: none; padding: 0 3px 4px; }
 :where([data-frame="bevel"]) .toolbar .deck > legend { position: relative; padding: 0 3px; margin-left: -1px; background: transparent; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text); }
+/* The key that folds the bar away is the desktop's minimize key (Karl, 2026-11-03: "a more faithful Windows 95 type icon"), at the right end of the
+   top edge of the deck that bears the page's name, where a window's title bar has it (on the deck's lower edge it stood over the picture key). Folded,
+   the bar is a strip of the face with the restore key at its right end; the whole strip still brings the bar back. */
+:root[data-frame="bevel"] .toolbar.cockpit .deck.deck-tools > legend { margin-right: 22px; }
+:root[data-frame="bevel"] .toolbar.cockpit .deck-tools > .bar-collapse { top: -13px; bottom: auto; right: 1px; width: 16px; height: 14px; padding: 0; border: 1px solid; border-color: var(--bv-c-raised); border-image: var(--bv-raised) 2 / 2px; background-color: var(--face); color: var(--text); }
+:root[data-frame="bevel"] .toolbar.cockpit .deck-tools > .bar-collapse:active { border-width: 2px 0 0 2px; border-color: var(--bv-c-pressed); border-image: var(--bv-pressed) 2 / 2px; }
+:root[data-frame="bevel"] .toolbar.cockpit .deck-tools > .bar-collapse::before { place-self: start; width: 6px; height: 2px; margin: 8px 0 0 3px; -webkit-mask: var(--bv-minimize) 0 0 / 6px 2px no-repeat; mask: var(--bv-minimize) 0 0 / 6px 2px no-repeat; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.cockpit.collapsed { padding: 0 2px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand { position: relative; height: 18px; border: 0; background: var(--face); color: var(--text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand::before {
+  position: absolute; top: 0; bottom: 0; right: 2px; box-sizing: border-box; width: 16px; height: 14px; margin: auto 0; border: 1px solid; border-color: var(--bv-c-raised); border-image: var(--bv-raised) 2 / 2px;
+  background: var(--face); -webkit-mask: none; mask: none; transform: none;
+}
+:root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand::after { content: ""; position: absolute; top: calc(50% - 5px); right: 7px; width: 8px; height: 9px; background: currentColor; -webkit-mask: var(--bv-restore) 0 0 / 8px 9px no-repeat; mask: var(--bv-restore) 0 0 / 8px 9px no-repeat; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand:active::before { border-width: 2px 0 0 2px; border-color: var(--bv-c-pressed); border-image: var(--bv-pressed) 2 / 2px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand:active::after { top: calc(50% - 4px); right: 6px; }
+@media (pointer: coarse) { :root[data-frame="bevel"]:not([data-bar="compact"]) .toolbar.collapsed > .bar-expand { height: 22px; } }
 /* A small triangle after a button's name is drawn, not typed. */
 :root[data-frame="bevel"] :is(.coin-btn, .theme-btn, .language-btn)::after {
   content: ""; display: inline-block; flex: none; width: 7px; height: 4px; border: 0; margin: 0 0 0 5px; vertical-align: middle; font-size: 0; opacity: 1; color: var(--text); background: currentColor;
@@ -344,19 +371,29 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :where([data-frame="bevel"]) :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x):active { border-width: 2px 0 0 2px; border-color: var(--bv-c-pressed); border-image: var(--bv-pressed) 2 / 2px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) :is(.panel-x, .guide-x, .notice-close, .panel .srow .x) { width: 16px; height: 14px; flex: none; }
 :root[data-frame="bevel"] :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x)::before {
-  content: ""; left: calc(50% - 4px); top: calc(50% - 3px); width: 8px; height: 7px; margin: 0; border-radius: 0; transform: none; background: currentColor;
+  content: ""; left: calc(50% - 4px); top: calc(50% - 4px); width: 8px; height: 7px; margin: 0; border-radius: 0; transform: none; background: currentColor;
   -webkit-mask: var(--bv-close) 0 0 / 8px 7px no-repeat; mask: var(--bv-close) 0 0 / 8px 7px no-repeat;
 }
 :root[data-frame="bevel"] :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x)::after { content: none; }
 
-/* ---- menus: a raised frame, rows lit in navy, a drawn check, an embossed label when a row is dimmed ---------------------------------------- */
-:where([data-frame="bevel"]) .menu { background: var(--face); color: var(--text); border: 2px solid; border-color: var(--bv-c-window); border-image: var(--bv-window) 2 / 2px; box-shadow: var(--bv-shadow); padding: 0; }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item { padding: 3px 4px 3px 8px; gap: 8px; font-size: 11px; }
+/* ---- menus: the desktop's. A raised frame, flush under what opened it (menu.ts reads --menu-gap); rows 18 px high, lit in navy from edge to edge;
+   the mark in a gutter at the left, a bullet beside the one chosen of a list (the desktop's mark for one choice among several, a check being for a
+   switch), every row in the menu's own weight (a bold row was a window's default command, never the chosen one); an embossed label when a row is
+   dimmed. A phone's menu is a sheet and keeps its own. */
+:where([data-frame="bevel"]) .menu { --menu-gap: 0px; background: var(--face); color: var(--text); border: 2px solid; border-color: var(--bv-c-window); border-image: var(--bv-window) 2 / 2px; box-shadow: var(--bv-shadow); padding: 0; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu { padding: 1px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item { grid-template-columns: 18px auto minmax(0, 1fr); gap: 0; padding: 2px 12px 2px 0; font-size: 11px; line-height: 14px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.plain { grid-template-columns: 18px minmax(0, 1fr); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item .swatch { margin-right: 6px; }
 :where([data-frame="bevel"]) .menu-item:hover, :where([data-frame="bevel"]) .menu-item:focus-visible { background: var(--bar); color: var(--bar-text); outline: 0; }
 :where([data-frame="bevel"]) .menu-item:disabled { opacity: 1; }
 :root[data-frame="bevel"] .menu-item .tick { display: block; width: 18px; height: 7px; font-size: 0; }
 :root[data-frame="bevel"] .menu-item.current .tick { background: var(--bv-check) center / 7px 7px no-repeat; }
 :root[data-frame="bevel"] .menu-item.current:is(:hover, :focus-visible) .tick { background-image: var(--bv-check-white); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item .tick { order: -1; height: 14px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current .label { font-weight: 400; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current .tick { background: var(--bv-bullet) center / 6px 6px no-repeat; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .menu-item.current:is(:hover, :focus-visible) .tick { background-image: var(--bv-bullet-white); }
 :where([data-frame="bevel"]) .menu-title { color: var(--text); font-weight: 700; letter-spacing: 0; text-transform: none; border-bottom: 1px solid var(--edge-lit); box-shadow: inset 0 -1px 0 var(--lo); }
 :where([data-frame="bevel"]) .swatch { border: 1px solid var(--edge); }
 
@@ -409,7 +446,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :where([data-frame="bevel"]) .venue-list { background: transparent; }
 
 /* ---- over the map and in a pane ---------------------------------------------------------------------------------------------------------- */
-:root[data-frame="bevel"] .pane.heat :is(.map-recenter, .map-select, .map-goto, .map-layout) { height: 23px; box-shadow: none; }
+:root[data-frame="bevel"] .pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout) { height: 23px; box-shadow: none; }
 :where([data-frame="bevel"]) .pane.heat .replay-bar { background: var(--face); border: 2px solid; border-color: var(--bv-c-window); border-image: var(--bv-window) 2 / 2px; box-shadow: var(--bv-shadow); padding: 2px 6px; }
 
 /* ---- the guide is a help window: a title bar, a contents list and a page, each in a sunken white well ------------------------------------------ */
@@ -444,6 +481,26 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 /* ---- the panes sit in sunken frames, the way a window's client areas do ------------------------------------------------------------------------- */
 :root[data-frame="bevel"]:not([data-layout^="phone"]) .pane::after { content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none; border: 2px solid; border-color: var(--bv-c-sunken); border-image: var(--bv-sunken) 2 / 2px; }
 :root[data-frame="bevel"]:not([data-layout^="phone"]) .pane-head { padding-top: 4px; padding-bottom: 3px; }
+/* A pane's header is drawn on whole pixels (Karl, 2026-11-03: its keys "look a little bit weird"). Every control of a line is an even number of pixels
+   high, so the centre they share falls between two rows of pixels: an odd one there (a 23 px key, a 17 px list) put the others half a pixel off and
+   blurred their drawn edges and marks. Lists and buttons are 20 px (the desktop's were 21 to 23), the keys beside them as tall, the name, captions
+   and figures on 14 px lines, the keys of the title bar 16 x 14. */
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane .pane-head { --head-key: 20px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(select, button:not(.help, .pane-x, .pane-more, [data-fit="key"])) { box-sizing: border-box; height: 20px; min-height: 0; padding-top: 0; padding-bottom: 0; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(strong, .ctl, .readout) { line-height: 14px; }
+/* Its keys at the end are the title bar's: black drawings (a grey one was the desktop's look for a key that cannot be pressed), the menu's three dots drawn too. */
+:root[data-frame="bevel"] .pane-head :is(.pane-x, .pane-more), :root[data-frame="bevel"] .pane-head :is(.pane-x, .pane-more):hover { color: var(--text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-more::before { width: 8px; height: 2px; -webkit-mask: var(--bv-more) 0 0 / 8px 2px no-repeat; mask: var(--bv-more) 0 0 / 8px 2px no-repeat; }
+/* The flow column's settings key is one of the header's keys, square, its sliders drawn (the split buttons' too). */
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear { position: relative; width: var(--head-key); height: var(--head-key); padding: 0; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear > svg { display: none; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear::before,
+:root[data-frame="bevel"]:not([data-bar="compact"]) .split > .split-cfg::before { content: ""; position: absolute; width: 11px; height: 9px; margin: 0; transform: none; background: currentColor; -webkit-mask: var(--bv-sliders) 0 0 / 11px 9px no-repeat; mask: var(--bv-sliders) 0 0 / 11px 9px no-repeat; }
+/* Where the desktop put a mark that cannot sit in the middle: a pixel up and to the left of it (whole pixels from the key's inner edge). */
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear::before { left: 3px; top: 4px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .split > .split-cfg::before { left: 2px; top: 5px; }
+/* A phone's split buttons keep their drawn sliders in the middle of a wider key. */
+:root[data-frame="bevel"][data-bar="compact"] .split > .split-cfg::before { width: 11px; height: 11px; }
 
 /* The handle that moves a pane or a row is a gripper: two raised lines side by side. */
 :root[data-frame="bevel"] .pane-head .grip { font-size: 0; display: inline-block; width: 7px; height: 14px; margin: 0 2px 0 0; background: var(--bv-gripper) 1px 1px / 5px 12px no-repeat; }
