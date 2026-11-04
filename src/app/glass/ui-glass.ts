@@ -401,7 +401,7 @@ export class UiGlass {
     gl.useProgram(prog);
     bindWaves(this.#loc);
     gl.uniform2f(u('size'), W, H); gl.uniform1f(u('dpr'), dpr); gl.uniform1f(u('now'), now - this.#base); gl.uniform1i(u('dark'), p.dark ? 1 : 0);
-    gl.uniform1f(u('cap'), p.dark ? 0.12 : 0.1); gl.uniform1f(u('touchCap'), p.dark ? 0.32 : 0.24);
+    gl.uniform1f(u('cap'), p.dark ? 0.12 : 0.1); gl.uniform1f(u('touchCap'), p.dark ? 0.42 : 0.3);
     const sp = new Float32Array(MAX_SPARKS * 4), sc = new Float32Array(MAX_SPARKS * 4);
     this.#sparks.forEach((s, i) => { sp.set([s.x, s.y, s.at - this.#base, s.s], i * 4); sc.set([s.c[0], s.c[1], s.c[2], s.ghost ? 1 : 0], i * 4); });
     gl.uniform1i(u('n'), this.#sparks.length); gl.uniform4fv(u('spark'), sp); gl.uniform4fv(u('sparkC'), sc);

@@ -13,7 +13,7 @@
 /** How fast a hand must move to leave a wake (CSS px a millisecond): slower is a hand at rest, its tremor included. */
 export const WAKE_MIN_SPEED = 0.05;
 /** The wake's height a substep for each px/ms of speed, and its cap: an order's pulse is 0.35 to 1.6 at once, a wake a breath of that. */
-export const WAKE_GAIN = 0.05, WAKE_MAX = 0.14;
+export const WAKE_GAIN = 0.08, WAKE_MAX = 0.22;
 /** How wide the wake is (CSS px): about a fingertip. */
 export const WAKE_WIDTH = 5;
 /** A key pressed in the glass: one ring, about a small order's. */
