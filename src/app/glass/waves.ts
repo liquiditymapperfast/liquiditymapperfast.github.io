@@ -2,7 +2,9 @@
  * A field of waves on the card (Karl, 2026-10-17): every large order drops a pulse where it shows, and it runs out across the screen as a
  * real wave, bending where it enters glass (slower there), partly thrown back and partly let through by the splitters and the edges of the
  * panes, and soaked up by the screen's own edges so nothing rings for ever. Buys and sells are two fields in one texture (red and green
- * channels), so their crests keep their colours and pass through each other.
+ * channels), so their crests keep their colours and pass through each other; the person's own hand on the glass (a pointer moving over it,
+ * a key pressed, a splitter dragged: Karl, 2026-11-03, "push more interactions with ... the waves") is a third, in the blue channel, drawn
+ * in neither side's colour.
  *
  * The field is the 2D wave equation on a grid a quarter of the screen across (`CELL` CSS px a cell), stepped with leapfrog in substeps of
  * one fixed length (`SUBSTEP_MS`, as many a frame as its time holds), in half-float textures. A pulse's height grows with the square
@@ -25,9 +27,20 @@ export const WALL_SPEED = 0.55;
 /** How long the field runs after its last pulse (ms): by then the edges and the damping have taken it. */
 export const RING_MS = 3_200;
 const MAX_SOURCES = 16;
+/** The most touches moving across one frame (a pointer, a splitter dragged): beyond them the oldest are dropped. */
+const MAX_PATHS = 4;
 
-/** One pulse into the field: where (CSS px), how tall (about 1 for a large order), how wide (CSS px), and whose (0 buy, 1 sell). */
-export interface WaveSource { x: number; y: number; amp: number; width: number; side: 0 | 1 }
+/**
+ * One pulse into the field: where (CSS px), how tall (about 1 for a large order), how wide (CSS px), and whose (0 buy, 1 sell, 2 a touch: the
+ * person's own hand on the glass, a field of its own in the texture's blue channel, drawn in neither side's colour). With `x2`, `y2` it is a
+ * segment from (x, y) to there, as wide either side of it (a splitter pushed along).
+ */
+export interface WaveSource { x: number; y: number; amp: number; width: number; side: 0 | 1 | 2; x2?: number; y2?: number }
+/**
+ * A touch that moves across the next frame, from (x0, y0) to (x1, y1) (CSS px): the field adds it once a substep at its place then, so a
+ * moving hand leaves one smooth wake (a pulse a frame left a string of beads), `amp` each substep, as wide as `width`.
+ */
+export interface WavePath { x0: number; y0: number; x1: number; y1: number; amp: number; width: number }
 /** A region of the field's medium (CSS px): glass slows a wave, a wall mostly throws it back. */
 export interface WaveRegion { x: number; y: number; w: number; h: number; kind: 'glass' | 'wall' }
 
@@ -58,11 +71,12 @@ const VERT = `#version 300 es
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
 
 // One substep: the next height from this one and the last (leapfrog), the neighbours' pull scaled by the medium's speed there, damped a
-// little everywhere and much at the screen's edges; on a frame's first substep, the new pulses.
+// little everywhere and much at the screen's edges; then the pulses of this substep (an order's on a frame's first, a moving touch's on
+// each), each a segment from `src.xy` to `seg.xy` (a point where the two are one), its height falling off with the distance from it.
 const STEP = `#version 300 es
 precision highp float;
 uniform sampler2D cur, prev, medium; uniform vec2 texel; uniform float courant;
-uniform int n; uniform vec4 src[${MAX_SOURCES}]; uniform float side[${MAX_SOURCES}];
+uniform int n; uniform vec4 src[${MAX_SOURCES}]; uniform vec2 seg[${MAX_SOURCES}]; uniform float side[${MAX_SOURCES}];
 out vec4 o;
 void main() {
   vec2 uv = gl_FragCoord.xy * texel;
@@ -71,10 +85,12 @@ void main() {
   vec4 next = (2.0 * c - p + courant * m.r * lap) * (1.0 - m.g);
   for (int i = 0; i < ${MAX_SOURCES}; i++) {
     if (i >= n) break;
-    vec2 d = gl_FragCoord.xy - src[i].xy; float b = src[i].z * exp(-dot(d, d) / (2.0 * src[i].w * src[i].w));
-    if (side[i] < 0.5) next.r += b; else next.g += b;
+    vec2 a = src[i].xy, ab = seg[i] - a, q = gl_FragCoord.xy - a;
+    vec2 d = q - ab * clamp(dot(q, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    float b = src[i].z * exp(-dot(d, d) / (2.0 * src[i].w * src[i].w));
+    if (side[i] < 0.5) next.r += b; else if (side[i] < 1.5) next.g += b; else next.b += b;
   }
-  o = vec4(clamp(next.rg, -4.0, 4.0), 0.0, 1.0);
+  o = vec4(clamp(next.rgb, -4.0, 4.0), 1.0);
 }`;
 
 // The medium: the speed squared (against the open screen's) in red, the damping in green.
@@ -105,6 +121,10 @@ export class WaveField {
   /** Which of the three textures is the last, this and the next step (leapfrog keeps two and writes the third). */
   #i = 0;
   #pending: WaveSource[] = [];
+  /** Touches moving across the next frame (`addPath`): each substep takes a piece of each. */
+  #paths: WavePath[] = [];
+  /** One substep's pulses, as the step shader takes them (kept, not made again every substep). */
+  #src = new Float32Array(MAX_SOURCES * 4); #seg = new Float32Array(MAX_SOURCES * 2); #side = new Float32Array(MAX_SOURCES);
   #lastSource = -Infinity;
   #last = 0;
   /** How far the field's time is behind the clock (ms, within half a substep either way): carried to the next frame, never dropped. */
@@ -120,7 +140,7 @@ export class WaveField {
 
   private constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
-    this.#step = this.#program(STEP, ['cur', 'prev', 'medium', 'texel', 'courant', 'n', 'src', 'side']);
+    this.#step = this.#program(STEP, ['cur', 'prev', 'medium', 'texel', 'courant', 'n', 'src', 'seg', 'side']);
     this.#medium = this.#program(MEDIUM, ['region', 'kind', 'n', 'cells', 'glassC', 'wallC']);
     for (let i = 0; i < 3; i++) { this.#tex.push(this.#texture()); this.#fbo.push(gl.createFramebuffer()!); }
     this.#mediumTex = this.#texture(); this.#mediumFbo = gl.createFramebuffer()!;
@@ -188,11 +208,18 @@ export class WaveField {
     this.#lastSource = now; this.#still = false;
   }
 
+  /** A touch moving across the next frame (spread over its substeps, a piece each); at most a few at once, the newest kept. */
+  addPath(path: WavePath, now: number): void {
+    this.#paths.push(path);
+    if (this.#paths.length > MAX_PATHS) this.#paths.splice(0, this.#paths.length - MAX_PATHS);
+    this.#lastSource = now; this.#still = false;
+  }
+
   /** Step the field to `now` (ms). Leaves the default framebuffer bound and blending off; the caller sets its own viewport after. */
   step(now: number): void {
     const gl = this.gl, l = this.#loc.get(this.#step)!;
     // A still field keeps no time: the first frame of the next pulse steps one frame's time, not the whole idle spell (50 ms, 24 substeps).
-    if (!this.alive(now)) { this.#pending.length = 0; this.#last = 0; this.#carry = 0; if (!this.#still) this.#clear(); return; }
+    if (!this.alive(now)) { this.#pending.length = 0; this.#paths.length = 0; this.#last = 0; this.#carry = 0; if (!this.#still) this.#clear(); return; }
     // Whole substeps of the one length, to the nearest, and what is left over (either way) goes into the next frame: so frames of 16 and
     // 17 ms are eight substeps each, a second draw in the same millisecond steps none, and a clock that went back (a page woken from the
     // background) steps none either. A pulse waiting for a frame that steps none goes in with the next substep.
@@ -205,12 +232,24 @@ export class WaveField {
     gl.uniform2f(l.get('texel')!, 1 / this.#cols, 1 / this.#rows); gl.uniform1f(l.get('courant')!, COURANT);
     gl.uniform1i(l.get('cur')!, 0); gl.uniform1i(l.get('prev')!, 1); gl.uniform1i(l.get('medium')!, 2);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.#mediumTex);
+    // A frame that steps none keeps its moving touches for the next one, as it keeps its pulses.
+    const paths = steps > 0 ? this.#paths.splice(0) : [];
+    const src = this.#src, seg = this.#seg, side = this.#side;
     for (let k = 0; k < steps; k++) {
       const prev = this.#i, cur = (this.#i + 1) % 3, next = (this.#i + 2) % 3;
-      const src = k === 0 ? this.#pending.splice(0) : [];
-      const s = new Float32Array(MAX_SOURCES * 4), side = new Float32Array(MAX_SOURCES);
-      src.forEach((q, i) => { s.set([q.x / CELL, (this.#cssH - q.y) / CELL, q.amp, Math.max(0.8, q.width / CELL)], i * 4); side[i] = q.side; });
-      gl.uniform1i(l.get('n')!, src.length); gl.uniform4fv(l.get('src')!, s); gl.uniform1fv(l.get('side')!, side);
+      let n = 0;
+      const put = (x: number, y: number, x2: number, y2: number, amp: number, width: number, who: number): void => {
+        if (n >= MAX_SOURCES) return;
+        src[n * 4] = x / CELL; src[n * 4 + 1] = (this.#cssH - y) / CELL; src[n * 4 + 2] = amp; src[n * 4 + 3] = Math.max(0.8, width / CELL);
+        seg[n * 2] = x2 / CELL; seg[n * 2 + 1] = (this.#cssH - y2) / CELL; side[n] = who; n++;
+      };
+      if (k === 0) for (const q of this.#pending.splice(0)) put(q.x, q.y, q.x2 ?? q.x, q.y2 ?? q.y, q.amp, q.width, q.side);
+      // Each moving touch lays down this substep's piece of its way, so its wake is drawn as it goes.
+      for (const w of paths) {
+        const f0 = k / steps, f1 = (k + 1) / steps;
+        put(w.x0 + (w.x1 - w.x0) * f0, w.y0 + (w.y1 - w.y0) * f0, w.x0 + (w.x1 - w.x0) * f1, w.y0 + (w.y1 - w.y0) * f1, w.amp, w.width, 2);
+      }
+      gl.uniform1i(l.get('n')!, n); gl.uniform4fv(l.get('src')!, src); gl.uniform2fv(l.get('seg')!, seg); gl.uniform1fv(l.get('side')!, side);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.#tex[cur]!);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.#tex[prev]!);
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.#fbo[next]!);
@@ -255,7 +294,8 @@ export class WaveField {
 /**
  * The GLSL a renderer adds to read the field: `waveAt(cssPx)` the two heights there (buy, sell), `waveFront(cssPx)` how fast they rise
  * there (the moving fronts, bright; the slow wake a 2D wave leaves behind them, dark), and `waveSlope(cssPx)` their summed slope, from the
- * textures bound to `waves` and `wavesPrev` with the grid's size in `waveCells` (CSS px are top-down; the field's rows bottom-up).
+ * textures bound to `waves` and `wavesPrev` with the grid's size in `waveCells` (CSS px are top-down; the field's rows bottom-up). The
+ * touches' field has the same three, `touchAt`, `touchFront` and `touchSlope`.
  */
 export const WAVE_GLSL = `
 uniform sampler2D waves, wavesPrev; uniform vec2 waveCells; uniform float waveCssH; uniform bool hasWaves;
@@ -266,4 +306,10 @@ vec2 waveSlope(vec2 p) {
   if (!hasWaves) return vec2(0.0);
   vec2 a = waveAt(p + vec2(${CELL}.0, 0.0)) - waveAt(p - vec2(${CELL}.0, 0.0)), b = waveAt(p + vec2(0.0, ${CELL}.0)) - waveAt(p - vec2(0.0, ${CELL}.0));
   return vec2(a.r + a.g, b.r + b.g) * 0.5;
+}
+float touchAt(vec2 p) { if (!hasWaves) return 0.0; return texture(waves, waveUv(p)).b; }
+float touchFront(vec2 p) { if (!hasWaves) return 0.0; vec2 uv = waveUv(p); return max(texture(waves, uv).b - texture(wavesPrev, uv).b, 0.0) * 3.0; }
+vec2 touchSlope(vec2 p) {
+  if (!hasWaves) return vec2(0.0);
+  return vec2(touchAt(p + vec2(${CELL}.0, 0.0)) - touchAt(p - vec2(${CELL}.0, 0.0)), touchAt(p + vec2(0.0, ${CELL}.0)) - touchAt(p - vec2(0.0, ${CELL}.0))) * 0.5;
 }`;
