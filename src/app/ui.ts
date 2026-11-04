@@ -16,8 +16,8 @@ export interface PanelOptions {
   title: string;
   /** Width in px (the panel never exceeds the window). */
   width?: number;
-  /** Which edge of the anchor the panel lines up with. */
-  align?: 'left' | 'right';
+  /** Which edge of the anchor the panel lines up with, or `edge`: against the window's right edge (`placeOn`). */
+  align?: 'left' | 'right' | 'edge';
   onClose?: () => void;
   /** A press outside does not close it: a panel about what is on the map, kept open while the person works on the map (as a moved one is). */
   stays?: boolean;

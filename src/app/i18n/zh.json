@@ -1716,6 +1716,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "这个脚本是你浏览器中的助手写的。请先阅读，然后点击“保存”保留它，或点击“返回”放弃它。",
  "Bar patterns": "K线形态",
  "hidden": "已隐藏",
+ "preview": "预览",
  "Show this script": "显示此脚本",
  "Hide this script (it still runs and alerts)": "隐藏此脚本（仍会运行并提醒）",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "最近 48 根 K 线的平均价格，按每根成交多少加权，两侧各有一条通道。",

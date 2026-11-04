@@ -36,13 +36,16 @@ export function chooseSide(anchor: Box, need: number, view: View): Side {
   return above > below ? 'above' : 'below';
 }
 
-/** Where the panel goes on `side` of its button, and the tallest it may be there. It always lies whole inside the window. */
-export function placeOn(side: Side, anchor: Box, need: number, width: number, align: 'left' | 'right', view: View): Placement {
+/**
+ * Where the panel goes on `side` of its button, and the tallest it may be there. It always lies whole inside the window. Sideways it lines
+ * up with the button's left or right edge, or (`edge`) stands against the window's right edge, over the order book rather than the map.
+ */
+export function placeOn(side: Side, anchor: Box, need: number, width: number, align: 'left' | 'right' | 'edge', view: View): Placement {
   const room = side === 'below' ? view.height - anchor.bottom - GAP - EDGE : anchor.top - GAP - EDGE;
   const maxHeight = Math.max(FLOOR, Math.min(view.height - 2 * EDGE, room));
   const height = Math.min(need, maxHeight);
   const top = clamp(side === 'below' ? anchor.bottom + GAP : anchor.top - GAP - height, EDGE, view.height - EDGE - height);
-  const left = clamp(align === 'right' ? anchor.right - width : anchor.left, EDGE, view.width - width - EDGE);
+  const left = clamp(align === 'edge' ? view.width - width - EDGE : align === 'right' ? anchor.right - width : anchor.left, EDGE, view.width - width - EDGE);
   return { side, top, left, maxHeight };
 }
 

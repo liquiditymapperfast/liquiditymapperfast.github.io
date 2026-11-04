@@ -46,6 +46,16 @@ test('a panel always lies whole inside the window, is never made shorter than th
   assert.equal(near.left, EDGE, 'a button at the left edge with the panel aligned to its right: pulled in the other way');
 });
 
+test('the Scripts window stands against the window\'s right edge, over the order book, wherever its key is: by its key it covered the map\'s newest candles, where a row pointed at shows its script', () => {
+  // Measured 2026-11-04 at 1,920 x 1,080: the CHART deck's Scripts key ends at 1,430 and the map's plot runs from 373 to 1,078.
+  const view = { width: 1920, height: 1080 }, key = { left: 1405, top: 44, right: 1430, bottom: 66 };
+  const byKey = placeOn('below', key, 900, 520, 'right', view), atEdge = placeOn('below', key, 900, 520, 'edge', view);
+  assert.equal(byKey.left, 910, 'by its key it began 168 px inside the plot');
+  assert.equal(atEdge.left, view.width - 520 - EDGE, 'against the edge it clears the plot');
+  assert.equal(atEdge.top, byKey.top, 'under its deck all the same');
+  assert.equal(placeOn('below', key, 900, 2_000, 'edge', view).left, EDGE, 'a window wider than the page is still kept whole inside it');
+});
+
 test('dragging keeps the window inside the page, lets the panel grow toward the bottom as it is moved up, and always leaves its title bar to take hold of', () => {
   const size = { width: WIDTH, need: NEED };
   const first = dragTo({ left: 1684, top: 700 }, size, VIEW);

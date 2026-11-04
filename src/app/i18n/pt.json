@@ -1806,6 +1806,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "Um assistente do seu navegador escreveu este script. Leia-o e prima Guardar para o manter, ou Voltar para o descartar.",
  "Bar patterns": "Padrões de velas",
  "hidden": "oculto",
+ "preview": "pré-visualização",
  "Show this script": "Mostrar este script",
  "Hide this script (it still runs and alerts)": "Ocultar este script (continua a rodar e a alertar)",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "O preço médio das últimas 48 velas, ponderado pelo quanto se negociou em cada uma, com uma banda de cada lado.",

@@ -1716,6 +1716,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "브라우저의 어시스턴트가 이 스크립트를 작성했습니다. 읽어 본 뒤 유지하려면 저장을, 버리려면 뒤로를 누르세요.",
  "Bar patterns": "캔들 패턴",
  "hidden": "숨김",
+ "preview": "미리보기",
  "Show this script": "이 스크립트 표시",
  "Hide this script (it still runs and alerts)": "이 스크립트 숨기기 (계속 실행되고 알림을 보냅니다)",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "최근 캔들 48개의 평균 가격을 캔들마다 거래된 양으로 가중한 것으로, 양쪽에 밴드가 하나씩 있습니다.",

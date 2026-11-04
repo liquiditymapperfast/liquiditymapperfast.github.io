@@ -99,10 +99,13 @@ export function buildScriptsPanel(host: ScriptsHost, body: HTMLElement, redraw: 
     status.dataset.scriptStatus = r.id;
     // One of the page's own scripts says what it is beside its name; a person's own has nothing to say there.
     const about = aboutScript(r), ask = about ? aboutToggle(ui, redraw, `list:${r.id}`, about) : null;
-    body.append(el('div', { class: 'layout-row script-row' },
+    const row = el('div', { class: 'layout-row script-row' },
       el('label', { class: 'script-on' }, box),
       button(r.name, () => { ui.editing = r.id; ui.draft = { name: r.name, source: r.source, options: { ...r.options }, place: r.place }; ui.message = null; redraw(); }, t('Open this script to change it')),
-      ...(ask ? [ask.button] : []), status, up, remove));
+      ...(ask ? [ask.button] : []), status, up, remove);
+    // Pointed at (or one of its buttons given the keyboard), the row shows its script on the map behind the panel (ScriptPane `preview`).
+    row.dataset.preview = `rec:${r.id}`;
+    body.append(row);
     if (ask?.box) body.append(ask.box);
   }
 
@@ -118,7 +121,9 @@ export function buildScriptsPanel(host: ScriptsHost, body: HTMLElement, redraw: 
     }, t('Add a ready-made script to start from'));
     add.disabled = full;
     const about = aboutExample(ex.key), ask = aboutToggle(ui, redraw, `add:${ex.key}`, about);
-    body.append(el('div', { class: 'layout-row script-example' }, el('span', { class: 'script-example-name', textContent: ex.name, tip: about.tip }), ask.button, el('span', { class: 'layout-date', textContent: place === 'map' ? t('On the map') : t('In its own row') }), add));
+    const row = el('div', { class: 'layout-row script-example' }, el('span', { class: 'script-example-name', textContent: ex.name, tip: about.tip }), ask.button, el('span', { class: 'layout-date', textContent: place === 'map' ? t('On the map') : t('In its own row') }), add);
+    row.dataset.preview = `ex:${ex.key}`;
+    body.append(row);
     if (ask.box) body.append(ask.box);
   }
   const create = button(t('New script'), () => { ui.editing = NEW_SCRIPT; ui.draft = { name: '', source: '', options: {}, place: 'pane' }; ui.message = null; redraw(); }, t('Write a script, or paste one (an indicator file or a workspace works too)'));

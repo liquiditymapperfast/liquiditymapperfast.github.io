@@ -1783,6 +1783,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "Ein Assistent in deinem Browser hat dieses Skript geschrieben. Lies es, dann drücke Speichern, um es zu behalten, oder Zurück, um es zu verwerfen.",
  "Bar patterns": "Kerzenmuster",
  "hidden": "ausgeblendet",
+ "preview": "Vorschau",
  "Show this script": "Dieses Skript einblenden",
  "Hide this script (it still runs and alerts)": "Dieses Skript ausblenden (es läuft und meldet weiter)",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "Der Durchschnittspreis der letzten 48 Kerzen, gewichtet danach, wie viel in jeder gehandelt wurde, mit einem Band auf jeder Seite.",

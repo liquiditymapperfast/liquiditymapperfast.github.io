@@ -1783,6 +1783,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "Bu betiği tarayıcındaki bir asistan yazdı. Oku, sonra saklamak için Kaydet’e, vazgeçmek için Geri’ye bas.",
  "Bar patterns": "Mum formasyonları",
  "hidden": "gizli",
+ "preview": "önizleme",
  "Show this script": "Bu betiği göster",
  "Hide this script (it still runs and alerts)": "Bu betiği gizle (çalışmaya ve uyarmaya devam eder)",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "Son 48 mumun, her birinde ne kadar işlem yapıldığına göre ağırlıklandırılmış ortalama fiyatı; iki yanında birer bantla.",

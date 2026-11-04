@@ -17,8 +17,9 @@ import { ScriptHost, type WorkerLike } from '../script/host.ts';
 import { ScriptData } from '../script/data.ts';
 import { UNREAD_VENUE, analyze, sourcesWith, type Analysis } from '../script/lang/analysis.ts';
 import { ScriptSyntaxError, type ScriptError } from '../script/lang/lexer.ts';
-import { SCRIPT_API, loadScripts, storeScripts, type OptionValue, type ScriptRecord } from '../script/records.ts';
+import { ROW_DEFAULT, SCRIPT_API, loadScripts, storeScripts, type OptionValue, type ScriptRecord } from '../script/records.ts';
 import { starterScripts, updateStarters } from '../script/starter.ts';
+import { exampleHeight, examples } from '../script/examples.ts';
 import { PLOT_FIELDS, type PlotOut, type ScriptResult, type Warning } from '../script/protocol.ts';
 import { MARK_SLOP, MARK_SLOP_TOUCH, markAt, markLines, markText, type DrawnMark } from '../script/marks.ts';
 import { AlertNews, fingerprint, type ScriptAlert } from '../script/alert-news.ts';
@@ -36,6 +37,14 @@ import { aboutScript, builtinOf } from '../script/about.ts';
  * replay's moment then, Infinity live, -Infinity for an answer made on the page (a script that does not read).
  */
 interface Held { result: ScriptResult; time: Float64Array; tf: number; inst: string; at: number }
+
+/**
+ * A script the Scripts panel's list shows on the map while its row is pointed at (`ScriptPane.preview`): one of the person's (`rec:` and its
+ * id) or one of the examples (`ex:` and its key), with what it runs and where it draws. `id` is the person's script's own, null for an example.
+ */
+interface PreviewTarget { key: string; name: string; source: string; options: Record<string, OptionValue>; api: number; place: ScriptRecord['place']; height: number; id: string | null }
+/** A preview's answer: as a run's (`Held`), with the theme it read, when it was worked out (wall clock) and what the page held then (`ScriptData.version`). */
+interface PreviewHeld extends Held { theme: string; ranAt: number; data: number }
 
 /** A script worker: the pane's own runs have one, an agent's trials another. */
 const spawnScriptWorker = (): WorkerLike => new Worker(new URL('../script/script.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
@@ -73,6 +82,9 @@ function indexAt(time: Float64Array, tf: number, at: number, shown: number): num
 /** How many of a script's plots its popup lists (the others are counted). */
 const CARD_PLOTS = 6;
 
+/** The Scripts panel's row (`data-preview`, panel.ts) that holds `node`, or null. */
+const rowKeyOf = (node: EventTarget | null): string | null => node instanceof Element ? node.closest<HTMLElement>('[data-preview]')?.dataset.preview ?? null : null;
+
 /** How often a script runs at most (ms), and how often it runs again anyway while nothing it reads changes (the candle under way fills in). */
 const MIN_INTERVAL = 1_000, REFRESH = 15_000;
 /**
@@ -81,6 +93,23 @@ const MIN_INTERVAL = 1_000, REFRESH = 15_000;
  * held behind the second between runs.
  */
 const CONTEXT_FAST_MS = 10_000;
+
+/**
+ * A script's preview (Karl, 2026-11-04: "make indicators appear in the background when you hover over the script name ... It should be very
+ * fast"): while a row of the Scripts panel's list is pointed at, its script is drawn on the map behind the panel, over a plate of the page's
+ * colour this opaque that steps the map back so the script reads over the heat map. One that draws in a row of its own is drawn in a band at
+ * the map's foot, as tall as its row would be, but no more than this share of the map and no less than PREVIEW_BAND_MIN.
+ */
+const PREVIEW_DIM = 0.5, PREVIEW_BAND_SHARE = 0.42, PREVIEW_BAND_MIN = 64;
+/** The map legend's line of a preview (no script's id can be it: ids are lowercase letters, digits and dashes). */
+const PREVIEW_LINE = '+preview';
+/** How long a preview stays while the pointer crosses the gap between two rows of the list, so a pointer sweeping down it does not make the map blink. */
+const PREVIEW_GAP_MS = 140;
+/**
+ * A preview pointed at again is worked out again when it is older than the pane's refresh, or (at most once a second) when what it reads has
+ * landed since (liquidations, the order book, the exchange's candles): the newest candles, and the depth bands filling in back in time.
+ */
+const PREVIEW_DATA_MS = 1_000;
 
 /**
  * The Scripts pane: a row for each of the person's scripts that is switched on, each with its own scales, drawn over the map's time axis.
@@ -143,8 +172,11 @@ export class ScriptPane extends TimePane {
   }
   /** Whether Scripts is on: the scripts run and draw. */
   get running(): boolean { return this.store.state.show.script; }
-  /** Whether a script is running and reads the candles: the map then asks for some before its left edge (HeatPane.scriptsReading). */
-  get reading(): boolean { return this.store.state.show.script && this.#records.some(r => r.on); }
+  /**
+   * Whether a script is running and reads the candles, or the Scripts panel is open (its rows' previews read them too): the map then asks for
+   * some before its left edge (HeatPane.scriptsReading).
+   */
+  get reading(): boolean { return (this.store.state.show.script && this.#records.some(r => r.on)) || this.#panel !== null; }
   /** The candles the scripts read: the chart's drawn ones (main.ts gives HeatPane.candlesDrawn), its own and the exchange's before them. */
   candlesOf: (state: AppState) => readonly CandleRow[] = state => state.candles;
   /** Switch Scripts on: a script was added or switched on, and should be seen. */
@@ -193,7 +225,9 @@ export class ScriptPane extends TimePane {
   /** The buttons of the map legend's script lines, a layer the page puts over the map (`places` in the map pane's own pixels). */
   readonly legendTools = el('div', { class: 'script-row-tools script-legend-tools' });
   #legendToolsKey = '';
-  placeLegendTools(places: readonly { id: string; x: number; y: number }[]): void {
+  placeLegendTools(all: readonly { id: string; x: number; y: number }[]): void {
+    // A preview's line has no buttons (`mapLegend`).
+    const places = all.filter(p => p.id !== PREVIEW_LINE);
     const key = places.map(p => `${p.id}:${Math.round(p.x)},${Math.round(p.y)}:${this.#hiddenOf(p.id)}:${this.#toolsOf(p.id)}`).join('|');
     if (key === this.#legendToolsKey) return;
     this.#legendToolsKey = key;
@@ -245,24 +279,14 @@ export class ScriptPane extends TimePane {
 
   /**
    * The map legend's lines for the scripts drawn on the map: each one's name, the colour of its first plot, and its values at the candle
-   * starting at `at` (null, or right of the newest: the newest shown), or what it is doing (running..., its error).
+   * starting at `at` (null, or right of the newest: the newest shown), or what it is doing (running..., its error); first, the preview of one
+   * drawn on the map while its row in the Scripts panel is pointed at (`PREVIEW_LINE`).
    */
   mapLegend(at: number | null, valued = Infinity): ScriptLegendLine[] {
     const state = this.store.state, out: ScriptLegendLine[] = [];
-    if (!state.show.script) return out;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, p = this.palette, fallbacks = [p.vwap, p.poc, p.level, p.accent, p.bid, p.ask];
-    for (const r of this.#records) {
-      if (!r.on || r.place !== 'map') continue;
-      // A hidden script is listed, muted and with no values, so its eye can show it again.
-      const tools = this.#toolsOf(r.id);
-      if (r.hidden) { out.push({ id: r.id, name: r.name, color: '', text: '', tone: 'muted', tools }); continue; }
-      // Only the first `valued` lines show values (the legend lists a few, and none on a phone): the others are named, not worked out.
-      const withValues = out.length < valued;
-      const kept = this.#held.get(r.id), held = kept && this.#fresh(kept) ? kept : undefined;
-      if (!held) { out.push({ id: r.id, name: r.name, color: '', text: t('running…'), tone: 'muted', tools }); continue; }
-      if (!held.result.ok) { out.push({ id: r.id, name: r.name, color: '', text: errorText(held.result.error), tone: 'error', tools }); continue; }
-      const res = held.result, time = held.time, shown = shownCount(time, tf);
-      const i = at === null ? shown - 1 : indexAt(time, tf, at, shown);
+    const line = (id: string, name: string, options: Readonly<Record<string, OptionValue>>, res: Extract<ScriptResult, { ok: true }>, time: Float64Array, withValues: boolean, tools: number): ScriptLegendLine => {
+      const shown = shownCount(time, tf), i = at === null ? shown - 1 : indexAt(time, tf, at, shown);
       const band = (plot: PlotOut): boolean => (plot.kind === 'brokenarea' || plot.kind === 'cloudarea') && plot.colors !== null;
       const finiteAt = (plot: PlotOut): boolean => i >= 0 && PLOT_FIELDS[plot.kind].some(f => Number.isFinite(plot.fields[f]![i]!));
       // Lines first (they are what a legend reads), then the other plots; bands coloured point by point only when there is nothing else.
@@ -275,13 +299,29 @@ export class ScriptPane extends TimePane {
       if (withValues && i >= 0) {
         const texts = from.slice(0, 3).map(({ plot }) => {
           if (plot.kind === 'mark') return markText(plot, i);
-          const fmt = scaleIdOf(plot, r.options) === 'right' ? (v: number) => fmtPrice(v) : shortNumber;
+          const fmt = scaleIdOf(plot, options) === 'right' ? (v: number) => fmtPrice(v) : shortNumber;
           return PLOT_FIELDS[plot.kind].map(f => plot.fields[f]![i]!).filter(Number.isFinite).map(fmt).join(' – ');
         });
         text = texts.join(' · ') + (from.length > 3 ? ' …' : '');
       }
-      out.push({ id: r.id, name: r.name, color, text, tone: 'text', tools });
+      return { id, name, color, text, tone: 'text', tools };
+    };
+    if (state.show.script) for (const r of this.#records) {
+      if (!r.on || r.place !== 'map') continue;
+      // A hidden script is listed, muted and with no values, so its eye can show it again.
+      const tools = this.#toolsOf(r.id);
+      if (r.hidden) { out.push({ id: r.id, name: r.name, color: '', text: '', tone: 'muted', tools }); continue; }
+      // Only the first `valued` lines show values (the legend lists a few, and none on a phone): the others are named, not worked out.
+      const withValues = out.length < valued;
+      const kept = this.#held.get(r.id), held = kept && this.#fresh(kept) ? kept : undefined;
+      if (!held) { out.push({ id: r.id, name: r.name, color: '', text: t('running…'), tone: 'muted', tools }); continue; }
+      if (!held.result.ok) { out.push({ id: r.id, name: r.name, color: '', text: errorText(held.result.error), tone: 'error', tools }); continue; }
+      out.push(line(r.id, r.name, r.options, held.result, held.time, withValues, tools));
     }
+    // A preview of a script drawn on the map is named first, with its values, where the eye reads the chart (its newest candles may be under
+    // the panel); one that is on is listed already, and stands out on the map. No buttons: it is not one of the scripts on the map.
+    const pv = this.#pv, shown = pv?.place === 'map' && !this.#pvOwn(pv) ? this.#pvShown(pv) : null;
+    if (pv && shown?.result.ok) out.unshift(line(PREVIEW_LINE, `${pv.name} · ${t('preview')}`, pv.options, shown.result, shown.time, valued > 0, 0));
     return out;
   }
 
@@ -315,7 +355,7 @@ export class ScriptPane extends TimePane {
    * What the scripts read changed, or a run may be due: draw again and look whether to run, now. A run is not left to a drawing: while only
    * scripts on the map are on the pane is not laid out and draws nothing.
    */
-  refresh(): void { this.invalidate(); this.#maybeRun(); }
+  refresh(): void { this.invalidate(); this.#maybeRun(); if (this.#pv) this.#pvEnsure(this.#pv); }
 
   /** Scripts was switched on or off: off, a run still waiting for its worker to load is dropped; the list's statuses and the lamp follow at once. */
   showChanged(): void {
@@ -328,9 +368,16 @@ export class ScriptPane extends TimePane {
    * a fetched panel waited behind them (23 s, and 38 s on a development page, 2026-10-27), and each click made meanwhile opened or closed it
    * once more when it came, so an even number of clicks left it shut. Opened at once, a second click closes it as every settings key does.
    */
-  readonly #build = (_tools: HTMLElement, body: HTMLElement): void => { buildScriptsPanel(this, body, () => this.#panel?.render(this.#build), this.#ui); };
+  readonly #build = (_tools: HTMLElement, body: HTMLElement): void => {
+    buildScriptsPanel(this, body, () => this.#panel?.render(this.#build), this.#ui);
+    // Once the panel has its rows (and its scroll) back: the row under the pointer or with the keyboard is found again, and the list's
+    // previews not yet worked out are worked out.
+    queueMicrotask(() => this.#pvAfterBuild());
+  };
   openPanel(anchor: HTMLElement = this.#button): void {
-    this.#panel = togglePanel(anchor, { title: t('Scripts'), width: 520, align: 'right', onClose: () => { this.#panel = null; panelClosed(this, this.#ui); }, stays: true, resizable: 'scripts' }, this.#build);
+    // Against the window's right edge, over the order book: by its key it covered the map's newest candles, where a row pointed at shows its script.
+    this.#panel = togglePanel(anchor, { title: t('Scripts'), width: 520, align: 'edge', onClose: () => { this.#panel = null; panelClosed(this, this.#ui); this.#pvEnd(); }, stays: true, resizable: 'scripts' }, this.#build);
+    if (this.#panel) this.#pvWire(this.#panel);
   }
   /** Write the list's statuses again with the latest results, in place (a menu or a switch under the pointer stays); not while a script is being written. */
   #refreshPanel(): void { if (this.#panel && !this.#ui.editing) refreshStatuses(this, this.#panel.body); }
@@ -672,9 +719,15 @@ export class ScriptPane extends TimePane {
    * others each on a scale of their own, fitted to what is in view inside their margins, as they would be over a chart's candles.
    */
   paintOnMap(ctx: CanvasRenderingContext2D, pw: number, ph: number): void {
-    const state = this.store.state;
     this.#reportStatus();
-    if (!state.show.script) { this.#host.dropUnsent(); return; }
+    if (this.store.state.show.script) this.#paintMapScripts(ctx, pw, ph); else this.#host.dropUnsent();
+    if (this.#panel) this.#pvFollow();
+    // A row of the Scripts panel pointed at shows its script over them, whether Scripts is on or off: the examples are looked at before any is on.
+    this.#paintPreview(ctx, pw, ph);
+  }
+
+  #paintMapScripts(ctx: CanvasRenderingContext2D, pw: number, ph: number): void {
+    const state = this.store.state;
     // The map asks for runs too: on a phone the pane is not laid out while another tab shows, and the scripts on the map must still run.
     this.#maybeRun();
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, v = this.view, p = this.palette;
@@ -696,6 +749,234 @@ export class ScriptPane extends TimePane {
         if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#mapMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); } } : {}) }, plot, s);
       });
     }
+  }
+
+  // ---- Previews: a row of the Scripts panel's list, pointed at, shows its script on the map -----------------------------------------------
+
+  /** The previews' own worker: a preview neither waits behind the pane's runs nor takes their place, nor an agent's trials'. */
+  #pvHost: ScriptHost | null = null;
+  /** The preview shown (null: none), what has been worked out for the list's rows (by what they run, `#contentKey`), and what is being. */
+  #pv: PreviewTarget | null = null;
+  #pvCache = new Map<string, PreviewHeld>();
+  #pvRunning = new Set<string>();
+  /** Counts the panel's closings: an answer that comes after the panel closed is not kept. */
+  #pvGen = 0;
+  #pvTimer = 0; #pvGap = 0;
+  /** The row under the pointer, the row one of whose buttons has the keyboard, and where the pointer was last seen over the list (window px). */
+  #pvPointer: string | null = null; #pvFocus: string | null = null; #pvAt: { x: number; y: number } | null = null;
+  /** Which preview was last drawn and when (performance.now()): for the checks that time how soon a row pointed at shows on the map. */
+  previewDrawn: { key: string; at: number } | null = null;
+
+  /**
+   * Show the script of the panel's row `key` on the map (`rec:` and a script's id, `ex:` and an example's key), or none (null): at once when
+   * its answer is at hand (a script that is on has its own; the list's are worked out as the panel opens), else as soon as it is worked out.
+   */
+  preview(key: string | null): void {
+    const target = key ? this.#pvTargetOf(key) : null, was = this.#pv;
+    if (target?.key === was?.key && (!target || this.#contentKey(target) === this.#contentKey(was!))) return;
+    this.#pv = target;
+    window.clearTimeout(this.#pvTimer); this.#pvTimer = 0;
+    if (target) this.#pvEnsure(target);
+    this.onMapChanged();
+  }
+
+  /** The list's rows as previews: the person's scripts, then the examples. */
+  #pvTargets(): PreviewTarget[] { return [...this.#records.map(r => this.#recordTarget(r)), ...examples().map(ex => this.#exampleTarget(ex))]; }
+  #pvTargetOf(key: string): PreviewTarget | null {
+    if (key.startsWith('rec:')) { const r = this.#records.find(x => x.id === key.slice(4)); return r ? this.#recordTarget(r) : null; }
+    if (key.startsWith('ex:')) { const ex = examples().find(x => x.key === key.slice(3)); return ex ? this.#exampleTarget(ex) : null; }
+    return null;
+  }
+  #recordTarget(r: ScriptRecord): PreviewTarget { return { key: `rec:${r.id}`, name: r.name, source: r.source, options: r.options, api: r.api, place: r.place, height: r.height, id: r.id }; }
+  #exampleTarget(ex: ReturnType<typeof examples>[number]): PreviewTarget {
+    return { key: `ex:${ex.key}`, name: ex.name, source: ex.source, options: {}, api: SCRIPT_API, place: ex.place ?? 'pane', height: exampleHeight(ex.source) ?? ROW_DEFAULT, id: null };
+  }
+  /** What a script runs, as the worker tells one from another: its language version, its options and its text. */
+  #contentKey(target: PreviewTarget): string { return `${target.api}\u0001${JSON.stringify(target.options)}\u0001${target.source}`; }
+
+  /** The answer of one of the person's scripts that is on, for the chart as it is (Scripts on): its preview needs no run of its own. */
+  #pvOwn(target: PreviewTarget): Held | null {
+    if (!target.id || !this.store.state.show.script || !this.#records.some(r => r.id === target.id && r.on)) return null;
+    const held = this.#held.get(target.id);
+    return held?.result.ok && this.#current(held, TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000) ? held : null;
+  }
+  /** Whether a preview was worked out for the chart as it is (its timeframe, its market, in a replay its moment) in the colours it is drawn in. */
+  #pvCurrent(held: PreviewHeld): boolean { return held.theme === this.#theme && this.#current(held, TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000); }
+  /** What a preview draws: the script's own answer when it is on, else the one worked out for it if it is for the chart as it is; null while there is none. */
+  #pvShown(target: PreviewTarget): Held | null {
+    const kept = this.#pvCache.get(this.#contentKey(target));
+    return this.#pvOwn(target) ?? (kept && this.#pvCurrent(kept) ? kept : null);
+  }
+
+  /**
+   * Work out the preview shown unless its answer is at hand and fresh: none yet, another chart's, older than the pane's refresh, or (a second
+   * after it was worked out) the page holds more of what it reads. When it is fresh, it is looked at again when it will not be.
+   */
+  #pvEnsure(target: PreviewTarget): void {
+    window.clearTimeout(this.#pvTimer); this.#pvTimer = 0;
+    const key = this.#contentKey(target);
+    if (this.#pvOwn(target) || this.#pvRunning.has(key)) return;
+    const had = this.#pvCache.get(key), age = had ? Date.now() - had.ranAt : Infinity;
+    if (had && this.#pvCurrent(had)) {
+      const due = had.data === this.#data.version ? REFRESH : PREVIEW_DATA_MS;
+      if (age < due) { this.#pvTimer = window.setTimeout(() => { this.#pvTimer = 0; if (this.#pv) this.#pvEnsure(this.#pv); }, due - age); return; }
+    }
+    this.#pvRun([target]);
+  }
+
+  /**
+   * Work out the previews of `targets` in one run of the previews' worker, over what the pane's runs read (a script that does not read, or
+   * is for a newer page, shows nothing). Kept by what each runs; drawn if it is the one shown. False when the chart has no candles to run them
+   * over (nothing was started).
+   */
+  #pvRun(targets: readonly PreviewTarget[]): boolean {
+    const state = this.store.state, filters = new Map<string, SourceFilter>([['', {}]]), ids = new Set<string>();
+    const jobs: { key: string; id: string; target: PreviewTarget; a: Analysis }[] = [];
+    for (const target of targets) {
+      // Each under an id of its own text, so the worker keeps what it read of a script while it is shown (two texts that make the same
+      // id in one run: the second waits until it is pointed at).
+      const key = this.#contentKey(target), id = `preview-${fingerprint(key)}`;
+      if (target.api > SCRIPT_API || this.#pvRunning.has(key) || ids.has(id)) continue;
+      const a = this.#analyze(target.source);
+      if (!('program' in a)) continue;
+      for (const [k, f] of sourcesWith(a, target.options)) filters.set(k, f);
+      ids.add(id); jobs.push({ key, id, target, a });
+    }
+    if (!jobs.length) return true;
+    const inputs = this.#withTheme(this.#data.inputs(state, filters, jobs.some(j => j.a.inputs.has('oichg')), jobs.some(j => readsFlow(j.a)), this.candlesOf(state)));
+    if (!inputs) return false;
+    const host = this.#pvHost ??= new ScriptHost({ spawn: spawnScriptWorker });
+    const depth = jobs.some(j => j.a.inputs.has('depth')) ? this.#data.depth.sync(state, inputs.time, inputs.tf) : null;
+    if (depth) this.#data.depth.deliver(host);
+    // Taken before the run, which hands the inputs' arrays over to the worker and leaves them empty here.
+    const ran: Omit<PreviewHeld, 'result'> = { time: inputs.time.slice(), tf: inputs.tf, inst: state.seriesInstrument, at: replaying() ? pageNow() : Infinity, theme: this.#theme, ranAt: Date.now(), data: this.#data.version };
+    const gen = this.#pvGen;
+    for (const j of jobs) this.#pvRunning.add(j.key);
+    void host.run(jobs.map(j => ({ id: j.id, source: j.target.source, options: j.target.options, api: j.target.api })), inputs, depth ?? undefined).then(({ results, depthBehind }) => {
+      for (const j of jobs) this.#pvRunning.delete(j.key);
+      if (gen !== this.#pvGen) return;
+      // A worker that did not hold the order book it was told of read none: those answers are not kept, and it is sent everything next time.
+      if (depthBehind) this.#data.depth.forget(host);
+      results.forEach((result, k) => { const j = jobs[k]; if (j && !(depthBehind && j.a.inputs.has('depth'))) this.#pvCache.set(j.key, { ...ran, result }); });      const shown = this.#pv;
+      if (shown && jobs.some(j => j.key === this.#contentKey(shown))) { this.onMapChanged(); this.#pvEnsure(shown); }
+    });
+    return true;
+  }
+
+  /**
+   * As the list is shown, the previews of its rows not yet worked out for the chart as it is, in one run: a row pointed at then shows at once.
+   * Not those that read the order book (each would start reading it): they are worked out when they are pointed at. Whether nothing is left
+   * to start (false while the chart has no candles to run them over, as right after a change of timeframe).
+   */
+  #pvPrefetch(): boolean {
+    if (!this.#panel || this.#ui.editing) return true;
+    const want = this.#pvTargets().filter(target => {
+      if (this.#pvOwn(target)) return false;
+      const had = this.#pvCache.get(this.#contentKey(target));
+      if (had && this.#pvCurrent(had) && Date.now() - had.ranAt < REFRESH) return false;
+      const a = this.#analyze(target.source);
+      return 'program' in a && !a.inputs.has('depth');
+    });
+    return !want.length || this.#pvRun(want);
+  }
+
+  /** The chart the list's previews were last worked out for: another one (its timeframe, market, theme) works them out again while the panel is open. */
+  #pvChart = '';
+  #pvFollow(): void {
+    const s = this.store.state, chart = `${s.timeframe}|${s.candlesTimeframe ?? ''}|${s.seriesInstrument}|${this.#theme}|${replaying() ? 'replay' : 'live'}`;
+    if (chart !== this.#pvChart && this.#pvPrefetch()) this.#pvChart = chart;
+  }
+
+  /** The row whose script the map shows now (null: none), for checks. */
+  get previewShown(): string | null { return this.#pv && this.#pvShown(this.#pv) ? this.#pv.key : null; }
+
+  /** The preview shown: the row under the pointer, else the one with the keyboard; none while a script is being written. */
+  #pvShow(): void { this.preview(this.#ui.editing ? null : this.#pvPointer ?? this.#pvFocus); }
+
+  /**
+   * The list's rows show their scripts while the pointer is on them (a mouse's or a pen's: a finger has no pointing), or while one of their
+   * buttons has the keyboard. The panel's body stays while it is open (its rows are built again in it), so it is listened to once.
+   */
+  #pvWire(panel: Panel): void {
+    const body = panel.body;
+    (this.#pvHost ??= new ScriptHost({ spawn: spawnScriptWorker })).warm();
+    body.addEventListener('pointerover', e => {
+      if (e.pointerType === 'touch') return;
+      this.#pvAt = { x: e.clientX, y: e.clientY };
+      const key = rowKeyOf(e.target);
+      window.clearTimeout(this.#pvGap); this.#pvGap = 0;
+      if (key || !this.#pvPointer) { this.#pvPointer = key; this.#pvShow(); return; }
+      // Between two rows (their gap, a heading): the preview stays a moment, so a pointer going down the list does not make the map blink.
+      this.#pvGap = window.setTimeout(() => { this.#pvGap = 0; this.#pvPointer = null; this.#pvShow(); }, PREVIEW_GAP_MS);
+    });
+    body.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') this.#pvAt = { x: e.clientX, y: e.clientY }; });
+    body.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; window.clearTimeout(this.#pvGap); this.#pvGap = 0; this.#pvAt = null; this.#pvPointer = null; this.#pvShow(); });
+    body.addEventListener('focusin', e => { const at = e.target; this.#pvFocus = at instanceof HTMLElement && at.matches(':focus-visible') ? rowKeyOf(at) : null; this.#pvShow(); });
+    body.addEventListener('focusout', e => { if (!(e.relatedTarget instanceof Node && body.contains(e.relatedTarget))) { this.#pvFocus = null; this.#pvShow(); } });
+  }
+
+  /** The list was built again (under a pointer that may not move): the rows under the pointer and with the keyboard are found again, and the list's previews worked out. */
+  #pvAfterBuild(): void {
+    const panel = this.#panel; if (!panel) return;
+    const at = this.#pvAt, under = at ? document.elementFromPoint(at.x, at.y) : null, active = document.activeElement;
+    this.#pvPointer = under && panel.body.contains(under) ? rowKeyOf(under) : null;
+    this.#pvFocus = active instanceof HTMLElement && panel.body.contains(active) && active.matches(':focus-visible') ? rowKeyOf(active) : null;
+    this.#pvShow();
+    this.#pvPrefetch();
+  }
+
+  /** The panel closed: no preview, nothing kept of the list's (an opening works them out again), and an answer still on its way is let go. */
+  #pvEnd(): void {
+    window.clearTimeout(this.#pvTimer); this.#pvTimer = 0; window.clearTimeout(this.#pvGap); this.#pvGap = 0;
+    this.#pvGen++; this.#pvCache.clear(); this.#pvRunning.clear();
+    this.#pvPointer = null; this.#pvFocus = null; this.#pvAt = null;
+    this.#pvHost?.dropUnsent();
+    if (this.#pv) { this.#pv = null; this.onMapChanged(); }
+  }
+
+  /**
+   * Draw the preview shown over the map, in its plot's coordinates: the map stepped back under a plate of the page's colour, then the script
+   * as it would be drawn, on the map at its prices (named in the map's legend, `mapLegend`), or in a band at the map's foot as in a row of its
+   * own, named at its top.
+   */
+  #paintPreview(ctx: CanvasRenderingContext2D, pw: number, ph: number): void {
+    const target = this.#pv; if (!target) return;
+    const held = this.#pvShown(target);
+    if (!held?.result.ok || !held.time.length) return;
+    const res = held.result, v = this.view, p = this.palette, tf = held.tf, fallbacks = [p.vwap, p.poc, p.level, p.accent, p.bid, p.ask];
+    const [from, last] = visibleRange(held.time, v.t0, v.t1, tf), to = Math.min(last, shownCount(held.time, tf) - 1);
+    const band = target.place === 'pane' ? Math.round(Math.max(Math.min(PREVIEW_BAND_MIN, ph), Math.min(target.height, ph * PREVIEW_BAND_SHARE))) : 0, top = band ? ph - band : 0;
+    ctx.save();
+    ctx.globalAlpha = PREVIEW_DIM; ctx.fillStyle = p.bg; ctx.fillRect(0, 0, pw, ph); ctx.globalAlpha = 1;
+    if (band) {
+      ctx.globalAlpha = 0.9; ctx.fillStyle = p.bg; ctx.fillRect(0, top, pw, band); ctx.globalAlpha = 1;
+      ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, top + 0.5); ctx.lineTo(pw, top + 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.rect(0, top, pw, band); ctx.clip();
+    }
+    if (to >= from) {
+      const frame: Frame = { ctx, x: tt => v.xOf(tt, pw), barW: Math.max(1, v.xOf(tf, pw) - v.xOf(0, pw)), tf, time: held.time, from, to, top, height: band || ph, w: pw, color: p.text, up: p.candleUp, down: p.candleDown };
+      // In a band each scale is fitted to what is in view, as in a row; on the map the price scale is the map's.
+      const scales = scalesOf(band ? res.plots : res.plots.filter(pl => scaleIdOf(pl, target.options) !== 'right'), target.options, from, to);
+      if (!band) scales.set('right', { min: v.p0, max: v.p1, margins: { top: 0, bottom: 0 } });
+      res.plots.forEach((plot, j) => { const s = scales.get(scaleIdOf(plot, target.options)); if (s) paintPlot({ ...frame, color: fallbacks[j % fallbacks.length]! }, plot, s); });
+      // A band's highest and lowest in view at its right edge, as a row has them.
+      const first = band ? scales.values().next().value : undefined;
+      if (first) {
+        ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = p.muted;
+        ctx.fillText(shortNumber(first.max), pw - 4, Math.max(top + 8, yOf(first.max, first, top, band)));
+        ctx.fillText(shortNumber(first.min), pw - 4, Math.min(top + band - 8, yOf(first.min, first, top, band)));
+      }
+    }
+    // A band's name on a faint plate at its top, as a row's is.
+    if (band) {
+      const text = `${target.name} · ${t('preview')}`, y = top + 9;
+      ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const w = Math.min(pw - 8, ctx.measureText(text).width + 8);
+      ctx.globalAlpha = 0.78; ctx.fillStyle = p.bg; ctx.fillRect(2, y - 7, w, 14); ctx.globalAlpha = 1;
+      ctx.fillStyle = p.text; ctx.fillText(text, 6, y);
+    }
+    ctx.restore();
+    this.previewDrawn = { key: target.key, at: performance.now() };
   }
 
   /**

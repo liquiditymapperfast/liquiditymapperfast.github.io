@@ -1716,6 +1716,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "ブラウザーのアシスタントがこのスクリプトを書きました。読んでから、残すには「保存」、破棄するには「戻る」を押してください。",
  "Bar patterns": "ローソク足のパターン",
  "hidden": "非表示",
+ "preview": "プレビュー",
  "Show this script": "このスクリプトを表示",
  "Hide this script (it still runs and alerts)": "このスクリプトを非表示（実行とアラートは続きます）",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "直近 48 本の足の平均価格を、各足の取引量で重み付けしたもので、上下にバンドが付きます。",

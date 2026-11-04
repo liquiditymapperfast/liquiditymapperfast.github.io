@@ -1834,6 +1834,7 @@
  "An assistant in your browser wrote this script. Read it, then press Save to keep it, or Back to drop it.": "Цей скрипт написав асистент у вашому браузері. Прочитайте його, потім натисніть «Зберегти», щоб залишити, або «Назад», щоб відкинути.",
  "Bar patterns": "Свічкові патерни",
  "hidden": "приховано",
+ "preview": "попередній перегляд",
  "Show this script": "Показати цей скрипт",
  "Hide this script (it still runs and alerts)": "Приховати цей скрипт (він і далі працює та сповіщає)",
  "The average price of the last 48 candles, weighted by how much traded in each, with a band on either side.": "Середня ціна останніх 48 свічок, зважена за тим, скільки пройшло в кожній, зі смугою з обох боків.",
