@@ -46,9 +46,11 @@ export function openSelectMenu(select: HTMLSelectElement, list = false): { close
  */
 export function installClassicSelects(doc: Document = document): () => void {
   const classic = (): boolean => doc.documentElement.dataset.frame === 'bevel' && doc.documentElement.dataset.bar !== 'compact';
+  // A select in a modal dialog (the guide's section list) keeps the native list: the page's list is laid on the body, under the dialog's
+  // top layer, where it could not be seen.
   const target = (node: EventTarget | null): HTMLSelectElement | null => {
     const select = node instanceof Element ? node.closest('select') : null;
-    return select && !select.disabled && !select.multiple && select.size <= 1 ? select : null;
+    return select && !select.disabled && !select.multiple && select.size <= 1 && !select.closest('dialog') ? select : null;
   };
   const down = (event: MouseEvent): void => {
     if (event.button !== 0 || !classic()) return;

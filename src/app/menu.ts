@@ -62,6 +62,12 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     const at = rows.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); rows[(Math.max(0, at) + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus(); }
     else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); rows[event.key === 'Home' ? 0 : rows.length - 1]?.focus(); }
+    else if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      // A letter goes to the next row whose name begins with it, round to the first again, as the desktop's lists and the browser's own did.
+      const letter = event.key.toLocaleLowerCase(), order = [...rows.slice(at + 1), ...rows.slice(0, at + 1)];
+      const hit = order.find(row => !row.disabled && (row.querySelector('.label')?.textContent ?? '').trim().toLocaleLowerCase().startsWith(letter));
+      if (hit) { event.preventDefault(); hit.focus(); }
+    }
   };
   const stopMode = onLayoutMode(() => { scrim.sync(); place(); });
   function close(): void {
