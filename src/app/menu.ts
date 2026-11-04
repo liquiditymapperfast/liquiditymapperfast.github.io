@@ -63,7 +63,12 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   const scrim = scrimFor(root, 69, () => close());
   const onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') { event.preventDefault(); close(); anchor.focus(); return; }
-    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    // Tab leaves the menu as it leaves the desktop's: closed, the keyboard going on from what opened it (not stranded on a row taken away).
+    if (event.key === 'Tab') { close(); if (anchor.isConnected) anchor.focus({ preventScroll: true }); return; }
+    // Keys belong to the menu only while the keyboard is in it or on what opened it: one typed in a field elsewhere is that field's (Sol).
+    const active = document.activeElement;
+    if (!root.contains(active) && !anchor.contains(active)) return;
+    const at = rows.indexOf(active as HTMLButtonElement);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); rows[(Math.max(0, at) + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus(); }
     else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); rows[event.key === 'Home' ? 0 : rows.length - 1]?.focus(); }
     else if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -72,7 +77,9 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
       // in the market's list opened Go to).
       event.preventDefault();
       const letter = event.key.toLocaleLowerCase(), order = [...rows.slice(at + 1), ...rows.slice(0, at + 1)];
-      order.find(row => !row.disabled && (row.querySelector('.label')?.textContent ?? '').trim().toLocaleLowerCase().startsWith(letter))?.focus();
+      const hit = order.find(row => !row.disabled && (row.querySelector('.label')?.textContent ?? '').trim().toLocaleLowerCase().startsWith(letter));
+      // The row already focused takes no focus event, so its preview is asked for again (it may have ended when the pointer left, Sol).
+      if (hit === active && hit?.dataset.id) handlers.onPreview(hit.dataset.id); else hit?.focus();
     }
   };
   const stopMode = onLayoutMode(() => { scrim.sync(); place(); });
@@ -84,7 +91,10 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     // a select taking the focus zooms an iPhone's page in. Escape gives it back itself.
     const hadFocus = root.contains(document.activeElement);
     root.remove(); scrim.remove(); anchor.classList.remove('open');
-    if (done && hadFocus && anchor.isConnected && !compactBar()) anchor.focus({ preventScroll: true });
+    // A choice that rebuilt the panel the anchor was in left a new control in its place: found by the key a panel's controls keep the focus by.
+    const key = anchor.dataset.focus;
+    const back = anchor.isConnected ? anchor : key ? [...document.querySelectorAll<HTMLElement>('[data-focus]')].find(x => x.dataset.focus === key) : undefined;
+    if (done && hadFocus && back && !compactBar()) back.focus({ preventScroll: true });
     document.removeEventListener('pointerdown', onPointer, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', place);
     if (!done) handlers.onPreview(null);
   }

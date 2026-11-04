@@ -79,9 +79,10 @@ export function installTouchSelects(doc: Document = document): () => void {
   let start: { x: number; y: number; t: number } | null = null;
   const selectAt = (target: EventTarget | null): HTMLSelectElement | null => {
     if (!(target instanceof Element)) return null;
-    const direct = target.closest('select'); if (direct) return direct;
+    // A select in a modal dialog keeps its native list: the page's menu is laid on the body, under the dialog's top layer (Sol).
+    const direct = target.closest('select'); if (direct) return direct.closest('dialog') ? null : direct;
     const control = target.closest('label')?.control;
-    return control instanceof HTMLSelectElement ? control : null;
+    return control instanceof HTMLSelectElement && !control.closest('dialog') ? control : null;
   };
   const down = (event: TouchEvent): void => {
     const touch = event.touches[0];
