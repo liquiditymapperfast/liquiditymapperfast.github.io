@@ -112,7 +112,10 @@ export class LadderPane {
   /** The Compact bar's venue order, the venues it was made for and when (see `#venueOrder`). */
   #order: { key: string; order: string[]; at: number } | null = null;
   #hover: { x: number; y: number } | null = null;
-  /** Where a mouse pointer is over the book (canvas px, null when it is not): its row's price is shared with the map (`#shareRow`). */
+  /**
+   * Where a mouse pointer is over the book, in the window's pixels (null when it is not): its row's price is shared with the map (`#shareRow`),
+   * found against the canvas where it is now (a Single book scrolled sideways under a resting pointer).
+   */
   #mouse: { x: number; y: number } | null = null;
   /** One notch per mouse click, one per 40 px of a touchpad, and a limit in time on both, so a spin or a swipe cannot throw the zoom to the end (see ladderWheel). */
   #notches = ladderWheel();
@@ -197,7 +200,7 @@ export class LadderPane {
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e), drag = this.#drag;
-      this.#mouse = { x, y };
+      this.#mouse = { x: e.clientX, y: e.clientY };
       if (drag?.kind === 'zoom') this.#zoomDrag(drag, y); // up zooms in, down out
       else if (drag?.kind === 'pan') { this.#offsetRows = drag.offset + Math.round((y - drag.y) / ROW_H); this.invalidate(); }
       else { this.#hover = { x, y }; this.#shareRow(this.#mouse); }
@@ -207,6 +210,7 @@ export class LadderPane {
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
     c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#hover = null; this.#mouse = null; this.#shareRow(null); this.invalidate(); });
     c.addEventListener('dblclick', () => this.#reset());
+    this.#scroller.addEventListener('scroll', () => this.#shareRow(this.#mouse), { passive: true });
     bindTouch(c, new GestureRecognizer(this.#touchHandlers()));
   }
 
@@ -306,12 +310,13 @@ export class LadderPane {
   /** The side each book's column drew the price's own row in (true: asks), by column: it is the side that holds more there. */
   #markRowAsk = new Map<number, boolean>();
   /**
-   * Share the book's row under the pointer at `at` (canvas px; null: none) with the page (`bookHover`), as the map shares its pointer's
+   * Share the book's row under the pointer at `client` (the window's pixels; null: none) with the page (`bookHover`), as the map shares its pointer's
    * moment: the map and the flow column's price strip draw its price, in the side's colour the book drew it in. Only over rows drawn and while
    * nothing is dragged; the store is told only when the row, its grouping or its side changed. Looked at again after every frame, since the
    * book moves under a pointer resting on it as the price moves.
    */
-  #shareRow(at: { x: number; y: number } | null): void {
+  #shareRow(client: { x: number; y: number } | null): void {
+    const box = client ? this.#canvas.getBoundingClientRect() : null, at = client && box ? { x: client.x - box.left, y: client.y - box.top } : null;
     const l = this.#layout, row = at === null || !this.#rowsDrawn || this.#drag || !(l.step > 0) || at.y < l.head ? -1 : Math.floor((at.y - l.head) / ROW_H);
     let next: AppState['bookHover'] = null;
     if (at && row >= 0 && row < l.rows) {
