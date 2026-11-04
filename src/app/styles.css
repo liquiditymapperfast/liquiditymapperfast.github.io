@@ -330,11 +330,10 @@ html[data-bar="compact"] .toast { bottom: 76px; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
 .pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover, .pane.heat .map-draw:hover, .pane.heat .map-layout:hover { background: var(--panel); }
-/* On a window this narrow the three buttons over the top right of the map would hide the title and the figures beside it: they shrink to their drawings. */
-@media (max-width: 1560px) {
-  html[data-layout="desktop"] .pane.heat .map-tools :is(.map-goto, .map-select, .map-recenter, .map-draw, .map-layout) { font-size: 0; gap: 0; padding: 0 7px; }
-  html[data-layout="desktop"] .pane.heat .map-tools .map-select, html[data-layout="desktop"] .pane.heat .map-tools .map-draw { padding-left: 21px; }
-}
+/* Where the named buttons over the top right of the map would hide its title and the figures beside it, they shrink to their drawings: judged on the
+   plot's own width (heat-pane.ts `#fitCorner`), not the window's, since the columns beside the map take as much as the window gives. */
+html[data-layout="desktop"] .pane.heat .map-tools.compact :is(.map-goto, .map-select, .map-recenter, .map-draw, .map-layout) { font-size: 0; gap: 0; padding: 0 7px; }
+html[data-layout="desktop"] .pane.heat .map-tools.compact :is(.map-select, .map-draw) { padding-left: 21px; }
 .pane.ladder { flex: 1 1 auto; }
 .pane.cvd { flex: 1 1 auto; }
 .cvd-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
