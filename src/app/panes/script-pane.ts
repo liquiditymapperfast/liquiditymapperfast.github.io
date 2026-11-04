@@ -880,11 +880,15 @@ export class ScriptPane extends TimePane {
     return !want.length || this.#pvRun(want);
   }
 
-  /** The chart the list's previews were last worked out for: another one (its timeframe, market, theme) works them out again while the panel is open. */
-  #pvChart = '';
+  /**
+   * The chart the list's previews were last worked out for: another one (its timeframe, market, theme) works them out again while the panel
+   * is open, just after the map's frame (gathering what they read is not done inside a drawing), until the chart has candles to run them over.
+   */
+  #pvChart = ''; #pvFollowing = 0;
   #pvFollow(): void {
     const s = this.store.state, chart = `${s.timeframe}|${s.candlesTimeframe ?? ''}|${s.seriesInstrument}|${this.#theme}|${replaying() ? 'replay' : 'live'}`;
-    if (chart !== this.#pvChart && this.#pvPrefetch()) this.#pvChart = chart;
+    if (chart === this.#pvChart || this.#pvFollowing) return;
+    this.#pvFollowing = window.setTimeout(() => { this.#pvFollowing = 0; if (this.#panel && this.#pvPrefetch()) this.#pvChart = chart; }, 0);
   }
 
   /** The row whose script the map shows now (null: none), for checks. */
@@ -927,8 +931,8 @@ export class ScriptPane extends TimePane {
 
   /** The panel closed: no preview, nothing kept of the list's (an opening works them out again), and an answer still on its way is let go. */
   #pvEnd(): void {
-    window.clearTimeout(this.#pvTimer); this.#pvTimer = 0; window.clearTimeout(this.#pvGap); this.#pvGap = 0;
-    this.#pvGen++; this.#pvCache.clear(); this.#pvRunning.clear();
+    window.clearTimeout(this.#pvTimer); this.#pvTimer = 0; window.clearTimeout(this.#pvGap); this.#pvGap = 0; window.clearTimeout(this.#pvFollowing); this.#pvFollowing = 0;
+    this.#pvGen++; this.#pvCache.clear(); this.#pvRunning.clear(); this.#pvChart = '';
     this.#pvPointer = null; this.#pvFocus = null; this.#pvAt = null;
     this.#pvHost?.dropUnsent();
     if (this.#pv) { this.#pv = null; this.onMapChanged(); }
