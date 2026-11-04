@@ -4,6 +4,8 @@ import { chainedOi, heldOiAt, oiChangeByTime, oiPartsUntil, oiUsdChangeByTime, s
 import { fetchOiSample, fetchOiHistory, OI_SAMPLE_VENUES } from '../src/shared/history.ts';
 import { readSettings } from '../src/app/store.ts';
 import type { OiBar } from '../src/app/store.ts';
+import { normalizeHyperliquidAssetContext, normalizeHyperliquidMetadata } from '../src/adapters/hyperliquid.mts';
+import { normalizeBybitTicker } from '../src/adapters/bybit.mts';
 
 const M = 60_000;
 const bar = (t: number, c: number): OiBar => [t, c, c, c, c];
@@ -45,8 +47,9 @@ test('every venue\'s open interest reads in coins: Deribit\'s USD at its own mar
   const get = async (url: string): Promise<unknown> => {
     asked.push(url);
     if (url.includes('fapi.binance.com/fapi/v1/openInterest')) return { openInterest: '94000.5' };
-    // Bybit's openInterest counts both sides: the single side is what every other venue reports.
+    // Bybit's openInterest counts both sides: the single side is what every other venue reports. Hyperliquid's counts both too.
     if (url.includes('api.bybit.com/v5/market/tickers')) return { result: { list: [{ openInterest: '112000', singleOpenInterest: '56000' }] } };
+    if (url.includes('api.hyperliquid.xyz/info')) return [{ universe: [{ name: 'ETH' }, { name: 'BTC' }] }, [{ openInterest: '900000' }, { openInterest: '38000', markPx: '78000' }]];
     if (url.includes('okx.com/api/v5/public/open-interest')) return { data: [{ oi: '2940000', oiCcy: '29400', ts: '1' }] };
     if (url.includes('api.bitget.com')) return { data: { openInterestList: [{ symbol: 'BTCUSDT', size: '32000' }] } };
     if (url.includes('deribit.com')) return { result: [{ open_interest: 850_000_000, mark_price: 85_000 }] };
@@ -57,8 +60,8 @@ test('every venue\'s open interest reads in coins: Deribit\'s USD at its own mar
     }
     return {};
   };
-  const coins = Object.fromEntries(await Promise.all(OI_SAMPLE_VENUES.filter(v => v !== 'hyperliquid').map(async v => [v, await fetchOiSample(v, get)] as const)));
-  assert.deepEqual(coins, { binance: 94000.5, bybit: 56000, bitget: 32000, okx: 29400, deribit: 10_000 });
+  const coins = Object.fromEntries(await Promise.all(OI_SAMPLE_VENUES.map(async v => [v, await fetchOiSample(v, get)] as const)));
+  assert.deepEqual(coins, { binance: 94000.5, bybit: 56000, hyperliquid: 19000, bitget: 32000, okx: 29400, deribit: 10_000 });
   const to = 10 * 86_400_000, rows = await fetchOiHistory('bybit:BTCUSDT', 300_000, to - 2 * 86_400_000, to, get);
   assert.ok(rows.length >= 576 && rows.length <= 578, `two days of five-minute bars over pages of 200: ${rows.length}`);
   assert.ok(rows.every((r, i) => i === 0 || Number(r.start) > Number(rows[i - 1]!.start)), 'oldest first, no bar twice');
@@ -73,6 +76,24 @@ test('Bybit\'s open interest is read as one side: its single field, or half of t
     assert.deepEqual(got.map(r => r.close), [30000], single ? 'the single field' : 'half of the two-sided one');
     assert.equal(await fetchOiSample('bybit', async () => ({ retCode: 0, result: { list: [{ openInterest: '60000', ...(single ? { singleOpenInterest: '30000' } : {}) }] } })), 30000);
   }
+});
+
+test('every reader of open interest counts one side of every contract: a two-sided 100 reads as 50 from Hyperliquid, as from Bybit', async () => {
+  // The page's readings from REST.
+  const rest = async (url: string): Promise<unknown> => url.includes('api.hyperliquid.xyz/info') ? [{ universe: [{ name: 'BTC' }] }, [{ openInterest: '100', markPx: '80000' }]]
+    : url.includes('api.bybit.com/v5/market/tickers') ? { result: { list: [{ openInterest: '100' }] } } : {};
+  assert.equal(await fetchOiSample('hyperliquid', rest), 50);
+  assert.equal(await fetchOiSample('bybit', rest), 50);
+  // The server's: Hyperliquid's asset-context socket, its start-up snapshot and metadata, and Bybit's ticker socket.
+  const live = normalizeHyperliquidAssetContext({ channel: 'activeAssetCtx', data: { coin: 'BTC', ctx: { openInterest: '100', markPx: '80000' } } }, { coin: 'BTC' });
+  assert.deepEqual([live.base, live.quote], [50, 4_000_000], 'the side at the mark');
+  assert.equal(normalizeHyperliquidAssetContext([{ universe: [{ name: 'BTC' }] }, [{ openInterest: '100', markPx: '80000' }]], { coin: 'BTC' }).base, 50);
+  assert.equal(normalizeHyperliquidMetadata([{ universe: [{ name: 'BTC' }] }, [{ openInterest: '100', markPx: '80000' }]]).assets[0]!.context!.openInterest, 50);
+  assert.equal(normalizeBybitTicker({ topic: 'tickers.BTCUSDT', type: 'snapshot', ts: 1, data: { symbol: 'BTCUSDT', openInterest: '100' } }, { symbol: 'BTCUSDT' })!.base, 50);
+  // Added together, a venue counts what it holds on one side: Hyperliquid's two-sided 100 joins Binance's 300 as 50.
+  const sum = sumOi([{ id: 'binance:BTCUSDT', bars: [bar(0, 300), bar(M, 310)] }, { id: 'hyperliquid:BTC-PERP', bars: [bar(0, live.base), bar(M, live.base + 5)] }], M);
+  assert.deepEqual(sum.bars.map(x => x[4]), [350, 365]);
+  assert.equal(sum.change.get(M), 10 + 5);
 });
 
 test('an OKX history row is put at the end of its period, the one under way at the time asked', async () => {

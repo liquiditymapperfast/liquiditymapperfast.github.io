@@ -12,6 +12,7 @@ import { FLOW_MEMORY_MS, FLOW_SEC, FlowRecorder, type FlowFrame, type FlowStore,
 import { TIMEFRAMES, quoteRows, type Candle, type OiBar, type OiRow } from './series.ts';
 import { OI_PAGE_VENUES, OI_SAMPLE_VENUES, fetchCandles, fetchOiHistory, fetchOiReading, oiBars, venueOf, webGet, type Fetcher } from './history.ts';
 import { inverseOiId, oiInstrument, oiProfileOf, type OiProfileAnswer, type OiSeries } from './oi-profile.ts';
+import { oneSidedReading } from './oi-sides.ts';
 import { browserVenues, type BrowserVenue } from './venues.ts';
 import { BTC, SCALES, type Coin, type MarketVenue } from './coins.ts';
 import type { BookConnector, OiEvent, TradeEvent } from './connector.ts';
@@ -68,8 +69,12 @@ export interface EngineTick {
 export interface FootprintAnswer { step: number; fine: number; bars: ReturnType<FootprintRecorder['query']>['bars']; from: number; venues?: string[] }
 
 /** One open-interest reading as it is kept: the venue's perpetual, when it was read, its coins and (an inverse market) its own USD. */
-/** A stored reading: `t` its minute (older builds stored each reading at its own time, with no `at`), `at` the reading's own time. */
-export interface OiReading { venue: string; t: number; base: number; quote?: number; at?: number }
+/**
+ * A stored reading: `t` its minute (older builds stored each reading at its own time, with no `at`), `at` the reading's own time, `sides` 1
+ * when its figures are on one side of every contract (every row a build from 2026-11-04 on writes; an older row is read with
+ * `oneSidedReading`).
+ */
+export interface OiReading { venue: string; t: number; base: number; quote?: number; at?: number; sides?: 1 }
 /** Where open-interest readings outlive the page (the browser's recordings): `load` is synchronous, saving may be queued. */
 export interface OiStore { load(since: number): OiReading[]; save(rows: OiReading[], expireBefore: number): void; close(): void }
 
@@ -298,11 +303,13 @@ export class Engine {
    * The open-interest readings kept, into the live series: one row per venue and minute, at the minute's start, as `#applyLiveOi` keeps them:
    * of a minute's rows the newest reading by its own time (`at`; an older build's row has none and was stored at the reading's own time),
    * whichever build or tab wrote it. A minute already read live (the recordings came after the start: `#oiUnsaved`) keeps the newer of the
-   * two, and a live reading that loses is not written over the newer one kept.
+   * two, and a live reading that loses is not written over the newer one kept. A row an older build wrote with Hyperliquid's two-sided
+   * figure is read as one side (`oneSidedReading`).
    */
   #loadOi(oi: OiStore): void {
     const minutes = new Map<string, { row: OiReading; at: number }>();
-    for (const r of oi.load(this.#now() - this.#retentionMs)) {
+    for (const stored of oi.load(this.#now() - this.#retentionMs)) {
+      const r = oneSidedReading(stored);
       const at = typeof r.at === 'number' && Number.isFinite(r.at) && r.at > 0 ? r.at : r.t;
       const key = `${r.venue}|${Math.floor(r.t / 60_000) * 60_000}`, held = minutes.get(key);
       if (!held || at > held.at) minutes.set(key, { row: r, at });
@@ -775,7 +782,8 @@ export class Engine {
       list.push({ observationTimestamp: minute, base: reading.base, ...quote });
       while (list.length && Number(list[0]!.observationTimestamp) < reading.t - OI_KEEP_MS) list.shift();
     }
-    const row = { venue, t: minute, at: reading.t, base: reading.base, ...quote };
+    // Every reader gives one side of every contract (oi-sides.ts), and the row says so.
+    const row: OiReading = { venue, t: minute, at: reading.t, base: reading.base, ...quote, sides: 1 };
     // Before the recordings come (`attach`) the reading waits to be written with them: one a venue and minute, the minute's newest.
     if (this.#waiting) { const i = this.#oiUnsaved.findIndex(r => r.venue === venue && r.t === minute); if (i < 0) this.#oiUnsaved.push(row); else this.#oiUnsaved[i] = row; }
     else this.#oiStore?.save([row], reading.t - this.#retentionMs);

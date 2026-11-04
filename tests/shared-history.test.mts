@@ -137,7 +137,7 @@ test('live open interest samples come from Binance and from the Hyperliquid asse
   assert.equal(await fetchOiSample('binance', async () => ({ openInterest: '81234.5' })), 81234.5);
   assert.equal(await fetchOiSample('binance', async () => ({ code: -1 })), null);
   const ctx = [{ universe: [{ name: 'ETH' }, { name: 'BTC' }] }, [{ openInterest: '9' }, { openInterest: '27000.25' }]];
-  assert.equal(await fetchOiSample('hyperliquid', async () => ctx), 27000.25);
+  assert.equal(await fetchOiSample('hyperliquid', async () => ctx), 27000.25 / 2, 'one side of its two-sided figure');
   assert.equal(await fetchOiSample('bybit', async () => ctx), null);
 });
 

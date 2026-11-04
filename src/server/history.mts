@@ -669,7 +669,8 @@ export class HistoryStore {
       quarantined += rows.length;
     }
     this.#migrateOiSamplesToBars();
-    this.#halveBybitOi();
+    this.#halveStoredOi('bybit');
+    this.#halveStoredOi('hyperliquid');
     this.db.exec('CREATE TABLE IF NOT EXISTS depth_samples (instrument_id TEXT NOT NULL, source_timestamp INTEGER NOT NULL, received_at INTEGER NOT NULL, best_bid REAL, best_ask REAL, bid_notional REAL NOT NULL, ask_notional REAL NOT NULL, level_count INTEGER NOT NULL, complete INTEGER NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY (instrument_id, source_timestamp)); CREATE INDEX IF NOT EXISTS depth_samples_time ON depth_samples(source_timestamp);');
     this.db.exec('CREATE TABLE IF NOT EXISTS heatmap_columns (instrument_id TEXT NOT NULL, bucket_start INTEGER NOT NULL, bucket_end INTEGER NOT NULL, observed_ms INTEGER NOT NULL, expected_ms INTEGER NOT NULL, gap_ms INTEGER NOT NULL, coverage TEXT NOT NULL, source_timestamp_min INTEGER, source_timestamp_max INTEGER, received_at INTEGER, source_resolution TEXT, source_grouping REAL, grid_epoch TEXT, observed_intervals TEXT, gap_intervals TEXT, PRIMARY KEY (instrument_id, bucket_start)); CREATE INDEX IF NOT EXISTS heatmap_columns_time ON heatmap_columns(bucket_start); CREATE TABLE IF NOT EXISTS heatmap_cells (instrument_id TEXT NOT NULL, bucket_start INTEGER NOT NULL, side TEXT NOT NULL, price_low REAL NOT NULL, price_high REAL NOT NULL, mean_amount REAL, mean_notional_usd REAL, peak_amount REAL, peak_notional_usd REAL, observed_ms INTEGER NOT NULL, expected_ms INTEGER NOT NULL, gap_ms INTEGER NOT NULL, coverage TEXT NOT NULL, source_timestamp_min INTEGER, source_timestamp_max INTEGER, received_at INTEGER, source_resolution TEXT, source_grouping REAL, grid_epoch TEXT, observed_intervals TEXT, observed_segments TEXT, PRIMARY KEY (instrument_id, bucket_start, side, price_low)); CREATE INDEX IF NOT EXISTS heatmap_cells_time ON heatmap_cells(bucket_start);');
     // Matching full order prevents a native sorter from retaining JSON during streamed reads.
@@ -834,17 +835,20 @@ export class HistoryStore {
     );
   }
   /**
-   * Bybit's open interest was stored as its `openInterest`, which counts both sides of every contract: twice what every other venue reports.
-   * It is read as one side now (`singleOpenInterest`), and what was stored before is halved once (`migration_state` 'bybit-oi-single'),
-   * so the series has no step where the reading changed (a step would read as half of Bybit's positions closed in one bar).
+   * Bybit's and Hyperliquid's open interest were stored as their own figures, which count both sides of every contract: twice what every
+   * other venue reports. They are read as one side now (Bybit's `singleOpenInterest` since 2026-10-14, half of Hyperliquid's
+   * `openInterest` since 2026-11-04: `shared/oi-sides.ts`), and what each venue had stored before is halved once (`migration_state`
+   * 'bybit-oi-single', 'hyperliquid-oi-single'), so its series has no step where the reading changed (a step would read as half of its
+   * positions closed in one bar). The mark stops a second halving, not an older build writing both sides into the store again.
    */
-  #halveBybitOi() {
-    if (this.prepare("SELECT value FROM migration_state WHERE key = 'bybit-oi-single'").get()?.value === '1') return;
+  #halveStoredOi(venue: 'bybit' | 'hyperliquid') {
+    const key = `${venue}-oi-single`, instruments = `${venue}:%`;
+    if (this.prepare('SELECT value FROM migration_state WHERE key = ?').get(key)?.value === '1') return;
     this.db.exec('BEGIN');
     try {
-      this.prepare("UPDATE oi_bars SET open_base = open_base / 2, high_base = high_base / 2, low_base = low_base / 2, close_base = close_base / 2, open_quote = open_quote / 2, high_quote = high_quote / 2, low_quote = low_quote / 2, close_quote = close_quote / 2 WHERE instrument_id LIKE 'bybit:%'").run();
-      if (this.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oi_samples'").get()) this.prepare("UPDATE oi_samples SET base = base / 2, quote = quote / 2 WHERE instrument_id LIKE 'bybit:%'").run();
-      this.prepare("INSERT OR REPLACE INTO migration_state (key, value) VALUES ('bybit-oi-single', '1')").run();
+      this.prepare('UPDATE oi_bars SET open_base = open_base / 2, high_base = high_base / 2, low_base = low_base / 2, close_base = close_base / 2, open_quote = open_quote / 2, high_quote = high_quote / 2, low_quote = low_quote / 2, close_quote = close_quote / 2 WHERE instrument_id LIKE ?').run(instruments);
+      if (this.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oi_samples'").get()) this.prepare('UPDATE oi_samples SET base = base / 2, quote = quote / 2 WHERE instrument_id LIKE ?').run(instruments);
+      this.prepare("INSERT OR REPLACE INTO migration_state (key, value) VALUES (?, '1')").run(key);
       this.db.exec('COMMIT');
     } catch (error) { try { this.db.exec('ROLLBACK'); } catch {} throw error; }
   }

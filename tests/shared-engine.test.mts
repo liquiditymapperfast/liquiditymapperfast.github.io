@@ -452,3 +452,41 @@ test("stored readings are read back as one row a minute, the newest by its own t
   assert.equal(await close([{ venue: 'bybit', t: m, at: m + 50_000, base: 150 }, { venue: 'bybit', t: m + 30_000, base: 200 }]), 150, 'and loses to a later one');
   assert.equal(await close([{ venue: 'bybit', t: m + 50_000, base: 150 }], book => book.onOi({ instrumentId: 'bybit:BTCUSDT', t: m + 40_000, base: 100 })), 150, 'a reading older than one read back is not taken');
 });
+
+test('a stored Hyperliquid reading an older build wrote with its two-sided figure is read as one side; a marked one, and other venues\', as they are', async () => {
+  const minute = 60_000, m = Math.floor(Date.now() / minute) * minute - 10 * minute;
+  const closes = async (rows: OiReading[], id: string): Promise<(number | undefined)[]> => {
+    const oi: OiStore = { load: () => rows, save() {}, close() {} };
+    const { engine } = setup([], { now: () => m + 5 * minute, oi });
+    const bars = await engine.oi(id, minute, m - minute, m + 3 * minute);
+    engine.stop();
+    return [m, m + minute].map(t => bars.find(b => b[0] === t)?.[4]);
+  };
+  assert.deepEqual(await closes([{ venue: 'hyperliquid', t: m, at: m + 5_000, base: 100 }, { venue: 'hyperliquid', t: m + minute, at: m + minute + 5_000, base: 50, sides: 1 }], 'hyperliquid:BTC-PERP'), [50, 50], 'an older build\'s 100 is 50; a marked 50 stays 50');
+  const usd = async (rows: OiReading[]): Promise<number | undefined> => {
+    const { engine } = setup([], { now: () => m + 5 * minute, oi: { load: () => rows, save() {}, close() {} } });
+    const bars = await engine.oi('hyperliquid:BTC-PERP', minute, m - minute, m + 3 * minute, true);
+    engine.stop();
+    return bars.find(b => b[0] === m)?.[4];
+  };
+  assert.equal(await usd([{ venue: 'hyperliquid', t: m, at: m + 5_000, base: 100, quote: 8_000_000 }]), 4_000_000, 'its USD too');
+  assert.equal((await closes([{ venue: 'bybit', t: m, at: m + 5_000, base: 100 }], 'bybit:BTCUSDT'))[0], 100, 'every other venue\'s rows were one side already');
+});
+
+test('the page\'s own Hyperliquid reading is one side of its two-sided figure, handed on and stored marked', async () => {
+  const minute = 60_000, now = Math.floor(Date.now() / minute) * minute + 30_000;
+  const saved: OiReading[] = [], live: number[] = [];
+  const oi: OiStore = { load: () => [], save: rows => { saved.push(...rows); }, close() {} };
+  const get = async (url: string, init?: { body?: string }): Promise<unknown> => {
+    if (url.includes('api.hyperliquid.xyz/info') && init?.body?.includes('metaAndAssetCtxs')) return [{ universe: [{ name: 'BTC' }] }, [{ openInterest: '100', markPx: '80000' }]];
+    throw new Error('offline');
+  };
+  const { engine } = setup(['hyperliquid'], { now: () => now, oi, get });
+  engine.onOiLive = (_id, reading) => live.push(reading.base);
+  engine.select(['hyperliquid']);
+  engine.step(now);
+  for (let i = 0; i < 5; i++) await settle();
+  assert.deepEqual(live, [50]);
+  assert.deepEqual(saved.map(r => [r.venue, r.t, r.base, r.sides]), [['hyperliquid', now - 30_000, 50, 1]]);
+  engine.stop();
+});

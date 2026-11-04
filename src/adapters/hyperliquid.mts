@@ -116,6 +116,11 @@ function optionalNumber(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n : undefined;
 }
+/**
+ * One side of open interest: Hyperliquid's `openInterest` counts both sides of every contract, longs plus shorts, where every other venue
+ * reports one (measured: its change reached twice the volume traded, never more; `shared/oi-sides.ts`).
+ */
+const oneSide = (openInterest: number) => openInterest / 2;
 function metadataParts(payload: unknown) {
   const data = payloadData(payload);
   if (Array.isArray(data)) return { meta: recordValue(data[0]), contexts: Array.isArray(data[1]) ? data[1] as unknown[] : [] };
@@ -143,6 +148,7 @@ export function normalizeHyperliquidMetadata(payload: unknown, { receivedAt = Da
     const name = String(recordValue(asset)?.name ?? '').trim();
     if (!name) throw new TypeError(`Hyperliquid metadata universe[${index}] name missing`);
     const context = recordValue(contexts)[String(index)];
+    const openInterest = context && typeof context === 'object' ? optionalNumber(recordValue(context).openInterest) : undefined;
     return {
       coin: name,
       instrumentId: `hyperliquid:${hyperliquidCoin(name)}-PERP`,
@@ -155,7 +161,7 @@ export function normalizeHyperliquidMetadata(payload: unknown, { receivedAt = Da
         oraclePrice: optionalNumber(recordValue(context).oraclePx),
         midPrice: optionalNumber(recordValue(context).midPx),
         funding: optionalNumber(recordValue(context).funding),
-        openInterest: optionalNumber(recordValue(context).openInterest),
+        openInterest: openInterest === undefined ? undefined : oneSide(openInterest),
       } : undefined,
     };
   });
@@ -198,11 +204,14 @@ export function normalizeHyperliquidBook(payload: unknown, { instrumentId, nSigF
   const resolvedResolutionKey = resolutionKey ?? observedResolutionKey;
   return { kind: 'depthSnapshot' as const, instrumentId: resolvedInstrumentId, sourceTimestamp, receivedAt, sequence: sourceTimestamp == null ? undefined : Number(recordValue(data).time), complete: true, resolution: resolvedResolution, resolutionKey: resolvedResolutionKey, bookKey: explicitBookKey ?? bookKey(resolvedInstrumentId, resolvedResolutionKey), ...(feedId == null ? {} : { feedId }), coverage: 'partial' as const, ...(grouping.nSigFigs == null ? {} : { nSigFigs: grouping.nSigFigs }), ...(grouping.mantissa == null ? {} : { mantissa: grouping.mantissa }), bids, asks };
 }
-/** Normalize an asset context. openInterest is contracts/base units; quote is derived only when mark exists. */
+/**
+ * Normalize an asset context. Its openInterest is base units on both sides of every contract; the sample is one side, half of it, as every
+ * other venue's is. quote is that side at the mark, derived only when a mark exists.
+ */
 export function normalizeHyperliquidAssetContext(payload: unknown, { coin = 'BTC', instrumentId, receivedAt = Date.now() }: AdapterOptions = {}) {
   const { data, context } = contextFor(payload, coin);
   const ctx = recordValue(context);
-  const openInterest = finiteNumber(ctx?.openInterest, 'openInterest');
+  const openInterest = oneSide(finiteNumber(ctx?.openInterest, 'openInterest'));
   const mark = ctx?.markPx == null ? undefined : finiteNumber(ctx.markPx, 'markPx');
   const sample: OpenInterestSample & { markPrice?: number } = { kind: 'openInterest' as const, instrumentId: instrumentId ?? `hyperliquid:${hyperliquidCoin(data?.coin ?? coin)}-PERP`, sourceTimestamp: sourceTimestampOrNull((recordValue(data) as WireRecord)?.time ?? recordValue(payload)?.time ?? ctx?.time), receivedAt, base: openInterest, quality: 'native' as const };
   if (mark !== undefined && mark > 0) { sample.quote = openInterest * mark; sample.markPrice = mark; }

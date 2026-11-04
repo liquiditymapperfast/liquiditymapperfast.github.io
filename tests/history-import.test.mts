@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
 import { OTHER_COINS_SERVED, historyUrl } from '../src/app/history-url.ts';
+import { Engine } from '../src/shared/engine.ts';
 
 /** The first three minutes of an hour file written by hlm-history on 2026-11-01 (23:14-23:16Z, the eleven default books). */
 const fixture = (): ArrayBuffer => { const b = fs.readFileSync(path.join(process.cwd(), 'tests', 'fixtures', 'history-hour.bin')); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; };
@@ -180,7 +181,10 @@ test('the trade side of an hour file reads back whole: flow minutes, liquidation
   assert.deepEqual(liquidations.map(l => [l.id, l.side, l.kind]), [['binance:BTCUSDT', 'short', 'fill'], ['binance:BTCUSDT', 'short', 'fill']]);
   for (const l of liquidations) assert.ok(l.usd >= 100 && l.price === l.reported, 'a fill price is where it is drawn');
   assert.deepEqual(oi.map(r => r.venue), ['binance', 'bitget', 'bybit', 'deribit', 'hyperliquid', 'okx']);
-  for (const r of oi) assert.ok(r.t % MINUTE === 0 && r.at! >= r.t && r.at! < r.t + MINUTE && r.base > 1_000);
+  for (const r of oi) assert.ok(r.t % MINUTE === 0 && r.at! >= r.t && r.at! < r.t + MINUTE && r.base > 1_000 && r.sides === 1);
+  // These records are kind 4: Hyperliquid's figure in them counts both sides (40,156.01944 BTC) and is read as one, beside the others'.
+  assert.equal(oi.find(r => r.venue === 'hyperliquid')!.base, 40_156.01944 / 2);
+  assert.equal(oi.find(r => r.venue === 'binance')!.base, 95_193.471);
   assert.ok(oi.find(r => r.venue === 'deribit')!.quote! > 1e8, 'an inverse market says its USD too');
   assert.ok(oi.filter(r => r.venue !== 'deribit').every(r => r.quote === undefined));
   assert.equal(prints.length, 6);
@@ -197,6 +201,33 @@ test('the trade side of an hour file reads back whole: flow minutes, liquidation
   }
   // Hyperliquid's trade id is the page's own (time, coin and the venue's trade id).
   assert.match(coverage.find(c => c.inst === 'hyperliquid:BTC-PERP')!.first!.id, /^\d{13}:BTC:\d+$/);
+});
+
+/** An hour file of open-interest records as hlm-history's rows.rs writes them: [kind, venue, minute, at, coins, USD or none]. */
+function oiFile(hour: number, records: [number, string, number, number, number, number | null][]): ArrayBuffer {
+  const out: number[] = [0x48, 0x4c, 0x4d, 0x43, 1, 0, 0, 0];
+  const put = (to: number[], size: number, set: (view: DataView) => void): void => { const b = new Uint8Array(size); set(new DataView(b.buffer)); to.push(...b); };
+  put(out, 8, d => d.setBigInt64(0, BigInt(hour), true));
+  for (const [kind, venue, t, at, coins, usd] of records) {
+    const rec: number[] = [kind, venue.length, ...[...venue].map(c => c.charCodeAt(0))];
+    put(rec, 8, d => d.setBigInt64(0, BigInt(t), true)); put(rec, 8, d => d.setBigInt64(0, BigInt(at), true)); put(rec, 8, d => d.setFloat64(0, coins, true));
+    rec.push(usd === null ? 0 : 1); put(rec, 8, d => d.setFloat64(0, usd ?? 0, true));
+    put(out, 4, d => d.setUint32(0, rec.length, true)); out.push(...rec);
+  }
+  return Uint8Array.from(out).buffer;
+}
+
+test('open interest from an hour file is kept on one side and marked: kind 4 halves Hyperliquid\'s two-sided figure once, kind 10 is as written', async () => {
+  const hour = TRADES_HOUR, m1 = hour + MINUTE, m2 = hour + 2 * MINUTE;
+  const rows = decodeHour(oiFile(hour, [[4, 'hyperliquid', m1, m1 + 5_000, 100, 8_000_000], [4, 'binance', m1, m1 + 5_000, 100, null], [10, 'hyperliquid', m2, m2 + 5_000, 40, null], [10, 'bybit', m2, m2 + 5_000, 30, null]]))!.rows.oi;
+  assert.deepEqual(rows.map(r => [r.venue, r.t - hour, r.base, r.quote, r.sides]), [
+    ['hyperliquid', MINUTE, 50, 4_000_000, 1], ['binance', MINUTE, 100, undefined, 1], ['hyperliquid', 2 * MINUTE, 40, undefined, 1], ['bybit', 2 * MINUTE, 30, undefined, 1],
+  ]);
+  // Saved as they were imported and read back by the engine at the next start: halved once, never twice.
+  const engine = new Engine({ venues: [], now: () => hour + 5 * MINUTE, ping: async () => true, get: async () => { throw new Error('offline'); }, oi: { load: () => rows, save() {}, close() {} } });
+  const bars = await engine.oi('hyperliquid:BTC-PERP', MINUTE, hour, hour + 3 * MINUTE);
+  engine.stop();
+  assert.deepEqual([m1, m2].map(t => bars.find(b => b[0] === t)?.[4]), [50, 40]);
 });
 
 test('rows of the trade side are kept inside the window: the minute under way is the page\'s own, a stretch is cut at it', () => {

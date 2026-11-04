@@ -1,5 +1,6 @@
 import { aggregateCandles, aggregateOi, withLiveOi, type Candle, type CandleRow, type OiBar, type OiRow } from './series.ts';
 import { BTC, type CoinVenue, type Listing } from './coins.ts';
+import { hyperliquidOneSide } from './oi-sides.ts';
 
 /**
  * History straight from each exchange's public REST API, as a browser can read it (every endpoint here answers with CORS headers):
@@ -180,8 +181,9 @@ export const OI_VENUES: readonly string[] = ['binance', 'bybit', 'okx'];
 /** The venues of `OI_VENUES` whose history a page can read: OKX's answers with no CORS header from any of its hosts (checked 2026-10-30). */
 export const OI_PAGE_VENUES: readonly string[] = ['binance', 'bybit'];
 /**
- * Venues whose live open interest can be sampled, in coins: the perpetuals of the largest venues (measured 2026-10-13 on BTC: Binance 94K,
- * Bybit 57K, Hyperliquid 38K, Bitget 32K, OKX 29K, Deribit 10K). Those without a history build theirs up while they are sampled.
+ * Venues whose live open interest can be sampled, in coins on one side of every contract (`oi-sides.ts`): the perpetuals of the largest
+ * venues (measured 2026-11-04 on BTC, as read here: Binance 99K, Bitget 38K, OKX 35K, Bybit 35K, Hyperliquid 20K, Deribit 8K). Those
+ * without a history build theirs up while they are sampled.
  */
 export const OI_SAMPLE_VENUES: readonly string[] = ['binance', 'bybit', 'hyperliquid', 'bitget', 'okx', 'deribit'];
 
@@ -278,7 +280,8 @@ async function readOiSample(venue: string, get: Fetcher, listing?: HistoryListin
   if (venue === 'hyperliquid') {
     const result = await get('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
     const universe = list(at(result, 0, 'universe')), index = universe.findIndex(u => at(u, 'name') === market.symbol);
-    return index >= 0 ? coins(num(at(result, 1, index, 'openInterest'))) : null;
+    // One side, as every other venue reports (Hyperliquid's `openInterest` counts both: oi-sides.ts).
+    return index >= 0 ? coins(hyperliquidOneSide(num(at(result, 1, index, 'openInterest')))) : null;
   }
   if (venue === 'bybit') {
     const answer = await get(`https://api.bybit.com/v5/market/tickers?category=${market.inverse ? 'inverse' : 'linear'}&symbol=${market.symbol}`);

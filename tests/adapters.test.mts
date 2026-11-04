@@ -78,7 +78,8 @@ test('Hyperliquid l2Book and asset context normalize native units', () => {
   const book = normalizeHyperliquidBook({channel:'l2Book',data:{coin:'BTC',time:1700000000000,levels:[[{px:'100',sz:'2'},{px:'99',sz:'3'}],[{px:'101',sz:'4'}]]}}, {receivedAt:1700000000100});
   assert.equal(book.instrumentId,'hyperliquid:BTC-PERP'); assert.equal(book.sourceTimestamp,1700000000000); assert.equal(book.coverage,'partial'); assert.deepEqual(book.bids,[{price:100,amount:2},{price:99,amount:3}]);
   const oi = normalizeHyperliquidAssetContext({data:{time:1700000000000,context:{openInterest:'12.5',markPx:'100'}}},{coin:'BTC',receivedAt:1700000000100});
-  assert.equal(oi.base,12.5); assert.equal(oi.quote,1250); assert.equal(oi.markPrice,100); assert.equal(oi.quality,'native');
+  // openInterest counts both sides of every contract: the sample is one side, half of it, and its USD that side at the mark.
+  assert.equal(oi.base,6.25); assert.equal(oi.quote,625); assert.equal(oi.markPrice,100); assert.equal(oi.quality,'native');
   const liveOi = normalizeHyperliquidAssetContext({channel:'activeAssetCtx',data:{coin:'BTC',ctx:{openInterest:'5',markPx:'101'}}},{coin:'BTC',receivedAt:1700000000100});
   assert.equal(liveOi.sourceTimestamp, null);
   const explicitNullOi = normalizeHyperliquidAssetContext({data:{time:null,ctx:{openInterest:'5',markPx:'101'}}},{coin:'BTC',receivedAt:1700000000100});
@@ -110,13 +111,13 @@ test('Hyperliquid metadata and public trades normalize without inventing timesta
   assert.deepEqual(metadata.assets[0], {
     coin: 'BTC', instrumentId: 'hyperliquid:BTC-PERP', szDecimals: 5, maxLeverage: 20,
     onlyIsolated: false, isDelisted: false,
-    context: { markPrice: 100, oraclePrice: undefined, midPrice: undefined, funding: 0.001, openInterest: 12 },
+    context: { markPrice: 100, oraclePrice: undefined, midPrice: undefined, funding: 0.001, openInterest: 6 },
   });
   const ethOi = normalizeHyperliquidAssetContext([
     { universe: [{ name: 'BTC' }, { name: 'ETH' }] },
     [{ openInterest: '12', markPx: '100' }, { openInterest: '9', markPx: '10' }],
   ], { coin: 'ETH', receivedAt: 1700000000100 });
-  assert.equal(ethOi.instrumentId, 'hyperliquid:ETH-PERP'); assert.equal(ethOi.base, 9);
+  assert.equal(ethOi.instrumentId, 'hyperliquid:ETH-PERP'); assert.equal(ethOi.base, 4.5);
   assert.throws(() => normalizeHyperliquidAssetContext([
     { universe: [{ name: 'BTC' }] }, [{ openInterest: '12', markPx: '100' }],
   ], { coin: 'SOL', receivedAt: 1700000000100 }), /openInterest/);
@@ -154,7 +155,7 @@ test('Hyperliquid preserves HIP-3 DEX coin identity across product and feed pars
     [{ openInterest: '12' }, { openInterest: '7' }],
   ], { coin, receivedAt: 100 });
   assert.equal(contexts.instrumentId, instrumentId);
-  assert.equal(contexts.base, 7);
+  assert.equal(contexts.base, 3.5);
 
   const book = normalizeHyperliquidBook({ data: { coin, time: 1700000000000, levels: [[{ px: '100', sz: '2' }], [{ px: '101', sz: '3' }]] } });
   assert.equal(book.instrumentId, instrumentId);

@@ -38,7 +38,7 @@ export const VENUE_REGISTRY: readonly VenueRegistryEntry[] = Object.freeze([
     l2: capability('supported', undefined, ['perpetual'], ['native', 'coarse']),
     candles: supportedPublic(['perpetual']),
     candleHistory: historyCapability('supported', 'public-backfill', undefined, ['perpetual'], undefined, 'bounded candleSnapshot history'),
-    openInterest: supportedPublic(['perpetual']),
+    openInterest: capability('supported', 'activeAssetCtx openInterest counts both sides of every contract; read as one side, half of it', ['perpetual']),
     openInterestHistory: historyCapability('supported', 'local-observed', 'activeAssetCtx observations are retained locally; Hyperliquid public metadata does not provide historical OI backfill', ['perpetual'], undefined, 'starts at first local observation; gaps and receipt-time provenance remain visible'),
     executedLiquidations: unsupportedPublic(), futureLevels: capability('externallyBlocked', blockedReason, ['perpetual']),
   }, 'src/adapters/hyperliquid.mts'),

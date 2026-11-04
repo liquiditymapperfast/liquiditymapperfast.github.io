@@ -25,14 +25,16 @@ const spot = (venue: string, read: () => Promise<Size>): Source => ({ venue, kin
 
 const SOURCES: Source[] = [
   perp('binance', async () => { const t = await get('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT'), oi = await get('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT'); return { vol: num(at(t, 'quoteVolume')), oi: num(at(oi, 'openInterest')) * num(at(t, 'lastPrice')) }; }),
-  perp('bybit', async () => { const t = at(await get('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT'), 'result', 'list', 0); return { vol: num(at(t, 'turnover24h')), oi: num(at(t, 'openInterestValue')) }; }),
+  // Open interest on one side of every contract, as the others report it: Bybit's `openInterestValue` and Hyperliquid's `openInterest`
+  // count both sides (src/shared/oi-sides.ts).
+  perp('bybit', async () => { const t = at(await get('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT'), 'result', 'list', 0), single = at(t, 'singleOpenInterestValue'); return { vol: num(at(t, 'turnover24h')), oi: single !== undefined && single !== null && single !== '' ? num(single) : num(at(t, 'openInterestValue')) / 2 }; }),
   perp('okx', async () => { const t = at(await get('https://www.okx.com/api/v5/market/ticker?instId=BTC-USDT-SWAP'), 'data', 0), oi = at(await get('https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP'), 'data', 0), last = num(at(t, 'last')); return { vol: num(at(t, 'volCcy24h')) * last, oi: num(at(oi, 'oiCcy')) * last }; }),
   perp('bitget', async () => { const t = at(await get('https://api.bitget.com/api/v2/mix/market/ticker?productType=USDT-FUTURES&symbol=BTCUSDT'), 'data', 0); return { vol: num(at(t, 'usdtVolume') ?? at(t, 'quoteVolume')), oi: num(at(t, 'holdingAmount')) * num(at(t, 'lastPr')) }; }),
   perp('deribit', async () => { const t = at(await get('https://www.deribit.com/api/v2/public/ticker?instrument_name=BTC-PERPETUAL'), 'result'); return { vol: num(at(t, 'stats', 'volume_usd')), oi: num(at(t, 'open_interest')) }; }),
   perp('hyperliquid', async () => {
     const [meta, contexts] = await get('https://api.hyperliquid.xyz/info', { type: 'metaAndAssetCtxs' }) as [unknown, unknown[]];
     const universe = at(meta, 'universe'), index = Array.isArray(universe) ? universe.findIndex(entry => at(entry, 'name') === 'BTC') : -1, c = contexts[index];
-    return { vol: num(at(c, 'dayNtlVlm')), oi: num(at(c, 'openInterest')) * num(at(c, 'markPx')) };
+    return { vol: num(at(c, 'dayNtlVlm')), oi: num(at(c, 'openInterest')) / 2 * num(at(c, 'markPx')) };
   }),
   perp('gateio', async () => { const t = at(await get('https://api.gateio.ws/api/v4/futures/usdt/tickers?contract=BTC_USDT'), 0), c = await get('https://api.gateio.ws/api/v4/futures/usdt/contracts/BTC_USDT'), last = num(at(t, 'last')); return { vol: num(at(t, 'volume_24h_quote')), oi: num(at(t, 'total_size')) * num(at(c, 'quanto_multiplier')) * last }; }),
   perp('mexc', async () => { const t = at(await get('https://contract.mexc.com/api/v1/contract/ticker?symbol=BTC_USDT'), 'data'); return { vol: num(at(t, 'amount24')), oi: num(at(t, 'holdVol')) * 0.0001 * num(at(t, 'lastPrice')) }; }),

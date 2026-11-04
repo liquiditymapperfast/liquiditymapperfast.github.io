@@ -1171,7 +1171,7 @@ test('metadata hydration emits a snapshot and initial asset-context OI', async (
   assert.deepEqual(JSON.parse(textValue(requests[0].body)), { type: 'metaAndAssetCtxs' });
   assert.equal(defined(defined(messages.find(item => item.message.kind === 'metadata')).message.assets)[0].coin, 'BTC');
   const oi = defined(messages.find(item => item.message.kind === 'openInterest')).message;
-  assert.equal(oi.base, 12); assert.equal(oi.quote, 1200); assert.equal(oi.sourceTimestamp, null);
+  assert.equal(oi.base, 6, 'one side of the two-sided 12'); assert.equal(oi.quote, 600); assert.equal(oi.sourceTimestamp, null);
   assert.equal(manager.status()['hl-metadata'].state, 'snapshot');
   manager.stop();
 });

@@ -4,6 +4,7 @@ import type { Liquidation } from '../../shared/liquidations.ts';
 import type { Print } from '../../shared/prints.ts';
 import { coveredMs, union, type CoverageRow, type SeamTrade } from '../../shared/coverage.ts';
 import type { OiReading } from '../../shared/engine.ts';
+import { hyperliquidOneSide } from '../../shared/oi-sides.ts';
 import { SIZE_EDGES, STATS_VERSION, type FootprintMinuteRow, type StoredBin, type TradeStats } from '../../shared/footprint.ts';
 import type { AbsorptionGroup, AbsorptionMinute, AbsorptionStep } from '../../shared/absorption.ts';
 
@@ -65,9 +66,11 @@ export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: Histor
 }
 
 /**
- * A record of another kind (rows.rs): 2 a flow minute, 3 a liquidation, 4 an open-interest reading, 5 a large trade, 6 a stretch of trade
- * coverage, 7 a footprint minute, 8 an absorption candidate group, 9 an absorption minute, into `rows` when it is whole and sane; a kind this
- * page does not know is passed over.
+ * A record of another kind (rows.rs): 2 a flow minute, 3 a liquidation, 4 and 10 an open-interest reading, 5 a large trade, 6 a stretch of
+ * trade coverage, 7 a footprint minute, 8 an absorption candidate group, 9 an absorption minute, into `rows` when it is whole and sane; a
+ * kind this page does not know is passed over. An open-interest reading is kept on one side of every contract and marked so: kind 10 is
+ * written so, kind 4 (until 2026-11-04) holds each venue's figure as this page read it then, Hyperliquid's on both sides (halved here once:
+ * `shared/oi-sides.ts`).
  */
 function other(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: number, end: number, rows: HistoryRows): void {
   const kind = view.getUint8(from), idLength = view.getUint8(from + 1);
@@ -86,9 +89,10 @@ function other(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: num
   } else if (kind === 3 && has(34)) {
     const t = i64(), long = u8() === 1, price = f64(), usd = f64(), reported = f64(), bankruptcy = u8() === 1;
     if (finite(t, price, usd, reported) && price > 0 && usd > 0 && reported > 0) rows.liquidations.push({ t, id, side: long ? 'long' : 'short', price, usd, reported, kind: bankruptcy ? 'bankruptcy' : 'fill' });
-  } else if (kind === 4 && has(33)) {
-    const t = i64(), at = i64(), base = f64(), quoted = u8() === 1, quote = f64();
-    if (finite(t, at, base) && base > 0 && t % COLUMN_MS === 0 && (!quoted || (quote > 0 && Number.isFinite(quote)))) rows.oi.push({ venue: id, t, at, base, ...(quoted ? { quote } : {}) });
+  } else if ((kind === 4 || kind === 10) && has(33)) {
+    const t = i64(), at = i64(), coins = f64(), quoted = u8() === 1, usd = f64();
+    const half = kind === 4 && id === 'hyperliquid', base = half ? hyperliquidOneSide(coins) : coins, quote = half ? hyperliquidOneSide(usd) : usd;
+    if (finite(t, at, base) && base > 0 && t % COLUMN_MS === 0 && (!quoted || (quote > 0 && Number.isFinite(quote)))) rows.oi.push({ venue: id, t, at, base, ...(quoted ? { quote } : {}), sides: 1 });
   } else if (kind === 5 && has(46)) {
     const t = i64(), buy = u8() === 1, price = f64(), usd = f64(), span = u8() === 1, lo = f64(), hi = f64(), n = view.getUint32(p, true);
     if (finite(t, price, usd) && price > 0 && usd > 0 && (!span || (lo > 0 && hi >= lo && Number.isFinite(hi) && n > 0))) rows.prints.push({ t, id, side: buy ? 'buy' : 'sell', price, usd, ...(span ? { lo, hi, n } : {}) });

@@ -197,8 +197,9 @@ test('candles and open interest are asked for by the coin\'s own symbols and con
   const oi = await fetchOiHistory('binance:1000PEPEUSDT', 3_600_000, 0, 3_600_000, async url => { asked.push(url); return [{ timestamp: 0, sumOpenInterest: '5' }]; }, pepe);
   assert.match(asked[1]!, /openInterestHist\?symbol=1000PEPEUSDT&/); assert.equal(oi[0]!.close, 5000);
   const ctx = [{ universe: [{ name: 'BTC' }, { name: 'kPEPE' }] }, [{ openInterest: '1' }, { openInterest: '7' }]];
-  assert.equal(await fetchOiSample('hyperliquid', async () => ctx, { symbol: 'kPEPE', unit: 1000 }), 7000);
-  assert.equal(await fetchOiSample('hyperliquid', async () => ctx), 1, 'BTC unless told otherwise');
+  // Thousands of coins, on one side: Hyperliquid's figure counts both sides of every contract.
+  assert.equal(await fetchOiSample('hyperliquid', async () => ctx, { symbol: 'kPEPE', unit: 1000 }), 3500);
+  assert.equal(await fetchOiSample('hyperliquid', async () => ctx), 0.5, 'BTC unless told otherwise');
 });
 
 test('the engine starts only the markets that list the coin, says which do not, and keeps the coin\'s smaller floors', () => {

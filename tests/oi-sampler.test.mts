@@ -129,6 +129,30 @@ test('Bybit open interest stored as both sides is halved once, and only once', (
   twice.close(); rmSync(dir, { recursive: true, force: true });
 });
 
+test('Hyperliquid open interest stored as both sides is halved once, its USD too, and only once, apart from Bybit\'s', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hyperliquid-oi-')), filePath = join(dir, 'history.sqlite');
+  const at = 1_700_000_000_000, row = (instrumentId: string, base: number, t: number, quote?: number) => ({ kind: 'openInterest', instrumentId, sourceTimestamp: t, observationTimestamp: t, receivedAt: t + 1, base, ...(quote === undefined ? {} : { quote }), quality: 'native' });
+  const before = new HistoryStore({ filePath });
+  before.recordOi(row('hyperliquid:BTC-PERP', 40_000, at, 3_200_000_000)); before.recordOi(row('hyperliquid:BTC-PERP', 40_010, at + 60_000, 3_200_800_000));
+  before.recordOi(row('hyperliquid:xyz:XYZ100-PERP', 100, at, 2_000));
+  before.recordOi(row('bybit:BTCUSDT', 30_000, at)); before.recordOi(row('binance:BTCUSDT', 90_000, at));
+  // A store written before the fix, after Bybit's was halved: Hyperliquid's mark is missing, Bybit's is there.
+  before.db.exec("DELETE FROM migration_state WHERE key = 'hyperliquid-oi-single'"); before.close();
+  const bars = (store: HistoryStore, id: string) => store.listOi(id, { from: 0 }) as { open?: number; high?: number; low?: number; close?: number; quote?: number | null }[];
+  const close = (store: HistoryStore, id: string): number => Number(bars(store, id).at(-1)?.close ?? NaN);
+  const once = new HistoryStore({ filePath });
+  assert.deepEqual(bars(once, 'hyperliquid:BTC-PERP').map(b => [b.open, b.high, b.low, b.close]), [[20_000, 20_000, 20_000, 20_000], [20_005, 20_005, 20_005, 20_005]], 'every figure of every bar halved');
+  assert.deepEqual(bars(once, 'hyperliquid:BTC-PERP').map(b => b.quote), [1_600_000_000, 1_600_400_000], 'its USD too');
+  assert.equal(close(once, 'hyperliquid:xyz:XYZ100-PERP'), 50, 'a builder-deployed market too');
+  assert.equal(close(once, 'bybit:BTCUSDT'), 30_000, 'Bybit\'s, halved before, is not halved again');
+  assert.equal(close(once, 'binance:BTCUSDT'), 90_000, 'other venues untouched');
+  once.recordOi(row('hyperliquid:BTC-PERP', 20_007, at + 120_000));
+  once.close();
+  const twice = new HistoryStore({ filePath });
+  assert.deepEqual(bars(twice, 'hyperliquid:BTC-PERP').map(b => b.close), [20_000, 20_005, 20_007], 'not halved again, nor the reading written since');
+  twice.close(); rmSync(dir, { recursive: true, force: true });
+});
+
 test('a reading keeps the venue\'s own clock, failures are counted and logged at most every ten minutes, and fast venues are read every five seconds', async () => {
   let clock = NOW, failing = false;
   const applied: OiSampleMessage[] = [], logs: string[] = [];
