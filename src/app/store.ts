@@ -24,6 +24,7 @@ import { LS_METRICS, type LsMetric } from '../shared/long-short.ts';
 import { readCustomMarkets, type CustomMarkets } from './market-choice.ts';
 import { readPullWindow, type PullWindow } from './panes/pull-stack.ts';
 import { readLadderCues, type LadderCues } from './panes/ladder-cue-settings.ts';
+import { readDepthSettings, type DepthSettings } from './depth-settings.ts';
 import type { EngineState } from './sound/engine.ts';
 import type { RangeSelection } from './range/selection.ts';
 import { hasTop, readTraded, topFromStrip, type TradedSettings } from './traded/settings.ts';
@@ -163,6 +164,8 @@ export interface AppState {
   pullStack: PullWindow;
   /** What lights in the order book when a venue's displayed depth changes, and the heat strip under each venue's part of a level (panes/ladder-cue-settings.ts). */
   ladderCues: LadderCues;
+  /** The Depth pane's bands and how they are drawn (depth-settings.ts). */
+  depthBands: DepthSettings;
   ladderVenue: string;
   /** Instrument ids that get their own book in Single mode (empty = every enabled venue). */
   ladderVenues: string[];
@@ -206,7 +209,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'phoneHistory','barCollapsed', 'material', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'phoneHistory','barCollapsed', 'material', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -217,7 +220,7 @@ export type LadderCurves = (typeof LADDER_CURVES)[number];
 
 /** The settings a saved layout holds: what the chart shows and how, never the coin, the venues, the theme, the time zone or the sounds. */
 export const LAYOUT_KEYS = ['timeframe', 'layer', 'show', 'cvd', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta',
-  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'chartType'] as const satisfies readonly (keyof AppState)[];
+  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'chartType'] as const satisfies readonly (keyof AppState)[];
 export type Settings = Pick<AppState, (typeof LAYOUT_KEYS)[number]>;
 
 /** The timeframes (hub.ts TIMEFRAMES; a test keeps the two the same). */
@@ -258,6 +261,7 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     liquidations: readLiquidations(saved.liquidations), keyLevels: readKeyLevels(saved.keyLevels), liqLevels: readLiqLevels(saved.liqLevels), vwap: readVwap(saved.vwap), footprint: readFootprint(saved.footprint),
     delta: readDelta(saved.delta), lsMetric: (LS_METRICS as readonly unknown[]).includes(saved.lsMetric) ? saved.lsMetric as LsMetric : 'accounts', pullStack: readPullWindow(saved.pullStack),
     ladderCues: readLadderCues(saved.ladderCues),
+    depthBands: readDepthSettings(saved.depthBands),
     traded,
     scope: saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all',
     heat: { ...heat, style: HEAT_STYLES.some(style => style.id === heat.style) ? heat.style : 'size', smooth: heat.smooth === 'off' ? 'off' : 'auto', contrast: clampContrast(heat.contrast) },

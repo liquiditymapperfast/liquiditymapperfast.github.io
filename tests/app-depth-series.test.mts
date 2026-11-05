@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { depthSeries, touchOf, type DepthStore } from '../src/app/depth-series.ts';
+import { depthBands, depthSeries, touchOf, type DepthStore } from '../src/app/depth-series.ts';
 
 const MIN = 60_000, STEP = 1;
 /** One instrument's minutes: each a book of `bids` and `asks` as [price, usd], on a grid of `STEP`. */
@@ -52,4 +52,35 @@ test('a book with one side gives no centre; a pixel no book gives one stays empt
   assert.ok(Number.isNaN(s.mid[0])); assert.equal(s.bid[0], 0);
   const two = depthSeries([store([bookAt(0, 1_000), { t: MIN, bids: [[999, 100]], asks: [[1_001, 300]] }])], MIN, 0, 2 * MIN, 1, 0.02);
   assert.equal(two.bid[0], (800 + 100) / 2); assert.equal(two.ask[0], (800 + 300) / 2);
+});
+
+test('nested bands in one pass: each band is exactly the single-band series for its radius, the bands only grow outward, and coins are each bin\'s USD over its price', () => {
+  // Two venues, a book that changes shape minute to minute, prices on and between the band edges.
+  const a = store(Array.from({ length: 30 }, (_, i) => ({ t: i * MIN, bids: [[1_000 + i - 1, 400 + i], [1_000 + i - 5, 300], [1_000 + i - 20, 200], [1_000 + i - 50, 100]] as [number, number][], asks: [[1_000 + i + 1, 350], [1_000 + i + 10, 250 + i], [1_000 + i + 25, 150], [1_000 + i + 49, 90]] as [number, number][] })));
+  const b = store(Array.from({ length: 30 }, (_, i) => ({ t: i * MIN, bids: [[1_000 + i - 2, 120], [1_000 + i - 30, 60]] as [number, number][], asks: [[1_000 + i + 2, 110], [1_000 + i + 12, 70]] as [number, number][] })));
+  const radii = [0.002, 0.005, 0.01, 0.025, 0.05];
+  for (const w of [30, 17, 7]) {
+    const bands = depthBands([a, b], MIN, 0, 30 * MIN, w, radii);
+    assert.equal(bands.k, radii.length);
+    radii.forEach((r, j) => {
+      const one = depthSeries([a, b], MIN, 0, 30 * MIN, w, r);
+      for (let x = 0; x < w; x++) {
+        assert.ok(Math.abs(bands.bid[x * bands.k + j]! - one.bid[x]!) < 1e-3, `bid, ${w} columns, band ${r}, column ${x}`);
+        assert.ok(Math.abs(bands.ask[x * bands.k + j]! - one.ask[x]!) < 1e-3, `ask, ${w} columns, band ${r}, column ${x}`);
+        if (j > 0) { assert.ok(bands.bid[x * bands.k + j]! >= bands.bid[x * bands.k + j - 1]!); assert.ok(bands.ask[x * bands.k + j]! >= bands.ask[x * bands.k + j - 1]!); }
+      }
+    });
+  }
+  // Coins: one minute, one venue, so each band's coins are its bins' USD over their own prices.
+  const one = depthBands([store([{ t: 0, bids: [[999, 999], [990, 1_980]], asks: [[1_001, 2_002]] }])], MIN, 0, MIN, 1, [0.002, 0.02]);
+  assert.ok(Math.abs(one.bidCoin[0]! - 1) < 1e-6, 'the inner band: $999 at 999 is one coin');
+  assert.ok(Math.abs(one.bidCoin[1]! - 3) < 1e-6, 'the outer band adds $1,980 at 990: two more');
+  assert.ok(Math.abs(one.askCoin[0]! - 2) < 1e-6 && Math.abs(one.askCoin[1]! - 2) < 1e-6);
+  assert.equal(one.bid[1], 999 + 1_980, 'USD stays USD');
+});
+
+test('no bands, no columns or no time: an empty answer, never an error', () => {
+  assert.equal(depthBands([], MIN, 0, MIN, 4, [0.01]).bid.length, 4);
+  assert.equal(depthBands([store([bookAt(0, 1_000)])], MIN, 0, MIN, 3, []).bid.length, 0);
+  assert.equal(depthBands([store([bookAt(0, 1_000)])], MIN, MIN, MIN, 3, [0.01]).bid.every(v => v === 0), true);
 });

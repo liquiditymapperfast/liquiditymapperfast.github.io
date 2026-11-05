@@ -183,9 +183,10 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   depthPane: {
     title: t('Depth pane'), guide: 'lower-panes',
-    tip: t('Total liquidity within a chosen distance of the price, over time. Asks point up (pink), bids point down (green).'),
-    body: [t('For every moment it adds up the bids and the asks within a range of the price (1 % to 20 %, set with Range) and draws them as bars: asks up, bids down.'),
-      t('When one side is unusually larger than the other over a candle, compared with the candles before it (see Highlights), that side is drawn stronger with an edge across the candle. Zooming and panning do not change it; on a fine timeframe zoomed far out (more than about 500 candles on screen) each pixel column is judged instead. It answers: is there more resting liquidity above or below, and is that changing?'),
+    tip: t('Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).'),
+    body: [t('For every moment it adds up the bids and the asks within each band of the price (Bands: Balanced doubles from ±0.31 % to ±5 %; Near, Wide or your own) and draws them as rings, asks up and bids down: each band holds the ones inside it, and the widest band\'s edge is outlined. Scale Detail draws the square root of the money, so a thin inner band shows; Units counts the coin instead of dollars.'),
+      t('The table reads every band at the pointer\'s time, else the newest: beside the chart where there is room, else over its left end while you point at the pane. Click a row to bring that band forward: it is drawn with the bands inside it at its own scale, and the header and Highlights read it.'),
+      t('When one side of the band brought forward (else the widest) is unusually larger than the other over a candle, compared with the candles before it (see Highlights), that side\'s edge is drawn thick across the candle. Zooming and panning do not change it; on a fine timeframe zoomed far out (more than about 500 candles on screen) each pixel column is judged instead. It answers: is there more resting liquidity above or below, and is that changing?'),
       t('The Sound box plays a slow, low swell when, over a recorded minute, the balance goes further one way than in all but the rarest minutes of the hours before: by default the 99th percentile of six hours, within 20 % of the price. The Sounds panel sets the range, how rare and how many hours.')],
   },
   oiPane: {

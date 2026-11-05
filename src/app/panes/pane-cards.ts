@@ -3,6 +3,7 @@ import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { signedUsd } from '../cvd/text.ts';
 import { t } from '../i18n.ts';
+import { bandText } from '../depth-settings.ts';
 
 /**
  * What the popup says for a point of the Depth, Liquidity Tracker and Open Interest panes: the lines of the box (infobox.ts / hovercard.ts)
@@ -18,7 +19,7 @@ export const depthColumns = (plotW: number): number => Math.min(1200, Math.max(6
  * columns of the answer: the map following the live edge moves a little on every frame, and asking again for each of those kept the worker
  * busy for nothing (what is live is refreshed on a clock instead).
  */
-export function depthKey(ids: readonly string[], t0: number, t1: number, plotW: number, range: number, columnsVersion: number): string {
+export function depthKey(ids: readonly string[], t0: number, t1: number, plotW: number, range: number | string, columnsVersion: number): string {
   const span = t1 - t0, column = span / depthColumns(plotW);
   return `${ids.join(',')}|${Math.round(span)}|${column > 0 ? Math.floor(t0 / column) : 0}|${plotW}|${range}|${columnsVersion}`;
 }
@@ -87,19 +88,22 @@ function imbalanceLine(bid: number, ask: number): InfoLine | null {
 const money = (value: number): string => `$${usd(value)}`;
 const sideColor = (value: number): InfoLine['color'] => value > 0 ? 'below' : value < 0 ? 'above' : 'text';
 
-/** The liquidity of one column of the Depth pane: both sides within the chosen range of the price, how they compare, and where this moment stands in the view. */
-export function depthCardLines(h: { time: number; bid: number; ask: number; range: number; rank: number | null; of: number }): InfoLine[] {
-  const lines: InfoLine[] = [
-    { text: t('Depth'), bold: true },
-    { label: t('Time'), text: clock(h.time, true) },
-    { label: t('Asks'), text: money(h.ask), color: 'above' },
-    { label: t('Bids'), text: money(h.bid), color: 'below' },
-    { label: 'Δ', text: signedUsd(h.bid - h.ask), color: sideColor(h.bid - h.ask), bold: true },
-  ];
-  const imbalance = imbalanceLine(h.bid, h.ask); if (imbalance) lines.push(imbalance);
-  lines.push({ label: t('Range'), text: `±${Math.round(h.range * 1000) / 10}%` });
+/**
+ * One moment of the Depth pane where its table is not drawn (no room beside the plot, or the table switched off): each band's bids and asks, the
+ * watched band (the one brought forward, else the widest) in bold with its difference and balance, and where that band's total stands in the view.
+ */
+export function depthCardLines(h: { time: number; bands: readonly { r: number; bid: number; ask: number }[]; watched: number; units: 'usd' | 'coin'; coin: string; rank: number | null; of: number }): InfoLine[] {
+  const fmt = (value: number): string => h.units === 'coin' ? `${usd(value)} ${h.coin}` : money(value);
+  const lines: InfoLine[] = [{ text: t('Depth'), bold: true }, { label: t('Time'), text: clock(h.time, true) }];
+  h.bands.forEach((band, j) => lines.push({ label: `±${bandText(band.r)}%`, text: `${fmt(band.bid)} · ${fmt(band.ask)}`, bold: j === h.watched }));
+  const w = h.bands[h.watched];
+  if (w) {
+    const diff = w.bid - w.ask;
+    lines.push({ label: 'Δ', text: h.units === 'coin' ? `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}` : signedUsd(diff), color: sideColor(diff), bold: true });
+    const imbalance = imbalanceLine(w.bid, w.ask); if (imbalance) lines.push(imbalance);
+  }
   if (h.rank !== null && h.of > 1) lines.push({ label: t('Rank in view'), text: t('{rank} of {total}', { rank: h.rank, total: h.of }) });
-  lines.push({ text: t('Resting liquidity within the chosen range of the price, added up over the enabled venues.'), color: 'muted', wrap: true, rule: true });
+  lines.push({ text: t('Bids · asks resting within each distance of the price, added up over the enabled venues; each band holds the ones inside it.'), color: 'muted', wrap: true, rule: true });
   return lines;
 }
 

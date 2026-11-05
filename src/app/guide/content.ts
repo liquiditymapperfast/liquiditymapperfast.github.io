@@ -179,7 +179,7 @@ export const SECTIONS: readonly Section[] = [
     id: 'lower-panes', title: 'The panes underneath',
     blocks: [
       { t: 'list', items: [
-        '**Depth** adds up bids and asks within a distance of the price (set with Range), asks up in pink and bids down in green; an unusually larger side is drawn stronger.',
+        '**Depth** adds up bids and asks within nested distances of the price (set with Bands), asks up in pink and bids down in green, the narrowest band strongest at the centre; its table reads every band, and a click on a row brings that band forward.',
         '**Open Interest** is the number of contracts currently open, which is not volume. It rises when positions are opened and falls when they are closed, and it cannot tell you who is long or short. The small bars are its change per candle.',
         '**Delta** is each candle\'s market buys minus sells, as bars or as CVD candles, with divergences and **NL/NS**, an estimate of who opened and closed positions.',
         '**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.',

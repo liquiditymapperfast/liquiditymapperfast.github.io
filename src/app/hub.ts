@@ -135,6 +135,9 @@ export function defaultMarket(markets: readonly { instrumentId?: string; venue?:
   return binance?.instrumentId || reference || markets[0]?.instrumentId || '';
 }
 
+/** The Depth pane's answer: `k` nested bands per pixel column, `bid[x * k + j]` the bid USD within band j (each band holds the inner ones), and the same in coins. */
+export interface DepthAnswer { k: number; bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array }
+
 export class Hub {
   readonly priceHistory: ChartPriceHistory;
   readonly worker: Worker;
@@ -321,7 +324,7 @@ export class Hub {
   #connection = 0;
   #printsLoading = false;
   onRaster: (result: RasterResult) => void = () => {};
-  #depthWaiters = new Map<number, (r: { bid: Float32Array; ask: Float32Array }) => void>();
+  #depthWaiters = new Map<number, (r: DepthAnswer) => void>();
   #ltWaiters = new Map<number, (r: LtSeries & { stepMs?: number }) => void>();
   /** The Liquidity Tracker's own way to its data, apart from the columns (lt-lane.ts): the pane reads it where the source has one and no size filter is set. */
   readonly ltLane: LtLane;
@@ -440,7 +443,7 @@ export class Hub {
         else if (message.type === 'error') console.error('raster worker:', message.message);
         else if (message.type === 'lt') { this.#ltWaiters.get(message.id)?.({ times: message.times, bid: message.bid, ask: message.ask, estimated: message.estimated, stepMs: message.stepMs }); this.#ltWaiters.delete(message.id); }
         else if (message.type === 'cell') { this.#cellWaiters.get(message.id)?.(message.items); this.#cellWaiters.delete(message.id); }
-        else if (message.type === 'depth') { this.#depthWaiters.get(message.id)?.({ bid: message.bid, ask: message.ask }); this.#depthWaiters.delete(message.id); }
+        else if (message.type === 'depth') { this.#depthWaiters.get(message.id)?.({ k: message.k, bid: message.bid, ask: message.ask, bidCoin: message.bidCoin, askCoin: message.askCoin }); this.#depthWaiters.delete(message.id); }
         else {
           const bounds = this.#inflight.get(message.id);
           this.#inflight.delete(message.id);
@@ -1269,10 +1272,10 @@ export class Hub {
   /** `cuts`: size lines (the coin's USD) whose orders each bar carries in `over`, where the source knows them. */
   footprint(inst: string, tf: string, from: number, to: number, rowStep: number, cuts: readonly number[] = [], budget?: number, venues = false): Promise<FootprintResponse> { return this.source.footprint(inst, tf, from, to, rowStep, cuts, budget, venues); }
 
-  /** Depth (USD within +-range of the books' own price) per pixel column over [t0, t1]. */
-  depth(enabled: string[], t0: number, t1: number, w: number, range: number): Promise<{ bid: Float32Array; ask: Float32Array }> {
+  /** Depth within each of the nested bands `radii` (ascending fractions) of the books' own price, per pixel column over [t0, t1], in USD and in coins (`DepthAnswer`). */
+  depth(enabled: string[], t0: number, t1: number, w: number, radii: readonly number[]): Promise<DepthAnswer> {
     const id = ++this.#rasterId + 1_000_000;
-    return new Promise(resolve => { this.#depthWaiters.set(id, resolve); this.#post({ type: 'depth', id, enabled, t0, t1, w, range }); });
+    return new Promise(resolve => { this.#depthWaiters.set(id, resolve); this.#post({ type: 'depth', id, enabled, t0, t1, w, radii: [...radii] }); });
   }
 
   /** What each enabled instrument holds in the map cell [t0, t1) x [p0, p1). */

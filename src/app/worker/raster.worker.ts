@@ -4,7 +4,7 @@ import type { ColumnSet, LiveBook } from '../wire.ts';
 import { ltSeries, type LtParams, type LtStore } from '../lt.ts';
 import { LT_FIELDS } from '../../shared/lt-sample.ts';
 import { shareInCell, type CellShare } from '../cell-sources.ts';
-import { depthSeries } from '../depth-series.ts';
+import { depthBands } from '../depth-series.ts';
 import { dropAbsent } from './membership.ts';
 import { RecordedColumns, type ColumnStore as Store } from './column-store.ts';
 
@@ -19,7 +19,7 @@ export type WorkerIn =
   | { type: 'columnsDrop'; stepMs: number; ids: string[] | null }
   | { type: 'live'; books: LiveBook[]; now: number }
   | { type: 'raster'; id: number; enabled: string[]; t0: number; t1: number; p0: number; p1: number; w: number; h: number; smooth: boolean }
-  | { type: 'depth'; id: number; enabled: string[]; t0: number; t1: number; w: number; range: number }
+  | { type: 'depth'; id: number; enabled: string[]; t0: number; t1: number; w: number; radii: number[] }
   | { type: 'lt'; id: number; enabled: string[]; t0: number; t1: number; params: LtParams; /** Read the lane's trackers (`ltLane`) in place of the columns'. */ lane?: boolean }
   /** The trackers the lane holds, whole (a replacement): per market its windows' starts and LT_FIELDS numbers each, at this step. */
   | { type: 'ltLane'; stepMs: number; instruments: { id: string; times: Float64Array; values: Float32Array }[] }
@@ -30,7 +30,7 @@ export interface RasterStats { p15: number; p50: number; p96: number; max: numbe
 export type WorkerOut =
   | { type: 'ready' }
   | { type: 'raster'; id: number; w: number; h: number; data: Float32Array; stats: RasterStats; busyMs: number }
-  | { type: 'depth'; id: number; w: number; bid: Float32Array; ask: Float32Array }
+  | { type: 'depth'; id: number; w: number; k: number; bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array }
   | { type: 'lt'; id: number; times: Float64Array; bid: Float32Array; ask: Float32Array; estimated: boolean; stepMs: number }
   | { type: 'cell'; id: number; items: CellShare[] }
   | { type: 'error'; message: string };
@@ -130,12 +130,12 @@ function raster(message: Extract<WorkerIn, { type: 'raster' }>): void {
   scope.postMessage({ type: 'raster', id: message.id, w: message.w, h: message.h, data, stats, busyMs: performance.now() - started }, [data.buffer]);
 }
 
-/** Bid and ask USD within +-range of the books' own price in each pixel column, summed over venues (`depthSeries`). */
+/** Bid and ask within each of the nested bands (`radii`, ascending) of the books' own price in each pixel column, in USD and in coins, summed over venues (`depthBands`). */
 function depth(message: Extract<WorkerIn, { type: 'depth' }>): void {
   const held = recorded.current;
   const stores = message.enabled.map(id => held.get(id)).filter((rec): rec is Store => rec !== undefined);
-  const { bid, ask } = depthSeries(stores, recorded.stepMs, message.t0, message.t1, message.w, message.range);
-  scope.postMessage({ type: 'depth', id: message.id, w: message.w, bid, ask }, [bid.buffer, ask.buffer]);
+  const { k, bid, ask, bidCoin, askCoin } = depthBands(stores, recorded.stepMs, message.t0, message.t1, message.w, message.radii);
+  scope.postMessage({ type: 'depth', id: message.id, w: message.w, k, bid, ask, bidCoin, askCoin }, [bid.buffer, ask.buffer, bidCoin.buffer, askCoin.buffer]);
 }
 
 /** Which instruments make up one cell of the map, so the popup can say where the liquidity under the pointer comes from. */

@@ -357,6 +357,7 @@ async function main(): Promise<void> {
     if (changed.has('oiMarkets') || changed.has('disabledVenues') || changed.has('customMarkets') || (changed.has('markets') && store.state.oiMarkets === 'custom')) void hub.loadOi();
     else if (changed.has('levels') || changed.has('markets') || changed.has('bookGone')) hub.refreshOiMarkets();
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
+    if (changed.has('depthBands')) depth.refresh();
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded') || changed.has('vwap') || changed.has('vwapAnchoring') || changed.has('footprint') || changed.has('customMarkets') || changed.has('barStatOptions')) heat.invalidate();
     // Placing a VWAP anchor, selecting a Range and placing a drawing all take the next press on the map: arming one ends the others.
     if (changed.has('rangeTool') && state.rangeTool && state.vwapAnchoring) store.set({ vwapAnchoring: false });
