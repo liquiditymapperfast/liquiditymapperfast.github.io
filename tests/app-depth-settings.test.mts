@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEPTH_DEFAULT, MAX_BANDS, PRESET_BANDS, bandText, bandsOf, cleanBands, parseBands, readDepthSettings, watchedBand } from '../src/app/depth-settings.ts';
+import { DEPTH_DEFAULT, MAX_BANDS, PRESET_BANDS, bandEditText, bandText, bandsOf, cleanBands, parseBands, readDepthSettings, watchedBand } from '../src/app/depth-settings.ts';
 
 test('the default is five doubling bands from ±0.31 % to ±5 %, drawn in full on a linear scale with the table', () => {
   const s = readDepthSettings(undefined);
@@ -39,6 +39,10 @@ test('typed bands: percentages in any order and separator, a % allowed; a reason
   assert.deepEqual(parseBands('60'), { error: 'range' });
   assert.deepEqual(parseBands('1 2 3 4 5 6 7'), { error: 'count' });
   assert.deepEqual(parseBands('1, 1.0'), { error: 'repeat' });
-  const typed = parseBands(PRESET_BANDS.balanced.map(bandText).join(', '));
-  assert.ok('bands' in typed && typed.bands.length === 5, 'the bands as the pane writes them read back');
+  for (const bands of [...Object.values(PRESET_BANDS), [0.00125, 0.00126], [0.003125, 0.00625], [0.0005, 0.5]]) {
+    const typed = parseBands(bands.map(bandEditText).join(', '));
+    assert.ok('bands' in typed && typed.bands.length === bands.length && typed.bands.every((r, i) => Math.abs(r - bands[i]!) < 1e-12), `the editor's text reads back exactly: ${bands.map(bandEditText).join(', ')}`);
+  }
+  assert.deepEqual(PRESET_BANDS.balanced.map(bandEditText), ['0.3125', '0.625', '1.25', '2.5', '5']);
+  assert.notDeepEqual(PRESET_BANDS.balanced.map(bandText), PRESET_BANDS.balanced.map(bandEditText), 'the label rounds, the editor does not');
 });

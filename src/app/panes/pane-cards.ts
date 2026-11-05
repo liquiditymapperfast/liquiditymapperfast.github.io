@@ -87,13 +87,15 @@ function imbalanceLine(bid: number, ask: number): InfoLine | null {
 /** An amount of USD as the popups write it, with the sign the signed ones have. */
 const money = (value: number): string => `$${usd(value)}`;
 const sideColor = (value: number): InfoLine['color'] => value > 0 ? 'below' : value < 0 ? 'above' : 'text';
+/** Coins to three significant figures, so a fraction of a coin is never written 0. */
+const coinFigures = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 3 });
 
 /**
  * One moment of the Depth pane where its table is not drawn (no room beside the plot, or the table switched off): each band's bids and asks, the
  * watched band (the one brought forward, else the widest) in bold with its difference and balance, and where that band's total stands in the view.
  */
 export function depthCardLines(h: { time: number; bands: readonly { r: number; bid: number; ask: number }[]; watched: number; units: 'usd' | 'coin'; coin: string; rank: number | null; of: number }): InfoLine[] {
-  const fmt = (value: number): string => h.units === 'coin' ? `${usd(value)} ${h.coin}` : money(value);
+  const fmt = (value: number): string => h.units === 'coin' ? `${coinFigures.format(value)} ${h.coin}` : money(value);
   const lines: InfoLine[] = [{ text: t('Depth'), bold: true }, { label: t('Time'), text: clock(h.time, true) }];
   h.bands.forEach((band, j) => lines.push({ label: `±${bandText(band.r)}%`, text: `${fmt(band.bid)} · ${fmt(band.ask)}`, bold: j === h.watched }));
   const w = h.bands[h.watched];

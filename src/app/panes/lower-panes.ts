@@ -2,7 +2,7 @@ import { PALETTES, mixHex, textOn } from '../theme.ts';
 import { setTip } from '../tip.ts';
 import { helpButton } from '../help.ts';
 import { TIMEFRAMES, type DepthAnswer, type Hub } from '../hub.ts';
-import { DEPTH_PRESETS, bandText, bandsOf, parseBands, type DepthPreset, type DepthSettings } from '../depth-settings.ts';
+import { DEPTH_PRESETS, bandEditText, bandText, bandsOf, parseBands, type DepthPreset, type DepthSettings } from '../depth-settings.ts';
 import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar, type CandleRow } from '../store.ts';
 import { chainedOi, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, type OiPart } from '../oi-change.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
@@ -229,6 +229,8 @@ const signedText = (value: number): string => `${value >= 0 ? '+' : '−'}${usd(
 /** The Depth table's figures: three significant figures (263M, 1.38B), so its columns stay narrow enough to sit beside the plot. */
 const tableFigures = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 3 });
 const tableText = (value: number): string => Number.isFinite(value) ? tableFigures.format(value) : '–';
+/** An amount in the Depth pane's units: dollars as the page writes them, coins to three significant figures (0.0125, 5.51K), never a fraction rounded to 0. */
+const amountText = (value: number, coins: boolean): string => coins ? tableText(value) : usd(value);
 const tableSigned = (value: number): string => Number.isFinite(value) ? `${value >= 0 ? '+' : '−'}${tableFigures.format(Math.abs(value))}` : '–';
 /** Why typed bands cannot be used, in words. */
 function bandError(code: 'empty' | 'number' | 'range' | 'count' | 'repeat'): string {
@@ -259,6 +261,8 @@ export class DepthPane extends TimePane {
   #table: { left: number; right: number; top: number; rowH: number; rows: number } | null = null;
   /** The band row under the pointer, -1 for none. */
   #hoverRow = -1;
+  /** When a finger last chose a row (`claimTap`): the click the browser sends after that tap is the same choice, not a second one. */
+  #tappedAt = -Infinity;
   /** The Sound box in the header (the depth sound's switch). */
   #bell = document.createElement('input');
   readonly #preset = document.createElement('select');
@@ -306,14 +310,16 @@ export class DepthPane extends TimePane {
     addTune(this.head, [scale, units, table, bell], t('Depth'));
     // A click on a row of the table brings that band forward, or puts it back.
     this.canvas.addEventListener('click', e => {
-      if (this.rangeGesture) return;
+      if (this.rangeGesture || (e as PointerEvent).pointerType === 'touch' || performance.now() - this.#tappedAt < 800) return;
       const r = this.canvas.getBoundingClientRect();
       this.#clickRow(this.#rowAt(e.clientX - r.left - leftGutter(this.store.state), e.clientY - r.top));
     });
     this.canvas.addEventListener('pointerleave', () => { if (this.#hoverRow !== -1) { this.#hoverRow = -1; this.invalidate(); } });
   }
-  /** The settings changed (here, a layout, another tab): the header shows them and the bands are asked again. */
+  /** The venues or the source changed: the bands are asked again. */
   refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); }
+  /** The settings changed (here, a layout, another tab): the header shows them; only other bands are asked for (they are part of the request's key). */
+  settingsChanged(): void { this.#sync(); this.invalidate(); }
   /** Show the depth sound's switch as the settings have it (it is also in the Sounds panel). */
   syncSound(): void { this.#bell.checked = panelSwitchOn(this.store, 'depthPane'); }
   #sync(): void {
@@ -327,7 +333,7 @@ export class DepthPane extends TimePane {
     const anchor = this.#edit.hidden ? this.#preset : this.#edit;
     const build = (_tools: HTMLElement, body: HTMLElement): void => {
       const s = this.store.state.depthBands;
-      const input = el('input', { type: 'text', class: 'depth-bands-input', value: s.custom.map(bandText).join(', '), spellcheck: false });
+      const input = el('input', { type: 'text', class: 'depth-bands-input', value: s.custom.map(bandEditText).join(', '), spellcheck: false });
       input.setAttribute('aria-label', t('Your bands, in percent'));
       const error = el('p', { class: 'panel-note depth-band-error' }); error.hidden = true;
       const apply = (): void => {
@@ -359,7 +365,7 @@ export class DepthPane extends TimePane {
     if (row >= 0) this.canvas.style.cursor = 'pointer';
     return x >= tb.left && x <= tb.right && y >= tb.top - tb.rowH && y <= tb.top + (tb.rows + 1) * tb.rowH;
   }
-  protected override claimTap(p: Pt): boolean { const row = this.#rowAt(p.x, p.y); if (row < 0) return false; this.#clickRow(row); return true; }
+  protected override claimTap(p: Pt): boolean { const row = this.#rowAt(p.x, p.y); if (row < 0) return false; this.#tappedAt = performance.now(); this.#clickRow(row); return true; }
   #hover(row: number): void { if (row !== this.#hoverRow) { this.#hoverRow = row; this.invalidate(); } }
   #rowAt(x: number, y: number): number {
     const tb = this.#table; if (!tb || x < tb.left || x > tb.right) return -1;
@@ -406,7 +412,7 @@ export class DepthPane extends TimePane {
     if (lastX >= 0) {
       const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, total = b + a, lean = total > 0 ? (b - a) / total : 0;
       const dominant = Math.abs(lean) < 0.005 ? '' : ` <b class="${lean > 0 ? 'bid' : 'ask'}">${lean > 0 ? t('bids') : t('asks')} +${(Math.abs(lean) * 100).toFixed(1)}%</b>`;
-      setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${usd(b)}</b> A <b class="ask">${usd(a)}</b> Δ <b>${signedText(b - a)}</b>${unit}${dominant}`);
+      setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${amountText(b, coins)}</b> A <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${dominant}`);
     } else setHtml(readout, '');
     // The column the table reads: the one under the pointer, past the newest the newest; with no pointer the newest.
     let readX = lastX, readTime = lastX >= 0 ? colT(lastX) : NaN, pointed = false;
@@ -461,8 +467,8 @@ export class DepthPane extends TimePane {
     // The scale: the top, half the height (a quarter of the top on Detail, which is the square root) and zero, the same up and down.
     const axisX = this.w - AXIS_W + 6, halfValue = detail ? max / 4 : max / 2;
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
-    ctx.fillText(usd(max), axisX, mid - half); ctx.fillText(usd(max), axisX, mid + half);
-    if (half > 40) { ctx.fillText(usd(halfValue), axisX, mid - half / 2); ctx.fillText(usd(halfValue), axisX, mid + half / 2); }
+    ctx.fillText(amountText(max, coins), axisX, mid - half); ctx.fillText(amountText(max, coins), axisX, mid + half);
+    if (half > 40) { ctx.fillText(amountText(halfValue, coins), axisX, mid - half / 2); ctx.fillText(amountText(halfValue, coins), axisX, mid + half / 2); }
     ctx.fillText('0', axisX, mid);
     const rows = Array.from({ length: k }, (_, j) => ({ r: s.radii[j]!, bid: readX >= 0 ? bid[at(readX, j)]! : NaN, ask: readX >= 0 ? ask[at(readX, j)]! : NaN }));
     const drawn = settings.table && this.#drawTable(rows, this.pointer !== null, focused ? top : -1, Number.isFinite(readTime) ? (pointed ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '', unit);

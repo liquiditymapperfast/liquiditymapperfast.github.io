@@ -77,6 +77,11 @@ export function bandText(r: number): string {
   return String(pct < 1 ? Number(pct.toPrecision(2)) : Number(pct.toFixed(2)));
 }
 
+/** A band as the editor writes it, so it reads back exactly (0.3125, not the label's 0.31): the percentage without float noise. */
+export function bandEditText(r: number): string {
+  return String(Number((r * 100).toPrecision(12)));
+}
+
 /**
  * Bands typed as percentages ("0.25, 0.5, 1, 2, 5", spaces, commas or semicolons between them, a % allowed) into fractions, sorted; or a reason
  * it cannot be used.

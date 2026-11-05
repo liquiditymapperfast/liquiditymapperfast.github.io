@@ -53,6 +53,8 @@ test('the depth popup gives every band, the watched one in bold with how its sid
   assert.equal(by(inner, 'Rank in view'), undefined, 'a rank among one is not said');
   const coins = depthCardLines({ time: 0, bands: [{ r: 0.01, bid: 100, ask: 300 }], watched: 0, units: 'coin', coin: 'BTC', rank: 1, of: 2 });
   assert.equal(by(coins, '±1%')!.text, '100 BTC · 300 BTC'); assert.equal(by(coins, 'Δ')!.text, '−200 BTC'); assert.equal(by(coins, 'Δ')!.color, 'above');
+  const fraction = depthCardLines({ time: 0, bands: [{ r: 0.01, bid: 0.01, ask: 0.005 }], watched: 0, units: 'coin', coin: 'BTC', rank: 1, of: 2 });
+  assert.equal(by(fraction, '±1%')!.text, '0.01 BTC · 0.005 BTC', 'a fraction of a coin is not 0'); assert.equal(by(fraction, 'Δ')!.text, '+0.005 BTC');
 });
 
 test('the Liquidity Tracker popup says what it was worked out with', () => {
