@@ -266,7 +266,8 @@ async function main(): Promise<void> {
   hub.onRecovered = (id, _from, to) => { alerts.recovered.set(id, Math.max(alerts.recovered.get(id) ?? 0, to)); };
   hub.onLiquidationsChanged = () => { heat.invalidate(); range.refreshHeld(); };
   // Candles that came after the first frame (an exchange blocked here, the reference market read once known) are framed, unless the map was moved.
-  hub.onSeriesRefilled = () => { if (store.state.followLive) heat.fit(); lower(); };
+  // A refill frames the map only while nobody has moved it since it was last framed: not under a hand, a drawing being placed or a zoom of one's own.
+  hub.onSeriesRefilled = () => { if (store.state.followLive && heat.untouched) heat.fit(); lower(); };
   toolbar.keyHistory = hub.keyHistory;
   toolbar.liqSource = hub.liqLevels;
   toolbar.profileHistory = barMs => hub.profileHistory(barMs);

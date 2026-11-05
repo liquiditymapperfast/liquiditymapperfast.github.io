@@ -373,6 +373,13 @@ export class HeatPane {
   #panDy = 0;
   /** The following was paused last frame (a hand moving the map, a drawing being placed): when that ends, `#settleFollow` decides. */
   #followPaused = false;
+  /**
+   * A hand has moved the map since the last decision: the first frame with no hand on it decides (`#settleFollow`), even when the press, the move and
+   * the release all came between two frames, so no frame saw the map held (Sol, 2026-11-05).
+   */
+  #settlePending = false;
+  /** A hand has moved or zoomed the view since it was last framed (`fit`, `placeAt`): a late refill of the candles does not frame it again (`untouched`). */
+  #handled = false;
   /** Back to the live candle at the zoom the map has, shown while the map stays where it was left (`jumpToNow`). */
   readonly #liveButton = el('button', { class: 'map-live', type: 'button', tip: t('Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.') }, t('Live'));
   #palette = PALETTES.light!;
@@ -489,7 +496,8 @@ export class HeatPane {
   #legendBox = { right: 340, bottom: 42 };
   #panKind: 'map' | 'price' | 'time' | null = null;
   #axisDrag: { view: Bounds; x: number; y: number } | null = null;
-  #pinch: { view: Bounds; t: number; p: number } | null = null;
+  /** A pinch: the view and the time and price under the fingers' midpoint when it began, and the pan's vertical distance before it. */
+  #pinch: { view: Bounds; t: number; p: number; dy: number } | null = null;
   /** A mouse drag on the price scale: the view when it began, where the pointer was, and the price it holds still. */
   #scaleDrag: { y: number; view: Bounds; hold: number } | null = null;
   #fling = 0;
@@ -638,6 +646,8 @@ export class HeatPane {
   fit(): void {
     this.#demo = null;
     if (replaying()) { this.placeAt(pageNow()); return; }
+    // Asked to frame, whether or not there is anything to frame on yet: a refill of the candles that comes later frames it then (main.ts).
+    this.#handled = false;
     this.#forceBaseline = true;
     const { candles, mark, timeframe } = this.store.state;
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000;
@@ -659,7 +669,7 @@ export class HeatPane {
     if (since > 0 && now - since < span * 0.7) span = Math.max(75 * 60_000, (now - since) * 1.35);
     this.#liveMargin = span * 0.08;
     this.view.set({ t0: now + this.#liveMargin - span, t1: now + this.#liveMargin, p0: lo - pad, p1: hi + pad });
-    this.#priceHeld = false; this.store.set({ followLive: true });
+    this.#priceHeld = false; this.#panDy = 0; this.store.set({ followLive: true });
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
@@ -674,7 +684,7 @@ export class HeatPane {
     const span = v.t1 - v.t0, pSpan = v.p1 - v.p0, now = pageNow(), mark = this.#displayState().mark.price, mid = mark > 0 ? mark : (v.p0 + v.p1) / 2;
     this.#liveMargin = span * 0.08;
     v.set({ t0: now + this.#liveMargin - span, t1: now + this.#liveMargin, p0: mid - pSpan / 2, p1: mid + pSpan / 2 });
-    this.#priceHeld = false; this.store.set({ followLive: true });
+    this.#priceHeld = false; this.#panDy = 0; this.store.set({ followLive: true });
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
@@ -687,7 +697,7 @@ export class HeatPane {
   #settleFollow(): void {
     const v = this.view, now = pageNow(), follow = liveEdgeShown(v, now);
     if (Math.abs(this.#panDy) >= PRICE_HOLD_PX) this.#priceHeld = true;
-    this.#panDy = 0;
+    this.#panDy = 0; this.#settlePending = false; this.#handled = true;
     this.#liveMargin = v.t1 - now;
     if (follow !== this.store.state.followLive) this.store.set({ followLive: follow });
   }
@@ -695,6 +705,13 @@ export class HeatPane {
    * The following waits while a hand moves the map (a drag, either button, a finger, a pinch, a fling) and while a drawing is being placed or
    * dragged, so the map stays under it rather than sliding on with the market.
    */
+  /** After a wheel turn or a zoom key: decided now, or when the hand that holds the map lets go, so a pan under way keeps its distance (Sol). */
+  #settleAfterZoom(): void {
+    if (this.#followHeld()) { this.#liveMargin = this.view.t1 - pageNow(); this.#settlePending = true; this.#handled = true; }
+    else this.#settleFollow();
+  }
+  /** No hand has moved or zoomed the view since it was last framed, and none holds it now: a late refill of the candles may frame it (main.ts). */
+  get untouched(): boolean { return !this.#handled && !this.#followHeld(); }
   #followHeld(): boolean {
     return !!this.#drag?.panning || !!this.#zoomDrag?.moved || this.#panKind !== null || this.#pinch !== null || this.#fling !== 0
       || !!this.draw?.dragging || this.draw?.draft != null;
@@ -736,7 +753,7 @@ export class HeatPane {
     if (!(pw > 0) || !(v.t1 > v.t0)) return;
     const factor = limitFactor(Math.exp(-dir * 0.25), v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max);
     v.zoomTime(factor, holdPixel({ axis: 'time', pointer: pw / 2, size: pw, alt: false, follow: state.followLive, mark: state.mark.price, markPixel: 0, nowPixel: v.xOf(pageNow(), pw) }), pw);
-    this.#settleFollow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+    this.#settleAfterZoom(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   #onRaster(result: RasterResult): void {
@@ -803,7 +820,7 @@ export class HeatPane {
     for (const c of this.store.state.candles) if (c[0] + 1 > t - span && c[0] + tf <= t) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
     const pad = (hi - lo) * 0.18;
     v.set({ t0: t + margin - span, t1: t + margin, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
-    this.#liveMargin = margin; this.#priceHeld = false; this.store.set({ followLive: true }); this.#rasteredKey = ''; this.#atCandles = null; this.onView(); this.invalidate();
+    this.#liveMargin = margin; this.#priceHeld = false; this.#panDy = 0; this.#handled = false; this.store.set({ followLive: true }); this.#rasteredKey = ''; this.#atCandles = null; this.onView(); this.invalidate();
   }
 
   goTo(t: number): void {
@@ -847,7 +864,7 @@ export class HeatPane {
     this.#dirty = false;
     // A hand or a drawing that held the map has let go of it: whether it follows on is decided where the live edge now is (`#settleFollow`).
     const held = this.#followHeld();
-    if (this.#followPaused && !held) this.#settleFollow();
+    if (!held && (this.#followPaused || this.#settlePending)) this.#settleFollow();
     this.#followPaused = held;
     const state = this.#displayState();
     if (this.#paneW <= 1 || this.#h <= 1) return;
@@ -3571,7 +3588,7 @@ export class HeatPane {
   #touchPan(d: Pt): void {
     const pw = this.plotW, ph = this.plotH, kind = this.#panKind;
     if (kind === 'map') {
-      this.view.pan(d.x, d.y, pw, ph); this.#panDy += d.y;
+      this.view.pan(d.x, d.y, pw, ph); this.#panDy += d.y; this.#settlePending = true;
       this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
       return;
     }
@@ -3586,14 +3603,14 @@ export class HeatPane {
       const mid = (v0.t0 + v0.t1) / 2, span = Math.max(30_000, (v0.t1 - v0.t0) * Math.exp(-z.x * 0.006));
       this.view.set({ ...v0, t0: mid - span / 2, t1: mid + span / 2 });
     }
-    this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+    this.#settlePending = true; this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   #pinchBegin(info: PinchInfo): void {
     this.#unpin(); this.#stopFling();
     const pw = this.plotW, ph = this.plotH, v = this.view;
     const mx = Math.max(0, Math.min(pw, info.mid.x)), my = Math.max(0, Math.min(ph, info.mid.y));
-    this.#pinch = { view: v.clone(), t: v.tOf(mx, pw), p: v.pOf(my, ph) };
+    this.#pinch = { view: v.clone(), t: v.tOf(mx, pw), p: v.pOf(my, ph), dy: this.#panDy };
   }
   #pinchTo(info: PinchInfo): void {
     const z = this.#pinch; if (!z) return;
@@ -3606,7 +3623,7 @@ export class HeatPane {
     const t0 = z.t - mx / pw * tSpan, p1 = z.p + my / ph * pSpan;
     this.view.set({ t0, t1: t0 + tSpan, p0: p1 - pSpan, p1 });
     // Moving the two fingers together is a pan as well: up or down, it holds the price where it was put (`#settleFollow`).
-    this.#panDy = info.mid.y - info.startMid.y;
+    this.#panDy = z.dy + info.mid.y - info.startMid.y; this.#settlePending = true;
     this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
@@ -3617,7 +3634,7 @@ export class HeatPane {
     let vx = limit(v.x), vy = limit(v.y), last = performance.now();
     const step = (now: number): void => {
       const dt = Math.min(48, now - last); last = now;
-      this.view.pan(vx * dt, vy * dt, this.plotW, this.plotH); this.#panDy += vy * dt;
+      this.view.pan(vx * dt, vy * dt, this.plotW, this.plotH); this.#panDy += vy * dt; this.#settlePending = true;
       this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
       const decay = Math.exp(-dt / 260); vx *= decay; vy *= decay;
       this.#fling = Math.hypot(vx, vy) < 0.02 || document.hidden ? 0 : requestAnimationFrame(step);
@@ -3646,7 +3663,7 @@ export class HeatPane {
     const el = this.overlay;
     // In the plot's coordinates: the columns left of the map are at negative x.
     const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left - this.#left, y: e.clientY - r.top }; };
-    const touched = () => { this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate(); };
+    const touched = () => { this.#settlePending = true; this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate(); };
     // The wheel on the chart zooms time and price together by the same factor (the picture keeps its shape), on the price scale price alone, on the
     // time strip time alone; Shift on the chart zooms time only (`wheelZoom`). Each axis holds still what is being watched: the live edge and the
     // current price while the map follows the market, so it swells and shrinks around them instead of sliding; the point under the pointer on a map
@@ -3659,7 +3676,7 @@ export class HeatPane {
       if (zoom.time) v.zoomTime(zoom.time.factor, zoom.time.hold, pw);
       // Alt holds the price under the pointer: the current price is then not brought back to the middle from under it.
       if (e.altKey && zoom.price && state.followLive) this.#priceHeld = true;
-      this.#settleFollow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+      this.#settleAfterZoom(); this.#rasteredKey = ''; this.onView(); this.invalidate();
     }, { passive: false });
     el.addEventListener('contextmenu', e => e.preventDefault());
     el.addEventListener('pointerdown', e => {
@@ -3725,7 +3742,7 @@ export class HeatPane {
       if (this.#zoomDrag) {
         // Drag right zooms the time axis in, drag up zooms the price axis in (left/down zoom out).
         const z = this.#zoomDrag;
-        this.view.set(zoomedView(z.view, z, { x, y }, this.plotW, this.plotH, this.#priceRef(this.store.state.mark.price))); z.moved = true;
+        this.view.set(zoomedView(z.view, z, { x, y }, this.plotW, this.plotH, this.#priceRef(this.store.state.mark.price))); z.moved = true; this.#settlePending = true;
         this.#liveMargin = this.view.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
         return;
       }
