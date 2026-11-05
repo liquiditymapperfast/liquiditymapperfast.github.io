@@ -33,6 +33,14 @@ export interface DepthSettings {
 
 export const DEPTH_DEFAULT: DepthSettings = { preset: 'balanced', custom: [0.0025, 0.005, 0.01, 0.02, 0.05], scale: 'linear', units: 'usd', table: true, focus: null };
 
+/** What the Depth pane adds up: the order book's resting orders, or the liquidation levels of Hyperliquid's BTC positions (liq-history.ts). */
+export type DepthSource = 'book' | 'liq';
+/**
+ * The Liquidation levels view's own bands. Liquidation levels sit further from the price than resting orders (2026-11-01, two snapshots: nothing
+ * within ±0.31 %, about $11M within ±1.25 %, $170M within ±5 %, $730M within ±20 %), so Wide is their default.
+ */
+export const LIQ_DEFAULT: DepthSettings = { ...DEPTH_DEFAULT, preset: 'wide', custom: [0.01, 0.025, 0.05, 0.1, 0.2] };
+
 /** A list of bands as fractions: finite, within MIN_BAND..MAX_BAND, ascending without repeats, one to MAX_BANDS of them; otherwise null. */
 export function cleanBands(raw: unknown): number[] | null {
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_BANDS) return null;
@@ -45,18 +53,18 @@ export function cleanBands(raw: unknown): number[] | null {
   return out;
 }
 
-/** The settings of a save or a layout, field by field: anything missing or not one of the choices gets its default. */
-export function readDepthSettings(raw: unknown): DepthSettings {
+/** The settings of a save or a layout, field by field: anything missing or not one of the choices gets its default (`fallback`'s). */
+export function readDepthSettings(raw: unknown, fallback: DepthSettings = DEPTH_DEFAULT): DepthSettings {
   const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-  const custom = cleanBands(o.custom) ?? [...DEPTH_DEFAULT.custom];
-  const preset = (DEPTH_PRESETS as readonly unknown[]).includes(o.preset) ? o.preset as DepthPreset : DEPTH_DEFAULT.preset;
+  const custom = cleanBands(o.custom) ?? [...fallback.custom];
+  const preset = (DEPTH_PRESETS as readonly unknown[]).includes(o.preset) ? o.preset as DepthPreset : fallback.preset;
   const count = preset === 'custom' ? custom.length : PRESET_BANDS[preset].length;
   const focus = typeof o.focus === 'number' && Number.isInteger(o.focus) && o.focus >= 0 && o.focus < count ? o.focus : null;
   return {
     preset, custom, focus,
     scale: o.scale === 'detail' ? 'detail' : 'linear',
     units: o.units === 'coin' ? 'coin' : 'usd',
-    table: typeof o.table === 'boolean' ? o.table : DEPTH_DEFAULT.table,
+    table: typeof o.table === 'boolean' ? o.table : fallback.table,
   };
 }
 

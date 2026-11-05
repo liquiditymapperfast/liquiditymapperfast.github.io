@@ -19,7 +19,8 @@ import { LIQUIDATIONS_PER_ANSWER, LIQUIDATION_RETENTION_MS } from '../../shared/
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
 import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { barAt, columnAt, depthCardLines, depthColumns, depthKey, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
+import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
+import { LiqHistory, bandIndex, type LiqRow } from '../liq-history.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { addTune } from '../pane-tune.ts';
@@ -224,6 +225,10 @@ export function oiSourceText(state: Pick<AppState, 'oiParts' | 'oiInstrument' | 
   return state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` }) : null;
 }
 
+/** The Depth pane's Liquidation levels series: the Depth series' shape, the rows it was built from and the row in force in each pixel column (-1: none), and what it was built for. */
+type LiqSeries = { key: string; series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer }; rowAt: Int32Array; rows: LiqRow[] };
+/** How long a liquidation levels snapshot stands for in the Depth pane: about three of their periods (one comes every ~29 minutes); after that, a gap. */
+const LIQ_HOLD_MS = 90 * 60_000;
 /** A difference as the Depth pane writes it, with its sign (a minus sign, not a hyphen). */
 const signedText = (value: number): string => `${value >= 0 ? '+' : '−'}${usd(Math.abs(value))}`;
 /** The Depth table's figures: three significant figures (263M, 1.38B), so its columns stay narrow enough to sit beside the plot. */
@@ -270,12 +275,23 @@ export class DepthPane extends TimePane {
   readonly #scale = document.createElement('select');
   readonly #units = document.createElement('select');
   readonly #tableBox = document.createElement('input');
+  readonly #source = document.createElement('select');
+  #bellLabel: HTMLElement | null = null;
   #panel: Panel | null = null;
+  /** The liquidation levels' history (liq-history.ts), read a UTC day at a time while the pane shows Liquidation levels. */
+  readonly #history = new LiqHistory();
+  /** The Liquidation levels series last built, with the row in force in each pixel column, kept until the history, the view or the bands change. */
+  #liq: LiqSeries | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'depth');
     this.#bars = new DepthBars((ids, from, to, stepMs) => hub.source.columns(ids, from, to, stepMs));
     this.head.innerHTML = `<strong>${t('Depth')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('depthPane'));
+    // What the bands add up: the order book's resting orders, or the liquidation levels of Hyperliquid's BTC positions.
+    const source = el('label', { class: 'ctl', tip: t('What the bands add up: the order book\'s resting bids and asks, or the liquidation levels of Hyperliquid\'s BTC positions (longs below the price, shorts above), from HyperTracker about every 30 minutes.') }, t('Source'));
+    this.#source.append(new Option(t('Order book'), 'book'), new Option(t('Liquidation levels'), 'liq'));
+    this.#source.onchange = () => this.store.set({ depthSource: this.#source.value === 'liq' ? 'liq' : 'book' });
+    source.append(this.#source);
     // The bands: a preset, or the person's own (Edit… opens them in a panel).
     const bands = el('label', { class: 'ctl', tip: t('The distances from the price the pane adds up, each band holding the ones inside it: Near ±0.13 % to ±2 %, Balanced ±0.31 % to ±5 %, Wide ±1.25 % to ±20 %, or your own.') }, t('Bands'));
     for (const [value, label] of [['near', t('Near ±2 %')], ['balanced', t('Balanced ±5 %')], ['wide', t('Wide ±20 %')], ['custom', t('Custom')]] as const) this.#preset.append(new Option(label, value));
@@ -304,10 +320,11 @@ export class DepthPane extends TimePane {
     const bell = document.createElement('label'); bell.className = 'ctl'; this.#bell.type = 'checkbox';
     this.#bell.onchange = () => setPanelSwitch(this.store, 'depthPane', this.#bell.checked);
     bell.append(this.#bell, t('Sound')); setTip(bell, panelSwitchTip('depthPane'));
-    this.head.append(group, scale, units, table, bell);
+    this.#bellLabel = bell;
+    this.head.append(source, group, scale, units, table, bell);
     this.syncSound(); this.#sync();
-    // On a phone the bands stay in the row and the rest waits behind the key (pane-tune.ts).
-    addTune(this.head, [scale, units, table, bell], t('Depth'));
+    // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts).
+    addTune(this.head, [group, scale, units, table, bell], t('Depth'));
     // A click on a row of the table brings that band forward, or puts it back.
     this.canvas.addEventListener('click', e => {
       if (this.rangeGesture || (e as PointerEvent).pointerType === 'touch' || performance.now() - this.#tappedAt < 800) return;
@@ -322,17 +339,25 @@ export class DepthPane extends TimePane {
   settingsChanged(): void { this.#sync(); this.invalidate(); }
   /** Show the depth sound's switch as the settings have it (it is also in the Sounds panel). */
   syncSound(): void { this.#bell.checked = panelSwitchOn(this.store, 'depthPane'); }
+  /** The bands of the source shown. */
+  #settings(): DepthSettings { const state = this.store.state; return state.depthSource === 'liq' ? state.liqBands : state.depthBands; }
   #sync(): void {
-    const s = this.store.state.depthBands;
+    const liq = this.store.state.depthSource === 'liq', s = this.#settings();
+    this.#source.value = liq ? 'liq' : 'book';
+    // The depth sound is the order book's: it has nothing to say about liquidation levels.
+    if (this.#bellLabel) this.#bellLabel.hidden = liq;
     this.#preset.value = s.preset; this.#edit.hidden = s.preset !== 'custom';
     this.#scale.value = s.scale; this.#units.value = s.units; this.#tableBox.checked = s.table;
   }
-  #set(patch: Partial<DepthSettings>): void { this.store.set({ depthBands: { ...this.store.state.depthBands, ...patch } }); }
+  #set(patch: Partial<DepthSettings>): void {
+    if (this.store.state.depthSource === 'liq') this.store.set({ liqBands: { ...this.store.state.liqBands, ...patch } });
+    else this.store.set({ depthBands: { ...this.store.state.depthBands, ...patch } });
+  }
   /** The person's own bands, typed as percentages in a panel by the bands' select. */
   #openEdit(): void {
     const anchor = this.#edit.hidden ? this.#preset : this.#edit;
     const build = (_tools: HTMLElement, body: HTMLElement): void => {
-      const s = this.store.state.depthBands;
+      const s = this.#settings();
       const input = el('input', { type: 'text', class: 'depth-bands-input', value: s.custom.map(bandEditText).join(', '), spellcheck: false });
       input.setAttribute('aria-label', t('Your bands, in percent'));
       const error = el('p', { class: 'panel-note depth-band-error' }); error.hidden = true;
@@ -372,28 +397,71 @@ export class DepthPane extends TimePane {
     const row = Math.floor((y - tb.top) / tb.rowH);
     return row >= 0 && row < tb.rows ? row : -1;
   }
-  #clickRow(row: number): void { if (row < 0) return; const s = this.store.state.depthBands; this.#set({ focus: s.focus === row ? null : row }); }
+  #clickRow(row: number): void { if (row < 0) return; const s = this.#settings(); this.#set({ focus: s.focus === row ? null : row }); }
+
+  /**
+   * The Liquidation levels series for the view, in the Depth series' shape, or why there is none: each pixel column holds the snapshot in force
+   * at its time, from when it was fetched until the next, at most 90 minutes (past that the snapshots stopped and the column is empty), its
+   * bands read from the snapshot's buckets. Never past now, or past the replay's moment.
+   */
+  #liqSeries(pw: number, radii: readonly number[]): string | LiqSeries {
+    const v = this.view, now = Date.now();
+    this.#history.ensure(v.t0, v.t1, now, () => this.invalidate());
+    const index = this.#history.index;
+    if (!index) return t('The liquidation levels\' history is loading…');
+    if (index.first === null) return t('No liquidation levels recorded yet.');
+    const w = depthColumns(pw), k = radii.length, t0 = v.t0, t1 = v.t1, until = replaying() ? pageNow() : now;
+    const key = `${this.#history.version}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}`;
+    if (this.#liq?.key === key) return this.#liq;
+    const rows = this.#history.rows(t0, t1), idx = radii.map(r => bandIndex(index.edges, r));
+    const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k), rowAt = new Int32Array(w).fill(-1);
+    for (let x = 0, i = 0; x < w; x++) {
+      const time = t0 + (x + 0.5) / w * (t1 - t0);
+      if (time > until) break;
+      while (i + 1 < rows.length && rows[i + 1]!.fetchedAt <= time) i++;
+      const row = rows[i];
+      if (!row || row.fetchedAt > time || time - row.fetchedAt > LIQ_HOLD_MS) continue;
+      rowAt[x] = i;
+      for (let j = 0; j < k; j++) {
+        const b = idx[j]!; if (b < 0) continue;
+        bid[x * k + j] = row.long[b]!; ask[x * k + j] = row.short[b]!; bidCoin[x * k + j] = row.longCoin[b]!; askCoin[x * k + j] = row.shortCoin[b]!;
+      }
+    }
+    this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid, ask, bidCoin, askCoin } }, rowAt, rows };
+    return this.#liq;
+  }
+
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h;
-    const state = this.store.state, settings = state.depthBands, radii = bandsOf(settings);
+    const state = this.store.state, liq = state.depthSource === 'liq', settings = this.#settings(), radii = bandsOf(settings);
     this.#table = null;
-    const ids = activeIds(state);
-    const emptyScope = emptyScopeMessage(state);
-    if (emptyScope) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
+    const readout = this.head.querySelector('.readout');
+    const say = (text: string): void => { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(text, 12, ph / 2); setHtml(readout, ''); };
     const coin = currentCoin().coin, coinOption = this.#units.options[1];
     if (coinOption && coinOption.text !== coin) coinOption.text = coin;
-    const key = depthKey(ids, v.t0, v.t1, pw, radii.join(','), this.hub.columnsVersion);
-    // What is live changes without the view moving: asked again every second and a half, or less often when an answer takes long.
-    const refresh = v.t1 > Date.now() - 2 * MINUTE && performance.now() - this.#askedAt > Math.max(1_500, 3 * this.#tookMs);
-    if ((key !== this.#key || refresh) && !this.#busy && ids.length) {
-      this.#key = key; this.#busy = true;
-      const asked = this.#askedAt = performance.now();
-      const w = depthColumns(pw), t0 = v.t0, t1 = v.t1, asking = radii;
-      void this.hub.depth(ids, t0, t1, w, asking).then(answer => { this.#tookMs = performance.now() - asked; this.#series = { t0, t1, w, radii: asking, answer }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
+    let s: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer } | null;
+    let liqHeld: LiqSeries | null = null;
+    if (liq) {
+      if (coin !== 'BTC') { say(t('Liquidation levels are for BTC only for now.')); return; }
+      const built = this.#liqSeries(pw, radii);
+      if (typeof built === 'string') { say(built); return; }
+      liqHeld = built; s = built.series;
+    } else {
+      const ids = activeIds(state);
+      const emptyScope = emptyScopeMessage(state);
+      if (emptyScope) { say(emptyScope); return; }
+      const key = depthKey(ids, v.t0, v.t1, pw, radii.join(','), this.hub.columnsVersion);
+      // What is live changes without the view moving: asked again every second and a half, or less often when an answer takes long.
+      const refresh = v.t1 > Date.now() - 2 * MINUTE && performance.now() - this.#askedAt > Math.max(1_500, 3 * this.#tookMs);
+      if ((key !== this.#key || refresh) && !this.#busy && ids.length) {
+        this.#key = key; this.#busy = true;
+        const asked = this.#askedAt = performance.now();
+        const w = depthColumns(pw), t0 = v.t0, t1 = v.t1, asking = radii;
+        void this.hub.depth(ids, t0, t1, w, asking).then(answer => { this.#tookMs = performance.now() - asked; this.#series = { t0, t1, w, radii: asking, answer }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
+      }
+      s = this.#series;
+      if (!s) { say(t('Depth history is collecting…')); return; }
     }
-    const s = this.#series;
-    const readout = this.head.querySelector('.readout');
-    if (!s) { ctx.fillStyle = p.muted; ctx.fillText(t('Depth history is collecting…'), 12, ph / 2); return; }
     // Until the answer for new bands arrives, the one there is is drawn with its own bands.
     const k = s.answer.k, coins = settings.units === 'coin';
     if (!(k > 0)) return;
@@ -408,8 +476,13 @@ export class DepthPane extends TimePane {
     if (!(max > 0)) max = 1;
     const colT = (x: number): number => s.t0 + x / s.w * (s.t1 - s.t0);
     const unit = coins ? ` ${coin}` : '';
-    // The header reads the watched band at the newest column.
-    if (lastX >= 0) {
+    const rowOf = (x: number): LiqRow | null => { const i = liqHeld && x >= 0 ? liqHeld.rowAt[x]! : -1; return liqHeld && i >= 0 ? liqHeld.rows[i] ?? null : null; };
+    if (liq && lastX < 0) { say(t('No liquidation levels recorded for this stretch of time.')); return; }
+    // The header reads the watched band at the newest column (Liquidation levels: longs and shorts, and when those positions stood).
+    if (liq) {
+      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX);
+      setHtml(readout, `±${bandText(s.radii[top]!)}% L <b class="bid">${amountText(b, coins)}</b> S <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${row ? ` · ${t('positions as of {time}', { time: clock(row.asOf) })}` : ''}`);
+    } else if (lastX >= 0) {
       const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, total = b + a, lean = total > 0 ? (b - a) / total : 0;
       const dominant = Math.abs(lean) < 0.005 ? '' : ` <b class="${lean > 0 ? 'bid' : 'ask'}">${lean > 0 ? t('bids') : t('asks')} +${(Math.abs(lean) * 100).toFixed(1)}%</b>`;
       setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${amountText(b, coins)}</b> A <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${dominant}`);
@@ -454,7 +527,7 @@ export class DepthPane extends TimePane {
     }
     ctx.lineWidth = 1;
     // Highlights: where the watched band was unusually heavy on one side, that side's edge is drawn thick across the column.
-    if (state.highlight.on) {
+    if (state.highlight.on && !liq) {
       const marks = this.#highlight(s, state, top);
       for (let x = 0; x < s.w; x++) {
         const mark = marks[x] ?? 0; if (!mark) continue;
@@ -471,8 +544,11 @@ export class DepthPane extends TimePane {
     if (half > 40) { ctx.fillText(amountText(halfValue, coins), axisX, mid - half / 2); ctx.fillText(amountText(halfValue, coins), axisX, mid + half / 2); }
     ctx.fillText('0', axisX, mid);
     const rows = Array.from({ length: k }, (_, j) => ({ r: s.radii[j]!, bid: readX >= 0 ? bid[at(readX, j)]! : NaN, ask: readX >= 0 ? ask[at(readX, j)]! : NaN }));
-    const drawn = settings.table && this.#drawTable(rows, this.pointer !== null, focused ? top : -1, Number.isFinite(readTime) ? (pointed ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '', unit);
-    if (!drawn && pointed && readX >= 0) {
+    const readRow = liq ? rowOf(readX) : null;
+    const foot = liq ? (readRow ? t('positions as of {time}', { time: clock(readRow.asOf, true) }) : '') : Number.isFinite(readTime) ? (pointed ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '';
+    const drawn = settings.table && this.#drawTable(rows, this.pointer !== null, focused ? top : -1, foot, unit, liq ? [t('Longs'), t('Shorts')] : [t('Bid'), t('Ask')]);
+    if (!drawn && pointed && readX >= 0 && liq) { if (readRow) this.#lines = liqCardLines({ asOf: readRow.asOf, bands: rows, watched: top, units: settings.units, coin }); }
+    else if (!drawn && pointed && readX >= 0) {
       const here = bid[at(readX, top)]! + ask[at(readX, top)]!;
       let rank = 1, of = 0;
       for (let x = 0; x < cutW; x++) { const total = bid[at(x, top)]! + ask[at(x, top)]!; if (total > 0) { of++; if (total > here) rank++; } }
@@ -487,7 +563,7 @@ export class DepthPane extends TimePane {
    * at rest (the header reads the watched band). In a short pane the rows close up (15 px down to 12) and the titles, then the time, are left out; where even a row a
    * band does not fit, the table is not drawn and the card says it instead. Returns whether it was drawn.
    */
-  #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string): boolean {
+  #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string]): boolean {
     const { ctx, palette: p } = this, pw = this.plotW, ph = this.h, k = rows.length;
     let rowH = 0, titles = true, foot = true;
     fit: for (const [withTitles, withFoot] of [[true, true], [false, true], [false, false]] as const) {
@@ -495,7 +571,7 @@ export class DepthPane extends TimePane {
     }
     if (!rowH) return false;
     const texts = rows.map(row => [`±${bandText(row.r)}%`, tableText(row.bid), tableText(row.ask), Number.isFinite(row.bid) ? tableSigned(row.bid - row.ask) : '–']);
-    const heads = ['', t('Bid'), t('Ask'), 'Δ'];
+    const heads = ['', sides[0], sides[1], 'Δ'];
     const widths = [0, 1, 2, 3].map(c => Math.max(ctx.measureText(heads[c]!).width, ...texts.map(row => ctx.measureText(row[c]!).width)));
     const gap = 7, pad = 5, width = (cols: number): number => widths.slice(0, cols).reduce((a, b) => a + b, 0) + gap * (cols - 1) + pad * 2;
     const free = this.w - AXIS_W - pw;

@@ -109,6 +109,23 @@ export function depthCardLines(h: { time: number; bands: readonly { r: number; b
   return lines;
 }
 
+/**
+ * One moment of the Depth pane's Liquidation levels where its table is not drawn: the snapshot in force (when its positions stood), each band's
+ * longs and shorts, the watched band in bold with their difference. Where the money sits, not what was or will be liquidated.
+ */
+export function liqCardLines(h: { asOf: number; bands: readonly { r: number; bid: number; ask: number }[]; watched: number; units: 'usd' | 'coin'; coin: string }): InfoLine[] {
+  const fmt = (value: number): string => h.units === 'coin' ? `${coinFigures.format(value)} ${h.coin}` : money(value);
+  const lines: InfoLine[] = [{ text: t('Liquidation levels'), bold: true }, { label: t('Positions'), text: clock(h.asOf, true) }];
+  h.bands.forEach((band, j) => lines.push({ label: `±${bandText(band.r)}%`, text: `${fmt(band.bid)} · ${fmt(band.ask)}`, bold: j === h.watched }));
+  const w = h.bands[h.watched];
+  if (w) {
+    const diff = w.bid - w.ask;
+    lines.push({ label: 'Δ', text: h.units === 'coin' ? `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}` : signedUsd(diff), color: sideColor(diff), bold: true });
+  }
+  lines.push({ text: t('Longs · shorts that would be liquidated within each distance of the price, from HyperTracker\'s snapshot of Hyperliquid\'s BTC positions: where the money sits, not what will be liquidated.'), color: 'muted', wrap: true, rule: true });
+  return lines;
+}
+
 /** One point of the Liquidity Tracker: the weighted liquidity of each side, how it compares, and the settings it was worked out with. */
 export function ltCardLines(h: { time: number; bid: number; ask: number; halfLifeBp: number; venues: number }): InfoLine[] {
   const lines: InfoLine[] = [
