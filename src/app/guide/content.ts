@@ -66,15 +66,16 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'moving', title: 'Moving around',
     blocks: [
-      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. While the chart follows the market, zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding; once you have moved the chart by hand it holds the point under the pointer.' },
+      { t: 'p', text: 'On a computer everything is done with the mouse, and nothing needs a click first. While the live candle is on screen the chart follows the market at the zoom you chose, and zooming holds the live edge and the current price still, so the picture swells and shrinks around them instead of sliding. Move the live candle off the screen and the chart stays where you left it; zooming then holds the point under the pointer.' },
       { t: 'keys', rows: [
         ['[[Wheel]] on the chart', 'Zoom **time and price together**, by the same amount, so the picture keeps the shape you gave it'],
         ['[[Wheel]] or drag on the price scale', 'Zoom the **price** axis (drag up zooms in, down zooms out)'],
         ['[[Wheel]] on the time labels along the bottom', 'Zoom the **time** axis'],
-        ['[[Shift]] + [[Wheel]]', 'On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer and takes the chart off the live edge'],
-        ['Drag', 'Pan both ways. With [[Shift]], pan time only'],
+        ['[[Shift]] + [[Wheel]]', 'On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer'],
+        ['Drag', 'Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it'],
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['Double-click, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
+        ['**Live**, [[End]]', 'Back to the live candle at the zoom you have'],
       ] },
       { t: 'p', text: 'On a **phone or tablet** the bottom bar picks the view. The **Tape**, the **Flow** and the order book held upright fill the screen; the rest sit under the map (beside it when the phone is on its side). **Map** gives the chart the whole screen, and everything else is behind the **⋯** button. The same moves are made with fingers:' },
       { t: 'keys', rows: [
@@ -83,11 +84,12 @@ export const SECTIONS: readonly Section[] = [
         ['**Tap**', 'Pins the crosshair and its readout above your finger. Tap again, or drag, to let go'],
         ['**Hold, then drag**', 'Slides the crosshair along without moving the map'],
         ['**Double-tap**', 'Back to the live edge, price range fitted'],
+        ['**Live**', 'Back to the live candle at the zoom you have'],
         ['**Drag an axis**', 'Along the price or time scale to zoom it'],
       ] },
       { t: 'fig', id: 'zoom-price', caption: 'Wheel on the price scale: the current price stays put while the scale around it changes.' },
       { t: 'fig', id: 'zoom-time', caption: 'Wheel on the chart: time and price zoom together around the live edge and the current price, which stay put. Candles get wider and the footprint appears.' },
-      { t: 'fig', id: 'pan', caption: 'Drag to look around. Panning stops the chart following the live edge; Recenter starts it again.' },
+      { t: 'fig', id: 'pan', caption: 'Drag to look around. Once the live candle is off the screen the chart stays where you left it; bring it back into view, or press Live, and it follows again.' },
       { t: 'p', text: 'The panes share the time axis, so what you do to it happens to all of them. Drag the splitters between panes to resize them, and a pane by its grip (⠿) to move it. Sizes and places are remembered.' },
     ],
   },

@@ -1,8 +1,9 @@
 /**
  * Zooming the map's axes with the pointer. The wheel on the chart zooms time and price together, by the same factor, so the picture keeps the
  * shape the person gave it; the wheel (or a drag) on the price scale zooms price alone and the wheel on the time strip time alone. Each axis holds
- * still the thing a person is watching: the live edge for time and the current price for price while the map follows the market, the point under
- * the pointer once it has been moved by hand (and always with Alt). Pure functions, so the rules are tested without a canvas.
+ * still the thing a person is watching: the live edge for time and the current price for price while the map follows the market (while the live
+ * edge is on it), the point under the pointer once it stays where it was left (and always with Alt). Pure functions, so the rules are tested
+ * without a canvas.
  */
 
 /**
@@ -41,6 +42,14 @@ export function holdPixel(o: { axis: 'time' | 'price'; pointer: number; size: nu
   return o.follow && o.nowPixel >= 0 && o.nowPixel <= o.size ? o.nowPixel : clamp(o.pointer);
 }
 
+/**
+ * Whether the live edge (`now`) is on the map, its first and last instants included: the map follows the market while it is, at the zoom it has,
+ * and stays where it was left once it is not (HeatPane `#settleFollow`, decided when a hand lets go), as TradingView's charts do.
+ */
+export function liveEdgeShown(view: { t0: number; t1: number }, now: number): boolean {
+  return view.t1 > view.t0 && now >= view.t0 && now <= view.t1;
+}
+
 /** The shortest and longest time span the map zooms to, and the price span as a share of the current price. */
 export const TIME_SPAN_MS = { min: 30_000, max: 400 * 86_400_000 } as const;
 export const PRICE_SPAN_SHARE = { min: 1e-4, max: 2 } as const;
@@ -75,10 +84,9 @@ export interface WheelInput {
 }
 /**
  * What a wheel turn does: for each axis it zooms, by how much (> 1 zooms out) and the pixel it holds still. The two factors are the same when both zoom.
- * `unfollow`: the turn holds the pointer (Alt) on a map that follows the market, so it is taken off the live point, as a drag takes it: the map would
- * otherwise slide with the market, and bring the current price back to the middle of the scale, from under the pointer.
+ * Whether the map follows the market after it is decided by where the live edge then is (HeatPane `#settleFollow`), Alt or not.
  */
-export interface WheelZoom { time: { factor: number; hold: number } | null; price: { factor: number; hold: number } | null; unfollow: boolean }
+export interface WheelZoom { time: { factor: number; hold: number } | null; price: { factor: number; hold: number } | null }
 
 /**
  * The zoom of one wheel turn. When both axes zoom they take the same factor, so the picture keeps the shape the person gave it (the time and the
@@ -90,9 +98,7 @@ export function wheelZoom(o: WheelInput): WheelZoom {
   const time = limitFactor(raw, v.t1 - v.t0, TIME_SPAN_MS.min, TIME_SPAN_MS.max), price = limitFactor(raw, v.p1 - v.p0, ref * PRICE_SPAN_SHARE.min, ref * PRICE_SPAN_SHARE.max);
   const both = axes.length === 2, factor = both ? (raw < 1 ? Math.max(time, price) : Math.min(time, price)) : axes[0] === 'time' ? time : price;
   const held = { follow: o.follow, alt: o.alt, mark: o.mark, markPixel: o.markY, nowPixel: o.nowX };
-  const zoomed = factor !== 1;
   return {
-    unfollow: o.alt && o.follow && zoomed,
     time: axes.includes('time') ? { factor, hold: holdPixel({ ...held, axis: 'time', pointer: o.x, size: o.plotW }) } : null,
     // On the price scale the current price is held whenever it is on the map; on the chart only while the map follows the market.
     price: axes.includes('price') ? { factor, hold: holdPixel({ ...held, axis: 'price', pointer: o.y, size: o.plotH, holdMark: o.region === 'scale' || o.follow }) } : null,

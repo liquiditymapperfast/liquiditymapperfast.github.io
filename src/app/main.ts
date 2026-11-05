@@ -222,7 +222,6 @@ async function main(): Promise<void> {
     candleAt: x => heat.candleAt(x), closesOnly: () => store.state.chartType === 'line', wallsAt: x => heat.wallsAt(x), restingAt: price => heat.restingAt(price),
     mark: () => store.state.mark.price, coin: () => currentCoin().coin, now: pageNow, replaying, settings: () => store.state.draw,
     reveal: () => store.set({ draw: { ...store.state.draw, shown: true } }),
-    holdStill: () => { if (store.state.followLive) store.set({ followLive: false }); },
     disarmOthers: () => { if (store.state.rangeTool) range.stop(); if (store.state.vwapAnchoring) store.set({ vwapAnchoring: false }); },
     focus: box => heat.focusOn(box),
     inspect: box => { range.begin({ t: box.t0, p: box.p0 }); range.end({ t: box.t1, p: box.p1 }, false); },
@@ -299,6 +298,7 @@ async function main(): Promise<void> {
     const a = hit.action;
     if (a.kind === 'timeframe') store.set({ timeframe: a.tf });
     else if (a.kind === 'recenter') toolbar.onRecenter();
+    else if (a.kind === 'now') heat.jumpToNow();
     else if (a.kind === 'zoom') heat.zoomStep(a.dir);
     else if (a.kind === 'toggle') { store.set(togglePatch(store.state, a.feature)); toolbar.refreshOpenPanel(); }
     else if (a.kind === 'column') layouts.toggleColumn(a.side);

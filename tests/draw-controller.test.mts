@@ -21,7 +21,7 @@ function setup(o: { settings?: Partial<DrawSettings>; replay?: boolean; doc?: Dr
     candleAt: x => (x >= 200 && x < 300 ? { t: T + 2.5 * H, x: 250, open: 150, high: 160, low: 140, close: 155, y: p => view.yOf(p, 500) } : null),
     closesOnly: () => false, wallsAt: () => o.walls ?? [], restingAt: () => ({ bid: 1e6, ask: 0, step: 1 }),
     mark: () => 150, coin: () => coin, now: () => T + 9 * H, replaying: () => o.replay === true, settings: () => settings, reveal: () => { settings = { ...settings, shown: true }; },
-    holdStill: () => calls.push('hold'), disarmOthers: () => calls.push('disarm-others'), focus: box => { calls.push('focus'); focused.push(box); },
+    disarmOthers: () => calls.push('disarm-others'), focus: box => { calls.push('focus'); focused.push(box); },
     inspect: box => inspected.push(box), alert: text => alerts.push(text), redraw: () => {},
   };
   const store: DrawStore = { load: () => saved, save: doc => { if (failSave) return false; saved = JSON.parse(JSON.stringify(doc)); return true; }, onOtherTab: l => { other = l; } };
@@ -57,7 +57,6 @@ test('a zone takes two clicks; the same point twice is not the second; Keep the 
   assert.equal(s.draw.draft?.points.length, 1, 'a double click is not the second corner');
   s.draw.click({ x: 600, y: 200 }, false, false);
   assert.equal(s.draw.list().length, 1); assert.equal(s.draw.tool, 'zone', 'kept armed');
-  assert.deepEqual(s.calls.filter(c => c === 'hold'), ['hold'], 'the map stopped following at the first point');
 });
 
 test('only the selected drawing drags: a handle moves its point, its stroke moves it whole, one step to undo', () => {

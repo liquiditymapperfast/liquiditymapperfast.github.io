@@ -37,8 +37,6 @@ export interface DrawHost {
   settings(): DrawSettings;
   /** Switch the drawings back on (a tool armed while they are hidden). */
   reveal(): void;
-  /** A drawing is begun or dragged: the map stops following the market, so the points stay where they are put. */
-  holdStill(): void;
   /** A tool is armed: Range and VWAP anchoring, which take the next press too, are put away. */
   disarmOthers(): void;
   /** Centre the map on a stretch of time and prices (Find). */
@@ -80,6 +78,7 @@ export class DrawController {
   #touch = isCoarse();
   #lastMark = 0;
   tool: DrawKind | null = null;
+  /** The points placed so far of a drawing that takes more than one: the map waits rather than following the market while there is one (and while one is dragged). */
   draft: Draft | null = null;
   cursor: Cursor | null = null;
   selected: string | null = null;
@@ -255,7 +254,6 @@ export class DrawController {
       this.#drag = { mode: 'handle', id: d.id, handle: { t: h.t, p: h.p, after: h.after }, before: list, original: d };
     } else this.#drag = { mode: 'move', id: d.id, from: q, away: false, before: list, original: d };
     this.#held = null;
-    this.host.holdStill();
     return true;
   }
 
@@ -330,7 +328,6 @@ export class DrawController {
         const pr = this.#proj(), prev = points[points.length - 2]!;
         if (Math.hypot(pr.x(prev.t) - c.x, (kind === 'vline' ? c.y : pr.y(prev.p)) - c.y) < 4) return true;
       }
-      if (!this.draft && ANCHORS[kind] > 1) this.host.holdStill();
       if (points.length < ANCHORS[kind]) { this.draft = { kind, points }; this.#held = null; this.#changed(); return true; }
       this.#commit(newDrawing(kind, points));
       return true;

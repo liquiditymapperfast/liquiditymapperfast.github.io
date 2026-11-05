@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { View } from '../src/app/view.ts';
-import { holdPixel, limitFactor, priceRef, regionAt, wheelAxes, wheelFactor, wheelZoom, PRICE_SPAN_SHARE, TIME_SPAN_MS, type WheelInput } from '../src/app/panes/heat-zoom.ts';
+import { liveEdgeShown, holdPixel, limitFactor, priceRef, regionAt, wheelAxes, wheelFactor, wheelZoom, PRICE_SPAN_SHARE, TIME_SPAN_MS, type WheelInput } from '../src/app/panes/heat-zoom.ts';
 
 test('the part of the map under the pointer: chart, price scale (with the profile column), time strip', () => {
   assert.equal(regionAt(100, 100, 800, 500), 'plot');
@@ -116,11 +116,6 @@ test('while the map follows the market both axes hold the live edge and the curr
   assert.deepEqual([hand.time!.hold, hand.price!.hold], [300, 120]);
   const alt = wheelZoom(turn({ alt: true }));
   assert.deepEqual([alt.time!.hold, alt.price!.hold], [300, 120], 'Alt: the pointer, following or not');
-  assert.equal(alt.unfollow, true, 'on a map that follows the market, Alt takes it off the live point, as a drag does');
-  assert.equal(hand.unfollow, false);
-  assert.equal(live.unfollow, false, 'the wheel on its own never stops the following');
-  assert.equal(wheelZoom(turn({ alt: true, follow: false })).unfollow, false, 'nothing to stop');
-  assert.equal(wheelZoom(turn({ alt: true, view: { t0: 0, t1: TIME_SPAN_MS.min, p0: 76_000, p1: 78_000 } })).unfollow, false, 'and nothing zoomed, nothing stopped');
   // Applied with the pointer held, the time and the price under it do not move.
   const v = new View(turn().view), t = v.tOf(300, 1000), p = v.pOf(120, 500);
   v.zoomPrice(hand.price!.factor, hand.price!.hold, 500); v.zoomTime(hand.time!.factor, hand.time!.hold, 1000);
@@ -172,7 +167,6 @@ test('a chart framed wider than the price limit: a turn out is held, a turn in z
   const day = 86_400_000, wide = { t0: 0, t1: 110 * day, p0: 0.1, p1: 0.1 + 0.1 * 5.44 }, mark = 0.1;
   const out = wheelZoom(turn({ deltaY: 100, view: wide, mark, markY: 300 }));
   assert.equal(out.time!.factor, 1); assert.equal(out.price!.factor, 1);
-  assert.equal(out.unfollow, false);
   const inn = wheelZoom(turn({ deltaY: -100, view: wide, mark, markY: 300 }));
   assert.ok(inn.time!.factor < 1 && inn.time!.factor === inn.price!.factor, 'in is in');
   assert.ok(Math.abs(inn.time!.factor - Math.exp(-0.16)) < 1e-12, 'as much as the turn asks');
@@ -189,4 +183,14 @@ test('a chart framed wider than the price limit: a turn out is held, a turn in z
 test('no view yet: nothing to zoom, nothing thrown', () => {
   const z = wheelZoom(turn({ view: { t0: 0, t1: 0, p0: 0, p1: 0 }, mark: 0 }));
   assert.ok(z.time && z.price && z.time.factor === 1 && z.price.factor === 1);
+});
+
+test('the map follows the market while the live edge is on it, its edges included, and not once it is off it or before there is a view', () => {
+  const view = { t0: 1_000, t1: 61_000 };
+  assert.equal(liveEdgeShown(view, 30_000), true, 'in the middle');
+  assert.equal(liveEdgeShown(view, 1_000), true, 'at the left edge');
+  assert.equal(liveEdgeShown(view, 61_000), true, 'at the right edge');
+  assert.equal(liveEdgeShown(view, 61_001), false, 'just past the right edge: a view of the past');
+  assert.equal(liveEdgeShown(view, 999), false, 'before the left edge: a view of the future');
+  assert.equal(liveEdgeShown({ t0: 0, t1: 0 }, 0), false, 'no view yet');
 });

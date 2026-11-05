@@ -14,6 +14,7 @@ export type Feature = 'footprint' | 'trades' | 'liquidations' | 'liqLevels' | 'a
 export type ShortcutAction =
   | { kind: 'timeframe'; tf: string }
   | { kind: 'recenter' }
+  | { kind: 'now' }
   | { kind: 'column'; side: Side }
   | { kind: 'zoom'; dir: 1 | -1 }
   | { kind: 'toggle'; feature: Feature }
@@ -44,6 +45,7 @@ const toggle = (cap: string, label: string, feature: Feature): Shortcut => ({ gr
 export const SHORTCUTS: readonly Shortcut[] = [
   ...TIMEFRAMES.map((tf, i): Shortcut => ({ group: 'timeframe', caps: [String(i + 1)], label: tf, codes: [`Digit${i + 1}`], keys: [String(i + 1)], action: { kind: 'timeframe', tf } })),
   { group: 'chart', caps: ['R', t('Home')], label: t('Recenter'), keys: ['r', 'home'], action: { kind: 'recenter' } },
+  { group: 'chart', caps: [t('End')], label: t('Back to live'), keys: ['end'], action: { kind: 'now' } },
   { group: 'chart', caps: ['+'], label: t('Zoom time in'), keys: ['+', '='], action: { kind: 'zoom', dir: 1 }, repeat: true },
   { group: 'chart', caps: ['−'], label: t('Zoom time out'), keys: ['-', '_'], action: { kind: 'zoom', dir: -1 }, repeat: true },
   toggle('F', t('Footprint'), 'footprint'),
