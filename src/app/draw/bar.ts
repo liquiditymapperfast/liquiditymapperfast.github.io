@@ -288,12 +288,16 @@ export class DrawBar {
       this.rail.style.left = `${f.left + 6}px`; this.rail.style.top = `${Math.round(f.legendBottom + 8)}px`;
       this.rail.style.maxHeight = `${Math.max(120, f.pr.h - f.legendBottom - 16)}px`;
       this.say.style.left = `${f.left + f.pr.w / 2}px`; this.say.style.top = `${f.pr.h - 34}px`;
+      this.rail.parentElement?.style.removeProperty('--draw-foot');
     } else {
       // A phone: the strip along the map's foot (two rows when it needs them), the selected drawing's bar and the next step stacked over it.
       for (const node of [this.rail, this.say]) { node.style.left = ''; node.style.top = ''; node.style.maxHeight = ''; }
       const over = 28 + (this.rail.hidden ? 0 : this.#sizes.railH) + 6;
       this.editor.style.bottom = `${over}px`;
       this.say.style.bottom = `${over + (!sel ? 0 : this.#sizes.editorH + 6)}px`;
+      // The map's Live button (at its foot's right end) stands on the strip and the drawing's bar rather than under them.
+      const foot = this.rail.hidden && !sel ? 0 : over + (!sel ? 0 : this.#sizes.editorH + 6);
+      if (foot) this.rail.parentElement?.style.setProperty('--draw-foot', `${foot}px`); else this.rail.parentElement?.style.removeProperty('--draw-foot');
     }
     const show = !!sel && editor !== 'none';
     this.editor.hidden = !show;
