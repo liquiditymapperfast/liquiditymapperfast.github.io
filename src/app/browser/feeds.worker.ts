@@ -8,6 +8,7 @@ import type { FeedsIn, FeedsOut, RpcCall } from './protocol.ts';
 import { frameOf } from './levels-frame.ts';
 import { heldOf, importHistory } from './history-import.ts';
 import { importSince } from '../history-window.ts';
+import type { TilesInfo } from '../archive/tiles.ts';
 
 /**
  * The data engine on its own thread: exchange sockets, book valuation, recording and the history requests all run here, and the page
@@ -84,18 +85,18 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
   engine = next;
   post({ type: 'ready' });
   if (!keeps) { post({ type: 'recordings', persisted: false }); historyDone = true; historyIn(); return; }
-  const gridSteps = new Map<string, number>();
+  const gridSteps = new Map<string, number>(), tiles: { info: TilesInfo | null } = { info: null };
   // The engine runs whatever becomes of them: a failure here is not the engine's.
-  try { await readRecordings(database, lock, history, historyHours, gridSteps); }
+  try { await readRecordings(database, lock, history, historyHours, gridSteps, tiles); }
   catch (error) { console.warn('the recordings could not be read:', error); }
   try { next.attach(recordings, gridSteps); }
   catch (error) { console.error('the recordings could not be handed to the engine:', error); }
   // A pass of the live feeds first: the hand-over and the questions held for it each take a moment of this thread.
-  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history' }); }, 0);
+  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history', tiles: tiles.info }); }, 0);
 }
 
 /** Open the recordings and read the recorded history into them (`gridSteps`: the service's grid for books they hold nothing of). */
-async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>): Promise<void> {
+async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>, tiles: { info: TilesInfo | null }): Promise<void> {
   // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
   let failing = false;
   const events = {
@@ -123,6 +124,8 @@ async function readRecordings(database: string, lock: string, history: string, h
     // A book this page holds nothing of (and was given nothing of in time) records on the service's grid, so the next visit can show
     // the service's minutes with its own.
     for (const [inst, step] of Object.entries(done.steps ?? {})) if (!held.steps.has(inst)) gridSteps.set(inst, step);
+    // The long history's tiles, from the same latest.json: the page reads the windows before its day from them (app/archive/).
+    tiles.info = done.tiles ?? null;
   }
 }
 

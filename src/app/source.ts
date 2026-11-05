@@ -124,6 +124,13 @@ export interface DataSource {
   /** `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`. */
   columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean): Promise<ColumnsFrame>;
   /**
+   * A source whose columns reach back past its own recordings (the browser's, from the long history's tiles: app/archive/) says when more of
+   * them have come; the hub then asks again for what it holds. Optional: the others answer everything they have at once.
+   */
+  setArchiveListener?(listener: () => void): void;
+  /** Where that long history's depth begins (ms), or null when there is none. */
+  archiveFirst?(): number | null;
+  /**
    * The Liquidity Tracker alone (lt-lane.ts): these markets' windows of `stepMs` over [from, to) for one half-life (an index into LT_HALF_LIVES), handed
    * to `onFrame` a part at a time, the newest first, settled when the last has come. Only a server whose live socket answers it has it; it rejects
    * ('unsupported') where it cannot be asked (a server from before, no socket), and the pane reads the columns instead.

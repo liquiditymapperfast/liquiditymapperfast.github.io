@@ -1,6 +1,7 @@
 import type { EngineBootstrap, EngineTick, FootprintAnswer, RecoveryReport, VenueStatus } from '../../shared/engine.ts';
 import type { Candle, OiBar } from '../../shared/series.ts';
 import type { Print } from '../../shared/prints.ts';
+import type { TilesInfo } from '../archive/tiles.ts';
 import type { Liquidation } from '../../shared/liquidations.ts';
 import type { PrintSumsAnswer } from '../../shared/print-sums.ts';
 import type { ProfileAnswer, RangeAnswer, SizesAnswer, ValueAreaAnswer } from '../../shared/footprint.ts';
@@ -61,7 +62,7 @@ export type FeedsOut =
    * The engine has its recordings and the recorded history (or will have none): the questions about what was recorded, held until now, are
    * answered, and the flow, answered meanwhile from the seconds since the page opened, is to be asked for again.
    */
-  | { type: 'history' }
+  | { type: 'history'; tiles?: TilesInfo | null }
   /** The engine could not be started: nothing will be answered, so the page should say so instead of waiting. */
   | { type: 'failed'; error: string }
   | { type: 'levels'; frame: LevelsFrame }

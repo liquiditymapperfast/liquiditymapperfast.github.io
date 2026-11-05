@@ -24,6 +24,7 @@ import { BTC, EARLIER_BROWSER_VENUES, type Coin } from '../shared/coins.ts';
 import { recorderLockName, recordingsName } from './coin.ts';
 import { historyUrl } from './history-url.ts';
 import { DAY_HOURS } from './history-window.ts';
+import { ArchiveColumns } from './archive/archive-source.ts';
 
 /** Where a person's venue choice is kept between visits, and the venues there were when it was made (so ones added since can start). */
 const SELECTION_KEY = 'lmf.venues', KNOWN_KEY = 'lmf.venues.known';
@@ -105,10 +106,14 @@ export class BrowserSource implements DataSource, VenueControl {
   #openedAt = 0;
   /** The worker has said its recorded history is in: handlers connected after that are told at once (what they asked before may predate it). */
   #historyIn = false;
+  /** The long history before the page's day (app/archive/): the service's tiles, once the import has read where they are. */
+  #archive: ArchiveColumns | null = null;
 
   /** `historyHours`: how many of the recorded history's latest hours the worker reads on opening (app/history-window.ts), a day by default. */
   constructor(worker: Worker, { persist = true, coin = BTC, tier = 0, historyHours = DAY_HOURS }: { persist?: boolean; coin?: Coin; tier?: number; historyHours?: number } = {}) {
     this.#coin = coin;
+    const history = historyUrl(coin.coin);
+    if (history) this.#archive = new ArchiveColumns(history);
     this.#longShort = new LongShortCache(webGet, true, undefined, undefined, undefined, undefined, undefined, persist ? new IdbLsStore() : null);
     this.#worker = worker;
     let ready!: () => void, known!: () => void, failReady!: (error: Error) => void, failKnown!: (error: Error) => void;
@@ -125,7 +130,7 @@ export class BrowserSource implements DataSource, VenueControl {
       switch (message.type) {
         case 'ready': this.#started = true; ready(); break;
         case 'recordings': this.persisted = message.persisted; this.#openedAt = Date.now(); break;
-        case 'history': this.#historyIn = true; this.#handlers?.onHistory?.(); break;
+        case 'history': this.#historyIn = true; this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
@@ -255,7 +260,17 @@ export class BrowserSource implements DataSource, VenueControl {
     return answer;
   }
   async liquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> { return this.#call({ method: 'liquidations', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
-  async columns(ids: string[], from: number, to: number, stepMs: number, close = false): Promise<ColumnsFrame> { return this.#call({ method: 'columns', ids, from, to, stepMs, close }); }
+  /** The engine's columns, and (averages at two minutes or more) the windows before its day from the long history's tiles. */
+  async columns(ids: string[], from: number, to: number, stepMs: number, close = false): Promise<ColumnsFrame> {
+    const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close });
+    return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
+  }
+
+  /** Said when tiles have come that the columns already answered could use (the hub asks for them again). */
+  setArchiveListener(listener: () => void): void { if (this.#archive) this.#archive.onChange = listener; }
+
+  /** Where the long history's depth begins, or null when there is none (yet). */
+  archiveFirst(): number | null { return this.#archive?.first() ?? null; }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
   async absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
     const answer = parseAbsorptionAnswer(await this.#call({ method: 'absorption', ids, mins, from, to, limit, since }), ids);

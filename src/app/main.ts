@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   toolbar.goTo = {
     replay: t => replayBar.start(t),
     centre: () => (heat.view.t0 + heat.view.t1) / 2,
-    earliest: () => ({ depth: hub.recordedSince > 0 ? hub.recordedSince : null, candles: store.state.candles[0]?.[0] ?? null }),
+    earliest: () => ({ depth: hub.depthSince() > 0 ? hub.depthSince() : null, candles: store.state.candles[0]?.[0] ?? null }),
     go: t => heat.goTo(t),
     live: () => { if (replaying()) replayBar.stop(); else toolbar.onRecenter(); },
   };

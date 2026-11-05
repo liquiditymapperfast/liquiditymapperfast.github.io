@@ -418,6 +418,14 @@ export class Hub {
   }
   /** Oldest recorded depth minute across instruments (ms), or 0 when nothing is recorded. */
   recordedSince = 0;
+  /**
+   * Where the depth the map can draw begins: the long history's first window when the source has one (app/archive/), else the recordings'.
+   * The flow and candle seams stay on `recordedSince` (the archive holds depth only).
+   */
+  depthSince(): number {
+    const archive = this.source.archiveFirst?.() ?? null;
+    return archive !== null && archive > 0 && (this.recordedSince <= 0 || archive < this.recordedSince) ? archive : this.recordedSince;
+  }
   /** Instrument with candle history to fall back to when the selected market has none. */
   #reference = '';
   /** Instruments with an open-interest series to fall back to, best first. */
@@ -515,6 +523,9 @@ export class Hub {
       onOiPush: items => this.#oiPush(items),
     });
     this.#live.tape(this.#tapeOn);
+    // The long history's tiles come after the columns that could use them were answered: what is held is asked for whole again (the worker
+    // keeps drawing it meanwhile), and the frame that asks comes now.
+    this.source.setArchiveListener?.(() => { this.#columns.expireWhole(); this.#columnsStale = true; this.onColumns(); });
     // A hidden page reads nothing ahead (`#prefetch`): shown again, it reads what went stale meanwhile.
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && this.#prefetched) this.#schedulePrefetch(); });
   }

@@ -1531,7 +1531,7 @@ export class HeatPane {
   }
 
   #paintHistoryStart(ctx: CanvasRenderingContext2D, pw: number, ph: number, p: Palette): void {
-    const since = this.hub.recordedSince, v = this.view;
+    const since = this.hub.depthSince(), v = this.view;
     this.#historyNote = null;
     if (!(since > v.t0 && since < v.t1)) return;
     const x = Math.round(v.xOf(since, pw)) + 0.5, text = t('depth recorded from {time}', { time: clock(since) });

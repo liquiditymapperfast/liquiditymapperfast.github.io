@@ -7,6 +7,7 @@ import type { OiReading } from '../../shared/engine.ts';
 import { hyperliquidOneSide } from '../../shared/oi-sides.ts';
 import { SIZE_EDGES, STATS_VERSION, type FootprintMinuteRow, type StoredBin, type TradeStats } from '../../shared/footprint.ts';
 import type { AbsorptionGroup, AbsorptionMinute, AbsorptionStep } from '../../shared/absorption.ts';
+import { parseTilesInfo, type TilesInfo } from '../archive/tiles.ts';
 
 /**
  * The recorded history (hlm-history): minute columns of the default books, and their taker flow, liquidations, open interest, large trades,
@@ -41,7 +42,7 @@ export interface HistoryColumn { inst: string; step: number; column: Column }
  * What the service says it has: finished hours from `first` to `last` (null when none), the open hour, each book's grid step, and the
  * instruments whose trade side it records (`trades`: for a coin it records no books of, the only ones).
  */
-export interface HistoryLatest { v: 1; coin: string; first: number | null; last: number | null; open: number | null; steps: Record<string, number>; trades?: string[] }
+export interface HistoryLatest { v: 1; coin: string; first: number | null; last: number | null; open: number | null; steps: Record<string, number>; trades?: string[]; tiles?: unknown }
 
 /**
  * An hour file's columns (layout in hlm-history's store.rs: a 16-byte header `HLMC`, version 1, the hour; then length-prefixed records), or
@@ -407,7 +408,7 @@ const nextTask = (): Promise<void> => new Promise(resolve => setTimeout(resolve,
  * Reads the hours the page lacks, newest first (what runs out of time is the oldest), and adds their minutes; resolves with what it did and
  * the service's grid steps, never rejects.
  */
-export async function importHistory({ url, held, add, addRows, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; rows: number; failed: number; read: number[]; steps?: Record<string, number>; error?: string }> {
+export async function importHistory({ url, held, add, addRows, since, now, budgetMs = 5_000, latestMs = 2_000, fetcher = (u, init) => fetch(u, init) }: ImportOptions): Promise<{ hours: number; columns: number; rows: number; failed: number; read: number[]; steps?: Record<string, number>; tiles?: TilesInfo | null; error?: string }> {
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), budgetMs);
   const done = { hours: 0, columns: 0, rows: 0, failed: 0, read: [] as number[] };
   try {
@@ -447,7 +448,8 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
       }
     };
     await Promise.all(Array.from({ length: PARALLEL }, worker));
-    return { ...done, steps };
+    // The long history's tiles (app/archive/): read by the page from the same answer, never asked for again.
+    return { ...done, steps, tiles: parseTilesInfo(latest.tiles) };
   } catch (error) {
     return { ...done, error: error instanceof Error ? error.message : String(error) };
   } finally { clearTimeout(timer); }

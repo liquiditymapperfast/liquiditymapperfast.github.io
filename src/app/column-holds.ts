@@ -131,6 +131,12 @@ export class ColumnHolds {
     this.touch(stepMs);
   }
 
+  /**
+   * Everything held is to be asked for whole again at the next load (the long history has more of it now), while the worker keeps drawing
+   * what it holds until the answers replace it.
+   */
+  expireWhole(): void { for (const held of this.#steps.values()) for (const [id, hold] of held) held.set(id, { ...hold, whole: -Infinity }); }
+
   /** This step is wanted now. */
   touch(stepMs: number): void { if (this.#steps.has(stepMs)) this.#used.set(stepMs, ++this.#tick); }
 
