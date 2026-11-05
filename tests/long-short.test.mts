@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LongShortCache, LsNoMarket, VENUE_WAITING_MAX, fetchLongShort, lsPeriodAtLeast, lsPeriodOf, lsPopulationOf, lsReading, lsWindowPeriod, parseLsSeries, shareOfRatio } from '../src/shared/long-short.ts';
-import { lsAt, lsCardLines, lsRange, stepEnd } from '../src/app/panes/ls-pane.ts';
+import { lsAt, lsCardLines, lsIds, lsRange, stepEnd } from '../src/app/panes/ls-pane.ts';
 import { fetchOiHistory, webGet, type Fetcher } from '../src/shared/history.ts';
 import { LAYOUT_KEYS, readSettings, type CandleRow } from '../src/app/store.ts';
 import { atOnePrice } from '../src/app/oi-change.ts';
@@ -613,4 +613,15 @@ test('over the wire: pending is kept only when it is true', () => {
   assert.equal(parseLsSeries({ ...base, pending: true }).pending, true);
   assert.equal('pending' in parseLsSeries(base), false);
   assert.equal('pending' in parseLsSeries({ ...base, pending: 'yes' }), false);
+});
+
+test('the lines follow the OI pane\'s markets under Spot too, Gate\'s perpetual with them (spot markets have no long/short ratio)', () => {
+  const market = (id: string, marketType: 'spot' | 'perpetual') => ({ id, instrumentId: id, venue: id.split(':')[0]!, marketType });
+  const markets = [market('binance:BTCUSDT', 'perpetual'), market('binancespot:BTCUSDT', 'spot'), market('okx:BTC-USDT-SWAP', 'perpetual'), market('gateio:BTC_USDT', 'perpetual')];
+  const hub = { flow: { ids: markets.map(m => m.instrumentId), get: () => ({ empty: false }), track: () => undefined } } as never;
+  const base = { markets, disabledVenues: [] as string[], scope: 'all', levels: null, oiMarkets: 'all', customMarkets: { footprint: [], oi: [] }, oiInstrument: '', seriesInstrument: '', marketId: 'binance:BTCUSDT' };
+  const both = lsIds(base as never, hub);
+  assert.deepEqual(both, ['binance:BTCUSDT', 'okx:BTC-USDT-SWAP', 'gateio:BTC_USDT']);
+  assert.deepEqual(lsIds({ ...base, scope: 'spot' } as never, hub), both, 'Spot: the same lines, Gate\'s included');
+  assert.deepEqual(lsIds({ ...base, scope: 'spot', disabledVenues: ['gateio'] } as never, hub), ['binance:BTCUSDT', 'okx:BTC-USDT-SWAP'], 'Gate switched off stays out');
 });

@@ -1246,7 +1246,7 @@
  "No market is listed yet.": "Noch kein Markt gelistet.",
  "Whose open interest the OI pane, the bar statistics, NL/NS and the Long/Short pane count.": "Wessen Open Interest der OI-Bereich, die Balkenstatistik, NL/NS und der Long/Short-Bereich zählen.",
  "The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.": "Die unten angehakten Perpetuals werden addiert, was auch immer die Börsen-Chips und der Spot/Perp-Filter sagen. Ist keiner angehakt, wird keiner gezählt.",
- "All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.": "Alle Perpetuals addiert die Perpetuals jeder eingeschalteten Börse, innerhalb des Spot/Perp-Filters, an einer Börse, deren Open Interest gelesen wird.",
+ "All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.": "Alle Perpetuals addiert die Perpetuals jeder eingeschalteten Börse, an einer Börse, deren Open Interest gelesen wird, gleich was der Spot/Perp-Filter sagt: Spot-Märkte haben kein Open Interest.",
  "The chart market alone, or a reference market standing in where it has no open interest (the pane says which).": "Der Chart-Markt allein oder ein Referenzmarkt, der einspringt, wo er kein Open Interest hat (der Bereich sagt, welcher).",
  "Markets…": "Märkte…",
  "Whose open interest NL/NS counts: the OI pane's markets, chosen here or in the OI pane.": "Wessen Open Interest NL/NS zählt: die Märkte des OI-Bereichs, hier oder im OI-Bereich gewählt.",

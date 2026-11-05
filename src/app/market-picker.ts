@@ -47,7 +47,7 @@ export function buildOiMarketsPanel(store: Store, flow: FlowBook, body: HTMLElem
       [['all', t('All perpetuals')], ['chart', t('The chart market')], ['custom', t('Chosen markets')]], mode,
       v => { store.set({ oiMarkets: v === 'chart' || v === 'custom' ? v : 'all' }); rebuild(); }),
     note(mode === 'custom' ? t('The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.')
-      : mode === 'all' ? t('All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.')
+      : mode === 'all' ? t('All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.')
       : t('The chart market alone, or a reference market standing in where it has no open interest (the pane says which).')),
   );
   if (mode === 'custom') body.append(heading(t('Markets')), marketPicker(store, flow, 'oi'));

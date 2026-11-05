@@ -1209,7 +1209,7 @@
  "No market is listed yet.": "市場はまだ一覧にありません。",
  "Whose open interest the OI pane, the bar statistics, NL/NS and the Long/Short pane count.": "OIペイン、バー統計、NL/NS、ロング/ショートペインが数える建玉の対象。",
  "The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.": "下でチェックした無期限を、取引所チップやスポット/無期限フィルターに関係なく合算します。何もチェックしなければ何も数えません。",
- "All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.": "すべての無期限は、スポット/無期限フィルターの範囲内でオンの各取引所のうち、建玉を読み取る取引所の無期限を合算します。",
+ "All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.": "すべての無期限は、オンの各取引所のうち建玉を読み取る取引所の無期限を、スポット/無期限フィルターに関係なく合算します。スポット市場には建玉がありません。",
  "The chart market alone, or a reference market standing in where it has no open interest (the pane says which).": "チャートの市場のみ、または建玉がない場合はその代わりの参照市場（ペインに表示）。",
  "Markets…": "市場…",
  "Whose open interest NL/NS counts: the OI pane's markets, chosen here or in the OI pane.": "NL/NSが数える建玉の対象：OIペインの市場。ここかOIペインで選びます。",

@@ -74,9 +74,14 @@ export function resolvePicks(state: Pick<AppState, 'markets'>, flow: FlowBook | 
   return [...new Set(picks.filter(p => !oi || oiPickable(p)).map(p => byPick.get(p)).filter((id): id is string => !!id))].sort().slice(0, MAX_PICKS);
 }
 
-/** The perpetuals the ALL VENUES lines count on an exchange whose open interest is read: the OI pane's markets with venues added together. */
+/**
+ * The perpetuals the ALL VENUES lines count on an exchange whose open interest is read: the OI pane's markets with venues added together.
+ * Whatever the Spot / Perp filter says (the chips and the books on the map still count): spot markets have no open interest, so under Spot
+ * these are the perpetuals Both counts. Switching open interest on asks for it, and a Spot filter left on for the heat map left the pane
+ * saying it had no history (Karl, 2026-11-05).
+ */
 export function oiVenueIds(state: Pick<AppState, 'markets' | 'disabledVenues' | 'scope'> & MapState, flow: FlowBook): string[] {
-  return aggregateIds(flow, flowIds(state, flow.ids), id => kindOf(state.markets, id)).filter(id => kindOf(state.markets, id) === 'perp' && OI_SAMPLE_VENUES.includes(familyKey(venueOfInstrument(id)))).sort();
+  return aggregateIds(flow, flowIds({ ...state, scope: 'all' }, flow.ids), id => kindOf(state.markets, id)).filter(id => kindOf(state.markets, id) === 'perp' && OI_SAMPLE_VENUES.includes(familyKey(venueOfInstrument(id)))).sort();
 }
 
 /**

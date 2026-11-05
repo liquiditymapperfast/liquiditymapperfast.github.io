@@ -1209,7 +1209,7 @@
  "No market is listed yet.": "아직 목록에 시장이 없습니다.",
  "Whose open interest the OI pane, the bar statistics, NL/NS and the Long/Short pane count.": "OI 패널, 바 통계, NL/NS, 롱/숏 패널이 세는 미결제약정의 대상.",
  "The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.": "아래에 체크한 무기한은 거래소 칩과 현물/무기한 필터와 관계없이 합산됩니다. 아무것도 체크하지 않으면 아무것도 세지 않습니다.",
- "All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.": "모든 무기한은 현물/무기한 필터 안에서 켜진 각 거래소 중 미결제약정을 읽는 거래소의 무기한을 합산합니다.",
+ "All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.": "모든 무기한은 현물/무기한 필터와 관계없이 켜진 각 거래소 중 미결제약정을 읽는 거래소의 무기한을 합산합니다. 현물 시장에는 미결제약정이 없습니다.",
  "The chart market alone, or a reference market standing in where it has no open interest (the pane says which).": "차트 시장만, 또는 미결제약정이 없을 때 대신하는 참조 시장(패널에 표시).",
  "Markets…": "시장…",
  "Whose open interest NL/NS counts: the OI pane's markets, chosen here or in the OI pane.": "NL/NS가 세는 미결제약정의 대상: OI 패널의 시장으로, 여기나 OI 패널에서 고릅니다.",

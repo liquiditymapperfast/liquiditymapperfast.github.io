@@ -26,10 +26,11 @@ const HOLD_PERIODS = 3;
 /** The markets the pane shows: the OI pane's markets (those it adds together, or its one market) on a venue that publishes a ratio. */
 export function lsIds(state: AppState, hub: Hub): string[] {
   const oi = oiMarketIds(state, hub.flow);
-  // Gate publishes its long/short ratios but no open interest the page reads: with every market counted (and its chip on, perpetuals in the
-  // filter) its perpetual joins the lines, where the page's markets have one (a coin Gate does not list has none, and is never asked).
+  // Gate publishes its long/short ratios but no open interest the page reads: with every market counted (and its chip on) its perpetual
+  // joins the lines, where the page's markets have one (a coin Gate does not list has none, and is never asked). Under Spot too, as the
+  // other exchanges' perpetuals do (`oiVenueIds`).
   const listed = state.markets.find(m => m.venue === 'gateio' && m.marketType === 'perpetual' && m.instrumentId)?.instrumentId;
-  const gate = listed && oi && state.oiMarkets === 'all' && state.scope !== 'spot' && !state.disabledVenues.includes('gateio') ? [listed] : [];
+  const gate = listed && oi && state.oiMarkets === 'all' && !state.disabledVenues.includes('gateio') ? [listed] : [];
   const ids = [...(oi ?? [state.oiInstrument || state.seriesInstrument || state.marketId]), ...gate];
   const venue = (id: string): number => LS_VENUES.indexOf(id.split(':')[0]!);
   return [...new Set(ids)].filter(id => venue(id) >= 0).sort((a, b) => venue(a) - venue(b));

@@ -33,6 +33,17 @@ test('custom open interest: the picked perpetuals whatever the chips and the fil
   assert.equal(oiMarketIds({ ...s, oiMarkets: 'chart' as const }, flow), null);
 });
 
+test('All perpetuals counts the perpetuals whatever the Spot / Perp filter says (spot markets have no open interest); the chips still count', () => {
+  const ids = BTC.map(m => m.instrumentId!);
+  const flow = { ids, get: () => ({ empty: false }), track: () => undefined } as never;
+  const all = (extra: object) => oiMarketIds(state(BTC, { oiMarkets: 'all' as const, ...extra }), flow);
+  const both = all({});
+  assert.deepEqual(both, ['binance:BTCUSDT', 'bybit:BTCUSDT', 'deribit:BTC-PERPETUAL', 'okx:BTC-USDT-SWAP'], 'no spot, no MEXC (its open interest is not read)');
+  assert.deepEqual(all({ scope: 'spot' as const }), both, 'Spot: the same perpetuals, not none (the pane said it had no history)');
+  assert.deepEqual(all({ scope: 'perp' as const }), both);
+  assert.deepEqual(all({ scope: 'spot' as const, disabledVenues: ['okx'] }), ['binance:BTCUSDT', 'bybit:BTCUSDT', 'deribit:BTC-PERPETUAL'], 'a venue switched off stays out');
+});
+
 test('saved lists are checked: the right form only, each once, at most the limit; layouts and pages read them the same way', () => {
   assert.deepEqual(readPicks(['binance/perp', 'binance/perp', 'binance:BTCUSDT', 7, 'okx/spot', 'x/y'], false), ['binance/perp', 'okx/spot']);
   assert.deepEqual(readPicks(['binance/spot', 'mexc/perp', 'okx/perp'], true), ['okx/perp']);

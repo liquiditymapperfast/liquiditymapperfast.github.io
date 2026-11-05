@@ -1209,7 +1209,7 @@
  "No market is listed yet.": "尚无任何市场。",
  "Whose open interest the OI pane, the bar statistics, NL/NS and the Long/Short pane count.": "OI 面板、柱状统计、NL/NS 和多空比面板计入谁的持仓量。",
  "The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.": "下面勾选的永续会相加，无论交易所标签和现货/永续筛选如何。一个都不勾选则不计任何市场。",
- "All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.": "所有永续会把现货/永续筛选范围内每个已开启交易所中、可读取持仓量的交易所的永续相加。",
+ "All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.": "所有永续会把每个已开启交易所中、可读取持仓量的交易所的永续相加，不受现货/永续筛选影响：现货市场没有持仓量。",
  "The chart market alone, or a reference market standing in where it has no open interest (the pane says which).": "仅图表市场，或在其没有持仓量时代替它的参考市场（面板会说明是哪个）。",
  "Markets…": "市场…",
  "Whose open interest NL/NS counts: the OI pane's markets, chosen here or in the OI pane.": "NL/NS 计入谁的持仓量：OI 面板的市场，在此处或 OI 面板中选择。",

@@ -1246,7 +1246,7 @@
  "No market is listed yet.": "Henüz listelenmiş piyasa yok.",
  "Whose open interest the OI pane, the bar statistics, NL/NS and the Long/Short pane count.": "OI bölmesi, çubuk istatistikleri, NL/NS ve Long/Short bölmesinin saydığı açık pozisyon kimin.",
  "The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.": "Aşağıda işaretlenen perpetual'lar, borsa çipleri ve Spot / Perp filtresi ne derse desin eklenir. Hiçbiri işaretli değilse hiçbiri sayılmaz.",
- "All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.": "Tüm perpetual'lar, Spot / Perp filtresi içinde açık olan her borsanın, açık pozisyonu okunan borsalardaki perpetual'larını ekler.",
+ "All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.": "Tüm perpetual'lar, Spot / Perp filtresi ne derse desin, açık olan her borsanın, açık pozisyonu okunan borsalardaki perpetual'larını ekler: spot piyasalarda açık pozisyon yoktur.",
  "The chart market alone, or a reference market standing in where it has no open interest (the pane says which).": "Yalnızca grafik piyasası ya da açık pozisyonu olmadığı yerde onun yerine geçen bir referans piyasası (bölme hangisi olduğunu söyler).",
  "Markets…": "Piyasalar…",
  "Whose open interest NL/NS counts: the OI pane's markets, chosen here or in the OI pane.": "NL/NS'nin saydığı açık pozisyon kimin: OI bölmesinin piyasaları, burada ya da OI bölmesinde seçilir.",

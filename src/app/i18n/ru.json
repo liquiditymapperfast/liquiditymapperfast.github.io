@@ -1272,7 +1272,7 @@
  "No market is listed yet.": "Пока нет ни одного рынка.",
  "Whose open interest the OI pane, the bar statistics, NL/NS and the Long/Short pane count.": "Чей открытый интерес считают панель OI, статистика по свечам, NL/NS и панель Лонг/Шорт.",
  "The perpetuals ticked below are added together whatever the venue chips and the Spot / Perp filter say. With none ticked, none is counted.": "Отмеченные ниже перпетуалы складываются, что бы ни говорили чипы бирж и фильтр Спот / Перп. Если ничего не отмечено, ничего не считается.",
- "All perpetuals adds the perpetuals of every venue switched on, inside the Spot / Perp filter, on an exchange whose open interest is read.": "«Все перпетуалы» складывает перпетуалы каждой включённой биржи в пределах фильтра Спот / Перп на биржах, чей открытый интерес читается.",
+ "All perpetuals adds the perpetuals of every venue switched on, on an exchange whose open interest is read, whatever the Spot / Perp filter says: spot markets have no open interest.": "«Все перпетуалы» складывает перпетуалы каждой включённой биржи на биржах, чей открытый интерес читается, что бы ни говорил фильтр Спот / Перп: у спотовых рынков нет открытого интереса.",
  "The chart market alone, or a reference market standing in where it has no open interest (the pane says which).": "Только рынок графика или опорный рынок вместо него там, где у него нет открытого интереса (панель говорит какой).",
  "Markets…": "Рынки…",
  "Whose open interest NL/NS counts: the OI pane's markets, chosen here or in the OI pane.": "Чей открытый интерес считает NL/NS: рынки панели OI, выбранные здесь или в панели OI.",
