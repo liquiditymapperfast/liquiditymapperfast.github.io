@@ -498,8 +498,8 @@ export class HeatPane {
   #axisDrag: { view: Bounds; x: number; y: number } | null = null;
   /** A pinch: the view and the time and price under the fingers' midpoint when it began, and the pan's vertical distance before it. */
   #pinch: { view: Bounds; t: number; p: number; dy: number } | null = null;
-  /** A mouse drag on the price scale: the view when it began, where the pointer was, and the price it holds still. */
-  #scaleDrag: { y: number; view: Bounds; hold: number } | null = null;
+  /** A mouse drag on the price scale: the view when it began, where the pointer was, the price it holds still, and `moved` once it has zoomed. */
+  #scaleDrag: { y: number; view: Bounds; hold: number; moved: boolean } | null = null;
   #fling = 0;
   /**
    * The trade dust (tape/gl.ts): every market order since the page opened, on a canvas of its own between the heatmap and the overlay, so
@@ -713,7 +713,7 @@ export class HeatPane {
   /** No hand has moved or zoomed the view since it was last framed, and none holds it now: a late refill of the candles may frame it (main.ts). */
   get untouched(): boolean { return !this.#handled && !this.#settlePending && !this.#followHeld(); }
   #followHeld(): boolean {
-    return !!this.#drag?.panning || !!this.#zoomDrag?.moved || this.#scaleDrag !== null || this.#panKind !== null || this.#pinch !== null || this.#fling !== 0
+    return !!this.#drag?.panning || !!this.#zoomDrag?.moved || !!this.#scaleDrag?.moved || this.#panKind !== null || this.#pinch !== null || this.#fling !== 0
       || !!this.draw?.dragging || this.draw?.draft != null;
   }
 
@@ -3656,7 +3656,7 @@ export class HeatPane {
     const factor = limitFactor(Math.exp((y - z.y) * 0.006), v0.p1 - v0.p0, ref * PRICE_SPAN_SHARE.min, ref * PRICE_SPAN_SHARE.max);
     const anchor = v0.p0 + (1 - z.hold / ph) * (v0.p1 - v0.p0), span = (v0.p1 - v0.p0) * factor, p1 = anchor + z.hold / ph * span;
     this.view.set({ ...v0, p0: p1 - span, p1 });
-    this.#settlePending = true; this.#rasteredKey = ''; this.onView(); this.invalidate();
+    z.moved = true; this.#settlePending = true; this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   #bindInput(): void {
@@ -3708,7 +3708,7 @@ export class HeatPane {
       if (this.#onScale(x, y)) {
         // Dragging the price scale zooms it (up zooms in, down zooms out) about the current price, or the price under the pointer when that is off the map.
         const v = this.view, ph = this.plotH, mark = this.store.state.mark.price;
-        this.#scaleDrag = { y, view: v.clone(), hold: holdPixel({ axis: 'price', pointer: y, size: ph, alt: false, follow: false, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }) };
+        this.#scaleDrag = { y, view: v.clone(), hold: holdPixel({ axis: 'price', pointer: y, size: ph, alt: false, follow: false, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }), moved: false };
         el.setPointerCapture(e.pointerId); el.style.cursor = 'ns-resize'; return;
       }
       this.#drag = { x, y, shift: e.shiftKey, panning: false }; el.setPointerCapture(e.pointerId);
