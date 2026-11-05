@@ -70,3 +70,16 @@ test('the pane asks for the index first, then the days its view needs (with the 
   h.ensure(day + 3_000_000, now + 3_600_000, now + 70_000, () => {});
   assert.deepEqual(asked.slice(3).map(u => u.slice(-15)), [`${dayText(day)}.json`], 'today again after a minute; yesterday, read after it ended, never');
 });
+
+test('a long session lets go of the days farthest from the view, never one the view needs', async () => {
+  const day = Date.UTC(2026, 10, 5), asked: string[] = [];
+  const h = new LiqHistory(url => { asked.push(url); return Promise.resolve(url.endsWith('liquidation-history.json') ? { edges: EDGES, first: day - 300 * DAY_MS, last: day } : { rows: [] }); });
+  const settle = () => new Promise(r => setTimeout(r, 0));
+  const view = (from: number, to: number) => { h.ensure(from, to, day + 3_600_000, () => {}); };
+  view(day - 119 * DAY_MS, day); await settle(); await settle();
+  view(day - 119 * DAY_MS, day); await settle(); await settle();
+  view(day - 280 * DAY_MS, day - 161 * DAY_MS); await settle(); await settle();
+  const before = asked.length;
+  view(day - 280 * DAY_MS, day - 161 * DAY_MS); await settle(); await settle();
+  assert.equal(asked.length, before, 'the older window, once read, is not asked again on the next frame');
+});

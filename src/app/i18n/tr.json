@@ -97,6 +97,7 @@
  "The liquidation levels' history is loading…": "Likidasyon seviyelerinin geçmişi yükleniyor…",
  "No liquidation levels recorded yet.": "Henüz kaydedilmiş likidasyon seviyesi yok.",
  "No liquidation levels recorded for this stretch of time.": "Bu zaman aralığı için kaydedilmiş likidasyon seviyesi yok.",
+ "Liquidation levels reach ±{pct} % at most.": "Tasfiye seviyeleri en fazla ±{pct} % kadardır.",
  "positions as of {time}": "{time} itibarıyla pozisyonlar",
  "Longs · shorts that would be liquidated within each distance of the price, from HyperTracker's snapshot of Hyperliquid's BTC positions: where the money sits, not what will be liquidated.": "Fiyata her uzaklık içinde likide olacak long · short'lar, HyperTracker'ın Hyperliquid BTC pozisyonları görüntüsünden: paranın nerede durduğu, neyin likide olacağı değil.",
  "Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).": "Fiyata iç içe uzaklıklar içindeki toplam likidite, zaman içinde: en dar bant merkezde en güçlü, en geniş bant en açık. Ask yukarı (pembe), bid aşağı (yeşil).",

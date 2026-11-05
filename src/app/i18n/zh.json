@@ -97,6 +97,7 @@
  "The liquidation levels' history is loading…": "正在加载清算价位的历史…",
  "No liquidation levels recorded yet.": "还没有记录到清算价位。",
  "No liquidation levels recorded for this stretch of time.": "这段时间没有记录到清算价位。",
+ "Liquidation levels reach ±{pct} % at most.": "强平价位最多到 ±{pct} %。",
  "positions as of {time}": "{time} 时的仓位",
  "Longs · shorts that would be liquidated within each distance of the price, from HyperTracker's snapshot of Hyperliquid's BTC positions: where the money sits, not what will be liquidated.": "在到价格的每个距离内会被清算的多头 · 空头，来自 HyperTracker 对 Hyperliquid 上 BTC 仓位的快照：钱在哪里，而不是什么会被清算。",
  "Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).": "到价格的嵌套距离内的总流动性随时间的变化：最窄的通道在中心最浓，最宽的最淡。卖盘向上（粉色），买盘向下（绿色）。",

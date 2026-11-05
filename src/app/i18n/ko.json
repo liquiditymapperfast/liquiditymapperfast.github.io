@@ -97,6 +97,7 @@
  "The liquidation levels' history is loading…": "청산 레벨 기록을 불러오는 중…",
  "No liquidation levels recorded yet.": "아직 기록된 청산 레벨이 없습니다.",
  "No liquidation levels recorded for this stretch of time.": "이 기간에 기록된 청산 레벨이 없습니다.",
+ "Liquidation levels reach ±{pct} % at most.": "청산 레벨은 최대 ±{pct} %까지입니다.",
  "positions as of {time}": "{time} 기준 포지션",
  "Longs · shorts that would be liquidated within each distance of the price, from HyperTracker's snapshot of Hyperliquid's BTC positions: where the money sits, not what will be liquidated.": "가격으로부터 각 거리 안에서 청산될 롱 · 숏. HyperTracker의 Hyperliquid BTC 포지션 스냅샷에서: 돈이 어디에 있는지이지, 무엇이 청산될지가 아닙니다.",
  "Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).": "가격으로부터 겹쳐진 거리 안의 총유동성 추이: 가장 좁은 밴드가 중심에서 가장 진하고, 가장 넓은 밴드가 가장 옅습니다. 매도 호가는 위(분홍), 매수 호가는 아래(초록)입니다.",

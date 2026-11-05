@@ -209,7 +209,8 @@ export class Alerts {
    */
   #depthPane(now: number): void {
     const s = this.#s, rule = s.sounds.panels.depthPane;
-    if (!s.sounds.on || !rule.extreme || !this.columns) {
+    // The sound is the order book's: while the Depth pane shows liquidation levels it is quiet (the switch keeps its setting).
+    if (!s.sounds.on || !rule.extreme || !this.columns || s.depthSource === 'liq') {
       if (this.#depthKey) { this.#depth.reset(); this.#depthKey = ''; this.depthState = null; }
       return;
     }
@@ -234,7 +235,7 @@ export class Alerts {
       try {
         for (const m of minutes) {
           const signal = this.#depth.judge(m.t, rule);
-          if (!signal || this.clock() - (m.t + MINUTE) > DEPTH_FRESH_MS || replaying() || !this.#s.sounds.panels.depthPane.extreme) continue;
+          if (!signal || this.clock() - (m.t + MINUTE) > DEPTH_FRESH_MS || replaying() || !this.#s.sounds.panels.depthPane.extreme || this.#s.depthSource === 'liq') continue;
           const change = (v: number, usual: number): string => usual > 0 ? `${v >= usual ? '+' : '-'}${Math.round(Math.abs(v / usual - 1) * 100)}%` : '–';
           const values = { range: `${Math.round(rule.range * 1_000) / 10}%`, pct: String(rule.pct), hours: String(rule.hours), bids: change(signal.bid, signal.usualBid), asks: change(signal.ask, signal.usualAsk) };
           this.#fire(this.clock(), 'depthPane', 'depth-extreme', signal.side, signal.side === 'buy'

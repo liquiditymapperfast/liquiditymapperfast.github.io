@@ -194,6 +194,7 @@
  "The liquidation levels' history is loading…": "Історія рівнів ліквідації завантажується…",
  "No liquidation levels recorded yet.": "Рівні ліквідації ще не записано.",
  "No liquidation levels recorded for this stretch of time.": "Для цього відрізка часу рівні ліквідації не записано.",
+ "Liquidation levels reach ±{pct} % at most.": "Рівні ліквідацій сягають щонайбільше ±{pct} %.",
  "positions as of {time}": "позиції на {time}",
  "Longs · shorts that would be liquidated within each distance of the price, from HyperTracker's snapshot of Hyperliquid's BTC positions: where the money sits, not what will be liquidated.": "Лонги · шорти, які було б ліквідовано в кожній відстані від ціни, зі знімка HyperTracker позицій BTC на Hyperliquid: де лежать гроші, а не що буде ліквідовано.",
  "Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).": "Загальна ліквідність у вкладених відстанях від ціни в часі: найвужча смуга найяскравіша в центрі, найширша найсвітліша. Аски вгору (рожеві), біди вниз (зелені).",

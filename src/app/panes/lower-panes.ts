@@ -383,6 +383,10 @@ export class DepthPane extends TimePane {
       const apply = (): void => {
         const parsed = parseBands(input.value);
         if ('error' in parsed) { error.textContent = bandError(parsed.error); error.hidden = false; return; }
+        const reach = this.#history.index?.edges.at(-1) ?? 25;
+        if (this.store.state.depthSource === 'liq' && parsed.bands.some(r => r * 100 > reach * (1 + 1e-9))) {
+          error.textContent = t('Liquidation levels reach ±{pct} % at most.', { pct: reach }); error.hidden = false; return;
+        }
         error.hidden = true;
         this.#set({ preset: 'custom', custom: parsed.bands, focus: null });
         this.#panel?.close();
@@ -423,12 +427,17 @@ export class DepthPane extends TimePane {
    * at its time, from when it was fetched until the next, at most 90 minutes (past that the snapshots stopped and the column is empty), its
    * bands read from the snapshot's buckets. Never past now, or past the replay's moment.
    */
-  #liqSeries(pw: number, radii: readonly number[]): string | LiqSeries {
+  #liqSeries(pw: number, asked: readonly number[]): string | LiqSeries {
+    let radii = asked;
     const v = this.view, now = Date.now();
     this.#history.ensure(v.t0, v.t1, now, () => this.invalidate());
     const index = this.#history.index;
     if (!index) return t('The liquidation levels\' history is loading…');
     if (index.first === null) return t('No liquidation levels recorded yet.');
+    // The history's buckets end at its last edge (±25 %): a wider band would leave out what lies past it, so it is not drawn.
+    const reach = index.edges[index.edges.length - 1]! / 100, inReach = radii.filter(r => r <= reach * (1 + 1e-9));
+    if (!inReach.length) return t('Liquidation levels reach ±{pct} % at most.', { pct: reach * 100 });
+    radii = inReach;
     const w = depthColumns(pw), k = radii.length, t0 = v.t0, t1 = v.t1, until = replaying() ? pageNow() : now;
     const key = `${this.#history.version}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}`;
     if (this.#liq?.key === key) return this.#liq;
@@ -487,7 +496,8 @@ export class DepthPane extends TimePane {
     const bid = coins ? s.answer.bidCoin : s.answer.bid, ask = coins ? s.answer.askCoin : s.answer.ask;
     const top = settings.focus !== null && settings.focus < k ? settings.focus : k - 1, focused = top < k - 1 || settings.focus !== null;
     const at = (x: number, j: number): number => x * k + j;
-    const has = (x: number): boolean => x >= 0 && x < s.w && (bid[at(x, k - 1)]! > 0 || ask[at(x, k - 1)]! > 0);
+    // A column holds something where the book had depth, or (liquidation levels) where a snapshot is in force, money in its bands or not.
+    const has = (x: number): boolean => x >= 0 && x < s.w && (liqHeld ? liqHeld.rowAt[x]! >= 0 : bid[at(x, k - 1)]! > 0 || ask[at(x, k - 1)]! > 0);
     // Replay: only the columns up to its moment speak (the rest is covered).
     const cutW = replaying() ? Math.max(0, Math.min(s.w, Math.floor((pageNow() - s.t0) / (s.t1 - s.t0) * s.w))) : s.w;
     let max = 0, lastX = -1;

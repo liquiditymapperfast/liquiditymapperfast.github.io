@@ -116,8 +116,14 @@ export class LiqHistory {
         entry.rows = readDay(raw, edges); entry.at = now; this.version++; changed();
       }, () => { entry.failed = now; }).finally(() => { entry.busy = false; });
     }
-    // Days far from the view are let go, so a long session does not hold the whole history.
-    if (this.#days.size > MAX_DAYS + 4) for (const day of [...this.#days.keys()].sort((a, b) => Math.abs(a - t1) - Math.abs(b - t1)).slice(MAX_DAYS + 4)) this.#days.delete(day);
+    // Days outside the view are let go, the farthest first, so a long session does not hold the whole history; a day the view needs never is.
+    if (this.#days.size > MAX_DAYS + 4) {
+      const away = (day: number): number => day < firstDay ? firstDay - day : day - lastDay;
+      for (const day of [...this.#days.keys()].filter(d => d < firstDay || d > lastDay).sort((a, b) => away(b) - away(a))) {
+        if (this.#days.size <= MAX_DAYS + 4) break;
+        this.#days.delete(day);
+      }
+    }
   }
 
   /** The rows held that are in force over [t0, t1]: every row fetched in it, and the last one before it. Ordered by fetch time. */

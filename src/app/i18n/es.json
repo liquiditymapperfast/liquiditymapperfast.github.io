@@ -97,6 +97,7 @@
  "The liquidation levels' history is loading…": "Cargando el historial de los niveles de liquidación…",
  "No liquidation levels recorded yet.": "Aún no hay niveles de liquidación registrados.",
  "No liquidation levels recorded for this stretch of time.": "No hay niveles de liquidación registrados para este tramo de tiempo.",
+ "Liquidation levels reach ±{pct} % at most.": "Los niveles de liquidación llegan como mucho a ±{pct} %.",
  "positions as of {time}": "posiciones de las {time}",
  "Longs · shorts that would be liquidated within each distance of the price, from HyperTracker's snapshot of Hyperliquid's BTC positions: where the money sits, not what will be liquidated.": "Longs · shorts que se liquidarían dentro de cada distancia del precio, de la instantánea de HyperTracker de las posiciones de BTC en Hyperliquid: dónde está el dinero, no qué se liquidará.",
  "Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).": "Liquidez total dentro de distancias anidadas del precio, a lo largo del tiempo: la banda más estrecha, la más intensa en el centro; la más amplia, la más clara. Los asks apuntan arriba (rosa), los bids abajo (verde).",

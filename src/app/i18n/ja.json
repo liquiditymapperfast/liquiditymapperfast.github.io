@@ -97,6 +97,7 @@
  "The liquidation levels' history is loading…": "清算レベルの履歴を読み込み中…",
  "No liquidation levels recorded yet.": "まだ清算レベルの記録はありません。",
  "No liquidation levels recorded for this stretch of time.": "この期間の清算レベルの記録はありません。",
+ "Liquidation levels reach ±{pct} % at most.": "清算レベルは最大で ±{pct} % までです。",
  "positions as of {time}": "{time} 時点のポジション",
  "Longs · shorts that would be liquidated within each distance of the price, from HyperTracker's snapshot of Hyperliquid's BTC positions: where the money sits, not what will be liquidated.": "価格からの各距離内で清算されるロング · ショート。HyperTracker による Hyperliquid の BTC ポジションのスナップショットから。お金がどこにあるかであり、何が清算されるかではありません。",
  "Total liquidity within nested distances of the price, over time: the narrowest band strongest at the centre, the widest lightest. Asks point up (pink), bids point down (green).": "価格からの入れ子の距離内の総流動性の推移：最も狭いバンドが中心で最も濃く、最も広いバンドが最も淡くなります。売り板は上（ピンク）、買い板は下（緑）です。",
