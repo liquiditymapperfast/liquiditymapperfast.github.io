@@ -179,7 +179,7 @@ export abstract class TimePane {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.#canvasW, this.h);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, this.dpr * left, 0);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.#grid(); this.draw(); this.#replayMask(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.scaleAt = null; this.#grid(); this.draw(); this.#replayMask(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -199,13 +199,32 @@ export abstract class TimePane {
     for (const x of [x0, x1]) if (x > 0 && x < pw) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h); }
     ctx.stroke(); ctx.restore();
   }
+  /**
+   * The time under the pointer as a vertical line in every pane, and in the pane the pointer is over (or a finger pinned) its height as a
+   * horizontal line too, as on the map, with the value at that height in a tag on the scale where the pane says it (`scaleAt`).
+   */
   #crosshair(): void {
     const hv = this.store.state.hover; if (!hv) return;
     const { ctx, palette: p } = this;
     const x = this.view.xOf(this.cursorT ?? hv.t, this.plotW);
     if (x < 0 || x > this.plotW) return;
-    ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, this.h);
+    const here = this.crossY && hv.source === this.#source && hv.y >= 0 && hv.y <= this.h;
+    if (here) { const y = Math.round(hv.y) + 0.5; ctx.moveTo(0, y); ctx.lineTo(this.plotW, y); }
+    ctx.stroke(); ctx.setLineDash([]);
+    const text = here ? this.scaleAt?.(hv.y) ?? null : null;
+    if (!text) return;
+    ctx.save();
+    ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const tagH = 16, top = Math.round(Math.max(0, Math.min(this.h - tagH, hv.y - tagH / 2))), left = this.w - AXIS_W;
+    ctx.fillStyle = p.text; ctx.fillRect(left, top, AXIS_W, tagH);
+    ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, left + AXIS_W / 2, top + tagH / 2 + 0.5);
+    ctx.restore();
   }
+  /** The value at a height of the pane, for the crosshair's tag on the scale: set by the pane as it draws (null: no tag, the line alone). */
+  protected scaleAt: ((y: number) => string | null) | null = null;
+  /** Whether the pointer's height means anything in this pane (a table's rows take no horizontal line). */
+  protected crossY = true;
   /** Where the readout stands when it is not under the pointer (past the newest point it shows the newest): the cursor is drawn there. Set by `draw`. */
   protected cursorT: number | null = null;
   protected abstract draw(): void;
@@ -500,6 +519,7 @@ export class DepthPane extends TimePane {
     }
     const mid = Math.round(ph / 2), half = ph / 2 - 6, detail = settings.scale === 'detail';
     const yOf = (value: number): number => value > 0 ? (detail ? Math.sqrt(value / max) : value / max) * half : 0;
+    this.scaleAt = y => { const f = Math.abs(y - mid) / half; return amountText((detail ? f * f : f) * max, coins); };
     const xs = new Float64Array(s.w + 1);
     for (let x = 0; x <= s.w; x++) xs[x] = v.xOf(colT(x), pw);
     // The rings, the widest first: its colour the lightest, the band at the centre the side's own colour; each is opaque, so no layer shows through another.
@@ -749,6 +769,8 @@ export class OiPane extends TimePane {
     for (const j of shownEarly) { const b = early[j]!; lo = Math.min(lo, b[3], b[4]); hi = Math.max(hi, b[2], b[4]); }
     const pad = Math.max((hi - lo) * 0.18, hi * 0.0004), min = lo - pad, max = hi + pad;
     const y = (value: number) => 6 + (1 - (value - min) / (max - min)) * (lineBottom - 6);
+    this.scaleAt = at => at <= lineBottom ? amount(min + (1 - (at - 6) / (lineBottom - 6)) * (max - min))
+      : split && at >= bandTop && at <= bandBottom && maxDelta > 0 ? `${at <= mid ? '+' : '−'}${amount(Math.abs(mid - at) / half * maxDelta)}` : null;
     const xc = (i: number) => v.xOf(oi[i]![0] + tf / 2, pw), xe = (j: number) => v.xOf(early[j]![0] + ep / 2, pw);
     const first = visible.length ? Math.max(seamI, visible[0]! - 1) : -1, last = visible.length ? visible[visible.length - 1]! : -1;
     const lastBar = oi[oi.length - 1]!, newestCandle = state.candles[state.candles.length - 1];
@@ -965,6 +987,7 @@ export class LtPane extends TimePane {
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     if (lt.view === 'lines') {
       const hi = Math.max(max, 1) * 1.08, y = (value: number) => ph - 6 - value / hi * (ph - 12);
+      this.scaleAt = at => usd(Math.max(0, (ph - 6 - at) / (ph - 12) * hi));
       // On a phone the lines have round gridlines to read their height by and a tag at their ends with the newest figure, as the map's price has;
       // the desktop keeps its two numbers (Karl, 2026-10-26: the tracker is the pane that is looked at).
       const phone = isPhone(), ticks = phone ? niceTicks(0, hi, 3).values.filter(value => value > 0) : [];
@@ -1021,6 +1044,7 @@ export class LtPane extends TimePane {
         largest = Math.max(largest, Math.abs(s.bid[i]! - s.ask[i]!) / total);
       }
       const axis = imbalanceAxis(largest);
+      this.scaleAt = at => { const share = (mid - at) / half * axis; return `${share >= 0 ? '+' : '−'}${(Math.abs(share) * 100).toFixed(1)}%`; };
       for (let i = 0; i < n; i++) {
         const t = s.times[i]!, total = s.bid[i]! + s.ask[i]!; if (t + step < v.t0 || t > v.t1 || total <= 0) continue;
         const imb = (s.bid[i]! - s.ask[i]!) / total, x0 = xOf(t - step / 2), x1 = xOf(t + step / 2), height = Math.abs(imb) / axis * half;
@@ -1045,6 +1069,8 @@ export class LtPane extends TimePane {
 
 /** Strip under the chart with the enabled per-candle statistics, aligned to the candle slots (footprint on); the Stats button chooses, orders and configures them. */
 export class BarStatsPane extends TimePane {
+  /** A table: the pointer's height is a row, not a value, so it takes no horizontal line. */
+  protected override crossY = false;
   /** The strip is too short for a popup drawn on it, so the cell's popup is a page element. */
   #card = new HoverCard();
   /** The cards of the pinned candles, page elements of their own beside the hover card: one each, kept for the next pin. */
