@@ -2,7 +2,7 @@ import { askedSpan } from '../hub.ts';
 import type { AppState } from '../store.ts';
 import type { InfoLine } from '../infobox.ts';
 import type { FlowLoader } from '../delta/flows.ts';
-import { flowIds, mapVenues } from '../cvd/ids.ts';
+import { flowIds, mapVenues, oiFlowIds } from '../cvd/ids.ts';
 import { tradedNet, tradedNetLine } from '../traded.ts';
 import { measureDef, timeWords, type ProfileMetric } from './registry.ts';
 import { placedOn } from '../traded/profiles.ts';
@@ -108,10 +108,13 @@ export class TopProfile {
     return this.#worked = this.#worker.work({ state, hub, win, from, to, whole: askedSpan(win.from, win.to), since, span, pw, now, second: Math.floor(to / 1000), ids, live, absorption, loaded }, this.#worked);
   }
 
-  /** The columns' markets (`flowIds`), worked out again only when what they depend on changes (as the footprint's markets are). */
+  /**
+   * The columns' markets (`flowIds`; open interest's whatever the Spot / Perp filter says, `oiFlowIds`), worked out again only when what
+   * they depend on changes (as the footprint's markets are).
+   */
   #flowIds(state: AppState, hub: FlowLoader): string[] {
     const onMap = mapVenues(state), key = [state.markets, state.disabledVenues, state.scope, onMap ? [...onMap].sort().join(',') : null, hub.flow.ids.length, hub.flow.loads];
-    if (!this.#ids || this.#ids.key.some((k, i) => k !== key[i])) this.#ids = { key, ids: flowIds(state, hub.flow.ids) };
+    if (!this.#ids || this.#ids.key.some((k, i) => k !== key[i])) this.#ids = { key, ids: (this.metric === 'oi' ? oiFlowIds : flowIds)(state, hub.flow.ids) };
     return this.#ids.ids;
   }
 }

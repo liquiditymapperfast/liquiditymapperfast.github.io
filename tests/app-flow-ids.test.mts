@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOOK_HOLD_MS, flowIds, mapVenues, nextBookGone, pinChoices } from '../src/app/cvd/ids.ts';
+import { BOOK_HOLD_MS, flowIds, mapVenues, nextBookGone, oiFlowIds, pinChoices } from '../src/app/cvd/ids.ts';
 import type { LevelsFrame } from '../src/app/wire.ts';
 
 const book = (id: string) => ({ id, venue: id.split(':')[0]!, timestamp: 0, coarse: false, bids: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() }, asks: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() } });
@@ -13,6 +13,13 @@ test('the flow views count venues with a book on the map, their chips left on, i
   assert.deepEqual(flowIds({ ...state, disabledVenues: ['a'] }, []).sort(), ['aspot:BTC'], 'a chip switched off');
   assert.deepEqual(flowIds({ ...state, scope: 'spot' }, []), ['aspot:BTC'], 'the filter');
   assert.deepEqual(flowIds({ ...state, levels: null }, ['c:BTC']).sort(), ['a:BTC', 'aspot:BTC', 'b:BTC', 'c:BTC'], 'before the first frame nothing is excluded');
+});
+
+test('open interest counts the same markets whatever the Spot / Perp filter says (only perpetuals have it); the chips and the map still count', () => {
+  const state = { markets, disabledVenues: [] as string[], scope: 'spot' as const, levels: levels('a:BTC', 'aspot:BTC') };
+  assert.deepEqual(oiFlowIds(state, ['b:BTC']).sort(), ['a:BTC', 'aspot:BTC'], 'Spot: the perpetual a as under Both (b has no book)');
+  assert.deepEqual(oiFlowIds({ ...state, scope: 'perp' }, []).sort(), ['a:BTC', 'aspot:BTC']);
+  assert.deepEqual(oiFlowIds({ ...state, disabledVenues: ['a'] }, []), ['aspot:BTC'], 'a chip switched off');
 });
 
 test('a venue whose book leaves the map for a reconnect keeps counting for BOOK_HOLD_MS, then drops; back on the map it is no longer held', () => {

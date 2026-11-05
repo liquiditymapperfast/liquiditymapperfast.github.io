@@ -1,6 +1,6 @@
 import type { AppState } from './store.ts';
 import type { FlowBook } from './flow-book.ts';
-import { flowIds, type MapState } from './cvd/ids.ts';
+import { oiFlowIds, type MapState } from './cvd/ids.ts';
 import { aggregateIds } from './cvd/model.ts';
 import { buildFamilies, familyKey, venueOfInstrument } from './cvd/families.ts';
 import { kindOf } from './scope.ts';
@@ -76,12 +76,10 @@ export function resolvePicks(state: Pick<AppState, 'markets'>, flow: FlowBook | 
 
 /**
  * The perpetuals the ALL VENUES lines count on an exchange whose open interest is read: the OI pane's markets with venues added together.
- * Whatever the Spot / Perp filter says (the chips and the books on the map still count): spot markets have no open interest, so under Spot
- * these are the perpetuals Both counts. Switching open interest on asks for it, and a Spot filter left on for the heat map left the pane
- * saying it had no history (Karl, 2026-11-05).
+ * Whatever the Spot / Perp filter says (`oiFlowIds`): under Spot these are the perpetuals Both counts, not none.
  */
 export function oiVenueIds(state: Pick<AppState, 'markets' | 'disabledVenues' | 'scope'> & MapState, flow: FlowBook): string[] {
-  return aggregateIds(flow, flowIds({ ...state, scope: 'all' }, flow.ids), id => kindOf(state.markets, id)).filter(id => kindOf(state.markets, id) === 'perp' && OI_SAMPLE_VENUES.includes(familyKey(venueOfInstrument(id)))).sort();
+  return aggregateIds(flow, oiFlowIds(state, flow.ids), id => kindOf(state.markets, id)).filter(id => kindOf(state.markets, id) === 'perp' && OI_SAMPLE_VENUES.includes(familyKey(venueOfInstrument(id)))).sort();
 }
 
 /**

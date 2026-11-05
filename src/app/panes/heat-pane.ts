@@ -32,7 +32,7 @@ import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, t
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
 import { lineMetric, onPriceAxis, placedOn } from '../traded/profiles.ts';
 import { MAX_BANDS, arrangeProfiles, arrangeSides, columnHit, type Arranged, type ProfileRoom } from '../traded/arrange.ts';
-import { flowIds, flowLoadIds, mapVenues } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds, mapVenues, oiFlowIds } from '../cvd/ids.ts';
 import { aggregateIds } from '../cvd/model.ts';
 import { resolvePicks } from '../market-choice.ts';
 import { iconsOf, markLines, markSize, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
@@ -2035,8 +2035,9 @@ export class HeatPane {
     const v = this.view;
     if (!(v.t1 > v.t0) || !(v.p1 > v.p0)) return;
     const { from, to } = this.#tradedWindow();
-    // What is on the chart keeps changing only while it follows the live edge.
-    const live = state.followLive && !replaying(), ids = flowIds(state, this.hub.flow.ids), end = to;
+    // What is on the chart keeps changing only while it follows the live edge. Open interest counts the perpetuals whatever the Spot / Perp
+    // filter says (`oiFlowIds`), as the OI pane does.
+    const live = state.followLive && !replaying(), ids = (metric === 'oi' ? oiFlowIds : flowIds)(state, this.hub.flow.ids), end = to;
     const step = requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), asked = { tag: '', settled: false };
     this.hub.ensureProfile(metric, ids, from, end, step, live, asked, measureDef(metric).judgedByMarks ? this.#absorptionContext(state).thresholds : undefined);
     if (metric === 'volume' && this.#loadedServes(state)) this.#ensureLoadedColumn(state);

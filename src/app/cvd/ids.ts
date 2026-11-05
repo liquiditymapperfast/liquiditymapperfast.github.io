@@ -48,6 +48,14 @@ export function flowIds(state: Pick<AppState, 'markets' | 'disabledVenues' | 'sc
 }
 
 /**
+ * The same for open interest, whatever the Spot / Perp filter says: only perpetuals have it, so under Spot these are the markets Both
+ * counts (the chips and the books on the map still count). Switching open interest on asks for it, and a Spot filter left on for the heat
+ * map emptied the OI pane and its profiles (Karl, 2026-11-05).
+ */
+export const oiFlowIds = (state: Pick<AppState, 'markets' | 'disabledVenues' | 'scope'> & MapState, withFlow: readonly string[]): string[] =>
+  flowIds({ ...state, scope: 'all' }, withFlow);
+
+/**
  * Every instrument whose flow the page asks the server for: all the markets it knows, not only the ones the filter and the chips let
  * through. What is on screen is chosen from this later; asking for all of it is what lets the column say which exchanges it is leaving
  * out (their flow is there to be counted) and lets a click on "Show both" draw them with their history at once.

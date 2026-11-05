@@ -174,6 +174,8 @@ test('delta against the candle marks buying into a fall and selling into a rise,
 
 test('open interest against delta: the quadrant of the two signs', () => {
   assert.deepEqual(compute('oiQuad'), [null, null, 3], 'the last bar bought while open interest fell: −▲');
+  assert.deepEqual(statDef('oiQuad')!.compute({ ...input(), perps: true }), [null, null, 3]);
+  assert.deepEqual(statDef('oiQuad')!.compute({ ...input(), perps: false }), [null, null, null], 'spot executions alone (the Spot filter): blank, never read against the perpetuals\' open interest');
   assert.equal(statDef('oiQuad')!.format(3), '−▲');
   assert.equal(statDef('oiQuad')!.tone!(3), 'buy');
   assert.equal(statDef('oiQuad')!.tone!(2), 'sell');

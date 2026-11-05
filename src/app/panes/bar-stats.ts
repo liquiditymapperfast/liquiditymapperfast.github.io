@@ -53,6 +53,8 @@ export interface StatInput {
   oiChange?: ReadonlyMap<number, number>;
   /** The same in USD (oi-change.ts `oiUsdChangeByTime`: an inverse market's in its own USD); from the change times the close when absent. */
   oiUsd?: ReadonlyMap<number, number>;
+  /** Whether the executions counted include a perpetual's (false: spot markets alone, which have no open interest); unknown when absent. */
+  perps?: boolean;
   options: StatOptions;
   /** The size lines the bars were loaded with (the coin's USD, see `FootprintData.cuts`): a bar's `over` holds their sums. */
   cuts?: readonly number[];
@@ -432,7 +434,9 @@ export const BAR_STATS: readonly StatDef[] = [
   { id: 'oiQuad', label: t('oi × delta'), group: 'market', source: 'executions', scale: 'category',
     title: t('Open interest against delta: + OI rose, − OI fell; ▲ net market buying, ▼ net market selling. +▲ is often read as buyers opening positions and −▲ as sellers closing theirs (shorts covering): a reading, not proof. The OI is the OI pane\'s markets.'),
     format: v => QUADRANTS[v] ?? '', tone: v => markTone(v === 1 || v === 3 ? true : v === 2 || v === 4 ? false : null),
-    compute: input => { const delta = input.oiChange ?? oiDeltaByTime(input.oi.values()); return perBar(input, (bar, i) => { const change = delta.get(slotTime(input, i)), d = bar.buyUsd - bar.sellUsd; if (change === undefined) return null; return change === 0 || d === 0 ? 0 : change > 0 ? (d > 0 ? 1 : 2) : (d > 0 ? 3 : 4); }); },
+    // Executions of spot markets alone (the Spot filter, spot picks) say nothing of who opened positions on the perpetuals whose open
+    // interest moved: blank, never their buying read against the perpetuals' change.
+    compute: input => { if (input.perps === false) return input.bars.map(() => null); const delta = input.oiChange ?? oiDeltaByTime(input.oi.values()); return perBar(input, (bar, i) => { const change = delta.get(slotTime(input, i)), d = bar.buyUsd - bar.sellUsd; if (change === undefined) return null; return change === 0 || d === 0 ? 0 : change > 0 ? (d > 0 ? 1 : 2) : (d > 0 ? 3 : 4); }); },
     view: markView(() => statDef('oiQuad')!) },
   { id: 'liq', label: t('liq'), group: 'market', source: 'market', scale: 'sequential', format: volText,
     title: t('Liquidations reported in the candle on the markets counted (USD): shorts liquidated and longs liquidated together. Only the venues that publish them count, so it is what was reported, not all there was.'),

@@ -6,7 +6,7 @@ import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar, type CandleRo
 import { chainedOi, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, type OiPart } from '../oi-change.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { venueLabel } from '../venues.ts';
-import { activeIds, emptyScopeMessage, marketIds } from '../scope.ts';
+import { activeIds, emptyScopeMessage, kindOf, marketIds } from '../scope.ts';
 import { ASKS, BIDS, DepthBars, fitsBars, neededBars, pixelFlags, sideFlags } from '../depth-bars.ts';
 import type { View } from '../view.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
@@ -994,12 +994,14 @@ export class BarStatsPane extends TimePane {
     const restart = daily ? resetKeys(times, 'day', zone) : undefined;
     // Worked out again only when what it is worked out from changes: a pointer move redraws from what is held. The clock counts by the minute
     // (the coverage of the candle under way).
-    const key = [data.version, data.step, state.candles, state.oi, parts, state.oiPrice, state.barStats, options, data.cuts, taker, liquidations, zone, times[0], times[times.length - 1], times.length, tfMs, Math.floor(now / 60_000)];
+    // Whether a perpetual's executions are counted (a market of unknown kind may be one): oi × delta reads them against open interest.
+    const perps = markets.some(id => kindOf(state.markets, id) !== 'spot');
+    const key = [data.version, data.step, state.candles, state.oi, parts, state.oiPrice, state.barStats, options, data.cuts, taker, liquidations, zone, times[0], times[times.length - 1], times.length, tfMs, Math.floor(now / 60_000), perps];
     let table = this.#table;
     if (!table || table.key.length !== key.length || table.key.some((k, i) => k !== key[i])) {
       const candles = new Map(state.candles.map(c => [c[0], c] as const));
       const input: StatInput = { bars: times.map(start => data.bars.get(start) ?? null), times, tfMs, now, ...(taker ? { taker } : {}), ...(liquidations ? { liquidations } : {}), ...(restart ? { restart } : {}),
-        step: data.step, options, cuts: data.cuts, candles, oi: new Map(state.oi.map(b => [b[0], b] as const)), oiChange: oiChangeByTime(state.oi, parts, tfMs), oiUsd: this.#oiUsd(state, parts, tfMs, candles) };
+        step: data.step, options, cuts: data.cuts, candles, oi: new Map(state.oi.map(b => [b[0], b] as const)), oiChange: oiChangeByTime(state.oi, parts, tfMs), oiUsd: this.#oiUsd(state, parts, tfMs, candles), perps };
       table = this.#table = { key, times, defs, values: defs.map(def => def.compute(input)), input, view: null };
     }
     const { input, values: rowsValues } = table, all = input.bars;
