@@ -669,7 +669,7 @@ export class HeatPane {
     if (since > 0 && now - since < span * 0.7) span = Math.max(75 * 60_000, (now - since) * 1.35);
     this.#liveMargin = span * 0.08;
     this.view.set({ t0: now + this.#liveMargin - span, t1: now + this.#liveMargin, p0: lo - pad, p1: hi + pad });
-    this.#priceHeld = false; this.#panDy = 0; this.store.set({ followLive: true });
+    this.#priceHeld = false; this.#panDy = 0; this.#settlePending = false; this.#followPaused = false; this.store.set({ followLive: true });
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
@@ -684,7 +684,7 @@ export class HeatPane {
     const span = v.t1 - v.t0, pSpan = v.p1 - v.p0, now = pageNow(), mark = this.#displayState().mark.price, mid = mark > 0 ? mark : (v.p0 + v.p1) / 2;
     this.#liveMargin = span * 0.08;
     v.set({ t0: now + this.#liveMargin - span, t1: now + this.#liveMargin, p0: mid - pSpan / 2, p1: mid + pSpan / 2 });
-    this.#priceHeld = false; this.#panDy = 0; this.store.set({ followLive: true });
+    this.#priceHeld = false; this.#panDy = 0; this.#settlePending = false; this.#followPaused = false; this.store.set({ followLive: true });
     this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
@@ -711,9 +711,9 @@ export class HeatPane {
     else this.#settleFollow();
   }
   /** No hand has moved or zoomed the view since it was last framed, and none holds it now: a late refill of the candles may frame it (main.ts). */
-  get untouched(): boolean { return !this.#handled && !this.#followHeld(); }
+  get untouched(): boolean { return !this.#handled && !this.#settlePending && !this.#followHeld(); }
   #followHeld(): boolean {
-    return !!this.#drag?.panning || !!this.#zoomDrag?.moved || this.#panKind !== null || this.#pinch !== null || this.#fling !== 0
+    return !!this.#drag?.panning || !!this.#zoomDrag?.moved || this.#scaleDrag !== null || this.#panKind !== null || this.#pinch !== null || this.#fling !== 0
       || !!this.draw?.dragging || this.draw?.draft != null;
   }
 
@@ -820,7 +820,7 @@ export class HeatPane {
     for (const c of this.store.state.candles) if (c[0] + 1 > t - span && c[0] + tf <= t) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
     const pad = (hi - lo) * 0.18;
     v.set({ t0: t + margin - span, t1: t + margin, p0: hi > lo ? lo - pad : v.p0, p1: hi > lo ? hi + pad : v.p1 });
-    this.#liveMargin = margin; this.#priceHeld = false; this.#panDy = 0; this.#handled = false; this.store.set({ followLive: true }); this.#rasteredKey = ''; this.#atCandles = null; this.onView(); this.invalidate();
+    this.#liveMargin = margin; this.#priceHeld = false; this.#panDy = 0; this.#settlePending = false; this.#followPaused = false; this.#handled = false; this.store.set({ followLive: true }); this.#rasteredKey = ''; this.#atCandles = null; this.onView(); this.invalidate();
   }
 
   goTo(t: number): void {
@@ -3525,7 +3525,7 @@ export class HeatPane {
       pinchStart: info => this.#pinchBegin(info),
       pinch: info => this.#pinchTo(info),
       pinchEnd: () => { this.#pinch = null; this.invalidate(); },
-      cancel: () => { if (this.#touchDraw) { this.#touchDraw = false; this.draw?.cancelPointer(); } this.#panKind = null; this.#axisDrag = null; this.#pinch = null; if (this.#touchSelect) { this.#touchSelect = null; this.range?.cancel(); } },
+      cancel: () => { if (this.#touchDraw) { this.#touchDraw = false; this.draw?.cancelPointer(); } this.#panKind = null; this.#axisDrag = null; this.#pinch = null; if (this.#touchSelect) { this.#touchSelect = null; this.range?.cancel(); } this.invalidate(); },
     };
   }
 
@@ -3656,7 +3656,7 @@ export class HeatPane {
     const factor = limitFactor(Math.exp((y - z.y) * 0.006), v0.p1 - v0.p0, ref * PRICE_SPAN_SHARE.min, ref * PRICE_SPAN_SHARE.max);
     const anchor = v0.p0 + (1 - z.hold / ph) * (v0.p1 - v0.p0), span = (v0.p1 - v0.p0) * factor, p1 = anchor + z.hold / ph * span;
     this.view.set({ ...v0, p0: p1 - span, p1 });
-    this.#rasteredKey = ''; this.onView(); this.invalidate();
+    this.#settlePending = true; this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 
   #bindInput(): void {
@@ -3781,7 +3781,7 @@ export class HeatPane {
       const moved = !!this.#drag?.panning || !!this.#zoomDrag?.moved;
       this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; el.style.cursor = this.#onScale(local(e).x, local(e).y) ? 'ns-resize' : ''; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
       // Let go of the map: the next frame decides whether it follows on (`#settleFollow`).
-      if (moved) this.invalidate();
+      if (moved || this.#settlePending) this.invalidate();
     });
     el.addEventListener('pointercancel', e => {
       if (e.pointerType === 'touch') return;
