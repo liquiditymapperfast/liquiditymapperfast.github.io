@@ -84,3 +84,24 @@ test('a series shown afresh while the read of its open interest is still out: th
   answer(); await turn();
   assert.deepEqual(shown(), { parts: MARKETS, last: 300, reading: false });
 });
+
+test('the page\'s first read under Chosen markets, still out when the first candles land, is the answer: not asked again, shown when it lands', async () => {
+  const store = new Store({ ...initialState(), marketId: MARKETS[0]!, timeframe: '1m', oiMarkets: 'custom' }), source = new FakeSource();
+  source.autoCandles = false;
+  const hub = new Hub(store, source as unknown as DataSource);
+  (hub.worker as unknown as FakeWorker).onmessage!({ data: { type: 'ready' } });
+  await hub.start();
+  const pick = (id: string): string => pickOptions(store.state, null, [], true).find(option => option.id === id)!.pick;
+  store.set({ customMarkets: { ...store.state.customMarkets, oi: MARKETS.map(pick) } });
+  const shown = () => ({ parts: store.state.oiParts.map(p => p.id), last: store.state.oi.at(-1)?.[4], reading: store.state.oiReading });
+  const series = hub.loadSeries(true); await turn();
+  // The markets landed (main.ts asks for open interest under Chosen markets then): nothing held, so the pane says it is reading.
+  const first = hub.loadOi(); await turn();
+  const out = source.asked.splice(0);
+  assert.deepEqual(shown(), { parts: [], last: undefined, reading: true });
+  for (const q of source.candleAsked.splice(0)) q.resolve(candlesFor(TF[q.tf]!));
+  await series; await turn();
+  assert.equal(source.asked.length, 0, 'the load closing the candles joins the read out instead of queueing behind it');
+  for (const q of out) q.resolve(history(level(q.id), TF[q.tf]!)); await first; await turn();
+  assert.deepEqual(shown(), { parts: MARKETS, last: 300, reading: false }, 'its answer shown');
+});
