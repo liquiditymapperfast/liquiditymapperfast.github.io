@@ -245,9 +245,10 @@ test('the file is asked for when the next snapshot can be there: a few asks a sn
     return doc(SAMPLE, { snapshot: { asOf: created[i]! - 35 * MIN, createdAt: created[i]!, fetchedAt: fetched[i]! } });
   };
   // `skew`: the page's clock minus the true time.
-  const simulate = async (skew: number): Promise<{ asks: number; lag: number[]; now: number }> => {
+  // `step`: the page's clock set back by `by` at `at` (true time), mid-session.
+  const simulate = async (skew: number, step?: { at: number; by: number }): Promise<{ asks: number; lag: number[]; now: number }> => {
     let now = fetched[0]! + MIN, asks = 0;
-    const src = new LiqLevelsSource(async url => { if (url.includes('hyperliquid')) return []; asks++; return latest(now); }, () => now + skew, () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');
+    const src = new LiqLevelsSource(async url => { if (url.includes('hyperliquid')) return []; asks++; return latest(now); }, () => now + skew - (step && now >= step.at ? step.by : 0), () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');
     const lag: number[] = [];
     let held = -1;
     for (; now < fetched.at(-1)! + 3 * MIN; now += 10_000) {
@@ -264,7 +265,7 @@ test('the file is asked for when the next snapshot can be there: a few asks a sn
   assert.ok(right.lag.slice(1).every(s => s <= 90_000), `each drawn within 90 s of the edge having it (${right.lag.map(s => Math.round(s / 1000)).join(' s, ')} s)`);
   // A page clock ten minutes behind or ahead: only the first snapshot after the page opened is placed by its clock; from the first one seen
   // appear, each is drawn as promptly as with a right clock, and none is missed.
-  for (const skew of [-10 * MIN, 10 * MIN, -40 * MIN, -60 * MIN, -180 * MIN, 30 * MIN]) {
+  for (const skew of [-10 * MIN, 10 * MIN, -36 * MIN, -40 * MIN, -60 * MIN, -180 * MIN, 30 * MIN]) {
     const off = await simulate(skew);
     assert.equal(off.lag.length, created.length, `every snapshot drawn, none skipped (clock ${skew / MIN} min)`);
     assert.ok(off.lag[1]! <= 10 * MIN + 90_000, `the first: late by ten minutes at most (clock ${skew / MIN} min: ${Math.round(off.lag[1]! / 1000)} s)`);
@@ -301,6 +302,12 @@ test('the file is asked for when the next snapshot can be there: a few asks a sn
   staleFor = -1;
   assert.equal(stale.lag.length, created.length, 'every snapshot drawn after a stale edge');
   assert.ok(stale.lag.slice(8).every(s => s <= 90_000), `on time again within a few snapshots (${stale.lag.map(s => Math.round(s / 1000)).join(' s, ')} s)`);
+  // The page's clock set back 33 minutes mid-session (a plan made by the old clock would come half an hour late): none lost, on time again.
+  for (const at of [fetched[4]! + 10 * MIN, fetched[7]! - 5 * MIN]) {
+    const set = await simulate(0, { at, by: 33 * MIN });
+    assert.equal(set.lag.length, created.length, `every snapshot drawn after the clock is set back`);
+    assert.ok(set.lag.slice(1).every(s => s <= 5 * MIN), `none more than five minutes late (${set.lag.map(s => Math.round(s / 1000)).join(' s, ')} s)`);
+  }
   // The page's clock set back two hours after a plan was made: asked at once, then learned again, never a storm of asks (each ensure an ask).
   let back = 0, now2 = NOW;
   const stepped = new LiqLevelsSource(async url => { if (!url.includes('hyperliquid')) back++; return url.includes('hyperliquid') ? [] : doc(SAMPLE); }, () => now2, () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');

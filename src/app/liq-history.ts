@@ -84,6 +84,8 @@ export function bandIndex(edges: readonly number[], radius: number): number {
 export class LiqHistory {
   #index: LiqIndex | null = null;
   #indexAt = 0; #indexBusy = false; #indexFailed = 0;
+  /** The page's clock when last read, to see it set back. */
+  #lastNow = -Infinity;
   #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; created: number; lead: number; due: number }>();
   /** The page's clock minus HyperTracker's, once a snapshot was seen appear (`placeSnapshot`). */
   #offset: number | null = null;
@@ -95,6 +97,13 @@ export class LiqHistory {
   /** Ask for what [t0, t1] needs that is not held (or is due again); `changed` is called when an answer lands. Times are kept as of `now`, when they were asked. */
   ensure(t0: number, t1: number, now: number, changed: () => void): void {
     const urls = historyUrls(liqLevelsUrl()); if (!urls) return;
+    // The page's clock went back since it was last read: what the old clock placed and planned is no good (`clockSetBack`), the index's and
+    // the failed reads' waits included.
+    if (clockSetBack(this.#lastNow, now)) {
+      this.#offset = null; this.#indexAt = -Infinity; this.#indexFailed = -Infinity;
+      for (const entry of this.#days.values()) { entry.created = now; entry.lead = MAX_LEAD_MS; entry.due = now; entry.failed = -Infinity; }
+    }
+    this.#lastNow = now;
     if (!this.#indexBusy && now - this.#indexFailed > RETRY_MS && (!this.#index || now - this.#indexAt > INDEX_EVERY_MS)) {
       this.#indexBusy = true;
       this.get(urls.index).then(raw => {
@@ -112,12 +121,10 @@ export class LiqHistory {
       // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again when its next
       // snapshot can be there (while it has none yet, when the day before's newest says so, else each minute).
       const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
-      // The page's clock set back since the read was planned: what the old clock placed is no good (`clockSetBack`).
-      if (held && clockSetBack(held.due, now)) { held.created = now; held.lead = MAX_LEAD_MS; held.due = now; this.#offset = null; }
       if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < held.due)) continue;
       const entry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, newest: -Infinity, created: 0, lead: 0, due: 0 };
       entry.busy = true; this.#days.set(day, entry);
-      const edges = index.edges, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS;
+      const edges = index.edges, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS && !(entry.failed > entry.at);
       this.get(urls.day(dayText(day))).then(raw => {
         if (this.#index?.edges !== edges) return;
         entry.rows = readDay(raw, edges); entry.at = now; this.version++;

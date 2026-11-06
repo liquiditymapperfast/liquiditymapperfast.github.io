@@ -77,11 +77,11 @@ test('the pane asks for the index first, then the days its view needs (with the 
 
 test('a new UTC day with no snapshot yet is asked when the day before\'s newest says the next can be there, not each minute', async () => {
   const asked: string[] = [], day = Date.UTC(2026, 10, 6), MIN = 60_000;
-  // Yesterday's newest was created at 23:50 (published 23:58:45); the next is published at 00:28:20.
+  // Yesterday's newest was created at 23:52 (published 23:57); the next is published at 00:30:20.
   const index = 'https://levels.hiverust.dev/v1/btc/liquidation-history.json';
   const files: Record<string, unknown> = {
     [index]: { edges: EDGES, first: day - 3 * DAY_MS, last: day - 75_000 },
-    [`https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day - DAY_MS)}.json`]: { rows: [row(day - 75_000)] },
+    [`https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day - DAY_MS)}.json`]: { rows: [row(day - 3 * MIN)] },
     [`https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day)}.json`]: { rows: [] },
   };
   const h = new LiqHistory(url => { asked.push(url); return Promise.resolve(files[url]); });

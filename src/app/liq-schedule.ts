@@ -7,8 +7,8 @@
  * 38.3, 41.3, 44.3, 47.3 and 50.3 minutes), then every 10 minutes. Its publications came 38.4 minutes after the previous `createdAt` every
  * time (2026-11-04..06, 98 snapshots). So the page asks from 37 minutes after the held snapshot's `createdAt`, each minute until the
  * service's quick calls are over, then every five minutes. A snapshot published again with a later `fetchedAt` keeps its `createdAt`: nothing
- * moves. If the service's period or ready time is ever shortened, the page shows snapshots late by the difference until this file is changed
- * too.
+ * moves. If the service's period or ready time is ever shortened, the planned asks find the snapshots already there and the lead below grows
+ * until they come before them again (4 or 8 minutes earlier: a minute or two late at worst); change this file too all the same.
  *
  * `createdAt` is HyperTracker's clock; the page counts on its own. The difference is learned from every snapshot the page sees appear between
  * two asks (`placeSnapshot`). Before it is learned the page's clock is trusted, with a lead that grows whenever a planned ask finds the next
@@ -87,9 +87,15 @@ export function placeSnapshot(createdAt: number, fetchedAt: number, before: numb
 
 /** Placed by its age on the page's clock (no offset known), with `lead`; one made "in the future" with the whole lead. */
 function byPageClock(createdAt: number, now: number, lead: number): Placement {
-  if (!(now - createdAt >= 0)) return { created: now, lead: MAX_LEAD_MS, offset: null };
+  if (!(now - createdAt >= YOUNGEST_SEEN_MS)) return { created: now, lead: MAX_LEAD_MS, offset: null };
   return { created: createdOnPageClock(createdAt, now), lead, offset: null };
 }
+
+/**
+ * The service publishes a snapshot 7 minutes after HyperTracker made it at the soonest, and the edge adds its minute: one that looks younger
+ * than this on the page's clock says the clock is behind (a clock 33 to 39 minutes behind would otherwise wait past the next publication).
+ */
+export const YOUNGEST_SEEN_MS = 8 * MINUTE;
 
 /** When to ask next, `now`, for a held snapshot created at `created` (page clock, `placeSnapshot`), the wait cut by `lead`. */
 export function nextAskAt(created: number, now: number, lead = 0): number {
@@ -99,10 +105,10 @@ export function nextAskAt(created: number, now: number, lead = 0): number {
 }
 
 /**
- * A next ask further off than any wait can be: the page's clock was set back since it was planned. Then what was placed by the old clock is
- * no good: the snapshot held is taken as created now, with the whole lead and no offset, so the page asks soon and learns its clock again.
+ * The page's clock went back by more than a minute since it was last read (`lastNow`): what was placed and planned by the old clock is no
+ * good. The snapshot held is then taken as created now, with the whole lead and no offset, so the page asks soon and learns its clock again.
  */
-export const clockSetBack = (plannedAt: number, now: number): boolean => plannedAt - now > SNAPSHOT_DUE_MS;
+export const clockSetBack = (lastNow: number, now: number): boolean => now < lastNow - MINUTE;
 
 /** Whether the page is out of sight: nothing it would draw needs asking for then (it asks when it shows again). */
 export const pageHidden = (): boolean => typeof document !== 'undefined' && document.hidden === true;
