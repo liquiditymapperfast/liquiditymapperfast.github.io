@@ -380,8 +380,6 @@ export class HeatPane {
   #settlePending = false;
   /** A hand has moved or zoomed the view since it was last framed (`fit`, `placeAt`): a late refill of the candles does not frame it again (`untouched`). */
   #handled = false;
-  /** The last fit framed the candles before there was a price: the first frame with one fits the map again around it (`#render`). */
-  #frameOnPrice = false;
   /** Back to the live candle at the zoom the map has, shown while the map stays where it was left (`jumpToNow`). */
   readonly #liveButton = el('button', { class: 'map-live', type: 'button', tip: t('Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.') }, t('Live'));
   #palette = PALETTES.light!;
@@ -647,7 +645,6 @@ export class HeatPane {
   /** Frame the most recent candles with the current price in the middle of the price axis (`fitPrices`). */
   fit(): void {
     this.#demo = null;
-    this.#frameOnPrice = false;
     if (replaying()) { this.placeAt(pageNow()); return; }
     // Asked to frame, whether or not there is anything to frame on yet: a refill of the candles that comes later frames it then (main.ts).
     this.#handled = false;
@@ -662,9 +659,6 @@ export class HeatPane {
     // Neither candles nor a price yet (a start that did not wait for one): nothing to frame, so the view stays unset and the first frame
     // that has either frames it (`#render`), rather than a price axis around 1 that the price recentres but never widens.
     if (!prices) return;
-    // The candles came before the first price (on most openings: the page does not wait for one), so they are framed centred on themselves,
-    // and the first frame with the price frames the map again around it, while nothing has moved it meanwhile (`#render`).
-    this.#frameOnPrice = !(mark.price > 0);
     const now = pageNow();
     let span = tf * Math.max(40, Math.min(110, recent.length || 80));
     // With little recorded depth, frame the recorded window so the heatmap is visible rather than a sliver.
@@ -872,9 +866,6 @@ export class HeatPane {
     const state = this.#displayState();
     if (this.#paneW <= 1 || this.#h <= 1) return;
     if (!(this.view.t1 > this.view.t0) && (state.candles.length || state.mark.price)) this.fit();
-    // Framed before the first price came: the first frame with it puts it in the middle, unless a hand, the tour's demonstration or a replay
-    // has the map by now (the price's own following below only brings it back once it nears an edge, so it would stay where it opened).
-    else if (this.#frameOnPrice && state.mark.price > 0 && state.followLive && !this.#priceHeld && !this.#demo && !replaying() && this.untouched) this.fit();
     if (state.followLive && this.view.t1 > this.view.t0) {
       if (held) this.#liveMargin = this.view.t1 - pageNow();
       else {

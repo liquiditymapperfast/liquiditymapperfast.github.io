@@ -244,15 +244,34 @@ test('no candles yet: one per cent either side of the price; neither candles nor
   near(at(f, 50_000), 0.5, 'the price is in the middle');
   assert.equal(fitPrices([], 0), null);
   assert.equal(fitPrices([], Number.NaN), null, 'a price that is not a number is no price');
-  assert.equal(fitPrices([[0, 100, 100, 100, 100, 1]], 0), null, 'one flat candle and no price: nothing to frame either');
+  const one = fitPrices([[0, 100, 100, 100, 100, 1]], 0)!;
+  near(one.p0, 99 - 2 * FIT_PAD, 'one flat candle and no price: framed around its close'); near(one.p1, 101 + 2 * FIT_PAD, 'and above');
 });
 
-test('no price yet: the candles\' own frame, centred on them, whatever the trend', () => {
-  const candles = run(120, 110, 100), lo = 99.95, hi = 120.05, pad = (hi - lo) * FIT_PAD;
-  for (const mark of [0, -1, Number.NaN]) {
-    const f = fitPrices(candles, mark)!;
-    near(f.p0, lo - pad, `bottom with mark ${mark}`); near(f.p1, hi + pad, `top with mark ${mark}`);
+test('no price yet: the newest candle\'s close stands in for it, so the first frame is centred and nothing frames it again', () => {
+  const candles = run(120, 110, 100);
+  for (const mark of [0, -1, Number.NaN, Infinity]) {
+    const f = fitPrices(candles, mark)!, g = fitPrices(candles, 100)!;
+    near(at(f, 100), 0.5, `the close in the middle with mark ${mark}`);
+    near(f.p0, g.p0, `as with the price itself (${mark})`); near(f.p1, g.p1, `top as with the price itself (${mark})`);
   }
+  // Nothing to centre on (no price, a close that is no price): the candles' own frame, centred on them.
+  const lo = 99.95, hi = 120.05, pad = (hi - lo) * FIT_PAD;
+  const odd: CandleRow[] = [[0, 120, 120.05, 119.95, 120, 1], [3_600_000, 100, 100.05, 99.95, Number.NaN, 1]];
+  const h = fitPrices(odd, 0)!;
+  near(h.p0, lo - pad, 'bottom'); near(h.p1, hi + pad, 'top');
+});
+
+test('after a fall that halved the price the axis stays above zero, the price still in the middle', () => {
+  // Daily candles from 200 down to 85: the candles' frame centred on 85 would reach to -37.
+  const candles = run(200, 170, 140, 110, 85);
+  const f = fitPrices(candles, 85)!;
+  near(at(f, 85), 0.5, 'the price is in the middle');
+  assert.ok(f.p0 >= 0, `the axis starts at ${f.p0}`);
+  near(f.p1 - f.p0, 2 * 85, 'the span is the zoom\'s own limit, twice the price');
+  // The measured openings are far from it: their spans are a few per cent of the price.
+  const btc = fitPrices([[0, 81_188, 81_188, 75_158, 75_158, 1], [3_600_000, 75_158, 75_885, 75_158, 75_885, 1]], 75_885.25)!;
+  assert.ok(btc.p1 - btc.p0 < 0.2 * 75_885, 'BTC untouched by the limit');
 });
 
 test('a price outside its candles\' range is still put in the middle, at 1.5 times their frame, the candles beyond it cut', () => {

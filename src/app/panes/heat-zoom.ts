@@ -81,13 +81,17 @@ export const FIT_WIDEN_MAX = 1.5;
  * price sits at the foot of those candles, and keeping all of the move above it would squash the heat map into a thin band, so the end of it
  * farthest from the price is cut and a zoom out shows it (Karl, 2026-11-06: the charts opened with the price near the bottom of the axis and
  * stayed there).
- * Candles without a range (none, or all at one price): 1 % either side of the mark with that room, as before. No price yet: the candles' own
- * frame, centred on them. Neither: null, nothing to frame.
+ * Candles without a range (none, or all at one price): 1 % either side of the mark with that room, as before. No price yet (the page frames
+ * before its first price on most openings): the newest candle's close stands in for it, which is the price as the candles last saw it, so the
+ * axis is right from the first frame and nothing frames it again when the price comes. Nothing to centre on at all: the candles' own frame,
+ * centred on them; neither candles nor a price: null, nothing to frame. The span is never more than PRICE_SPAN_SHARE.max times the price (the
+ * zoom's own limit), so the axis never goes below zero after a fall that halved the price.
  */
 export function fitPrices(candles: readonly CandleRow[], mark: number): { p0: number; p1: number } | null {
   let lo = Infinity, hi = -Infinity;
   for (const c of candles) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
-  const price = mark > 0 && Number.isFinite(mark) ? mark : 0;
+  const close = candles.length ? candles[candles.length - 1]![4] : 0;
+  const price = mark > 0 && Number.isFinite(mark) ? mark : close > 0 && Number.isFinite(close) ? close : 0;
   if (!(hi > lo)) {
     if (!price) return null;
     lo = price * 0.99; hi = price * 1.01;
@@ -96,7 +100,7 @@ export function fitPrices(candles: readonly CandleRow[], mark: number): { p0: nu
   if (!price) return { p0: lo - pad, p1: hi + pad };
   // Twice the farther of the candles' extremes from the price, with their room: never less than their frame, as the farther one is at least
   // half their range away wherever the price is.
-  const span = Math.min(2 * (Math.max(hi - price, price - lo) + pad), FIT_WIDEN_MAX * frame);
+  const span = Math.min(2 * (Math.max(hi - price, price - lo) + pad), FIT_WIDEN_MAX * frame, PRICE_SPAN_SHARE.max * price);
   return { p0: price - span / 2, p1: price + span / 2 };
 }
 
