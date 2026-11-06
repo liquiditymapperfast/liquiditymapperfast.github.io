@@ -86,18 +86,18 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
   engine = next;
   post({ type: 'ready' });
   if (!keeps) { post({ type: 'recordings', persisted: false }); historyDone = true; historyIn(); return; }
-  const gridSteps = new Map<string, number>(), tiles: { info: TilesInfo | null } = { info: null };
+  const gridSteps = new Map<string, number>(), tiles: { info: TilesInfo | null; hourBooks: boolean } = { info: null, hourBooks: true };
   // The engine runs whatever becomes of them: a failure here is not the engine's.
   try { await readRecordings(database, lock, history, historyHours, gridSteps, tiles); }
   catch (error) { console.warn('the recordings could not be read:', error); }
   try { next.attach(recordings, gridSteps); }
   catch (error) { console.error('the recordings could not be handed to the engine:', error); }
   // A pass of the live feeds first: the hand-over and the questions held for it each take a moment of this thread.
-  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history', tiles: tiles.info }); }, 0);
+  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history', tiles: tiles.info, hourBooks: tiles.hourBooks }); }, 0);
 }
 
 /** Open the recordings and read the recorded history into them (`gridSteps`: the service's grid for books they hold nothing of). */
-async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>, tiles: { info: TilesInfo | null }): Promise<void> {
+async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>, tiles: { info: TilesInfo | null; hourBooks: boolean }): Promise<void> {
   // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
   let failing = false;
   const events = {
@@ -127,6 +127,8 @@ async function readRecordings(database: string, lock: string, history: string, h
     for (const [inst, step] of Object.entries(done.steps ?? {})) if (!held.steps.has(inst)) gridSteps.set(inst, step);
     // The long history's tiles, from the same latest.json: the page reads the windows before its day from them (app/archive/).
     tiles.info = done.tiles ?? null;
+    // Whether its hours carry the coin's book minutes (book steps named): a coin kept as tiles alone (ETH, SOL) has its day from the tiles too.
+    if (tiles.info) tiles.hourBooks = Object.keys(done.steps ?? {}).length > 0;
   }
 }
 

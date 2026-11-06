@@ -48,14 +48,16 @@ export const ARCHIVE_MIN_STEP_MS = 2 * MINUTE;
  * steps merged before. Where the view reaches before the page's own day (`since`: its oldest recorded minute, 0 when it has none) and the
  * long history is there to draw it (`archive`: its first window, null when there is none), the step is at least the archive's finest level
  * (`archiveStepMs`: two minutes for BTC, eight for ETH and SOL), so old ranges always draw; a view wholly inside the day keeps its minutes,
- * and so does one that includes now (`now`, the source's clock), whose newest column the live overlay draws a minute at a time.
+ * and so does one that includes now (`now`, the source's clock), whose newest column the live overlay draws a minute at a time: BTC's day
+ * comes from the hour files at a minute. A coin whose hours carry no book minutes (`liveToo`: ETH, SOL) has nothing but the tiles before the
+ * page's own recording, so its live views reaching before it are lifted as well (the live overlay still draws the newest minute).
  */
-export function columnStepFor(view: Pick<Bounds, 't0' | 't1'>, widthPx: number, archive: number | null, since: number, now: number, archiveStepMs = ARCHIVE_MIN_STEP_MS): number {
+export function columnStepFor(view: Pick<Bounds, 't0' | 't1'>, widthPx: number, archive: number | null, since: number, now: number, archiveStepMs = ARCHIVE_MIN_STEP_MS, liveToo = false): number {
   const span = view.t1 - view.t0;
   const step = MINUTE * 2 ** Math.max(0, Math.round(Math.log2(span / Math.max(1, widthPx) * 2 / MINUTE)));
   if (step >= archiveStepMs || archive === null) return step;
   const beforeDay = since <= 0 || view.t0 < since, live = view.t1 >= now - MINUTE;
-  return beforeDay && !live ? archiveStepMs : step;
+  return beforeDay && (!live || liveToo) ? archiveStepMs : step;
 }
 
 /** The window of whole steps a view may move into: half its span further each way. A window cut by the question would be kept as the part of it that was asked for. */

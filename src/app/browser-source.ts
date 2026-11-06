@@ -110,6 +110,8 @@ export class BrowserSource implements DataSource, VenueControl {
   #archive: ArchiveColumns | null = null;
   /** Per book, where the engine's newest run of minutes begins (`ColumnsFrame.since`, from its last answer). */
   #heldSince = new Map<string, number>();
+  /** Whether the service's hours carry this coin's book minutes (the history message says; BTC's do, a tile-only coin's do not). */
+  #hourBooks = true;
 
   /** `historyHours`: how many of the recorded history's latest hours the worker reads on opening (app/history-window.ts), a day by default. */
   constructor(worker: Worker, { persist = true, coin = BTC, tier = 0, historyHours = DAY_HOURS }: { persist?: boolean; coin?: Coin; tier?: number; historyHours?: number } = {}) {
@@ -132,7 +134,7 @@ export class BrowserSource implements DataSource, VenueControl {
       switch (message.type) {
         case 'ready': this.#started = true; ready(); break;
         case 'recordings': this.persisted = message.persisted; this.#openedAt = Date.now(); break;
-        case 'history': this.#historyIn = true; this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(); break;
+        case 'history': this.#historyIn = true; this.#hourBooks = message.hourBooks ?? true; this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
@@ -290,6 +292,8 @@ export class BrowserSource implements DataSource, VenueControl {
   archiveFirst(): number | null { return this.#archive?.first() ?? null; }
   /** The long history's finest window (ms), or null when there is none (yet). */
   archiveMinStep(): number | null { return this.#archive?.minStepMs() ?? null; }
+  /** Whether a view that includes now draws the long history before the page's own depth: when the service's hours carry no book minutes for the coin (ETH, SOL), nothing else fills it. */
+  archiveLive(): boolean { return !this.#hourBooks && this.#archive?.first() != null; }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
   async absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
     const answer = parseAbsorptionAnswer(await this.#call({ method: 'absorption', ids, mins, from, to, limit, since }), ids);

@@ -1250,7 +1250,7 @@ export class Hub {
     // About two pixels a column, in minutes that double from one level to the next: zooming moves between a few steps the server has merged
     // before; at least the long history's finest level (two minutes for BTC, eight for ETH and SOL) where the view reaches before the page's
     // own day (`columnStepFor`).
-    const stepMs = columnStepFor(view, widthPx, this.source.archiveFirst?.() ?? null, this.source.depthSince?.(ids) ?? this.recordedSince, this.sourceNow(), this.source.archiveMinStep?.() ?? undefined);
+    const stepMs = columnStepFor(view, widthPx, this.source.archiveFirst?.() ?? null, this.source.depthSince?.(ids) ?? this.recordedSince, this.sourceNow(), this.source.archiveMinStep?.() ?? undefined, this.source.archiveLive?.() ?? false);
     const holds = this.#columns;
     // The view is one object the pane moves on: what an answer is judged against below is the view it was asked for.
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };

@@ -60,9 +60,10 @@ export type FeedsOut =
   | { type: 'recordings'; persisted: boolean }
   /**
    * The engine has its recordings and the recorded history (or will have none): the questions about what was recorded, held until now, are
-   * answered, and the flow, answered meanwhile from the seconds since the page opened, is to be asked for again.
+   * answered, and the flow, answered meanwhile from the seconds since the page opened, is to be asked for again. `hourBooks`: the service's
+   * hours carry the coin's book minutes (`latest.json` names book steps: BTC); false for a coin whose books it keeps as tiles alone (ETH, SOL).
    */
-  | { type: 'history'; tiles?: TilesInfo | null }
+  | { type: 'history'; tiles?: TilesInfo | null; hourBooks?: boolean }
   /** The engine could not be started: nothing will be answered, so the page should say so instead of waiting. */
   | { type: 'failed'; error: string }
   | { type: 'levels'; frame: LevelsFrame }
