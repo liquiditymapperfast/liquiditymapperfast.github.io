@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqProfile, liqRows, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, paintLiqStripe, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
 import { View } from '../src/app/view.ts';
 import { LIQ_LEVELS_URL, liqLevelsUrl, readLiqLevels } from '../src/app/liq-url.ts';
+import { LATE_EVERY_MS, SNAPSHOT_DUE_MS, SNAPSHOT_LATE_MS, nextAskAt, publishedAt } from '../src/app/liq-schedule.ts';
 import { BTC, type Coin } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -176,10 +177,12 @@ test('the source asks for the file, says when it cannot, retries sooner, keeps t
   assert.equal(src.state, 'ready');
   assert.ok(changed >= 1);
   assert.equal(src.levels!.k.length, 4);
-  // Within the minute nothing is asked again; after it, a failure keeps the levels held, and the next try comes after 30 s, not a minute.
+  // Nothing is asked again before the next snapshot can be there (it was published 4 minutes before); then a failure keeps the levels held,
+  // and the next try comes after 30 s.
   src.ensure(BTC, () => {});
+  now += SNAPSHOT_DUE_MS - 5 * MIN; src.ensure(BTC, () => {});
   assert.equal(asked, 1);
-  now += 61_000; fail = true;
+  now += MIN + 1_000; fail = true;
   src.ensure(BTC, () => {});
   await tick();
   assert.equal(asked, 2);
@@ -194,7 +197,8 @@ test('the source asks for the file, says when it cannot, retries sooner, keeps t
   now += 61_000; src.ensure(BTC, () => {}); await tick();
   assert.equal(src.levels!.asOf, newer);
   answer = doc(SAMPLE);
-  now += 61_000; src.ensure(BTC, () => {}); await tick();
+  now += SNAPSHOT_DUE_MS + 1_000; src.ensure(BTC, () => {}); await tick();
+  assert.equal(asked, 5);
   assert.equal(src.levels!.asOf, newer);
   // Levels too old are held but not drawn.
   now = newer + STALE_MS + MIN; src.ensure(BTC, () => {});
@@ -211,6 +215,51 @@ test('the source asks for the file, says when it cannot, retries sooner, keeps t
   await tick();
   assert.equal(strict.state, 'unavailable');
   assert.equal(strict.levels, null);
+});
+
+test('the file is asked for when the next snapshot can be there: a few asks a snapshot instead of thirty, none while the page is hidden', async () => {
+  // The age a snapshot is seen at is held to [0, 40 min] whatever the page's clock says.
+  assert.equal(publishedAt(NOW - 9 * MIN, NOW), NOW - 9 * MIN);
+  assert.equal(publishedAt(NOW + 10 * MIN, NOW), NOW, 'a clock behind the service: taken as just published');
+  assert.equal(publishedAt(NOW - 5 * 60 * MIN, NOW), NOW - SNAPSHOT_LATE_MS, 'an old one: as late as the schedule knows');
+  assert.equal(nextAskAt(NOW, NOW), NOW + SNAPSHOT_DUE_MS);
+  assert.equal(nextAskAt(NOW - 30 * MIN, NOW), NOW + MIN, 'due: each minute');
+  assert.equal(nextAskAt(NOW - 41 * MIN, NOW), NOW + LATE_EVERY_MS, 'late: every five minutes');
+  // Six hours of a service publishing every 30 minutes, the edge serving each file a minute after, asked as the pane's one-second tick does.
+  const start = Date.UTC(2026, 10, 6, 0, 3), PUBLISH = 30 * MIN;
+  let now = start, asks = 0;
+  const latest = (t: number): Record<string, unknown> => {
+    const published = Math.floor((t - MIN) / PUBLISH) * PUBLISH;
+    return doc(SAMPLE, { snapshot: { asOf: published - 41 * MIN, createdAt: published - 6 * MIN, fetchedAt: published } });
+  };
+  const src = new LiqLevelsSource(async url => { if (url.includes('hyperliquid')) return []; asks++; return latest(now); }, () => now, () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');
+  const seen: number[] = [];
+  let held = -1;
+  for (; now < start + 6 * 60 * MIN; now += 10_000) {
+    src.ensure(BTC, () => {}); await tick();
+    const f = src.levels?.fetchedAt ?? -1;
+    if (f !== held) { held = f; seen.push(now - f); }
+  }
+  assert.ok(asks <= 1 + 12 * 7, `${asks} asks in six hours (it was 360)`);
+  assert.ok(seen.slice(1).every(lag => lag <= 3 * MIN), `each snapshot drawn within three minutes of its publication (${seen.map(s => Math.round(s / 1000)).join(' s, ')} s)`);
+  // The service stops getting snapshots (HyperTracker's 2.5-hour outage of 2026-11-05): once late, every five minutes.
+  const frozen = latest(now), outage = now;
+  const quiet = new LiqLevelsSource(async url => { if (url.includes('hyperliquid')) return []; asks++; return frozen; }, () => now, () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');
+  asks = 0;
+  for (; now < outage + 150 * MIN; now += 10_000) { quiet.ensure(BTC, () => {}); await tick(); }
+  assert.ok(asks <= 1 + 17 + 25, `${asks} asks over a 150-minute outage (each minute would be 150)`);
+  // A hidden page asks nothing; it asks as it shows again.
+  const doc0 = (globalThis as { document?: unknown }).document;
+  try {
+    (globalThis as { document?: unknown }).document = { hidden: true };
+    let n = 0;
+    const hidden = new LiqLevelsSource(async url => { if (!url.includes('hyperliquid')) n++; return url.includes('hyperliquid') ? [] : doc(SAMPLE); }, () => NOW, () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');
+    hidden.ensure(BTC, () => {}); await tick();
+    assert.equal(n, 0, 'hidden: nothing asked');
+    (globalThis as { document?: unknown }).document = { hidden: false };
+    hidden.ensure(BTC, () => {}); await tick();
+    assert.equal(n, 1, 'shown: asked at once');
+  } finally { (globalThis as { document?: unknown }).document = doc0; }
 });
 
 test('the chart\'s price takes the levels between it and the snapshot\'s mark at once, a margin short of it', async () => {

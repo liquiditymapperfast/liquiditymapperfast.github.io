@@ -1,6 +1,7 @@
 /**
  * Liquidation levels (the Chart deck's Liq levels): the prices that would liquidate Hyperliquid's open BTC positions, read from the levels
- * service (HyperLiquidMap_Levels, format 2: HyperTracker's position snapshots, about one every 29 minutes, binned per $10). They are drawn as
+ * service (HyperLiquidMap_Levels, format 2: HyperTracker's position snapshots, about one every 30 minutes, binned per $10; asked for when the
+ * next can be there, `liq-schedule.ts`). They are drawn as
  * a stripe right of the live edge, beside the profile column, which adds them up. From the time the positions describe (about 35 minutes
  * before HyperTracker stamps its snapshot) a level is taken away as Hyperliquid's price trades through it: Hyperliquid's 1-minute candles say how far and
  * when, and the chart's own price says it at once (a trade low can reach a few basis points past the mark price liquidations use, so a
@@ -9,13 +10,13 @@
 import { BTC, instrumentIdFor, type Coin } from '../shared/coins.ts';
 import { webGet, type Fetcher } from '../shared/history.ts';
 import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
+import { nextAskAt, pageHidden, publishedAt } from './liq-schedule.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import type { AppState, CandleRow } from './store.ts';
 import type { View } from './view.ts';
 
 const MINUTE = 60_000, HOUR = 3_600_000, DAY = 24 * HOUR;
-/** How often the file is asked again (a new snapshot comes about every 29 minutes; the edge keeps the file for a minute). */
-const REFRESH_MS = 60_000;
+/** A failed read is tried again this soon (a new snapshot is asked for when it can be there: `liq-schedule.ts`). */
 const RETRY_MS = 30_000;
 /** Older than this, the levels are not drawn: too many positions have opened and closed since. */
 export const STALE_MS = 3 * HOUR;
@@ -328,6 +329,8 @@ export class LiqLevelsSource {
   #url = '';
   #pending = false;
   #nextAt = 0;
+  /** When the snapshot held was published, on the page's clock (`publishedAt`). */
+  #published = 0;
   #failed = false;
   #seen: Seen | null = null;
   #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
@@ -342,9 +345,10 @@ export class LiqLevelsSource {
     const url = this.url();
     if (!url) { this.state = 'off'; return; }
     if (coin.coin !== BTC.coin) { this.state = 'other-coin'; return; }
-    if (url !== this.#url) { this.#url = url; this.levels = null; this.#seen = null; this.#nextAt = 0; this.#failed = false; this.version++; }
+    if (url !== this.#url) { this.#url = url; this.levels = null; this.#seen = null; this.#nextAt = 0; this.#published = 0; this.#failed = false; this.version++; }
     const now = this.now();
-    if (!this.#pending && now >= this.#nextAt) {
+    // Asked when the next snapshot can be there (`liq-schedule.ts`), and not while the page is out of sight: it asks as it shows again.
+    if (!this.#pending && now >= this.#nextAt && !pageHidden()) {
       this.#pending = true;
       const asked = url;
       // Asked of the edge every time (a 304 when nothing changed): a CDN can stretch the minute the file asks to be kept, as Cloudflare's
@@ -353,10 +357,13 @@ export class LiqLevelsSource {
         if (asked !== this.#url) return;
         const levels = parseLiqLevels(raw, BTC.coin);
         if (!levels) { this.#fail(onChange); return; }
-        this.#failed = false; this.#nextAt = this.now() + REFRESH_MS;
+        this.#failed = false;
         // Never back to an older snapshot: an edge can hold an older copy for a moment.
         const held = this.levels;
-        if (!held || levels.asOf > held.asOf || (levels.asOf === held.asOf && levels.fetchedAt > held.fetchedAt)) { this.levels = levels; this.#seen = null; this.version++; }
+        if (!held || levels.asOf > held.asOf || (levels.asOf === held.asOf && levels.fetchedAt > held.fetchedAt)) {
+          this.levels = levels; this.#seen = null; this.version++; this.#published = publishedAt(levels.fetchedAt, this.now());
+        }
+        this.#nextAt = nextAskAt(this.#published, this.now());
         this.#settle();
         onChange();
       }, () => { if (asked === this.#url) this.#fail(onChange); }).finally(() => { this.#pending = false; });

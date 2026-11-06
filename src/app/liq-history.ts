@@ -6,11 +6,12 @@
  *
  * What it says is where the money would be liquidated, as the positions stood: not what was liquidated, and not where price will go.
  */
+import { DUE_EVERY_MS, nextAskAt, publishedAt } from './liq-schedule.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 
 export const DAY_MS = 86_400_000;
-/** How often the index (what the service holds) and the day still being written are asked again. */
-const INDEX_EVERY_MS = 5 * 60_000, TODAY_EVERY_MS = 60_000;
+/** How often the index (what the service holds) is asked again; a day still being written is asked when its next snapshot can be there (`liq-schedule.ts`). */
+const INDEX_EVERY_MS = 5 * 60_000;
 /** A failed read waits this long before it is asked again. */
 const RETRY_MS = 60_000;
 /** At most this many days are held: a view wider than that shows the newest of them. */
@@ -76,13 +77,14 @@ export function bandIndex(edges: readonly number[], radius: number): number {
 }
 
 /**
- * The history as the page holds it: the index, and the days the view has asked for, each read once (the day still being written again every
- * minute). Kept here so the pane only says which stretch of time it shows and draws what has come.
+ * The history as the page holds it: the index, and the days the view has asked for, each read once (the day still being written again when
+ * its next snapshot can be there: `due`, from when its newest row was published, `published`, on the page's clock). Kept here so the pane
+ * only says which stretch of time it shows and draws what has come.
  */
 export class LiqHistory {
   #index: LiqIndex | null = null;
   #indexAt = 0; #indexBusy = false; #indexFailed = 0;
-  #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number }>();
+  #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; published: number; due: number }>();
   /** Goes up whenever something new has come. */
   version = 0;
   constructor(private get: (url: string) => Promise<unknown> = url => fetch(url, { cache: 'no-cache' }).then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))) {}
@@ -105,15 +107,20 @@ export class LiqHistory {
     const firstDay = Math.max(Math.floor(index.first / DAY_MS) * DAY_MS, Math.floor(t0 / DAY_MS) * DAY_MS - DAY_MS, lastDay - (MAX_DAYS - 1) * DAY_MS);
     for (let day = firstDay; day <= lastDay; day += DAY_MS) {
       const held = this.#days.get(day);
-      // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again every minute.
+      // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again when its next
+      // snapshot can be there (each minute while it has none yet).
       const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
-      if (held && (held.busy || now - held.failed < RETRY_MS || settled || now - held.at < TODAY_EVERY_MS)) continue;
-      const entry = held ?? { rows: [], at: 0, busy: false, failed: 0 };
+      if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < held.due)) continue;
+      const entry = held ?? { rows: [], at: 0, busy: false, failed: 0, newest: -Infinity, published: 0, due: 0 };
       entry.busy = true; this.#days.set(day, entry);
       const edges = index.edges;
       this.get(urls.day(dayText(day))).then(raw => {
         if (this.#index?.edges !== edges) return;
-        entry.rows = readDay(raw, edges); entry.at = now; this.version++; changed();
+        entry.rows = readDay(raw, edges); entry.at = now; this.version++;
+        const newest = entry.rows.reduce((max, row) => Math.max(max, row.fetchedAt), -Infinity);
+        if (newest > entry.newest) { entry.newest = newest; entry.published = publishedAt(newest, now); }
+        entry.due = entry.rows.length ? nextAskAt(entry.published, now) : now + DUE_EVERY_MS;
+        changed();
       }, () => { entry.failed = now; }).finally(() => { entry.busy = false; });
     }
     // Days outside the view are let go, the farthest first, so a long session does not hold the whole history; a day the view needs never is.

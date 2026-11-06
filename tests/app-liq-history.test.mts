@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, LiqHistory, bandIndex, dayText, historyUrls, readDay, readIndex } from '../src/app/liq-history.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
+import { SNAPSHOT_DUE_MS } from '../src/app/liq-schedule.ts';
 
 /** The service's buckets (history.rs): 1/32 % to 5 %, then 5/16 % to 25 %. */
 const EDGES = [...Array.from({ length: 160 }, (_, i) => (i + 1) / 32), ...Array.from({ length: 64 }, (_, i) => 5 + (i + 1) * 5 / 16)];
@@ -48,7 +49,7 @@ test('the index and the days are checked: a row of the wrong shape is left out, 
   assert.deepEqual(readDay({ rows: [row(3), row(1), row(2)] }, EDGES).map(x => x.fetchedAt), [1, 2, 3], 'ordered by fetch time');
 });
 
-test('the pane asks for the index first, then the days its view needs (with the evening before), each once, today again after a minute', async () => {
+test('the pane asks for the index first, then the days its view needs (with the evening before), each once, today again when due', async () => {
   const asked: string[] = [], day = Date.UTC(2026, 10, 5), now = day + 10 * 3_600_000;
   const answers: Record<string, unknown> = {
     'https://levels.hiverust.dev/v1/btc/liquidation-history.json': { edges: EDGES, first: day - 2 * DAY_MS + 3_600_000, last: now - 600_000 },
@@ -67,8 +68,37 @@ test('the pane asks for the index first, then the days its view needs (with the 
   assert.deepEqual(inForce.map(r => r.fetchedAt), [day - 1_800_000, day + 3_600_000, day + 5_400_000], 'the row before the view holds at its left edge');
   h.ensure(day + 3_000_000, now + 3_600_000, now + 10_000, () => {});
   assert.equal(asked.length, 3, 'nothing again within the minute');
+  // Today's newest snapshot is hours old (the service has stopped getting them): asked every five minutes, not each minute.
   h.ensure(day + 3_000_000, now + 3_600_000, now + 70_000, () => {});
-  assert.deepEqual(asked.slice(3).map(u => u.slice(-15)), [`${dayText(day)}.json`], 'today again after a minute; yesterday, read after it ended, never');
+  assert.equal(asked.length, 3, 'a late snapshot is not asked for each minute');
+  h.ensure(day + 3_000_000, now + 3_600_000, now + 5 * 60_000 + 1_000, () => {});
+  assert.deepEqual(asked.slice(3).filter(u => !u.endsWith('liquidation-history.json')).map(u => u.slice(-15)), [`${dayText(day)}.json`], 'today again after five minutes; yesterday, read after it ended, never');
+});
+
+test('today is asked again when its next snapshot can be there, then each minute until it comes', async () => {
+  const asked: string[] = [], day = Date.UTC(2026, 10, 5), MIN = 60_000, t0 = day + 10 * 3_600_000;
+  // The newest row was published four minutes before the first read: the next can be there SNAPSHOT_DUE_MS after it (D minutes on).
+  const D = SNAPSHOT_DUE_MS / MIN - 4;
+  let rows = [row(t0 - 4 * MIN)];
+  const index = 'https://levels.hiverust.dev/v1/btc/liquidation-history.json', today = `https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day)}.json`;
+  const h = new LiqHistory(url => { asked.push(url); return Promise.resolve(url === index ? { edges: EDGES, first: day + 3_600_000, last: t0 } : { rows }); });
+  const settle = async (): Promise<void> => { await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0)); };
+  const todays = (): number => asked.filter(u => u === today).length;
+  const at = async (t: number): Promise<void> => { h.ensure(day + 3_600_000, t + 3_600_000, t, () => {}); await settle(); };
+  await at(t0); await at(t0);
+  assert.equal(todays(), 1);
+  for (let m = 1; m < D; m++) await at(t0 + m * MIN);
+  assert.equal(todays(), 1, 'not asked before the next snapshot can be there');
+  await at(t0 + D * MIN + 1_000);
+  assert.equal(todays(), 2, 'asked when due');
+  await at(t0 + (D + 1) * MIN + 2_000);
+  assert.equal(todays(), 3, 'and each minute after');
+  rows = [row(t0 - 4 * MIN), row(t0 + (D + 1) * MIN)];
+  await at(t0 + (D + 2) * MIN + 3_000);
+  assert.equal(todays(), 4);
+  assert.equal(h.rows(day, t0 + DAY_MS).length, 2, 'the new snapshot came');
+  for (let m = D + 3; m < D + 1 + SNAPSHOT_DUE_MS / MIN; m++) await at(t0 + m * MIN + 3_000);
+  assert.equal(todays(), 4, 'quiet again until the one after can be there');
 });
 
 test('a long session lets go of the days farthest from the view, never one the view needs', async () => {
