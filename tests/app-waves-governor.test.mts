@@ -159,6 +159,42 @@ test('a field resized, or reset when its glass is switched off, forgets what it 
   assert.deepEqual([field.waiting, pulses.flat().length - before], [0, 0], 'reset: nothing fires when it steps again');
 });
 
+test('a field that was not stepped for a while forgets what it reckoned: the first wave after it goes in whole and at once', () => {
+  const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
+  field.resize(W, H);
+  // A cascade, then the field is no longer stepped (the Tape's glass switched off, its tab left, the page hidden) for a minute.
+  let t = 1_000, k = 0;
+  for (; t <= 9_000; t += 1000 / 60) {
+    if (Math.floor(t / 250) !== Math.floor((t - 1000 / 60) / 250)) for (let i = 0; i < 38; i++, k++) field.order((k * 197) % W, (k * 113) % H, -60_000, 25_000, k % 2 ? 1 : 0, t);
+    field.step(t);
+  }
+  assert.ok(field.slowEnergy > SLOW_KNEE, `a busy field when the stepping stops (${field.slowEnergy.toFixed(1)})`);
+  const later = t + 60_000;
+  field.order(800, 450, 50_000, 25_000, 0, later);
+  assert.deepEqual([field.energy, field.slowEnergy], [0, 0], 'what it reckoned is forgotten');
+  const before = pulses.flat().length;
+  field.step(later);
+  const fresh = pulses.flat().slice(before);
+  assert.equal(fresh.length, 1, 'the wave starts at once');
+  assert.ok(Math.abs(fresh[0]!.amp - pulseFor(50_000, 25_000).amp) < 1e-6, 'and whole');
+});
+
+test('no side starts more than STREAK_MAX waves in a row while the other has some waiting: a crash\'s buys still show beside sells ten times their size', () => {
+  const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
+  field.resize(W, H);
+  // 150 orders a second at the live edge for 30 s, in tape batches: sells of $400k and buys of $40k, as many of each.
+  let k = 0;
+  for (let t = 1_000; t <= 31_000; t += 1000 / 60) {
+    if (Math.floor(t / 250) !== Math.floor((t - 1000 / 60) / 250)) {
+      for (let i = 0; i < 38; i++, k++) { const sell = k % 2 === 1; field.order(1_400, 100 + (k * 37) % 700, sell ? -400_000 : 40_000, 25_000, sell ? 1 : 0, t); }
+    }
+    field.step(t);
+  }
+  const market = pulses.flat().filter(p => p.side < 1.5), buys = market.filter(p => p.side === 0).length;
+  assert.ok(buys >= 0.2 * market.length, `buys started ${buys} of ${market.length} waves`);
+  assert.ok(market.length - buys > buys, 'and the sells, ten times larger, still the most');
+});
+
 test('a quiet field takes a large order whole; a busy one lets new waves in smaller, and none at its ceiling', () => {
   assert.equal(admitted(0), 1); assert.equal(admitted(ENERGY_KNEE), 1);
   assert.equal(admitted(ENERGY_MAX), 0); assert.equal(admitted(ENERGY_MAX * 3), 0);

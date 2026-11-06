@@ -34,7 +34,7 @@ export type SpotOf = (price: number, t: number) => { x: number; y: number } | nu
 
 const MAX_SPARKS = 32, MAX_RECTS = 24, LIFE_MS = 2600, FRAME_MS = 33, WAVE_FRAME_MS = 16;
 /** The least time between two rings the Strength slider sends while it is moved (ms). */
-const PREVIEW_MS = 250;
+const PREVIEW_MS = 1_000;
 /**
  * The chrome that is glass, how each kind is tinted (the bars and splitters in the face tone, the panels in the panel tone), and what it
  * is to a wave: the bars and panels glass that slows it, the splitters walls that throw most of it back.

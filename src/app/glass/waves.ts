@@ -109,6 +109,11 @@ export const MAX_WAIT_MS = 400;
  */
 export const WHALE_R = 40, WHALE_GAIN = 0.5, WHALE_ROOM = 1.5;
 /**
+ * Starts in a row on one side after which the other side's largest waiting wave goes next, if it has one (a whale aside): a side with waves
+ * waiting gets at least one start in STREAK_MAX + 1 (about 2 of the 8 a second), so a crash's buys still show beside its far larger sells.
+ */
+export const STREAK_MAX = 3;
+/**
  * How long the field takes to lose all but 1/e of the energy a wave put in (ms): the damping everywhere and the soaking edges together.
  * Measured on the processor stand-in of the step shader on a 1920 x 1080 desktop (the flow column's and the book's splitters, the bars):
  * of 0.7, 1, 1.5 and 2 s, 1.5 s followed the fronts' true energy best, 0.99 correlated over an ordinary day and over a cascade.
@@ -128,7 +133,9 @@ export const ENERGY_KNEE = 12, ENERGY_MAX = 16;
  * through whole, so on its own it held a cascade at that moment's fullness for as long as the cascade lasted, about three times the screen
  * an ordinary day lights on average (Sol). Averaged, an ordinary day passes SLOW_KNEE only for a while after its largest orders (it drew
  * crests on 14% less of the screen than with no limit at all); a cascade is held to SLOW_MAX, about twice an ordinary day's average
- * fullness (measured on the processor stand-in, 1920 x 1080).
+ * fullness (measured on the processor stand-in, 1920 x 1080). Below 30 frames a second the field runs slower than the clock (MAX_FRAME_MS a
+ * frame), so its waves last longer on the clock and this brake takes longer to act (5 s of the field's time is 15 s at 10 frames a second):
+ * a cascade there shows about twice the share. That is the cap on a frame's step, not the governor.
  */
 export const SLOW_MS = 5_000, SLOW_KNEE = 6, SLOW_MAX = 8;
 /**
@@ -166,10 +173,24 @@ export function admitted(energy: number, slow = 0): number { return Math.sqrt(1 
  */
 interface Waiting { x: number; y: number; r: number; top: number; born: number }
 
+/** Whether waiting wave `a` starts before `b`: a whale (WHALE_R) before any other, then the larger, then the older. */
+function before(a: Waiting, b: Waiting): boolean {
+  const wa = a.top >= WHALE_R, wb = b.top >= WHALE_R;
+  return wa !== wb ? wa : a.r > b.r || (a.r === b.r && a.born < b.born);
+}
+
+/** The waiting wave of one side that starts first (`before`), or null when none waits. */
+function bestOf(list: readonly Waiting[]): Waiting | null {
+  let best: Waiting | null = null;
+  for (const w of list) if (!best || before(w, best)) best = w;
+  return best;
+}
+
 /**
  * The gain of the middle of the Strength slider, the default (Karl: "by default make it very weak, make the effect fairly weak, or find an
- * ideal"): an ordinary day's crests on about a third of the screen they took before there was a setting, and a cascade's on about what an
- * ordinary day's took then (time-averaged share of the screen drawn at alpha 0.03 or more, on the processor stand-in).
+ * ideal"): an ordinary day's crests on about a third of the screen they took before there was a setting, and a cascade's on a little more
+ * than an ordinary day's took then (in a browser 0.65% against 0.39%: 1.7 times the area at 1.15 times the brightness; time-averaged share
+ * of the screen drawn at alpha 0.03 or more).
  */
 export const STRENGTH_MID_GAIN = 0.75;
 /**
@@ -259,6 +280,8 @@ export class WaveField {
    */
   #waiting: [Waiting[], Waiting[]] = [[], []];
   #tokens = SPAWN_BURST;
+  /** The side the last market waves started on, and how many in a row (STREAK_MAX). */
+  #streakSide: 0 | 1 = 0; #streak = 0;
   /** The field's energy as `order` reckons it, as of the last substep stepped (it fades with the field's time, `fadeRate`). */
   #energy = 0;
   /** The same averaged over SLOW_MS of the field's time (SLOW_KNEE, SLOW_MAX). */
@@ -331,7 +354,7 @@ export class WaveField {
   }
 
   /** The governor's state back to an empty field's: nothing waiting, a full bucket of starts, no energy. */
-  #forget(): void { this.#waiting[0].length = 0; this.#waiting[1].length = 0; this.#tokens = SPAWN_BURST; this.#energy = 0; this.#slow = 0; }
+  #forget(): void { this.#waiting[0].length = 0; this.#waiting[1].length = 0; this.#tokens = SPAWN_BURST; this.#energy = 0; this.#slow = 0; this.#streak = 0; }
 
   /** What the waves cross (CSS px, top-down): glass that slows them, walls that throw most of them back. */
   setMedium(regions: readonly WaveRegion[]): void {
@@ -375,6 +398,9 @@ export class WaveField {
    */
   order(x: number, y: number, usd: number, min: number, side: 0 | 1, now: number): void {
     if (!(Math.abs(usd) > 0) || !(min > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    // A field no longer stepped (its waves ran out, its glass or tab was left) holds nothing now, whatever it last reckoned: forgotten, so the
+    // first waves after it go in whole and at once.
+    if (!this.alive(now)) this.#forget();
     const r = Math.max(1, Math.abs(usd) / min), list = this.#waiting[side];
     this.#orders++; this.#lastSource = now; this.#still = false;
     let near: Waiting | null = null, best = Infinity;
@@ -402,24 +428,27 @@ export class WaveField {
 
   /**
    * Into the next step's pulses: the waiting waves the bucket allows (refilled by `fieldMs`, the time this step advances the field), the
-   * largest first (a whale's before any other), each at the height the field's energy lets in. When the field can take nothing more, they
+   * largest first (a whale's before any other; no side more than STREAK_MAX in a row while the other has waves waiting), each at the height
+   * the field's energy lets in. When the field can take nothing more, they
    * wait, their starts unspent, until it has room or they are older than MAX_WAIT_MS of the clock.
    */
   #start(now: number, fieldMs: number): void {
     this.#tokens = Math.min(SPAWN_BURST, this.#tokens + fieldMs * SPAWN_RATE / 1000);
     for (const list of this.#waiting) for (let i = list.length - 1; i >= 0; i--) if (now - list[i]!.born > MAX_WAIT_MS) { list.splice(i, 1); this.#passed++; }
     while (this.#tokens >= 1 && this.#pending.length < MAX_SOURCES) {
-      let pick: Waiting | null = null, from: 0 | 1 = 0;
-      for (const side of [0, 1] as const) for (const w of this.#waiting[side]) {
-        const whale = w.top >= WHALE_R, was = pick !== null && pick.top >= WHALE_R;
-        if (!pick || (whale && !was) || (whale === was && (w.r > pick.r || (w.r === pick.r && w.born < pick.born)))) { pick = w; from = side; }
-      }
-      if (!pick) break;
+      const best = [bestOf(this.#waiting[0]), bestOf(this.#waiting[1])] as const;
+      let from: 0 | 1 = best[1] && (!best[0] || before(best[1], best[0])) ? 1 : 0;
+      const other = (1 - from) as 0 | 1, pick0 = best[from];
+      if (!pick0) break;
+      // STREAK_MAX starts in a row on one side: the other side's best goes next, unless this one is a whale and it is not.
+      if (best[other] && this.#streakSide === from && this.#streak >= STREAK_MAX && !(pick0.top >= WHALE_R && best[other]!.top < WHALE_R)) from = other;
+      const pick = best[from]!;
       const g = this.#gainFor(pick);
       if (!(g > 0.01)) break;
       const p = pulseOf(pick.r), e = p.amp * p.amp * Math.max(0.8, p.width / CELL) ** 2;
       this.#waiting[from].splice(this.#waiting[from].indexOf(pick), 1);
       this.#tokens -= 1; this.#energy += g * g * e; this.#started++;
+      this.#streak = this.#streakSide === from ? this.#streak + 1 : 1; this.#streakSide = from;
       this.#delays.push(now - pick.born); if (this.#delays.length > 64) this.#delays.shift();
       this.#pending.push({ x: pick.x, y: pick.y, amp: p.amp * g, width: p.width, side: from });
     }
