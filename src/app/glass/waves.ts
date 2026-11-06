@@ -189,7 +189,7 @@ function bestOf(list: readonly Waiting[]): Waiting | null {
 /**
  * The gain of the middle of the Strength slider, the default (Karl: "by default make it very weak, make the effect fairly weak, or find an
  * ideal"): an ordinary day's crests on about a third of the screen they took before there was a setting, and a cascade's on a little more
- * than an ordinary day's took then (in a browser 0.65% against 0.39%: 1.7 times the area at 1.15 times the brightness; time-averaged share
+ * than an ordinary day's took then (in a browser about 0.7% against 0.39%: up to twice the area at about 1.15 times the brightness; time-averaged share
  * of the screen drawn at alpha 0.03 or more).
  */
 export const STRENGTH_MID_GAIN = 0.75;
