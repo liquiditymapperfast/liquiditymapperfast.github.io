@@ -1328,6 +1328,8 @@ export class Hub {
 
   #forgetColumns(drops: readonly ColumnDrop[]): void {
     for (const drop of drops) this.#post({ type: 'columnsDrop', stepMs: drop.stepMs, ids: drop.ids });
+    // A hold let go is no longer the long history's to keep files for, whichever path let it go and whether or not a load follows.
+    if (drops.length) this.#archiveView(this.#columnsWanted);
   }
 
   /** The source's clock (the page's, less the difference seen at boot): what the source counts as settled is by its own time. */

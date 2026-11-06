@@ -96,6 +96,35 @@ test('an arrival is spliced in only inside what is held, on its grid; one on ano
   } finally { Date.now = realNow; }
 });
 
+test('a hold let go is told to the long history at once, even when no question follows', async () => {
+  const realNow = Date.now;
+  let now = T0;
+  Date.now = () => now;
+  try {
+    const store = new Store(initialState()), source = new ArchiveSource();
+    const hub = new Hub(store, source as unknown as DataSource), worker = hub.worker as unknown as FakeWorker;
+    worker.onmessage!({ data: { type: 'ready' } });
+    await hub.start();
+    const books = (ids: string[]): void => store.set({ levels: { asOf: now, books: ids.map(id => ({ id })) } as never });
+    books(['a:BTC', 'b:BTC']);
+    const v1 = { t0: T0 - 3 * DAY, t1: T0 - 3 * DAY + 6 * HOUR, p0: 0, p1: 1 }, v3 = { ...v1, t0: v1.t0 + DAY, t1: v1.t1 + DAY };
+    await hub.loadColumns(v1, 180);
+    // 59 minutes on, b has left and the view has moved a day: a is asked for its new window, b keeps its old one.
+    now += 59 * MIN; books(['a:BTC']);
+    await hub.loadColumns(v3, 180);
+    const r1 = source.asked[0]!, r3 = source.asked.at(-1)!;
+    assert.equal(source.views.at(-1)!.windows.length, 2, 'both windows held');
+    // Two minutes later b's hold is an hour old and swept; a's is fresh: nothing is asked, and the archive hears of it all the same.
+    now += 2 * MIN;
+    const asked = source.asked.length;
+    await hub.loadColumns(v3, 180);
+    assert.equal(source.asked.length, asked, 'no question');
+    assert.ok(worker.posted.some(m => m.type === 'columnsDrop'), 'b let go');
+    assert.deepEqual(source.views.at(-1)!.windows, [{ from: r3.from, to: r3.to }], 'only a\'s window is held now');
+    assert.notEqual(r1.from, r3.from);
+  } finally { Date.now = realNow; }
+});
+
 test('an arrival whose answer comes after a pan is not spliced into the new window', async () => {
   const realNow = Date.now;
   let now = T0;
