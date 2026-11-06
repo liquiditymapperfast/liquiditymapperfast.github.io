@@ -361,6 +361,32 @@ test('the engine\'s answer passes as it is where the archive has no say', () => 
   assert.equal(archive.extend(odd, T0, T0 + 60 * MIN, 3 * MIN), odd, 'a step the service does not build');
 });
 
+test('a coin kept as tiles from eight minutes: its finest step is eight, its old ranges draw from the tiles there, two and four minutes are the engine\'s', async () => {
+  const levels = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096], step = 8 * MIN;
+  const start = packStartOf(T0, 8, SPAN), len = packMs(8, SPAN);
+  const pack = encodeTile({ level: 8, packStart: start, windows: 128, through: start + len, books: [['a', [col(0, 0.5), col(1, 0.5)]]] });
+  const { fetch, asked } = server(new Map([[packUrl(BASE, 8, start), pack]]));
+  const archive = new ArchiveColumns(BASE, fetch);
+  assert.equal(archive.minStepMs(), null, 'nothing known yet');
+  archive.setInfo({ ...info(start + 2 * len, start), levels });
+  await changed(archive);
+  assert.equal(archive.minStepMs(), step);
+  const now = start + 3 * 86_400_000;
+  assert.equal(columnStepFor({ t0: start, t1: start + 2 * HOUR }, 1_500, archive.first(), now - HOUR, now, archive.minStepMs()!), step);
+  const from = start, to = start + 4 * step;
+  const empty = frame(step, from, to, [engineSet('a', 0.5, [])], { a: Infinity });
+  const came = changed(archive);
+  assert.equal(archive.extend(empty, from, to, step), empty, 'the pack is not here yet');
+  await came;
+  assert.deepEqual(asked, [packUrl(BASE, 8, start)]);
+  const drawn = archive.extend(empty, from, to, step).instruments[0]!;
+  assert.deepEqual(drawn.times, [start, start + step], 'the two windows of the tiles');
+  for (const finer of [2 * MIN, 4 * MIN]) {
+    const f = frame(finer, from, to, [engineSet('a', 0.5, [])], { a: Infinity });
+    assert.equal(archive.extend(f, from, to, finer), f, `${finer / MIN} minutes: a level the coin does not have`);
+  }
+});
+
 test('the step rule looks at every book: one with only a phone\'s hours makes a twelve-hour-old view two minutes', () => {
   const now = T0 + 30 * HOUR, held = new Map([['a', now - 24 * HOUR], ['b', now - 3 * HOUR]]);
   assert.equal(depthSinceOf(held, ['a', 'b']), now - 3 * HOUR);

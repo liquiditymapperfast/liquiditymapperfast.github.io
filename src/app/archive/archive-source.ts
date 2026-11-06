@@ -98,6 +98,8 @@ export class ArchiveColumns {
   get info(): TilesInfo | null { return this.#info; }
   /** Where the archive's depth begins (its oldest window), or null when there is none. */
   first(): number | null { return this.#info ? this.#info.first : null; }
+  /** The archive's finest window (ms): its first level, two minutes for BTC and eight for a coin kept as tiles alone (ETH, SOL); null when there is none. */
+  minStepMs(): number | null { return this.#info ? this.#info.levels[0]! * MINUTE : null; }
 
   /**
    * The step the map reads now and the windows it holds there (`Hub.loadColumns`, as it starts and once its answers are in): the files the

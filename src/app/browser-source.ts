@@ -288,6 +288,8 @@ export class BrowserSource implements DataSource, VenueControl {
 
   /** Where the long history's depth begins, or null when there is none (yet). */
   archiveFirst(): number | null { return this.#archive?.first() ?? null; }
+  /** The long history's finest window (ms), or null when there is none (yet). */
+  archiveMinStep(): number | null { return this.#archive?.minStepMs() ?? null; }
   async flow(ids: string[], from: number, to: number): Promise<FlowFrame> { return this.#call({ method: 'flow', ids, from, to }); }
   async absorption(ids: string[], mins: number[], from: number, to: number, limit: number, since: number): Promise<AbsorptionAnswer> {
     const answer = parseAbsorptionAnswer(await this.#call({ method: 'absorption', ids, mins, from, to, limit, since }), ids);

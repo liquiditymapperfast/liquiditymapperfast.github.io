@@ -16,6 +16,19 @@ test('an old range at a minute\'s zoom asks for the long history\'s two minutes'
   assert.equal(columnStepFor(view(NOW - 5 * HOUR), 1_500, ARCHIVE, 0, NOW), 2 * MIN);
 });
 
+test('a coin whose tiles start at eight minutes (ETH, SOL) draws its old ranges at eight, never at two or four', () => {
+  const EIGHT = 8 * MIN;
+  assert.equal(columnStepFor(view(NOW - 3 * DAY), 1_500, ARCHIVE, SINCE, NOW, EIGHT), EIGHT, 'a minute\'s zoom');
+  // A view whose own step would be two or four minutes is lifted too: the archive has no window at either.
+  assert.equal(columnStepFor(view(NOW - 3 * DAY, DAY), 1_500, ARCHIVE, SINCE, NOW, EIGHT), EIGHT);
+  assert.equal(columnStepFor(view(NOW - 3 * DAY, 2 * DAY), 1_500, ARCHIVE, SINCE, NOW, EIGHT), EIGHT);
+  assert.equal(columnStepFor(view(NOW - 3 * DAY, 7 * DAY), 1_500, ARCHIVE, SINCE, NOW, EIGHT), 16 * MIN, 'wider zooms as they always were');
+  // Inside the page's day, and with now in view, the page's own minutes.
+  assert.equal(columnStepFor(view(NOW - 3 * HOUR), 1_500, ARCHIVE, SINCE, NOW, EIGHT), MIN);
+  assert.equal(columnStepFor(view(NOW), 1_500, ARCHIVE, NOW - 10 * MIN, NOW, EIGHT), MIN);
+  assert.equal(columnStepFor(view(NOW - 3 * DAY), 1_500, null, SINCE, NOW, EIGHT), MIN, 'no archive: as before');
+});
+
 test('a view inside the page\'s day keeps its minutes', () => {
   assert.equal(columnStepFor(view(NOW - 3 * HOUR), 1_500, ARCHIVE, SINCE, NOW), MIN);
 });
