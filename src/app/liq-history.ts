@@ -6,7 +6,7 @@
  *
  * What it says is where the money would be liquidated, as the positions stood: not what was liquidated, and not where price will go.
  */
-import { DUE_EVERY_MS, nextAskAt, publishedAt } from './liq-schedule.ts';
+import { DUE_EVERY_MS, nextAskAt, placeSnapshot } from './liq-schedule.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 
 export const DAY_MS = 86_400_000;
@@ -78,13 +78,13 @@ export function bandIndex(edges: readonly number[], radius: number): number {
 
 /**
  * The history as the page holds it: the index, and the days the view has asked for, each read once (the day still being written again when
- * its next snapshot can be there: `due`, from when its newest row was published, `published`, on the page's clock). Kept here so the pane
+ * its next snapshot can be there: `due`, from when its newest row was created, `created`, on the page's clock). Kept here so the pane
  * only says which stretch of time it shows and draws what has come.
  */
 export class LiqHistory {
   #index: LiqIndex | null = null;
   #indexAt = 0; #indexBusy = false; #indexFailed = 0;
-  #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; published: number; due: number }>();
+  #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; created: number; lead: number; due: number }>();
   /** Goes up whenever something new has come. */
   version = 0;
   constructor(private get: (url: string) => Promise<unknown> = url => fetch(url, { cache: 'no-cache' }).then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))) {}
@@ -111,15 +111,19 @@ export class LiqHistory {
       // snapshot can be there (each minute while it has none yet).
       const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
       if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < held.due)) continue;
-      const entry = held ?? { rows: [], at: 0, busy: false, failed: 0, newest: -Infinity, published: 0, due: 0 };
+      const entry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, newest: -Infinity, created: 0, lead: 0, due: 0 };
       entry.busy = true; this.#days.set(day, entry);
-      const edges = index.edges;
+      const edges = index.edges, before = entry.at, hadRows = entry.rows.length > 0;
       this.get(urls.day(dayText(day))).then(raw => {
         if (this.#index?.edges !== edges) return;
         entry.rows = readDay(raw, edges); entry.at = now; this.version++;
-        const newest = entry.rows.reduce((max, row) => Math.max(max, row.fetchedAt), -Infinity);
-        if (newest > entry.newest) { entry.newest = newest; entry.published = publishedAt(newest, now); }
-        entry.due = entry.rows.length ? nextAskAt(entry.published, now) : now + DUE_EVERY_MS;
+        const top = entry.rows.reduce<LiqRow | null>((best, row) => !best || row.createdAt > best.createdAt ? row : best, null);
+        if (top && top.createdAt > entry.newest) {
+          // Seen appear between this read and the one before: placed by when it was published, else by its age (`placeSnapshot`).
+          entry.newest = top.createdAt;
+          ({ created: entry.created, lead: entry.lead } = placeSnapshot(top.createdAt, top.fetchedAt, hadRows, before, now, entry.lead));
+        }
+        entry.due = entry.rows.length ? nextAskAt(entry.created, now, entry.lead) : now + DUE_EVERY_MS;
         changed();
       }, () => { entry.failed = now; }).finally(() => { entry.busy = false; });
     }

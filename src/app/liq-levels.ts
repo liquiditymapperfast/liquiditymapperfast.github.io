@@ -10,7 +10,7 @@
 import { BTC, instrumentIdFor, type Coin } from '../shared/coins.ts';
 import { webGet, type Fetcher } from '../shared/history.ts';
 import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
-import { nextAskAt, pageHidden, publishedAt } from './liq-schedule.ts';
+import { nextAskAt, pageHidden, placeSnapshot } from './liq-schedule.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import type { AppState, CandleRow } from './store.ts';
 import type { View } from './view.ts';
@@ -329,8 +329,11 @@ export class LiqLevelsSource {
   #url = '';
   #pending = false;
   #nextAt = 0;
-  /** When the snapshot held was published, on the page's clock (`publishedAt`). */
-  #published = 0;
+  /** When the snapshot held was created, on the page's clock, and the lead the wait for the next is cut by (`placeSnapshot`). */
+  #created = 0;
+  #lead = 0;
+  /** When the last answered ask was made: a newer snapshot the next ask finds was published after it. */
+  #askedAt = -Infinity;
   #failed = false;
   #seen: Seen | null = null;
   #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
@@ -345,12 +348,12 @@ export class LiqLevelsSource {
     const url = this.url();
     if (!url) { this.state = 'off'; return; }
     if (coin.coin !== BTC.coin) { this.state = 'other-coin'; return; }
-    if (url !== this.#url) { this.#url = url; this.levels = null; this.#seen = null; this.#nextAt = 0; this.#published = 0; this.#failed = false; this.version++; }
+    if (url !== this.#url) { this.#url = url; this.levels = null; this.#seen = null; this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#askedAt = -Infinity; this.#failed = false; this.version++; }
     const now = this.now();
     // Asked when the next snapshot can be there (`liq-schedule.ts`), and not while the page is out of sight: it asks as it shows again.
     if (!this.#pending && now >= this.#nextAt && !pageHidden()) {
       this.#pending = true;
-      const asked = url;
+      const asked = url, askedAt = now;
       // Asked of the edge every time (a 304 when nothing changed): a CDN can stretch the minute the file asks to be kept, as Cloudflare's
       // zone default did to four hours (2026-11-01).
       void this.get(url, { cache: 'no-cache' }).then(raw => {
@@ -361,9 +364,12 @@ export class LiqLevelsSource {
         // Never back to an older snapshot: an edge can hold an older copy for a moment.
         const held = this.levels;
         if (!held || levels.asOf > held.asOf || (levels.asOf === held.asOf && levels.fetchedAt > held.fetchedAt)) {
-          this.levels = levels; this.#seen = null; this.version++; this.#published = publishedAt(levels.fetchedAt, this.now());
+          this.levels = levels; this.#seen = null; this.version++;
+          // Seen appear between this ask and the one before: placed by when it was published, not by the page's clock against HyperTracker's.
+          ({ created: this.#created, lead: this.#lead } = placeSnapshot(levels.createdAt, levels.fetchedAt, !!held, this.#askedAt, askedAt, this.#lead));
         }
-        this.#nextAt = nextAskAt(this.#published, this.now());
+        this.#askedAt = askedAt;
+        this.#nextAt = nextAskAt(this.#created, this.now(), this.#lead);
         this.#settle();
         onChange();
       }, () => { if (asked === this.#url) this.#fail(onChange); }).finally(() => { this.#pending = false; });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, LiqHistory, bandIndex, dayText, historyUrls, readDay, readIndex } from '../src/app/liq-history.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
-import { SNAPSHOT_DUE_MS } from '../src/app/liq-schedule.ts';
+import { FIRST_LEAD_MS, SNAPSHOT_DUE_MS } from '../src/app/liq-schedule.ts';
 
 /** The service's buckets (history.rs): 1/32 % to 5 %, then 5/16 % to 25 %. */
 const EDGES = [...Array.from({ length: 160 }, (_, i) => (i + 1) / 32), ...Array.from({ length: 64 }, (_, i) => 5 + (i + 1) * 5 / 16)];
@@ -77,8 +77,9 @@ test('the pane asks for the index first, then the days its view needs (with the 
 
 test('today is asked again when its next snapshot can be there, then each minute until it comes', async () => {
   const asked: string[] = [], day = Date.UTC(2026, 10, 5), MIN = 60_000, t0 = day + 10 * 3_600_000;
-  // The newest row was published four minutes before the first read: the next can be there SNAPSHOT_DUE_MS after it (D minutes on).
-  const D = SNAPSHOT_DUE_MS / MIN - 4;
+  // The newest row was published four minutes before the first read, created five minutes before that (`row`): the next can be there
+  // SNAPSHOT_DUE_MS after its creation, less the first lead (the first read places it by its age): D minutes on.
+  const D = (SNAPSHOT_DUE_MS - FIRST_LEAD_MS) / MIN - 9;
   let rows = [row(t0 - 4 * MIN)];
   const index = 'https://levels.hiverust.dev/v1/btc/liquidation-history.json', today = `https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day)}.json`;
   const h = new LiqHistory(url => { asked.push(url); return Promise.resolve(url === index ? { edges: EDGES, first: day + 3_600_000, last: t0 } : { rows }); });
@@ -97,7 +98,8 @@ test('today is asked again when its next snapshot can be there, then each minute
   await at(t0 + (D + 2) * MIN + 3_000);
   assert.equal(todays(), 4);
   assert.equal(h.rows(day, t0 + DAY_MS).length, 2, 'the new snapshot came');
-  for (let m = D + 3; m < D + 1 + SNAPSHOT_DUE_MS / MIN; m++) await at(t0 + m * MIN + 3_000);
+  // The new row was created five minutes before its fetch (D - 4 minutes on): the one after is due SNAPSHOT_DUE_MS after that.
+  for (let m = D + 3; m < D - 4 + SNAPSHOT_DUE_MS / MIN; m++) await at(t0 + m * MIN + 3_000);
   assert.equal(todays(), 4, 'quiet again until the one after can be there');
 });
 
