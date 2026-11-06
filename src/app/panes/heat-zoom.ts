@@ -5,7 +5,8 @@ import type { CandleRow } from '../store.ts';
  * shape the person gave it; the wheel (or a drag) on the price scale zooms price alone and the wheel on the time strip time alone. Each axis holds
  * still the thing a person is watching: the live edge for time and the current price for price while the map follows the market (while the live
  * edge is on it), the point under the pointer once it stays where it was left (and always with Alt). Pure functions, so the rules are tested
- * without a canvas. How a recentre frames the price, the current price in the middle, is here too (`fitPrices`).
+ * without a canvas. How a recentre frames the price, the current price in the middle, is here too (`fitPrices`), and how the price axis follows
+ * the market while the map does (`followPrice`).
  */
 
 /**
@@ -50,6 +51,55 @@ export function holdPixel(o: { axis: 'time' | 'price'; pointer: number; size: nu
  */
 export function liveEdgeShown(view: { t0: number; t1: number }, now: number): boolean {
   return view.t1 > view.t0 && now >= view.t0 && now <= view.t1;
+}
+
+/** A pan that moves the price this many pixels up or down, and more up or down than across, moved it on purpose (`holdsPrice`). */
+export const PRICE_HOLD_PX = 24;
+/**
+ * Whether a pan that moved the map (`dx`, `dy`) pixels in all, a gesture's net move, moved the price on purpose: PRICE_HOLD_PX or more up or
+ * down, and more up or down than across. A drag along the time axis drifts up or down by tens of pixels without meaning to: counted as a move of
+ * the price, it held the price until Live or a recentre, and a trend then took the live candle off a map that went on following it (YRN, 2026-11-06).
+ */
+export function holdsPrice(dx: number, dy: number): boolean {
+  return Math.abs(dy) >= PRICE_HOLD_PX && Math.abs(dy) > Math.abs(dx);
+}
+
+/**
+ * While the map follows the market, the current price is kept clear of this share of the height at the top and the bottom (`priceClear`): nearer,
+ * it is brought back to the middle. A hand that puts it there, or off the map, is looking above or below it on purpose (`priceHeldAfter`).
+ */
+export const PRICE_BAND = 0.1;
+
+/** Whether `mark` is clear of the top and bottom tenths of the map (PRICE_BAND), where the map following the market keeps it: false with no price or no view. */
+export function priceClear(view: { p0: number; p1: number }, mark: number): boolean {
+  const band = (view.p1 - view.p0) * PRICE_BAND;
+  return mark > 0 && view.p1 > view.p0 && mark >= view.p0 + band && mark <= view.p1 - band;
+}
+/** Whether `mark` is on the map at all, its top and bottom included: false with no price or no view. */
+export function priceOnMap(view: { p0: number; p1: number }, mark: number): boolean {
+  return mark > 0 && view.p1 > view.p0 && mark >= view.p0 && mark <= view.p1;
+}
+
+/**
+ * Whether the price is held where a hand put it after a pan that moved the map (`dx`, `dy`) pixels in all, given whether that left the price
+ * `clear` of the top and bottom tenths and whether it was `held` before. Only a pan that moved the price on purpose (`holdsPrice`) decides: it
+ * holds the price where it left it at an edge or off the map, where the follow would bring it back to the middle at once (a look above or below
+ * the price), and lets it go where it left it in the clear, where the follow keeps it on the map as it does a price no hand moved. A pan along the
+ * time axis leaves the hold as it was. A hold taken in the clear did nothing then and one thing later: it let a trend take the live candle off a
+ * map that went on following it (YRN, 2026-11-06).
+ */
+export function priceHeldAfter(o: { dx: number; dy: number; clear: boolean; held: boolean }): boolean {
+  return holdsPrice(o.dx, o.dy) ? !o.clear : o.held;
+}
+
+/**
+ * One frame of the price axis following the market, while the map follows it and no hand holds the map: the current price is brought back to the
+ * middle, the span kept, once it is no longer clear of the top and bottom tenths (`priceClear`), unless a hand holds it where it put it (`held`).
+ */
+export function followPrice(o: { p0: number; p1: number; mark: number; held: boolean }): { p0: number; p1: number } {
+  const span = o.p1 - o.p0;
+  if (o.held || !(o.mark > 0) || !(span > 0) || priceClear(o, o.mark)) return { p0: o.p0, p1: o.p1 };
+  return { p0: o.mark - span / 2, p1: o.mark + span / 2 };
 }
 
 /** The shortest and longest time span the map zooms to, and the price span as a share of the current price. */
