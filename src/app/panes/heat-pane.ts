@@ -365,7 +365,7 @@ export class HeatPane {
   /**
    * A hand put the price at the top or bottom of the map or off it, a pan mostly up or down or Alt + wheel while following (`priceHeldAfter`): the
    * map no longer brings the current price back to the middle while it follows the market, which would undo that look above or below the price,
-   * and Live shows. A pan mostly up or down that leaves the price in the clear, a recentre, Live, Go to and a drawing's focus clear it.
+   * and Live shows. A pan mostly up or down or Alt + wheel that leaves the price in the clear, a recentre, Live, Go to and a drawing's focus clear it.
    */
   #priceHeld = false;
   /** How far the gesture under way has panned the map, in pixels: at its end, a pan mostly up or down decides whether the price is held (`#settleFollow`). */
@@ -821,7 +821,7 @@ export class HeatPane {
   }
 
   goTo(t: number): void {
-    this.#demo = null;
+    this.#demo = null; this.#stopFling();
     const v = this.view, span = v.t1 - v.t0, t0 = t - span / 2, t1 = t + span / 2;
     const state = this.store.state, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     // Fitted to the candles that are drawn, whichever series they are of (the line is cut on them, so they are what is on screen; a view they
@@ -1185,7 +1185,7 @@ export class HeatPane {
 
   /** Centre the map on a stretch of time and prices (a drawing found in its list), widening the view where it does not fit. */
   focusOn(box: { t0: number; t1: number; p0: number; p1: number }): void {
-    this.#demo = null;
+    this.#demo = null; this.#stopFling();
     const v = this.view, span = Math.max(v.t1 - v.t0, (box.t1 - box.t0) * 1.4), pSpan = Math.max(v.p1 - v.p0, (box.p1 - box.p0) * 1.4);
     const tm = (box.t0 + box.t1) / 2, pm = (box.p0 + box.p1) / 2;
     v.set({ t0: tm - span / 2, t1: tm + span / 2, p0: pm - pSpan / 2, p1: pm + pSpan / 2 });
@@ -3494,8 +3494,9 @@ export class HeatPane {
   #touchHandlers(): GestureHandlers {
     const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     return {
-      // A finger landing on a fling ends it: decided now, so the fling's distance is not counted into the gesture the finger starts.
-      down: () => { const flung = this.#fling !== 0; this.#stopFling(); if (flung && this.#settlePending && !this.#followHeld()) this.#settleFollow(); },
+      // A finger landing ends a fling, and what the hand did before is decided now (as the next frame would), so neither the fling's distance nor
+      // a pan's not yet settled is counted into the gesture the finger starts.
+      down: () => { this.#stopFling(); if (this.#settlePending && !this.#followHeld()) this.#settleFollow(); },
       tap: p => {
         if (this.store.state.vwapAnchoring && p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH) { this.onAnchor?.(this.view.tOf(p.x, this.plotW)); return; }
         if (this.#bands.onHeader(p.x, p.y) || this.#onHiddenTag(p.x, p.y)) { this.onTopProfile(); return; }

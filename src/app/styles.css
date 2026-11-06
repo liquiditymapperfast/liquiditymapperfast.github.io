@@ -330,7 +330,7 @@ html[data-bar="compact"] .toast { bottom: 76px; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='6.5'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E") center / contain no-repeat; }
 /* Live: back to the live candle at the zoom the map has, at the foot of the map's right edge where the live candle went (TradingView's place for it),
-   shown only while the map stays where it was left (heat-pane.ts `jumpToNow`); on a phone it stands on the drawing tools' strip when that is open
+   shown only while the map stays where it was left in time or a hand holds the price (heat-pane.ts `jumpToNow`); on a phone it stands on the drawing tools' strip when that is open
    (draw/bar.ts sets --draw-foot). */
 .pane.heat .map-live { position: absolute; z-index: 3; right: calc(var(--gutter, 192px) + 8px); bottom: var(--draw-foot, 30px); display: inline-flex; align-items: center; gap: 4px;
   height: 26px; padding: 0 8px 0 10px; border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 86%, transparent); font-size: 11px;
