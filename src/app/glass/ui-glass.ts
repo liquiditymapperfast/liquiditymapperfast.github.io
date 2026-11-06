@@ -2,7 +2,7 @@ import { el } from '../dom.ts';
 import { STRIDE, type TapeRing } from '../tape/ring.ts';
 import { chromeFor, rgb, type Palette } from '../theme.ts';
 import { scaledUsd } from '../coin.ts';
-import { CELL, WAVE_GLSL, WaveField, pulseFor, type WaveRegion } from './waves.ts';
+import { CELL, ENERGY_MAX, WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, strengthGain, type WaveRegion } from './waves.ts';
 import { PRESS, PUSH_WIDTH, WAKE_BREAK_MS, WAKE_WIDTH, pushAmp, wakeAmp } from './touch.ts';
 
 /**
@@ -21,7 +21,9 @@ import { PRESS, PUSH_WIDTH, WAKE_BREAK_MS, WAKE_WIDTH, pushAmp, wakeAmp } from '
  * the map shows it, and the wave runs out across the whole screen, the chart included, as faint lines of light at its crests over the
  * data. The halo above stays with it, never replaced by it (Karl, 2026-10-17: the gathered light, the split ripple and the binocular ghost
  * were the glass's beauty, and the waves alone lost them). It slows and bends in the chrome's glass, which it lights as it crosses (brightest where a crest meets a rim), is partly thrown
- * back by the splitters, and is soaked up at the screen's edges. The flow column's large changes send waves of their own (`pulse`).
+ * back by the splitters, and is soaked up at the screen's edges. The flow column's large changes send waves of their own (`pulse`). The
+ * orders go to the field as orders (`WaveField.order`), which gathers them and holds a busy market back; how strongly its waves are drawn
+ * is the person's Strength (`setStrength`, the Waves panel).
  *
  * It draws when something changes (a spark, a wave, a panel opening or moving, a resize), at most 60 times a second while waves run and
  * 30 while sparks glow, and not at all while the page is hidden. Reduced motion keeps the glass and leaves the light out.
@@ -128,6 +130,8 @@ export class UiGlass {
   #loc = new Map<string, WebGLUniformLocation | null>(); #overLoc = new Map<string, WebGLUniformLocation | null>();
   /** The waves, where the card can run them (null: the sparks' light instead), and the layout its medium was last drawn from. */
   #field: WaveField | null = null; #mediumKey = '';
+  /** How strongly the market's waves are drawn (`strengthGain` of the person's Strength). */
+  #gain = strengthGain(WAVE_STRENGTH_DEFAULT);
   #on = false; #frame = 0; #last = 0; #poll = 0; #key = '';
   /** The clock the shader's times are counted from, moved up whenever the glass is dark again (a float holds a short time exactly). */
   #base = 0;
@@ -197,8 +201,21 @@ export class UiGlass {
    */
   pulse(x: number, y: number, usd: number, min: number, side: 0 | 1): void {
     if (!this.#on || !this.#field || this.#reduced?.matches || document.hidden) return;
-    this.#field.add({ x, y, side, ...pulseFor(usd, min) }, performance.now());
+    this.#field.order(x, y, usd, min, side, performance.now());
     this.schedule();
+  }
+
+  /** How strongly the waves are drawn: the person's Strength, 0 to 100 (store `waveStrength`). */
+  setStrength(strength: number): void {
+    const gain = strengthGain(strength);
+    if (gain === this.#gain) return;
+    this.#gain = gain; this.schedule();
+  }
+
+  /** What the waves have taken and started, for a look from the console: orders in, waves started, waiting, and how full the field is (of ENERGY_MAX). */
+  get waveStats(): { orders: number; started: number; waiting: number; energy: number } | null {
+    const f = this.#field;
+    return f ? { orders: f.orders, started: f.started, waiting: f.waiting, energy: f.energyAt(performance.now()) / ENERGY_MAX } : null;
   }
 
   /** Turn the glass on or off (the page's `html[data-material]` is set by its caller, so the chrome turns see-through with it). */
@@ -250,7 +267,7 @@ export class UiGlass {
       const at = (k % ring.capacity) * STRIDE, d = ring.data, usd = d[at + 2]!;
       if (!(Math.abs(usd) >= min)) continue;
       const spot = this.spotOf(ring.p0 + d[at + 1]!, ring.t0 + d[at]!); if (!spot) continue;
-      if (this.#field) { this.#field.add({ x: spot.x, y: spot.y, side: usd > 0 ? 0 : 1, ...pulseFor(usd, min) }, now); added = true; }
+      if (this.#field) { this.#field.order(spot.x, spot.y, usd, min, usd > 0 ? 0 : 1, now); added = true; }
       const strength = Math.min(1, 0.35 + 0.3 * Math.log10(Math.abs(usd) / min)), c = usd > 0 ? buy : sell;
       // The glass nearest the order, three pieces at most, each lit by how near it is.
       const near = this.#surfaces.map(r => { const x = Math.max(r.x, Math.min(r.x + r.w, spot.x)), y = Math.max(r.y, Math.min(r.y + r.h, spot.y)); return { x, y, d: Math.hypot(x - spot.x, y - spot.y) }; })
@@ -326,11 +343,11 @@ export class UiGlass {
       const prog = gl.createProgram()!;
       gl.attachShader(prog, shader(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) ?? '');
-      for (const name of ['rect', 'size', 'dpr', 'now', 'cap', 'touchCap', 'tint', 'dark', 'n', 'spark', 'sparkC', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'hasWaves']) this.#loc.set(name, gl.getUniformLocation(prog, name));
+      for (const name of ['rect', 'size', 'dpr', 'now', 'cap', 'touchCap', 'tint', 'dark', 'n', 'spark', 'sparkC', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']) this.#loc.set(name, gl.getUniformLocation(prog, name));
       const over = gl.createProgram()!;
       gl.attachShader(over, shader(gl.VERTEX_SHADER, VERT)); gl.attachShader(over, shader(gl.FRAGMENT_SHADER, OVER)); gl.linkProgram(over);
       if (!gl.getProgramParameter(over, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(over) ?? '');
-      for (const name of ['size', 'dpr', 'dark', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'hasWaves']) this.#overLoc.set(name, gl.getUniformLocation(over, name));
+      for (const name of ['size', 'dpr', 'dark', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']) this.#overLoc.set(name, gl.getUniformLocation(over, name));
       this.#gl = gl; this.#prog = prog; this.#over = over;
       this.#field = WaveField.create(gl);
       if (!this.#field) console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.');
@@ -388,6 +405,7 @@ export class UiGlass {
       gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, field ? field.previous : null); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(loc.get('waves') ?? null, 3); gl.uniform1i(loc.get('wavesPrev') ?? null, 4); gl.uniform1i(loc.get('hasWaves') ?? null, waving ? 1 : 0);
       gl.uniform2f(loc.get('waveCells') ?? null, field?.cols ?? 1, field?.rows ?? 1); gl.uniform1f(loc.get('waveCssH') ?? null, window.innerHeight);
+      gl.uniform1f(loc.get('waveGain') ?? null, this.#gain);
       gl.uniform3fv(loc.get('buyC') ?? null, buyC); gl.uniform3fv(loc.get('sellC') ?? null, sellC); gl.uniform3fv(loc.get('touchC') ?? null, touchC);
     };
     // The open screen first, the whole of it, while waves run; the glass is drawn over it where the chrome is.

@@ -1,4 +1,4 @@
-import { WAVE_GLSL, WaveField, pulseFor, type WaveRegion } from '../glass/waves.ts';
+import { WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, strengthGain, type WaveRegion } from '../glass/waves.ts';
 import { STRIDE, type TapeRing } from '../tape/ring.ts';
 import type { TrailStyle } from './model.ts';
 
@@ -64,6 +64,8 @@ export interface GlassFrame {
    * sides' colours (0-1 RGB).
    */
   fill: number; bookBid: readonly [number, number, number]; bookAsk: readonly [number, number, number];
+  /** How strongly the waves are drawn (glass/waves.ts `strengthGain` of the person's Strength); the default Strength's without one. */
+  waveGain?: number;
 }
 
 const STYLE_ID: Record<TrailStyle, number> = { phosphor: 0, etched: 1, beads: 2 };
@@ -449,7 +451,7 @@ export class TrailGL {
     this.#flash = program(FLASH_VERT, FLASH_FRAG, ['px', 'style', 'dark', 'bidC', 'askC', 'mid']);
     this.#down = program(FULL_VERT, DOWN_FRAG, ['src', 'small', 'texel']);
     this.#blur = program(FULL_VERT, BLUR_FRAG, ['src', 'size', 'dir']);
-    this.#comp = program(FULL_VERT, COMP_FRAG, ['scene', 'small', 'rows', 'px', 'ext', 'gain', 'dpr', 'piece', 'frost', 'count', 'bricks', 'dark', 'tintC', 'bidC', 'askC', 'tintA', 'pulse', 'nowMs', 'hasRows', 'bookBid', 'bookAsk', 'fillA', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'hasWaves']);
+    this.#comp = program(FULL_VERT, COMP_FRAG, ['scene', 'small', 'rows', 'px', 'ext', 'gain', 'dpr', 'piece', 'frost', 'count', 'bricks', 'dark', 'tintC', 'bidC', 'askC', 'tintA', 'pulse', 'nowMs', 'hasRows', 'bookBid', 'bookAsk', 'fillA', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']);
     this.#field = WaveField.create(gl);
     const texture = (): WebGLTexture => {
       const tex = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -504,7 +506,7 @@ export class TrailGL {
   get dpr(): number { return this.#dpr; }
 
   /** A wave from where an order arrived (CSS px), as large as `usd` against `min`, a buy's or a sell's; nothing without the field. */
-  wave(x: number, y: number, usd: number, min: number, side: 0 | 1): void { this.#field?.add({ x, y, side, ...pulseFor(usd, min) }, performance.now()); }
+  wave(x: number, y: number, usd: number, min: number, side: 0 | 1): void { this.#field?.order(x, y, usd, min, side, performance.now()); }
   /** Whether a wave still runs (the pane keeps drawing while one does). */
   get waving(): boolean { return this.#field?.alive(performance.now()) ?? false; }
 
@@ -647,6 +649,7 @@ export class TrailGL {
     gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, field ? field.texture : null); gl.uniform1i(c.get('waves')!, 3);
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, field ? field.previous : null); gl.uniform1i(c.get('wavesPrev')!, 4);
     gl.uniform1i(c.get('hasWaves')!, waving ? 1 : 0); gl.uniform2f(c.get('waveCells')!, field?.cols ?? 1, field?.rows ?? 1); gl.uniform1f(c.get('waveCssH')!, H / dpr);
+    gl.uniform1f(c.get('waveGain')!, glass.waveGain ?? strengthGain(WAVE_STRENGTH_DEFAULT));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE0);
   }

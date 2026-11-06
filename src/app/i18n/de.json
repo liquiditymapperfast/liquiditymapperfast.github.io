@@ -2163,5 +2163,8 @@
  "3 h": "3 Std.",
  "History": "Verlauf",
  "How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.": "Wie viel aufgezeichneter Verlauf dieses Gerät beim Öffnen der Seite lädt: die letzten 3 Stunden (einige MB), den ganzen Tag (einige zehn MB) oder nichts. Gilt ab dem nächsten Öffnen der Seite.",
- "{name} is folded to leave the map room. Show it anyway": "{name} ist eingeklappt, damit die Karte Platz hat. Trotzdem einblenden"
+ "{name} is folded to leave the map room. Show it anyway": "{name} ist eingeklappt, damit die Karte Platz hat. Trotzdem einblenden",
+ "Wave strength": "Wellenstärke",
+ "How strongly the waves are drawn, from barely there at the left to strong at the right. A busy market is held back at any strength.": "Wie stark die Wellen gezeichnet werden, von kaum sichtbar ganz links bis kräftig ganz rechts. Ein hektischer Markt wird bei jeder Stärke zurückgehalten.",
+ "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "Ein hektischer Markt hält seine Wellen von selbst zurück: Orders, die an einer Stelle zusammenkommen, ergeben eine größere Welle, pro Sekunde beginnen nur wenige, und je voller der Bildschirm schon ist, desto kleiner wird jede neue. So wirkt eine Kaskade etwa so lebhaft wie ein gewöhnlicher geschäftiger Moment. Die Stärke wirkt zusätzlich."
 }

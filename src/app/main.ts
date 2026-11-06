@@ -248,6 +248,7 @@ async function main(): Promise<void> {
   // The glass around the chart (glass/ui-glass.ts): lit by the large orders where the map shows them.
   const glass = new UiGlass((price, t) => heat.liveSpot(price, t), () => hub.tape);
   cvd.onLargeFlow = (x, y, usd) => glass.pulse(x, y, usd, scaledUsd(100_000), usd > 0 ? 0 : 1);
+  glass.setStrength(store.state.waveStrength);
   const applyMaterial = (): void => {
     glass.setPalette(applyTheme(store.state.theme));
     glass.setOn(store.state.material === 'glass');
@@ -339,6 +340,8 @@ async function main(): Promise<void> {
     if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }
     if (changed.has('theme')) { glass.setPalette(applyTheme(state.theme)); for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle, liq]) p.setPalette(state.theme); }
     if (changed.has('material')) { applyMaterial(); hub.setTape(tapeWanted()); }
+    // The page's glass draws its next frame with the new strength; the Tape's reads it with each frame it draws.
+    if (changed.has('waveStrength')) { glass.setStrength(state.waveStrength); candle.invalidate(); }
     if (changed.has('cvd')) cvd.settingsChanged();
     if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
     if (changed.has('show') || changed.has('liqLevels')) layout(); else if (changed.has('traded')) { gutters(); arrange.refit(); }
@@ -404,7 +407,7 @@ async function main(): Promise<void> {
     if (changed.has('barCollapsed')) toolbar.setCollapsed(state.barCollapsed);
     if (['show', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'oiMarkets', 'customMarkets', 'oiInstrument', 'oiParts', 'seriesInstrument', 'range'].some(k => changed.has(k as never))) ls.invalidate();
     if (['show', 'candles', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'traded', 'timeZone', 'range', 'oi', 'oiInstrument', 'oiParts'].some(k => changed.has(k as never))) delta.invalidate();
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle, liq]) p.setPalette(store.state.theme);

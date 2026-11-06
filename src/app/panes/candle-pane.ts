@@ -17,6 +17,7 @@ import { drawVenueMark } from '../venue-marks.ts';
 import { niceStep } from '../view.ts';
 import { STRIDE, type TapeRing } from '../tape/ring.ts';
 import { ROW_TEXELS, TrailGL, type FlashSprite } from '../candle/trail-gl.ts';
+import { strengthGain } from '../glass/waves.ts';
 import * as M from '../candle/model.ts';
 
 const NUM_FONT = '10.5px ui-monospace, SFMono-Regular, Menlo, monospace', BOLD_NUM = `700 ${NUM_FONT}`;
@@ -679,6 +680,8 @@ export class CandlePane {
         y0: s.y0, y1: s.y1, frost: this.#frost, bricks: this.#settings.glass === 'bricks', pulse: reduced ? 'off' : this.#settings.pulse, nowMs: page - this.#pulseBase,
         // The book's fill as the page's canvas lays it with glass off; a breath on the bricks, whose glass is already the bar's colour.
         fill: this.#settings.glass === 'bricks' ? 0.05 : p.dark ? 0.18 : 0.14, bookBid: tones.bookBid, bookAsk: tones.bookAsk,
+        // The waves as strong as the page's own (the Waves panel's Strength), though this glass is switched on by the Tape's Glass.
+        waveGain: strengthGain(this.store.state.waveStrength),
         pieces: [{ x0: 2, x1: l.bidX1, candle: false }, { x0: l.candleX0, x1: l.candleX1, candle: true }, { x0: l.askX0, x1: l.askX1 + 2, candle: false }],
       },
     });

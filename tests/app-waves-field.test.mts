@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RING_MS, SUBSTEP_MS, WaveField } from '../src/app/glass/waves.ts';
+import { MAX_FRAME_MS, RING_MS, SUBSTEP_MS, WaveField } from '../src/app/glass/waves.ts';
 
 /**
  * A stand-in for a WebGL2 context that accepts every call: its constants are numbers, shaders and framebuffers always succeed, a uniform's
@@ -47,11 +47,14 @@ test('after a still spell the first step of a new pulse is one frame long, not t
   assert.equal(draws() - before, Math.round(16.7 / SUBSTEP_MS), 'one frame of substeps, not the 50 ms of a stale clock');
 });
 
-test('a long pause steps as a short one, not the whole pause at once', () => {
+test('a long pause steps as a short one, not the whole pause at once, and no frame steps more than sixteen substeps', () => {
   const { gl, draws } = fakeGl(), field = WaveField.create(gl)!;
   field.resize(400, 300);
   field.add(pulse, 100); field.step(100);
   field.add(pulse, 1_100);
   const before = draws(); field.step(1_100);
-  assert.equal(draws() - before, Math.round(50 / SUBSTEP_MS), 'a second away steps 50 ms');
+  assert.equal(draws() - before, Math.round(MAX_FRAME_MS / SUBSTEP_MS), 'a second away steps one long frame');
+  assert.equal(Math.round(MAX_FRAME_MS / SUBSTEP_MS), 16, 'of sixteen substeps: a card that falls behind is not given more to do each frame');
+  // Frames of 50 ms, a card that cannot keep up: each steps sixteen, never the 24 its time would hold.
+  for (let t = 1_150; t < 1_600; t += 50) { field.add(pulse, t); const was = draws(); field.step(t); assert.ok(draws() - was <= 17, `${draws() - was} substeps in a 50 ms frame`); }
 });

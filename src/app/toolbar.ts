@@ -55,6 +55,7 @@ import { coinChoice, currentCoin, scaledUsd, unscaledUsd } from './coin.ts';
 import { buildTradedPanel } from './traded/panel.ts';
 import type { ProfileRoom } from './traded/arrange.ts';
 import { venueMark } from './venue-marks.ts';
+import { readWaveStrength } from './glass/waves.ts';
 import { gridStepFor } from '../shared/grid.ts';
 
 /** How a timeframe is said in a tooltip. */
@@ -68,6 +69,8 @@ function hiddenByFilter(venue: string, kind: 'spot' | 'perp' | null, scope: stri
 }
 // Liquidation levels are not a layer but the Chart deck's Liq levels, drawn over the heatmap.
 const LAYERS: [Layer, string][] = [['liquidity', t('Liquidity')], ['stopLoss', t('Stop loss')], ['takeProfit', t('Take profit')]];
+/** What the Waves strength does, for its slider in the Waves panel and in a phone's Settings. */
+const WAVE_STRENGTH_TIP = t('How strongly the waves are drawn, from barely there at the left to strong at the right. A busy market is held back at any strength.');
 /** A chosen venue that has no book for this long gets a chip saying so (a start-up that is merely slow does not). */
 const IDLE_GRACE_MS = 20_000;
 /** What the dropdown says next to a layer that cannot be chosen yet. */
@@ -135,6 +138,7 @@ export class Toolbar {
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
   #soundButton = el('button', { class: 'led-btn sound-btn', textContent: t('Sounds'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
+  #wavesPanel: Panel | null = null;
   #sounds: Sounds | null = null;
   /** Where the language and theme buttons live on a desktop screen (the status bar), or null. */
   #statusHost: HTMLElement | null = null;
@@ -151,9 +155,9 @@ export class Toolbar {
     trades: settingsKey(t('Trades')), footprint: settingsKey(t('Footprint')), vwap: settingsKey(t('VWAP')), keyLevels: settingsKey(t('Key levels')),
     liquidations: settingsKey(t('Liquidations')), liqLevels: settingsKey(t('Liquidation levels')), traded: settingsKey(t('Volume profile')), absorption: settingsKey(t('Absorption')),
   };
-  /** The Alerts deck's settings keys: Highlights and Sound are switched and set the same way. */
-  #alertKeys = { highlights: settingsKey(t('Highlights')), sound: settingsKey(t('Sounds')) };
-  #alertSplits: { highlights: HTMLElement; sound: HTMLElement } | null = null;
+  /** The Alerts deck's settings keys: Highlights, Sound and Waves are switched and set the same way. */
+  #alertKeys = { highlights: settingsKey(t('Highlights')), sound: settingsKey(t('Sounds')), waves: settingsKey(t('Waves')) };
+  #alertSplits: { highlights: HTMLElement; sound: HTMLElement; waves: HTMLElement } | null = null;
   /** The split buttons themselves (the button and its key), built once the buttons and keys exist. */
   #splits: Record<Exclude<Feature, 'highlights'>, HTMLElement> | null = null;
   #absorption = el('button', { class: 'led-btn', textContent: t('Absorption'), tip: HELP.absorption.tip });
@@ -235,6 +239,9 @@ export class Toolbar {
   /** Solid or glass, in any theme (store `material`): a lamp on the full bar, a switch in a phone's Settings. */
   #glass = el('button', { type: 'button', class: 'led-btn glass-btn', textContent: t('Waves'), tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') });
   #glassSwitch = el('input', { type: 'checkbox' });
+  /** How strongly the waves are drawn (store `waveStrength`): a slider under the Waves switch in a phone's Settings; the full bar has it in the Waves panel. */
+  #waveStrength = el('input', { type: 'range', min: '0', max: '100', step: '5', ariaLabel: t('Wave strength') });
+  #waveStrengthOut = el('output');
   /** The page's language: the code of the one in use, and a menu of the others (a language is chosen before the page is built, so choosing one reloads it). */
   /** Which clock the page's times are on: UTC, or the computer's own. */
   #zone = el('button', { class: 'zone-btn' });
@@ -382,7 +389,7 @@ export class Toolbar {
       this.#liqLevelPanel = this.#track(togglePanel(this.#settingsKeys.liqLevels, { title: t('Liquidation levels'), width: 400, align: 'left', onClose: () => { this.#liqLevelPanel = null; } }, build), build);
     };
     this.#liqLevels.onclick = () => this.store.set(togglePatch(this.store.state, 'liqLevels'));
-    this.#alertSplits = { highlights: splitButton(this.#highlights, this.#alertKeys.highlights), sound: splitButton(this.#soundButton, this.#alertKeys.sound) };
+    this.#alertSplits = { highlights: splitButton(this.#highlights, this.#alertKeys.highlights), sound: splitButton(this.#soundButton, this.#alertKeys.sound), waves: splitButton(this.#glass, this.#alertKeys.waves) };
     const k = this.#settingsKeys;
     this.#splits = {
       trades: splitButton(this.#trades, k.trades), footprint: splitButton(this.#footprint, k.footprint), vwap: splitButton(this.#vwap, k.vwap),
@@ -406,6 +413,10 @@ export class Toolbar {
       this.#track(togglePanel(this.#alertKeys.highlights, { title: t('Highlights'), width: 380, align: 'left' }, build), build);
     };
     this.#highlights.onclick = () => this.store.set(togglePatch(this.store.state, 'highlights'));
+    this.#alertKeys.waves.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildWaves(tools, body, () => this.#wavesPanel?.render(build));
+      this.#wavesPanel = this.#track(togglePanel(this.#alertKeys.waves, { title: t('Waves'), width: 400, align: 'left', onClose: () => { this.#wavesPanel = null; } }, build), build);
+    };
     this.#settingsKeys.traded.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null });
       this.#tradedPanel = this.#track(togglePanel(this.#settingsKeys.traded, { title: t('Volume profile'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; } }, build), build);
@@ -451,6 +462,7 @@ export class Toolbar {
     this.#awake.onchange = () => this.store.set({ keepAwake: this.#awake.checked });
     this.#glass.onclick = () => this.store.set({ material: this.store.state.material === 'glass' ? 'solid' : 'glass' });
     this.#glassSwitch.onchange = () => this.store.set({ material: this.#glassSwitch.checked ? 'glass' : 'solid' });
+    this.#waveStrength.oninput = () => { const v = readWaveStrength(Number(this.#waveStrength.value)); this.#waveStrengthOut.textContent = `${v}%`; this.store.set({ waveStrength: v }); };
     const shoot = this.#shot.onclick;
     // The screenshot is of the page, so Settings must be out of the picture before it is taken.
     this.#shot.onclick = event => { if (!this.#sheet) { shoot?.call(this.#shot, event); return; } this.#sheet.close(); requestAnimationFrame(() => requestAnimationFrame(() => { shoot?.call(this.#shot, event); })); };
@@ -638,7 +650,7 @@ export class Toolbar {
         deck('chart', t('Chart'), [sp.footprint, sp.trades, sp.liquidations, ...(liqLevelsUrl() ? [sp.liqLevels] : []), sp.absorption], [sp.traded, sp.keyLevels, sp.vwap, this.#scriptsSplit, ...(inCorner ? [] : [this.#range])]),
         // Waves beside Sounds (Karl, 2026-10-30, from the status bar's corner): with Highlights, the three ways the page says that something large
         // happened, marked, heard and seen across the screen.
-        deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound, this.#glass]),
+        deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound, this.#alertSplits!.waves]),
         tools];
       this.root.replaceChildren(...this.#decks, this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
       this.#fit();
@@ -782,7 +794,8 @@ export class Toolbar {
           field(t('Contrast'), this.#heatScale, true), field(t('Colour range'), this.#heat.auto), field(t('Smoothing'), this.#heat.smooth)], helpButton('heatmap')),
         section(t('Venues'), [field(t('Market'), this.#market, true), field(t('Markets'), this.#scope, true), el('div', { class: 'sheet-chips' }, this.#chips, this.#blocked)], this.#venuesButton!),
         section(t('Alerts'), [el('div', { class: 'sheet-tiles' }, this.#alertSplits!.highlights, this.#alertSplits!.sound),
-          field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i')))]),
+          field(t('Waves'), el('label', { class: 'switch', tip: t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen') }, this.#glassSwitch, el('i'))),
+          field(t('Wave strength'), el('span', { class: 'wave-strength', tip: WAVE_STRENGTH_TIP }, this.#waveStrength, this.#waveStrengthOut))]),
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zoneSeg),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : []),
           // A phone in the hand reads only the last hours of the recorded history on opening, and a choice made here holds wherever this
@@ -825,6 +838,8 @@ export class Toolbar {
     for (const [choice, b] of this.#historyChoices) { b.classList.toggle('on', historyNow === choice); b.setAttribute('aria-pressed', String(historyNow === choice)); }
     lamp(this.#glass, state.material === 'glass');
     if (this.#glassSwitch.checked !== (state.material === 'glass')) this.#glassSwitch.checked = state.material === 'glass';
+    setValue(this.#waveStrength, String(state.waveStrength));
+    if (this.#waveStrengthOut.textContent !== `${state.waveStrength}%`) this.#waveStrengthOut.textContent = `${state.waveStrength}%`;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));
     const legendKey = `${state.heat.style}|${state.theme}`;
@@ -995,6 +1010,19 @@ export class Toolbar {
       rangeRow(t('Sensitivity'), t('How far above its recent average something must be: lower flags more, higher flags only the extremes.'), { ...HIGHLIGHT_LIMITS.mult, value: h.mult, format: v => `${v}σ` }, mult => set({ mult })),
       rangeRow(t('Baseline'), t('How many preceding bars the average and spread are taken from.'), { ...HIGHLIGHT_LIMITS.length, value: h.length, format: v => tn(v, '{n} bar', '{n} bars') }, length => set({ length })),
       note(t('A bar is flagged when its value exceeds the mean plus the sensitivity times the standard deviation of the bars before it. The bar itself never raises its own threshold, and nothing is flagged until a dozen bars exist.')),
+    );
+  }
+
+  /**
+   * The Waves panel (Karl, 2026-11-06: "a configuration key to the Waves button just like the Sounds button has, with a scale so people can
+   * adjust the strength"): the same switch as the lamp, how strongly the waves are drawn, and what holds them back on a busy market.
+   */
+  #buildWaves(_tools: HTMLElement, body: HTMLElement, rebuild: () => void): void {
+    const s = this.store.state;
+    body.append(
+      switchRow(t('Waves'), t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen'), s.material === 'glass', on => { this.store.set({ material: on ? 'glass' : 'solid' }); rebuild(); }),
+      rangeRow(t('Strength'), WAVE_STRENGTH_TIP, { min: 0, max: 100, step: 5, value: s.waveStrength, format: v => `${v}%` }, v => this.store.set({ waveStrength: readWaveStrength(v) })),
+      note(t('A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.')),
     );
   }
 

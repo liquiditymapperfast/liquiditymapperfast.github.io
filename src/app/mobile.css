@@ -165,6 +165,10 @@ html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(>
 .sheet .legend { height: 20px; }
 .sheet .legend i { font-size: 11px; }
 .sheet .scale input[type=range] { height: 32px; }
+/* The Waves strength under its switch: the slider and its share on one line, the share in a column of its own so the slider does not move. */
+.sheet .wave-strength { display: flex; align-items: center; gap: 10px; }
+.sheet .wave-strength input[type=range] { flex: 1; min-width: 0; height: 32px; margin: 0; accent-color: var(--ui); }
+.sheet .wave-strength output { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 .sheet-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
 .sheet-chips .chips { gap: 8px; }
 .sheet .chip { min-height: 38px; display: inline-flex; align-items: center; padding: 0 15px; font-size: 14px; border-radius: var(--radius); }

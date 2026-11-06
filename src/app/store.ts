@@ -31,6 +31,7 @@ import { hasTop, readTraded, topFromStrip, type TradedSettings } from './traded/
 import { withTopOn } from './traded/profiles.ts';
 import { t } from './i18n.ts';
 import { readLiqLevels, type LiqLevelSettings } from './liq-url.ts';
+import { WAVE_STRENGTH_DEFAULT, readWaveStrength } from './glass/waves.ts';
 import type { ReplayView } from './replay/clock.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
@@ -181,6 +182,11 @@ export interface AppState {
   themeSlots: { light: string; dark: string };
   /** What the chrome around the chart is made of, in any theme: solid, or glass that the market's large orders light (glass/ui-glass.ts). */
   material: 'solid' | 'glass';
+  /**
+   * How strongly the waves are drawn, 0 (barely there) to 100 (the Waves panel's Strength; glass/waves.ts `strengthGain`), on top of the
+   * field's own limit on how full a busy market may make it. The page's glass and the Tape's both.
+   */
+  waveStrength: number;
   followLive: boolean;
   /** Keep the screen on while the page is open (a phone's screen sleeping stops the recording). */
   keepAwake: boolean;
@@ -212,7 +218,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'phoneHistory','barCollapsed', 'material', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'phoneHistory','barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -340,7 +346,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null, bookGone: {},
     layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
-    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', followLive: true, keepAwake: false, phoneHistory: 'auto', barCollapsed: false, timeZone: 'local', hover: null, bookHover: null, range: null, rangeTool: false,
+    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', waveStrength: WAVE_STRENGTH_DEFAULT, followLive: true, keepAwake: false, phoneHistory: 'auto', barCollapsed: false, timeZone: 'local', hover: null, bookHover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };
   // A save's measure strip was read into the profile along the top (`readSettings`): it is no setting of its own any more.
@@ -385,6 +391,8 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   state.theme = state.themePicked ? savedTheme : autoTheme(phone && touch, prefersDark());
   state.themeSlots = { ...state.themeSlots, [PALETTES[state.theme]?.dark ? 'dark' : 'light']: state.theme };
   state.material = saved.material === 'glass' ? 'glass' : 'solid';
+  // New on 2026-11-06, so no save holds a strength that was not chosen: it needs no revision of the defaults.
+  state.waveStrength = readWaveStrength(saved.waveStrength);
   state.barCollapsed = saved.barCollapsed === true;
   state.phoneHistory = readPhoneHistory(saved.phoneHistory);
   state.replay = null;
