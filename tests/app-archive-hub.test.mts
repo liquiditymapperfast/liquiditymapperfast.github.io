@@ -19,9 +19,9 @@ class FakeWorker { onmessage: ((event: { data: unknown }) => void) | null = null
 class ArchiveSource {
   readonly kind = 'server' as const;
   readonly venues = { catalog: async () => ({ venues: [], limit: null, recommendedKnown: true }), apply: async () => {} };
-  asked: { from: number; to: number; stepMs: number; view?: string }[] = [];
+  asked: { from: number; to: number; stepMs: number }[] = [];
   ranges: { ids: string[]; from: number; to: number; stepMs: number; grids?: Readonly<Record<string, number>> }[] = [];
-  views: { stepMs: number; held: number[] }[] = [];
+  views: { stepMs: number; windows: { from: number; to: number }[] }[] = [];
   listener: ((change: { level: number; from: number; to: number } | null) => void) | null = null;
   /** The grid whole answers come on, and the one an arrival's question comes on. */
   grid = 10;
@@ -38,8 +38,8 @@ class ArchiveSource {
   #frame(ids: string[], from: number, to: number, stepMs: number, grid: number): ColumnsFrame {
     return { from, to, stepMs, instruments: ids.map(id => ({ id, step: grid, times: [from], counts: [1], samples: [12], bins: Int32Array.of(1), bid: Float32Array.of(1), ask: Float32Array.of(1) })) };
   }
-  async columns(ids: string[], from: number, to: number, stepMs: number, _close?: boolean, view?: 'whole' | 'tail'): Promise<ColumnsFrame> {
-    this.asked.push({ from, to, stepMs, ...(view ? { view } : {}) });
+  async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
+    this.asked.push({ from, to, stepMs });
     return this.#frame(ids, from, to, stepMs, this.grid);
   }
   setArchiveListener(listener: (change: { level: number; from: number; to: number } | null) => void): void { this.listener = listener; }
@@ -47,7 +47,7 @@ class ArchiveSource {
     this.ranges.push({ ids, from, to, stepMs, ...(grids ? { grids } : {}) });
     return this.#frame(ids, from, to, stepMs, this.rangeGrid);
   }
-  archiveView(stepMs: number, held: readonly number[]): void { this.views.push({ stepMs, held: [...held] }); }
+  archiveView(stepMs: number, windows: readonly { from: number; to: number }[]): void { this.views.push({ stepMs, windows: windows.map(w => ({ ...w })) }); }
   archiveFirst(): number { return T0 - 30 * DAY; }
   depthSince(): number { return T0 - DAY; }
 }
@@ -69,8 +69,8 @@ test('an arrival is spliced in only inside what is held, on its grid; one on ano
     await hub.loadColumns(view, 180);
     assert.equal(source.asked.length, 1);
     const whole = source.asked[0]!;
-    assert.equal(whole.view, 'whole', 'the map\'s whole question says so');
-    assert.deepEqual(source.views.at(-1), { stepMs: step, held: [] }, 'the view\'s step told to the long history');
+    assert.deepEqual(source.views[0], { stepMs: step, windows: [] }, 'the view\'s step told to the long history as the load starts');
+    assert.deepEqual(source.views.at(-1), { stepMs: step, windows: [{ from: whole.from, to: whole.to }] }, 'and the window it holds once answered');
     const ranges = (): { from?: number; to?: number }[] => worker.posted.filter(m => m.type === 'columnsRange').map(m => ({ from: m.from, to: m.to }));
     // A pack's range that reaches past both ends of what is held: asked for and spliced inside it.
     source.listener!({ level: 4, from: whole.from - DAY, to: whole.to + DAY }); await settle();
@@ -92,6 +92,32 @@ test('an arrival is spliced in only inside what is held, on its grid; one on ano
     const count = source.asked.length;
     await hub.loadColumns(view, 180);
     assert.equal(source.asked.length, count + 1);
-    assert.deepEqual([source.asked.at(-1)!.from, source.asked.at(-1)!.view], [whole.from, 'whole'], 'asked for whole again');
+    assert.deepEqual([source.asked.at(-1)!.from, source.asked.at(-1)!.to], [whole.from, whole.to], 'asked for whole again');
+  } finally { Date.now = realNow; }
+});
+
+test('an arrival whose answer comes after a pan is not spliced into the new window', async () => {
+  const realNow = Date.now;
+  let now = T0;
+  Date.now = () => now;
+  try {
+    const store = new Store(initialState()), source = new ArchiveSource();
+    const hub = new Hub(store, source as unknown as DataSource), worker = hub.worker as unknown as FakeWorker;
+    worker.onmessage!({ data: { type: 'ready' } });
+    await hub.start();
+    store.set({ levels: { asOf: now, books: [{ id: 'a:BTC' }, { id: 'b:BTC' }] } as never });
+    const view = { t0: T0 - 3 * DAY, t1: T0 - 3 * DAY + 6 * HOUR, p0: 0, p1: 1 };
+    await hub.loadColumns(view, 180);
+    const whole = source.asked[0]!;
+    // The arrival's question is under way when the view pans a day on, at the same step.
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const answer = source.archiveRange.bind(source);
+    source.archiveRange = async (...args) => { await gate; return answer(...args); };
+    source.listener!({ level: 4, from: whole.from, to: whole.to }); await settle();
+    await hub.loadColumns({ ...view, t0: view.t0 + DAY, t1: view.t1 + DAY }, 180);
+    assert.equal(source.asked.length, 2, 'the panned view asked for its own window');
+    release(); await settle();
+    assert.equal(worker.posted.filter(m => m.type === 'columnsRange').length, 0, 'the old range is not taken into the new window');
   } finally { Date.now = realNow; }
 });

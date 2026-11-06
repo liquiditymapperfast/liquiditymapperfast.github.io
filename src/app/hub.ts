@@ -1200,7 +1200,7 @@ export class Hub {
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };
     this.#columnsWanted = stepMs;
     holds.touch(stepMs);
-    this.source.archiveView?.(stepMs, holds.steps());
+    this.#archiveView(stepMs);
     // A step held for every book is read at once, whatever else is under way.
     if (holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
     if (this.#columnsLoading) return;
@@ -1219,7 +1219,7 @@ export class Hub {
       for (const ask of asks) {
         // A zoom to another step since the load began: that step's own load follows, and the rest of this one would only hold it up.
         if (stepMs !== this.#columnsWanted) break;
-        const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs, false, ask.tail ? 'tail' : 'whole');
+        const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs);
         let whole = frame.instruments, wholeIds = ask.ids;
         if (ask.tail) {
           // A market whose price grid is not the one its columns held were recorded on (a server started again and chose another): their bins
@@ -1231,7 +1231,7 @@ export class Hub {
           if (tails.length) this.#postColumns({ type: 'columnsTail', stepMs, from: ask.from, instruments: tails }, stepMs);
           // What the other steps hold for these markets was recorded on the old grid too.
           if (other.size) this.#forgetColumns(holds.forgetElsewhere(stepMs, wholeIds));
-          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs, false, 'whole')).instruments;
+          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs)).instruments;
         }
         // Every instrument asked for is held from here on, answered or not: one a source leaves out is not asked for again on every frame
         // (and has nothing in the worker: what it held for it is forgotten).
@@ -1245,6 +1245,8 @@ export class Hub {
         // Once every book is held at the step the view wants, that is the step to read (a step wanted since is read by its own load).
         if (stepMs === this.#columnsWanted && holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
       }
+      // What is held now, for the long history's files (a step wanted since tells it its own).
+      if (stepMs === this.#columnsWanted) this.#archiveView(stepMs);
       // A load for a step nobody wants any more reads nothing and changes nothing the page would draw: say so, so that the frame that waits for this load to end comes.
       if (stepMs !== this.#columnsWanted) this.onColumns();
     } finally { this.#columnsLoading = false; }
@@ -1254,7 +1256,9 @@ export class Hub {
    * The long history brought [from, to) at `stepMs`: those windows are asked for again for the books held at that step, each inside the
    * window its columns were asked for (a range the view has left is not taken in), on the grid they are held on, and spliced into what the
    * worker holds (what it holds elsewhere is kept, so a view larger than the tiles' cache never empties and asks for itself again). A book
-   * whose answer comes on another grid (its engine's changed) is asked for whole again instead.
+   * whose answer comes on another grid (its engine's changed) is asked for whole again instead. Holds change while an answer is awaited (a
+   * pan asks for a new window): a book is asked and spliced only while its hold still contains the range (a new window's whole answer already
+   * drew on the files that came).
    */
   async #archiveArrived(stepMs: number, from: number, to: number): Promise<void> {
     const source = this.source;
@@ -1267,10 +1271,13 @@ export class Hub {
       if (group) group.ids.push(id); else groups.set(key, { from: lo, to: hi, ids: [id] });
     }
     for (const group of groups.values()) {
+      const holding = (id: string): boolean => { const hold = this.#columns.at(stepMs).get(id); return !!hold && hold.from <= group.from && hold.to >= group.to; };
+      const ids = group.ids.filter(holding);
+      if (!ids.length) continue;
       const grids: Record<string, number> = {};
-      for (const id of group.ids) grids[id] = this.#columns.at(stepMs).get(id)?.grid ?? 0;
-      const frame = await source.archiveRange(group.ids, group.from, group.to, stepMs, grids);
-      const held = this.#columns.at(stepMs), sets = frame.instruments.filter(set => held.has(set.id));
+      for (const id of ids) grids[id] = this.#columns.at(stepMs).get(id)?.grid ?? 0;
+      const frame = await source.archiveRange(ids, group.from, group.to, stepMs, grids);
+      const sets = frame.instruments.filter(set => holding(set.id));
       const other = new Set(this.#columns.gridChanged(stepMs, sets));
       if (other.size) {
         this.#forgetColumns(this.#columns.forgetElsewhere(stepMs, [...other]));
@@ -1287,6 +1294,14 @@ export class Hub {
 
   /** The steps the page holds recorded columns for, and the books at each (what it has told the worker to keep). */
   heldColumns(): { stepMs: number; ids: string[] }[] { return this.#columns.steps().map(stepMs => ({ stepMs, ids: [...this.#columns.at(stepMs).keys()] })); }
+
+  /** Tells the long history the step the map reads and the windows held there (`DataSource.archiveView`). */
+  #archiveView(stepMs: number): void {
+    if (!this.source.archiveView) return;
+    const windows = new Map<string, { from: number; to: number }>();
+    for (const hold of this.#columns.at(stepMs).values()) windows.set(`${hold.from}|${hold.to}`, { from: hold.from, to: hold.to });
+    this.source.archiveView(stepMs, [...windows.values()]);
+  }
 
   /** Hand columns to the worker. The instruments are views onto a few fetch buffers that nothing on this thread reads again: hand the buffers over instead of copying tens of MB. */
   #postColumns(message: Extract<WorkerIn, { type: 'columns' | 'columnsTail' }>, stepMs: number): void {

@@ -218,6 +218,7 @@ test('a file that fails is tried again on a timer while the view needs it, never
   const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
   archive.setInfo(info(P + 2 * len));
   await changed(archive);
+  archive.view(step, [{ from: P, to: P + len }]);
   const engine = frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity });
   archive.extend(engine, P, P + len, step); await settle();
   assert.equal(asked.length, 1); assert.equal(archive.heldBytes, 0);
@@ -237,6 +238,7 @@ test('a missing pack and a head are asked again when they go stale, if the view 
   const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
   archive.setInfo(info(P + len + step));
   await changed(archive);
+  archive.view(step, [{ from: P, to: P + 2 * len }]);
   const engine = frame(step, P, P + 2 * len, [engineSet('a', 20, [])], { a: Infinity });
   archive.extend(engine, P, P + 2 * len, step); await settle();
   assert.equal(asked.filter(u => u === packUrl(BASE, L, P)).length, 1);
@@ -249,7 +251,7 @@ test('a missing pack and a head are asked again when they go stale, if the view 
   assert.deepEqual(await come, { level: L, from: P, to: P + 2 * len });
   assert.equal(HEAD_FRESH_MS, 10 * MIN);
   // A view that moved elsewhere no longer needs them: no more asks.
-  archive.extend(frame(step, P - 4 * len, P - 3 * len, [engineSet('a', 20, [])], { a: Infinity }), P - 4 * len, P - 3 * len, step);
+  archive.view(step, [{ from: P - 4 * len, to: P - 3 * len }]);
   const before = asked.filter(u => u === headUrl(BASE, L)).length;
   c.advance(HEAD_FRESH_MS + 100); await settle();
   assert.equal(asked.filter(u => u === headUrl(BASE, L)).length, before);
@@ -263,6 +265,7 @@ test('a request that never answers is given up at the deadline, its slot freed a
   const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
   archive.setInfo(info(P + 6 * len));
   await changed(archive);
+  archive.view(step, [{ from: P, to: P + 5 * len }]);
   const engine = frame(step, P, P + 5 * len, [engineSet('a', 20, [])], { a: Infinity });
   archive.extend(engine, P, P + 5 * len, step); await settle();
   assert.equal(asked.length, 4, 'four at once; the fifth waits for a slot');
@@ -283,6 +286,7 @@ test('a file too large is refused before it is kept; the files a view needs stay
   const archive = new ArchiveColumns(BASE, fetch, Date.now, size);
   archive.setInfo(info(P + 3 * len));
   await changed(archive);
+  archive.view(step, [{ from: P, to: P + 3 * len }]);
   const engine = frame(step, P, P + 3 * len, [engineSet('a', 20, [])], { a: Infinity });
   archive.extend(engine, P, P + 3 * len, step); await settle(100);
   assert.equal(archive.heldBytes, 2 * size, 'the oversized pack is not kept; the two the view needs are, over a one-pack budget');
@@ -308,40 +312,43 @@ test('a body with no Content-Length is read only up to the cap: an endless one i
   assert.equal(archive.heldBytes, 0);
 });
 
-test('a refresh or another pane\'s question leaves the view\'s files needed: a missing pack is still asked again', async () => {
+test('what the view needs follows the windows it holds, whatever asked last: a question elsewhere at the level unpins nothing', async () => {
   const L = 16, step = L * MIN, P = packStartOf(T0, L, SPAN), len = packMs(L, SPAN);
-  const files = new Map<string, Served>([[packUrl(BASE, L, P), 404]]);
-  const { fetch, asked } = server(files), c = clock();
+  const { fetch, asked } = server(new Map()), c = clock();
   const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
   archive.setInfo(info(P + 2 * len));
   await changed(archive);
-  archive.extend(frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity }), P, P + len, step, 'whole'); await settle();
-  // A refresh of the engine's own day (nothing of the archive's), and a pane's bars elsewhere at the same level.
-  archive.extend(frame(step, P + len, P + 2 * len, [engineSet('a', 20, [])], { a: P }), P + len, P + 2 * len, step, 'tail');
-  archive.extend(frame(step, P - 3 * len, P - 2 * len, [engineSet('a', 20, [])], { a: Infinity }), P - 3 * len, P - 2 * len, step, 'other'); await settle();
+  archive.view(step, [{ from: P, to: P + len }]);
+  archive.extend(frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity }), P, P + len, step); await settle();
+  // A whole question for another book from elsewhere, or a pane's bars, at the same level: answered and fetched, needed by nothing held.
+  archive.extend(frame(step, P - 3 * len, P - 2 * len, [engineSet('b', 20, [])], { b: Infinity }), P - 3 * len, P - 2 * len, step); await settle();
   c.advance(MISSING_FRESH_MS + 100); await settle();
-  assert.equal(asked.filter(u => u === packUrl(BASE, L, P)).length, 2, 'asked again after its ten minutes');
-  assert.equal(asked.filter(u => u === packUrl(BASE, L, P - 3 * len)).length, 1, 'the pane\'s file is fetched but never asked again');
+  assert.equal(asked.filter(u => u === packUrl(BASE, L, P)).length, 2, 'the held window\'s missing pack, asked again after its ten minutes');
+  assert.equal(asked.filter(u => u === packUrl(BASE, L, P - 3 * len)).length, 1, 'the other one fetched once, never again');
 });
 
-test('the view\'s level only: a live minute view lets timers lapse, coming back asks for what went stale, a level no longer held is forgotten', async () => {
+test('the view\'s level only: a live minute view lets timers lapse, coming back asks for what went stale, a late answer changes nothing', async () => {
   const L = 16, step = L * MIN, P = packStartOf(T0, L, SPAN), len = packMs(L, SPAN);
-  const files = new Map<string, Served>([[packUrl(BASE, L, P), 404]]);
-  const { fetch, asked } = server(files), c = clock();
+  const { fetch, asked } = server(new Map()), c = clock();
   const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
   archive.setInfo(info(P + 2 * len));
   await changed(archive);
-  archive.extend(frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity }), P, P + len, step, 'whole'); await settle();
+  const held = [{ from: P, to: P + len }], engine = frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity });
+  archive.view(step, held);
+  archive.extend(engine, P, P + len, step); await settle();
   const count = (): number => asked.filter(u => u === packUrl(BASE, L, P)).length;
-  archive.view(MIN, [MIN, step]);
+  archive.view(MIN, held);
   c.advance(MISSING_FRESH_MS + 100); await settle();
   assert.equal(count(), 1, 'the live view needs no tiles: the timer lapses');
-  archive.view(step, [MIN, step]); await settle();
+  archive.view(step, held); await settle();
   assert.equal(count(), 2, 'back at the level: the stale file asked again at once');
-  archive.view(2 * step, [2 * step]);
-  archive.view(step, [step]); await settle();
+  // A whole answer for the level that comes after the view went back to minutes does not bring the level back.
+  archive.view(MIN, []);
+  archive.extend(engine, P, P + len, step);
   c.advance(MISSING_FRESH_MS + 100); await settle();
-  assert.equal(count(), 2, 'a level that was let go needs nothing until it is asked again');
+  assert.equal(count(), 2, 'a late answer leaves the view where it is');
+  archive.view(step, [{ from: P - 4 * len, to: P - 3 * len }]); await settle();
+  assert.equal(count(), 2, 'a window that was let go needs nothing');
 });
 
 test('the engine\'s answer passes as it is where the archive has no say', () => {

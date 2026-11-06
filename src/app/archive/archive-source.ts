@@ -12,11 +12,11 @@
  *
  * Answers never wait for the network: what the cache holds is used at once, the files missing are fetched meanwhile, and `onChange` names
  * the range a file has brought (the hub asks for that range again, inside what it holds, and splices it in). The files the view needs are
- * those its questions at the step it reads touched (`view`, `ArchiveAsk`): they are fetched again when they go stale (a head, a pack the
- * service did not have), tried again after a failure, and kept whatever the byte budget; another pane's questions fetch files without
- * keeping them. A head that has moved on to a later pack says the one before is complete: its range is said with the new one's. A request
- * is given up after a deadline; a body is read up to a cap and refused past it. Bytes are kept as fetched; arrays are decoded afresh for
- * each answer (the raster worker takes the ones it is handed).
+ * those meeting the windows the map holds at the step it reads (`view`, from the hub's own record, whatever asked and whenever its answer
+ * came): they are fetched again when they go stale (a head, a pack the service did not have), tried again after a failure, and kept
+ * whatever the byte budget. A head that has moved on to a later pack says the one before is complete: its range is said with the new one's.
+ * A request is given up after a deadline; a body is read up to a cap and refused past it. Bytes are kept as fetched; arrays are decoded
+ * afresh for each answer (the raster worker takes the ones it is handed).
  */
 import { packLt, type ColumnSet, type ColumnsFrame } from '../../shared/columns.ts';
 import { LT_LENGTH } from '../../shared/lt-sample.ts';
@@ -38,6 +38,8 @@ export const ARCHIVE_BYTES = 48 << 20;
  * Content-Length announces more: the largest real file, 2026-11-06, was 4.2 MB (0.4 MB on the wire).
  */
 export const MAX_FILE_BYTES = 16 << 20;
+/** Files held at most, whatever their bytes (a 404 is held as none, of no size). */
+export const MAX_HELD_FILES = 512;
 /** Files fetched at once. */
 export const ARCHIVE_PARALLEL = 4;
 /** `onChange` waits this long for more files of one level, so a view's packs arriving together cost one question per level. */
@@ -47,12 +49,8 @@ export type TileResponse = { ok: boolean; status: number; headers?: { get(name: 
 export type TileFetch = (url: string, init: { signal: AbortSignal; cache: RequestCache }) => Promise<TileResponse>;
 /** What new files have brought: the windows of [from, to) at `level` minutes, or (null) anything at all. */
 export type ArchiveChange = { level: number; from: number; to: number } | null;
-/**
- * Who asks: the view's whole question at its step (the files it needs from now on: a question from where the last one began adds to them,
- * one from elsewhere takes their place), its refresh or an arrival's question (added to them), or anyone else (another pane's bars: the
- * files are fetched and kept under the budget, never as needed).
- */
-export type ArchiveAsk = 'whole' | 'tail' | 'range' | 'other';
+/** A window of time the page holds columns for (`ColumnHold`'s from and to). */
+export interface HeldWindow { from: number; to: number }
 interface Held { bytes: ArrayBuffer | null; at: number; size: number; fresh: number }
 interface Failed { tries: number; retryAt: number }
 interface Range { level: number; from: number; to: number }
@@ -81,12 +79,11 @@ export class ArchiveColumns {
   #queue: string[] = [];
   #failed = new Map<string, Failed>();
   /**
-   * The files each level the page holds was last asked for (from where its last whole question began); those of the level the view reads
-   * (`#active`, 0 when it reads one the archive does not keep) are kept whatever the budget and fetched again when stale.
+   * What the map holds at the step it reads (`view`): its level (0 for a step the archive does not keep) and the windows its books' columns
+   * were asked for. A file whose range meets one of them is needed: kept whatever the budget, fetched again when stale or after a failure.
    */
-  #demand = new Map<number, { from: number; urls: Set<string> }>();
-  #active = 0;
-  /** What each file is, for the range an arrival brings. */
+  #view: { level: number; windows: HeldWindow[] } = { level: 0, windows: [] };
+  /** What each file is: the pack range it holds (a head: the pack under way), for what the view needs and the range an arrival brings. */
   #ranges = new Map<string, Range>();
   #pending = new Map<number, { from: number; to: number }>();
   #changeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -103,18 +100,21 @@ export class ArchiveColumns {
   first(): number | null { return this.#info ? this.#info.first : null; }
 
   /**
-   * The step the view reads now and the steps the page holds (`Hub.loadColumns`, each time it runs): what a level no longer held needed is
-   * forgotten, and only the read level's files are needed. Coming back to a level fetches what of it went stale or failed meanwhile.
+   * The step the map reads now and the windows it holds there (`Hub.loadColumns`, as it starts and once its answers are in): the files the
+   * view needs are those meeting these windows, whoever asked for them and in whatever order the answers came. A view that comes to a level
+   * fetches what it needs there that went stale or failed meanwhile. What is known of files no longer held, coming or waiting is let go.
    */
-  view(stepMs: number, heldSteps: readonly number[]): void {
-    const level = this.#level(stepMs), keep = new Set(heldSteps.map(s => this.#level(s)));
-    for (const l of [...this.#demand.keys()]) if (l !== level && !keep.has(l)) this.#demand.delete(l);
-    if (level === this.#active) return;
-    this.#active = level;
-    for (const url of this.#demand.get(level)?.urls ?? []) {
-      const held = this.#held.get(url);
-      if (!held || this.now() - held.at >= held.fresh) this.#want(url);
-    }
+  view(stepMs: number, windows: readonly HeldWindow[]): void {
+    const level = this.#level(stepMs), came = level !== this.#view.level;
+    // The same view again (each frame may say it) costs nothing.
+    if (!came && windows.length === this.#view.windows.length && windows.every((w, i) => w.from === this.#view.windows[i]!.from && w.to === this.#view.windows[i]!.to)) return;
+    this.#view = { level, windows: windows.map(w => ({ from: w.from, to: w.to })) };
+    const now = this.now();
+    for (const [url, failed] of [...this.#failed]) if (failed.retryAt <= now && !this.#needed(url)) this.#failed.delete(url);
+    for (const url of [...this.#ranges.keys()]) if (!this.#held.has(url) && !this.#flying.has(url) && !this.#failed.has(url) && !this.#queue.includes(url)) this.#ranges.delete(url);
+    if (!came || !level) return;
+    for (const [url, held] of this.#held) if (this.#needed(url) && now - held.at >= held.fresh) this.#want(url);
+    for (const url of this.#failed.keys()) if (this.#needed(url)) this.#want(url);
   }
 
   /** The archive's level for a step, or 0 for one it does not keep. */
@@ -125,19 +125,12 @@ export class ArchiveColumns {
 
   /**
    * The engine's answer with the windows before its data filled from the archive (see the module's note). Steps the archive does not keep
-   * are the engine's alone. `ask`: who asks (`ArchiveAsk`). `grids`: per book, the price grid the page holds its columns on (an arrival's
-   * question): a book the engine has no grid for is drawn on it, so what is spliced in matches what is held.
+   * are the engine's alone. `grids`: per book, the price grid the page holds its columns on (an arrival's question): a book the engine has no
+   * grid for is drawn on it, so what is spliced in matches what is held.
    */
-  extend(frame: ColumnsFrame, from: number, to: number, stepMs: number, ask: ArchiveAsk = 'whole', grids?: Readonly<Record<string, number>>): ColumnsFrame {
+  extend(frame: ColumnsFrame, from: number, to: number, stepMs: number, grids?: Readonly<Record<string, number>>): ColumnsFrame {
     const info = this.#info, level = this.#level(stepMs);
     if (!info || !this.base || !level) return frame;
-    let need: Set<string> | null = null;
-    if (ask !== 'other') {
-      const had = this.#demand.get(level);
-      if (!had || (ask === 'whole' && had.from !== from)) this.#demand.set(level, { from, urls: need = new Set() });
-      else need = had.urls;
-      if (ask === 'whole') this.#active = level;
-    }
     // E per book (see the module's note).
     const watermarkEnd = (Math.floor(info.through / stepMs) + 1) * stepMs, ends = new Map<string, number>();
     for (const set of frame.instruments) {
@@ -148,7 +141,7 @@ export class ArchiveColumns {
     for (const e of ends.values()) reach = Math.max(reach, Math.min(e, to));
     const lo = Math.max(from, info.first), hi = reach;
     if (!(hi > lo)) return frame;
-    const files = this.#files(lo, hi, level, info, need);
+    const files = this.#files(lo, hi, level, info);
     if (!files.length) return frame;
     const instruments = frame.instruments.map(set => {
       const end = ends.get(set.id) ?? to;
@@ -159,7 +152,7 @@ export class ArchiveColumns {
   }
 
   /** The files that hold [lo, hi) at this level, decoded afresh: complete packs, or the head for the pack under way (the rest are fetched). */
-  #files(lo: number, hi: number, level: number, info: TilesInfo, need: Set<string> | null): TileFile[] {
+  #files(lo: number, hi: number, level: number, info: TilesInfo): TileFile[] {
     const out: TileFile[] = [], len = packMs(level, info.packSpan);
     for (const start of packStarts(lo, hi, level, info.packSpan)) {
       const range = { level, from: start, to: start + len };
@@ -167,7 +160,7 @@ export class ArchiveColumns {
       if (!url) {
         const head = headUrl(this.base, level);
         this.#ranges.set(head, range);
-        const bytes = this.#take(head, need);
+        const bytes = this.#take(head);
         if (bytes === undefined) continue;
         const file = bytes ? decodeTile(bytes, info.packSpan) : null;
         if (file && file.level === level && file.through > info.through) info.through = file.through;
@@ -177,7 +170,7 @@ export class ArchiveColumns {
         else { out.push(file); continue; }
       }
       this.#ranges.set(url, range);
-      const bytes = this.#take(url, need);
+      const bytes = this.#take(url);
       const file = bytes ? decodeTile(bytes, info.packSpan) : null;
       if (file && file.packStart === start && file.level === level) out.push(file);
     }
@@ -193,12 +186,10 @@ export class ArchiveColumns {
   }
 
   /**
-   * The bytes held for `url` (added to `need`, the files of its level the view needs, when the view asks): ArrayBuffer, null for a file the
-   * service has none of, undefined while it is not held (it is then fetched, unless it failed and waits for its next try). A stale copy is
-   * used while its fresh one comes.
+   * The bytes held for `url`: ArrayBuffer, null for a file the service has none of, undefined while it is not held (it is then fetched, unless
+   * it failed and waits for its next try). A stale copy is used while its fresh one comes.
    */
-  #take(url: string, need: Set<string> | null): ArrayBuffer | null | undefined {
-    need?.add(url);
+  #take(url: string): ArrayBuffer | null | undefined {
     const held = this.#held.get(url);
     if (held) {
       // Used: last to go.
@@ -250,6 +241,7 @@ export class ArchiveColumns {
       if (this.#info && file.through > this.#info.through) this.#info.through = file.through;
       const end = file.packStart + file.windows * file.level * MINUTE;
       this.#arrived({ level: range.level, from: Math.min(range.from, file.packStart), to: Math.max(range.to, end) });
+      this.#ranges.set(url, { level: range.level, from: file.packStart, to: end });
     } catch {
       // Never held as empty: tried again after a while, a little longer each time, while the view needs it.
       const tries = (this.#failed.get(url)?.tries ?? 0) + 1, wait = RETRY_MS[Math.min(tries, RETRY_MS.length) - 1]!;
@@ -268,14 +260,17 @@ export class ArchiveColumns {
     if (Number.isFinite(fresh)) this.schedule(() => { if (this.#needed(url)) this.#want(url); }, fresh + 50);
     // The oldest used go first; never one the view needs, nor the one just kept.
     for (const [key, held] of this.#held) {
-      if (this.#bytes <= this.budget) break;
+      if (this.#bytes <= this.budget && this.#held.size <= MAX_HELD_FILES) break;
       if (key === url || this.#needed(key)) continue;
       this.#held.delete(key); this.#bytes -= held.size;
     }
   }
 
-  /** Whether the view needs the file now: one its questions at the level it reads touched. */
-  #needed(url: string): boolean { return this.#demand.get(this.#active)?.urls.has(url) ?? false; }
+  /** Whether the view needs the file now: one of the level it reads whose range meets a window it holds there. */
+  #needed(url: string): boolean {
+    const range = this.#ranges.get(url), view = this.#view;
+    return !!range && range.level === view.level && view.windows.some(w => range.from < w.to && range.to > w.from);
+  }
 
   /** A file has come: its range is said once the others of its level that come with it are in. */
   #arrived(range: Range): void {

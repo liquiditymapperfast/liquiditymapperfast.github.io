@@ -121,11 +121,8 @@ export interface DataSource {
   liquidations?(from: number, to: number, minUsd?: number): Promise<Liquidation[]>;
   /** Whale VWAP sums of `ids` in [from, to) from the size band at `minUsd` up, in steps of `stepMs` (a server from before them answers 404). */
   printSums?(ids: string[], from: number, to: number, minUsd: number, stepMs: number): Promise<PrintSumsAnswer>;
-  /**
-   * `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`.
-   * `view`: the map's own question (`Hub.loadColumns`), whole or a refresh (`tail`): the long history keeps the files it touches as the view's.
-   */
-  columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean, view?: 'whole' | 'tail'): Promise<ColumnsFrame>;
+  /** `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`. */
+  columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean): Promise<ColumnsFrame>;
   /**
    * A source whose columns reach back past its own recordings (the browser's, from the long history's tiles: app/archive/) says when more of
    * them have come; the hub then asks again for what it holds. Optional: the others answer everything they have at once.
@@ -136,8 +133,11 @@ export interface DataSource {
    * book, the price grid the page holds its columns on.
    */
   archiveRange?(ids: string[], from: number, to: number, stepMs: number, grids?: Readonly<Record<string, number>>): Promise<ColumnsFrame>;
-  /** The step the map reads now and the steps it holds (each `Hub.loadColumns`): the long history keeps and refreshes that step's files only. */
-  archiveView?(stepMs: number, heldSteps: readonly number[]): void;
+  /**
+   * The step the map reads now and the windows it holds columns for there (`Hub.loadColumns`): the long history keeps and refreshes the files
+   * meeting them, and no others.
+   */
+  archiveView?(stepMs: number, windows: readonly { from: number; to: number }[]): void;
   /** Where that long history's depth begins (ms), or null when there is none. */
   archiveFirst?(): number | null;
   /** Where the source's own depth begins for `ids` (the latest of their contiguous runs' starts), or null when it cannot say yet. */
