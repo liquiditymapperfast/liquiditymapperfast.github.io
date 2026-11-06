@@ -35,7 +35,7 @@ class FakeSource {
 
 const now0 = Math.floor(Date.now() / MIN) * MIN;
 /** Forty one-minute bars up to the minute under way, every one at `close`. */
-const history = (close: number): OiBar[] => Array.from({ length: 40 }, (_, i): OiBar => [now0 - (39 - i) * MIN, close, close, close, close]);
+const history = (close: number, n = 40): OiBar[] => Array.from({ length: n }, (_, i): OiBar => [now0 - (n - 1 - i) * MIN, close, close, close, close]);
 const turn = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 
 async function rig() {
@@ -50,8 +50,8 @@ async function rig() {
     store.set(ids === 'chart' ? { oiMarkets: 'chart' } : { oiMarkets: 'custom', customMarkets: { ...store.state.customMarkets, oi: ids.map(pick) } });
     const done = hub.loadOi(); await turn(); return { done };
   };
-  /** Answer every question out with `close` (each market its own level, so a sum tells them apart). */
-  const answer = (close: (id: string) => number): void => { for (const q of r.source.asked.splice(0)) q.resolve(history(close(q.id))); };
+  /** Answer every question out with `close` (each market its own level, so a sum tells them apart); a market given `n` 0 answers nothing. */
+  const answer = (close: (id: string) => number, n: (id: string) => number = () => 40): void => { for (const q of r.source.asked.splice(0)) q.resolve(history(close(q.id), n(q.id))); };
   const r = { hub, store, source, choose, answer, shown: () => ({ inst: store.state.oiInstrument, parts: store.state.oiParts.map(p => p.id), last: store.state.oi.at(-1)?.[4], reading: store.state.oiReading }) };
   return r;
 }
@@ -122,4 +122,39 @@ test('the same choice read whole again keeps what it shows; a choice that counts
   done = (await r.choose([])).done;
   await done;
   assert.deepEqual(r.shown(), { inst: '', parts: [], last: undefined, reading: false }, 'none ticked: nothing counted, nothing being read');
+});
+
+test('a weak chart market (few readings) read whole again keeps what it shows, though a new choice would not be shown from it', async () => {
+  const r = await rig();
+  let done = (await r.choose('chart')).done;
+  r.answer(level, () => 10); await done;
+  assert.deepEqual(r.shown(), { inst: 'binance:BTCUSDT', parts: [], last: 100, reading: false }, 'ten readings: weak, shown as the best there is');
+  r.source.handlers!.onHistory!(); await turn();
+  assert.deepEqual(r.shown(), { inst: 'binance:BTCUSDT', parts: [], last: 100, reading: false }, 'the same choice read again: kept, not cleared for being weak');
+  r.answer(level, () => 10); await turn();
+});
+
+test('a venue that answered nothing is held as nothing: a choice counting it is shown at once from the others', async () => {
+  const r = await rig();
+  let done = (await r.choose(['binance:BTCUSDT', 'okx:BTC-USDT-SWAP'])).done;
+  r.answer(level, id => id.startsWith('okx') ? 0 : 40); await done;
+  assert.deepEqual(r.shown(), { inst: 'binance:BTCUSDT', parts: [], last: 100, reading: false }, 'OKX answered nothing: Binance alone');
+  done = (await r.choose(['binance:BTCUSDT'])).done; r.answer(level); await done;
+  done = (await r.choose(['binance:BTCUSDT', 'okx:BTC-USDT-SWAP'])).done;
+  assert.deepEqual(r.shown(), { inst: 'binance:BTCUSDT', parts: [], last: 100, reading: false }, 'the two again: at once, not cleared for the one that answered nothing');
+  r.answer(level, id => id.startsWith('okx') ? 0 : 40); await done;
+});
+
+test('bars read more than two minutes ago are not shown for a new choice', async () => {
+  const r = await rig(), realNow = Date.now;
+  let done = (await r.choose(['binance:BTCUSDT', 'bybit:BTCUSDT'])).done;
+  r.answer(level); await done;
+  done = (await r.choose([])).done; await done;
+  try {
+    const later = realNow() + 2 * 60_000 + 1_000;
+    Date.now = () => later;
+    done = (await r.choose(['bybit:BTCUSDT'])).done;
+    assert.deepEqual(r.shown(), { inst: '', parts: [], last: undefined, reading: true }, 'read 2 min 1 s ago: read again first');
+    r.answer(level); await done;
+  } finally { Date.now = realNow; }
 });

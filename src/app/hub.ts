@@ -610,7 +610,7 @@ export class Hub {
   #show(key: string, candles: CandleRow[], seriesInstrument: string, timeframe: string, again: boolean, bridge = true): void {
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, live = this.#liveCandles[seriesInstrument], last = candles[candles.length - 1];
     const bucket = live ? Math.floor(live[0] / tf) * tf : 0, opens = live !== undefined && (!last || bucket > last[0]) && (bridge || !last || bucket - last[0] <= tf);
-    this.#loaded = { key, instrument: seriesInstrument }; this.#onScreen = key;
+    this.#loaded = { key, instrument: seriesInstrument }; this.#onScreen = key; if (!again) this.#oiShown = '';
     // Open interest belongs to the candles it was loaded for: another timeframe's or market's bars are not shown under these while theirs are on their way.
     this.store.set({ candles: opens ? mergeLive(candles, live, tf, this.#liveTrack) : candles, candlesTimeframe: timeframe, seriesInstrument, ...(again ? {} : { oi: [], oiInstrument: '', oiParts: [] }) });
     if (candles.length && this.#refill === key) { this.#refill = ''; this.onSeriesRefilled(); }
@@ -825,8 +825,8 @@ export class Hub {
     if (parts) return this.#loadOiTail(key, tf, now, from, parts);
     this.#oiKey = key;
     const generation = ++this.#oiGen;
-    // Another choice of markets than the one shown (the Venues, the picks, the venues switched on): its bars at once where those on screen hold
-    // every market it counts, else none and the pane says they are being read. The old choice's bars stood under the new one for as long as the
+    // Another choice of markets than the one shown (the Venues, the picks, the venues switched on): its bars at once where those on screen or read
+    // lately hold every market it counts, else none and the pane says they are being read. The old choice's bars stood under the new one for as long as the
     // read took (18 s on a busy page, 2026-11-06), the pushes keeping them moving, so a choice looked as if it had not been taken. The same
     // choice read whole again keeps what it shows.
     if (this.#oiShown !== key) this.#oiShowHeld(key, own, added, tf, now);
@@ -853,10 +853,11 @@ export class Hub {
    */
   #oiShowHeld(key: string, own: string, added: string[] | null, tf: number, now: number): void {
     const byId = new Map((this.#oiHeldParts(tf) ?? []).map(part => [part.id, part]));
-    const lately = (id: string): OiPart | undefined => { const read = this.#oiPool.get(`${id}|${tf}`); return read && now - read.at < OI_POOL_MS && (read.part.usdAt || !inverseOi(id)) ? read.part : undefined; };
+    // A market read lately that answered nothing is held as nothing: a choice counting a venue that fails is shown at once from the others.
+    const lately = (id: string): OiPart | undefined => { const read = this.#oiPool.get(`${id}|${tf}`); return read && now - read.at < OI_POOL_MS && (!read.part.bars.length || read.part.usdAt || !inverseOi(id)) ? read.part : undefined; };
     const held = (id: string): OiPart | undefined => byId.get(id) ?? lately(id);
-    const want = added ?? [own], parts = want.length && want.every(id => held(id)) ? want.map(id => held(id)!) : null;
-    if (parts && (added || !weakOi(parts[0]!.bars, now, tf))) {
+    const want = added ?? [own], all = want.length && want.every(id => held(id)) ? want.map(id => held(id)!) : null, parts = all?.filter(part => part.bars.length) ?? null;
+    if (parts?.length && (added || !weakOi(parts[0]!.bars, now, tf))) {
       this.#oiTf = tf;
       if (parts.length > 1) this.store.set({ oi: oiSumOf(parts, tf).bars, oiInstrument: '', oiParts: parts, oiPrice: 0, oiReading: false });
       else this.store.set({ oi: [...parts[0]!.bars], oiInstrument: parts[0]!.id, oiParts: [], oiPrice: parts[0]!.usdAt ?? 0, oiReading: false });
@@ -879,13 +880,14 @@ export class Hub {
     // picked ('custom', whatever the chips say). With one answering its own bars are shown, with none nothing (never a market left out
     // standing in, never the chart market in place of an empty list).
     if (added) {
-      const answered: OiPart[] = (await Promise.all(venues.map(async id => ({ id, ...await this.oiSeries(id, timeframe, from, to).catch(() => ({ bars: [] as OiBar[] })) })))).filter(part => part.bars.length);
+      const read: OiPart[] = await Promise.all(venues.map(async id => ({ id, ...await this.oiSeries(id, timeframe, from, to).catch(() => ({ bars: [] as OiBar[] })) })));
       if (this.#oiKey !== key || generation !== this.#oiGen) return;
+      const answered = read.filter(part => part.bars.length);
       const pushed = late(), parts = answered.map(part => withPushed(part, pushed, tf));
       this.#oiTf = tf;
       if (parts.length > 1) this.store.set({ oi: oiSumOf(parts, tf).bars, oiInstrument: '', oiParts: parts, oiPrice: 0, oiReading: false });
       else this.store.set({ oi: [...(parts[0]?.bars ?? [])], oiInstrument: parts[0]?.id ?? '', oiParts: [], oiPrice: parts[0]?.usdAt ?? 0, oiReading: false });
-      this.#oiHeld = { key, at: now }; this.#oiShown = key; this.#oiRemember(parts, tf, now);
+      this.#oiHeld = { key, at: now }; this.#oiShown = key; this.#oiRemember([...parts, ...read.filter(part => !part.bars.length)], tf, now);
       return;
     }
     const ids = [...new Set([own, this.#reference, ...this.#oiReferences].filter(Boolean))];
@@ -934,7 +936,8 @@ export class Hub {
     const parts = current.map((part, i) => withPushed({ ...part, bars: oiTail(part.bars, tails[i]!, froms[i]!, keepFrom) }, pushed, tf));
     if (parts.length > 1) this.store.set({ oi: oiSumOf(parts, tf).bars, oiParts: parts });
     else this.store.set({ oi: [...parts[0]!.bars] });
-    this.#oiRemember(parts, tf, now);
+    // A tail that did not answer leaves its market as old as it was.
+    this.#oiRemember(parts.filter((_, i) => tails[i]!.length), tf, now);
   }
 
   /**
