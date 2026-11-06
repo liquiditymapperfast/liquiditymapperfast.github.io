@@ -263,18 +263,20 @@ export class BrowserSource implements DataSource, VenueControl {
   }
   async liquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> { return this.#call({ method: 'liquidations', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
   /** The engine's columns, and (averages at two minutes or more) the windows before its day from the long history's tiles. */
-  async columns(ids: string[], from: number, to: number, stepMs: number, close = false): Promise<ColumnsFrame> {
+  async columns(ids: string[], from: number, to: number, stepMs: number, close = false, view?: 'whole' | 'tail'): Promise<ColumnsFrame> {
     const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close });
     this.#noteSince(frame);
-    return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
+    return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs, view ?? 'other');
   }
 
   /** The columns of [from, to) again after tiles came for it (`setArchiveListener`): what the view needs is added to, not replaced. */
-  async archiveRange(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
+  async archiveRange(ids: string[], from: number, to: number, stepMs: number, grids?: Readonly<Record<string, number>>): Promise<ColumnsFrame> {
     const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close: false });
     this.#noteSince(frame);
-    return this.#archive ? this.#archive.extend(frame, from, to, stepMs, true) : frame;
+    return this.#archive ? this.#archive.extend(frame, from, to, stepMs, 'range', grids) : frame;
   }
+
+  archiveView(stepMs: number, heldSteps: readonly number[]): void { this.#archive?.view(stepMs, heldSteps); }
 
   #noteSince(frame: ColumnsFrame): void { for (const [id, since] of Object.entries(frame.since ?? {})) this.#heldSince.set(id, since); }
 

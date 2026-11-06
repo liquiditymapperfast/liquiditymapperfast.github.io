@@ -87,15 +87,17 @@ export const maxSamples = (level: number): number => level * 12 + 12;
 /**
  * Reads a tile file (a pack or a head), or null when it is not one this page can read: another format, a file cut short or with bytes after
  * its last book, or any number that is not one the service writes (a step, a sample count, a bin, a level, the tracker, a window twice).
- * The whole file is refused for any of these: a file the page draws is one the service wrote.
+ * The whole file is refused for any of these: a file the page draws is one the service wrote. With `packSpan` (`latest.json`'s), its windows
+ * per pack must be the level's (`packWindows`).
  */
-export function decodeTile(buffer: ArrayBuffer): TileFile | null {
+export function decodeTile(buffer: ArrayBuffer, packSpan?: number): TileFile | null {
   const view = new DataView(buffer), bytes = new Uint8Array(buffer);
   if (bytes.length < TILE_HEADER_BYTES || String.fromCharCode(bytes[0]!, bytes[1]!, bytes[2]!, bytes[3]!) !== TILE_MAGIC) return null;
   if (view.getUint16(4, true) !== TILE_VERSION) return null;
   const level = view.getUint16(6, true), packStart = Number(view.getBigInt64(8, true)), windows = view.getUint16(16, true);
   const flags = view.getUint16(18, true), through = Number(view.getBigInt64(20, true)), bookCount = view.getUint16(28, true);
   if (!TILE_LEVELS.includes(level) || !(windows >= 1 && windows <= MAX_PACK_WINDOWS)) return null;
+  if (packSpan !== undefined && windows !== packWindows(level, packSpan)) return null;
   if (!Number.isSafeInteger(packStart) || packStart % (windows * level * MINUTE) !== 0 || !Number.isSafeInteger(through)) return null;
   const books = new Map<string, TileColumn[]>(), decoder = new TextDecoder('utf-8', { fatal: true }), samples = maxSamples(level);
   let at = TILE_HEADER_BYTES;

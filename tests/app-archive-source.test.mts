@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LT_LENGTH } from '../src/shared/lt-sample.ts';
 import type { ColumnSet, ColumnsFrame } from '../src/shared/columns.ts';
-import { ArchiveColumns, FETCH_DEADLINE_MS, HEAD_FRESH_MS, MAX_FILE_BYTES, MAX_REBIN_BINS, MAX_WIRE_BYTES, MISSING_FRESH_MS, RETRY_MS, depthSinceOf, rebin, type ArchiveChange, type Schedule, type TileFetch, type TileResponse } from '../src/app/archive/archive-source.ts';
+import { ArchiveColumns, FETCH_DEADLINE_MS, HEAD_FRESH_MS, MAX_FILE_BYTES, MAX_REBIN_BINS, MISSING_FRESH_MS, RETRY_MS, depthSinceOf, rebin, type ArchiveChange, type Schedule, type TileFetch, type TileResponse } from '../src/app/archive/archive-source.ts';
 import { headUrl, packMs, packStartOf, packUrl, type TilesInfo } from '../src/app/archive/tiles.ts';
 import { columnStepFor } from '../src/app/column-holds.ts';
 import { encodeTile, type EncColumn } from './archive-encoder.mts';
@@ -153,7 +153,9 @@ test('a head from a later pack says this one is complete; one from an earlier pa
   archive.setInfo(info(P + 10 * step));
   await changed(archive);
   const engine = frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity });
-  let come = changed(archive); archive.extend(engine, P, P + len, step); await come;
+  let come = changed(archive); archive.extend(engine, P, P + len, step);
+  assert.deepEqual(await come, { level: L, from: P, to: P + 2 * len }, 'the head\'s arrival names the pack it was asked for (complete now) with its own');
+  assert.ok(archive.info!.through >= P + len + 3 * step, 'and moves the watermark on at once');
   come = changed(archive); archive.extend(engine, P, P + len, step); await come;
   assert.deepEqual(asked, [headUrl(BASE, L), packUrl(BASE, L, P)]);
   assert.deepEqual(archive.extend(engine, P, P + len, step).instruments[0]!.times, [P + 7 * step]);
@@ -274,7 +276,7 @@ test('a request that never answers is given up at the deadline, its slot freed a
 test('a file too large is refused before it is kept; the files a view needs stay over the budget and do not ask for themselves again', async () => {
   const L = 16, step = L * MIN, P = packStartOf(T0, L, SPAN), len = packMs(L, SPAN);
   const big = encodeTile({ level: L, packStart: P, windows: 128, through: P + 3 * len, books: [['a', [col(1)]]] });
-  const files = new Map<string, Served>([[packUrl(BASE, L, P), { bytes: big, length: MAX_WIRE_BYTES + 1 }]]);
+  const files = new Map<string, Served>([[packUrl(BASE, L, P), { bytes: big, length: MAX_FILE_BYTES + 1 }]]);
   for (let k = 1; k < 3; k++) files.set(packUrl(BASE, L, P + k * len), encodeTile({ level: L, packStart: P + k * len, windows: 128, through: P + 3 * len, books: [['a', Array.from({ length: 40 }, (_, i) => col(i))]] }));
   const { fetch, asked } = server(files);
   const size = (files.get(packUrl(BASE, L, P + len)) as ArrayBuffer).byteLength;
@@ -288,7 +290,58 @@ test('a file too large is refused before it is kept; the files a view needs stay
   assert.equal(out.times.length, 80);
   for (let i = 0; i < 3; i++) { archive.extend(engine, P, P + 3 * len, step); await settle(30); }
   assert.equal(asked.filter(u => u !== packUrl(BASE, L, P)).length, 2, 'no pack asked for again: nothing the view needs was let go');
-  assert.equal(MAX_FILE_BYTES, 24 << 20);
+  assert.equal(MAX_FILE_BYTES, 16 << 20);
+});
+
+test('a body with no Content-Length is read only up to the cap: an endless one is refused, its request ended, nothing kept', async () => {
+  const L = 16, step = L * MIN, P = packStartOf(T0, L, SPAN), len = packMs(L, SPAN);
+  let pulled = 0, cancelled = false;
+  const endless = new ReadableStream<Uint8Array>({ pull: c => { pulled++; c.enqueue(new Uint8Array(1 << 20)); }, cancel: () => { cancelled = true; } });
+  let signal: AbortSignal | null = null;
+  const fetch: TileFetch = async (_url, init) => { signal = init.signal; return { ok: true, status: 200, body: endless, arrayBuffer: async () => { throw new Error('read whole'); } }; };
+  const c = clock(), archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
+  archive.setInfo(info(P + 2 * len));
+  await changed(archive);
+  archive.extend(frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity }), P, P + len, step); await settle(100);
+  assert.ok(pulled <= 18, `stopped at the cap (${pulled} MB pulled)`);
+  assert.ok(cancelled && signal!.aborted, 'the body cancelled and the request ended');
+  assert.equal(archive.heldBytes, 0);
+});
+
+test('a refresh or another pane\'s question leaves the view\'s files needed: a missing pack is still asked again', async () => {
+  const L = 16, step = L * MIN, P = packStartOf(T0, L, SPAN), len = packMs(L, SPAN);
+  const files = new Map<string, Served>([[packUrl(BASE, L, P), 404]]);
+  const { fetch, asked } = server(files), c = clock();
+  const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
+  archive.setInfo(info(P + 2 * len));
+  await changed(archive);
+  archive.extend(frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity }), P, P + len, step, 'whole'); await settle();
+  // A refresh of the engine's own day (nothing of the archive's), and a pane's bars elsewhere at the same level.
+  archive.extend(frame(step, P + len, P + 2 * len, [engineSet('a', 20, [])], { a: P }), P + len, P + 2 * len, step, 'tail');
+  archive.extend(frame(step, P - 3 * len, P - 2 * len, [engineSet('a', 20, [])], { a: Infinity }), P - 3 * len, P - 2 * len, step, 'other'); await settle();
+  c.advance(MISSING_FRESH_MS + 100); await settle();
+  assert.equal(asked.filter(u => u === packUrl(BASE, L, P)).length, 2, 'asked again after its ten minutes');
+  assert.equal(asked.filter(u => u === packUrl(BASE, L, P - 3 * len)).length, 1, 'the pane\'s file is fetched but never asked again');
+});
+
+test('the view\'s level only: a live minute view lets timers lapse, coming back asks for what went stale, a level no longer held is forgotten', async () => {
+  const L = 16, step = L * MIN, P = packStartOf(T0, L, SPAN), len = packMs(L, SPAN);
+  const files = new Map<string, Served>([[packUrl(BASE, L, P), 404]]);
+  const { fetch, asked } = server(files), c = clock();
+  const archive = new ArchiveColumns(BASE, fetch, c.now, undefined, c.schedule);
+  archive.setInfo(info(P + 2 * len));
+  await changed(archive);
+  archive.extend(frame(step, P, P + len, [engineSet('a', 20, [])], { a: Infinity }), P, P + len, step, 'whole'); await settle();
+  const count = (): number => asked.filter(u => u === packUrl(BASE, L, P)).length;
+  archive.view(MIN, [MIN, step]);
+  c.advance(MISSING_FRESH_MS + 100); await settle();
+  assert.equal(count(), 1, 'the live view needs no tiles: the timer lapses');
+  archive.view(step, [MIN, step]); await settle();
+  assert.equal(count(), 2, 'back at the level: the stale file asked again at once');
+  archive.view(2 * step, [2 * step]);
+  archive.view(step, [step]); await settle();
+  c.advance(MISSING_FRESH_MS + 100); await settle();
+  assert.equal(count(), 2, 'a level that was let go needs nothing until it is asked again');
 });
 
 test('the engine\'s answer passes as it is where the archive has no say', () => {

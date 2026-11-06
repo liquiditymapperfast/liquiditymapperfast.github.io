@@ -155,6 +155,12 @@ export class ColumnHolds {
    */
   expireWhole(): void { for (const held of this.#steps.values()) for (const [id, hold] of held) held.set(id, { ...hold, whole: -Infinity }); }
 
+  /** These instruments at `stepMs` are to be asked for whole again at the next load (the worker keeps drawing what it holds meanwhile). */
+  expire(stepMs: number, ids: readonly string[]): void {
+    const held = this.#steps.get(stepMs);
+    for (const id of ids) { const hold = held?.get(id); if (hold) held!.set(id, { ...hold, whole: -Infinity }); }
+  }
+
   /** This step is wanted now. */
   touch(stepMs: number): void { if (this.#steps.has(stepMs)) this.#used.set(stepMs, ++this.#tick); }
 

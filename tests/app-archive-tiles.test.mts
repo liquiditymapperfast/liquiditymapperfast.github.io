@@ -118,6 +118,11 @@ test('a file with any number the service does not write is refused whole: no ste
     ['a pack not on its grid', file([good], { packStart: 60_000 })],
   ];
   for (const [what, bytes] of bad) assert.equal(decodeTile(bytes), null, what);
+  // Windows per pack must be the level's for latest.json's span: 4096 minutes hold 8 (32,768 / 4096), not 128.
+  const coarse = file([good], { level: 4096, packStart: 0, windows: 128 });
+  assert.ok(decodeTile(coarse), 'read without a span');
+  assert.equal(decodeTile(coarse, 32_768), null, 'refused with the span: 128 windows at 4096 minutes');
+  assert.ok(decodeTile(file([good], { level: 4096, windows: 8 }), 32_768), 'the level\'s own 8');
   // A delta that would wrap an i32 (the sum leaves the range though each delta is one).
   const wrap = new DataView(file([{ ...good, bins: [2_000_000_000, 2_000_000_001], step: 1e-6 }]));
   // Header 30, id length 1, id 1, columns 2, then index 2, flags 1, n 4, step 8, bin count 4, the first bin 4: the second bin's delta.

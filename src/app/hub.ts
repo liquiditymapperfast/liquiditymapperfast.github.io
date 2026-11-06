@@ -1200,6 +1200,7 @@ export class Hub {
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };
     this.#columnsWanted = stepMs;
     holds.touch(stepMs);
+    this.source.archiveView?.(stepMs, holds.steps());
     // A step held for every book is read at once, whatever else is under way.
     if (holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
     if (this.#columnsLoading) return;
@@ -1218,7 +1219,7 @@ export class Hub {
       for (const ask of asks) {
         // A zoom to another step since the load began: that step's own load follows, and the rest of this one would only hold it up.
         if (stepMs !== this.#columnsWanted) break;
-        const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs);
+        const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs, false, ask.tail ? 'tail' : 'whole');
         let whole = frame.instruments, wholeIds = ask.ids;
         if (ask.tail) {
           // A market whose price grid is not the one its columns held were recorded on (a server started again and chose another): their bins
@@ -1230,7 +1231,7 @@ export class Hub {
           if (tails.length) this.#postColumns({ type: 'columnsTail', stepMs, from: ask.from, instruments: tails }, stepMs);
           // What the other steps hold for these markets was recorded on the old grid too.
           if (other.size) this.#forgetColumns(holds.forgetElsewhere(stepMs, wholeIds));
-          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs)).instruments;
+          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs, false, 'whole')).instruments;
         }
         // Every instrument asked for is held from here on, answered or not: one a source leaves out is not asked for again on every frame
         // (and has nothing in the worker: what it held for it is forgotten).
@@ -1250,18 +1251,38 @@ export class Hub {
   }
 
   /**
-   * The long history brought [from, to) at `stepMs`: those windows are asked for again for the books held at that step and spliced into what
-   * the worker holds (what it holds elsewhere is kept, so a view larger than the tiles' cache never empties and asks for itself again).
+   * The long history brought [from, to) at `stepMs`: those windows are asked for again for the books held at that step, each inside the
+   * window its columns were asked for (a range the view has left is not taken in), on the grid they are held on, and spliced into what the
+   * worker holds (what it holds elsewhere is kept, so a view larger than the tiles' cache never empties and asks for itself again). A book
+   * whose answer comes on another grid (its engine's changed) is asked for whole again instead.
    */
   async #archiveArrived(stepMs: number, from: number, to: number): Promise<void> {
-    const ids = [...this.#columns.at(stepMs).keys()];
-    if (!ids.length || !this.source.archiveRange) return;
-    const frame = await this.source.archiveRange(ids, from, to, stepMs);
-    if (!this.#columns.at(stepMs).size || !frame.instruments.length) return;
-    const buffers = new Set<ArrayBuffer>();
-    for (const set of frame.instruments) for (const array of [set.bins, set.bid, set.ask]) if (array.buffer instanceof ArrayBuffer) buffers.add(array.buffer);
-    this.#post({ type: 'columnsRange', stepMs, from, to, instruments: frame.instruments }, [...buffers]);
-    if (stepMs === this.#columnsDrawn) this.#columnsChanged();
+    const source = this.source;
+    if (!source.archiveRange) return;
+    const groups = new Map<string, { from: number; to: number; ids: string[] }>();
+    for (const [id, hold] of this.#columns.at(stepMs)) {
+      const lo = Math.max(from, hold.from), hi = Math.min(to, hold.to);
+      if (!(hi > lo)) continue;
+      const key = `${lo}|${hi}`, group = groups.get(key);
+      if (group) group.ids.push(id); else groups.set(key, { from: lo, to: hi, ids: [id] });
+    }
+    for (const group of groups.values()) {
+      const grids: Record<string, number> = {};
+      for (const id of group.ids) grids[id] = this.#columns.at(stepMs).get(id)?.grid ?? 0;
+      const frame = await source.archiveRange(group.ids, group.from, group.to, stepMs, grids);
+      const held = this.#columns.at(stepMs), sets = frame.instruments.filter(set => held.has(set.id));
+      const other = new Set(this.#columns.gridChanged(stepMs, sets));
+      if (other.size) {
+        this.#forgetColumns(this.#columns.forgetElsewhere(stepMs, [...other]));
+        this.#columns.expire(stepMs, [...other]); this.#columnsStale = true; this.onColumns();
+      }
+      const same = sets.filter(set => !other.has(set.id));
+      if (!same.length) continue;
+      const buffers = new Set<ArrayBuffer>();
+      for (const set of same) for (const array of [set.bins, set.bid, set.ask]) if (array.buffer instanceof ArrayBuffer) buffers.add(array.buffer);
+      this.#post({ type: 'columnsRange', stepMs, from: group.from, to: group.to, instruments: same }, [...buffers]);
+      if (stepMs === this.#columnsDrawn) this.#columnsChanged();
+    }
   }
 
   /** The steps the page holds recorded columns for, and the books at each (what it has told the worker to keep). */
