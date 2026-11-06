@@ -132,6 +132,11 @@ test('a weak chart market (few readings) read whole again keeps what it shows, t
   r.source.handlers!.onHistory!(); await turn();
   assert.deepEqual(r.shown(), { inst: 'binance:BTCUSDT', parts: [], last: 100, reading: false }, 'the same choice read again: kept, not cleared for being weak');
   r.answer(level, () => 10); await turn();
+  // Another choice, then back to the chart market: its bars held are weak (a reference market may stand in), so it is read first.
+  done = (await r.choose(['bybit:BTCUSDT'])).done; r.answer(level); await done;
+  done = (await r.choose('chart')).done;
+  assert.deepEqual(r.shown(), { inst: '', parts: [], last: undefined, reading: true }, 'a new choice is not shown from the weak bars');
+  r.answer(level, () => 10); await done;
 });
 
 test('a venue that answered nothing is held as nothing: a choice counting it is shown at once from the others', async () => {
@@ -143,6 +148,11 @@ test('a venue that answered nothing is held as nothing: a choice counting it is 
   done = (await r.choose(['binance:BTCUSDT', 'okx:BTC-USDT-SWAP'])).done;
   assert.deepEqual(r.shown(), { inst: 'binance:BTCUSDT', parts: [], last: 100, reading: false }, 'the two again: at once, not cleared for the one that answered nothing');
   r.answer(level, id => id.startsWith('okx') ? 0 : 40); await done;
+  // Every market of a choice answered nothing a moment ago: nothing to show, so it is read (never the old choice left standing).
+  done = (await r.choose(['okx:BTC-USDT-SWAP'])).done;
+  assert.deepEqual(r.shown(), { inst: '', parts: [], last: undefined, reading: true }, 'only OKX, which answered nothing: cleared and read');
+  r.answer(level, () => 0); await done;
+  assert.deepEqual(r.shown(), { inst: '', parts: [], last: undefined, reading: false }, 'it answers nothing again: nothing, and no longer reading');
 });
 
 test('bars read more than two minutes ago are not shown for a new choice', async () => {

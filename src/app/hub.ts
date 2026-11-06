@@ -610,7 +610,9 @@ export class Hub {
   #show(key: string, candles: CandleRow[], seriesInstrument: string, timeframe: string, again: boolean, bridge = true): void {
     const tf = TIMEFRAMES[timeframe] ?? 3_600_000, live = this.#liveCandles[seriesInstrument], last = candles[candles.length - 1];
     const bucket = live ? Math.floor(live[0] / tf) * tf : 0, opens = live !== undefined && (!last || bucket > last[0]) && (bridge || !last || bucket - last[0] <= tf);
-    this.#loaded = { key, instrument: seriesInstrument }; this.#onScreen = key; if (!again) this.#oiShown = '';
+    // Shown afresh, the open interest is cleared below: forgotten as shown, and a read for it already out is not joined by the load that follows
+    // (that load shows the bars held at once; joining the read left the pane empty until it landed).
+    this.#loaded = { key, instrument: seriesInstrument }; this.#onScreen = key; if (!again) { this.#oiShown = ''; this.#oiInflight = null; }
     // Open interest belongs to the candles it was loaded for: another timeframe's or market's bars are not shown under these while theirs are on their way.
     this.store.set({ candles: opens ? mergeLive(candles, live, tf, this.#liveTrack) : candles, candlesTimeframe: timeframe, seriesInstrument, ...(again ? {} : { oi: [], oiInstrument: '', oiParts: [] }) });
     if (candles.length && this.#refill === key) { this.#refill = ''; this.onSeriesRefilled(); }
