@@ -50,7 +50,8 @@ export const ARCHIVE_MIN_STEP_MS = 2 * MINUTE;
  * (`archiveStepMs`: two minutes for BTC, eight for ETH and SOL), so old ranges always draw; a view wholly inside the day keeps its minutes,
  * and so does one that includes now (`now`, the source's clock), whose newest column the live overlay draws a minute at a time: BTC's day
  * comes from the hour files at a minute. A coin whose hours carry no book minutes (`liveToo`: ETH, SOL) has nothing but the tiles before the
- * page's own recording, so its live views reaching before it are lifted as well (the live overlay still draws the newest minute).
+ * page's own recording, so its live views reaching before it are lifted as well, until the tab has recorded the whole view: their newest
+ * column is then the open window as recorded so far, refreshed with the map, as at any coarser zoom.
  */
 export function columnStepFor(view: Pick<Bounds, 't0' | 't1'>, widthPx: number, archive: number | null, since: number, now: number, archiveStepMs = ARCHIVE_MIN_STEP_MS, liveToo = false): number {
   const span = view.t1 - view.t0;
