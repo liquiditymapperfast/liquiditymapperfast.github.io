@@ -13,6 +13,8 @@ export type WorkerIn =
   | { type: 'columns'; stepMs: number; instruments: ColumnSet[] }
   /** The columns from `from` on (the start of a window) as the source has them now, replacing those held from there; at the step they were asked at. */
   | { type: 'columnsTail'; stepMs: number; from: number; instruments: ColumnSet[] }
+  /** Windows of [from, to) as the source has them now (the long history's tiles came): spliced into what is held, the rest kept. */
+  | { type: 'columnsRange'; stepMs: number; from: number; to: number; instruments: ColumnSet[] }
   /** Read the columns held at this step from now on (the data of a step is posted before it is used). */
   | { type: 'columnsUse'; stepMs: number }
   /** Forget these instruments' columns at this step, or all of its (`ids` null). */
@@ -178,6 +180,8 @@ scope.onmessage = event => {
     } else if (message.type === 'columnsTail') {
       recorded.tail(message.stepMs, message.from, message.instruments);
       for (const set of message.instruments) if (set.step > 0) steps.set(set.id, set.step);
+    } else if (message.type === 'columnsRange') {
+      recorded.range(message.stepMs, message.from, message.to, message.instruments);
     } else if (message.type === 'columnsUse') recorded.use(message.stepMs);
     else if (message.type === 'columnsDrop') recorded.drop(message.stepMs, message.ids);
     else if (message.type === 'live') {

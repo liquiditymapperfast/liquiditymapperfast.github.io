@@ -127,9 +127,13 @@ export interface DataSource {
    * A source whose columns reach back past its own recordings (the browser's, from the long history's tiles: app/archive/) says when more of
    * them have come; the hub then asks again for what it holds. Optional: the others answer everything they have at once.
    */
-  setArchiveListener?(listener: () => void): void;
+  setArchiveListener?(listener: (change: { level: number; from: number; to: number } | null) => void): void;
+  /** The columns of [from, to) at `stepMs` again after the long history brought that range (spliced into what the worker holds). */
+  archiveRange?(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame>;
   /** Where that long history's depth begins (ms), or null when there is none. */
   archiveFirst?(): number | null;
+  /** Where the source's own depth begins for `ids` (the latest of their contiguous runs' starts), or null when it cannot say yet. */
+  depthSince?(ids: readonly string[]): number | null;
   /**
    * The Liquidity Tracker alone (lt-lane.ts): these markets' windows of `stepMs` over [from, to) for one half-life (an index into LT_HALF_LIVES), handed
    * to `onFrame` a part at a time, the newest first, settled when the last has come. Only a server whose live socket answers it has it; it rejects

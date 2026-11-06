@@ -604,6 +604,11 @@ export class Engine {
   }
 
   /** `close`: each window's book at its close, not its average (`DepthRecorder.query`). */
+  /** Per instrument, where its newest run of recorded minutes begins (`DepthRecorder.contiguousSince`), +Infinity for one with none. */
+  heldSince(ids: readonly string[], gapMs: number): Record<string, number> {
+    return Object.fromEntries(ids.map(id => [id, this.recorder.contiguousSince(id, gapMs)]));
+  }
+
   columns(ids: readonly string[], from: number, to: number, stepMs: number, close = false): ColumnsFrame {
     const step = Math.max(COLUMN_MS, Math.round(stepMs / COLUMN_MS) * COLUMN_MS);
     return { from, to, stepMs: step, instruments: packColumns(ids.map(id => ({ instrumentId: id, step: this.recorder.steps.get(id) ?? 0, columns: this.recorder.query(id, from, to, step, close) })), close) };

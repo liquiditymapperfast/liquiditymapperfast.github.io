@@ -24,7 +24,7 @@ import { BTC, EARLIER_BROWSER_VENUES, type Coin } from '../shared/coins.ts';
 import { recorderLockName, recordingsName } from './coin.ts';
 import { historyUrl } from './history-url.ts';
 import { DAY_HOURS } from './history-window.ts';
-import { ArchiveColumns } from './archive/archive-source.ts';
+import { ArchiveColumns, depthSinceOf, type ArchiveChange } from './archive/archive-source.ts';
 
 /** Where a person's venue choice is kept between visits, and the venues there were when it was made (so ones added since can start). */
 const SELECTION_KEY = 'lmf.venues', KNOWN_KEY = 'lmf.venues.known';
@@ -108,6 +108,8 @@ export class BrowserSource implements DataSource, VenueControl {
   #historyIn = false;
   /** The long history before the page's day (app/archive/): the service's tiles, once the import has read where they are. */
   #archive: ArchiveColumns | null = null;
+  /** Per book, where the engine's newest run of minutes begins (`ColumnsFrame.since`, from its last answer). */
+  #heldSince = new Map<string, number>();
 
   /** `historyHours`: how many of the recorded history's latest hours the worker reads on opening (app/history-window.ts), a day by default. */
   constructor(worker: Worker, { persist = true, coin = BTC, tier = 0, historyHours = DAY_HOURS }: { persist?: boolean; coin?: Coin; tier?: number; historyHours?: number } = {}) {
@@ -263,11 +265,24 @@ export class BrowserSource implements DataSource, VenueControl {
   /** The engine's columns, and (averages at two minutes or more) the windows before its day from the long history's tiles. */
   async columns(ids: string[], from: number, to: number, stepMs: number, close = false): Promise<ColumnsFrame> {
     const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close });
+    this.#noteSince(frame);
     return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
   }
 
-  /** Said when tiles have come that the columns already answered could use (the hub asks for them again). */
-  setArchiveListener(listener: () => void): void { if (this.#archive) this.#archive.onChange = listener; }
+  /** The columns of [from, to) again after tiles came for it (`setArchiveListener`): what the view needs is added to, not replaced. */
+  async archiveRange(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
+    const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close: false });
+    this.#noteSince(frame);
+    return this.#archive ? this.#archive.extend(frame, from, to, stepMs, true) : frame;
+  }
+
+  #noteSince(frame: ColumnsFrame): void { for (const [id, since] of Object.entries(frame.since ?? {})) this.#heldSince.set(id, since); }
+
+  /** Where depth of the engine's own begins for `ids`: the latest of their runs' starts (+Infinity for a book it holds none of), or null before any answer said. */
+  depthSince(ids: readonly string[]): number | null { return depthSinceOf(this.#heldSince, ids); }
+
+  /** Said when tiles have come that the columns already answered could use: the range they bring, or (null) anything (the hub asks again). */
+  setArchiveListener(listener: (change: ArchiveChange) => void): void { if (this.#archive) this.#archive.onChange = listener; }
 
   /** Where the long history's depth begins, or null when there is none (yet). */
   archiveFirst(): number | null { return this.#archive?.first() ?? null; }

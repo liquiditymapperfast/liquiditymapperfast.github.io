@@ -525,7 +525,10 @@ export class Hub {
     this.#live.tape(this.#tapeOn);
     // The long history's tiles come after the columns that could use them were answered: what is held is asked for whole again (the worker
     // keeps drawing it meanwhile), and the frame that asks comes now.
-    this.source.setArchiveListener?.(() => { this.#columns.expireWhole(); this.#columnsStale = true; this.onColumns(); });
+    this.source.setArchiveListener?.(change => {
+      if (change) { void this.#archiveArrived(change.level * MINUTE, change.from, change.to).catch(error => console.warn('long history:', error)); return; }
+      this.#columns.expireWhole(); this.#columnsStale = true; this.onColumns();
+    });
     // A hidden page reads nothing ahead (`#prefetch`): shown again, it reads what went stale meanwhile.
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && this.#prefetched) this.#schedulePrefetch(); });
   }
@@ -1191,7 +1194,7 @@ export class Hub {
     if (!ids.length) return;
     // About two pixels a column, in minutes that double from one level to the next: zooming moves between a few steps the server has merged
     // before; at least the long history's two minutes where the view reaches before the page's own day (`columnStepFor`).
-    const stepMs = columnStepFor(view, widthPx, this.source.archiveFirst?.() ?? null, this.recordedSince, this.sourceNow());
+    const stepMs = columnStepFor(view, widthPx, this.source.archiveFirst?.() ?? null, this.source.depthSince?.(ids) ?? this.recordedSince, this.sourceNow());
     const holds = this.#columns;
     // The view is one object the pane moves on: what an answer is judged against below is the view it was asked for.
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };
@@ -1244,6 +1247,21 @@ export class Hub {
       // A load for a step nobody wants any more reads nothing and changes nothing the page would draw: say so, so that the frame that waits for this load to end comes.
       if (stepMs !== this.#columnsWanted) this.onColumns();
     } finally { this.#columnsLoading = false; }
+  }
+
+  /**
+   * The long history brought [from, to) at `stepMs`: those windows are asked for again for the books held at that step and spliced into what
+   * the worker holds (what it holds elsewhere is kept, so a view larger than the tiles' cache never empties and asks for itself again).
+   */
+  async #archiveArrived(stepMs: number, from: number, to: number): Promise<void> {
+    const ids = [...this.#columns.at(stepMs).keys()];
+    if (!ids.length || !this.source.archiveRange) return;
+    const frame = await this.source.archiveRange(ids, from, to, stepMs);
+    if (!this.#columns.at(stepMs).size || !frame.instruments.length) return;
+    const buffers = new Set<ArrayBuffer>();
+    for (const set of frame.instruments) for (const array of [set.bins, set.bid, set.ask]) if (array.buffer instanceof ArrayBuffer) buffers.add(array.buffer);
+    this.#post({ type: 'columnsRange', stepMs, from, to, instruments: frame.instruments }, [...buffers]);
+    if (stepMs === this.#columnsDrawn) this.#columnsChanged();
   }
 
   /** The steps the page holds recorded columns for, and the books at each (what it has told the worker to keep). */

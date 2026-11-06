@@ -74,25 +74,42 @@ export function levelOfUsd(usd: number): number {
   return Math.min(65535, 1 + Math.round(Math.log(usd) / Math.log(LEVEL_RATIO)));
 }
 
-/** Reads a tile file (a pack or a head), or null when it is not one this page can read (a cut file, another format). */
+/** A grid step outside this (USD) is not one a book is recorded on. */
+export const MIN_TILE_STEP = 1e-9, MAX_TILE_STEP = 1e9;
+/** No bin of a window holds more than this (the largest seen, 2026-11-05, was $46M): a level past it is not one the service wrote. */
+export const MAX_BIN_USD = 1e12;
+const MAX_LEVEL = levelOfUsd(MAX_BIN_USD);
+/** A price past this ($ from zero) is not one a bin can stand for. */
+const MAX_PRICE = 1e12;
+/** Samples a window can hold: twelve a minute (one every 5 s), and a minute's worth to spare. */
+export const maxSamples = (level: number): number => level * 12 + 12;
+
+/**
+ * Reads a tile file (a pack or a head), or null when it is not one this page can read: another format, a file cut short or with bytes after
+ * its last book, or any number that is not one the service writes (a step, a sample count, a bin, a level, the tracker, a window twice).
+ * The whole file is refused for any of these: a file the page draws is one the service wrote.
+ */
 export function decodeTile(buffer: ArrayBuffer): TileFile | null {
   const view = new DataView(buffer), bytes = new Uint8Array(buffer);
   if (bytes.length < TILE_HEADER_BYTES || String.fromCharCode(bytes[0]!, bytes[1]!, bytes[2]!, bytes[3]!) !== TILE_MAGIC) return null;
   if (view.getUint16(4, true) !== TILE_VERSION) return null;
   const level = view.getUint16(6, true), packStart = Number(view.getBigInt64(8, true)), windows = view.getUint16(16, true);
   const flags = view.getUint16(18, true), through = Number(view.getBigInt64(20, true)), bookCount = view.getUint16(28, true);
-  if (!(level >= 2) || !(windows >= 1)) return null;
-  const books = new Map<string, TileColumn[]>(), decoder = new TextDecoder();
+  if (!TILE_LEVELS.includes(level) || !(windows >= 1 && windows <= MAX_PACK_WINDOWS)) return null;
+  if (!Number.isSafeInteger(packStart) || packStart % (windows * level * MINUTE) !== 0 || !Number.isSafeInteger(through)) return null;
+  const books = new Map<string, TileColumn[]>(), decoder = new TextDecoder('utf-8', { fatal: true }), samples = maxSamples(level);
   let at = TILE_HEADER_BYTES;
   const need = (n: number): boolean => at + n <= bytes.length;
   try {
     for (let b = 0; b < bookCount; b++) {
       if (!need(1)) return null;
       const idLen = bytes[at]!; at += 1;
-      if (!need(idLen + 2)) return null;
+      if (idLen === 0 || !need(idLen + 2)) return null;
       const id = decoder.decode(bytes.subarray(at, at + idLen)); at += idLen;
+      if (books.has(id)) return null;
       const count = view.getUint16(at, true); at += 2;
-      const columns: TileColumn[] = [];
+      if (count > windows) return null;
+      const columns: TileColumn[] = [], seen = new Set<number>();
       for (let c = 0; c < count; c++) {
         if (!need(2 + 1 + 4 + 8 + 4)) return null;
         const index = view.getUint16(at, true); at += 2;
@@ -100,26 +117,40 @@ export function decodeTile(buffer: ArrayBuffer): TileFile | null {
         const n = view.getUint32(at, true); at += 4;
         const step = view.getFloat64(at, true); at += 8;
         const k = view.getUint32(at, true); at += 4;
-        if (index >= windows || !need(k * 8 + 4)) return null;
+        if (index >= windows || seen.has(index) || cflags > 3) return null;
+        seen.add(index);
+        if (!(n >= 1 && n <= samples) || !(step >= MIN_TILE_STEP && step <= MAX_TILE_STEP)) return null;
+        // k bins of 4 + 2 + 2 bytes and the tracker's count: a count past what is left of the file is refused before anything is allocated.
+        if (k > (bytes.length - at) / 8 || !need(k * 8 + 4)) return null;
         const bins = new Int32Array(k), bid = new Float32Array(k), ask = new Float32Array(k);
         let bin = 0;
-        for (let i = 0; i < k; i++) { bin = i ? bin + view.getInt32(at, true) : view.getInt32(at, true); bins[i] = bin; at += 4; }
-        for (let i = 0; i < k; i++) { bid[i] = usdOfLevel(view.getUint16(at, true)); at += 2; }
-        for (let i = 0; i < k; i++) { ask[i] = usdOfLevel(view.getUint16(at, true)); at += 2; }
+        for (let i = 0; i < k; i++) {
+          const next = i ? bin + view.getInt32(at, true) : view.getInt32(at, true);
+          // Ascending, within an i32 (a delta that would wrap is refused, not wrapped), and a price a bin can stand for.
+          if ((i && next <= bin) || next > 2_147_483_647 || next < -2_147_483_648 || !(Math.abs(next * step) <= MAX_PRICE)) return null;
+          bins[i] = bin = next; at += 4;
+        }
+        for (let i = 0; i < k; i++) { const q = view.getUint16(at, true); if (q > MAX_LEVEL) return null; bid[i] = usdOfLevel(q); at += 2; }
+        for (let i = 0; i < k; i++) { const q = view.getUint16(at, true); if (q > MAX_LEVEL) return null; ask[i] = usdOfLevel(q); at += 2; }
         const ltN = view.getUint32(at, true); at += 4;
+        if (ltN > n) return null;
         let lt: Float32Array | undefined;
         // The tracker as the service finished it (f32: its weight sums can be under a dollar's level).
         if (ltN > 0) {
           if (!need(LT_LENGTH * 4)) return null;
           lt = new Float32Array(LT_LENGTH);
-          for (let i = 0; i < LT_LENGTH; i++) { lt[i] = view.getFloat32(at, true); at += 4; }
+          for (let i = 0; i < LT_LENGTH; i++) {
+            const v = view.getFloat32(at, true);
+            if (!(v >= 0 && v <= MAX_BIN_USD * 1e3)) return null;
+            lt[i] = v; at += 4;
+          }
         }
-        if (!(step > 0) || !Number.isFinite(step)) return null;
         columns.push({ t: packStart + index * level * MINUTE, n, step, bins, bid, ask, ...(lt ? { lt } : {}), ltN, open: (cflags & 1) !== 0, cut: (cflags & 2) !== 0 });
       }
       columns.sort((a, b) => a.t - b.t);
       books.set(id, columns);
     }
   } catch { return null; }
+  if (at !== bytes.length) return null;
   return { level, packStart, windows, head: (flags & 1) !== 0, through, books };
 }

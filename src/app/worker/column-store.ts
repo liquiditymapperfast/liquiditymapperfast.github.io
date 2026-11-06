@@ -43,6 +43,13 @@ export class RecordedColumns {
     for (const set of sets) held.set(set.id, withTail(held.get(set.id), set, from));
   }
 
+  /** `withRange` into the columns held at `stepMs`, for the instruments held there (one the page no longer holds is not taken back in). */
+  range(stepMs: number, from: number, to: number, sets: readonly ColumnSet[]): void {
+    const held = this.#steps.get(stepMs);
+    if (!held) return;
+    for (const set of sets) { const had = held.get(set.id); if (had) held.set(set.id, withRange(had, set, from, to)); }
+  }
+
   /** Read `stepMs` from now on. */
   use(stepMs: number): void { this.#current = stepMs; }
 
@@ -60,6 +67,33 @@ export class RecordedColumns {
   }
 }
 const EMPTY: ReadonlyMap<string, ColumnStore> = new Map();
+
+/**
+ * `held` with its columns in [from, to) replaced by `set`'s (the windows of that range as the source has them now), the others kept: the
+ * long history's tiles arriving for part of a view. Columns on another price grid are not joined (the held ones stay; the hub asks for the
+ * whole window again when a grid changes).
+ */
+export function withRange(held: ColumnStore, set: ColumnSet, from: number, to: number): ColumnStore {
+  if (set.step > 0 && held.step > 0 && set.step !== held.step) return held;
+  const rows: { t: number; count: number; held: boolean; start: number; index: number }[] = [];
+  let at = 0;
+  held.times.forEach((t, k) => { const count = held.counts[k]!; if (t < from || t >= to) rows.push({ t, count, held: true, start: at, index: k }); at += count; });
+  at = 0;
+  set.times.forEach((t, k) => { const count = set.counts[k]!; if (t >= from && t < to) rows.push({ t, count, held: false, start: at, index: k }); at += count; });
+  rows.sort((a, b) => a.t - b.t);
+  const nBins = rows.reduce((sum, r) => sum + r.count, 0), n = rows.length;
+  const times = new Float64Array(n), counts = new Uint32Array(n), bins = new Int32Array(nBins), bid = new Float32Array(nBins), ask = new Float32Array(nBins);
+  const lt = held.lt || set.lt ? new Float32Array(n * LT_LENGTH).fill(NaN) : undefined;
+  let offset = 0;
+  rows.forEach((r, i) => {
+    const src = r.held ? held : set;
+    times[i] = r.t; counts[i] = r.count;
+    bins.set(src.bins.subarray(r.start, r.start + r.count), offset); bid.set(src.bid.subarray(r.start, r.start + r.count), offset); ask.set(src.ask.subarray(r.start, r.start + r.count), offset);
+    if (lt && src.lt) lt.set(src.lt.subarray(r.index * LT_LENGTH, (r.index + 1) * LT_LENGTH), i * LT_LENGTH);
+    offset += r.count;
+  });
+  return { step: held.step > 0 ? held.step : set.step, times, counts, bins, bid, ask, ...(lt ? { lt } : {}) };
+}
 
 /**
  * `held` with every column from `from` on replaced by `set`'s, which are the columns of `from` onwards as the source has them now: the page's

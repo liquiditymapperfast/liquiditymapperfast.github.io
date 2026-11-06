@@ -523,6 +523,20 @@ export class DepthRecorder {
    * never one of another window, the open minute for the window under way, stamped with the window's start and saying its minute (`at`).
    * Kept as the averages are, under keys of their own.
    */
+  /**
+   * Where this instrument's newest run of minutes begins: the oldest minute reached going back from the newest without a gap of more than
+   * `gapMs` (a book away for a few minutes does not end its run; an hour not imported does). +Infinity when nothing is held. The page's long
+   * history draws what lies before it (app/archive/), the same for every question.
+   */
+  contiguousSince(instrumentId: string, gapMs: number): number {
+    const list = this.columns.get(instrumentId) ?? [], open = this.#pending.get(instrumentId);
+    if (!list.length) return open && open.n > 0 ? open.t : Infinity;
+    let k = list.length - 1;
+    if (open && open.n > 0 && open.t - list[k]!.t > gapMs) return open.t;
+    while (k > 0 && list[k]!.t - list[k - 1]!.t <= gapMs) k--;
+    return list[k]!.t;
+  }
+
   query(instrumentId: string, from: number, to: number, stepMs = COLUMN_MS, close = false): Column[] {
     const open = this.#pending.get(instrumentId), openColumn = open && open.n > 0 && open.t >= from && open.t < to ? finalize(open, this.#minBinUsd) : null;
     if (stepMs <= COLUMN_MS) {

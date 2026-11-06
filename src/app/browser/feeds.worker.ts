@@ -9,6 +9,7 @@ import { frameOf } from './levels-frame.ts';
 import { heldOf, importHistory } from './history-import.ts';
 import { importSince } from '../history-window.ts';
 import type { TilesInfo } from '../archive/tiles.ts';
+import { CONTIGUOUS_GAP_MS } from '../../shared/columns.ts';
 
 /**
  * The data engine on its own thread: exchange sockets, book valuation, recording and the history requests all run here, and the page
@@ -135,7 +136,8 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
   switch (call.method) {
     case 'bootstrap': return { result: run.bootstrap(), transfer: [] };
     case 'columns': {
-      const frame = run.columns(call.ids, call.from, call.to, call.stepMs, call.close === true);
+      // With where each book's own minutes begin: the page fills what lies before it from the long history (app/archive/).
+      const frame = { ...run.columns(call.ids, call.from, call.to, call.stepMs, call.close === true), since: run.heldSince(call.ids, CONTIGUOUS_GAP_MS) };
       return { result: frame, transfer: frame.instruments.flatMap(set => [set.bins.buffer, set.bid.buffer, set.ask.buffer]) };
     }
     case 'footprint': return { result: run.footprint(call.inst, call.tfMs, call.from, call.to, call.rowStep, call.cuts ?? [], call.budget, call.venues === true), transfer: [] };

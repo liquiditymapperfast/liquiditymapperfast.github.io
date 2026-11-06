@@ -56,7 +56,7 @@ test('a file reads back as written: windows by index, bins by delta, levels to d
     level: 32, packStart: start, windows: 128, head: true, through: start + 40 * 32 * MIN,
     books: [
       ['binance:BTCUSDT', [
-        { index: 3, n: 384, step: 20, bins: [3900, 3901, 3905, -2], bid: [15_000, 0.5, 2.5e6, 0], ask: [0, 1, 7.1e5, 12], ltN: 384, lt },
+        { index: 3, n: 384, step: 20, bins: [-2, 3900, 3901, 3905], bid: [0, 15_000, 0.5, 2.5e6], ask: [12, 0, 1, 7.1e5], ltN: 384, lt },
         { index: 0, n: 12, step: 20, bins: [], bid: [], ask: [] },
       ]],
       ['okx:BTC-USDT-SWAP', [{ index: 39, n: 100, step: 50, bins: [1570], bid: [3e7], ask: [1], open: true, cut: true }]],
@@ -69,10 +69,10 @@ test('a file reads back as written: windows by index, bins by delta, levels to d
   const binance = file.books.get('binance:BTCUSDT')!;
   assert.deepEqual(binance.map(c => c.t), [start, start + 3 * 32 * MIN], 'sorted by time');
   const c = binance[1]!;
-  assert.deepEqual([...c.bins], [3900, 3901, 3905, -2]);
+  assert.deepEqual([...c.bins], [-2, 3900, 3901, 3905]);
   assert.equal(c.n, 384); assert.equal(c.step, 20); assert.equal(c.ltN, 384);
-  assert.ok(Math.abs(c.bid[0]! / 15_000 - 1) < 0.005 && c.bid[1] === 0 && c.bid[3] === 0);
-  assert.equal(c.ask[1], 1);
+  assert.ok(Math.abs(c.bid[1]! / 15_000 - 1) < 0.005 && c.bid[2] === 0 && c.bid[0] === 0);
+  assert.equal(c.ask[2], 1);
   assert.deepEqual([...c.lt!], lt.map(v => Math.fround(v)), 'the tracker is f32 as written, weight sums under one included');
   assert.equal(binance[0]!.lt, undefined, 'no tracker without ltN');
   const okx = file.books.get('okx:BTC-USDT-SWAP')![0]!;
@@ -91,4 +91,55 @@ test('a file that is not one, or is cut short, is refused', () => {
   assert.equal(decodeTile(version.buffer), null, 'a later version');
   const index = encodeTile({ level: 2, packStart: 0, windows: 4, through: 0, books: [['a', [{ index: 4, n: 1, step: 1, bins: [], bid: [], ask: [] }]]] });
   assert.equal(decodeTile(index), null, 'a window past the pack');
+});
+
+test('a file with any number the service does not write is refused whole: no step, sample count, bin, level or tracker out of bounds', () => {
+  const good = { index: 0, n: 10, step: 20, bins: [3900, 3901], bid: [5_000, 6_000], ask: [7_000, 8_000], ltN: 10, lt: new Array(LT_LENGTH).fill(1) };
+  const file = (columns: object[], over: Partial<{ level: number; packStart: number; windows: number }> = {}, books?: [string, object[]][]): ArrayBuffer =>
+    encodeTile({ level: 2, packStart: 0, windows: 128, through: 0, books: books as never ?? [['a', columns as never]], ...over });
+  assert.ok(decodeTile(file([good])), 'the good one reads');
+  const bad: [string, ArrayBuffer][] = [
+    ['a step of 1e308', file([{ ...good, step: 1e308 }])],
+    ['a step of zero', file([{ ...good, step: 0 }])],
+    ['a step that is NaN', file([{ ...good, step: Number.NaN }])],
+    ['no samples', file([{ ...good, n: 0, ltN: 0 }])],
+    ['more samples than a window holds', file([{ ...good, n: 2 * 12 + 13 }])],
+    ['bins not ascending', file([{ ...good, bins: [3901, 3900] }])],
+    ['a bin twice', file([{ ...good, bins: [3900, 3900] }])],
+    ['a price no bin stands for', file([{ ...good, bins: [2_000_000_000, 2_000_000_001], step: 1_000 }])],
+    ['a level past any real bin', file([{ ...good, bid: [1e14, 6_000] }])],
+    ['a tracker that is not finite', file([{ ...good, lt: [Number.NaN, ...new Array(LT_LENGTH - 1).fill(1)] }])],
+    ['a tracker below zero', file([{ ...good, lt: [-1, ...new Array(LT_LENGTH - 1).fill(1)] }])],
+    ['a tracker over more samples than its window', file([{ ...good, ltN: 11 }])],
+    ['a window twice', file([good, { ...good }])],
+    ['a book twice', file([], {}, [['a', [good]], ['a', [good]]])],
+    ['a level the service does not build', file([good], { level: 3 })],
+    ['more windows than a pack holds', file([good], { windows: 200 })],
+    ['a pack not on its grid', file([good], { packStart: 60_000 })],
+  ];
+  for (const [what, bytes] of bad) assert.equal(decodeTile(bytes), null, what);
+  // A delta that would wrap an i32 (the sum leaves the range though each delta is one).
+  const wrap = new DataView(file([{ ...good, bins: [2_000_000_000, 2_000_000_001], step: 1e-6 }]));
+  // Header 30, id length 1, id 1, columns 2, then index 2, flags 1, n 4, step 8, bin count 4, the first bin 4: the second bin's delta.
+  const at = 30 + 1 + 1 + 2 + 2 + 1 + 4 + 8 + 4 + 4;
+  wrap.setInt32(at, 2_000_000_000, true);
+  assert.equal(decodeTile(wrap.buffer as ArrayBuffer), null, 'a delta past the i32 range');
+  // Bytes after the last book, and a bin count past the file's end.
+  const whole = file([good]), extra = new Uint8Array(whole.byteLength + 3); extra.set(new Uint8Array(whole));
+  assert.equal(decodeTile(extra.buffer), null, 'bytes after the last book');
+  const count = new DataView(file([good]).slice(0)); count.setUint32(30 + 1 + 1 + 2 + 2 + 1 + 4 + 8, 0x7fffffff, true);
+  assert.equal(decodeTile(count.buffer as ArrayBuffer), null, 'a bin count past the end');
+});
+
+test('random bytes after a valid header never throw and never read', () => {
+  let seed = 7;
+  const rand = (): number => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed / 2 ** 31; };
+  const head = new Uint8Array(encodeTile({ level: 16, packStart: 0, windows: 128, through: 0, books: [] }));
+  for (let trial = 0; trial < 300; trial++) {
+    const body = new Uint8Array(30 + Math.floor(rand() * 400));
+    body.set(head.subarray(0, 30));
+    new DataView(body.buffer).setUint16(28, 1 + Math.floor(rand() * 4), true);
+    for (let i = 30; i < body.length; i++) body[i] = Math.floor(rand() * 256);
+    assert.doesNotThrow(() => decodeTile(body.buffer));
+  }
 });
