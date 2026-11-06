@@ -75,6 +75,25 @@ test('the pane asks for the index first, then the days its view needs (with the 
   assert.deepEqual(asked.slice(3).filter(u => !u.endsWith('liquidation-history.json')).map(u => u.slice(-15)), [`${dayText(day)}.json`], 'today again after five minutes; yesterday, read after it ended, never');
 });
 
+test('a new UTC day with no snapshot yet is asked when the day before\'s newest says the next can be there, not each minute', async () => {
+  const asked: string[] = [], day = Date.UTC(2026, 10, 6), MIN = 60_000;
+  // Yesterday's newest was created at 23:50 (published 23:58:45); the next is published at 00:28:20.
+  const index = 'https://levels.hiverust.dev/v1/btc/liquidation-history.json';
+  const files: Record<string, unknown> = {
+    [index]: { edges: EDGES, first: day - 3 * DAY_MS, last: day - 75_000 },
+    [`https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day - DAY_MS)}.json`]: { rows: [row(day - 75_000)] },
+    [`https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day)}.json`]: { rows: [] },
+  };
+  const h = new LiqHistory(url => { asked.push(url); return Promise.resolve(files[url]); });
+  const settle = async (): Promise<void> => { await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0)); };
+  const todays = (): number => asked.filter(u => u.endsWith(`${dayText(day)}.json`)).length;
+  const at = async (t: number): Promise<void> => { h.ensure(day - 2 * 3_600_000, t + 3_600_000, t, () => {}); await settle(); };
+  await at(day + MIN); await at(day + MIN);
+  assert.equal(todays(), 1, 'today read once, empty');
+  for (let m = 2; m < 20; m++) await at(day + m * MIN);
+  assert.equal(todays(), 1, 'not asked each minute while it is empty');
+});
+
 test('today is asked again when its next snapshot can be there, then each minute until it comes', async () => {
   const asked: string[] = [], day = Date.UTC(2026, 10, 5), MIN = 60_000, t0 = day + 10 * 3_600_000;
   // The newest row was published four minutes before the first read, created five minutes before that (`row`): the next can be there
