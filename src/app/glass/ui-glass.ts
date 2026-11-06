@@ -2,7 +2,7 @@ import { el } from '../dom.ts';
 import { STRIDE, type TapeRing } from '../tape/ring.ts';
 import { chromeFor, rgb, type Palette } from '../theme.ts';
 import { scaledUsd } from '../coin.ts';
-import { CELL, ENERGY_MAX, WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, strengthGain, type WaveRegion } from './waves.ts';
+import { CELL, ENERGY_MAX, WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, pulseFor, strengthGain, type WaveRegion } from './waves.ts';
 import { PRESS, PUSH_WIDTH, WAKE_BREAK_MS, WAKE_WIDTH, pushAmp, wakeAmp } from './touch.ts';
 
 /**
@@ -33,6 +33,8 @@ import { PRESS, PUSH_WIDTH, WAKE_BREAK_MS, WAKE_WIDTH, pushAmp, wakeAmp } from '
 export type SpotOf = (price: number, t: number) => { x: number; y: number } | null;
 
 const MAX_SPARKS = 32, MAX_RECTS = 24, LIFE_MS = 2600, FRAME_MS = 33, WAVE_FRAME_MS = 16;
+/** The least time between two rings the Strength slider sends while it is moved (ms). */
+const PREVIEW_MS = 250;
 /**
  * The chrome that is glass, how each kind is tinted (the bars and splitters in the face tone, the panels in the panel tone), and what it
  * is to a wave: the bars and panels glass that slows it, the splitters walls that throw most of it back.
@@ -205,17 +207,30 @@ export class UiGlass {
     this.schedule();
   }
 
-  /** How strongly the waves are drawn: the person's Strength, 0 to 100 (store `waveStrength`). */
+  /**
+   * How strongly the waves are drawn: the person's Strength, 0 to 100 (store `waveStrength`). Moved while the glass shows, it sends a ring
+   * from the middle of the screen, a large order's (at most one every PREVIEW_MS), so the slider shows what it does on a quiet market too.
+   */
   setStrength(strength: number): void {
     const gain = strengthGain(strength);
     if (gain === this.#gain) return;
-    this.#gain = gain; this.schedule();
+    this.#gain = gain;
+    const now = performance.now();
+    if (this.#on && this.#field && !this.#reduced?.matches && !document.hidden && now - this.#previewAt >= PREVIEW_MS) {
+      this.#previewAt = now;
+      this.#field.add({ x: window.innerWidth / 2, y: window.innerHeight / 2, side: 0, ...pulseFor(scaledUsd(250_000), scaledUsd(25_000)) }, now);
+    }
+    this.schedule();
   }
+  #previewAt = -Infinity;
 
-  /** What the waves have taken and started, for a look from the console: orders in, waves started, waiting, and how full the field is (of ENERGY_MAX). */
-  get waveStats(): { orders: number; started: number; waiting: number; energy: number } | null {
+  /**
+   * What the waves have taken and started, for a look from the console: orders in, waves started, orders passed over, waiting, how full the
+   * field is (of ENERGY_MAX) and how late its last waves started (ms after their first order).
+   */
+  get waveStats(): { orders: number; started: number; passed: number; waiting: number; energy: number; delays: readonly number[] } | null {
     const f = this.#field;
-    return f ? { orders: f.orders, started: f.started, waiting: f.waiting, energy: f.energyAt(performance.now()) / ENERGY_MAX } : null;
+    return f ? { orders: f.orders, started: f.started, passed: f.passed, waiting: f.waiting, energy: f.energy / ENERGY_MAX, delays: [...f.delays] } : null;
   }
 
   /** Turn the glass on or off (the page's `html[data-material]` is set by its caller, so the chrome turns see-through with it). */
@@ -248,6 +263,8 @@ export class UiGlass {
       window.clearInterval(this.#poll);
       if (this.#frame) cancelAnimationFrame(this.#frame); this.#frame = 0;
       this.#sparks = [];
+      // What waited to start must not fire at old places when the glass comes back, nor what the field reckoned it held hold back new waves.
+      this.#field?.reset();
     }
   }
 

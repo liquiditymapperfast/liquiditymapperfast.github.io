@@ -138,7 +138,6 @@ export class Toolbar {
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
   #soundButton = el('button', { class: 'led-btn sound-btn', textContent: t('Sounds'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
-  #wavesPanel: Panel | null = null;
   #sounds: Sounds | null = null;
   /** Where the language and theme buttons live on a desktop screen (the status bar), or null. */
   #statusHost: HTMLElement | null = null;
@@ -414,8 +413,8 @@ export class Toolbar {
     };
     this.#highlights.onclick = () => this.store.set(togglePatch(this.store.state, 'highlights'));
     this.#alertKeys.waves.onclick = () => {
-      const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildWaves(tools, body, () => this.#wavesPanel?.render(build));
-      this.#wavesPanel = this.#track(togglePanel(this.#alertKeys.waves, { title: t('Waves'), width: 400, align: 'left', onClose: () => { this.#wavesPanel = null; } }, build), build);
+      const build = (tools: HTMLElement, body: HTMLElement): void => this.#buildWaves(tools, body);
+      this.#track(togglePanel(this.#alertKeys.waves, { title: t('Waves'), width: 400, align: 'left' }, build), build);
     };
     this.#settingsKeys.traded.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null });
@@ -1017,10 +1016,11 @@ export class Toolbar {
    * The Waves panel (Karl, 2026-11-06: "a configuration key to the Waves button just like the Sounds button has, with a scale so people can
    * adjust the strength"): the same switch as the lamp, how strongly the waves are drawn, and what holds them back on a busy market.
    */
-  #buildWaves(_tools: HTMLElement, body: HTMLElement, rebuild: () => void): void {
+  #buildWaves(_tools: HTMLElement, body: HTMLElement): void {
     const s = this.store.state;
+    // Nothing else in the panel depends on the switch, so it is not built again: the keyboard stays on the switch.
     body.append(
-      switchRow(t('Waves'), t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen'), s.material === 'glass', on => { this.store.set({ material: on ? 'glass' : 'solid' }); rebuild(); }),
+      switchRow(t('Waves'), t('Waves: the bars and panels around the chart turn to glass; large orders and large flow changes light it and send waves across the screen'), s.material === 'glass', on => this.store.set({ material: on ? 'glass' : 'solid' })),
       rangeRow(t('Strength'), WAVE_STRENGTH_TIP, { min: 0, max: 100, step: 5, value: s.waveStrength, format: v => `${v}%` }, v => this.store.set({ waveStrength: readWaveStrength(v) })),
       note(t('A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.')),
     );

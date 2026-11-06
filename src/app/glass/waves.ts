@@ -18,13 +18,15 @@
  * A busy market must not flood the screen (Karl, 2026-11-06: on very active days "it throws too many waves ... the entire screen floods").
  * Orders do not start waves one by one: `order` gathers them, side by side, into a few waiting waves, each the orders that came near one
  * place (`MERGE_PX`) added together as one larger order, so the physics above still holds (a wave's height with the root of its size, to
- * the cap). The field starts at most `SPAWN_RATE` of them a second, the oldest first, so a cascade of hundreds of orders a second is a few
- * large waves rather than hundreds of small ones. Each wave it starts is also scaled by how full the field already is: it keeps an
- * estimate of its own energy (what each wave put in, fading as the damping and the edges take it, `ENERGY_TAU_MS`), and past
- * `ENERGY_KNEE` a new wave is let in smaller and smaller, down to nothing at `ENERGY_MAX`; and the fuller it is, the sooner its echoes die
- * (`BUSY_DAMP`). A quiet field takes a large order at its full height; a busy one is held about as full as a lively ordinary day. How
- * strongly the waves are drawn is the person's (`waveGain`, the Waves panel's Strength), on top of all this. Whatever the market does,
- * the card's work a frame is the same: the grid's size, at most sixteen substeps, at most MAX_SOURCES pulses in one.
+ * the cap). The field starts `SPAWN_RATE` of them a second at most (after a burst of `SPAWN_BURST`), the largest first, each within
+ * `MAX_WAIT_MS` of its first order or not at all, so a cascade of hundreds of orders a second is a few large waves rather than hundreds of
+ * small ones. Each wave it starts is also scaled by how full the field already is: it keeps an estimate of its own energy (what each wave
+ * put in, fading as the damping and the edges take it, `ENERGY_TAU_MS`, on the field's own time), and past a knee a new wave is let in
+ * smaller and smaller, down to nothing at a ceiling: the energy now against `ENERGY_KNEE` and `ENERGY_MAX` (a burst), the energy averaged
+ * over `SLOW_MS` against `SLOW_KNEE` and `SLOW_MAX` (a cascade that lasts). The fuller it is, the sooner its echoes die (`BUSY_DAMP`). A
+ * quiet field takes a large order at its full height, and a whale (`WHALE_R`) always shows. How strongly the waves are drawn is the
+ * person's (`waveGain`, the Waves panel's Strength), on top of all this. Whatever the market does, the card's work a frame is the same:
+ * the grid's size, at most sixteen substeps, at most MAX_SOURCES pulses in one.
  */
 
 /** CSS px a cell of the field. */
@@ -84,12 +86,28 @@ function pulseOf(r: number): { amp: number; width: number } {
   return { amp: Math.min(1.6, 0.35 * Math.sqrt(k)), width: 4 + 3 * Math.log10(k) };
 }
 
-/** The most market waves the field starts a second (`order`), and how many it may start at once after a quiet spell. */
+/**
+ * How many market waves the field starts (`order`): SPAWN_RATE a second of its own time, and up to SPAWN_BURST at once after a quiet spell
+ * (so at most SPAWN_BURST + SPAWN_RATE in the first second of a burst, SPAWN_RATE a second after).
+ */
 export const SPAWN_RATE = 8, SPAWN_BURST = 4;
-/** Orders of one side within this distance (CSS px) of a wave still waiting to start join it, as one larger order. */
+/** Orders of one side within this distance (CSS px) of a wave still waiting to start join it, as one larger order; farther ones never do. */
 export const MERGE_PX = 48;
-/** How many waves may wait to start, each side: an order beyond them joins the nearest, wherever it is. */
+/**
+ * How many waves may wait to start, each side. An order that joins none when they are all taken replaces the smallest of them if it is
+ * larger, and is passed over otherwise (its light in the glass still shows it).
+ */
 export const MAX_WAITING = 4;
+/**
+ * How long a wave may wait to start (ms of the clock, from its first order): a wave is seen where and about when its orders traded, or not
+ * at all. The largest start first, so what ages out is the small.
+ */
+export const MAX_WAIT_MS = 400;
+/**
+ * An order this many times the size that starts a wave ($1M against $25k) always shows: it is let in at least at WHALE_GAIN of its height,
+ * the largest first, as long as the field holds less than WHALE_ROOM times its ceiling (so a run of them cannot flood it either).
+ */
+export const WHALE_R = 40, WHALE_GAIN = 0.5, WHALE_ROOM = 1.5;
 /**
  * How long the field takes to lose all but 1/e of the energy a wave put in (ms): the damping everywhere and the soaking edges together.
  * Measured on the processor stand-in of the step shader on a 1920 x 1080 desktop (the flow column's and the book's splitters, the bars):
@@ -98,44 +116,71 @@ export const MAX_WAITING = 4;
 export const ENERGY_TAU_MS = 1_500;
 /**
  * The field's energy as `order` reckons it: each wave adds its height squared times its width squared (in cells), the energy its pulse puts
- * in, which then fades with ENERGY_TAU_MS. Up to the knee a new wave goes in at its full height; past it, smaller and smaller, and at the
- * ceiling not at all. The knee is about what an ordinary day of a few large orders a second holds half the time, the ceiling about its
- * busiest moments: so a cascade is drawn about as full as one of those, not as a screen of waves.
+ * in, which then fades with ENERGY_TAU_MS of the field's own time. Up to the knee a new wave goes in at its full height; past it, smaller
+ * and smaller, and at the ceiling not at all. The knee is about what an ordinary day of a few large orders a second reaches at its 95th
+ * percentile, the ceiling about its 99th: a burst is cut at an ordinary day's busiest moment, and a cascade that lasts is held back by the
+ * slow average below.
  */
-export const ENERGY_KNEE = 3, ENERGY_MAX = 8;
+export const ENERGY_KNEE = 12, ENERGY_MAX = 16;
 /**
- * The damping added to the market's waves (each substep, on top of the medium's) when the field is at its ceiling, and in proportion from
- * the knee: a busy field forgets its echoes sooner, so its waves are seen where the orders are, not thrown back from every splitter and
- * pane across the screen (Karl: "the waves bounce from many places"). A field under the knee rings as it always did. The energy it takes
- * is reckoned (`energyAt`), so the ceiling holds as before; what changes is where the light is: in a cascade of 150 orders a second, the
- * share of the screen a wave crest is seen on fell from 25% to 14% with it, at the same energy.
+ * The same energy averaged over SLOW_MS of the field's time, and its own knee and ceiling: what holds a cascade back. An ordinary day's
+ * fullness comes and goes (a large order, then quiet), a cascade's stays: the fast ceiling above lets an ordinary day's busiest moment
+ * through whole, so on its own it held a cascade at that moment's fullness for as long as the cascade lasted, about three times the screen
+ * an ordinary day lights on average (Sol). Averaged, an ordinary day passes SLOW_KNEE only for a while after its largest orders (it drew
+ * crests on 14% less of the screen than with no limit at all); a cascade is held to SLOW_MAX, about twice an ordinary day's average
+ * fullness (measured on the processor stand-in, 1920 x 1080).
+ */
+export const SLOW_MS = 5_000, SLOW_KNEE = 6, SLOW_MAX = 8;
+/**
+ * The damping added to the market's waves (each substep, on top of the medium's) when the field is busy, in proportion to how busy
+ * (`busyness`): a busy field forgets its echoes sooner, so its waves are seen where the orders are, not thrown back from every splitter
+ * and pane across the screen (Karl: "the waves bounce from many places"). A field under its knees rings as it always did. The energy it
+ * takes is reckoned (`energy`), so the ceilings hold as before; what changes is where the light is: the share of the screen a crest is
+ * seen on, at the same energy, fell by about two fifths with it on the processor stand-in.
  */
 export const BUSY_DAMP = 0.003;
-/** The substeps a second, for the energy's fading: a damping `d` a substep takes the energy down by `d` each (`energyAt`). */
-const SUBSTEPS_PER_S = 1000 / SUBSTEP_MS;
-
-/** How busy the field is, 0 at the knee and below, 1 at the ceiling and above. */
-function busyness(energy: number): number { return Math.min(1, Math.max(0, (energy - ENERGY_KNEE) / (ENERGY_MAX - ENERGY_KNEE))); }
-
 /**
- * The share of a new wave's height let in when the field holds `energy` (as `order` reckons it): all of it up to the knee, then less and
- * less, and none at the ceiling. A wave let in at all goes in whole however large, so a single large order on a quiet field keeps its full
- * height and reach (how far a wave runs says how large its order was); a field already past the ceiling lets nothing in until it fades.
+ * How fast the reckoned energy fades at busyness `b` (a share a ms of the field's time). Leapfrog damped by `d` a substep keeps
+ * sqrt(1 - d) of a wave's height (a root of x^2 - 2(1 - d)cos(w)x + (1 - d)), so its energy falls by `d` a substep: the damping's rate,
+ * not twice it.
  */
-export function admitted(energy: number): number { return Math.sqrt(1 - busyness(energy)); }
+const fadeRate = (b: number): number => 1 / ENERGY_TAU_MS + BUSY_DAMP * b / SUBSTEP_MS;
 
-/** A wave waiting to start: the orders gathered into it (`r`, their sizes over the size that starts one, added up), where (their sizes' centre), and since when. */
-interface Waiting { x: number; y: number; r: number; born: number }
+const ramp = (v: number, knee: number, max: number): number => Math.min(1, Math.max(0, (v - knee) / (max - knee)));
+/**
+ * How busy the field is, from 0 under both knees to 1 at either ceiling: its energy now (`energy`, against ENERGY_KNEE and ENERGY_MAX) or
+ * its energy averaged over SLOW_MS (`slow`, against SLOW_KNEE and SLOW_MAX), whichever is the busier.
+ */
+export function busyness(energy: number, slow = 0): number { return Math.max(ramp(energy, ENERGY_KNEE, ENERGY_MAX), ramp(slow, SLOW_KNEE, SLOW_MAX)); }
 
 /**
- * The person's Strength (0 to 100, the Waves panel) as the gain the waves are drawn with: 0.125 at 0, barely there; 0.5 in the middle;
- * 2 at the top, twice what they were before there was a choice. Even steps of the slider are even ratios, as the eye judges a contrast.
+ * The share of a new wave's height let in when the field is this busy: all of it under the knees, then less and less, and none at a
+ * ceiling. A wave let in at all goes in whole however large, so a single large order on a quiet field keeps its full height and reach (how
+ * far a wave runs says how large its order was); a field past a ceiling lets nothing in until it fades, but a whale (WHALE_R).
+ */
+export function admitted(energy: number, slow = 0): number { return Math.sqrt(1 - busyness(energy, slow)); }
+
+/**
+ * A wave waiting to start: the orders gathered into it (`r`, their sizes over the size that starts one, added up; `top`, the largest of
+ * them alone), where (their sizes' centre), and since when (its first order, on the clock).
+ */
+interface Waiting { x: number; y: number; r: number; top: number; born: number }
+
+/**
+ * The gain of the middle of the Strength slider, the default (Karl: "by default make it very weak, make the effect fairly weak, or find an
+ * ideal"): an ordinary day's crests on about a third of the screen they took before there was a setting, and a cascade's on about what an
+ * ordinary day's took then (time-averaged share of the screen drawn at alpha 0.03 or more, on the processor stand-in).
+ */
+export const STRENGTH_MID_GAIN = 0.75;
+/**
+ * The person's Strength (0 to 100, the Waves panel) as the gain the waves are drawn with: a quarter of the middle's at 0, barely there, and
+ * four times it at the top. Even steps of the slider are even ratios, as the eye judges a contrast.
  */
 export function strengthGain(strength: number): number {
   const s = Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : WAVE_STRENGTH_DEFAULT;
-  return 0.5 * 4 ** ((s - 50) / 50);
+  return STRENGTH_MID_GAIN * 4 ** ((s - 50) / 50);
 }
-/** The Strength a page starts with: the middle of the slider, half the contrast the waves had before (Karl: "by default make the effect fairly weak"). */
+/** The Strength a page starts with: the middle of the slider. */
 export const WAVE_STRENGTH_DEFAULT = 50;
 /** A saved Strength: a number from 0 to 100 (rounded, held within them), anything else the default. */
 export function readWaveStrength(v: unknown): number {
@@ -208,13 +253,19 @@ export class WaveField {
   #carry = 0;
   /** Whether the field has been set back to still since its waves ran out (so nothing stays frozen in it). */
   #still = true;
-  /** The waves waiting to start, buys' and sells' (`order`), and the starts the field may still make now (a bucket refilled at SPAWN_RATE). */
+  /**
+   * The waves waiting to start, buys' and sells' (`order`), and the starts the field may still make now (a bucket refilled at SPAWN_RATE a
+   * second of the field's time).
+   */
   #waiting: [Waiting[], Waiting[]] = [[], []];
-  #tokens = SPAWN_BURST; #tokensAt = 0;
-  /** The field's energy as `order` reckons it, and when it was last brought up to date (it fades with ENERGY_TAU_MS). */
-  #energy = 0; #energyAt = 0;
-  /** Market waves started so far, and orders taken: for a look from the console and for the tests. */
-  #started = 0; #orders = 0;
+  #tokens = SPAWN_BURST;
+  /** The field's energy as `order` reckons it, as of the last substep stepped (it fades with the field's time, `fadeRate`). */
+  #energy = 0;
+  /** The same averaged over SLOW_MS of the field's time (SLOW_KNEE, SLOW_MAX). */
+  #slow = 0;
+  /** Orders taken, market waves started, orders passed over (a full queue, or too old to start), and how late the last waves started (ms). */
+  #orders = 0; #started = 0; #passed = 0;
+  #delays: number[] = [];
 
   /** A field in `gl`, or null where the card cannot draw into half floats (the caller keeps its older light). */
   static create(gl: WebGL2RenderingContext): WaveField | null {
@@ -266,7 +317,21 @@ export class WaveField {
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.setMedium([]);
+    // An empty field: what was reckoned in it and what waited to start in it (at the old layout's places) goes with its waves.
+    this.#forget();
   }
+
+  /**
+   * Everything back to still: the heights, what waits to start and what the field reckoned it held. For a caller that stops stepping (its
+   * glass switched off), so nothing queued before fires at old places when it steps again.
+   */
+  reset(): void {
+    this.#pending.length = 0; this.#paths.length = 0; this.#lastSource = -Infinity;
+    this.#clear();
+  }
+
+  /** The governor's state back to an empty field's: nothing waiting, a full bucket of starts, no energy. */
+  #forget(): void { this.#waiting[0].length = 0; this.#waiting[1].length = 0; this.#tokens = SPAWN_BURST; this.#energy = 0; this.#slow = 0; }
 
   /** What the waves cross (CSS px, top-down): glass that slows them, walls that throw most of them back. */
   setMedium(regions: readonly WaveRegion[]): void {
@@ -285,52 +350,78 @@ export class WaveField {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  /** Market waves started since the field was made, and orders `order` has taken: what reached the card against what came. */
-  get started(): number { return this.#started; }
+  /** Orders `order` has taken, market waves started and orders passed over since the field was made: what reached the card against what came. */
   get orders(): number { return this.#orders; }
+  get started(): number { return this.#started; }
+  get passed(): number { return this.#passed; }
+  /** How late the last waves (up to 64) started after their first order (ms of the clock). */
+  get delays(): readonly number[] { return this.#delays; }
   /**
-   * The field's energy now, as `order` reckons it (ENERGY_MAX is the most it lets in): what was there last fading with ENERGY_TAU_MS, and
-   * faster by the busy damping it had then. Leapfrog damped by `d` a substep keeps sqrt(1 - d) of a wave's height (a root of
-   * x^2 - 2(1 - d)cos(w)x + (1 - d)), so its energy falls by `d` a substep: the damping's rate, not twice it. Reckoned twice as fast, the
-   * field let in twice what it lost and a cascade drew three times brighter (measured on the processor stand-in).
+   * The field's energy as `order` reckons it (ENERGY_MAX is where it lets nothing more in), as of the last substep stepped. It fades with the
+   * field's own time, never the clock's: a card that falls behind steps at most MAX_FRAME_MS a frame, and the waves in it lose only what
+   * that time takes (reckoned on the clock, a field drawn at 10 frames a second was believed three times emptier than it was).
    */
-  energyAt(now: number): number {
-    const rate = 1 / ENERGY_TAU_MS + BUSY_DAMP * busyness(this.#energy) * SUBSTEPS_PER_S / 1000;
-    return this.#energy * Math.exp(-Math.max(0, now - this.#energyAt) * rate);
-  }
+  get energy(): number { return this.#energy; }
+  /** The energy averaged over SLOW_MS of the field's time: what holds a cascade back. */
+  get slowEnergy(): number { return this.#slow; }
   /** How many waves are waiting to start. */
   get waiting(): number { return this.#waiting[0].length + this.#waiting[1].length; }
 
   /**
    * A market order (or a large change of flow) of `usd` against the size that starts a wave (`min`), at (x, y) CSS px, a buy's or a sell's:
-   * gathered into the waiting wave of its side nearest it (within MERGE_PX) as more of the same order, or waiting as a wave of its own; the
-   * next steps start the waiting waves at SPAWN_RATE, each let in as the field's energy allows (`admitted`).
+   * gathered into the waiting wave of its side nearest it within MERGE_PX, as more of the same order; or waiting as a wave of its own; or,
+   * with MAX_WAITING already waiting, in place of the smallest of them if it is larger, and passed over if not. The next steps start the
+   * waiting waves, the largest first, each let in as the field's energy allows (`admitted`).
    */
   order(x: number, y: number, usd: number, min: number, side: 0 | 1, now: number): void {
     if (!(Math.abs(usd) > 0) || !(min > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
     const r = Math.max(1, Math.abs(usd) / min), list = this.#waiting[side];
+    this.#orders++; this.#lastSource = now; this.#still = false;
     let near: Waiting | null = null, best = Infinity;
     for (const w of list) { const d = Math.hypot(w.x - x, w.y - y); if (d < best) { best = d; near = w; } }
-    if (near && (best <= MERGE_PX || list.length >= MAX_WAITING)) {
-      near.x = (near.x * near.r + x * r) / (near.r + r); near.y = (near.y * near.r + y * r) / (near.r + r); near.r += r;
-    } else list.push({ x, y, r, born: now });
-    this.#orders++;
-    this.#lastSource = now; this.#still = false;
+    if (near && best <= MERGE_PX) {
+      near.x = (near.x * near.r + x * r) / (near.r + r); near.y = (near.y * near.r + y * r) / (near.r + r); near.r += r; near.top = Math.max(near.top, r);
+      return;
+    }
+    const fresh: Waiting = { x, y, r, top: r, born: now };
+    if (list.length < MAX_WAITING) { list.push(fresh); return; }
+    let smallest = 0;
+    for (let i = 1; i < list.length; i++) if (list[i]!.r < list[smallest]!.r) smallest = i;
+    this.#passed++;
+    if (list[smallest]!.r < r) list[smallest] = fresh;
   }
 
-  /** The waiting waves the bucket allows now, the oldest first, into the next step's pulses, each at the height the field's energy lets in. */
-  #start(now: number): void {
-    this.#tokens = Math.min(SPAWN_BURST, this.#tokens + Math.max(0, now - this.#tokensAt) * SPAWN_RATE / 1000); this.#tokensAt = now;
-    this.#energy = this.energyAt(now); this.#energyAt = now;
-    const [buys, sells] = this.#waiting;
-    while (this.#tokens >= 1 && (buys.length || sells.length) && this.#pending.length < MAX_SOURCES) {
-      const side: 0 | 1 = !sells.length || (buys.length && buys[0]!.born <= sells[0]!.born) ? 0 : 1, w = this.#waiting[side].shift()!;
-      const p = pulseOf(w.r), e = p.amp * p.amp * Math.max(0.8, p.width / CELL) ** 2, g = admitted(this.#energy);
-      // A start is spent whether the wave goes in or not: a field at its ceiling lets none in, and the orders gathered into it go with it.
-      this.#tokens -= 1;
-      if (!(g > 0.01)) continue;
-      this.#energy += g * g * e; this.#started++;
-      this.#pending.push({ x: w.x, y: w.y, amp: p.amp * g, width: p.width, side });
+  /**
+   * How much of a waiting wave's height the field lets in now: `admitted` by its energy, and at least WHALE_GAIN for a single order of
+   * WHALE_R or more while the field holds less than WHALE_ROOM times its ceiling.
+   */
+  #gainFor(w: Waiting): number {
+    const g = admitted(this.#energy, this.#slow);
+    return w.top >= WHALE_R && this.#energy < ENERGY_MAX * WHALE_ROOM ? Math.max(g, WHALE_GAIN) : g;
+  }
+
+  /**
+   * Into the next step's pulses: the waiting waves the bucket allows (refilled by `fieldMs`, the time this step advances the field), the
+   * largest first (a whale's before any other), each at the height the field's energy lets in. When the field can take nothing more, they
+   * wait, their starts unspent, until it has room or they are older than MAX_WAIT_MS of the clock.
+   */
+  #start(now: number, fieldMs: number): void {
+    this.#tokens = Math.min(SPAWN_BURST, this.#tokens + fieldMs * SPAWN_RATE / 1000);
+    for (const list of this.#waiting) for (let i = list.length - 1; i >= 0; i--) if (now - list[i]!.born > MAX_WAIT_MS) { list.splice(i, 1); this.#passed++; }
+    while (this.#tokens >= 1 && this.#pending.length < MAX_SOURCES) {
+      let pick: Waiting | null = null, from: 0 | 1 = 0;
+      for (const side of [0, 1] as const) for (const w of this.#waiting[side]) {
+        const whale = w.top >= WHALE_R, was = pick !== null && pick.top >= WHALE_R;
+        if (!pick || (whale && !was) || (whale === was && (w.r > pick.r || (w.r === pick.r && w.born < pick.born)))) { pick = w; from = side; }
+      }
+      if (!pick) break;
+      const g = this.#gainFor(pick);
+      if (!(g > 0.01)) break;
+      const p = pulseOf(pick.r), e = p.amp * p.amp * Math.max(0.8, p.width / CELL) ** 2;
+      this.#waiting[from].splice(this.#waiting[from].indexOf(pick), 1);
+      this.#tokens -= 1; this.#energy += g * g * e; this.#started++;
+      this.#delays.push(now - pick.born); if (this.#delays.length > 64) this.#delays.shift();
+      this.#pending.push({ x: pick.x, y: pick.y, amp: p.amp * g, width: p.width, side: from });
     }
   }
 
@@ -351,20 +442,21 @@ export class WaveField {
   /** Step the field to `now` (ms). Leaves the default framebuffer bound and blending off; the caller sets its own viewport after. */
   step(now: number): void {
     const gl = this.gl, l = this.#loc.get(this.#step)!;
-    // A still field keeps no time: the first frame of the next pulse steps one frame's time, not the whole idle spell (50 ms, 24 substeps).
+    // A still field keeps no time: the first frame of the next pulse steps one frame's time, not the whole idle spell (MAX_FRAME_MS).
     if (!this.alive(now)) { this.#pending.length = 0; this.#paths.length = 0; this.#waiting[0].length = 0; this.#waiting[1].length = 0; this.#last = 0; this.#carry = 0; if (!this.#still) this.#clear(); return; }
-    this.#start(now);
     // Whole substeps of the one length, to the nearest, and what is left over (either way) goes into the next frame: so frames of 16 and
     // 17 ms are eight substeps each, a second draw in the same millisecond steps none, and a clock that went back (a page woken from the
     // background) steps none either. A pulse waiting for a frame that steps none goes in with the next substep.
     const dt = this.#last ? Math.min(MAX_FRAME_MS, Math.max(0, now - this.#last)) : 16.7; this.#last = now;
-    const due = this.#carry + dt, steps = Math.max(0, Math.round(due / SUBSTEP_MS));
-    this.#carry = due - steps * SUBSTEP_MS;
+    const due = this.#carry + dt, steps = Math.max(0, Math.round(due / SUBSTEP_MS)), fieldMs = steps * SUBSTEP_MS;
+    this.#carry = due - fieldMs;
+    this.#start(now, fieldMs);
     gl.disable(gl.BLEND); gl.disable(gl.SCISSOR_TEST);
     gl.viewport(0, 0, this.#cols, this.#rows);
     gl.useProgram(this.#step);
     gl.uniform2f(l.get('texel')!, 1 / this.#cols, 1 / this.#rows); gl.uniform1f(l.get('courant')!, COURANT);
-    gl.uniform1f(l.get('busyDamp')!, BUSY_DAMP * busyness(this.#energy));
+    const busy = busyness(this.#energy, this.#slow);
+    gl.uniform1f(l.get('busyDamp')!, BUSY_DAMP * busy);
     gl.uniform1i(l.get('cur')!, 0); gl.uniform1i(l.get('prev')!, 1); gl.uniform1i(l.get('medium')!, 2);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.#mediumTex);
     // A frame that steps none keeps its moving touches for the next one, as it keeps its pulses.
@@ -393,6 +485,9 @@ export class WaveField {
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.activeTexture(gl.TEXTURE0);
+    // What the substeps just took from the energy: the field's time they stepped, at the busy damping they were stepped with.
+    this.#energy *= Math.exp(-fieldMs * fadeRate(busy));
+    this.#slow += (this.#energy - this.#slow) * (1 - Math.exp(-fieldMs / SLOW_MS));
   }
 
   /** Every height back to zero: the waves have run out, and what little is left must not stay on the screen. Its clock starts again too. */
@@ -402,7 +497,7 @@ export class WaveField {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.#still = true; this.#last = 0; this.#carry = 0;
     // A still field is empty: the next wave finds a full bucket of starts and no energy left in it.
-    this.#tokens = SPAWN_BURST; this.#energy = 0;
+    this.#forget();
   }
 
   #texture(): WebGLTexture {

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BUSY_DAMP, CELL, ENERGY_KNEE, ENERGY_MAX, MAX_WAITING, MERGE_PX, SPAWN_BURST, SPAWN_RATE, WAVE_STRENGTH_DEFAULT, WaveField,
-  admitted, pulseFor, readWaveStrength, strengthGain, type WaveRegion,
+  BUSY_DAMP, CELL, ENERGY_KNEE, ENERGY_MAX, MAX_FRAME_MS, MAX_WAITING, MAX_WAIT_MS, SLOW_KNEE, SLOW_MAX, SPAWN_BURST, SPAWN_RATE, STRENGTH_MID_GAIN,
+  WAVE_STRENGTH_DEFAULT, WHALE_GAIN, WHALE_R, WaveField, admitted, pulseFor, readWaveStrength, strengthGain, type WaveRegion,
 } from '../src/app/glass/waves.ts';
 import { initialState } from '../src/app/store.ts';
 
@@ -77,15 +77,86 @@ test('orders that come together at one place make one wave, as one order of thei
   assert.equal(sent[0]!.side, 1, 'a sell\'s');
 });
 
-test('a buy and a sell at one place stay two waves; orders far apart wait apart, and past MAX_WAITING join the nearest', () => {
+test('a buy and a sell at one place stay two waves; orders far apart never merge: past MAX_WAITING the larger replaces the smallest, the rest are passed over', () => {
   const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
   field.resize(W, H);
   field.order(500, 500, 30_000, 25_000, 0, 1_000); field.order(500, 500, -30_000, 25_000, 1, 1_000);
   assert.equal(field.waiting, 2, 'each side its own');
-  for (let i = 0; i < MAX_WAITING + 2; i++) field.order(100 + i * (MERGE_PX + 50), 100, 30_000, 25_000, 0, 1_000);
-  assert.equal(field.waiting, MAX_WAITING + 1, 'the buys wait in MAX_WAITING waves, the sell in one; the rest joined the nearest');
+  // Buys waiting at x = 100, 300, 500 (the first) and 700; one as large at x = 1500 joins none and is passed over (Sol: it made a wave at
+  // about 1100, where nothing traded); a larger one there takes the smallest's place.
+  for (const x of [100, 300, 700]) field.order(x, 500, 30_000, 25_000, 0, 1_000);
+  field.order(1_500, 500, 30_000, 25_000, 0, 1_000);
+  assert.deepEqual([field.waiting, field.passed], [MAX_WAITING + 1, 1], 'the equal one passed over');
+  field.order(1_500, 500, 200_000, 25_000, 0, 1_000);
+  assert.deepEqual([field.waiting, field.passed], [MAX_WAITING + 1, 2], 'the larger one in, the smallest out');
   field.step(1_000);
-  assert.equal(started(pulses), SPAWN_BURST, 'the first frame starts as many as the bucket holds');
+  const first = pulses.flat().filter(p => p.side < 1.5);
+  assert.equal(first.length, SPAWN_BURST, 'the first frame starts as many as the bucket holds');
+  assert.ok(Math.abs(first[0]!.x * CELL - 1_500) < 1e-3, 'the largest first, where it traded');
+  assert.ok(first.every(p => [100, 300, 500, 700, 1_500].some(x => Math.abs(p.x * CELL - x) < 1e-3)), 'and every wave where an order traded');
+});
+
+test('the largest order of a batch starts first, whatever its place in the batch, and the rest are not dropped for its sake (Sol)', () => {
+  for (const whaleFirst of [false, true]) {
+    const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
+    field.resize(W, H);
+    // One batch: 22 buys of $27k at one spot (one wave of their sum, at its height cap) and one $5M buy 120 px away.
+    const cluster = (): void => { for (let i = 0; i < 22; i++) field.order(1_400 + (i % 3), 400 + (i % 5), 27_000, 25_000, 0, 1_000); };
+    const whale = (): void => field.order(1_400, 520, 5_000_000, 25_000, 0, 1_000);
+    if (whaleFirst) { whale(); cluster(); } else { cluster(); whale(); }
+    let t = 1_000;
+    for (; t < 1_000 + MAX_WAIT_MS && started(pulses) < 2; t += 1000 / 60) field.step(t);
+    const sent = pulses.flat().filter(p => p.side < 1.5);
+    const big = pulseFor(5_000_000, 25_000);
+    assert.ok(Math.abs(sent[0]!.width - big.width / CELL) < 1e-6 && Math.abs(sent[0]!.amp - big.amp) < 1e-6, `the $5M order first, whole (whale ${whaleFirst ? 'first' : 'last'} in the batch)`);
+    assert.equal(sent.length, 2, `and the cluster after it, within MAX_WAIT_MS (${Math.round(t - 1_000)} ms)`);
+    assert.equal(field.passed, 0, 'nothing passed over');
+  }
+});
+
+test('a single order of WHALE_R or more always shows: at least WHALE_GAIN of its height while the field is under WHALE_ROOM times its ceiling', () => {
+  const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
+  field.resize(W, H);
+  // Two waves of 39 small sells each (a cascade's, none of them a whale) take the field past its ceiling ...
+  for (const [x, y] of [[400, 300], [1_200, 600]]) for (let i = 0; i < 39; i++) field.order(x, y, -25_000, 25_000, 1, 1_000);
+  field.step(1_000);
+  assert.ok(field.energy > ENERGY_MAX && field.energy < ENERGY_MAX * 1.5, `the field is past its ceiling (${field.energy.toFixed(1)})`);
+  assert.equal(admitted(field.energy), 0, 'where an ordinary wave goes in not at all');
+  // ... and a $5M buy still shows, at WHALE_GAIN of its height, while an ordinary sell waits.
+  const before = pulses.flat().length;
+  field.order(800, 450, -60_000, 25_000, 1, 1_017); field.order(900, 450, 5_000_000, 25_000, 0, 1_017); field.step(1_017);
+  const now = pulses.flat().slice(before).filter(p => p.side < 1.5);
+  assert.equal(now.length, 1, 'one wave');
+  assert.ok(now[0]!.side === 0 && Math.abs(now[0]!.amp - WHALE_GAIN * pulseFor(5_000_000, 25_000).amp) < 1e-6, `the whale's, at WHALE_GAIN (${now[0]!.amp.toFixed(3)})`);
+  assert.equal(WHALE_R * 25_000, 1_000_000, 'a whale is $1M against the $25k that starts a wave');
+});
+
+test('waves start within MAX_WAIT_MS of their first order, or not at all, at 30 orders a second at many places', () => {
+  const { gl } = fakeGl(), field = WaveField.create(gl)!;
+  field.resize(W, H);
+  let k = 0;
+  for (let t = 1_000; t <= 11_000; t += 1000 / 60) {
+    if (Math.floor(t / 250) !== Math.floor((t - 1000 / 60) / 250)) for (let i = 0; i < 8; i++, k++) field.order(100 + (k * 337) % 1400, 100 + (k * 211) % 700, 40_000 * (1 + (k % 7)), 25_000, k % 3 ? 1 : 0, t);
+    field.step(t);
+  }
+  const late = Math.max(...field.delays);
+  assert.ok(late <= MAX_WAIT_MS, `the latest of the last waves started ${late.toFixed(0)} ms after its first order`);
+  assert.ok(field.started >= SPAWN_RATE * 8, `and the field kept starting them (${field.started})`);
+});
+
+test('a field resized, or reset when its glass is switched off, forgets what it reckoned and what waited to start', () => {
+  const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
+  field.resize(W, H);
+  field.order(800, 450, 50_000_000, 25_000, 0, 1_000); field.step(1_000);
+  for (let i = 0; i < 3; i++) field.order(200 + i * 300, 300, -60_000, 25_000, 1, 1_010);
+  assert.ok(field.energy > ENERGY_MAX && field.waiting === 3, 'a full field, waves waiting');
+  field.resize(W - 400, H);
+  assert.deepEqual([field.energy, field.waiting], [0, 0], 'a new size: an empty field, nothing waiting at the old layout\'s places');
+  for (let i = 0; i < 3; i++) field.order(200 + i * 300, 300, -60_000, 25_000, 1, 1_020);
+  field.reset();
+  const before = pulses.flat().length;
+  field.step(1_030); field.step(1_047);
+  assert.deepEqual([field.waiting, pulses.flat().length - before], [0, 0], 'reset: nothing fires when it steps again');
 });
 
 test('a quiet field takes a large order whole; a busy one lets new waves in smaller, and none at its ceiling', () => {
@@ -98,15 +169,34 @@ test('a quiet field takes a large order whole; a busy one lets new waves in smal
   field.order(800, 450, 50_000_000, 25_000, 0, 1_000); field.step(1_000);
   // The card's uniforms are 32-bit floats: heights are compared to a millionth.
   assert.ok(Math.abs(pulses.flat()[0]!.amp - pulseFor(50_000_000, 25_000).amp) < 1e-6, 'the whale keeps its height');
-  assert.ok(field.energyAt(1_000) > ENERGY_MAX, 'and fills the field past its ceiling');
+  assert.ok(field.energy > ENERGY_MAX, 'and fills the field past its ceiling');
   // Straight after it, the field lets nothing in; once the whale has faded, a new order goes in whole again.
   field.order(300, 300, 50_000, 25_000, 1, 1_020); field.step(1_020);
   assert.equal(pulses.flat().length, 1, 'nothing more while it is full');
   let t = 1_020;
-  for (; field.energyAt(t) > ENERGY_KNEE; t += 50) field.step(t);
+  for (; field.energy > ENERGY_KNEE; t += 1000 / 60) field.step(t);
   assert.ok(t < 1_020 + 2_000, `the whale fades under the knee within two seconds (${t - 1_020} ms)`);
   field.order(300, 300, 50_000, 25_000, 1, t); field.step(t);
   assert.ok(Math.abs(pulses.flat().at(-1)!.amp - pulseFor(50_000, 25_000).amp) < 1e-6, 'and whole once it has faded under the knee');
+});
+
+test('a stream under the fast knee goes in whole at first, but as it lasts the slow average holds it back: smaller waves, the average held between SLOW_KNEE and SLOW_MAX', () => {
+  const { gl, pulses } = fakeGl(), field = WaveField.create(gl)!;
+  field.resize(W, H);
+  // Ten $100k orders a second at distinct places: let in whole they would hold about 15, past the fast knee too.
+  const whole = pulseFor(100_000, 25_000).amp;
+  const amps = (from: number): number[] => pulses.slice(from).flat().filter(p => p.side < 1.5).map(p => p.amp);
+  let k = 0, t = 1_000;
+  const run = (until: number): void => { for (; t < until; t += 1000 / 60) { if (Math.floor(t / 100) !== Math.floor((t - 1000 / 60) / 100)) { field.order(100 + (k * 263) % 1400, 100 + (k * 151) % 700, 100_000, 25_000, 0, t); k++; } field.step(t); } };
+  run(2_000);
+  assert.ok(amps(0).length >= 8 && amps(0).every(a => Math.abs(a - whole) < 1e-6), 'the first second goes in whole');
+  run(16_000);
+  const mark = pulses.length;
+  run(31_000);
+  const late = amps(mark);
+  assert.ok(field.slowEnergy > SLOW_KNEE && field.slowEnergy < SLOW_MAX, `the average is held past its knee, under its ceiling (${field.slowEnergy.toFixed(2)})`);
+  assert.ok(field.energy < ENERGY_KNEE, `while the energy now stays under the fast knee: it is the average that holds it (${field.energy.toFixed(2)})`);
+  assert.ok(mean(late) < 0.95 * whole, `and the waves come smaller (${mean(late).toFixed(3)} against ${whole.toFixed(3)} whole)`);
 });
 
 test('a busy field damps the market\'s waves more, from nothing at the knee to BUSY_DAMP at the ceiling', () => {
@@ -192,21 +282,24 @@ const DESK: WaveRegion[] = [
   { x: 100, y: 32, w: 3, h: SH - 42, kind: 'wall' }, { x: 520, y: 32, w: 3, h: SH - 42, kind: 'wall' },
 ];
 
-/** `seconds` of orders at `rate` a second around a wandering price at the map's live edge, a frame at a time: the field's reckoning and the fronts' true energy each frame. */
-function drive(rate: number, seconds: number, seed: number): { reckoned: number[]; fronts: number[] } {
+/**
+ * `seconds` of orders at `rate` a second around a wandering price at the map's live edge, a frame every `frameMs` of the clock: the field's
+ * reckoning and the fronts' true energy each frame.
+ */
+function drive(rate: number, seconds: number, seed: number, frameMs = 1000 / 60): { reckoned: number[]; fronts: number[] } {
   const cpu = cpuField(), field = WaveField.create(cpu.gl)!;
   field.resize(SW, SH); field.setMedium(DESK);
   let s = seed >>> 0; const rnd = (): number => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
   const reckoned: number[] = [], fronts: number[] = [];
   let next = 1_000, y = SH / 2;
-  for (let t = 1_000; t < 1_000 + seconds * 1000; t += 1000 / 60) {
+  for (let t = 1_000; t < 1_000 + seconds * 1000; t += frameMs) {
     while (next <= t) {
       y = Math.min(SH - 60, Math.max(60, y + (rnd() - 0.5) * 8));
       field.order(500 + (rnd() - 0.5) * 8, y + (rnd() - 0.5) * 10, 25_000 * Math.pow(Math.max(1e-9, rnd()), -1 / 1.3), 25_000, 0, t);
       next += -Math.log(Math.max(1e-12, rnd())) / rate * 1000;
     }
     field.step(t);
-    reckoned.push(field.energyAt(t)); fronts.push(cpu.fronts());
+    reckoned.push(field.energy); fronts.push(cpu.fronts());
   }
   return { reckoned, fronts };
 }
@@ -218,24 +311,37 @@ function correlation(a: number[], b: number[]): number {
   return ab / Math.sqrt(aa * bb);
 }
 
-test('the field\'s own reckoning of its energy follows what its fronts really hold, so no reading back from the card is needed', t => {
-  const { reckoned, fronts } = drive(4, 12, 7);
-  const r = correlation(reckoned.slice(30), fronts.slice(30));
-  t.diagnostic(`correlation over 12 s of four orders a second: ${r.toFixed(3)}`);
+test('the field\'s own reckoning of its energy rises and falls with what its fronts really hold on a calm market, and keeps its scale in a cascade within a factor of two', t => {
+  const calm = drive(4, 12, 7), r = correlation(calm.reckoned.slice(30), calm.fronts.slice(30));
+  t.diagnostic(`correlation over 12 s of 4 orders a second: ${r.toFixed(3)}`);
   assert.ok(r > 0.9, `the two rise and fall together (${r.toFixed(3)})`);
+  // In a cascade the reckoning sits near the ceiling, so a correlation says nothing there; what matters is that a unit it reckons is the same
+  // energy on the card as on a calm market, so the ceiling means what it says under load. On this small screen, whose edges take a wave
+  // sooner than the desktop's that ENERGY_TAU_MS was measured on, the two differ by most of that factor.
+  const flood = drive(150, 12, 7), per = (d: { reckoned: number[]; fronts: number[] }): number => mean(d.fronts.slice(60)) / mean(d.reckoned.slice(60));
+  t.diagnostic(`fronts per unit reckoned: ${per(calm).toFixed(4)} calm, ${per(flood).toFixed(4)} in the cascade`);
+  assert.ok(per(flood) < per(calm) * 2 && per(flood) > per(calm) / 2, `the same scale within a factor of two (${(per(flood) / per(calm)).toFixed(2)}x)`);
 });
 
-test('a cascade of 150 orders a second holds the screen about as full as a lively ordinary moment, not many times fuller', t => {
+test('the reckoning runs on the field\'s own time: at 10 frames a second a cascade holds about what the field believes, as at 60 (Sol)', t => {
+  // The fronts' true energy for each unit the field reckons, at 60 frames a second and at 10 (each frame 100 ms of the clock, MAX_FRAME_MS of the field).
+  const ratio = (frameMs: number): number => { const { reckoned, fronts } = drive(150, 15, 9, frameMs), from = Math.round(3_000 / frameMs); return mean(fronts.slice(from)) / mean(reckoned.slice(from)); };
+  const at60 = ratio(1000 / 60), at10 = ratio(100);
+  t.diagnostic(`fronts per unit reckoned: ${at60.toFixed(4)} at 60 frames a second, ${at10.toFixed(4)} at 10 (MAX_FRAME_MS ${MAX_FRAME_MS.toFixed(1)} ms)`);
+  assert.ok(at10 < at60 * 1.4 && at10 > at60 / 1.4, `within 40% of each other (${(at10 / at60).toFixed(2)}x)`);
+});
+
+test('in a cascade of 150 orders a second the fronts\' median energy stays under an ordinary day\'s 95th percentile, and the reckoning within one wave of the fast ceiling', t => {
   const calm = drive(3, 20, 11), flood = drive(150, 20, 12);
   const sorted = (a: number[]): number[] => [...a].sort((x, y) => x - y), p = (a: number[], q: number): number => sorted(a)[Math.floor(q * (a.length - 1))]!;
   const calmTop = p(calm.fronts.slice(60), 0.95), floodMid = p(flood.fronts.slice(180), 0.5), floodTop = p(flood.fronts.slice(180), 0.95);
   t.diagnostic(`fronts' energy: an ordinary day at its 95th percentile ${calmTop.toFixed(3)}; the cascade at its median ${floodMid.toFixed(3)}, at its 95th ${floodTop.toFixed(3)}`);
-  assert.ok(floodMid < calmTop * 1.5, `the cascade's usual frame holds no more than half again an ordinary day's busiest (${(floodMid / calmTop).toFixed(2)}x)`);
+  assert.ok(floodMid < calmTop, `the cascade's usual frame holds less than an ordinary day's busiest (${(floodMid / calmTop).toFixed(2)}x)`);
   assert.ok(Math.max(...flood.reckoned.slice(180)) < ENERGY_MAX + pulseFor(1e12, 25_000).amp ** 2 * (pulseFor(1e12, 25_000).width / CELL) ** 2, 'and its reckoning never passes the ceiling by more than one wave');
 });
 
-test('the Strength runs from barely there to strong, evenly by ratio, half the old contrast in the middle; a saved one is read within its range', () => {
-  assert.equal(strengthGain(0), 0.125); assert.equal(strengthGain(50), 0.5); assert.equal(strengthGain(100), 2);
+test('the Strength runs from a quarter of the middle\'s gain to four times it, evenly by ratio; a saved one is read within its range', () => {
+  assert.equal(strengthGain(0), STRENGTH_MID_GAIN / 4); assert.equal(strengthGain(50), STRENGTH_MID_GAIN); assert.equal(strengthGain(100), STRENGTH_MID_GAIN * 4);
   assert.ok(Math.abs(strengthGain(25) / strengthGain(0) - strengthGain(100) / strengthGain(75)) < 1e-12, 'even steps are even ratios');
   assert.equal(strengthGain(Number.NaN), strengthGain(WAVE_STRENGTH_DEFAULT));
   assert.equal(readWaveStrength(undefined), WAVE_STRENGTH_DEFAULT); assert.equal(readWaveStrength('70'), WAVE_STRENGTH_DEFAULT);

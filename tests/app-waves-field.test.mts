@@ -44,7 +44,7 @@ test('after a still spell the first step of a new pulse is one frame long, not t
   // Minutes later (the page's glass draws only when something changes), a new pulse.
   field.add(pulse, 300_000);
   const before = draws(); field.step(300_000);
-  assert.equal(draws() - before, Math.round(16.7 / SUBSTEP_MS), 'one frame of substeps, not the 50 ms of a stale clock');
+  assert.equal(draws() - before, Math.round(16.7 / SUBSTEP_MS), 'one frame of substeps, not the MAX_FRAME_MS of a stale clock');
 });
 
 test('a long pause steps as a short one, not the whole pause at once, and no frame steps more than sixteen substeps', () => {
