@@ -66,7 +66,7 @@ export function holdsPrice(dx: number, dy: number): boolean {
 
 /**
  * While the map follows the market, the current price is kept clear of this share of the height at the top and the bottom (`priceClear`): nearer,
- * it is brought back to the middle. A hand that puts it there, or off the map, is looking above or below it on purpose (`priceHeldAfter`).
+ * it is brought back to the middle. A hand that puts it there, or off the map, is looking above or below the price on purpose (`priceHeldAfter`).
  */
 export const PRICE_BAND = 0.1;
 
@@ -75,21 +75,21 @@ export function priceClear(view: { p0: number; p1: number }, mark: number): bool
   const band = (view.p1 - view.p0) * PRICE_BAND;
   return mark > 0 && view.p1 > view.p0 && mark >= view.p0 + band && mark <= view.p1 - band;
 }
-/** Whether `mark` is on the map at all, its top and bottom included: false with no price or no view. */
-export function priceOnMap(view: { p0: number; p1: number }, mark: number): boolean {
-  return mark > 0 && view.p1 > view.p0 && mark >= view.p0 && mark <= view.p1;
+/** Whether there is a price and it is at the top or bottom tenth of the map or off it, where the following would bring it back to the middle. */
+export function priceAtEdge(view: { p0: number; p1: number }, mark: number): boolean {
+  return mark > 0 && view.p1 > view.p0 && !priceClear(view, mark);
 }
 
 /**
- * Whether the price is held where a hand put it after a pan that moved the map (`dx`, `dy`) pixels in all, given whether that left the price
- * `clear` of the top and bottom tenths and whether it was `held` before. Only a pan that moved the price on purpose (`holdsPrice`) decides: it
- * holds the price where it left it at an edge or off the map, where the follow would bring it back to the middle at once (a look above or below
- * the price), and lets it go where it left it in the clear, where the follow keeps it on the map as it does a price no hand moved. A pan along the
- * time axis leaves the hold as it was. A hold taken in the clear did nothing then and one thing later: it let a trend take the live candle off a
- * map that went on following it (YRN, 2026-11-06).
+ * Whether the price is held where a hand put it after a pan that moved the map (`dx`, `dy`) pixels in all, given whether the map follows the
+ * market, whether the pan left the price at an `edge` (`priceAtEdge`) and whether it was `held` before. Only a pan that moved the price on purpose
+ * (`holdsPrice`) while the map follows decides: it holds the price where it left it at an edge or off the map, where the follow would bring it
+ * back to the middle at once (a look above or below the price), and lets it go where it left it in the clear, where the follow keeps it on the
+ * map as it does a price no hand moved. Any other pan leaves the hold as it was. A hold taken in the clear did nothing then and one thing later:
+ * it let a trend take the live candle off a map that went on following it (YRN, 2026-11-06).
  */
-export function priceHeldAfter(o: { dx: number; dy: number; clear: boolean; held: boolean }): boolean {
-  return holdsPrice(o.dx, o.dy) ? !o.clear : o.held;
+export function priceHeldAfter(o: { dx: number; dy: number; follow: boolean; edge: boolean; held: boolean }): boolean {
+  return o.follow && holdsPrice(o.dx, o.dy) ? o.edge : o.held;
 }
 
 /**

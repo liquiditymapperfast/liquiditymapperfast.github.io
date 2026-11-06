@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { View } from '../src/app/view.ts';
-import { fitPrices, liveEdgeShown, followPrice, holdPixel, holdsPrice, limitFactor, priceClear, priceHeldAfter, priceOnMap, priceRef, regionAt, wheelAxes, wheelFactor, wheelZoom, FIT_PAD, FIT_WIDEN_MAX, PRICE_BAND, PRICE_HOLD_PX, PRICE_SPAN_SHARE, TIME_SPAN_MS, type WheelInput } from '../src/app/panes/heat-zoom.ts';
+import { fitPrices, liveEdgeShown, followPrice, holdPixel, holdsPrice, limitFactor, priceAtEdge, priceClear, priceHeldAfter, priceRef, regionAt, wheelAxes, wheelFactor, wheelZoom, FIT_PAD, FIT_WIDEN_MAX, PRICE_BAND, PRICE_HOLD_PX, PRICE_SPAN_SHARE, TIME_SPAN_MS, type WheelInput } from '../src/app/panes/heat-zoom.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
 test('the part of the map under the pointer: chart, price scale (with the profile column), time strip', () => {
@@ -306,7 +306,7 @@ test('a pan holds the price only when it moved it on purpose: 24 px or more up o
   assert.equal(holdsPrice(0, 0), false);
 });
 
-test('a price clear of the edges is clear of the top and bottom tenths; one on the map is anywhere on it, its edges included; neither before there is a price or a view', () => {
+test('a price clear of the edges is clear of the top and bottom tenths; one at an edge is in them or off the map; neither before there is a price or a view', () => {
   const v = { p0: 100, p1: 200 };
   assert.equal(PRICE_BAND, 0.1);
   assert.equal(priceClear(v, 150), true);
@@ -316,12 +316,11 @@ test('a price clear of the edges is clear of the top and bottom tenths; one on t
   assert.equal(priceClear(v, 190.1), false, 'in the top tenth');
   assert.equal(priceClear(v, 0), false, 'no price yet');
   assert.equal(priceClear({ p0: 100, p1: 100 }, 100), false, 'no view');
-  assert.equal(priceOnMap(v, 100), true, 'the bottom itself');
-  assert.equal(priceOnMap(v, 200), true, 'the top itself');
-  assert.equal(priceOnMap(v, 99.9), false, 'below the map');
-  assert.equal(priceOnMap(v, 200.1), false, 'above it');
-  assert.equal(priceOnMap(v, 0), false, 'no price yet');
-  assert.equal(priceOnMap({ p0: 100, p1: 100 }, 100), false, 'no view');
+  for (const mark of [109.9, 190.1, 100, 200, 50, 250]) assert.equal(priceAtEdge(v, mark), true, `at ${mark}`);
+  for (const mark of [110, 150, 190]) assert.equal(priceAtEdge(v, mark), false, `at ${mark}`);
+  assert.equal(priceAtEdge(v, 0), false, 'no price yet: nothing at an edge, so a pan holds nothing');
+  assert.equal(priceAtEdge(v, NaN), false, 'nor with a price that is not a number');
+  assert.equal(priceAtEdge({ p0: 100, p1: 100 }, 100), false, 'no view');
 });
 
 test('following the market, a price no hand holds comes back to the middle within a tenth of the top or bottom, the span kept', () => {
@@ -351,13 +350,30 @@ test('a price held by hand stays where it was put, wherever the market takes it'
 });
 
 test('a pan up or down that leaves the price at the top or bottom of the map or off it holds it there; one that leaves it in the clear lets it go; a pan along the time axis changes nothing (YRN, 2026-11-06)', () => {
-  const after = (dx: number, dy: number, clear: boolean, held: boolean) => priceHeldAfter({ dx, dy, clear, held });
-  assert.equal(after(0, 60, false, false), true, 'down into the lowest tenth (or off the map): a look above the price, held (follow-live D)');
-  assert.equal(after(5, -60, false, false), true, 'up to the top or off it: a look below the price');
-  assert.equal(after(0, 60, true, false), false, 'down but left in the clear: the follow would not move it, so nothing to hold');
-  assert.equal(after(0, 60, true, true), false, 'a held price brought back into the clear by hand: let go');
-  assert.equal(after(420, 30, false, false), false, 'a drag along the time axis that drifted into the lowest tenth: not a look, the follow brings it back');
-  assert.equal(after(420, 30, true, true), true, 'nor does it let go of a look');
-  assert.equal(after(0, 0, true, true), true, 'a wheel turn or a key: the hold as it was');
-  assert.equal(after(0, 0, false, false), false);
+  const after = (dx: number, dy: number, edge: boolean, held: boolean, follow = true) => priceHeldAfter({ dx, dy, follow, edge, held });
+  assert.equal(after(0, 60, true, false), true, 'down into the lowest tenth (or off the map): a look above the price, held (follow-live D)');
+  assert.equal(after(5, -60, true, false), true, 'up to the top or off it: a look below the price');
+  assert.equal(after(0, 60, false, false), false, 'down but left in the clear: the follow would not move it, so nothing to hold');
+  assert.equal(after(0, 60, false, true), false, 'a held price brought back into the clear by hand: let go');
+  assert.equal(after(420, 30, true, false), false, 'a drag along the time axis that drifted into the lowest tenth: not a look, the follow brings it back');
+  assert.equal(after(420, 30, false, true), true, 'nor does it let go of a look');
+  assert.equal(after(0, 0, false, true), true, 'a wheel turn or a key: the hold as it was');
+  assert.equal(after(0, 0, true, false), false);
+  // A map left where it was in time has no live price to look away from: a pan there takes no new hold and keeps the one there was.
+  assert.equal(after(0, 60, true, false, false), false, 'parked: no new hold');
+  assert.equal(after(0, 60, false, true, false), true, 'parked: the look taken while following stays');
+});
+
+test('a sequence: the drag that lost the live candle, then a trend a frame at a time, never takes it off the map; a look stays held through the same trend', () => {
+  // The pan's end: a drag 420 px along the time axis with 30 px of drift down, which left the price in the lowest tenth.
+  const view = { p0: 1000, p1: 1100 }, settle = (dx: number, dy: number, mark: number, held: boolean) => priceHeldAfter({ dx, dy, follow: true, edge: priceAtEdge(view, mark), held });
+  for (const step of [0.5, -0.5]) {
+    let f = { ...view }, held = settle(420, 30, 1008, false);
+    assert.equal(held, false);
+    for (let i = 0, mark = 1008; i < 600; i++, mark += step) { f = followPrice({ ...f, mark, held }); assert.ok(mark >= f.p0 && mark <= f.p1, `trend ${step}: the price ${mark} on the map`); }
+  }
+  // The same place reached by a pan straight down: a look, held however far the trend runs, and the axis never moves.
+  const held = settle(0, 60, 1008, false);
+  assert.equal(held, true);
+  for (let i = 0, mark = 1008; i < 600; i++, mark -= 0.5) assert.deepEqual(followPrice({ ...view, mark, held }), view);
 });
