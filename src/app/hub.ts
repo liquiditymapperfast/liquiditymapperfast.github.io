@@ -1245,11 +1245,13 @@ export class Hub {
         // Once every book is held at the step the view wants, that is the step to read (a step wanted since is read by its own load).
         if (stepMs === this.#columnsWanted && holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
       }
-      // What is held now, for the long history's files (a step wanted since tells it its own).
-      if (stepMs === this.#columnsWanted) this.#archiveView(stepMs);
       // A load for a step nobody wants any more reads nothing and changes nothing the page would draw: say so, so that the frame that waits for this load to end comes.
       if (stepMs !== this.#columnsWanted) this.onColumns();
-    } finally { this.#columnsLoading = false; }
+    } finally {
+      this.#columnsLoading = false;
+      // What is held now at the step the view wants, for the long history's files: answered, or cut short by a question that failed.
+      this.#archiveView(this.#columnsWanted);
+    }
   }
 
   /**

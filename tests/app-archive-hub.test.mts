@@ -26,6 +26,8 @@ class ArchiveSource {
   /** The grid whole answers come on, and the one an arrival's question comes on. */
   grid = 10;
   rangeGrid = 10;
+  /** A whole question for this book fails (a source that went away halfway through a load). */
+  failFor: string | null = null;
   async bootstrap(): Promise<BootstrapState> {
     return { asOf: 0, now: 0, dataMode: 'server', markPrice: 100, markInstrumentId: 'a:BTC', markets: [{ instrumentId: 'a:BTC' }], layers: {}, steps: {}, recorded: {}, columnMs: MIN, timeframes: [], oiReferences: [] };
   }
@@ -40,6 +42,7 @@ class ArchiveSource {
   }
   async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
     this.asked.push({ from, to, stepMs });
+    if (this.failFor && ids.includes(this.failFor)) throw new Error('source gone');
     return this.#frame(ids, from, to, stepMs, this.grid);
   }
   setArchiveListener(listener: (change: { level: number; from: number; to: number } | null) => void): void { this.listener = listener; }
@@ -122,6 +125,33 @@ test('a hold let go is told to the long history at once, even when no question f
     assert.ok(worker.posted.some(m => m.type === 'columnsDrop'), 'b let go');
     assert.deepEqual(source.views.at(-1)!.windows, [{ from: r3.from, to: r3.to }], 'only a\'s window is held now');
     assert.notEqual(r1.from, r3.from);
+  } finally { Date.now = realNow; }
+});
+
+test('a load cut short by a failed question still tells the long history the windows it replaced', async () => {
+  const realNow = Date.now;
+  let now = T0;
+  Date.now = () => now;
+  try {
+    const store = new Store(initialState()), source = new ArchiveSource();
+    const hub = new Hub(store, source as unknown as DataSource);
+    (hub.worker as unknown as FakeWorker).onmessage!({ data: { type: 'ready' } });
+    await hub.start();
+    const books = (ids: string[]): void => store.set({ levels: { asOf: now, books: ids.map(id => ({ id })) } as never });
+    books(['a:BTC']);
+    // A live six-hour view: a is held, then refreshed from where it settled.
+    const live = { t0: T0 - 6 * HOUR, t1: T0 + 10 * MIN, p0: 0, p1: 1 };
+    await hub.loadColumns(live, 180);
+    const r1 = source.asked[0]!;
+    // Half a minute on, the view pans back half an hour (still inside a's window), b comes, and a's refresh comes on another grid: a is asked
+    // for whole at the panned view's window, then b's question fails.
+    now += 30_000; hub.invalidateColumns(); books(['a:BTC', 'b:BTC']);
+    source.grid = 20; source.failFor = 'b:BTC';
+    const panned = { ...live, t0: live.t0 - 30 * MIN, t1: live.t1 - 30 * MIN };
+    await assert.rejects(hub.loadColumns(panned, 180), /source gone/);
+    const windows = source.views.at(-1)!.windows;
+    assert.equal(windows.length, 1);
+    assert.notEqual(windows[0]!.from, r1.from, 'the window a holds now, not the one it held');
   } finally { Date.now = realNow; }
 });
 
