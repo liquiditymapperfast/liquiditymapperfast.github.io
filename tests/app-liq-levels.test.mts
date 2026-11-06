@@ -237,9 +237,11 @@ test('the file is asked for when the next snapshot can be there: a few asks a sn
     while (created[i]! + 6 * MIN > call) call += 180_000;
     fetched.push(call + 5_000);
   }
+  // `staleFor`: the snapshot at this index reaches the asks ten minutes late (an edge serving the old copy, as stale-if-error allows).
+  let staleFor = -1;
   const latest = (t: number): Record<string, unknown> => {
     let i = 0;
-    while (i + 1 < fetched.length && fetched[i + 1]! + MIN <= t) i++;
+    while (i + 1 < fetched.length && fetched[i + 1]! + MIN + (i + 1 === staleFor ? 10 * MIN : 0) <= t) i++;
     return doc(SAMPLE, { snapshot: { asOf: created[i]! - 35 * MIN, createdAt: created[i]!, fetchedAt: fetched[i]! } });
   };
   // `skew`: the page's clock minus the true time.
@@ -292,12 +294,21 @@ test('the file is asked for when the next snapshot can be there: a few asks a sn
   assert.equal(n, before3, 'no lead after a hidden stretch once the clock is known');
   await step(third + 30 * MIN);
   assert.ok(n > before3, 'asked when the next is due, by the learned clock');
-  // The page's clock set back two hours after a plan was made: asked at once, not two hours later.
+  // An edge that serves one publication ten minutes late teaches too high an offset; the planned asks that then find each snapshot already
+  // there grow a lead until one sees a publication appear again: late for a few snapshots, then on time.
+  staleFor = 3;
+  const stale = await simulate(0);
+  staleFor = -1;
+  assert.equal(stale.lag.length, created.length, 'every snapshot drawn after a stale edge');
+  assert.ok(stale.lag.slice(8).every(s => s <= 90_000), `on time again within a few snapshots (${stale.lag.map(s => Math.round(s / 1000)).join(' s, ')} s)`);
+  // The page's clock set back two hours after a plan was made: asked at once, then learned again, never a storm of asks (each ensure an ask).
   let back = 0, now2 = NOW;
   const stepped = new LiqLevelsSource(async url => { if (!url.includes('hyperliquid')) back++; return url.includes('hyperliquid') ? [] : doc(SAMPLE); }, () => now2, () => 'http://127.0.0.1:8790/v1/btc/liquidations.json');
   stepped.ensure(BTC, () => {}); await tick();
   now2 -= 2 * 60 * MIN; stepped.ensure(BTC, () => {}); await tick();
   assert.equal(back, 2, 'a clock set back does not stop the asking');
+  for (let k = 0; k < 20 * 60; k++) { now2 += 1_000; stepped.ensure(BTC, () => {}); await tick(); }
+  assert.ok(back <= 2 + 16, `${back - 2} asks in the twenty minutes after the step (one a second would be 1,200)`);
   // Published again with a later fetchedAt (the same snapshot): the levels are replaced, and the next ask does not move.
   const created0 = NOW - 10 * MIN;
   let copy = doc(SAMPLE, { snapshot: { asOf: created0 - 35 * MIN, createdAt: created0, fetchedAt: created0 + 9 * MIN } }), copies = 0, t = NOW;

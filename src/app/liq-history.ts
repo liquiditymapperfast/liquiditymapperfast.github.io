@@ -6,7 +6,7 @@
  *
  * What it says is where the money would be liquidated, as the positions stood: not what was liquidated, and not where price will go.
  */
-import { DUE_EVERY_MS, askBy, nextAskAt, placeSnapshot } from './liq-schedule.ts';
+import { DUE_EVERY_MS, MAX_LEAD_MS, ON_TIME_MS, clockSetBack, nextAskAt, placeSnapshot } from './liq-schedule.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 
 export const DAY_MS = 86_400_000;
@@ -112,10 +112,12 @@ export class LiqHistory {
       // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again when its next
       // snapshot can be there (while it has none yet, when the day before's newest says so, else each minute).
       const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
-      if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < askBy(held.due, now))) continue;
+      // The page's clock set back since the read was planned: what the old clock placed is no good (`clockSetBack`).
+      if (held && clockSetBack(held.due, now)) { held.created = now; held.lead = MAX_LEAD_MS; held.due = now; this.#offset = null; }
+      if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < held.due)) continue;
       const entry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, newest: -Infinity, created: 0, lead: 0, due: 0 };
       entry.busy = true; this.#days.set(day, entry);
-      const edges = index.edges, before = entry.at;
+      const edges = index.edges, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS;
       this.get(urls.day(dayText(day))).then(raw => {
         if (this.#index?.edges !== edges) return;
         entry.rows = readDay(raw, edges); entry.at = now; this.version++;
@@ -123,7 +125,7 @@ export class LiqHistory {
         if (top && top.createdAt > entry.newest) {
           // Seen appear between this read and the one before: placed by when it was published, else by its age (`placeSnapshot`).
           entry.newest = top.createdAt;
-          ({ created: entry.created, lead: entry.lead, offset: this.#offset } = placeSnapshot(top.createdAt, top.fetchedAt, before, now, entry.lead, this.#offset));
+          ({ created: entry.created, lead: entry.lead, offset: this.#offset } = placeSnapshot(top.createdAt, top.fetchedAt, before, now, entry.lead, this.#offset, onTime));
         }
         const prev = this.#days.get(day - DAY_MS);
         entry.due = entry.rows.length ? nextAskAt(entry.created, now, entry.lead) : prev && prev.rows.length ? nextAskAt(prev.created, now, prev.lead) : now + DUE_EVERY_MS;
