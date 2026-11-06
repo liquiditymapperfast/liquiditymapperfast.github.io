@@ -30,7 +30,7 @@ import { TapeRing, tapeCapacity } from './tape/ring.ts';
 import { isPhone } from './device.ts';
 import type { SumRow } from '../shared/print-sums.ts';
 import { ChartPriceHistory } from './price-history.ts';
-import { ColumnHolds, columnReach, settledBefore, type ColumnDrop } from './column-holds.ts';
+import { ColumnHolds, columnReach, columnStepFor, settledBefore, type ColumnDrop } from './column-holds.ts';
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -1189,9 +1189,9 @@ export class Hub {
   async loadColumns(view: Bounds, widthPx: number): Promise<void> {
     const ids = this.store.state.levels?.books.map(book => book.id) ?? [];
     if (!ids.length) return;
-    const span = view.t1 - view.t0;
-    // About two pixels a column, in minutes that double from one level to the next: zooming moves between a few steps the server has merged before.
-    const stepMs = MINUTE * 2 ** Math.max(0, Math.round(Math.log2(span / Math.max(1, widthPx) * 2 / MINUTE)));
+    // About two pixels a column, in minutes that double from one level to the next: zooming moves between a few steps the server has merged
+    // before; at least the long history's two minutes where the view reaches before the page's own day (`columnStepFor`).
+    const stepMs = columnStepFor(view, widthPx, this.source.archiveFirst?.() ?? null, this.recordedSince, this.sourceNow());
     const holds = this.#columns;
     // The view is one object the pane moves on: what an answer is judged against below is the view it was asked for.
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };

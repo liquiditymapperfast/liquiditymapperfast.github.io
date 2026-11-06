@@ -37,6 +37,24 @@ export interface ColumnAsk { ids: string[]; from: number; to: number; tail: bool
 /** What to tell the worker to forget: these instruments' columns at this step, or all of the step's (`ids` null). */
 export interface ColumnDrop { stepMs: number; ids: string[] | null }
 
+/** The long history's finest level (app/archive/): its tiles start at two-minute windows; a minute is the hour files', read for the page's own day only. */
+export const ARCHIVE_MIN_STEP_MS = 2 * MINUTE;
+
+/**
+ * The column step for a view: about two pixels a column, in minutes that double from one level to the next, so zooming moves between a few
+ * steps merged before. Where the view reaches before the page's own day (`since`: its oldest recorded minute, 0 when it has none) and the
+ * long history is there to draw it (`archive`: its first window, null when there is none), the step is at least the archive's finest level,
+ * so old ranges always draw; a view wholly inside the day keeps its minutes, and so does one that includes now (`now`, the source's clock),
+ * whose newest column the live overlay draws a minute at a time.
+ */
+export function columnStepFor(view: Pick<Bounds, 't0' | 't1'>, widthPx: number, archive: number | null, since: number, now: number): number {
+  const span = view.t1 - view.t0;
+  const step = MINUTE * 2 ** Math.max(0, Math.round(Math.log2(span / Math.max(1, widthPx) * 2 / MINUTE)));
+  if (step >= ARCHIVE_MIN_STEP_MS || archive === null) return step;
+  const beforeDay = since <= 0 || view.t0 < since, live = view.t1 >= now - MINUTE;
+  return beforeDay && !live ? ARCHIVE_MIN_STEP_MS : step;
+}
+
 /** The window of whole steps a view may move into: half its span further each way. A window cut by the question would be kept as the part of it that was asked for. */
 export function columnReach(view: Bounds, stepMs: number): { from: number; to: number } {
   const span = view.t1 - view.t0;
