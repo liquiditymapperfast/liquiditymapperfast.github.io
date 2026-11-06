@@ -86,6 +86,8 @@ export class LiqHistory {
   #indexAt = 0; #indexBusy = false; #indexFailed = 0;
   /** The page's clock when last read, to see it set back. */
   #lastNow = -Infinity;
+  /** Counts the clock's steps back: an answer to a read made before one carries the old clock's times and is dropped (it is read again). */
+  #steps = 0;
   #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; created: number; lead: number; due: number }>();
   /** The page's clock minus HyperTracker's, once a snapshot was seen appear (`placeSnapshot`). */
   #offset: number | null = null;
@@ -100,17 +102,20 @@ export class LiqHistory {
     // The page's clock went back since it was last read: what the old clock placed and planned is no good (`clockSetBack`), the index's and
     // the failed reads' waits included.
     if (clockSetBack(this.#lastNow, now)) {
-      this.#offset = null; this.#indexAt = -Infinity; this.#indexFailed = -Infinity;
-      for (const entry of this.#days.values()) { entry.created = now; entry.lead = MAX_LEAD_MS; entry.due = now; entry.failed = -Infinity; }
+      // Every day is read once more: a day the old clock (ahead) counted as read after it ended may not have been, and no read times of the old
+      // clock may bracket a snapshot.
+      this.#offset = null; this.#indexAt = -Infinity; this.#indexFailed = -Infinity; this.#steps++;
+      for (const entry of this.#days.values()) { entry.created = now; entry.lead = MAX_LEAD_MS; entry.due = now; entry.failed = -Infinity; entry.at = -Infinity; }
     }
     this.#lastNow = now;
     if (!this.#indexBusy && now - this.#indexFailed > RETRY_MS && (!this.#index || now - this.#indexAt > INDEX_EVERY_MS)) {
       this.#indexBusy = true;
+      const steps = this.#steps;
       this.get(urls.index).then(raw => {
         const index = readIndex(raw);
-        if (index) { if (this.#index && this.#index.edges.length !== index.edges.length) this.#days.clear(); this.#index = index; this.#indexAt = now; this.version++; changed(); }
-        else this.#indexFailed = now;
-      }, () => { this.#indexFailed = now; }).finally(() => { this.#indexBusy = false; });
+        if (index) { if (this.#index && this.#index.edges.length !== index.edges.length) this.#days.clear(); this.#index = index; if (steps === this.#steps) this.#indexAt = now; this.version++; changed(); }
+        else if (steps === this.#steps) this.#indexFailed = now;
+      }, () => { if (steps === this.#steps) this.#indexFailed = now; }).finally(() => { this.#indexBusy = false; });
     }
     const index = this.#index; if (!index || index.first === null || index.last === null) return;
     const lastDay = Math.floor(Math.min(t1, Math.max(index.last, now)) / DAY_MS) * DAY_MS;
@@ -124,9 +129,9 @@ export class LiqHistory {
       if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < held.due)) continue;
       const entry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, newest: -Infinity, created: 0, lead: 0, due: 0 };
       entry.busy = true; this.#days.set(day, entry);
-      const edges = index.edges, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS && !(entry.failed > entry.at);
+      const edges = index.edges, steps = this.#steps, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS && !(entry.failed > entry.at);
       this.get(urls.day(dayText(day))).then(raw => {
-        if (this.#index?.edges !== edges) return;
+        if (this.#index?.edges !== edges || steps !== this.#steps) return;
         entry.rows = readDay(raw, edges); entry.at = now; this.version++;
         const top = entry.rows.reduce<LiqRow | null>((best, row) => !best || row.createdAt > best.createdAt ? row : best, null);
         if (top && top.createdAt > entry.newest) {

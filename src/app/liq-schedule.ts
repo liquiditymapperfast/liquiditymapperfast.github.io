@@ -12,8 +12,10 @@
  *
  * `createdAt` is HyperTracker's clock; the page counts on its own. The difference is learned from every snapshot the page sees appear between
  * two asks (`placeSnapshot`). Before it is learned the page's clock is trusted, with a lead that grows whenever a planned ask finds the next
- * snapshot already there, so a clock that is off makes a few snapshots late at first (a clock 20 minutes behind: about 15, 11 and 3
- * minutes), never one missed for good; a clock set back mid-session starts the learning again.
+ * snapshot already there, and a snapshot that looks younger than the service can publish one (`YOUNGEST_SEEN_MS`) says the clock is behind:
+ * a clock that is off makes the first snapshot or two late (20 minutes behind: about 15 minutes, once), never one missed for good; a clock
+ * set back mid-session starts the learning again. `YOUNGEST_SEEN_MS` leans on the service too (its quickest fetch, 6.5 minutes after
+ * creation in 2026-11).
  */
 
 const MINUTE = 60_000;

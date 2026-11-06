@@ -338,6 +338,8 @@ export class LiqLevelsSource {
   #failed = false;
   /** The page's clock when last read, to see it set back. */
   #lastNow = -Infinity;
+  /** Counts the clock's steps back: an answer to an ask made before one carries the old clock's times and is dropped (it is asked again). */
+  #steps = 0;
   #seen: Seen | null = null;
   #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
   #target: HistoryTarget | null = null;
@@ -354,16 +356,16 @@ export class LiqLevelsSource {
     if (url !== this.#url) { this.#url = url; this.levels = null; this.#seen = null; this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#offset = null; this.#askedAt = -Infinity; this.#failed = false; this.version++; }
     const now = this.now();
     // The page's clock went back since it was last read: what the old clock placed and planned is no good (`clockSetBack`).
-    if (clockSetBack(this.#lastNow, now)) { this.#created = now; this.#lead = MAX_LEAD_MS; this.#offset = null; this.#nextAt = now; this.#askedAt = -Infinity; }
+    if (clockSetBack(this.#lastNow, now)) { this.#created = now; this.#lead = MAX_LEAD_MS; this.#offset = null; this.#nextAt = now; this.#askedAt = -Infinity; this.#steps++; }
     this.#lastNow = now;
     // Asked when the next snapshot can be there (`liq-schedule.ts`), and not while the page is out of sight: it asks as it shows again.
     if (!this.#pending && now >= this.#nextAt && !pageHidden()) {
       this.#pending = true;
-      const asked = url, askedAt = now, onTime = !this.#failed && this.#nextAt > 0 && now - this.#nextAt <= ON_TIME_MS;
+      const asked = url, steps = this.#steps, askedAt = now, onTime = !this.#failed && this.#nextAt > 0 && now - this.#nextAt <= ON_TIME_MS;
       // Asked of the edge every time (a 304 when nothing changed): a CDN can stretch the minute the file asks to be kept, as Cloudflare's
       // zone default did to four hours (2026-11-01).
       void this.get(url, { cache: 'no-cache' }).then(raw => {
-        if (asked !== this.#url) return;
+        if (asked !== this.#url || steps !== this.#steps) return;
         const levels = parseLiqLevels(raw, BTC.coin);
         if (!levels) { this.#fail(onChange); return; }
         this.#failed = false;
