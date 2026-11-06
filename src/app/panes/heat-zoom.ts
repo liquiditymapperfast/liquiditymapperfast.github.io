@@ -1,9 +1,11 @@
+import type { CandleRow } from '../store.ts';
+
 /**
  * Zooming the map's axes with the pointer. The wheel on the chart zooms time and price together, by the same factor, so the picture keeps the
  * shape the person gave it; the wheel (or a drag) on the price scale zooms price alone and the wheel on the time strip time alone. Each axis holds
  * still the thing a person is watching: the live edge for time and the current price for price while the map follows the market (while the live
  * edge is on it), the point under the pointer once it stays where it was left (and always with Alt). Pure functions, so the rules are tested
- * without a canvas.
+ * without a canvas. How a recentre frames the price, the current price in the middle, is here too (`fitPrices`).
  */
 
 /**
@@ -66,6 +68,37 @@ export function limitFactor(factor: number, span: number, min: number, max: numb
 
 /** The price the span limits are a share of: the current price, or the middle of the view before there is one. */
 export const priceRef = (mark: number, p0: number, p1: number): number => mark > 0 ? mark : Math.max(1e-9, Math.abs(p0 + p1) / 2);
+
+/** The room a fit leaves above the highest high and below the lowest low of the candles it frames, as a share of their range. */
+export const FIT_PAD = 0.18;
+/** How much wider than the candles' own frame a fit may make the price axis to keep the current price in its middle. */
+export const FIT_WIDEN_MAX = 1.5;
+
+/**
+ * The price axis the page opens on, and a recentre gives: the current price (`mark`) in the middle of it, the recent `candles` (the caller's
+ * run of them) in view with room above and below them (`FIT_PAD`). The span is the candles' own frame (their range and that room), widened as
+ * far as the price needs to stay in the middle with them all in view, but no further than `FIT_WIDEN_MAX` times that frame: after a fall the
+ * price sits at the foot of those candles, and keeping all of the move above it would squash the heat map into a thin band, so the end of it
+ * farthest from the price is cut and a zoom out shows it (Karl, 2026-11-06: the charts opened with the price near the bottom of the axis and
+ * stayed there).
+ * Candles without a range (none, or all at one price): 1 % either side of the mark with that room, as before. No price yet: the candles' own
+ * frame, centred on them. Neither: null, nothing to frame.
+ */
+export function fitPrices(candles: readonly CandleRow[], mark: number): { p0: number; p1: number } | null {
+  let lo = Infinity, hi = -Infinity;
+  for (const c of candles) { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); }
+  const price = mark > 0 && Number.isFinite(mark) ? mark : 0;
+  if (!(hi > lo)) {
+    if (!price) return null;
+    lo = price * 0.99; hi = price * 1.01;
+  }
+  const pad = (hi - lo) * FIT_PAD, frame = hi - lo + 2 * pad;
+  if (!price) return { p0: lo - pad, p1: hi + pad };
+  // Twice the farther of the candles' extremes from the price, with their room: never less than their frame, as the farther one is at least
+  // half their range away wherever the price is.
+  const span = Math.min(2 * (Math.max(hi - price, price - lo) + pad), FIT_WIDEN_MAX * frame);
+  return { p0: price - span / 2, p1: price + span / 2 };
+}
 
 /** How far one turn of the wheel zooms (> 1 zooms out): exp(0.0016 per pixel), a line counted as 33 pixels and a page as the plot's height, a turn at most 240 pixels. */
 export function wheelFactor(deltaY: number, deltaMode: number, plotH: number): number {

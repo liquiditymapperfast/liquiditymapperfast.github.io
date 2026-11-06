@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { View } from '../src/app/view.ts';
-import { liveEdgeShown, holdPixel, limitFactor, priceRef, regionAt, wheelAxes, wheelFactor, wheelZoom, PRICE_SPAN_SHARE, TIME_SPAN_MS, type WheelInput } from '../src/app/panes/heat-zoom.ts';
+import { fitPrices, liveEdgeShown, holdPixel, limitFactor, priceRef, regionAt, wheelAxes, wheelFactor, wheelZoom, FIT_PAD, FIT_WIDEN_MAX, PRICE_SPAN_SHARE, TIME_SPAN_MS, type WheelInput } from '../src/app/panes/heat-zoom.ts';
+import type { CandleRow } from '../src/app/store.ts';
 
 test('the part of the map under the pointer: chart, price scale (with the profile column), time strip', () => {
   assert.equal(regionAt(100, 100, 800, 500), 'plot');
@@ -193,4 +194,83 @@ test('the map follows the market while the live edge is on it, its edges include
   assert.equal(liveEdgeShown(view, 61_001), false, 'just past the right edge: a view of the past');
   assert.equal(liveEdgeShown(view, 999), false, 'before the left edge: a view of the future');
   assert.equal(liveEdgeShown({ t0: 0, t1: 0 }, 0), false, 'no view yet');
+});
+
+/** Hourly candles whose highs and lows run through `path` (each candle one step of it, its high and low a tenth of a unit apart). */
+const run = (...path: number[]): CandleRow[] => path.map((p, i) => [i * 3_600_000, p, p + 0.05, p - 0.05, p, 1]);
+const near = (a: number, b: number, what: string, eps = 1e-6): void => assert.ok(Math.abs(a - b) < eps, `${what}: ${a} is not ${b}`);
+/** Where the price sits on the axis framed: 0 at the bottom, 1 at the top. */
+const at = (f: { p0: number; p1: number }, price: number): number => (price - f.p0) / (f.p1 - f.p0);
+
+test('a fit after a fall puts the price in the middle of the axis, widened to keep the candles in view but no more than 1.5 times their frame', () => {
+  // Candles from 120 down to 100 (lows 99.95, highs 120.05), the price at their foot: the old fit put it 13 % up the axis.
+  const candles = run(120, 115, 110, 105, 100), lo = 99.95, hi = 120.05, pad = (hi - lo) * FIT_PAD, frame = hi - lo + 2 * pad;
+  const f = fitPrices(candles, 100)!;
+  near(at(f, 100), 0.5, 'the price is in the middle');
+  near(f.p1 - f.p0, FIT_WIDEN_MAX * frame, 'all of the move above the price would need more: the span stops at 1.5 times the old one');
+  assert.ok(f.p1 > hi && f.p1 < hi + pad, 'the highest candle still shows, only the room above it is cut');
+  // The price a quarter of the way up the candles: widened only as far as the candles and their room need, which is less than the cap.
+  const g = fitPrices(candles, 105)!;
+  near(at(g, 105), 0.5, 'the price is in the middle');
+  near(g.p1, hi + pad, 'the top keeps the room the old fit gave the highest candle');
+  assert.ok(g.p1 - g.p0 < FIT_WIDEN_MAX * frame && g.p1 - g.p0 > frame, 'wider than the old frame, under the cap');
+});
+
+test('a fit after a rise puts the price in the middle with the lowest candle still in view', () => {
+  const candles = run(100, 105, 110, 115, 120), lo = 99.95, hi = 120.05, pad = (hi - lo) * FIT_PAD, frame = hi - lo + 2 * pad;
+  const f = fitPrices(candles, 120)!;
+  near(at(f, 120), 0.5, 'the price is in the middle');
+  near(f.p1 - f.p0, FIT_WIDEN_MAX * frame, 'capped as after a fall');
+  assert.ok(f.p0 < lo && f.p0 > lo - pad, 'the lowest candle still shows');
+});
+
+test('the price in the middle of its candles, or a flat market, keeps the frame the old fit gave', () => {
+  const candles = run(100, 120, 110), lo = 99.95, hi = 120.05, pad = (hi - lo) * FIT_PAD;
+  const f = fitPrices(candles, 110)!;
+  near(f.p0, lo - pad, 'bottom as before'); near(f.p1, hi + pad, 'top as before');
+  // A quiet market: a few cents of range, the price in the middle of it.
+  const quiet = run(100, 100.02, 100.01), q = fitPrices(quiet, 100.01)!;
+  near(at(q, 100.01), 0.5, 'the price is in the middle', 1e-9);
+  near(q.p1 - q.p0, (100.07 - 99.95) * (1 + 2 * FIT_PAD), 'the span is the candles\' own frame');
+  // Candles all at one price have no range to frame: 1 % either side of the price, with the same room, as with no candles.
+  const flat: CandleRow[] = [[0, 100, 100, 100, 100, 1], [3_600_000, 100, 100, 100, 100, 1]];
+  const z = fitPrices(flat, 100)!;
+  near(z.p0, 99 - 2 * FIT_PAD, 'one per cent and its room below'); near(z.p1, 101 + 2 * FIT_PAD, 'and above');
+});
+
+test('no candles yet: one per cent either side of the price; neither candles nor a price: nothing to frame', () => {
+  const f = fitPrices([], 50_000)!;
+  near(f.p0, 49_500 - 1_000 * FIT_PAD, 'below'); near(f.p1, 50_500 + 1_000 * FIT_PAD, 'above');
+  near(at(f, 50_000), 0.5, 'the price is in the middle');
+  assert.equal(fitPrices([], 0), null);
+  assert.equal(fitPrices([], Number.NaN), null, 'a price that is not a number is no price');
+  assert.equal(fitPrices([[0, 100, 100, 100, 100, 1]], 0), null, 'one flat candle and no price: nothing to frame either');
+});
+
+test('no price yet: the candles\' own frame, centred on them, whatever the trend', () => {
+  const candles = run(120, 110, 100), lo = 99.95, hi = 120.05, pad = (hi - lo) * FIT_PAD;
+  for (const mark of [0, -1, Number.NaN]) {
+    const f = fitPrices(candles, mark)!;
+    near(f.p0, lo - pad, `bottom with mark ${mark}`); near(f.p1, hi + pad, `top with mark ${mark}`);
+  }
+});
+
+test('a price outside its candles\' range is still put in the middle, at 1.5 times their frame, the candles beyond it cut', () => {
+  const candles = run(110, 105, 100), lo = 99.95, hi = 110.05, frame = (hi - lo) * (1 + 2 * FIT_PAD);
+  const below = fitPrices(candles, 90)!;
+  near(at(below, 90), 0.5, 'below them: in the middle'); near(below.p1 - below.p0, FIT_WIDEN_MAX * frame, 'below them: capped');
+  assert.ok(below.p1 < hi, 'their top is beyond the axis (a zoom out shows it)');
+  const above = fitPrices(candles, 125)!;
+  near(at(above, 125), 0.5, 'above them: in the middle'); near(above.p1 - above.p0, FIT_WIDEN_MAX * frame, 'above them: capped');
+  assert.ok(above.p0 > lo, 'their foot is beyond the axis');
+});
+
+test('the openings measured on 2026-11-06 come out centred with every recent candle in view', () => {
+  // The lowest low, highest high and price of the public page's first frame (BTC, ETH, SOL hourly): 23 %, 23 % and 27 % up the axis then.
+  for (const [coin, lo, hi, price] of [['BTC', 75_158, 81_188, 75_885.25], ['ETH', 2_205.11, 2_449.95, 2_237.2], ['SOL', 88.24, 98.16, 90.06]] as const) {
+    const candles: CandleRow[] = [[0, hi, hi, lo, lo, 1], [3_600_000, lo, price, lo, price, 1]];
+    const f = fitPrices(candles, price)!;
+    near(at(f, price), 0.5, `${coin} in the middle`);
+    assert.ok(f.p0 < lo && f.p1 > hi, `${coin}: every candle in view`);
+  }
 });
