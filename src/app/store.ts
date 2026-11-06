@@ -106,6 +106,8 @@ export interface AppState {
   oiParts: OiPart[];
   /** One market's `oi` from an inverse market: the one price its coins are put at (its USD over it, `Hub.oiSeries`); 0 for a linear market. */
   oiPrice: number;
+  /** Another choice of markets than the one shown is being read and nothing it counts is held yet: the OI pane says so (`Hub.loadOi`). */
+  oiReading: boolean;
   show: { profile: boolean; /** The traded-volume column beside the profile (not on phones). */ traded: boolean; depth: boolean; oi: boolean; /** The Delta pane under the map (taker delta and CVD by candle). */ delta: boolean; /** The Long/Short pane (the venues' published long/short account ratios). */ ls: boolean; candles: boolean; footprint: boolean; /** The Bar stats table under the map (its own switch since 2026-10-20; it was the footprint's before). */ stats: boolean; lt: boolean; mirror: boolean; volume: boolean; bubbles: boolean; /** The taker-flow (CVD) column left of the map, and the order book column right of it. */ cvd: boolean; book: boolean; /** The Scripts pane under the map: a row for each of the person's scripts (script/). */ script: boolean };
   /** The CVD column's settings. */
   cvd: CvdSettings;
@@ -345,7 +347,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   const saved = readSaved();
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null, bookGone: {},
-    layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
+    layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, oiReading: false, sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
     ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', waveStrength: WAVE_STRENGTH_DEFAULT, followLive: true, keepAwake: false, phoneHistory: 'auto', barCollapsed: false, timeZone: 'local', hover: null, bookHover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };

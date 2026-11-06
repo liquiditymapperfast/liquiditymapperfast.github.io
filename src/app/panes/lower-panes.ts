@@ -760,7 +760,7 @@ export class OiPane extends TimePane {
     const oi = parts.length > 1 ? chainedOi(oiSumOf(parts, tf)) : this.#oiAt(state.oi, tf), highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
     const say = (html: string): void => setHtml(readout, html);
-    if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
+    if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(state.oiReading ? t('Reading open interest…') : t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
     const analysis = this.#analysis(oi, highlight, parts, tf);
     // Further back than the readings held, Bybit's history goes on from the seam (oi-long.ts): the bars before it, Bybit's readings alone, give
     // way to it. It is drawn as the level only, dashed: an estimate, and its readings a day or four hours apart beside the candles' changes.

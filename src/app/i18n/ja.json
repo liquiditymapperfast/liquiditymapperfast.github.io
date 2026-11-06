@@ -2087,5 +2087,6 @@
  "{name} is folded to leave the map room. Show it anyway": "マップの場所を空けるため{name}を折りたたみました。それでも表示する",
  "Wave strength": "ウェーブの強さ",
  "How strongly the waves are drawn, from barely there at the left to strong at the right. A busy market is held back at any strength.": "ウェーブを描く強さ。左端ではほとんど見えず、右端では強く描かれます。どの強さでも、激しい相場では自動的に抑えられます。",
- "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "激しい相場ではウェーブが自動的に抑えられます。同じ場所に集まった注文は一つの大きなウェーブになり、1秒に始まるのは数個だけで、画面がすでに埋まっているほど新しいウェーブは小さくなります。そのため連鎖的な売買も、普段の活発な時間帯と同じくらいの賑やかさに見えます。強さの設定はその上にかかります。"
+ "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "激しい相場ではウェーブが自動的に抑えられます。同じ場所に集まった注文は一つの大きなウェーブになり、1秒に始まるのは数個だけで、画面がすでに埋まっているほど新しいウェーブは小さくなります。そのため連鎖的な売買も、普段の活発な時間帯と同じくらいの賑やかさに見えます。強さの設定はその上にかかります。",
+ "Reading open interest…": "建玉を読み込み中…"
 }

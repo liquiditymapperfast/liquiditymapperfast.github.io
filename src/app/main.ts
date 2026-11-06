@@ -384,6 +384,7 @@ async function main(): Promise<void> {
     if (changed.has('replay')) { ladder.invalidate(); cvd.invalidate(); heat.invalidate(); lower(); }
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();
     if (changed.has('oi') || changed.has('show')) { oi.invalidate(); bars.invalidate(); }
+    else if (changed.has('oiReading')) oi.invalidate();
     // A script that reads the change in open interest runs again once it lands, not at its next refresh.
     if (changed.has('oi') || changed.has('oiParts')) script.refresh();
     if (changed.has('show')) script.showChanged();

@@ -2087,5 +2087,6 @@
  "{name} is folded to leave the map room. Show it anyway": "{name}已折叠，为地图腾出空间。仍然显示",
  "Wave strength": "波纹强度",
  "How strongly the waves are drawn, from barely there at the left to strong at the right. A busy market is held back at any strength.": "波纹绘制的强度：最左边几乎看不见，最右边很强。无论强度如何，繁忙的市场都会被自动抑制。",
- "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "繁忙的市场会自动抑制波纹：同一位置同时到来的订单合成一道更大的波纹，每秒只会开始几道，屏幕上已有的波纹越多，每道新波纹就越小，因此连环成交看起来与平常的繁忙时刻差不多热闹。强度设置在此基础上生效。"
+ "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "繁忙的市场会自动抑制波纹：同一位置同时到来的订单合成一道更大的波纹，每秒只会开始几道，屏幕上已有的波纹越多，每道新波纹就越小，因此连环成交看起来与平常的繁忙时刻差不多热闹。强度设置在此基础上生效。",
+ "Reading open interest…": "正在读取持仓量…"
 }

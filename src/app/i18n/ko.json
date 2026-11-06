@@ -2087,5 +2087,6 @@
  "{name} is folded to leave the map room. Show it anyway": "지도 공간을 위해 {name}을(를) 접었습니다. 그래도 표시",
  "Wave strength": "파동 강도",
  "How strongly the waves are drawn, from barely there at the left to strong at the right. A busy market is held back at any strength.": "파동을 얼마나 강하게 그릴지 정합니다. 왼쪽 끝은 거의 보이지 않고 오른쪽 끝은 강합니다. 어떤 강도에서도 바쁜 시장은 자동으로 억제됩니다.",
- "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "바쁜 시장에서는 파동이 스스로 억제됩니다. 한곳에 함께 들어온 주문은 하나의 큰 파동이 되고, 1초에 몇 개만 시작되며, 화면이 이미 많이 찰수록 새 파동은 더 작아집니다. 그래서 연쇄 체결도 평소의 바쁜 순간과 비슷한 정도로 보입니다. 강도는 그 위에 적용됩니다."
+ "A busy market holds its waves back by itself: orders that come together at one place make one larger wave, only a few start each second, and the fuller the screen already is, the smaller each new one, so a cascade looks about as lively as an ordinary busy moment. The strength applies on top.": "바쁜 시장에서는 파동이 스스로 억제됩니다. 한곳에 함께 들어온 주문은 하나의 큰 파동이 되고, 1초에 몇 개만 시작되며, 화면이 이미 많이 찰수록 새 파동은 더 작아집니다. 그래서 연쇄 체결도 평소의 바쁜 순간과 비슷한 정도로 보입니다. 강도는 그 위에 적용됩니다.",
+ "Reading open interest…": "미결제약정을 읽는 중…"
 }
