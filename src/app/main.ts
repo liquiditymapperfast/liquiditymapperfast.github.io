@@ -42,8 +42,9 @@ import { PALETTES } from './theme.ts';
 import { openedSheet } from './sheet.ts';
 import { topShown } from './measures/strip.ts';
 import { tableHeight } from './panes/bar-stats.ts';
-import { Layout } from './layout.ts';
+import { Layout, type LayoutPane } from './layout.ts';
 import { LayoutActions } from './layouts/actions.ts';
+import { PANE_SHOW_KEY } from './layouts/dock-model.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
 import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode, compactBar } from './device.ts';
@@ -163,7 +164,8 @@ async function main(): Promise<void> {
   // The phone's Liq tab: the liquidation ladder, next to the Book (panes/liq-pane.ts).
   const liq = new LiqPane(main, store, hub);
   toolbar.tapeFields = () => candle.settingsFields();
-  const arrange = new Layout(main, chart, { left: flowCol, right: side }, [
+  // The map and the panes under it, top down. Each pane but the map shows while its switch is on (`layout`, by `PANE_SHOW_KEY`).
+  const strip: LayoutPane[] = [
     { id: 'heat', root: heat.root, min: 240 },
     { id: 'bars', root: bars.root, height: 84, min: 56, head: bars.header },
     { id: 'depth', root: depth.root, height: 132, min: 70, head: depth.header },
@@ -173,7 +175,8 @@ async function main(): Promise<void> {
     { id: 'funding', root: funding.root, height: 140, min: 70, head: funding.header },
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
     { id: 'script', root: script.root, height: 220, min: 60, head: script.header, closable: false },
-  ], [
+  ];
+  const arrange = new Layout(main, chart, { left: flowCol, right: side }, strip, [
     { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow') },
     { id: 'book', root: ladder.root, head: ladder.controls, title: t('Order Book') },
   ]);
@@ -337,7 +340,10 @@ async function main(): Promise<void> {
   const layout = () => {
     const s = store.state;
     gutters();
-    depth.root.hidden = !s.show.depth; oi.root.hidden = !s.show.oi; delta.root.hidden = !s.show.delta; ls.root.hidden = !s.show.ls; lt.root.hidden = !s.show.lt; bars.root.hidden = !s.show.stats; script.root.hidden = !scriptRows(s);
+    // Every pane under the map follows its switch, by the layouts' own map of them: the Funding pane, left out of a list written out by
+    // hand here, showed for everyone whatever its switch said (2026-11-07). The Scripts pane is there only for scripts drawn in rows.
+    for (const p of strip) { const key = PANE_SHOW_KEY[p.id]; if (key && p.id !== 'script') p.root.hidden = !s.show[key]; }
+    script.root.hidden = !scriptRows(s);
     // The two side panels vanish and return at once: nothing is rebuilt, a hidden column is simply not laid out (a closed one leaves an edge tab).
     arrange.sides({ cvd: s.show.cvd, book: s.show.book });
     arrange.rebuild();
