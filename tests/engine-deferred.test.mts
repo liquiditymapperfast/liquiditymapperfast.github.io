@@ -7,6 +7,9 @@ import type { FootprintMinuteRow, FootprintStore } from '../src/shared/footprint
 import type { FlowMinuteRow, FlowStore } from '../src/shared/flow.ts';
 import type { Print } from '../src/shared/prints.ts';
 import type { OiReading } from '../src/shared/engine.ts';
+import { SAMPLE_MS, type Column, type ColumnStore } from '../src/shared/recorder.ts';
+import { CONTIGUOUS_GAP_MS } from '../src/shared/columns.ts';
+import { gridStepFor } from '../src/shared/grid.ts';
 
 // A page starts its engine on the venues' sockets at once and hands it the recordings once they are read (`deferred`, then `attach`): what
 // came meanwhile is counted once, a trade the recordings hold is not counted again, and nothing is handed on as new a second time.
@@ -23,6 +26,7 @@ class Fake extends BookConnector {
   protected open() {}
   onMessage() {}
   oi(t: number, base: number) { this.onOi({ instrumentId: this.instrumentId, t, base }); }
+  book(bid: number, ask: number, size = 1) { this.replace(this.bids, [[bid, size]]); this.replace(this.asks, [[ask, size]]); this.touch(); }
   trade(t: Partial<TradeEvent> & { tradeId: string; t: number }) { const price = t.price ?? 100, amount = t.amount ?? 1; this.onTrade({ instrumentId: this.instrumentId, side: 'buy', price, amount, notionalUsd: price * amount, ...t }); }
 }
 
@@ -254,4 +258,58 @@ test('an order from before the page opened, played in at the hand-over and compl
   assert.deepEqual(page.tape, []);
   assert.deepEqual(page.engine.prints(T - MIN, T + MIN).map(p => p.usd), [101_000], 'recorded');
   page.engine.stop();
+});
+
+/** A stored minute of the test's book on `step`, as the recordings hand it to the recorders. */
+const storedMinute = (t: number, step: number, n = 12): { instrumentId: string; step: number; column: Column } =>
+  ({ instrumentId: ID, step, column: { t, n, bins: Int32Array.of(4_990, 5_060), bid: Float32Array.of(2_000, 0), ask: Float32Array.of(0, 3_000) } });
+
+test('the newest recordings answer the map while the rest is read back: with the live samples since, never written, replaced at the hand-over', () => {
+  const T = Date.UTC(2026, 10, 7, 12, 0, 20), minute = Math.floor(T / MIN) * MIN, step = gridStepFor(100);
+  const clock = { now: T }, page = open(clock, { deferred: true });
+  const times = (from: number, to: number): number[] => page.engine.columns([ID], from, to, MIN).instruments[0]?.times ?? [];
+  page.venue.book(100, 101, 50);
+  page.engine.step(T);
+  assert.deepEqual(times(minute - 120 * MIN, minute + MIN), [minute], 'before them: the live minute alone');
+  const newest = [storedMinute(minute - 3 * MIN, step), storedMinute(minute - 2 * MIN, step)];
+  let writes = 0;
+  const head: ColumnStore = { load: () => newest, save: () => { writes++; }, prune: () => { writes++; } };
+  assert.equal(page.engine.preview(head), true);
+  assert.deepEqual(times(minute - 120 * MIN, minute + MIN), [minute - 3 * MIN, minute - 2 * MIN], 'the newest recordings (the sample before them is not theirs)');
+  assert.equal(page.engine.heldSince([ID], CONTIGUOUS_GAP_MS)[ID], minute - 3 * MIN);
+  clock.now = T + SAMPLE_MS; page.engine.step(clock.now);
+  assert.deepEqual(times(minute - 120 * MIN, minute + MIN), [minute - 3 * MIN, minute - 2 * MIN, minute], 'with the live samples since');
+  clock.now = minute + MIN + 1_000; page.engine.step(clock.now);
+  assert.equal(writes, 0, 'nothing is written from them, the minute they completed included');
+  // The hand-over: the whole recordings, and every sample since the start played in (the one from before the newest recordings came too).
+  const saved: number[] = [];
+  const whole: ColumnStore = { load: () => [storedMinute(minute - 90 * MIN, step), ...newest], save: (_id, column) => { saved.push(column.t); }, prune: () => {} };
+  page.engine.attach({ ...noStores, columns: whole });
+  assert.deepEqual(times(minute - 120 * MIN, minute + 2 * MIN), [minute - 90 * MIN, minute - 3 * MIN, minute - 2 * MIN, minute, minute + MIN]);
+  assert.equal(page.engine.columns([ID], minute, minute + MIN, MIN).instruments[0]!.samples[0], 2, 'the minute holds both of its samples');
+  assert.deepEqual(saved, [minute], 'the minute completed is written once, by the recorder the hand-over built');
+  assert.equal(page.engine.preview(whole), false, 'handed over: nothing more to preview');
+  page.engine.stop();
+});
+
+test('a book the newest recordings keep on another step takes no live samples into them (its far levels are merged on the live step)', () => {
+  const T = Date.UTC(2026, 10, 7, 12, 0, 20), minute = Math.floor(T / MIN) * MIN, clock = { now: T }, page = open(clock, { deferred: true });
+  page.venue.book(100, 101, 50);
+  page.engine.step(T);
+  assert.equal(page.engine.preview({ load: () => [storedMinute(minute - 2 * MIN, gridStepFor(100) * 5)] }), true);
+  clock.now = T + SAMPLE_MS; page.engine.step(clock.now);
+  assert.deepEqual(page.engine.columns([ID], minute - 10 * MIN, minute + MIN, MIN).instruments[0]!.times, [minute - 2 * MIN], 'the live minute is not among them');
+  page.engine.stop();
+});
+
+test('with no newest minutes the map waits for the recordings, and an engine that has them, or was handed them, previews nothing', () => {
+  const T = Date.UTC(2026, 10, 7, 12, 0, 20), clock = { now: T };
+  const page = open(clock, { deferred: true }), started = open(clock, {});
+  const newest = [storedMinute(Math.floor(T / MIN) * MIN - 2 * MIN, gridStepFor(100))];
+  assert.equal(page.engine.preview({ load: () => [] }), false, 'none held');
+  assert.deepEqual(page.engine.columns([ID], T - 60 * MIN, T + MIN, MIN).instruments[0]?.times ?? [], [], 'the live recorder answers (nothing yet)');
+  assert.equal(started.engine.preview({ load: () => newest }), false, 'started with its recordings');
+  page.engine.attach(null);
+  assert.equal(page.engine.preview({ load: () => newest }), false, 'handed over');
+  page.engine.stop(); started.engine.stop();
 });

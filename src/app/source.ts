@@ -50,9 +50,10 @@ export interface LiveHandlers {
   onRecovered?(id: string, from: number, to: number): void;
   /**
    * The source's recordings and recorded history are in (the browser reads them after its feeds start): where the recording begins has
-   * moved back, and the flow, answered from the live seconds alone until now, is asked for again.
+   * moved back, and the flow, answered from the live seconds alone until now, is asked for again. `columnsEarly`: the map's columns were
+   * answered meanwhile from the newest recordings alone, and are asked for whole again too.
    */
-  onHistory?(): void;
+  onHistory?(columnsEarly?: boolean): void;
 }
 
 /** Executions per candle for a window, as the footprint draws them. */

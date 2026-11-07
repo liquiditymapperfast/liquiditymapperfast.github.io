@@ -3,10 +3,10 @@ import { browserVenues, restoreSelection } from '../../shared/venues.ts';
 import { setPageShown } from '../../shared/far-book.ts';
 import type { Coin } from '../../shared/coins.ts';
 import type { Print } from '../../shared/prints.ts';
-import { openRecordings, type Recordings } from './idb.ts';
+import { openRecordings, type Recordings, type StoredColumn } from './idb.ts';
 import type { FeedsIn, FeedsOut, RpcCall } from './protocol.ts';
 import { frameOf } from './levels-frame.ts';
-import { heldOf, importHistory } from './history-import.ts';
+import { heldOf, importHistory, readLatest } from './history-import.ts';
 import { importSince } from '../history-window.ts';
 import type { TilesInfo } from '../archive/tiles.ts';
 import { CONTIGUOUS_GAP_MS } from '../../shared/columns.ts';
@@ -58,6 +58,19 @@ function stopRecording(): void {
 let historyIn!: () => void, historyDone = false;
 const historyLanded = new Promise<void>(resolve => { historyIn = resolve; });
 /**
+ * Settled once the engine holds the newest minutes of the recordings (`Engine.preview`), never when there are none: the map's columns wait
+ * for this or the history, whichever comes first (a day takes seconds to read back; the hours the map opens on, a tenth of one).
+ */
+let previewIn!: () => void;
+const previewLanded = new Promise<void>(resolve => { previewIn = resolve; });
+/** Whether columns were answered from the newest minutes alone: the history's message says so, and the page asks for them again. */
+let columnsEarly = false;
+/**
+ * The newest hours of the recordings the map is answered from meanwhile: the window it opens on before the history (75 minutes:
+ * app/panes/heat-pane.ts) with the half span either side that a load asks for (app/column-holds.ts `columnReach`), and room.
+ */
+const PREVIEW_MS = 3 * 3_600_000;
+/**
  * What waits for the history. The others are answered at once: the market list, the venues' own candles and open interest, and the taker
  * flow, whose pane holds the live seconds back while its question is out (app/flow-book.ts): it is asked again when the history lands.
  */
@@ -88,16 +101,21 @@ async function init(selected: string[] | null, known: string[] | null, persist: 
   if (!keeps) { post({ type: 'recordings', persisted: false }); historyDone = true; historyIn(); return; }
   const gridSteps = new Map<string, number>(), tiles: { info: TilesInfo | null; hourBooks: boolean } = { info: null, hourBooks: true };
   // The engine runs whatever becomes of them: a failure here is not the engine's.
-  try { await readRecordings(database, lock, history, historyHours, gridSteps, tiles); }
+  // The newest minutes come first: the map is drawn from them while the rest is read.
+  const newest = (columns: StoredColumn[]): void => { if (next.preview({ load: () => columns })) previewIn(); };
+  try { await readRecordings(database, lock, history, historyHours, gridSteps, tiles, newest); }
   catch (error) { console.warn('the recordings could not be read:', error); }
   try { next.attach(recordings, gridSteps); }
   catch (error) { console.error('the recordings could not be handed to the engine:', error); }
   // A pass of the live feeds first: the hand-over and the questions held for it each take a moment of this thread.
-  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history', tiles: tiles.info, hourBooks: tiles.hourBooks }); }, 0);
+  setTimeout(() => { historyDone = true; historyIn(); post({ type: 'history', tiles: tiles.info, hourBooks: tiles.hourBooks, ...(columnsEarly ? { columnsEarly: true } : {}) }); }, 0);
 }
 
-/** Open the recordings and read the recorded history into them (`gridSteps`: the service's grid for books they hold nothing of). */
-async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>, tiles: { info: TilesInfo | null; hourBooks: boolean }): Promise<void> {
+/**
+ * Open the recordings and read the recorded history into them (`gridSteps`: the service's grid for books they hold nothing of; `newest`: the
+ * map's newest minutes, given before the rest is read).
+ */
+async function readRecordings(database: string, lock: string, history: string, historyHours: number, gridSteps: Map<string, number>, tiles: { info: TilesInfo | null; hourBooks: boolean }, newest: (columns: StoredColumn[]) => void): Promise<void> {
   // A write that fails is tried again (the status bar says so meanwhile); only a newer page taking the database over ends the saving here.
   let failing = false;
   const events = {
@@ -107,7 +125,9 @@ async function readRecordings(database: string, lock: string, history: string, h
     },
     recovered: (): void => { failing = false; console.info('recordings are being saved again'); post({ type: 'recording', recording }); },
   };
-  try { recordings = await openRecordings(database, Date.now() - BROWSER_RETENTION_MS, () => recording, events); }
+  // The service's latest.json is asked for while the recordings are read back: the import asks it first, and it is in by then.
+  const latest = history && historyHours > 0 ? readLatest(history) : null;
+  try { recordings = await openRecordings(database, Date.now() - BROWSER_RETENTION_MS, () => recording, events, { since: Date.now() - PREVIEW_MS, take: newest }); }
   catch (error) { console.warn('recordings are not kept this session:', error); }
   post({ type: 'recordings', persisted: recordings !== null });
   if (!recordings) return;
@@ -118,7 +138,7 @@ async function readRecordings(database: string, lock: string, history: string, h
   // them; a phone reads its last few hours only, from the start of the oldest one (app/history-window.ts). The recordings keep their day either way.
   if (history && historyHours > 0) {
     const kept = recordings, now = Date.now(), since = importSince(now, historyHours, BROWSER_RETENTION_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours()), epoch = kept.writeEpoch();
-    const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now });
+    const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now, ...(latest ? { latest } : {}) });
     if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
     if (done.read?.length) void kept.markImported(done.read, epoch);
     if (done.columns || done.rows) console.info(`recorded history: ${done.columns} map minutes and ${done.rows} other records from ${done.hours} hours`);
@@ -133,11 +153,14 @@ async function readRecordings(database: string, lock: string, history: string, h
 }
 
 async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; transfer: Transferable[] }> {
-  // The questions held for the history are answered a task each, so the live feeds' passes run between them.
-  if (HISTORY_WAITS.has(call.method) && !historyDone) { await historyLanded; await new Promise(resolve => setTimeout(resolve, 0)); }
+  // The questions held for the history are answered a task each, so the live feeds' passes run between them. The map's columns wait for the
+  // newest recordings only, when the page has any (`previewLanded`).
+  if (HISTORY_WAITS.has(call.method) && !historyDone) { await (call.method === 'columns' ? Promise.race([historyLanded, previewLanded]) : historyLanded); await new Promise(resolve => setTimeout(resolve, 0)); }
   switch (call.method) {
     case 'bootstrap': return { result: run.bootstrap(), transfer: [] };
     case 'columns': {
+      // Still waiting for the rest of the recordings: answered from their newest minutes (`Engine.preview`), to be asked again.
+      if (run.waiting) columnsEarly = true;
       // With where each book's own minutes begin: the page fills what lies before it from the long history (app/archive/).
       const frame = { ...run.columns(call.ids, call.from, call.to, call.stepMs, call.close === true), since: run.heldSince(call.ids, CONTIGUOUS_GAP_MS) };
       return { result: frame, transfer: frame.instruments.flatMap(set => [set.bins.buffer, set.bid.buffer, set.ask.buffer]) };

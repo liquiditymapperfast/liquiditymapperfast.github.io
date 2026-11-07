@@ -29,6 +29,8 @@ import { RECOVERY_BUDGET, historySource, planRecovery, rebuildOrders, runRecover
 export { BROWSER_RETENTION_MS };
 /** How long after starting the absorption recorder reads the rest of its day back (the page asks its first questions meanwhile). */
 const HYDRATE_AFTER_MS = 5_000;
+/** The merged windows the newest recordings keep while the rest is read back (`preview`, a few seconds): a fifth of the recorder's. */
+const PREVIEW_CACHE_BINS = 100_000;
 const FLUSH_MS = 30_000, PRUNE_MS = 3_600_000, OI_SAMPLE_MS = 60_000, OI_KEEP_MS = 3 * 24 * 3_600_000, PROBE_AFTER_MS = 10_000, PROBE_AGAIN_MS = 5 * 60_000;
 /** Binance has no open-interest WebSocket: its REST endpoint is polled this often (one weight per call; 12 a minute is 0.5 % of the IP budget). */
 const OI_BINANCE_POLL_MS = 5_000;
@@ -190,6 +192,8 @@ export class Engine {
   #recorded!: RecordedBefore;
   /** Whether the recordings are still to come (`deferred`, until `attach`). */
   #waiting = false;
+  /** The newest of the recordings, answering the map's columns until they come whole (`preview`); null when none came, and after `attach`. */
+  #preview: DepthRecorder | null = null;
   /** What came since the start while they are (null when not); `#notesFull` once `NOTES_MAX` were kept. */
   #notes: Note[] | null = null; #notesFull = false;
   /**
@@ -345,6 +349,29 @@ export class Engine {
   get waiting(): boolean { return this.#waiting; }
 
   /**
+   * The newest minutes of the recordings, for an engine still waiting for the rest (`deferred`): the map's columns are answered from them
+   * until `attach` (`columns`, `heldSince`), so a returning page draws the hours it opens on while the day is read back (seconds of it). They
+   * take the live samples meanwhile and are never written: `attach` builds the recorders from the whole recordings and plays in what came,
+   * as it does without them. Only the store's `load` is read. Whether they hold any minute (none: the map waits for the recordings).
+   */
+  preview(columns: Pick<ColumnStore, 'load'>): boolean {
+    if (!this.#waiting) return false;
+    const store: ColumnStore = { load: since => columns.load(since), save: () => {}, prune: () => {} };
+    const recorder = new DepthRecorder({ store, now: this.#clock, retentionMs: this.#retentionMs, minBinUsd: MIN_BIN_USD * this.#scale, mergedCacheBins: PREVIEW_CACHE_BINS });
+    this.#preview = recorder.columns.size ? recorder : null;
+    return this.#preview !== null;
+  }
+  /**
+   * A sample of the live books into the newest recordings (`preview`). A book is valued on the step the live recorder keeps for it (its far
+   * levels merged on it), so one the newest recordings keep on another step is left out, as the hand-over leaves it out (`attach`).
+   */
+  #previewSample(books: readonly ValuedBook[], now: number): void {
+    const preview = this.#preview;
+    if (!preview) return;
+    preview.sample(books.filter(book => { const step = preview.steps.get(book.instrumentId); return step === undefined || step === this.recorder.steps.get(book.instrumentId); }), now);
+  }
+
+  /**
    * The recordings, for an engine started without them (`deferred`): the recorders are built from them as a start with them builds them, and
    * what came since the start is played into those recorders in order, each at its own time, as if the recordings had been there all along:
    * a trade they hold already is not counted again (shared/restart.ts), and nothing recorded live is lost. What the replay finds is not
@@ -354,7 +381,7 @@ export class Engine {
   attach(stores: EngineStores | null, gridSteps?: ReadonlyMap<string, number>): void {
     if (!this.#waiting) return;
     const notes = this.#notes ?? [], full = this.#notesFull, live = this.recorder.steps;
-    this.#waiting = false; this.#notes = null; this.#notesFull = false;
+    this.#waiting = false; this.#notes = null; this.#notesFull = false; this.#preview = null;
     this.#build(stores ?? { columns: null, footprint: null, prints: null, flow: null, absorption: null, coverage: null, liquidations: null, oi: null }, gridSteps);
     if (stores?.oi) this.#loadOi(stores.oi);
     const orders = new OrderBuilder(this.#clock), passed = new Set<string>();
@@ -462,7 +489,7 @@ export class Engine {
       note?.passes.push([run.book.instrumentId, live, last]);
     }
     // A pass with no book yet must not use up the sample interval, or the first real sample waits five seconds.
-    if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); if (note) note.books = books; }
+    if (books.length && now - this.#lastSample >= SAMPLE_MS) { this.#lastSample = now; this.recorder.sample(books, now); this.#previewSample(books, now); if (note) note.books = books; }
     if (note) this.#note(note);
     if (now - this.#lastFlush >= FLUSH_MS) { this.#lastFlush = now; this.footprints.flush(); this.printStream.flush(); this.liquidationStream.flush(); this.flows.flush(); this.absorption.flush(); this.tradeCoverage.flush(); }
     if (now - this.#lastFlowPush >= FLOW_SEC) { this.#lastFlowPush = now; const items = this.flows.take(); if (items.length) this.onFlow(items); }
@@ -603,15 +630,19 @@ export class Engine {
     return { asOf: now, now, markPrice: reference?.price ?? 0, markInstrumentId: reference?.instrumentId ?? '', markets, steps: Object.fromEntries(this.recorder.steps), recorded, columnMs: COLUMN_MS, timeframes: Object.keys(TIMEFRAMES), oiReferences };
   }
 
-  /** `close`: each window's book at its close, not its average (`DepthRecorder.query`). */
   /** Per instrument, where its newest run of recorded minutes begins (`DepthRecorder.contiguousSince`), +Infinity for one with none. */
   heldSince(ids: readonly string[], gapMs: number): Record<string, number> {
-    return Object.fromEntries(ids.map(id => [id, this.recorder.contiguousSince(id, gapMs)]));
+    const recorder = this.#preview ?? this.recorder;
+    return Object.fromEntries(ids.map(id => [id, recorder.contiguousSince(id, gapMs)]));
   }
 
+  /**
+   * `close`: each window's book at its close, not its average (`DepthRecorder.query`). While the recordings are still to come, answered from
+   * their newest minutes when the page has them (`preview`).
+   */
   columns(ids: readonly string[], from: number, to: number, stepMs: number, close = false): ColumnsFrame {
-    const step = Math.max(COLUMN_MS, Math.round(stepMs / COLUMN_MS) * COLUMN_MS);
-    return { from, to, stepMs: step, instruments: packColumns(ids.map(id => ({ instrumentId: id, step: this.recorder.steps.get(id) ?? 0, columns: this.recorder.query(id, from, to, step, close) })), close) };
+    const step = Math.max(COLUMN_MS, Math.round(stepMs / COLUMN_MS) * COLUMN_MS), recorder = this.#preview ?? this.recorder;
+    return { from, to, stepMs: step, instruments: packColumns(ids.map(id => ({ instrumentId: id, step: recorder.steps.get(id) ?? 0, columns: recorder.query(id, from, to, step, close) })), close) };
   }
 
   /** One instrument's footprint, or several (comma separated) added together, as the server's route answers. */

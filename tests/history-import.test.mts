@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
+import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, readLatest, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
 import { OTHER_COINS_SERVED, historyUrl } from '../src/app/history-url.ts';
 import { Engine } from '../src/shared/engine.ts';
 
@@ -143,6 +143,26 @@ test('newest hours first, a stalled latest.json gives up at its own deadline, th
   const started = Date.now();
   const late = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: () => 0, since: HOUR - HOUR_MS, now: HOUR, latestMs: 40, budgetMs: 5_000, fetcher: stalled });
   assert.ok(late.error && Date.now() - started < 1_000, 'gave up at the latest.json deadline, not the whole budget');
+});
+
+test('a latest.json asked for while the recordings were read back is the one the import uses: not asked again, its failure the import\'s', async () => {
+  const file = fixture(), asked: string[] = [];
+  const steps = Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, 20]));
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: HOUR - HOUR_MS, last: HOUR - HOUR_MS, open: HOUR, steps };
+  const fetcher = async (url: string) => {
+    asked.push(url.slice(url.lastIndexOf('/') + 1));
+    return url.endsWith('/latest.json') ? { ok: true, status: 200, json: async () => latest, arrayBuffer: async () => new ArrayBuffer(0) } : { ok: true, status: 200, json: async () => null, arrayBuffer: async () => file };
+  };
+  const early = readLatest('https://h.test/v1/btc', { fetcher });
+  assert.deepEqual((await early).latest, latest);
+  const done = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, since: HOUR - HOUR_MS, now: HOUR + 30 * 60_000, fetcher, latest: early });
+  assert.equal(asked.filter(name => name === 'latest.json').length, 1, 'asked once, before the import');
+  assert.ok(done.columns > 0 && done.error === undefined, 'the hours it names are read');
+  assert.deepEqual(done.steps, steps);
+  const refused = async () => ({ ok: false, status: 503, json: async () => null, arrayBuffer: async () => new ArrayBuffer(0) });
+  const failed = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: () => 0, since: HOUR - HOUR_MS, now: HOUR, fetcher, latest: readLatest('https://h.test/v1/btc', { fetcher: refused }) });
+  assert.equal(failed.error, 'latest.json: HTTP 503');
+  assert.equal(failed.hours, 0);
 });
 
 test('a whole record that is not a sane minute is left out; the rest of the hour stays (Sonnet)', () => {

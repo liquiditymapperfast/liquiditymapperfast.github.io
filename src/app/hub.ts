@@ -556,8 +556,12 @@ export class Hub {
       // The large orders of the stretch are in the recording now, not among the fresh ones: the window held is asked for again.
       onRecovered: (id, from, to) => { this.#printsWindow = null; this.#dropValueAreas(id, from, to); this.onRecovered(id, from, to); },
       // The browser's recordings came after its feeds: the flow held is the live seconds alone, the open interest lacks the readings kept
-      // (read whole once, then only its newest bars), and the recording begins earlier than it said.
-      onHistory: () => { this.flow.invalidate(); this.onFlowChanged(); this.#oiGen++; this.#oiHeld = null; this.#oiPool.clear(); void this.loadOi().catch(() => undefined); void this.refreshMarkets(); },
+      // (read whole once, then only its newest bars), and the recording begins earlier than it said. Columns answered from the newest
+      // recordings alone (`columnsEarly`) are asked for whole again, as when the long history's tiles come (drawn meanwhile).
+      onHistory: columnsEarly => {
+        this.flow.invalidate(); this.onFlowChanged(); this.#oiGen++; this.#oiHeld = null; this.#oiPool.clear(); void this.loadOi().catch(() => undefined); void this.refreshMarkets();
+        if (columnsEarly) { this.#columns.expireWhole(); this.#columnsStale = true; this.onColumns(); }
+      },
       onPrints: items => {
         const fresh = this.prints.add(items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; }));
         if (fresh.length) { this.#whaleTake(fresh); this.onPrints(fresh); this.onPrintsChanged(); }

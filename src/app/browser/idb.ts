@@ -96,20 +96,34 @@ const PUTS_PER_WRITE = 250;
 export interface RecordingEvents { failed?: (error: unknown, fatal: boolean) => void; recovered?: () => void }
 
 /**
- * Every row of a store whose time is at or after `since`, oldest first: one request for all of them. A cursor walked them one round trip a
- * row, and a day of the default venues' minutes read that way outlasted the time the page gave the recordings to open, so the page started
- * with none and saved none (2026-10-19).
+ * Every row of a store whose time is at or after `since` (and before `before`), oldest first: one request for all of them. A cursor walked
+ * them one round trip a row, and a day of the default venues' minutes read that way outlasted the time the page gave the recordings to open,
+ * so the page started with none and saved none (2026-10-19).
  */
-function readSince<T>(db: IDBDatabase, name: Name, since: number): Promise<T[]> {
+function readSince<T>(db: IDBDatabase, name: Name, since: number, before = Infinity): Promise<T[]> {
+  if (!(before > since)) return Promise.resolve([]);
   return new Promise((resolve, reject) => {
-    const request = db.transaction(name, 'readonly').objectStore(name).index('t').getAll(IDBKeyRange.lowerBound(since));
+    const range = Number.isFinite(before) ? IDBKeyRange.bound(since, before, false, true) : IDBKeyRange.lowerBound(since);
+    const request = db.transaction(name, 'readonly').objectStore(name).index('t').getAll(range);
     request.onsuccess = () => resolve(request.result as T[]);
     request.onerror = () => reject(request.error);
   });
 }
 
+/**
+ * The newest of the map's minutes, read before anything else (`openRecordings`): those from `since` on, handed to `take` as the columns'
+ * `load` hands them, oldest first. The browser answers the requests one after another (a day of the default books: 3.1 s, of which the map's
+ * last three hours 0.1 s, 2026-11-07), so the page can draw the hours it opens on while the rest of the day is read back.
+ */
+export interface RecordingsHead { since: number; take: (columns: StoredColumn[]) => void }
+/** A minute of a book as the recorders take it (`ColumnStore.load`). */
+export interface StoredColumn { instrumentId: string; step: number; column: Column }
+
 /** Structured clone keeps a typed array's whole buffer, so a view onto a larger one is copied out first. */
 const own = <A extends Int32Array | Float32Array>(array: A): A => array.byteLength === array.buffer.byteLength ? array : array.slice() as A;
+/** A stored minute as the recorders take it, its tracker with it when it was kept. */
+const storedColumn = (row: ColumnRow): StoredColumn => ({ instrumentId: row.inst, step: row.step, column: {
+  t: row.t, n: row.n, bins: row.bins, bid: row.bid, ask: row.ask, ...(row.lt instanceof Float32Array && (row.ltN ?? 0) > 0 ? { lt: row.lt, ltN: row.ltN! } : {}) } satisfies Column });
 
 export interface Recordings {
   columns: ColumnStore; footprint: FootprintStore; prints: PrintStore; flow: FlowStore; absorption: AbsorptionStore; coverage: CoverageStore; liquidations: LiquidationStore; oi: OiStore;
@@ -138,9 +152,10 @@ export interface Recordings {
 
 /**
  * Open the database, read what is still inside the retention window, and return stores for the recorders. `canWrite` says whether this
- * tab is the one allowed to write (only one tab records, so two open pages do not write the same minutes twice).
+ * tab is the one allowed to write (only one tab records, so two open pages do not write the same minutes twice). `head`: the map's newest
+ * minutes are read first, on their own, and handed over before the rest is read (see `RecordingsHead`).
  */
-export async function openRecordings(name: string, since: number, canWrite: () => boolean, events: RecordingEvents = {}): Promise<Recordings> {
+export async function openRecordings(name: string, since: number, canWrite: () => boolean, events: RecordingEvents = {}, head?: RecordingsHead): Promise<Recordings> {
   // Only the opening is timed: reading a day back takes as long as it takes (it is what the page is for), and a page that gave up on it
   // started with nothing and saved nothing.
   let db = await withTimeout(openDatabase(name), OPEN_TIMEOUT_MS, new Error(`opening the recordings took longer than ${OPEN_TIMEOUT_MS} ms`));
@@ -149,8 +164,17 @@ export async function openRecordings(name: string, since: number, canWrite: () =
   const watch = (connection: IDBDatabase): void => { connection.onclose = () => { lost = true; }; };
   watch(db);
   const absorptionSince = Math.max(since, Date.now() - ABSORPTION_MEMORY_MS), started = performance.now();
-  const [columnRows, footprintRows, printRows, flowRows, absorptionRows, absorptionMinuteRows, coverRows, liquidationRows, oiRows] = await Promise.all([readSince<ColumnRow>(db, 'columns', since), readSince<FootprintMinuteRow>(db, 'footprint', since), readSince<PrintRow>(db, 'prints', since), readSince<FlowMinuteRow>(db, 'flow', since),
+  // The map's newest minutes first and alone: the browser answers the requests one after another, so asked beside the rest they would come
+  // last. Handed over, then the rest of the day (one transaction for all of it was slower, 2026-11-07).
+  const cut = head ? Math.max(since, head.since) : Infinity, headRows = head ? await readSince<ColumnRow>(db, 'columns', cut) : [];
+  if (head) {
+    console.info(`recordings: the map's newest ${headRows.length} minutes read back in ${Math.round(performance.now() - started)} ms`);
+    try { head.take(headRows.map(storedColumn)); } catch (error) { console.warn('the newest recordings could not be handed over:', error); }
+  }
+  const [olderRows, footprintRows, printRows, flowRows, absorptionRows, absorptionMinuteRows, coverRows, liquidationRows, oiRows] = await Promise.all([readSince<ColumnRow>(db, 'columns', since, cut), readSince<FootprintMinuteRow>(db, 'footprint', since), readSince<PrintRow>(db, 'prints', since), readSince<FlowMinuteRow>(db, 'flow', since),
     readSince<AbsorptionRow>(db, 'absorption', absorptionSince), readSince<AbsorptionMinuteRow>(db, 'absorptionMinutes', absorptionSince), readSince<CoverRow>(db, 'coverage', since), readSince<LiquidationRow>(db, 'liquidations', since), readSince<OiRow>(db, 'oi', since)]);
+  // Oldest first, as one request would have read them.
+  const columnRows = headRows.length ? olderRows.concat(headRows) : olderRows;
   console.info(`recordings read back in ${Math.round(performance.now() - started)} ms: ${columnRows.length} map minutes, ${footprintRows.length} footprint minutes, ${printRows.length} trades, ${liquidationRows.length} liquidations, ${oiRows.length} open-interest readings`);
   let queue: ((tx: IDBTransaction) => void)[] = [], timer: ReturnType<typeof setTimeout> | null = null, failed = false, closed = false, failures = 0;
   // Counts every write let go (not this tab's to make, or a batch that failed): a mark that an hour was imported is kept only when nothing
@@ -209,8 +233,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
   };
 
   const columns: ColumnStore = {
-    load: () => columnRows.map(row => ({ instrumentId: row.inst, step: row.step, column: {
-      t: row.t, n: row.n, bins: row.bins, bid: row.bid, ask: row.ask, ...(row.lt instanceof Float32Array && (row.ltN ?? 0) > 0 ? { lt: row.lt, ltN: row.ltN! } : {}) } satisfies Column })),
+    load: () => columnRows.map(storedColumn),
     save: (instrumentId, column, step) => enqueue(tx => {
       const row = { inst: instrumentId, t: column.t, step, n: column.n, bins: own(column.bins), bid: own(column.bid), ask: own(column.ask),
         ...(column.lt && (column.ltN ?? 0) > 0 ? { lt: own(column.lt), ltN: column.ltN! } : {}) } satisfies ColumnRow;

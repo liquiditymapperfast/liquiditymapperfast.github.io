@@ -134,7 +134,7 @@ export class BrowserSource implements DataSource, VenueControl {
       switch (message.type) {
         case 'ready': this.#started = true; ready(); break;
         case 'recordings': this.persisted = message.persisted; this.#openedAt = Date.now(); break;
-        case 'history': this.#historyIn = true; this.#hourBooks = message.hourBooks ?? true; this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(); break;
+        case 'history': this.#historyIn = true; this.#hourBooks = message.hourBooks ?? true; this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(message.columnsEarly === true); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {

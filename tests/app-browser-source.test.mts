@@ -120,6 +120,17 @@ test('the worker says when the recorded history has landed, and the live handler
   assert.equal(told, 1);
 });
 
+test('the history says whether the map was answered from the newest recordings alone meanwhile, and the handlers hear it (to ask again)', () => {
+  const told: boolean[] = [];
+  for (const columnsEarly of [true, undefined]) {
+    const { worker, source } = make();
+    source.connect({ onOpen() {}, onClose() {}, onLevels() {}, onTick() {}, onLayers() {}, onPrints() {}, onHistory: early => { told.push(early === true); } });
+    say(worker, { type: 'ready' });
+    say(worker, { type: 'history', ...(columnsEarly ? { columnsEarly } : {}) });
+  }
+  assert.deepEqual(told, [true, false]);
+});
+
 test('handlers connected after the history landed are told at once: what was asked before them may predate it', async () => {
   const { worker, source } = make();
   say(worker, { type: 'ready' });
