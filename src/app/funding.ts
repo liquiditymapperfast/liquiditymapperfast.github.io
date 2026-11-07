@@ -45,6 +45,8 @@ export const hasPremium = (venue: FundingVenue): boolean => venue === 'hyperliqu
 const HOUR = 3_600_000;
 /** At most this many pages one read asks for (a venue that keeps answering cannot loop). */
 const PAGES = 8;
+/** Binance's funding page read back from an `endTime`: it answers at most this many, whatever `limit` asks. */
+const BINANCE_FUNDING_PAGE = 500;
 const num = (value: unknown): number => Number(value);
 const at = (value: unknown, ...path: (string | number)[]): unknown => path.reduce<unknown>((v, key) => (v !== null && typeof v === 'object' ? (v as Record<string | number, unknown>)[key] : undefined), value);
 const POST = (body: unknown) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -129,15 +131,16 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
       start = newest + 1;
     }
   } else if (venue === 'binance') {
-    // `endTime` alone answers the 1,000 settlements before it (checked 2026-11-07): paged back from `to`, so the newest are always read, whatever
-    // the symbol's interval was over its history.
+    // `endTime` alone answers the settlements before it, at most 500 whatever `limit` says (checked 2026-11-07: a limit of 1,000 answers 500):
+    // paged back from `to`, so the newest are always read whatever the symbol's interval was over its history; a page short of 500 is the start
+    // of its history.
     fallback = await intervalOf(venue, s, get);
     let end = to;
     for (let page = 0; page < PAGES && end > from; page++) {
-      const got = listOf(await get(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&endTime=${Math.floor(end)}&limit=1000`), true, venue);
+      const got = listOf(await get(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&endTime=${Math.floor(end)}&limit=${BINANCE_FUNDING_PAGE}`), true, venue);
       let oldest = Infinity;
       for (const r of got) { const t = num(at(r, 'fundingTime')); raw.push({ t, rate: num(at(r, 'fundingRate')) }); if (t < oldest) oldest = t; }
-      if (got.length < 1000 || !Number.isFinite(oldest) || oldest <= from) { end = from; break; }
+      if (got.length < BINANCE_FUNDING_PAGE || !Number.isFinite(oldest) || oldest <= from) { end = from; break; }
       end = oldest - 1;
     }
     reached = Math.max(from, end);
@@ -310,9 +313,13 @@ export class FundingSource {
       // one read holds back from its right edge; a view reaching now is read again at the newest end once a minute. A stretch read apart from
       // the one held takes its place, so what is held never claims the gap between them.
       const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), edge = Math.min(t1, now) + tfMs, live = t1 >= now - tfMs;
-      const hiWant = Math.min(t1 + LOOK_AHEAD * span, now) + tfMs, loWant = Math.max(t0 - LOOK_AHEAD * span - tfMs, hiWant - PREMIUM_CANDLES * tfMs);
+      // The view's own candles first (at most PREMIUM_CANDLES back from its right edge), then half a view each side out of what one read has
+      // left: padding that ate the budget left the view's start unread, and every landing asked again for ever (review round 3).
+      const viewLo = Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs), spare = Math.max(0, PREMIUM_CANDLES * tfMs - (edge - viewLo));
+      const padLeft = Math.min(LOOK_AHEAD * span, spare / 2), padRight = Math.min(Math.max(0, Math.min(t1 + LOOK_AHEAD * span, now) + tfMs - edge), spare - padLeft);
+      const loWant = viewLo - padLeft, hiWant = edge + padRight;
       // Further back than what is held, or (a past view) further on; a view reaching now reads only its newest end again.
-      const outside = !p || Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs) < p.from - tfMs || (!live && edge > p.to + tfMs);
+      const outside = !p || viewLo < p.from - tfMs || (!live && edge > p.to + tfMs);
       const stale = !!p && live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs);
       if (outside || stale) {
         const lo = outside ? loWant : Math.max(loWant, p!.to - 2 * tfMs), hi = outside ? hiWant : now + tfMs;
@@ -325,8 +332,9 @@ export class FundingSource {
       }
       premium = p?.rows ?? [];
     }
-    // The rate under way, every NOW_FRESH_MS, and again a few seconds after it settles (the one after it is under way then).
-    const n = this.#now.get(key), settled = !!n?.now && n.now.next !== null && n.now.next <= now;
+    // The rate under way, every NOW_FRESH_MS, and again a few seconds after it settles (the one after it is under way then), for at most
+    // ROWS_FRESH_MS: a venue whose next settlement stays in the past (a paused symbol) is not asked every few seconds for ever.
+    const n = this.#now.get(key), settled = !!n?.now && n.now.next !== null && n.now.next <= now && now - n.now.next < ROWS_FRESH_MS;
     if (!n || now - n.at > NOW_FRESH_MS || (settled && now - n.at > 3_000)) this.#read(`now|${key}`, () => readFundingNow(venue, listing, this.get, now).then(value => { this.#now.set(key, { now: value, at: Date.now() }); }), settled ? 5_000 : RETRY_MS);
     return { venue, rows: held?.rows ?? [], premium, premiumMs, now: n?.now ?? null, loading: !held && !this.#failed.has(rowsKind), failed: !held && this.#failed.has(rowsKind) };
   }

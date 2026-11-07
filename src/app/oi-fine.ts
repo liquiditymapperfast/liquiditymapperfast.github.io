@@ -44,7 +44,18 @@ export function fineTargets(state: Pick<AppState, 'show' | 'oiChange' | 'delta' 
 }
 
 /**
+ * The markets whose minute readings may be kept (`targets`: `fineTargets` now), or null to keep all: Hyperliquid's perpetual alone while only the
+ * Funding pane wants them, whether it is counted or not; every market wanted while some are on screen; all of them while none are (a timeframe
+ * or market switch has cleared the markets on screen for a moment, and they are the same markets after it).
+ */
+export function fineKept(state: Pick<AppState, 'show' | 'oiChange' | 'delta' | 'fundingVenue'>, tfMs: number, targets: readonly OiPart[]): Set<string> | null {
+  const want = fineWant(state, tfMs);
+  if (want === 'hyperliquid') { const id = instrumentIdFor('hyperliquid', currentCoin()); return new Set(id ? [id] : []); }
+  return want && targets.length ? new Set(targets.map(part => part.id)) : null;
+}
+
+/**
  * Which markets a set of minute readings is read for. Not an inverse market's one price: that follows each whole read of the bars on screen,
- * and a new one must not ask for a day of minutes again (the minute readings keep the price they were first read at).
+ * and a new one must not ask for a day of minutes again (the minutes take it at their own next whole read).
  */
 export const fineKey = (parts: readonly OiPart[]): string => parts.map(part => part.id).join(',');

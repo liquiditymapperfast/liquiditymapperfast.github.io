@@ -23,16 +23,36 @@ test('Hyperliquid: hourly funding put per eight hours, each record\'s premium th
   assert.equal(get.asked.length, 1, 'fewer than 500 records: one page');
 });
 
-test('Binance pages back from now by endTime alone; its interval comes from fundingInfo (a symbol it does not list settles every eight hours)', async () => {
-  // As Binance answers `endTime` alone: the 1,000 settlements before it, oldest first.
+test('Binance pages back from now by endTime alone, 500 a page; its interval comes from fundingInfo (a symbol it does not list settles every eight hours)', async () => {
+  // As Binance answers `endTime` alone: at most 500 settlements before it whatever `limit` asks (checked live 2026-11-07), oldest first.
   const all = Array.from({ length: 1003 }, (_, i) => ({ symbol: 'BTCUSDT', fundingTime: T + i * 8 * H + 1, fundingRate: '0.0001', markPrice: '75000' }));
-  const get = venue(url => url.includes('fundingInfo') ? [{ symbol: 'GTCUSDT', fundingIntervalHours: 4 }] : all.filter(r => r.fundingTime <= Number(/endTime=(\d+)/.exec(url)![1])).slice(-1000));
+  const get = venue(url => url.includes('fundingInfo') ? [{ symbol: 'GTCUSDT', fundingIntervalHours: 4 }] : all.filter(r => r.fundingTime <= Number(/endTime=(\d+)/.exec(url)![1])).slice(-500));
   const { rows, from } = await readFunding('binance', BTC, T, T + 1003 * 8 * H, get);
-  assert.equal(rows.length, 1003, 'a full page asks for the one before it');
+  assert.equal(rows.length, 1003, 'a full page of 500 asks for the one before it');
   assert.equal(from, T, 'it reached the start asked for');
   assert.ok(rows.every(r => r.hours === 8 && Math.abs(r.per8h - 0.0001) < 1e-12));
   const pages = get.asked.filter(u => u.includes('fundingRate?'));
-  assert.equal(pages.length, 2); assert.ok(pages.every(u => !u.includes('startTime')), 'never from a start, which would read the oldest first');
+  assert.equal(pages.length, 3); assert.ok(pages.every(u => !u.includes('startTime')), 'never from a start, which would read the oldest first');
+  // A history longer than eight pages: the read says how far back it reached, not the start asked for.
+  const long = Array.from({ length: 5_000 }, (_, i) => ({ symbol: 'BTCUSDT', fundingTime: T + i * 8 * H + 1, fundingRate: '0.0001' }));
+  const deep = await readFunding('binance', BTC, T, T + 5_000 * 8 * H, venue(url => url.includes('fundingInfo') ? [] : long.filter(r => r.fundingTime <= Number(/endTime=(\d+)/.exec(url)![1])).slice(-500)));
+  assert.equal(deep.rows.length, 4_000);
+  assert.ok(deep.from > T + 900 * 8 * H, 'eight pages of 500 reach 4,000 settlements back');
+});
+
+test('a wide view in the past reads its premium a bounded number of times, the view itself first', async () => {
+  // 9,000 one-minute candles ending a day back: more than one read holds with padding, so the padding gives way, never the view.
+  const M = 60_000, now = T + 30 * 24 * H, t1 = now - 24 * H, t0 = t1 - 9_000 * M;
+  const binance = venue(url => { if (!url.includes('premiumIndexKlines')) return url.includes('fundingRate') ? [] : url.includes('fundingInfo') ? [] : { lastFundingRate: '0.0001', nextFundingTime: now + H };
+    const s = Number(/startTime=(\d+)/.exec(url)![1]), e = Number(/endTime=(\d+)/.exec(url)![1]); const out: unknown[] = []; for (let t = Math.ceil(s / M) * M; t < e && out.length < 1500; t += M) out.push([t, '0', '0', '0', '-0.0001', '0', t + M - 1]); return out; });
+  const source = new FundingSource(() => undefined, binance);
+  for (let i = 0; i < 20; i++) { source.view('binance', BTC, M, t0, t1, now + i * 1_000); await new Promise(r => setTimeout(r, 5)); }
+  const reads = binance.asked.filter(u => u.includes('premiumIndexKlines')).length;
+  assert.ok(reads > 0 && reads <= 8, `one read of at most eight pages, then nothing (${reads})`);
+  // Wider than one read (8,000 candles): its newest 8,000 are held, up to its right edge.
+  const view = source.view('binance', BTC, M, t0, t1, now + 21_000);
+  assert.ok(view.premium.some(q => q.t >= t1 - M), 'held to its right edge');
+  assert.ok(view.premium[0]!.t <= t1 - 7_998 * M && view.premium[0]!.t >= t1 - 8_001 * M, 'and from 8,000 candles back');
 });
 
 test('each settlement at its own interval: a symbol that settled every hour before every four is not read four times too low', async () => {

@@ -14,7 +14,7 @@ import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { takeOiPushes, withOiPushes, type OiPush } from './oi-push.ts';
 import { replaying } from './replay/clock.ts';
 import { atOnePrice, inverseOi, oiSumOf, oiTail, type OiPart } from './oi-change.ts';
-import { OI_FINE_MS, OI_FINE_TAIL_MS, fineKey, fineTargets, fineWant } from './oi-fine.ts';
+import { OI_FINE_MS, OI_FINE_TAIL_MS, fineKept, fineKey, fineTargets, fineWant } from './oi-fine.ts';
 import { oiMarketIds } from './market-choice.ts';
 import { nextBookGone } from './cvd/ids.ts';
 import { t } from './i18n.ts';
@@ -858,8 +858,10 @@ export class Hub {
     const state = this.store.state, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     if (replaying()) return Promise.resolve();
     if (!fineWant(state, tf)) { if (state.oiFine.length) this.store.set({ oiFine: [] }); this.#fineHeld = null; return Promise.resolve(); }
-    // Wanted, but the markets on screen are being read again (a timeframe or market switch clears them for a moment): what is held stays.
-    const parts = fineTargets(state, tf);
+    // Markets no longer wanted are let go (the Funding pane alone wants Hyperliquid's perpetual and nothing else, counted or not); while the
+    // markets on screen are being read again (a timeframe or market switch clears them for a moment), what is held stays.
+    const parts = fineTargets(state, tf), keep = fineKept(state, tf, parts);
+    if (keep && state.oiFine.some(part => !keep.has(part.id))) this.store.set({ oiFine: state.oiFine.filter(part => keep.has(part.id)) });
     if (!parts.length) return Promise.resolve();
     const key = fineKey(parts), now = Date.now(), held = this.#fineHeld;
     if (this.#fineInflight?.key === key) return this.#fineInflight.promise;
@@ -878,12 +880,9 @@ export class Hub {
   /** Whether the markets wanting minute readings are still those of `key` (an answer for others is dropped). */
   #fineStill(key: string): boolean { return fineKey(fineTargets(this.store.state, TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000)) === key; }
   async #readFineWhole(key: string, parts: readonly OiPart[], now: number): Promise<void> {
-    // An inverse market's minutes keep the one price they were first read at (the bars on screen take a new one at each whole read).
-    const held = new Map(this.store.state.oiFine.map(part => [part.id, part.usdAt] as const));
-    const read = await Promise.all(parts.map(async part => {
-      const usdAt = held.get(part.id) ?? part.usdAt;
-      return { id: part.id, ...(usdAt ? { usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - OI_FINE_MS, now + MINUTE, usdAt).catch((): OiBar[] => []) };
-    }));
+    // An inverse market's minutes at the one price the bars on screen are at now: a whole read replaces them all, so they stay one price
+    // within themselves, and close to the bars' (kept at their first price, they drifted from them with the price all session).
+    const read = await Promise.all(parts.map(async part => ({ id: part.id, ...(part.usdAt ? { usdAt: part.usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - OI_FINE_MS, now + MINUTE, part.usdAt).catch((): OiBar[] => []) })));
     if (!this.#fineStill(key)) return;
     const pushed = this.#fineDuring;
     this.store.set({ oiFine: read.map(part => withPushed(part, pushed, MINUTE)) });
