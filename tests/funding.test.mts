@@ -55,6 +55,50 @@ test('a wide view in the past reads its premium a bounded number of times, the v
   assert.ok(view.premium[0]!.t <= t1 - 7_998 * M && view.premium[0]!.t >= t1 - 8_001 * M, 'and from 8,000 candles back');
 });
 
+test('a past view that alone fills a read, dragged either way, reads only what it lacks half a view ahead; what is held stays bounded', async () => {
+  // 10,000 one-minute candles ending fifty days back, dragged a candle at a time with every read landing in between (review round 4: each landing
+  // read the view's whole 8,000 candles again, about a read every second candle dragged).
+  const M = 60_000, now = T + 60 * 24 * H, width = 10_000 * M, pages = { binance: 0, bybit: 0 };
+  const get = venue(url => {
+    const n = (name: string): number => Number(new RegExp(`[?&]${name}=(\\d+)`).exec(url)![1]);
+    if (url.includes('premiumIndexKlines')) { pages.binance++; const out: unknown[] = []; for (let t = Math.ceil(n('startTime') / M) * M; t <= n('endTime') && out.length < 1500; t += M) out.push([t, '0', '0', '0', '-0.0001', '0', t + M - 1]); return out; }
+    if (url.includes('premium-index-price-kline')) { pages.bybit++; const list: unknown[] = []; for (let t = Math.floor(n('end') / M) * M; t >= n('start') && list.length < 1000; t -= M) list.push([String(t), '0', '0', '0', '-0.0001']); return { retCode: 0, result: { list } }; }
+    if (url.includes('fundingInfo') || url.includes('fundingRate?')) return [];
+    if (url.includes('premiumIndex?')) return { lastFundingRate: '0.0001', nextFundingTime: now + H };
+    if (url.includes('instruments-info')) return { retCode: 0, result: { list: [{ fundingInterval: 480 }] } };
+    if (url.includes('funding/history')) return { retCode: 0, result: { list: [] } };
+    return { retCode: 0, result: { list: [{ fundingRate: '0.0001', nextFundingTime: String(now + H) }] } };
+  });
+  const land = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+  for (const v of ['binance', 'bybit'] as const) {
+    const source = new FundingSource(() => undefined, get);
+    let t1 = now - 50 * 24 * H;
+    const step = async (by: number): Promise<readonly { t: number }[]> => { t1 += by; source.view(v, BTC, M, t1 - width, t1, now); await land(); return source.view(v, BTC, M, t1 - width, t1, now).premium; };
+    // Its newest 8,000 candles (Bybit's eight pages of 1,000 end a candle short of a window that counts both ends, as in the test before).
+    const covers = (rows: readonly { t: number }[]): boolean => rows.some(q => q.t <= t1 - 7_998 * M) && rows.some(q => q.t >= t1);
+    assert.ok(covers(await step(0)), `${v}: its newest 8,000 candles held`);
+    const first = pages[v];
+    let rows: readonly { t: number }[] = [];
+    for (let i = 0; i < 600; i++) rows = await step(M);
+    assert.ok(covers(rows), `${v}: dragged on, still held`);
+    for (let i = 0; i < 1_200; i++) rows = await step(-M);
+    assert.ok(covers(rows), `${v}: dragged back past where it started, still held`);
+    // One read each way, about half a view each: Binance's pages hold 1,500 candles, Bybit's 1,000.
+    const most = v === 'binance' ? 2 * 4 : 2 * 6;
+    assert.ok(pages[v] - first <= most, `${v}: ${pages[v] - first} pages for 1,800 candles dragged (at most ${most})`);
+    // Dragged a long way either way, a read's worth at a time: what is held stays at most three reads' worth, around the view.
+    for (const by of [2_000 * M, -2_000 * M]) for (let i = 0; i < 30; i++) {
+      rows = await step(by);
+      assert.ok(covers(rows) && rows.length <= 3 * 8_000 + 1, `${v}: ${rows.length} candles held after ${i + 1} steps of ${by / M}`);
+    }
+    // A view wholly after now (on the page's clock, so the newest end counts as fresh): the newest candles are read once, then nothing.
+    const live = new FundingSource(() => undefined, get), clock = Math.floor(Date.now() / M) * M, before = pages[v];
+    for (let i = 0; i < 10; i++) { live.view(v, BTC, M, clock + 1_000 * M, clock + 11_000 * M, clock); await land(); }
+    const held = live.view(v, BTC, M, clock + 1_000 * M, clock + 11_000 * M, clock).premium;
+    assert.ok(pages[v] - before <= 5 && held.some(q => q.t >= clock), `${v}: a view after now reads its newest once (${pages[v] - before} pages) and holds it`);
+  }
+});
+
 test('each settlement at its own interval: a symbol that settled every hour before every four is not read four times too low', async () => {
   const times = [...Array.from({ length: 10 }, (_, i) => T + i * H), ...Array.from({ length: 5 }, (_, i) => T + 13 * H + i * 4 * H)];
   const bybit = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 240 }] } }

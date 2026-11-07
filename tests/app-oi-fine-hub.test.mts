@@ -65,3 +65,48 @@ test('the minute readings stay through a timeframe switch, and go when nothing t
   await hub.loadOiFine();
   assert.equal(store.state.oiFine.length, 0);
 });
+
+test('an inverse market\'s minutes take the bars\' price at each whole read; markets no longer wanted go at once, the Funding pane keeping Hyperliquid\'s alone', async () => {
+  // Review round 3 (2026-11-07): an inverse market's minutes kept the price they were first read at all session, drifting from the bars'; and
+  // the Funding pane alone kept every counted market's minutes, each push repainting three panes for nothing.
+  const realNow = Date.now;
+  let clock = now0;
+  Date.now = () => clock;
+  try {
+    const DERIBIT = 'deribit:BTC-PERPETUAL', HL = 'hyperliquid:BTC-PERP', bars: OiBar[] = [[now0 - 15 * MIN, 1, 1, 1, 1], [now0, 2, 2, 2, 2]];
+    const parts = (deribitAt: number) => [{ id: MARKET, bars }, { id: DERIBIT, bars, usdAt: deribitAt }, { id: HL, bars }];
+    const store = new Store({ ...initialState(), marketId: MARKET, timeframe: '15m', oiMarkets: 'chart' }), source = new FakeSource();
+    const hub = new Hub(store, source as unknown as DataSource);
+    (hub.worker as unknown as FakeWorker).onmessage!({ data: { type: 'ready' } });
+    await hub.start();
+    const ids = (): string[] => store.state.oiFine.map(part => part.id), deribit = () => store.state.oiFine.find(part => part.id === DERIBIT)!;
+    store.set({ show: { ...store.state.show, oi: true }, oi: bars, oiInstrument: '', oiParts: parts(50_000) });
+    await hub.loadOiFine();
+    assert.deepEqual(ids(), [MARKET, DERIBIT, HL]);
+    // The fake answers each market's open interest as 1,000 and up; Deribit's is USD, put in coins at the bars' price.
+    assert.deepEqual([deribit().usdAt, deribit().bars[0]![4]], [50_000, 1_000 / 50_000]);
+    // The bars on screen read again at a new price: the next whole read of the minutes (OI_WHOLE_MS on) takes it.
+    store.set({ oiParts: parts(55_000) });
+    clock += 10 * MIN;
+    await hub.loadOiFine();
+    assert.deepEqual([deribit().usdAt, deribit().bars[0]![4]], [55_000, 1_000 / 55_000]);
+    // A market no longer counted goes at once (before the read for the markets left).
+    store.set({ oiParts: parts(55_000).filter(part => part.id !== MARKET) });
+    let load = hub.loadOiFine();
+    assert.deepEqual(ids(), [DERIBIT, HL]);
+    await load;
+    // Only the Funding pane (on Hyperliquid, the first venue listing BTC) wants minutes: Hyperliquid's perpetual alone stays, counted or not.
+    store.set({ show: { ...store.state.show, oi: false, funding: true } });
+    load = hub.loadOiFine();
+    assert.deepEqual(ids(), [HL]);
+    await load;
+    store.set({ oiParts: [], oiInstrument: MARKET, oi: bars });
+    await hub.loadOiFine();
+    assert.deepEqual(ids(), [HL], 'Hyperliquid no longer counted: its minutes stay for the Funding pane');
+    store.set({ show: { ...store.state.show, funding: false } });
+    await hub.loadOiFine();
+    assert.equal(store.state.oiFine.length, 0, 'nothing wants them');
+  } finally {
+    Date.now = realNow;
+  }
+});

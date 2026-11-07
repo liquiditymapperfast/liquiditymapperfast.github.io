@@ -268,6 +268,8 @@ const DAY = 24 * HOUR;
 const MAX_BACK_MS: Readonly<Record<FundingVenue, number>> = { hyperliquid: 150 * DAY, binance: 1000 * DAY, bybit: 500 * DAY, okx: 250 * DAY, bitget: 250 * DAY, deribit: 230 * DAY };
 /** How many candles of premium one read covers at most (`PAGES` pages of 1,000 or more). */
 const PREMIUM_CANDLES = PAGES * 1000;
+/** How many are held per timeframe at most: the view's own and one read's worth each side of them. */
+const PREMIUM_HELD = 3 * PREMIUM_CANDLES;
 /** How much more than the view a read asks for on each side, as a share of the view: a view dragged along asks again only past it. */
 const LOOK_AHEAD = 0.5;
 
@@ -278,7 +280,7 @@ const LOOK_AHEAD = 0.5;
  */
 export class FundingSource {
   readonly #rows = new Map<string, { rows: FundingRow[]; premium: PremiumRow[]; from: number; at: number }>();
-  readonly #premium = new Map<string, { rows: PremiumRow[]; from: number; to: number; at: number }>();
+  readonly #premium = new Map<string, HeldPremium>();
   readonly #now = new Map<string, { now: FundingNow | null; at: number }>();
   readonly #busy = new Set<string>();
   readonly #failed = new Map<string, number>();
@@ -309,26 +311,25 @@ export class FundingSource {
     let premium: readonly PremiumRow[] = venue === 'hyperliquid' ? held?.premium ?? [] : [], premiumMs = HOUR;
     if (venue === 'binance' || venue === 'bybit') {
       premiumMs = tfMs;
-      // One unbroken stretch held per timeframe, [from, to). A view outside it is read with half a view each side, at most as many candles as
-      // one read holds back from its right edge; a view reaching now is read again at the newest end once a minute. A stretch read apart from
-      // the one held takes its place, so what is held never claims the gap between them.
+      // One unbroken stretch held per timeframe, [from, to) (`heldPremium`). The view's own candles count first (at most PREMIUM_CANDLES back
+      // from its right edge, and the newest at least: a view wholly after now asked for a stretch ending before it began, held nothing and
+      // asked again at every landing), then half a view each side out of what one read has left: padding that ate the budget left the view's
+      // start unread, and every landing asked again for ever (review round 3).
       const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), edge = Math.min(t1, now) + tfMs, live = t1 >= now - tfMs;
-      // The view's own candles first (at most PREMIUM_CANDLES back from its right edge), then half a view each side out of what one read has
-      // left: padding that ate the budget left the view's start unread, and every landing asked again for ever (review round 3).
-      const viewLo = Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs), spare = Math.max(0, PREMIUM_CANDLES * tfMs - (edge - viewLo));
+      const viewLo = Math.min(edge - tfMs, Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs)), spare = Math.max(0, PREMIUM_CANDLES * tfMs - (edge - viewLo));
       const padLeft = Math.min(LOOK_AHEAD * span, spare / 2), padRight = Math.min(Math.max(0, Math.min(t1 + LOOK_AHEAD * span, now) + tfMs - edge), spare - padLeft);
-      const loWant = viewLo - padLeft, hiWant = edge + padRight;
-      // Further back than what is held, or (a past view) further on; a view reaching now reads only its newest end again.
-      const outside = !p || viewLo < p.from - tfMs || (!live && edge > p.to + tfMs);
-      const stale = !!p && live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs);
-      if (outside || stale) {
-        const lo = outside ? loWant : Math.max(loWant, p!.to - 2 * tfMs), hi = outside ? hiWant : now + tfMs;
-        this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => {
-          const before = this.#premium.get(pk), joins = before && r.from <= before.to + tfMs && r.to >= before.from - tfMs;
-          this.#premium.set(pk, joins
-            ? { rows: mergeRows(before.rows, r.rows), from: Math.min(r.from, before.from), to: Math.max(r.to, before.to), at: r.to >= now ? Date.now() : before.at }
-            : { rows: r.rows, from: r.from, to: r.to, at: Date.now() });
-        }));
+      const read = (lo: number, hi: number): void => this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => { this.#premium.set(pk, heldPremium(this.#premium.get(pk), r, tfMs, now)); }));
+      // Nothing held next to the view: its window, in place of what is held.
+      if (!p || edge < p.from - tfMs || viewLo > p.to + tfMs) read(viewLo - padLeft, edge + padRight);
+      else {
+        // Next to it, only what it lacks, and half a view beyond the view (one read's worth at most): a view dragged along asks again every half
+        // a view, one that alone fills a read too (review round 4: that one read its whole window again at every landing). A view reaching now
+        // reads its newest end again once a minute.
+        const ahead = LOOK_AHEAD * span, budget = PREMIUM_CANDLES * tfMs, left = viewLo < p.from - tfMs, right = !live && edge > p.to + tfMs;
+        if (left && right) read(viewLo - padLeft, edge + padRight);
+        else if (left) read(Math.min(viewLo, Math.max(viewLo - ahead, p.from + tfMs - budget)), p.from + tfMs);
+        else if (right) read(p.to - 2 * tfMs, Math.max(edge, Math.min(edge + ahead, now + tfMs, p.to - 2 * tfMs + budget)));
+        else if (live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs)) read(Math.max(viewLo - padLeft, p.to - 2 * tfMs), now + tfMs);
       }
       premium = p?.rows ?? [];
     }
@@ -345,6 +346,24 @@ export class FundingSource {
     this.#busy.add(kind);
     run().then(() => { this.#failed.delete(kind); this.onChange(); }, () => { this.#failed.set(kind, Date.now()); this.onChange(); }).finally(() => { this.#busy.delete(kind); });
   }
+}
+
+/** The premium held of one venue, symbol and timeframe: one unbroken stretch [from, to), and when its newest was read (`at`). */
+interface HeldPremium { rows: PremiumRow[]; from: number; to: number; at: number }
+/**
+ * A premium read put with what was held: joined to it where they touch, else in its place (what is held never claims the gap between them);
+ * at most PREMIUM_HELD candles, the end away from what was just read let go (a view dragged a long way held all it passed).
+ */
+function heldPremium(before: HeldPremium | undefined, r: { rows: PremiumRow[]; from: number; to: number }, tfMs: number, now: number): HeldPremium {
+  const joins = !!before && r.from <= before.to + tfMs && r.to >= before.from - tfMs;
+  const held = before && joins
+    ? { rows: mergeRows(before.rows, r.rows), from: Math.min(r.from, before.from), to: Math.max(r.to, before.to), at: r.to >= now ? Date.now() : before.at }
+    : { rows: r.rows, from: r.from, to: r.to, at: Date.now() };
+  const most = PREMIUM_HELD * tfMs;
+  if (held.to - held.from <= most) return held;
+  if (r.to >= held.to) { const from = held.to - most; return { ...held, rows: held.rows.filter(q => q.t >= from), from }; }
+  const to = held.from + most;
+  return { ...held, rows: held.rows.filter(q => q.t < to), to };
 }
 
 /** Rows by time, the newer read winning. */
