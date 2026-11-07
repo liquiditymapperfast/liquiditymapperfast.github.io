@@ -23,6 +23,43 @@ const ASK_EVERY_MS = 5_000, RETRY_MS = 60_000;
 const rgba = (hex: string, alpha: number): string => { const [r, g, b] = rgb(hex); return `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${alpha})`; };
 const reducedMotion = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** How a colour's dots are painted: lit, dimmed and off (mixed toward the well), the shine on a lit one, and its rings. */
+interface Tones { dim: string; off: string; shine: string; ring: string; bead: string }
+/** Circles painted alike (a fill or a stroke of one colour and width, at one alpha): their centres and radii, three numbers each. */
+interface Circles { fill: boolean; style: string; width: number; alpha: number; at: number[] }
+/**
+ * Circles gathered by how they are painted, then painted one path each, layer over layer (the dots, their shine, the light running along a
+ * row, the rings). Circles painted alike never overlap, so one path paints them as their own fills did.
+ */
+class CircleBatch {
+  readonly #layers: Map<string, Circles>[] = [new Map(), new Map(), new Map(), new Map()];
+  /** The alpha of the circles added next (a row not fully recorded is drawn faint). */
+  alpha = 1;
+  add(layer: 0 | 1 | 2 | 3, fill: boolean, style: string, width: number, x: number, y: number, radius: number): void {
+    const alpha = this.alpha, key = alpha === 1 && width === 0 ? style : `${style}|${alpha}|${width}`, map = this.#layers[layer]!;
+    let c = map.get(key); if (!c) { c = { fill, style, width, alpha, at: [] }; map.set(key, c); }
+    c.at.push(x, y, radius);
+  }
+  /** Paint what was added, and start empty. */
+  paint(ctx: CanvasRenderingContext2D): void {
+    for (const layer of this.#layers) {
+      for (const c of layer.values()) {
+        ctx.globalAlpha = c.alpha; ctx.beginPath();
+        const at = c.at;
+        for (let i = 0; i < at.length; i += 3) { const x = at[i]!, y = at[i + 1]!, radius = at[i + 2]!; ctx.moveTo(x + radius, y); ctx.arc(x, y, radius, 0, Math.PI * 2); }
+        if (c.fill) { ctx.fillStyle = c.style; ctx.fill(); } else { ctx.lineWidth = c.width; ctx.strokeStyle = c.style; ctx.stroke(); }
+      }
+      layer.clear();
+    }
+    ctx.globalAlpha = 1; this.alpha = 1;
+  }
+}
+/**
+ * A row as the still picture drew it, for what the frames draw over it: its lamp's ring when a trade of its size prints (`flash`: its index
+ * among the size rows, -1 for a row that does not blink), the light running along it, and its bead.
+ */
+interface RowDrawn { key: string; cy: number; lamp: string; partial: boolean; flash: number; lead: number; buyAhead: boolean; idle: boolean }
+
 /** What the strip last drew, for the checks that look at it without reading its pixels. */
 export interface StripSnapshot { hidden: boolean; width: number; height: number; data: StripData | null; sizes: 'ready' | 'loading' | 'unavailable' | 'empty'; flashing: number[]; dots: number }
 
@@ -53,6 +90,18 @@ export class CvdStrip {
    */
   #beads = new Map<string, { x: number; v: number }>(); #lastDraw = 0;
   #disposed = false;
+  /**
+   * The strip as it stands between two refreshes (`#paintStill`: the well, the headings, each row's lamp, label, dots and numbers), what
+   * it was painted for, and its rows; each frame copies it and draws only what moves over it (the light running along a row, the rings).
+   * Drawn whole on every frame, its ~700 dots each a fill with its colour mixed afresh, the strip was the page's busiest canvas after the
+   * map with trades printing (3.8% of the main thread, Research_Findings.md, 2026-11-07); its rows change once a second.
+   */
+  #still = document.createElement('canvas');
+  #stillCtx = this.#still.getContext('2d')!;
+  #stillFor: { data: StripData; palette: Palette; w: number; h: number; dpr: number; left: number; x0: number; n: number } | null = null;
+  #rowsDrawn: RowDrawn[] = [];
+  #batch = new CircleBatch();
+  #tones = new Map<string, Tones>();
 
   constructor(private store: Store, private hub: Hub) {
     this.#canvas.setAttribute('role', 'img');
@@ -63,7 +112,7 @@ export class CvdStrip {
     this.#canvas.addEventListener('pointerleave', () => this.#card.hide());
   }
 
-  setPalette(p: Palette): void { this.#palette = p; this.#chrome = chromeFor(p); this.#schedule(); }
+  setPalette(p: Palette): void { this.#palette = p; this.#chrome = chromeFor(p); this.#tones.clear(); this.#schedule(); }
 
   /** The instruments the ALL VENUES row counts: the strip counts the same ones, so the two agree. A different set is a different question. */
   setCounted(ids: readonly string[]): void {
@@ -139,14 +188,70 @@ export class CvdStrip {
 
   #schedule(): void { if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#draw(); }); }
 
+  /** How a colour's dots are painted, worked out once a palette. */
+  #tonesOf(color: string): Tones {
+    let tone = this.#tones.get(color);
+    if (!tone) { const well = this.#chrome.well; tone = { dim: mixHex(color, well, 0.66), off: mixHex(color, well, 0.9), shine: rgba(mixHex(color, '#ffffff', 0.6), 0.7), ring: rgba(color, 0.35), bead: rgba(color, 0.4) }; this.#tones.set(color, tone); }
+    return tone;
+  }
+
+  /** A frame: the still picture (painted again first when the rows, the palette or the size changed), and what moves over it. */
   #draw(): void {
     const data = this.#data;
     if (!data || this.root.hidden || this.#w < 120 || this.#h < 1) return;
-    const ctx = this.#ctx, g = GEOMETRY, p = this.#palette, ch = this.#chrome, W = this.#w, H = this.#h, now = performance.now(), r = g.dot / 2;
-    const still = reducedMotion(), dt = Math.min(50, Math.max(0, now - (this.#lastDraw || now))) / 1000;
+    const now = performance.now(), still = reducedMotion(), dt = Math.min(50, Math.max(0, now - (this.#lastDraw || now))) / 1000;
     this.#lastDraw = now;
+    const was = this.#stillFor;
+    if (!was || was.data !== data || was.palette !== this.#palette || was.w !== this.#w || was.h !== this.#h || was.dpr !== this.#dpr) this.#paintStill(data);
+    const ctx = this.#ctx, g = GEOMETRY, p = this.#palette, r = g.dot / 2, { left, x0, n } = this.#stillFor!, batch = this.#batch;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, this.#canvas.width, this.#canvas.height); ctx.drawImage(this.#still, 0, 0);
+    ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     let moving = false;
-    ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    for (const row of this.#rowsDrawn) {
+      const printed = row.flash >= 0 ? this.#flash.get(row.flash) : undefined, flashing = printed !== undefined && now - printed < FLASH_MS;
+      // The ring of the Sound button on the lead lamp when a trade of this size just printed (amber on a row not fully recorded).
+      batch.alpha = 1;
+      if (flashing) batch.add(3, false, this.#tonesOf(row.partial ? AMBER : row.lamp).ring, 2, left + 4, row.cy, r + 2);
+      if (row.idle) continue;
+      batch.alpha = row.partial ? 0.55 : 1;
+      // A trade of this size just printed: a light runs along the row from its lamp, over the dots.
+      if (flashing && !still) {
+        const at = (now - printed) / FLASH_MS * (n + 2) - 1, fade = 1 - (now - printed) / FLASH_MS;
+        for (let i = Math.max(0, Math.floor(at - 2)); i <= Math.min(n - 1, Math.ceil(at + 2)); i++) {
+          const k = Math.max(0, 1 - Math.abs(i - at) / 2) * fade; if (k <= 0) continue;
+          batch.add(2, true, rgba(mixHex(row.lamp, '#ffffff', 0.45), 0.75 * k), 0, x0 + i * g.pitch + r, row.cy, r + 1);
+        }
+        moving = true;
+      }
+      // The leading edge of the side that is ahead wears a ring: the peak lamp of a level meter. It slides to a new place as an abacus bead
+      // does, on a spring that overshoots a little and settles.
+      const lead = row.lead;
+      if (lead >= 0 && lead < n) {
+        const bead = this.#beads.get(row.key) ?? { x: lead, v: 0 };
+        if (still || Math.abs(bead.x - lead) > n) { bead.x = lead; bead.v = 0; }
+        else {
+          const w = 18, zeta = 0.55;
+          bead.v += (-w * w * (bead.x - lead) - 2 * zeta * w * bead.v) * dt; bead.x += bead.v * dt;
+          if (Math.abs(bead.x - lead) < 0.01 && Math.abs(bead.v) < 0.05) { bead.x = lead; bead.v = 0; } else moving = true;
+        }
+        this.#beads.set(row.key, bead);
+        batch.add(3, false, this.#tonesOf(row.buyAhead ? p.bid : p.ask).bead, 2, x0 + bead.x * g.pitch + r, row.cy, r + 2);
+      }
+    }
+    batch.paint(ctx);
+    if (moving) this.#schedule();
+  }
+
+  /**
+   * The strip as it stands between two refreshes, on a canvas of its own: the well, the headings, and each row's lamp, label, dots and
+   * numbers. Painted when the rows change (once a second), the palette or the size; each frame copies it and draws what moves over it.
+   */
+  #paintStill(data: StripData): void {
+    const W = this.#w, H = this.#h, dpr = this.#dpr, canvas = this.#still, ctx = this.#stillCtx, batch = this.#batch;
+    const width = Math.round(W * dpr), height = Math.round(H * dpr);
+    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    const g = GEOMETRY, p = this.#palette, ch = this.#chrome, r = g.dot / 2;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     // The sunken well: dark along the top and left, light along the bottom and right.
     ctx.fillStyle = ch.well; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = ch.lo; ctx.fillRect(0, 0, W, 1); ctx.fillRect(0, 0, 1, H);
@@ -160,13 +265,13 @@ export class CvdStrip {
     // An even number of dots, so that two of them can mark the middle.
     const n = Math.max(10, Math.floor((dotsX1 - dotsX0 + (g.pitch - g.dot)) / g.pitch) & ~1), used = n * g.pitch - (g.pitch - g.dot), x0 = dotsX0 + Math.round((dotsX1 - dotsX0 - used) / 2);
     this.#dots = n;
+    const rows: RowDrawn[] = [];
     let y = g.pad + 1;
 
-    const led = (x: number, cy: number, radius: number, color: string, level: 'on' | 'dim' | 'off', ring: boolean): void => {
-      ctx.beginPath(); ctx.arc(x, cy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = level === 'off' ? mixHex(color, ch.well, 0.9) : level === 'dim' ? mixHex(color, ch.well, 0.66) : color; ctx.fill();
-      if (level === 'on' && radius >= 2) { ctx.beginPath(); ctx.arc(x - radius * 0.32, cy - radius * 0.34, radius * 0.3, 0, Math.PI * 2); ctx.fillStyle = rgba(mixHex(color, '#ffffff', 0.6), 0.7); ctx.fill(); }
-      if (ring) { ctx.beginPath(); ctx.arc(x, cy, radius + 2, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = rgba(color, 0.35); ctx.stroke(); }
+    const led = (x: number, cy: number, radius: number, color: string, level: 'on' | 'dim' | 'off'): void => {
+      const tone = this.#tonesOf(color);
+      batch.add(0, true, level === 'off' ? tone.off : level === 'dim' ? tone.dim : color, 0, x, cy, radius);
+      if (level === 'on' && radius >= 2) batch.add(1, true, tone.shine, 0, x - radius * 0.32, cy - radius * 0.34, radius * 0.3);
     };
     const colorOf = (dot: Led): string => dot.startsWith('buy') ? p.bid : dot.startsWith('sell') ? p.ask : neutral;
     const levelOf = (dot: Led): 'on' | 'dim' | 'off' => dot.endsWith('-on') ? 'on' : dot.endsWith('-dim') ? 'dim' : 'off';
@@ -178,69 +283,48 @@ export class CvdStrip {
       y += g.headH;
     };
 
-    const row = (rowData: StripRow, index: number, flashable: boolean, idle: boolean): void => {
+    const row = (rowData: StripRow, flash: number, idle: boolean): void => {
       const cy = y + g.rowH / 2, share = rowData.share, buyAhead = share !== null && share > 0.5, sellAhead = share !== null && share < 0.5;
-      // The lead lamp: the side that is ahead; an amber ring (nothing filled) when part of the row's window was not recorded; the ring of the Sound button when a trade of this size just printed.
-      const flashing = flashable && now - (this.#flash.get(index) ?? -Infinity) < FLASH_MS;
+      // The lead lamp: the side that is ahead; an amber ring (nothing filled) when part of the row's window was not recorded.
       const lamp = buyAhead ? p.bid : sellAhead ? p.ask : p.muted;
-      if (rowData.partial) { ctx.beginPath(); ctx.arc(left + 4, cy, r - 0.5, 0, Math.PI * 2); ctx.lineWidth = 1.5; ctx.strokeStyle = AMBER; ctx.stroke(); }
-      else led(left + 4, cy, r, lamp, share === null ? 'off' : 'on', flashing);
-      if (rowData.partial && flashing) { ctx.beginPath(); ctx.arc(left + 4, cy, r + 2, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = rgba(AMBER, 0.35); ctx.stroke(); }
+      batch.alpha = 1;
+      if (rowData.partial) batch.add(3, false, AMBER, 1.5, left + 4, cy, r - 0.5);
+      else led(left + 4, cy, r, lamp, share === null ? 'off' : 'on');
       ctx.font = FONT; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(rowData.label, left + g.lead, cy);
+      const { dots, lead } = idle ? { dots: [], lead: -1 } : ledRow(share, n);
+      rows.push({ key: rowData.key, cy, lamp, partial: rowData.partial, flash, lead, buyAhead, idle });
       if (idle) { y += g.rowH; return; }
-      if (rowData.partial) ctx.globalAlpha = 0.55;
-      const { dots, lead } = ledRow(share, n);
-      dots.forEach((dot, i) => led(x0 + i * g.pitch + r, cy, r, colorOf(dot), levelOf(dot), false));
-      // A trade of this size just printed: a light runs along the row from its lamp, over the dots.
-      const printed = this.#flash.get(index);
-      if (flashing && printed !== undefined && !still) {
-        const at = (now - printed) / FLASH_MS * (n + 2) - 1, fade = 1 - (now - printed) / FLASH_MS;
-        for (let i = Math.max(0, Math.floor(at - 2)); i <= Math.min(n - 1, Math.ceil(at + 2)); i++) {
-          const k = Math.max(0, 1 - Math.abs(i - at) / 2) * fade; if (k <= 0) continue;
-          ctx.beginPath(); ctx.arc(x0 + i * g.pitch + r, cy, r + 1, 0, Math.PI * 2); ctx.fillStyle = rgba(mixHex(lamp, '#ffffff', 0.45), 0.75 * k); ctx.fill();
-        }
-        moving = true;
-      }
-      // The leading edge of the side that is ahead wears a ring: the peak lamp of a level meter. It slides to a new place as an abacus bead
-      // does, on a spring that overshoots a little and settles.
-      if (lead >= 0 && lead < n) {
-        const bead = this.#beads.get(rowData.key) ?? { x: lead, v: 0 };
-        if (still || Math.abs(bead.x - lead) > n) { bead.x = lead; bead.v = 0; }
-        else {
-          const w = 18, zeta = 0.55;
-          bead.v += (-w * w * (bead.x - lead) - 2 * zeta * w * bead.v) * dt; bead.x += bead.v * dt;
-          if (Math.abs(bead.x - lead) < 0.01 && Math.abs(bead.v) < 0.05) { bead.x = lead; bead.v = 0; } else moving = true;
-        }
-        this.#beads.set(rowData.key, bead);
-        ctx.beginPath(); ctx.arc(x0 + bead.x * g.pitch + r, cy, r + 2, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = rgba(buyAhead ? p.bid : p.ask, 0.4); ctx.stroke();
-      }
+      if (rowData.partial) { ctx.globalAlpha = 0.55; batch.alpha = 0.55; }
+      dots.forEach((dot, i) => led(x0 + i * g.pitch + r, cy, r, colorOf(dot), levelOf(dot)));
       ctx.textAlign = 'right';
       if (rowData.weight !== null || rowData.key.startsWith('size:')) {
         // A size row: its share of the volume in ten dots and a number.
         const lit = weightDots(rowData.weight), wx0 = right - 10 * g.pitch + 2;
-        for (let i = 0; i < 10; i++) led(wx0 + i * g.pitch + r, cy, r - 0.5, p.muted, i < lit ? 'on' : 'off', false);
+        for (let i = 0; i < 10; i++) led(wx0 + i * g.pitch + r, cy, r - 0.5, p.muted, i < lit ? 'on' : 'off');
         ctx.font = FONT; ctx.fillStyle = p.muted; ctx.fillText(weightText(rowData.weight), wx0 - 4, cy);
       } else {
         ctx.font = FONT_BOLD; ctx.fillStyle = share === null ? p.muted : buyAhead ? p.bid : sellAhead ? p.ask : p.text; ctx.fillText(percent(share), right, cy);
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1; batch.alpha = 1;
       y += g.rowH;
     };
 
     heading(t('TAKER FLOW'), '', data.heading);
-    data.pulse.forEach((rowData, i) => row(rowData, i, false, false));
+    data.pulse.forEach(rowData => row(rowData, -1, false));
     y += g.groupGap;
     heading(t('ORDER SIZE · USD · {window}', { window: data.window }), data.size.partial && data.size.covered !== null ? coverageNote(data.size.covered, data.size.minutes) : '', t('share of volume'));
     const bands = sizeBands(this.store.state.cvd), top = y, idle = data.size.state === 'unavailable';
     // A row that holds orders from the floor up can blink (the print stream starts there); the row of the orders under it cannot.
-    data.size.rows.forEach((rowData, i) => row(rowData, i, bands[i] !== undefined && (bands[i]!.hi === null || bands[i]!.hi! > SIZE_FLOOR_USD), idle));
+    data.size.rows.forEach((rowData, i) => row(rowData, bands[i] !== undefined && (bands[i]!.hi === null || bands[i]!.hi! > SIZE_FLOOR_USD) ? i : -1, idle));
     if (idle) {
       ctx.font = FONT; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       const text = t('Order sizes are not available from this server.'), room = right - dotsX0;
       let shown = text; while (shown.length > 4 && ctx.measureText(shown).width > room) shown = `${shown.slice(0, -2)}…`;
       ctx.fillText(shown, dotsX0, top + (y - top) / 2);
     }
-    if (moving) this.#schedule();
+    batch.paint(ctx);
+    this.#rowsDrawn = rows;
+    this.#stillFor = { data, palette: p, w: W, h: H, dpr, left, x0, n };
   }
 
   // ---- pointer --------------------------------------------------------------------------------------------------------------------

@@ -42,6 +42,12 @@ const PRICE_W = 58, USD_W = 54, MIN_BAR_W = 90, CELL_MAX = 26, CELL_MIN = 5;
 const PS_W = 58;
 /** The gutter before the bars that holds each row's signed mark (the cues' still face); drawn while the cues are not Off. */
 const GUT_W = 12;
+/**
+ * The Compact bar's piece labels, and their widths in that font kept between frames: the venues' names never change and the sizes slowly,
+ * and each piece measured up to four labels on every frame (Research_Findings.md, 2026-11-07). Emptied when it grows large.
+ */
+const PIECE_FONT = '600 10px ui-sans-serif, system-ui, sans-serif';
+const pieceWidths = new Map<string, number>();
 /** How long the pointer still finds a change at a row, so a cell that went quiet reads "a minute ago" and not nothing. */
 const CHANGE_HOVER_MS = 120_000;
 /** A window as the popup says it: "15 s", "1 min". */
@@ -609,8 +615,12 @@ export class LadderPane {
    */
   #paintPieces(mat: CanvasRenderingContext2D, ctx: CanvasRenderingContext2D, pieces: readonly BarPiece[], y: number, color: string, f: number): void {
     const p = this.#palette;
-    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
-    const measure = (text: string): number => ctx.measureText(text).width;
+    ctx.font = PIECE_FONT; ctx.textAlign = 'left';
+    const measure = (text: string): number => {
+      let width = pieceWidths.get(text);
+      if (width === undefined) { if (pieceWidths.size >= 2_000) pieceWidths.clear(); width = ctx.measureText(text).width; pieceWidths.set(text, width); }
+      return width;
+    };
     for (const piece of pieces) {
       const alpha = Math.min(1, (piece.rank < 0 ? 0.4 : piece.rank % 2 === 0 ? 0.92 : 0.62) * f), w = Math.max(1, piece.w - (piece.w >= 3 ? 1 : 0));
       mat.globalAlpha = alpha; mat.fillStyle = color; mat.fillRect(piece.x, y + 2, w, ROW_H - 4);
