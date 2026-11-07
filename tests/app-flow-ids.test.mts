@@ -74,6 +74,11 @@ test("the map's marks of orders all go through instrumentShown: none is left fil
   // Bubbles, dust, venue lines, absorption and liquidations. A filter by `disabledVenues` alone drew a venue whose book was down (no chip).
   const source = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'panes', 'heat-pane.ts'), 'utf8');
   assert.equal([...source.matchAll(/instrumentShown\(state\)/g)].length, 5, 'the dust mask, the venue lines, the bubbles, absorption and the diamonds');
+  // And each painter uses it (absorption's use is the call itself, counted above).
+  assert.match(source, /bubbleHidden\(print, s\) \|\| !shown\(print\.id\)/, 'the bubbles');
+  assert.match(source, /liquidationHidden\(l, s\) \|\| !shown\(l\.id\)/, 'the diamonds');
+  assert.match(source, /dust\.setMask\(tape\.ids\.flatMap\(\(id, i\) => shown\(id\) \? \[\] : \[i\]\)\)/, 'the live dust');
+  assert.match(source, /i !== chart && shown\(id\)/, 'the venue lines');
   assert.equal([...source.matchAll(/\boff\.includes\(/g)].length, 0, 'no mark filters by the chips alone');
   // The one other reader of the chips counts markets for the candle history estimate (chips and the Spot / Perp filter), not marks.
   assert.equal([...source.matchAll(/disabledVenues\.includes\(/g)].length, 1, 'only the history estimate reads the chips itself');
