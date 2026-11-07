@@ -50,6 +50,22 @@ test('a sweep that was queued is not sounded after the sounds were switched off,
   assert.equal(prompt.sounds.log.length, 1, 'and one that waited a normal quarter second still sounds');
 });
 
+test("a trade sounds by the map's venue rule: not when its venue's chip is off, nor when its venue has no book on the map (no chip to switch off)", () => {
+  // Karl, 2026-11-07: Deribit's chip alone on, and OKX's trades went on as if switched on: OKX's book was down, so it had no chip.
+  const book = (id: string) => ({ id, venue: id.split(':')[0]!, timestamp: 0, coarse: false, bids: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() }, asks: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() } });
+  const heard = (levels: LevelsFrame | null, disabledVenues: string[], id: string): number => {
+    const rig = soundsRig(); rig.store.set({ levels, disabledVenues });
+    rig.sounds.feed([{ ...print(rig.T, 1_000_000), id }]); rig.advance(300); rig.sounds.drainNow();
+    return rig.sounds.log.length;
+  };
+  const frame: LevelsFrame = { asOf: 0, books: [book('deribit:BTC-PERPETUAL'), book('binance:BTCUSDT')] };
+  assert.equal(heard(frame, ['binance'], 'deribit:BTC-PERPETUAL'), 1, 'its chip on, its book on the map');
+  assert.equal(heard(frame, ['binance'], 'binance:BTCUSDT'), 0, 'its chip off');
+  assert.equal(heard(frame, ['binance'], 'okx:BTC-USDT-SWAP'), 0, 'no book on the map: off with Deribit alone on');
+  assert.equal(heard(frame, [], 'okx:BTC-USDT-SWAP'), 0, 'and with every chip on, as the flow column leaves it out');
+  assert.equal(heard(null, [], 'okx:BTC-USDT-SWAP'), 1, 'before the first frame nothing is left out');
+});
+
 // The candle chime and the panel alerts watch the closing of the candle that is on screen; they have to be told apart from what is merely loaded.
 
 function stubBrowser(): () => void {

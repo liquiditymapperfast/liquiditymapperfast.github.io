@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOOK_HOLD_MS, flowIds, mapVenues, nextBookGone, oiFlowIds, pinChoices } from '../src/app/cvd/ids.ts';
+import { BOOK_HOLD_MS, flowIds, instrumentShown, mapVenues, nextBookGone, oiFlowIds, pinChoices } from '../src/app/cvd/ids.ts';
 import type { LevelsFrame } from '../src/app/wire.ts';
 
 const book = (id: string) => ({ id, venue: id.split(':')[0]!, timestamp: 0, coarse: false, bids: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() }, asks: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() } });
@@ -47,4 +47,22 @@ test('the exchanges that can be pinned are every one the page knows, spot twins 
   assert.deepEqual(pinChoices({ markets }, ['c:BTC'], []), ['a', 'b', 'c'], 'a market or flow is enough, chips and books do not matter');
   assert.deepEqual(pinChoices({ markets: [{ instrumentId: 'binance:BTC', venue: 'binance', marketType: 'perpetual' }, { instrumentId: 'binancespot:BTC', venue: 'binancespot', marketType: 'spot' }, { instrumentId: 'okx:BTC', venue: 'okx', marketType: 'perpetual' }] }, ['hyperliquid:BTC'], []), ['binance', 'hyperliquid', 'okx'], 'Binance and Binance spot are one exchange');
   assert.deepEqual(pinChoices({ markets: [] }, [], ['kraken']), ['kraken'], 'a pin on an exchange that is gone can still be taken off');
+});
+
+test("the map draws and sounds an instrument's orders by the flow views' rule: its chip on and its book on the map, or there moments ago", () => {
+  // Karl, 2026-11-07: Deribit's chip alone on, and OKX's bubbles still drawn: OKX's book was down, so it had no chip to switch off.
+  const at = (asOf: number, ...ids: string[]): LevelsFrame => ({ asOf, books: ids.map(book) });
+  const frame = at(10_000, 'a:BTC', 'aspot:BTC');
+  const shown = (state: Parameters<typeof instrumentShown>[0], ids: string[]): string[] => ids.filter(instrumentShown(state));
+  const ids = ['a:BTC', 'aspot:BTC', 'b:BTC-SWAP', 'c:BTC'];
+  assert.deepEqual(shown({ disabledVenues: [], levels: frame }, ids), ['a:BTC', 'aspot:BTC'], 'b and c have orders but no book: not drawn with every chip on');
+  assert.deepEqual(shown({ disabledVenues: ['aspot'], levels: frame }, ids), ['a:BTC'], 'a chip switched off');
+  assert.deepEqual(shown({ disabledVenues: ['a', 'aspot'], levels: frame }, ids), [], 'every chip off: none, the bookless included');
+  assert.deepEqual(shown({ disabledVenues: [], levels: frame, bookGone: { b: 10_000 - BOOK_HOLD_MS } }, ids), ['a:BTC', 'aspot:BTC', 'b:BTC-SWAP'], 'b left the map within the hold: still drawn');
+  assert.deepEqual(shown({ disabledVenues: [], levels: frame, bookGone: { b: 10_000 - BOOK_HOLD_MS - 1 } }, ids), ['a:BTC', 'aspot:BTC'], 'past the hold: no longer');
+  assert.deepEqual(shown({ disabledVenues: ['b'], levels: frame, bookGone: { b: 10_000 } }, ids), ['a:BTC', 'aspot:BTC'], 'held, but its chip off');
+  assert.deepEqual(shown({ disabledVenues: [], levels: null }, ids), ids, 'before the first frame nothing is left out');
+  assert.deepEqual(shown({ disabledVenues: ['c'], levels: null }, ids), ['a:BTC', 'aspot:BTC', 'b:BTC-SWAP'], 'but a chip switched off is');
+  const one = instrumentShown({ disabledVenues: ['aspot'], levels: frame });
+  assert.deepEqual([one('aspot:BTC'), one('aspot:ETH'), one('a:ETH'), one('a:BTC')], [false, false, true, true], 'one predicate answers the same for every instrument of a venue');
 });

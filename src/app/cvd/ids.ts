@@ -35,6 +35,22 @@ export function mapVenues(state: MapState): Set<string> | null {
 export type MapState = Pick<AppState, 'levels'> & Partial<Pick<AppState, 'bookGone'>>;
 
 /**
+ * Whether the orders of an instrument (`okx:BTC-USDT-SWAP`) are drawn on the map (trade bubbles, live dust, venue lines, liquidations,
+ * absorption) and sound: its venue's chip on, and its book on the map or there moments ago (`mapVenues`), the rule the flow views count by.
+ * The chips are the map's books, so a venue with no book has none and could not be switched off: with Deribit's chip alone on, OKX's trades
+ * went on drawing while its book was down (Karl, 2026-11-07). Make one per frame or batch: it builds the map's venue set once.
+ */
+export function instrumentShown(state: Pick<AppState, 'disabledVenues'> & MapState): (id: string) => boolean {
+  const drawn = mapVenues(state), off = state.disabledVenues, seen = new Map<string, boolean>();
+  return id => {
+    const at = id.indexOf(':'), venue = at < 0 ? id : id.slice(0, at);
+    let shown = seen.get(venue);
+    if (shown === undefined) seen.set(venue, shown = !off.includes(venue) && (drawn === null || drawn.has(venue)));
+    return shown;
+  };
+}
+
+/**
  * The instruments the flow views count: every market the page knows and everything that has flow, on a venue that has a book on the map
  * (or had one moments ago: `mapVenues`), with its chip left on, and inside the Spot / Perp / Both filter.
  */

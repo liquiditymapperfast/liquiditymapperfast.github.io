@@ -2,6 +2,7 @@ import type { Store } from '../store.ts';
 import type { Print } from '../prints.ts';
 import { anomalies } from '../anomaly.ts';
 import { kindOf } from '../scope.ts';
+import { instrumentShown } from '../cvd/ids.ts';
 import { SoundEngine } from './engine.ts';
 import { Coalescer, chimeNotes, notesFor, tierOf, type SoundEvent } from './rules.ts';
 import { TIMEFRAMES } from '../../shared/series.ts';
@@ -55,10 +56,10 @@ export class Sounds {
   feed(prints: readonly Print[]): void {
     const s = this.store.state;
     if (!s.sounds.on || replaying()) return;
-    const nowMs = this.clock(), at = this.now();
+    const nowMs = this.clock(), at = this.now(), shown = instrumentShown(s);
     for (const p of prints) {
       if (nowMs - p.t > MAX_AGE_MS) continue;
-      if (s.disabledVenues.includes(p.id.split(':')[0]!)) continue;
+      if (!shown(p.id)) continue;
       if (s.sounds.scope !== 'all' && kindOf(s.markets, p.id) !== (s.sounds.scope === 'spot' ? 'spot' : 'perp')) continue;
       this.#coalescer.add(p, at);
     }
