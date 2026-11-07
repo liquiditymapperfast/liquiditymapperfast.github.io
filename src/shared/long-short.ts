@@ -9,6 +9,12 @@ import type { Fetcher } from './history.ts';
  * Measured 2026-10-13 (BTC):
  * - Binance `futures/data/{globalLongShortAccountRatio | topLongShortAccountRatio | topLongShortPositionRatio}`: `longAccount`,
  *   `shortAccount`, `longShortRatio`; 500 a page back from `endTime`, the last 30 days only (an older `endTime` is an error); CORS.
+ *   Before that, its daily data archive (2026-11-06): `data.binance.vision/data/futures/um/daily/metrics/<SYMBOL>/<SYMBOL>-metrics-<date>.zip`,
+ *   one zip a UTC day (~11 KB; from 2020-09-01 for BTCUSDT; out the next morning, ~06:40 UTC), its 288 five-minute rows in no order;
+ *   `count_long_short_ratio` is every account's ratio, `count_toptrader_long_short_ratio` the top traders' by accounts and
+ *   `sum_toptrader_long_short_ratio` by positions. A row stamped `create_time` T is the API's reading at T + 5 minutes (4,880 of 4,880 the
+ *   same for each series, to the API's four decimals), so a day's midnight reading is the day before's last row. CORS for a plain GET.
+ *   COIN-M's files are per contract and do not match its API's per-pair readings: only USD-M is read from the archive.
  * - Bybit `v5/market/account-ratio`: `buyRatio`, `sellRatio`, newest first, 500 a page back from `endTime`, years of it; CORS.
  * - OKX `rubik/stat/contracts/long-short-account-ratio-contract`: `[ts, ratio]` newest first, 100 a page back from `end` (five-minute
  *   periods for about a day, hourly for weeks); no CORS header, so a page cannot read it. Its top traders (2026-10-21):
@@ -79,8 +85,20 @@ export const VENUE_GAP_MS: Readonly<Record<string, number>> = { bitget: 1_100 };
  * long after the round that asked for it gave up, and a burst of questions for other windows cannot queue without end.
  */
 export const VENUE_WAITING_MAX = 8;
-/** Binance answers only for the last 30 days. */
+/** Binance's API answers only for the last 30 days; its daily archive holds the days before. */
 const BINANCE_SPAN_MS = 30 * DAY;
+/** Each series' column in Binance's daily archive. */
+const ARCHIVE_COLUMNS: Readonly<Record<LsMetric, string>> = { accounts: 'count_long_short_ratio', topAccounts: 'count_toptrader_long_short_ratio', topPositions: 'sum_toptrader_long_short_ratio' };
+/** An archive row's time to the API's time for the same reading. */
+const ARCHIVE_SHIFT_MS = 5 * MINUTE;
+/** The most archive days one read takes, newest first: a longer window is read on by the cache's next read, its line growing as each lands. */
+export const ARCHIVE_DAYS = 96;
+/**
+ * Archive days fetched at once. Every file is a CloudFront miss served from Tokyo, ~1 s each from Paraguay (2026-11-06), so they go in
+ * parallel: over the page's one HTTP/2 connection 100 took 2.5 s. 48 at a time keeps even an HTTP/1.1 fallback's queue (6 connections)
+ * inside each request's 15 s.
+ */
+const ARCHIVE_PARALLEL = 48;
 const PAGES = 12;
 /** Readings a page, per venue (Bitget has one page of 30). */
 const PAGE_ROWS: Readonly<Record<string, number>> = { binance: 500, bybit: 500, okx: 100, bitget: 30, gateio: 500 };
@@ -173,12 +191,128 @@ function nextEnd(what: string, oldest: number): number {
 /** The long share from a ratio of long to short accounts (OKX gives only that): 1.25 is 1.25 long accounts for each short one, 55.6 % long. */
 export const shareOfRatio = (ratio: number): number => ratio / (1 + ratio);
 
+/** The text of a zip's one file, stored or deflated, found through its central directory (where the sizes are always given). */
+export async function zipText(bytes: Uint8Array): Promise<string> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // The end record: the last 22 bytes, or before a comment of at most 65535.
+  let end = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 0xffff); i--) if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  const dir = end < 0 ? -1 : view.getUint32(end + 16, true);
+  if (dir < 0 || dir + 46 > bytes.length || view.getUint32(dir, true) !== 0x02014b50) throw new Error('not a zip');
+  const method = view.getUint16(dir + 10, true), size = view.getUint32(dir + 20, true), local = view.getUint32(dir + 42, true);
+  if (local + 30 > bytes.length || view.getUint32(local, true) !== 0x04034b50) throw new Error('not a zip');
+  const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+  if (start + size > bytes.length) throw new Error('a zip cut short');
+  const data = bytes.subarray(start, start + size);
+  if (method === 0) return new TextDecoder().decode(data);
+  if (method !== 8) throw new Error(`a zip compressed by method ${method}`);
+  return new Response(new Response(data).body!.pipeThrough(new DecompressionStream('deflate-raw'))).text();
+}
+
+/** A day of Binance's archive: each series' readings, oldest first. */
+export type ArchiveDay = Readonly<Record<LsMetric, LsPoint[]>>;
+
+/**
+ * One UTC day's readings of every series from Binance's daily archive, at the API's times (a reading that does not add up is left out); null
+ * where Binance published no file for the day. Throws for a file not of its form: a changed archive reads as failed, not as empty.
+ */
+export async function binanceArchiveDay(symbol: string, day: number, get: Fetcher): Promise<ArchiveDay | null> {
+  const date = new Date(day).toISOString().slice(0, 10);
+  let bytes: unknown;
+  try { bytes = await get(`https://data.binance.vision/data/futures/um/daily/metrics/${encodeURIComponent(symbol)}/${encodeURIComponent(symbol)}-metrics-${date}.zip`); }
+  catch (error) { if (at(error, 'status') === 404) return null; throw error; }
+  if (!(bytes instanceof Uint8Array)) throw new Error('binance archive: not a file');
+  const lines = (await zipText(bytes)).split(/\r?\n/), head = lines[0]!.split(','), timeAt = head.indexOf('create_time'), columns = LS_METRICS.map(m => head.indexOf(ARCHIVE_COLUMNS[m]));
+  if (timeAt < 0 || columns.some(c => c < 0)) throw new Error('binance archive: readings of an unknown shape');
+  const out = LS_METRICS.map(() => new Map<number, LsPoint>());
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i]!.split(','), m = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)$/.exec(cells[timeAt] ?? '');
+    if (!m) continue;
+    const t = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!) + ARCHIVE_SHIFT_MS;
+    columns.forEach((c, k) => { const ratio = num(cells[c]), p = ratio > 0 ? lsReading(t, shareOfRatio(ratio)) : null; if (p) out[k]!.set(t, p); });
+  }
+  const sorted = (k: number): LsPoint[] => [...out[k]!.values()].sort((a, b) => a.t - b.t);
+  return { accounts: sorted(0), topAccounts: sorted(1), topPositions: sorted(2) };
+}
+
+/** The most readings an `ArchiveMemo` keeps: a few hundred kilobytes to a few megabytes. */
+const ARCHIVE_MEMO_POINTS = 60_000;
+/**
+ * Archive days read lately, on the grid of the period they were read in, every series of each (one file holds all three, and the pane reads
+ * the other two after the one shown, to switch at once): a read of another series finds its days here rather than fetching each file again.
+ * At most `ARCHIVE_MEMO_POINTS` readings, the least recently asked day going first; a failed read is not kept. It also knows, per market,
+ * when the archive was last seen to hold it and when its archive last failed.
+ */
+export class ArchiveMemo {
+  #days = new Map<string, { day: Promise<ArchiveDay | null>; size: number }>();
+  #size = 0;
+  #failed = new Map<string, number>();
+  /** When the archive was last seen to hold each market (`binanceArchiveHolds`, the cache's clock). */
+  readonly holds = new Map<string, number>();
+  constructor(private maxPoints = ARCHIVE_MEMO_POINTS) {}
+  /** The day kept under `key`, or `read` it and keep it, counted as `size` readings. */
+  day(key: string, size: number, read: () => Promise<ArchiveDay | null>): Promise<ArchiveDay | null> {
+    const held = this.#days.get(key);
+    if (held) { this.#days.delete(key); this.#days.set(key, held); return held.day; }
+    const entry = { day: read(), size };
+    this.#days.set(key, entry); this.#size += size;
+    entry.day.catch(() => { if (this.#days.get(key) === entry) { this.#days.delete(key); this.#size -= size; } });
+    for (const [old, e] of this.#days) { if (this.#size <= this.maxPoints || old === key) break; this.#days.delete(old); this.#size -= e.size; }
+    return entry.day;
+  }
+  /** Let go of the days kept under `keys` (days that had no file, asked again next time). */
+  forget(keys: readonly string[]): void { for (const key of keys) { const e = this.#days.get(key); if (e) { this.#days.delete(key); this.#size -= e.size; } } }
+  /** The market's archive failed at `now` (the cache's clock): it is left alone for a minute, while the API's readings go on. */
+  fail(symbol: string, now: number): void { this.#failed.set(symbol, now); }
+  cooling(symbol: string, now: number): boolean { return now - (this.#failed.get(symbol) ?? -Infinity) < MINUTE; }
+}
+
+/**
+ * Whether the archive holds `symbol` now: the file of three days ago is there (out by then; a market listed since has none), looked at no more
+ * than once a minute (`memo`). A file read for the market earlier is no evidence: the archive may have gone since. Throws when the file
+ * cannot be read.
+ */
+async function binanceArchiveHolds(symbol: string, now: number, get: Fetcher, memo?: ArchiveMemo): Promise<boolean> {
+  if (now - (memo?.holds.get(symbol) ?? -Infinity) < MINUTE) return true;
+  const holds = await binanceArchiveDay(symbol, Math.floor(now / DAY) * DAY - 3 * DAY, get) !== null;
+  if (holds) memo?.holds.set(symbol, now);
+  return holds;
+}
+
+/**
+ * Binance's readings older than its API's 30 days, from its daily archive: those of [lo, hi) on the period's grid, the newest `ARCHIVE_DAYS`
+ * days of files at most, `ARCHIVE_PARALLEL` at a time (through `memo`, where the cache keeps one). `from` is where they reach back to: `lo`,
+ * or the start of the oldest day read when there were more. A day with no file is skipped (nothing filled in); a read that found no file at all
+ * (`none`) may be before the archive begins (`fetchLongShort` decides), and says the memo `keys` of its days and its `newest` day.
+ */
+async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number, lo: number, hi: number, get: Fetcher, memo?: ArchiveMemo): Promise<{ points: LsPoint[]; from: number; none: boolean; newest: number; keys: string[] }> {
+  // A day's file holds the readings after its midnight up to and with the next one (each row is the API's reading five minutes on).
+  const dayOf = (t: number): number => Math.floor((t - ARCHIVE_SHIFT_MS) / DAY) * DAY, first = dayOf(lo), days: number[] = [];
+  for (let day = dayOf(hi - 1); day >= first && days.length < ARCHIVE_DAYS; day -= DAY) days.push(day);
+  const onGrid = async (day: number): Promise<ArchiveDay | null> => {
+    const all = await binanceArchiveDay(symbol, day, get), grid = (points: LsPoint[]): LsPoint[] => points.filter(p => p.t % periodMs === 0);
+    return all && { accounts: grid(all.accounts), topAccounts: grid(all.topAccounts), topPositions: grid(all.topPositions) };
+  };
+  const keys = days.map(day => `${symbol}|${periodMs}|${day}`);
+  const read = (i: number): Promise<ArchiveDay | null> => memo ? memo.day(keys[i]!, 3 * Math.ceil(DAY / periodMs), () => onGrid(days[i]!)) : onGrid(days[i]!);
+  const got: (ArchiveDay | null)[] = new Array(days.length);
+  let next = 0, failed = false;
+  await Promise.all(Array.from({ length: Math.min(ARCHIVE_PARALLEL, days.length) }, async () => {
+    try { while (!failed && next < days.length) { const i = next++; got[i] = await read(i); } }
+    catch (error) { failed = true; throw error; }
+  }));
+  const points = got.flatMap(day => day?.[metric] ?? []).filter(p => p.t >= lo && p.t < hi).sort((a, b) => a.t - b.t);
+  const oldest = days[days.length - 1], none = got.every(day => day === null);
+  return { points, from: oldest === undefined || oldest <= first || none ? lo : oldest + ARCHIVE_SHIFT_MS, none, newest: days[0] ?? -Infinity, keys };
+}
+
 /**
  * A venue's readings of `metric` for the market `symbol` over [from, to), oldest first, and how far back the answer reaches: `from`, or where
- * its pages ran out (at most `PAGES` a question) when the venue had more. Throws when an answer is not what the venue sends (a changed API
- * reads as failed, not as empty); a reading that does not add up is left out.
+ * its pages ran out (at most `PAGES` a question, or `ARCHIVE_DAYS` of Binance's archive) when the venue had more. Throws when an answer is not
+ * what the venue sends (a changed API reads as failed, not as empty); a reading that does not add up is left out. `memo` keeps the archive
+ * days read for the other series of the market.
  */
-export async function fetchLongShort(venue: string, symbol: string, metric: LsMetric, periodMs: number, from: number, to: number, get: Fetcher, now = Date.now()): Promise<{ points: LsPoint[]; from: number }> {
+export async function fetchLongShort(venue: string, symbol: string, metric: LsMetric, periodMs: number, from: number, to: number, get: Fetcher, now = Date.now(), memo?: ArchiveMemo): Promise<{ points: LsPoint[]; from: number }> {
   const name = PERIODS[venue]?.[periodMs];
   if (!name || lsPopulationOf(venue, metric) === null || (!LS_CHOSEN_VENUES.includes(venue) && metric !== 'accounts')) throw new Error(`${venue} publishes no such series`);
   const out = new Map<number, LsPoint>(), take = (p: LsPoint | null): void => { if (p && p.t >= from - periodMs && p.t < to) out.set(p.t, p); };
@@ -190,16 +324,43 @@ export async function fetchLongShort(venue: string, symbol: string, metric: LsMe
     const floor = Math.max(from, now - BINANCE_SPAN_MS + periodMs);
     // A COIN-M perpetual (BTCUSD_PERP) is read from the COIN-M statistics, by its pair.
     const coinM = /^([A-Z0-9]+)_PERP$/.exec(symbol), market = coinM ? `https://dapi.binance.com/futures/data/${BINANCE_PATHS[metric]}?pair=${encodeURIComponent(coinM[1]!)}` : `https://fapi.binance.com/futures/data/${BINANCE_PATHS[metric]}?symbol=${s}`;
-    for (end = Math.min(to, now); page < PAGES && end > floor; page++) {
-      // COIN-M names its top traders' position shares longPosition and shortPosition (USD-M calls them longAccount and shortAccount).
-      const [longKey, shortKey] = coinM && metric === 'topPositions' ? ['longPosition', 'shortPosition'] : ['longAccount', 'shortAccount'];
-      const limit = limitFor(floor);
-      const got = rows(await get(`${market}&period=${name}&limit=${limit}&endTime=${Math.floor(end)}`), 'binance', 'timestamp', longKey, shortKey, 'longShortRatio');
-      let oldest = Infinity;
-      for (const r of got) { const t = num(at(r, 'timestamp')); take(lsReading(t, num(at(r, longKey)), num(at(r, shortKey)), num(at(r, 'longShortRatio')))); if (t > 0 && t < oldest) oldest = t; }
-      if (got.length < limit) break;
-      end = nextEnd('binance', oldest);
+    // What is older than the API's 30 days comes from the daily archive (USD-M only), read alongside the API's pages. It reaches a day into the
+    // API's days, so a clock a little off leaves no hole between them. Its failure never fails the API's readings: they are answered, the
+    // archive's days are not claimed, and the market's archive is left alone for a minute (`ArchiveMemo.fail`).
+    const lo = from - periodMs, hi = Math.min(to, now - BINANCE_SPAN_MS + Math.max(periodMs, DAY));
+    const wanted = !coinM && lo < hi, cooling = wanted && memo?.cooling(symbol, now) === true;
+    const archive = wanted && !cooling ? binanceArchive(symbol, metric, periodMs, lo, hi, get, memo).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error)))) : null;
+    const api = (async () => {
+      for (end = Math.min(to, now); page < PAGES && end > floor; page++) {
+        // COIN-M names its top traders' position shares longPosition and shortPosition (USD-M calls them longAccount and shortAccount).
+        const [longKey, shortKey] = coinM && metric === 'topPositions' ? ['longPosition', 'shortPosition'] : ['longAccount', 'shortAccount'];
+        const limit = limitFor(floor);
+        const got = rows(await get(`${market}&period=${name}&limit=${limit}&endTime=${Math.floor(end)}`), 'binance', 'timestamp', longKey, shortKey, 'longShortRatio');
+        let oldest = Infinity;
+        for (const r of got) { const t = num(at(r, 'timestamp')); take(lsReading(t, num(at(r, longKey)), num(at(r, shortKey)), num(at(r, 'longShortRatio')))); if (t > 0 && t < oldest) oldest = t; }
+        if (got.length < limit) break;
+        end = nextEnd('binance', oldest);
+      }
+    })();
+    const [old] = await Promise.all([archive, api]);
+    // Not one file in the read: before the archive begins only on evidence, the archive holding this market now (its file of three days ago)
+    // or the API showing it began trading after those days. Without it the archive is gone or moved: the days are not claimed, and asked
+    // again after the minute (they are let go of in the memo, so a returning archive is read).
+    const read = old instanceof Error ? null : old;
+    let failed = old instanceof Error;
+    if (read?.none) {
+      const began = out.size > 0 && Math.min(...out.keys()) > read.newest + DAY;
+      failed = !began && !(await binanceArchiveHolds(symbol, now, get, memo).catch(() => false));
+      if (failed) memo?.forget(read.keys);
     }
+    if (failed) memo?.fail(symbol, now);
+    const unread = cooling || failed;
+    // The API's own reading where both have one (the same, to its four decimals).
+    if (!unread && read) for (const p of read.points) if (!out.has(p.t)) take(p);
+    const points = [...out.values()].sort((a, b) => a.t - b.t);
+    // Unread, the answer reaches back to where the API's days begin, or to the window's end for a window older than them (claiming nothing of
+    // it: read again, it is read alone, not every day from it to the API's).
+    return { points, from: page >= PAGES && end > from ? end : unread ? Math.min(floor, to) : read && read.from > lo ? read.from : from };
   } else if (venue === 'bybit') {
     for (; page < PAGES && end >= from; page++) {
       const limit = limitFor(from);
@@ -263,8 +424,11 @@ export async function fetchLongShort(venue: string, symbol: string, metric: LsMe
   return { points: [...out.values()].sort((a, b) => a.t - b.t), from: page >= PAGES && end > from ? end : from };
 }
 
-/** A series the cache holds: its readings, the stretch [from, to) they cover, when its newest stretch was read and last failed, its read under way. */
-interface HeldSeries { points: Map<number, LsPoint>; from: number; to: number; checked: number; failed: number; busy: Promise<void> | null; noMarket?: boolean; restoring: Promise<void> | null }
+/**
+ * A series the cache holds: its readings, the stretch [from, to) they cover, when its newest stretch was read and last failed, its read under
+ * way and how many questions wait for that read.
+ */
+interface HeldSeries { points: Map<number, LsPoint>; from: number; to: number; checked: number; failed: number; busy: Promise<void> | null; noMarket?: boolean; restoring: Promise<void> | null; waiting: number }
 /** What a backing keeps of a series: its readings (oldest first), the stretch [from, to) they cover and when its newest stretch was read. */
 export interface LsHeldRecord { points: LsPoint[]; from: number; to: number; checked: number }
 /**
@@ -283,9 +447,10 @@ export interface LsBacking {
 /**
  * The format of what a backing keeps: a backing stores it and treats a record of another as none. Raise it whenever a change to the venues'
  * parsing or to what a stretch [from, to) claims would make kept readings or stretches wrong: before backings, a deploy read everything anew,
- * and a wrong stretch kept now would never be read again (only the hours after it are).
+ * and a wrong stretch kept now would never be read again (only the hours after it are). 2 (2026-11-06): Binance's series reach back through
+ * its daily archive, and a stretch kept before held its days older than 30 as read, with no readings.
  */
-export const LS_FORMAT = 1;
+export const LS_FORMAT = 2;
 /** A kept record the cache can trust: finite times, readings in range and in order, at most `maxPoints`, read no later than `now` (with a minute's slack). */
 export function validRecord(record: LsHeldRecord, now = Infinity, maxPoints = Infinity): boolean {
   if (!Number.isFinite(record.from) || !Number.isFinite(record.to) || !Number.isFinite(record.checked) || !Array.isArray(record.points)) return false;
@@ -313,6 +478,8 @@ export class LongShortCache {
   #series = new Map<string, HeldSeries>();
   /** Each paced venue's lane: when its last request went out (wall-clock ms, once it has), and how many wait behind it. */
   #lanes = new Map<string, { last: Promise<number>; waiting: number }>();
+  /** Binance's archive days read lately, for every series of the market (`ArchiveMemo`). */
+  #archive = new ArchiveMemo();
   constructor(private get: Fetcher, private browser: boolean, private now: () => number = Date.now, private maxSeries = 48, private maxPoints = 10_000, private pageDeadlineMs = LS_PAGE_DEADLINE_MS,
     private gapMs: Readonly<Record<string, number>> = VENUE_GAP_MS, private backing: LsBacking | null = null) {}
 
@@ -379,7 +546,7 @@ export class LongShortCache {
     let held = this.#series.get(key);
     if (held) this.#series.delete(key);
     if (!held) {
-      held = { points: new Map(), from: Infinity, to: -Infinity, checked: 0, failed: 0, busy: null, restoring: null };
+      held = { points: new Map(), from: Infinity, to: -Infinity, checked: 0, failed: 0, busy: null, restoring: null, waiting: 0 };
       if (this.backing) held.restoring = this.#restore(key, held);
     }
     this.#series.set(key, held);
@@ -406,7 +573,9 @@ export class LongShortCache {
     for (let reads = 0, waits = 0; ;) {
       if (held.busy) {
         if (waits++ >= 64) break;
-        if (!(await settledBy(held.busy, until))) { pending = true; break; }
+        held.waiting++;
+        const settled = await settledBy(held.busy, until).finally(() => { held.waiting--; });
+        if (!settled) { pending = true; break; }
         continue;
       }
       const h = held, now = this.now(), want = Math.min(to, now + periodMs);
@@ -421,13 +590,18 @@ export class LongShortCache {
       else { covered = true; break; }
       if (reads++ >= 4) break;
       // Too far from what is held for one question to join them without a hole: the series starts again at this window (and so does what the
-      // backing keeps, once it is read: a failed read leaves it as it was, a stretch as good as it ever was).
-      const restarted = kind !== 'whole' && end - start > reach;
+      // backing keeps, once it is read: a failed read leaves it as it was, a stretch as good as it ever was). The older stretch of a window that
+      // reaches what is held joins it however far back it goes: each read reaches back as far as it can and the next reads on from there
+      // (started again instead, a window wider than `reach` read its newest stretch over and over, never further back: 2026-11-06 review).
+      const restarted = kind !== 'whole' && end - start > reach && !(kind === 'older' && to >= h.from);
       if (restarted) { h.points.clear(); h.from = Infinity; h.to = -Infinity; start = from; end = want; kind = 'whole'; }
+      // A read that reached back only part of its window (Binance's archive, `ARCHIVE_DAYS` at a time) and got further than before.
+      let short = false;
       // The Binance series chosen is Binance's: every other venue publishes its accounts alone.
-      h.busy = fetchLongShort(venue, symbol, LS_CHOSEN_VENUES.includes(venue) ? metric : 'accounts', periodMs, start, end, get, now).then(({ points, from: reached }) => {
+      h.busy = fetchLongShort(venue, symbol, LS_CHOSEN_VENUES.includes(venue) ? metric : 'accounts', periodMs, start, end, get, now, this.#archive).then(({ points, from: reached }) => {
         // A market the venue did not list before (asked again once a minute) is published again once it answers.
         h.failed = 0; h.noMarket = false;
+        short = (kind === 'whole' || kind === 'older') && reached > start && reached < (kind === 'whole' ? end : h.from);
         for (const p of points) h.points.set(p.t, p);
         // Held from where the answer reached (a long window's pages may stop short of it: the next question reads on from there), up to a
         // period before now: the reading of the period under way comes later. A window that starts inside that period (or after it) is held
@@ -457,7 +631,12 @@ export class LongShortCache {
         h.failed = this.now();
         if (error instanceof LsNoMarket) h.noMarket = true;
         // A crash in the handlers above counts as a failed read: nobody may be waiting on `busy` (a question past its budget) to catch it.
-      }).catch(() => { h.failed = this.now(); }).finally(() => { h.busy = null; });
+      }).catch(() => { h.failed = this.now(); }).finally(() => {
+        h.busy = null;
+        // With no question waiting for it (each gave up at its budget), the rest of the window is read on at once rather than at the next
+        // question, seconds later: its line grows a read at a time. A question still waiting reads on itself, in its own turns.
+        if (short && !h.waiting && this.#series.get(key) === h) void this.series(id, metric, tfMs, from, to, 0).catch(() => undefined);
+      });
     }
     if (held.noMarket) return answer([], 'unsupported');
     const points = [...held.points.values()].filter(p => p.t >= from - periodMs && p.t < to).sort((a, b) => a.t - b.t);

@@ -11,7 +11,8 @@ import { hyperliquidOneSide } from './oi-sides.ts';
 /**
  * Fetch one URL and parse its JSON; the browser passes `fetch`, tests pass a fake. A `wss://` URL is a request over a short-lived
  * WebSocket: `init.body` is sent as the first message and the first reply is the answer (Deribit's candle endpoint sends no CORS
- * headers, so a page cannot read it over HTTP, but its JSON-RPC socket serves the same method).
+ * headers, so a page cannot read it over HTTP, but its JSON-RPC socket serves the same method). A `.zip` URL (Binance's daily data
+ * archive) answers its bytes, a `Uint8Array`.
  */
 export type Fetcher = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; cache?: 'default' | 'no-cache' | 'no-store' }) => Promise<unknown>;
 
@@ -36,7 +37,7 @@ export const webGet: Fetcher = async (url, init) => {
   // The status and the start of the answer go with the error: a venue may say why in it (Gate answers a contract it does not list with a
   // 400 that says `CONTRACT_NOT_FOUND`).
   if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status, body: (await response.text().catch(() => '')).slice(0, 500) });
-  return response.json();
+  return url.endsWith('.zip') ? new Uint8Array(await response.arrayBuffer()) : response.json();
 };
 
 const num = (value: unknown): number => Number(value);

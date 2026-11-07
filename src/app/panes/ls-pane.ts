@@ -97,8 +97,8 @@ export function lsCardLines(series: readonly LsSeries[], time: number, tf: strin
 /**
  * The Long/Short pane: the share of each venue's accounts that is net long, as the venue publishes it (shared/long-short.ts), one line per
  * venue around a 50 % line. The venues are the OI pane's markets that publish one; Binance's series is chosen in the header. A pane off by
- * default: nothing new is asked while it is hidden (a read already under way finishes), and its readings are asked for again at most once a
- * minute.
+ * default: nothing new is asked while it is hidden (a read already under way finishes, and so does a long window's reading back through
+ * Binance's archive), and its readings are asked for again at most once a minute.
  */
 export class LsPane extends TimePane {
   #card = new HoverCard();

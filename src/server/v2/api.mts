@@ -501,7 +501,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   };
   // Long/short ratios as the venues publish them, read when asked for and kept in memory and in a file of their own (shared/long-short.ts,
   // ls-store.mts): nothing of the history store's budget, after a restart only the hours since are read, and nothing new is asked while no
-  // page shows the pane (a read already under way finishes).
+  // page shows the pane (a read already under way finishes, and so does a long window's reading back through Binance's archive).
   // A file that cannot be opened (locked, damaged) costs only the keeping: it is a cache, never a reason not to start.
   let lsStore: SqliteLsStore | null = null;
   if (persist) try { lsStore = new SqliteLsStore(path.join(dataDir, 'long-short.sqlite')); } catch (error) { fault('the long/short readings will not be kept across restarts:', error); }
