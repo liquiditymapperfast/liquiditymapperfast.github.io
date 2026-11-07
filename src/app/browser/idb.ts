@@ -112,8 +112,8 @@ function readSince<T>(db: IDBDatabase, name: Name, since: number, before = Infin
 
 /**
  * The newest of the map's minutes, read before anything else (`openRecordings`): those from `since` on, handed to `take` as the columns'
- * `load` hands them, oldest first. The browser answers the requests one after another (a day of the default books: 3.1 s, of which the map's
- * last three hours 0.1 s, 2026-11-07), so the page can draw the hours it opens on while the rest of the day is read back.
+ * `load` hands them, oldest first. The browser answers the requests one after another (a day of the default books: 3.1 s, the map's last
+ * three hours 0.1-0.2 s, 2026-11-07), so the page can draw the hours it opens on while the rest of the day is read back.
  */
 export interface RecordingsHead { since: number; take: (columns: StoredColumn[]) => void }
 /** A minute of a book as the recorders take it (`ColumnStore.load`). */

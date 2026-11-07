@@ -59,7 +59,7 @@ let historyIn!: () => void, historyDone = false;
 const historyLanded = new Promise<void>(resolve => { historyIn = resolve; });
 /**
  * Settled once the engine holds the newest minutes of the recordings (`Engine.preview`), never when there are none: the map's columns wait
- * for this or the history, whichever comes first (a day takes seconds to read back; the hours the map opens on, a tenth of one).
+ * for this or the history, whichever comes first (a day takes seconds to read back; the hours the map opens on, a fifth of one).
  */
 let previewIn!: () => void;
 const previewLanded = new Promise<void>(resolve => { previewIn = resolve; });

@@ -363,12 +363,17 @@ export class Engine {
   }
   /**
    * A sample of the live books into the newest recordings (`preview`). A book is valued on the step the live recorder keeps for it (its far
-   * levels merged on it), so one the newest recordings keep on another step is left out, as the hand-over leaves it out (`attach`).
+   * levels merged on it): one the newest recordings keep on another step is left out, as the hand-over leaves it out (`attach`), and one
+   * they hold nothing of is kept on that step.
    */
   #previewSample(books: readonly ValuedBook[], now: number): void {
     const preview = this.#preview;
     if (!preview) return;
-    preview.sample(books.filter(book => { const step = preview.steps.get(book.instrumentId); return step === undefined || step === this.recorder.steps.get(book.instrumentId); }), now);
+    preview.sample(books.filter(book => {
+      const id = book.instrumentId, live = this.recorder.steps.get(id), step = preview.steps.get(id);
+      if (step === undefined && live !== undefined) preview.steps.set(id, live);
+      return step === undefined || step === live;
+    }), now);
   }
 
   /**

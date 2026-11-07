@@ -302,6 +302,21 @@ test('a book the newest recordings keep on another step takes no live samples in
   page.engine.stop();
 });
 
+test('a book the newest recordings hold nothing of is kept in them on the live step it is valued on, wherever its price has gone since', () => {
+  const T = Date.UTC(2026, 10, 7, 12, 0, 20), minute = Math.floor(T / MIN) * MIN, clock = { now: T }, page = open(clock, { deferred: true });
+  page.venue.book(100, 101, 50);
+  page.engine.step(T);
+  const live = gridStepFor(100);
+  assert.equal(page.engine.preview({ load: () => [{ ...storedMinute(minute - 2 * MIN, 1), instrumentId: 'other:BTCUSDT' }] }), true);
+  // Its price has crossed into a finer grid since the live recorder chose its step (gridStepFor(70) is half of gridStepFor(100)).
+  page.venue.book(70, 71, 50);
+  clock.now = T + SAMPLE_MS; page.engine.step(clock.now);
+  const set = page.engine.columns([ID], minute - 10 * MIN, minute + MIN, MIN).instruments[0]!;
+  assert.deepEqual(set.times, [minute]);
+  assert.equal(set.step, live, 'the live recorder\'s step, not one of its own');
+  page.engine.stop();
+});
+
 test('with no newest minutes the map waits for the recordings, and an engine that has them, or was handed them, previews nothing', () => {
   const T = Date.UTC(2026, 10, 7, 12, 0, 20), clock = { now: T };
   const page = open(clock, { deferred: true }), started = open(clock, {});
