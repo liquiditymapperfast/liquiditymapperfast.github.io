@@ -20,9 +20,10 @@ import { OI_HOLD_MS, heldOiAt } from '../oi-change.ts';
  * Where a market's minute readings and its flow each minute cover a candle (`NlnsFine`), the candle's parts are those of its minute pieces
  * added up: each minute's change given to that minute's takers. Inside a long candle an episode of longs opening at market sits beside closes
  * and hand-overs on the other side, and the candle's one net delta mixes them; the pieces keep each episode's own side. Measured against every
- * Hyperliquid trade's own change of open interest (Research OIF-1, 2026-11-06, two coins, 30 days each): the side that added more of the new
- * contracts was named for 90-93 % of the rise per 15-minute candle by the candle's delta and 94-95 % by its minute pieces, 87-88 % against
- * 93-96 % per hour. A candle a market's minute readings do not cover keeps the reading per candle.
+ * Hyperliquid trade's own change of open interest (Research OIF-1, 2026-11-06, BTC and ETH, 30 days each): the side that added more of the new
+ * contracts was named for 90-91 % of the rise per 15-minute candle by the candle's delta and 94-95 % by its minute pieces (a significant gain on
+ * both coins); per hour 87-88 % against 93-96 % (significant on ETH, not on BTC's 30 days). A candle a market's minute readings do not cover
+ * keeps the reading per candle.
  */
 
 export type NlnsKind = 'newLongs' | 'newShorts' | 'longsClosed' | 'shortsClosed';
@@ -62,9 +63,12 @@ export interface NlnsFine { starts: readonly number[]; bars: readonly OiBar[]; f
  */
 export interface NlnsMarket { bars: readonly OiBar[]; flows: readonly (CandleFlow | null)[]; fine?: NlnsFine | null }
 
-/** One market's share of one candle (`up`/`down`: the unassigned and unknown that came while its open interest rose / fell). */
-interface Parts { dOi: number; oiStart: number; lo: number; lc: number; so: number; sc: number; un: number; unknown: number; up: number; down: number; byPrice: boolean; coarse: boolean; counted: number }
-const noParts = (): Parts => ({ dOi: 0, oiStart: 0, lo: 0, lc: 0, so: 0, sc: 0, un: 0, unknown: 0, up: 0, down: 0, byPrice: false, coarse: false, counted: 0 });
+/**
+ * One market's share of one candle (`up`/`down`: the unassigned and unknown that came while its open interest rose / fell; `gap`: a reading in
+ * it whose reading before was further back than the hold, its change counted nowhere).
+ */
+interface Parts { dOi: number; oiStart: number; lo: number; lc: number; so: number; sc: number; un: number; unknown: number; up: number; down: number; byPrice: boolean; coarse: boolean; gap: boolean; counted: number }
+const noParts = (): Parts => ({ dOi: 0, oiStart: 0, lo: 0, lc: 0, so: 0, sc: 0, un: 0, unknown: 0, up: 0, down: 0, byPrice: false, coarse: false, gap: false, counted: 0 });
 
 /**
  * One market's parts in each candle of `starts` (`tfMs` apart, `index` by start; `bars` sorted): each change between two of its readings at
@@ -76,7 +80,8 @@ function marketParts(starts: readonly number[], index: ReadonlyMap<number, numbe
   const parts = starts.map(noParts);
   for (let k = 1; k < bars.length; k++) {
     const before = bars[k - 1]!, now = bars[k]!, i = index.get(now[0]);
-    if (i === undefined || now[0] - before[0] > holdMs) continue;
+    if (i === undefined) continue;
+    if (now[0] - before[0] > holdMs) { parts[i]!.gap = true; continue; }
     const d = now[4] - before[4], p = parts[i]!;
     p.counted++; p.dOi += d; p.oiStart += before[4];
     if (now[0] - before[0] > coarseMs) p.coarse = true;
@@ -102,7 +107,8 @@ export const FINE_FRESH_MS = 10 * 60_000;
 /**
  * A market's parts in the chart's candles from its minute pieces, or null where they do not stand for a candle: worked out on its minute bars
  * and flow (no price: a minute with no flow says nothing), each minute's parts added into the candle it falls in. They stand for a candle when
- * the minute readings began before it and go on to its end (or `now`), and every piece in it that changed open interest had its takers
+ * the minute readings began before it and go on past it (or reach `now`), no reading in it came after a silence longer than the hold (its
+ * change would be counted nowhere, where the reading per candle counts it), and every piece in it that changed open interest had its takers
  * recorded; elsewhere the candle keeps the reading per candle.
  */
 function fineParts(starts: readonly number[], index: ReadonlyMap<number, number>, fine: NlnsFine, tfMs: number, holdMs: number, now: number): (Parts | null)[] {
@@ -112,15 +118,17 @@ function fineParts(starts: readonly number[], index: ReadonlyMap<number, number>
   const pieces = marketParts(fine.starts, new Map(fine.starts.map((s, j) => [s, j] as const)), bars, fine.flows, null, minute, holdMs, tfMs);
   const sums = starts.map(noParts);
   pieces.forEach((q, j) => {
-    if (!q.counted) return;
+    if (!q.counted && !q.gap) return;
     const i = index.get(Math.floor(fine.starts[j]! / tfMs) * tfMs); if (i === undefined) return;
+    const p = sums[i]!; p.gap ||= q.gap;
+    if (!q.counted) return;
     // The candle starts from the reading before its first piece; it counts the market once.
-    const p = sums[i]!; if (!p.counted) p.oiStart = q.oiStart;
+    if (!p.counted) p.oiStart = q.oiStart;
     p.counted = 1; p.dOi += q.dOi; p.lo += q.lo; p.lc += q.lc; p.so += q.so; p.sc += q.sc; p.un += q.un; p.unknown += q.unknown; p.up += q.up; p.down += q.down;
     p.coarse ||= q.coarse;
   });
   const first = bars[0]![0], newest = bars[bars.length - 1]![0];
-  starts.forEach((s, i) => { const p = sums[i]!; if (p.counted && first < s && p.unknown === 0 && newest >= Math.min(s + tfMs, now) - FINE_FRESH_MS) out[i] = p; });
+  starts.forEach((s, i) => { const p = sums[i]!; if (p.counted && !p.gap && first < s && p.unknown === 0 && newest >= Math.min(s + tfMs, now) - FINE_FRESH_MS) out[i] = p; });
   return out;
 }
 

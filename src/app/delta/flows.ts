@@ -18,7 +18,8 @@ export interface FlowLoader {
 }
 
 /** The page holds flow a second at a time for a day; minutes are asked in blocks of six hours so a view moving back reuses them. */
-const HISTORY_CAP_MS = 24 * 3_600_000, MINUTES_FROM_MS = 6 * 3_600_000;
+export const HISTORY_CAP_MS = 24 * 3_600_000;
+const MINUTES_FROM_MS = 6 * 3_600_000;
 
 /** The markets the delta is taken over: those of the flow column's ALL VENUES lines (the venues switched on, inside the Spot / Perp filter). */
 export function deltaIds(state: Pick<AppState, 'markets' | 'disabledVenues' | 'scope' | 'levels' | 'bookGone'>, flow: FlowBook): string[] {

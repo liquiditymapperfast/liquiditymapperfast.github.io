@@ -70,12 +70,15 @@ export class TabTitle {
     this.#timer = window.setTimeout(() => { this.#timer = 0; this.#write(); }, wait);
   }
 
+  /** Never throws: it runs among the store's listeners, and a canvas a hardened browser refuses (no `toDataURL`) must not stop the others. */
   #write(): void {
-    const state = this.store.state, quote = tabQuote(state, currentCoin().coin);
     this.#titleAt = Date.now();
-    const title = state.tabPrice ? tabTitle(quote, this.#base) : this.#base;
-    if (document.title !== title) document.title = title;
-    this.#icon(state.tabIcon ? quote?.candle ?? null : null);
+    try {
+      const state = this.store.state, quote = tabQuote(state, currentCoin().coin);
+      const title = state.tabPrice ? tabTitle(quote, this.#base) : this.#base;
+      if (document.title !== title) document.title = title;
+      this.#icon(state.tabIcon ? quote?.candle ?? null : null);
+    } catch { /* the title and icon stay as they were */ }
   }
 
   /** The icon: the candle under way (at most every ICON_MS, only when it looks different), or the page's own icon back. */

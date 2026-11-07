@@ -726,6 +726,13 @@ export class OiPane extends TimePane {
 
   /** Reflect the settings in the header's controls and draw again. */
   settingsChanged(): void { if (this.#bars.value !== this.store.state.oiChange) this.#bars.value = this.store.state.oiChange; this.invalidate(); }
+
+  /** The NL/NS candles by start, kept while the model is the same one (it is worked out at most once a second; the pane paints more often). */
+  #who: { model: readonly NlnsCandle[]; byStart: Map<number, NlnsCandle> } | null = null;
+  #whoByStart(model: readonly NlnsCandle[]): Map<number, NlnsCandle> {
+    if (this.#who?.model !== model) this.#who = { model, byStart: new Map(model.map(c => [c.t, c] as const)) };
+    return this.#who.byStart;
+  }
   /** Each bar's change (oi-change.ts: venues added together count their own changes) and the ones that stand out. */
   #analysis(oi: readonly OiBar[], highlight: HighlightOptions, parts: readonly OiPart[], tfMs: number) {
     const key = `${highlight.mult}|${highlight.length}|${tfMs}`;
@@ -822,8 +829,9 @@ export class OiPane extends TimePane {
       ctx.beginPath(); ctx.moveTo(xc(from), y(oi[from]![4]));
       for (let i = from + 1; i <= to; i++) { ctx.lineTo(xc(i), y(oi[i - 1]![4])); ctx.lineTo(xc(i), y(oi[i]![4])); }
     };
-    // Who made each change (NL/NS), by candle start, while the bars are split by who.
-    const who = state.oiChange === 'who' ? new Map(this.nlns.forView(state, v.t0, v.t1, pageNow()).map(c => [c.t, c] as const)) : null;
+    // Who made each change (NL/NS), by candle start, while the bars are split by who: the view's candles from its left edge (the pane shows no
+    // running sums, so the Delta pane's restart is not needed here).
+    const who = state.oiChange === 'who' ? this.#whoByStart(this.nlns.forView(state, v.t0, v.t1, pageNow(), 'none')) : null;
     // Change histogram.
     if (split) {
       const emphasise = highlight.on;

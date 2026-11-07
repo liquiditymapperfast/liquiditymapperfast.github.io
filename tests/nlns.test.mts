@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coinText, nlnsCardLines, nlnsModel, withLead, type NlnsMarket } from '../src/app/delta/nlns.ts';
+import { coinText, minuteOpens, nlnsCardLines, nlnsModel, nlnsWhoLines, whoParts, withLead, type NlnsMarket } from '../src/app/delta/nlns.ts';
 import { fetchOiReading } from '../src/shared/history.ts';
 import { quoteRows } from '../src/shared/series.ts';
 import { atOnePrice, inverseOi } from '../src/app/oi-change.ts';
@@ -182,6 +182,30 @@ test('minute pieces stand for a candle only where they reach it whole: flow miss
   // On a one-minute chart the candle is the minute: no pieces.
   const m = fine.starts.slice(60, 70), mFlows = m.map(() => flow(1)), mBars = fine.bars.filter(b => b[0] >= m[0]! - M && b[0] <= m[m.length - 1]!);
   assert.ok(nlnsModel(m, [{ bars: mBars, flows: mFlows, fine }], none, keys(m), M, H, T + 2 * H).every(x => x.fine === 0));
+});
+
+test('minute readings that fall silent longer than the hold do not stand for the candle they resume in: its change would be counted nowhere', () => {
+  // Readings every minute until 02:04, none until 04:10 (126 minutes), then every minute again: the hour from 04:00 holds the jump across the silence.
+  const H2 = T + 2 * H, H4 = T + 4 * H;
+  const fine = minutes(T, 6 * 60, k => (T + k * M <= H2 + 4 * M || T + k * M >= H4 + 10 * M) ? 1_000 + k : null, () => 1);
+  const starts = [T + 3 * H, H4, T + 5 * H], hourly = [bar(T + 3 * H, 1_000 + 124), bar(H4, 1_000 + 299), bar(T + 5 * H, 1_000 + 359)];
+  const [, four, five] = nlnsModel(starts, [{ bars: [bar(H2, 1_000 + 124), ...hourly], flows: starts.map(() => flow(1)), fine }], none, keys(starts), H, undefined, T + 6 * H);
+  assert.deepEqual([four!.fine, four!.dOi], [0, 175], 'the reading per candle: the whole step since the hour before');
+  assert.deepEqual([five!.fine, five!.dOi, five!.longOpened], [1, 60, 60], 'the next hour from its minutes again');
+});
+
+test('who made a change, for the OI pane: the parts of a rise and of a fall, the popup lines, and the opening of one market hour by hour', () => {
+  const c = nlnsModel([T, T + H], [{ bars: [bar(T, 100), bar(T + H, 130)], flows: [null, flow(5)] }], none, [0, 0], H)[1]!;
+  assert.deepEqual(whoParts(c, true), { buy: 30, sell: 0, none: 0 });
+  assert.deepEqual(whoParts({ ...c, longClosed: 4, shortClosed: 6, unsidedDown: 2 }, false), { buy: 6, sell: 4, none: 2 }, 'a fall: shorts closed are the buyers\' part');
+  const lines = nlnsWhoLines({ ...c, unassigned: 3, fine: 1, counted: 2 }, 'BTC');
+  assert.deepEqual(lines.slice(0, 2).map(l => [l.label, l.text]), [['New longs', '+30 BTC'], ['Takers even', '+3.0 BTC']]);
+  assert.ok(lines[0]!.rule, 'set apart from the lines above it');
+  assert.ok(lines.some(l => /Minute by minute for 1 of 2 venues/.test(l.text)));
+  // An hour of one market from its minutes: buyers opened 40, sellers 20.
+  const fine = minutes(T - H, 2 * 60, k => k < 60 ? 500 : k < 100 ? 500 + (k - 59) : 540 + Math.min(20, k - 99), k => k < 60 ? 0 : k < 100 ? 1 : -1);
+  const [, hour] = minuteOpens([T - H, T], fine, H, T + H);
+  assert.deepEqual(hour, { longOpened: 40, shortOpened: 20 });
 });
 
 test('an inverse market keeps its own USD with each reading; stored bars and samples give it in place of coins', async () => {

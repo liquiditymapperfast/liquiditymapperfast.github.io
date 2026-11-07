@@ -13,7 +13,7 @@ import { TimePane, setHtml } from './lower-panes.ts';
 import { currentCoin } from '../coin.ts';
 import { venueLabel } from '../venues.ts';
 import { instrumentIdFor } from '../../shared/coins.ts';
-import { FUNDING_VENUES, FundingSource, fundingBase, hasPremium, rowAt, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
+import { FUNDING_VENUES, FundingSource, buyerShare, fundingBase, fundingVenueOf, hasPremium, rowAt, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
 import type { HourOpens, NlnsSource } from '../delta/nlns-source.ts';
 import { coinText } from '../delta/nlns.ts';
 import { pageNow } from '../replay/clock.ts';
@@ -25,15 +25,6 @@ const PER_YEAR = 3 * 365;
 
 /** A rate (a fraction) as a signed percentage: "+0.0100%", "−0.0453%". */
 export function rateText(x: number, digits = 4): string { return `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(digits)}%`; }
-
-/** The venue the pane shows: the one picked where it lists the coin, else Hyperliquid, else the first that does; null where none does. */
-export function fundingVenueOf(picked: FundingVenue | '', listed: (v: FundingVenue) => boolean): FundingVenue | null {
-  if (picked && listed(picked)) return picked;
-  return FUNDING_VENUES.find(listed) ?? null;
-}
-
-/** The share of an hour's new positions that buyers opened (null when nothing opened). */
-export const buyerShare = (h: Pick<HourOpens, 'longOpened' | 'shortOpened'>): number | null => h.longOpened + h.shortOpened > 0 ? h.longOpened / (h.longOpened + h.shortOpened) : null;
 
 /** The popup at a time: the funding settled over it, per eight hours and per the venue's own interval, its APR, the premium, and who opened. */
 export function fundingCardLines(h: { time: number; venue: string; row: FundingRow | null; forming: boolean; premium: number | null; opens: HourOpens | null; coin: string }): InfoLine[] {
@@ -114,26 +105,29 @@ export class FundingPane extends TimePane {
     const name = venueLabel(venue), data = this.#funding.view(venue, coin.markets[venue]!, tf, v.t0, v.t1, Date.now());
     // Replay: only what had settled by the moment shown, and no funding accruing "now".
     const rows = data.rows.filter(r => r.t <= now), premium = data.premium.filter(q => q.t <= now), forming = now >= Date.now() - 60_000 ? data.now : null;
+    // The funding accruing now pays for the interval that ends at its settlement, whatever has come in of the settlements before it.
+    const formEnd = forming ? forming.next ?? now : 0, formStart = forming ? formEnd - forming.hours * HOUR : 0;
+    const formShown = !!forming && formEnd >= v.t0 && formStart <= v.t1;
     // Who opened, on Hyperliquid: its perpetual's minute pieces, hour by hour (while it is among the markets the OI pane counts).
     const hl = venue === 'hyperliquid' ? instrumentIdFor('hyperliquid', coin) : null;
     const opens = hl ? this.nlns.hourly(state, hl, v.t0, now) : [];
     const band = venue === 'hyperliquid' && ph >= 90;
     const visRows = rows.filter(r => r.t >= v.t0 && r.t - r.hours * HOUR <= v.t1), visPremium = premium.filter(q => q.t + data.premiumMs >= v.t0 && q.t <= v.t1);
-    if (!visRows.length && !visPremium.length && !forming) { say(data.loading ? t('Reading funding…') : t('No funding in view.')); return; }
+    if (!visRows.length && !visPremium.length && !formShown) { say(data.failed ? t('{venue} did not answer: asked again in a minute.', { venue: name }) : data.loading ? t('Reading funding…') : t('No funding in view.')); return; }
     // Geometry: funding and premium on top, who opened under it (Hyperliquid, a pane tall enough).
     const top = 6, lineBottom = band ? Math.round(ph * 0.62) : ph - 6, bandTop = lineBottom + 10, bandBottom = ph - 4, mid = (bandTop + bandBottom) / 2, half = (bandBottom - bandTop) / 2;
     const { base, clamp } = fundingBase(venue);
     let lo = Math.min(0, base - clamp), hi = Math.max(0, base + clamp);
     for (const r of visRows) { lo = Math.min(lo, r.per8h); hi = Math.max(hi, r.per8h); }
     for (const q of visPremium) { lo = Math.min(lo, q.p); hi = Math.max(hi, q.p); }
-    if (forming) { lo = Math.min(lo, forming.per8h); hi = Math.max(hi, forming.per8h); if (forming.premium !== null) { lo = Math.min(lo, forming.premium); hi = Math.max(hi, forming.premium); } }
+    if (forming && formShown) { lo = Math.min(lo, forming.per8h); hi = Math.max(hi, forming.per8h); if (forming.premium !== null) { lo = Math.min(lo, forming.premium); hi = Math.max(hi, forming.premium); } }
     const pad = (hi - lo) * 0.08, min = lo - pad, max = hi + pad;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (lineBottom - top);
     this.scaleAt = at => at <= lineBottom ? rateText(min + (1 - (at - top) / (lineBottom - top)) * (max - min), 3)
       : band && at >= bandTop && at <= bandBottom ? `${Math.round(50 + (mid - at) / half * 50)}%` : null;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
-    // The band the premium moves in while funding stays at the base rate, the base rate (dashed) and zero.
-    ctx.fillStyle = p.text; ctx.globalAlpha = 0.06; ctx.fillRect(0, y(base + clamp), pw, y(base - clamp) - y(base + clamp)); ctx.globalAlpha = 1;
+    // The band the premium moves in while funding stays at the base rate (none for a venue without one), the base rate (dashed) and zero.
+    if (clamp > 0) { ctx.fillStyle = p.text; ctx.globalAlpha = 0.06; ctx.fillRect(0, y(base + clamp), pw, y(base - clamp) - y(base + clamp)); ctx.globalAlpha = 1; }
     ctx.strokeStyle = p.muted; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(0, Math.round(y(base)) + 0.5); ctx.lineTo(pw, Math.round(y(base)) + 0.5); ctx.stroke(); ctx.setLineDash([]);
     if (base !== 0) { ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y(0)) + 0.5); ctx.lineTo(pw, Math.round(y(0)) + 0.5); ctx.stroke(); }
     // The premium, through each candle's middle, in a hue of its own (the funding steps are the text colour).
@@ -152,9 +146,8 @@ export class FundingPane extends TimePane {
     }
     ctx.stroke();
     const newest = rows[rows.length - 1];
-    if (forming) {
-      const from = newest ? newest.t : now - forming.hours * HOUR, to = forming.next ?? from + forming.hours * HOUR;
-      ctx.setLineDash([4, 3]); ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.moveTo(v.xOf(from, pw), y(forming.per8h)); ctx.lineTo(v.xOf(to, pw), y(forming.per8h)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    if (forming && formShown) {
+      ctx.setLineDash([4, 3]); ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.moveTo(v.xOf(formStart, pw), y(forming.per8h)); ctx.lineTo(v.xOf(formEnd, pw), y(forming.per8h)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
     ctx.lineWidth = 1;
     // Who opened, each hour under the funding it paid: up in the buy colour where buyers opened more than half the new positions, down in the
@@ -163,8 +156,9 @@ export class FundingPane extends TimePane {
       ctx.strokeStyle = p.line; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(0, Math.round(mid) + 0.5); ctx.lineTo(pw, Math.round(mid) + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
       for (const h of opens) {
         const share = buyerShare(h); if (share === null || h.t + HOUR < v.t0 || h.t > v.t1) continue;
+        // The hour under way is lighter: its share is of what has opened so far.
         const x0 = v.xOf(h.t, pw), x1 = v.xOf(h.t + HOUR, pw), len = Math.max(1, Math.abs(share - 0.5) * 2 * half);
-        ctx.fillStyle = share >= 0.5 ? p.candleUp : p.candleDown; ctx.globalAlpha = 0.8;
+        ctx.fillStyle = share >= 0.5 ? p.candleUp : p.candleDown; ctx.globalAlpha = h.t + HOUR > now ? 0.4 : 0.8;
         ctx.fillRect(x0 + 0.5, share >= 0.5 ? mid - len : mid, Math.max(1, x1 - x0 - 1), len);
       }
       ctx.globalAlpha = 1;
@@ -180,10 +174,12 @@ export class FundingPane extends TimePane {
     // stay at their newest, and the cursor is drawn there.
     const hover = state.hover, at = hover ? Math.min(hover.t, now) : now;
     if (hover && this.pointer && hover.t > at) this.cursorT = at;
-    // A venue that says nothing of the funding under way (Deribit's is continuous) shows its newest record after it.
-    const row = rowAt(rows, at) ?? (!forming && newest && at >= newest.t ? newest : null), isForming = !row && forming !== null && at >= (newest?.t ?? -Infinity);
-    const shownRow: FundingRow | null = row ?? (isForming && forming ? { t: forming.next ?? at, rate: forming.rate, per8h: forming.per8h, hours: forming.hours } : null);
-    const premiumAt = premiumNear(premium, data.premiumMs, at) ?? (isForming ? forming?.premium ?? null : null);
+    // The funding accruing now over its interval; a venue that says nothing of it (Deribit's is continuous) shows its newest record after it.
+    const settled = rowAt(rows, at), isForming = !!forming && at >= formStart && at <= formEnd && !(settled && settled.t >= formEnd);
+    const row = isForming ? null : settled ?? (!forming && newest && at >= newest.t ? newest : null);
+    const shownRow: FundingRow | null = row ?? (isForming && forming ? { t: formEnd, rate: forming.rate, per8h: forming.per8h, hours: forming.hours } : null);
+    // The premium under way is the venue's own now, where it says it (the last candle's is up to a candle old).
+    const premiumAt = isForming && forming && forming.premium !== null ? forming.premium : premiumNear(premium, data.premiumMs, at);
     const hourOpens = opens.find(h => h.t <= at && at < h.t + HOUR) ?? null;
     if (hover && this.pointer) this.#lines = fundingCardLines({ time: at, venue: name, row: shownRow, forming: isForming, premium: premiumAt, opens: hourOpens, coin: coin.coin });
     const tone = (x: number): string => x > 0 ? 'bid' : x < 0 ? 'ask' : '';
