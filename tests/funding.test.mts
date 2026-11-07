@@ -218,6 +218,40 @@ test('a premium read cut short by a failed page keeps what it read and waits bef
   assert.equal(pages, back, 'back where it was: nothing read');
 });
 
+test('a read next to what is held that a failed page cuts short leaves what is held where its candles do not reach it', async () => {
+  // Review round 7: Binance on a read to the left and Bybit on one to the right page from the far end, and their first page lies in the
+  // look-ahead; the second failing, that fragment replaced the stretch drawn and the pane drew no premium for a minute.
+  const M = 60_000, now = T + 60 * 24 * H, w = 4_000 * M;
+  const n = (url: string, name: string): number => Number(new RegExp(`[?&]${name}=(\\d+)`).exec(url)![1]);
+  let pages = 0, failAt = -1;
+  const get = venue(url => {
+    const premium = url.includes('premiumIndexKlines') || url.includes('premium-index-price-kline');
+    if (premium && pages++ === failAt) throw Object.assign(new Error('HTTP 503'), { status: 503 });
+    if (url.includes('premiumIndexKlines')) { const out: unknown[] = []; for (let t = Math.ceil(n(url, 'startTime') / M) * M; t <= n(url, 'endTime') && out.length < n(url, 'limit'); t += M) out.push([t, '0', '0', '0', '-0.0001', '0', t + M - 1]); return out; }
+    if (url.includes('premium-index-price-kline')) { const list: unknown[] = []; for (let t = Math.floor(n(url, 'end') / M) * M; t >= n(url, 'start') && list.length < n(url, 'limit'); t -= M) list.push([String(t), '0', '0', '0', '-0.0001']); return { retCode: 0, result: { list } }; }
+    if (url.includes('fundingInfo') || url.includes('fundingRate?')) return [];
+    if (url.includes('premiumIndex?')) return { lastFundingRate: '0.0001', nextFundingTime: now + H };
+    if (url.includes('instruments-info')) return { retCode: 0, result: { list: [{ fundingInterval: 480 }] } };
+    if (url.includes('funding/history')) return { retCode: 0, result: { list: [] } };
+    return { retCode: 0, result: { list: [{ fundingRate: '0.0001', nextFundingTime: String(now + H) }] } };
+  });
+  const land = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+  for (const [v, by] of [['binance', -3_000 * M], ['bybit', 3_000 * M]] as const) {
+    const source = new FundingSource(() => undefined, get);
+    let t1 = now - 20 * 24 * H;
+    source.view(v, BTC, M, t1 - w, t1, now); await land();
+    const before = source.view(v, BTC, M, t1 - w, t1, now).premium;
+    // Moved 3,000 candles the way this venue reads from the far end: the read's second page fails.
+    failAt = pages + 1; t1 += by;
+    source.view(v, BTC, M, t1 - w, t1, now); await land();
+    const kept = source.view(v, BTC, M, t1 - w, t1, now).premium, asked = pages;
+    assert.deepEqual([kept.length, kept[0]?.t, kept.at(-1)?.t], [before.length, before[0]!.t, before.at(-1)!.t], `${v}: what was held stays`);
+    assert.ok(kept.some(q => q.t >= t1 - w && q.t <= t1), `${v}: drawn where the two views overlap`);
+    for (let i = 0; i < 10; i++) { source.view(v, BTC, M, t1 - w, t1, now); await land(); }
+    assert.equal(pages, asked, `${v}: the rest is asked after the wait, not at once`);
+  }
+});
+
 test('a narrow view dragged fast reads its premium a page ahead, so Binance\'s weight stays small; zoomed out past both sides, one read for both', async () => {
   // Review round 5: a 50-candle view asked again every 25 candles dragged, each a page of 1,500 (weight 10): flicked at 300 candles a second,
   // about 78 of the 2,400 Binance allows a minute every second.
