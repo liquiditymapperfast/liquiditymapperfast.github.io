@@ -295,8 +295,8 @@ test("two series reading the same days during an outage: neither takes the other
   const memo4 = new ArchiveMemo();
   assert.deepEqual(held([await read(memo4, 'accounts', NOW - 900 * D, NOW - 850 * D, NOW)]), [[0, NOW - 900 * D]]);
   const asked = get.asked.length;
-  assert.deepEqual(held([await read(memo4, 'topPositions', NOW - 900 * D, NOW - 850 * D, NOW + 1_000)]), [[0, NOW - 900 * D]]);
-  assert.equal(get.asked.length, asked, 'no file fetched, no look');
+  assert.deepEqual(held([await read(memo4, 'topPositions', NOW - 900 * D, NOW - 850 * D, NOW + 61_000)]), [[0, NOW - 900 * D]]);
+  assert.equal(get.asked.length, asked, 'no file fetched, and no look though the last one is over a minute old');
 });
 
 test('the archive reaches a day into the API\'s days: the day the API begins is read from both', async () => {
