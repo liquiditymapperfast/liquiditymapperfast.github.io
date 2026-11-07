@@ -4,6 +4,7 @@ import { chromeFor, rgb, type Palette } from '../theme.ts';
 import { scaledUsd } from '../coin.ts';
 import { CELL, ENERGY_MAX, WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, pulseFor, strengthGain, type WaveRegion } from './waves.ts';
 import { PRESS, PUSH_WIDTH, WAKE_BREAK_MS, WAKE_WIDTH, pushAmp, wakeAmp } from './touch.ts';
+import { built, startProgram, uniforms, type Building } from '../gl-build.ts';
 
 /**
  * The Glass material (Karl, 2026-10-16): the bars and panels around the chart become glass, and the market's large orders send light
@@ -129,6 +130,11 @@ export class UiGlass {
   readonly canvas = el('canvas', { class: 'ui-glass', ariaHidden: 'true' });
   #gl: WebGL2RenderingContext | null = null;
   #prog: WebGLProgram | null = null; #over: WebGLProgram | null = null;
+  /**
+   * The two programs while the card still builds them beside the page (gl-build.ts): the page stays solid until they are built and the glass
+   * can draw (`showing`). `#broken` once one failed: the glass is not tried again.
+   */
+  #building: readonly [Building, Building] | null = null; #broken = false;
   #loc = new Map<string, WebGLUniformLocation | null>(); #overLoc = new Map<string, WebGLUniformLocation | null>();
   /** The waves, where the card can run them (null: the sparks' light instead), and the layout its medium was last drawn from. */
   #field: WaveField | null = null; #mediumKey = '';
@@ -181,17 +187,19 @@ export class UiGlass {
     this.canvas.addEventListener('webglcontextlost', event => {
       event.preventDefault();
       if (this.#frame) cancelAnimationFrame(this.#frame); this.#frame = 0;
-      this.#gl = null; this.#prog = null; this.#over = null; this.#field = null; this.#mediumKey = ''; this.#loc.clear(); this.#overLoc.clear(); this.#letGo();
+      this.#gl = null; this.#prog = null; this.#over = null; this.#building = null; this.#field = null; this.#mediumKey = ''; this.#loc.clear(); this.#overLoc.clear(); this.#letGo();
       if (this.#on) document.documentElement.dataset.material = 'solid';
     });
+    // Glass again once its programs are built (`#finish`).
     this.canvas.addEventListener('webglcontextrestored', () => {
       if (!this.#on || !this.#ensureGl()) return;
-      document.documentElement.dataset.material = 'glass';
       this.#size(); this.schedule();
     });
   }
 
   get on(): boolean { return this.#on; }
+  /** Whether the glass is on and can draw: the page's chrome turns see-through only then (`html[data-material]`, set by its caller and by `#finish`). */
+  get showing(): boolean { return this.#on && this.#prog !== null; }
   /** How many lights are in the glass now, for a look from the console. */
   get lit(): number { return this.#sparks.length; }
   /** Whether waves run with the halo (true), or the halo is the glass's only light (a card that cannot run them). */
@@ -347,29 +355,37 @@ export class UiGlass {
     this.#pushed = { node: bar, mid };
   }
 
+  /** The context, with its programs started (built beside the page, gl-build.ts; `#finish` reads them once they are). */
   #ensureGl(): boolean {
     if (this.#gl) return true;
+    if (this.#broken) return false;
     const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
     if (!gl) { console.info('Glass: WebGL2 is not available here, so the page stays solid.'); return false; }
-    const shader = (type: number, src: string): WebGLShader => {
-      const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? '');
-      return s;
-    };
-    try {
-      const prog = gl.createProgram()!;
-      gl.attachShader(prog, shader(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) ?? '');
-      for (const name of ['rect', 'size', 'dpr', 'now', 'cap', 'touchCap', 'tint', 'dark', 'n', 'spark', 'sparkC', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']) this.#loc.set(name, gl.getUniformLocation(prog, name));
-      const over = gl.createProgram()!;
-      gl.attachShader(over, shader(gl.VERTEX_SHADER, VERT)); gl.attachShader(over, shader(gl.FRAGMENT_SHADER, OVER)); gl.linkProgram(over);
-      if (!gl.getProgramParameter(over, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(over) ?? '');
-      for (const name of ['size', 'dpr', 'dark', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']) this.#overLoc.set(name, gl.getUniformLocation(over, name));
-      this.#gl = gl; this.#prog = prog; this.#over = over;
-      this.#field = WaveField.create(gl);
-      if (!this.#field) console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.');
-      return true;
-    } catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); return false; }
+    this.#gl = gl;
+    this.#building = [startProgram(gl, VERT, FRAG), startProgram(gl, VERT, OVER)];
+    this.#field = WaveField.create(gl);
+    if (!this.#field) console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.');
+    return true;
+  }
+
+  /**
+   * The programs read once the card has built them, and the page's chrome turned to glass: true once the glass can draw, false while they
+   * are still being built (looked at again on the next frame). A program that did not build turns the glass off and leaves the page solid;
+   * waves that did not build leave the glass the sparks' light.
+   */
+  #finish(gl: WebGL2RenderingContext): boolean {
+    if (this.#prog) return true;
+    const building = this.#building; if (!building) return false;
+    try { if (!built(gl, building)) return false; }
+    catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); this.#broken = true; this.setOn(false); document.documentElement.dataset.material = 'solid'; return false; }
+    try { if (this.#field && !this.#field.built()) return false; }
+    catch { this.#field = null; console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.'); }
+    const [prog, over] = building;
+    for (const [name, at] of uniforms(gl, prog.program, ['rect', 'size', 'dpr', 'now', 'cap', 'touchCap', 'tint', 'dark', 'n', 'spark', 'sparkC', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves'])) this.#loc.set(name, at);
+    for (const [name, at] of uniforms(gl, over.program, ['size', 'dpr', 'dark', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves'])) this.#overLoc.set(name, at);
+    this.#prog = prog.program; this.#over = over.program; this.#building = null;
+    if (this.#on) document.documentElement.dataset.material = 'glass';
+    return true;
   }
 
   #dpr(): number { return Math.min(window.devicePixelRatio || 1, 1.5); }
@@ -394,7 +410,9 @@ export class UiGlass {
   #layoutKey(): string { return this.#measure().map(r => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';'); }
 
   #draw(now: number): void {
-    const gl = this.#gl, prog = this.#prog, p = this.#palette; if (!gl || !prog || !p) return;
+    const gl = this.#gl, p = this.#palette; if (!gl || !p) return;
+    if (!this.#finish(gl)) { if (this.#building) this.schedule(); return; }
+    const prog = this.#prog!;
     this.#size();
     this.#surfaces = this.#measure();
     this.#key = this.#surfaces.map(r => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';');

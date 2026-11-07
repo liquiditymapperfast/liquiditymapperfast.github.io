@@ -61,6 +61,8 @@ async function serverAnswers(): Promise<boolean> {
     return response.ok && (response.headers.get('content-type') ?? '').includes('json');
   } catch { return false; }
 }
+/** A host that only serves files (GitHub Pages): no server answers there, so it is not asked (a round trip of every start, ~0.2 s). */
+const fileHost = (): boolean => location.hostname.endsWith('.github.io');
 
 /**
  * Where the data comes from. A static host (GitHub Pages, any file server) has no server behind it, so the page reads the exchanges
@@ -70,7 +72,7 @@ async function serverAnswers(): Promise<boolean> {
  */
 async function chooseSource(params: URLSearchParams, choice: CoinChoice, phoneHistory: PhoneHistory): Promise<DataSource> {
   const wanted = params.get('source');
-  if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && await serverAnswers()))) return new ServerSource();
+  if (choice.coin.coin === 'BTC' && (wanted === 'server' || (wanted !== 'browser' && !fileHost() && await serverAnswers()))) return new ServerSource();
   // A phone in the hand reads a few hours of the recorded history, not the day (app/history-window.ts).
   const historyHoursToRead = historyHours(isHandheldPhone(), phoneHistory, savesData(), compactBar());
   return new BrowserSource(new Worker(new URL('./browser/feeds.worker.ts', import.meta.url), { type: 'module' }), { persist: params.get('persist') !== '0', coin: choice.coin, tier: choice.tier, historyHours: historyHoursToRead });
@@ -262,10 +264,11 @@ async function main(): Promise<void> {
   const glass = new UiGlass((price, t) => heat.liveSpot(price, t), () => hub.tape);
   cvd.onLargeFlow = (x, y, usd) => glass.pulse(x, y, usd, scaledUsd(100_000), usd > 0 ? 0 : 1);
   glass.setStrength(store.state.waveStrength);
+  // The chrome turns see-through once the glass can draw behind it: its programs are built beside the page, and it says so itself then.
   const applyMaterial = (): void => {
     glass.setPalette(applyTheme(store.state.theme));
     glass.setOn(store.state.material === 'glass');
-    document.documentElement.dataset.material = glass.on ? 'glass' : 'solid';
+    document.documentElement.dataset.material = glass.showing ? 'glass' : 'solid';
   };
   // On a phone the Tape keeps the market's orders from the page's opening, whichever tab shows, so the ring runs there always.
   // The book's cues read the tape for the contact ripples and for what traded beside a change (the hover), so they want it whether or not the ripples are on.

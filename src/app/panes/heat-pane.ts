@@ -658,12 +658,33 @@ export class HeatPane {
   /** Orders arrived for the dust: it is redrawn on the next frame, alone (the overlay's price line follows with its own next frame). */
   tapeArrived(): void { if (!this.#dustFrame && !document.hidden && !this.#suspended) this.#dustFrame = requestAnimationFrame(() => { this.#dustFrame = 0; this.#drawDust(); }); }
 
-  /** The dust's renderer, made the first time it is shown (null where the card cannot draw it, said once in the console). */
+  /**
+   * The dust's renderer, once it can draw: made the first time the dust is shown, when the page has a moment, and its programs built beside
+   * the page (gl-build.ts); null until then, and for good where the card cannot draw it (said once in the console). Its WebGL context alone
+   * took 320 ms of this thread when made on the page's first frames, its programs another ~100 ms (Research_Findings.md, 2026-11-07). The
+   * orders wait in the ring meanwhile and are drawn when it can.
+   */
+  #dustPending = false;
   #ensureDust(): TapeGL | null {
-    if (this.#dust || this.#dustFailed || !this.hub.tape) return this.#dust;
-    try { this.#dust = new TapeGL(this.#dustCanvas, this.hub.tape); this.#dust.resize(this.plotW, this.plotH, this.#dustDpr()); }
-    catch (error) { this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); }
-    return this.#dust;
+    if (this.#dustFailed || !this.hub.tape) return null;
+    const dust = this.#dust;
+    if (dust) {
+      try { if (dust.built()) return dust; } catch (error) { this.#dust = null; this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); return null; }
+      // Still being built: looked at again on the next frame.
+      this.tapeArrived();
+      return null;
+    }
+    if (this.#dustPending) return null;
+    this.#dustPending = true;
+    const make = (): void => {
+      this.#dustPending = false;
+      if (this.#dust || this.#dustFailed || !this.hub.tape) return;
+      try { this.#dust = new TapeGL(this.#dustCanvas, this.hub.tape); this.#dust.resize(this.plotW, this.plotH, this.#dustDpr()); }
+      catch (error) { this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); }
+      this.tapeArrived();
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(make, { timeout: 1_500 }); else window.setTimeout(make, 300);
+    return null;
   }
 
   /**

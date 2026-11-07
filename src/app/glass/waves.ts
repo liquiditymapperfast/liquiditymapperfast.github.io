@@ -1,3 +1,5 @@
+import { built, startProgram, uniforms, type Building } from '../gl-build.ts';
+
 /**
  * A field of waves on the card (Karl, 2026-10-17): every large order drops a pulse where it shows, and it runs out across the screen as a
  * real wave, bending where it enters glass (slower there), partly thrown back and partly let through by the splitters and the edges of the
@@ -258,6 +260,12 @@ export class WaveField {
   readonly gl: WebGL2RenderingContext;
   #step: WebGLProgram; #medium: WebGLProgram;
   #loc = new Map<WebGLProgram, Map<string, WebGLUniformLocation | null>>();
+  /**
+   * The programs the card is still building (gl-build.ts) and the uniforms to read from each once built; null once they are. The medium
+   * asked for meanwhile is drawn then.
+   */
+  #building: (readonly [Building, readonly string[]])[] | null;
+  #regions: readonly WaveRegion[] = [];
   #tex: WebGLTexture[] = []; #fbo: WebGLFramebuffer[] = [];
   #mediumTex: WebGLTexture; #mediumFbo: WebGLFramebuffer;
   #cols = 1; #rows = 1; #cssH = 1;
@@ -298,8 +306,10 @@ export class WaveField {
 
   private constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
-    this.#step = this.#program(STEP, ['cur', 'prev', 'medium', 'texel', 'courant', 'busyDamp', 'n', 'src', 'seg', 'side']);
-    this.#medium = this.#program(MEDIUM, ['region', 'kind', 'n', 'cells', 'glassC', 'wallC']);
+    // Built beside the page (gl-build.ts): the field is stepped only once `built` finds them done.
+    const step = startProgram(gl, VERT, STEP), medium = startProgram(gl, VERT, MEDIUM);
+    this.#step = step.program; this.#medium = medium.program;
+    this.#building = [[step, ['cur', 'prev', 'medium', 'texel', 'courant', 'busyDamp', 'n', 'src', 'seg', 'side']], [medium, ['region', 'kind', 'n', 'cells', 'glassC', 'wallC']]];
     for (let i = 0; i < 3; i++) { this.#tex.push(this.#texture()); this.#fbo.push(gl.createFramebuffer()!); }
     this.#mediumTex = this.#texture(); this.#mediumFbo = gl.createFramebuffer()!;
     this.resize(4, 4);
@@ -309,6 +319,22 @@ export class WaveField {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     if (!ok) throw new Error('half floats are not drawable here');
   }
+
+  /**
+   * Whether the programs are built and their uniforms read: false while the card still builds them (asked without waiting, gl-build.ts).
+   * Throws what failed. The caller steps the field and draws its medium only once it is true.
+   */
+  built(): boolean {
+    const building = this.#building; if (!building) return true;
+    if (!built(this.gl, building.map(([b]) => b))) return false;
+    for (const [b, names] of building) this.#loc.set(b.program, uniforms(this.gl, b.program, names));
+    this.#building = null;
+    this.setMedium(this.#regions);
+    return true;
+  }
+
+  /** Whether the programs can be used now (`built`, without waiting); one that failed reads as not built here (`built` says why). */
+  #usable(): boolean { try { return this.built(); } catch { return false; } }
 
   /** The field's grid: `cols` by `rows` cells, each `CELL` CSS px. */
   get cols(): number { return this.#cols; }
@@ -358,6 +384,8 @@ export class WaveField {
 
   /** What the waves cross (CSS px, top-down): glass that slows them, walls that throw most of them back. */
   setMedium(regions: readonly WaveRegion[]): void {
+    this.#regions = regions;
+    if (!this.#usable()) return;
     const gl = this.gl, l = this.#loc.get(this.#medium)!, n = Math.min(24, regions.length);
     const r = new Float32Array(24 * 4), k = new Float32Array(24);
     regions.slice(0, 24).forEach((q, i) => {
@@ -470,6 +498,7 @@ export class WaveField {
 
   /** Step the field to `now` (ms). Leaves the default framebuffer bound and blending off; the caller sets its own viewport after. */
   step(now: number): void {
+    if (!this.#usable()) return;
     const gl = this.gl, l = this.#loc.get(this.#step)!;
     // A still field keeps no time: the first frame of the next pulse steps one frame's time, not the whole idle spell (MAX_FRAME_MS).
     if (!this.alive(now)) { this.#pending.length = 0; this.#paths.length = 0; this.#waiting[0].length = 0; this.#waiting[1].length = 0; this.#last = 0; this.#carry = 0; if (!this.#still) this.#clear(); return; }
@@ -535,20 +564,6 @@ export class WaveField {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
-  }
-
-  #program(frag: string, names: string[]): WebGLProgram {
-    const gl = this.gl;
-    const shader = (type: number, src: string): WebGLShader => {
-      const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? '');
-      return s;
-    };
-    const p = gl.createProgram()!;
-    gl.attachShader(p, shader(gl.VERTEX_SHADER, VERT)); gl.attachShader(p, shader(gl.FRAGMENT_SHADER, frag)); gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? '');
-    this.#loc.set(p, new Map(names.map(n => [n, gl.getUniformLocation(p, n)])));
-    return p;
   }
 }
 

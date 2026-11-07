@@ -1,5 +1,6 @@
 import type { Bounds } from '../view.ts';
 import { STRIDE, type TapeRing } from './ring.ts';
+import { built, startProgram, uniforms, type Building } from '../gl-build.ts';
 
 /**
  * The trade dust on the graphics card: a canvas of its own between the heatmap and the overlay (candles, bubbles and lines stay above it).
@@ -111,6 +112,8 @@ export class TapeGL {
   #vao: WebGLVertexArrayObject; #buffer: WebGLBuffer;
   #fbo: WebGLFramebuffer; #tex: WebGLTexture; #mask: WebGLTexture;
   #loc = new Map<WebGLProgram, Map<string, WebGLUniformLocation | null>>();
+  /** The programs the card is still building (gl-build.ts) and the uniforms to read from each once built; null once they are. */
+  #building: (readonly [Building, readonly string[]])[] | null;
   /** Records on the card: the write number up to which, and the ring's epoch they were copied for. */
   #uploaded = 0; #uploadedEpoch = -1;
   #drawn: Drawn | null = null;
@@ -129,21 +132,11 @@ export class TapeGL {
     const float = gl.getExtension('EXT_color_buffer_float') !== null, blend32 = float && gl.getExtension('EXT_float_blend') !== null;
     if (!float && gl.getExtension('EXT_color_buffer_half_float') === null) throw new Error('float render targets unavailable');
     this.#halfOnly = !blend32; this.unit = blend32 ? 1 : 10_000;
-    const compile = (type: number, source: string): WebGLShader => {
-      const shader = gl.createShader(type)!; gl.shaderSource(shader, source); gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'shader');
-      return shader;
-    };
-    const program = (vert: string, frag: string, names: string[]): WebGLProgram => {
-      const p = gl.createProgram()!; gl.attachShader(p, compile(gl.VERTEX_SHADER, vert)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, frag)); gl.linkProgram(p);
-      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'program');
-      this.#loc.set(p, new Map(names.map(n => [n, gl.getUniformLocation(p, n)])));
-      return p;
-    };
+    // Built beside the page (gl-build.ts): nothing is drawn until `built` finds them done.
     const quad = ['view', 'px', 'size', 'mask', 'grow'];
-    this.#acc = program(ACC_VERT, ACC_FRAG, [...quad, 'unit']);
-    this.#comp = program(FULL_VERT, COMP_FRAG, ['acc', 'bidC', 'askC', 'mid', 'rim', 'range', 'unit', 'shift', 'reach']);
-    this.#accent = program(ACC_VERT, ACCENT_FRAG, [...quad, 'bidC', 'askC', 'fade']);
+    const acc = startProgram(gl, ACC_VERT, ACC_FRAG), comp = startProgram(gl, FULL_VERT, COMP_FRAG), accent = startProgram(gl, ACC_VERT, ACCENT_FRAG);
+    this.#acc = acc.program; this.#comp = comp.program; this.#accent = accent.program;
+    this.#building = [[acc, [...quad, 'unit']], [comp, ['acc', 'bidC', 'askC', 'mid', 'rim', 'range', 'unit', 'shift', 'reach']], [accent, [...quad, 'bidC', 'askC', 'fade']]];
     this.#buffer = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#buffer);
     gl.bufferData(gl.ARRAY_BUFFER, ring.data.byteLength, gl.DYNAMIC_DRAW);
@@ -158,6 +151,18 @@ export class TapeGL {
     gl.bindTexture(gl.TEXTURE_2D, this.#mask);
     for (const tex of [this.#tex, this.#mask]) { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); }
     this.setMask([]);
+  }
+
+  /**
+   * Whether the programs are built and their uniforms read: false while the card still builds them (asked without waiting, gl-build.ts).
+   * Throws what failed. Nothing is drawn before it is true.
+   */
+  built(): boolean {
+    const building = this.#building; if (!building) return true;
+    if (!built(this.gl, building.map(([b]) => b))) return false;
+    for (const [b, names] of building) this.#loc.set(b.program, uniforms(this.gl, b.program, names));
+    this.#building = null;
+    return true;
   }
 
   /** Size the canvas (CSS px times the pixel ratio) and the float picture with it. */
@@ -176,8 +181,10 @@ export class TapeGL {
 
   /** The markets not drawn (venues switched off, outside the filter), by the ring's index. */
   setMask(hidden: readonly number[]): void {
-    const key = hidden.join(','); if (key === this.#maskKey && this.#maskKey !== '') return;
-    this.#maskKey = key || '-';
+    // An empty mask has a key of its own ('-'), as the trail's (candle/trail-gl.ts): compared with '' it never matched, so every frame with
+    // no venue hidden sent the mask again and drew every order of the ring afresh instead of only the new ones.
+    const key = hidden.join(',') || '-'; if (key === this.#maskKey) return;
+    this.#maskKey = key;
     const gl = this.gl, row = new Uint8Array(1024); for (const k of hidden) if (k >= 0 && k < 1024) row[k] = 255;
     gl.bindTexture(gl.TEXTURE_2D, this.#mask); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1024, 1, 0, gl.RED, gl.UNSIGNED_BYTE, row);
@@ -241,10 +248,11 @@ export class TapeGL {
 
   /**
    * Draw the dust for `view` (`key` names everything else the float picture depends on: the venues shown, the style, the size). Returns
-   * whether an accent is still fading (the caller asks for another frame).
+   * whether an accent is still fading, or the programs are still being built (`built`): the caller asks for another frame.
    */
   draw(view: Bounds, style: DustStyle, dpr: number, key: string, now: number): boolean {
     const gl = this.gl, ring = this.ring;
+    if (!this.built()) return true;
     // A view with no time or no price range yet (the first frames) has nowhere to put an order.
     if (!(view.t1 > view.t0) || !(view.p1 > view.p0)) { this.clear(); return false; }
     this.#upload();
