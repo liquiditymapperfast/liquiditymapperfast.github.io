@@ -121,11 +121,8 @@ export interface DataSource {
   liquidations?(from: number, to: number, minUsd?: number): Promise<Liquidation[]>;
   /** Whale VWAP sums of `ids` in [from, to) from the size band at `minUsd` up, in steps of `stepMs` (a server from before them answers 404). */
   printSums?(ids: string[], from: number, to: number, minUsd: number, stepMs: number): Promise<PrintSumsAnswer>;
-  /**
-   * `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`.
-   * `signal`: the question is let go (the promise rejects) once it aborts.
-   */
-  columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean, signal?: AbortSignal): Promise<ColumnsFrame>;
+  /** `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`. */
+  columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean): Promise<ColumnsFrame>;
   /**
    * A source whose columns reach back past its own recordings (the browser's, from the long history's tiles: app/archive/) says when more of
    * them have come; the hub then asks again for what it holds. Optional: the others answer everything they have at once.

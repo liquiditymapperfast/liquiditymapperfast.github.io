@@ -8,9 +8,9 @@ import type { BootstrapState, DataSource, LiveHandlers } from '../src/app/source
 import type { ColumnsFrame } from '../src/app/wire.ts';
 
 /**
- * The page's hub paces its reads (`paced`, Research_Findings.md): a column step is asked for once the view has rested on it and a load for a
- * step the view has left is let go; on the server's page the map's first columns come before the other history; the bubbles wait for the live
- * stream to open. A hub built without the option asks at once, as every other test's does.
+ * The page's hub paces its reads (`paced`, Research_Findings.md): a column step is asked for once the view has rested on it; on the server's
+ * page the map's first columns come before the other history; the bubbles wait for the live stream to open. A hub built without the option
+ * asks at once, as every other test's does.
  */
 
 const MIN = 60_000, HOUR = 60 * MIN;
@@ -22,7 +22,7 @@ class FakeWorker { onmessage: ((event: { data: unknown }) => void) | null = null
 class PacedSource {
   readonly kind = 'server' as const;
   readonly venues = { catalog: async () => ({ venues: [], limit: null, recommendedKnown: true }), apply: async () => {} };
-  asked: { stepMs: number; signal: AbortSignal | undefined }[] = [];
+  asked: { stepMs: number }[] = [];
   oiAsked = 0; printsAsked = 0;
   hold: Promise<void> | null = null;
   handlers: LiveHandlers | null = null;
@@ -35,8 +35,8 @@ class PacedSource {
   async prints() { this.printsAsked++; return []; }
   async flow() { return { from: 0, to: 0, instruments: [] }; }
   async footprint() { return { step: 0, fine: 0, bars: [] }; }
-  async columns(ids: string[], from: number, to: number, stepMs: number, _close?: boolean, signal?: AbortSignal): Promise<ColumnsFrame> {
-    this.asked.push({ stepMs, signal });
+  async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
+    this.asked.push({ stepMs });
     if (this.hold) await this.hold;
     return { from, to, stepMs, instruments: ids.map(id => ({ id, step: 10, times: [], counts: [], samples: [], bins: new Int32Array(0), bid: new Float32Array(0), ask: new Float32Array(0) })) };
   }
@@ -73,24 +73,21 @@ test('a zoom that passes column steps asks only for the step it rests on (the pa
   } finally { h.restore(); }
 });
 
-test('a load for a step the view has left is let go, and nothing of its answer is taken (the page\'s hub)', async () => {
+test('a load out when the zoom moves on is finished, and the step the view rests on is asked next (the page\'s hub)', async () => {
   const h = await harness(true);
   try {
     await h.hub.loadColumns(h.live(6), 180);
     let release!: () => void;
     h.source.hold = new Promise<void>(resolve => { release = resolve; });
-    await h.hub.loadColumns(h.live(48), 180);   // wanted from now on
-    await wait(260);
-    const load = h.hub.loadColumns(h.live(48), 180);   // rested: asked, and held by the source
+    await h.hub.loadColumns(h.live(24), 180); await wait(260);
+    const load = h.hub.loadColumns(h.live(24), 180);   // 16 min, held by the source
     await turn();
-    const out = h.source.asked[h.source.asked.length - 1]!;
-    assert.equal(out.stepMs, 32 * MIN);
-    assert.equal(out.signal?.aborted, false);
-    // Back to the step held: the load out for 32 min is let go at once.
-    await h.hub.loadColumns(h.live(6), 180);
-    assert.equal(out.signal?.aborted, true, 'the question is let go');
-    release(); await load;
-    assert.ok(!h.hub.heldColumns().some(step => step.stepMs === 32 * MIN && step.ids.length > 0), 'its answer, though it came, is not held');
+    await h.hub.loadColumns(h.live(48), 180); await wait(260);
+    await h.hub.loadColumns(h.live(48), 180);
+    assert.deepEqual(h.source.asked.map(a => a.stepMs / MIN), [4, 16], 'nothing more while a load is out');
+    release(); await load; h.source.hold = null;
+    await h.hub.loadColumns(h.live(48), 180);
+    assert.deepEqual(h.source.asked.map(a => a.stepMs / MIN), [4, 16, 32], 'the step the view rests on, once the load out is done');
   } finally { h.restore(); }
 });
 

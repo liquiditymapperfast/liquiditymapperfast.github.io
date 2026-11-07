@@ -265,11 +265,9 @@ export class BrowserSource implements DataSource, VenueControl {
   }
   async liquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> { return this.#call({ method: 'liquidations', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
   /** The engine's columns, and (averages at two minutes or more) the windows before its day from the long history's tiles. */
-  async columns(ids: string[], from: number, to: number, stepMs: number, close = false, signal?: AbortSignal): Promise<ColumnsFrame> {
-    signal?.throwIfAborted();
+  async columns(ids: string[], from: number, to: number, stepMs: number, close = false): Promise<ColumnsFrame> {
     const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close });
     this.#noteSince(frame);
-    // Answered by the page's own worker, so there is nothing to cancel: the hub does not take an answer it let go of meanwhile.
     return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
   }
 
