@@ -202,6 +202,30 @@ test('a window older than the API with no file in it is before the archive only 
   assert.deepEqual([early.points, early.from], [[], NOW - 900 * D]);
 });
 
+test('the archive holds a market on a look at its file of three days ago, at most a minute old: not because a file was read once', async () => {
+  let gone = false, lookFails = false;
+  const today = Math.floor(NOW / D) * D, archive = archiveFake(NOW - 400 * D, NOW - 400 * D);
+  const get = fake({ 'https://data.binance.vision/': url => {
+    const day = archiveDate(url);
+    if (day === today - 3 * D && lookFails) throw Object.assign(new Error('HTTP 503'), { status: 503 });
+    // A day's file is out the next morning: nothing yet for today or yesterday.
+    if (gone || day > today - 2 * D) throw Object.assign(new Error('HTTP 404'), { status: 404 });
+    return archive(url);
+  } });
+  const memo = new ArchiveMemo();
+  const early = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 900 * D, NOW - 850 * D, get, NOW, memo);
+  assert.deepEqual([early.points, early.from], [[], NOW - 900 * D], 'before the archive begins, in a fresh session');
+  assert.equal((await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 200 * D, NOW - 150 * D, get, NOW + 61_000, memo)).points.length, 51);
+  // Gone a moment after a good read: a window with no file is not "before the archive" for the file read then.
+  gone = true;
+  const after = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 300 * D, NOW - 250 * D, get, NOW + 122_000, memo);
+  assert.deepEqual([after.points.length, after.from], [0, NOW - 250 * D], 'unclaimed');
+  // A look that fails is no evidence either.
+  gone = false; lookFails = true;
+  const failedLook = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 950 * D, NOW - 920 * D, get, NOW + 300_000, memo);
+  assert.deepEqual([failedLook.points.length, failedLook.from], [0, NOW - 920 * D]);
+});
+
 test('the archive reaches a day into the API\'s days: the day the API begins is read from both', async () => {
   const get = fake({ 'https://fapi.binance.com/': () => [], 'https://data.binance.vision/': archiveFake(NOW - 400 * D, NOW - 400 * D) });
   await fetchLongShort('binance', 'BTCUSDT', 'accounts', H, NOW - 31 * D, NOW - 29 * D + 2 * H, get, NOW);
@@ -247,7 +271,7 @@ test('a window wider than one question reaches (twenty years) is read back to wh
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(files().length, asked, 'and nothing read after');
   assert.equal(new Set(files()).size, asked, 'no day asked twice');
-  assert.ok(asked <= 5 * ARCHIVE_DAYS, `${asked} files: back to the archive's first day, and one read of none before it`);
+  assert.ok(asked <= 5 * ARCHIVE_DAYS + 1, `${asked} files: back to the archive's first day, one read of none before it, one look at a recent day`);
   assert.equal(get.asked.filter(u => u.includes('fapi')).length, 1, 'the API asked for its own days once, not once a read');
   assert.ok(answer.points.length > 360 && answer.points[0]!.t >= NOW - 402 * D);
 });

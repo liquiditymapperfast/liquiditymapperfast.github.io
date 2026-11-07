@@ -241,14 +241,14 @@ const ARCHIVE_MEMO_POINTS = 60_000;
  * Archive days read lately, on the grid of the period they were read in, every series of each (one file holds all three, and the pane reads
  * the other two after the one shown, to switch at once): a read of another series finds its days here rather than fetching each file again.
  * At most `ARCHIVE_MEMO_POINTS` readings, the least recently asked day going first; a failed read is not kept. It also knows, per market,
- * whether the archive holds it (a file read for it) and when its archive last failed.
+ * when the archive was last seen to hold it and when its archive last failed.
  */
 export class ArchiveMemo {
   #days = new Map<string, { day: Promise<ArchiveDay | null>; size: number }>();
   #size = 0;
   #failed = new Map<string, number>();
-  /** Markets the archive was seen to hold: a file was read for each. */
-  readonly holds = new Set<string>();
+  /** When the archive was last seen to hold each market (`binanceArchiveHolds`, the cache's clock). */
+  readonly holds = new Map<string, number>();
   constructor(private maxPoints = ARCHIVE_MEMO_POINTS) {}
   /** The day kept under `key`, or `read` it and keep it, counted as `size` readings. */
   day(key: string, size: number, read: () => Promise<ArchiveDay | null>): Promise<ArchiveDay | null> {
@@ -268,13 +268,14 @@ export class ArchiveMemo {
 }
 
 /**
- * Whether the archive holds `symbol`: a file read for it before (`memo`), or the file of three days ago (out by then; a market listed since
- * has none). Throws when the file cannot be read.
+ * Whether the archive holds `symbol` now: the file of three days ago is there (out by then; a market listed since has none), looked at no more
+ * than once a minute (`memo`). A file read for the market earlier is no evidence: the archive may have gone since. Throws when the file
+ * cannot be read.
  */
 async function binanceArchiveHolds(symbol: string, now: number, get: Fetcher, memo?: ArchiveMemo): Promise<boolean> {
-  if (memo?.holds.has(symbol)) return true;
+  if (now - (memo?.holds.get(symbol) ?? -Infinity) < MINUTE) return true;
   const holds = await binanceArchiveDay(symbol, Math.floor(now / DAY) * DAY - 3 * DAY, get) !== null;
-  if (holds) memo?.holds.add(symbol);
+  if (holds) memo?.holds.set(symbol, now);
   return holds;
 }
 
@@ -290,7 +291,6 @@ async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number
   for (let day = dayOf(hi - 1); day >= first && days.length < ARCHIVE_DAYS; day -= DAY) days.push(day);
   const onGrid = async (day: number): Promise<ArchiveDay | null> => {
     const all = await binanceArchiveDay(symbol, day, get), grid = (points: LsPoint[]): LsPoint[] => points.filter(p => p.t % periodMs === 0);
-    if (all) memo?.holds.add(symbol);
     return all && { accounts: grid(all.accounts), topAccounts: grid(all.topAccounts), topPositions: grid(all.topPositions) };
   };
   const keys = days.map(day => `${symbol}|${periodMs}|${day}`);
@@ -343,9 +343,9 @@ export async function fetchLongShort(venue: string, symbol: string, metric: LsMe
       }
     })();
     const [old] = await Promise.all([archive, api]);
-    // Not one file in the read: before the archive begins only on evidence, the archive holding this market (a file read for it, or the one
-    // of three days ago) or the API showing it began trading after those days. Without it the archive is gone or moved: the days are not
-    // claimed, and asked again after the minute (they are let go of in the memo, so a returning archive is read).
+    // Not one file in the read: before the archive begins only on evidence, the archive holding this market now (its file of three days ago)
+    // or the API showing it began trading after those days. Without it the archive is gone or moved: the days are not claimed, and asked
+    // again after the minute (they are let go of in the memo, so a returning archive is read).
     const read = old instanceof Error ? null : old;
     let failed = old instanceof Error;
     if (read?.none) {
