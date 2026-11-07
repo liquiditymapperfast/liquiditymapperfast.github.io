@@ -125,11 +125,13 @@ test('on the server\'s page open interest and the bubbles wait for the map\'s fi
     h.hub.ensurePrints(view);
     await turn();
     assert.equal(h.source.oiAsked, 0, 'no open interest before the map\'s columns');
+    assert.equal(h.store.state.oiReading, true, 'the pane says it is reading meanwhile, not that there is no history');
     assert.equal(h.source.printsAsked, 0, 'no bubbles before the map\'s columns');
     await h.hub.loadColumns(h.live(6), 180);
     assert.ok(h.hub.columnsVersion > 0, 'the map has its columns');
     await oi;
     assert.ok(h.source.oiAsked > 0, 'open interest is read once they are in');
+    assert.equal(h.store.state.oiReading, false, 'and the read ends it');
     h.hub.ensurePrints(view);
     assert.equal(h.source.printsAsked, 1, 'and the bubbles');
   } finally { h.restore(); }

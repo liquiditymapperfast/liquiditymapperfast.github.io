@@ -271,7 +271,7 @@ async function main(): Promise<void> {
   // The book's cues read the tape for the contact ripples and for what traded beside a change (the hover), so they want it whether or not the ripples are on.
   const tapeWanted = (): boolean => (store.state.show.bubbles && store.state.tradeBubbles.live) || candleShown() || store.state.material === 'glass' || isPhone() || (store.state.show.book && store.state.ladderCues.look !== 'off');
   // The map is covered while a view that fills the area shows, and the book while any tab but its own does (the Tape draws its own): they draw nothing then, and catch up when they show again.
-  const coverPanes = (): void => { heat.setSuspended(mapCovered()); ladder.setSuspended(isPhone() && dock.tab !== 'book'); };
+  const coverPanes = (): void => { const covered = mapCovered(); heat.setSuspended(covered); hub.mapCovered = covered; ladder.setSuspended(isPhone() && dock.tab !== 'book'); };
   dock.onChange = () => { candle.setShown(candleShown()); liq.setShown(liqShown()); coverPanes(); hub.setTape(tapeWanted()); };
   hub.setTape(tapeWanted());
   hub.onTape = () => { heat.tapeArrived(); candle.tapeArrived(); glass.tapeArrived(); ladder.tapeArrived(); };

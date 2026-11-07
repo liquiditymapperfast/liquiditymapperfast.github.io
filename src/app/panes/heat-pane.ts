@@ -968,7 +968,7 @@ export class HeatPane {
   #renderHover(): void {
     this.#hoverDirty = false;
     if (this.#paneW <= 1 || this.#h <= 1) return;
-    this.#paintHoverLayer(this.#displayState());
+    this.#paintHoverLayer(this.#displayState(), true);
   }
 
   #footprintIds: { key: unknown[]; ids: string[] } | null = null;
@@ -1147,15 +1147,16 @@ export class HeatPane {
     for (const label of timeLabels) ctx.fillText(label.text, label.x, ph + TIME_H / 2);
     // Which clock the labels are on, under the price axis where no tick label goes (a screenshot says it too).
     ctx.textAlign = 'right'; ctx.fillText(zoneName(), w - 6, ph + TIME_H / 2); ctx.textAlign = 'center';
+    this.#paintHoverLayer(state, false);
+    // After the legend: the drawing tools' controls are placed under its foot (`onDrawFrame`).
     this.#paintDrawEdit();
-    this.#paintHoverLayer(state);
   }
 
   /**
    * The pointer's layer (`#hoverCanvas`): the overlay's last strokes before it had one, in their order (the legend, what the map says when it
    * has nothing to draw, the Range box, the book's row, the crosshair and its box). Drawn after the overlay, and alone for a pointer move.
    */
-  #paintHoverLayer(state: AppState): void {
+  #paintHoverLayer(state: AppState, alone: boolean): void {
     const ctx = this.#hoverCtx, pw = this.plotW, ph = this.plotH, p = this.#palette;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.clearRect(0, 0, this.#paneW, this.#h);
@@ -1163,8 +1164,11 @@ export class HeatPane {
     // What the overlay leaves set for its last strokes (the time axis's font and alignment), which these were drawn with.
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
     ctx.fillStyle = p.muted; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.globalAlpha = 1; ctx.setLineDash([]);
+    const legendBottom = this.#legendBox.bottom;
     this.#paintLegend(ctx, state);
-    if (this.#bands.misplaced(this.#legendBox.bottom)) this.invalidate(); // the legend changed height: place the bands under it again
+    // The legend changed height (a candle's figures on two lines, a script's line): the bands, the corner tools and the drawing tools are
+    // placed by its foot, so the map is drawn again under it (a whole frame places the drawing tools after this, `#paintOverlay`).
+    if (alone ? this.#legendBox.bottom !== legendBottom : this.#bands.misplaced(this.#legendBox.bottom)) this.invalidate();
     if (!this.#wasLoaded && state.levels) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(t('Collecting depth history…'), 12, 50); }
     const emptyScope = heatmapSourceOf(state) === 'aggregated' ? emptyScopeMessage(state) : null;
     if (emptyScope) { // the filter selected nothing: say so instead of drawing a blank map

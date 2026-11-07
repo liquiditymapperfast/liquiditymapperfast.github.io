@@ -247,8 +247,10 @@ export class Hub {
   #live: { close(): void; tape(on: boolean): void } | null = null;
   /** The live stream has been asked for and has not opened yet (the page's first seconds). */
   #opening(): boolean { return this.#paced && this.#live !== null && this.#connection === 0; }
+  /** The map is covered by a view of its own (a phone's Tape or Flow tab, set by the page): it asks for no columns, so nothing waits for them. */
+  mapCovered = false;
   /** Whether history reads still wait for the map's first columns (`MAP_FIRST_MS`): the server's page only, its first seconds only. */
-  mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
+  mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && !this.mapCovered && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
   #tapeOn = false;
   /** Ask the source for every order (the trade dust) or stop it; what is held stays until the page goes. */
   setTape(on: boolean): void {
@@ -793,10 +795,14 @@ export class Hub {
    * with history stands in and `oiInstrument` says so. Safe to call often: it is one request when the market has OI.
    */
   loadOi(): Promise<void> {
-    // After the map's first columns (MAP_FIRST_MS): the load asked for meanwhile happens then.
-    if (this.mapFirst()) return this.#afterMap().then(() => this.loadOi());
     const state = this.store.state, { marketId, seriesInstrument, timeframe } = state;
     const own = seriesInstrument || marketId; if (!own) return Promise.resolve();
+    // After the map's first columns (MAP_FIRST_MS): the load asked for meanwhile happens then, and the pane says it is reading meanwhile
+    // (that load's end clears it, as every load's does).
+    if (this.mapFirst()) {
+      if (!state.oi.length && !state.oiReading) this.store.set({ oiReading: true });
+      return this.#afterMap().then(() => this.loadOi());
+    }
     const added = oiMarketIds(state, this.flow), venues = added ?? [];
     const key = `${own}|${timeframe}|${state.oiMarkets}|${venues.join(',')}`;
     // A load for the same markets still under way is the answer: asking again on the 20 s clock while a slow history (Bybit's pages, in a

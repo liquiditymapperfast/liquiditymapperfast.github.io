@@ -189,10 +189,11 @@ function analyzeOnce(text: string): Analysis {
       // name declared somewhere (a parameter, a function of the script's own) may still mean the page's elsewhere, so only one the script
       // keeps from candle to candle (one name everywhere) is taken for its own.
       if (n.k === 'id' && DEPTH_FUNCTIONS.has(n.name) && !persistent.has(n.name)) inputs.add('depth');
-      // The flow read through `bar`: the page then fills the candles it did not record from the chart market's own.
-      if (n.k === 'member' && n.obj.k === 'id' && n.obj.name === 'bar' && (n.name === 'vbuy' || n.name === 'vsell' || n.name === 'recorded')) inputs.add(n.name);
+      // The flow read through `bar`: the page then fills the candles it did not record from the chart market's own. The liquidations read
+      // through it: the page then loads their days (it loads them only for a script that reads them).
+      if (n.k === 'member' && n.obj.k === 'id' && n.obj.name === 'bar' && (n.name === 'vbuy' || n.name === 'vsell' || n.name === 'recorded' || n.name === 'lbuy' || n.name === 'lsell')) inputs.add(n.name);
       // `bar` read any way but as `bar.name` with another name (bar["oichg"], kept under another name, handed to a function) may read the
-      // change in open interest or the flow: the page then works them out.
+      // change in open interest, the flow or the liquidations: the page then works them out.
       if (n.k === 'id' && n.name === 'bar') bars++;
       if (n.k === 'member' && n.obj.k === 'id' && n.obj.name === 'bar' && n.name !== 'oichg') plainBars++;
       if (n.k === 'assign' && n.target.k === 'id' && n.value.k === 'call' && n.value.callee.k === 'id' && n.value.callee.name === 'option') {
@@ -209,7 +210,7 @@ function analyzeOnce(text: string): Analysis {
   };
   let bars = 0, plainBars = 0;
   visit(program, true);
-  if (bars > plainBars && !declared.has('bar') && !persistent.has('bar')) { inputs.add('oichg'); inputs.add('vbuy'); }
+  if (bars > plainBars && !declared.has('bar') && !persistent.has('bar')) { inputs.add('oichg'); inputs.add('vbuy'); inputs.add('lbuy'); }
   // What only a full browser engine has (the chart library's series objects, the raw function library): refused with where it is used.
   const refuse = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;
