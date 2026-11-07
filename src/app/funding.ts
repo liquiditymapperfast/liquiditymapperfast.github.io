@@ -349,7 +349,9 @@ export class FundingSource {
       // A read cut short by a failed page keeps what it read and still counts as failed, so the rest is asked a minute later, not at once. One
       // next to what is held (`next`) whose candles do not reach it leaves what is held as it is: Binance on a read to the left and Bybit on one
       // to the right page from the far end, whose first page lies in the look-ahead, and that fragment replaced the stretch drawn, which stayed
-      // off the pane for the minute (review round 7). A jump's read takes the place of what is held, cut or not: that lies away from the view.
+      // off the pane for the minute (review round 7). A jump's read takes the place of what is held, cut or not: that lies away from the view. So
+      // does a live view's read of its newest end after a pause: on Bybit, newest first, its fragment is the live edge, worth more than the old
+      // stretch (round 8); on Binance it starts where what is held ends and joins it.
       const read = (lo: number, hi: number, next: boolean): void => this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => {
         const before = this.#premium.get(pk);
         if (!(r.cut && next && before && !meets(r, before))) this.#premium.set(pk, heldPremium(before, r, tfMs, now));
@@ -365,7 +367,7 @@ export class FundingSource {
         if (left && right) read(viewLo - padLeft, edge + padRight, true);
         else if (left) read(Math.min(viewLo, Math.max(viewLo - ahead, p.from + tfMs - budget)), p.from + tfMs, true);
         else if (right) read(p.to - 2 * tfMs, Math.max(edge, Math.min(edge + ahead, now + tfMs, p.to - 2 * tfMs + budget)), true);
-        else if (live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs)) read(Math.max(viewLo - padLeft, p.to - 2 * tfMs), now + tfMs, true);
+        else if (live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs)) read(Math.max(viewLo - padLeft, p.to - 2 * tfMs), now + tfMs, false);
       }
       premium = p?.rows ?? [];
     }

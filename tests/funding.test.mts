@@ -177,6 +177,9 @@ test('a premium read joins what is held only where the two stretches meet, and w
   const joined = heldPremium(held, { rows: candles(0, 11), from: T, to: T + 11 * M }, M, T + 100 * M);
   assert.deepEqual([joined.from, joined.to, joined.rows.length], [T, T + 20 * M, 21]);
   assert.ok(joined.rows.every((q, i) => q.t === T + i * M), 'no candle missing');
+  // Ending exactly where what is held begins (both count the candle starting there): they meet, one stretch.
+  const touching = heldPremium({ rows: candles(10, 20), from: T + 10 * M, to: T + 20 * M, at: 0 }, { rows: candles(0, 10), from: T, to: T + 10 * M }, M, T + 100 * M);
+  assert.deepEqual([touching.from, touching.to, touching.rows.length], [T, T + 20 * M, 21]);
   // Three reads' worth (24,000 candles) held at most: a read on the newer side lets the oldest go, one on the older side the newest.
   const full = { rows: candles(0, 23_999), from: T, to: T + 23_999 * M, at: 0 };
   const newer = heldPremium(full, { rows: candles(23_990, 24_999), from: T + 23_990 * M, to: T + 24_999 * M }, M, T + 100_000 * M);
@@ -218,10 +221,11 @@ test('a premium read cut short by a failed page keeps what it read and waits bef
   assert.equal(pages, back, 'back where it was: nothing read');
 });
 
-test('a read next to what is held that a failed page cuts short leaves what is held where its candles do not reach it', async () => {
+test('a read a failed page cuts short: next to what is held, kept apart where it does not reach it and joined where it does; a jump\'s or a live view\'s newest end takes its place', async () => {
   // Review round 7: Binance on a read to the left and Bybit on one to the right page from the far end, and their first page lies in the
-  // look-ahead; the second failing, that fragment replaced the stretch drawn and the pane drew no premium for a minute.
-  const M = 60_000, now = T + 60 * 24 * H, w = 4_000 * M;
+  // look-ahead; the second failing, that fragment replaced the stretch drawn and the pane drew no premium for a minute. Round 8: a live view
+  // read again after a pause is the opposite case on Bybit, newest first, whose fragment is the live edge.
+  const M = 60_000, now = T + 60 * 24 * H, w = 4_000 * M, p = now - 20 * 24 * H, clock = Math.floor(Date.now() / M) * M;
   const n = (url: string, name: string): number => Number(new RegExp(`[?&]${name}=(\\d+)`).exec(url)![1]);
   let pages = 0, failAt = -1;
   const get = venue(url => {
@@ -236,19 +240,37 @@ test('a read next to what is held that a failed page cuts short leaves what is h
     return { retCode: 0, result: { list: [{ fundingRate: '0.0001', nextFundingTime: String(now + H) }] } };
   });
   const land = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
-  for (const [v, by] of [['binance', -3_000 * M], ['bybit', 3_000 * M]] as const) {
-    const source = new FundingSource(() => undefined, get);
-    let t1 = now - 20 * 24 * H;
-    source.view(v, BTC, M, t1 - w, t1, now); await land();
-    const before = source.view(v, BTC, M, t1 - w, t1, now).premium;
-    // Moved 3,000 candles the way this venue reads from the far end: the read's second page fails.
-    failAt = pages + 1; t1 += by;
-    source.view(v, BTC, M, t1 - w, t1, now); await land();
-    const kept = source.view(v, BTC, M, t1 - w, t1, now).premium, asked = pages;
-    assert.deepEqual([kept.length, kept[0]?.t, kept.at(-1)?.t], [before.length, before[0]!.t, before.at(-1)!.t], `${v}: what was held stays`);
-    assert.ok(kept.some(q => q.t >= t1 - w && q.t <= t1), `${v}: drawn where the two views overlap`);
-    for (let i = 0; i < 10; i++) { source.view(v, BTC, M, t1 - w, t1, now); await land(); }
-    assert.equal(pages, asked, `${v}: the rest is asked after the wait, not at once`);
+  // Each case: a first view, read whole; then the view the read cut short is for, its second page failing; and what is held after it.
+  type View = readonly [t0: number, t1: number, now: number];
+  const cases: readonly { what: string; v: 'binance' | 'bybit'; first: View; then: View; held: 'kept' | 'joined' | 'replaced' }[] = [
+    { what: 'moved left, Binance reading from the far end', v: 'binance', first: [p - w, p, now], then: [p - w - 3_000 * M, p - 3_000 * M, now], held: 'kept' },
+    { what: 'moved right, Bybit reading from the far end', v: 'bybit', first: [p - w, p, now], then: [p - w + 3_000 * M, p + 3_000 * M, now], held: 'kept' },
+    { what: 'moved left, Bybit reading from what is held', v: 'bybit', first: [p - w, p, now], then: [p - w - 3_000 * M, p - 3_000 * M, now], held: 'joined' },
+    { what: 'moved right, Binance reading from what is held', v: 'binance', first: [p - w, p, now], then: [p - w + 3_000 * M, p + 3_000 * M, now], held: 'joined' },
+    { what: 'zoomed out past both sides, Binance', v: 'binance', first: [p - 500 * M, p, now], then: [p - 2_250 * M, p + 2_000 * M, now], held: 'kept' },
+    { what: 'zoomed out past both sides, Bybit', v: 'bybit', first: [p - 500 * M, p, now], then: [p - 2_250 * M, p + 2_000 * M, now], held: 'kept' },
+    { what: 'a jump far back', v: 'binance', first: [p - w, p, now], then: [p - 50_000 * M - w, p - 50_000 * M, now], held: 'replaced' },
+    { what: 'a live view after 20 hours, Bybit reading its newest first', v: 'bybit', first: [clock - 2_000 * M, clock, clock], then: [clock - 800 * M, clock + 1_200 * M, clock + 1_200 * M], held: 'replaced' },
+    { what: 'a live view after 20 hours, Binance reading on from what is held', v: 'binance', first: [clock - 2_000 * M, clock, clock], then: [clock - 800 * M, clock + 1_200 * M, clock + 1_200 * M], held: 'joined' },
+  ];
+  for (const c of cases) {
+    const source = new FundingSource(() => undefined, get), show = (view: View) => source.view(c.v, BTC, M, view[0], view[1], view[2]).premium;
+    show(c.first); await land();
+    const before = show(c.first);
+    failAt = pages + 1;
+    show(c.then); await land();
+    const after = show(c.then), asked = pages, [t0, t1, at] = c.then;
+    if (c.held === 'kept') {
+      assert.deepEqual([after.length, after[0]?.t, after.at(-1)?.t], [before.length, before[0]!.t, before.at(-1)!.t], `${c.what}: what was held stays`);
+      if (before.some(q => q.t >= t0 && q.t <= t1)) assert.ok(after.some(q => q.t >= t0 && q.t <= t1), `${c.what}: drawn where the views overlap`);
+    } else if (c.held === 'joined') {
+      assert.ok(after.length > before.length && after[0]!.t <= before[0]!.t && after.at(-1)!.t >= before.at(-1)!.t, `${c.what}: joined (${before.length} -> ${after.length})`);
+    } else {
+      assert.ok(after.length > 0 && !after.some(q => q.t === before[0]!.t), `${c.what}: in place of what was held`);
+      if (at - t1 < M) assert.ok(after.at(-1)!.t >= at - M, `${c.what}: the live edge held`);
+    }
+    for (let i = 0; i < 10; i++) { show(c.then); await land(); }
+    assert.equal(pages, asked, `${c.what}: the rest is asked after the wait, not at once`);
   }
 });
 
