@@ -5,7 +5,7 @@ import { TIMEFRAMES } from '../shared/series.ts';
 import { LongShortCache, type LsMetric, type LsSeries } from '../shared/long-short.ts';
 import { IdbLsStore } from './browser/ls-store.ts';
 import { webGet } from '../shared/history.ts';
-import { PriceHistoryCache, priceListing, type PriceHistoryAnswer } from '../shared/price-history.ts';
+import { PriceHistoryCache, priceListing, priceTimeframeMs, type PriceHistoryAnswer } from '../shared/price-history.ts';
 import { toWire } from '../shared/prints.ts';
 import { toWire as liquidationWire, type Liquidation } from '../shared/liquidations.ts';
 import type { PrintSumsAnswer } from '../shared/print-sums.ts';
@@ -245,9 +245,9 @@ export class BrowserSource implements DataSource, VenueControl {
   readonly #coin: Coin;
   readonly #priceHistory = new PriceHistoryCache(webGet);
   priceHistory(inst: string, tf: string, from: number, to: number): Promise<PriceHistoryAnswer> {
-    const target = priceListing(this.#coin, inst);
-    if (!target || !Object.hasOwn(TIMEFRAMES, tf)) return Promise.reject(new Error('Unsupported price history'));
-    return this.#priceHistory.series(target, TIMEFRAMES[tf]!, from, to);
+    const target = priceListing(this.#coin, inst), tfMs = priceTimeframeMs(tf);
+    if (!target || !tfMs) return Promise.reject(new Error('Unsupported price history'));
+    return this.#priceHistory.series(target, tfMs, from, to);
   }
   /**
    * Read from the venues by the page itself (each answers with CORS headers but OKX, which a page cannot read), kept in memory. A cancelled

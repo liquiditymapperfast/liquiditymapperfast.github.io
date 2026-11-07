@@ -9,7 +9,7 @@ import { OiSampler, oiHistoryWriter } from './oi-sampler.mts';
 import { LS_METRICS, LongShortCache, type LsMetric } from '../../shared/long-short.ts';
 import { SqliteLsStore } from './ls-store.mts';
 import { webGet, type Fetcher } from '../../shared/history.ts';
-import { PriceHistoryCache, PRICE_QUERY_BARS, priceListing } from '../../shared/price-history.ts';
+import { PriceHistoryCache, PRICE_QUERY_BARS, priceListing, priceTimeframeMs } from '../../shared/price-history.ts';
 import { BTC } from '../../shared/coins.ts';
 import type { OiEvent as OiPushItem } from '../../shared/connector.ts';
 import { TOUCH_HINT_MS } from '../../shared/levels.ts';
@@ -508,7 +508,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const longShort = new LongShortCache(webGet, false, undefined, undefined, undefined, undefined, undefined, lsStore);
   const priceHistory = new PriceHistoryCache(priceHistoryGet);
   const priceHistoryRoute = (url: URL, res: ServerResponse) => {
-    const id = url.searchParams.get('inst') ?? '', tfMs = timeframeMs(url.searchParams.get('tf'));
+    // The line's intervals (`PRICE_TIMEFRAMES`: weeks too, for a view past 2,000 days), bounded to 2,000 bars like each of them.
+    const id = url.searchParams.get('inst') ?? '', tfMs = priceTimeframeMs(url.searchParams.get('tf'));
     const target = priceListing(BTC, id);
     if (!target || target.id !== id || !tfMs) return sendJson(res, { error: BAD_SERIES }, 400);
     const span = windowOf(url, Date.now() + 1, 500 * tfMs);

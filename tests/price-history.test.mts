@@ -151,6 +151,21 @@ test('wire validation refuses another market, out-of-window rows, invalid OHLC, 
   for (const bad of [{ ...answer, instrumentId: 'binancespot:BTCUSDT' }, { ...answer, tfMs: 1 }, { ...answer, from: T0 + HOUR }, { ...answer, status: 'empty' }, { ...answer, candles: [[T0, 100, 99, 101, 101, 5, 1]] }, { ...answer, candles: Array.from({ length: PRICE_QUERY_BARS + 3 }, () => answer.candles[0]) }]) assert.throws(() => parsePriceHistory(bad, target.id, HOUR));
 });
 
+test('weeks are built from the daily pages, on whole weeks since 1970, in as few requests as the days that exist need', async () => {
+  const calls: URL[] = [], day = 24 * HOUR, week = 7 * day, now = T0 + 800 * day, cache = new PriceHistoryCache(exchange(calls), () => now);
+  // A window that starts before the listing (the fake's history begins at T0): the reading stops at the first empty page.
+  const from = Math.floor((T0 - 60 * day) / week) * week, to = Math.ceil((now + 1) / week) * week;
+  const a = await cache.series(target, week, from, to);
+  assert.equal(a.status, 'ok'); assert.ok(calls.every(url => url.searchParams.get('interval') === '1d' && Number(url.searchParams.get('limit')) <= 499));
+  assert.equal(calls.length, Math.ceil(801 / 499) + 1, 'two pages of days and the empty one before the listing');
+  assert.ok(a.candles.every(c => c[0] % week === 0)); assert.deepEqual(parsePriceHistory(a, target.id, week), a);
+  assert.equal(a.candles.length, Math.floor(now / week) - Math.floor(T0 / week) + 1);
+  // A whole week is its seven days: the first open, the highest high, the lowest low, the last close, the volume added up.
+  assert.deepEqual(a.candles[1], [Math.ceil(T0 / week) * week, 100, 102, 98, 101, 35, 7]);
+  await cache.series(target, week, from, to); assert.equal(calls.length, 3, 'ended weeks are kept');
+  await assert.rejects(cache.series(target, week, 0, (PRICE_QUERY_BARS + 1) * week), /window/);
+});
+
 test('a year of daily context needs one small request and switching resolutions keeps its exchange cache', async () => {
   const calls: URL[] = [], day = 24 * HOUR, cache = new PriceHistoryCache(exchange(calls), () => T0 + 500 * day);
   const first = await cache.series(target, day, T0, T0 + 365 * day);

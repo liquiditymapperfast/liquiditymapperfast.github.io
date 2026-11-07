@@ -77,7 +77,7 @@ import { candlesAt, formingCandle, pageNow, replaying, replayView } from '../rep
 import { TapeGL, type DustStyle } from '../tape/gl.ts';
 import { TraceIndex, gapMarks, secondsPath, traceGapColumns } from '../tape/trace.ts';
 import { curveColors } from './ladder-curves.ts';
-import { priceInstrument, priceTarget, type PriceHistoryAnswer, type PriceTarget } from '../../shared/price-history.ts';
+import { PRICE_TIMEFRAMES, priceInstrument, priceTarget, type PriceHistoryAnswer, type PriceTarget } from '../../shared/price-history.ts';
 import type { DrawController } from '../draw/controller.ts';
 import { paintDrawings, paintEditing } from '../draw/paint.ts';
 import type { Projection } from '../draw/geometry.ts';
@@ -1438,7 +1438,7 @@ export class HeatPane {
     const h = this.hub.priceHistory, a = h.answer, target = this.#overviewTarget;
     let text = '';
     if (a?.candles.length && target) {
-      const tf = Object.entries(TIMEFRAMES).find(([, ms]) => ms === a.tfMs)?.[0] ?? '';
+      const tf = Object.entries(PRICE_TIMEFRAMES).find(([, ms]) => ms === a.tfMs)?.[0] ?? '';
       const market = `${venueLabel(a.instrumentId)} ${target.listing.symbol} ${target.kind === 'spot' ? t('Spot') : t('Perp')}`;
       text = t('Price · {market} · {timeframe}', { market, timeframe: tf });
       // The price only where the line is drawn: over a candle the candle says it, and the line's close would be one nothing on the chart shows.
