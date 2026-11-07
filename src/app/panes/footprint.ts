@@ -229,7 +229,7 @@ export class FootprintData {
   /** No markets to count (Aggregated with every venue off, or none inside the filter): no bars, and nothing asked for. */
   clear(): void {
     if (this.#context === '' && !this.bars.size) return;
-    this.#context = ''; this.#request++; this.#held = null; this.#busy = false; this.bars = new Map(); this.venueOrder = []; this.step = 0; this.fine = 0; this.version++;
+    this.#context = ''; this.#request++; this.#held = null; this.#busy = false; this.#stepAsked = ''; this.bars = new Map(); this.venueOrder = []; this.step = 0; this.fine = 0; this.version++;
   }
   /** The market and timeframe the bars belong to, and the number of the request whose answer counts. */
   #context = ''; #request = 0;
@@ -246,9 +246,14 @@ export class FootprintData {
     // Rows of another market or timeframe are not rows of this one, whatever the window: they go now, rather than being drawn until the new
     // ones come (or for good, if they never do). A request still out for the old context is left to finish, and its answer is ignored.
     const context = `${inst}|${tf}`;
-    if (context !== this.#context) { this.#context = context; this.bars = new Map(); this.venueOrder = []; this.step = 0; this.fine = 0; this.#held = null; this.#busy = false; this.#retryAt = 0; this.version++; }
+    if (context !== this.#context) { this.#context = context; this.bars = new Map(); this.venueOrder = []; this.step = 0; this.fine = 0; this.#held = null; this.#busy = false; this.#retryAt = 0; this.#stepAsked = ''; this.version++; }
     const clock = performance.now();
     if (this.#busy || clock < this.#retryAt) return;
+    // No row size yet (`rowStep` 0: the markets' recorded step comes with their first answer). Asked as it is, the answer would hold every bar
+    // on the finest rows recorded (BTC's $0.50, where the footprint draws some $64 at an hour's zoom: 45 MB for a week of hourly bars of 13
+    // markets, 2026-11-07), only for the next look to ask again on the drawn rows. The step is asked first, alone; markets with nothing
+    // recorded (no step) are then asked as before.
+    if (!(rowStep > 0) && !this.#held && this.#stepAsked !== context) { this.#askStep(context, inst, tf, load, onLoad); return; }
     // Other size lines are another question: the bars' sums are for the lines asked.
     const grid = `${rowStep}|${cuts.join(',')}`, want = { from: Math.floor((view.t0 - tfMs) / tfMs) * tfMs, to: Math.ceil((view.t1 + tfMs) / tfMs) * tfMs };
     const h = this.#held;
@@ -306,6 +311,24 @@ export class FootprintData {
     }).catch(error => {
       if (request !== this.#request) return;
       // Asked again in five seconds, not on every frame.
+      console.error('footprint load failed', error); this.#retryAt = performance.now() + FOOTPRINT_REFRESH_MS;
+    }).finally(() => { if (request === this.#request) this.#busy = false; });
+  }
+
+  /** The context whose recorded step `#askStep` was answered for, so markets with nothing recorded are not asked it on every look. */
+  #stepAsked = '';
+  /**
+   * The markets' recorded step alone (`fine`), from a question for [0, 1) ms: an answer carries their step whatever its window, and this window
+   * holds no minute of any market, so it costs a source nothing and brings no bars.
+   */
+  #askStep(context: string, inst: string, tf: string, load: FootprintLoad, onLoad: () => void): void {
+    this.#busy = true;
+    const request = ++this.#request;
+    load(inst, tf, 0, 1, 0, [], 0, false).then(body => {
+      if (request !== this.#request) return;
+      this.#stepAsked = context; this.fine = body.fine > 0 ? body.fine : 0; onLoad();
+    }).catch(error => {
+      if (request !== this.#request) return;
       console.error('footprint load failed', error); this.#retryAt = performance.now() + FOOTPRINT_REFRESH_MS;
     }).finally(() => { if (request === this.#request) this.#busy = false; });
   }
