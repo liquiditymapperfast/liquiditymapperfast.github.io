@@ -212,14 +212,25 @@ function paintBox(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number): voi
   if (!picture || !(box.w > 0 && box.h > 0)) return;
   const t = ctx.getTransform(), sx = Math.hypot(t.a, t.b), sy = Math.hypot(t.c, t.d), w = Math.ceil(box.w * sx), h = Math.ceil(box.h * sy);
   if (!(w > 0 && h > 0)) return;
-  const layer = surface(w, h), lc = context2d(layer);
-  lc.setTransform(w / box.w, 0, 0, h / box.h, -box.x * w / box.w, -box.y * h / box.h);
-  paintPlainBox(lc, box, cs, z);
-  const at = maskPlace(cs.maskSize || cs.webkitMaskSize || 'auto', cs.maskPosition || cs.webkitMaskPosition || '0% 0%', box.w, box.h, picture.naturalWidth, picture.naturalHeight, z);
-  lc.setTransform(w / box.w, 0, 0, h / box.h, 0, 0); lc.globalCompositeOperation = 'destination-in';
-  lc.drawImage(picture, at.x, at.y, at.w, at.h);
+  const size = cs.maskSize || cs.webkitMaskSize || 'auto', position = cs.maskPosition || cs.webkitMaskPosition || '0% 0%';
+  // The same icon in the same colour at the same size is cut once: drawing the picture again for each walk (a GIF repaints its still
+  // layers while it records) doubled the time a walk took.
+  const key = [url, w, h, box.w, box.h, z, size, position, cs.backgroundColor, cs.backgroundImage, cs.borderRadius, cs.borderWidth, cs.borderStyle, cs.borderColor, cs.boxShadow].join('|');
+  let layer = cutIcons.get(key);
+  if (!layer) {
+    layer = surface(w, h); const lc = context2d(layer);
+    lc.setTransform(w / box.w, 0, 0, h / box.h, -box.x * w / box.w, -box.y * h / box.h);
+    paintPlainBox(lc, box, cs, z);
+    const at = maskPlace(size, position, box.w, box.h, picture.naturalWidth, picture.naturalHeight, z);
+    lc.setTransform(w / box.w, 0, 0, h / box.h, 0, 0); lc.globalCompositeOperation = 'destination-in';
+    lc.drawImage(picture, at.x, at.y, at.w, at.h);
+    if (cutIcons.size >= MAX_CUT_ICONS) cutIcons.clear();
+    cutIcons.set(key, layer);
+  }
   ctx.drawImage(layer, box.x, box.y, box.w, box.h);
 }
+/** Masked boxes already cut (see `paintBox`), by everything that changes how they look; emptied when it holds this many. */
+const cutIcons = new Map<string, HTMLCanvasElement | OffscreenCanvas>(), MAX_CUT_ICONS = 400;
 
 /** A computed `transform` as the six numbers of a 2D matrix (a 3D one by its 2D part); null for none. */
 export function cssMatrix(transform: string): [number, number, number, number, number, number] | null {
