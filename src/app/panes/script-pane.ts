@@ -57,6 +57,8 @@ const spawnScriptWorker = (): WorkerLike => new Worker(new URL('../script/script
 const replayKey = (tf: number): number => replaying() ? Math.floor(pageNow() / tf) : -1;
 /** Whether a script reads the taker flow (`vbuy`, `vsell`, `bar.recorded`): its run then asks for the chart market's own candles where the page recorded none. */
 const readsFlow = (a: Analysis): boolean => a.inputs.has('vbuy') || a.inputs.has('vsell') || a.inputs.has('recorded');
+/** Whether a script reads the liquidations (`lbuy`, `lsell`): only then are their days asked for. */
+const readsLiquidations = (a: Analysis): boolean => a.inputs.has('lbuy') || a.inputs.has('lsell');
 
 /**
  * How many of an answer's candles may be shown: all of them live; in a replay only those closed by its moment, whatever moment the answer
@@ -471,7 +473,7 @@ export class ScriptPane extends TimePane {
     if (!('program' in a)) return { result: { id: 'trial', ok: false, error: a }, warnings: [], candles: 0 };
     if (this.#trialBusy) return 'busy';
     const state = this.store.state, filters = new Map<string, SourceFilter>([['', {}], ...sourcesWith(a, options)]);
-    const inputs = this.#withTheme(this.#data.inputs(state, filters, a.inputs.has('oichg'), readsFlow(a), this.candlesOf(state)));
+    const inputs = this.#withTheme(this.#data.inputs(state, filters, a.inputs.has('oichg'), readsFlow(a), this.candlesOf(state), readsLiquidations(a)));
     if (!inputs) return null;
     const warnings = this.#pageWarnings(a, options, this.#data.markets(state, filters));
     // Counted now: the run hands the inputs' arrays over to the worker, which leaves them empty here.
@@ -529,7 +531,7 @@ export class ScriptPane extends TimePane {
     if (!runnable.length) { this.#host.dropUnsent(); this.#lastRun = Date.now(); return; }
     // The change in open interest is worked out only for a run in which a script reads it.
     const read = runnable.map(r => this.#analyze(r.source) as Analysis);
-    const inputs = this.#withTheme(this.#data.inputs(state, filters, read.some(a => a.inputs.has('oichg')), read.some(readsFlow), this.candlesOf(state)));
+    const inputs = this.#withTheme(this.#data.inputs(state, filters, read.some(a => a.inputs.has('oichg')), read.some(readsFlow), this.candlesOf(state), read.some(readsLiquidations)));
     if (!inputs) { this.#host.dropUnsent(); return; }
     // The order book, for a run in which a script reads it: kept up to date, and what the worker lacks of it posted before the run.
     const depth = read.some(a => a.inputs.has('depth')) ? this.#data.depth.sync(state, inputs.time, inputs.tf) : null;
@@ -902,7 +904,7 @@ export class ScriptPane extends TimePane {
       ids.add(id); jobs.push({ key, id, target, a });
     }
     if (!jobs.length) return 'nothing';
-    const inputs = this.#withTheme(this.#data.inputs(state, filters, jobs.some(j => j.a.inputs.has('oichg')), jobs.some(j => readsFlow(j.a)), this.candlesOf(state)));
+    const inputs = this.#withTheme(this.#data.inputs(state, filters, jobs.some(j => j.a.inputs.has('oichg')), jobs.some(j => readsFlow(j.a)), this.candlesOf(state), jobs.some(j => readsLiquidations(j.a))));
     if (!inputs) return 'no-candles';
     const host = this.#pvHost ??= new ScriptHost({ spawn: spawnScriptWorker });
     const depth = jobs.some(j => j.a.inputs.has('depth')) ? this.#data.depth.sync(state, inputs.time, inputs.tf) : null;

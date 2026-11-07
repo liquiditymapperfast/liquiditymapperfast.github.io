@@ -79,9 +79,14 @@ export class FlowBook {
   minutesMissing(ids: readonly string[], from: number, to: number): string[] {
     return ids.filter(id => { const asked = this.#minutesAsked.get(id); return !(asked && asked.from <= from && asked.to >= to); });
   }
-  /** Minutes answered for `ids` over [from, to]: each instrument's replace what it had (one with none keeps none). */
+  /**
+   * Minutes answered for `ids` over [from, to]: each instrument's replace what it had (one with none keeps none). An answer that begins later
+   * than asked (by more than the minute it is rounded to) is a source that keeps no older minutes up to `to` (the server answers the last
+   * eight days): nothing older is asked for again, where a zoom out asked for the same days at each of its steps.
+   */
   loadMinutes(frame: FlowMinutesFrame, ids: readonly string[], from: number, to: number): void {
-    for (const id of ids) { this.#minutes.delete(id); this.#minutesAsked.set(id, { from, to }); }
+    const reach = frame.from > from + 60_000 ? -Infinity : from;
+    for (const id of ids) { this.#minutes.delete(id); this.#minutesAsked.set(id, { from: reach, to }); }
     for (const s of frame.instruments) if (ids.includes(s.id)) this.#minutes.set(s.id, new FlowMinutes(s));
     this.version++; this.loads++;
   }

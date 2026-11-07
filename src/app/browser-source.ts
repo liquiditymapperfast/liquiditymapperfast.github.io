@@ -265,10 +265,14 @@ export class BrowserSource implements DataSource, VenueControl {
   }
   async liquidations(from: number, to: number, minUsd?: number): Promise<Liquidation[]> { return this.#call({ method: 'liquidations', from, to, ...(minUsd !== undefined ? { minUsd } : {}) }); }
   /** The engine's columns, and (averages at two minutes or more) the windows before its day from the long history's tiles. */
-  async columns(ids: string[], from: number, to: number, stepMs: number, close = false): Promise<ColumnsFrame> {
+  async columns(ids: string[], from: number, to: number, stepMs: number, close = false, signal?: AbortSignal): Promise<ColumnsFrame> {
+    signal?.throwIfAborted();
     const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close });
     this.#noteSince(frame);
-    return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
+    const extended = close || !this.#archive ? frame : await this.#archive.extend(frame, from, to, stepMs);
+    // Answered by the page's own worker, so there is nothing to cancel: an answer the question was let go of meanwhile is not taken.
+    signal?.throwIfAborted();
+    return extended;
   }
 
   /** The columns of [from, to) again after tiles came for it (`setArchiveListener`): what the view needs is added to, not replaced. */

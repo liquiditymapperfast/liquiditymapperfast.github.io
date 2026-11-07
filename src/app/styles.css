@@ -316,6 +316,8 @@ html[data-bar="compact"] .toast { bottom: 76px; }
 /* The pulse layer sits above the overlay so a trap's cells glow over the footprint, and lets every pointer event through to it. */
 .pane.heat canvas.pulse { z-index: 1; pointer-events: none; }
 .pane.heat canvas.dust { pointer-events: none; }
+/* The pointer's layer (crosshair, legend) lies over the overlay, which takes the pointer. */
+.pane.heat canvas.hover { pointer-events: none; }
 /* Select and Recenter act on the map, so they sit in the map's top-right corner, left of the profile column. */
 .pane.heat .map-tools { position: absolute; z-index: 3; top: 8px; right: calc(var(--gutter, 192px) + 8px); display: flex; gap: 6px; }
 .pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto, .pane.heat .map-draw, .pane.heat .map-layout { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);

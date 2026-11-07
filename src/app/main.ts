@@ -220,7 +220,10 @@ async function main(): Promise<void> {
   toolbar.onVenuesApplied = () => { void hub.refreshMarkets(); window.setTimeout(() => void hub.refreshMarkets(), 15_000); };
   const sounds = new Sounds(store); toolbar.attachSounds(sounds); sounds.start();
   // Sounds the panels may make about what happens in them (flow bursts, walls, the balance, the depth, candle closes); the bursts are also marked on the flow column.
-  const alerts = new Alerts(store, hub.flow, sounds.engine, Date.now, (ids, from) => { void hub.ensureFlow(ids, from); }, (ids, from, to) => hub.source.columns(ids, from, to, 60_000));
+  // The depth sound's baseline (hours of minute columns, read as the page opens) waits for the map's first columns, or 15 s where the map draws
+  // none (a phone's Tape): read beside them, its hours held the server and the page's connections and the map came seconds later.
+  const mapFirst = Promise.race([hub.columnsArrived, new Promise<void>(resolve => setTimeout(resolve, 15_000))]);
+  const alerts = new Alerts(store, hub.flow, sounds.engine, Date.now, (ids, from) => { void hub.ensureFlow(ids, from); }, (ids, from, to) => mapFirst.then(() => hub.source.columns(ids, from, to, 60_000)));
   toolbar.attachAlerts(alerts); alerts.start();
   // A script's alerts sound through the same Sounds switch, cap and list as the panels'.
   script.onAlert = a => alerts.script(Date.now(), a.text, a.sound, a.key);
@@ -409,11 +412,11 @@ async function main(): Promise<void> {
     if (changed.has('barStatOptions') || changed.has('footprint') || changed.has('barStats')) bars.refresh();
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderCurves') || changed.has('cvd') || changed.has('pullStack') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.invalidate(); }
-    if (changed.has('hover')) { heat.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.syncHover(); }
+    if (changed.has('hover')) { heat.invalidateHover(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.syncHover(); }
     if (changed.has('fundingVenue')) funding.settingsChanged();
     if (['show', 'timeframe', 'oiFine', 'range', 'replay'].some(k => changed.has(k as never))) funding.invalidate();
     // The order book's row under the pointer: the map and the flow column's price strip draw its price.
-    if (changed.has('bookHover')) { heat.invalidate(); cvd.syncBookHover(); }
+    if (changed.has('bookHover')) { heat.invalidateHover(); cvd.syncBookHover(); }
     if (changed.has('delta')) delta.settingsChanged();
     if ((changed.has('oi') || changed.has('oiParts')) && topShown(state)) heat.invalidate();
     if (changed.has('marketId')) candle.marketChanged();

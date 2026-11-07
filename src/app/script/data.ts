@@ -48,9 +48,11 @@ export class ScriptData {
   /**
    * The inputs over the chart's candles for each filter (and the change in open interest, `withOi`); null while there are no candles. With
    * `withCandleFlow` (a script reads the flow), a candle whose flow the page did not record takes the chart market's own candle's buys and
-   * sells, in each set that holds that market (`sourceInputs`).
+   * sells, in each set that holds that market (`sourceInputs`). The flow and the liquidations are asked for only while a script reads them
+   * (`withCandleFlow`; `withLiquidations`, `lbuy` or `lsell`): asked for every script, a VWAP's chart read a liquidation day per answer back
+   * over its candles as the page opened, and the flow's minutes again at each step of a zoom out.
    */
-  inputs(state: AppState, filters: ReadonlyMap<string, SourceFilter>, withOi = false, withCandleFlow = false, drawn: readonly CandleRow[] = state.candles): BarInputs | null {
+  inputs(state: AppState, filters: ReadonlyMap<string, SourceFilter>, withOi = false, withCandleFlow = false, drawn: readonly CandleRow[] = state.candles, withLiquidations = true): BarInputs | null {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = pageNow();
     // Right after a change of timeframe the candles of the one before are still there: read under the new one, they would be paired with
     // its flow and its market candles. Nothing until the new ones land.
@@ -63,9 +65,9 @@ export class ScriptData {
     const n = candles.time.length;
     if (!n) return null;
     const starts = Array.from(candles.time);
-    ensureDeltaFlow(this.hub, flowLoadIds(state, this.hub.flow.ids), starts[0]!, Date.now());
+    if (withCandleFlow) ensureDeltaFlow(this.hub, flowLoadIds(state, this.hub.flow.ids), starts[0]!, Date.now());
     const markets = this.markets(state, filters);
-    const liq = this.#liquidations(starts, tf, now);
+    const liq = withLiquidations ? this.#liquidations(starts, tf, now) : null;
     const sources: BarInputs['sources'] = {};
     this.liquidationsCut = false;
     // The chart's market as the sets name it: Binance spot is `binance:BTCUSDT:spot` on the chart, `binancespot:BTCUSDT` in the flow feeds.

@@ -115,6 +115,12 @@ const SERIES_KEPT = 16;
 const PREFETCH_FIRST_MS = 4_000, PREFETCH_AFTER_MS = 1_500, PREFETCH_GAP_MS = 400, PREFETCH_FRESH_MS = 3 * MINUTE;
 /** A kept series is shown at once while its newest candle is at most this far behind now (or three of its candles, when longer). */
 const KEPT_GAP_MS = 10 * MINUTE;
+/**
+ * A zoom passes several column steps in a second (a wheel turn): a step is asked for once the view has wanted it this long, and a load under
+ * way for a step the zoom has moved past is let go. Asked at every step, a zoom out over weeks held the server and a connection with each
+ * passing step's tens of MB, and the step it ended on was asked only after them, seconds later (Research_Findings.md).
+ */
+const COLUMN_STEP_SETTLE_MS = 200;
 
 
 /** The other timeframes in the order they are read ahead: the nearest to the one on screen first, the shorter before the longer. */
@@ -160,6 +166,14 @@ export class Hub {
   #columnsLoading = false;
   /** The newest windows may have changed since they were asked for (the clock says so every 30 s): the next load asks for them again. */
   #columnsStale = false;
+  /** The step of the load under way, and how to let it go once the view wants another (`loadColumns`). */
+  #columnsLoad: { stepMs: number; abort: AbortController } | null = null;
+  /** When the step the view wants last changed, and the timer that looks again once it has held (`COLUMN_STEP_SETTLE_MS`). */
+  #wantedSince = 0;
+  #settleTimer: ReturnType<typeof setTimeout> | undefined;
+  #arrived: () => void = () => {};
+  /** Resolved when the first recorded columns reach the worker: what can wait for the map (the depth sound's baseline hours) waits for this. */
+  readonly columnsArrived = new Promise<void>(resolve => { this.#arrived = resolve; });
   #series = '';
   /** What the candles on screen are of (the context asked for, and the instrument that answered), or null when they are of nothing that can be told. */
   #loaded: { key: string; instrument: string } | null = null;
@@ -1033,7 +1047,8 @@ export class Hub {
    * live edge only made the server sort the same hours of orders again.
    */
   ensurePrints(view: Bounds, minUsd = 25_000): void {
-    if (this.#printsLoading || !(view.t1 > view.t0)) return;
+    // Not before the stream first opens: an answer asked before it covers nothing once it opens (below), so a page asked every window twice.
+    if (this.#printsLoading || !(view.t1 > view.t0) || this.#connection === 0) return;
     const have = this.#printsWindow;
     const narrower = have !== null && have.cut && view.t1 - view.t0 < (have.t1 - have.t0) / 4;
     if (have && have.min === minUsd && have.t0 <= view.t0 && (have.live || have.t1 >= Math.min(view.t1, Date.now())) && !narrower) return;
@@ -1052,7 +1067,7 @@ export class Hub {
   ensureLiquidations(view: Bounds, minUsd: number): void {
     const source = this.source;
     if (!source.liquidations) { this.liquidationsState = 'unavailable'; return; }
-    if (this.#liquidationsLoading || !(view.t1 > view.t0)) return;
+    if (this.#liquidationsLoading || !(view.t1 > view.t0) || this.#connection === 0) return;
     if (this.liquidationsState === 'unavailable' && Date.now() < this.#liquidationsRetryAt) return;
     const have = this.#liquidationsWindow;
     const narrower = have !== null && have.cut && view.t1 - view.t0 < (have.t1 - have.t0) / 4;
@@ -1317,12 +1332,21 @@ export class Hub {
     const holds = this.#columns;
     // The view is one object the pane moves on: what an answer is judged against below is the view it was asked for.
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };
+    if (stepMs !== this.#columnsWanted) this.#wantedSince = performance.now();
     this.#columnsWanted = stepMs;
     holds.touch(stepMs);
     this.#archiveView(stepMs);
     // A step held for every book is read at once, whatever else is under way.
     if (holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
-    if (this.#columnsLoading) return;
+    // A load under way for a step the view has left is let go: its answer would hold a connection and the step wanted would wait for it.
+    if (this.#columnsLoading) { if (this.#columnsLoad && this.#columnsLoad.stepMs !== stepMs) this.#columnsLoad.abort.abort(); return; }
+    // While a zoom is still passing steps, a step is asked for once it has held (the map's first columns are asked for at once).
+    const settling = this.columnsVersion > 0 ? COLUMN_STEP_SETTLE_MS - (performance.now() - this.#wantedSince) : 0;
+    if (settling > 0) {
+      clearTimeout(this.#settleTimer);
+      this.#settleTimer = setTimeout(() => this.onColumns(), settling + 10);
+      return;
+    }
     const clock = Date.now();
     // What is asked from here on answers every refresh mark made so far; one made while it is under way is answered by the next.
     const stale = this.#columnsStale;
@@ -1333,12 +1357,13 @@ export class Hub {
     const asks = holds.plan(ids, seen, stepMs, now, clock, stale);
     if (!asks.length) return;
     const reach = columnReach(seen, stepMs);
-    this.#columnsLoading = true;
+    const load = { stepMs, abort: new AbortController() }, signal = load.abort.signal;
+    this.#columnsLoading = true; this.#columnsLoad = load;
     try {
       for (const ask of asks) {
         // A zoom to another step since the load began: that step's own load follows, and the rest of this one would only hold it up.
         if (stepMs !== this.#columnsWanted) break;
-        const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs);
+        const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs, false, signal);
         let whole = frame.instruments, wholeIds = ask.ids;
         if (ask.tail) {
           // A market whose price grid is not the one its columns held were recorded on (a server started again and chose another): their bins
@@ -1350,7 +1375,7 @@ export class Hub {
           if (tails.length) this.#postColumns({ type: 'columnsTail', stepMs, from: ask.from, instruments: tails }, stepMs);
           // What the other steps hold for these markets was recorded on the old grid too.
           if (other.size) this.#forgetColumns(holds.forgetElsewhere(stepMs, wholeIds));
-          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs)).instruments;
+          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs, false, signal)).instruments;
         }
         // Every instrument asked for is held from here on, answered or not: one a source leaves out is not asked for again on every frame
         // (and has nothing in the worker: what it held for it is forgotten).
@@ -1366,8 +1391,13 @@ export class Hub {
       }
       // A load for a step nobody wants any more reads nothing and changes nothing the page would draw: say so, so that the frame that waits for this load to end comes.
       if (stepMs !== this.#columnsWanted) this.onColumns();
+    } catch (error) {
+      // Let go for a step the view left (nothing of its answer was taken in): the frame that asks for the step wanted comes, as above.
+      if (!signal.aborted) throw error;
+      this.onColumns();
     } finally {
       this.#columnsLoading = false;
+      if (this.#columnsLoad === load) this.#columnsLoad = null;
       // What is held now at the step the view wants, for the long history's files: answered, or cut short by a question that failed.
       this.#archiveView(this.#columnsWanted);
     }
@@ -1444,6 +1474,7 @@ export class Hub {
   /** Panes keyed on `columnsVersion` ask the worker again. */
   #columnsChanged(): void {
     this.columnStepMs = this.#columnsDrawn; this.columnsVersion++;
+    this.#arrived();
     this.onColumns();
   }
 
