@@ -508,7 +508,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   const longShort = new LongShortCache(webGet, false, undefined, undefined, undefined, undefined, undefined, lsStore);
   const priceHistory = new PriceHistoryCache(priceHistoryGet);
   const priceHistoryRoute = (url: URL, res: ServerResponse) => {
-    // The line's intervals (`PRICE_TIMEFRAMES`: weeks too, for a view past 2,000 days), bounded to 2,000 bars like each of them.
+    // The line's intervals (`PRICE_TIMEFRAMES`: weeks too, for a window of more than 2,000 days), bounded to 2,000 bars like each of them.
     const id = url.searchParams.get('inst') ?? '', tfMs = priceTimeframeMs(url.searchParams.get('tf'));
     const target = priceListing(BTC, id);
     if (!target || target.id !== id || !tfMs) return sendJson(res, { error: BAD_SERIES }, 400);

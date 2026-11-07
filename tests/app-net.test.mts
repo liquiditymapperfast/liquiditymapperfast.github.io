@@ -227,6 +227,36 @@ test('the white price line is read by the page from the exchange, the server onl
   } finally { Object.assign(globalThis, saved); }
 });
 
+test('the line\'s weeks are read by the page from the exchange\'s days too, and a server from before them refusing the week is a plain failure', async () => {
+  const saved = { fetch: globalThis.fetch };
+  const urls: string[] = [];
+  let binanceDown = false;
+  const DAY = 86_400_000, WEEK = 7 * DAY, from = Math.ceil(Date.UTC(2025, 0, 1) / WEEK) * WEEK, to = from + 4 * WEEK;
+  Object.assign(globalThis, {
+    fetch: async (input: string | URL | Request) => {
+      const url = String(input); urls.push(url);
+      // A server from before the weeks: `1w` is no timeframe it knows (`timeframeMs`), so it answers 400.
+      if (url.includes('/api/v2/price-history')) return { ok: false, status: 400, json: async () => ({ error: 'inst and a supported tf are required' }) } as unknown as Response;
+      if (binanceDown) throw new TypeError('network down');
+      const u = new URL(url), last = Math.floor(Number(u.searchParams.get('endTime')) / DAY) * DAY, limit = Number(u.searchParams.get('limit'));
+      assert.equal(u.searchParams.get('interval'), '1d', "weeks are built from the days, never the venue's own weeks");
+      const rows: (number | string)[][] = [];
+      for (let t = Math.max(from, last - (limit - 1) * DAY); t <= last; t += DAY) rows.push([t, '100', '102', '99', '101', '5', t + DAY - 1, '505', 10, '2', '202', '0']);
+      return { ok: true, status: 200, json: async () => rows } as unknown as Response;
+    },
+  });
+  try {
+    const answer = await new ServerSource().priceHistory('binance:BTCUSDT', '1w', from, to);
+    assert.equal(answer.status, 'ok'); assert.equal(answer.tfMs, WEEK);
+    assert.deepEqual(answer.candles.map(c => [c[0], c[6]]), [0, 1, 2, 3].map(k => [from + k * WEEK, 7]), 'four whole weeks of seven days each');
+    assert.ok(urls.some(u => u.includes('fapi.binance.com')), 'read from the exchange');
+    assert.ok(!urls.some(u => u.includes('/api/v2/price-history')), 'not through the server');
+    urls.length = 0; binanceDown = true;
+    await assert.rejects(new ServerSource().priceHistory('binance:BTCUSDT', '1w', from, to), /failed: 400/);
+    assert.ok(urls.some(u => u.includes('/api/v2/price-history?') && u.includes('tf=1w')), 'the exchange could not be read: the server is asked, and its refusal is the failure');
+  } finally { Object.assign(globalThis, saved); }
+});
+
 test('tracker questions go on the live socket once its server says it answers them: parts come as binary frames, the last settles, a refusal or a drop fails it, a given-up one is told to stop', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   const saved = { WebSocket: globalThis.WebSocket, location: globalThis.location, window: (globalThis as { window?: unknown }).window };

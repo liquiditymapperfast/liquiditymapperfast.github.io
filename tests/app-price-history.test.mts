@@ -41,7 +41,7 @@ test('a view whose days one read cannot hold is asked in weeks, and a view zoome
   const view = (bars: number) => ({ t0: (to - bars * DAY + 1.5 * DAY + 0.15 * t1) / 1.15, t1 });
   const days = priceWindow(view(PRICE_QUERY_BARS), 1_100, NOW, 0, HOUR)!;
   assert.equal(days.tf, '1d'); assert.equal((days.to - days.from) / DAY, PRICE_QUERY_BARS, 'a view the days fit stays in days');
-  // One day more (about five years across the map, drawn on hourly candles): no window at all before, so no line and no legend.
+  // One day more (a view of about five years, four months of it to come, drawn on hourly candles): no window at all before, so no line and no legend.
   for (const previous of [0, DAY, WEEK]) {
     const weeks = priceWindow(view(PRICE_QUERY_BARS + 1), 1_100, NOW, previous, HOUR);
     assert.ok(weeks, `a window with ${previous / DAY} days held`);

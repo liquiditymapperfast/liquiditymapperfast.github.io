@@ -49,7 +49,7 @@ test('only known exact listings and bounded timeframes/windows can reach the pub
   });
 });
 
-test('the weeks a view past 2,000 days is drawn in are answered too, built from daily pages, and bounded like any timeframe', async () => {
+test('the weeks a window of more than 2,000 days is drawn in are answered too, built from daily pages, and bounded like any timeframe', async () => {
   const DAY = 24 * HOUR, WEEK = 7 * DAY, calls: URL[] = [];
   await withServer(async raw => {
     const url = new URL(raw); calls.push(url);
