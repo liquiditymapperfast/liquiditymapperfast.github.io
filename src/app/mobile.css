@@ -264,6 +264,8 @@ html[data-layout^="phone"] main[data-tab="stats"] .pane.bars:not([hidden]),
 html[data-layout^="phone"] main[data-tab="script"] .pane.script:not([hidden]) { display: flex; flex: 0 0 var(--dock-size, 40%) !important; min-height: 0 !important; }
 /* LT has no tab on a phone (Liq took it, Karl 2026-11-01): switched on in Settings, it sits under the map on the Map tab, as on a desktop. */
 html[data-layout^="phone"] main[data-tab="map"] .pane.lt:not([hidden]) { display: flex; flex: 0 0 36% !important; min-height: 0 !important; }
+/* Funding has no tab either (2026-11-07): switched on in Settings, it sits under the map on the Map tab, as LT does. */
+html[data-layout^="phone"] main[data-tab="map"] .pane.funding:not([hidden]) { display: flex; flex: 0 0 32% !important; min-height: 0 !important; }
 
 /* The handle between the map and the pane: a sheet-style pill that drags to resize. */
 .dock-grip { display: none; }

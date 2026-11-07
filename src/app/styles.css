@@ -49,7 +49,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar.cockpit.wrapped:not(.fitting) .seg:not(.toggles) > button { flex: 1 1 0; }
 /* Grids share the room evenly, each column never narrower than what it holds: a deck is never wider than its row gives it. */
 .toolbar.cockpit.wrapped:not(.fitting) .deck-time .seg { grid-template-columns: repeat(4, minmax(max-content, 1fr)); }
-.toolbar.cockpit.wrapped:not(.fitting) .deck-panels .seg.toggles { grid-template-columns: repeat(6, minmax(max-content, 1fr)); }
+.toolbar.cockpit.wrapped:not(.fitting) .deck-panels .seg.toggles { grid-template-columns: repeat(7, minmax(max-content, 1fr)); }
 /* The Chart, Heatmap and Alerts decks: their rows one grid of aligned columns (toolbar.ts #alignDecks writes the columns and the spans), at the
    deck's own width or, grown with its row, sharing the room by the columns' own proportions. Each control fills its column. */
 .toolbar .deck.deck-grid { display: grid; grid-template-columns: var(--deck-cols-px); align-content: center; gap: 4px; }
@@ -112,11 +112,11 @@ html[data-frame="textmode"] .toolbar.cockpit :is(button, select) { padding: 2px 
 html[data-frame="textmode"] .toolbar.cockpit .led-btn { padding-left: 17px; }
 html[data-frame="textmode"] .toolbar.cockpit .led-btn::before { left: 5px; }
 .toolbar .deck .chips:empty { display: none; }
-/* Eleven pane switches in two rows of a grid; the overlap of their outlines kept across the rows too. */
-.toolbar .deck-panels .seg.toggles { display: grid; grid-template-columns: repeat(6, auto); }
+/* Thirteen pane switches in two rows of a grid (seven and six); the overlap of their outlines kept across the rows too. */
+.toolbar .deck-panels .seg.toggles { display: grid; grid-template-columns: repeat(7, auto); }
 .toolbar .deck-panels .seg.toggles button { margin-left: -1px; margin-top: -1px; border-radius: 0; }
 .toolbar.cockpit .deck-panels .seg.toggles button { padding-left: 4px; padding-right: 4px; }
-.toolbar .deck-panels .seg.toggles button:nth-child(6n + 1) { margin-left: 0; }
+.toolbar .deck-panels .seg.toggles button:nth-child(7n + 1) { margin-left: 0; }
 /* The top bar folded away (toolbar.ts setCollapsed, state.barCollapsed), as a browser's full screen hides its own: folded, it is a thin
    strip across the top (the whole strip brings it back) and its notices, and the chart takes the rest of its room. The arrow that folds it
    sits on the right-hand deck's bottom edge (the compact bar: after Settings): its top edge holds the page's name, as wide as the deck, and
@@ -138,7 +138,7 @@ html[data-frame="textmode"] .toolbar.cockpit .led-btn::before { left: 5px; }
 .toolbar.cockpit .deck-tools > .bar-collapse::before { width: 12px; height: 12px; }
 /* A finger needs a taller strip. */
 @media (pointer: coarse) { .toolbar.collapsed > .bar-expand { height: 22px; } .toolbar.collapsed > .bar-expand::before { width: 16px; height: 16px; } }
-.toolbar .deck-panels .seg.toggles button:nth-child(-n + 6) { margin-top: 0; }
+.toolbar .deck-panels .seg.toggles button:nth-child(-n + 7) { margin-top: 0; }
 /* The count holds its width whatever it says (11/11, 10/11), so the bar never moves when a venue drops or returns (Karl, 2026-10-17). */
 /* The count holds its room from the first frame (empty until the venues report) and never changes the button's size: the bar must not move
    when a venue drops or comes back (Karl, 2026-10-17). */

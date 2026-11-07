@@ -129,7 +129,7 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
   // The panels, one by one.
   body.append(heading(t('Panels')));
   const chips = el('div', { class: 'layout-chips' });
-  const PANELS: readonly (readonly [string, string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['stats', t('Stats')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['lt', 'LT']];
+  const PANELS: readonly (readonly [string, string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['stats', t('Stats')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['funding', t('Funding')], ['lt', 'LT']];
   for (const [key, label] of PANELS) {
     const id = Object.keys(PANE_SHOW_KEY).find(k => PANE_SHOW_KEY[k] === key)!, on = now.show[key as keyof typeof now.show];
     const chip = el('button', { type: 'button', class: on ? 'chip on' : 'chip', textContent: label, onclick: () => { actions.setPane(id, !on); redraw(); } });

@@ -3,14 +3,17 @@ import type { AppState, OiBar } from '../store.ts';
 import { resolveZone } from '../traded/settings.ts';
 import { FlowCache, candleStarts, resetKeys, unrecorded, type CandleFlow } from './candles.ts';
 import { ensureDeltaFlow } from './flows.ts';
-import { nlnsModel, withLead, type NlnsCandle, type NlnsFine, type NlnsMarket } from './nlns.ts';
+import { minuteOpens, nlnsModel, withLead, type NlnsCandle, type NlnsFine, type NlnsMarket } from './nlns.ts';
 import { oiPartsUntil, type OiPart } from '../oi-change.ts';
 import { OI_FINE_MS } from '../oi-fine.ts';
 import { replaying } from '../replay/clock.ts';
 
-const MINUTE = 60_000;
+const MINUTE = 60_000, HOUR = 3_600_000;
 /** The minute flow is worked out again from scratch this often (its cache keeps every closed minute it saw until then). */
 const FINE_CACHE_MS = 6 * 3_600_000;
+
+/** One hour of one market's opening (`NlnsSource.hourly`): the coins its buyers and its sellers opened at market. */
+export interface HourOpens { t: number; longOpened: number; shortOpened: number }
 
 /**
  * NL/NS for every pane that shows it (the Delta pane's NL/NS, the OI pane's bars by who opened, the Funding pane's share of new positions opened
@@ -70,6 +73,25 @@ export class NlnsSource {
     return model;
   }
 
+  /**
+   * One market's new longs and new shorts each hour from `from` to `now`, from its minute readings alone (hours they do not stand for are left
+   * out): the Funding pane sets each beside the hour's funding (Hyperliquid's settles each hour, the study's unit). Needs the market among those
+   * counted (its minute readings are read only then) and its flow recorded; else empty. Worked out at most every ten seconds.
+   */
+  hourly(state: AppState, id: string, from: number, now: number): HourOpens[] {
+    const part = (replaying() ? oiPartsUntil(state.oiFine, MINUTE, now) : state.oiFine).find(p => p.id === id), track = this.hub.flow.track(id);
+    if (!part || !track) return [];
+    const first = Math.floor(Math.max(from, now - OI_FINE_MS) / HOUR) * HOUR, hours: number[] = [];
+    for (let t = first; t <= now; t += HOUR) hours.push(t);
+    const key = `${id}|${first}|${hours.length}|${this.hub.flow.loads}|${Math.floor(now / 10_000)}`, held = this.#hourly;
+    if (held && held.key === key && held.part === part) return held.hours;
+    const fine = this.#fine(part, track, hours, HOUR, now), opens = fine ? minuteOpens(hours, fine, HOUR, now) : [];
+    const out = hours.flatMap((t, i) => { const o = opens[i]; return o ? [{ t, ...o }] : []; });
+    this.#hourly = { key, part, hours: out };
+    return out;
+  }
+  #hourly: { key: string; part: OiPart; hours: HourOpens[] } | null = null;
+
   #cache(caches: Map<string, FlowCache>, id: string): FlowCache {
     let cache = caches.get(id); if (!cache) { cache = new FlowCache(); caches.set(id, cache); }
     return cache;
@@ -87,7 +109,8 @@ export class NlnsSource {
     if (!(to > from)) return null;
     const starts: number[] = [];
     for (let t = from; t < to; t += MINUTE) starts.push(t);
-    const raw: (CandleFlow | null)[] = this.#cache(this.#fineCaches, part.id).get(`${part.id}|${this.hub.flow.loads}|${Math.floor(from / FINE_CACHE_MS)}`, [track], starts, MINUTE, now, 5_000, 1);
+    // Keyed by the clock, not by `from`: the model and the hourly opening read the same minutes from different starts and share the cache.
+    const raw: (CandleFlow | null)[] = this.#cache(this.#fineCaches, part.id).get(`${part.id}|${this.hub.flow.loads}|${Math.floor(now / FINE_CACHE_MS)}`, [track], starts, MINUTE, now, 5_000, 1);
     return { starts, bars: part.bars, flows: unrecorded(starts, raw, MINUTE, now) };
   }
 }

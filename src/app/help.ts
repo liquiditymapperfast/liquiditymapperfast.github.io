@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
 
 export interface HelpTopic {
   title: string;
@@ -90,6 +90,18 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('Each line is one exchange\'s share of accounts that are net long, as the exchange publishes it, for the open-interest markets (the OI pane\'s Venues) on Binance, Bybit, OKX and Bitget, and Gate\'s perpetual when the OI pane counts every market, with the exchange\'s mark where its line ends. The scale fits the lines, which move by tenths of a percent; the dashed line is 50 %, where it falls inside it.'),
       t('These count accounts (or, for the top traders by positions, the size of their positions) as each exchange classifies them, never coins: every contract has a long and a short holder, so in coins the two sides are always equal. A ratio of 1.25 is 1.25 long accounts for each short one, not 25 % more BTC long. The exchanges count different people, so their lines are not added together.'),
       t('Binance, OKX, Bitget and Gate publish three series each (all accounts, their top traders by accounts, and by positions; the header chooses): Binance for the last 30 days, OKX its top traders for about 30 days and only to a server (a page cannot read it), Gate for 90 days and more, its top traders being its large holders as Gate counts them, and Bitget its newest 30 readings only, so its line starts there, its top traders being the ones it calls active in English and large traders in Chinese, without saying how it picks them. Bybit publishes one. HTX, Kraken Futures and Bitfinex publish theirs only to servers (no web page may read them), and Hyperliquid publishes none. Readings come every five minutes at the finest and hold until the next; nothing is filled in where an exchange has none. They have not been tested as a signal.')],
+  },
+  funding: {
+    title: t('Funding'), guide: 'lower-panes',
+    tip: t('A pane under the map: a perpetual\'s funding and premium on one venue, and on Hyperliquid who opened each hour.'),
+    body: [],
+  },
+  fundingPane: {
+    title: t('Funding'), guide: 'lower-panes',
+    tip: t('A perpetual\'s funding and premium on one venue, per eight hours; on Hyperliquid, under each hour, the share of new positions buyers opened at market.'),
+    body: [t('Funding is what holders of a perpetual pay each other each interval to keep its price near the index: positive, longs pay shorts. It is made of the premium (how far the perpetual\'s price sits from the index) plus a clamp that holds it at a base rate while the premium stays close: 0.01 % per eight hours on Hyperliquid, Binance, Bybit, OKX and Bitget, and none on Deribit. Every rate here is per eight hours, so the base rate (dashed) and the band around it (shaded, where the premium moves while funding stays at the base rate) are the same on every venue; the popup gives each venue\'s own interval (Hyperliquid settles every hour) and the yearly rate.'),
+      t('The thick steps are funding as it settled, each over the interval it paid for, and the dashed step the one accruing now. The thin line is the premium, where the venue publishes its history (Hyperliquid each hour, Binance and Bybit per candle); OKX, Bitget and Deribit show their funding only.'),
+      t('On Hyperliquid, under each hour, the share of new positions that buyers opened at market (NL/NS worked out minute by minute, as in the OI and Delta panes): up in the buy colour where buyers opened more than half, down in the sell colour where sellers did. It shows where Hyperliquid\'s minute readings and flow are held, the last day, with its perpetual among the markets the OI pane counts. Measured on every Hyperliquid trade of BTC and ETH, hour by hour within a day, funding moved with that share (and the premium more so), and across days more strongly; on other venues the link was not measured. It is context: whether any of it says where the price goes was not tested.')],
   },
   absorption: {
     title: t('Absorption'), guide: 'trades',

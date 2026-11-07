@@ -125,6 +125,14 @@ function fineParts(starts: readonly number[], index: ReadonlyMap<number, number>
 }
 
 /**
+ * One market's new longs and new shorts in each candle of `starts` (`tfMs` apart) from its minute pieces alone, null where they do not stand
+ * for the candle (`fineParts`): the Funding pane's share of new positions opened by buyers, hour by hour.
+ */
+export function minuteOpens(starts: readonly number[], fine: NlnsFine, tfMs: number, now: number, holdMs = OI_HOLD_MS): ({ longOpened: number; shortOpened: number } | null)[] {
+  return fineParts(starts, new Map(starts.map((s, i) => [s, i] as const)), fine, tfMs, holdMs, now).map(p => p ? { longOpened: p.lo, shortOpened: p.so } : null);
+}
+
+/**
  * The candles from `starts` (the chart's candle starts, oldest first): `closes` are the chart's candle closes by start (the price's way where a
  * market's flow is not recorded; empty when the chart's candles are another market's), `keys` the running sums' restart keys (they restart
  * where the key changes, and after a candle no market covers). `now`: how far the newest candle has come (a market's minute pieces stand
