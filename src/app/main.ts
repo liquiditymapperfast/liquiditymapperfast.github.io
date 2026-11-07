@@ -163,8 +163,11 @@ async function main(): Promise<void> {
   const candle = new CandlePane(main, store, hub, kernels, s => heat.footprintMarkets(s));
   // The phone's Liq tab: the liquidation ladder, next to the Book (panes/liq-pane.ts).
   const liq = new LiqPane(main, store, hub);
+  // Every pane drawn in the page's palette: a theme picked, or previewed by hover, repaints them all (one list, so none is left in the old one).
+  const themed = [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq];
   toolbar.tapeFields = () => candle.settingsFields();
-  // The map and the panes under it, top down. Each pane but the map shows while its switch is on (`layout`, by `PANE_SHOW_KEY`).
+  // The map and the panes under it, top down. Each pane but the map shows while its switch is on (`layout`, by `PANE_SHOW_KEY`), the Scripts
+  // pane only for scripts drawn in rows.
   const strip: LayoutPane[] = [
     { id: 'heat', root: heat.root, min: 240 },
     { id: 'bars', root: bars.root, height: 84, min: 56, head: bars.header },
@@ -298,7 +301,7 @@ async function main(): Promise<void> {
   hub.onAbsorptionChanged = () => { heat.invalidate(); range.refreshHeld(); };
   toolbar.absorptionInfo = () => heat.absorptionThresholdText();
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
-  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; glass.setPalette(applyTheme(name)); for (const p of [heat, ladder, depth, oi, delta, ls, lt, bars, script, cvd, candle, liq]) p.setPalette(name); toolbar.previewTheme(name); };
+  toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; glass.setPalette(applyTheme(name)); for (const p of themed) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
 
   // An address like #guide/mirror opens the guide there.
@@ -360,7 +363,7 @@ async function main(): Promise<void> {
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
     // Every time on the page is written from the one setting: say it changed, and have what shows times draw again.
     if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }
-    if (changed.has('theme')) { glass.setPalette(applyTheme(state.theme)); for (const p of [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq]) p.setPalette(state.theme); }
+    if (changed.has('theme')) { glass.setPalette(applyTheme(state.theme)); for (const p of themed) p.setPalette(state.theme); }
     if (changed.has('material')) { applyMaterial(); hub.setTape(tapeWanted()); }
     // The page's glass draws its next frame with the new strength; the Tape's reads it with each frame it draws.
     if (changed.has('waveStrength')) { glass.setStrength(state.waveStrength); candle.invalidate(); }
@@ -438,7 +441,7 @@ async function main(): Promise<void> {
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'tabPrice', 'tabIcon', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
-  for (const p of [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq]) p.setPalette(store.state.theme);
+  for (const p of themed) p.setPalette(store.state.theme);
   layout(); ladder.syncControls(); lt.refresh();
   layouts.seedDefault();
   arrange.setPaneHeight('bars', tableHeight(store.state.barStats, store.state.barStatOptions));
