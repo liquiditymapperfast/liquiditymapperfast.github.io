@@ -583,9 +583,10 @@ export class HeatPane {
     });
   }
   /**
-   * What the overlay draws of the pointer, as a key: the volume strip's bar under it, the venue whose bubbles step forward, the profile's,
-   * liquidation column's and traded column's mirrors (which follow it to the pixel), and a finger's pin. The rest of the pointer (the
-   * crosshair, its box, the legend's candle) is the pointer's layer. The drawings say themselves when their hover changes (`redraw`).
+   * What the overlay draws of the pointer, as a key: the volume strip's bar under it, the venue whose bubbles step forward, the top bands'
+   * framed buckets, the profile's, liquidation column's and traded column's mirrors (which follow it to the pixel), and a finger's pin.
+   * The rest of the pointer (the crosshair, its box, the legend's candle) is the pointer's layer. The drawings say themselves when their
+   * hover changes (`redraw`).
    */
   #hoverKey(state: AppState): string {
     const hv = state.hover, pw = this.plotW, ph = this.plotH, profile = this.#profileHover, traded = this.#tradedHover;
@@ -594,7 +595,8 @@ export class HeatPane {
     const strip = state.show.volume && Number.isFinite(y) ? this.#stripAt(x, y, ph, pw) : -1;
     const focus = state.show.bubbles ? this.#bubbleFocus(state, pw, ph) ?? '' : '';
     const pin = hv?.touch ? `${x},${y}` : '';
-    return `${strip}|${focus}|${pin}|${profile ? `${profile.column},${profile.y}` : ''}|${traded ? `${traded.side},${traded.i},${traded.y}` : ''}`;
+    const bands = this.#bands.hoverKey(state, { view: this.view, ph });
+    return `${strip}|${focus}|${pin}|${bands}|${profile ? `${profile.column},${profile.y}` : ''}|${traded ? `${traded.side},${traded.i},${traded.y}` : ''}`;
   }
   /**
    * Covered by a view of its own (the phone's Candle tab): nothing is drawn, the dust included, until it shows again, when it draws at once.
@@ -822,8 +824,9 @@ export class HeatPane {
     const outside = !cov || v.t0 < cov.t0 || v.t1 > cov.t1 || v.p0 < cov.p0 || v.p1 > cov.p1
       || (v.t1 - v.t0) / (cov.t1 - cov.t0) < 0.55 || (v.p1 - v.p0) / (cov.p1 - cov.p0) < 0.55;
     // What is live is drawn again every second and a half, or, where a raster takes long (days of many venues), no more often than leaves the
-    // worker two thirds of its time for the panes' questions.
-    const stale = this.#rasteredVersion !== this.#dataVersion || this.#rasteredKey !== key || performance.now() - this.#lastRasterAt > Math.max(1_500, 3 * this.hub.busyMs);
+    // worker seven eighths of its time: there the live minute is a pixel or two at the edge, and a whole raster every 1.5-2 s of 0.5-0.7 s
+    // kept a third of a core busy for it (Research_Findings.md). New columns, a pan or a zoom are drawn at once whatever this says.
+    const stale = this.#rasteredVersion !== this.#dataVersion || this.#rasteredKey !== key || performance.now() - this.#lastRasterAt > Math.max(1_500, 8 * this.hub.busyMs);
     // A new view of other venues or another size takes a new colour window; a pan or zoom only asks for a new raster (#rasteredKey).
     if (this.#baselineKey !== key) { this.#baselineKey = key; this.#forceBaseline = true; }
     void this.hub.loadColumns(v, this.plotW).catch(error => console.error('column load failed', error));

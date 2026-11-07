@@ -97,7 +97,8 @@ export class CvdStrip {
 
   /** One question at a time: at once for a set not asked about yet, every few seconds for the same one, and slowly after a failure (a server that has no such route). */
   #ask(windows: number[], cuts: number[], key: string): void {
-    if (this.#asking || !this.#counted.length) return;
+    // After the map's first columns on the server's page (`Hub.mapFirst`).
+    if (this.#asking || !this.#counted.length || this.hub.mapFirst()) return;
     const now = Date.now(), fresh = this.#sizes?.key === key;
     if (now - this.#askedAt < (this.#failed ? RETRY_MS : fresh ? ASK_EVERY_MS : 0)) return;
     this.#asking = true; this.#askedAt = now;

@@ -86,6 +86,12 @@ export class CvdPane {
   #canvas = document.createElement('canvas');
   #ctx: CanvasRenderingContext2D;
   /**
+   * Another pane's pointer, a line across the column, on a canvas of its own over the lines: a pointer moving over the map moves the line
+   * alone (`syncHover`), where it drew the whole column again at every pixel (Research_Findings.md).
+   */
+  #lineCanvas = document.createElement('canvas');
+  #lineCtx: CanvasRenderingContext2D;
+  /**
    * The flashes at the lines' ends (Karl, 2026-10-17): each line's end as it last stood (`cvd/flash.ts`), and the flashes its changes started,
    * drawn on a canvas of their own over the lines so a flash animates without the column being drawn again; whether the window drawn ends
    * at the live edge (only there do they flash), and the frame or, with reduced motion, the timer that draws them next.
@@ -154,9 +160,10 @@ export class CvdPane {
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private view: View) {
     this.#strip = new CvdStrip(store, hub); this.#rankingKey = rankingKey(store.state.cvd);
     this.root.append(this.controls, this.#strip.root, this.#notice, this.#wrap);
-    this.#wrap.append(this.#canvas, this.#flashCanvas);
+    this.#lineCanvas.className = 'cvd-line';
+    this.#wrap.append(this.#canvas, this.#lineCanvas, this.#flashCanvas);
     host.append(this.root);
-    this.#ctx = this.#canvas.getContext('2d')!; this.#flashCtx = this.#flashCanvas.getContext('2d')!;
+    this.#ctx = this.#canvas.getContext('2d')!; this.#lineCtx = this.#lineCanvas.getContext('2d')!; this.#flashCtx = this.#flashCanvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.#wrap);
     this.#buildControls();
     this.#bindInput();
@@ -212,7 +219,16 @@ export class CvdPane {
   syncHover(): void {
     const x = this.#sharedLineX();
     if (x === this.#sharedX) return;
-    this.#sharedX = x; this.invalidate();
+    this.#sharedX = x; this.#paintSharedLine();
+  }
+  /** The line for another pane's pointer at `#sharedX` (none while it is null), on its own canvas. */
+  #paintSharedLine(): void {
+    const ctx = this.#lineCtx, x = this.#sharedX;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, this.#lineCanvas.width, this.#lineCanvas.height);
+    if (x === null || this.root.hidden || this.#w < 60 || this.#h < 60) return;
+    ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
+    ctx.strokeStyle = this.#palette.muted; ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, this.#h); ctx.stroke(); ctx.globalAlpha = 1;
   }
   /** The x of the line for another pane's pointer in the plot as last drawn, or null when it points at no moment this column shows. */
   #sharedLineX(): number | null {
@@ -490,6 +506,8 @@ export class CvdPane {
     this.#canvas.style.width = `${this.#w}px`; this.#canvas.style.height = `${this.#h}px`;
     this.#flashCanvas.width = this.#canvas.width; this.#flashCanvas.height = this.#canvas.height;
     this.#flashCanvas.style.width = this.#canvas.style.width; this.#flashCanvas.style.height = this.#canvas.style.height;
+    this.#lineCanvas.width = this.#canvas.width; this.#lineCanvas.height = this.#canvas.height;
+    this.#lineCanvas.style.width = this.#canvas.style.width; this.#lineCanvas.style.height = this.#canvas.style.height;
     this.#flashes = [];
     this.#modelKey = '';
     this.invalidate();
@@ -500,8 +518,8 @@ export class CvdPane {
   /** Minute candles of the market on screen for the price strip, fetched now and then (the live marks carry it between). */
   #loadPrice(now: number, from: number): void {
     const id = this.store.state.seriesInstrument || this.store.state.marketId;
-    // Not before the map has a window (at startup the window begins at zero).
-    if (!id || this.#priceLoading || !(from > 0)) return;
+    // Not before the map has a window (at startup the window begins at zero), nor before its first columns on the server's page (`Hub.mapFirst`).
+    if (!id || this.#priceLoading || !(from > 0) || this.hub.mapFirst()) return;
     // Replay: candles up to the last minute over by its moment, asked again as it moves on; live, again after a minute.
     const replay = replaying(), want = `${id}|${Math.floor(from / 3_600_000)}${replay ? `|${Math.floor(now / 60_000)}` : ''}`;
     if (want === this.#priceFor && (replay || Date.now() - this.#priceAt < 60_000)) return;
@@ -601,8 +619,7 @@ export class CvdPane {
     if (maxScroll(layout, this.#h) > 0) this.#paintScrollbar(ctx, p, layout);
     if (this.#empty) { ctx.fillStyle = p.muted; ctx.font = `12px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(this.#empty, this.#w / 2, Math.min(this.#h - 20, top + 36)); }
     this.#paintRange(ctx, p, plot, model);
-    this.#sharedX = this.#sharedLineX();
-    if (this.#sharedX !== null) { ctx.save(); ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.moveTo(this.#sharedX + 0.5, 0); ctx.lineTo(this.#sharedX + 0.5, this.#h); ctx.stroke(); ctx.restore(); }
+    this.#sharedX = this.#sharedLineX(); this.#paintSharedLine();
     this.#paintHover(ctx, p, model, layout, plot, window);
     if (phone) this.#updateReadout(model);
   }

@@ -269,10 +269,8 @@ export class BrowserSource implements DataSource, VenueControl {
     signal?.throwIfAborted();
     const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close });
     this.#noteSince(frame);
-    const extended = close || !this.#archive ? frame : await this.#archive.extend(frame, from, to, stepMs);
-    // Answered by the page's own worker, so there is nothing to cancel: an answer the question was let go of meanwhile is not taken.
-    signal?.throwIfAborted();
-    return extended;
+    // Answered by the page's own worker, so there is nothing to cancel: the hub does not take an answer it let go of meanwhile.
+    return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
   }
 
   /** The columns of [from, to) again after tiles came for it (`setArchiveListener`): what the view needs is added to, not replaced. */

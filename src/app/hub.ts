@@ -121,6 +121,13 @@ const KEPT_GAP_MS = 10 * MINUTE;
  * passing step's tens of MB, and the step it ended on was asked only after them, seconds later (Research_Findings.md).
  */
 const COLUMN_STEP_SETTLE_MS = 200;
+/**
+ * On the server's page the map's first columns are read before the other history (open interest, the volume profile and value areas, the
+ * bubbles and liquidations, the flow's minutes, the flow strip's sizes and price), or this long at most (`Hub.mapFirst`): the books are known
+ * only from the first live frame, so the columns were asked for after some twenty other reads and waited behind them on the page's six
+ * connections and the server's one thread, 26-36 s on a busy PC (Research_Findings.md). The browser's own worker answers at once: no wait.
+ */
+const MAP_FIRST_MS = 10_000;
 
 
 /** The other timeframes in the order they are read ahead: the nearest to the one on screen first, the shorter before the longer. */
@@ -174,6 +181,18 @@ export class Hub {
   #arrived: () => void = () => {};
   /** Resolved when the first recorded columns reach the worker: what can wait for the map (the depth sound's baseline hours) waits for this. */
   readonly columnsArrived = new Promise<void>(resolve => { this.#arrived = resolve; });
+  readonly #bornAt = performance.now();
+  /**
+   * The page's pacing of its reads (`paced`, set by the page; a hub built for a test asks at once): a column step asked for once it has held
+   * (`COLUMN_STEP_SETTLE_MS`) and a load for a step the view left let go, history after the map's first columns on the server's page
+   * (`MAP_FIRST_MS`), the bubbles and liquidations once the live stream has opened.
+   */
+  readonly #paced: boolean;
+  #afterMapRead: Promise<void> | null = null;
+  /** Resolves once history reads no longer wait for the map's first columns (`mapFirst`). */
+  #afterMap(): Promise<void> {
+    return this.#afterMapRead ??= Promise.race([this.columnsArrived, new Promise<void>(resolve => setTimeout(resolve, Math.max(0, MAP_FIRST_MS - (performance.now() - this.#bornAt))))]);
+  }
   #series = '';
   /** What the candles on screen are of (the context asked for, and the instrument that answered), or null when they are of nothing that can be told. */
   #loaded: { key: string; instrument: string } | null = null;
@@ -224,6 +243,10 @@ export class Hub {
   onRecovered: (id: string, from: number, to: number) => void = () => {};
   /** The live connection's handle, so the dust can be asked for or stopped. */
   #live: { close(): void; tape(on: boolean): void } | null = null;
+  /** The live stream has been asked for and has not opened yet (the page's first seconds). */
+  #opening(): boolean { return this.#paced && this.#live !== null && this.#connection === 0; }
+  /** Whether history reads still wait for the map's first columns (`MAP_FIRST_MS`): the server's page only, its first seconds only. */
+  mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
   #tapeOn = false;
   /** Ask the source for every order (the trade dust) or stop it; what is held stays until the page goes. */
   setTape(on: boolean): void {
@@ -448,7 +471,8 @@ export class Hub {
   /** Instruments with an open-interest series to fall back to, best first. */
   #oiReferences: string[] = [];
 
-  constructor(readonly store: Store, readonly source: DataSource) {
+  constructor(readonly store: Store, readonly source: DataSource, options: { paced?: boolean } = {}) {
+    this.#paced = options.paced === true;
     this.priceHistory = new ChartPriceHistory((id, tf, from, to, signal) => {
       if (!source.priceHistory) return Promise.reject(new Error('Price history is unavailable'));
       return source.priceHistory(id, tf, from, to, signal);
@@ -767,6 +791,8 @@ export class Hub {
    * with history stands in and `oiInstrument` says so. Safe to call often: it is one request when the market has OI.
    */
   loadOi(): Promise<void> {
+    // After the map's first columns (MAP_FIRST_MS): the load asked for meanwhile happens then.
+    if (this.mapFirst()) return this.#afterMap().then(() => this.loadOi());
     const state = this.store.state, { marketId, seriesInstrument, timeframe } = state;
     const own = seriesInstrument || marketId; if (!own) return Promise.resolve();
     const added = oiMarketIds(state, this.flow), venues = added ?? [];
@@ -1047,8 +1073,9 @@ export class Hub {
    * live edge only made the server sort the same hours of orders again.
    */
   ensurePrints(view: Bounds, minUsd = 25_000): void {
-    // Not before the stream first opens: an answer asked before it covers nothing once it opens (below), so a page asked every window twice.
-    if (this.#printsLoading || !(view.t1 > view.t0) || this.#connection === 0) return;
+    // Not while the stream is opening for the first time: an answer asked before it opens covers nothing once it does (below), so a page asked
+    // every window twice.
+    if (this.#printsLoading || !(view.t1 > view.t0) || this.#opening() || this.mapFirst()) return;
     const have = this.#printsWindow;
     const narrower = have !== null && have.cut && view.t1 - view.t0 < (have.t1 - have.t0) / 4;
     if (have && have.min === minUsd && have.t0 <= view.t0 && (have.live || have.t1 >= Math.min(view.t1, Date.now())) && !narrower) return;
@@ -1067,7 +1094,7 @@ export class Hub {
   ensureLiquidations(view: Bounds, minUsd: number): void {
     const source = this.source;
     if (!source.liquidations) { this.liquidationsState = 'unavailable'; return; }
-    if (this.#liquidationsLoading || !(view.t1 > view.t0) || this.#connection === 0) return;
+    if (this.#liquidationsLoading || !(view.t1 > view.t0) || this.#opening() || this.mapFirst()) return;
     if (this.liquidationsState === 'unavailable' && Date.now() < this.#liquidationsRetryAt) return;
     const have = this.#liquidationsWindow;
     const narrower = have !== null && have.cut && view.t1 - view.t0 < (have.t1 - have.t0) / 4;
@@ -1092,6 +1119,7 @@ export class Hub {
    * and only the absorption column judges groups) only the minutes are asked for (`#ensureAbsorptionMinutes`).
    */
   ensureAbsorption(allIds: readonly string[], allThresholds: readonly (number | null)[], view: Bounds, sdMinutes: number, statsOnly = false): void {
+    if (this.mapFirst()) return;   // after the map's first columns (MAP_FIRST_MS)
     // More instruments than one question may name is more markets than any page has; the first are asked about.
     const ids = allIds.slice(0, MAX_ABSORPTION_INSTRUMENTS), thresholds = allThresholds.slice(0, MAX_ABSORPTION_INSTRUMENTS);
     if (statsOnly) { if (ids.length) this.#ensureAbsorptionMinutes(ids, sdMinutes); return; }
@@ -1170,6 +1198,7 @@ export class Hub {
    * minute later. A window a recovery filled trades into is asked again (`#dropValueAreas`).
    */
   ensureValueAreas(ids: readonly string[], windows: readonly { from: number; to: number }[], step: number, share: number): void {
+    if (this.mapFirst()) return;   // after the map's first columns (MAP_FIRST_MS)
     if (this.#vaLoading || !ids.length || !windows.length || !(step > 0)) return;
     const now = Date.now();
     if (this.valueAreasState === 'unavailable' && now < this.#vaRetryAt) return;
@@ -1208,6 +1237,7 @@ export class Hub {
    * keeps) on rows of `step`, the level rows, so zooming asks nothing again.
    */
   ensureWindowProfiles(ids: readonly string[], windows: readonly { from: number; to: number }[], step: number): void {
+    if (this.mapFirst()) return;   // after the map's first columns (MAP_FIRST_MS)
     if (this.#wpLoading || !ids.length || !windows.length || !(step > 0)) return;
     const now = Date.now();
     if (now < this.#wpRetryAt) return;
@@ -1232,6 +1262,7 @@ export class Hub {
    * asked again a minute later. `tag` names the window for the answer held (`traded`).
    */
   ensureTraded(ids: readonly string[], from: number, to: number, step: number, live: boolean, period: { tag: string; settled: boolean } = { tag: '', settled: false }): void {
+    if (this.mapFirst()) return;   // after the map's first columns (MAP_FIRST_MS)
     // A window longer than a source may be asked about (a chart zoomed out past eight days, a month) is asked for its newest part: refused
     // whole, it left the column on its last answer, asked again a minute later and refused again. The header says from when it holds.
     ({ from, to } = askedSpan(from, to));
@@ -1259,6 +1290,7 @@ export class Hub {
    * `ensureTraded` asks (`live`, `settled`, the same spacing), and `tag` names the window for the answer held.
    */
   ensureMetricProfile(metric: Exclude<ProfileMetric, 'volume'>, ids: readonly string[], from: number, to: number, step: number, live: boolean, period: { tag: string; settled: boolean } = { tag: '', settled: false }, thresholds: Thresholds = new Map()): void {
+    if (this.mapFirst()) return;   // after the map's first columns (MAP_FIRST_MS)
     const c = this.#metricColumn(metric), def = measureDef(metric).byPrice;
     ({ from, to } = askedSpan(from, to));   // as `ensureTraded`
     if (c.loading || !(to > from) || !(step > 0)) return;
@@ -1301,6 +1333,7 @@ export class Hub {
    * every frame: one request at a time, none while everything asked for is here, and a source that cannot answer is asked again a minute later.
    */
   async ensureFlowMinutes(ids: readonly string[], from: number, to: number): Promise<void> {
+    if (this.mapFirst()) return;   // after the map's first columns (MAP_FIRST_MS)
     const source = this.source;
     if (!source.flowMinutes) { this.flowMinutesState = 'unavailable'; return; }
     if (this.#flowMinutesLoading || Date.now() < this.#flowMinutesRetryAt) return;
@@ -1339,9 +1372,9 @@ export class Hub {
     // A step held for every book is read at once, whatever else is under way.
     if (holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
     // A load under way for a step the view has left is let go: its answer would hold a connection and the step wanted would wait for it.
-    if (this.#columnsLoading) { if (this.#columnsLoad && this.#columnsLoad.stepMs !== stepMs) this.#columnsLoad.abort.abort(); return; }
+    if (this.#columnsLoading) { if (this.#paced && this.#columnsLoad && this.#columnsLoad.stepMs !== stepMs) this.#columnsLoad.abort.abort(); return; }
     // While a zoom is still passing steps, a step is asked for once it has held (the map's first columns are asked for at once).
-    const settling = this.columnsVersion > 0 ? COLUMN_STEP_SETTLE_MS - (performance.now() - this.#wantedSince) : 0;
+    const settling = this.#paced && this.columnsVersion > 0 ? COLUMN_STEP_SETTLE_MS - (performance.now() - this.#wantedSince) : 0;
     if (settling > 0) {
       clearTimeout(this.#settleTimer);
       this.#settleTimer = setTimeout(() => this.onColumns(), settling + 10);
@@ -1364,6 +1397,8 @@ export class Hub {
         // A zoom to another step since the load began: that step's own load follows, and the rest of this one would only hold it up.
         if (stepMs !== this.#columnsWanted) break;
         const frame = await this.source.columns(ask.ids, ask.from, ask.to, stepMs, false, signal);
+        // A source that answers a question it was told to let go of (its own worker, a test's): the answer is not taken either.
+        signal.throwIfAborted();
         let whole = frame.instruments, wholeIds = ask.ids;
         if (ask.tail) {
           // A market whose price grid is not the one its columns held were recorded on (a server started again and chose another): their bins
@@ -1375,7 +1410,7 @@ export class Hub {
           if (tails.length) this.#postColumns({ type: 'columnsTail', stepMs, from: ask.from, instruments: tails }, stepMs);
           // What the other steps hold for these markets was recorded on the old grid too.
           if (other.size) this.#forgetColumns(holds.forgetElsewhere(stepMs, wholeIds));
-          if (other.size) whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs, false, signal)).instruments;
+          if (other.size) { whole = (await this.source.columns(wholeIds, reach.from, Math.min(Date.now() - this.#sourceSkew + MINUTE, reach.to), stepMs, false, signal)).instruments; signal.throwIfAborted(); }
         }
         // Every instrument asked for is held from here on, answered or not: one a source leaves out is not asked for again on every frame
         // (and has nothing in the worker: what it held for it is forgotten).

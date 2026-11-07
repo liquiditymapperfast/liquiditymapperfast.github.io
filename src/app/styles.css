@@ -361,7 +361,7 @@ html[data-layout="desktop"] .pane.heat .map-tools.compact :is(.map-select, .map-
 .cvd-notice-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .cvd-notice-btn { flex: 0 0 auto; white-space: nowrap; }
 .cvd-wrap canvas { position: absolute; left: 0; top: 0; display: block; }
-.cvd-wrap canvas.cvd-flash { pointer-events: none; }
+.cvd-wrap canvas.cvd-flash, .cvd-wrap canvas.cvd-line { pointer-events: none; }
 .pane.cvd .cvd-span-select { display: none; }
 /* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop the choices are tiles of one width under
    the first line, their captions above them, as many to a row as fit and filling it; or on the first line itself when all of them fit there (the header's

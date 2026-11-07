@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   const kernels = await loadKernels();
   keepCoinRecordings();
   const source = await chooseSource(params, choice, store.state.phoneHistory);
-  const hub = new Hub(store, source);
+  const hub = new Hub(store, source, { paced: true });
   const wake = new ScreenWake(); wake.set(store.state.keepAwake);
   // The browser tab says the price: in its title, and its icon is the candle under way (GitHub issue #7).
   new TabTitle(store);

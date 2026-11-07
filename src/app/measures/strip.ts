@@ -85,6 +85,13 @@ export class TopProfile {
   /** Whether a point of the map is on the band's header, which opens the profiles' settings (the Volume profile panel, at the places). */
   onHeader(x: number, y: number): boolean { const d = this.#drawn; return !!d && x >= 0 && x <= d.headW && y >= d.band.top && y <= d.band.top + d.band.height; }
 
+  /** The bucket the pointer frames in the band as last drawn (`paint`'s `hovered`), -1 off it: what of the pointer the band itself draws. */
+  hovered(state: AppState, f: Pick<TopPlace, 'view' | 'ph'>): number {
+    const d = this.#drawn, hv = state.hover; if (!d || !hv) return -1;
+    const y = hv.source === 'heat' && hv.price !== null ? f.view.yOf(hv.price, f.ph) : NaN;
+    return y >= d.band.top && y <= d.band.top + d.band.height ? bucketAt(d.worked.rows, hv.t) : -1;
+  }
+
   /** The box for the bucket under the pointer when it is over the band, off its header (`x`, `y` on the map, `t` its time), and where it opens; null elsewhere. */
   readout(x: number, y: number, time: number): { lines: InfoLine[]; y: number } | null {
     const d = this.#drawn;
@@ -153,6 +160,9 @@ export class TopBands {
 
   /** Whether a point of the map is on a band's header (each band's header opens the settings). */
   onHeader(x: number, y: number): boolean { return this.#drawn.some(p => p.onHeader(x, y)); }
+
+  /** The bucket each band drawn frames under the pointer (`TopProfile.hovered`), as a key: the bands' part of the map's pointer key. */
+  hoverKey(state: AppState, f: Pick<TopPlace, 'view' | 'ph'>): string { return this.#drawn.map(p => p.hovered(state, f)).join(','); }
 
   /** The box for the bucket under the pointer, from the band it is over; null off the bands. */
   readout(x: number, y: number, time: number): { lines: InfoLine[]; y: number } | null {
