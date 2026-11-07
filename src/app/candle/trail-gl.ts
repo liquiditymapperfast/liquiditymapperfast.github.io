@@ -1,5 +1,6 @@
 import { WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, strengthGain, type WaveRegion } from '../glass/waves.ts';
 import { STRIDE, type TapeRing } from '../tape/ring.ts';
+import { built, startProgram, uniforms, type Building } from '../gl-build.ts';
 import type { TrailStyle } from './model.ts';
 
 /**
@@ -426,6 +427,8 @@ export class TrailGL {
   /** The ring's orders on the card: up to which write number, for which of the ring's epochs. */
   #uploaded = 0; #uploadedEpoch = -1;
   #loc = new Map<WebGLProgram, Map<string, WebGLUniformLocation | null>>();
+  /** The programs the card is still building (gl-build.ts) and the uniforms to read from each once built; null once they are. */
+  #building: (readonly [Building, readonly string[]])[] | null;
   readonly #flashData = new Float32Array(MAX_FLASH * FLASH_STRIDE);
   #dpr = 1;
 
@@ -436,22 +439,17 @@ export class TrailGL {
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
     if (!gl) throw new Error('WebGL2 unavailable');
     this.gl = gl;
-    const compile = (type: number, source: string): WebGLShader => {
-      const shader = gl.createShader(type)!; gl.shaderSource(shader, source); gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'shader');
-      return shader;
-    };
-    const program = (vert: string, frag: string, names: string[]): WebGLProgram => {
-      const p = gl.createProgram()!; gl.attachShader(p, compile(gl.VERTEX_SHADER, vert)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, frag)); gl.linkProgram(p);
-      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'program');
-      this.#loc.set(p, new Map(names.map(n => [n, gl.getUniformLocation(p, n)])));
-      return p;
-    };
-    this.#trail = program(TRAIL_VERT, TRAIL_FRAG, ['now', 'win', 'xr', 'yr', 'pr', 'px', 'size', 'style', 'mask', 'dark', 'bidC', 'askC', 'opacity']);
-    this.#flash = program(FLASH_VERT, FLASH_FRAG, ['px', 'style', 'dark', 'bidC', 'askC', 'mid']);
-    this.#down = program(FULL_VERT, DOWN_FRAG, ['src', 'small', 'texel']);
-    this.#blur = program(FULL_VERT, BLUR_FRAG, ['src', 'size', 'dir']);
-    this.#comp = program(FULL_VERT, COMP_FRAG, ['scene', 'small', 'rows', 'px', 'ext', 'gain', 'dpr', 'piece', 'frost', 'count', 'bricks', 'dark', 'tintC', 'bidC', 'askC', 'tintA', 'pulse', 'nowMs', 'hasRows', 'bookBid', 'bookAsk', 'fillA', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']);
+    // Built beside the page (gl-build.ts): asked how they went at once, the five held a phone's page for ~0.6 s, the glass's composite alone
+    // ~0.4 s (Research_Findings.md, 2026-11-07). Nothing is drawn until `built` finds them done.
+    const building: (readonly [Building, readonly string[]])[] = [
+      [startProgram(gl, TRAIL_VERT, TRAIL_FRAG), ['now', 'win', 'xr', 'yr', 'pr', 'px', 'size', 'style', 'mask', 'dark', 'bidC', 'askC', 'opacity']],
+      [startProgram(gl, FLASH_VERT, FLASH_FRAG), ['px', 'style', 'dark', 'bidC', 'askC', 'mid']],
+      [startProgram(gl, FULL_VERT, DOWN_FRAG), ['src', 'small', 'texel']],
+      [startProgram(gl, FULL_VERT, BLUR_FRAG), ['src', 'size', 'dir']],
+      [startProgram(gl, FULL_VERT, COMP_FRAG), ['scene', 'small', 'rows', 'px', 'ext', 'gain', 'dpr', 'piece', 'frost', 'count', 'bricks', 'dark', 'tintC', 'bidC', 'askC', 'tintA', 'pulse', 'nowMs', 'hasRows', 'bookBid', 'bookAsk', 'fillA', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves']],
+    ];
+    this.#building = building;
+    [this.#trail, this.#flash, this.#down, this.#blur, this.#comp] = building.map(([b]) => b.program) as [WebGLProgram, WebGLProgram, WebGLProgram, WebGLProgram, WebGLProgram];
     this.#field = WaveField.create(gl);
     const texture = (): WebGLTexture => {
       const tex = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -486,6 +484,18 @@ export class TrailGL {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.setMask([]);
+  }
+
+  /**
+   * Whether the programs are built and their uniforms read: false while the card still builds them (asked without waiting, gl-build.ts).
+   * Throws what failed. Nothing is drawn before it is true (the pane keeps its solid look meanwhile).
+   */
+  built(): boolean {
+    const building = this.#building; if (!building) return true;
+    if (!built(this.gl, building.map(([b]) => b))) return false;
+    for (const [b, names] of building) this.#loc.set(b.program, uniforms(this.gl, b.program, names));
+    this.#building = null;
+    return true;
   }
 
   /** Size the canvas: CSS px times the pixel ratio (the pane caps it, a glow gains nothing from a phone's third device pixel). */
@@ -558,7 +568,9 @@ export class TrailGL {
     }
   }
 
+  /** Draw a frame; nothing until the programs are built (`built`, which the pane asks first). */
   draw(f: TrailFrame): void {
+    if (!this.built()) return;
     const gl = this.gl, ring = this.ring, dpr = this.#dpr, W = this.canvas.width, H = this.canvas.height;
     // The waves first, in their own buffers: the glass's pieces are glass to them, the welds walls; then the frame as before.
     const field = this.#field;
