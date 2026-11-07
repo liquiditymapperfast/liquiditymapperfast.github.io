@@ -17,7 +17,8 @@ import type { CoverageAnswer, CoverageMetric } from '../../shared/coverage.ts';
 /** What the page asks the feeds worker for; each has an answer of the type in `RpcResult`. */
 export type RpcCall =
   | { method: 'bootstrap' }
-  | { method: 'columns'; ids: string[]; from: number; to: number; stepMs: number; close?: boolean }
+  /** `early`: the map's own load, which may be answered from the newest recordings before the day is read (browser/waits.ts `waitOf`). */
+  | { method: 'columns'; ids: string[]; from: number; to: number; stepMs: number; close?: boolean; early?: boolean }
   | { method: 'footprint'; inst: string; tfMs: number; from: number; to: number; rowStep: number; cuts?: number[]; budget?: number; venues?: boolean }
   | { method: 'prints'; from: number; to: number; minUsd?: number }
   | { method: 'liquidations'; from: number; to: number; minUsd?: number }

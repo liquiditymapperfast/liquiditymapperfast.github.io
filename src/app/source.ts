@@ -122,8 +122,14 @@ export interface DataSource {
   liquidations?(from: number, to: number, minUsd?: number): Promise<Liquidation[]>;
   /** Whale VWAP sums of `ids` in [from, to) from the size band at `minUsd` up, in steps of `stepMs` (a server from before them answers 404). */
   printSums?(ids: string[], from: number, to: number, minUsd: number, stepMs: number): Promise<PrintSumsAnswer>;
-  /** `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`. */
-  columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean): Promise<ColumnsFrame>;
+  /**
+   * `close`: each window's book at its close, not its average (the scripts' depth); a source from before answers averages, without `at`.
+   * `early`: the map's own load (`Hub.loadColumns`), which a browser source may answer from its newest recordings while the rest of its day
+   * is read back, saying so when the history lands (`LiveHandlers.onHistory`); every other question is answered from the whole recordings.
+   */
+  columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean, early?: boolean): Promise<ColumnsFrame>;
+  /** Whether the map is drawn from the browser's newest recordings alone for now (answered `early`, its history not in): `Hub.depthSince`. */
+  previewing?(): boolean;
   /**
    * A source whose columns reach back past its own recordings (the browser's, from the long history's tiles: app/archive/) says when more of
    * them have come; the hub then asks again for what it holds. Optional: the others answer everything they have at once.

@@ -21,8 +21,11 @@ class FakeWorker { onmessage: ((event: { data: unknown }) => void) | null = null
 class HistorySource {
   readonly kind = 'server' as const;
   readonly venues = { catalog: async () => ({ venues: [], limit: null, recommendedKnown: true }), apply: async () => {} };
-  asked: { from: number; to: number; stepMs: number }[] = [];
+  asked: { from: number; to: number; stepMs: number; early: boolean }[] = [];
   handlers: LiveHandlers | null = null;
+  /** What the source says of the map's columns (`DataSource.previewing`). */
+  drawnFromNewest = false;
+  previewing(): boolean { return this.drawnFromNewest; }
   async bootstrap(): Promise<BootstrapState> {
     return { asOf: 0, now: 0, dataMode: 'server', markPrice: 100, markInstrumentId: 'a:BTC', markets: [{ instrumentId: 'a:BTC' }], layers: {}, steps: {}, recorded: {}, columnMs: MIN, timeframes: [], oiReferences: [] };
   }
@@ -32,8 +35,8 @@ class HistorySource {
   async prints() { return []; }
   async flow() { return { from: 0, to: 0, instruments: [] }; }
   async footprint() { return { step: 0, fine: 0, bars: [] }; }
-  async columns(ids: string[], from: number, to: number, stepMs: number): Promise<ColumnsFrame> {
-    this.asked.push({ from, to, stepMs });
+  async columns(ids: string[], from: number, to: number, stepMs: number, _close = false, early = false): Promise<ColumnsFrame> {
+    this.asked.push({ from, to, stepMs, early });
     return { from, to, stepMs, instruments: ids.map(id => ({ id, step: 10, times: [from], counts: [1], samples: [12], bins: Int32Array.of(1), bid: Float32Array.of(1), ask: Float32Array.of(1) })) };
   }
 }
@@ -53,6 +56,7 @@ test('a history that says the map was answered from the newest recordings asks f
     hub.onColumns = () => { columns++; };
     await hub.loadColumns(view, 120);
     assert.equal(source.asked.length, 1);
+    assert.equal(source.asked[0]!.early, true, 'the map\'s own load may be answered early');
     await hub.loadColumns(view, 120);
     assert.equal(source.asked.length, 1, 'held: nothing asked');
     source.handlers!.onHistory!(false);
@@ -65,4 +69,16 @@ test('a history that says the map was answered from the newest recordings asks f
     assert.equal(source.asked.length, 2, 'asked again');
     assert.deepEqual([source.asked[1]!.from, source.asked[1]!.to], [source.asked[0]!.from, source.asked[0]!.to], 'whole');
   } finally { Date.now = realNow; }
+});
+
+test('while the map is drawn from the newest recordings, where the recording began so far is not said to be where its depth begins', async () => {
+  const store = new Store(initialState()), source = new HistorySource();
+  const hub = new Hub(store, source as unknown as DataSource), worker = hub.worker as unknown as FakeWorker;
+  worker.onmessage!({ data: { type: 'ready' } });
+  hub.recordedSince = T0 - MIN;
+  assert.equal(hub.depthSince(), T0 - MIN);
+  source.drawnFromNewest = true;
+  assert.equal(hub.depthSince(), 0, 'no "depth recorded from" mark beside columns drawn from before it');
+  source.drawnFromNewest = false;
+  assert.equal(hub.depthSince(), T0 - MIN);
 });
