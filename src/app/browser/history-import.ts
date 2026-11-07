@@ -29,8 +29,11 @@ export const noRows = (): HistoryRows => ({ flow: [], liquidations: [], oi: [], 
 const finite = (...v: number[]): boolean => v.every(Number.isFinite);
 
 export const HOUR_MS = 3_600_000;
-/** Hour files read at once. */
-const PARALLEL = 4;
+/**
+ * Hour files read at once. The service is behind Cloudflare (HTTP/2 and 3: one connection, many streams), and a fresh visit's day is some
+ * 25 files of 0.5-1 MB: four at a time left the line idle between round trips (3.4 s for 17 MB on a fast line, Research_Findings.md).
+ */
+const PARALLEL = 8;
 /** An hour whose minutes the page already holds this share of, for every book the service records, is not read. */
 const COVERED = 0.95;
 /** A minute counts as held from this many samples (of twelve). */
