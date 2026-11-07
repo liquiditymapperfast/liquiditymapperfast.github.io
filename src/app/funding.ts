@@ -201,29 +201,37 @@ const BINANCE_PREMIUM: Readonly<Record<number, string>> = { 60_000: '1m', 300_00
 const BYBIT_PREMIUM: Readonly<Record<number, string>> = { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' };
 
 /**
- * Candles a premium page asks for at most. Binance weighs a page by the `limit` it asks (1 under 100 candles, 5 up to 1,000, 10 above: a page of
- * 1,000 costs less a candle than one of 1,500), and Bybit answers 1,000 at most.
+ * Candles a premium page asks for at most. Binance weighs a page by the `limit` it asks (1 up to 100 candles, 2 up to 500, 5 up to 1,000, 10
+ * above, measured 2026-11-07: a page of 1,000 costs less a candle than one of 1,500), and Bybit answers 1,000 at most.
  */
 const PREMIUM_PAGE = 1000;
+/**
+ * Pages a premium read takes at most: a page more than a read asks for (`PREMIUM_CANDLES`), so a window a few candles past it (the margins and
+ * the candle or two it shares with what is held) is read whole. Binance pages from the far end: cut short, a read stopped short of the end it
+ * shares with what is held and replaced it instead of joining it (review round 6).
+ */
+const PREMIUM_PAGES = PAGES + 1;
 
 /**
- * Binance's or Bybit's premium index per candle of `tfMs` over [from, to], oldest first (the candle's close), at most `PAGES` pages, and the
- * stretch the read really covered (`from`, `to`): where its pages ran out first it ends there, never claiming the rest. Each page asks for the
- * candles the stretch left holds and no more (a page short of them, or one holding the last candle there can be, ends the read), and a page after
- * the first that fails ends the read where the pages before it did, what they read kept (review round 5: a narrow view dragged fast asked
- * Binance for 1,500 at a time, and one failed page threw away the pages before it).
+ * Binance's or Bybit's premium index per candle of `tfMs` over [from, to] (a candle starting at either end counted), oldest first (the candle's
+ * close), at most `PREMIUM_PAGES` pages, and the stretch the read really covered (`from`, `to`): where its pages ran out first it ends there,
+ * never claiming the rest. Each page asks for the candles the stretch left holds and no more (a page short of them, or one holding the last
+ * candle there can be, ends the read), and a page after the first that fails ends the read where the pages before it did, what they read kept
+ * and `cut` set, so the caller still waits before asking again (review round 5: a narrow view dragged fast asked Binance for 1,500 at a time,
+ * and one failed page threw away the pages before it; round 6: a read cut that way was taken for a success and asked again at once).
  */
-export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: number, from: number, to: number, get: Fetcher = webGet): Promise<{ rows: PremiumRow[]; from: number; to: number }> {
+export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: number, from: number, to: number, get: Fetcher = webGet): Promise<{ rows: PremiumRow[]; from: number; to: number; cut: boolean }> {
   const s = listing.symbol, out = new Map<number, number>();
   const candles = (a: number, b: number): number => Math.max(1, Math.min(PREMIUM_PAGE, Math.floor(b / tfMs) - Math.ceil(a / tfMs) + 1));
+  let cut = false;
   const page = async (n: number, url: string, list: (answer: unknown) => unknown[]): Promise<unknown[] | null> => {
-    try { return list(await get(url)); } catch (error) { if (n === 0) throw error; return null; }
+    try { return list(await get(url)); } catch (error) { if (n === 0) throw error; cut = true; return null; }
   };
   let lo = from, hi = to;
   if (venue === 'binance' && BINANCE_PREMIUM[tfMs]) {
     // Oldest first from `startTime`, as its candles are: pages that run out end the stretch at their newest candle.
     let start = from;
-    for (let n = 0; n < PAGES && start < to; n++) {
+    for (let n = 0; n < PREMIUM_PAGES && start < to; n++) {
       const limit = candles(start, to);
       const got = await page(n, `https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=${s}&interval=${BINANCE_PREMIUM[tfMs]}&startTime=${Math.floor(start)}&endTime=${Math.floor(to)}&limit=${limit}`, a => listOf(a, true, venue));
       if (!got) break;
@@ -236,7 +244,7 @@ export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: n
   } else if (venue === 'bybit' && BYBIT_PREMIUM[tfMs]) {
     // Newest first: pages that run out end the stretch at their oldest candle.
     let end = to;
-    for (let n = 0; n < PAGES && end > from; n++) {
+    for (let n = 0; n < PREMIUM_PAGES && end > from; n++) {
       const limit = candles(from, end);
       const got = await page(n, `https://api.bybit.com/v5/market/premium-index-price-kline?category=linear&symbol=${s}&interval=${BYBIT_PREMIUM[tfMs]}&start=${Math.floor(from)}&end=${Math.floor(end)}&limit=${limit}`, a => listOf(a, bybitOk(a), venue, 'result', 'list'));
       if (!got) break;
@@ -247,7 +255,7 @@ export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: n
     }
     if (end > from) lo = end;
   }
-  return { rows: [...out].map(([t, p]) => ({ t, p })).sort((a, b) => a.t - b.t), from: lo, to: hi };
+  return { rows: [...out].map(([t, p]) => ({ t, p })).sort((a, b) => a.t - b.t), from: lo, to: hi, cut };
 }
 
 /** The funding accruing now on a venue, when it settles and the premium now (null where the venue would not say). */
@@ -282,13 +290,14 @@ const SETTLED_AFTER_MS = 15_000;
 const DAY = 24 * HOUR;
 /** How far back a venue's funding is read at most (a read itself never claims further back than its pages reached: `readFunding`'s `from`). */
 const MAX_BACK_MS: Readonly<Record<FundingVenue, number>> = { hyperliquid: 150 * DAY, binance: 1000 * DAY, bybit: 500 * DAY, okx: 250 * DAY, bitget: 250 * DAY, deribit: 230 * DAY };
-/** How many candles of premium one read covers at most (`PAGES` pages). */
+/** How many candles of premium one read asks for at most (`PAGES` pages; its pages hold one more, `PREMIUM_PAGES`). */
 const PREMIUM_CANDLES = PAGES * PREMIUM_PAGE;
 /** How many are held per timeframe at most: the view's own and one read's worth each side of them. */
 const PREMIUM_HELD = 3 * PREMIUM_CANDLES;
 /**
- * How much more than the view a read asks for on each side, as a share of the view: a view dragged along asks again only past it. Premium reads
- * ask a page's worth at least: a narrow view dragged fast asked again every few candles (review round 5: about 78 of Binance's weight a second).
+ * How much more than the view a read asks for on each side, as a share of the view: a view dragged along asks again only past it. Premium read
+ * next to what is held asks a page's worth at least (review round 5: a narrow view dragged fast asked again every few candles, about 78 of
+ * Binance's weight a second); a view's first read keeps to half a view (round 6: a jump to a narrow view read twenty or thirty times its candles).
  */
 const LOOK_AHEAD = 0.5;
 
@@ -336,8 +345,12 @@ export class FundingSource {
       // start unread, and every landing asked again for ever (review round 3).
       const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), edge = Math.min(t1, now) + tfMs, live = t1 >= now - tfMs, ahead = Math.max(LOOK_AHEAD * span, PREMIUM_PAGE * tfMs);
       const viewLo = Math.min(edge - tfMs, Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs)), spare = Math.max(0, PREMIUM_CANDLES * tfMs - (edge - viewLo));
-      const padLeft = Math.min(ahead, spare / 2), padRight = Math.min(Math.max(0, Math.min(t1 + ahead, now) + tfMs - edge), spare - padLeft);
-      const read = (lo: number, hi: number): void => this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => { this.#premium.set(pk, heldPremium(this.#premium.get(pk), r, tfMs, now)); }));
+      const padLeft = Math.min(LOOK_AHEAD * span, spare / 2), padRight = Math.min(Math.max(0, Math.min(t1 + LOOK_AHEAD * span, now) + tfMs - edge), spare - padLeft);
+      // A read cut short by a failed page keeps what it read and still counts as failed, so the rest is asked a minute later, not at once.
+      const read = (lo: number, hi: number): void => this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => {
+        this.#premium.set(pk, heldPremium(this.#premium.get(pk), r, tfMs, now));
+        if (r.cut) throw new Error(`${venue}-premium-cut`);
+      }));
       // Nothing held next to the view: its window, in place of what is held.
       if (!p || edge < p.from - tfMs || viewLo > p.to + tfMs) read(viewLo - padLeft, edge + padRight);
       else {
@@ -367,7 +380,10 @@ export class FundingSource {
   }
 }
 
-/** The premium held of one venue, symbol and timeframe: one unbroken stretch [from, to), and when its newest was read (`at`). */
+/**
+ * The premium held of one venue, symbol and timeframe: one unbroken stretch from `from` through `to` (a candle starting at either end counted,
+ * as a read claims it), and when its newest was read (`at`).
+ */
 export interface HeldPremium { rows: PremiumRow[]; from: number; to: number; at: number }
 /**
  * A premium read put with what was held: joined to it where they touch, else in its place (what is held never claims the gap between them);
@@ -384,8 +400,9 @@ export function heldPremium(before: HeldPremium | undefined, r: { rows: PremiumR
   const most = PREMIUM_HELD * tfMs;
   if (held.to - held.from <= most) return held;
   if (r.to >= held.to) { const from = held.to - most; return { ...held, rows: held.rows.filter(q => q.t >= from), from }; }
+  // Through `to`, as it is claimed (round 6: a candle starting at it was let go and still claimed).
   const to = held.from + most;
-  return { ...held, rows: held.rows.filter(q => q.t < to), to };
+  return { ...held, rows: held.rows.filter(q => q.t <= to), to };
 }
 
 /** Rows by time, the newer read winning. */

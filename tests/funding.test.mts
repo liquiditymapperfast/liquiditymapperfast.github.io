@@ -5,8 +5,8 @@ import type { Fetcher } from '../src/shared/history.ts';
 
 const H = 3_600_000, T = Date.UTC(2026, 10, 6, 0);
 const BTC = { symbol: 'BTCUSDT', unit: 1 };
-/** What Binance charges for a premium page by the `limit` it asks (measured 2026-11-07): 1 under 100 candles, 2 under 500, 5 up to 1,000, 10 above. */
-const binanceWeight = (limit: number): number => limit < 100 ? 1 : limit < 500 ? 2 : limit <= 1000 ? 5 : 10;
+/** What Binance charges for a premium page by the `limit` it asks (measured 2026-11-07): 1 up to 100 candles, 2 up to 500, 5 up to 1,000, 10 above. */
+const binanceWeight = (limit: number): number => limit <= 100 ? 1 : limit <= 500 ? 2 : limit <= 1000 ? 5 : 10;
 /** A venue that answers each URL (and Hyperliquid's posted body) from a table, and counts what it was asked. */
 function venue(answer: (url: string, body: unknown) => unknown): Fetcher & { asked: string[] } {
   const asked: string[] = [];
@@ -50,7 +50,7 @@ test('a wide view in the past reads its premium a bounded number of times, the v
   const source = new FundingSource(() => undefined, binance);
   for (let i = 0; i < 20; i++) { source.view('binance', BTC, M, t0, t1, now + i * 1_000); await new Promise(r => setTimeout(r, 5)); }
   const reads = binance.asked.filter(u => u.includes('premiumIndexKlines')).length;
-  assert.ok(reads > 0 && reads <= 8, `one read of at most eight pages, then nothing (${reads})`);
+  assert.ok(reads > 0 && reads <= 9, `one read of at most nine pages (eight and one for its margins), then nothing (${reads})`);
   // Wider than one read (8,000 candles): its newest 8,000 are held, up to its right edge.
   const view = source.view('binance', BTC, M, t0, t1, now + 21_000);
   assert.ok(view.premium.some(q => q.t >= t1 - M), 'held to its right edge');
@@ -117,12 +117,13 @@ test('a premium read says what it reached when its pages run out, forward (Binan
   // As Binance answers: the candles from the first whole minute at or after `startTime`.
   const binance = venue(url => { const s = Number(/startTime=(\d+)/.exec(url)![1]), e = Number(/endTime=(\d+)/.exec(url)![1]); const out: unknown[] = []; for (let t = Math.ceil(s / M) * M, most = Math.min(1500, Number(/limit=(\d+)/.exec(url)![1])); t < e && out.length < most; t += M) out.push([t, '0', '0', '0', '-0.0001', '0', t + M - 1]); return out; });
   const forward = await readPremium('binance', BTC, M, T, T + 20_000 * M, binance);
-  assert.equal(forward.rows.length, 8_000, 'eight pages of 1,000');
-  assert.equal(forward.from, T); assert.ok(forward.to > T + 7_999 * M && forward.to <= T + 8_000 * M, 'it ends where its eight pages ended, not at the end asked for');
+  assert.equal(forward.rows.length, 9_000, 'nine pages of 1,000 (eight asked for and one for a read\'s margins)');
+  assert.equal(forward.from, T); assert.ok(forward.to > T + 8_999 * M && forward.to <= T + 9_000 * M, 'it ends where its pages ended, not at the end asked for');
+  assert.equal(forward.cut, false, 'pages that ran out are no failure');
   assert.ok(binance.asked.every(u => u.includes('&limit=1000')), 'never a page of 1,500: Binance weighs it twice a page of 1,000');
   const bybit = venue(url => { const e = Number(/end=(\d+)/.exec(url)![1]), out: unknown[] = []; for (let t = Math.floor(e / M) * M, most = Math.min(1000, Number(/limit=(\d+)/.exec(url)![1])); out.length < most; t -= M) out.push([String(t), '0', '0', '0', '-0.0002']); return { retCode: 0, result: { list: out } }; });
   const back = await readPremium('bybit', BTC, M, T, T + 20_000 * M, bybit);
-  assert.equal(back.rows.length, 8_000);
+  assert.equal(back.rows.length, 9_000);
   assert.equal(back.to, T + 20_000 * M); assert.ok(back.from > T + 11_000 * M, 'it starts where its eight pages ended');
   const whole = await readPremium('binance', BTC, M, T, T + 600 * M, binance);
   assert.deepEqual([whole.from, whole.to, whole.rows.length], [T, T + 600 * M, 600], 'read whole: the stretch asked for');
@@ -155,9 +156,10 @@ test('a premium page asks for the candles its stretch holds and no more; a page 
   assert.deepEqual([limits(wideBack), back.rows.length, back.from, back.to], [[1000, 1000, 500], 2_500, T, T + 2_499 * M]);
   // The second page fails: the first page's candles are kept, and the stretch ends where they end.
   const cut = await readPremium('binance', BTC, M, T, T + 2_499 * M, binance(1));
-  assert.deepEqual([cut.rows.length, cut.from, cut.to, cut.rows.at(-1)!.t], [1_000, T, T + 999 * M + 1, T + 999 * M], 'forward: to just past its newest candle');
+  assert.deepEqual([cut.rows.length, cut.from, cut.to, cut.rows.at(-1)!.t, cut.cut], [1_000, T, T + 999 * M + 1, T + 999 * M, true], 'forward: to just past its newest candle, said to be cut');
   const cutBack = await readPremium('bybit', BTC, M, T, T + 2_499 * M, bybit(1));
-  assert.deepEqual([cutBack.rows.length, cutBack.from, cutBack.to, cutBack.rows[0]!.t], [1_000, T + 1_500 * M - 1, T + 2_499 * M, T + 1_500 * M], 'back: from just before its oldest');
+  assert.deepEqual([cutBack.rows.length, cutBack.from, cutBack.to, cutBack.rows[0]!.t, cutBack.cut], [1_000, T + 1_500 * M - 1, T + 2_499 * M, T + 1_500 * M, true], 'back: from just before its oldest');
+  assert.deepEqual([forward.cut, back.cut], [false, false], 'read whole: not cut');
   // The first page fails: the read fails (asked again a minute later), nothing claimed.
   await assert.rejects(readPremium('binance', BTC, M, T, T + 2_499 * M, binance(0)));
   await assert.rejects(readPremium('bybit', BTC, M, T, T + 2_499 * M, bybit(0)));
@@ -179,8 +181,41 @@ test('a premium read joins what is held only where the two stretches meet, and w
   const full = { rows: candles(0, 23_999), from: T, to: T + 23_999 * M, at: 0 };
   const newer = heldPremium(full, { rows: candles(23_990, 24_999), from: T + 23_990 * M, to: T + 24_999 * M }, M, T + 100_000 * M);
   assert.deepEqual([newer.from, newer.to, newer.rows[0]!.t, newer.rows.length], [T + 999 * M, T + 24_999 * M, T + 999 * M, 24_001]);
+  // Cut through its new end, as it is claimed: the candle starting there is kept (review round 6: it was let go and still claimed).
   const older = heldPremium(full, { rows: candles(-1_000, 10), from: T - 1_000 * M, to: T + 10 * M }, M, T + 100_000 * M);
-  assert.deepEqual([older.from, older.to, older.rows.at(-1)!.t, older.rows.length], [T - 1_000 * M, T + 23_000 * M, T + 22_999 * M, 24_000]);
+  assert.deepEqual([older.from, older.to, older.rows.at(-1)!.t, older.rows.length], [T - 1_000 * M, T + 23_000 * M, T + 23_000 * M, 24_001]);
+});
+
+test('a premium read cut short by a failed page keeps what it read and waits before asking again; a view a read\'s width further back joins what is held', async () => {
+  const M = 60_000, now = T + 60 * 24 * H;
+  const n = (url: string, name: string): number => Number(new RegExp(`[?&]${name}=(\\d+)`).exec(url)![1]);
+  // Review round 6: a later page that failed made the read a success, asked again at once (after a 429, the very next request).
+  let failNext = -1, pages = 0;
+  const get = venue(url => {
+    if (!url.includes('premiumIndexKlines')) return url.includes('premiumIndex?') ? { lastFundingRate: '0.0001', nextFundingTime: now + H } : [];
+    if (pages++ === failNext) throw Object.assign(new Error('HTTP 429'), { status: 429 });
+    const out: unknown[] = []; for (let t = Math.ceil(n(url, 'startTime') / M) * M; t <= n(url, 'endTime') && out.length < n(url, 'limit'); t += M) out.push([t, '0', '0', '0', '-0.0001', '0', t + M - 1]); return out;
+  });
+  const land = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+  const source = new FundingSource(() => undefined, get), t1 = now - 20 * 24 * H, t0 = t1 - 3_000 * M;
+  failNext = 1;
+  source.view('binance', BTC, M, t0, t1, now); await land();
+  const kept = source.view('binance', BTC, M, t0, t1, now).premium, after = pages;
+  assert.equal(kept.length, 1_000, 'the first page\'s candles are held');
+  for (let i = 0; i < 20; i++) { source.view('binance', BTC, M, t0, t1, now); await land(); }
+  assert.equal(pages, after, 'and nothing is asked again before the retry is due');
+  // Review round 6: a read asked a few candles past what eight pages hold (the view, its margins and the candle it shares with what is held);
+  // Binance, paging from the far end, stopped short of what was held and replaced it. A view of 8,000 candles, off the minute, moved its own
+  // width back: the read joins what is held, and moved forward again, nothing is read.
+  const wide = new FundingSource(() => undefined, get), right = now - 20 * 24 * H + 30_000, w = 8_000 * M;
+  wide.view('binance', BTC, M, right - w, right, now); await land();
+  wide.view('binance', BTC, M, right - 2 * w, right - w, now); await land();
+  // Both views held as one stretch with no candle missing (the oldest view's partial first candle gives way to the read's budget).
+  const both = wide.view('binance', BTC, M, right - 2 * w, right - w, now).premium, first = both[0]!.t, last = both.at(-1)!.t;
+  assert.ok(first <= right - 2 * w + 2 * M && last >= right - M && both.length === (last - first) / M + 1, `${both.length} candles held, from ${(first - right) / M} to ${(last - right) / M} min`);
+  const back = pages;
+  wide.view('binance', BTC, M, right - w, right, now); await land();
+  assert.equal(pages, back, 'back where it was: nothing read');
 });
 
 test('a narrow view dragged fast reads its premium a page ahead, so Binance\'s weight stays small; zoomed out past both sides, one read for both', async () => {
@@ -205,7 +240,14 @@ test('a narrow view dragged fast reads its premium a page ahead, so Binance\'s w
     t1 += by; t0 += by; held(); await land();
     if (!covers(held())) assert.fail(`not held after ${i + 1} steps of ${by / M}`);
   }
-  assert.ok(weight <= 40 && pages <= 12, `weight ${weight} in ${pages} pages for 9,000 candles dragged (35 in 11 measured; a page of 1,500 every 25 candles: about 3,600)`);
+  assert.ok(weight <= 43 && pages <= 14, `weight ${weight} in ${pages} pages for 9,000 candles dragged (38 in 13 measured; a page of 1,500 every 25 candles: about 3,600)`);
+  // A jump to a narrow view reads it and half a view each side, one small page: the page's worth ahead is for the reads next to what is held
+  // (review round 6: a first read of a page each side cost three requests and twenty or thirty times the candles).
+  const jump = new FundingSource(() => undefined, get), firstPage = get.asked.length;
+  t1 = now - 25 * 24 * H; t0 = t1 - width;
+  jump.view('binance', BTC, M, t0, t1, now); await land();
+  const jumped = get.asked.slice(firstPage).filter(u => u.includes('premiumIndexKlines')).map(u => Number(/limit=(\d+)/.exec(u)![1]));
+  assert.ok(jumped.length === 1 && jumped[0]! <= 110, `one page of the view and its margins (${jumped.join(', ')}; 103 measured, a page each side read about 2,100)`);
   // From a narrow view, zoomed out past what is held on both sides: one read reaches both, and joins what is held.
   const zoom = new FundingSource(() => undefined, get);
   t1 = now - 20 * 24 * H; t0 = t1 - width;
