@@ -226,6 +226,33 @@ test('the archive holds a market on a look at its file of three days ago, at mos
   assert.deepEqual([failedLook.points.length, failedLook.from], [0, NOW - 920 * D]);
 });
 
+test('a read next to one already read, its newest days kept from then, finds no file in the days it asks: the archive gone, or before it begins', async () => {
+  let gone = false;
+  const archive = archiveFake(NOW - 400 * D, NOW - 400 * D), get = fake({ 'https://data.binance.vision/': url => { if (gone) throw Object.assign(new Error('HTTP 404'), { status: 404 }); return archive(url); } });
+  const memo = new ArchiveMemo(), files = () => get.asked.length;
+  assert.equal((await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 150 * D, NOW - 100 * D, get, NOW, memo)).points.length, 51);
+  // Gone while the page is open: the window before it shares its two oldest days (kept, with their files), and every day it asks has none.
+  gone = true;
+  const before = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 200 * D, NOW - 150 * D, get, NOW + 61_000, memo);
+  assert.deepEqual([before.points.length, before.from, memo.cooling('BTCUSDT', NOW + 61_000)], [0, NOW - 150 * D, true], 'unclaimed, not read as fifty days without a file');
+  // The days read before stay kept: another series reads them still, and the days with no file are asked again once the archive is back.
+  const top = await fetchLongShort('binance', 'BTCUSDT', 'topPositions', D, NOW - 150 * D, NOW - 100 * D, get, NOW + 122_000, memo);
+  assert.deepEqual([top.points.length, top.from], [51, NOW - 150 * D]);
+  gone = false;
+  const asked = files(), again = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 200 * D, NOW - 150 * D, get, NOW + 183_000, memo);
+  assert.deepEqual([again.points.length, again.from, files() - asked], [51, NOW - 200 * D, 50], 'read, the fifty days with no file asked again and the two kept not');
+  // The archive beginning where the read before reached: the days before it have no file, and the archive holds the market, so they are read.
+  const first = Math.floor(NOW / D) * D - 151 * D, early = fake({ 'https://data.binance.vision/': archiveFake(NOW - 400 * D, first) }), memo2 = new ArchiveMemo();
+  await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 150 * D, NOW - 100 * D, early, NOW, memo2);
+  const start = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 200 * D, NOW - 150 * D, early, NOW, memo2);
+  assert.deepEqual([start.points.map(p => p.t), start.from, memo2.cooling('BTCUSDT', NOW)], [[first + D], NOW - 200 * D, false]);
+  // Wider than one read: the days it read are claimed, not those before them (it had files, kept ones: no sign of where the archive begins).
+  const memo3 = new ArchiveMemo();
+  await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 150 * D, NOW - 100 * D, early, NOW, memo3);
+  const wide = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 400 * D, NOW - 150 * D, early, NOW, memo3);
+  assert.deepEqual([wide.points.map(p => p.t), wide.from], [[first + D], first - (ARCHIVE_DAYS - 2) * D + 5 * M]);
+});
+
 test('the archive reaches a day into the API\'s days: the day the API begins is read from both', async () => {
   const get = fake({ 'https://fapi.binance.com/': () => [], 'https://data.binance.vision/': archiveFake(NOW - 400 * D, NOW - 400 * D) });
   await fetchLongShort('binance', 'BTCUSDT', 'accounts', H, NOW - 31 * D, NOW - 29 * D + 2 * H, get, NOW);

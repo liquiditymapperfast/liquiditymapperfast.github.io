@@ -282,10 +282,12 @@ async function binanceArchiveHolds(symbol: string, now: number, get: Fetcher, me
 /**
  * Binance's readings older than its API's 30 days, from its daily archive: those of [lo, hi) on the period's grid, the newest `ARCHIVE_DAYS`
  * days of files at most, `ARCHIVE_PARALLEL` at a time (through `memo`, where the cache keeps one). `from` is where they reach back to: `lo`,
- * or the start of the oldest day read when there were more. A day with no file is skipped (nothing filled in); a read that found no file at all
- * (`none`) may be before the archive begins (`fetchLongShort` decides), and says the memo `keys` of its days and its `newest` day.
+ * or the start of the oldest day read when there were more (all of it when no day had a file, `none`). A day with no file is skipped (nothing
+ * filled in); a read that found no file in the days it fetched itself (`unseen`: days kept in `memo` from an earlier read do not show the
+ * archive is there now) may be before the archive begins, or the archive gone (`fetchLongShort` decides). It says its `newest` day and the memo
+ * keys of its days with no file (`missing`).
  */
-async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number, lo: number, hi: number, get: Fetcher, memo?: ArchiveMemo): Promise<{ points: LsPoint[]; from: number; none: boolean; newest: number; keys: string[] }> {
+async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number, lo: number, hi: number, get: Fetcher, memo?: ArchiveMemo): Promise<{ points: LsPoint[]; from: number; none: boolean; unseen: boolean; newest: number; missing: string[] }> {
   // A day's file holds the readings after its midnight up to and with the next one (each row is the API's reading five minutes on).
   const dayOf = (t: number): number => Math.floor((t - ARCHIVE_SHIFT_MS) / DAY) * DAY, first = dayOf(lo), days: number[] = [];
   for (let day = dayOf(hi - 1); day >= first && days.length < ARCHIVE_DAYS; day -= DAY) days.push(day);
@@ -293,8 +295,8 @@ async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number
     const all = await binanceArchiveDay(symbol, day, get), grid = (points: LsPoint[]): LsPoint[] => points.filter(p => p.t % periodMs === 0);
     return all && { accounts: grid(all.accounts), topAccounts: grid(all.topAccounts), topPositions: grid(all.topPositions) };
   };
-  const keys = days.map(day => `${symbol}|${periodMs}|${day}`);
-  const read = (i: number): Promise<ArchiveDay | null> => memo ? memo.day(keys[i]!, 3 * Math.ceil(DAY / periodMs), () => onGrid(days[i]!)) : onGrid(days[i]!);
+  const keys = days.map(day => `${symbol}|${periodMs}|${day}`), fetched: boolean[] = days.map(() => !memo);
+  const read = (i: number): Promise<ArchiveDay | null> => memo ? memo.day(keys[i]!, 3 * Math.ceil(DAY / periodMs), () => { fetched[i] = true; return onGrid(days[i]!); }) : onGrid(days[i]!);
   const got: (ArchiveDay | null)[] = new Array(days.length);
   let next = 0, failed = false;
   await Promise.all(Array.from({ length: Math.min(ARCHIVE_PARALLEL, days.length) }, async () => {
@@ -302,8 +304,9 @@ async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number
     catch (error) { failed = true; throw error; }
   }));
   const points = got.flatMap(day => day?.[metric] ?? []).filter(p => p.t >= lo && p.t < hi).sort((a, b) => a.t - b.t);
-  const oldest = days[days.length - 1], none = got.every(day => day === null);
-  return { points, from: oldest === undefined || oldest <= first || none ? lo : oldest + ARCHIVE_SHIFT_MS, none, newest: days[0] ?? -Infinity, keys };
+  const oldest = days[days.length - 1], none = got.every(day => day === null), asked = got.filter((_, i) => fetched[i]);
+  const unseen = asked.length > 0 ? asked.every(day => day === null) : none, missing = keys.filter((_, i) => got[i] === null);
+  return { points, from: oldest === undefined || oldest <= first || none ? lo : oldest + ARCHIVE_SHIFT_MS, none, unseen, newest: days[0] ?? -Infinity, missing };
 }
 
 /**
@@ -343,15 +346,16 @@ export async function fetchLongShort(venue: string, symbol: string, metric: LsMe
       }
     })();
     const [old] = await Promise.all([archive, api]);
-    // Not one file in the read: before the archive begins only on evidence, the archive holding this market now (its file of three days ago)
-    // or the API showing it began trading after those days. Without it the archive is gone or moved: the days are not claimed, and asked
-    // again after the minute (they are let go of in the memo, so a returning archive is read).
+    // Not one file in the days the read fetched (those kept from an earlier read do not count): before the archive begins only on evidence,
+    // the archive holding this market now (its file of three days ago) or the API showing it began trading after those days. Without it the
+    // archive is gone or moved: the days are not claimed, and asked again after the minute (its days with no file are let go of in the
+    // memo, so a returning archive is read; the files kept stay).
     const read = old instanceof Error ? null : old;
     let failed = old instanceof Error;
-    if (read?.none) {
+    if (read?.unseen) {
       const began = out.size > 0 && Math.min(...out.keys()) > read.newest + DAY;
       failed = !began && !(await binanceArchiveHolds(symbol, now, get, memo).catch(() => false));
-      if (failed) memo?.forget(read.keys);
+      if (failed) memo?.forget(read.missing);
     }
     if (failed) memo?.fail(symbol, now);
     const unread = cooling || failed;
