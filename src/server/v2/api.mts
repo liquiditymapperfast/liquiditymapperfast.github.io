@@ -69,6 +69,13 @@ const MAX_SIZES_INSTRUMENTS = 96;
 /** The live socket says something at least this often, so a client can tell a quiet server from a dead connection. */
 const HEARTBEAT_MS = 5_000;
 /**
+ * What the server's recorder keeps for the next question, in bins (12 bytes each): the six days of every book the store holds beyond memory
+ * (a day of BTC's 25 recorded markets was 5-7M bins on 2026-11-07, some 75 MB), and a week of merged windows at one step. With three days kept,
+ * every question reaching back a week read the other days from the store again: the Depth pane's candles, asked after the map had read them,
+ * took 8-14 s cold and 0.1 s warm (Research_Findings.md). The page runs on Karl's PC (128 GB), where these are at most some 700 MB.
+ */
+const COLD_COLUMN_BINS = 42_000_000, MERGED_COLUMN_BINS = 16_000_000;
+/**
  * How long after starting the days the store holds beyond memory are read once for the Liquidity Tracker (`warmLt`): a few milliseconds at a time, so that the
  * first question a page asks is answered as fast as the next (a week of every market is some six seconds of reading, 2026-10-24).
  */
@@ -111,8 +118,8 @@ const BAD_SERIES = 'inst and a supported tf are required';
 export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, heartbeatMs = HEARTBEAT_MS, oiSampling = false, priceHistoryGet = webGet }: V2Options): V2Handle {
   let store: SqliteColumnStore | null = null;
   if (persist) { fs.mkdirSync(dataDir, { recursive: true }); store = new SqliteColumnStore(path.join(dataDir, 'depth-v2.sqlite')); }
-  // A day of columns in memory; older ones are read back from the store when a question reaches them.
-  const recorder = new DepthRecorder({ store, memoryMs: HOT_MS });
+  // A day of columns in memory; older ones are read back from the store when a question reaches them, and kept (COLD_COLUMN_BINS).
+  const recorder = new DepthRecorder({ store, memoryMs: HOT_MS, coldCacheBins: COLD_COLUMN_BINS, mergedCacheBins: MERGED_COLUMN_BINS });
   const defaults = process.env.HLM_DEFAULT_VENUES;
   // The coin list for the page's coin picker, rebuilt here daily (the server itself records BTC only).
   const coins = persist ? new CoinList(path.join(dataDir, 'coins.json'), path.join(process.cwd(), 'dist', 'coins.json')) : null;

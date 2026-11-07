@@ -4,15 +4,24 @@ import { LT_LENGTH } from '../../shared/lt-sample.ts';
 import type { LtMinute } from '../../shared/lt-windows.ts';
 
 /**
+ * The memory of a blob SQLite handed over, for typed arrays to view: its own buffer where it has one to itself (node:sqlite gives each blob
+ * its own, at offset 0), else a copy. Copied every time, a week read back (some 230,000 minutes, 1.3 GB) was allocated twice, and the
+ * copies took a sixth of a cold read (Research_Findings.md).
+ */
+function ownBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength && bytes.buffer instanceof ArrayBuffer ? bytes.buffer : bytes.slice().buffer;
+}
+
+/**
  * A stored row as a column, as `load` reads it: the blob is bins | bid | ask (one that is not whole is left out), and a tracker of another
  * length (another layout) or with no samples is left out.
  */
 function columnOf(t: number, n: number, bytes: Uint8Array, tracker: { n: number; data: Uint8Array } | null): Column | null {
   const count = bytes.byteLength / 12;
   if (!Number.isInteger(count)) return null;
-  const copy = bytes.slice().buffer;
+  const copy = ownBuffer(bytes);
   const column: Column = { t, n, bins: new Int32Array(copy, 0, count), bid: new Float32Array(copy, count * 4, count), ask: new Float32Array(copy, count * 8, count) };
-  if (tracker && tracker.data.byteLength === LT_LENGTH * 4 && tracker.n > 0) { column.lt = new Float32Array(tracker.data.slice().buffer); column.ltN = tracker.n; }
+  if (tracker && tracker.data.byteLength === LT_LENGTH * 4 && tracker.n > 0) { column.lt = new Float32Array(ownBuffer(tracker.data)); column.ltN = tracker.n; }
   return column;
 }
 
@@ -92,14 +101,14 @@ export class SqliteColumnStore implements ColumnStore {
     // (the minutes' rows of a week and more), at every start (2026-10-23).
     for (const row of this.#db.prepare('SELECT inst, t, n, data FROM depth_lt WHERE t >= ? ORDER BY inst, t').all(sinceMs) as Iterable<{ inst: string; t: number; n: number; data: Uint8Array }>) {
       if (row.data.byteLength !== LT_LENGTH * 4 || !(row.n > 0)) continue;
-      lt.set(`${row.inst}|${row.t}`, { n: row.n, values: new Float32Array(row.data.slice().buffer) });
+      lt.set(`${row.inst}|${row.t}`, { n: row.n, values: new Float32Array(ownBuffer(row.data)) });
     }
     const rows = this.#db.prepare('SELECT inst, t, n, step, data FROM depth_columns WHERE t >= ? ORDER BY inst, t').all(sinceMs);
     for (const row of rows as Iterable<{ inst: string; t: number; n: number; step: number; data: Uint8Array }>) {
       const bytes = row.data;
       const count = bytes.byteLength / 12;
       if (!Number.isInteger(count)) continue;
-      const copy = bytes.slice().buffer, tracker = lt.get(`${row.inst}|${row.t}`);
+      const copy = ownBuffer(bytes), tracker = lt.get(`${row.inst}|${row.t}`);
       yield { instrumentId: row.inst, step: row.step, column: {
         t: row.t, n: row.n, bins: new Int32Array(copy, 0, count), bid: new Float32Array(copy, count * 4, count), ask: new Float32Array(copy, count * 8, count),
         ...(tracker ? { lt: tracker.values, ltN: tracker.n } : {}) } };
