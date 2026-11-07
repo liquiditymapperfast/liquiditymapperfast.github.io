@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LongShortCache, LsNoMarket, VENUE_WAITING_MAX, fetchLongShort, lsPeriodAtLeast, lsPeriodOf, lsPopulationOf, lsReading, lsWindowPeriod, parseLsSeries, shareOfRatio } from '../src/shared/long-short.ts';
+import { deflateRawSync } from 'node:zlib';
+import { ARCHIVE_DAYS, LongShortCache, LsNoMarket, VENUE_WAITING_MAX, fetchLongShort, lsPeriodAtLeast, lsPeriodOf, lsPopulationOf, lsReading, lsWindowPeriod, parseLsSeries, shareOfRatio, zipText } from '../src/shared/long-short.ts';
 import { lsAt, lsCardLines, lsIds, lsRange, stepEnd } from '../src/app/panes/ls-pane.ts';
 import { fetchOiHistory, webGet, type Fetcher } from '../src/shared/history.ts';
 import { LAYOUT_KEYS, readSettings, type CandleRow } from '../src/app/store.ts';
@@ -57,11 +58,118 @@ test("the venues' answers as they come (measured 2026-10-13): Binance pages back
   assert.equal(okx.length, 1, 'a ratio that is not a number is left out'); assert.ok(Math.abs(okx[0]!.long - 0.5494) < 1e-3);
   assert.deepEqual((await fetchLongShort('bitget', 'BTCUSDT', 'topAccounts', 5 * M, NOW - H, NOW, get, NOW)).points.map(p => p.long), [0.6174]);
   await assert.rejects(fetchLongShort('bybit', 'BTCUSDT', 'topPositions', 5 * M, NOW - H, NOW, get, NOW), /no such series/, "only Binance publishes its top traders'");
-  // Binance keeps 30 days: nothing older is asked for.
-  const old = fake({ 'https://fapi.binance.com/': () => [] });
-  await fetchLongShort('binance', 'BTCUSDT', 'topAccounts', H, NOW - 60 * 24 * H, NOW - 40 * 24 * H, old, NOW);
+  // Binance's API keeps 30 days: nothing older is asked of it (the archive below reads USD-M's days before; COIN-M has none).
+  const old = fake({ 'https://dapi.binance.com/': () => [] });
+  await fetchLongShort('binance', 'BTCUSD_PERP', 'topAccounts', H, NOW - 60 * 24 * H, NOW - 40 * 24 * H, old, NOW);
   assert.equal(old.asked.length, 0);
   await assert.rejects(fetchLongShort('bybit', 'BTCUSDT', 'accounts', 5 * M, NOW - H, NOW, fake({ 'https://api.bybit.com/': () => ({ retCode: 10001, retMsg: 'bad' }) }), NOW), /bybit/, 'a changed API fails, not empty');
+});
+
+const D = 24 * H, ARCHIVE_HEAD = 'create_time,symbol,sum_open_interest,sum_open_interest_value,count_toptrader_long_short_ratio,sum_toptrader_long_short_ratio,count_long_short_ratio,sum_taker_long_short_vol_ratio';
+/** A daily archive file as Binance publishes it: one CSV in a zip, deflated (or stored), an extra field in its local header only. */
+function archiveZip(csv: string, method: 0 | 8 = 8): Uint8Array {
+  const name = Buffer.from('BTCUSDT-metrics.csv'), extra = Buffer.alloc(9), raw = Buffer.from(csv), data = method === 8 ? deflateRawSync(raw) : raw;
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(method, 8); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(raw.length, 22); local.writeUInt16LE(name.length, 26); local.writeUInt16LE(extra.length, 28);
+  const dir = Buffer.alloc(46);
+  dir.writeUInt32LE(0x02014b50, 0); dir.writeUInt16LE(method, 10); dir.writeUInt32LE(data.length, 20); dir.writeUInt32LE(raw.length, 24); dir.writeUInt16LE(name.length, 28);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10); end.writeUInt32LE(46 + name.length, 12); end.writeUInt32LE(30 + name.length + extra.length + data.length, 16);
+  return new Uint8Array(Buffer.concat([local, name, extra, data, dir, name, end]));
+}
+const archiveDate = (url: URL): number => Date.parse(`${/metrics-(\d{4}-\d\d-\d\d)\.zip$/.exec(url.pathname)![1]}T00:00:00Z`);
+/**
+ * A fake archive: day d's file holds create_time d 00:00 .. 23:55 in no order, as Binance writes them; every account's ratio says which row
+ * and day it is (1 + row/1000 + days since `base`/10), its top traders' are 2 (by accounts) and 3 (by positions). Days in `missing` and before
+ * `first` have no file (404).
+ */
+function archiveFake(base: number, first: number, missing: ReadonlySet<number> = new Set(), fail?: number) {
+  return (url: URL): Uint8Array => {
+    const day = archiveDate(url);
+    if (day === fail) throw Object.assign(new Error('HTTP 503'), { status: 503 });
+    if (missing.has(day) || day < first) throw Object.assign(new Error('HTTP 404'), { status: 404 });
+    const rows = Array.from({ length: 288 }, (_, i) => (i * 97) % 288).map(i => `${new Date(day + i * 5 * M).toISOString().slice(0, 19).replace('T', ' ')},BTCUSDT,1,1,2.0,3.0,${(1 + i / 1000 + (day - base) / D / 10).toFixed(8)},1.0`);
+    return archiveZip([ARCHIVE_HEAD, ...rows].join('\n'));
+  };
+}
+const ratioShare = (ratio: number): number => ratio / (1 + ratio);
+
+test("Binance before its API's 30 days: its daily archive, a row the API's reading five minutes on, a midnight from the day before's file", async () => {
+  const jul1 = Date.UTC(2026, 6, 1), get = fake({ 'https://data.binance.vision/': archiveFake(jul1, Date.UTC(2026, 5, 20), new Set([Date.UTC(2026, 6, 10)])) });
+  const daily = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, jul1 + D, jul1 + 4 * D, get, NOW);
+  assert.deepEqual(daily.points.map(p => p.t), [0, 1, 2, 3].map(i => jul1 + i * D), 'the midnights of the window and the one before it');
+  // July 2's midnight is July 1's last row (23:55, row 287); July 1's is June 30's.
+  assert.ok(Math.abs(daily.points[1]!.long - ratioShare(1.287)) < 1e-9 && Math.abs(daily.points[0]!.long - ratioShare(1.187)) < 1e-9);
+  assert.equal(daily.from, jul1 + D, 'read back to the window');
+  assert.deepEqual(get.asked.map(u => u.slice(-14, -4)), ['2026-07-04', '2026-07-03', '2026-07-02', '2026-07-01', '2026-06-30'], 'the days it needs, newest first, none of the API');
+  assert.ok(get.asked.every(u => u.startsWith('https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-')));
+  const fourHourly = await fetchLongShort('binance', 'BTCUSDT', 'accounts', 4 * H, jul1 + D, jul1 + 2 * D, get, NOW);
+  assert.deepEqual(fourHourly.points.map(p => (p.t - jul1) / H), [20, 24, 28, 32, 36, 40, 44], 'every fourth hour, the one before the window too');
+  const fine = await fetchLongShort('binance', 'BTCUSDT', 'accounts', 5 * M, jul1 + D, jul1 + D + H, get, NOW);
+  assert.equal(fine.points.length, 13, 'five-minute readings: every row');
+  // July 10 has no file: July 11's midnight is missing, never filled in.
+  const gap = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, Date.UTC(2026, 6, 9), Date.UTC(2026, 6, 13), get, NOW);
+  assert.deepEqual(gap.points.map(p => new Date(p.t).getUTCDate()), [8, 9, 10, 12]);
+  assert.equal(gap.from, Date.UTC(2026, 6, 9), 'a day with no file is read all the same');
+  // The archive begins on June 20: a window across it holds what there is, and one before it is read, with nothing.
+  const start = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, Date.UTC(2026, 5, 10), Date.UTC(2026, 5, 25), get, NOW);
+  assert.deepEqual([start.points.map(p => new Date(p.t).getUTCDate()), start.from], [[21, 22, 23, 24], Date.UTC(2026, 5, 10)]);
+  const before = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, Date.UTC(2026, 5, 1), Date.UTC(2026, 5, 10), get, NOW);
+  assert.deepEqual([before.points, before.from], [[], Date.UTC(2026, 5, 1)]);
+  // Each series its own column.
+  const top = await fetchLongShort('binance', 'BTCUSDT', 'topPositions', D, jul1 + D, jul1 + 2 * D, get, NOW);
+  assert.deepEqual(top.points.map(p => p.long), [0.75, 0.75], 'top traders by positions: 3 long for each short');
+  assert.ok((await fetchLongShort('binance', 'BTCUSDT', 'topAccounts', D, jul1 + D, jul1 + 2 * D, get, NOW)).points.every(p => Math.abs(p.long - 2 / 3) < 1e-9));
+});
+
+test('the archive: a long window is read a stretch at a time, newest first; a file that fails or is not of its form fails the read', async () => {
+  const get = fake({ 'https://data.binance.vision/': archiveFake(Date.UTC(2026, 0, 1), Date.UTC(2025, 0, 1)) });
+  const from = Date.UTC(2026, 0, 1), to = Date.UTC(2026, 6, 20), r = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, from, to, get, NOW);
+  const oldest = Date.UTC(2026, 6, 19) - (ARCHIVE_DAYS - 1) * D;
+  assert.equal(get.asked.length, ARCHIVE_DAYS, 'one read takes the newest days only');
+  assert.equal(r.from, oldest + 5 * M, 'and says how far back it reached: the oldest day read, from its first row');
+  assert.equal(r.points[0]!.t, oldest + D, "that day's own midnight is the day before's");
+  await assert.rejects(fetchLongShort('binance', 'BTCUSDT', 'accounts', D, from, from + 5 * D, fake({ 'https://data.binance.vision/': archiveFake(from, from, new Set(), from + 2 * D) }), NOW), /503/);
+  const changed = fake({ 'https://data.binance.vision/': () => archiveZip('create_time,symbol,sum_open_interest\n2026-01-01 00:00:00,BTCUSDT,1') });
+  await assert.rejects(fetchLongShort('binance', 'BTCUSDT', 'accounts', D, from, from + D, changed, NOW), /unknown shape/);
+  await assert.rejects(fetchLongShort('binance', 'BTCUSDT', 'accounts', D, from, from + D, fake({ 'https://data.binance.vision/': () => new Uint8Array([1, 2, 3]) }), NOW), /not a zip/);
+  assert.equal(await zipText(archiveZip('a,b\n1,2', 0)), 'a,b\n1,2', 'a stored file too');
+});
+
+test("the archive meets the API's 30 days: one series, the API's own reading where both have one", async () => {
+  const api = (url: URL) => {
+    const end = Number(url.searchParams.get('endTime')), limit = Number(url.searchParams.get('limit'));
+    return Array.from({ length: limit }, (_, i) => ({ symbol: 'BTCUSDT', longAccount: '0.5000', shortAccount: '0.5000', longShortRatio: '1.0000', timestamp: Math.floor(end / D) * D - (limit - 1 - i) * D }));
+  };
+  const get = fake({ 'https://fapi.binance.com/futures/data/globalLongShortAccountRatio': api, 'https://data.binance.vision/': archiveFake(NOW - 400 * D, NOW - 400 * D) });
+  const r = await fetchLongShort('binance', 'BTCUSDT', 'accounts', D, NOW - 40 * D, NOW, get, NOW);
+  const days = r.points.map(p => p.t);
+  assert.ok(days.every((t, i) => i === 0 || t - days[i - 1]! === D) && days[0]! <= NOW - 40 * D && days[days.length - 1]! >= NOW - 2 * D, 'every midnight, unbroken');
+  const apiFrom = Math.min(...r.points.filter(p => p.long === 0.5).map(p => p.t));
+  assert.ok(apiFrom <= NOW - 29 * D && r.points.filter(p => p.t < apiFrom).every(p => p.long !== 0.5), "the archive's before the API's, the API's where both answer");
+  assert.equal(r.from, NOW - 40 * D);
+  assert.ok(get.asked.some(u => u.includes('fapi.binance.com')) && get.asked.some(u => u.includes('data.binance.vision')));
+});
+
+test("the cache reads a long archive window on by itself once no question waits, a read at a time, each day's file once", async () => {
+  const get = fake({ 'https://fapi.binance.com/futures/data/': () => [], 'https://data.binance.vision/': archiveFake(NOW - 400 * D, NOW - 400 * D) });
+  const cache = new LongShortCache(get, true, () => NOW), from = NOW - 250 * D;
+  // The days from the one holding the reading before the window to the one holding the API's oldest (29 days back).
+  const days = (Math.floor((NOW - 29 * D - 1 - 5 * M) / D) - Math.floor((from - D - 5 * M) / D)) + 1, archive = () => get.asked.filter(u => u.includes('data.binance.vision'));
+  assert.ok(days > 2 * ARCHIVE_DAYS, 'three reads');
+  const first = await cache.series('binance:BTCUSDT', 'accounts', D, from, NOW, 0);
+  assert.equal(first.pending, true, 'a question that does not wait');
+  for (let i = 0; i < 400 && archive().length < days; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(archive().length, days, 'every day of the window, and no more');
+  assert.equal(new Set(archive()).size, days, 'no day asked twice');
+  const after = await cache.series('binance:BTCUSDT', 'accounts', D, from, NOW, 0);
+  assert.deepEqual([after.status, after.pending], ['ok', undefined], 'the whole window held, without another question');
+  assert.ok(after.points[0]!.t <= from && after.points.length >= 220, `${after.points.length} midnights`);
+  // The pane reads the other series after the one shown: from the same days' files, kept, none fetched again.
+  const top = await cache.series('binance:BTCUSDT', 'topPositions', D, from, NOW);
+  assert.deepEqual([top.status, archive().length, top.points.length], ['ok', days, after.points.length]);
+  assert.ok(top.points.every(p => p.long === 0.75));
 });
 
 test('Bitget: each series its own endpoint and fields (2026-10-21), a day is 1Dutc, and the cache asks it at most once a second', async () => {
