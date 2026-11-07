@@ -210,7 +210,8 @@ function analyzeOnce(text: string): Analysis {
   };
   let bars = 0, plainBars = 0;
   visit(program, true);
-  if (bars > plainBars && !declared.has('bar') && !persistent.has('bar')) { inputs.add('oichg'); inputs.add('vbuy'); inputs.add('lbuy'); }
+  // 'bar' marks it for what else it may read (the liquidations' days are loaded for it), not as a read of lbuy itself (no missing-rows warning).
+  if (bars > plainBars && !declared.has('bar') && !persistent.has('bar')) { inputs.add('oichg'); inputs.add('vbuy'); inputs.add('bar'); }
   // What only a full browser engine has (the chart library's series objects, the raw function library): refused with where it is used.
   const refuse = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;

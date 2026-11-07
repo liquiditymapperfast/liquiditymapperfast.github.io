@@ -118,8 +118,8 @@ const KEPT_GAP_MS = 10 * MINUTE;
 /**
  * A zoom passes several column steps in a second (a wheel turn): what it rests on is asked for once its step and span have held this long.
  * Asked at every step, a zoom out over weeks held the server with each passing step's tens of MB (its first wheel steps widen the window at
- * the step held), and the step it ended on was asked only after them, seconds later (Research_Findings.md). A load under way is not let go
- * for a newer step: the server works its answer out all the same.
+ * the step held), and the step it ended on was asked only after them, seconds later (Research_Findings.md). A load under way is finished,
+ * not let go for a newer step: letting it go measured no better (each step then started its own).
  */
 const COLUMN_STEP_SETTLE_MS = 200;
 /**
@@ -191,9 +191,11 @@ export class Hub {
    */
   readonly #paced: boolean;
   #afterMapRead: Promise<void> | null = null;
+  /** The wait for the map has ended (`#afterMap` resolved): history no longer waits, whatever the clock says to the last millisecond. */
+  #mapWaited = false;
   /** Resolves once history reads no longer wait for the map's first columns (`mapFirst`). */
   #afterMap(): Promise<void> {
-    return this.#afterMapRead ??= Promise.race([this.columnsArrived, new Promise<void>(resolve => setTimeout(resolve, Math.max(0, MAP_FIRST_MS - (performance.now() - this.#bornAt))))]);
+    return this.#afterMapRead ??= Promise.race([this.columnsArrived, new Promise<void>(resolve => setTimeout(resolve, Math.max(0, MAP_FIRST_MS - (performance.now() - this.#bornAt))))]).then(() => { this.#mapWaited = true; });
   }
   #series = '';
   /** What the candles on screen are of (the context asked for, and the instrument that answered), or null when they are of nothing that can be told. */
@@ -250,7 +252,7 @@ export class Hub {
   /** The map is covered by a view of its own (a phone's Tape or Flow tab, set by the page): it asks for no columns, so nothing waits for them. */
   mapCovered = false;
   /** Whether history reads still wait for the map's first columns (`MAP_FIRST_MS`): the server's page only, its first seconds only. */
-  mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && !this.mapCovered && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
+  mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && !this.mapCovered && !this.#mapWaited && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
   #tapeOn = false;
   /** Ask the source for every order (the trade dust) or stop it; what is held stays until the page goes. */
   setTape(on: boolean): void {
@@ -800,6 +802,7 @@ export class Hub {
     // After the map's first columns (MAP_FIRST_MS): the load asked for meanwhile happens then, and the pane says it is reading meanwhile
     // (that load's end clears it, as every load's does).
     if (this.mapFirst()) {
+      this.#oiGen++;   // a load already out (a phone's, before its map was shown) answers for another market or timeframe
       if (!state.oi.length && !state.oiReading) this.store.set({ oiReading: true });
       return this.#afterMap().then(() => this.loadOi());
     }
@@ -1383,7 +1386,9 @@ export class Hub {
     if (holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
     if (this.#columnsLoading) return;
     // While a zoom is still going on, the view is asked for once it has held (the map's first columns are asked for at once).
-    const settling = this.#paced && this.columnsVersion > 0 ? COLUMN_STEP_SETTLE_MS - (performance.now() - this.#wantedSince) : 0;
+    // Another coin's books (nothing of them held at the step drawn) are asked for at once too: the map is empty for them meanwhile.
+    const drawn = holds.at(this.#columnsDrawn), zooming = this.#paced && this.columnsVersion > 0 && ids.some(id => drawn.has(id));
+    const settling = zooming ? COLUMN_STEP_SETTLE_MS - (performance.now() - this.#wantedSince) : 0;
     if (settling > 0) {
       clearTimeout(this.#settleTimer);
       this.#settleTimer = setTimeout(() => this.onColumns(), settling + 10);

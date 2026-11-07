@@ -114,12 +114,12 @@ test('bar.recorded says where the flow came from, a script that reads the flow t
     assert.ok(a.inputs.has('vbuy') || a.inputs.has('vsell') || a.inputs.has('recorded'), source);
   }
   assert.ok(!analyze('line(bar.close)').inputs.has('vbuy'), 'the candle alone asks for no flow');
-  // The liquidations, which the page loads only for a script that reads them: through `bar`, by name or any other way.
-  for (const source of ['line(bar.lbuy - bar.lsell)', 'line(lbuy)', 'line(bar["lsell"])', 'var b = bar\nline(b.lbuy)']) {
-    const a = analyze(source);
-    assert.ok(a.inputs.has('lbuy') || a.inputs.has('lsell'), source);
-  }
-  assert.ok(!['lbuy', 'lsell'].some(k => analyze('line(bar.close)').inputs.has(k)), 'the candle alone asks for no liquidations');
+  // The liquidations, which the page loads only for a script that reads them (script-pane.ts `readsLiquidations`): through `bar`, by name,
+  // or with `bar` handed on whole (marked 'bar': loaded, though not counted as a read of lbuy for the missing-rows warning).
+  const readsLiquidations = (source: string): boolean => ['lbuy', 'lsell', 'bar'].some(k => analyze(source).inputs.has(k));
+  for (const source of ['line(bar.lbuy - bar.lsell)', 'line(lbuy)', 'line(bar["lsell"])', 'var b = bar\nline(b.lbuy)']) assert.ok(readsLiquidations(source), source);
+  assert.ok(!readsLiquidations('line(bar.close)'), 'the candle alone asks for no liquidations');
+  assert.ok(!['lbuy', 'lsell'].some(k => analyze('line(avg_ohlc(bar))').inputs.has(k)), 'bar handed on whole is no read of lbuy (no warning about its rows)');
   assert.ok(!sameCandles(inputs([0, 1, 1]), inputs([1, 1, 1]), 3), 'the same numbers from another place are other inputs');
   assert.ok(sameCandles(inputs([0, 1, 1]), inputs([0, 1, 1]), 3));
 });

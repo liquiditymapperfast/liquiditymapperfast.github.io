@@ -137,6 +137,29 @@ test('on the server\'s page open interest and the bubbles wait for the map\'s fi
   } finally { h.restore(); }
 });
 
+test('a map covered by a phone\'s tab asks for no columns, so nothing waits for them', async () => {
+  const h = await harness(true);
+  try {
+    h.store.set({ oiMarkets: 'chart' });
+    assert.equal(h.hub.mapFirst(), true, 'on the server\'s page, before the map\'s columns');
+    h.hub.mapCovered = true;
+    assert.equal(h.hub.mapFirst(), false, 'covered: nothing waits');
+    await h.hub.loadOi();
+    assert.ok(h.source.oiAsked > 0, 'open interest is read at once');
+  } finally { h.restore(); }
+});
+
+test('another coin\'s books are asked for at once, though the zoom that framed them changed the span (the page\'s hub)', async () => {
+  const h = await harness(true);
+  try {
+    await h.hub.loadColumns(h.live(6), 180);
+    await wait(260);
+    h.store.set({ levels: { asOf: T0, books: [{ id: 'x:ETH' }, { id: 'y:ETH' }] } as never });
+    await h.hub.loadColumns(h.live(12), 180);   // the new coin's view, framed afresh
+    assert.deepEqual(h.source.asked.map(a => a.stepMs / MIN), [4, 8], 'no wait: nothing of these books is on the map');
+  } finally { h.restore(); }
+});
+
 test('the bubbles are not asked for while the live stream opens for the first time (their answer would cover nothing)', async () => {
   const h = await harness(true);
   try {

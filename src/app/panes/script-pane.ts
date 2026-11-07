@@ -57,8 +57,8 @@ const spawnScriptWorker = (): WorkerLike => new Worker(new URL('../script/script
 const replayKey = (tf: number): number => replaying() ? Math.floor(pageNow() / tf) : -1;
 /** Whether a script reads the taker flow (`vbuy`, `vsell`, `bar.recorded`): its run then asks for the chart market's own candles where the page recorded none. */
 const readsFlow = (a: Analysis): boolean => a.inputs.has('vbuy') || a.inputs.has('vsell') || a.inputs.has('recorded');
-/** Whether a script reads the liquidations (`lbuy`, `lsell`): only then are their days asked for. */
-const readsLiquidations = (a: Analysis): boolean => a.inputs.has('lbuy') || a.inputs.has('lsell');
+/** Whether a script reads the liquidations (`lbuy`, `lsell`, or `bar` handed on whole): only then are their days asked for. */
+const readsLiquidations = (a: Analysis): boolean => a.inputs.has('lbuy') || a.inputs.has('lsell') || a.inputs.has('bar');
 
 /**
  * How many of an answer's candles may be shown: all of them live; in a replay only those closed by its moment, whatever moment the answer
