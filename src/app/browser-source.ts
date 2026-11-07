@@ -113,8 +113,9 @@ export class BrowserSource implements DataSource, VenueControl {
   /** Whether the service's hours carry this coin's book minutes (the history message says; BTC's do, a tile-only coin's do not). */
   #hourBooks = true;
   /**
-   * The map has been answered from the newest recordings alone (`early`, before the history): until a market list read after the history
-   * says where the recording begins, where it began so far (this minute) is not where the map's depth begins (`previewing`).
+   * The map has been answered from the newest recordings alone (a frame the worker marked `preview`, before the history): until a market
+   * list read after the history says where the recording begins, where it began so far (this minute) is not where the map's depth begins
+   * (`previewing`).
    */
   #previewed = false;
 
@@ -139,11 +140,7 @@ export class BrowserSource implements DataSource, VenueControl {
       switch (message.type) {
         case 'ready': this.#started = true; ready(); break;
         case 'recordings': this.persisted = message.persisted; this.#openedAt = Date.now(); break;
-        case 'history':
-          this.#historyIn = true; this.#hourBooks = message.hourBooks ?? true;
-          // Columns answered from the newest recordings alone: where their runs began says nothing about the day (the hub asks again).
-          if (message.columnsEarly) this.#heldSince.clear();
-          this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(message.columnsEarly === true); break;
+        case 'history': this.#historyIn = true; this.#hourBooks = message.hourBooks ?? true; this.#archive?.setInfo(message.tiles ?? null); this.#handlers?.onHistory?.(message.columnsEarly === true); break;
         case 'failed': this.#fail(new Error(message.error)); break;
         case 'levels': this.#levels = message.frame; this.#handlers?.onLevels(message.frame); break;
         case 'tick': {
@@ -283,8 +280,9 @@ export class BrowserSource implements DataSource, VenueControl {
    * own load, answered from the newest recordings while the rest of the day is read (`DataSource.columns`).
    */
   async columns(ids: string[], from: number, to: number, stepMs: number, close = false, early = false): Promise<ColumnsFrame> {
-    const frame: ColumnsFrame = await this.#call({ method: 'columns', ids, from, to, stepMs, close, ...(early ? { early } : {}) });
-    if (early && !this.#historyIn) this.#previewed = true;
+    const frame = await this.#call({ method: 'columns', ids, from, to, stepMs, close, ...(early ? { early } : {}) });
+    // Answered from the newest recordings (the worker says so on the frame; a page that keeps none never is): the map is drawn from them.
+    if (frame.preview === true && !this.#historyIn) this.#previewed = true;
     this.#noteSince(frame);
     return close || !this.#archive ? frame : this.#archive.extend(frame, from, to, stepMs);
   }

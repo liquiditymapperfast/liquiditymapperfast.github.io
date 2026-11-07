@@ -136,25 +136,28 @@ test('only the map\'s own load asks to be answered early; drawn from the newest 
   say(worker, { type: 'ready' });
   const rpcs = (): { type: string; id?: number; method?: string; early?: boolean }[] => worker.posted.filter(m => m.type === 'rpc');
   const answer = async <T,>(ask: Promise<T>, result: unknown): Promise<T> => { await turn(); say(worker, { type: 'rpc', id: rpcs().at(-1)!.id, result }); return ask; };
-  const frame = { from: 0, to: 60_000, stepMs: 60_000, instruments: [], since: { 'a:BTC': 1_000 } };
+  const frame = { from: 0, to: 60_000, stepMs: 60_000, instruments: [], since: { 'a:BTC': 1_000 } }, preview = { ...frame, preview: true };
   // Another reader (the depth pane, the alerts, the scripts): no early answer asked for, and none said.
   await answer(source.columns(['a:BTC'], 0, 60_000, 60_000), frame);
   assert.equal('early' in rpcs().at(-1)!, false);
   assert.equal(source.previewing(), false);
-  // The map's load, answered before the history.
+  // The map's load, answered from the live engine (a page that keeps no recordings, which never says the history landed): nothing said.
   await answer(source.columns(['a:BTC'], 0, 60_000, 60_000, false, true), frame);
   assert.equal(rpcs().at(-1)!.early, true);
+  assert.equal(source.previewing(), false, 'only a frame the worker marks as answered from the newest recordings');
+  // Answered from the newest recordings, before the history.
+  await answer(source.columns(['a:BTC'], 0, 60_000, 60_000, false, true), preview);
   assert.equal(source.previewing(), true);
   assert.equal(source.depthSince(['a:BTC']), 1_000);
   say(worker, { type: 'history', columnsEarly: true });
-  assert.equal(source.depthSince(['a:BTC']), null, 'where the early answers\' runs began says nothing about the day');
   assert.equal(source.previewing(), true, 'until a market list read after the history says where the recording begins');
   const boot = { asOf: 0, now: 0, markPrice: 1, markInstrumentId: 'a:BTC', markets: [{ instrumentId: 'a:BTC' }], steps: {}, recorded: { 'a:BTC': { first: 5, last: 9 } }, columnMs: 60_000, timeframes: [], oiReferences: [] };
   await answer(source.bootstrap(), boot);
   assert.equal(source.previewing(), false);
-  // After the history the map's load is answered from the day: nothing more is said.
-  await answer(source.columns(['a:BTC'], 0, 60_000, 60_000, false, true), frame);
+  // The load asked again after the history is answered from the day, and says where its run begins.
+  await answer(source.columns(['a:BTC'], 0, 60_000, 60_000, false, true), { ...frame, since: { 'a:BTC': 500 } });
   assert.equal(source.previewing(), false);
+  assert.equal(source.depthSince(['a:BTC']), 500);
 });
 
 test('handlers connected after the history landed are told at once: what was asked before them may predate it', async () => {

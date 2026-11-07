@@ -128,7 +128,7 @@ export interface DataSource {
    * is read back, saying so when the history lands (`LiveHandlers.onHistory`); every other question is answered from the whole recordings.
    */
   columns(ids: string[], from: number, to: number, stepMs: number, close?: boolean, early?: boolean): Promise<ColumnsFrame>;
-  /** Whether the map is drawn from the browser's newest recordings alone for now (answered `early`, its history not in): `Hub.depthSince`. */
+  /** Whether the map is drawn from the browser's newest recordings alone for now (a load answered from them, its history not in yet). */
   previewing?(): boolean;
   /**
    * A source whose columns reach back past its own recordings (the browser's, from the long history's tiles: app/archive/) says when more of

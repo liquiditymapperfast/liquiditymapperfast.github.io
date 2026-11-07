@@ -37,7 +37,8 @@ export type RpcCall =
   | { method: 'recover'; ids: string[]; windows: { from: number; to: number }[] };
 
 export interface RpcResult {
-  bootstrap: EngineBootstrap; columns: ColumnsFrame; footprint: FootprintAnswer; prints: Print[]; liquidations: Liquidation[]; printSums: PrintSumsAnswer | null; flow: FlowFrame; sizes: SizesAnswer; profile: ProfileAnswer; oiProfile: OiProfileAnswer; range: RangeAnswer; valueAreas: ValueAreaAnswer; absorption: AbsorptionAnswer; absorptionProfile: AbsorptionProfileAnswer; candles: Candle[]; oi: OiBar[]; coverage: CoverageAnswer; recover: RecoveryReport;
+  /** `columns.preview`: answered from the newest recordings while the rest of the day is read (`Engine.preview`; the map's own load alone). */
+  bootstrap: EngineBootstrap; columns: ColumnsFrame & { preview?: boolean }; footprint: FootprintAnswer; prints: Print[]; liquidations: Liquidation[]; printSums: PrintSumsAnswer | null; flow: FlowFrame; sizes: SizesAnswer; profile: ProfileAnswer; oiProfile: OiProfileAnswer; range: RangeAnswer; valueAreas: ValueAreaAnswer; absorption: AbsorptionAnswer; absorptionProfile: AbsorptionProfileAnswer; candles: Candle[]; oi: OiBar[]; coverage: CoverageAnswer; recover: RecoveryReport;
 }
 
 export type FeedsIn =

@@ -30,7 +30,8 @@ test('the worker waits as waitOf says, notes a load answered from the newest rec
   const worker = fs.readFileSync('src/app/browser/feeds.worker.ts', 'utf8');
   assert.match(worker, /const wait = historyDone \? 'none' : waitOf\(call\);/);
   assert.match(worker, /wait === 'newest' \? Promise\.race\(\[historyLanded, previewLanded\]\) : historyLanded/);
-  assert.match(worker, /if \(run\.waiting\) columnsEarly = true;/, 'a load answered while the rest is read');
+  assert.match(worker, /const preview = run\.waiting;\s*if \(preview\) columnsEarly = true;/, 'a load answered while the rest is read');
+  assert.match(worker, /since: run\.heldSince\(call\.ids, CONTIGUOUS_GAP_MS\), \.\.\.\(preview \? \{ preview \} : \{\}\) \}/, 'and its frame says so');
   assert.match(worker, /post\(\{ type: 'history', [^}]*\.\.\.\(columnsEarly \? \{ columnsEarly: true \} : \{\}\) \}\)/, 'the page is told, to ask again');
   assert.match(worker, /if \(next\.preview\(\{ load: \(\) => columns \}\)\) previewIn\(\);/, 'only newest minutes that hold something answer the map');
   assert.match(worker, /openRecordings\(database, Date\.now\(\) - BROWSER_RETENTION_MS, \(\) => recording, events, \{ since: Date\.now\(\) - PREVIEW_MS, take: newest \}\)/);

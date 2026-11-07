@@ -151,11 +151,12 @@ async function answer(call: RpcCall, run: Engine): Promise<{ result: unknown; tr
   switch (call.method) {
     case 'bootstrap': return { result: run.bootstrap(), transfer: [] };
     case 'columns': {
-      // The map's load, still waiting for the rest of the recordings: answered from their newest minutes (`Engine.preview`), to be asked
-      // again (any other reader waited for the history above).
-      if (run.waiting) columnsEarly = true;
+      // The map's load, still waiting for the rest of the recordings: answered from their newest minutes (`Engine.preview`), said so on the
+      // frame and with the history, and asked again (any other reader waited for the history above).
+      const preview = run.waiting;
+      if (preview) columnsEarly = true;
       // With where each book's own minutes begin: the page fills what lies before it from the long history (app/archive/).
-      const frame = { ...run.columns(call.ids, call.from, call.to, call.stepMs, call.close === true), since: run.heldSince(call.ids, CONTIGUOUS_GAP_MS) };
+      const frame = { ...run.columns(call.ids, call.from, call.to, call.stepMs, call.close === true), since: run.heldSince(call.ids, CONTIGUOUS_GAP_MS), ...(preview ? { preview } : {}) };
       return { result: frame, transfer: frame.instruments.flatMap(set => [set.bins.buffer, set.bid.buffer, set.ask.buffer]) };
     }
     case 'footprint': return { result: run.footprint(call.inst, call.tfMs, call.from, call.to, call.rowStep, call.cuts ?? [], call.budget, call.venues === true), transfer: [] };

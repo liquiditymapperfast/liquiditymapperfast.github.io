@@ -73,9 +73,11 @@ function openDatabase(name: string): Promise<IDBDatabase> {
   });
 }
 
-/** `work`, or `late` once it has taken `ms`. */
-const withTimeout = <T>(work: Promise<T>, ms: number, late: Error): Promise<T> =>
-  Promise.race([work, new Promise<never>((_, reject) => setTimeout(() => reject(late), ms))]);
+/** `work`, or `late` once it has taken `ms` (the timer goes with the work). */
+const withTimeout = <T>(work: Promise<T>, ms: number, late: Error): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(late), ms); })]).finally(() => clearTimeout(timer));
+};
 /** How long the database may take to open: a tab that never lets go of it would otherwise keep this page without recordings and without a word. */
 const OPEN_TIMEOUT_MS = 10_000;
 /** After a failed write the next waits twice as long each time, up to this. */
