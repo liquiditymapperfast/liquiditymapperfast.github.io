@@ -255,6 +255,10 @@ export class Toolbar {
   #flip = el('button', { type: 'button', class: 'flip-btn' });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
   #keys = el('button', { type: 'button', class: 'keys-btn', textContent: t('Keys'), tip: t('Keyboard shortcuts (?)'), onclick: () => this.openShortcuts() });
+  /** The browser tab's switches (tab-title.ts): the price in its title, the candle under way as its icon. The status bar's key opens them; the Settings sheet holds them as rows. */
+  #tab = el('button', { type: 'button', class: 'tab-btn', textContent: t('Tab'), tip: t('The browser tab: the price in its title and the candle under way as its icon.'), onclick: () => this.#openTab() });
+  #tabPrice = el('input', { type: 'checkbox' });
+  #tabIcon = el('input', { type: 'checkbox' });
   /** Layouts, from the map's corner (a compact bar has it in Settings): the layout the screen is showing, the ready-made ones and the person's own (layouts/gallery.ts). `layouts` is set by main. */
   #layoutCorner = el('button', { type: 'button', class: 'map-layout', ariaLabel: t('Layouts'), tip: t('Layouts: choose a ready-made arrangement of the panels, or save your own'), onclick: () => this.#openLayouts(this.#layoutCorner) }, t('Layouts'));
   layouts: LayoutActions | null = null;
@@ -459,6 +463,8 @@ export class Toolbar {
     this.#more.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
     this.#more.onclick = () => this.#toggleSheet();
     this.#awake.onchange = () => this.store.set({ keepAwake: this.#awake.checked });
+    this.#tabPrice.onchange = () => this.store.set({ tabPrice: this.#tabPrice.checked });
+    this.#tabIcon.onchange = () => this.store.set({ tabIcon: this.#tabIcon.checked });
     this.#glass.onclick = () => this.store.set({ material: this.store.state.material === 'glass' ? 'solid' : 'glass' });
     this.#glassSwitch.onchange = () => this.store.set({ material: this.#glassSwitch.checked ? 'glass' : 'solid' });
     this.#waveStrength.oninput = () => { const v = readWaveStrength(Number(this.#waveStrength.value)); this.#waveStrengthOut.textContent = `${v}%`; this.store.set({ waveStrength: v }); };
@@ -565,6 +571,17 @@ export class Toolbar {
 
   hostStatusControls(host: HTMLElement): void { this.#statusHost = host; this.#arrange(); }
 
+  /** The browser tab's two switches, from the status bar's Tab key. */
+  #openTab(): void {
+    const build = (_tools: HTMLElement, body: HTMLElement): void => {
+      const s = this.store.state;
+      body.append(
+        switchRow(t('Price in the title'), t('The tab\'s title starts with the price and which way the candle under way is going.'), s.tabPrice, on => this.store.set({ tabPrice: on })),
+        switchRow(t('Candle as the icon'), t('The tab\'s icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page\'s own icon.'), s.tabIcon, on => this.store.set({ tabIcon: on })));
+    };
+    togglePanel(this.#tab, { title: t('Browser tab'), width: 340, align: 'right' }, build);
+  }
+
   /** Take the tour (the Tour button, the invitation): a bar folded away is brought back for it and folded again after. */
   startTour(): void {
     // The invitation has been answered, whichever button answered it.
@@ -627,7 +644,7 @@ export class Toolbar {
       if (inCorner) { this.#mapTools.replaceChildren(this.#layoutCorner, this.#goto, this.#rangeCorner, ...(this.#drawCorner ? [this.#drawCorner] : []), this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
-      host?.replaceChildren(this.#keys, this.#zone, this.#language, this.#theme);
+      host?.replaceChildren(this.#keys, this.#tab, this.#zone, this.#language, this.#theme);
       // A console of decks, each a framed group of what belongs together, at most two rows tall, wrapping as whole decks (Karl,
       // 2026-10-16: one wrapping row read as a jumble). The venues are switched from the Venues button, not listed as chips.
       setTip(this.#venuesButton!, t('Venues: switch each exchange on or off for the map, the book and the flow column, or choose which ones feed the page'));
@@ -637,7 +654,7 @@ export class Toolbar {
       // arrow that folds the bar away sits on that deck's bottom edge, taking no width: room kept for it at the bar's end wrapped this deck
       // onto a second row at 1,600 px, doubling the bar, and the top edge holds the title.
       // Install stands before the screenshot mark, so that the mark keeps its place whether the browser offers installing or not (Install comes in beside Author).
-      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#zone, this.#language, this.#theme, this.#status])]);
+      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#tab, this.#zone, this.#language, this.#theme, this.#status])]);
       tools.append(this.#collapse);
       this.#deckBreaks = []; this.#fitted = null; this.#fittedOrder = '';
       this.#decks = [
@@ -797,6 +814,8 @@ export class Toolbar {
           field(t('Wave strength'), el('span', { class: 'wave-strength', tip: WAVE_STRENGTH_TIP }, this.#waveStrength, this.#waveStrengthOut))]),
         section(t('Appearance'), [field(t('Language'), this.#language), field(t('Theme'), this.#theme), field(t('Time zone'), this.#zoneSeg),
           ...(wakeLockSupported() ? [field(t('Keep screen on'), el('label', { class: 'switch', tip: t('Stops the screen turning off while this page is open. A screen that sleeps stops the recording, and the map then has a gap where it was.') }, this.#awake, el('i')))] : []),
+          field(t('Price in the title'), el('label', { class: 'switch', tip: t('The tab\'s title starts with the price and which way the candle under way is going.') }, this.#tabPrice, el('i'))),
+          field(t('Candle as the icon'), el('label', { class: 'switch', tip: t('The tab\'s icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page\'s own icon.') }, this.#tabIcon, el('i'))),
           // A phone in the hand reads only the last hours of the recorded history on opening, and a choice made here holds wherever this
           // sheet can be opened (the compact bar; app/history-window.ts).
           field(t('History'), this.#historySeg)]));
@@ -832,6 +851,8 @@ export class Toolbar {
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
     lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#liqLevels, state.liqLevels.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#scripts, state.show.script); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
+    if (this.#tabPrice.checked !== state.tabPrice) this.#tabPrice.checked = state.tabPrice;
+    if (this.#tabIcon.checked !== state.tabIcon) this.#tabIcon.checked = state.tabIcon;
     // The choice that applies here: before one is made, a phone's last hours or a tablet's day (`effectiveChoice`).
     const historyNow = effectiveChoice(isHandheldPhone(), state.phoneHistory, savesData(), true);
     for (const [choice, b] of this.#historyChoices) { b.classList.toggle('on', historyNow === choice); b.setAttribute('aria-pressed', String(historyNow === choice)); }

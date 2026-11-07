@@ -29,6 +29,7 @@ import { DeltaPane } from './panes/delta-pane.ts';
 import { NlnsSource } from './delta/nlns-source.ts';
 import { LsPane } from './panes/ls-pane.ts';
 import { FundingPane } from './panes/funding-pane.ts';
+import { TabTitle } from './tab-title.ts';
 import { ScriptPane } from './panes/script-pane.ts';
 import { CandlePane } from './panes/candle-pane.ts';
 import { matchShortcut, togglePatch } from './shortcuts.ts';
@@ -98,6 +99,8 @@ async function main(): Promise<void> {
   const source = await chooseSource(params, choice, store.state.phoneHistory);
   const hub = new Hub(store, source);
   const wake = new ScreenWake(); wake.set(store.state.keepAwake);
+  // The browser tab says the price: in its title, and its icon is the candle under way (GitHub issue #7).
+  new TabTitle(store);
 
   const toolbar = new Toolbar(store, source.venues);
   toolbar.flow = hub.flow;
@@ -420,7 +423,7 @@ async function main(): Promise<void> {
     if (changed.has('barCollapsed')) toolbar.setCollapsed(state.barCollapsed);
     if (['show', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'oiMarkets', 'customMarkets', 'oiInstrument', 'oiParts', 'seriesInstrument', 'range'].some(k => changed.has(k as never))) ls.invalidate();
     if (['show', 'candles', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'traded', 'timeZone', 'range', 'oi', 'oiInstrument', 'oiParts', 'oiFine'].some(k => changed.has(k as never))) delta.invalidate();
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'chartType', 'phoneHistory', 'tabPrice', 'tabIcon'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq]) p.setPalette(store.state.theme);
