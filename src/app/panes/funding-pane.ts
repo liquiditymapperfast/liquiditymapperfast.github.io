@@ -13,7 +13,7 @@ import { TimePane, setHtml } from './lower-panes.ts';
 import { currentCoin } from '../coin.ts';
 import { venueLabel } from '../venues.ts';
 import { instrumentIdFor } from '../../shared/coins.ts';
-import { FUNDING_VENUES, FundingSource, buyerShare, fundingBase, fundingVenueOf, hasPremium, rowAt, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
+import { FUNDING_VENUES, FundingSource, buyerShare, cutAt, fundingBase, fundingVenueOf, hasPremium, rowAt, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
 import type { HourOpens, NlnsSource } from '../delta/nlns-source.ts';
 import { coinText } from '../delta/nlns.ts';
 import { pageNow } from '../replay/clock.ts';
@@ -103,8 +103,10 @@ export class FundingPane extends TimePane {
     const say = (text: string): void => { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(text, 12, ph / 2); setHtml(readout, ''); };
     if (!venue) { say(t('No venue here lists a perpetual of this coin.')); return; }
     const name = venueLabel(venue), data = this.#funding.view(venue, coin.markets[venue]!, tf, v.t0, v.t1, Date.now());
-    // Replay: only what had settled by the moment shown, and no funding accruing "now".
-    const rows = data.rows.filter(r => r.t <= now), premium = data.premium.filter(q => q.t <= now), forming = now >= Date.now() - 60_000 ? data.now : null;
+    // Replay: only what had settled by the moment shown, and no funding accruing "now". Cut where `now` falls, not filtered: up to 24,000
+    // premium candles are held, and the pane paints with every frame that moves.
+    const upTo = <T extends { t: number }>(list: readonly T[]): readonly T[] => { const n = cutAt(list, now); return n < list.length ? list.slice(0, n) : list; };
+    const rows = upTo(data.rows), premium = upTo(data.premium), forming = now >= Date.now() - 60_000 ? data.now : null;
     // The funding accruing now pays for the interval that ends at its settlement, whatever has come in of the settlements before it.
     const formEnd = forming ? forming.next ?? now : 0, formStart = forming ? formEnd - forming.hours * HOUR : 0;
     const formShown = !!forming && formEnd >= v.t0 && formStart <= v.t1;
@@ -112,7 +114,7 @@ export class FundingPane extends TimePane {
     const hl = venue === 'hyperliquid' ? instrumentIdFor('hyperliquid', coin) : null;
     const opens = hl ? this.nlns.hourly(state, hl, v.t0, now) : [];
     const band = venue === 'hyperliquid' && ph >= 90;
-    const visRows = rows.filter(r => r.t >= v.t0 && r.t - r.hours * HOUR <= v.t1), visPremium = premium.filter(q => q.t + data.premiumMs >= v.t0 && q.t <= v.t1);
+    const visRows = rows.filter(r => r.t >= v.t0 && r.t - r.hours * HOUR <= v.t1), visPremium = premium.slice(cutAt(premium, v.t0 - data.premiumMs, false), cutAt(premium, v.t1));
     if (!visRows.length && !visPremium.length && !formShown) { say(data.failed ? t('{venue} did not answer: asked again in a minute.', { venue: name }) : data.loading ? t('Reading funding…') : t('No funding in view.')); return; }
     // Geometry: funding and premium on top, who opened under it (Hyperliquid, a pane tall enough).
     const top = 6, lineBottom = band ? Math.round(ph * 0.62) : ph - 6, bandTop = lineBottom + 10, bandBottom = ph - 4, mid = (bandTop + bandBottom) / 2, half = (bandBottom - bandTop) / 2;
@@ -196,8 +198,6 @@ export class FundingPane extends TimePane {
 
 /** The premium of the candle holding `t` (published per candle of `ms`), else the last before it within one candle; null where none is held. */
 function premiumNear(rows: readonly PremiumRow[], ms: number, t: number): number | null {
-  let lo = 0, hi = rows.length;
-  while (lo < hi) { const m = (lo + hi) >>> 1; if (rows[m]!.t <= t) lo = m + 1; else hi = m; }
-  const q = rows[lo - 1];
+  const q = rows[cutAt(rows, t) - 1];
   return q && t - q.t < 2 * ms ? q.p : null;
 }

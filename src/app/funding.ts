@@ -201,32 +201,48 @@ const BINANCE_PREMIUM: Readonly<Record<number, string>> = { 60_000: '1m', 300_00
 const BYBIT_PREMIUM: Readonly<Record<number, string>> = { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' };
 
 /**
+ * Candles a premium page asks for at most. Binance weighs a page by the `limit` it asks (1 under 100 candles, 5 up to 1,000, 10 above: a page of
+ * 1,000 costs less a candle than one of 1,500), and Bybit answers 1,000 at most.
+ */
+const PREMIUM_PAGE = 1000;
+
+/**
  * Binance's or Bybit's premium index per candle of `tfMs` over [from, to], oldest first (the candle's close), at most `PAGES` pages, and the
- * stretch the read really covered (`from`, `to`): where its pages ran out first it ends there, never claiming the rest.
+ * stretch the read really covered (`from`, `to`): where its pages ran out first it ends there, never claiming the rest. Each page asks for the
+ * candles the stretch left holds and no more (a page short of them, or one holding the last candle there can be, ends the read), and a page after
+ * the first that fails ends the read where the pages before it did, what they read kept (review round 5: a narrow view dragged fast asked
+ * Binance for 1,500 at a time, and one failed page threw away the pages before it).
  */
 export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: number, from: number, to: number, get: Fetcher = webGet): Promise<{ rows: PremiumRow[]; from: number; to: number }> {
   const s = listing.symbol, out = new Map<number, number>();
+  const candles = (a: number, b: number): number => Math.max(1, Math.min(PREMIUM_PAGE, Math.floor(b / tfMs) - Math.ceil(a / tfMs) + 1));
+  const page = async (n: number, url: string, list: (answer: unknown) => unknown[]): Promise<unknown[] | null> => {
+    try { return list(await get(url)); } catch (error) { if (n === 0) throw error; return null; }
+  };
   let lo = from, hi = to;
   if (venue === 'binance' && BINANCE_PREMIUM[tfMs]) {
-    // Oldest first from `startTime`, 1,500 a page, as its candles are: pages that run out end the stretch at their newest candle.
-    let start = from, page = 0;
-    for (; page < PAGES && start < to; page++) {
-      const got = listOf(await get(`https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=${s}&interval=${BINANCE_PREMIUM[tfMs]}&startTime=${Math.floor(start)}&endTime=${Math.floor(to)}&limit=1500`), true, venue);
+    // Oldest first from `startTime`, as its candles are: pages that run out end the stretch at their newest candle.
+    let start = from;
+    for (let n = 0; n < PAGES && start < to; n++) {
+      const limit = candles(start, to);
+      const got = await page(n, `https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=${s}&interval=${BINANCE_PREMIUM[tfMs]}&startTime=${Math.floor(start)}&endTime=${Math.floor(to)}&limit=${limit}`, a => listOf(a, true, venue));
+      if (!got) break;
       let newest = -Infinity;
       for (const r of got) { const t = num(at(r, 0)), p = num(at(r, 4)); if (Number.isFinite(t) && Number.isFinite(p)) { out.set(t, p); if (t > newest) newest = t; } }
-      if (got.length < 1500 || !Number.isFinite(newest)) { start = to; break; }
+      if (got.length < limit || !Number.isFinite(newest) || newest + tfMs > to) { start = to; break; }
       start = newest + 1;
     }
     if (start < to) hi = start;
   } else if (venue === 'bybit' && BYBIT_PREMIUM[tfMs]) {
-    // Newest first, 1,000 a page: pages that run out end the stretch at their oldest candle.
+    // Newest first: pages that run out end the stretch at their oldest candle.
     let end = to;
-    for (let page = 0; page < PAGES && end > from; page++) {
-      const a = await get(`https://api.bybit.com/v5/market/premium-index-price-kline?category=linear&symbol=${s}&interval=${BYBIT_PREMIUM[tfMs]}&start=${Math.floor(from)}&end=${Math.floor(end)}&limit=1000`);
-      const got = listOf(a, bybitOk(a), venue, 'result', 'list');
+    for (let n = 0; n < PAGES && end > from; n++) {
+      const limit = candles(from, end);
+      const got = await page(n, `https://api.bybit.com/v5/market/premium-index-price-kline?category=linear&symbol=${s}&interval=${BYBIT_PREMIUM[tfMs]}&start=${Math.floor(from)}&end=${Math.floor(end)}&limit=${limit}`, a => listOf(a, bybitOk(a), venue, 'result', 'list'));
+      if (!got) break;
       let oldest = Infinity;
       for (const r of got) { const t = num(at(r, 0)), p = num(at(r, 4)); if (Number.isFinite(t) && Number.isFinite(p)) { out.set(t, p); if (t < oldest) oldest = t; } }
-      if (got.length < 1000 || !Number.isFinite(oldest)) { end = from; break; }
+      if (got.length < limit || !Number.isFinite(oldest) || oldest - tfMs < from) { end = from; break; }
       end = oldest - 1;
     }
     if (end > from) lo = end;
@@ -266,11 +282,14 @@ const SETTLED_AFTER_MS = 15_000;
 const DAY = 24 * HOUR;
 /** How far back a venue's funding is read at most (a read itself never claims further back than its pages reached: `readFunding`'s `from`). */
 const MAX_BACK_MS: Readonly<Record<FundingVenue, number>> = { hyperliquid: 150 * DAY, binance: 1000 * DAY, bybit: 500 * DAY, okx: 250 * DAY, bitget: 250 * DAY, deribit: 230 * DAY };
-/** How many candles of premium one read covers at most (`PAGES` pages of 1,000 or more). */
-const PREMIUM_CANDLES = PAGES * 1000;
+/** How many candles of premium one read covers at most (`PAGES` pages). */
+const PREMIUM_CANDLES = PAGES * PREMIUM_PAGE;
 /** How many are held per timeframe at most: the view's own and one read's worth each side of them. */
 const PREMIUM_HELD = 3 * PREMIUM_CANDLES;
-/** How much more than the view a read asks for on each side, as a share of the view: a view dragged along asks again only past it. */
+/**
+ * How much more than the view a read asks for on each side, as a share of the view: a view dragged along asks again only past it. Premium reads
+ * ask a page's worth at least: a narrow view dragged fast asked again every few candles (review round 5: about 78 of Binance's weight a second).
+ */
 const LOOK_AHEAD = 0.5;
 
 /**
@@ -315,17 +334,17 @@ export class FundingSource {
       // from its right edge, and the newest at least: a view wholly after now asked for a stretch ending before it began, held nothing and
       // asked again at every landing), then half a view each side out of what one read has left: padding that ate the budget left the view's
       // start unread, and every landing asked again for ever (review round 3).
-      const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), edge = Math.min(t1, now) + tfMs, live = t1 >= now - tfMs;
+      const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), edge = Math.min(t1, now) + tfMs, live = t1 >= now - tfMs, ahead = Math.max(LOOK_AHEAD * span, PREMIUM_PAGE * tfMs);
       const viewLo = Math.min(edge - tfMs, Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs)), spare = Math.max(0, PREMIUM_CANDLES * tfMs - (edge - viewLo));
-      const padLeft = Math.min(LOOK_AHEAD * span, spare / 2), padRight = Math.min(Math.max(0, Math.min(t1 + LOOK_AHEAD * span, now) + tfMs - edge), spare - padLeft);
+      const padLeft = Math.min(ahead, spare / 2), padRight = Math.min(Math.max(0, Math.min(t1 + ahead, now) + tfMs - edge), spare - padLeft);
       const read = (lo: number, hi: number): void => this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => { this.#premium.set(pk, heldPremium(this.#premium.get(pk), r, tfMs, now)); }));
       // Nothing held next to the view: its window, in place of what is held.
       if (!p || edge < p.from - tfMs || viewLo > p.to + tfMs) read(viewLo - padLeft, edge + padRight);
       else {
-        // Next to it, only what it lacks, and half a view beyond the view (one read's worth at most): a view dragged along asks again every half
-        // a view, one that alone fills a read too (review round 4: that one read its whole window again at every landing). A view reaching now
-        // reads its newest end again once a minute.
-        const ahead = LOOK_AHEAD * span, budget = PREMIUM_CANDLES * tfMs, left = viewLo < p.from - tfMs, right = !live && edge > p.to + tfMs;
+        // Next to it, only what it lacks, and half a view (a page at least) beyond the view, one read's worth at most: a view dragged along asks
+        // again every half a view, one that alone fills a read too (review round 4: that one read its whole window again at every landing). A
+        // view reaching now reads its newest end again once a minute.
+        const budget = PREMIUM_CANDLES * tfMs, left = viewLo < p.from - tfMs, right = !live && edge > p.to + tfMs;
         if (left && right) read(viewLo - padLeft, edge + padRight);
         else if (left) read(Math.min(viewLo, Math.max(viewLo - ahead, p.from + tfMs - budget)), p.from + tfMs);
         else if (right) read(p.to - 2 * tfMs, Math.max(edge, Math.min(edge + ahead, now + tfMs, p.to - 2 * tfMs + budget)));
@@ -349,13 +368,16 @@ export class FundingSource {
 }
 
 /** The premium held of one venue, symbol and timeframe: one unbroken stretch [from, to), and when its newest was read (`at`). */
-interface HeldPremium { rows: PremiumRow[]; from: number; to: number; at: number }
+export interface HeldPremium { rows: PremiumRow[]; from: number; to: number; at: number }
 /**
  * A premium read put with what was held: joined to it where they touch, else in its place (what is held never claims the gap between them);
- * at most PREMIUM_HELD candles, the end away from what was just read let go (a view dragged a long way held all it passed).
+ * at most PREMIUM_HELD candles, the end away from what was just read let go (a view dragged a long way held all it passed). They touch only
+ * where the stretches meet: a candle's slack each way joined a read that ended a candle short of what was held, the candle between claimed and
+ * never read (review round 5). The reads next to what is held overlap it by a candle or two, and an end a read left where its pages ran out is a
+ * millisecond off a candle's start, so no candle falls between stretches that meet.
  */
-function heldPremium(before: HeldPremium | undefined, r: { rows: PremiumRow[]; from: number; to: number }, tfMs: number, now: number): HeldPremium {
-  const joins = !!before && r.from <= before.to + tfMs && r.to >= before.from - tfMs;
+export function heldPremium(before: HeldPremium | undefined, r: { rows: PremiumRow[]; from: number; to: number }, tfMs: number, now: number): HeldPremium {
+  const joins = !!before && r.from <= before.to && r.to >= before.from;
   const held = before && joins
     ? { rows: mergeRows(before.rows, r.rows), from: Math.min(r.from, before.from), to: Math.max(r.to, before.to), at: r.to >= now ? Date.now() : before.at }
     : { rows: r.rows, from: r.from, to: r.to, at: Date.now() };
@@ -373,10 +395,15 @@ function mergeRows<T extends { t: number }>(held: readonly T[], read: readonly T
   return [...byT.values()].sort((a, b) => a.t - b.t);
 }
 
+/** Where `t` cuts rows held oldest first: how many come before it, or at it too with `through` (a binary search, not a pass over them all). */
+export function cutAt(rows: readonly { readonly t: number }[], t: number, through = true): number {
+  let lo = 0, hi = rows.length;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (through ? rows[mid]!.t <= t : rows[mid]!.t < t) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
 /** The settled row whose interval holds `t` (it settles at its `t`, over the `hours` before), or null. */
 export function rowAt(rows: readonly FundingRow[], t: number): FundingRow | null {
-  let lo = 0, hi = rows.length;
-  while (lo < hi) { const mid = (lo + hi) >>> 1; if (rows[mid]!.t <= t) lo = mid + 1; else hi = mid; }
-  const next = rows[lo];
+  const next = rows[cutAt(rows, t)];
   return next && next.t - next.hours * HOUR <= t ? next : null;
 }
