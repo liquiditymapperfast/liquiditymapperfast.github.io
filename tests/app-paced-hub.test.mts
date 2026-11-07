@@ -73,6 +73,20 @@ test('a zoom that passes column steps asks only for the step it rests on (the pa
   } finally { h.restore(); }
 });
 
+test('a zoom that widens the window at the step held waits too (its first wheel steps), then asks once (the page\'s hub)', async () => {
+  const h = await harness(true);
+  try {
+    const live = (minutes: number) => ({ t0: h.clock.now - minutes * MIN, t1: h.clock.now + 10 * MIN, p0: 0, p1: 1 });
+    await h.hub.loadColumns(live(246), 180);   // 256 minutes on 180 px: 4-minute columns, held from 374 minutes back
+    await wait(260);                           // the step has long held
+    await h.hub.loadColumns(live(492), 180);   // twice the span, still 4-minute columns, now reaching past what is held
+    assert.deepEqual(h.source.asked.map(a => a.stepMs / MIN), [4], 'nothing while the span is still changing');
+    await wait(260);
+    await h.hub.loadColumns(live(492), 180);
+    assert.deepEqual(h.source.asked.map(a => a.stepMs / MIN), [4, 4], 'the wider window, once the zoom has held');
+  } finally { h.restore(); }
+});
+
 test('a load out when the zoom moves on is finished, and the step the view rests on is asked next (the page\'s hub)', async () => {
   const h = await harness(true);
   try {

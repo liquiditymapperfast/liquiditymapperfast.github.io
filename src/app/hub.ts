@@ -116,9 +116,10 @@ const PREFETCH_FIRST_MS = 4_000, PREFETCH_AFTER_MS = 1_500, PREFETCH_GAP_MS = 40
 /** A kept series is shown at once while its newest candle is at most this far behind now (or three of its candles, when longer). */
 const KEPT_GAP_MS = 10 * MINUTE;
 /**
- * A zoom passes several column steps in a second (a wheel turn): a step is asked for once the view has wanted it this long. Asked at every
- * step, a zoom out over weeks held the server with each passing step's tens of MB, and the step it ended on was asked only after them, seconds
- * later (Research_Findings.md). A load under way is not let go for a newer step: the server works its answer out all the same.
+ * A zoom passes several column steps in a second (a wheel turn): what it rests on is asked for once its step and span have held this long.
+ * Asked at every step, a zoom out over weeks held the server with each passing step's tens of MB (its first wheel steps widen the window at
+ * the step held), and the step it ended on was asked only after them, seconds later (Research_Findings.md). A load under way is not let go
+ * for a newer step: the server works its answer out all the same.
  */
 const COLUMN_STEP_SETTLE_MS = 200;
 /**
@@ -173,8 +174,11 @@ export class Hub {
   #columnsLoading = false;
   /** The newest windows may have changed since they were asked for (the clock says so every 30 s): the next load asks for them again. */
   #columnsStale = false;
-  /** When the step the view wants last changed, and the timer that looks again once it has held (`COLUMN_STEP_SETTLE_MS`). */
-  #wantedSince = 0;
+  /**
+   * When the view last zoomed (its step or its span changed: a live view moving on keeps both), the span then, and the timer that looks
+   * again once it has held (`COLUMN_STEP_SETTLE_MS`).
+   */
+  #wantedSince = 0; #wantedSpan = 0;
   #settleTimer: ReturnType<typeof setTimeout> | undefined;
   #arrived: () => void = () => {};
   /** Resolved when the first recorded columns reach the worker: what can wait for the map (the depth sound's baseline hours) waits for this. */
@@ -1363,14 +1367,16 @@ export class Hub {
     const holds = this.#columns;
     // The view is one object the pane moves on: what an answer is judged against below is the view it was asked for.
     const seen: Bounds = { t0: view.t0, t1: view.t1, p0: view.p0, p1: view.p1 };
-    if (stepMs !== this.#columnsWanted) this.#wantedSince = performance.now();
+    // A zoom changes the span before it changes the step: its first wheel steps ask for a wider window at the step held (tens of MB at days).
+    const span = view.t1 - view.t0;
+    if (stepMs !== this.#columnsWanted || Math.abs(span - this.#wantedSpan) > span * 0.01) { this.#wantedSince = performance.now(); this.#wantedSpan = span; }
     this.#columnsWanted = stepMs;
     holds.touch(stepMs);
     this.#archiveView(stepMs);
     // A step held for every book is read at once, whatever else is under way.
     if (holds.covers(ids, seen, stepMs)) this.#readColumns(stepMs);
     if (this.#columnsLoading) return;
-    // While a zoom is still passing steps, a step is asked for once it has held (the map's first columns are asked for at once).
+    // While a zoom is still going on, the view is asked for once it has held (the map's first columns are asked for at once).
     const settling = this.#paced && this.columnsVersion > 0 ? COLUMN_STEP_SETTLE_MS - (performance.now() - this.#wantedSince) : 0;
     if (settling > 0) {
       clearTimeout(this.#settleTimer);
