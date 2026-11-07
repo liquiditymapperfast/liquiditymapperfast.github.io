@@ -26,6 +26,7 @@ import { LiqPane } from './panes/liq-pane.ts';
 import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import { DeltaPane } from './panes/delta-pane.ts';
+import { NlnsSource } from './delta/nlns-source.ts';
 import { LsPane } from './panes/ls-pane.ts';
 import { ScriptPane } from './panes/script-pane.ts';
 import { CandlePane } from './panes/candle-pane.ts';
@@ -122,8 +123,10 @@ async function main(): Promise<void> {
   setTourDemo({ plotRect: () => heat.plotRect(), zoom: (press, at) => heat.demoZoom(press, at), end: () => heat.endDemo() });
   const bars = new BarStatsPane(chart, store, heat.view, heat, hub);
   const depth = new DepthPane(chart, store, heat.view, hub);
-  const oi = new OiPane(chart, store, heat.view, hub.flow);
-  const delta = new DeltaPane(chart, store, heat.view, hub);
+  // NL/NS, worked out once and read by the OI pane (its bars by who opened), the Delta pane and the Funding pane.
+  const nlns = new NlnsSource(hub);
+  const oi = new OiPane(chart, store, heat.view, hub.flow, nlns);
+  const delta = new DeltaPane(chart, store, heat.view, hub, nlns);
   heat.divergences = () => delta.divergences; delta.onDivergences = () => heat.invalidate();
   const ls = new LsPane(chart, store, heat.view, hub);
   const lt = new LtPane(chart, store, heat.view, hub);
@@ -384,7 +387,10 @@ async function main(): Promise<void> {
     if (changed.has('replay')) { ladder.invalidate(); cvd.invalidate(); heat.invalidate(); lower(); }
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();
     if (changed.has('oi') || changed.has('show')) { oi.invalidate(); bars.invalidate(); }
-    else if (changed.has('oiReading')) oi.invalidate();
+    else if (changed.has('oiReading') || changed.has('oiFine')) oi.invalidate();
+    if (changed.has('oiChange')) oi.settingsChanged();
+    // The minute readings NL/NS works candles out on are read while something shown uses them (`fineWanted`), whatever the timeframe.
+    if (['show', 'oiChange', 'delta', 'timeframe', 'oiParts', 'oiInstrument'].some(k => changed.has(k as never))) void hub.loadOiFine();
     // A script that reads the change in open interest runs again once it lands, not at its next refresh.
     if (changed.has('oi') || changed.has('oiParts')) script.refresh();
     if (changed.has('show')) script.showChanged();
@@ -407,7 +413,7 @@ async function main(): Promise<void> {
     // The panes follow the room the bar leaves or takes by themselves (each watches its own size).
     if (changed.has('barCollapsed')) toolbar.setCollapsed(state.barCollapsed);
     if (['show', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'oiMarkets', 'customMarkets', 'oiInstrument', 'oiParts', 'seriesInstrument', 'range'].some(k => changed.has(k as never))) ls.invalidate();
-    if (['show', 'candles', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'traded', 'timeZone', 'range', 'oi', 'oiInstrument', 'oiParts'].some(k => changed.has(k as never))) delta.invalidate();
+    if (['show', 'candles', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'traded', 'timeZone', 'range', 'oi', 'oiInstrument', 'oiParts', 'oiFine'].some(k => changed.has(k as never))) delta.invalidate();
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
@@ -427,7 +433,7 @@ async function main(): Promise<void> {
   window.setInterval(() => { hub.loadSeries(true).catch((error: unknown) => console.warn('The candles could not be read again:', error)); }, 60_000);
   // Each new open-interest reading is pushed as it lands (Hub.#oiPush); this load is the reconciliation: history, the markets added
   // together, a reading a push missed.
-  window.setInterval(() => { void hub.loadOi(); }, 20_000);
+  window.setInterval(() => { void hub.loadOi(); void hub.loadOiFine(); }, 20_000);
   // A visitor the tour was never offered to is offered it once, a moment after the page has drawn (`?tour=0` leaves it out, for pictures and tests). With a window or the
   // Settings sheet open over the page at that moment it asks again every few seconds, for a minute, and records nothing until the offer is on the screen.
   if (new URLSearchParams(location.search).get('tour') !== '0') {

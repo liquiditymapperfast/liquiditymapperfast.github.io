@@ -123,13 +123,14 @@ export function deltaCandles(starts: readonly number[], flows: readonly (CandleF
  * The flows of every candle, kept: a closed candle's is worked out once (until older flow is loaded, `loads`, or the instruments change),
  * the candles still open (ending within `liveMs` of now) every time. An open candle keeps the lowest and highest it has been seen at: its
  * samples move on with every second, and read afresh its wick shrank and grew as a sample fell on a spike or missed it. A replay moved
- * back before what was seen forgets it (it would show what came later).
+ * back before what was seen forgets it (it would show what came later). `samples`: how often each candle's running sum is read for its low and
+ * high (1 when only the delta is wanted: NL/NS's minute pieces).
  */
 export class FlowCache {
   #key = '';
   #closed = new Map<number, CandleFlow | null>();
   #open = new Map<number, { flow: CandleFlow; at: number }>();
-  get(key: string, tracks: readonly DeltaTrack[], starts: readonly number[], tfMs: number, now: number, liveMs = 5_000): (CandleFlow | null)[] {
+  get(key: string, tracks: readonly DeltaTrack[], starts: readonly number[], tfMs: number, now: number, liveMs = 5_000, samples = SAMPLES): (CandleFlow | null)[] {
     if (key !== this.#key) { this.#key = key; this.#closed = new Map(); this.#open = new Map(); }
     // A replay moved back: what was seen after its moment is not known yet, wherever it was.
     for (const [t, seen] of this.#open) if (seen.at > now) this.#open.delete(t);
@@ -137,12 +138,12 @@ export class FlowCache {
     // A candle closes with what was seen of it while it was open, whether it is read then or not (panned out of view).
     const close = (t: number, f: CandleFlow | null): CandleFlow | null => { const final = merge(f, t); this.#closed.set(t, final); this.#open.delete(t); return final; };
     const out = starts.map(t => {
-      if (t + tfMs <= now - liveMs) return close(t, this.#closed.has(t) ? this.#closed.get(t)! : candleFlow(tracks, t, tfMs, now));
-      const f = merge(candleFlow(tracks, t, tfMs, now), t);
+      if (t + tfMs <= now - liveMs) return close(t, this.#closed.has(t) ? this.#closed.get(t)! : candleFlow(tracks, t, tfMs, now, samples));
+      const f = merge(candleFlow(tracks, t, tfMs, now, samples), t);
       if (f) this.#open.set(t, { flow: f, at: now });
       return f;
     });
-    for (const t of [...this.#open.keys()]) if (t + tfMs <= now - liveMs) close(t, this.#closed.get(t) ?? candleFlow(tracks, t, tfMs, now));
+    for (const t of [...this.#open.keys()]) if (t + tfMs <= now - liveMs) close(t, this.#closed.get(t) ?? candleFlow(tracks, t, tfMs, now, samples));
     return out;
   }
 }

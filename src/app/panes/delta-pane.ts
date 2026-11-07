@@ -1,5 +1,5 @@
 import { TIMEFRAMES, type Hub } from '../hub.ts';
-import type { Store, AppState, OiBar } from '../store.ts';
+import type { Store, AppState } from '../store.ts';
 import type { View } from '../view.ts';
 import { helpButton } from '../help.ts';
 import { setTip } from '../tip.ts';
@@ -12,16 +12,16 @@ import { flowLoadIds } from '../cvd/ids.ts';
 import { resolveZone } from '../traded/settings.ts';
 import { AXIS_W } from './heat-pane.ts';
 import { TimePane, setHtml } from './lower-panes.ts';
-import { FlowCache, candleStarts, deltaCandles, resetKeys, unrecorded, type DeltaCandle } from '../delta/candles.ts';
+import { FlowCache, candleStarts, deltaCandles, resetKeys, type DeltaCandle } from '../delta/candles.ts';
 import { deltaFlows, deltaIds, ensureDeltaFlow } from '../delta/flows.ts';
 import { PIVOTS, type DeltaSettings } from '../delta/settings.ts';
 import { divergences, inView, paintDivergence, type Divergence } from '../delta/divergence.ts';
-import { coinText, nlnsCardLines, nlnsModel, withLead, type NlnsCandle, type NlnsMarket } from '../delta/nlns.ts';
-import { oiPartsUntil } from '../oi-change.ts';
+import { coinText, nlnsCardLines, type NlnsCandle } from '../delta/nlns.ts';
+import type { NlnsSource } from '../delta/nlns-source.ts';
 import { venueLabel } from '../venues.ts';
 import { togglePanel, type Panel } from '../ui.ts';
 import { buildOiMarketsPanel } from '../market-picker.ts';
-import { pageNow, replaying } from '../replay/clock.ts';
+import { pageNow } from '../replay/clock.ts';
 
 const signed = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
 
@@ -44,10 +44,6 @@ export class DeltaPane extends TimePane {
   #card = new HoverCard();
   #lines: InfoLine[] | null = null;
   #cache = new FlowCache();
-  /** The NL/NS candles worked out last, and what they were made of. */
-  #model: { key: string; oi: unknown; parts: unknown; candles: unknown; model: NlnsCandle[] } | null = null;
-  /** Each OI market's own flow per candle (NL/NS gives each market's change to its own takers). */
-  #oiCaches = new Map<string, FlowCache>();
   #sync: (() => void)[] = [];
   #marketsPanel: Panel | null = null;
   /** The candles drawn last. */
@@ -58,7 +54,8 @@ export class DeltaPane extends TimePane {
   onDivergences: () => void = () => {};
   #divKey = '';
 
-  constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
+  /** `nlns`: the NL/NS model the OI and Funding panes read too (delta/nlns-source.ts). */
+  constructor(host: HTMLElement, store: Store, view: View, private hub: Hub, private readonly nlns: NlnsSource) {
     super(host, store, view, 'delta');
     this.head.innerHTML = `<strong>${t('Delta')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('deltaPane'));
@@ -129,52 +126,18 @@ export class DeltaPane extends TimePane {
   }
 
   /**
-   * The NL/NS model of the candles from `starts` (delta/nlns.ts): the OI pane's markets (each venue's bars while it adds venues together,
-   * else its one market), each with its own taker flow, and the chart's closes where the chart's candles are that coin's own market's (a
-   * borrowed reference series is not). Replay: only the bars and candles that had closed by the moment shown. Worked out again only when
-   * something it is made of changed, and at most once a second for the open candle's flow.
-   */
-  #nlnsModel(state: AppState, starts: number[], now: number): NlnsCandle[] {
-    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta, zone = resolveZone(state.traded.zone, state.timeZone), flow = this.hub.flow;
-    const aggregated = state.oiParts.length > 1, oiInst = state.oiInstrument;
-    const sources: { id: string; bars: readonly OiBar[] }[] = aggregated ? [...oiPartsUntil(state.oiParts, tf, replaying() ? now : Infinity)]
-      : oiInst && state.oi.length ? [{ id: oiInst, bars: replaying() ? state.oi.filter(b => b[0] + tf <= now) : state.oi }] : [];
-    if (!sources.length || !starts.length) return [];
-    // A reading's change is given to the takers since the reading before, which can be before the view: the candles of one hold before it
-    // are worked out too (in a run of their own, so the sums still start at the view) and left out of what is drawn.
-    const { all, keys } = withLead(starts, resetKeys(starts, s.reset, zone), tf);
-    this.#ensure(sources.map(m => m.id), all[0]!, Date.now());
-    const key = `${sources.map(m => m.id).join(',')}|${tf}|${starts[0]}|${starts.length}|${starts[starts.length - 1]}|${s.reset}|${zone}|${flow.loads}|${Math.floor(now / 1000)}`;
-    const held = this.#model;
-    if (held && held.key === key && held.oi === state.oi && held.parts === state.oiParts && held.candles === state.candles) return held.model;
-    // The chart's own candles only: aggregated, any market of the coin tells the way its price went; one market, only its own candles do.
-    const chart = state.seriesInstrument === state.marketId, own = aggregated ? chart : oiInst === (state.seriesInstrument || state.marketId);
-    const closes = new Map(own ? state.candles.filter(c => !replaying() || c[0] + tf <= now).map(c => [c[0], c[4]] as const) : []);
-    const markets: NlnsMarket[] = sources.map(m => {
-      const track = flow.track(m.id);
-      let cache = this.#oiCaches.get(m.id); if (!cache) { cache = new FlowCache(); this.#oiCaches.set(m.id, cache); }
-      return { bars: m.bars, flows: track ? unrecorded(all, cache.get(`${m.id}|${tf}|${flow.loads}`, [track], all, tf, now), tf, now) : all.map(() => null) };
-    });
-    // A venue no longer counted keeps no cache.
-    for (const id of this.#oiCaches.keys()) if (!sources.some(m => m.id === id)) this.#oiCaches.delete(id);
-    const model = nlnsModel(all, markets, closes, keys, tf).filter(c => c.t >= starts[0]!);
-    this.#model = { key, oi: state.oi, parts: state.oiParts, candles: state.candles, model };
-    return model;
-  }
-
-  /**
-   * NL/NS (delta/nlns.ts): each candle's change of open interest of the OI pane's markets, each market's given to the side that traded at
-   * market on it (its own flow; the way the price went where none is recorded), as bars (solid: opened, hollow: closed) and its running sum
-   * as a line, restarting where the CVD does. In coins; the readout names the market or how many venues are added together.
+   * NL/NS (delta/nlns.ts, the model shared with the OI and Funding panes): each candle's change of open interest of the OI pane's markets, each
+   * market's given to the side that traded at market on it (its own flow, minute by minute where its minute readings reach; the way the price
+   * went where none is recorded), as bars (solid: opened, hollow: closed) and its running sum as a line, restarting where the CVD does. In coins;
+   * the readout names the market or how many venues are added together.
    */
   #paintNlns(state: AppState, now: number, readout: Element | null): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta;
-    const zone = resolveZone(state.traded.zone, state.timeZone), oiInst = state.oiInstrument;
+    const oiInst = state.oiInstrument;
     const coin = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '';
     const aggregated = state.oiParts.length > 1, count = aggregated ? state.oiParts.length : 1;
     const market = aggregated ? t('{n} venues added together', { n: state.oiParts.length }) : oiInst ? `${venueLabel(oiInst)} ${oiInst.split(':').slice(1).join(':')}` : '';
-    const starts = candleStarts(v.t0, v.t1, now, tf, s.reset, zone, undefined, true);
-    const candles = this.#nlnsModel(state, starts, now);
+    const candles = this.nlns.forView(state, v.t0, v.t1, now);
     const visible = candles.filter(c => c.t + tf >= v.t0 && c.t <= v.t1);
     if (!visible.length) {
       ctx.fillStyle = p.muted; ctx.textAlign = 'left';

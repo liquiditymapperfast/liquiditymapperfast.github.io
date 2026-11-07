@@ -130,6 +130,60 @@ test('a reading whose stretch began before the view is given to the takers of th
   }
 });
 
+/** Minute readings and minute flow from `from` for `n` minutes: `oiAt(k)` the reading at minute k (null: none), `deltaAt(k)` the takers (null: not recorded). */
+function minutes(from: number, n: number, oiAt: (k: number) => number | null, deltaAt: (k: number) => number | null) {
+  const starts = Array.from({ length: n }, (_, k) => from + k * M);
+  const bars = starts.flatMap((t, k) => { const v = oiAt(k); return v === null ? [] : [bar(t, v)]; });
+  return { starts, bars, flows: starts.map((_, k) => { const d = deltaAt(k); return d === null ? null : flow(d); }) };
+}
+
+test('minute pieces: an hour whose takers sold on balance, but whose rise came from longs opened at market early in it', () => {
+  // The hour from T: ten minutes of buyers opening +10 each (+100), then sellers closing 30 of it; the hour's takers sold on balance (−100).
+  const oiAt = (k: number) => k < 60 ? 1_000 : k < 70 ? 1_000 + (k - 59) * 10 : k < 100 ? 1_100 - (k - 69) : 1_070;
+  const deltaAt = (k: number) => k < 60 ? 0 : k < 70 ? 1 : k < 100 ? -3 : -1;
+  const fine = minutes(T - H, 120, oiAt, deltaAt);
+  const starts = [T - H, T], hourly = [bar(T - H, 1_000), bar(T, 1_070)], flows = [flow(0), flow(10 - 90 - 20)];
+  const [, coarse] = nlnsModel(starts, [{ bars: hourly, flows }], none, keys(starts), H, H, T + H);
+  assert.deepEqual([coarse!.shortOpened, coarse!.longOpened, coarse!.fine], [70, 0, 0], 'one reading for the hour: its takers sold, so the rise was new shorts');
+  const [, c] = nlnsModel(starts, [{ bars: hourly, flows, fine }], none, keys(starts), H, H, T + H);
+  assert.deepEqual([c!.longOpened, c!.longClosed, c!.shortOpened, c!.shortClosed, c!.dOi, c!.oiStart, c!.fine, c!.counted], [100, 30, 0, 0, 70, 1_000, 1, 1]);
+  assert.ok(nlnsCardLines(c!, '1h', 'BTC', 'Hyperliquid BTC').some(l => /Minute by minute/.test(l.text)));
+});
+
+test('minute pieces add up to the candle\'s own change; a venue read every five minutes gives its steps to the five minutes\' takers', () => {
+  // Every fifth minute a reading (a venue's five-minute history), the takers alternating, over three hours.
+  const oiAt = (k: number) => k % 5 === 0 ? 500 + ((k * 7) % 23) - (k % 3) : null, deltaAt = (k: number) => (k % 4) - 1.5;
+  const fine = minutes(T - H, 240, oiAt, deltaAt);
+  const starts = [T - H, T, T + H, T + 2 * H];
+  // The candle's bar holds its last reading, as the bars on the chart's timeframe do.
+  const hourly = starts.map(s => { const inside = fine.bars.filter(b => b[0] >= s && b[0] < s + H); return bar(s, inside[inside.length - 1]![4]); });
+  const flows = starts.map(() => flow(1));
+  const coarse = nlnsModel(starts, [{ bars: hourly, flows }], none, keys(starts), H, H, T + 3 * H);
+  const pieces = nlnsModel(starts, [{ bars: hourly, flows, fine }], none, keys(starts), H, H, T + 3 * H);
+  for (let i = 1; i < starts.length; i++) {
+    assert.equal(pieces[i]!.fine, 1, `hour ${i} from its minutes`);
+    assert.ok(Math.abs(pieces[i]!.dOi - coarse[i]!.dOi) < 1e-9, `hour ${i}: the pieces add up to the hour's change`);
+    const c = pieces[i]!;
+    assert.ok(Math.abs(c.longOpened + c.shortOpened + c.unsidedUp - c.longClosed - c.shortClosed - c.unsidedDown - c.dOi) < 1e-9, `hour ${i}: the parts add up to the change`);
+  }
+  assert.equal(pieces[0]!.fine, 0, 'the first hour: its minute readings do not begin before it');
+});
+
+test('minute pieces stand for a candle only where they reach it whole: flow missing in a piece, readings that stop, a one-minute chart', () => {
+  const oiAt = (k: number) => 1_000 + k, deltaAt = (k: number) => k === 75 ? null : 1;
+  const fine = minutes(T - H, 180, oiAt, deltaAt);
+  const starts = [T - H, T, T + H], hourly = [bar(T - H, 1_059), bar(T, 1_119), bar(T + H, 1_179)], flows = starts.map(() => flow(-1));
+  const c = nlnsModel(starts, [{ bars: hourly, flows, fine }], none, keys(starts), H, H, T + 2 * H);
+  assert.deepEqual(c.map(x => [x.fine, x.longOpened, x.shortOpened]), [[0, 0, 0], [0, 0, 60], [1, 60, 0]], 'the hour with a minute of flow missing keeps its one reading (sellers); the next is worked out minute by minute');
+  // Readings that stop twenty minutes before the hour's end say nothing of its last twenty minutes.
+  const stopped = minutes(T - H, 160, oiAt, () => 1);
+  const [, , late] = nlnsModel(starts, [{ bars: hourly, flows, fine: stopped }], none, keys(starts), H, H, T + 2 * H);
+  assert.equal(late!.fine, 0);
+  // On a one-minute chart the candle is the minute: no pieces.
+  const m = fine.starts.slice(60, 70), mFlows = m.map(() => flow(1)), mBars = fine.bars.filter(b => b[0] >= m[0]! - M && b[0] <= m[m.length - 1]!);
+  assert.ok(nlnsModel(m, [{ bars: mBars, flows: mFlows, fine }], none, keys(m), M, H, T + 2 * H).every(x => x.fine === 0));
+});
+
 test('an inverse market keeps its own USD with each reading; stored bars and samples give it in place of coins', async () => {
   const get = (async () => ({ result: [{ open_interest: 1_000_000, mark_price: 50_000 }] })) as never;
   assert.deepEqual(await fetchOiReading('deribit', get, { symbol: 'BTC-PERPETUAL', unit: 1, inverse: true }), { base: 20, quote: 1_000_000 });

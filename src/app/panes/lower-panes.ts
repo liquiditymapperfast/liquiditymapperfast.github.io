@@ -41,6 +41,8 @@ import type { RangeTool } from '../range/tool.ts';
 import type { FlowBook } from '../flow-book.ts';
 import { buildOiMarketsPanel, marketPicker } from '../market-picker.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
+import { coinText, nlnsWhoLines, whoParts, type NlnsCandle } from '../delta/nlns.ts';
+import type { NlnsSource } from '../delta/nlns-source.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -665,9 +667,25 @@ export class DepthPane extends TimePane {
   }
 }
 
+/** The chart market's coin ("BTC"), for amounts of it. */
+const coinOf = (state: Pick<AppState, 'markets' | 'marketId'>): string => state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '';
+
+/**
+ * The OI pane's readout of who made a change (NL/NS): its parts, the side of the change first (what opened on a rise, what closed on a fall),
+ * so that with what went to no side they add up to the change.
+ */
+function whoText(c: NlnsCandle | undefined, d: number): string {
+  if (!c || d === 0) return '';
+  const opened = [[t('New longs'), c.longOpened, 'bid'], [t('New shorts'), c.shortOpened, 'ask']] as const, closed = [[t('Shorts closed'), -c.shortClosed, 'bid'], [t('Longs closed'), -c.longClosed, 'ask']] as const;
+  return [...(d > 0 ? [...opened, ...closed] : [...closed, ...opened])].filter(([, x]) => x !== 0).map(([label, x, tone]) => ` ${label} <b class="${tone}">${coinText(x, '')}</b>`).join('');
+}
+
 /**
  * Open interest is a level, so it is drawn as one: a step line that holds each sample until the next, a dimmer continuation to the
- * newest candle (no sample has arrived since), and below it the change between samples, with unusually large changes at full weight.
+ * newest candle (no sample has arrived since), and below it the change between samples, with unusually large changes at full weight. Each
+ * change bar is split by who made it (NL/NS, delta/nlns.ts, worked out minute by minute where the minute readings reach): a rise by the new
+ * longs and new shorts it holds, a fall by the longs and shorts closed, each part's share of the bar its share of what opened (or closed);
+ * or, set to Net, coloured by whether open interest rose or fell.
  */
 export class OiPane extends TimePane {
   #cache: { oi: readonly OiBar[]; parts: readonly OiPart[]; key: string; delta: Float64Array; flag: Uint8Array; sigma: Float64Array } | null = null;
@@ -675,8 +693,10 @@ export class OiPane extends TimePane {
   #lines: InfoLine[] | null = null;
   readonly #venues = document.createElement('select');
   readonly #choose = document.createElement('button');
+  readonly #bars = document.createElement('select');
   #panel: Panel | null = null;
-  constructor(host: HTMLElement, store: Store, view: View, flow: FlowBook) {
+  /** `nlns`: the NL/NS model the Delta and Funding panes read too (delta/nlns-source.ts). */
+  constructor(host: HTMLElement, store: Store, view: View, flow: FlowBook, private readonly nlns: NlnsSource) {
     super(host, store, view, 'oi');
     this.head.innerHTML = `<strong>${t('Open Interest')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('oiPane'));
@@ -690,10 +710,22 @@ export class OiPane extends TimePane {
     this.#choose.hidden = store.state.oiMarkets !== 'custom';
     const build = (_tools: HTMLElement, body: HTMLElement): void => buildOiMarketsPanel(store, flow, body, () => this.#panel?.render(build));
     this.#choose.onclick = () => { this.#panel = togglePanel(this.#choose, { title: t('Open interest markets'), width: 380, align: 'right', onClose: () => { this.#panel = null; } }, build); };
+    // What the change bars say: who opened and closed (NL/NS), or only whether open interest rose or fell.
+    const bars = document.createElement('label'); bars.className = 'ctl'; bars.append(t('Bars'));
+    setTip(bars, t('Split each change bar by who opened and who closed (NL/NS, worked out minute by minute where the minute readings reach), or colour it by whether open interest rose or fell.'));
+    this.#bars.append(new Option('NL/NS', 'who'), new Option(t('Net'), 'net'));
+    this.#bars.value = store.state.oiChange;
+    this.#bars.onchange = () => store.set({ oiChange: this.#bars.value === 'net' ? 'net' : 'who' });
+    bars.append(this.#bars);
     // One group, so the header's rule that puts its last control at the right edge moves the select and its button together.
     const group = document.createElement('span'); group.className = 'ctl ctl-group';
-    wrap.append(this.#venues); group.append(wrap, this.#choose); this.head.append(group);
+    wrap.append(this.#venues); group.append(bars, wrap, this.#choose); this.head.append(group);
+    // On a phone the venues stay in the row; the bars' choice waits behind the key (pane-tune.ts).
+    addTune(this.head, [bars], t('Open Interest'));
   }
+
+  /** Reflect the settings in the header's controls and draw again. */
+  settingsChanged(): void { if (this.#bars.value !== this.store.state.oiChange) this.#bars.value = this.store.state.oiChange; this.invalidate(); }
   /** Each bar's change (oi-change.ts: venues added together count their own changes) and the ones that stand out. */
   #analysis(oi: readonly OiBar[], highlight: HighlightOptions, parts: readonly OiPart[], tfMs: number) {
     const key = `${highlight.mult}|${highlight.length}|${tfMs}`;
@@ -790,6 +822,8 @@ export class OiPane extends TimePane {
       ctx.beginPath(); ctx.moveTo(xc(from), y(oi[from]![4]));
       for (let i = from + 1; i <= to; i++) { ctx.lineTo(xc(i), y(oi[i - 1]![4])); ctx.lineTo(xc(i), y(oi[i]![4])); }
     };
+    // Who made each change (NL/NS), by candle start, while the bars are split by who.
+    const who = state.oiChange === 'who' ? new Map(this.nlns.forView(state, v.t0, v.t1, pageNow()).map(c => [c.t, c] as const)) : null;
     // Change histogram.
     if (split) {
       const emphasise = highlight.on;
@@ -797,11 +831,31 @@ export class OiPane extends TimePane {
       for (const i of visible) {
         if (i === 0) continue;
         const d = analysis.delta[i]!; if (d === 0) continue;
-        const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(oi[i]![0] + tf, pw), h = Math.abs(d) / (maxDelta || 1) * half;
-        ctx.globalAlpha = !emphasise ? 0.75 : analysis.flag[i] ? 1 : 0.38; ctx.fillStyle = d > 0 ? p.bid : p.ask;
-        ctx.fillRect(x0 + 0.5, d > 0 ? mid - h : mid, Math.max(1, x1 - x0 - 1), Math.max(1, h));
+        const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(oi[i]![0] + tf, pw), h = Math.max(1, Math.abs(d) / (maxDelta || 1) * half), w = Math.max(1, x1 - x0 - 1);
+        const alpha = !emphasise ? 0.75 : analysis.flag[i] ? 1 : 0.38;
+        let cap = d > 0 ? p.bid : p.ask;
+        if (who) {
+          // Outward from the zero line: the buyers' part, the sellers', then what went to no side, each its share of what opened (a rise) or
+          // closed (a fall). A fall's parts are lighter, outlined where the bar is wide enough: closed, as NL/NS draws them hollow.
+          const c = who.get(oi[i]![0]), parts = c ? whoParts(c, d > 0) : null, total = parts ? parts.buy + parts.sell + parts.none : 0;
+          const segments: [number, string][] = parts && total > 0 ? [[parts.buy, p.candleUp], [parts.sell, p.candleDown], [parts.none, p.muted]] : [[1, p.muted]];
+          const sum = total > 0 ? total : 1;
+          let at = 0;
+          for (const [size, color] of segments) {
+            if (!(size > 0)) continue;
+            const len = size / sum * h, y0 = d > 0 ? mid - at - len : mid + at;
+            ctx.globalAlpha = d > 0 ? alpha : alpha * 0.55; ctx.fillStyle = color; ctx.fillRect(x0 + 0.5, y0, w, len);
+            if (d < 0 && w >= 6 && len >= 3) { ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0) + 1, Math.round(y0) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(len) - 1)); }
+            at += len;
+          }
+          if (parts && total > 0) cap = parts.buy >= parts.sell && parts.buy >= parts.none ? p.candleUp : parts.sell >= parts.none ? p.candleDown : p.muted;
+        } else {
+          ctx.globalAlpha = alpha; ctx.fillStyle = cap;
+          ctx.fillRect(x0 + 0.5, d > 0 ? mid - h : mid, w, h);
+        }
         if (emphasise && analysis.flag[i]) { // a small cap outside the bar says "this one stands out"
-          ctx.fillRect(x0 + 0.5, d > 0 ? mid - h - 2.5 : mid + h + 0.5, Math.max(1, x1 - x0 - 1), 2);
+          ctx.globalAlpha = alpha; ctx.fillStyle = cap;
+          ctx.fillRect(x0 + 0.5, d > 0 ? mid - h - 2.5 : mid + h + 0.5, w, 2);
         }
       }
       ctx.globalAlpha = 1;
@@ -885,8 +939,11 @@ export class OiPane extends TimePane {
         source: oiSourceText(state, venues?.[over]),
         staleMin: over === oi.length - 1 && stale ? Math.round(age / 60_000) : null,
       });
+      // Who made the change, before the card's closing words.
+      const c = who?.get(there[0]);
+      if (c && this.#lines.length) this.#lines.splice(this.#lines.length - 1, 0, ...nlnsWhoLines(c, coinOf(state)));
     }
-    say(`${t('base')} <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${sigma}${source}${stale ? ` <span class="ask">${t('last sample {n} min ago', { n: Math.round(age / 60_000) })}</span>` : ''}`);
+    say(`${t('base')} <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${whoText(who?.get(bar[0]), d)}${sigma}${source}${stale ? ` <span class="ask">${t('last sample {n} min ago', { n: Math.round(age / 60_000) })}</span>` : ''}`);
   }
 }
 

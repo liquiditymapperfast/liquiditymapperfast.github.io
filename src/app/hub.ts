@@ -14,6 +14,7 @@ import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { takeOiPushes, withOiPushes, type OiPush } from './oi-push.ts';
 import { replaying } from './replay/clock.ts';
 import { atOnePrice, inverseOi, oiSumOf, oiTail, type OiPart } from './oi-change.ts';
+import { OI_FINE_MS, OI_FINE_TAIL_MS, fineWanted, partsOnScreen } from './oi-fine.ts';
 import { oiMarketIds } from './market-choice.ts';
 import { nextBookGone } from './cvd/ids.ts';
 import { t } from './i18n.ts';
@@ -791,6 +792,11 @@ export class Hub {
       const bars = withOiPushes(state.oi, readings.filter(reading => reading.instrumentId === state.oiInstrument), tf, state.oiPrice);
       if (bars) this.store.set({ oi: bars });
     }
+    // The minute readings take the same pushes, a minute apart (NL/NS works candles out on them).
+    if (state.oiFine.length) {
+      const fine = state.oiFine.map(part => withPushed(part, readings, MINUTE));
+      if (fine.some((part, i) => part !== state.oiFine[i])) this.store.set({ oiFine: fine });
+    }
   }
   /** The newest reading taken per market, by its own time. */
   readonly #oiPushed = new Map<string, number>();
@@ -835,6 +841,47 @@ export class Hub {
     if (this.#oiShown !== key) this.#oiShowHeld(key, own, added, tf, now);
     try { await this.#loadOiWhole(own, key, added, venues, tf, now, from, to, generation); }
     finally { if (this.#oiKey === key && generation === this.#oiGen && this.store.state.oiReading) this.store.set({ oiReading: false }); }
+    // The markets counted may have changed: their minute readings follow.
+    void this.loadOiFine();
+  }
+
+  /**
+   * The minute readings of the markets counted (store `oiFine`), for NL/NS to work candles out minute by minute where they reach (delta/nlns.ts):
+   * read whole over the last OI_FINE_MS when the markets change and every OI_WHOLE_MS, else each one's newest minutes again at most every
+   * OI_FINE_TAIL_MS (the pushes keep the newest minute current, `#oiPush`). They do not depend on the chart's timeframe, so a switch keeps them.
+   * Nothing is read on a one-minute chart or while nothing that works NL/NS out is shown (`fineWanted`); an answer for markets no longer counted
+   * is dropped. Safe to call often.
+   */
+  loadOiFine(): Promise<void> {
+    const state = this.store.state, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, parts = partsOnScreen(state);
+    if (replaying() || !fineWanted(state, tf) || !parts.length) return Promise.resolve();
+    if (this.#fineInflight) return this.#fineInflight;
+    const key = parts.map(part => `${part.id}@${part.usdAt ?? 0}`).join(','), now = Date.now(), held = this.#fineHeld;
+    const whole = !held || held.key !== key || now - held.at >= OI_WHOLE_MS;
+    if (!whole && now - held.tailAt < OI_FINE_TAIL_MS) return Promise.resolve();
+    const promise = (whole ? this.#readFineWhole(key, parts, now) : this.#readFineTail(key, now)).catch(() => undefined).finally(() => { if (this.#fineInflight === promise) this.#fineInflight = null; });
+    this.#fineInflight = promise;
+    return promise;
+  }
+  #fineInflight: Promise<void> | null = null;
+  /** The markets whose minute readings were read whole last, when, and when their newest minutes were read again. */
+  #fineHeld: { key: string; at: number; tailAt: number } | null = null;
+  /** Whether the markets counted are still those of `key` (an answer for others is dropped). */
+  #fineStill(key: string): boolean { return partsOnScreen(this.store.state).map(part => `${part.id}@${part.usdAt ?? 0}`).join(',') === key; }
+  async #readFineWhole(key: string, parts: readonly OiPart[], now: number): Promise<void> {
+    const read = await Promise.all(parts.map(async part => ({ id: part.id, ...(part.usdAt ? { usdAt: part.usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - OI_FINE_MS, now + MINUTE, part.usdAt).catch((): OiBar[] => []) })));
+    if (!this.#fineStill(key)) return;
+    this.store.set({ oiFine: read.filter(part => part.bars.length > 1) });
+    this.#fineHeld = { key, at: now, tailAt: now };
+  }
+  async #readFineTail(key: string, now: number): Promise<void> {
+    const held = this.store.state.oiFine, froms = held.map(part => Math.max(now - OI_FINE_MS, part.bars[part.bars.length - 1]![0] - MINUTE));
+    const tails = await Promise.all(held.map((part, i) => this.oiBars(part.id, '1m', froms[i]!, now + MINUTE, part.usdAt).catch((): OiBar[] => [])));
+    // On the readings held now: pushes may have moved them while the tails were read.
+    const current = this.store.state.oiFine;
+    if (!this.#fineStill(key) || current.length !== held.length || current.some((part, i) => part.id !== held[i]!.id)) return;
+    this.store.set({ oiFine: current.map((part, i) => ({ ...part, bars: oiTail(part.bars, tails[i]!, froms[i]!, now - OI_FINE_MS) })) });
+    if (this.#fineHeld) this.#fineHeld = { ...this.#fineHeld, tailAt: now };
   }
   /** The key of the open interest in the store (`#loadOi`): '' while none, or after a series change cleared it. */
   #oiShown = '';
