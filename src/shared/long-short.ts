@@ -245,6 +245,8 @@ const ARCHIVE_MEMO_POINTS = 60_000;
 export class ArchiveMemo {
   #days = new Map<string, { day: Promise<ArchiveDay | null>; size: number }>();
   #size = 0;
+  /** When the archive last failed (the cache's clock): it is not read again for a minute, while the API's readings go on. */
+  failed = -Infinity;
   constructor(private maxPoints = ARCHIVE_MEMO_POINTS) {}
   /** The day kept under `key`, or `read` it and keep it, counted as `size` readings. */
   day(key: string, size: number, read: () => Promise<ArchiveDay | null>): Promise<ArchiveDay | null> {
@@ -262,9 +264,9 @@ export class ArchiveMemo {
  * Binance's readings older than its API's 30 days, from its daily archive: those of [lo, hi) on the period's grid, the newest `ARCHIVE_DAYS`
  * days of files at most, `ARCHIVE_PARALLEL` at a time (through `memo`, where the cache keeps one). `from` is where they reach back to: `lo`,
  * or the start of the oldest day read when there were more. A day with no file is skipped (nothing filled in); a read that found no file at all
- * is before the archive begins, which reaches `lo` too.
+ * (`none`) is before the archive begins, which reaches `lo` too, unless the API shows trading on its `newest` day (`fetchLongShort`).
  */
-async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number, lo: number, hi: number, get: Fetcher, memo?: ArchiveMemo): Promise<{ points: LsPoint[]; from: number }> {
+async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number, lo: number, hi: number, get: Fetcher, memo?: ArchiveMemo): Promise<{ points: LsPoint[]; from: number; none: boolean; newest: number }> {
   // A day's file holds the readings after its midnight up to and with the next one (each row is the API's reading five minutes on).
   const dayOf = (t: number): number => Math.floor((t - ARCHIVE_SHIFT_MS) / DAY) * DAY, first = dayOf(lo), days: number[] = [];
   for (let day = dayOf(hi - 1); day >= first && days.length < ARCHIVE_DAYS; day -= DAY) days.push(day);
@@ -280,8 +282,8 @@ async function binanceArchive(symbol: string, metric: LsMetric, periodMs: number
     catch (error) { failed = true; throw error; }
   }));
   const points = got.flatMap(day => day?.[metric] ?? []).filter(p => p.t >= lo && p.t < hi).sort((a, b) => a.t - b.t);
-  const oldest = days[days.length - 1];
-  return { points, from: oldest === undefined || oldest <= first || got.every(day => day === null) ? lo : oldest + ARCHIVE_SHIFT_MS };
+  const oldest = days[days.length - 1], none = got.every(day => day === null);
+  return { points, from: oldest === undefined || oldest <= first || none ? lo : oldest + ARCHIVE_SHIFT_MS, none, newest: days[0] ?? -Infinity };
 }
 
 /**
@@ -302,9 +304,12 @@ export async function fetchLongShort(venue: string, symbol: string, metric: LsMe
     const floor = Math.max(from, now - BINANCE_SPAN_MS + periodMs);
     // A COIN-M perpetual (BTCUSD_PERP) is read from the COIN-M statistics, by its pair.
     const coinM = /^([A-Z0-9]+)_PERP$/.exec(symbol), market = coinM ? `https://dapi.binance.com/futures/data/${BINANCE_PATHS[metric]}?pair=${encodeURIComponent(coinM[1]!)}` : `https://fapi.binance.com/futures/data/${BINANCE_PATHS[metric]}?symbol=${s}`;
-    // What is older than the API's 30 days comes from the daily archive (USD-M only), read alongside the API's pages.
-    const lo = from - periodMs, hi = Math.min(to, now - BINANCE_SPAN_MS + periodMs);
-    const archive = !coinM && lo < hi ? binanceArchive(symbol, metric, periodMs, lo, hi, get, memo) : null;
+    // What is older than the API's 30 days comes from the daily archive (USD-M only), read alongside the API's pages. It reaches a day into the
+    // API's days, so a clock a little off leaves no hole between them. Its failure never fails the API's readings: they are answered, the
+    // archive's days are not claimed, and the archive is left alone for a minute (`ArchiveMemo.failed`).
+    const lo = from - periodMs, hi = Math.min(to, now - BINANCE_SPAN_MS + Math.max(periodMs, DAY));
+    const wanted = !coinM && lo < hi, cooling = wanted && memo !== undefined && now - memo.failed < MINUTE;
+    const archive = wanted && !cooling ? binanceArchive(symbol, metric, periodMs, lo, hi, get, memo).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error)))) : null;
     const api = (async () => {
       for (end = Math.min(to, now); page < PAGES && end > floor; page++) {
         // COIN-M names its top traders' position shares longPosition and shortPosition (USD-M calls them longAccount and shortAccount).
@@ -318,10 +323,15 @@ export async function fetchLongShort(venue: string, symbol: string, metric: LsMe
       }
     })();
     const [old] = await Promise.all([archive, api]);
+    // No file at all on days the API shows trading on: the archive is gone or moved, not one that has not begun yet (a market listed since
+    // has no file before its first day, and the API no reading).
+    const apiOldest = Math.min(...out.keys()), gone = old !== null && !(old instanceof Error) && old.none && apiOldest <= old.newest + DAY;
+    const unread = cooling || old instanceof Error || gone;
+    if (memo && (old instanceof Error || gone)) memo.failed = now;
     // The API's own reading where both have one (the same, to its four decimals).
-    for (const p of old?.points ?? []) if (!out.has(p.t)) take(p);
+    if (!unread) for (const p of old?.points ?? []) if (!out.has(p.t)) take(p);
     const points = [...out.values()].sort((a, b) => a.t - b.t);
-    return { points, from: page >= PAGES && end > from ? end : old && old.from > lo ? old.from : from };
+    return { points, from: page >= PAGES && end > from ? end : unread ? floor : old && !(old instanceof Error) && old.from > lo ? old.from : from };
   } else if (venue === 'bybit') {
     for (; page < PAGES && end >= from; page++) {
       const limit = limitFor(from);
@@ -551,8 +561,10 @@ export class LongShortCache {
       else { covered = true; break; }
       if (reads++ >= 4) break;
       // Too far from what is held for one question to join them without a hole: the series starts again at this window (and so does what the
-      // backing keeps, once it is read: a failed read leaves it as it was, a stretch as good as it ever was).
-      const restarted = kind !== 'whole' && end - start > reach;
+      // backing keeps, once it is read: a failed read leaves it as it was, a stretch as good as it ever was). The older stretch of a window that
+      // reaches what is held joins it however far back it goes: each read reaches back as far as it can and the next reads on from there
+      // (started again instead, a window wider than `reach` read its newest stretch over and over, never further back: 2026-11-06 review).
+      const restarted = kind !== 'whole' && end - start > reach && !(kind === 'older' && to >= h.from);
       if (restarted) { h.points.clear(); h.from = Infinity; h.to = -Infinity; start = from; end = want; kind = 'whole'; }
       // A read that reached back only part of its window (Binance's archive, `ARCHIVE_DAYS` at a time) and got further than before.
       let short = false;
