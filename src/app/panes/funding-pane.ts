@@ -17,6 +17,7 @@ import { FUNDING_VENUES, FundingSource, fundingBase, hasPremium, rowAt, type Fun
 import type { HourOpens, NlnsSource } from '../delta/nlns-source.ts';
 import { coinText } from '../delta/nlns.ts';
 import { pageNow } from '../replay/clock.ts';
+import { fitText } from '../text-fit.ts';
 
 const HOUR = 3_600_000;
 /** Settlements a year at one every eight hours: the APR of a rate per eight hours. */
@@ -173,7 +174,8 @@ export class FundingPane extends TimePane {
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     ctx.fillText(rateText(max, 3), this.w - AXIS_W + 6, 10); ctx.fillText(rateText(min, 3), this.w - AXIS_W + 6, lineBottom - 4);
     if (band) ctx.fillText('50%', this.w - AXIS_W + 6, mid);
-    if (band && !opens.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Who opened shows where Hyperliquid\'s minute readings and flow are held (its perpetual counted in the OI pane).'), 8, mid); }
+    // Cut to the plot with an ellipsis: some languages say it in half again as many letters (the pane's help says it whole).
+    if (band && !opens.length) { ctx.fillStyle = p.muted; ctx.fillText(fitText(s => ctx.measureText(s).width, t('Who opened shows where Hyperliquid\'s minute readings and flow are held (its perpetual counted in the OI pane).'), pw - 16), 8, mid); }
     // Readout and popup: the time under the pointer, else now; past now (the view's room on the right) it stays at now, as the other panes
     // stay at their newest, and the cursor is drawn there.
     const hover = state.hover, at = hover ? Math.min(hover.t, now) : now;
