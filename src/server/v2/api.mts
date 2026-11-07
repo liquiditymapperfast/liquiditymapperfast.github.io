@@ -73,10 +73,10 @@ const HEARTBEAT_MS = 5_000;
  * What the server's recorder keeps for the next question, in bins (12 bytes each): the six days of every book the store holds beyond memory
  * (a day of BTC's 25 recorded markets was 5-7M bins on 2026-11-07, some 75 MB), and a week of merged windows at one step. With three days kept,
  * every question reaching back a week read the other days from the store again: the Depth pane's candles, asked after the map had read them,
- * took 8-14 s cold and 0.1 s warm (Research_Findings.md). At most some 700 MB, up to ~430 MB more than the recorder's own defaults: on a
- * machine with less than 16 GB of memory the server keeps those.
+ * took 8-14 s cold and 0.1 s warm (Research_Findings.md). At most some 700 MB, up to ~430 MB more than the recorder's own defaults: with
+ * less than a 16 GB machine's memory (which the system reports as 15.7-15.9 GiB), or a container's limit below it, the server keeps those.
  */
-const ROOMY = os.totalmem() >= 16 * 2 ** 30;
+const ROOMY = Math.min(os.totalmem(), process.constrainedMemory() || Infinity) >= 15 * 2 ** 30;
 const COLD_COLUMN_BINS = ROOMY ? 42_000_000 : COLD_CACHE_BINS, MERGED_COLUMN_BINS = ROOMY ? 16_000_000 : MERGED_CACHE_BINS;
 /**
  * How long after starting the days the store holds beyond memory are read once for the Liquidity Tracker (`warmLt`): a few milliseconds at a time, so that the

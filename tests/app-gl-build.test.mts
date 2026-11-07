@@ -20,7 +20,7 @@ function fakeGl(opts: { parallel?: boolean; broken?: boolean } = {}): { gl: WebG
       ask('getExtension'); if (opts.parallel === false || lost) return null;
       enabled = true; return { COMPLETION_STATUS_KHR: constant('COMPLETION_STATUS_KHR') };
     },
-    createShader: (type) => ({ type, src: '' }), shaderSource: (s, src) => { (s as { src: string }).src = src as string; },
+    createShader: (type) => lost ? null : ({ type, src: '' }), shaderSource: (s, src) => { (s as { src: string }).src = src as string; },
     getShaderParameter: (s) => { ask('COMPILE_STATUS'); return lost ? null : !(opts.broken && (s as { type: number }).type === constant('FRAGMENT_SHADER')); },
     getShaderInfoLog: () => 'ERROR: 0:3: syntax error',
     getProgramParameter: (_p, what) => {
@@ -104,4 +104,11 @@ test('waves whose programs did not build stay failed: never alive, never rebuilt
   field.step(1_033); field.setMedium([]);
   assert.equal(card.asked.get('LINK_STATUS'), asked, 'not built again on every frame');
   assert.throws(() => field.built(), /syntax error/, 'and it says why');
+});
+
+test('without the extension (or past the patience) a lost context reads as not built, and a program cannot be started on one', () => {
+  const card = fakeGl({ parallel: false }), p = startProgram(card.gl, 'v', 'f');
+  card.lose();
+  assert.equal(built(card.gl, [p]), false, 'the link status answers null: not built, not failed');
+  assert.throws(() => startProgram(card.gl, 'v', 'f'), /context lost/);
 });

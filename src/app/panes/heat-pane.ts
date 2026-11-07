@@ -670,8 +670,8 @@ export class HeatPane {
     const dust = this.#dust;
     if (dust) {
       // A lost context answers "not built" for ever (the dust is not made again): it is let go rather than looked at every frame.
-      if (dust.gl.isContextLost()) { this.#dust = null; this.#dustFailed = true; console.warn('live trades are no longer drawn here: the card dropped their canvas'); return null; }
-      try { if (dust.built()) return dust; } catch (error) { this.#dust = null; this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); return null; }
+      if (dust.gl.isContextLost()) { this.#dust = null; this.#dustFailed = true; console.warn('live trades are no longer drawn here: the card dropped their canvas'); this.invalidate(); return null; }
+      try { if (dust.built()) return dust; } catch (error) { this.#dust = null; this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); this.invalidate(); return null; }
       // Still being built: looked at again on the next frame.
       this.tapeArrived();
       return null;
@@ -682,7 +682,7 @@ export class HeatPane {
       this.#dustPending = false;
       if (this.#dust || this.#dustFailed || !this.hub.tape) return;
       try { this.#dust = new TapeGL(this.#dustCanvas, this.hub.tape); this.#dust.resize(this.plotW, this.plotH, this.#dustDpr()); }
-      catch (error) { this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); }
+      catch (error) { this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); this.invalidate(); }
       this.tapeArrived();
     };
     if (typeof requestIdleCallback === 'function') requestIdleCallback(make, { timeout: 1_500 }); else window.setTimeout(make, 300);

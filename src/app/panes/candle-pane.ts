@@ -615,12 +615,15 @@ export class CandlePane {
   #ensureTrail(ring: TapeRing): TrailGL | null {
     if (!this.#trail || this.#trailRing !== ring) {
       if (this.#trailFailed || this.#trailLost) return null;
-      try { this.#trail = new TrailGL(this.#trailCanvas, ring); this.#trailRing = ring; this.#trailBuilt = false; this.#maskKey = ''; this.#maskSet = null; this.#trail.resize(this.#w, this.#h, Math.min(this.#dpr, 1.5)); }
-      catch (error) {
+      try {
+        this.#trail = new TrailGL(this.#trailCanvas, ring); this.#trailRing = ring; this.#trailBuilt = false; this.#maskKey = ''; this.#maskSet = null; this.#trail.resize(this.#w, this.#h, Math.min(this.#dpr, 1.5));
+        // Drawn as without glass while it builds: the page's canvas paints the panel and the book's rows meanwhile.
+        this.invalidate();
+      } catch (error) {
         // Lost again while it was made: it is made once more when the context comes back.
         if (this.#trailCanvas.getContext('webgl2')?.isContextLost()) { this.#trailLost = true; this.#trail = null; return null; }
         // No glass then either: the candle is painted again with its panel and its veil on the page's canvas.
-        this.#trailFailed = true; console.warn('the trade trail cannot be drawn here:', error); this.invalidate();
+        this.#trailFailed = true; this.#trail = null; this.#trailRing = null; console.warn('the trade trail cannot be drawn here:', error); this.invalidate();
         return null;
       }
     }
@@ -674,7 +677,7 @@ export class CandlePane {
     const ring = this.hub.tape, l = this.#layout, s = this.#scale, p = this.#palette;
     if (!ring || !l || !s || replaying()) { this.#trail?.clear(); return false; }
     // A renderer still being built is looked at again on the next frame.
-    const trail = this.#ensureTrail(ring); if (!trail) return this.#trail !== null && !this.#trailBuilt;
+    const trail = this.#ensureTrail(ring); if (!trail) return this.#trail !== null && !this.#trailBuilt && !this.#trailFailed && !this.#trailLost;
     const hidden = this.#hiddenOf(ring);
     if (hidden !== this.#maskSet) { const maskKey = [...hidden].join(','); if (maskKey !== this.#maskKey) { trail.setMask([...hidden]); this.#maskKey = maskKey; } this.#maskSet = hidden; }
     const tones = this.#tonesOf(p);

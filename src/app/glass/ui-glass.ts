@@ -135,6 +135,8 @@ export class UiGlass {
    * can draw (`showing`). `#broken` once one failed: the glass is not tried again.
    */
   #building: readonly [Building, Building] | null = null; #broken = false;
+  /** What the page last asked for (`setOn`): glass asked for while the context could not build is turned on when it is given back. */
+  #wanted = false;
   #loc = new Map<string, WebGLUniformLocation | null>(); #overLoc = new Map<string, WebGLUniformLocation | null>();
   /** The waves, where the card can run them (null: the sparks' light instead), and the layout its medium was last drawn from. */
   #field: WaveField | null = null; #mediumKey = '';
@@ -190,11 +192,13 @@ export class UiGlass {
       this.#gl = null; this.#prog = null; this.#over = null; this.#building = null; this.#field = null; this.#mediumKey = ''; this.#loc.clear(); this.#overLoc.clear(); this.#letGo();
       if (this.#on) document.documentElement.dataset.material = 'solid';
     });
-    // Glass again once its programs are built (`#finish`).
+    // Glass again once its programs are built (`#finish`), and glass asked for while the context was lost is turned on now.
     this.canvas.addEventListener('webglcontextrestored', () => {
       // A card that was reset may build what failed before: it is tried again.
       this.#broken = false;
-      if (!this.#on || !this.#ensureGl()) return;
+      if (!this.#wanted) return;
+      if (!this.#on) { this.setOn(true); return; }
+      if (!this.#ensureGl()) return;
       this.#size(); this.schedule();
     });
   }
@@ -245,6 +249,7 @@ export class UiGlass {
 
   /** Turn the glass on or off (the page's `html[data-material]` is set by its caller, so the chrome turns see-through with it). */
   setOn(on: boolean): void {
+    this.#wanted = on;
     if (on === this.#on) return;
     if (on && !this.#ensureGl()) return;
     this.#on = on;
@@ -363,7 +368,8 @@ export class UiGlass {
     if (this.#gl) return true;
     const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
     if (!gl) { console.info('Glass: WebGL2 is not available here, so the page stays solid.'); return false; }
-    // A context lost before its loss was announced throws here: the glass stays off until it is given back (`webglcontextrestored`).
+    // A context lost before its loss was announced throws here: the glass stays off until it is given back (`webglcontextrestored`
+    // turns it on then, as `#wanted` says).
     let building: readonly [Building, Building];
     try { building = [startProgram(gl, VERT, FRAG), startProgram(gl, VERT, OVER)]; }
     catch (error) { console.info('Glass: the card is not drawing just now, so the page stays solid.', error); return false; }
@@ -384,7 +390,7 @@ export class UiGlass {
     try { if (!built(gl, building)) return false; }
     catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); this.#broken = true; this.#building = null; this.setOn(false); document.documentElement.dataset.material = 'solid'; return false; }
     try { if (this.#field && !this.#field.built()) return false; }
-    catch { this.#field = null; console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.'); }
+    catch (error) { this.#field = null; console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.', error); }
     const [prog, over] = building;
     for (const [name, at] of uniforms(gl, prog.program, ['rect', 'size', 'dpr', 'now', 'cap', 'touchCap', 'tint', 'dark', 'n', 'spark', 'sparkC', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves'])) this.#loc.set(name, at);
     for (const [name, at] of uniforms(gl, over.program, ['size', 'dpr', 'dark', 'buyC', 'sellC', 'touchC', 'waves', 'wavesPrev', 'waveCells', 'waveCssH', 'waveGain', 'hasWaves'])) this.#overLoc.set(name, at);
