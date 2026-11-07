@@ -19,6 +19,7 @@ import { STRIDE, type TapeRing } from '../tape/ring.ts';
 import { ROW_TEXELS, TrailGL, type FlashSprite } from '../candle/trail-gl.ts';
 import { strengthGain } from '../glass/waves.ts';
 import * as M from '../candle/model.ts';
+import { liveCanvas } from '../live-canvas.ts';
 
 const NUM_FONT = '10.5px ui-monospace, SFMono-Regular, Menlo, monospace', BOLD_NUM = `700 ${NUM_FONT}`;
 const SMALL_FONT = '10px ui-sans-serif, system-ui, sans-serif';
@@ -83,6 +84,7 @@ export class CandlePane {
   #reduced = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   constructor(parent: HTMLElement, private store: Store, private hub: Hub, private kernels: Kernels, private markets: (state: AppState) => string[]) {
+    liveCanvas(this.#trailCanvas, () => { if (this.#trail) this.#drawTrail(); });
     let saved: unknown = null;
     try { saved = JSON.parse(window.localStorage.getItem(M.CANDLE_SETTINGS_KEY) ?? 'null'); } catch { saved = null; }
     this.#settings = M.readCandleSettings(saved);

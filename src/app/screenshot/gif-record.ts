@@ -1,6 +1,7 @@
 import { context2d, intersect, paintLayers, surface, type Box, type Ctx2D, type Layer, type LiveCanvas } from './capture.ts';
 import { drawShape, paintMark, type Shape } from './shapes.ts';
 import { GIF_LIMIT, type GifPlan } from './gif-budget.ts';
+import { isLiveCanvas } from '../live-canvas.ts';
 import type { FromCoordinator, GifStats, ToCoordinator, ToPoolWorker } from './gif-protocol.ts';
 
 /**
@@ -12,14 +13,12 @@ import type { FromCoordinator, GifStats, ToCoordinator, ToPoolWorker } from './g
  * almost as soon as the recording ends. The still layers are painted again (at most twice a second) when the page's elements in the
  * area change: a readout's text, a lamp, a panel opening.
  *
- * Three canvases are WebGL that does not keep its picture once the screen has shown it (`LIVE_GL`): the glass with its waves, the trade
- * dust and the phone tape's trail. Read from a frame of ours they would come out empty, or as whatever the last draw left, so while
+ * Three canvases are WebGL that does not keep its picture once the screen has shown it (`isLiveCanvas`, live-canvas.ts): the glass with its
+ * waves, the trade dust and the phone tape's trail. Read from a frame of ours they would come out empty, or as whatever the last draw left, so while
  * recording each one's draws are watched (its context's draw calls, the context itself unchanged), and right after the task that drew
  * it the part of it in the area is copied; a frame takes that copy. The heatmap keeps its picture and is read as any canvas.
  */
 
-/** WebGL canvases that do not keep their picture (`preserveDrawingBuffer` false). A new one must be named here to show in a GIF. */
-const LIVE_GL = ['canvas.ui-glass', 'canvas.dust', 'canvas.candle-trail'].join(', ');
 /** Frames handed over and not written yet, per worker of the pool, beyond which a frame is skipped (the next one covers its time). */
 const IN_FLIGHT_PER_WORKER = 2;
 /** How long the start waits for each watched canvas to draw once, so the first frame has it (ms). */
@@ -85,7 +84,7 @@ interface Watch { image: HTMLCanvasElement | OffscreenCanvas; copies: number; re
 function watch(layer: LiveCanvas, area: Box, s: number, w: number, h: number): Watch | null {
   const node = layer.node;
   // Not sized yet means its renderer has not started, and asking for its context would make one with the wrong settings.
-  if (!node.matches(LIVE_GL) || (node.width === 300 && node.height === 150)) return null;
+  if (!isLiveCanvas(node) || (node.width === 300 && node.height === 150)) return null;
   const gl = node.getContext('webgl2');
   if (!gl || gl.isContextLost() || gl.getContextAttributes()?.preserveDrawingBuffer) return null;
   const image = surface(w, h), ctx = context2d(image);

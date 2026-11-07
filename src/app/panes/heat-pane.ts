@@ -84,6 +84,7 @@ import type { Projection } from '../draw/geometry.ts';
 import { wallRows, type CandleUnder } from '../draw/magnet.ts';
 import type { ChartType } from '../chart-type.ts';
 import { candleCoverage, candlePriceRange, isCovered, priceBounds, priceOverviewNeeded, pricePointAt, pricePoints, priceWindow, uncoveredRuns, type Covered, type PricePoint, type PriceWindow } from '../price-history.ts';
+import { liveCanvas } from '../live-canvas.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -527,6 +528,7 @@ export class HeatPane {
     this.root.className = 'pane heat';
     this.#pulse.className = 'pulse';
     this.#dustCanvas.className = 'dust';
+    liveCanvas(this.#dustCanvas, () => { if (!this.#suspended) this.#drawDust(); });
     this.#drawEdit.className = 'draw-edit'; this.#drawEdit.setAttribute('data-no-capture', '');
     this.#hoverCanvas.className = 'hover';
     this.#liveButton.hidden = true;

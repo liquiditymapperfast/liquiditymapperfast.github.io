@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { arrowHead, blockArrow, clampRect, fileName, hitHandle, inside, markPlacement, markText, rectFrom, resizeRect, snapAngle, squareTo, toolbarPlacement, worthKeeping, type Shape } from '../src/app/screenshot/shapes.ts';
-import { splitTop, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints } from '../src/app/screenshot/capture.ts';
+import { borderSides, clear, contentText, cssMatrix, flexStarts, maskPlace, maskUrl, outerShadows, splitTop, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
 
 const screen = { w: 1200, h: 800 };
 
@@ -120,4 +120,92 @@ test('an SVG drawing is read from its computed styles: where its text lines up, 
   assert.deepEqual(svgPaintOrder('normal'), ['fill', 'stroke']); assert.deepEqual(svgPaintOrder('stroke'), ['stroke', 'fill']);
   assert.deepEqual(svgPaintOrder('markers stroke fill'), ['stroke', 'fill']); assert.deepEqual(svgPaintOrder('fill markers'), ['fill', 'stroke']);
   assert.equal(svgPaints('rgb(15, 164, 74)'), true); assert.equal(svgPaints('none'), false); assert.equal(svgPaints('url("#g")'), false); assert.equal(svgPaints(''), false);
+});
+
+test('a border is drawn side by side as the page draws it: a side of no width between two wide ones leaves a triangle', () => {
+  // The coin key's caret: an empty box with a 4 px top border in the text colour and transparent 4 px sides, so a triangle pointing down.
+  const [top, right, , left] = borderSides({ x: 10, y: 20, w: 8, h: 4 }, [4, 4, 0, 4]);
+  assert.deepEqual(top, [[10, 20], [18, 20], [14, 24], [14, 24]], 'the top side narrows to the middle of its lower edge');
+  assert.deepEqual(right, [[18, 20], [18, 24], [14, 24], [14, 24]]);
+  assert.deepEqual(left, [[10, 24], [10, 20], [14, 24], [14, 24]]);
+  // An ordinary box: each side a band as wide as its border, mitred at the corners.
+  const [t2, r2, b2, l2] = borderSides({ x: 0, y: 0, w: 100, h: 50 }, [1, 2, 3, 4]);
+  assert.deepEqual(t2, [[0, 0], [100, 0], [98, 1], [4, 1]]);
+  assert.deepEqual(r2, [[100, 0], [100, 50], [98, 47], [98, 1]]);
+  assert.deepEqual(b2, [[100, 50], [0, 50], [4, 47], [98, 47]]);
+  assert.deepEqual(l2, [[0, 50], [0, 0], [4, 1], [4, 47]]);
+  assert.equal(clear('rgba(0, 0, 0, 0)'), true); assert.equal(clear('transparent'), true); assert.equal(clear('color(srgb 0.1 0.2 0.3 / 0)'), true);
+  assert.equal(clear('rgba(27, 29, 33, 0.5)'), false); assert.equal(clear('rgb(27, 29, 33)'), false); assert.equal(clear('rgba(1, 2, 3, 0.05)'), false);
+  // A colour whose last channel is 0 is not clear: the Terminal theme's green keys (rgb(0, 255, 0)) went missing from the picture.
+  assert.equal(clear('rgb(0, 255, 0)'), false); assert.equal(clear('rgb(0, 0, 0)'), false); assert.equal(clear('rgba(0, 255, 0, 1)'), false);
+  assert.equal(clear('rgba(255, 0, 0, 0.0)'), true); assert.equal(clear('color(srgb 0 1 0)'), false); assert.equal(clear('oklab(0.5 0.1 0 / 0)'), true);
+});
+
+test('an icon drawn as a colour through a mask: its picture is read only from this page or a data address, and laid where the CSS puts it', () => {
+  const origin = 'https://liquiditymapperfast.github.io/';
+  const svg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3C/svg%3E`;
+  assert.equal(maskUrl(`url("${svg}")`, origin), svg, 'a data address, quoted as the computed style writes it');
+  assert.equal(maskUrl('url("data:image/svg+xml,a\\"b")', origin), 'data:image/svg+xml,a"b', 'escapes are undone');
+  assert.equal(maskUrl('url(/icons/x.svg)', origin), '/icons/x.svg');
+  assert.equal(maskUrl('url("https://elsewhere.example/x.svg")', origin), null, 'another site would spoil the picture: left out');
+  assert.equal(maskUrl('linear-gradient(red, blue)', origin), null);
+  // `center / contain`: a square icon in a wider box is as tall as the box, in its middle.
+  assert.deepEqual(maskPlace('contain', '50% 50%', 20, 10, 24, 24), { x: 5, y: 0, w: 10, h: 10 });
+  assert.deepEqual(maskPlace('cover', '50% 50%', 20, 10, 24, 24), { x: 0, y: -5, w: 20, h: 20 });
+  // The classic frame's keys: `0 0 / 11px 9px`.
+  assert.deepEqual(maskPlace('11px 9px', '0px 0px', 16, 14, 0, 0), { x: 0, y: 0, w: 11, h: 9 });
+  assert.deepEqual(maskPlace('12px auto', '100% 0%', 20, 20, 24, 12), { x: 8, y: 0, w: 12, h: 6 }, 'one length: the other from the picture');
+  assert.deepEqual(maskPlace('auto', '0% 0%', 30, 30, 0, 0), { x: 0, y: 0, w: 30, h: 30 }, 'a picture of no size of its own fills the box');
+  assert.deepEqual(maskPlace('contain, 4px 4px', '50% 50%, 0px 0px', 10, 10, 1, 1), { x: 0, y: 0, w: 10, h: 10 }, 'the first layer');
+});
+
+test('a turned box is drawn turned: its matrix, and where its corner was before the turn', () => {
+  assert.equal(cssMatrix('none'), null);
+  assert.deepEqual(cssMatrix('matrix(0.707107, 0.707107, -0.707107, 0.707107, 0, 0)'), [0.707107, 0.707107, -0.707107, 0.707107, 0, 0]);
+  assert.deepEqual(cssMatrix('matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 6, 0, 1)'), [1, 0, 0, 1, 5, 6]);
+  // A 10 × 4 box turned a quarter about its middle: its bounds are 4 × 10 around the same middle.
+  const corner = unturnedCorner({ x: 103, y: 47, w: 4, h: 10 }, 10, 4, [0, 1, -1, 0, 0, 0], [5, 2])!;
+  assert.ok(Math.abs(corner.x - 100) < 1e-9 && Math.abs(corner.y - 50) < 1e-9);
+  // Half a turn about the middle leaves the box where it was.
+  const half = unturnedCorner({ x: 20, y: 30, w: 8, h: 6 }, 8, 6, [-1, 0, 0, -1, 0, 0], [4, 3])!;
+  assert.ok(Math.abs(half.x - 20) < 1e-9 && Math.abs(half.y - 30) < 1e-9);
+  assert.equal(unturnedCorner({ x: 0, y: 0, w: 5, h: 5 }, 5, 5, [1, 0, 0, 1, 7, 8], [0, 0]), null, 'a move alone: the bounds are the box');
+});
+
+test('the text of a ::before or ::after: its strings and attributes, and nothing for content that is not text', () => {
+  const attrs: Record<string, string> = { 'data-mark': 'OK', 'aria-label': 'Settings' };
+  const attr = (name: string): string | null => attrs[name] ?? null;
+  assert.equal(contentText('""', attr), '', 'an empty string: the box alone');
+  assert.equal(contentText('"LMF"', attr), 'LMF');
+  assert.equal(contentText('attr(data-mark)', attr), 'OK');
+  assert.equal(contentText('"(" attr(aria-label) ")"', attr), '(Settings)');
+  assert.equal(contentText('attr(title)', attr), '', 'a missing attribute writes nothing');
+  assert.equal(contentText('"\\2715"', attr), '✕', 'a hexadecimal escape');
+  assert.equal(contentText('"a\\"b"', attr), 'a"b');
+  assert.equal(contentText('counter(item)', attr), null);
+  assert.equal(contentText('url("x.png")', attr), null);
+});
+
+test('the items of a flex line start where the line justifies them, with their margins and the gap between them', () => {
+  // The Layouts key: icon 13, gap 5, text 44, in a line from 7 of length 56 starting at the line's start.
+  const items = [{ size: 13, before: 0, after: 0 }, { size: 44, before: 0, after: 0 }];
+  assert.deepEqual(flexStarts(7, 56, 5, 'normal', items), [7, 25]);
+  assert.deepEqual(flexStarts(7, 56, 5, 'flex-start', items), [7, 25]);
+  // Compact: the text has no width, the icon is centred with the gap still counted.
+  const compact = [{ size: 13, before: 0, after: 0 }, { size: 0, before: 0, after: 0 }];
+  assert.deepEqual(flexStarts(0, 28, 5, 'center', compact), [5, 23]);
+  assert.deepEqual(flexStarts(0, 100, 0, 'flex-end', [{ size: 10, before: 2, after: 3 }]), [87]);
+  assert.deepEqual(flexStarts(0, 100, 0, 'space-between', [{ size: 10, before: 0, after: 0 }, { size: 10, before: 0, after: 0 }]), [0, 90]);
+  assert.deepEqual(flexStarts(0, 100, 0, 'space-around', [{ size: 10, before: 0, after: 0 }, { size: 10, before: 0, after: 0 }]), [20, 70]);
+  const evenly = flexStarts(0, 100, 0, 'space-evenly', [{ size: 10, before: 0, after: 0 }, { size: 10, before: 0, after: 0 }]);
+  assert.ok(Math.abs(evenly[0]! - 80 / 3) < 1e-9 && Math.abs(evenly[1]! - (2 * 80 / 3 + 10)) < 1e-9, 'space-evenly: three equal spaces');
+  assert.deepEqual(flexStarts(0, 100, 4, 'normal', []), []);
+});
+
+test('a box keeps its outer shadows, read from the computed box-shadow, the first on top; inset ones and clear ones are left out', () => {
+  assert.deepEqual(outerShadows('none'), []);
+  assert.deepEqual(outerShadows('rgba(0, 0, 0, 0.28) 3px 3px 0px 0px'), [{ color: 'rgba(0, 0, 0, 0.28)', x: 3, y: 3, blur: 0, spread: 0 }]);
+  assert.deepEqual(outerShadows('rgb(15, 164, 74) 0px 0px 6px 1px, rgba(0, 0, 0, 0.5) 0px 1px 0px 0px inset'), [{ color: 'rgb(15, 164, 74)', x: 0, y: 0, blur: 6, spread: 1 }]);
+  assert.deepEqual(outerShadows('rgba(0, 0, 0, 0) 2px 2px 4px 0px'), [], 'a clear shadow draws nothing');
+  assert.deepEqual(outerShadows('color(srgb 0.1 0.2 0.3 / 0.4) -1px 2px 3px 0px').map(s => [s.color, s.x, s.y, s.blur]), [['color(srgb 0.1 0.2 0.3 / 0.4)', -1, 2, 3]]);
 });

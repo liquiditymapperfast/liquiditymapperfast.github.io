@@ -3,7 +3,7 @@ import { isCoarse } from '../device.ts';
 import { AUTHOR } from '../author.ts';
 import { setTip } from '../tip.ts';
 import { timeZone } from '../format.ts';
-import { capturePage, type Snapshot } from './capture.ts';
+import { capturePageReady, type Snapshot } from './capture.ts';
 import {
   BLOCK_BORDERS, BLOCK_FILL_START, BLOCK_SIZE, COLORS, CURSORS, WIDTHS, clampRect, drawShape, fileName, hitHandle, inside, markText, paintMark, rectFrom, resizeRect, textSize, toolbarPlacement, worthKeeping,
   HANDLES, handlePoint, snapAngle, squareTo, type BlockBorder, type Handle, type Pt, type Rect, type Shape, type Tool,
@@ -81,13 +81,17 @@ const LENGTH_KEY = 'hlm-shot-gif-seconds';
 /** The tolerance (levels) from which a GIF says that its faintest changes were left out. */
 const FAINT_TOLERANCE = 8;
 
-let active: { close(): void } | null = null;
+let active: { close(): void } | null = null, starting = false;
 
-/** Freeze the page and start the selection. Calling it while it is open closes it. */
-export function startScreenshot(): void {
+/**
+ * Freeze the page and start the selection. Calling it while it is open closes it. The first picture after the page opens waits a moment
+ * for the icons' mask pictures to be read (`capturePageReady`); asked again meanwhile, it is not started twice.
+ */
+export async function startScreenshot(): Promise<void> {
   if (active) { active.close(); return; }
-  const snap = capturePage();
-  active = openEditor(snap);
+  if (starting) return;
+  starting = true;
+  try { const snap = await capturePageReady(); if (!active) active = openEditor(snap); } finally { starting = false; }
 }
 
 function openEditor(snap: Snapshot): { close(): void } {
