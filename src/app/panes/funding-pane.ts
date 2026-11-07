@@ -121,7 +121,8 @@ export class FundingPane extends TimePane {
     for (const r of visRows) { lo = Math.min(lo, r.per8h); hi = Math.max(hi, r.per8h); }
     for (const q of visPremium) { lo = Math.min(lo, q.p); hi = Math.max(hi, q.p); }
     if (forming && formShown) { lo = Math.min(lo, forming.per8h); hi = Math.max(hi, forming.per8h); if (forming.premium !== null) { lo = Math.min(lo, forming.premium); hi = Math.max(hi, forming.premium); } }
-    const pad = (hi - lo) * 0.08, min = lo - pad, max = hi + pad;
+    // A view whose every rate is exactly 0 (Deribit has whole runs of zero hours, and no band to widen the scale) still has a scale.
+    const pad = (hi - lo) * 0.08 || 0.0001, min = lo - pad, max = hi + pad;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (lineBottom - top);
     this.scaleAt = at => at <= lineBottom ? rateText(min + (1 - (at - top) / (lineBottom - top)) * (max - min), 3)
       : band && at >= bandTop && at <= bandBottom ? `${Math.round(50 + (mid - at) / half * 50)}%` : null;

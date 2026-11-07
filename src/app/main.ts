@@ -396,7 +396,7 @@ async function main(): Promise<void> {
     if (changed.has('oi') || changed.has('show')) { oi.invalidate(); bars.invalidate(); }
     else if (changed.has('oiReading') || changed.has('oiFine')) oi.invalidate();
     if (changed.has('oiChange')) oi.settingsChanged();
-    // The minute readings NL/NS works candles out on are read while something shown uses them (`fineWanted`), whatever the timeframe.
+    // The minute readings NL/NS works candles out on are read while something shown uses them (`fineWant`), whatever the timeframe.
     if (['show', 'oiChange', 'delta', 'timeframe', 'oiParts', 'oiInstrument', 'fundingVenue'].some(k => changed.has(k as never))) void hub.loadOiFine();
     // A script that reads the change in open interest runs again once it lands, not at its next refresh.
     if (changed.has('oi') || changed.has('oiParts')) script.refresh();

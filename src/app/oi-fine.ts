@@ -20,19 +20,31 @@ export function partsOnScreen(state: Pick<AppState, 'oi' | 'oiParts' | 'oiInstru
 }
 
 /**
- * The markets whose minute readings are read: every market counted while the OI pane's bars are split by who or the Delta pane shows NL/NS;
- * with only the Funding pane wanting them, Hyperliquid's perpetual alone, and only while it shows Hyperliquid (its share of new positions
- * buyers opened, hour by hour). None on a one-minute chart: there the candle is the minute.
+ * What wants minute readings: every market counted (`all`: the OI pane's bars split by who, NL/NS in the Delta pane), Hyperliquid's perpetual
+ * alone (`hyperliquid`: only the Funding pane, while it shows Hyperliquid, for its share of new positions buyers opened hour by hour), or
+ * nothing (null; always on a one-minute chart, where the candle is the minute). Apart from which markets are on screen: a timeframe or market
+ * switch clears those for a moment, and what is held must not be let go then.
  */
-export function fineTargets(state: Pick<AppState, 'show' | 'oiChange' | 'delta' | 'fundingVenue' | 'oi' | 'oiParts' | 'oiInstrument' | 'oiPrice'>, tfMs: number): OiPart[] {
-  if (tfMs <= 60_000) return [];
-  if ((state.show.oi && state.oiChange === 'who') || (state.show.delta && state.delta.style === 'nlns')) return partsOnScreen(state);
-  if (!state.show.funding) return [];
+export function fineWant(state: Pick<AppState, 'show' | 'oiChange' | 'delta' | 'fundingVenue'>, tfMs: number): 'all' | 'hyperliquid' | null {
+  if (tfMs <= 60_000) return null;
+  if ((state.show.oi && state.oiChange === 'who') || (state.show.delta && state.delta.style === 'nlns')) return 'all';
+  if (!state.show.funding) return null;
   const coin = currentCoin();
-  if (fundingVenueOf(state.fundingVenue, v => !!coin.markets[v]) !== 'hyperliquid') return [];
-  const id = instrumentIdFor('hyperliquid', coin);
-  return partsOnScreen(state).filter(part => part.id === id);
+  return fundingVenueOf(state.fundingVenue, v => !!coin.markets[v]) === 'hyperliquid' ? 'hyperliquid' : null;
 }
 
-/** What a set of minute readings is read for: its markets, and an inverse market's one price. */
-export const fineKey = (parts: readonly OiPart[]): string => parts.map(part => `${part.id}@${part.usdAt ?? 0}`).join(',');
+/** The markets on screen whose minute readings are read (`fineWant`); none while it wants none, or while the markets are being read again. */
+export function fineTargets(state: Pick<AppState, 'show' | 'oiChange' | 'delta' | 'fundingVenue' | 'oi' | 'oiParts' | 'oiInstrument' | 'oiPrice'>, tfMs: number): OiPart[] {
+  const want = fineWant(state, tfMs);
+  if (!want) return [];
+  const parts = partsOnScreen(state);
+  if (want === 'all') return parts;
+  const id = instrumentIdFor('hyperliquid', currentCoin());
+  return parts.filter(part => part.id === id);
+}
+
+/**
+ * Which markets a set of minute readings is read for. Not an inverse market's one price: that follows each whole read of the bars on screen,
+ * and a new one must not ask for a day of minutes again (the minute readings keep the price they were first read at).
+ */
+export const fineKey = (parts: readonly OiPart[]): string => parts.map(part => part.id).join(',');

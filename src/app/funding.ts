@@ -63,6 +63,18 @@ const bitgetOk = (a: unknown): boolean => at(a, 'code') === undefined || String(
 /** A settlement stamped a few milliseconds past its time (Hyperliquid's, Binance's) is put on the minute. */
 const onMinute = (t: number): number => Math.round(t / 60_000) * 60_000;
 const row = (t: number, rate: number, hours: number): FundingRow | null => Number.isFinite(t) && t > 0 && Number.isFinite(rate) && hours > 0 ? { t: onMinute(t), rate, per8h: rate * 8 / hours, hours } : null;
+/** The intervals a settlement can have, in hours. */
+const INTERVALS: readonly number[] = [1, 2, 4, 8];
+/**
+ * Settlements with each its own interval: the gap to the one before (or, for the first, to the one after) where that is 1, 2, 4 or 8 hours,
+ * else `fallback`, the venue's interval now. A symbol's interval changes over time (Bybit's LPTUSDT settled every hour before March 2026 and
+ * every four after), and its old settlements put per eight hours at today's interval read four times too low.
+ */
+function withIntervals(raw: readonly { t: number; rate: number }[], fallback: number): FundingRow[] {
+  const sorted = [...raw].filter(r => Number.isFinite(r.t)).sort((a, b) => a.t - b.t);
+  const gap = (j: number): number => { const g = j > 0 && j < sorted.length ? Math.round((sorted[j]!.t - sorted[j - 1]!.t) / HOUR) : 0; return INTERVALS.includes(g) ? g : 0; };
+  return sorted.flatMap((r, i) => { const one = row(r.t, r.rate, gap(i) || gap(i + 1) || fallback); return one ? [one] : []; });
+}
 
 /**
  * Each venue's own interval for a symbol, in hours, read once: Binance lists only the symbols it changed (its whole list read once for every
@@ -93,14 +105,16 @@ function intervalOf(venue: FundingVenue, symbol: string, get: Fetcher): Promise<
 
 /**
  * A venue's settled funding over [from, to], oldest first, for Hyperliquid its premium each hour too (its funding record carries the hour's
- * premium), and `from`: how far back the read really reached. At most `PAGES` pages: a venue paged forward (Hyperliquid, Binance) is read
- * from as far back as those pages reach from `to`, so the newest are never left out; one paged back from `to` stops where its pages end. What is
- * held is then held whole, never claimed further back than it was read.
+ * premium), and `from`: how far back the read really reached. At most `PAGES` pages: Hyperliquid, paged forward, is read from as far back as
+ * those pages reach from `to` (an hour a record), so the newest are never left out; the others, paged back from `to`, stop where their pages
+ * end. What is held is then held whole, never claimed further back than it was read.
  */
 export async function readFunding(venue: FundingVenue, listing: Listing, from: number, to: number, get: Fetcher = webGet): Promise<{ rows: FundingRow[]; premium: PremiumRow[]; from: number }> {
   const s = listing.symbol, rows = new Map<number, FundingRow>(), premium: PremiumRow[] = [];
   const take = (r: FundingRow | null): void => { if (r && r.t >= from - 8 * HOUR && r.t <= to + HOUR) rows.set(r.t, r); };
-  let reached = from;
+  // The venues whose interval can change: their settlements are gathered first, each then given its own interval (`withIntervals`).
+  const raw: { t: number; rate: number }[] = [];
+  let reached = from, fallback = 8;
   if (venue === 'hyperliquid') {
     // Oldest first, 500 hours a page: each next page starts after the newest of the last. The record at the top of an hour settles the hour before it.
     reached = Math.max(from, to - PAGES * 500 * HOUR);
@@ -115,31 +129,32 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
       start = newest + 1;
     }
   } else if (venue === 'binance') {
-    // Oldest first from `startTime`, 1,000 settlements a page: each next page starts after the newest of the last.
-    const hours = await intervalOf(venue, s, get);
-    reached = Math.max(from, to - PAGES * 1000 * hours * HOUR);
-    for (let start = reached, page = 0; page < PAGES && start < to; page++) {
-      const got = listOf(await get(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&startTime=${Math.floor(start)}&endTime=${Math.floor(to)}&limit=1000`), true, venue);
-      let newest = -Infinity;
-      for (const r of got) { const t = num(at(r, 'fundingTime')); take(row(t, num(at(r, 'fundingRate')), hours)); if (t > newest) newest = t; }
-      if (got.length < 1000 || !Number.isFinite(newest)) break;
-      start = newest + 1;
+    // `endTime` alone answers the 1,000 settlements before it (checked 2026-11-07): paged back from `to`, so the newest are always read, whatever
+    // the symbol's interval was over its history.
+    fallback = await intervalOf(venue, s, get);
+    let end = to;
+    for (let page = 0; page < PAGES && end > from; page++) {
+      const got = listOf(await get(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&endTime=${Math.floor(end)}&limit=1000`), true, venue);
+      let oldest = Infinity;
+      for (const r of got) { const t = num(at(r, 'fundingTime')); raw.push({ t, rate: num(at(r, 'fundingRate')) }); if (t < oldest) oldest = t; }
+      if (got.length < 1000 || !Number.isFinite(oldest) || oldest <= from) { end = from; break; }
+      end = oldest - 1;
     }
+    reached = Math.max(from, end);
   } else if (venue === 'bybit') {
-    const hours = await intervalOf(venue, s, get);
+    fallback = await intervalOf(venue, s, get);
     let end = to, page = 0;
     for (; page < PAGES && end > from; page++) {
       const a = await get(`https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${s}&endTime=${Math.floor(end)}&limit=200`);
       const got = listOf(a, bybitOk(a), venue, 'result', 'list');
       let oldest = Infinity;
-      for (const r of got) { const t = num(at(r, 'fundingRateTimestamp')); take(row(t, num(at(r, 'fundingRate')), hours)); if (t < oldest) oldest = t; }
+      for (const r of got) { const t = num(at(r, 'fundingRateTimestamp')); raw.push({ t, rate: num(at(r, 'fundingRate')) }); if (t < oldest) oldest = t; }
       if (got.length < 200 || !Number.isFinite(oldest) || oldest <= from) { end = from; break; }
       end = oldest - 1;
     }
     reached = Math.max(from, end);
   } else if (venue === 'okx') {
-    // Newest first, 100 a page; `after` asks for older than a time. Its interval is read from the gaps between settlements.
-    const raw: { t: number; rate: number }[] = [];
+    // Newest first, 100 a page; `after` asks for older than a time. Its interval is read from the gaps between settlements alone.
     let after = to + 1;
     for (let page = 0; page < PAGES && after > from; page++) {
       const a = await get(`https://www.okx.com/api/v5/public/funding-rate-history?instId=${s}&limit=100&after=${Math.floor(after)}`);
@@ -150,17 +165,15 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
       after = oldest;
     }
     reached = Math.max(from, after);
-    raw.sort((a, b) => a.t - b.t);
-    raw.forEach((r, i) => { const gap = i > 0 ? (r.t - raw[i - 1]!.t) / HOUR : raw.length > 1 ? (raw[1]!.t - r.t) / HOUR : 8; take(row(r.t, r.rate, gap > 0 && gap <= 8 ? Math.round(gap) : 8)); });
   } else if (venue === 'bitget') {
     // Newest first, a page at a time by number.
-    const hours = await intervalOf(venue, s, get);
+    fallback = await intervalOf(venue, s, get);
     let oldestRead = to;
     for (let page = 1; page <= PAGES; page++) {
       const a = await get(`https://api.bitget.com/api/v2/mix/market/history-fund-rate?symbol=${s}&productType=usdt-futures&pageSize=100&pageNo=${page}`);
       const got = listOf(a, bitgetOk(a), venue, 'data');
       let oldest = Infinity;
-      for (const r of got) { const t = num(at(r, 'fundingTime')); take(row(t, num(at(r, 'fundingRate')), hours)); if (t < oldest) oldest = t; }
+      for (const r of got) { const t = num(at(r, 'fundingTime')); raw.push({ t, rate: num(at(r, 'fundingRate')) }); if (t < oldest) oldest = t; }
       if (got.length < 100 || !(oldest > from)) { oldestRead = from; break; }
       oldestRead = oldest;
     }
@@ -176,6 +189,7 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
     }
     reached = Math.max(from, end);
   }
+  for (const r of withIntervals(raw, fallback)) take(r);
   return { rows: [...rows.values()].sort((a, b) => a.t - b.t), premium: premium.sort((a, b) => a.t - b.t), from: reached };
 }
 
@@ -183,29 +197,38 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
 const BINANCE_PREMIUM: Readonly<Record<number, string>> = { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1d' };
 const BYBIT_PREMIUM: Readonly<Record<number, string>> = { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' };
 
-/** Binance's or Bybit's premium index per candle of `tfMs` over [from, to], oldest first (the candle's close), at most `PAGES` pages. */
-export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: number, from: number, to: number, get: Fetcher = webGet): Promise<PremiumRow[]> {
+/**
+ * Binance's or Bybit's premium index per candle of `tfMs` over [from, to], oldest first (the candle's close), at most `PAGES` pages, and the
+ * stretch the read really covered (`from`, `to`): where its pages ran out first it ends there, never claiming the rest.
+ */
+export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: number, from: number, to: number, get: Fetcher = webGet): Promise<{ rows: PremiumRow[]; from: number; to: number }> {
   const s = listing.symbol, out = new Map<number, number>();
+  let lo = from, hi = to;
   if (venue === 'binance' && BINANCE_PREMIUM[tfMs]) {
-    // Oldest first from `startTime`, 1,500 a page, as its candles are.
-    for (let start = from, page = 0; page < PAGES && start < to; page++) {
+    // Oldest first from `startTime`, 1,500 a page, as its candles are: pages that run out end the stretch at their newest candle.
+    let start = from, page = 0;
+    for (; page < PAGES && start < to; page++) {
       const got = listOf(await get(`https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=${s}&interval=${BINANCE_PREMIUM[tfMs]}&startTime=${Math.floor(start)}&endTime=${Math.floor(to)}&limit=1500`), true, venue);
       let newest = -Infinity;
       for (const r of got) { const t = num(at(r, 0)), p = num(at(r, 4)); if (Number.isFinite(t) && Number.isFinite(p)) { out.set(t, p); if (t > newest) newest = t; } }
-      if (got.length < 1500 || !Number.isFinite(newest)) break;
+      if (got.length < 1500 || !Number.isFinite(newest)) { start = to; break; }
       start = newest + 1;
     }
+    if (start < to) hi = start;
   } else if (venue === 'bybit' && BYBIT_PREMIUM[tfMs]) {
-    for (let end = to, page = 0; page < PAGES && end > from; page++) {
+    // Newest first, 1,000 a page: pages that run out end the stretch at their oldest candle.
+    let end = to;
+    for (let page = 0; page < PAGES && end > from; page++) {
       const a = await get(`https://api.bybit.com/v5/market/premium-index-price-kline?category=linear&symbol=${s}&interval=${BYBIT_PREMIUM[tfMs]}&start=${Math.floor(from)}&end=${Math.floor(end)}&limit=1000`);
       const got = listOf(a, bybitOk(a), venue, 'result', 'list');
       let oldest = Infinity;
       for (const r of got) { const t = num(at(r, 0)), p = num(at(r, 4)); if (Number.isFinite(t) && Number.isFinite(p)) { out.set(t, p); if (t < oldest) oldest = t; } }
-      if (got.length < 1000 || !Number.isFinite(oldest)) break;
+      if (got.length < 1000 || !Number.isFinite(oldest)) { end = from; break; }
       end = oldest - 1;
     }
+    if (end > from) lo = end;
   }
-  return [...out].map(([t, p]) => ({ t, p })).sort((a, b) => a.t - b.t);
+  return { rows: [...out].map(([t, p]) => ({ t, p })).sort((a, b) => a.t - b.t), from: lo, to: hi };
 }
 
 /** The funding accruing now on a venue, when it settles and the premium now (null where the venue would not say). */
@@ -283,21 +306,28 @@ export class FundingSource {
     let premium: readonly PremiumRow[] = venue === 'hyperliquid' ? held?.premium ?? [] : [], premiumMs = HOUR;
     if (venue === 'binance' || venue === 'bybit') {
       premiumMs = tfMs;
-      // The view's candles and half a view each side, at most as many as one read holds back from its right edge; held ones are read again
-      // only at the newest end.
-      const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), to = Math.min(t1 + LOOK_AHEAD * span, now) + tfMs, from = Math.max(t0 - LOOK_AHEAD * span - tfMs, to - PREMIUM_CANDLES * tfMs);
-      const needOlder = !p || Math.max(t0 - tfMs, to - PREMIUM_CANDLES * tfMs) < p.from - tfMs, needNewer = !!p && Math.min(t1, now) + tfMs > p.to && now - p.at > PREMIUM_FRESH_MS;
-      if (needOlder || needNewer) {
-        const lo = needOlder ? from : Math.max(from, p!.to - 2 * tfMs), hi = needOlder && p ? p.from + tfMs : Math.max(to, now);
-        this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(rows => {
-          const before = this.#premium.get(pk);
-          this.#premium.set(pk, { rows: mergeRows(before?.rows ?? [], rows), from: Math.min(lo, before?.from ?? lo), to: Math.max(hi, before?.to ?? hi), at: needOlder && before ? before.at : Date.now() });
+      // One unbroken stretch held per timeframe, [from, to). A view outside it is read with half a view each side, at most as many candles as
+      // one read holds back from its right edge; a view reaching now is read again at the newest end once a minute. A stretch read apart from
+      // the one held takes its place, so what is held never claims the gap between them.
+      const pk = `${key}|${tfMs}`, p = this.#premium.get(pk), edge = Math.min(t1, now) + tfMs, live = t1 >= now - tfMs;
+      const hiWant = Math.min(t1 + LOOK_AHEAD * span, now) + tfMs, loWant = Math.max(t0 - LOOK_AHEAD * span - tfMs, hiWant - PREMIUM_CANDLES * tfMs);
+      // Further back than what is held, or (a past view) further on; a view reaching now reads only its newest end again.
+      const outside = !p || Math.max(t0 - tfMs, edge - PREMIUM_CANDLES * tfMs) < p.from - tfMs || (!live && edge > p.to + tfMs);
+      const stale = !!p && live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs);
+      if (outside || stale) {
+        const lo = outside ? loWant : Math.max(loWant, p!.to - 2 * tfMs), hi = outside ? hiWant : now + tfMs;
+        this.#read(`premium|${pk}`, () => readPremium(venue, listing, tfMs, lo, hi, this.get).then(r => {
+          const before = this.#premium.get(pk), joins = before && r.from <= before.to + tfMs && r.to >= before.from - tfMs;
+          this.#premium.set(pk, joins
+            ? { rows: mergeRows(before.rows, r.rows), from: Math.min(r.from, before.from), to: Math.max(r.to, before.to), at: r.to >= now ? Date.now() : before.at }
+            : { rows: r.rows, from: r.from, to: r.to, at: Date.now() });
         }));
       }
       premium = p?.rows ?? [];
     }
-    const n = this.#now.get(key);
-    if (!n || now - n.at > NOW_FRESH_MS) this.#read(`now|${key}`, () => readFundingNow(venue, listing, this.get, now).then(value => { this.#now.set(key, { now: value, at: Date.now() }); }));
+    // The rate under way, every NOW_FRESH_MS, and again a few seconds after it settles (the one after it is under way then).
+    const n = this.#now.get(key), settled = !!n?.now && n.now.next !== null && n.now.next <= now;
+    if (!n || now - n.at > NOW_FRESH_MS || (settled && now - n.at > 3_000)) this.#read(`now|${key}`, () => readFundingNow(venue, listing, this.get, now).then(value => { this.#now.set(key, { now: value, at: Date.now() }); }), settled ? 5_000 : RETRY_MS);
     return { venue, rows: held?.rows ?? [], premium, premiumMs, now: n?.now ?? null, loading: !held && !this.#failed.has(rowsKind), failed: !held && this.#failed.has(rowsKind) };
   }
 

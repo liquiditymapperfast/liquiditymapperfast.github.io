@@ -14,7 +14,7 @@ import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { takeOiPushes, withOiPushes, type OiPush } from './oi-push.ts';
 import { replaying } from './replay/clock.ts';
 import { atOnePrice, inverseOi, oiSumOf, oiTail, type OiPart } from './oi-change.ts';
-import { OI_FINE_MS, OI_FINE_TAIL_MS, fineKey, fineTargets } from './oi-fine.ts';
+import { OI_FINE_MS, OI_FINE_TAIL_MS, fineKey, fineTargets, fineWant } from './oi-fine.ts';
 import { oiMarketIds } from './market-choice.ts';
 import { nextBookGone } from './cvd/ids.ts';
 import { t } from './i18n.ts';
@@ -855,9 +855,12 @@ export class Hub {
    * an answer for markets no longer wanted is dropped. Safe to call often.
    */
   loadOiFine(): Promise<void> {
-    const state = this.store.state, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, parts = fineTargets(state, tf);
+    const state = this.store.state, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     if (replaying()) return Promise.resolve();
-    if (!parts.length) { if (state.oiFine.length) this.store.set({ oiFine: [] }); this.#fineHeld = null; return Promise.resolve(); }
+    if (!fineWant(state, tf)) { if (state.oiFine.length) this.store.set({ oiFine: [] }); this.#fineHeld = null; return Promise.resolve(); }
+    // Wanted, but the markets on screen are being read again (a timeframe or market switch clears them for a moment): what is held stays.
+    const parts = fineTargets(state, tf);
+    if (!parts.length) return Promise.resolve();
     const key = fineKey(parts), now = Date.now(), held = this.#fineHeld;
     if (this.#fineInflight?.key === key) return this.#fineInflight.promise;
     const whole = !held || held.key !== key || now - held.at >= OI_WHOLE_MS;
@@ -875,16 +878,22 @@ export class Hub {
   /** Whether the markets wanting minute readings are still those of `key` (an answer for others is dropped). */
   #fineStill(key: string): boolean { return fineKey(fineTargets(this.store.state, TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000)) === key; }
   async #readFineWhole(key: string, parts: readonly OiPart[], now: number): Promise<void> {
-    const read = await Promise.all(parts.map(async part => ({ id: part.id, ...(part.usdAt ? { usdAt: part.usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - OI_FINE_MS, now + MINUTE, part.usdAt).catch((): OiBar[] => []) })));
+    // An inverse market's minutes keep the one price they were first read at (the bars on screen take a new one at each whole read).
+    const held = new Map(this.store.state.oiFine.map(part => [part.id, part.usdAt] as const));
+    const read = await Promise.all(parts.map(async part => {
+      const usdAt = held.get(part.id) ?? part.usdAt;
+      return { id: part.id, ...(usdAt ? { usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - OI_FINE_MS, now + MINUTE, usdAt).catch((): OiBar[] => []) };
+    }));
     if (!this.#fineStill(key)) return;
     const pushed = this.#fineDuring;
     this.store.set({ oiFine: read.map(part => withPushed(part, pushed, MINUTE)) });
     this.#fineHeld = { key, at: now, tailAt: now };
   }
   async #readFineTail(key: string, now: number): Promise<void> {
-    // A market with no reading held (none yet, or none in the last OI_FINE_MS) asks for the whole window.
-    const held = this.store.state.oiFine, froms = held.map(part => { const last = part.bars[part.bars.length - 1]; return Math.max(now - OI_FINE_MS, last ? last[0] - MINUTE : -Infinity); });
-    const tails = await Promise.all(held.map((part, i) => this.oiBars(part.id, '1m', froms[i]!, now + MINUTE, part.usdAt).catch((): OiBar[] => [])));
+    // A market with no reading held (none yet, or none in the last OI_FINE_MS) is left to its pushes and the next whole read: asking it for the
+    // whole window each minute asked a venue that answers nothing 25 times in 25 minutes.
+    const held = this.store.state.oiFine, froms = held.map(part => { const last = part.bars[part.bars.length - 1]; return last ? Math.max(now - OI_FINE_MS, last[0] - MINUTE) : now; });
+    const tails = await Promise.all(held.map((part, i) => part.bars.length ? this.oiBars(part.id, '1m', froms[i]!, now + MINUTE, part.usdAt).catch((): OiBar[] => []) : Promise.resolve<OiBar[]>([])));
     // On the readings held now: pushes may have moved them while the tails were read, and those are put on the answer again.
     const current = this.store.state.oiFine, pushed = this.#fineDuring;
     if (!this.#fineStill(key) || current.length !== held.length || current.some((part, i) => part.id !== held[i]!.id)) return;

@@ -55,7 +55,7 @@ export const PRESETS: readonly PresetDef[] = [
   },
   {
     id: 'everything', name: () => t('Everything'), blurb: () => t('Every panel at once, for a large screen.'),
-    cvd: true, book: true, strip: [['bars', 0], ['depth', 1], ['oi', 1], ['delta', 1], ['ls', 0.8], ['funding', 0.9], ['lt', 0.9]], stripShare: 0.62,
+    cvd: true, book: true, strip: [['bars', 0], ['depth', 1], ['oi', 1], ['delta', 1], ['ls', 0.8], ['lt', 0.9], ['funding', 0.9]], stripShare: 0.62,
   },
 ];
 

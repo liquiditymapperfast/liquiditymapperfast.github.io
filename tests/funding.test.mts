@@ -23,14 +23,41 @@ test('Hyperliquid: hourly funding put per eight hours, each record\'s premium th
   assert.equal(get.asked.length, 1, 'fewer than 500 records: one page');
 });
 
-test('Binance pages forward from the start; its interval comes from fundingInfo (a symbol it does not list settles every eight hours)', async () => {
-  const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ symbol: 'BTCUSDT', fundingTime: from + i * 8 * H + 1, fundingRate: '0.0001', markPrice: '75000' }));
-  const get = venue(url => url.includes('fundingInfo') ? [{ symbol: 'GTCUSDT', fundingIntervalHours: 4 }]
-    : url.includes(`startTime=${T}&`) ? page(T, 1000) : page(T + 1000 * 8 * H, 3));
-  const { rows } = await readFunding('binance', BTC, T, T + 1003 * 8 * H, get);
-  assert.equal(rows.length, 1003, 'a full page asks for the next, starting after the newest of the last');
+test('Binance pages back from now by endTime alone; its interval comes from fundingInfo (a symbol it does not list settles every eight hours)', async () => {
+  // As Binance answers `endTime` alone: the 1,000 settlements before it, oldest first.
+  const all = Array.from({ length: 1003 }, (_, i) => ({ symbol: 'BTCUSDT', fundingTime: T + i * 8 * H + 1, fundingRate: '0.0001', markPrice: '75000' }));
+  const get = venue(url => url.includes('fundingInfo') ? [{ symbol: 'GTCUSDT', fundingIntervalHours: 4 }] : all.filter(r => r.fundingTime <= Number(/endTime=(\d+)/.exec(url)![1])).slice(-1000));
+  const { rows, from } = await readFunding('binance', BTC, T, T + 1003 * 8 * H, get);
+  assert.equal(rows.length, 1003, 'a full page asks for the one before it');
+  assert.equal(from, T, 'it reached the start asked for');
   assert.ok(rows.every(r => r.hours === 8 && Math.abs(r.per8h - 0.0001) < 1e-12));
-  assert.equal(get.asked.filter(u => u.includes('fundingRate?')).length, 2);
+  const pages = get.asked.filter(u => u.includes('fundingRate?'));
+  assert.equal(pages.length, 2); assert.ok(pages.every(u => !u.includes('startTime')), 'never from a start, which would read the oldest first');
+});
+
+test('each settlement at its own interval: a symbol that settled every hour before every four is not read four times too low', async () => {
+  const times = [...Array.from({ length: 10 }, (_, i) => T + i * H), ...Array.from({ length: 5 }, (_, i) => T + 13 * H + i * 4 * H)];
+  const bybit = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 240 }] } }
+    : { retCode: 0, result: { list: [...times].reverse().map(t => ({ fundingRate: '0.0000125', fundingRateTimestamp: String(t) })) } });
+  const { rows } = await readFunding('bybit', { symbol: 'LPTUSDT', unit: 1 }, T - H, T + 40 * H, bybit);
+  assert.equal(rows.length, 15);
+  assert.deepEqual(rows.slice(0, 10).map(r => [r.hours, r.per8h.toFixed(6)]), Array.from({ length: 10 }, () => [1, '0.000100']), 'hourly: ×8');
+  assert.deepEqual(rows.slice(10).map(r => [r.hours, r.per8h.toFixed(6)]), Array.from({ length: 5 }, () => [4, '0.000025']), 'every four hours: ×2');
+});
+
+test('a premium read says what it reached when its pages run out, forward (Binance) and back (Bybit)', async () => {
+  const M = 60_000;
+  // As Binance answers: the candles from the first whole minute at or after `startTime`.
+  const binance = venue(url => { const s = Number(/startTime=(\d+)/.exec(url)![1]), e = Number(/endTime=(\d+)/.exec(url)![1]); const out: unknown[] = []; for (let t = Math.ceil(s / M) * M; t < e && out.length < 1500; t += M) out.push([t, '0', '0', '0', '-0.0001', '0', t + M - 1]); return out; });
+  const forward = await readPremium('binance', BTC, M, T, T + 20_000 * M, binance);
+  assert.equal(forward.rows.length, 12_000);
+  assert.equal(forward.from, T); assert.ok(forward.to > T + 11_999 * M && forward.to <= T + 12_000 * M, 'it ends where its eight pages ended, not at the end asked for');
+  const bybit = venue(url => { const e = Number(/end=(\d+)/.exec(url)![1]), out: unknown[] = []; for (let t = Math.floor(e / M) * M; out.length < 1000; t -= M) out.push([String(t), '0', '0', '0', '-0.0002']); return { retCode: 0, result: { list: out } }; });
+  const back = await readPremium('bybit', BTC, M, T, T + 20_000 * M, bybit);
+  assert.equal(back.rows.length, 8_000);
+  assert.equal(back.to, T + 20_000 * M); assert.ok(back.from > T + 11_000 * M, 'it starts where its eight pages ended');
+  const whole = await readPremium('binance', BTC, M, T, T + 600 * M, binance);
+  assert.deepEqual([whole.from, whole.to, whole.rows.length], [T, T + 600 * M, 600], 'read whole: the stretch asked for');
 });
 
 test('Bybit, OKX, Bitget and Deribit: newest first, back to the start; a venue settling every four hours doubles to eight', async () => {
@@ -47,11 +74,11 @@ test('Bybit, OKX, Bitget and Deribit: newest first, back to the start; a venue s
 
 test('the premium per candle (Binance, Bybit), the funding now, and what a malformed answer gives', async () => {
   const binance = venue(() => [[T, '-0.0004', '0', '-0.0007', '-0.00045', '0', T + H - 1], [T + H, '-0.0005', '0', '-0.0007', '-0.00053', '0', T + 2 * H - 1]]);
-  assert.deepEqual(await readPremium('binance', BTC, H, T, T + 2 * H, binance), [{ t: T, p: -0.00045 }, { t: T + H, p: -0.00053 }]);
+  assert.deepEqual((await readPremium('binance', BTC, H, T, T + 2 * H, binance)).rows, [{ t: T, p: -0.00045 }, { t: T + H, p: -0.00053 }]);
   assert.match(binance.asked[0]!, /premiumIndexKlines\?symbol=BTCUSDT&interval=1h/);
   const bybit = venue(() => ({ result: { list: [['' + (T + H), '0', '0', '0', '-0.0003'], ['' + T, '0', '0', '0', '-0.0004']] } }));
-  assert.deepEqual(await readPremium('bybit', BTC, H, T, T + 2 * H, bybit), [{ t: T, p: -0.0004 }, { t: T + H, p: -0.0003 }], 'newest first, put oldest first');
-  assert.deepEqual(await readPremium('okx', BTC, H, T, T + H, venue(() => [])), [], 'OKX publishes no premium history');
+  assert.deepEqual((await readPremium('bybit', BTC, H, T, T + 2 * H, bybit)).rows, [{ t: T, p: -0.0004 }, { t: T + H, p: -0.0003 }], 'newest first, put oldest first');
+  assert.deepEqual((await readPremium('okx', BTC, H, T, T + H, venue(() => []))).rows, [], 'OKX publishes no premium history');
   const hl = venue(() => [{ universe: [{ name: 'ETH' }, { name: 'BTC' }] }, [{}, { funding: '0.0000125', premium: '-0.0002' }]]);
   assert.deepEqual(await readFundingNow('hyperliquid', { symbol: 'BTC', unit: 1 }, hl, T + 30 * 60_000), { rate: 0.0000125, per8h: 0.0001, hours: 1, next: T + H, premium: -0.0002 });
   const okx = venue(() => ({ data: [{ fundingRate: '0.00005', fundingTime: String(T + 8 * H), prevFundingTime: String(T), premium: '-0.00049' }] }));
