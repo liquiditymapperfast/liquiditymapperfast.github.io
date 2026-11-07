@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { BOOK_HOLD_MS, flowIds, instrumentShown, mapVenues, nextBookGone, oiFlowIds, pinChoices } from '../src/app/cvd/ids.ts';
 import type { LevelsFrame } from '../src/app/wire.ts';
 
@@ -64,5 +66,18 @@ test("the map draws and sounds an instrument's orders by the flow views' rule: i
   assert.deepEqual(shown({ disabledVenues: [], levels: null }, ids), ids, 'before the first frame nothing is left out');
   assert.deepEqual(shown({ disabledVenues: ['c'], levels: null }, ids), ['a:BTC', 'aspot:BTC', 'b:BTC-SWAP'], 'but a chip switched off is');
   const one = instrumentShown({ disabledVenues: ['aspot'], levels: frame });
-  assert.deepEqual([one('aspot:BTC'), one('aspot:ETH'), one('a:ETH'), one('a:BTC')], [false, false, true, true], 'one predicate answers the same for every instrument of a venue');
+  assert.deepEqual([one('aspot:BTC'), one('aspot:ETH'), one('a:ETH'), one('a:BTC'), one('aspot:BTC')], [false, false, true, true, false], 'one predicate answers the same for every instrument of a venue, asked again too');
+  assert.deepEqual([one('a'), one('aspot'), one('b')], [true, false, false], 'an id without a market is its venue, as venueOfInstrument reads it');
+});
+
+test("the map's marks of orders all go through instrumentShown: none is left filtering by the chips alone", () => {
+  // Bubbles, dust, venue lines, absorption and liquidations. A filter by `disabledVenues` alone drew a venue whose book was down (no chip).
+  const source = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'panes', 'heat-pane.ts'), 'utf8');
+  assert.equal([...source.matchAll(/instrumentShown\(state\)/g)].length, 5, 'the dust mask, the venue lines, the bubbles, absorption and the diamonds');
+  assert.equal([...source.matchAll(/\boff\.includes\(/g)].length, 0, 'no mark filters by the chips alone');
+  // The one other reader of the chips counts markets for the candle history estimate (chips and the Spot / Perp filter), not marks.
+  assert.equal([...source.matchAll(/disabledVenues\.includes\(/g)].length, 1, 'only the history estimate reads the chips itself');
+  const sounds = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'sound', 'sounds.ts'), 'utf8');
+  assert.match(sounds, /shown = instrumentShown\(s\)/, 'the trade sounds too');
+  assert.doesNotMatch(sounds, /disabledVenues\.includes\(/);
 });

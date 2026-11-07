@@ -36,16 +36,16 @@ export type MapState = Pick<AppState, 'levels'> & Partial<Pick<AppState, 'bookGo
 
 /**
  * Whether the orders of an instrument (`okx:BTC-USDT-SWAP`) are drawn on the map (trade bubbles, live dust, venue lines, liquidations,
- * absorption) and sound: its venue's chip on, and its book on the map or there moments ago (`mapVenues`), the rule the flow views count by.
- * The chips are the map's books, so a venue with no book has none and could not be switched off: with Deribit's chip alone on, OKX's trades
- * went on drawing while its book was down (Karl, 2026-11-07). Make one per frame or batch: it builds the map's venue set once.
+ * absorption) and sound: its venue's chip on, and its book on the map or there moments ago (`mapVenues`), the venue rule of `flowIds`
+ * (executions ignore its Spot / Perp filter). The chips are the map's books, so a venue with no book has none and could not be switched off:
+ * with Deribit's chip alone on, OKX's trades went on drawing while its book was down (Karl, 2026-11-07). Make one per frame or batch: it
+ * builds the map's venue set once, and answers each instrument from a memo keyed by the id itself (the bubbles ask for every print in view).
  */
 export function instrumentShown(state: Pick<AppState, 'disabledVenues'> & MapState): (id: string) => boolean {
   const drawn = mapVenues(state), off = state.disabledVenues, seen = new Map<string, boolean>();
   return id => {
-    const at = id.indexOf(':'), venue = at < 0 ? id : id.slice(0, at);
-    let shown = seen.get(venue);
-    if (shown === undefined) seen.set(venue, shown = !off.includes(venue) && (drawn === null || drawn.has(venue)));
+    let shown = seen.get(id);
+    if (shown === undefined) { const venue = venueOfInstrument(id); seen.set(id, shown = !off.includes(venue) && (drawn === null || drawn.has(venue))); }
     return shown;
   };
 }

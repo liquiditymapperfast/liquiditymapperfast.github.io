@@ -3480,8 +3480,9 @@ export class HeatPane {
   /**
    * Liquidations as diamonds where the market was when they came: in the sell colour where longs were closed (the exchange sold them), the
    * buy colour where shorts were, as every mark on the page; the diamond and its hard edge say forced. The area is in proportion to the USD
-   * closed, the largest in view the biggest, and only the largest few hundred in view are drawn. A venue switched off is left out, as for the
-   * bubbles; one large enough carries its exchange's mark, and with labels on the larger ones have their size beside them.
+   * closed, the largest in view the biggest, and only the largest few hundred in view are drawn. A venue switched off, or with no book on the
+   * map, is left out, as for the bubbles (`instrumentShown`); one large enough carries its exchange's mark, and with labels on the larger ones
+   * have their size beside them.
    */
   #paintLiquidations(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#diamonds = [];
