@@ -15,6 +15,8 @@ import { currentCoin } from './coin.ts';
 /** How often the title and the icon are written at most. */
 const TITLE_MS = 1_000, ICON_MS = 3_000;
 const ICON_PX = 32;
+/** The site's short name after the price (Karl, 2026-11-07: "use the abbreviation LMF"); without a price the page's own title, the whole name, stays. */
+const SHORT_NAME = 'LMF';
 
 /** What the tab says: the price, which way the candle under way goes (null: no candle of this market under way), and the coin. */
 export interface TabQuote { price: number; up: boolean | null; coin: string; step: number; candle: { open: number; high: number; low: number; close: number } | null }
@@ -30,10 +32,10 @@ export function tabQuote(state: Pick<AppState, 'mark' | 'candles' | 'markets' | 
   return { price, up: candle ? price >= candle.open : null, coin: market?.base ?? coin, step: market?.tickSize ?? 0, candle };
 }
 
-/** The tab's title: "75,903.4 ▲ BTC · LiquidityMapperFast", or the page's own title without a price. */
+/** The tab's title: "75,903.4 ▲ BTC · LMF", or the page's own title without a price. */
 export function tabTitle(quote: TabQuote | null, base: string): string {
   if (!quote) return base;
-  return `${fmtPrice(quote.price, quote.step)}${quote.up === null ? '' : quote.up ? ' ▲' : ' ▼'} ${quote.coin} · ${base}`;
+  return `${fmtPrice(quote.price, quote.step)}${quote.up === null ? '' : quote.up ? ' ▲' : ' ▼'} ${quote.coin} · ${SHORT_NAME}`;
 }
 
 /** The candle the icon draws, in whole pixels of a `px` square, and its colour: what the icon says, so it is drawn again only when this changes. */
