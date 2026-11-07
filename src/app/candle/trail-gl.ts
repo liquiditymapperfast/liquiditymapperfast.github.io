@@ -572,7 +572,9 @@ export class TrailGL {
   draw(f: TrailFrame): void {
     if (!this.built()) return;
     const gl = this.gl, ring = this.ring, dpr = this.#dpr, W = this.canvas.width, H = this.canvas.height;
-    // The waves first, in their own buffers: the glass's pieces are glass to them, the welds walls; then the frame as before.
+    // The waves first, in their own buffers: the glass's pieces are glass to them, the welds walls; then the frame as before. Waves whose
+    // programs did not build are let go (the glass keeps its other light).
+    if (this.#field?.failed) this.#field = null;
     const field = this.#field;
     if (field && f.glass) {
       const g = f.glass, key = `${g.y0},${g.y1},${g.pieces.map(q => `${q.x0},${q.x1}`).join(';')}`;

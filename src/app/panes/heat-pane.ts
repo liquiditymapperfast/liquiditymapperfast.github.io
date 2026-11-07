@@ -669,6 +669,8 @@ export class HeatPane {
     if (this.#dustFailed || !this.hub.tape) return null;
     const dust = this.#dust;
     if (dust) {
+      // A lost context answers "not built" for ever (the dust is not made again): it is let go rather than looked at every frame.
+      if (dust.gl.isContextLost()) { this.#dust = null; this.#dustFailed = true; console.warn('live trades are no longer drawn here: the card dropped their canvas'); return null; }
       try { if (dust.built()) return dust; } catch (error) { this.#dust = null; this.#dustFailed = true; console.warn('live trades cannot be drawn here:', error); return null; }
       // Still being built: looked at again on the next frame.
       this.tapeArrived();
@@ -1947,7 +1949,7 @@ export class HeatPane {
     const edge = p.dark ? 'rgba(255,255,255,0.92)' : 'rgba(18,20,24,0.92)', halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)', outline = 1 - 0.85 * narrowing;
     // While the trade dust shows, a candle is its outline and a thin wick: a filled body (and its halo) would hide the orders inside it. Outline
     // candles are outlines always; OHLC bars and the line are drawn their own way (chart-type.ts).
-    const type = this.previewChartType ?? state.chartType, hollow = type === 'outline' || this.#dustOn(state);
+    const type = this.previewChartType ?? state.chartType, hollow = type === 'outline' || (this.#dustOn(state) && !this.#dustFailed);
     // Narrower than CANDLE_LINE_PX a candle is a few overlapping marks per pixel (a 45-day view of hourly ones drew 1,100 of them, six to
     // eight drawing calls and a blurred ring each, on every pointer move: 14 frames a second, 2026-10-30): the candles are then the line
     // through their closes, as the price history beyond them is.

@@ -31,9 +31,14 @@ const finite = (...v: number[]): boolean => v.every(Number.isFinite);
 export const HOUR_MS = 3_600_000;
 /**
  * Hour files read at once. The service is behind Cloudflare (HTTP/2 and 3: one connection, many streams), and a fresh visit's day is some
- * 25 files of 0.5-1 MB: four at a time left the line idle between round trips (3.4 s for 17 MB on a fast line, Research_Findings.md).
+ * 25 files of 0.5-1 MB: four at a time left the line idle between round trips (3.4 s for 17 MB on a fast line, Research_Findings.md). A
+ * slow or data-saving line keeps four: the import gives up at its budget, and eight files half read then would be none whole.
  */
-const PARALLEL = 8;
+const PARALLEL = 8, PARALLEL_SLOW = 4;
+const parallelFiles = (): number => {
+  const link = (globalThis.navigator as { connection?: { saveData?: boolean; effectiveType?: string } } | undefined)?.connection;
+  return link && (link.saveData === true || /(^|-)(2g|3g)$/.test(link.effectiveType ?? '')) ? PARALLEL_SLOW : PARALLEL;
+};
 /** An hour whose minutes the page already holds this share of, for every book the service records, is not read. */
 const COVERED = 0.95;
 /** A minute counts as held from this many samples (of twelve). */
@@ -450,7 +455,7 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
         } catch { done.failed++; }
       }
     };
-    await Promise.all(Array.from({ length: PARALLEL }, worker));
+    await Promise.all(Array.from({ length: parallelFiles() }, worker));
     // The long history's tiles (app/archive/): read by the page from the same answer, never asked for again.
     return { ...done, steps, tiles: parseTilesInfo(latest.tiles) };
   } catch (error) {

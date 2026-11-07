@@ -192,6 +192,8 @@ export class UiGlass {
     });
     // Glass again once its programs are built (`#finish`).
     this.canvas.addEventListener('webglcontextrestored', () => {
+      // A card that was reset may build what failed before: it is tried again.
+      this.#broken = false;
       if (!this.#on || !this.#ensureGl()) return;
       this.#size(); this.schedule();
     });
@@ -357,12 +359,15 @@ export class UiGlass {
 
   /** The context, with its programs started (built beside the page, gl-build.ts; `#finish` reads them once they are). */
   #ensureGl(): boolean {
-    if (this.#gl) return true;
     if (this.#broken) return false;
+    if (this.#gl) return true;
     const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
     if (!gl) { console.info('Glass: WebGL2 is not available here, so the page stays solid.'); return false; }
-    this.#gl = gl;
-    this.#building = [startProgram(gl, VERT, FRAG), startProgram(gl, VERT, OVER)];
+    // A context lost before its loss was announced throws here: the glass stays off until it is given back (`webglcontextrestored`).
+    let building: readonly [Building, Building];
+    try { building = [startProgram(gl, VERT, FRAG), startProgram(gl, VERT, OVER)]; }
+    catch (error) { console.info('Glass: the card is not drawing just now, so the page stays solid.', error); return false; }
+    this.#gl = gl; this.#building = building;
     this.#field = WaveField.create(gl);
     if (!this.#field) console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.');
     return true;
@@ -377,7 +382,7 @@ export class UiGlass {
     if (this.#prog) return true;
     const building = this.#building; if (!building) return false;
     try { if (!built(gl, building)) return false; }
-    catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); this.#broken = true; this.setOn(false); document.documentElement.dataset.material = 'solid'; return false; }
+    catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); this.#broken = true; this.#building = null; this.setOn(false); document.documentElement.dataset.material = 'solid'; return false; }
     try { if (this.#field && !this.#field.built()) return false; }
     catch { this.#field = null; console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.'); }
     const [prog, over] = building;

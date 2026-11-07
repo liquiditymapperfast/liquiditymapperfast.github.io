@@ -266,6 +266,8 @@ export class WaveField {
    */
   #building: (readonly [Building, readonly string[]])[] | null;
   #regions: readonly WaveRegion[] = [];
+  /** Why the programs did not build, once `built` found it: the field is then never stepped nor alive (its owner drops it). */
+  #failure: Error | null = null;
   #tex: WebGLTexture[] = []; #fbo: WebGLFramebuffer[] = [];
   #mediumTex: WebGLTexture; #mediumFbo: WebGLFramebuffer;
   #cols = 1; #rows = 1; #cssH = 1;
@@ -325,8 +327,10 @@ export class WaveField {
    * Throws what failed. The caller steps the field and draws its medium only once it is true.
    */
   built(): boolean {
+    if (this.#failure) throw this.#failure;
     const building = this.#building; if (!building) return true;
-    if (!built(this.gl, building.map(([b]) => b))) return false;
+    try { if (!built(this.gl, building.map(([b]) => b))) return false; }
+    catch (error) { this.#failure = error instanceof Error ? error : new Error(String(error)); this.#building = null; throw this.#failure; }
     for (const [b, names] of building) this.#loc.set(b.program, uniforms(this.gl, b.program, names));
     this.#building = null;
     this.setMedium(this.#regions);
@@ -335,6 +339,8 @@ export class WaveField {
 
   /** Whether the programs can be used now (`built`, without waiting); one that failed reads as not built here (`built` says why). */
   #usable(): boolean { try { return this.built(); } catch { return false; } }
+  /** Whether the programs failed to build: the field draws nothing, ever. */
+  get failed(): boolean { return this.#failure !== null; }
 
   /** The field's grid: `cols` by `rows` cells, each `CELL` CSS px. */
   get cols(): number { return this.#cols; }
@@ -348,7 +354,7 @@ export class WaveField {
    * stepped in or not. A pulse still waiting then is dropped at the next step: a caller that stopped stepping (its glass switched off) must
    * not be kept drawing by it for ever, nor have it burst out when it steps again.
    */
-  alive(now: number): boolean { return now - this.#lastSource < RING_MS; }
+  alive(now: number): boolean { return this.#failure === null && now - this.#lastSource < RING_MS; }
 
   /** Size the field for a screen `cssW` by `cssH` CSS px; its waves start again from still. */
   resize(cssW: number, cssH: number): void {

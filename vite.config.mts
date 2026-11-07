@@ -18,7 +18,7 @@ function preloadChain(): Plugin {
         const main = files.find(f => f.type === 'chunk' && f.moduleIds.some(id => id.replace(/\\/g, '/').endsWith('/src/app/main.ts')));
         if (main?.type === 'chunk') {
           tags.push({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: `./${main.fileName}` }, injectTo: 'head' });
-          for (const css of main.viteMetadata?.importedCss ?? []) tags.push({ tag: 'link', attrs: { rel: 'preload', as: 'style', href: `./${css}` }, injectTo: 'head' });
+          for (const css of main.viteMetadata?.importedCss ?? []) tags.push({ tag: 'link', attrs: { rel: 'preload', as: 'style', crossorigin: true, href: `./${css}` }, injectTo: 'head' });
         }
         for (const f of files) {
           // The kernels are fetched by their glue (`fetch`, so as a fetch, with the page's credentials); the workers are not something a
