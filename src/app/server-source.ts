@@ -2,9 +2,8 @@ import { connectLive, type LiveConnection, getAbsorption, getAbsorptionProfile, 
 import type { BootstrapState, DataSource, VenueCatalog, VenueControl, VenueEntry } from './source.ts';
 import { stateOfStatus } from './venue-notice.ts';
 import { currentCoin } from './coin.ts';
-import { PriceHistoryCache, priceListing, type PriceHistoryAnswer } from '../shared/price-history.ts';
+import { PriceHistoryCache, priceListing, priceTimeframeMs, type PriceHistoryAnswer } from '../shared/price-history.ts';
 import { webGet } from '../shared/history.ts';
-import { TIMEFRAMES } from '../shared/series.ts';
 
 interface FeedCatalog { maxSelected: number; selectedVenues: string[]; venues: { id: string; name: string; supported: boolean; default?: boolean; status: string }[] }
 interface ExtraVenueInfo { id: string; name: string; enabled: boolean; default?: boolean; state: string; lastError: string | null; reconnects: number }
@@ -87,7 +86,7 @@ export class ServerSource implements DataSource {
    * all in within 0.5 s of the same zoom).
    */
   priceHistory = async (inst: string, tf: string, from: number, to: number, signal?: AbortSignal): Promise<PriceHistoryAnswer> => {
-    const target = priceListing(currentCoin(), inst), tfMs = Object.hasOwn(TIMEFRAMES, tf) ? TIMEFRAMES[tf] : undefined;
+    const target = priceListing(currentCoin(), inst), tfMs = priceTimeframeMs(tf);
     let held: PriceHistoryAnswer | null = null;
     if (target && tfMs) {
       try {

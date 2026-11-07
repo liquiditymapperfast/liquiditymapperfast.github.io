@@ -1,5 +1,5 @@
 import { TIMEFRAMES } from '../shared/series.ts';
-import { PRICE_QUERY_BARS, parsePriceHistory, type PriceHistoryAnswer, type PriceTarget } from '../shared/price-history.ts';
+import { PRICE_QUERY_BARS, PRICE_TIMEFRAMES, parsePriceHistory, type PriceHistoryAnswer, type PriceTarget } from '../shared/price-history.ts';
 import type { CandleRow } from './store.ts';
 
 export interface PriceWindow { tf: string; tfMs: number; from: number; to: number }
@@ -34,8 +34,9 @@ export function candlePriceRange(candles: readonly CandleRow[], tfMs: number, t0
 
 /**
  * The chart's own candles wherever one read holds the window (Karl, 2026-10-28: history is drawn as candles, as the recorded ones are);
- * past that at most a few hundred native bars, drawn as a line: daily for month-scale context, never finer than the selected candles,
- * retaining a resolution near its changeover.
+ * past that a line: the finest native bars that keep it to a few hundred points across the map (never finer than the selected candles,
+ * retaining a resolution near its changeover), days where even days are more (up to the 2,000 one read holds: a view a year wide draws a few
+ * hundred, one just short of the weeks about 1,700), and weeks past what one read of days holds.
  */
 export function priceWindow(view: Window, width: number, now: number, previousMs = 0, chartMs = 0, warmBars = 0): PriceWindow | null {
   const span = view.t1 - view.t0;
@@ -52,11 +53,16 @@ export function priceWindow(view: Window, width: number, now: number, previousMs
   const intervals = Object.entries(TIMEFRAMES), previous = intervals.find(([, ms]) => ms === previousMs && ms >= minimum);
   let choice = intervals.find(([, ms]) => ms >= minimum && span / ms <= budget) ?? intervals[intervals.length - 1]!;
   if (previous && span / previousMs >= budget / 5 && span / previousMs <= budget * 1.15) choice = previous;
-  const [tf, tfMs] = choice;
-  // At the largest interval bound the request structurally too; the map's permitted span is normally shorter than this.
-  const from = Math.max(0, Math.floor((view.t0 - span * 0.15) / tfMs) * tfMs - tfMs);
-  const to = Math.ceil(Math.min(view.t1 + span * 0.15, now + 1) / tfMs) * tfMs;
-  return to > from && to - from <= 2_000 * tfMs ? { tf, tfMs, from, to } : null;
+  let [tf, tfMs] = choice;
+  const edges = (ms: number): [number, number] => [Math.max(0, Math.floor((view.t0 - span * 0.15) / ms) * ms - ms), Math.ceil(Math.min(view.t1 + span * 0.15, now + 1) / ms) * ms];
+  let [from, to] = edges(tfMs);
+  // Where one read of days cannot hold the window (2,000 of them, its padding of 15 % of the view's width either side included: about four and a
+  // half to five years of view, less where it all lies in the past), weeks: the window was refused and the view drew no line and named none (Karl,
+  // 2026-11-07). A right-button drag or a touch drag on the time strip has no widest span (the wheel, the keys and a pinch stop at 400 days), so the
+  // coarsest is bounded by its newest bars and a view zoomed out over decades still gets the line (BTC's history is a few hundred weeks).
+  for (const [name, ms] of Object.entries(PRICE_TIMEFRAMES)) if (ms > tfMs && to - from > PRICE_QUERY_BARS * tfMs) { tf = name; tfMs = ms; [from, to] = edges(ms); }
+  from = Math.max(from, to - PRICE_QUERY_BARS * tfMs);
+  return to > from ? { tf, tfMs, from, to } : null;
 }
 
 /**

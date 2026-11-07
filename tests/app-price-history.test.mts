@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ChartPriceHistory, candleCoverage, candlePriceRange, isCovered, priceBounds, priceOverviewNeeded, pricePointAt, pricePoints, priceWindow, uncoveredRuns, type PriceReader, type PriceWindow } from '../src/app/price-history.ts';
-import { priceListing, type PriceHistoryAnswer, type PriceTarget } from '../src/shared/price-history.ts';
+import { PRICE_QUERY_BARS, priceListing, type PriceHistoryAnswer, type PriceTarget } from '../src/shared/price-history.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 import type { Candle } from '../src/shared/series.ts';
@@ -33,6 +33,29 @@ test('a small zoom around a resolution boundary retains its interval', () => {
   assert.equal(priceWindow(view, 1_500, NOW)!.tf, '4h');
   assert.equal(priceWindow(view, 1_500, NOW, HOUR)!.tf, '1h');
   assert.equal(priceWindow({ t0: NOW - 500 * HOUR, t1: NOW }, 1_500, NOW, HOUR)!.tf, '4h');
+});
+
+test('a view whose days one read cannot hold is asked in weeks, and a view zoomed out over decades still gets a line (Karl, 2026-11-07)', () => {
+  const WEEK = 7 * DAY, t1 = NOW + 120 * DAY, to = Math.ceil((NOW + 1) / DAY) * DAY;
+  // The left edge whose padded window of days is `bars` long, the right edge in the future as Karl's was (the window ends now).
+  const view = (bars: number) => ({ t0: (to - bars * DAY + 1.5 * DAY + 0.15 * t1) / 1.15, t1 });
+  const days = priceWindow(view(PRICE_QUERY_BARS), 1_100, NOW, 0, HOUR)!;
+  assert.equal(days.tf, '1d'); assert.equal((days.to - days.from) / DAY, PRICE_QUERY_BARS, 'a view the days fit stays in days');
+  // One day more (a view of about five years, four months of it to come, drawn on hourly candles): no window at all before, so no line and no legend.
+  for (const previous of [0, DAY, WEEK]) {
+    const weeks = priceWindow(view(PRICE_QUERY_BARS + 1), 1_100, NOW, previous, HOUR);
+    assert.ok(weeks, `a window with ${previous / DAY} days held`);
+    assert.equal(weeks.tf, '1w'); assert.equal(weeks.tfMs, WEEK); assert.equal(weeks.from % WEEK, 0); assert.equal(weeks.to % WEEK, 0);
+    assert.ok(weeks.from <= view(PRICE_QUERY_BARS + 1).t0 && weeks.to > NOW, 'the whole visible past is asked for');
+    assert.ok((weeks.to - weeks.from) / WEEK <= PRICE_QUERY_BARS);
+  }
+  // Weeks held do not keep a view the days fit in weeks: back under the ceiling it is days again.
+  assert.equal(priceWindow(view(PRICE_QUERY_BARS), 1_100, NOW, WEEK, HOUR)!.tf, '1d');
+  // A right-button drag zooms out without a limit: past 2,000 weeks the newest of them, never nothing.
+  for (const years of [40, 300]) {
+    const far = priceWindow({ t0: NOW - years * 365 * DAY, t1: NOW + 30 * DAY }, 1_100, NOW, WEEK, HOUR)!;
+    assert.equal(far.tf, '1w'); assert.equal((far.to - far.from) / WEEK, PRICE_QUERY_BARS); assert.ok(far.to > NOW && far.from >= 0);
+  }
 });
 
 test('an overview is needed only where the candles leave a gap: complete candles need none, however compressed', () => {

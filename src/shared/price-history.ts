@@ -16,7 +16,17 @@ export interface PriceHistoryAnswer {
 export interface PriceTarget { id: string; listing: HistoryListing; kind: 'spot' | 'perp' }
 
 export const PRICE_QUERY_BARS = 2_000;
-const CACHE_SERIES = 8, CACHE_BARS = 4_000, REFRESH_MS = 60_000, RETRY_MS = 60_000, PAGE_LIMIT = 32;
+/**
+ * The line's intervals: the chart's timeframes and weeks for a view whose days one read cannot hold (`priceWindow`). A week is seven days since
+ * 1970, built from the venue's days (`nativeInterval`), never the venue's own week: Binance's begins on a Monday, off the whole weeks every bar
+ * of this cache is checked against.
+ */
+export const PRICE_TIMEFRAMES: Readonly<Record<string, number>> = Object.freeze(Object.assign(Object.create(null) as Record<string, number>, TIMEFRAMES, { '1w': 7 * 86_400_000 }));
+/** The length of the line's interval named `name`, or null when there is none (whatever the name is: a request can say anything). */
+export const priceTimeframeMs = (name: unknown): number | null => typeof name === 'string' && Object.hasOwn(PRICE_TIMEFRAMES, name) ? PRICE_TIMEFRAMES[name]! : null;
+// Twelve series: the line has eight intervals, and a zoom through them leaves each dropped read going on here (`ChartPriceHistory.#dropped`), so
+// eight series still being read and a ninth asked for (the spot market, another coin) found none to let go: "busy" (review, 2026-11-07).
+const CACHE_SERIES = 12, CACHE_BARS = 4_000, REFRESH_MS = 60_000, RETRY_MS = 60_000, PAGE_LIMIT = 32;
 
 /** The server's Binance spot alias and the browser's id name the same instrument. */
 export const priceInstrument = (id: string): string => id.replace(/^([^:]+):([^:]+):spot$/, '$1spot:$2');
@@ -78,7 +88,7 @@ function candlePage(venue: string, answer: unknown): boolean {
 }
 
 /**
- * One bounded cache for either data source: eight series, 4,000 time slots each, one read per series. Ended bars stay; only missing dates
+ * One bounded cache for either data source: twelve series, 4,000 time slots each, one read per series. Ended bars stay; only missing dates
  * and the live tail are fetched. Failed reads keep their old data, and every read, including a fetcher that never settles, has a deadline.
  */
 export class PriceHistoryCache {
@@ -86,7 +96,7 @@ export class PriceHistoryCache {
   constructor(private get: Fetcher, private now: () => number = Date.now, private deadlineMs = 20_000) {}
 
   async series(target: PriceTarget, tfMs: number, from: number, to: number): Promise<PriceHistoryAnswer> {
-    if (!Object.values(TIMEFRAMES).includes(tfMs) || ![from, to].every(v => Number.isSafeInteger(v) && v >= 0) || to <= from || to - from > PRICE_QUERY_BARS * tfMs) throw new Error('Invalid price window');
+    if (!Object.values(PRICE_TIMEFRAMES).includes(tfMs) || ![from, to].every(v => Number.isSafeInteger(v) && v >= 0) || to <= from || to - from > PRICE_QUERY_BARS * tfMs) throw new Error('Invalid price window');
     const now = this.now(), a = Math.floor(from / tfMs) * tfMs, b = Math.ceil(Math.min(to, now + 1) / tfMs) * tfMs;
     if (a >= b) return { instrumentId: target.id, tfMs, from: a, to: a, asOf: now, status: 'empty', candles: [] };
     const key = `${target.id}|${target.listing.symbol}|${target.listing.unit}|${tfMs}`;
