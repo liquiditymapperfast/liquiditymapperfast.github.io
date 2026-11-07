@@ -111,4 +111,7 @@ test('without the extension (or past the patience) a lost context reads as not b
   card.lose();
   assert.equal(built(card.gl, [p]), false, 'the link status answers null: not built, not failed');
   assert.throws(() => startProgram(card.gl, 'v', 'f'), /context lost/);
+  const patient = fakeGl(), q = startProgram(patient.gl, 'v', 'f');
+  patient.lose();
+  assert.equal(built(patient.gl, [{ ...q, startedAt: performance.now() - 5_000 }]), false, 'past the patience too');
 });

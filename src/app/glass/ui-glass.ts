@@ -250,6 +250,14 @@ export class UiGlass {
   /** Turn the glass on or off (the page's `html[data-material]` is set by its caller, so the chrome turns see-through with it). */
   setOn(on: boolean): void {
     this.#wanted = on;
+    this.#switch(on);
+  }
+
+  /**
+   * The switch itself, leaving what the page asked for as it is: a build that failed turns the glass off here (`#finish`), and the page
+   * still asks for glass, so a context given back tries again.
+   */
+  #switch(on: boolean): void {
     if (on === this.#on) return;
     if (on && !this.#ensureGl()) return;
     this.#on = on;
@@ -388,7 +396,7 @@ export class UiGlass {
     if (this.#prog) return true;
     const building = this.#building; if (!building) return false;
     try { if (!built(gl, building)) return false; }
-    catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); this.#broken = true; this.#building = null; this.setOn(false); document.documentElement.dataset.material = 'solid'; return false; }
+    catch (error) { console.info('Glass: the shader did not build, so the page stays solid.', error); this.#broken = true; this.#building = null; this.#switch(false); document.documentElement.dataset.material = 'solid'; return false; }
     try { if (this.#field && !this.#field.built()) return false; }
     catch (error) { this.#field = null; console.info('Glass: this card cannot run the waves, so the glass takes the sparks\' light.', error); }
     const [prog, over] = building;
