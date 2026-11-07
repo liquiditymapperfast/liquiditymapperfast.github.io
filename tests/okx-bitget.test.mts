@@ -14,7 +14,7 @@ test('OKX public descriptors target swap books and stable sequencing fields', ()
   assert.match(buildOkxRequest('instruments', { instType: 'SWAP' }).url, /api\/v5\/public\/instruments\?instType=SWAP$/);
   assert.match(buildOkxRequest('instruments', { instType: 'SWAP', instId: 'BTC-USDT-SWAP' }).url, /api\/v5\/public\/instruments\?instType=SWAP&instId=BTC-USDT-SWAP$/);
   assert.match(buildOkxRequest('depth', { instId: 'BTC-USDT-SWAP', size: 400 }).url, /api\/v5\/market\/books\?instId=BTC-USDT-SWAP&sz=400$/);
-  assert.deepEqual(buildOkxSubscription('depth', { instId: 'BTC-USDT-SWAP' }), { url: 'wss://ws.okx.com:8443/ws/v5/public', method: 'subscribe', args: [{ channel: 'books', instId: 'BTC-USDT-SWAP' }], topic: 'books:BTC-USDT-SWAP', channel: 'books', instId: 'BTC-USDT-SWAP' });
+  assert.deepEqual(buildOkxSubscription('depth', { instId: 'BTC-USDT-SWAP' }), { url: 'wss://ws.okx.com/ws/v5/public', method: 'subscribe', args: [{ channel: 'books', instId: 'BTC-USDT-SWAP' }], topic: 'books:BTC-USDT-SWAP', channel: 'books', instId: 'BTC-USDT-SWAP' });
 });
 
 test('OKX snapshot/update normalize contract quantities and sequence continuity', () => {

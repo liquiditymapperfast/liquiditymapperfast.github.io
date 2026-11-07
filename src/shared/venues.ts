@@ -200,7 +200,8 @@ abstract class OkxBook extends MarketBook {
   /** Coins per unit of size. */
   contract = this.market.contract ?? 1;
   #seq = -1;
-  protected url() { return 'wss://ws.okx.com:8443/ws/v5/public'; }
+  /** Port 443: OKX retires 8443, and since 2026-11 greets each socket there with a notice (64010). */
+  protected url() { return 'wss://ws.okx.com/ws/v5/public'; }
   protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [{ channel: 'books', instId: this.symbol }, { channel: 'trades', instId: this.symbol }] }); }
   override keepalive() { return { everyMs: 20_000, frame: () => 'ping' }; }
   protected override usdOf(price: number, size: number) { return price * size * this.contract; }

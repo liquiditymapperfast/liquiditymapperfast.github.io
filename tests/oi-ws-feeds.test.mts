@@ -49,7 +49,7 @@ test('OKX open-interest frames are fenced by channel and instrument, and spot ha
   assert.throws(() => normalizeOkxOpenInterest({ arg: { channel: 'tickers', instId: 'BTC-USDT-SWAP' }, data: [{ oiCcy: '1', ts: String(AT) }] }, { instId: 'BTC-USDT-SWAP' }), /channel/);
   assert.throws(() => normalizeOkxOpenInterest({ arg: { channel: 'open-interest', instId: 'ETH-USDT-SWAP' }, data: [{ oiCcy: '1', ts: String(AT) }] }, { instId: 'BTC-USDT-SWAP' }), /instrument/);
   assert.throws(() => normalizeOkxOpenInterest({ arg: { channel: 'open-interest', instId: 'BTC-USDT-SWAP' }, data: [{ instId: 'BTC-USDT-SWAP', oiCcy: '', ts: String(AT) }] }, { instId: 'BTC-USDT-SWAP' }), /oiCcy/);
-  assert.deepEqual(buildOkxSubscription('open-interest', { instId: 'BTC-USDT-SWAP', marketType: 'perpetual' }), { url: 'wss://ws.okx.com:8443/ws/v5/public', method: 'subscribe', args: [{ channel: 'open-interest', instId: 'BTC-USDT-SWAP' }], topic: 'open-interest:BTC-USDT-SWAP', channel: 'open-interest', instId: 'BTC-USDT-SWAP' });
+  assert.deepEqual(buildOkxSubscription('open-interest', { instId: 'BTC-USDT-SWAP', marketType: 'perpetual' }), { url: 'wss://ws.okx.com/ws/v5/public', method: 'subscribe', args: [{ channel: 'open-interest', instId: 'BTC-USDT-SWAP' }], topic: 'open-interest:BTC-USDT-SWAP', channel: 'open-interest', instId: 'BTC-USDT-SWAP' });
   assert.throws(() => buildOkxSubscription('open-interest', { instId: 'BTC-USDT', marketType: 'spot' }), /spot/);
 });
 

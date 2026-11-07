@@ -2757,6 +2757,9 @@ export class LiveFeedManager {
           if (feedRecord(row)?.pool != null && normalizeBitmexPool(feedRecord(row).pool, { allowNull: false }) !== feed.pool) throw new Error('BitMEX order book row pool mismatch');
         }
       }
+      // OKX's notices carry a code but refuse nothing (64010 "WebSocket port 8443 will be retired soon", 64008 "service upgrade"): the socket
+      // goes on acknowledging and streaming. Read as a refusal, 64010 kept OKX's book and open interest in backoff from 2026-11.
+      if (feed.spec.venue === 'okx' && feedRecord(envelope)?.event === 'notice') { this.#log(`OKX notice ${feedRecord(envelope)?.code ?? ''}: ${feedRecord(envelope)?.msg ?? ''}`); return; }
       if ((feed.spec.venue === 'okx' || feed.spec.venue === 'bitget') && (feedRecord(envelope)?.event === 'error' || (feedRecord(envelope)?.code != null && !['0', '00000'].includes(String(feedRecord(envelope).code))))) throw new Error(`${feed.spec.venue} subscription rejected: ${feedRecord(envelope)?.msg ?? feedRecord(envelope)?.message ?? feedRecord(envelope)?.code ?? 'unknown error'}`);
       if (feed.spec.venue === 'okx' && feedRecord(envelope)?.event === 'subscribe') {
         if (!feedRecord(envelope)?.arg || feedRecord(feedRecord(envelope).arg).channel !== feed.spec.request.channel || String(feedRecord(feedRecord(envelope).arg).instId).toUpperCase() !== String(feed.spec.request.instId).toUpperCase()) return;

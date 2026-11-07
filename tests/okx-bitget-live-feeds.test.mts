@@ -139,3 +139,27 @@ test('OKX open interest is read from the bytes the socket delivers, and a reject
   assert.notEqual(manager.status()['okx-oi']?.state, 'live', 'and is not said to be live, so the sampler reads OKX meanwhile');
   manager.stop();
 });
+
+test("OKX's notice (a code, but no refusal: 64010 on port 8443) leaves the book and open interest live; Bitget's codes still refuse", async () => {
+  const fake = transport(); const messages:LiveFeedEvent[] = []; const logged:string[] = [];
+  const manager = new LiveFeedManager({ networkEnabled: true, transportFactory: fake.factory, oiPollMs: 0, schedule: () => 1, cancel: () => {}, log: line => logged.push(line), onMessage: message => messages.push(message) });
+  await manager.start({ okxEnabled: true, okxSymbol: 'BTC-USDT-SWAP' });
+  const depth = defined(fake.sockets.find(item => item.spec.id === 'okx-depth')), oi = defined(fake.sockets.find(item => item.spec.id === 'okx-oi'));
+  // As OKX sent it on 2026-11-07: the notice first, then the acknowledgement and the data on the same socket.
+  const notice = { event: 'notice', code: '64010', msg: 'WebSocket port 8443 will be retired soon. Please migrate to port 443.' };
+  for (const socket of [depth, oi]) socket.emit(Buffer.from(JSON.stringify(notice)));
+  depth.emit({ event: 'subscribe', arg: { channel: 'books', instId: 'BTC-USDT-SWAP' } }); depth.emit(okxSnapshot()); depth.emit(okxUpdate());
+  oi.emit({ event: 'subscribe', arg: { channel: 'open-interest', instId: 'BTC-USDT-SWAP' } });
+  oi.emit({ arg: { channel: 'open-interest', instId: 'BTC-USDT-SWAP' }, data: [{ instId: 'BTC-USDT-SWAP', oiCcy: '29909.37', ts: '1700000000000' }] });
+  assert.equal(depth.closed, false); assert.equal(oi.closed, false);
+  assert.equal(manager.status()['okx-depth'].state, 'live'); assert.equal(manager.status()['okx-oi'].state, 'live');
+  assert.equal(messages.filter(item => item.venue === 'okx' && item.message.kind === 'depthDelta').length, 1);
+  assert.deepEqual(messages.filter(item => item.id === 'okx-oi').map(item => item.message.base), [29909.37]);
+  assert.equal(logged.filter(line => line.includes('64010')).length, 2, 'each notice is logged');
+  manager.stop();
+  const fakeBitget = transport(); const bitgetManager = new LiveFeedManager({ networkEnabled: true, transportFactory: fakeBitget.factory, oiPollMs: 0, schedule: () => 1, cancel: () => {}, onMessage: () => {} });
+  await bitgetManager.start({ bitgetEnabled: true, bitgetSymbol: 'BTCUSDT' }); const bitget = defined(fakeBitget.sockets.find(item => item.spec.venue === 'bitget'));
+  bitget.emit({ event: 'notice', code: '30001', msg: 'not an OKX notice' });
+  assert.equal(bitgetManager.status()['bitget-depth'].state, 'backoff', 'only OKX notices are let through'); assert.equal(bitget.closed, true);
+  bitgetManager.stop();
+});

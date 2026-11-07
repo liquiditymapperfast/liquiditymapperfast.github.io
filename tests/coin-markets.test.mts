@@ -31,9 +31,9 @@ test('BTC is read exactly as before: the same instruments, addresses and subscri
   const made = BROWSER_VENUES.map(v => v.make());
   assert.deepEqual(made.map(m => m.book.instrumentId), ['binance:BTCUSDT', 'bybit:BTCUSDT', 'okx:BTC-USDT-SWAP', 'bitget:BTCUSDT', 'hyperliquid:BTC-PERP', 'deribit:BTC-PERPETUAL', 'binancespot:BTCUSDT', 'coinbase:BTC-USD', 'bybitspot:BTCUSDT', 'okxspot:BTC-USDT', 'bitgetspot:BTCUSDT', 'mexc:BTC_USDT'], 'the eleven as they were, and MEXC after them');
   assert.deepEqual(made.flatMap(m => [m.book, ...m.feeds]).map(c => inside(c).url()), [
-    'wss://fstream.binance.com/public/ws/btcusdt@depth@100ms', 'wss://fstream.binance.com/market/ws/btcusdt@aggTrade', 'wss://stream.bybit.com/v5/public/linear', 'wss://ws.okx.com:8443/ws/v5/public',
+    'wss://fstream.binance.com/public/ws/btcusdt@depth@100ms', 'wss://fstream.binance.com/market/ws/btcusdt@aggTrade', 'wss://stream.bybit.com/v5/public/linear', 'wss://ws.okx.com/ws/v5/public',
     'wss://ws.bitget.com/v2/ws/public', 'wss://api.hyperliquid.xyz/ws', 'wss://www.deribit.com/ws/api/v2', 'wss://stream.binance.com:9443/ws/btcusdt@depth@100ms', 'wss://stream.binance.com:9443/ws/btcusdt@aggTrade',
-    'wss://ws-feed.exchange.coinbase.com', 'wss://stream.bybit.com/v5/public/spot', 'wss://ws.okx.com:8443/ws/v5/public', 'wss://ws.bitget.com/v2/ws/public', 'wss://contract.mexc.com/edge']);
+    'wss://ws-feed.exchange.coinbase.com', 'wss://stream.bybit.com/v5/public/spot', 'wss://ws.okx.com/ws/v5/public', 'wss://ws.bitget.com/v2/ws/public', 'wss://contract.mexc.com/edge']);
   const sent = Object.fromEntries(made.map(m => [m.book.id, frames(m.book)]));
   assert.deepEqual(sent.bybit, [{ op: 'subscribe', args: ['orderbook.1000.BTCUSDT', 'publicTrade.BTCUSDT', 'allLiquidation.BTCUSDT', 'tickers.BTCUSDT'] }], 'its liquidations and its open-interest ticker on the same socket');
   assert.deepEqual(made.flatMap(m => m.liquidations ?? []).map(c => inside(c).url()), ['wss://fstream.binance.com/market/stream?streams=btcusdt@forceOrder/btcusdt@markPrice@1s'], 'Binance liquidations on a socket of their own');
