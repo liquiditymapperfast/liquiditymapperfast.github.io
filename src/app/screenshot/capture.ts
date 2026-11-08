@@ -114,53 +114,128 @@ function paintShadows(ctx: Ctx2D, box: Box, radii: number[], shadows: readonly S
   const reach = Math.max(...shadows.map(s => (Math.abs(s.x) + Math.abs(s.y) + Math.max(0, s.spread) + 2 * s.blur) * z)) + 2;
   const t = ctx.getTransform(), kx = Math.hypot(t.a, t.b), ky = Math.hypot(t.c, t.d), far = box.w + 2 * reach + 16;
   ctx.save();
-  ctx.beginPath(); ctx.rect(box.x - reach, box.y - reach, box.w + 2 * reach, box.h + 2 * reach);
-  if (radii.some(r => r > 0) && typeof ctx.roundRect === 'function') ctx.roundRect(box.x, box.y, box.w, box.h, radii.map(r => Math.min(r, box.w / 2, box.h / 2))); else ctx.rect(box.x, box.y, box.w, box.h);
-  ctx.clip('evenodd');
-  for (const s of [...shadows].reverse()) {
-    const spread = s.spread * z, x = box.x + s.x * z - spread, y = box.y + s.y * z - spread, w = box.w + 2 * spread, h = box.h + 2 * spread;
-    if (!(w > 0 && h > 0)) continue;
-    if (s.blur <= 0) { roundedPath(ctx, x, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = s.color; ctx.fill(); continue; }
-    // The shape is drawn outside the clip and only its shadow is moved back: the canvas blurs a shadow, not a shape.
-    ctx.shadowColor = s.color; ctx.shadowBlur = s.blur * z * (kx + ky) / 2; ctx.shadowOffsetX = far * kx; ctx.shadowOffsetY = 0;
-    roundedPath(ctx, x - far, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = '#000'; ctx.fill();
-    ctx.shadowColor = 'transparent';
+  try {
+    ctx.beginPath(); ctx.rect(box.x - reach, box.y - reach, box.w + 2 * reach, box.h + 2 * reach);
+    if (radii.some(r => r > 0) && typeof ctx.roundRect === 'function') ctx.roundRect(box.x, box.y, box.w, box.h, radii.map(r => Math.min(r, box.w / 2, box.h / 2))); else ctx.rect(box.x, box.y, box.w, box.h);
+    ctx.clip('evenodd');
+    for (const s of [...shadows].reverse()) {
+      const spread = s.spread * z, x = box.x + s.x * z - spread, y = box.y + s.y * z - spread, w = box.w + 2 * spread, h = box.h + 2 * spread;
+      if (!(w > 0 && h > 0)) continue;
+      if (s.blur <= 0) { roundedPath(ctx, x, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = s.color; ctx.fill(); continue; }
+      // The shape is drawn outside the clip and only its shadow is moved back, by the same move on the canvas's pixels (turned with the
+      // context): the canvas blurs a shadow, not a shape.
+      ctx.shadowColor = s.color; ctx.shadowBlur = s.blur * z * (kx + ky) / 2; ctx.shadowOffsetX = far * t.a; ctx.shadowOffsetY = far * t.b;
+      roundedPath(ctx, x - far, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = '#000'; ctx.fill();
+      ctx.shadowColor = 'transparent';
+    }
+  } finally { ctx.restore(); }
+}
+
+/** Words of a CSS value split on the spaces outside parentheses (`calc(100% - 7px) 4px` is two). */
+export function topWords(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0, word = '';
+  for (const c of text) {
+    if (c === '(') depth++; else if (c === ')') depth--;
+    if (depth === 0 && /\s/.test(c)) { if (word) out.push(word); word = ''; } else word += c;
   }
-  ctx.restore();
+  if (word) out.push(word);
+  return out;
 }
 
 /**
- * A box's background layers over its colour, the last layer first: linear gradients, and pictures (the Classic frame's check marks, bullets
- * and dither) placed by `background-size` and `background-position` in the padding box, once or tiled as `background-repeat` says. Other
- * layers (radial gradients, a picture not read yet) are left out.
+ * A computed length along `of`: a percentage of it, a length (zoomed), or a sum of both as the computed style writes one
+ * (`calc(100% - 7px)`, `calc(50% + -0.5px)`). NaN for anything else: what uses it leaves the thing out rather than drawing it at 0.
+ */
+export function cssLength(value: string, of: number, zoom = 1): number {
+  const term = (t: string): number => /^-?[\d.]+(?:e-?\d+)?%$/.test(t) ? of * num(t) / 100 : /^-?[\d.]+(?:e-?\d+)?(?:px)?$/.test(t) ? num(t) * zoom : NaN;
+  const s = value.trim(), c = /^calc\((.*)\)$/.exec(s);
+  if (!c) return term(s);
+  const parts = c[1]!.trim().split(/\s+([+-])\s+/);
+  let total = term(parts[0]!);
+  for (let i = 1; i < parts.length; i += 2) { const t = term(parts[i + 1] ?? ''); total = parts[i] === '-' ? total - t : total + t; }
+  return total;
+}
+
+/** Where a layer `dw` × `dh` sits in a box `w` × `h` by the first layer of a computed position (percentages of the room left, lengths, sums). */
+function placeLayer(position: string, w: number, h: number, dw: number, dh: number, zoom: number): Box {
+  const [pa = '0%', pb = pa] = topWords(splitTop(position)[0] ?? '');
+  return { x: cssLength(pa, w - dw, zoom), y: cssLength(pb, h - dh, zoom), w: dw, h: dh };
+}
+
+/**
+ * Where a gradient layer lies in a box `w` × `h`: a gradient has no size of its own, so `auto` (and `cover`, `contain`) is the whole box in
+ * that direction, and lengths are as for a picture (the Classic frame's title bar: an 18 px strip inset 4 px).
+ */
+export function gradientPlace(size: string, position: string, w: number, h: number, zoom = 1): Box {
+  const [sa = 'auto', sb = 'auto'] = topWords(splitTop(size)[0] ?? '');
+  const whole = sa === 'cover' || sa === 'contain';
+  const dw = whole || sa === 'auto' ? w : cssLength(sa, w, zoom), dh = whole || sb === 'auto' ? h : cssLength(sb, h, zoom);
+  return placeLayer(position, w, h, dw, dh, zoom);
+}
+
+/** The colour of a gradient whose stops are all one colour (`conic-gradient(var(--face), var(--face))`, a block of colour); null otherwise. */
+export function solidGradient(layer: string): string | null {
+  const m = /^(?:repeating-)?(?:linear|radial|conic)-gradient\((.*)\)$/.exec(layer.trim()); if (!m) return null;
+  const args = splitTop(m[1]!);
+  // The first argument may be the gradient's direction or shape rather than a stop.
+  if (args.length && /^(to |from |at |circle|ellipse|closest|farthest|-?[\d.]+(deg|turn|rad|grad)\b)/.test(args[0]!)) args.shift();
+  const colours = args.map(stop => { const words = topWords(stop); return words.filter(w => !/^-?[\d.]+(%|px|deg|turn)?$/.test(w)).join(' '); }).filter(Boolean);
+  return colours.length && colours.every(c => c === colours[0]) ? colours[0]! : null;
+}
+
+/** Tiles of background pictures, by picture and size on the canvas's pixels; emptied when it holds this many. */
+const tiles = new Map<string, HTMLCanvasElement | OffscreenCanvas>(), MAX_TILES = 64;
+
+/**
+ * A box's background layers over its colour, the last layer first, each in its `background-origin` box and clipped to the rounded box:
+ * linear gradients and gradients of one colour, placed by `background-size` and `background-position`; and pictures (the Classic frame's
+ * check marks, bullets, select arrows and dither), drawn once or tiled as `background-repeat` says, a tile on whole pixels of the canvas so
+ * a dither stays a checker. A layer it cannot place (a position it cannot read), a radial or conic gradient of several colours, and a
+ * picture not read yet are left out. `background-attachment: fixed` is drawn as if it were not.
  */
 function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: number[], z: number): void {
   if (!clear(cs.backgroundColor)) { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.fillStyle = cs.backgroundColor; ctx.fill(); }
   if (!cs.backgroundImage || cs.backgroundImage === 'none') return;
-  const layers = splitTop(cs.backgroundImage), sizes = splitTop(cs.backgroundSize || 'auto'), places = splitTop(cs.backgroundPosition || '0% 0%'), repeats = splitTop(cs.backgroundRepeat || 'repeat');
-  const pad = innerBox(box, cs, true, z);
+  const layers = splitTop(cs.backgroundImage), sizes = splitTop(cs.backgroundSize || 'auto'), places = splitTop(cs.backgroundPosition || '0% 0%');
+  const repeats = splitTop(cs.backgroundRepeat || 'repeat'), origins = splitTop(cs.backgroundOrigin || 'padding-box');
+  const finite = (b: Box): boolean => Number.isFinite(b.x + b.y + b.w + b.h) && b.w > 0 && b.h > 0;
   for (let i = layers.length - 1; i >= 0; i--) {
-    const layer = layers[i]!;
-    if (layer.startsWith('linear-gradient(')) {
-      const gradient = gradientFor(ctx, layer, box);
-      if (gradient) { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.fillStyle = gradient; ctx.fill(); }
+    const layer = layers[i]!, pick = (list: string[]): string => list[i % list.length]!;
+    const origin = pick(origins), area = origin === 'border-box' ? box : innerBox(box, cs, origin !== 'content-box', z);
+    if (!(area.w > 0 && area.h > 0)) continue;
+    const once = /^no-repeat( no-repeat)?$/.test(pick(repeats));
+    const solid = solidGradient(layer), linear = layer.startsWith('linear-gradient(');
+    if (solid || linear) {
+      const at = gradientPlace(pick(sizes), pick(places), area.w, area.h, z); if (!finite(at)) continue;
+      const rect = once ? { x: area.x + at.x, y: area.y + at.y, w: at.w, h: at.h } : box;
+      const fill = solid ?? gradientFor(ctx, layer, rect); if (!fill) continue;
+      ctx.save();
+      try { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip(); ctx.fillStyle = fill; ctx.fillRect(rect.x, rect.y, rect.w, rect.h); } finally { ctx.restore(); }
       continue;
     }
     const url = layer.startsWith('url(') ? maskUrl(layer, location.href) : null, picture = url ? pictureOf(url) : null;
-    if (!picture || !(pad.w > 0 && pad.h > 0)) continue;
-    const pick = (list: string[]): string => list[i % list.length]!;
-    const at = maskPlace(pick(sizes), pick(places), pad.w, pad.h, picture.naturalWidth, picture.naturalHeight, z);
-    if (!(at.w > 0 && at.h > 0)) continue;
-    ctx.save(); roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip();
-    if (/^no-repeat$|^no-repeat no-repeat$/.test(pick(repeats))) ctx.drawImage(picture, pad.x + at.x, pad.y + at.y, at.w, at.h);
-    else {
-      // Tiled through a pattern of the picture drawn once at its size on the picture's pixels.
+    if (!url || !picture) continue;
+    const at = maskPlace(pick(sizes), pick(places), area.w, area.h, picture.naturalWidth, picture.naturalHeight, z);
+    if (!finite(at)) continue;
+    ctx.save();
+    try {
+      roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip();
+      if (once) { ctx.drawImage(picture, area.x + at.x, area.y + at.y, at.w, at.h); continue; }
+      // Tiled through a pattern of the picture drawn once on whole pixels of the canvas, from a corner on a whole pixel: drawn between
+      // pixels, the Classic frame's dither came out a flat grey.
       const t = ctx.getTransform(), k = Math.max(1e-3, Math.hypot(t.a, t.b)), tw = Math.max(1, Math.round(at.w * k)), th = Math.max(1, Math.round(at.h * k));
-      const tile = surface(tw, th); context2d(tile).drawImage(picture, 0, 0, tw, th);
-      const pattern = ctx.createPattern(tile, 'repeat');
-      if (pattern) { pattern.setTransform(new DOMMatrix([at.w / tw, 0, 0, at.h / th, pad.x + at.x, pad.y + at.y])); ctx.fillStyle = pattern; ctx.fillRect(box.x, box.y, box.w, box.h); }
-    }
-    ctx.restore();
+      const key = `${url}|${tw}|${th}`;
+      let tile = tiles.get(key);
+      if (!tile) {
+        tile = surface(tw, th); const tc = context2d(tile); tc.imageSmoothingEnabled = false; tc.drawImage(picture, 0, 0, tw, th);
+        if (tiles.size >= MAX_TILES) tiles.clear();
+        tiles.set(key, tile);
+      }
+      const pattern = ctx.createPattern(tile, 'repeat'); if (!pattern) continue;
+      pattern.setTransform(new DOMMatrix([1 / k, 0, 0, 1 / k, Math.round((area.x + at.x) * k) / k, Math.round((area.y + at.y) * k) / k]));
+      ctx.imageSmoothingEnabled = false; ctx.fillStyle = pattern; ctx.fillRect(box.x, box.y, box.w, box.h);
+    } finally { ctx.restore(); }
   }
 }
 
@@ -198,21 +273,20 @@ export function maskUrl(image: string, origin: string): string | null {
 
 /**
  * Where a mask picture `iw` × `ih` lies in a box `w` × `h` (its border box), from the computed `mask-size` (`contain`, `cover`, `auto` or
- * lengths) and `mask-position` (percentages of the room left, or lengths) of its first layer. A picture of no size of its own is square.
- * Lengths are scaled by the element's `zoom` (the computed style gives them unzoomed).
+ * lengths) and `mask-position` (percentages of the room left, lengths, or sums of both) of its first layer, as for a background picture.
+ * A picture of no size of its own is square. Lengths are scaled by the element's `zoom` (the computed style gives them unzoomed). A value
+ * it cannot read gives NaN, and the picture is left out.
  */
 export function maskPlace(size: string, position: string, w: number, h: number, iw: number, ih: number, zoom = 1): Box {
-  const ratio = iw > 0 && ih > 0 ? iw / ih : 1, first = (v: string): string[] => (v.split(',')[0] ?? '').trim().split(/\s+/);
-  const length = (v: string, of: number): number => v.endsWith('%') ? of * num(v) / 100 : num(v) * zoom;
-  const [sa = 'auto', sb = 'auto'] = first(size);
+  const ratio = iw > 0 && ih > 0 ? iw / ih : 1;
+  const [sa = 'auto', sb = 'auto'] = topWords(splitTop(size)[0] ?? '');
   let dw: number, dh: number;
   if (sa === 'contain' || sa === 'cover') { dh = sa === 'contain' ? Math.min(h, w / ratio) : Math.max(h, w / ratio); dw = dh * ratio; }
   else if (sa === 'auto' && sb === 'auto') { dw = iw > 0 ? iw * zoom : w; dh = ih > 0 ? ih * zoom : dw / ratio; }
-  else if (sb === 'auto') { dw = length(sa, w); dh = dw / ratio; }
-  else if (sa === 'auto') { dh = length(sb, h); dw = dh * ratio; }
-  else { dw = length(sa, w); dh = length(sb, h); }
-  const [pa = '0%', pb = pa] = first(position);
-  return { x: length(pa, w - dw), y: length(pb, h - dh), w: dw, h: dh };
+  else if (sb === 'auto') { dw = cssLength(sa, w, zoom); dh = dw / ratio; }
+  else if (sa === 'auto') { dh = cssLength(sb, h, zoom); dw = dh * ratio; }
+  else { dw = cssLength(sa, w, zoom); dh = cssLength(sb, h, zoom); }
+  return placeLayer(position, w, h, dw, dh, zoom);
 }
 
 /** The pictures of masks and backgrounds by address: read, being read, or unreadable (null). */
@@ -254,14 +328,16 @@ function paintBox(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number): voi
     cs.borderRadius, cs.borderWidth, cs.borderStyle, cs.borderColor, cs.boxShadow].join('|');
   let layer = cutIcons.get(key);
   if (!layer) {
+    const at = maskPlace(size, position, box.w, box.h, picture.naturalWidth, picture.naturalHeight, z);
+    if (!Number.isFinite(at.x + at.y + at.w + at.h)) return;
+    const waiting = unread.length;
     layer = surface(w, h); const lc = context2d(layer);
     lc.setTransform(w / box.w, 0, 0, h / box.h, -box.x * w / box.w, -box.y * h / box.h);
     paintPlainBox(lc, box, cs, z);
-    const at = maskPlace(size, position, box.w, box.h, picture.naturalWidth, picture.naturalHeight, z);
     lc.setTransform(w / box.w, 0, 0, h / box.h, 0, 0); lc.globalCompositeOperation = 'destination-in';
     lc.drawImage(picture, at.x, at.y, at.w, at.h);
-    if (cutIcons.size >= MAX_CUT_ICONS) cutIcons.clear();
-    cutIcons.set(key, layer);
+    // A cut that met a background picture not read yet is not kept: kept, it would stay without it.
+    if (unread.length === waiting) { if (cutIcons.size >= MAX_CUT_ICONS) cutIcons.clear(); cutIcons.set(key, layer); }
   }
   ctx.drawImage(layer, box.x, box.y, box.w, box.h);
 }
@@ -279,9 +355,9 @@ export function clipPolygon(value: string, w: number, h: number, zoom = 1): { po
   const parts = splitTop(m[1]!);
   let rule: CanvasFillRule = 'nonzero';
   if (parts[0] === 'evenodd' || parts[0] === 'nonzero') rule = parts.shift() as CanvasFillRule;
-  const at = (v: string, of: number): number => v.endsWith('%') ? of * num(v) / 100 : num(v) * zoom;
-  const points = parts.map(p => { const [x = '0', y = '0'] = p.trim().split(/\s+/); return [at(x, w), at(y, h)] as [number, number]; });
-  return points.length >= 3 ? { points, rule } : 'other';
+  const points = parts.map(p => { const [x = '0', y = '0'] = topWords(p.trim()); return [cssLength(x, w, zoom), cssLength(y, h, zoom)] as [number, number]; });
+  // A corner it cannot read leaves the clip undrawn (and the box out) rather than drawn with that corner at 0.
+  return points.length >= 3 && points.every(([x, y]) => Number.isFinite(x + y)) ? { points, rule } : 'other';
 }
 
 /** Paint a box through its `clip-path`: a polygon clips it (the tour keys' play triangle), any other clip leaves it out. */
@@ -597,12 +673,16 @@ function paintPseudo(painter: Painter, host: Element, hostBox: Box, hcs: CSSStyl
   });
 }
 
-/** A select's chosen text and caret, a slider, a check box or a text field's value; its sizes zoomed with it (`z`). */
+/**
+ * A select's chosen text and caret, a slider, a check box or a text field's value; its sizes zoomed with it (`z`). A select drawn by the
+ * page itself (`appearance: none`, the Classic frame's, whose arrow is a background picture) gets no caret of ours.
+ */
 function paintControl(ctx: Ctx2D, node: Element, rect: DOMRect, cs: CSSStyleDeclaration, z: number): void {
   const pad = (num(cs.paddingLeft) + num(cs.borderLeftWidth)) * z, mid = rect.top + rect.height / 2;
   ctx.font = fontOf(cs, z); ctx.fillStyle = cs.color; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   if (node instanceof HTMLSelectElement) {
     ctx.fillText(node.selectedOptions[0]?.text ?? '', rect.left + pad, mid + 0.5, Math.max(0, rect.width - pad - 22 * z));
+    if ((cs.appearance || cs.webkitAppearance) === 'none') return;
     ctx.strokeStyle = cs.color; ctx.lineWidth = 1.3 * z; ctx.beginPath();
     ctx.moveTo(rect.right - 14 * z, mid - 2 * z); ctx.lineTo(rect.right - 10.5 * z, mid + 1.5 * z); ctx.lineTo(rect.right - 7 * z, mid - 2 * z); ctx.stroke();
   } else if (node instanceof HTMLInputElement) {

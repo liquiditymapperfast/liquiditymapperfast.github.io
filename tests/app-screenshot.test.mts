@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { arrowHead, blockArrow, clampRect, fileName, hitHandle, inside, markPlacement, markText, rectFrom, resizeRect, snapAngle, squareTo, toolbarPlacement, worthKeeping, type Shape } from '../src/app/screenshot/shapes.ts';
-import { borderSides, clear, clipPolygon, contentText, cssMatrix, flexStarts, maskPlace, maskUrl, outerShadows, splitTop, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
+import { borderSides, clear, clipPolygon, contentText, cssLength, cssMatrix, flexStarts, gradientPlace, maskPlace, maskUrl, outerShadows, solidGradient, splitTop, topWords, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
 
 const screen = { w: 1200, h: 800 };
 
@@ -222,4 +222,31 @@ test('a polygon clip-path is read as its corners in the box; any other clip leav
   assert.equal(clipPolygon('polygon(0px 0px, 10px 10px)', 8, 10), 'other', 'two corners are no shape');
   // A picture laid at its own size is zoomed with its element (the Classic frame's check marks: an SVG 7 px square).
   assert.deepEqual(maskPlace('auto', '50% 50%', 13, 13, 7, 7, 0.9), { x: (13 - 6.3) / 2, y: (13 - 6.3) / 2, w: 6.3, h: 6.3 });
+});
+
+test('a background layer is placed from its computed size and position, sums of a share and a length included', () => {
+  assert.deepEqual(topWords('calc(100% - 7px) calc(50% - 0.5px)'), ['calc(100% - 7px)', 'calc(50% - 0.5px)']);
+  assert.deepEqual(topWords('  7px   4px '), ['7px', '4px']);
+  assert.ok(Math.abs(cssLength('calc(100% - 7px)', 71.67) - 64.67) < 1e-9);
+  assert.equal(cssLength('calc(50% + -0.5px)', 14), 6.5);
+  assert.equal(cssLength('25%', 80), 20); assert.ok(Math.abs(cssLength('3px', 80, 0.9) - 2.7) < 1e-9, 'a length is zoomed'); assert.equal(cssLength('0', 80), 0);
+  assert.ok(Number.isNaN(cssLength('calc(100% - 2em)', 80)), 'a unit it cannot resolve: NaN, so the layer is left out');
+  assert.ok(Number.isNaN(cssLength('center', 80)));
+  // The Classic frame's select arrow: 7 x 4 at `calc(100% - 7px) calc(50% - 0.5px)` of a 78.67 x 18 box: at its right, not at 0, 0.
+  const arrow = maskPlace('7px 4px, 12px calc(100% - 8px), auto', 'calc(100% - 7px) calc(50% - 0.5px), calc(100% - 4px) 4px, 0% 0%', 78.67, 18, 7, 4);
+  assert.ok(Math.abs(arrow.x - 64.67) < 1e-9 && Math.abs(arrow.y - 6.5) < 1e-9 && arrow.w === 7 && arrow.h === 4);
+  assert.ok(Number.isNaN(maskPlace('7px 4px', 'calc(100% - 1em) 0px', 20, 20, 7, 4).x));
+  // A gradient has no size of its own: `auto` is the whole box that way; the Classic title bar is a strip inset 4 px.
+  assert.deepEqual(gradientPlace('auto', '0% 0%', 100, 30), { x: 0, y: 0, w: 100, h: 30 });
+  assert.deepEqual(gradientPlace('calc(100% - 8px) 18px', '4px 4px', 100, 30), { x: 4, y: 4, w: 92, h: 18 });
+  assert.deepEqual(gradientPlace('12px auto', 'calc(100% - 4px) 0px', 100, 30), { x: 84, y: 0, w: 12, h: 30 });
+  // A gradient of one colour is that colour; one of several is not drawn as one.
+  assert.equal(solidGradient('conic-gradient(rgb(192, 192, 192), rgb(192, 192, 192))'), 'rgb(192, 192, 192)');
+  assert.equal(solidGradient('linear-gradient(rgb(1, 2, 3), rgb(1, 2, 3))'), 'rgb(1, 2, 3)');
+  assert.equal(solidGradient('linear-gradient(90deg, rgb(1, 2, 3) 0%, rgb(1, 2, 3) 100%)'), 'rgb(1, 2, 3)');
+  assert.equal(solidGradient('radial-gradient(circle at 50% 50%, red, blue)'), null);
+  assert.equal(solidGradient('url("x.png")'), null);
+  // A clip corner it cannot read leaves the box out; a sum it can is drawn.
+  assert.deepEqual(clipPolygon('polygon(4px 0px, 100% 0px, calc(100% - 6px) 100%, 0px 100%)', 50, 10), { points: [[4, 0], [50, 0], [44, 10], [0, 10]], rule: 'nonzero' });
+  assert.equal(clipPolygon('polygon(0px 0px, 100% 0px, calc(100% - 1em) 100%)', 50, 10), 'other');
 });
