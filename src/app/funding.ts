@@ -6,9 +6,10 @@ import type { Listing } from '../shared/coins.ts';
  * for the Funding pane. Funding is what longs pay shorts (or the other way) each interval; it is made of the premium, how far the perpetual's
  * price sits from its index, plus a clamp that holds it at a base rate while the premium stays near it: on Hyperliquid, Binance, Bybit, OKX
  * and Bitget the rate per eight hours is the premium plus clamp(0.01 % − premium, −0.05 %, +0.05 %), so it stays at 0.01 % while the premium
- * moves between −0.04 % and +0.06 %. Deribit's funding is continuous and has no base rate; its band is not drawn (its dampener was not
- * checked). Every rate is put per eight hours, so the base and its band are the same on every venue that has them: Hyperliquid settles each
- * hour (×8), the others mostly every eight hours, some every four, two or one.
+ * moves between −0.04 % and +0.06 %. Deribit's funding is continuous and has no base rate: zero while the premium stays within ±0.025 %, and
+ * the premium less that margin outside it (its documented default, checked on its ticker 2026-11-08); a perpetual can have its own margin, so
+ * no band is drawn for it. Every rate is put per eight hours, so the base and its band are the same on every venue that has them: Hyperliquid
+ * settles each hour (×8), Deribit's records say what each hour paid (×8), the others mostly every eight hours, some every four, two or one.
  *
  * Research OIF-1 (2026-11-06, every Hyperliquid trade, BTC and ETH): hour by hour within a day, Hyperliquid's funding moved with the share of new
  * positions that buyers opened at market (Spearman +0.21 / +0.23 on ETH / BTC over 30 days each, +0.59 / +0.69 over days), and its premium
@@ -30,7 +31,7 @@ export function fundingVenueOf(picked: FundingVenue | '', listed: (v: FundingVen
 export interface FundingRow { t: number; rate: number; per8h: number; hours: number }
 /** The premium (a fraction of the index price) over the stretch from `t`, as the venue publishes it per candle (or per hour). */
 export interface PremiumRow { t: number; p: number }
-/** The funding accruing now: its rate (as a row's), when it settles (null: continuously), and the premium now where the venue says it. */
+/** The funding accruing now: its rate (as a row's), when it settles (Deribit's, continuous: when its hour's record is due; null: not said), and the premium now where the venue says it. */
 export interface FundingNow { rate: number; per8h: number; hours: number; next: number | null; premium: number | null }
 /** The share of an hour's new positions that buyers opened at market (null when nothing opened). */
 export const buyerShare = (h: { longOpened: number; shortOpened: number }): number | null => h.longOpened + h.shortOpened > 0 ? h.longOpened / (h.longOpened + h.shortOpened) : null;
@@ -41,6 +42,8 @@ export function fundingBase(venue: FundingVenue): { base: number; clamp: number 
 }
 /** Whether the venue publishes its premium as a history the pane can draw as a line (the others: funding steps only). */
 export const hasPremium = (venue: FundingVenue): boolean => venue === 'hyperliquid' || venue === 'binance' || venue === 'bybit';
+/** Whether the venue's funding accrues all the time, with no settlement behind a row: Deribit's rows are what each hour paid. */
+export const continuousFunding = (venue: FundingVenue): boolean => venue === 'deribit';
 
 const HOUR = 3_600_000;
 /** At most this many pages one read asks for (a venue that keeps answering cannot loop). */
@@ -182,12 +185,15 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
     }
     reached = Math.max(from, oldestRead);
   } else if (venue === 'deribit') {
-    // Continuous funding: each hour's record holds the eight-hour rate at that hour (`interest_8h`) and what the hour paid (`interest_1h`).
+    // Continuous funding: each hour's record holds what the hour paid (`interest_1h`), eight times that being its rate per eight hours. Its
+    // `interest_8h` is the sum of the last eight hours' (checked 2026-11-08: correlation 0.9999 over 90 days of BTC and ETH): drawn as the hour's
+    // rate, that running total came three or four hours late and spread each hour's funding over eight. A record at T is the hour ending at T;
+    // `start_timestamp` is exclusive, `end_timestamp` inclusive, and an answer holds at most 744 records, so 30 days a page are whole (all checked 2026-11-08).
     let end = to;
     for (let page = 0; page < PAGES && end > from; page++) {
       const start = Math.max(from, end - 30 * 24 * HOUR);
       const got = listOf(await get(`https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=${s}&start_timestamp=${Math.floor(start)}&end_timestamp=${Math.floor(end)}`), true, venue, 'result');
-      for (const r of got) { const t = num(at(r, 'timestamp')), per8h = num(at(r, 'interest_8h')), rate = num(at(r, 'interest_1h')); if (Number.isFinite(t) && Number.isFinite(per8h)) take({ t: onMinute(t), rate: Number.isFinite(rate) ? rate : per8h / 8, per8h, hours: 1 }); }
+      for (const r of got) take(row(num(at(r, 'timestamp')), num(at(r, 'interest_1h')), 1));
       end = start - 1;
     }
     reached = Math.max(from, end);
@@ -258,6 +264,13 @@ export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: n
   return { rows: [...out].map(([t, p]) => ({ t, p })).sort((a, b) => a.t - b.t), from: lo, to: hi, cut };
 }
 
+/**
+ * Deribit's `get_funding_rate_value` counts only the whole blocks of `BLOCK_MS` that have ended since its start (0 until the first has), each landing a second or
+ * two after it ends: over a whole hour it is exactly `interest_1h` (checked 2026-11-08). So it is asked over the blocks that have landed and divided by those:
+ * divided by the time run it sagged to half by the end of a block and jumped back at the next.
+ */
+const BLOCK_MS = 5 * 60_000, BLOCK_LAG_MS = 5_000;
+
 /** The funding accruing now on a venue, when it settles and the premium now (null where the venue would not say). */
 export async function readFundingNow(venue: FundingVenue, listing: Listing, get: Fetcher = webGet, now = Date.now()): Promise<FundingNow | null> {
   const s = listing.symbol, make = (rate: number, hours: number, next: number | null, premium: number | null): FundingNow | null =>
@@ -274,6 +287,15 @@ export async function readFundingNow(venue: FundingVenue, listing: Listing, get:
     return make(num(at(r, 'fundingRate')), next > before && before > 0 ? Math.round((next - before) / HOUR) || 8 : 8, next, num(at(r, 'premium')));
   }
   if (venue === 'bitget') { const a = await get(`https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol=${s}&productType=usdt-futures`); const r = listOf(a, bitgetOk(a), venue, 'data')[0]; return make(num(at(r, 'fundingRate')), num(at(r, 'fundingRateInterval')) || 8, num(at(r, 'nextUpdate')), null); }
+  if (venue === 'deribit') {
+    // The step under way is the hour under way, its record being due at the next hour, and its rate what the hour's finished blocks paid (`BLOCK_MS`), which
+    // comes to what the record will say. `current_funding` is the rate of this one moment, already per eight hours and zero inside the dampener: 0 in about a
+    // quarter of the samples of hours that paid (review, 2026-11-08), it stands in only until a block has landed and where that read fails. The premium
+    // now is the mark over the index, what the rate is worked out from.
+    const hour = Math.floor(now / HOUR) * HOUR, covered = Math.floor((now - hour - BLOCK_LAG_MS) / BLOCK_MS) * BLOCK_MS, r = at(await get(`https://www.deribit.com/api/v2/public/ticker?instrument_name=${s}`), 'result');
+    const paid = covered < BLOCK_MS ? NaN : await get(`https://www.deribit.com/api/v2/public/get_funding_rate_value?instrument_name=${s}&start_timestamp=${hour}&end_timestamp=${hour + covered}`).then(a => num(at(a, 'result')), () => NaN);
+    return make(Number.isFinite(paid) ? paid * (HOUR / covered) : num(at(r, 'current_funding')) / 8, 1, hour + HOUR, num(at(r, 'mark_price')) / num(at(r, 'index_price')) - 1);
+  }
   return null;
 }
 

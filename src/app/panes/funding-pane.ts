@@ -13,7 +13,7 @@ import { TimePane, setHtml } from './lower-panes.ts';
 import { currentCoin } from '../coin.ts';
 import { venueLabel } from '../venues.ts';
 import { instrumentIdFor } from '../../shared/coins.ts';
-import { FUNDING_VENUES, FundingSource, buyerShare, cutAt, fundingBase, fundingVenueOf, hasPremium, rowAt, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
+import { FUNDING_VENUES, FundingSource, buyerShare, continuousFunding, cutAt, fundingBase, fundingVenueOf, hasPremium, rowAt, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
 import type { HourOpens, NlnsSource } from '../delta/nlns-source.ts';
 import { coinText } from '../delta/nlns.ts';
 import { pageNow } from '../replay/clock.ts';
@@ -26,15 +26,18 @@ const PER_YEAR = 3 * 365;
 /** A rate (a fraction) as a signed percentage: "+0.0100%", "−0.0453%". */
 export function rateText(x: number, digits = 4): string { return `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(digits)}%`; }
 
-/** The popup at a time: the funding settled over it, per eight hours and per the venue's own interval, its APR, the premium, and who opened. */
-export function fundingCardLines(h: { time: number; venue: string; row: FundingRow | null; forming: boolean; premium: number | null; opens: HourOpens | null; coin: string }): InfoLine[] {
+/**
+ * The popup at a time: the funding settled over it, per eight hours and per the venue's own interval, its APR, the premium, and who opened. On a
+ * `continuous` venue no settlement stands behind the row and no band is drawn, so neither is named.
+ */
+export function fundingCardLines(h: { time: number; venue: string; row: FundingRow | null; forming: boolean; premium: number | null; opens: HourOpens | null; coin: string; continuous: boolean }): InfoLine[] {
   const lines: InfoLine[] = [{ text: `${h.venue} · ${clock(h.time, true)}`, bold: true }];
   if (h.row) {
     const tone = h.row.per8h > 0 ? 'buy' : h.row.per8h < 0 ? 'sell' : 'text';
     lines.push({ label: t('Funding'), text: `${rateText(h.row.per8h)} / 8 h`, color: tone, bold: true });
-    if (h.row.hours !== 8) lines.push({ label: t('Each settlement'), text: `${rateText(h.row.rate, 5)} / ${h.row.hours} h` });
+    if (h.row.hours !== 8 && !h.continuous) lines.push({ label: t('Each settlement'), text: `${rateText(h.row.rate, 5)} / ${h.row.hours} h` });
     lines.push({ label: 'APR', text: rateText(h.row.per8h * PER_YEAR, 2) });
-    lines.push({ label: h.forming ? t('Settles at') : t('Settled at'), text: clock(h.row.t, true), color: 'muted' });
+    if (!h.continuous) lines.push({ label: h.forming ? t('Settles at') : t('Settled at'), text: clock(h.row.t, true), color: 'muted' });
   }
   if (h.premium !== null) lines.push({ label: t('Premium'), text: rateText(h.premium), color: h.premium > 0 ? 'buy' : h.premium < 0 ? 'sell' : 'text' });
   if (h.opens) {
@@ -42,7 +45,7 @@ export function fundingCardLines(h: { time: number; venue: string; row: FundingR
     if (share !== null) lines.push({ label: t('Buyers opened'), text: `${Math.round(share * 100)}%`, color: share > 0.5 ? 'buy' : share < 0.5 ? 'sell' : 'text', bold: true, rule: true });
     lines.push({ label: t('New longs'), text: coinText(h.opens.longOpened, h.coin), color: 'buy' }, { label: t('New shorts'), text: coinText(h.opens.shortOpened, h.coin), color: 'sell' });
   }
-  lines.push({ text: t('Per eight hours on every venue. Funding stays at its base rate (dashed) while the premium stays in the shaded band, and follows the premium outside it.'), color: 'muted', wrap: true, rule: true });
+  if (!h.continuous) lines.push({ text: t('Per eight hours on every venue. Funding stays at its base rate (dashed) while the premium stays in the shaded band, and follows the premium outside it.'), color: 'muted', wrap: true, rule: true });
   if (h.opens) lines.push({ text: t('Hour by hour, Hyperliquid\'s funding moved with the share of new positions buyers opened at market (measured on every trade of BTC and ETH): context, not a signal.'), color: 'muted', wrap: true });
   return lines;
 }
@@ -122,7 +125,8 @@ export class FundingPane extends TimePane {
     let lo = Math.min(0, base - clamp), hi = Math.max(0, base + clamp);
     for (const r of visRows) { lo = Math.min(lo, r.per8h); hi = Math.max(hi, r.per8h); }
     for (const q of visPremium) { lo = Math.min(lo, q.p); hi = Math.max(hi, q.p); }
-    if (forming && formShown) { lo = Math.min(lo, forming.per8h); hi = Math.max(hi, forming.per8h); if (forming.premium !== null) { lo = Math.min(lo, forming.premium); hi = Math.max(hi, forming.premium); } }
+    // The premium now only where a premium is drawn: elsewhere it would set a scale for something not on it (a Deribit premium of 0.026 % over steps of 0.01 % left them a third of the height).
+    if (forming && formShown) { lo = Math.min(lo, forming.per8h); hi = Math.max(hi, forming.per8h); if (forming.premium !== null && hasPremium(venue)) { lo = Math.min(lo, forming.premium); hi = Math.max(hi, forming.premium); } }
     // A view whose every rate is exactly 0 (Deribit has whole runs of zero hours, and no band to widen the scale) still has a scale.
     const pad = (hi - lo) * 0.08 || 0.0001, min = lo - pad, max = hi + pad;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (lineBottom - top);
@@ -177,14 +181,14 @@ export class FundingPane extends TimePane {
     // stay at their newest, and the cursor is drawn there.
     const hover = state.hover, at = hover ? Math.min(hover.t, now) : now;
     if (hover && this.pointer && hover.t > at) this.cursorT = at;
-    // The funding accruing now over its interval; a venue that says nothing of it (Deribit's is continuous) shows its newest record after it.
+    // The funding accruing now over its interval; while a venue says nothing of it, its newest record shows after it.
     const settled = rowAt(rows, at), isForming = !!forming && at >= formStart && at <= formEnd && !(settled && settled.t >= formEnd);
     const row = isForming ? null : settled ?? (!forming && newest && at >= newest.t ? newest : null);
     const shownRow: FundingRow | null = row ?? (isForming && forming ? { t: formEnd, rate: forming.rate, per8h: forming.per8h, hours: forming.hours } : null);
     // The premium under way is the venue's own now, where it says it (the last candle's is up to a candle old).
     const premiumAt = isForming && forming && forming.premium !== null ? forming.premium : premiumNear(premium, data.premiumMs, at);
     const hourOpens = opens.find(h => h.t <= at && at < h.t + HOUR) ?? null;
-    if (hover && this.pointer) this.#lines = fundingCardLines({ time: at, venue: name, row: shownRow, forming: isForming, premium: premiumAt, opens: hourOpens, coin: coin.coin });
+    if (hover && this.pointer) this.#lines = fundingCardLines({ time: at, venue: name, row: shownRow, forming: isForming, premium: premiumAt, opens: hourOpens, coin: coin.coin, continuous: continuousFunding(venue) });
     const tone = (x: number): string => x > 0 ? 'bid' : x < 0 ? 'ask' : '';
     const parts: string[] = [];
     if (shownRow) parts.push(`${t('Funding')} <b class="${tone(shownRow.per8h)}">${rateText(shownRow.per8h)}</b> / 8 h · APR ${rateText(shownRow.per8h * PER_YEAR, 2)}`);

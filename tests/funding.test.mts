@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FundingSource, buyerShare, cutAt, fundingBase, fundingVenueOf, hasPremium, heldPremium, isFundingVenue, readFunding, readFundingNow, readPremium, rowAt } from '../src/app/funding.ts';
+import { FundingSource, buyerShare, continuousFunding, cutAt, fundingBase, fundingVenueOf, hasPremium, heldPremium, isFundingVenue, readFunding, readFundingNow, readPremium, rowAt } from '../src/app/funding.ts';
+import { fundingCardLines } from '../src/app/panes/funding-pane.ts';
 import type { Fetcher } from '../src/shared/history.ts';
 
 const H = 3_600_000, T = Date.UTC(2026, 10, 6, 0);
@@ -326,8 +327,9 @@ test('Bybit, OKX, Bitget and Deribit: newest first, back to the start; a venue s
   assert.deepEqual((await readFunding('okx', { symbol: 'BTC-USDT-SWAP', unit: 1 }, T, T + 17 * H, okx)).rows.map(r => [r.t, r.hours, r.per8h]), [[T + 8 * H, 8, 0.0001], [T + 16 * H, 8, 0.0002]], 'the interval read from the gap between settlements');
   const bitget = venue(url => url.includes('current-fund-rate') ? { data: [{ fundingRateInterval: '8' }] } : { data: [{ fundingRate: '0.000045', fundingTime: String(T + 8 * H) }] });
   assert.deepEqual((await readFunding('bitget', BTC, T, T + 9 * H, bitget)).rows.map(r => [r.t, r.per8h]), [[T + 8 * H, 0.000045]]);
-  const deribit = venue(() => ({ result: [{ timestamp: T + H, interest_8h: 3.2e-5, interest_1h: 4e-6 }] }));
-  assert.deepEqual((await readFunding('deribit', { symbol: 'BTC-PERPETUAL', unit: 1, inverse: true }, T, T + 2 * H, deribit)).rows.map(r => [r.t, r.rate, r.per8h, r.hours]), [[T + H, 4e-6, 3.2e-5, 1]], 'continuous: the eight-hour rate as it says');
+  // `interest_8h` is the sum of the last eight hours', here unlike eight times the hour's own: it must not be what is drawn.
+  const deribit = venue(() => ({ result: [{ timestamp: T + H, interest_8h: 9e-5, interest_1h: 4e-6 }, { timestamp: T + 2 * H, interest_8h: 8e-5 }] }));
+  assert.deepEqual((await readFunding('deribit', { symbol: 'BTC-PERPETUAL', unit: 1, inverse: true }, T, T + 3 * H, deribit)).rows.map(r => [r.t, r.rate, r.per8h, r.hours]), [[T + H, 4e-6, 3.2e-5, 1]], 'continuous: what the hour paid, times eight; an hour that does not say what it paid is no row, whatever its running total');
 });
 
 test('the premium per candle (Binance, Bybit), the funding now, and what a malformed answer gives', async () => {
@@ -345,10 +347,54 @@ test('the premium per candle (Binance, Bybit), the funding now, and what a malfo
   assert.deepEqual((await readFunding('bybit', BTC, T, T + H, venue(() => ({ retCode: 0, result: { list: [{ fundingRate: 'x', fundingRateTimestamp: 'y' }] } })))).rows, []);
 });
 
+test('Deribit now: what the hour\'s finished blocks paid; the rate of the moment before the first has landed and where that read fails', async () => {
+  const ETH = { symbol: 'ETH-PERPETUAL', unit: 1, inverse: true }, MIN = 60_000, TICKER = { current_funding: 0.000037, mark_price: 2234.31, index_price: 2233.67 };
+  const near = (a: number | null | undefined, b: number, what: string): void => assert.ok(a !== null && a !== undefined && Math.abs(a - b) < 1e-12, `${what}: ${a} against ${b}`);
+  const deribit = (paid: unknown, result: unknown = TICKER) => venue(url => { if (!url.includes('get_funding_rate_value')) return { result }; if (paid instanceof Error) throw paid; return { result: paid }; });
+  const half = deribit(2e-6), now = await readFundingNow('deribit', ETH, half, T + 31 * MIN);
+  near(now?.rate, 4e-6, 'six blocks in, having paid 2e-6: 4e-6 an hour');
+  near(now?.per8h, 3.2e-5, 'and eight times that per eight hours');
+  near(now?.premium, TICKER.mark_price / TICKER.index_price - 1, 'the premium now, the mark over the index');
+  assert.deepEqual([now?.hours, now?.next], [1, T + H], 'over the hour under way');
+  assert.match(half.asked[0]!, /public\/ticker\?instrument_name=ETH-PERPETUAL$/);
+  assert.ok(half.asked[1]!.endsWith(`public/get_funding_rate_value?instrument_name=ETH-PERPETUAL&start_timestamp=${T}&end_timestamp=${T + 30 * MIN}`), half.asked[1]);
+  near((await readFundingNow('deribit', ETH, deribit(0), T + 31 * MIN))?.per8h, 0, 'an hour that has paid nothing so far reads zero, not the moment');
+  // Deribit as measured: the value is a step function of the end, in whole blocks. A constant rate reads the same at every offset, never sagging through a block.
+  const blocks = venue(url => { const m = /start_timestamp=(\d+)&end_timestamp=(\d+)/.exec(url); if (!m) return { result: TICKER }; assert.equal(Number(m[2]) % 1, 0, 'a whole number of milliseconds'); return { result: Math.floor((Number(m[2]) - Number(m[1])) / (5 * MIN)) * 1e-6 }; });
+  for (const at of [5 * MIN + 5_000, 7 * MIN + 0.5, 9 * MIN + 59_000, 10 * MIN + 5_000, 14 * MIN + 59_000, 29 * MIN + 59_000, 54 * MIN + 59_000]) near((await readFundingNow('deribit', ETH, blocks, T + at))?.rate, 1.2e-5, `constant through the blocks, ${at} ms in`);
+  // A block lands a second or two after it ends: read before that, the blocks before it are what is asked, and before the first has landed nothing is.
+  const landing = deribit(1e-6); await readFundingNow('deribit', ETH, landing, T + 10 * MIN + 2_000);
+  assert.ok(landing.asked[1]!.endsWith(`end_timestamp=${T + 5 * MIN}`), landing.asked[1]);
+  const notYet = deribit(0); near((await readFundingNow('deribit', ETH, notYet, T + 5 * MIN + 2_000))?.per8h, 0.000037, 'the first block not landed: the moment, not a zero');
+  assert.equal(notYet.asked.length, 1, 'and the hour so far is not asked');
+  const early = deribit(2e-6), first = await readFundingNow('deribit', ETH, early, T + 2 * MIN);
+  near(first?.rate, 0.000037 / 8, 'two minutes in: the rate of the moment');
+  near(first?.per8h, 0.000037, 'which is already per eight hours');
+  assert.equal(early.asked.length, 1, 'and the hour so far is not asked');
+  near((await readFundingNow('deribit', ETH, deribit(new Error('no')), T + 31 * MIN))?.per8h, 0.000037, 'a failed read of the hour so far leaves the moment, not no reading');
+  near((await readFundingNow('deribit', ETH, deribit('x'), T + 31 * MIN))?.per8h, 0.000037, 'and so does an answer that is no number');
+  near((await readFundingNow('deribit', ETH, deribit(2e-6, { current_funding: 0, mark_price: 100, index_price: 100 }), T + 2 * MIN))?.per8h, 0, 'inside its dampener: a reading of zero, not none');
+  assert.equal(await readFundingNow('deribit', ETH, deribit(2e-6, { mark_price: 100, index_price: 100 }), T + 2 * MIN), null, 'no rate in the answer is no reading');
+  assert.equal((await readFundingNow('deribit', ETH, deribit(2e-6, { current_funding: 0.0001 }), T + 2 * MIN))?.premium, null, 'no mark or index: no premium, the rate still read');
+});
+
+test('the popup names a settlement and a band only where a venue has them', () => {
+  const row = { t: T + H, rate: 4e-6, per8h: 3.2e-5, hours: 1 };
+  const card = (continuous: boolean, forming: boolean) => fundingCardLines({ time: T + H / 2, venue: 'V', row, forming, premium: null, opens: null, coin: 'BTC', continuous });
+  const labels = (continuous: boolean, forming: boolean): (string | undefined)[] => card(continuous, forming).map(line => line.label).filter(Boolean);
+  assert.deepEqual(labels(false, false), ['Funding', 'Each settlement', 'APR', 'Settled at']);
+  assert.deepEqual(labels(false, true), ['Funding', 'Each settlement', 'APR', 'Settles at']);
+  assert.deepEqual(labels(true, false), ['Funding', 'APR'], 'continuous: what the hour paid, settled by nothing');
+  assert.deepEqual(labels(true, true), ['Funding', 'APR']);
+  const bandSaid = (continuous: boolean): boolean => card(continuous, false).some(line => (line.text ?? '').includes('shaded band'));
+  assert.deepEqual([bandSaid(false), bandSaid(true)], [true, false], 'no band is drawn on a continuous venue, so none is spoken of');
+});
+
 test('the base rate and its band per venue; which venues have a premium line; the row an interval holds', () => {
   assert.deepEqual(fundingBase('binance'), { base: 0.0001, clamp: 0.0005 });
   assert.deepEqual(fundingBase('deribit'), { base: 0, clamp: 0 }, 'continuous, no base rate: no band drawn');
   assert.deepEqual(['hyperliquid', 'binance', 'bybit', 'okx', 'bitget', 'deribit'].map(v => hasPremium(v as never)), [true, true, true, false, false, false]);
+  assert.deepEqual(['hyperliquid', 'binance', 'bybit', 'okx', 'bitget', 'deribit'].map(v => continuousFunding(v as never)), [false, false, false, false, false, true]);
   assert.deepEqual([isFundingVenue('okx'), isFundingVenue('gate'), isFundingVenue(3)], [true, false, false]);
   const rows = [{ t: T + 8 * H, rate: 1, per8h: 1, hours: 8 }, { t: T + 16 * H, rate: 2, per8h: 2, hours: 8 }];
   assert.equal(rowAt(rows, T + 3 * H)?.rate, 1, 'a settlement pays for the eight hours before it');
