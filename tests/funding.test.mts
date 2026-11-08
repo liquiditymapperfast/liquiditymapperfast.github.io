@@ -361,7 +361,10 @@ test('Deribit now: what the hour\'s finished blocks paid; the rate of the moment
   near((await readFundingNow('deribit', ETH, deribit(0), T + 31 * MIN))?.per8h, 0, 'an hour that has paid nothing so far reads zero, not the moment');
   // Deribit as measured: the value is a step function of the end, in whole blocks. A constant rate reads the same at every offset, never sagging through a block.
   const blocks = venue(url => { const m = /start_timestamp=(\d+)&end_timestamp=(\d+)/.exec(url); if (!m) return { result: TICKER }; assert.equal(Number(m[2]) % 1, 0, 'a whole number of milliseconds'); return { result: Math.floor((Number(m[2]) - Number(m[1])) / (5 * MIN)) * 1e-6 }; });
-  for (const at of [5 * MIN + 5_000, 7 * MIN + 0.5, 9 * MIN + 59_000, 10 * MIN + 5_000, 14 * MIN + 59_000, 29 * MIN + 59_000, 54 * MIN + 59_000]) near((await readFundingNow('deribit', ETH, blocks, T + at))?.rate, 1.2e-5, `constant through the blocks, ${at} ms in`);
+  for (const at of [5 * MIN + 5_000, 7 * MIN + 0.5, 9 * MIN + 59_000, 10 * MIN + 5_000, 14 * MIN + 59_000, 29 * MIN + 59_000, 54 * MIN + 59_000, 59 * MIN + 59_000]) near((await readFundingNow('deribit', ETH, blocks, T + at))?.rate, 1.2e-5, `constant through the blocks, ${at} ms in`);
+  const onTheHour = await readFundingNow('deribit', ETH, blocks, T + 60 * MIN);
+  near(onTheHour?.per8h, 0.000037, 'on the hour the new hour has no block: the moment');
+  assert.equal(onTheHour?.next, T + 2 * H, 'and the step under way is the new hour');
   // A block lands a second or two after it ends: read before that, the blocks before it are what is asked, and before the first has landed nothing is.
   const landing = deribit(1e-6); await readFundingNow('deribit', ETH, landing, T + 10 * MIN + 2_000);
   assert.ok(landing.asked[1]!.endsWith(`end_timestamp=${T + 5 * MIN}`), landing.asked[1]);

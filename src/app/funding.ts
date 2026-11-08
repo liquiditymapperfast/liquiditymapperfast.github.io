@@ -267,7 +267,7 @@ export async function readPremium(venue: FundingVenue, listing: Listing, tfMs: n
 /**
  * Deribit's `get_funding_rate_value` counts only the whole blocks of `BLOCK_MS` that have ended since its start (0 until the first has), each landing a second or
  * two after it ends: over a whole hour it is exactly `interest_1h` (checked 2026-11-08). So it is asked over the blocks that have landed and divided by those:
- * divided by the time run it sagged to half by the end of a block and jumped back at the next.
+ * divided by the time run it sagged by up to half through a block and jumped back at the next.
  */
 const BLOCK_MS = 5 * 60_000, BLOCK_LAG_MS = 5_000;
 
@@ -289,7 +289,7 @@ export async function readFundingNow(venue: FundingVenue, listing: Listing, get:
   if (venue === 'bitget') { const a = await get(`https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol=${s}&productType=usdt-futures`); const r = listOf(a, bitgetOk(a), venue, 'data')[0]; return make(num(at(r, 'fundingRate')), num(at(r, 'fundingRateInterval')) || 8, num(at(r, 'nextUpdate')), null); }
   if (venue === 'deribit') {
     // The step under way is the hour under way, its record being due at the next hour, and its rate what the hour's finished blocks paid (`BLOCK_MS`), which
-    // comes to what the record will say. `current_funding` is the rate of this one moment, already per eight hours and zero inside the dampener: 0 in about a
+    // tends to what the record will say. `current_funding` is the rate of this one moment, already per eight hours and zero inside the dampener: 0 in about a
     // quarter of the samples of hours that paid (review, 2026-11-08), it stands in only until a block has landed and where that read fails. The premium
     // now is the mark over the index, what the rate is worked out from.
     const hour = Math.floor(now / HOUR) * HOUR, covered = Math.floor((now - hour - BLOCK_LAG_MS) / BLOCK_MS) * BLOCK_MS, r = at(await get(`https://www.deribit.com/api/v2/public/ticker?instrument_name=${s}`), 'result');
