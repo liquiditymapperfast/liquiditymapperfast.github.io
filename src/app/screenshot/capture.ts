@@ -1010,12 +1010,13 @@ export function capturePageSharp(root: HTMLElement, scale: number): Snapshot {
 
 /**
  * The page as `capturePage` draws it, with its icons, and at least two picture pixels to a CSS pixel where the screen has fewer
- * (`sharpScale`; Karl, 2026-11-08: "nice high-resolution images"): a walk that meets a mask picture not read yet (the first picture after the
+ * (`sharpScale`; Karl, 2026-11-07: "nice high-resolution images"): a walk that meets a mask picture not read yet (the first picture after the
  * page opens) waits for it, then draws the page again. Later pictures find them read and are drawn once.
  */
 export async function capturePageReady(root: HTMLElement = document.body): Promise<Snapshot> {
   const sharp = sharpScale(window.devicePixelRatio || 1, document.documentElement.clientWidth, document.documentElement.clientHeight);
-  const take = (): Snapshot => sharp ? capturePageSharp(root, sharp) : capturePage(root);
+  // A sharp picture that fails (the panes are back at the screen's either way) is taken as the screen shows it rather than not at all.
+  const take = (): Snapshot => { if (sharp) { try { return capturePageSharp(root, sharp); } catch (error) { console.warn('the sharp picture failed; taken as the screen shows it:', error); } } return capturePage(root); };
   const first = take(), waiting = takeUnread();
   if (!waiting.length) return first;
   await Promise.race([Promise.allSettled(waiting), new Promise(done => setTimeout(done, MASK_WAIT_MS))]);

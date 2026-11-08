@@ -103,7 +103,8 @@ export class CandlePane {
     parent.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!; this.#marksCtx = this.#marks.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.#body);
-    sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) this.#paint(); } });
+    // The trail and its marks too: sizing cleared them, and their loop may wait a second (reduced motion) before it draws them.
+    sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) { this.#paint(); this.#drawTrail(); } } });
     this.#bindGestures();
     document.addEventListener('visibilitychange', () => {
       // A phone suspends a page in the background and no orders come: the tape has a gap there, which the header owns up to (`TapeGaps`).

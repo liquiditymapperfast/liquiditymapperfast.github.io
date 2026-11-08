@@ -166,7 +166,7 @@ export class CvdPane {
     host.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!; this.#lineCtx = this.#lineCanvas.getContext('2d')!; this.#flashCtx = this.#flashCanvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.#wrap);
-    sharpens({ resize: () => this.#sizeCanvases(), paint: () => { if (!this.root.hidden) this.#render(); } });
+    sharpens({ resize: () => this.#sizeCanvases(), paint: () => { if (!this.root.hidden) { this.#render(); this.#flashNow(); } } });
     this.#buildControls();
     this.#bindInput();
     // The price's marks are kept while the column is out of sight too (a phone shows it only on its own tab): minutes spent on another tab
@@ -763,6 +763,12 @@ export class CvdPane {
       if (this.#flashes.length && !document.hidden) this.#flashFrame = requestAnimationFrame(draw);
     };
     this.#flashFrame = requestAnimationFrame(draw);
+  }
+  /** The flashes still running, drawn as they are now (a sharp picture's sizing cleared their canvas; their own loop draws them next). */
+  #flashNow(): void {
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches, now = performance.now();
+    this.#flashes = this.#flashes.filter(f => now - f.at < (reduced ? FLASH_LIFE_MS / 2 : FLASH_LIFE_MS));
+    this.#paintFlashes(now, reduced);
   }
   #paintFlashes(now: number, reduced: boolean): void {
     const ctx = this.#flashCtx;

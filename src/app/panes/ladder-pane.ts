@@ -169,7 +169,7 @@ export class LadderPane {
       view: () => ({ x0: this.#scroller.scrollLeft, x1: this.#scroller.scrollLeft + this.#w }) });
     this.#cues.setLook(this.store.state.ladderCues.look); this.#cues.setSense(this.store.state.ladderCues.sense);
     new ResizeObserver(() => this.#resize()).observe(this.#scroller);
-    sharpens({ resize: () => this.#resize(), paint: () => { if (this.#suspended) return; this.#rowsDrawn = false; this.#markRowAsk.clear(); this.#render(); } });
+    sharpens({ resize: () => this.#resize(), paint: () => { if (this.#suspended || this.root.hidden) return; this.#rowsDrawn = false; this.#markRowAsk.clear(); this.#render(); } });
     this.#bindInput();
     this.#buildControls();
   }
