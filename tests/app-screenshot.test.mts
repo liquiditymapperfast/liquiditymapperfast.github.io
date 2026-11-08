@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { arrowHead, blockArrow, clampRect, fileName, hitHandle, inside, markPlacement, markText, rectFrom, resizeRect, snapAngle, squareTo, toolbarPlacement, worthKeeping, type Shape } from '../src/app/screenshot/shapes.ts';
-import { borderSides, clear, contentText, cssMatrix, flexStarts, maskPlace, maskUrl, outerShadows, splitTop, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
+import { borderSides, clear, clipPolygon, contentText, cssMatrix, flexStarts, maskPlace, maskUrl, outerShadows, splitTop, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
 
 const screen = { w: 1200, h: 800 };
 
@@ -208,4 +208,18 @@ test('a box keeps its outer shadows, read from the computed box-shadow, the firs
   assert.deepEqual(outerShadows('rgb(15, 164, 74) 0px 0px 6px 1px, rgba(0, 0, 0, 0.5) 0px 1px 0px 0px inset'), [{ color: 'rgb(15, 164, 74)', x: 0, y: 0, blur: 6, spread: 1 }]);
   assert.deepEqual(outerShadows('rgba(0, 0, 0, 0) 2px 2px 4px 0px'), [], 'a clear shadow draws nothing');
   assert.deepEqual(outerShadows('color(srgb 0.1 0.2 0.3 / 0.4) -1px 2px 3px 0px').map(s => [s.color, s.x, s.y, s.blur]), [['color(srgb 0.1 0.2 0.3 / 0.4)', -1, 2, 3]]);
+});
+
+test('a polygon clip-path is read as its corners in the box; any other clip leaves the box out', () => {
+  // The tour keys' play triangle: an 8 x 10 box clipped to polygon(0 0, 100% 50%, 0 100%).
+  assert.deepEqual(clipPolygon('polygon(0px 0px, 100% 50%, 0px 100%)', 8, 10), { points: [[0, 0], [8, 5], [0, 10]], rule: 'nonzero' });
+  assert.deepEqual(clipPolygon('polygon(evenodd, 2px 0px, 10px 0px, 10px 4px)', 20, 20, 0.9), { points: [[1.8, 0], [9, 0], [9, 3.6]], rule: 'evenodd' }, 'lengths zoomed');
+  assert.equal(clipPolygon('none', 8, 10), null);
+  assert.equal(clipPolygon('', 8, 10), null);
+  assert.equal(clipPolygon('circle(50% at 50% 50%)', 8, 10), 'other');
+  assert.equal(clipPolygon('inset(2px)', 8, 10), 'other');
+  assert.equal(clipPolygon('url("#c")', 8, 10), 'other');
+  assert.equal(clipPolygon('polygon(0px 0px, 10px 10px)', 8, 10), 'other', 'two corners are no shape');
+  // A picture laid at its own size is zoomed with its element (the Classic frame's check marks: an SVG 7 px square).
+  assert.deepEqual(maskPlace('auto', '50% 50%', 13, 13, 7, 7, 0.9), { x: (13 - 6.3) / 2, y: (13 - 6.3) / 2, w: 6.3, h: 6.3 });
 });

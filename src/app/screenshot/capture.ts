@@ -5,7 +5,8 @@
  * toolbar and pane headers are approximated from their computed styles: boxes, borders (each side as the page draws it, so a CSS
  * triangle is a triangle), rounded corners, text, gradients, selects, sliders, SVG drawings (shape by shape), the icons the page draws
  * as a colour seen through a mask picture, turned boxes, and the boxes and text of `::before` and `::after` (placed from their computed
- * styles: the page gives them no box to read), with their outer shadows (inset shadows, filters and backdrop blurs are left out). Every
+ * styles: the page gives them no box to read), with their outer shadows, background pictures and polygon clips (inset shadows, filters,
+ * backdrop blurs, border images and other clips are left out). Every
  * computed length is scaled by the element's CSS zoom (the top bar is zoomed to fit), as the boxes the page gives already are.
  *
  * Three WebGL canvases lose their picture once the screen has shown it (live-canvas.ts): each is asked to draw again just before the
@@ -109,32 +110,65 @@ export function outerShadows(value: string): Shadow[] {
  */
 function paintShadows(ctx: Ctx2D, box: Box, radii: number[], shadows: readonly Shadow[], z: number): void {
   if (!shadows.length) return;
-  const t = ctx.getTransform(), kx = Math.hypot(t.a, t.b), ky = Math.hypot(t.c, t.d), FAR = 100_000;
+  // Clipped to the box's surroundings that the shadows can reach, less the box: a clip as large as the page cost twenty times a fill.
+  const reach = Math.max(...shadows.map(s => (Math.abs(s.x) + Math.abs(s.y) + Math.max(0, s.spread) + 2 * s.blur) * z)) + 2;
+  const t = ctx.getTransform(), kx = Math.hypot(t.a, t.b), ky = Math.hypot(t.c, t.d), far = box.w + 2 * reach + 16;
   ctx.save();
-  ctx.beginPath(); ctx.rect(box.x - FAR / 2, box.y - FAR / 2, FAR, FAR);
+  ctx.beginPath(); ctx.rect(box.x - reach, box.y - reach, box.w + 2 * reach, box.h + 2 * reach);
   if (radii.some(r => r > 0) && typeof ctx.roundRect === 'function') ctx.roundRect(box.x, box.y, box.w, box.h, radii.map(r => Math.min(r, box.w / 2, box.h / 2))); else ctx.rect(box.x, box.y, box.w, box.h);
   ctx.clip('evenodd');
   for (const s of [...shadows].reverse()) {
     const spread = s.spread * z, x = box.x + s.x * z - spread, y = box.y + s.y * z - spread, w = box.w + 2 * spread, h = box.h + 2 * spread;
     if (!(w > 0 && h > 0)) continue;
     if (s.blur <= 0) { roundedPath(ctx, x, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = s.color; ctx.fill(); continue; }
-    // The shape is drawn far off and only its shadow is moved back: the canvas blurs a shadow, not a shape.
-    ctx.shadowColor = s.color; ctx.shadowBlur = s.blur * z * (kx + ky) / 2; ctx.shadowOffsetX = FAR * kx; ctx.shadowOffsetY = 0;
-    roundedPath(ctx, x - FAR, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = '#000'; ctx.fill();
+    // The shape is drawn outside the clip and only its shadow is moved back: the canvas blurs a shadow, not a shape.
+    ctx.shadowColor = s.color; ctx.shadowBlur = s.blur * z * (kx + ky) / 2; ctx.shadowOffsetX = far * kx; ctx.shadowOffsetY = 0;
+    roundedPath(ctx, x - far, y, w, h, radii.map(r => r > 0 ? Math.max(0, r + spread) : 0)); ctx.fillStyle = '#000'; ctx.fill();
     ctx.shadowColor = 'transparent';
   }
   ctx.restore();
 }
 
-/** A box's background (colour and gradient) and border, with its rounded corners, over its outer shadows. */
+/**
+ * A box's background layers over its colour, the last layer first: linear gradients, and pictures (the Classic frame's check marks, bullets
+ * and dither) placed by `background-size` and `background-position` in the padding box, once or tiled as `background-repeat` says. Other
+ * layers (radial gradients, a picture not read yet) are left out.
+ */
+function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: number[], z: number): void {
+  if (!clear(cs.backgroundColor)) { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.fillStyle = cs.backgroundColor; ctx.fill(); }
+  if (!cs.backgroundImage || cs.backgroundImage === 'none') return;
+  const layers = splitTop(cs.backgroundImage), sizes = splitTop(cs.backgroundSize || 'auto'), places = splitTop(cs.backgroundPosition || '0% 0%'), repeats = splitTop(cs.backgroundRepeat || 'repeat');
+  const pad = innerBox(box, cs, true, z);
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const layer = layers[i]!;
+    if (layer.startsWith('linear-gradient(')) {
+      const gradient = gradientFor(ctx, layer, box);
+      if (gradient) { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.fillStyle = gradient; ctx.fill(); }
+      continue;
+    }
+    const url = layer.startsWith('url(') ? maskUrl(layer, location.href) : null, picture = url ? pictureOf(url) : null;
+    if (!picture || !(pad.w > 0 && pad.h > 0)) continue;
+    const pick = (list: string[]): string => list[i % list.length]!;
+    const at = maskPlace(pick(sizes), pick(places), pad.w, pad.h, picture.naturalWidth, picture.naturalHeight, z);
+    if (!(at.w > 0 && at.h > 0)) continue;
+    ctx.save(); roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip();
+    if (/^no-repeat$|^no-repeat no-repeat$/.test(pick(repeats))) ctx.drawImage(picture, pad.x + at.x, pad.y + at.y, at.w, at.h);
+    else {
+      // Tiled through a pattern of the picture drawn once at its size on the picture's pixels.
+      const t = ctx.getTransform(), k = Math.max(1e-3, Math.hypot(t.a, t.b)), tw = Math.max(1, Math.round(at.w * k)), th = Math.max(1, Math.round(at.h * k));
+      const tile = surface(tw, th); context2d(tile).drawImage(picture, 0, 0, tw, th);
+      const pattern = ctx.createPattern(tile, 'repeat');
+      if (pattern) { pattern.setTransform(new DOMMatrix([at.w / tw, 0, 0, at.h / th, pad.x + at.x, pad.y + at.y])); ctx.fillStyle = pattern; ctx.fillRect(box.x, box.y, box.w, box.h); }
+    }
+    ctx.restore();
+  }
+}
+
+/** A box's background (colour, gradients and pictures) and border, with its rounded corners, over its outer shadows. */
 function paintPlainBox(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number): void {
   const radii = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(v => num(v) * z);
   paintShadows(ctx, box, radii, outerShadows(cs.boxShadow), z);
-  if (!clear(cs.backgroundColor)) { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.fillStyle = cs.backgroundColor; ctx.fill(); }
-  if (cs.backgroundImage && cs.backgroundImage !== 'none') {
-    const gradient = gradientFor(ctx, cs.backgroundImage, box);
-    if (gradient) { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.fillStyle = gradient; ctx.fill(); }
-  }
+  paintBackground(ctx, box, cs, radii, z);
   const widths = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map(v => num(v) * z);
   const styles = [cs.borderTopStyle, cs.borderRightStyle, cs.borderBottomStyle, cs.borderLeftStyle];
   const colors = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor];
@@ -173,7 +207,7 @@ export function maskPlace(size: string, position: string, w: number, h: number, 
   const [sa = 'auto', sb = 'auto'] = first(size);
   let dw: number, dh: number;
   if (sa === 'contain' || sa === 'cover') { dh = sa === 'contain' ? Math.min(h, w / ratio) : Math.max(h, w / ratio); dw = dh * ratio; }
-  else if (sa === 'auto' && sb === 'auto') { dw = iw > 0 ? iw : w; dh = ih > 0 ? ih : dw / ratio; }
+  else if (sa === 'auto' && sb === 'auto') { dw = iw > 0 ? iw * zoom : w; dh = ih > 0 ? ih * zoom : dw / ratio; }
   else if (sb === 'auto') { dw = length(sa, w); dh = dw / ratio; }
   else if (sa === 'auto') { dh = length(sb, h); dw = dh * ratio; }
   else { dw = length(sa, w); dh = length(sb, h); }
@@ -181,22 +215,22 @@ export function maskPlace(size: string, position: string, w: number, h: number, 
   return { x: length(pa, w - dw), y: length(pb, h - dh), w: dw, h: dh };
 }
 
-/** Mask pictures by address: read, being read, or unreadable (null). */
-const maskPictures = new Map<string, HTMLImageElement | Promise<void> | null>();
+/** The pictures of masks and backgrounds by address: read, being read, or unreadable (null). */
+const pictures = new Map<string, HTMLImageElement | Promise<void> | null>();
 /** The mask pictures the walks since the last `takeUnread` met before they were read. */
 let unread: Promise<void>[] = [];
 const takeUnread = (): Promise<void>[] => { const out = unread; unread = []; return out; };
 
-/** The mask picture at `url` if it is read; otherwise it starts being read (once) and is noted for `capturePageReady`. */
-function maskPicture(url: string): HTMLImageElement | null {
-  const held = maskPictures.get(url);
+/** The picture at `url` if it is read; otherwise it starts being read (once) and is noted for `capturePageReady`. */
+function pictureOf(url: string): HTMLImageElement | null {
+  const held = pictures.get(url);
   if (held instanceof HTMLImageElement) return held;
   if (held === null) return null;
   if (held) { unread.push(held); return null; }
   const img = new Image();
   img.src = url;
-  const reading = img.decode().then(() => { maskPictures.set(url, img); }, () => { maskPictures.set(url, null); });
-  maskPictures.set(url, reading); unread.push(reading);
+  const reading = img.decode().then(() => { pictures.set(url, img); }, () => { pictures.set(url, null); });
+  pictures.set(url, reading); unread.push(reading);
   return null;
 }
 
@@ -208,14 +242,16 @@ function maskPicture(url: string): HTMLImageElement | null {
 function paintBox(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number): void {
   const image = cs.maskImage && cs.maskImage !== 'none' ? cs.maskImage : (cs.webkitMaskImage || 'none');
   if (image === 'none' || !image.includes('url(')) { paintPlainBox(ctx, box, cs, z); return; }
-  const url = maskUrl(image, location.href), picture = url ? maskPicture(url) : null;
+  const url = maskUrl(image, location.href), picture = url ? pictureOf(url) : null;
   if (!picture || !(box.w > 0 && box.h > 0)) return;
-  const t = ctx.getTransform(), sx = Math.hypot(t.a, t.b), sy = Math.hypot(t.c, t.d), w = Math.ceil(box.w * sx), h = Math.ceil(box.h * sy);
+  // The layer is at most MAX_LAYER pixels a side (a huge masked box is cut coarser rather than allocating a picture of its whole size).
+  const t = ctx.getTransform(), sx = Math.hypot(t.a, t.b), sy = Math.hypot(t.c, t.d), w = Math.min(MAX_LAYER, Math.ceil(box.w * sx)), h = Math.min(MAX_LAYER, Math.ceil(box.h * sy));
   if (!(w > 0 && h > 0)) return;
   const size = cs.maskSize || cs.webkitMaskSize || 'auto', position = cs.maskPosition || cs.webkitMaskPosition || '0% 0%';
   // The same icon in the same colour at the same size is cut once: drawing the picture again for each walk (a GIF repaints its still
   // layers while it records) doubled the time a walk took.
-  const key = [url, w, h, box.w, box.h, z, size, position, cs.backgroundColor, cs.backgroundImage, cs.borderRadius, cs.borderWidth, cs.borderStyle, cs.borderColor, cs.boxShadow].join('|');
+  const key = [url, w, h, box.w, box.h, z, size, position, cs.backgroundColor, cs.backgroundImage, cs.backgroundSize, cs.backgroundPosition, cs.backgroundRepeat, cs.padding,
+    cs.borderRadius, cs.borderWidth, cs.borderStyle, cs.borderColor, cs.boxShadow].join('|');
   let layer = cutIcons.get(key);
   if (!layer) {
     layer = surface(w, h); const lc = context2d(layer);
@@ -230,7 +266,34 @@ function paintBox(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number): voi
   ctx.drawImage(layer, box.x, box.y, box.w, box.h);
 }
 /** Masked boxes already cut (see `paintBox`), by everything that changes how they look; emptied when it holds this many. */
-const cutIcons = new Map<string, HTMLCanvasElement | OffscreenCanvas>(), MAX_CUT_ICONS = 400;
+const cutIcons = new Map<string, HTMLCanvasElement | OffscreenCanvas>(), MAX_CUT_ICONS = 400, MAX_LAYER = 4096;
+
+/**
+ * A computed `clip-path` of a polygon (`polygon(0px 0px, 100% 50%, 0px 100%)`, perhaps with a fill rule first) as its corners in a box
+ * `w` × `h` (percentages of the box, lengths zoomed), and its fill rule; null for none; `'other'` for a clip this does not draw (a circle,
+ * an inset, a reference), whose box is then left out rather than drawn whole.
+ */
+export function clipPolygon(value: string, w: number, h: number, zoom = 1): { points: [number, number][]; rule: CanvasFillRule } | null | 'other' {
+  if (!value || value === 'none') return null;
+  const m = /^polygon\((.*)\)(?:\s+[a-z-]+)?$/.exec(value.trim()); if (!m) return 'other';
+  const parts = splitTop(m[1]!);
+  let rule: CanvasFillRule = 'nonzero';
+  if (parts[0] === 'evenodd' || parts[0] === 'nonzero') rule = parts.shift() as CanvasFillRule;
+  const at = (v: string, of: number): number => v.endsWith('%') ? of * num(v) / 100 : num(v) * zoom;
+  const points = parts.map(p => { const [x = '0', y = '0'] = p.trim().split(/\s+/); return [at(x, w), at(y, h)] as [number, number]; });
+  return points.length >= 3 ? { points, rule } : 'other';
+}
+
+/** Paint a box through its `clip-path`: a polygon clips it (the tour keys' play triangle), any other clip leaves it out. */
+function clipped(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number, paint: () => void): void {
+  const clip = clipPolygon(cs.clipPath, box.w, box.h, z);
+  if (clip === 'other') return;
+  if (!clip) { paint(); return; }
+  ctx.save();
+  ctx.beginPath(); clip.points.forEach(([x, y], k) => { if (k) ctx.lineTo(box.x + x, box.y + y); else ctx.moveTo(box.x + x, box.y + y); }); ctx.closePath();
+  ctx.clip(clip.rule);
+  try { paint(); } finally { ctx.restore(); }
+}
 
 /** A computed `transform` as the six numbers of a 2D matrix (a 3D one by its 2D part); null for none. */
 export function cssMatrix(transform: string): [number, number, number, number, number, number] | null {
@@ -511,42 +574,47 @@ function paintPseudo(painter: Painter, host: Element, hostBox: Box, hcs: CSSStyl
   const pcs = getComputedStyle(host, `::${which}`), content = pcs.content;
   if (!content || content === 'none' || content === 'normal' || pcs.display === 'none' || pcs.visibility === 'hidden') return;
   const opacity = pcs.opacity === '' ? 1 : num(pcs.opacity); if (opacity <= 0) return;
-  const text = contentText(content, name => host.getAttribute(name));
-  const box = pseudoBox(host, hostBox, hcs, pcs, which, text, z);
+  const view = intersect(painter.view, clip); if (!view) return;
+  // One in its element's line lies in or about its element: an element far outside what is drawn is not measured (a GIF of a small area
+  // walked the line of every key on the page).
+  const near = (b: Box, by: number): boolean => intersect({ x: b.x - by, y: b.y - by, w: b.w + 2 * by, h: b.h + 2 * by }, view) !== null;
+  if (pcs.position !== 'absolute' && pcs.position !== 'fixed' && !near(hostBox, 32)) return;
+  let box: PseudoBox | null, text: string | null;
+  try { text = contentText(content, name => host.getAttribute(name)); box = pseudoBox(host, hostBox, hcs, pcs, which, text, z); } catch { return; }
   if (!box || !(box.w > 0 && box.h > 0) || !Number.isFinite(box.x + box.y)) return;
   // A turned box stays within its longer side of where it was.
-  const reach = Math.max(box.w, box.h);
-  if (!intersect({ x: box.x - reach, y: box.y - reach, w: box.w + 2 * reach, h: box.h + 2 * reach }, intersect(painter.view, clip))) return;
-  const ctx = painter.ctx();
+  if (!near(box, Math.max(box.w, box.h))) return;
+  const ctx = painter.ctx(), placed = box;
   inState(ctx, alpha * opacity, clip, () => {
-    turn(ctx, zoomedMatrix(pcs.transform, z), originOf(pcs, z), box.x, box.y);
-    paintBox(ctx, box, pcs, z);
+    turn(ctx, pcs.transform === 'none' ? null : zoomedMatrix(pcs.transform, z), originOf(pcs, z), placed.x, placed.y);
+    clipped(ctx, placed, pcs, z, () => paintBox(ctx, placed, pcs, z));
     if (!text) return;
     const b = bordersOf(pcs, z), p = paddingsOf(pcs, z);
     ctx.font = fontOf(pcs, z); ctx.fillStyle = pcs.color; ctx.textAlign = 'left'; spaceLetters(ctx, pcs, z);
     const shown = pcs.textTransform === 'uppercase' ? text.toUpperCase() : pcs.textTransform === 'lowercase' ? text.toLowerCase() : text;
-    if (box.baseline !== undefined) { ctx.textBaseline = 'alphabetic'; ctx.fillText(shown, box.x + b.l + p.l, box.baseline); }
-    else { ctx.textBaseline = 'middle'; ctx.fillText(shown, box.x + b.l + p.l, box.y + b.t + p.t + (box.h - b.t - b.b - p.t - p.b) / 2 + 0.5); }
+    if (placed.baseline !== undefined) { ctx.textBaseline = 'alphabetic'; ctx.fillText(shown, placed.x + b.l + p.l, placed.baseline); }
+    else { ctx.textBaseline = 'middle'; ctx.fillText(shown, placed.x + b.l + p.l, placed.y + b.t + p.t + (placed.h - b.t - b.b - p.t - p.b) / 2 + 0.5); }
   });
 }
 
+/** A select's chosen text and caret, a slider, a check box or a text field's value; its sizes zoomed with it (`z`). */
 function paintControl(ctx: Ctx2D, node: Element, rect: DOMRect, cs: CSSStyleDeclaration, z: number): void {
-  const pad = (num(cs.paddingLeft) + num(cs.borderLeftWidth)) * z;
+  const pad = (num(cs.paddingLeft) + num(cs.borderLeftWidth)) * z, mid = rect.top + rect.height / 2;
   ctx.font = fontOf(cs, z); ctx.fillStyle = cs.color; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   if (node instanceof HTMLSelectElement) {
-    ctx.fillText(node.selectedOptions[0]?.text ?? '', rect.left + pad, rect.top + rect.height / 2 + 0.5, Math.max(0, rect.width - pad - 22));
-    ctx.strokeStyle = cs.color; ctx.lineWidth = 1.3; ctx.beginPath();
-    ctx.moveTo(rect.right - 14, rect.top + rect.height / 2 - 2); ctx.lineTo(rect.right - 10.5, rect.top + rect.height / 2 + 1.5); ctx.lineTo(rect.right - 7, rect.top + rect.height / 2 - 2); ctx.stroke();
+    ctx.fillText(node.selectedOptions[0]?.text ?? '', rect.left + pad, mid + 0.5, Math.max(0, rect.width - pad - 22 * z));
+    ctx.strokeStyle = cs.color; ctx.lineWidth = 1.3 * z; ctx.beginPath();
+    ctx.moveTo(rect.right - 14 * z, mid - 2 * z); ctx.lineTo(rect.right - 10.5 * z, mid + 1.5 * z); ctx.lineTo(rect.right - 7 * z, mid - 2 * z); ctx.stroke();
   } else if (node instanceof HTMLInputElement) {
     if (node.type === 'range') {
       const min = num(node.min || '0'), max = num(node.max || '100'), at = max > min ? (num(node.value) - min) / (max - min) : 0;
-      const y = rect.top + rect.height / 2, x0 = rect.left + 6, x1 = rect.right - 6;
-      ctx.strokeStyle = 'rgba(128,128,128,.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-      ctx.fillStyle = cs.accentColor && cs.accentColor !== 'auto' ? cs.accentColor : cs.color; ctx.beginPath(); ctx.arc(x0 + (x1 - x0) * at, y, 5.5, 0, Math.PI * 2); ctx.fill();
+      const x0 = rect.left + 6 * z, x1 = rect.right - 6 * z;
+      ctx.strokeStyle = 'rgba(128,128,128,.55)'; ctx.lineWidth = 3 * z; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x1, mid); ctx.stroke();
+      ctx.fillStyle = cs.accentColor && cs.accentColor !== 'auto' ? cs.accentColor : cs.color; ctx.beginPath(); ctx.arc(x0 + (x1 - x0) * at, mid, 5.5 * z, 0, Math.PI * 2); ctx.fill();
     } else if (node.type === 'checkbox') {
-      ctx.strokeStyle = cs.color; ctx.lineWidth = 1.2; ctx.strokeRect(rect.left + 1.5, rect.top + 1.5, rect.width - 3, rect.height - 3);
-      if (node.checked) { ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(rect.left + 3.5, rect.top + rect.height / 2); ctx.lineTo(rect.left + rect.width * 0.42, rect.bottom - 4); ctx.lineTo(rect.right - 3.5, rect.top + 4); ctx.stroke(); }
-    } else if (node.value) ctx.fillText(node.value, rect.left + pad, rect.top + rect.height / 2 + 0.5, Math.max(0, rect.width - 2 * pad));
+      const i = 1.5 * z; ctx.strokeStyle = cs.color; ctx.lineWidth = 1.2 * z; ctx.strokeRect(rect.left + i, rect.top + i, rect.width - 2 * i, rect.height - 2 * i);
+      if (node.checked) { ctx.lineWidth = 1.8 * z; ctx.beginPath(); ctx.moveTo(rect.left + 3.5 * z, mid); ctx.lineTo(rect.left + rect.width * 0.42, rect.bottom - 4 * z); ctx.lineTo(rect.right - 3.5 * z, rect.top + 4 * z); ctx.stroke(); }
+    } else if (node.value) ctx.fillText(node.value, rect.left + pad, mid + 0.5, Math.max(0, rect.width - 2 * pad));
   }
 }
 
@@ -564,8 +632,8 @@ interface Painter {
 function inState(ctx: Ctx2D, alpha: number, clip: Box | null, paint: () => void): void {
   ctx.save(); ctx.globalAlpha = alpha;
   if (clip) { ctx.beginPath(); ctx.rect(clip.x, clip.y, clip.w, clip.h); ctx.clip(); }
-  paint();
-  ctx.restore();
+  // One element that cannot be drawn is left out, never the picture (the context is put back either way).
+  try { paint(); } catch { /* left out */ } finally { ctx.restore(); }
 }
 
 /**
@@ -586,8 +654,18 @@ function paintText(painter: Painter, node: Text, cs: CSSStyleDeclaration, alpha:
       if (clip) { ctx.beginPath(); ctx.rect(clip.x, clip.y, clip.w, clip.h); ctx.clip(); }
       ctx.font = fontOf(cs, z); ctx.fillStyle = cs.color; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; spaceLetters(ctx, cs, z);
     }
-    let word = match[0]; if (transform === 'uppercase') word = word.toUpperCase(); else if (transform === 'lowercase') word = word.toLowerCase();
-    ctx.fillText(word, rect.left, rect.top + rect.height / 2 + 0.5, rect.width + 0.5);
+    const shown = (text: string): string => transform === 'uppercase' ? text.toUpperCase() : transform === 'lowercase' ? text.toLowerCase() : text;
+    if (range.getClientRects().length > 1) {
+      // A run without spaces that the page wraps over lines (Chinese, Japanese): each character where the page lays it.
+      let at = match.index!;
+      for (const char of match[0]) {
+        range.setStart(node, at); range.setEnd(node, at + char.length); at += char.length;
+        const r = range.getBoundingClientRect();
+        if ((r.width > 0 || r.height > 0) && intersect(boxOf(r), view)) ctx.fillText(shown(char), r.left, r.top + r.height / 2 + 0.5, r.width + 0.5);
+      }
+      continue;
+    }
+    ctx.fillText(shown(match[0]), rect.left, rect.top + rect.height / 2 + 0.5, rect.width + 0.5);
   }
   ctx?.restore();
 }
@@ -728,10 +806,13 @@ function paintNode(painter: Painter, node: Element, alpha: number, clip: Box | n
       inState(painter.ctx(), a, clip, () => {
         const ctx = painter.ctx();
         // A turned box (a chevron turned to point another way) is drawn turned: the page gives the bounds of the turned shape.
-        const m = cs.transform === 'none' ? null : zoomedMatrix(cs.transform, z), size = m ? borderBoxSize(cs, z) : null, origin = originOf(cs, z);
-        const corner = m && size ? unturnedCorner(box, size.w, size.h, m, origin) : null;
-        if (corner && size) { ctx.save(); turn(ctx, m, origin, corner.x, corner.y); paintBox(ctx, { ...corner, ...size }, cs, z); ctx.restore(); }
-        else paintBox(ctx, box, cs, z);
+        const m = cs.transform === 'none' ? null : zoomedMatrix(cs.transform, z), size = m ? borderBoxSize(cs, z) : null, origin = m ? originOf(cs, z) : null;
+        const corner = m && size && origin ? unturnedCorner(box, size.w, size.h, m, origin) : null;
+        if (corner && size && origin) {
+          const own = { ...corner, ...size };
+          ctx.save(); turn(ctx, m, origin, corner.x, corner.y);
+          try { clipped(ctx, own, cs, z, () => paintBox(ctx, own, cs, z)); } finally { ctx.restore(); }
+        } else clipped(ctx, box, cs, z, () => paintBox(ctx, box, cs, z));
         if (node instanceof HTMLSelectElement || node instanceof HTMLInputElement) paintControl(ctx, node, rect, cs, z);
       });
       if (node instanceof HTMLCanvasElement && node.width > 0 && node.height > 0) painter.canvas(node, box, a, clip);
