@@ -225,7 +225,9 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
   const repeats = splitTop(cs.backgroundRepeat || 'repeat'), origins = splitTop(cs.backgroundOrigin || 'padding-box');
   const finite = (b: Box): boolean => Number.isFinite(b.x + b.y + b.w + b.h) && b.w > 0 && b.h > 0;
   // Layers start on whole pixels of the canvas, as the page lays them: between pixels a check mark or a strip's edge came out blurred.
-  const t = ctx.getTransform(), k = Math.max(1e-3, Math.hypot(t.a, t.b)), snap = (v: number): number => Math.round(v * k) / k;
+  // On whole pixels of the canvas, its move included (a GIF's layer starts at the area's corner, rarely on a whole pixel).
+  const t = ctx.getTransform(), k = Math.max(1e-3, Math.hypot(t.a, t.b));
+  const snapX = (v: number): number => (Math.round(v * k + t.e) - t.e) / k, snapY = (v: number): number => (Math.round(v * k + t.f) - t.f) / k;
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i]!, pick = (list: string[]): string => list[i % list.length]!;
     const origin = pick(origins), area = origin === 'border-box' ? box : innerBox(box, cs, origin !== 'content-box', z);
@@ -234,7 +236,9 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
     const solid = solidGradient(layer), linear = layer.startsWith('linear-gradient(');
     if (solid || linear) {
       const at = gradientPlace(pick(sizes), pick(places), area.w, area.h, z); if (!finite(at)) continue;
-      const x0 = snap(area.x + at.x), y0 = snap(area.y + at.y), rect = once ? { x: x0, y: y0, w: snap(area.x + at.x + at.w) - x0, h: snap(area.y + at.y + at.h) - y0 } : box;
+      // At least a pixel each way: rounded, a strip thinner than a pixel would vanish.
+      const x0 = snapX(area.x + at.x), y0 = snapY(area.y + at.y);
+      const rect = once ? { x: x0, y: y0, w: Math.max(1 / k, snapX(area.x + at.x + at.w) - x0), h: Math.max(1 / k, snapY(area.y + at.y + at.h) - y0) } : box;
       const fill = solid ?? gradientFor(ctx, layer, rect); if (!fill) continue;
       ctx.save();
       try { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip(); ctx.fillStyle = fill; ctx.fillRect(rect.x, rect.y, rect.w, rect.h); } finally { ctx.restore(); }
@@ -249,7 +253,7 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
       roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip();
       const tw = Math.max(1, Math.round(at.w * k)), th = Math.max(1, Math.round(at.h * k));
       // A picture laid once, or one too large to tile (a whole-box picture is not tiled pixel by pixel), is drawn where it lies.
-      if (once || tw > MAX_LAYER || th > MAX_LAYER) { ctx.drawImage(picture, snap(area.x + at.x), snap(area.y + at.y), at.w, at.h); continue; }
+      if (once || tw > MAX_LAYER || th > MAX_LAYER) { ctx.drawImage(picture, snapX(area.x + at.x), snapY(area.y + at.y), at.w, at.h); continue; }
       // Tiled through a pattern of the picture drawn once on whole pixels of the canvas, from a corner on a whole pixel: drawn between
       // pixels, the Classic frame's dither came out a flat grey. Small tiles are kept.
       const key = `${url}|${tw}|${th}`;
@@ -259,7 +263,7 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
         if (tw * th <= 256 * 256) { if (tiles.size >= MAX_TILES) tiles.clear(); tiles.set(key, tile); }
       }
       const pattern = ctx.createPattern(tile, 'repeat'); if (!pattern) continue;
-      pattern.setTransform(new DOMMatrix([1 / k, 0, 0, 1 / k, snap(area.x + at.x), snap(area.y + at.y)]));
+      pattern.setTransform(new DOMMatrix([1 / k, 0, 0, 1 / k, snapX(area.x + at.x), snapY(area.y + at.y)]));
       ctx.imageSmoothingEnabled = false; ctx.fillStyle = pattern; ctx.fillRect(box.x, box.y, box.w, box.h);
     } finally { ctx.restore(); }
   }
