@@ -57,12 +57,36 @@ export function gradientFor(ctx: Ctx2D, image: string, box: { x: number; y: numb
   const rad = angle * Math.PI / 180, half = (Math.abs(box.w * Math.sin(rad)) + Math.abs(box.h * Math.cos(rad))) / 2;
   const cx = box.x + box.w / 2, cy = box.y + box.h / 2, dx = Math.sin(rad) * half, dy = -Math.cos(rad) * half;
   const gradient = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
-  args.forEach((stop, i) => {
-    const m = /^(.*?)(?:\s+(-?[\d.]+)%)?$/.exec(stop); if (!m) return;
-    const at = m[2] !== undefined ? Math.max(0, Math.min(1, num(m[2]) / 100)) : (args.length > 1 ? i / (args.length - 1) : 0);
-    try { gradient.addColorStop(at, m[1]!.trim()); } catch { /* an unparsable colour is skipped */ }
+  const stops = args.flatMap((stop, i) => {
+    const m = /^(.*?)(?:\s+(-?[\d.]+)%)?$/.exec(stop); if (!m) return [];
+    return [{ at: m[2] !== undefined ? Math.max(0, Math.min(1, num(m[2]) / 100)) : (args.length > 1 ? i / (args.length - 1) : 0), color: m[1]!.trim() }];
   });
+  for (const stop of fadeStops(stops)) { try { gradient.addColorStop(stop.at, stop.color); } catch { /* an unparsable colour is skipped */ } }
   return gradient;
+}
+
+/** A colour with no alpha left: the same colour, clear. */
+export function cleared(color: string): string {
+  const rgb = /^rgba?\(\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,\s*([^,\s)]+)/.exec(color);
+  if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, 0)`;
+  const fn = /^(color|oklab|oklch|lab|lch)\(\s*([^/)]*?)\s*(?:\/[^)]*)?\)$/.exec(color);
+  return fn ? `${fn[1]}(${fn[2]} / 0)` : 'rgba(0, 0, 0, 0)';
+}
+
+/**
+ * Gradient stops as CSS mixes them: a clear stop (`transparent`) fades its neighbours' own colours, where the canvas would fade through
+ * black (the phone dock's shade strips came out as dark bands). A clear stop becomes its neighbours' colours made clear, one for each side.
+ */
+export function fadeStops(stops: readonly { at: number; color: string }[]): { at: number; color: string }[] {
+  const out: { at: number; color: string }[] = [];
+  stops.forEach((stop, i) => {
+    if (!clear(stop.color)) { out.push(stop); return; }
+    const before = stops.slice(0, i).reverse().find(s => !clear(s.color)), after = stops.slice(i + 1).find(s => !clear(s.color));
+    if (before) out.push({ at: stop.at, color: cleared(before.color) });
+    if (after) out.push({ at: stop.at, color: cleared(after.color) });
+    if (!before && !after) out.push(stop);
+  });
+  return out;
 }
 
 function roundedPath(ctx: Ctx2D, x: number, y: number, w: number, h: number, radii: number[]): void {
@@ -200,6 +224,8 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
   const layers = splitTop(cs.backgroundImage), sizes = splitTop(cs.backgroundSize || 'auto'), places = splitTop(cs.backgroundPosition || '0% 0%');
   const repeats = splitTop(cs.backgroundRepeat || 'repeat'), origins = splitTop(cs.backgroundOrigin || 'padding-box');
   const finite = (b: Box): boolean => Number.isFinite(b.x + b.y + b.w + b.h) && b.w > 0 && b.h > 0;
+  // Layers start on whole pixels of the canvas, as the page lays them: between pixels a check mark or a strip's edge came out blurred.
+  const t = ctx.getTransform(), k = Math.max(1e-3, Math.hypot(t.a, t.b)), snap = (v: number): number => Math.round(v * k) / k;
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i]!, pick = (list: string[]): string => list[i % list.length]!;
     const origin = pick(origins), area = origin === 'border-box' ? box : innerBox(box, cs, origin !== 'content-box', z);
@@ -208,7 +234,7 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
     const solid = solidGradient(layer), linear = layer.startsWith('linear-gradient(');
     if (solid || linear) {
       const at = gradientPlace(pick(sizes), pick(places), area.w, area.h, z); if (!finite(at)) continue;
-      const rect = once ? { x: area.x + at.x, y: area.y + at.y, w: at.w, h: at.h } : box;
+      const x0 = snap(area.x + at.x), y0 = snap(area.y + at.y), rect = once ? { x: x0, y: y0, w: snap(area.x + at.x + at.w) - x0, h: snap(area.y + at.y + at.h) - y0 } : box;
       const fill = solid ?? gradientFor(ctx, layer, rect); if (!fill) continue;
       ctx.save();
       try { roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip(); ctx.fillStyle = fill; ctx.fillRect(rect.x, rect.y, rect.w, rect.h); } finally { ctx.restore(); }
@@ -221,19 +247,19 @@ function paintBackground(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, radii: n
     ctx.save();
     try {
       roundedPath(ctx, box.x, box.y, box.w, box.h, radii); ctx.clip();
-      if (once) { ctx.drawImage(picture, area.x + at.x, area.y + at.y, at.w, at.h); continue; }
+      const tw = Math.max(1, Math.round(at.w * k)), th = Math.max(1, Math.round(at.h * k));
+      // A picture laid once, or one too large to tile (a whole-box picture is not tiled pixel by pixel), is drawn where it lies.
+      if (once || tw > MAX_LAYER || th > MAX_LAYER) { ctx.drawImage(picture, snap(area.x + at.x), snap(area.y + at.y), at.w, at.h); continue; }
       // Tiled through a pattern of the picture drawn once on whole pixels of the canvas, from a corner on a whole pixel: drawn between
-      // pixels, the Classic frame's dither came out a flat grey.
-      const t = ctx.getTransform(), k = Math.max(1e-3, Math.hypot(t.a, t.b)), tw = Math.max(1, Math.round(at.w * k)), th = Math.max(1, Math.round(at.h * k));
+      // pixels, the Classic frame's dither came out a flat grey. Small tiles are kept.
       const key = `${url}|${tw}|${th}`;
       let tile = tiles.get(key);
       if (!tile) {
         tile = surface(tw, th); const tc = context2d(tile); tc.imageSmoothingEnabled = false; tc.drawImage(picture, 0, 0, tw, th);
-        if (tiles.size >= MAX_TILES) tiles.clear();
-        tiles.set(key, tile);
+        if (tw * th <= 256 * 256) { if (tiles.size >= MAX_TILES) tiles.clear(); tiles.set(key, tile); }
       }
       const pattern = ctx.createPattern(tile, 'repeat'); if (!pattern) continue;
-      pattern.setTransform(new DOMMatrix([1 / k, 0, 0, 1 / k, Math.round((area.x + at.x) * k) / k, Math.round((area.y + at.y) * k) / k]));
+      pattern.setTransform(new DOMMatrix([1 / k, 0, 0, 1 / k, snap(area.x + at.x), snap(area.y + at.y)]));
       ctx.imageSmoothingEnabled = false; ctx.fillStyle = pattern; ctx.fillRect(box.x, box.y, box.w, box.h);
     } finally { ctx.restore(); }
   }
@@ -324,7 +350,7 @@ function paintBox(ctx: Ctx2D, box: Box, cs: CSSStyleDeclaration, z: number): voi
   const size = cs.maskSize || cs.webkitMaskSize || 'auto', position = cs.maskPosition || cs.webkitMaskPosition || '0% 0%';
   // The same icon in the same colour at the same size is cut once: drawing the picture again for each walk (a GIF repaints its still
   // layers while it records) doubled the time a walk took.
-  const key = [url, w, h, box.w, box.h, z, size, position, cs.backgroundColor, cs.backgroundImage, cs.backgroundSize, cs.backgroundPosition, cs.backgroundRepeat, cs.padding,
+  const key = [url, w, h, box.w, box.h, z, size, position, cs.backgroundColor, cs.backgroundImage, cs.backgroundSize, cs.backgroundPosition, cs.backgroundRepeat, cs.backgroundOrigin, cs.padding,
     cs.borderRadius, cs.borderWidth, cs.borderStyle, cs.borderColor, cs.boxShadow].join('|');
   let layer = cutIcons.get(key);
   if (!layer) {
@@ -674,8 +700,9 @@ function paintPseudo(painter: Painter, host: Element, hostBox: Box, hcs: CSSStyl
 }
 
 /**
- * A select's chosen text and caret, a slider, a check box or a text field's value; its sizes zoomed with it (`z`). A select drawn by the
- * page itself (`appearance: none`, the Classic frame's, whose arrow is a background picture) gets no caret of ours.
+ * A select's chosen text and caret, a slider, a check box or a text field's value; its sizes zoomed with it (`z`). A select or check box
+ * drawn by the page itself (`appearance: none`, the Classic frame's, whose arrow and tick are background pictures) gets no caret, box or
+ * tick of ours.
  */
 function paintControl(ctx: Ctx2D, node: Element, rect: DOMRect, cs: CSSStyleDeclaration, z: number): void {
   const pad = (num(cs.paddingLeft) + num(cs.borderLeftWidth)) * z, mid = rect.top + rect.height / 2;
@@ -692,6 +719,7 @@ function paintControl(ctx: Ctx2D, node: Element, rect: DOMRect, cs: CSSStyleDecl
       ctx.strokeStyle = 'rgba(128,128,128,.55)'; ctx.lineWidth = 3 * z; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x1, mid); ctx.stroke();
       ctx.fillStyle = cs.accentColor && cs.accentColor !== 'auto' ? cs.accentColor : cs.color; ctx.beginPath(); ctx.arc(x0 + (x1 - x0) * at, mid, 5.5 * z, 0, Math.PI * 2); ctx.fill();
     } else if (node.type === 'checkbox') {
+      if ((cs.appearance || cs.webkitAppearance) === 'none') return;
       const i = 1.5 * z; ctx.strokeStyle = cs.color; ctx.lineWidth = 1.2 * z; ctx.strokeRect(rect.left + i, rect.top + i, rect.width - 2 * i, rect.height - 2 * i);
       if (node.checked) { ctx.lineWidth = 1.8 * z; ctx.beginPath(); ctx.moveTo(rect.left + 3.5 * z, mid); ctx.lineTo(rect.left + rect.width * 0.42, rect.bottom - 4 * z); ctx.lineTo(rect.right - 3.5 * z, rect.top + 4 * z); ctx.stroke(); }
     } else if (node.value) ctx.fillText(node.value, rect.left + pad, mid + 0.5, Math.max(0, rect.width - 2 * pad));

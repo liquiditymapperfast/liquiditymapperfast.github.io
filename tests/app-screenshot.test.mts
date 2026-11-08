@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { arrowHead, blockArrow, clampRect, fileName, hitHandle, inside, markPlacement, markText, rectFrom, resizeRect, snapAngle, squareTo, toolbarPlacement, worthKeeping, type Shape } from '../src/app/screenshot/shapes.ts';
-import { borderSides, clear, clipPolygon, contentText, cssLength, cssMatrix, flexStarts, gradientPlace, maskPlace, maskUrl, outerShadows, solidGradient, splitTop, topWords, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
+import { borderSides, clear, cleared, clipPolygon, contentText, fadeStops, cssLength, cssMatrix, flexStarts, gradientPlace, maskPlace, maskUrl, outerShadows, solidGradient, splitTop, topWords, svgAlign, svgBaseline, svgDash, svgPaintOrder, svgPaints, unturnedCorner } from '../src/app/screenshot/capture.ts';
 
 const screen = { w: 1200, h: 800 };
 
@@ -249,4 +249,16 @@ test('a background layer is placed from its computed size and position, sums of 
   // A clip corner it cannot read leaves the box out; a sum it can is drawn.
   assert.deepEqual(clipPolygon('polygon(4px 0px, 100% 0px, calc(100% - 6px) 100%, 0px 100%)', 50, 10), { points: [[4, 0], [50, 0], [44, 10], [0, 10]], rule: 'nonzero' });
   assert.equal(clipPolygon('polygon(0px 0px, 100% 0px, calc(100% - 1em) 100%)', 50, 10), 'other');
+});
+
+test('a gradient that fades to clear fades its own colour, as CSS mixes it, not through black', () => {
+  assert.equal(cleared('rgb(23, 23, 27)'), 'rgba(23, 23, 27, 0)');
+  assert.equal(cleared('rgba(23, 23, 27, 0.8)'), 'rgba(23, 23, 27, 0)');
+  assert.equal(cleared('color(srgb 0.1 0.2 0.3 / 0.5)'), 'color(srgb 0.1 0.2 0.3 / 0)');
+  // The phone dock's shade strip: the panel colour to transparent.
+  assert.deepEqual(fadeStops([{ at: 0, color: 'rgb(23, 23, 27)' }, { at: 1, color: 'rgba(0, 0, 0, 0)' }]), [{ at: 0, color: 'rgb(23, 23, 27)' }, { at: 1, color: 'rgba(23, 23, 27, 0)' }]);
+  // A clear stop between two colours fades each side to its own colour: two stops at the same place.
+  assert.deepEqual(fadeStops([{ at: 0, color: 'rgb(255, 0, 0)' }, { at: 0.5, color: 'transparent' }, { at: 1, color: 'rgb(0, 0, 255)' }]),
+    [{ at: 0, color: 'rgb(255, 0, 0)' }, { at: 0.5, color: 'rgba(255, 0, 0, 0)' }, { at: 0.5, color: 'rgba(0, 0, 255, 0)' }, { at: 1, color: 'rgb(0, 0, 255)' }]);
+  assert.deepEqual(fadeStops([{ at: 0, color: 'transparent' }, { at: 1, color: 'transparent' }]), [{ at: 0, color: 'transparent' }, { at: 1, color: 'transparent' }], 'all clear: left as it is');
 });
