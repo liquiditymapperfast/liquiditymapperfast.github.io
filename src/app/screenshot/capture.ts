@@ -70,7 +70,7 @@ export function cleared(color: string): string {
   const rgb = /^rgba?\(\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,\s*([^,\s)]+)/.exec(color);
   if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, 0)`;
   const fn = /^(color|oklab|oklch|lab|lch)\(\s*([^/)]*?)\s*(?:\/[^)]*)?\)$/.exec(color);
-  return fn ? `${fn[1]}(${fn[2]} / 0)` : 'rgba(0, 0, 0, 0)';
+  return fn ? `${fn[1]}(${fn[2]} / 0)` : 'transparent';
 }
 
 /**
