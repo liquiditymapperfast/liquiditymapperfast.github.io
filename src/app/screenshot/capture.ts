@@ -839,6 +839,8 @@ export function context2d(c: HTMLCanvasElement | OffscreenCanvas, options?: Canv
  * text, controls) painted now, the canvases named so a frame can copy them as they are then. The first layer holds the page's background.
  */
 export function paintLayers(area: Box, scale: number, root: HTMLElement = document.body): Layer[] {
+  // A recording does not wait for mask pictures (the picture it starts from has read them): what its walks meet is not kept.
+  takeUnread();
   const w = Math.max(1, Math.round(area.w * scale)), h = Math.max(1, Math.round(area.h * scale));
   const layers: Layer[] = [];
   let current: Ctx2D | null = null;
