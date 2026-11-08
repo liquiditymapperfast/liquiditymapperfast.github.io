@@ -43,6 +43,7 @@ import { buildOiMarketsPanel, marketPicker } from '../market-picker.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
 import { coinText, nlnsWhoLines, whoParts, type NlnsCandle } from '../delta/nlns.ts';
 import type { NlnsSource } from '../delta/nlns-source.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -84,6 +85,8 @@ export abstract class TimePane {
     this.root.append(this.head, this.canvas); host.append(this.root);
     this.ctx = this.canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.canvas);
+    // A pane that is not shown keeps its canvas of no size: drawing it would draw nothing.
+    sharpens({ resize: () => this.#resize(), paint: () => { if (this.canvas.getBoundingClientRect().width > 0) this.#prepare(); } });
     const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
     // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held.
     this.canvas.addEventListener('pointerdown', e => {
@@ -172,7 +175,7 @@ export abstract class TimePane {
   invalidate(): void { if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#prepare(); }); }
   #resize(): void {
     const r = this.canvas.getBoundingClientRect();
-    this.#canvasW = Math.max(1, Math.floor(r.width)); this.h = Math.max(1, Math.floor(r.height)); this.dpr = window.devicePixelRatio || 1;
+    this.#canvasW = Math.max(1, Math.floor(r.width)); this.h = Math.max(1, Math.floor(r.height)); this.dpr = pixelRatio();
     this.canvas.width = Math.round(this.#canvasW * this.dpr); this.canvas.height = Math.round(this.h * this.dpr); this.invalidate();
   }
   #prepare(): void {

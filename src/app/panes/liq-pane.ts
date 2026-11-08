@@ -12,6 +12,7 @@ import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { distanceText } from './ladder-info.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 /** How far either side of the price the ladder reaches: the chips under the summary. */
 const RANGES = [0.01, 0.025, 0.05, 0.1] as const;
@@ -94,6 +95,7 @@ export class LiqPane {
     parent.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.#body);
+    sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) this.#paint(); } });
     this.#bindTouch();
     document.addEventListener('visibilitychange', () => { if (!document.hidden && this.#shown) this.#tick(); });
   }
@@ -132,7 +134,7 @@ export class LiqPane {
   #resize(): void {
     const w = this.#body.clientWidth, h = this.#body.clientHeight;
     if (!w || !h) return;
-    this.#dpr = Math.min(window.devicePixelRatio || 1, 2); this.#w = w; this.#h = h;
+    this.#dpr = Math.min(pixelRatio(), 2); this.#w = w; this.#h = h;
     this.#canvas.width = Math.round(w * this.#dpr); this.#canvas.height = Math.round(h * this.#dpr);
     this.#canvas.style.width = `${w}px`; this.#canvas.style.height = `${h}px`;
     this.#lastPaint = 0; this.invalidate();

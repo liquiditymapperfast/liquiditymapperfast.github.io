@@ -16,6 +16,7 @@
  * each frame lays the layers and the canvases (as they are by then) over each other in the page's order.
  */
 import { drawLiveCanvases } from '../live-canvas.ts';
+import { paintAt, sharpScale } from '../pixel-ratio.ts';
 
 export interface Snapshot { canvas: HTMLCanvasElement; /** Canvas pixels per CSS pixel. */ scale: number; width: number; height: number }
 export interface Box { x: number; y: number; w: number; h: number }
@@ -973,13 +974,13 @@ function walk(painter: Painter, root: HTMLElement): void {
 
 /**
  * Draw the page as it is on screen now. Open panels and dialogs are included; tooltips are not (they are hidden by the click that started
- * this). The WebGL canvases that lose their picture draw again first, and are copied before this task ends.
+ * this). The WebGL canvases that lose their picture draw again first, and are copied before this task ends. `scale` is picture pixels per
+ * CSS pixel: the screen's unless a sharp picture asks for more (`capturePageSharp`, which has sized the panes' canvases for it).
  */
-export function capturePage(root: HTMLElement = document.body): Snapshot {
+export function capturePage(root: HTMLElement = document.body, scale = Math.max(1, Math.min(3, window.devicePixelRatio || 1))): Snapshot {
   takeUnread();
   drawLiveCanvases();
   const width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
-  const scale = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
   const ctx = canvas.getContext('2d')!;
@@ -998,14 +999,27 @@ export function capturePage(root: HTMLElement = document.body): Snapshot {
 const MASK_WAIT_MS = 400;
 
 /**
- * The page as `capturePage` draws it, with its icons: a walk that meets a mask picture not read yet (the first picture after the page
- * opens) waits for it, then draws the page again. Later pictures find them read and are drawn once.
+ * The page sharper than the screen shows it: every pane that can (pixel-ratio.ts) is sized and drawn at `scale`, the page is drawn, and the
+ * panes are sized and drawn at the screen's again, all in this task, so the page never shows a frame of it. Its own canvases are as they
+ * were afterwards, whatever went wrong. A canvas that is not one of them (the heatmap's raster is its own size) is drawn larger.
+ */
+export function capturePageSharp(root: HTMLElement, scale: number): Snapshot {
+  paintAt(scale);
+  try { return capturePage(root, scale); } finally { paintAt(null); }
+}
+
+/**
+ * The page as `capturePage` draws it, with its icons, and at least two picture pixels to a CSS pixel where the screen has fewer
+ * (`sharpScale`; Karl, 2026-11-08: "nice high-resolution images"): a walk that meets a mask picture not read yet (the first picture after the
+ * page opens) waits for it, then draws the page again. Later pictures find them read and are drawn once.
  */
 export async function capturePageReady(root: HTMLElement = document.body): Promise<Snapshot> {
-  const first = capturePage(root), waiting = takeUnread();
+  const sharp = sharpScale(window.devicePixelRatio || 1, document.documentElement.clientWidth, document.documentElement.clientHeight);
+  const take = (): Snapshot => sharp ? capturePageSharp(root, sharp) : capturePage(root);
+  const first = take(), waiting = takeUnread();
   if (!waiting.length) return first;
   await Promise.race([Promise.allSettled(waiting), new Promise(done => setTimeout(done, MASK_WAIT_MS))]);
-  return capturePage(root);
+  return take();
 }
 
 /** A canvas a moving picture copies each frame: where it lies on the page (CSS px), and the opacity and clip it is seen through. */

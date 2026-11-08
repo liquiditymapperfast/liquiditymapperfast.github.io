@@ -6,6 +6,7 @@ import { CELL, ENERGY_MAX, WAVE_GLSL, WAVE_STRENGTH_DEFAULT, WaveField, pulseFor
 import { PRESS, PUSH_WIDTH, WAKE_BREAK_MS, WAKE_WIDTH, pushAmp, wakeAmp } from './touch.ts';
 import { built, startProgram, uniforms, type Building } from '../gl-build.ts';
 import { liveCanvas } from '../live-canvas.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 /**
  * The Glass material (Karl, 2026-10-16): the bars and panels around the chart become glass, and the market's large orders send light
@@ -186,6 +187,8 @@ export class UiGlass {
 
   constructor(private spotOf: SpotOf, private ring: () => TapeRing | null) {
     liveCanvas(this.canvas, () => { if (this.#on && !document.hidden) this.#draw(performance.now()); });
+    // Off, the glass keeps its canvas as it is (sized, it would hold a picture of the whole window for nothing).
+    sharpens({ resize: () => { if (this.#on) this.#size(); }, paint: () => { if (this.#on && !document.hidden) this.#draw(performance.now()); } });
     // A card can drop the canvas's context (a driver reset, a phone under memory pressure). The chrome is see-through only over this canvas,
     // so the page turns solid until the context comes back, and then everything is built again.
     this.canvas.addEventListener('webglcontextlost', event => {
@@ -409,7 +412,7 @@ export class UiGlass {
     return true;
   }
 
-  #dpr(): number { return Math.min(window.devicePixelRatio || 1, 1.5); }
+  #dpr(): number { return Math.min(pixelRatio(), 1.5); }
 
   #size(): void {
     const dpr = this.#dpr(), w = Math.max(1, Math.round(window.innerWidth * dpr)), h = Math.max(1, Math.round(window.innerHeight * dpr));

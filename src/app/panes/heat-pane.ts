@@ -85,6 +85,7 @@ import { wallRows, type CandleUnder } from '../draw/magnet.ts';
 import type { ChartType } from '../chart-type.ts';
 import { candleCoverage, candlePriceRange, isCovered, priceBounds, priceOverviewNeeded, pricePointAt, pricePoints, priceWindow, uncoveredRuns, type Covered, type PricePoint, type PriceWindow } from '../price-history.ts';
 import { liveCanvas } from '../live-canvas.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -529,6 +530,7 @@ export class HeatPane {
     this.#pulse.className = 'pulse';
     this.#dustCanvas.className = 'dust';
     liveCanvas(this.#dustCanvas, () => { if (!this.#suspended) this.#drawDust(); });
+    sharpens({ resize: () => this.#sizeCanvases(), paint: () => { if (!this.#suspended && !this.root.hidden) this.#render(); } });
     this.#drawEdit.className = 'draw-edit'; this.#drawEdit.setAttribute('data-no-capture', '');
     this.#hoverCanvas.className = 'hover';
     this.#liveButton.hidden = true;
@@ -615,8 +617,16 @@ export class HeatPane {
   dataChanged(): void { this.#dataVersion++; this.invalidate(); }
 
   #resize(): void {
+    this.#sizeCanvases();
+    this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+  /**
+   * The overlay's canvases, the heatmap's and the dust's, sized for the pane at `pixelRatio()`. A sharp picture sizes them alone (pixel-ratio.ts):
+   * the heatmap's raster is in CSS pixels and the view has not moved, so nothing is asked for again.
+   */
+  #sizeCanvases(): void {
     const rect = this.root.getBoundingClientRect();
-    this.#paneW = Math.max(1, Math.floor(rect.width)); this.#h = Math.max(1, Math.floor(rect.height)); this.#dpr = window.devicePixelRatio || 1;
+    this.#paneW = Math.max(1, Math.floor(rect.width)); this.#h = Math.max(1, Math.floor(rect.height)); this.#dpr = pixelRatio();
     // A narrow map (a phone, or half of a landscape one) gives the axis and the profile less room, so the plot keeps most of it.
     setCompactGutters(this.#paneW < COMPACT_PANE, this.#paneW);
     this.overlay.width = Math.round(this.#paneW * this.#dpr); this.overlay.height = Math.round(this.#h * this.#dpr);
@@ -628,7 +638,6 @@ export class HeatPane {
     this.#hoverCanvas.width = this.overlay.width; this.#hoverCanvas.height = this.overlay.height;
     this.#hoverCanvas.style.width = this.overlay.style.width; this.#hoverCanvas.style.height = this.overlay.style.height;
     this.#positionGl();
-    this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
   #positionGl(): void {
     // The heatmap and the dust start where the plot does: after the columns left of the map.

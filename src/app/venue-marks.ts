@@ -1,4 +1,5 @@
 import { venueLabel } from './venues.ts';
+import { pixelRatio } from './pixel-ratio.ts';
 
 /**
  * A small mark for each exchange, drawn here: a square in the exchange's brand colour with a monogram in its ink colour, and a notch in the
@@ -100,7 +101,7 @@ function bitmap(id: string, px: number): HTMLCanvasElement {
 
 /** Paint the mark of `id`, `size` CSS px a side, centred on (`cx`, `cy`). */
 export function drawVenueMark(ctx: CanvasRenderingContext2D, id: string, cx: number, cy: number, size: number): void {
-  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, px = Math.max(8, Math.round(size * dpr));
+  const dpr = pixelRatio(), px = Math.max(8, Math.round(size * dpr));
   ctx.drawImage(bitmap(id, px), Math.round(cx - size / 2), Math.round(cy - size / 2), size, size);
 }
 

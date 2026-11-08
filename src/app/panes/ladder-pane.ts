@@ -31,6 +31,7 @@ import { lineSide } from '../price-line.ts';
 import { t } from '../i18n.ts';
 import { replaying } from '../replay/clock.ts';
 import { FitGrid } from '../ui/fit-grid.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 const ROW_H = 17;
 const HEAD_H = 20;
@@ -168,6 +169,7 @@ export class LadderPane {
       view: () => ({ x0: this.#scroller.scrollLeft, x1: this.#scroller.scrollLeft + this.#w }) });
     this.#cues.setLook(this.store.state.ladderCues.look); this.#cues.setSense(this.store.state.ladderCues.sense);
     new ResizeObserver(() => this.#resize()).observe(this.#scroller);
+    sharpens({ resize: () => this.#resize(), paint: () => { if (this.#suspended) return; this.#rowsDrawn = false; this.#markRowAsk.clear(); this.#render(); } });
     this.#bindInput();
     this.#buildControls();
   }
@@ -481,7 +483,7 @@ export class LadderPane {
 
   #resize(): void {
     const r = this.#scroller.getBoundingClientRect();
-    this.#w = Math.max(1, Math.floor(r.width)); this.#h = Math.max(1, Math.floor(r.height)); this.#dpr = window.devicePixelRatio || 1;
+    this.#w = Math.max(1, Math.floor(r.width)); this.#h = Math.max(1, Math.floor(r.height)); this.#dpr = pixelRatio();
     this.invalidate();
   }
   #setCanvas(width: number): void {

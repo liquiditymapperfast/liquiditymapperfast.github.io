@@ -10,6 +10,7 @@ import type { SizesAnswer } from '../../shared/footprint.ts';
 import { SIZE_FLOOR_USD } from '../sizes.ts';
 import { GEOMETRY, askedWindows, bandCuts, buildStrip, coverageNote, flashBands, ledRow, percent, rankMinutes, rowAt, rowLines, sizeBands, stripHeight, weightDots, weightText, type Led, type StripData, type StripRow } from '../cvd/strip.ts';
 import { replaying } from '../replay/clock.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 const FONT = `9px ${SANS}`, FONT_BOLD = `600 9px ${SANS}`;
@@ -108,6 +109,7 @@ export class CvdStrip {
     this.#canvas.setAttribute('aria-label', t('Taker flow and market order sizes, as rows of dots'));
     this.root.append(this.#canvas);
     new ResizeObserver(() => this.#resize()).observe(this.root);
+    sharpens({ resize: () => this.#resize(), paint: () => { if (!this.root.hidden) this.#draw(); } });
     this.#canvas.addEventListener('pointermove', e => this.#point(e));
     this.#canvas.addEventListener('pointerleave', () => this.#card.hide());
   }
@@ -177,7 +179,7 @@ export class CvdStrip {
   // ---- canvas ---------------------------------------------------------------------------------------------------------------------
 
   #resize(): void {
-    const width = Math.floor(this.#canvas.getBoundingClientRect().width), dpr = window.devicePixelRatio || 1;
+    const width = Math.floor(this.#canvas.getBoundingClientRect().width), dpr = pixelRatio();
     if (width < 1 || this.#h < 1) return;
     if (width === this.#w && dpr === this.#dpr && this.#canvas.height === Math.round(this.#h * dpr)) return;
     this.#w = width; this.#dpr = dpr;
