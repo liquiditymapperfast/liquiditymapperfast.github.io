@@ -2242,7 +2242,15 @@
   "many": "{n} dias até agora",
   "other": "{n} dias até agora"
  },
- "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: o histórico deste mercado que esta página conseguiu ler é mais curto do que a sua janela, por isso não tem linha.",
  "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Linha {line}: uma janela de {n} nunca se enche aqui, porque o gráfico dá a este script {have}. Afaste o zoom para ter mais, até {max}, ou escolha um timeframe mais longo.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Linha {line}: uma janela de {n} nunca se enche aqui: um script lê no máximo {max} no timeframe do gráfico, e este gráfico dá-lhe {have}."
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Linha {line}: uma janela de {n} nunca se enche aqui: um script lê no máximo {max} no timeframe do gráfico, e este gráfico dá-lhe {have}.",
+ "Candles from": "Velas de",
+ "Whose candles the session, rolling and anchored lines add up.": "De que mercados são as velas que as linhas de sessão, móveis e ancoradas somam.",
+ "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Cada linha soma vela a vela as velas dos mercados marcados abaixo, digam o que disserem os chips das exchanges. Cada mercado a mais é mais para ler; sem nenhum marcado não há VWAP.",
+ "Up to six markets: untick one to choose another.": "Até seis mercados: desmarque um para escolher outro.",
+ "USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.": "Os preços em USD, USDT e USDC são somados tal como estão, um para um, sem conversão de moeda.",
+ "{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.": "{market}: não foi possível ler as suas velas agora; nova tentativa dentro de um minuto. As linhas esperam por ele.",
+ "{market}: its candles were last read at {time}; the lines end there.": "{market}: as suas velas foram lidas pela última vez às {time}; as linhas terminam aí.",
+ "{market}: its history reaches back to {date} only, so no line starts before it.": "{market}: o seu histórico só recua até {date}, por isso nenhuma linha começa antes.",
+ "{line}: the history this page could read is shorter than its window, so it has no line.": "{line}: o histórico que esta página conseguiu ler é mais curto do que a sua janela, por isso não tem linha."
 }

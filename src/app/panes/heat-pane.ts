@@ -61,7 +61,7 @@ import { historyTarget, profileCompanion, profileTarget, type HistoryTarget, typ
 import { TakerRows } from '../measures/taker-rows.ts';
 import { paintKeyLevels, paintKeyTags, periodDate, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
 import { mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries, whaleSeries, type RollingState, type VwapBar, type VwapPoint } from '../vwap/vwap.ts';
-import { vwapTargets } from '../vwap/markets.ts';
+import { vwapTargets, type VwapMarketState } from '../vwap/markets.ts';
 import { anchorsOf } from '../vwap/settings.ts';
 import { FootprintMarks } from '../footprint/marks.ts';
 import { FootprintRuns, paintRuns } from '../footprint/runs.ts';
@@ -2305,21 +2305,19 @@ export class HeatPane {
     if (reach.some((r, i) => r === 'never' && !((hs[i]!.exhausted || hs[i]!.limited) && hs[i]!.bars.length))) return 'failed';
     return reach.some(r => r === 'coming') ? 'coming' : 'short';
   }
-  /**
-   * The markets the VWAP lines read and how each stands: its candles held ('ready'), on their way ('coming'), not read just now and tried
-   * again in a minute ('failed': with several markets the lines wait for it), or held but not read again for minutes ('stale': several
-   * markets' lines end where it was last read, `readTo`). For the VWAP panel.
-   */
-  vwapMarketStates(): { target: HistoryTarget; state: 'ready' | 'coming' | 'failed' | 'stale'; readTo: number }[] {
+  /** The markets the VWAP lines read and how each stands (`VwapMarketState`), for the VWAP panel. */
+  vwapMarketStates(): VwapMarketState[] {
     const state = this.store.state, plan = this.#vwapPlan(state);
-    const sizes = [...[...plan.reach.keys()].map(bar => ({ bar, rolling: false })), ...[...plan.rollingReach.keys()].map(bar => ({ bar, rolling: true }))];
+    const sizes = [...[...plan.reach].map(([bar, from]) => ({ bar, from, rolling: false })), ...[...plan.rollingReach].map(([bar, from]) => ({ bar, from, rolling: true }))];
     return this.#vwapMarkets(state).map(target => {
-      const hs = sizes.map(z => this.hub.vwapHistory(target.id, z.bar, z.rolling)).filter(h => h.id === target.id);
-      const readTo = hs.length ? Math.min(...hs.map(h => h.heldTo)) : -Infinity;
-      if (hs.some(h => h.state === 'unavailable')) return { target, state: 'failed', readTo };
-      if (hs.length < sizes.length || hs.some(h => !h.bars.length)) return { target, state: 'coming', readTo };
+      const hs = sizes.map(z => ({ z, h: this.hub.vwapHistory(target.id, z.bar, z.rolling) })).filter(x => x.h.id === target.id);
+      const readTo = hs.length ? Math.min(...hs.map(x => x.h.heldTo)) : -Infinity, ended = hs.filter(x => x.h.bars.length && x.h.knownFrom > x.z.from && (x.h.exhausted || x.h.limited));
+      const at = (s: VwapMarketState['state']): VwapMarketState => ({ target, state: s, readTo, from: ended.length ? Math.max(...ended.map(x => x.h.knownFrom)) : -Infinity });
+      if (hs.some(x => x.h.state === 'unavailable')) return at('failed');
+      if (hs.length < sizes.length || hs.some(x => !x.h.bars.length)) return at('coming');
       // Asked again every minute and tried again a minute after a failure: three minutes without a read is a market whose reads keep failing.
-      return { target, state: hs.length && Date.now() - readTo > 3 * 60_000 ? 'stale' : 'ready', readTo };
+      if (hs.length && Date.now() - readTo > 3 * 60_000) return at('stale');
+      return at(ended.length ? 'short' : 'ready');
     });
   }
   /** Redraw when a VWAP history changes, and tell the page when what the panel says of it has changed (`onRollingReach`), not on every refresh. */

@@ -2242,7 +2242,15 @@
   "many": "{n} jours jusqu'à maintenant",
   "other": "{n} jours jusqu'à maintenant"
  },
- "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line} : l'historique de ce marché que cette page a pu lire est plus court que sa fenêtre, il n'a donc pas de ligne.",
  "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici, car le graphique donne {have} à ce script. Dézoomez pour en avoir plus, jusqu'à {max}, ou choisissez une unité de temps plus longue.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici : un script lit au plus {max} dans l'unité de temps du graphique, et ce graphique lui donne {have}."
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici : un script lit au plus {max} dans l'unité de temps du graphique, et ce graphique lui donne {have}.",
+ "Candles from": "Bougies de",
+ "Whose candles the session, rolling and anchored lines add up.": "De quels marchés viennent les bougies que les lignes de session, glissantes et ancrées additionnent.",
+ "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Chaque ligne additionne bougie par bougie les bougies des marchés cochés ci-dessous, quoi que disent les puces de plateformes. Chaque marché de plus est plus à lire ; sans aucun coché, il n'y a pas de VWAP.",
+ "Up to six markets: untick one to choose another.": "Six marchés au plus : décochez-en un pour en choisir un autre.",
+ "USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.": "Les prix en USD, USDT et USDC sont additionnés tels quels, un pour un, sans conversion de devise.",
+ "{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.": "{market} : ses bougies n'ont pas pu être lues pour l'instant ; nouvel essai dans une minute. Les lignes l'attendent.",
+ "{market}: its candles were last read at {time}; the lines end there.": "{market} : ses bougies ont été lues pour la dernière fois à {time} ; les lignes s'arrêtent là.",
+ "{market}: its history reaches back to {date} only, so no line starts before it.": "{market} : son historique ne remonte qu'au {date}, aucune ligne ne commence donc avant.",
+ "{line}: the history this page could read is shorter than its window, so it has no line.": "{line} : l'historique que cette page a pu lire est plus court que sa fenêtre, il n'a donc pas de ligne."
 }

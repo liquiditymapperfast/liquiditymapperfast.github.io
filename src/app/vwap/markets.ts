@@ -79,3 +79,11 @@ export function quoteOf(target: HistoryTarget): string {
   if (/USDT/.test(symbol)) return 'USDT';
   return 'USD';
 }
+
+/**
+ * How a market the VWAP lines read stands (the map's `vwapMarketStates`, for the panel): its candles held ('ready'), on their way ('coming'),
+ * not read just now and tried again in a minute ('failed'), held but not read again for minutes ('stale': several markets' lines end where it
+ * was last read, `readTo`), or held but reaching back only to `from` where a line needs them from earlier, the exchange having nothing older
+ * the page can read ('short').
+ */
+export interface VwapMarketState { target: HistoryTarget; state: 'ready' | 'coming' | 'failed' | 'stale' | 'short'; readTo: number; from: number }

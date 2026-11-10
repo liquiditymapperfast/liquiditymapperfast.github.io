@@ -2132,7 +2132,15 @@
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "按成交量加权的市场平均成交价：自时段开始、最近几天或自你选定的时刻以来；买卖双方平均在哪里成交。",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "滚动 VWAP（RVWAP）是截至每个时刻最近一天、一周、一个月、一个季度、半年或一年的平均值。它的起点随时间移动，因此最早的成交会移出；而时段或锚点会保留自起点以来的每笔成交。它由自己的 K 线计算（一天用 5 分钟线，一年用 4 小时线），最新的 K 线每分钟重新读取，因此在任何时间周期上都相同，并且只在历史包含完整窗口的地方绘制。",
  "{n} days up to now": "截至现在的 {n} 天",
- "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}：此页面能读取到的该市场历史短于其窗口，因此没有线。",
  "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "第 {line} 行：{n}的窗口在这里永远填不满，因为图表只给这个脚本 {have}。缩小视图可获得更多，最多 {max}，或选择更长的时间周期。",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本最多读取图表时间周期的 {max}，而这个图表只给它 {have}。"
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本最多读取图表时间周期的 {max}，而这个图表只给它 {have}。",
+ "Candles from": "K 线来源",
+ "Whose candles the session, rolling and anchored lines add up.": "时段线、滚动线和锚定线相加的是哪些市场的 K 线。",
+ "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "每条线都把下面勾选的市场的 K 线逐根相加，无论交易所标签如何。每多一个市场就要多读取一些；一个都不勾选则没有 VWAP。",
+ "Up to six markets: untick one to choose another.": "最多六个市场：取消勾选一个才能选择另一个。",
+ "USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.": "USD、USDT 和 USDC 计价的价格按原样一比一相加，不做货币换算。",
+ "{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.": "{market}：暂时无法读取其 K 线；一分钟后重试。各条线会等待它。",
+ "{market}: its candles were last read at {time}; the lines end there.": "{market}：其 K 线最后一次读取于 {time}；各条线在那里结束。",
+ "{market}: its history reaches back to {date} only, so no line starts before it.": "{market}：其历史只能回溯到 {date}，因此没有线早于此开始。",
+ "{line}: the history this page could read is shorter than its window, so it has no line.": "{line}：此页面能读取到的历史短于其窗口，因此没有线。"
 }

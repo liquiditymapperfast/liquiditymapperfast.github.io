@@ -7,8 +7,11 @@ import { clock, usd } from '../format.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
 import { venueLabel } from '../venues.ts';
-import { historyTarget } from '../keylevels/history.ts';
+import { venueMark } from '../venue-marks.ts';
+import { parsePick } from '../market-choice.ts';
+import { historyTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { MAX_ANCHORS, ROLLING_DAYS, VWAP_STARTS, anchorsOf, withRolling, withoutAnchor, type VwapSettings } from './settings.ts';
+import { MAX_VWAP_MARKETS, VWAP_PICKS, pickTarget, quoteOf, seedPicks, vwapTargets, type VwapMarketState } from './markets.ts';
 import { vwapCode } from './paint.ts';
 import type { RollingState } from './vwap.ts';
 
@@ -16,19 +19,26 @@ import type { RollingState } from './vwap.ts';
 export interface WhaleInfo { since: number | null; state: 'ready' | 'unavailable'; browser: boolean }
 /** The map's `rollingReach`: each window's `RollingState`. */
 export type RollingReach = (days: number) => RollingState;
+/** The map's `vwapMarketStates`: the markets the lines read and how each stands. */
+export type VwapMarkets = () => VwapMarketState[];
+
+/** A market as the panel names it: its exchange and its own name for the coin (Binance BTCUSDT, Coinbase BTC-USD). */
+const marketName = (target: HistoryTarget): string => `${venueLabel(target.id)} ${target.listing.symbol}`;
 
 /**
- * The VWAP panel: its first row switches the lines on and off; the session VWAP (what it restarts at, its bands); the rolling ones (each with a
- * remove button, those not shown to add, and which have no line because the history is shorter than their window); the anchored ones (each
- * with its start and a remove button, and a button that arms the next click on the map to place one); the whale VWAP (its size, and since when
- * the large orders are recorded); labels and axis tags; whose candles they come from.
+ * The VWAP panel, in the order a person decides (Sol, 2026-11-10): whether the lines show; whose candles they add up (the chart's market, or
+ * markets ticked here, each exchange's spot and perpetual apart, and what each of them can give); the session VWAP (what it starts again at,
+ * its bands); the rolling ones (each with a remove button, those not shown to add, and which have no line because the history is shorter
+ * than their window); the anchored ones (each with its start and a remove button, and a button that arms the next click on the map to place
+ * one); the whale VWAP (its size, and since when the large orders are recorded); labels and axis tags.
  */
-export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLElement, rebuild: () => void, whale: () => WhaleInfo | null = () => null, rollingReach: RollingReach = () => 'coming'): void {
+export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLElement, rebuild: () => void, whale: () => WhaleInfo | null = () => null, rollingReach: RollingReach = () => 'coming', markets: VwapMarkets = () => []): void {
   const s = store.state.vwap, coin = currentCoin().coin, now = Date.now();
   const set = (change: Partial<VwapSettings>, again = false): void => { store.set({ vwap: { ...store.state.vwap, ...change } }); if (again) rebuild(); };
   tools.append(helpButton('vwap'));
+  body.append(switchRow(t('Show VWAP'), t('The average price the market traded at, weighted by volume, as lines across the map.'), s.on, on => set({ on }, true)));
+  candlesFrom(store, body, rebuild, markets);
   body.append(
-    switchRow(t('Show VWAP'), t('The average price the market traded at, weighted by volume, as lines across the map.'), s.on, on => set({ on }, true)),
     heading(t('Session')),
     switchRow(t('Session VWAP'), t('Starts again at each day, week or month, in the zone the Volume profile and Key levels use.'), s.session, session => set({ session })),
     selectRow(t('Starts again each'), t('The stretch the average is taken over.'), [['day', t('Day')], ['week', t('Week')], ['month', t('Month')]], s.period, v => set({ period: v === 'week' || v === 'month' ? v : 'day' }, true)),   // the start row is a day's only
@@ -47,7 +57,7 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
     ...more.map(days => el('button', { type: 'button', textContent: `${days}D`, tip: tn(days, '{n} day up to now', '{n} days up to now'), onclick: () => { store.set({ vwap: { ...withRolling(store.state.vwap, days, true), on: true } }); rebuild(); } }))));
   if (s.on) for (const days of s.rolling) {
     const reach = rollingReach(days), line = vwapCode({ kind: 'rolling', n: days });
-    if (reach === 'short') body.append(note(t('{line}: the history this page could read of this market is shorter than its window, so it has no line.', { line })));
+    if (reach === 'short') body.append(note(t('{line}: the history this page could read is shorter than its window, so it has no line.', { line })));
     else if (reach === 'failed') body.append(note(t('{line}: its candles could not be read just now; trying again in a minute.', { line })));
   }
   body.append(
@@ -81,8 +91,57 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
     switchRow(t('Labels'), t('Each line\'s name and price at its right end, where there is room.'), s.labels, labels => set({ labels })),
     switchRow(t('Tags on the price axis'), t('The name of each line that reaches the right edge, beside its price.'), s.tags, tags => set({ tags })),
   );
-  const target = historyTarget(store.state.marketId, currentCoin());
-  if (!target) { body.append(note(t('No market of this coin has a history the page can read, so there is no VWAP.'))); return; }
-  body.append(note(t('From the candles of {market}: each bar\'s typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.', { market: `${venueLabel(target.id)} ${target.listing.symbol}` })));
-  if (!target.own) body.append(note(t('The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.')));
+}
+
+/**
+ * Whose candles the session, rolling and anchored lines add up: the chart's market (the default: the market on the chart, or the one standing
+ * in for it where its history cannot be read), or the markets ticked (each exchange's spot and perpetual apart, at most `MAX_VWAP_MARKETS`;
+ * switched to them, the boxes start from the market the lines read, so nothing changes until one is ticked), and what each of them gives:
+ * one that could not be read, has not been read for minutes, or does not reach back far enough is named. A choice this coin has no market
+ * for stays in the list, greyed, so it can be seen and taken off.
+ */
+function candlesFrom(store: Store, body: HTMLElement, rebuild: () => void, markets: VwapMarkets): void {
+  const s = store.state.vwap, coin = currentCoin(), chart = store.state.marketId;
+  body.append(selectRow(t('Candles from'), t('Whose candles the session, rolling and anchored lines add up.'), [['chart', t('The chart market')], ['chosen', t('Chosen markets')]], s.source, v => {
+    const source = v === 'chosen' ? 'chosen' : 'chart', now = store.state.vwap;
+    store.set({ vwap: { ...now, source, picks: source === 'chosen' && !now.picks.length ? seedPicks(chart, coin) : now.picks } });
+    rebuild();
+  }));
+  if (s.source === 'chart') {
+    const target = historyTarget(chart, coin);
+    if (!target) { body.append(note(t('No market of this coin has a history the page can read, so there is no VWAP.'))); return; }
+    body.append(note(t('From the candles of {market}: each bar\'s typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.', { market: marketName(target) })));
+    if (!target.own) body.append(note(t('The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.')));
+  } else {
+    body.append(note(t('Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.')));
+    body.append(heading(t('Markets')));
+    const list = el('div', { class: 'market-picker' }), boxes: HTMLInputElement[] = [];
+    const sync = (): void => { const full = store.state.vwap.picks.length >= MAX_VWAP_MARKETS; for (const box of boxes) box.disabled = full && !box.checked; };
+    // Every exchange and kind this coin is listed on, and a saved choice it is not, greyed.
+    for (const pick of VWAP_PICKS.filter(p => pickTarget(p, coin, chart) || s.picks.includes(p))) {
+      const parts = parsePick(pick)!, target = pickTarget(pick, coin, chart);
+      const box = el('input', { type: 'checkbox', checked: s.picks.includes(pick) });
+      box.onchange = () => {
+        const kept = store.state.vwap.picks.filter(p => p !== pick);
+        store.set({ vwap: { ...store.state.vwap, picks: box.checked ? [...kept, pick] : kept } });
+        sync(); rebuild();
+      };
+      boxes.push(box);
+      list.append(el('label', { class: `opt pick${target ? '' : ' missing'}`, tip: target?.id ?? '' }, box,
+        el('span', { class: 'name' }, venueMark(target?.id ?? parts.family, 14), ` ${venueLabel(parts.family)} · ${parts.kind === 'spot' ? t('Spot') : t('Perpetual')}`),
+        el('span', { class: 'desc', textContent: target ? target.listing.symbol : t('not listed for this coin here') })));
+    }
+    body.append(list);
+    sync();
+    if (s.picks.length >= MAX_VWAP_MARKETS) body.append(note(t('Up to six markets: untick one to choose another.')));
+    const targets = vwapTargets('chosen', s.picks, chart, coin);
+    if (new Set(targets.map(quoteOf)).size > 1) body.append(note(t('USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.')));
+  }
+  if (!store.state.vwap.on) return;
+  for (const m of markets()) {
+    const market = marketName(m.target);
+    if (m.state === 'failed') body.append(note(t('{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.', { market })));
+    else if (m.state === 'stale') body.append(note(t('{market}: its candles were last read at {time}; the lines end there.', { market, time: clock(m.readTo, true) })));
+    else if (m.state === 'short') body.append(note(t('{market}: its history reaches back to {date} only, so no line starts before it.', { market, date: clock(m.from, true) })));
+  }
 }

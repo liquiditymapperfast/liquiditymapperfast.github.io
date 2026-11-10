@@ -2242,7 +2242,15 @@
   "many": "{n} giorni fino a ora",
   "other": "{n} giorni fino a ora"
  },
- "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: lo storico di questo mercato che questa pagina ha potuto leggere è più corto della sua finestra, quindi non ha una linea.",
  "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Riga {line}: una finestra di {n} qui non si riempie mai, perché il grafico dà a questo script {have}. Allontana lo zoom per averne di più, fino a {max}, o scegli un timeframe più lungo.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Riga {line}: una finestra di {n} qui non si riempie mai: uno script legge al massimo {max} nel timeframe del grafico, e questo grafico gli dà {have}."
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Riga {line}: una finestra di {n} qui non si riempie mai: uno script legge al massimo {max} nel timeframe del grafico, e questo grafico gli dà {have}.",
+ "Candles from": "Candele da",
+ "Whose candles the session, rolling and anchored lines add up.": "Di quali mercati sono le candele che le linee di sessione, mobili e ancorate sommano.",
+ "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Ogni linea somma candela per candela le candele dei mercati spuntati qui sotto, qualunque cosa dicano i chip degli exchange. Ogni mercato in più è altro da leggere; senza nessuno spuntato non c'è VWAP.",
+ "Up to six markets: untick one to choose another.": "Al massimo sei mercati: togli la spunta a uno per sceglierne un altro.",
+ "USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.": "I prezzi in USD, USDT e USDC vengono sommati così come sono, uno a uno, senza conversione di valuta.",
+ "{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.": "{market}: non è stato possibile leggere le sue candele; nuovo tentativo tra un minuto. Le linee lo aspettano.",
+ "{market}: its candles were last read at {time}; the lines end there.": "{market}: le sue candele sono state lette l'ultima volta alle {time}; le linee finiscono lì.",
+ "{market}: its history reaches back to {date} only, so no line starts before it.": "{market}: il suo storico arriva solo fino al {date}, quindi nessuna linea inizia prima.",
+ "{line}: the history this page could read is shorter than its window, so it has no line.": "{line}: lo storico che questa pagina ha potuto leggere è più corto della sua finestra, quindi non ha una linea."
 }

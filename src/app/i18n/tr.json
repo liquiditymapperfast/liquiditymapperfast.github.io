@@ -2214,7 +2214,15 @@
   "one": "şimdiye kadar {n} gün",
   "other": "şimdiye kadar {n} gün"
  },
- "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: bu sayfanın okuyabildiği piyasa geçmişi penceresinden kısa, bu yüzden çizgisi yok.",
  "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz, çünkü grafik bu betiğe {have} veriyor. Daha fazlası için uzaklaştırın, en fazla {max}, ya da daha uzun bir zaman dilimi seçin.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz: bir betik grafiğin zaman diliminden en fazla {max} okur, bu grafik ise ona {have} veriyor."
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz: bir betik grafiğin zaman diliminden en fazla {max} okur, bu grafik ise ona {have} veriyor.",
+ "Candles from": "Mumların kaynağı",
+ "Whose candles the session, rolling and anchored lines add up.": "Seans, kayan ve sabitlenmiş çizgilerin topladığı mumların hangi piyasalardan geldiği.",
+ "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Her çizgi, borsa çipleri ne derse desin, aşağıda işaretlenen piyasaların mumlarını mum mum toplar. Her ek piyasa daha fazla okuma demektir; hiçbiri işaretli değilse VWAP yoktur.",
+ "Up to six markets: untick one to choose another.": "En fazla altı piyasa: başka birini seçmek için birinin işaretini kaldırın.",
+ "USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.": "USD, USDT ve USDC fiyatları olduğu gibi, bire bir toplanır; kur dönüşümü yapılmaz.",
+ "{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.": "{market}: mumları şu an okunamadı; bir dakika sonra yeniden denenecek. Çizgiler onu bekliyor.",
+ "{market}: its candles were last read at {time}; the lines end there.": "{market}: mumları en son {time} itibarıyla okundu; çizgiler orada bitiyor.",
+ "{market}: its history reaches back to {date} only, so no line starts before it.": "{market}: geçmişi yalnızca {date} tarihine kadar uzanıyor, bu yüzden hiçbir çizgi ondan önce başlamaz.",
+ "{line}: the history this page could read is shorter than its window, so it has no line.": "{line}: bu sayfanın okuyabildiği geçmiş penceresinden kısa, bu yüzden çizgisi yok."
 }

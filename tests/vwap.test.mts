@@ -260,3 +260,22 @@ test('a rolling window over several markets is whole only from where every histo
   assert.equal(pts[0]!.t, D0 + 7 * HOUR, 'a market whose history begins at 04:00 holds the first point back to 07:00');
   assert.equal(rollingOf(vwapBarsOf(bars), HOUR, 3 * HOUR, D0 + 10 * HOUR)[0]!.t, D0 + 3 * HOUR, 'one market: a window after its first bar');
 });
+
+test('the VWAP\'s candles come from the chart market by default; chosen markets are exchange and kind, read back checked, and stand for this coin\'s markets', async () => {
+  const { MAX_VWAP_MARKETS, VWAP_PICKS, pickTarget, quoteOf, readVwapPicks, seedPicks, vwapTargets } = await import('../src/app/vwap/markets.ts');
+  const { BTC } = await import('../src/shared/coins.ts');
+  assert.equal(VWAP_DEFAULTS.source, 'chart'); assert.deepEqual(VWAP_DEFAULTS.picks, []);
+  assert.equal(readVwap({ source: 'chosen', picks: ['binance/spot', 'nowhere/perp', 'binance/spot', 'coinbase/spot', 3] }).source, 'chosen');
+  assert.deepEqual(readVwap({ source: 'chosen', picks: ['binance/spot', 'nowhere/perp', 'binance/spot', 'coinbase/spot', 3] }).picks, ['binance/spot', 'coinbase/spot'], 'offered ones only, each once');
+  assert.equal(readVwap({ source: 'everything' }).source, 'chart');
+  assert.equal(readVwapPicks(VWAP_PICKS).length, MAX_VWAP_MARKETS, 'at most six');
+  assert.ok(VWAP_PICKS.includes('coinbase/spot') && !VWAP_PICKS.includes('coinbase/perp'), 'Coinbase has spot alone');
+  // The chart's own market, spot named the server's way, is recognised as its own.
+  assert.equal(pickTarget('binance/spot', BTC, 'binance:BTCUSDT:spot')?.own, true);
+  assert.equal(pickTarget('binance/spot', BTC, 'binance:BTCUSDT')?.id, 'binancespot:BTCUSDT');
+  assert.deepEqual(seedPicks('bybit:BTCUSDT', BTC), ['bybit/perp'], 'switching to chosen starts from the market the lines read');
+  assert.deepEqual(vwapTargets('chart', ['coinbase/spot'], 'binance:BTCUSDT', BTC).map(t => t.id), ['binance:BTCUSDT'], 'the choices wait while the chart market is the source');
+  assert.deepEqual(vwapTargets('chosen', ['binance/perp', 'coinbase/spot'], 'binance:BTCUSDT', BTC).map(t => t.id), ['binance:BTCUSDT', 'coinbase:BTC-USD']);
+  assert.deepEqual(vwapTargets('chosen', [], 'binance:BTCUSDT', BTC), [], 'none ticked: none');
+  assert.deepEqual(vwapTargets('chosen', ['binance/perp', 'coinbase/spot', 'hyperliquid/perp'], 'binance:BTCUSDT', BTC).map(quoteOf), ['USDT', 'USD', 'USDC']);
+});

@@ -2270,7 +2270,15 @@
   "many": "{n} дней до текущего момента",
   "other": "{n} дня до текущего момента"
  },
- "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: история этого рынка, которую смогла прочитать страница, короче его окна, поэтому линии нет.",
  "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Строка {line}: окно ({n}) здесь никогда не заполняется: у скрипта на этом графике есть только {have}. Отдалите график, чтобы получить больше, до {max}, или выберите более длинный таймфрейм.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Строка {line}: окно ({n}) здесь никогда не заполняется: скрипт читает не больше {max} таймфрейма графика, а у этого скрипта на графике есть только {have}."
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Строка {line}: окно ({n}) здесь никогда не заполняется: скрипт читает не больше {max} таймфрейма графика, а у этого скрипта на графике есть только {have}.",
+ "Candles from": "Свечи с",
+ "Whose candles the session, rolling and anchored lines add up.": "Чьи свечи складывают сессионные, скользящие и привязанные линии.",
+ "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Каждая линия складывает свечи отмеченных ниже рынков, свеча за свечой, что бы ни говорили чипы бирж. Каждый рынок добавляет чтения; если ничего не отмечено, VWAP нет.",
+ "Up to six markets: untick one to choose another.": "Не больше шести рынков: снимите отметку с одного, чтобы выбрать другой.",
+ "USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.": "Цены в USD, USDT и USDC складываются как есть, один к одному, без пересчёта валют.",
+ "{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.": "{market}: сейчас не удалось прочитать его свечи; повторная попытка через минуту. Линии ждут его.",
+ "{market}: its candles were last read at {time}; the lines end there.": "{market}: его свечи последний раз прочитаны в {time}; линии заканчиваются там.",
+ "{market}: its history reaches back to {date} only, so no line starts before it.": "{market}: его история доступна только с {date}, поэтому ни одна линия не начинается раньше.",
+ "{line}: the history this page could read is shorter than its window, so it has no line.": "{line}: история, которую смогла прочитать страница, короче его окна, поэтому линии нет."
 }
