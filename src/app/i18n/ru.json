@@ -2271,6 +2271,6 @@
   "other": "{n} дня до текущего момента"
  },
  "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: история этого рынка, которую смогла прочитать страница, короче его окна, поэтому линии нет.",
- "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Строка {line}: окно в {n} здесь никогда не заполняется, так как график даёт этому скрипту {have}. Отдалите график, чтобы получить больше, до {max}, или выберите более длинный таймфрейм.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Строка {line}: окно в {n} здесь никогда не заполняется: скрипт читает не больше {max} таймфрейма графика, а этот график даёт ему {have}."
+ "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Строка {line}: окно ({n}) здесь никогда не заполняется: у скрипта на этом графике есть только {have}. Отдалите график, чтобы получить больше, до {max}, или выберите более длинный таймфрейм.",
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Строка {line}: окно ({n}) здесь никогда не заполняется: скрипт читает не больше {max} таймфрейма графика, а у этого скрипта на графике есть только {have}."
 }

@@ -309,6 +309,7 @@ test('a window longer than the candles read is warned of, with its line, its len
   assert.deepEqual(long(some.run(inputs(21))), [{ code: 'long-window', detail: '1|300|21' }]);
   assert.ok(some.startedAt > 0);
   assert.deepEqual(long(some.run(inputs(22))), [{ code: 'long-window', detail: '1|300|22' }]);
-  // A window is taken at most 10,000 candles long, and said so.
+  // A window is taken at most 10,000 candles long, and said so; one that is not a number (Infinity too) is one candle, and nothing is said.
   assert.deepEqual(long(run('line(sma($price.close, 50000))', {}, inputs(20))), [{ code: 'long-window', detail: '1|10000|20' }]);
+  assert.deepEqual(long(run('line(sma($price.close, Infinity))', {}, inputs(20))), []);
 });

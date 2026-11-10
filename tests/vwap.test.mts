@@ -219,3 +219,13 @@ test('a line with thousands of points to a pixel column is drawn with a few, and
   assert.ok(segments <= 4 * 202, `${segments} segments across 200 px, not 20,000`);
   assert.equal(tags[0]!.rank, 11.5 + 30 / 1000, 'after the day\'s levels (8 to 11), before earlier periods\' (20 on)');
 });
+
+test('a pixel column of a thinned line ends where its last point is, an excursion that came back included', () => {
+  const calls: string[] = [];
+  const ctx = new Proxy({}, { get: (_t, k) => k === 'moveTo' || k === 'lineTo' ? (x: number, y: number) => { calls.push(`${String(k)} ${Math.round(x * 10) / 10} ${Math.round(y * 10) / 10}`); } : () => {}, set: () => true }) as CanvasRenderingContext2D;
+  const view = new View({ t0: 0, t1: 1000, p0: 0, p1: 300 });
+  // y = 300 - price on a 300 px plot, x = t on a 1000 px one: one column at x 50 (y 200, 210, 170, back to 200), then x 80 (y 180).
+  const points = [[50.1, 100], [50.3, 90], [50.5, 130], [50.7, 100], [80, 120]].map(([t, vwap]) => ({ t: t!, vwap: vwap!, sd: 0 }));
+  paintVwap(ctx, [{ kind: 'rolling', n: 7, points, live: false, key: 'r' }], view, 1000, 300, { dark: false, vwap: '#08c', panel: '#fff' } as Palette, { ...VWAP_DEFAULTS, on: true });
+  assert.deepEqual(calls, ['moveTo 50.1 200', 'lineTo 50.1 170', 'lineTo 50.1 210', 'lineTo 50.1 200', 'lineTo 80 180']);
+});

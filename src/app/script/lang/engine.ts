@@ -278,8 +278,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       const builtin = own(BUILTINS, name);
       if (builtin) {
         const k = own(WINDOW_ARG, name);
-        // The window as the function takes it (at most MAX_WINDOW candles).
-        if (k !== undefined) { const w = Math.min(MAX_WINDOW, Math.floor(num(args[k]))); if (w > widest.n) widest = { n: w, line: node.p.line }; }
+        // The window as the function takes it: at most MAX_WINDOW candles, and one that is not a number (Infinity too) is one candle.
+        if (k !== undefined) { const asked = Math.floor(num(args[k])), w = Number.isFinite(asked) ? Math.min(MAX_WINDOW, asked) : 1; if (w > widest.n) widest = { n: w, line: node.p.line }; }
         const inst = instanceAt(site);
         if (!inst.touched) { inst.touched = true; touched.push(inst); }
         return builtin(inst, args, named, candle);

@@ -51,10 +51,12 @@ export function paintVwap(ctx: CanvasRenderingContext2D, lines: readonly VwapLin
     const put = (x: number, y: number): void => { if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; } };
     const flush = (): void => {
       if (Number.isNaN(col)) return;
+      // The column ends where its last point is, whatever it passed on the way (an excursion that came back to where it entered included).
+      let last = yIn;
       put(x0, yIn);
-      if (yLo < Math.min(yIn, yOut)) put(x0, yLo);
-      if (yHi > Math.max(yIn, yOut)) put(x0, yHi);
-      if (yOut !== yIn) put(x0, yOut);
+      if (yLo < Math.min(yIn, yOut)) { put(x0, yLo); last = yLo; }
+      if (yHi > Math.max(yIn, yOut)) { put(x0, yHi); last = yHi; }
+      if (yOut !== last) put(x0, yOut);
     };
     for (const q of pts) {
       const x = v.xOf(q.t, pw), y = v.yOf(value(q), ph), c = Math.floor(x);

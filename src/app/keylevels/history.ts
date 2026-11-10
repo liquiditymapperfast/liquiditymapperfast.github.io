@@ -77,6 +77,8 @@ export class KeyLevelHistory {
   #exhausted = false;
   #refreshedAt = 0;
   #pending = false;
+  /** Counts the requests made, so a request settling clears only its own `#pending`, never the one a callback has started since. */
+  #asks = 0;
   #retryAt = 0;
   /** Bumped whenever the bars change, for the pane's cache. */
   version = 0;
@@ -127,6 +129,7 @@ export class KeyLevelHistory {
     else return;
     const asked = this.#key, before = this.heldFrom;
     this.#pending = true; if (!this.#bars.length) this.state = 'loading';
+    const ask = ++this.#asks;
     // A page that fails after others came keeps them, the next call asking on back from where they reach: on the first load and the walks
     // further back, never on a refresh of the newest bars, where what came could lie apart from what is held and leave a hole.
     const partial = !forward || !this.#bars.length;
@@ -151,7 +154,7 @@ export class KeyLevelHistory {
       this.state = this.#bars.length ? 'ready' : 'unavailable';
       this.#pending = false;
       onLoad();
-    }).finally(() => { if (asked === this.#key) this.#pending = false; });
+    }).finally(() => { if (asked === this.#key && ask === this.#asks) this.#pending = false; });
   }
 
   #merge(rows: readonly CandleRow[]): void {

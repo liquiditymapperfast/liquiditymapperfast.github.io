@@ -313,3 +313,25 @@ test('what the history says while its answer is being told is that answer, not "
   h.ensure(target, now - 4.5 * DAY, HOUR, () => { said = h.reach(now - 4.5 * DAY); }); await settle(); await settle();
   assert.equal(said, 'never', 'told after a failure: the minute\'s wait, which a panel shows at once');
 });
+
+test('a request started from inside an answer\'s callback is the only one out: the first one settling does not clear its flag', async () => {
+  const now = D0 + 10 * DAY;
+  let inFlight = 0, most = 0, asked = 0;
+  const get = async (url: string): Promise<unknown> => {
+    asked++; inFlight++; most = Math.max(most, inFlight);
+    await new Promise(r => setTimeout(r, 5));
+    inFlight--;
+    const end = Number(new URL(url).searchParams.get('endTime')), first = now - 30 * DAY;
+    const rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    return rows;
+  };
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
+  const wait = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+  let again = true;
+  h.ensure(target, now - 3 * DAY, HOUR, () => { if (again) { again = false; h.ensure(target, now - 9 * DAY, HOUR, () => {}); } });
+  for (let k = 0; k < 6; k++) { await wait(2); h.ensure(target, now - 12 * DAY, HOUR, () => {}); }
+  await wait(40);
+  assert.equal(most, 1, 'never two requests out at once');
+  assert.ok(asked >= 2);
+});
