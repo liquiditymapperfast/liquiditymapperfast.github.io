@@ -2214,8 +2214,6 @@
   "one": "şimdiye kadar {n} gün",
   "other": "şimdiye kadar {n} gün"
  },
- "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz, çünkü grafik bu betiğe {have} veriyor. Daha fazlası için uzaklaştırın, en fazla {max}, ya da daha uzun bir zaman dilimi seçin.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz: bir betik grafiğin zaman diliminden en fazla {max} okur, bu grafik ise ona {have} veriyor.",
  "Candles from": "Mumların kaynağı",
  "Whose candles the session, rolling and anchored lines add up.": "Seans, kayan ve sabitlenmiş çizgilerin topladığı mumların hangi piyasalardan geldiği.",
  "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Her çizgi, borsa çipleri ne derse desin, aşağıda işaretlenen piyasaların mumlarını mum mum toplar. Her ek piyasa daha fazla okuma demektir; hiçbiri işaretli değilse VWAP yoktur.",
@@ -2246,5 +2244,15 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "Bu coin için henüz sabitleme yok: biri eklenene kadar sütunlar grafikte görüneni toplar.",
  "The columns hold {from} to {to}, worked out at {time}.": "Sütunlar {from} ile {to} arasını kapsıyor; {time} itibarıyla hesaplandı.",
  "The first five minutes after the anchor are not over yet.": "Sabitlemeden sonraki ilk beş dakika henüz dolmadı.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "İşlem hacmi, mumların olduğu yerde 21 haftaya kadar geriye uzanır; tahmindir (≈). Likidasyonlar, emilim ve açık pozisyon yalnızca kayıtlarının uzandığı yere kadar gider. Her sütun sayılarının nerede başladığını söyler."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "İşlem hacmi, mumların olduğu yerde 21 haftaya kadar geriye uzanır; tahmindir (≈). Likidasyonlar, emilim ve açık pozisyon yalnızca kayıtlarının uzandığı yere kadar gider. Her sütun sayılarının nerede başladığını söyler.",
+ "Candles scripts read": "Betiklerin okuduğu mumlar",
+ "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "Her betiğin borsadan okuduğu grafik mumu sayısı. Daha fazlası ilk okumada ve ilk mumdan hesaplamada daha uzun sürer.",
+ "Reading {have} of {want} candles of {market} from the exchange…": "{market} mumları borsadan okunuyor: {want} mumun {have} tanesi…",
+ "{market} gives {have} candles of this timeframe, fewer than {want}: the scripts read those.": "{market} bu zaman diliminden {have} mum veriyor, {want} sayısından az: betikler bunları okur.",
+ "The candles of {market} could not be read just now; trying again in a minute. Until then the scripts read the chart's own.": "{market} mumları şu an okunamadı; bir dakika sonra yeniden denenecek. O zamana kadar betikler grafiğin kendi mumlarını okur.",
+ "This market's history cannot be read from the exchange here: the scripts read the chart's own candles.": "Bu piyasanın geçmişi burada borsadan okunamıyor: betikler grafiğin kendi mumlarını okur.",
+ "The scripts read {want} candles of {market}.": "Betikler {market} piyasasının {want} mumunu okur.",
+ "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Satır {line}: {asked} uzunluğunda bir pencere, bir pencerenin olabileceğinden uzun; bu yüzden {n} geriye sayar.",
+ "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz: bu grafik, betiklerin okuduğu {max} içinden yalnızca {have} veriyor.",
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz: betikler {max} okur. Betikler panelinden {most} sayısına kadar daha fazlasını ya da daha uzun bir zaman dilimi seçin."
 }

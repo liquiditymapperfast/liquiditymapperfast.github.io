@@ -1,6 +1,8 @@
 import { el } from '../dom.ts';
 import { t, tn } from '../i18n.ts';
-import { button, heading, note } from '../ui.ts';
+import { button, heading, note, selectRow } from '../ui.ts';
+import { price } from '../format.ts';
+import { SCRIPT_BARS } from './bars.ts';
 import { toast } from '../toast.ts';
 import { explain, questionButton } from '../help.ts';
 import type { Analysis } from './lang/analysis.ts';
@@ -26,6 +28,7 @@ const REFERENCE_FILE = 'script-reference.md';
  * for its second press is not lost under the person's pointer.
  */
 export function refreshStatuses(host: ScriptsHost, body: HTMLElement): void {
+  for (const cell of body.querySelectorAll<HTMLElement>('[data-script-bars]')) { const text = barsText(host); if (cell.textContent !== text) cell.textContent = text; }
   for (const cell of body.querySelectorAll<HTMLElement>('[data-script-status]')) {
     const r = host.records.find(x => x.id === cell.dataset.scriptStatus); if (!r) continue;
     const st = statusOf(host, r);
@@ -77,6 +80,11 @@ export function buildScriptsPanel(host: ScriptsHost, body: HTMLElement, redraw: 
 
   body.append(note(t('Scripts draw your own indicators from the candles and the taker flow and liquidations of the exchanges on the page. Each runs on its own, apart from the page, and can read nothing else. Their language is the indicator-script language other charting pages use: JavaScript with plots and functions such as sma and ema.')));
   if (ui.message) body.append(el('p', { class: ui.message.error ? 'panel-note layout-message error' : 'panel-note layout-message', textContent: ui.message.text }));
+  // How many of the chart's candles every script reads (Karl, 2026-11-10), and how reading them stands, said again as they come in.
+  body.append(selectRow(t('Candles scripts read'), t("How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle."),
+    SCRIPT_BARS.map(n => [String(n), price(n, 1)] as [string, string]), String(host.bars), v => { host.setBars(Number(v)); redraw(); }));
+  const bars = note(barsText(host)); bars.dataset.scriptBars = '';
+  body.append(bars);
   body.append(heading(t('Your scripts')));
   const list = host.records;
   if (!list.length) body.append(note(t('No scripts yet.')));
@@ -209,7 +217,7 @@ function buildEditor(host: ScriptsHost, body: HTMLElement, redraw: () => void, u
     const res = host.resultOf(existing.id);
     if (res && !res.ok) body.append(el('p', { class: 'panel-note layout-message error', textContent: errorText(res.error) }));
     const notes = [...host.warningsOf(existing.id), ...(res?.ok ? res.warnings : [])];
-    for (const w of notes) body.append(note(warningText(w)));
+    for (const w of notes) body.append(note(warningText(w, host.bars)));
   }
 
   // Its options, as the text reads now: the declared ones and those it reads without declaring.
@@ -300,4 +308,16 @@ async function copyText(text: string): Promise<boolean> {
   box.readOnly = true; box.style.position = 'fixed'; box.style.left = '-10000px'; box.style.top = '0'; box.style.opacity = '0';
   document.body.append(box); box.select();
   try { return document.execCommand('copy'); } catch { return false; } finally { box.remove(); if (was instanceof HTMLElement && was.isConnected) was.focus({ preventScroll: true }); }
+}
+
+/** What the Scripts panel says of the candles the scripts read: being read, fewer than asked, not read just now, the chart's own, or ready. */
+function barsText(host: ScriptsHost): string {
+  const st = host.barsState(), n = (v: number): string => price(v, 1);
+  switch (st.state) {
+    case 'loading': return t('Reading {have} of {want} candles of {market} from the exchange…', { have: n(st.have), want: n(st.want), market: st.market });
+    case 'short': return t('{market} gives {have} candles of this timeframe, fewer than {want}: the scripts read those.', { have: n(st.have), want: n(st.want), market: st.market });
+    case 'failed': return t("The candles of {market} could not be read just now; trying again in a minute. Until then the scripts read the chart's own.", { market: st.market });
+    case 'none': return t("This market's history cannot be read from the exchange here: the scripts read the chart's own candles.");
+    default: return t('The scripts read {want} candles of {market}.', { want: n(st.want), market: st.market });
+  }
 }

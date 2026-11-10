@@ -53,6 +53,7 @@ import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
 import { ANCHOR_BAR_MS, anchorSnapshot, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
+import { scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
 import { BROWSER_RETENTION_MS, RETENTION_MS } from '../../shared/recorder.ts';
@@ -221,6 +222,12 @@ export function coverageKey(candles: readonly CandleRow[], cut: number): string 
 function historyRows(answer: PriceHistoryAnswer, candles: readonly CandleRow[], tf: number, at: number, replay: boolean): CandleRow[] {
   const starts = new Set(candles.map(c => c[0])), last = candles[candles.length - 1]?.[0] ?? Infinity;
   return answer.candles.filter(c => c[0] < last && !starts.has(c[0]) && (!replay || c[0] + tf <= at)) as CandleRow[];
+}
+/** The index of the first of `bars` (sorted by start) that starts at or after `t`. */
+function lowerBound(bars: readonly CandleRow[], t: number): number {
+  let lo = 0, hi = bars.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (bars[mid]![0] < t) lo = mid + 1; else hi = mid; }
+  return lo;
 }
 /** The chart's candles with `history` before them and in their holes, in time order. */
 function withHistory(history: readonly CandleRow[], candles: readonly CandleRow[]): CandleRow[] {
@@ -1551,6 +1558,8 @@ export class HeatPane {
    * moment, so one memo for both was built again at every frame and the scripts ran as often (Sol, 2026-11-03). The same series either way.
    */
   scriptCandles(state: AppState): readonly CandleRow[] {
+    const long = this.#scriptLong(state);
+    if (long) return long;
     const answer = this.hub.priceHistory.answer, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, candles = state.candles;
     if (!this.#overview || !answer || !answer.candles.length || !this.#historyAsCandles(state, answer)) return candles;
     const at = pageNow(), replay = replaying(), cut = replay ? Math.floor(at / tf) : 0, held = this.#scriptRows;
@@ -1562,6 +1571,58 @@ export class HeatPane {
     return rows;
   }
   #scriptRows: { answer: PriceHistoryAnswer; candles: readonly CandleRow[]; cut: number; key: string; history: readonly CandleRow[]; rows: readonly CandleRow[] } | null = null;
+  /** Told when the scripts' candles from the exchange change how they stand (`scriptBarsState`): the scripts look again (set by the page). */
+  onScriptHistory: () => void = () => {};
+  #scriptLongRows: { version: number; candles: readonly CandleRow[]; start: number; cut: number; rows: readonly CandleRow[] } | null = null;
+  #scriptStateKey = '';
+  /**
+   * The chart market's candles the scripts read (`script/bars.ts`, `state.scriptBars`): the exchange's, of the chart's timeframe, from
+   * `scriptStart` (it moves a chunk at a time, so a script runs from its first candle once a chunk, not at every candle), the chart's own
+   * candles after them and in their place where both have one; in a replay none after the moment shown. Asked for once the map has its first
+   * data, through the venue's queue, and handed over only once they reach the start or hold all the exchange has: never while they are being
+   * read, each part of which would be another first candle for every script. Null while they are not there or cannot be (the chart's market
+   * has no history the page can read, the chart shows another market's candles, a view reaching before the start): the scripts read the
+   * chart's candles and the price history as before.
+   */
+  #scriptLong(state: AppState): readonly CandleRow[] | null {
+    const r = this.#scriptReading(state);
+    this.#scriptLoaded(r.state);
+    if (!r.h || (r.state.state !== 'ready' && r.state.state !== 'short')) return null;
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, candles = state.candles, replay = replaying(), at = pageNow(), cut = replay ? Math.floor(at / tf) : 0;
+    if (this.view.t0 - SCRIPT_WARM_BARS * tf < r.start) return null;
+    const held = this.#scriptLongRows;
+    if (held && held.version === r.h.version && held.candles === candles && held.start === r.start && held.cut === cut) return held.rows;
+    const starts = new Set(candles.map(c => c[0])), last = candles[candles.length - 1]?.[0] ?? Infinity;
+    const history = r.h.bars.filter(b => b[0] >= r.start && b[0] < last && !starts.has(b[0]) && (!replay || b[0] + tf <= at));
+    const own = candles.filter(c => c[0] >= r.start);
+    const rows = history.length ? withHistory(history, own) : own;
+    this.#scriptLongRows = { version: r.h.version, candles, start: r.start, cut, rows };
+    return rows;
+  }
+  /** Where the scripts' candles from the exchange stand (`ScriptBarsState`), asking for them when they are wanted and the map has its first data. */
+  #scriptReading(state: AppState): { h: KeyLevelHistory | null; start: number; state: ScriptBarsState } {
+    const bars = state.scriptBars, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, start = scriptStart(Date.now(), tf, bars);
+    const target = historyTarget(state.marketId, currentCoin());
+    const none = (market: string): { h: null; start: number; state: ScriptBarsState } => ({ h: null, start, state: { state: 'none', have: 0, want: bars, market } });
+    if (!target?.own || state.seriesInstrument !== state.marketId) return none(target ? `${venueLabel(target.id)} ${target.listing.symbol}` : '');
+    const h = this.hub.scriptHistory(tf, bars), market = `${venueLabel(target.id)} ${target.listing.symbol}`;
+    // The chart's own candles not in yet: whose market they are of is not settled, so nothing is asked.
+    if (!state.candles.length) return { h: null, start, state: { state: 'loading', have: 0, want: bars, market } };
+    if (!this.hub.mapFirst()) h.ensure(target, start, tf, () => this.#scriptLoaded(this.#scriptReading(this.store.state).state));
+    if (h.id !== target.id || h.barMs !== tf) return { h: null, start, state: { state: 'loading', have: 0, want: bars, market } };
+    const have = h.bars.length - lowerBound(h.bars, start), reach = h.reach(start);
+    if (h.state === 'unavailable') return { h: null, start, state: { state: 'failed', have, want: bars, market } };
+    if (reach === 'yes') return { h, start, state: { state: 'ready', have, want: bars, market } };
+    if (reach === 'never' && (h.exhausted || h.limited) && h.bars.length) return { h, start, state: { state: 'short', have, want: bars, market } };
+    return { h: null, start, state: { state: reach === 'never' ? 'failed' : 'loading', have, want: bars, market } };
+  }
+  /** Where the scripts' candles from the exchange stand, for the Scripts panel. */
+  scriptBarsState(): ScriptBarsState { return this.#scriptReading(this.store.state).state; }
+  /** The scripts look again when how their candles stand changes (a read came, they are whole), not at every frame. */
+  #scriptLoaded(st: ScriptBarsState): void {
+    const key = `${st.state}|${st.state === 'loading' ? Math.floor(st.have / 5_000) : st.have}|${st.want}|${st.market}`;
+    if (key !== this.#scriptStateKey) { this.#scriptStateKey = key; queueMicrotask(() => this.onScriptHistory()); }
+  }
 
   #fitOverview(): void {
     // Not while the tour's picture has the view: it is put back as it was, and the fit is made then (Sol, 2026-11-03).

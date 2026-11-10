@@ -2132,8 +2132,6 @@
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "세션 시작부터, 최근 며칠 동안, 또는 선택한 시점부터 거래량으로 가중한 시장의 평균 거래 가격. 매수자와 매도자가 평균적으로 어디서 거래했는지를 보여 줍니다.",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "롤링 VWAP(RVWAP)는 각 시점까지 최근 하루, 일주일, 한 달, 분기, 반년 또는 1년의 평균입니다. 시작점이 시간과 함께 움직여 가장 오래된 거래가 빠지며, 세션이나 앵커는 시작 이후의 모든 거래를 유지합니다. 자체 봉(하루는 5분봉, 1년은 4시간봉까지)으로 계산하고 최신 봉은 매분 다시 읽으므로 어떤 시간 단위에서도 같으며, 이력이 기간 전체를 담은 곳에만 그려집니다.",
  "{n} days up to now": "지금까지 {n}일",
- "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 차트가 이 스크립트에 주는 것은 {have}입니다. 축소하면 최대 {max}까지 늘어나며, 더 긴 시간 단위를 고를 수도 있습니다.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트가 읽는 차트 시간 단위는 최대 {max}이고, 이 차트가 주는 것은 {have}입니다.",
  "Candles from": "캔들 출처",
  "Whose candles the session, rolling and anchored lines add up.": "세션·롤링·앵커 선이 합산하는 캔들의 시장.",
  "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "각 선은 거래소 칩과 관계없이 아래에 체크한 시장의 캔들을 봉마다 합산합니다. 시장이 늘수록 읽을 것이 많아지며, 아무것도 체크하지 않으면 VWAP이 없습니다.",
@@ -2164,5 +2162,15 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "이 코인에는 아직 앵커가 없습니다. 놓을 때까지 열은 차트에 보이는 범위를 합산합니다.",
  "The columns hold {from} to {to}, worked out at {time}.": "열은 {from}부터 {to}까지를 담고 있으며 {time}에 계산했습니다.",
  "The first five minutes after the anchor are not over yet.": "앵커 뒤 첫 5분이 아직 끝나지 않았습니다.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "거래량은 캔들이 있는 곳에서 최대 21주까지 거슬러 올라가며 추정치(≈)입니다. 청산·흡수·미결제약정은 각 기록이 있는 만큼만 거슬러 올라갑니다. 각 열은 숫자가 시작되는 지점을 알려 줍니다."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "거래량은 캔들이 있는 곳에서 최대 21주까지 거슬러 올라가며 추정치(≈)입니다. 청산·흡수·미결제약정은 각 기록이 있는 만큼만 거슬러 올라갑니다. 각 열은 숫자가 시작되는 지점을 알려 줍니다.",
+ "Candles scripts read": "스크립트가 읽는 캔들",
+ "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "각 스크립트가 거래소에서 읽는 차트 캔들 수입니다. 많을수록 처음 읽을 때와 첫 캔들부터 계산할 때 오래 걸립니다.",
+ "Reading {have} of {want} candles of {market} from the exchange…": "거래소에서 {market} 캔들을 읽는 중입니다({want}개 중 {have}개)…",
+ "{market} gives {have} candles of this timeframe, fewer than {want}: the scripts read those.": "{market}이(가) 주는 이 시간 단위 캔들은 {have}개로 {want}개보다 적습니다. 스크립트는 그것을 읽습니다.",
+ "The candles of {market} could not be read just now; trying again in a minute. Until then the scripts read the chart's own.": "지금은 {market} 캔들을 읽지 못했습니다. 1분 뒤 다시 시도합니다. 그때까지 스크립트는 차트 자체의 캔들을 읽습니다.",
+ "This market's history cannot be read from the exchange here: the scripts read the chart's own candles.": "이 시장의 이력은 여기서 거래소에서 읽을 수 없습니다. 스크립트는 차트 자체의 캔들을 읽습니다.",
+ "The scripts read {want} candles of {market}.": "스크립트는 {market} 캔들 {want}개를 읽습니다.",
+ "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "{line}행: {asked} 기간은 기간의 최대 길이보다 길어서 {n}까지만 거슬러 셉니다.",
+ "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트가 읽는 {max} 중 이 차트가 주는 것은 {have}입니다.",
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트는 {max}을(를) 읽습니다. 스크립트 패널에서 {most}까지 늘리거나 더 긴 시간 단위를 고르세요."
 }

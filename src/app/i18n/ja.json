@@ -2132,8 +2132,6 @@
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "セッション開始時から、直近の日数で、または選んだ時点からの、出来高で加重した市場の平均取引価格。買い手と売り手が平均してどこで取引したかを示します。",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "ローリング VWAP（RVWAP）は、各時点までの直近 1 日・1 週間・1 か月・四半期・半年・1 年の平均です。開始点が時間とともに進むため、最も古い取引が外れていきます。セッションやアンカーは開始以降のすべての取引を含み続けます。専用の足（1 日なら 5 分足、1 年なら 4 時間足まで）から計算し、最新の足は毎分読み直すので、どの時間足でも同じになります。履歴が期間全体を含む範囲にだけ描画されます。",
  "{n} days up to now": "現在までの {n} 日",
- "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "{line} 行目：{n}の期間はここでは満たされません。チャートがこのスクリプトに渡すのは {have}です。ズームアウトすると最大 {max}まで増えます。または長い時間足を選んでください。",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読むのはチャートの時間足で最大 {max}で、このチャートが渡すのは {have}です。",
  "Candles from": "ローソク足の出所",
  "Whose candles the session, rolling and anchored lines add up.": "セッション、ローリング、アンカーの各ラインが合算するローソク足の市場。",
  "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "各ラインは、取引所チップに関係なく、下でチェックした市場のローソク足を足ごとに合算します。市場が増えるほど読み込みが増えます。何もチェックしなければ VWAP はありません。",
@@ -2164,5 +2162,15 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "このコインにはまだアンカーがありません。置くまでは、列はチャートに表示中の範囲を合算します。",
  "The columns hold {from} to {to}, worked out at {time}.": "列は {from} から {to} までを集計しています（{time} に計算）。",
  "The first five minutes after the anchor are not over yet.": "アンカー後の最初の 5 分がまだ終わっていません。",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "取引量は、ローソク足がある範囲で最大 21 週間さかのぼります（推定値 ≈）。清算・吸収・建玉は、それぞれの記録がある範囲までしかさかのぼれません。各列は数値の開始時点を示します。"
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "取引量は、ローソク足がある範囲で最大 21 週間さかのぼります（推定値 ≈）。清算・吸収・建玉は、それぞれの記録がある範囲までしかさかのぼれません。各列は数値の開始時点を示します。",
+ "Candles scripts read": "スクリプトが読むローソク足",
+ "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "各スクリプトが取引所から読むチャートのローソク足の本数です。多いほど、最初の読み込みと最初の足からの計算に時間がかかります。",
+ "Reading {have} of {want} candles of {market} from the exchange…": "{market} のローソク足を取引所から読み込み中（{want} 本中 {have} 本）…",
+ "{market} gives {have} candles of this timeframe, fewer than {want}: the scripts read those.": "{market} が渡すこの時間足のローソク足は {have} 本で、{want} 本より少ないため、スクリプトはそれを読みます。",
+ "The candles of {market} could not be read just now; trying again in a minute. Until then the scripts read the chart's own.": "今は {market} のローソク足を読めませんでした。1 分後に再試行します。それまでスクリプトはチャート自身の足を読みます。",
+ "This market's history cannot be read from the exchange here: the scripts read the chart's own candles.": "この市場の履歴はここでは取引所から読めません。スクリプトはチャート自身のローソク足を読みます。",
+ "The scripts read {want} candles of {market}.": "スクリプトは {market} のローソク足を {want} 本読みます。",
+ "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "{line} 行目：{asked}の期間は期間の上限を超えているため、{n}までさかのぼります。",
+ "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読む {max}のうち、このチャートが渡すのは {have}です。",
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読むのは {max}です。スクリプトパネルで {most}まで増やすか、より長い時間足を選んでください。"
 }

@@ -40,13 +40,17 @@ test("each error's example meets that error, and its fix runs cleanly", () => {
   assert.deepEqual(ERRORS.map(e => e.code).sort(), said.sort());
   assert.ok(ERRORS.every(e => errorSentence(e.code) !== e.code), 'each has its sentence');
   assert.ok(WARNINGS.length === 9);
-  // A window the chart's candles cannot fill says where, how long and how many candles there are (the reference shows X for each).
-  assert.equal(warningSentence('long-window', '3|720|501'), 'Line 3: a window of 720 candles never fills here, as the chart gives this script 501 candles. Zoom out for more, up to 2,000 candles, or choose a longer timeframe.');
-  assert.equal(warningSentence('long-window', '36|8760|994'), 'Line 36: a window of 8,760 candles never fills here: a script reads at most 2,000 candles of the chart\'s timeframe, and this chart gives it 994 candles.', 'no zoom fills a window longer than a script reads');
+  // A window the chart's candles cannot fill says where, how long and how many candles there are, against how many the scripts read (the
+  // Scripts panel's Candles scripts read; the reference shows X for each).
+  assert.equal(warningSentence('long-window', '3|720|501', 10_000), 'Line 3: a window of 720 candles never fills here: this chart gives scripts 501 candles of the 10,000 candles they read.');
+  assert.equal(warningSentence('long-window', '36|8760|994', 2_000), 'Line 36: a window of 8,760 candles never fills here: scripts read 2,000 candles. Choose more in the Scripts panel, up to 100,000 candles, or a longer timeframe.', 'longer than they read: more can be chosen');
   // The run's detail since a window asked is told apart from the one it has: "line|asked|window|candles".
-  assert.equal(warningSentence('long-window', '3|720|720|501'), warningSentence('long-window', '3|720|501'));
-  assert.equal(warningSentence('long-window', '36|8760|8760|994'), warningSentence('long-window', '36|8760|994'));
-  assert.match(warningSentence('long-window'), /^Line X: a window of X never fills here, as the chart gives this script X\./);
+  assert.equal(warningSentence('long-window', '3|720|720|501', 10_000), warningSentence('long-window', '3|720|501', 10_000));
+  assert.equal(warningSentence('long-window', '36|8760|8760|994', 2_000), warningSentence('long-window', '36|8760|994', 2_000));
+  // Asked longer than any window can be: it counts back the longest, and says whether that fills.
+  assert.equal(warningSentence('long-window', '1|150000|100000|99000', 100_000), 'Line 1: a window of 150,000 candles is longer than a window can be, so it counts back 100,000 candles. Line 1: a window of 100,000 candles never fills here: this chart gives scripts 99,000 candles of the 100,000 candles they read.');
+  assert.equal(warningSentence('long-window', '1|150000|100000|100000', 100_000), 'Line 1: a window of 150,000 candles is longer than a window can be, so it counts back 100,000 candles.');
+  assert.match(warningSentence('long-window'), /^Line X: a window of X never fills here: scripts read X\./);
 });
 
 test('what the rules say the interpreter does, it does', () => {

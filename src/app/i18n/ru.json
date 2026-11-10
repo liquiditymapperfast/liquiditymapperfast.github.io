@@ -2270,8 +2270,6 @@
   "many": "{n} дней до текущего момента",
   "other": "{n} дня до текущего момента"
  },
- "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Строка {line}: окно ({n}) здесь никогда не заполняется: у скрипта на этом графике есть только {have}. Отдалите график, чтобы получить больше, до {max}, или выберите более длинный таймфрейм.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Строка {line}: окно ({n}) здесь никогда не заполняется: скрипт читает не больше {max} таймфрейма графика, а у этого скрипта на графике есть только {have}.",
  "Candles from": "Свечи с",
  "Whose candles the session, rolling and anchored lines add up.": "Чьи свечи складывают сессионные, скользящие и привязанные линии.",
  "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Каждая линия складывает свечи отмеченных ниже рынков, свеча за свечой, что бы ни говорили чипы бирж. Каждый рынок добавляет чтения; если ничего не отмечено, VWAP нет.",
@@ -2302,5 +2300,15 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "Для этой монеты привязки ещё нет: пока её не поставят, колонки складывают то, что на графике.",
  "The columns hold {from} to {to}, worked out at {time}.": "Колонки охватывают с {from} по {to}, посчитано в {time}.",
  "The first five minutes after the anchor are not over yet.": "Первые пять минут после привязки ещё не прошли.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "Объём торгов доступен до 21 недели назад, где есть свечи, как оценка (≈). Ликвидации, поглощение и открытый интерес — только насколько хватает их записи. Каждая колонка говорит, откуда начинаются её числа."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "Объём торгов доступен до 21 недели назад, где есть свечи, как оценка (≈). Ликвидации, поглощение и открытый интерес — только насколько хватает их записи. Каждая колонка говорит, откуда начинаются её числа.",
+ "Candles scripts read": "Свечей читают скрипты",
+ "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "Сколько свечей графика читает каждый скрипт, с биржи. Чем больше, тем дольше первое чтение и расчёт с первой свечи.",
+ "Reading {have} of {want} candles of {market} from the exchange…": "Чтение свечей {market} с биржи: {have} из {want}…",
+ "{market} gives {have} candles of this timeframe, fewer than {want}: the scripts read those.": "{market} даёт {have} свечей этого таймфрейма, меньше {want}: скрипты читают их.",
+ "The candles of {market} could not be read just now; trying again in a minute. Until then the scripts read the chart's own.": "Сейчас не удалось прочитать свечи {market}; повторная попытка через минуту. До тех пор скрипты читают свечи графика.",
+ "This market's history cannot be read from the exchange here: the scripts read the chart's own candles.": "Историю этого рынка здесь нельзя прочитать с биржи: скрипты читают свечи графика.",
+ "The scripts read {want} candles of {market}.": "Скрипты читают {want} свечей {market}.",
+ "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Строка {line}: окно ({asked}) длиннее, чем может быть окно, поэтому оно отсчитывает назад {n}.",
+ "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Строка {line}: окно ({n}) здесь никогда не заполняется: из {max}, которые читают скрипты, этот график даёт только {have}.",
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Строка {line}: окно ({n}) здесь никогда не заполняется: скрипты читают {max}. Выберите больше в панели «Скрипты», до {most}, или таймфрейм длиннее."
 }

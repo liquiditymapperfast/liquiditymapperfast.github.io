@@ -1,6 +1,6 @@
 import { t, tn } from '../i18n.ts';
 import { price } from '../format.ts';
-import { PRICE_QUERY_BARS } from '../../shared/price-history.ts';
+import { MOST_SCRIPT_BARS } from './bars.ts';
 import type { ScriptError } from './lang/lexer.ts';
 import type { Warning } from './protocol.ts';
 
@@ -41,7 +41,8 @@ export function errorText(e: ScriptError): string {
   return e.line > 0 ? t('Line {line}, column {col}: {text}', { line: e.line, col: e.col, text }) : text;
 }
 
-export function warningText(w: Warning): string {
+/** A run's warning in words; `reads`: how many of the chart's candles the scripts read now (`script/bars.ts`), for the long-window one. */
+export function warningText(w: Warning, reads?: number): string {
   const what = w.detail ?? '';
   switch (w.code) {
     case 'no-counts': return t('Trade counts (cbuy, csell) are not recorded here: they read NaN.');
@@ -53,18 +54,23 @@ export function warningText(w: Warning): string {
     case 'unread-source': return t('A source(...) names its markets with something only the run can work out: it reads 0. Name them with a word, an option or options.name.');
     case 'liquidations-cut': return t('Some days held more liquidations than the source answers: the smallest are missing from lbuy and lsell.');
     case 'long-window': {
-      // "line|asked|window|candles read", from the run (engine.ts): the window asked, the one it has (at most the longest a window can be,
-      // `MAX_WINDOW`) and the candles; "line|window|candles" from a run before the two were told apart. The reference shows X for each.
-      // Each count is said with its noun. A window asked longer than any can be is said for now as the window it has.
+      // 'line|asked|window|candles read', from the run (engine.ts): the window asked, the one it has (at most the longest a window can be,
+      // `MAX_WINDOW`) and the candles; 'line|window|candles' from a run before the two were told apart. `reads`: how many candles the scripts
+      // read now (the Scripts panel's Candles scripts read; the reference, which has none, shows X for each count, as for an unknown detail).
       const parts = what.split('|'), known = (parts.length === 3 || parts.length === 4) && parts.every(p => p !== '' && Number.isFinite(Number(p)));
-      const at = parts.length === 4 ? 2 : 1;
+      const four = parts.length === 4, at = four ? 2 : 1, num = (k: number): number => Number(parts[k]);
       const candles = (v: number): string => tn(v, '{n} candle', '{n} candles', { n: price(v, 1) });
-      const count = (k: number): string => known ? candles(Number(parts[k])) : 'X';
-      const say = { line: known ? String(Number(parts[0])) : 'X', n: count(at), have: count(at + 1), max: candles(PRICE_QUERY_BARS) };
-      // A window longer than any view gives a script: zooming out cannot fill it, so it is not offered.
-      return known && Number(parts[at]) > PRICE_QUERY_BARS
-        ? t('Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart\'s timeframe, and this chart gives it {have}.', say)
-        : t('Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.', say);
+      const n = known ? num(at) : NaN, have = known ? num(at + 1) : NaN, asked = known && four ? num(1) : n;
+      const say = { line: known ? String(num(0)) : 'X', asked: known ? candles(asked) : 'X', n: known ? candles(n) : 'X', have: known ? candles(have) : 'X', max: known && reads !== undefined ? candles(reads) : 'X', most: candles(MOST_SCRIPT_BARS) };
+      // Asked longer than any window can be: it counts back the longest, and says so whether or not that fills.
+      const capped = known && asked > n ? t('Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.', say) : '';
+      if (known && !(n > have)) return capped;
+      // Longer than the scripts read: more can be chosen, up to the most, which is the longest a window can be (so a window is never longer than
+      // the most they can read); within it, the chart gives fewer (a shorter history, or one still being read).
+      const unfilled = known && reads !== undefined && n <= reads
+        ? t('Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.', say)
+        : t('Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.', say);
+      return capped ? `${capped} ${unfilled}` : unfilled;
     }
     default: return w.code;
   }

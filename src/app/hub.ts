@@ -27,6 +27,7 @@ import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 import { webGet } from '../shared/history.ts';
 import { KeyLevelHistory } from './keylevels/history.ts';
 import { pacedFetcher } from './paced-get.ts';
+import { scriptChunk } from './script/bars.ts';
 import { ROLLING_MAX_BARS } from './vwap/vwap.ts';
 import { LiqLevelsSource } from './liq-levels.ts';
 import { TapeRing, tapeCapacity } from './tape/ring.ts';
@@ -277,6 +278,8 @@ export class Hub {
   readonly keyHistory = new KeyLevelHistory(historyGet);
   /** The Liquidation levels layer's file and the candles that take its levels away. */
   readonly liqLevels = new LiqLevelsSource(webGet);
+  /** The scripts' candles of the chart market (`scriptHistory`), for one timeframe and count at a time. */
+  #scriptHistory: { key: string; h: KeyLevelHistory } | null = null;
   /** The VWAP lines' candles, one history per kind, market and bar size (`vwapHistory`), and when each was last asked for. */
   readonly #vwapHistories = new Map<string, { h: KeyLevelHistory; used: number }>();
   readonly #profileHistories = new Map<string, KeyLevelHistory>();
@@ -320,6 +323,16 @@ export class Hub {
       let row = w.tail.get(minute); if (!row) { row = [minute, 0, 0, 0, 0]; w.tail.set(minute, row); }
       if (p.side === 'buy') { row[1] += p.usd; row[2] += p.usd / p.price; } else { row[3] += p.usd; row[4] += p.usd / p.price; }
     }
+  }
+  /**
+   * The chart market's candles the scripts read (`script/bars.ts`, `HeatPane.scriptCandles`): one history of the chart's timeframe, kept back
+   * a chunk and two days past the count asked, so the scripts' first candle (`scriptStart`) stays in it until it moves on by a chunk. Another
+   * timeframe or count is another history.
+   */
+  scriptHistory(tfMs: number, bars: number): KeyLevelHistory {
+    const key = `${tfMs}|${bars}`;
+    if (this.#scriptHistory?.key !== key) this.#scriptHistory = { key, h: new KeyLevelHistory(historyGet, Date.now, 60_000, (bars + scriptChunk(bars)) * tfMs + 2 * 86_400_000) };
+    return this.#scriptHistory.h;
   }
   /**
    * The VWAP's candles of one market and bar size, asked again every minute: the session's and the anchors' (a minute for a day's session,

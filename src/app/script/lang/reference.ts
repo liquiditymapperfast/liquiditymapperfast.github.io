@@ -189,7 +189,7 @@ export const WARNINGS: readonly string[] = ['no-counts', 'unknown-reference', 'u
 
 /** What an error or a warning says, in English, as the panel says it (X standing for the name or the text it is about). */
 export const errorSentence = (code: string, detail = 'X'): string => inEnglish(() => errorText({ code, line: 0, col: 0, detail } as ScriptError));
-export const warningSentence = (code: string, detail = 'X'): string => inEnglish(() => warningText({ code, detail }));
+export const warningSentence = (code: string, detail = 'X', reads?: number): string => inEnglish(() => warningText({ code, detail }, reads));
 
 const ERROR_WHEN: Readonly<Record<string, string>> = {
   reading: 'Met while the script is read, before it runs: nothing is drawn.',

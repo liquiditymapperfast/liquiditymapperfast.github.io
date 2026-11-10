@@ -95,12 +95,14 @@ class Fake {
 }
 
 test('the Scripts panel gives the page\'s scripts a "?" in the list and every example one, and a "?" opens the description under its row', () => {
-  const g = globalThis as { document?: unknown };
-  const saved = g.document;
+  const g = globalThis as { document?: unknown; Option?: unknown };
+  const saved = g.document, savedOption = g.Option;
   g.document = { createElement: (tag: string) => new Fake(tag), querySelector: () => null };
+  // The panel's select rows (the scripts' candle count) make their choices with `new Option`.
+  g.Option = class extends Fake { value: string; constructor(text: string, value: string) { super('option'); this.textContent = text; this.value = value; } };
   try {
     const records = [record(STARTER_ID, 'line(1)', 'My VWAP'), record(newId('Bar patterns', () => 0.1), 'line(2)', 'Bar patterns')];
-    const host: ScriptsHost = { records, running: true, setRecords: () => true, resultOf: () => null, warningsOf: () => [], analysisOf: () => ({ code: 'empty', line: 0, col: 0 }), showScripts: () => {}, ranOn: () => null };
+    const host: ScriptsHost = { records, running: true, setRecords: () => true, resultOf: () => null, warningsOf: () => [], analysisOf: () => ({ code: 'empty', line: 0, col: 0 }), showScripts: () => {}, ranOn: () => null, bars: 10_000, setBars: () => {}, barsState: () => ({ state: 'ready', have: 10_000, want: 10_000, market: 'Binance BTCUSDT' }) };
     const ui: ScriptsPanelState = { editing: null, draft: null, message: null, armed: null };
     const body = new Fake('div');
     const redraw = (): void => { body.replaceChildren(); buildScriptsPanel(host, body as unknown as HTMLElement, redraw, ui); };
@@ -130,5 +132,5 @@ test('the Scripts panel gives the page\'s scripts a "?" in the list and every ex
     const boxes = body.children.filter(n => n.classList.contains('script-about'));
     assert.equal(boxes.length, 1);
     assert.equal(boxes[0]!.children[0]!.textContent, aboutExample(STARTER_ID).tip, "the starter's own description, under the list's row");
-  } finally { g.document = saved; }
+  } finally { g.document = saved; g.Option = savedOption; }
 });

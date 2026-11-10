@@ -30,6 +30,7 @@ import type { BarInputs, SourceFilter } from '../script/inputs.ts';
 import { PALETTES } from '../theme.ts';
 import { NEW_SCRIPT, unsaved, type ScriptsPanelState } from '../script/panel-state.ts';
 import { buildScriptsPanel, panelClosed, refreshStatuses } from '../script/panel.ts';
+import type { ScriptBarsState } from '../script/bars.ts';
 import { aboutScript, builtinOf } from '../script/about.ts';
 
 /**
@@ -185,6 +186,12 @@ export class ScriptPane extends TimePane {
   get reading(): boolean { return (this.store.state.show.script && this.#records.some(r => r.on)) || this.#panel !== null; }
   /** The candles the scripts read: the chart's drawn ones (main.ts gives HeatPane.candlesDrawn), its own and the exchange's before them. */
   candlesOf: (state: AppState) => readonly CandleRow[] = state => state.candles;
+  /** How many of the chart's candles scripts read (`script/bars.ts`), and how reading them stands (set by the page: `HeatPane.scriptBarsState`). */
+  get bars(): number { return this.store.state.scriptBars; }
+  setBars(bars: number): void { this.store.set({ scriptBars: bars }); }
+  barsState: () => ScriptBarsState = () => ({ state: 'none', have: 0, want: this.store.state.scriptBars, market: '' });
+  /** Say in an open Scripts panel how the scripts' candles stand now (they were read on, or are whole). */
+  candlesRead(): void { this.#refreshPanel(); }
   /** Switch Scripts on: a script was added or switched on, and should be seen. */
   showScripts(): void { const show = this.store.state.show; if (!show.script) this.store.set({ show: { ...show, script: true } }); }
 

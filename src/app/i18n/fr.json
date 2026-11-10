@@ -2242,8 +2242,6 @@
   "many": "{n} jours jusqu'à maintenant",
   "other": "{n} jours jusqu'à maintenant"
  },
- "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici, car le graphique donne {have} à ce script. Dézoomez pour en avoir plus, jusqu'à {max}, ou choisissez une unité de temps plus longue.",
- "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici : un script lit au plus {max} dans l'unité de temps du graphique, et ce graphique lui donne {have}.",
  "Candles from": "Bougies de",
  "Whose candles the session, rolling and anchored lines add up.": "De quels marchés viennent les bougies que les lignes de session, glissantes et ancrées additionnent.",
  "Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.": "Chaque ligne additionne bougie par bougie les bougies des marchés cochés ci-dessous, quoi que disent les puces de plateformes. Chaque marché de plus est plus à lire ; sans aucun coché, il n'y a pas de VWAP.",
@@ -2274,5 +2272,15 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "Pas encore d'ancre pour cette crypto : les colonnes additionnent ce qui est à l'écran jusqu'à ce qu'une soit placée.",
  "The columns hold {from} to {to}, worked out at {time}.": "Les colonnes couvrent de {from} à {to}, calculées à {time}.",
  "The first five minutes after the anchor are not over yet.": "Les cinq premières minutes après l'ancre ne sont pas encore écoulées.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "Le volume échangé remonte jusqu'à 21 semaines là où les bougies existent, en estimation (≈). Les liquidations, l'absorption et l'intérêt ouvert ne remontent qu'aussi loin que leur enregistrement. Chaque colonne indique où commencent ses chiffres."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "Le volume échangé remonte jusqu'à 21 semaines là où les bougies existent, en estimation (≈). Les liquidations, l'absorption et l'intérêt ouvert ne remontent qu'aussi loin que leur enregistrement. Chaque colonne indique où commencent ses chiffres.",
+ "Candles scripts read": "Bougies lues par les scripts",
+ "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "Combien de bougies du graphique chaque script lit, depuis la plateforme. Plus il y en a, plus la première lecture et le calcul depuis la première bougie sont longs.",
+ "Reading {have} of {want} candles of {market} from the exchange…": "Lecture de {have} sur {want} bougies de {market} depuis la plateforme…",
+ "{market} gives {have} candles of this timeframe, fewer than {want}: the scripts read those.": "{market} fournit {have} bougies de cette unité de temps, moins que {want} : les scripts lisent celles-là.",
+ "The candles of {market} could not be read just now; trying again in a minute. Until then the scripts read the chart's own.": "Les bougies de {market} n'ont pas pu être lues pour l'instant ; nouvel essai dans une minute. D'ici là, les scripts lisent celles du graphique.",
+ "This market's history cannot be read from the exchange here: the scripts read the chart's own candles.": "L'historique de ce marché ne peut pas être lu ici depuis la plateforme : les scripts lisent les bougies du graphique.",
+ "The scripts read {want} candles of {market}.": "Les scripts lisent {want} bougies de {market}.",
+ "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Ligne {line} : une fenêtre de {asked} est plus longue qu'une fenêtre ne peut l'être, elle remonte donc {n}.",
+ "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici : ce graphique donne aux scripts {have} sur les {max} qu'ils lisent.",
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Ligne {line} : une fenêtre de {n} ne se remplit jamais ici : les scripts lisent {max}. Choisissez-en plus dans le panneau Scripts, jusqu'à {most}, ou une unité de temps plus longue."
 }

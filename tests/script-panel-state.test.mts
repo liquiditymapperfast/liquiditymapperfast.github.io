@@ -10,6 +10,7 @@ function host(records: ScriptRecord[], results: Record<string, ScriptResult> = {
   return {
     records, running,
     setRecords: () => true, resultOf: id => results[id] ?? null, warningsOf: () => [], analysisOf: () => ({ code: 'empty', line: 0, col: 0 }), showScripts: () => {}, ranOn: () => null,
+    bars: 10_000, setBars: () => {}, barsState: () => ({ state: 'ready', have: 10_000, want: 10_000, market: 'Binance BTCUSDT' }),
   };
 }
 const editing = (id: string, draft: Partial<NonNullable<ScriptsPanelState['draft']>> = {}): ScriptsPanelState =>

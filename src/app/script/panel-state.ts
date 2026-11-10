@@ -3,6 +3,7 @@ import type { Analysis } from './lang/analysis.ts';
 import type { ScriptError } from './lang/lexer.ts';
 import type { ScriptResult, Warning } from './protocol.ts';
 import { cleanName, type OptionValue, type ScriptRecord } from './records.ts';
+import type { ScriptBarsState } from './bars.ts';
 
 /*
  * What the Scripts panel decides without drawing anything (so it can be tested without a page): what a script's row says, whether the
@@ -22,6 +23,10 @@ export interface ScriptsHost {
   showScripts(): void;
   /** The chart a script's last run worked on, as far as it is shown (for Copy for AI): its market, timeframe and candles; null without one. */
   ranOn(id: string): { market: string; timeframe: string; candles: number } | null;
+  /** How many of the chart's candles scripts read (`script/bars.ts`), the choice of it, and how reading them stands. */
+  readonly bars: number;
+  setBars(bars: number): void;
+  barsState(): ScriptBarsState;
 }
 
 /**
