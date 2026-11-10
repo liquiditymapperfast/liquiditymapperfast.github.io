@@ -10,8 +10,11 @@ import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { venueLabel } from '../venues.ts';
 import { drawVenueMark } from '../venue-marks.ts';
-import { AXIS_W } from './heat-pane.ts';
+import { AXIS_W, leftGutter } from './heat-pane.ts';
 import { TimePane, setHtml } from './lower-panes.ts';
+import { PaneTable, tableInk, type TableCell, type TableRoom } from './pane-table.ts';
+import type { Palette } from '../theme.ts';
+import { addTune } from '../pane-tune.ts';
 import { LS_BUDGET_MS, LS_ROUND_MS, LS_SOON_MS, lsFollowDelay, lsLanded, lsMessage, lsReach, lsWindow, type LsHeld } from './ls-window.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
 import { IdbLsShown } from '../browser/ls-store.ts';
@@ -94,6 +97,14 @@ export function lsCardLines(series: readonly LsSeries[], time: number, tf: strin
   return lines;
 }
 
+/** The Long/Short pane's table: a venue a row, the long share at `time`, the short share and their ratio; a venue with no reading then has dashes, and one whose last update failed its earlier readings muted, as the readout has them. */
+export function lsTableRows(series: readonly LsSeries[], time: number, p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
+  return series.map(s => {
+    const q = s.status === 'failed' ? null : lsAt(s.points, time, s.periodMs), name = { text: venueLabel(s.id) }, stale = s.status === 'stale';
+    return q ? [name, { text: `${(q.long * 100).toFixed(1)}%`, color: stale ? p.muted : tableInk(p.bid, p) }, { text: `${((1 - q.long) * 100).toFixed(1)}%`, color: stale ? p.muted : tableInk(p.ask, p) }, { text: (q.long / (1 - q.long)).toFixed(2), color: stale ? p.muted : undefined }] : [name, { text: '–' }, { text: '–' }, { text: '–' }];
+  });
+}
+
 /**
  * The Long/Short pane: the share of each venue's accounts that is net long, as the venue publishes it (shared/long-short.ts), one line per
  * venue around a 50 % line. The venues are the OI pane's markets that publish one; Binance's series is chosen in the header. A pane off by
@@ -118,6 +129,9 @@ export class LsPane extends TimePane {
   /** What the pane drew from a server's answers, kept in this page (app/browser/ls-store.ts `IdbLsShown`); undefined until first asked. */
   #shown: IdbLsShown | null | undefined;
   #sync: (() => void)[] = [];
+  readonly #tableBox = document.createElement('input');
+  /** Each venue's exact figures at one moment, on the pane (pane-table.ts). */
+  readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() });
 
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'ls');
@@ -131,9 +145,16 @@ export class LsPane extends TimePane {
     for (const [value, text] of [['accounts', t('All accounts')], ['topAccounts', t('Top traders, accounts')], ['topPositions', t('Top traders, positions')]] as const) control.append(new Option(text, value));
     control.value = store.state.lsMetric;
     control.onchange = () => this.store.set({ lsMetric: control.value as LsMetric });
-    wrap.append(control); group.append(wrap);
+    const table = document.createElement('label'); table.className = 'ctl'; setTip(table, t('Each venue\'s longs, shorts and their ratio in a table on the pane, at the pointer\'s time or the newest.'));
+    this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.lsTable; this.#tableBox.onchange = () => store.set({ lsTable: this.#tableBox.checked });
+    table.append(this.#tableBox, t('Table'));
+    wrap.append(control); group.append(wrap, table);
+    addTune(this.head, [table], t('Long/Short'));
     this.#sync.push(() => { if (control.value !== this.store.state.lsMetric) control.value = this.store.state.lsMetric; });
   }
+
+  /** Reflect the table's switch and draw again (nothing is read for it). */
+  tableChanged(): void { this.#tableBox.checked = this.store.state.lsTable; this.invalidate(); }
 
   /** Reflect the settings in the header and read again (a round under way is for what was shown: dropped). */
   settingsChanged(): void { for (const sync of this.#sync) sync(); this.#generation++; this.#round?.abort(); this.#round = null; this.#warming?.abort(); this.#stopFollowing(); this.#held = null; this.#loading = false; this.invalidate(); }
@@ -281,11 +302,13 @@ export class LsPane extends TimePane {
 
   protected draw(): void {
     this.#lines = null;
+    this.#table.clear();
     this.#paint();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
-  protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
+  protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
 
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, now = pageNow();
@@ -344,7 +367,10 @@ export class LsPane extends TimePane {
     let time = state.hover ? state.hover.t : Math.min(now, v.t1);
     if (time > newest && Number.isFinite(newest) && shown.every(s => !lsAt(s.points, time, s.periodMs))) { time = newest; if (state.hover && this.pointer) this.cursorT = newest; }
     const hover = state.hover;
-    if (hover && this.pointer) this.#lines = lsCardLines(series, time, state.timeframe);
+    // On a plate the table is the popup; beside the plot the popup says who each line counts.
+    const room: TableRoom = { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null };
+    const plated = state.lsTable && !blank && this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) })?.plate === true;
+    if (hover && this.pointer && !plated) this.#lines = lsCardLines(series, time, state.timeframe);
     const parts = series.map(s => {
       const q = lsAt(s.points, time, s.periodMs), name = venueLabel(s.id);
       if (s.status === 'serverOnly') return `<span class="muted">${name} ${t('not readable here')}</span>`;

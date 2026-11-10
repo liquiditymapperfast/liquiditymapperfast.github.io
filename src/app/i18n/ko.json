@@ -2120,5 +2120,9 @@
  "Candle as the icon": "캔들을 아이콘으로",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "탭 아이콘은 진행 중인 캔들이어서, 제목이 보이지 않는 고정 탭에서도 가격이 어디로 가는지 보입니다. Safari는 페이지 자체의 아이콘을 유지합니다.",
  "Browser tab": "브라우저 탭",
- "{venue} did not answer: asked again in a minute.": "{venue}에서 응답이 없었습니다: 1분 뒤 다시 요청합니다."
+ "{venue} did not answer: asked again in a minute.": "{venue}에서 응답이 없었습니다: 1분 뒤 다시 요청합니다.",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "각 거래소의 펀딩비를 창의 표에, 포인터 시각 또는 최신 기준으로 보여 줍니다. 행을 클릭하면 그 거래소를 표시합니다.",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "각 거래소의 미결제약정, 캔들 동안의 변화, 비중을 창의 표에, 포인터 시각 또는 최신 기준으로 보여 줍니다.",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "각 거래소의 롱, 숏과 그 비율을 창의 표에, 포인터 시각 또는 최신 기준으로 보여 줍니다.",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "표는 포인터 시각, 없으면 최신의 각 거래소를 읽습니다. 공간이 있으면 차트 옆에, 없으면 창을 가리키는 동안 차트 왼쪽 끝 위에 표시됩니다."
 }

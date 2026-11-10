@@ -410,7 +410,8 @@ async function main(): Promise<void> {
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();
     if (changed.has('oi') || changed.has('show')) { oi.invalidate(); bars.invalidate(); }
     else if (changed.has('oiReading') || changed.has('oiFine')) oi.invalidate();
-    if (changed.has('oiChange')) oi.settingsChanged();
+    if (changed.has('oiChange') || changed.has('oiTable')) oi.settingsChanged();
+    if (changed.has('lsTable')) ls.tableChanged();
     // The minute readings NL/NS works candles out on are read while something shown uses them (`fineWant`), whatever the timeframe.
     if (['show', 'oiChange', 'delta', 'timeframe', 'oiParts', 'oiInstrument', 'fundingVenue'].some(k => changed.has(k as never))) void hub.loadOiFine();
     // A script that reads the change in open interest runs again once it lands, not at its next refresh.
@@ -425,7 +426,7 @@ async function main(): Promise<void> {
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderCurves') || changed.has('cvd') || changed.has('pullStack') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.invalidate(); }
     if (changed.has('hover')) { heat.invalidateHover(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.syncHover(); }
-    if (changed.has('fundingVenue')) funding.settingsChanged();
+    if (changed.has('fundingVenue') || changed.has('fundingTable')) funding.settingsChanged();
     if (['show', 'timeframe', 'oiFine', 'range', 'replay'].some(k => changed.has(k as never))) funding.invalidate();
     // The order book's row under the pointer: the map and the flow column's price strip draw its price.
     if (changed.has('bookHover')) { heat.invalidateHover(); cvd.syncBookHover(); }

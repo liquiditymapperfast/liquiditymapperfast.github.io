@@ -2226,5 +2226,9 @@
  "Candle as the icon": "Bougie comme icône",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "L'icône de l'onglet est la bougie en cours : un onglet épinglé, qui n'affiche aucun titre, montre ainsi quand même où va le prix. Safari garde l'icône propre à la page.",
  "Browser tab": "Onglet du navigateur",
- "{venue} did not answer: asked again in a minute.": "Pas de réponse de {venue} : nouvelle demande dans une minute."
+ "{venue} did not answer: asked again in a minute.": "Pas de réponse de {venue} : nouvelle demande dans une minute.",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "Le financement de chaque plateforme dans un tableau du panneau, à l’heure du pointeur ou la plus récente. Cliquez sur une ligne pour afficher cette plateforme.",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "L’open interest de chaque plateforme, sa variation sur la bougie et sa part dans un tableau du panneau, à l’heure du pointeur ou la plus récente.",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "Les longs, les shorts et leur ratio de chaque plateforme dans un tableau du panneau, à l’heure du pointeur ou la plus récente.",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "Le tableau lit chaque plateforme à l’heure du pointeur, sinon la plus récente : à côté du graphique là où il y a la place, sinon sur son extrémité gauche tant que vous pointez le panneau."
 }

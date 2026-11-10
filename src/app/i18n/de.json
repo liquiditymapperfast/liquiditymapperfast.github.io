@@ -2199,5 +2199,9 @@
  "Candle as the icon": "Kerze als Symbol",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "Das Symbol des Tabs ist die laufende Kerze, sodass auch ein angehefteter Tab, der keinen Titel zeigt, noch anzeigt, wohin der Preis geht. Safari behält das eigene Symbol der Seite.",
  "Browser tab": "Browser-Tab",
- "{venue} did not answer: asked again in a minute.": "Keine Antwort von {venue}: erneute Anfrage in einer Minute."
+ "{venue} did not answer: asked again in a minute.": "Keine Antwort von {venue}: erneute Anfrage in einer Minute.",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "Das Funding jeder Börse in einer Tabelle im Bereich, zur Zeit des Zeigers oder zuletzt. Klicke eine Zeile an, um diese Börse anzuzeigen.",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "Open Interest jeder Börse, seine Änderung über die Kerze und sein Anteil in einer Tabelle im Bereich, zur Zeit des Zeigers oder zuletzt.",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "Longs, Shorts und ihr Verhältnis je Börse in einer Tabelle im Bereich, zur Zeit des Zeigers oder zuletzt.",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "Die Tabelle liest jede Börse zur Zeit des Zeigers, sonst den neuesten Stand: neben dem Chart, wo Platz ist, sonst über seinem linken Ende, solange du auf den Bereich zeigst."
 }

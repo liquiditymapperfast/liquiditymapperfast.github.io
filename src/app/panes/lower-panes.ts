@@ -1,10 +1,10 @@
-import { PALETTES, mixHex, textOn } from '../theme.ts';
+import { PALETTES, mixHex, textOn, type Palette } from '../theme.ts';
 import { setTip } from '../tip.ts';
 import { helpButton } from '../help.ts';
 import { TIMEFRAMES, type DepthAnswer, type Hub } from '../hub.ts';
 import { DEPTH_PRESETS, bandEditText, bandText, bandsOf, parseBands, type DepthPreset, type DepthSettings } from '../depth-settings.ts';
 import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar, type CandleRow } from '../store.ts';
-import { chainedOi, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, type OiPart } from '../oi-change.ts';
+import { chainedOi, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, oiVenuesAt, type OiPart, type OiVenue } from '../oi-change.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { venueLabel } from '../venues.ts';
 import { activeIds, emptyScopeMessage, kindOf, marketIds } from '../scope.ts';
@@ -24,6 +24,7 @@ import { LiqHistory, bandIndex, type LiqRow } from '../liq-history.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { addTune } from '../pane-tune.ts';
+import { PaneTable, tableInk, type TableCell, type TableRoom } from './pane-table.ts';
 import { isPhone } from '../device.ts';
 import { niceTicks } from '../cvd/hero.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sizeControl, sizeRow, sortableList, switchRow, togglePanel, type Panel } from '../ui.ts';
@@ -159,7 +160,8 @@ export abstract class TimePane {
     };
   }
   #unpin(): void {
-    this.#pinned = null;
+    // The pointer the pin set goes with it: left set, a table on a plate stayed over the chart after the finger had let go.
+    this.#pinned = null; this.pointer = null;
     if (this.store.state.hover?.touch) this.store.set({ hover: null });
   }
   /** Whether the last press began a Range selection: the click it ends in is the selection's, not a click on the pane. */
@@ -286,12 +288,8 @@ export class DepthPane extends TimePane {
   /** The pane is too short for a popup drawn on it, so where the table is not drawn what the pointer is over is said in a page element. */
   #card = new HoverCard();
   #lines: InfoLine[] | null = null;
-  /** Where the table was last drawn (plot coordinates): its left and right edges, its first band row's top, the row height, how many band rows. */
-  #table: { left: number; right: number; top: number; rowH: number; rows: number } | null = null;
-  /** The band row under the pointer, -1 for none. */
-  #hoverRow = -1;
-  /** When a finger last chose a row (`claimTap`): the click the browser sends after that tap is the same choice, not a second one. */
-  #tappedAt = -Infinity;
+  /** The bands' figures on the pane (pane-table.ts): a click on a row brings that band forward, or puts it back. */
+  readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() }, row => this.#clickRow(row));
   /** The Sound box in the header (the depth sound's switch). */
   #bell = document.createElement('input');
   readonly #preset = document.createElement('select');
@@ -349,13 +347,6 @@ export class DepthPane extends TimePane {
     this.syncSound(); this.#sync();
     // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts).
     addTune(this.head, [group, scale, units, table, bell], t('Depth'));
-    // A click on a row of the table brings that band forward, or puts it back.
-    this.canvas.addEventListener('click', e => {
-      if (this.rangeGesture || (e as PointerEvent).pointerType === 'touch' || performance.now() - this.#tappedAt < 800) return;
-      const r = this.canvas.getBoundingClientRect();
-      this.#clickRow(this.#rowAt(e.clientX - r.left - leftGutter(this.store.state), e.clientY - r.top));
-    });
-    this.canvas.addEventListener('pointerleave', () => { if (this.#hoverRow !== -1) { this.#hoverRow = -1; this.invalidate(); } });
   }
   /** The venues or the source changed: the bands are asked again. */
   refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); }
@@ -405,27 +396,15 @@ export class DepthPane extends TimePane {
   }
   protected draw(): void {
     this.#lines = null;
+    this.#table.clear();
     this.#paint();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
-  protected override undrawn(): void { this.#lines = null; this.#table = null; this.#card.hide(); }
-  /** The table owns the pointer over it: the time is not read there, and a row under the pointer is lit and takes a click. */
-  protected override ownsPoint(x: number): boolean {
-    const tb = this.#table; if (!tb || !this.pointer) { this.#hover(-1); return false; }
-    const y = this.pointer.y - this.canvas.getBoundingClientRect().top, row = this.#rowAt(x, y);
-    this.#hover(row);
-    if (row >= 0) this.canvas.style.cursor = 'pointer';
-    return x >= tb.left && x <= tb.right && y >= tb.top - tb.rowH && y <= tb.top + (tb.rows + 1) * tb.rowH;
-  }
-  protected override claimTap(p: Pt): boolean { const row = this.#rowAt(p.x, p.y); if (row < 0) return false; this.#tappedAt = performance.now(); this.#clickRow(row); return true; }
-  #hover(row: number): void { if (row !== this.#hoverRow) { this.#hoverRow = row; this.invalidate(); } }
-  #rowAt(x: number, y: number): number {
-    const tb = this.#table; if (!tb || x < tb.left || x > tb.right) return -1;
-    const row = Math.floor((y - tb.top) / tb.rowH);
-    return row >= 0 && row < tb.rows ? row : -1;
-  }
-  #clickRow(row: number): void { if (row < 0) return; const s = this.#settings(); this.#set({ focus: s.focus === row ? null : row }); }
+  protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
+  protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
+  protected override claimTap(p: Pt): boolean { return this.#table.tap(p); }
+  #clickRow(row: number): void { const s = this.#settings(); this.#set({ focus: s.focus === row ? null : row }); }
 
   /**
    * The Liquidation levels series for the view, in the Depth series' shape, or why there is none: each pixel column holds the snapshot in force
@@ -467,7 +446,6 @@ export class DepthPane extends TimePane {
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h;
     const state = this.store.state, liq = state.depthSource === 'liq', settings = this.#settings(), radii = bandsOf(settings);
-    this.#table = null;
     const readout = this.head.querySelector('.readout');
     const say = (text: string): void => { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(text, 12, ph / 2); setHtml(readout, ''); };
     const coin = currentCoin().coin, coinOption = this.#units.options[1];
@@ -592,50 +570,15 @@ export class DepthPane extends TimePane {
   }
 
   /**
-   * The bands' figures: a row a band (bids, asks, bids less asks), the band brought forward lit, the column titles over them and the time read
-   * under them. Beside the plot where the columns right of it leave room (the four columns, else without the difference), else over the plot's
-   * left end on a plate while the pointer (or a pinned finger) is on the pane, so it never covers the newest candles and leaves the chart clear
-   * at rest (the header reads the watched band). In a short pane the rows close up (15 px down to 12) and the titles, then the time, are left out; where even a row a
-   * band does not fit, the table is not drawn and the card says it instead. Returns whether it was drawn.
+   * The bands' figures (pane-table.ts): a row a band (bids, asks, bids less asks), the band brought forward lit, the column titles over them and the time read
+   * under them. The header reads the watched band; where even a row a band does not fit, the table is not drawn and the card says it instead. Returns whether it was drawn.
    */
   #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string]): boolean {
-    const { ctx, palette: p } = this, pw = this.plotW, ph = this.h, k = rows.length;
-    let rowH = 0, titles = true, foot = true;
-    fit: for (const [withTitles, withFoot] of [[true, true], [false, true], [false, false]] as const) {
-      for (const h of [15, 14, 13, 12]) if ((k + (withTitles ? 1 : 0) + (withFoot ? 1 : 0)) * h + 4 <= ph) { rowH = h; titles = withTitles; foot = withFoot; break fit; }
-    }
-    if (!rowH) return false;
-    const texts = rows.map(row => [`±${bandText(row.r)}%`, tableText(row.bid), tableText(row.ask), Number.isFinite(row.bid) ? tableSigned(row.bid - row.ask) : '–']);
-    const heads = ['', sides[0], sides[1], 'Δ'];
-    const widths = [0, 1, 2, 3].map(c => Math.max(ctx.measureText(heads[c]!).width, ...texts.map(row => ctx.measureText(row[c]!).width)));
-    const gap = 7, pad = 5, width = (cols: number): number => widths.slice(0, cols).reduce((a, b) => a + b, 0) + gap * (cols - 1) + pad * 2;
-    const free = this.w - AXIS_W - pw;
-    let cols = 4, left: number, plate = false;
-    if (width(4) <= free - 4) left = pw + 4;
-    else if (width(3) <= free - 4) { cols = 3; left = pw + 4; }
-    else { left = 6; plate = true; if (!pointing || width(4) > pw * 0.6) return false; }
-    const tableW = width(cols), height = (k + (titles ? 1 : 0) + (foot ? 1 : 0)) * rowH, y0 = Math.round(this.h / 2 - height / 2), first = y0 + (titles ? rowH : 0);
-    if (plate) { ctx.fillStyle = p.panel; ctx.globalAlpha = 0.9; ctx.fillRect(left, y0 - 2, tableW, height + 4); ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.strokeRect(left + 0.5, y0 - 1.5, tableW - 1, height + 3); }
-    const rights: number[] = []; let x = left + pad;
-    for (let c = 0; c < cols; c++) { x += widths[c]!; rights.push(x); x += gap; }
-    const ink = (side: string): string => mixHex(side, p.text, 0.2);
-    ctx.textAlign = 'right'; ctx.fillStyle = p.muted;
-    if (titles) for (let c = 1; c < cols; c++) ctx.fillText(heads[c]!, rights[c]!, y0 + rowH / 2);
-    for (let j = 0; j < k; j++) {
-      const y = first + j * rowH;
-      if (j === focus || j === this.#hoverRow) { ctx.fillStyle = p.text; ctx.globalAlpha = j === focus ? 0.1 : 0.05; ctx.fillRect(left + 2, y, tableW - 4, rowH); ctx.globalAlpha = 1; }
-      const row = texts[j]!, mid = y + rowH / 2;
-      ctx.textAlign = 'left'; ctx.fillStyle = j === focus ? p.text : p.muted; ctx.fillText(row[0]!, left + pad, mid);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = ink(p.bid); ctx.fillText(row[1]!, rights[1]!, mid);
-      ctx.fillStyle = ink(p.ask); ctx.fillText(row[2]!, rights[2]!, mid);
-      if (cols > 3) { ctx.fillStyle = p.text; ctx.fillText(row[3]!, rights[3]!, mid); }
-    }
-    ctx.textAlign = 'left'; ctx.fillStyle = p.muted;
-    const said = `${time}${unit}`;
-    if (foot && said) ctx.fillText(said, left + pad, first + k * rowH + rowH / 2);
-    this.#table = { left, right: left + tableW, top: first, rowH, rows: k };
-    return true;
+    const { ctx, palette: p } = this;
+    return this.#table.draw(ctx, p, { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing }, {
+      heads: ['', sides[0], sides[1], 'Δ'], minCols: 3, focus, foot: `${time}${unit}`,
+      rows: rows.map(row => [{ text: `±${bandText(row.r)}%` }, { text: tableText(row.bid), color: tableInk(p.bid, p) }, { text: tableText(row.ask), color: tableInk(p.ask, p) }, { text: Number.isFinite(row.bid) ? tableSigned(row.bid - row.ask) : '–' }]),
+    }) !== null;
   }
 
   /** The watched band's columns of an answer, as two plain series (Highlights judged a pixel column at a time). */
@@ -683,6 +626,11 @@ function whoText(c: NlnsCandle | undefined, d: number): string {
   return [...(d > 0 ? [...opened, ...closed] : [...closed, ...opened])].filter(([, x]) => x !== 0).map(([label, x, tone]) => ` ${label} <b class="${tone}">${coinText(x, '')}</b>`).join('');
 }
 
+/** The OI pane's table: a venue a row, its open interest in coins, its change over the candle read and its share of those read then. */
+export function oiTableRows(venues: readonly OiVenue[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
+  return venues.map(v => [{ text: venueLabel(v.id) }, { text: tableText(v.oi) }, { text: v.change === null ? '–' : tableSigned(v.change), color: v.change ? tableInk(v.change > 0 ? p.bid : p.ask, p) : undefined }, { text: `${Math.round(v.share * 100)}%`, color: p.muted }]);
+}
+
 /**
  * Open interest is a level, so it is drawn as one: a step line that holds each sample until the next, a dimmer continuation to the
  * newest candle (no sample has arrived since), and below it the change between samples, with unusually large changes at full weight. Each
@@ -697,6 +645,9 @@ export class OiPane extends TimePane {
   readonly #venues = document.createElement('select');
   readonly #choose = document.createElement('button');
   readonly #bars = document.createElement('select');
+  readonly #tableBox = document.createElement('input');
+  /** Each venue's reading on the pane while venues are added together (pane-table.ts): the chart shows their sum, the table who holds it and who moved it. */
+  readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() });
   #panel: Panel | null = null;
   /** `nlns`: the NL/NS model the Delta and Funding panes read too (delta/nlns-source.ts). */
   constructor(host: HTMLElement, store: Store, view: View, flow: FlowBook, private readonly nlns: NlnsSource) {
@@ -722,13 +673,16 @@ export class OiPane extends TimePane {
     bars.append(this.#bars);
     // One group, so the header's rule that puts its last control at the right edge moves the select and its button together.
     const group = document.createElement('span'); group.className = 'ctl ctl-group';
-    wrap.append(this.#venues); group.append(bars, wrap, this.#choose); this.head.append(group);
-    // On a phone the venues stay in the row; the bars' choice waits behind the key (pane-tune.ts).
-    addTune(this.head, [bars], t('Open Interest'));
+    const table = el('label', { class: 'ctl', tip: t('Each venue\'s open interest, its change over the candle and its share in a table on the pane, at the pointer\'s time or the newest.') });
+    this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.oiTable; this.#tableBox.onchange = () => store.set({ oiTable: this.#tableBox.checked });
+    table.append(this.#tableBox, t('Table'));
+    wrap.append(this.#venues); group.append(bars, wrap, this.#choose, table); this.head.append(group);
+    // On a phone the venues stay in the row; the bars' choice and the table wait behind the key (pane-tune.ts).
+    addTune(this.head, [bars, table], t('Open Interest'));
   }
 
   /** Reflect the settings in the header's controls and draw again. */
-  settingsChanged(): void { if (this.#bars.value !== this.store.state.oiChange) this.#bars.value = this.store.state.oiChange; this.invalidate(); }
+  settingsChanged(): void { if (this.#bars.value !== this.store.state.oiChange) this.#bars.value = this.store.state.oiChange; this.#tableBox.checked = this.store.state.oiTable; this.invalidate(); }
 
   /** The NL/NS candles by start, kept while the model is the same one (it is worked out at most once a second; the pane paints more often). */
   #who: { model: readonly NlnsCandle[]; byStart: Map<number, NlnsCandle> } | null = null;
@@ -748,11 +702,13 @@ export class OiPane extends TimePane {
   }
   protected draw(): void {
     this.#lines = null;
+    this.#table.clear();
     this.#paint();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
-  protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
+  protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
   /** Replay: the bars that ended by its moment, kept until the next candle (the analysis is cached on the array); live, all of them. */
   #oiCut: { src: readonly OiBar[]; slot: number; out: OiBar[] } | null = null;
   #oiAt(bars: OiBar[], tf: number): OiBar[] {
@@ -953,6 +909,12 @@ export class OiPane extends TimePane {
       // Who made the change, before the card's closing words.
       const c = who?.get(there[0]);
       if (c && this.#lines.length) this.#lines.splice(this.#lines.length - 1, 0, ...nlnsWhoLines(c, coinOf(state)));
+    }
+    // Who holds it and who moved it, at the bar read. On a plate the table is the popup; beside the plot the popup says other things (its rank, who made the change).
+    const venuesThen = state.oiTable && parts.length > 1 ? oiVenuesAt(parts, tf, bar[0]) : [];
+    if (venuesThen.length) {
+      const room: TableRoom = { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, foot = `${hover ? clock(bar[0], true) : `${t('newest')} ${clock(bar[0])}`} ${coinOf(state)}`;
+      if (this.#table.draw(ctx, p, room, { heads: ['', 'OI', 'Δ', t('Share')], minCols: 2, focus: -1, foot, rows: oiTableRows(venuesThen, p) })?.plate) this.#lines = null;
     }
     say(`${t('base')} <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${whoText(who?.get(bar[0]), d)}${sigma}${source}${stale ? ` <span class="ask">${t('last sample {n} min ago', { n: Math.round(age / 60_000) })}</span>` : ''}`);
   }

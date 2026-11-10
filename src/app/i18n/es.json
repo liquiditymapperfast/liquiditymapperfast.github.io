@@ -2226,5 +2226,9 @@
  "Candle as the icon": "Vela como icono",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "El icono de la pestaña es la vela en curso, así que una pestaña fijada, que no muestra título, sigue mostrando adónde va el precio. Safari conserva el icono propio de la página.",
  "Browser tab": "Pestaña del navegador",
- "{venue} did not answer: asked again in a minute.": "Sin respuesta de {venue}: se vuelve a preguntar en un minuto."
+ "{venue} did not answer: asked again in a minute.": "Sin respuesta de {venue}: se vuelve a preguntar en un minuto.",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "La financiación de cada bolsa en una tabla del panel, a la hora del puntero o la más reciente. Haz clic en una fila para mostrar esa bolsa.",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "El interés abierto de cada bolsa, su cambio en la vela y su cuota en una tabla del panel, a la hora del puntero o la más reciente.",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "Los largos, los cortos y su proporción de cada bolsa en una tabla del panel, a la hora del puntero o la más reciente.",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "La tabla lee cada bolsa a la hora del puntero o, si no, la más reciente: junto al gráfico donde hay sitio, si no sobre su extremo izquierdo mientras apuntas al panel."
 }

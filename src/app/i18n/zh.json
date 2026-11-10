@@ -2120,5 +2120,9 @@
  "Candle as the icon": "以 K 线作图标",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "标签页图标就是进行中的 K 线，因此即使是不显示标题的固定标签页，也能看出价格的去向。Safari 会保留页面自己的图标。",
  "Browser tab": "浏览器标签页",
- "{venue} did not answer: asked again in a minute.": "{venue} 没有响应：1 分钟后再次请求。"
+ "{venue} did not answer: asked again in a minute.": "{venue} 没有响应：1 分钟后再次请求。",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "在面板的表格中显示每个交易所的资金费率，取指针所在时刻或最新。点击一行可显示该交易所。",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "在面板的表格中显示每个交易所的持仓量、该K线内的变化及占比，取指针所在时刻或最新。",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "在面板的表格中显示每个交易所的多头、空头及其比率，取指针所在时刻或最新。",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "表格读取指针所在时刻（否则为最新）的每个交易所：有空间时显示在图表旁边，否则在你指向面板时叠在图表左端。"
 }

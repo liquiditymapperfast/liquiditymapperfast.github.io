@@ -336,8 +336,8 @@ export class FundingSource {
   readonly #failed = new Map<string, number>();
   constructor(private readonly onChange: () => void, private readonly get: Fetcher = webGet) {}
 
-  /** What is held of `venue` for the view [t0, t1] on candles of `tfMs`, asking for what is missing or old. */
-  view(venue: FundingVenue, listing: Listing, tfMs: number, t0: number, t1: number, now: number): FundingView {
+  /** What is held of `venue` for the view [t0, t1] on candles of `tfMs`, asking for what is missing or old; `withPremium` false leaves out its premium candles (the table's other venues: they are the costly read). */
+  view(venue: FundingVenue, listing: Listing, tfMs: number, t0: number, t1: number, now: number, withPremium = true): FundingView {
     const key = `${venue}|${listing.symbol}`, held = this.#rows.get(key), span = Math.max(tfMs, t1 - t0);
     // Funding back to the view's start (a day back at least, so a step under way at its left edge is held) and always to now: read when the
     // view needs it, half a view further back than it, so a view dragged along asks again only every half a view.
@@ -359,7 +359,7 @@ export class FundingSource {
     }
     // Premium per candle where the venue publishes it (Hyperliquid's comes hourly with its funding).
     let premium: readonly PremiumRow[] = venue === 'hyperliquid' ? held?.premium ?? [] : [], premiumMs = HOUR;
-    if (venue === 'binance' || venue === 'bybit') {
+    if (withPremium && (venue === 'binance' || venue === 'bybit')) {
       premiumMs = tfMs;
       // One unbroken stretch held per timeframe, from `from` through `to` (`heldPremium`). The view's own candles count first (at most PREMIUM_CANDLES back
       // from its right edge, and the newest at least: a view wholly after now asked for a stretch ending before it began, held nothing and
@@ -448,6 +448,17 @@ export function cutAt(rows: readonly { readonly t: number }[], t: number, throug
   let lo = 0, hi = rows.length;
   while (lo < hi) { const mid = (lo + hi) >>> 1; if (through ? rows[mid]!.t <= t : rows[mid]!.t < t) lo = mid + 1; else hi = mid; }
   return lo;
+}
+
+/**
+ * What a venue's funding reads at `at` (`clock`: now, or the replay's moment): over the interval under way, the reading now (`forming`), as a row of its own; else the settled
+ * row whose interval holds `at`; and after its newest record, while the venue says nothing of the time under way, that record.
+ */
+export function fundingAt(rows: readonly FundingRow[], now: FundingNow | null, at: number, clock: number): { row: FundingRow | null; forming: boolean } {
+  const end = now ? now.next ?? clock : 0, settled = rowAt(rows, at);
+  if (now && at >= end - now.hours * HOUR && at <= end && !(settled && settled.t >= end)) return { row: { t: end, rate: now.rate, per8h: now.per8h, hours: now.hours }, forming: true };
+  const newest = rows[rows.length - 1];
+  return { row: settled ?? (!now && newest && at >= newest.t ? newest : null), forming: false };
 }
 
 /** The settled row whose interval holds `t` (it settles at its `t`, over the `hours` before), or null. */

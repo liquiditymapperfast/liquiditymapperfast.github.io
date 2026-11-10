@@ -2258,5 +2258,9 @@
  "Candle as the icon": "Свічка як іконка",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "Іконка вкладки — поточна свічка, тож закріплена вкладка, яка не показує заголовка, усе одно показує, куди йде ціна. Safari лишає власну іконку сторінки.",
  "Browser tab": "Вкладка браузера",
- "{venue} did not answer: asked again in a minute.": "Немає відповіді від {venue}: повторний запит за хвилину."
+ "{venue} did not answer: asked again in a minute.": "Немає відповіді від {venue}: повторний запит за хвилину.",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "Фінансування кожної біржі в таблиці на панелі, на момент вказівника або останнє. Натисніть рядок, щоб показати цю біржу.",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "Відкритий інтерес кожної біржі, його зміна за свічку та частка в таблиці на панелі, на момент вказівника або останні.",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "Лонги, шорти та їхнє співвідношення для кожної біржі в таблиці на панелі, на момент вказівника або останні.",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "Таблиця показує кожну біржу на момент вказівника, інакше останню: поруч із графіком, де є місце, інакше поверх його лівого краю, поки ви наводите на панель."
 }

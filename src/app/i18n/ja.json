@@ -2120,5 +2120,9 @@
  "Candle as the icon": "ローソク足をアイコンに",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "タブのアイコンは進行中のローソク足です。そのため、タイトルが表示されない固定タブでも、価格がどちらへ向かっているかがわかります。Safari はページ本来のアイコンのままです。",
  "Browser tab": "ブラウザのタブ",
- "{venue} did not answer: asked again in a minute.": "{venue} から応答がありませんでした：1 分後に再度問い合わせます。"
+ "{venue} did not answer: asked again in a minute.": "{venue} から応答がありませんでした：1 分後に再度問い合わせます。",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "各取引所の資金調達率をペインの表に、ポインターの時刻または最新で表示します。行をクリックするとその取引所を表示します。",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "各取引所の建玉、そのローソク足での変化、シェアをペインの表に、ポインターの時刻または最新で表示します。",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "各取引所のロング、ショートとその比率をペインの表に、ポインターの時刻または最新で表示します。",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "表はポインターの時刻、なければ最新の各取引所を表示します。余裕があればチャートの横に、なければペインを指している間だけチャートの左端に重ねて表示します。"
 }

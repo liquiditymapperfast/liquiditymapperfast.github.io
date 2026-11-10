@@ -2199,5 +2199,9 @@
  "Candle as the icon": "Simge olarak mum",
  "The tab's icon is the candle under way, so a pinned tab, which shows no title, still shows where the price is going. Safari keeps the page's own icon.": "Sekmenin simgesi süren mumdur; bu yüzden başlık göstermeyen sabitlenmiş bir sekme de fiyatın nereye gittiğini gösterir. Safari sayfanın kendi simgesini korur.",
  "Browser tab": "Tarayıcı sekmesi",
- "{venue} did not answer: asked again in a minute.": "{venue} yanıt vermedi: bir dakika sonra yeniden sorulacak."
+ "{venue} did not answer: asked again in a minute.": "{venue} yanıt vermedi: bir dakika sonra yeniden sorulacak.",
+ "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "Her borsanın fonlaması paneldeki bir tabloda, işaretçinin zamanında ya da en sonda. O borsayı göstermek için bir satıra tıklayın.",
+ "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "Her borsanın açık pozisyonu, mumdaki değişimi ve payı paneldeki bir tabloda, işaretçinin zamanında ya da en sonda.",
+ "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "Her borsanın long'ları, short'ları ve oranları paneldeki bir tabloda, işaretçinin zamanında ya da en sonda.",
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "Tablo her borsayı işaretçinin zamanında, yoksa en sonda okur: yer varsa grafiğin yanında, yoksa panele işaret ettiğiniz sürece grafiğin sol ucunun üzerinde."
 }

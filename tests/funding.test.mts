@@ -381,6 +381,19 @@ test('Deribit now: what the hour\'s finished blocks paid; the rate of the moment
   assert.equal((await readFundingNow('deribit', ETH, deribit(2e-6, { current_funding: 0.0001 }), T + 2 * MIN))?.premium, null, 'no mark or index: no premium, the rate still read');
 });
 
+test('a view without its premium candles reads the funding and the reading now, and no premium', async () => {
+  const get = venue(url => url.includes('fundingInfo') ? [] : url.includes('premiumIndexKlines') ? [] : url.includes('premiumIndex?') ? { lastFundingRate: '0.0001', nextFundingTime: T + 16 * H } : [{ fundingTime: T + 8 * H, fundingRate: '0.0001' }]);
+  const source = new FundingSource(() => undefined, get), flush = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
+  source.view('binance', BTC, H, T, T + 10 * H, T + 10 * H, false); await flush();
+  assert.ok(get.asked.some(url => url.includes('fundingRate?')), 'its funding is read');
+  assert.ok(get.asked.some(url => url.includes('premiumIndex?')), 'and its reading now');
+  assert.ok(!get.asked.some(url => url.includes('premiumIndexKlines')), 'not its premium candles');
+  const shown = source.view('binance', BTC, H, T, T + 10 * H, T + 10 * H, false);
+  assert.deepEqual([shown.rows.map(r => r.t), shown.premium.length], [[T + 8 * H], 0]);
+  source.view('binance', BTC, H, T, T + 10 * H, T + 10 * H); await flush();
+  assert.ok(get.asked.some(url => url.includes('premiumIndexKlines')), 'the chart\'s own venue reads them');
+});
+
 test('the popup names a settlement and a band only where a venue has them', () => {
   const row = { t: T + H, rate: 4e-6, per8h: 3.2e-5, hours: 1 };
   const card = (continuous: boolean, forming: boolean) => fundingCardLines({ time: T + H / 2, venue: 'V', row, forming, premium: null, opens: null, coin: 'BTC', continuous });
