@@ -1581,7 +1581,7 @@ export class HeatPane {
    * candles after them and in their place where both have one; in a replay none after the moment shown. Asked for once the map has its first
    * data, through the venue's queue, and handed over only once they reach the start or hold all the exchange has: never while they are being
    * read, each part of which would be another first candle for every script. Null while they are not there or cannot be (the chart's market
-   * has no history the page can read, the chart shows another market's candles, a view reaching before the start): the scripts read the
+   * has no history the page can read, the chart shows another market's candles, a view all before the start): the scripts read the
    * chart's candles and the price history as before.
    */
   #scriptLong(state: AppState): readonly CandleRow[] | null {
@@ -1589,7 +1589,9 @@ export class HeatPane {
     this.#scriptLoaded(r.state);
     if (!r.h || (r.state.state !== 'ready' && r.state.state !== 'short')) return null;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, candles = state.candles, replay = replaying(), at = pageNow(), cut = replay ? Math.floor(at / tf) : 0;
-    if (this.view.t0 - SCRIPT_WARM_BARS * tf < r.start) return null;
+    // A view (nearly) all before the start keeps the price history's candles for it; one that reaches across the start keeps these, which
+    // hold far more than one read of the price history (2,000 candles) would.
+    if (this.view.t1 < r.start + SCRIPT_WARM_BARS * tf) return null;
     const held = this.#scriptLongRows;
     if (held && held.version === r.h.version && held.candles === candles && held.start === r.start && held.cut === cut) return held.rows;
     const starts = new Set(candles.map(c => c[0])), last = candles[candles.length - 1]?.[0] ?? Infinity;
