@@ -211,3 +211,18 @@ test('a run from the first candle has the longer time, and a live update the sho
   assert.equal(runner.startedAt, 4);
   assert.ok(!live.ok && live.error.code === 'too-slow', `one look, 3 s: past ${RUN_MS / 1000} s`);
 });
+
+test('a script that cannot be put back between runs has the short time at a live update too, not ten seconds at every update', () => {
+  // It keeps an array from candle to candle (a name assigned without a declaration is kept), so every run starts from the first candle; only
+  // the first of these is a run over new candles.
+  const src = 'if (once == 0) { once = 1; kept = [] }\nvar s = 0\nfor (var i = 0; i < 18000; i++) s += i\nline(s)';
+  let t = 0;
+  const runner = createRunner('t', src, {}, () => (t += 3_000));
+  const full = runner.run(candles(5));
+  assert.ok(full.ok, 'the first run has the long time');
+  const live = runner.run(candles(6));
+  assert.equal(runner.startedAt, 0, 'run from the first candle: nothing could be put back');
+  assert.ok(!live.ok && live.error.code === 'too-slow', `an update all the same: ${RUN_MS / 1000} s`);
+  const other = runner.run(candles(6, 7));
+  assert.ok(other.ok, 'other candles have the long time again');
+});

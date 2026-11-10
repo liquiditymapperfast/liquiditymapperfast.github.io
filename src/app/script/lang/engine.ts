@@ -502,7 +502,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
   const runner = {
     startedAt: 0,
     run(next: BarInputs): ScriptResult {
-      const started = now();
+      const started = now(), before = inputs;
       inputs = next; n = next.time.length;
       // From the candle after the last one that had closed at the run before, when every candle before it is the same.
       // A closed candle whose order book changed since (a window settled, a book added) is run again with every candle after it.
@@ -510,8 +510,12 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       const from = start > 0 ? snap : null;
       if (from) restore(from); else { fresh(); snap = null; }
       runner.startedAt = start;
-      // A live update (the newest candles alone) has RUN_MS; a run from the first candle FULL_RUN_MS, as the worker host allows (`host.ts`).
-      budget.steps = 0; budget.left = Math.max(200_000, STEPS_PER_CANDLE * (n - start)); budget.deadline = started + (start > 0 ? RUN_MS : FULL_RUN_MS);
+      // A live update (the newest candles alone) has RUN_MS, and so does a run from the first candle over the candles the run before had, its
+      // newest changed or new ones after them: a script that keeps an array or writes its options cannot be put back, so it runs every candle
+      // at every update, and FULL_RUN_MS would let each update take ten seconds (Sol, 2026-11-10). Other candles (a chart opened, more history,
+      // a setting, a script changed) have FULL_RUN_MS, as the worker host allows (`host.ts`).
+      const update = start > 0 || (before.time.length >= 2 && sameCandles(before, next, before.time.length - 1));
+      budget.steps = 0; budget.left = Math.max(200_000, STEPS_PER_CANDLE * (n - start)); budget.deadline = started + (update ? RUN_MS : FULL_RUN_MS);
       const warnings = [...a.warnings];
       // The plots' numbers: those of the candles taken over, then NaN until the run gives them.
       for (const [site, p] of plots) {
