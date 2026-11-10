@@ -44,7 +44,8 @@ export function marketInfo(markets: readonly Market[], id: string): MarketInfo {
 
 /**
  * One set of markets, candle by candle (USD; NaN where not known). `recorded` says where `vbuy` and `vsell` come from: 1 recorded on the page
- * over the set's markets, 0 the chart market's own candle (one market, where the page recorded none and the set holds it), NaN neither.
+ * over the set's markets, 0 the own candles of the set's Binance markets (spot and perpetual, the only candles that say who bought; where
+ * the page recorded none), NaN neither.
  * Absent (a test's inputs): reads NaN.
  */
 export interface SourceInputs { vbuy: Float64Array; vsell: Float64Array; lbuy: Float64Array; lsell: Float64Array; recorded?: Float64Array; markets: number }
@@ -89,10 +90,12 @@ export interface BarInputs {
  * delta, sells the rest. NaN for both where the candle was not recorded.
  */
 export function buysAndSells(flow: CandleFlow | null): [number, number] {
-  if (!flow || !Number.isFinite(flow.gross) || !Number.isFinite(flow.delta)) return [NaN, NaN];
-  const buy = Math.max(0, (flow.gross + flow.delta) / 2), sell = Math.max(0, (flow.gross - flow.delta) / 2);
-  return [buy, sell];
+  return known(flow) ? [buysOf(flow), sellsOf(flow)] : [NaN, NaN];
 }
+/** Whether a candle's flow was recorded (`buysAndSells`), and its buys and sells: one definition, read without a pair made per candle. */
+const known = (flow: CandleFlow | null): flow is CandleFlow => !!flow && Number.isFinite(flow.gross) && Number.isFinite(flow.delta);
+const buysOf = (flow: CandleFlow): number => Math.max(0, (flow.gross + flow.delta) / 2);
+const sellsOf = (flow: CandleFlow): number => Math.max(0, (flow.gross - flow.delta) / 2);
 
 /**
  * Liquidations by the side of the forced order: a short position liquidated is bought back (a forced buy, `lbuy`), a long one is sold
@@ -104,8 +107,12 @@ export function liquidationOrderSide(positionSide: 'long' | 'short'): 'buy' | 's
 export function candleArrays(rows: readonly CandleRow[], tf: number, now: number): Pick<BarInputs, 'time' | 'open' | 'high' | 'low' | 'close' | 'volume' | 'forming'> {
   const kept: CandleRow[] = [];
   for (const r of rows) if (Number.isFinite(r[0]) && (!kept.length || r[0] > kept[kept.length - 1]![0])) kept.push(r);
-  const n = kept.length, f = (i: number): Float64Array => Float64Array.from(kept, r => Number.isFinite(r[i]) ? r[i]! : NaN);
-  return { time: f(0), open: f(1), high: f(2), low: f(3), close: f(4), volume: f(5), forming: n > 0 && kept[n - 1]![0] + tf > now };
+  // One pass into the six arrays: `Float64Array.from(rows, fn)` a column at a time took a third of a script run's work on the page at
+  // 100,000 candles (2026-11-10).
+  const n = kept.length, time = new Float64Array(n), open = new Float64Array(n), high = new Float64Array(n), low = new Float64Array(n), close = new Float64Array(n), volume = new Float64Array(n);
+  const num = (x: number | undefined): number => Number.isFinite(x) ? x! : NaN;
+  for (let k = 0; k < n; k++) { const r = kept[k]!; time[k] = r[0]; open[k] = num(r[1]); high[k] = num(r[2]); low[k] = num(r[3]); close[k] = num(r[4]); volume[k] = num(r[5]); }
+  return { time, open, high, low, close, volume, forming: n > 0 && kept[n - 1]![0] + tf > now };
 }
 
 /** What `sourceInputs` reads: each candle's flow over a set of markets (`delta/flows.ts deltaFlows`) and the liquidations by candle start. */
@@ -134,9 +141,9 @@ export function sourceInputs(time: Float64Array, ids: readonly string[], read: S
     for (let i = 0; i < n; i++) {
       const t = time[i]!;
       // The candle the recording began inside holds only its end: the market's own candle says the whole of it.
-      const [b, s] = candle && candle.from !== null && t < candle.from ? [NaN, NaN] : buysAndSells(flows[i] ?? null);
-      if (Number.isFinite(b)) { vbuy[i] = b; vsell[i] = s; recorded[i] = 1; continue; }
-      // Not recorded (before the page opened, a gap): the chart market's own candle, where it says who bought.
+      const flow = candle && candle.from !== null && t < candle.from ? null : flows[i] ?? null;
+      if (known(flow)) { vbuy[i] = buysOf(flow); vsell[i] = sellsOf(flow); recorded[i] = 1; continue; }
+      // Not recorded (before the page opened, a gap): the set's Binance markets' own candles, where they say who bought.
       const own = candle?.sides(t);
       if (own) { vbuy[i] = own[0]; vsell[i] = own[1]; recorded[i] = 0; }
     }

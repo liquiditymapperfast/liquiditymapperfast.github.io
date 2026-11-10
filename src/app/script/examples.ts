@@ -141,13 +141,13 @@ function opens(price, what) {
 }
 
 // What was traded at market and liquidated in this candle, over the venues the flow column adds up (where this page did not
-// record them, the chart's market alone, from its own candle: bar.recorded is 0 there), and the change in open interest over
+// record them, Binance's markets alone, from their own candles: bar.recorded is 0 there), and the change in open interest over
 // the venues the OI pane adds up.
 function flow() {
   var out = []
   var lead = " led by " + usd(Math.abs(vbuy - vsell)) + " (bought at market " + usd(vbuy) + ", sold " + usd(vsell) + ")"
   if (isNaN(vbuy) || isNaN(vsell)) out.push("Market orders were not recorded in this candle")
-  else if (bar.recorded == 0) out.push("On the chart's market alone, " + (vbuy >= vsell ? "buyers" : "sellers") + lead)
+  else if (bar.recorded == 0) out.push("On Binance alone, " + (vbuy >= vsell ? "buyers" : "sellers") + lead)
   else out.push((vbuy >= vsell ? "Buyers" : "Sellers") + lead)
   if (!isNaN(lbuy) && !isNaN(lsell)) out.push(lbuy > 0 || lsell > 0 ? "Liquidated: shorts " + usd(lbuy) + ", longs " + usd(lsell) : "No liquidations recorded")
   if (!isNaN(oichg)) out.push("Open interest " + (oichg >= 0 ? "rose by " + usd(oichg) + " (positions opened)" : "fell by " + usd(-oichg) + " (positions closed)"))

@@ -197,12 +197,12 @@ test('Bar patterns: each candle\'s word, each pattern and its levels, on candles
     'Close above the day and week opens.', 'The month open is not on the chart.',
   ].join('\n'));
   assert.equal(barMark(r, 7)!.tip.split('\n')[0], 'It went past both ends of the candle before and closed above its high (104.0).');
-  // Where this page did not record the flow, it is the chart market's own candle (bar.recorded 0): the hover says so.
+  // Where this page did not record the flow, it is Binance's own candles (bar.recorded 0): the hover says so.
   const own = barInputs(SERIES);
   own.sources['']!.recorded = new Float64Array(SERIES.length);
   const fromCandle = runScript('bars', BARS, {}, own);
   assert.ok(fromCandle.ok);
-  assert.equal(barMark(fromCandle as Run, 2)!.tip.split('\n')[2], 'On the chart\'s market alone, buyers led by $20 (bought at market $60, sold $40)');
+  assert.equal(barMark(fromCandle as Run, 2)!.tip.split('\n')[2], 'On Binance alone, buyers led by $20 (bought at market $60, sold $40)');
 });
 
 test('Bar patterns: a break counts where the candle closes, so a poke past the inside candle that closed back is a word and a long wick is a rejection either way round', () => {

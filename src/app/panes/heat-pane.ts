@@ -1620,7 +1620,7 @@ export class HeatPane {
     const target = historyTarget(state.marketId, currentCoin());
     const none = (market: string): { h: null; start: number; state: ScriptBarsState } => ({ h: null, start, state: { state: 'none', have: 0, want: bars, market } });
     if (!target?.own || state.seriesInstrument !== state.marketId) return none(target ? `${venueLabel(target.id)} ${target.listing.symbol}` : '');
-    const h = this.hub.scriptHistory(tf, bars), market = `${venueLabel(target.id)} ${target.listing.symbol}`;
+    const h = this.hub.scriptHistory(tf, bars, target.id), market = `${venueLabel(target.id)} ${target.listing.symbol}`;
     // The chart's own candles not in yet: whose market they are of is not settled, so nothing is asked.
     if (!state.candles.length) return { h: null, start, state: { state: 'loading', have: 0, want: bars, market } };
     // Not before the map's first columns, on a page reading the exchanges itself too (every visitor runs the VWAP starter).

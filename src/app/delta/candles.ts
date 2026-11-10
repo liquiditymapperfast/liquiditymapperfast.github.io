@@ -130,20 +130,42 @@ export class FlowCache {
   #key = '';
   #closed = new Map<number, CandleFlow | null>();
   #open = new Map<number, { flow: CandleFlow; at: number }>();
+  /**
+   * The last answer and the starts it was for (copies: a caller's arrays are its own), and how many of its first candles were closed then:
+   * the same starts asked again take those as they were, without a lookup each (a script's 100,000 candles looked each up at every run).
+   */
+  #prev: { starts: number[]; out: (CandleFlow | null)[]; closed: number } | null = null;
   get(key: string, tracks: readonly DeltaTrack[], starts: readonly number[], tfMs: number, now: number, liveMs = 5_000, samples = SAMPLES): (CandleFlow | null)[] {
-    if (key !== this.#key) { this.#key = key; this.#closed = new Map(); this.#open = new Map(); }
+    if (key !== this.#key) { this.#key = key; this.#closed = new Map(); this.#open = new Map(); this.#prev = null; }
     // A replay moved back: what was seen after its moment is not known yet, wherever it was.
     for (const [t, seen] of this.#open) if (seen.at > now) this.#open.delete(t);
     const merge = (f: CandleFlow | null, t: number): CandleFlow | null => { const seen = this.#open.get(t); return f && seen ? { ...f, low: Math.min(f.low, seen.flow.low), high: Math.max(f.high, seen.flow.high) } : f; };
     // A candle closes with what was seen of it while it was open, whether it is read then or not (panned out of view).
     const close = (t: number, f: CandleFlow | null): CandleFlow | null => { const final = merge(f, t); this.#closed.set(t, final); this.#open.delete(t); return final; };
-    const out = starts.map(t => {
-      if (t + tfMs <= now - liveMs) return close(t, this.#closed.has(t) ? this.#closed.get(t)! : candleFlow(tracks, t, tfMs, now, samples));
+    // The first candles closed now; of those, the ones that were closed at the last answer too, for the same starts, are as it gave them (a
+    // closed candle is worked out once, and none of them is open: each that closes leaves `#open` at the answer it closes in).
+    let closed = 0;
+    while (closed < starts.length && starts[closed]! + tfMs <= now - liveMs) closed++;
+    const prev = this.#prev, limit = prev ? Math.min(prev.closed, closed) : 0;
+    let reuse = 0;
+    while (reuse < limit && prev!.starts[reuse] === starts[reuse]) reuse++;
+    const out = reuse ? prev!.out.slice(0, reuse) : [];
+    for (let i = reuse; i < starts.length; i++) {
+      const t = starts[i]!;
+      if (t + tfMs <= now - liveMs) {
+        // Worked out already and not seen open since: as it was (`close` would put the same back), without writing it again; at 100,000
+        // candles the writes were a third of a script run's work on the page (2026-11-10).
+        const held = this.#closed.get(t);
+        if (held !== undefined && !this.#open.has(t)) { out.push(held); continue; }
+        out.push(close(t, held !== undefined ? held : candleFlow(tracks, t, tfMs, now, samples)));
+        continue;
+      }
       const f = merge(candleFlow(tracks, t, tfMs, now, samples), t);
       if (f) this.#open.set(t, { flow: f, at: now });
-      return f;
-    });
+      out.push(f);
+    }
     for (const t of [...this.#open.keys()]) if (t + tfMs <= now - liveMs) close(t, this.#closed.get(t) ?? candleFlow(tracks, t, tfMs, now, samples));
+    this.#prev = { starts: starts.slice(), out: out.slice(), closed };
     return out;
   }
 }

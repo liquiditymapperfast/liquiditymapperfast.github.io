@@ -3,7 +3,7 @@ import { TIMEFRAMES } from '../hub.ts';
 import type { AppState, CandleRow } from '../store.ts';
 import { FlowCache } from '../delta/candles.ts';
 import { deltaFlows, deltaIds, ensureDeltaFlow } from '../delta/flows.ts';
-import { flowFeedSpotId, flowLoadIds } from '../cvd/ids.ts';
+import { flowLoadIds } from '../cvd/ids.ts';
 import { DAY_MS, liquidationBuckets, type LiquidationDay } from '../panes/bar-stats.ts';
 import { LIQUIDATIONS_PER_ANSWER, LIQUIDATION_RETENTION_MS } from '../../shared/liquidations.ts';
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
@@ -13,6 +13,58 @@ import { candleArrays, filterKey, marketInfo, marketsMatching, sourceInputs, typ
 import { TakerRows } from '../measures/taker-rows.ts';
 import { candleSides, candleUsd } from '../measures/volume-strip.ts';
 import { DepthFeed } from './depth-feed.ts';
+import { currentCoin } from '../coin.ts';
+import { historyTarget, type KeyLevelHistory } from '../keylevels/history.ts';
+import { scriptChunk, scriptStart } from './bars.ts';
+
+/**
+ * A market's own candles that say who bought (`get`: its candle at a start, or none), and where the exchange's read of them reached the
+ * market's first candle (`listedFrom`: before it the market did not trade, so it bought and sold nothing there), or null where that is not known.
+ */
+export interface TakerCandles { get(start: number): CandleRow | undefined; listedFrom: number | null }
+
+/**
+ * A set's buys and sells at a candle start from its markets' own candles, added up (Binance's spot and perpetual markets in it, the only
+ * ones whose candles say who bought): null where one of them is not known there (a candle not read, one that does not say who bought, a gap),
+ * never a sum short of a market. A market before its first candle, where the read reached it, adds nothing: a set whose perpetual is older
+ * than its spot market reads the perpetual's alone before the spot market was listed.
+ */
+export function setSides(markets: readonly TakerCandles[], start: number): readonly [number, number] | null {
+  let buy = 0, sell = 0;
+  for (const m of markets) {
+    const row = m.get(start), s = row ? candleSides(row, candleUsd(row)) : null;
+    if (s) { buy += s.buy; sell += s.sell; }
+    else if (m.listedFrom === null || start >= m.listedFrom) return null;
+  }
+  return [buy, sell];
+}
+
+/**
+ * Whether a script history (`hub.scriptHistory`) is whole from `from`: of this market and timeframe, and reaching that start, or holding all the
+ * exchange has (its history begins later, or it serves no older bars). Before that the scripts do not read it.
+ */
+export function wholeHistory(h: Pick<KeyLevelHistory, 'id' | 'barMs' | 'reach' | 'exhausted' | 'limited' | 'bars'>, id: string, tf: number, from: number): boolean {
+  if (h.id !== id || h.barMs !== tf) return false;
+  const reach = h.reach(from);
+  return reach === 'yes' || (reach === 'never' && (h.exhausted || h.limited) && h.bars.length > 0);
+}
+
+/**
+ * The bar at a start in bars sorted by start, for starts asked mostly in order (the scripts' candles, oldest first): a cursor that moves on,
+ * searched again only when a start is asked before the last one (another set read from its first candle).
+ */
+export function barsAt(bars: readonly CandleRow[]): (start: number) => CandleRow | undefined {
+  let i = 0;
+  return start => {
+    if (i > 0 && bars[i - 1]![0] >= start) {
+      let lo = 0, hi = bars.length;
+      while (lo < hi) { const mid = (lo + hi) >>> 1; if (bars[mid]![0] < start) lo = mid + 1; else hi = mid; }
+      i = lo;
+    }
+    while (i < bars.length && bars[i]![0] < start) i++;
+    return i < bars.length && bars[i]![0] === start ? bars[i] : undefined;
+  };
+}
 
 /**
  * Gathers what the scripts read from what the page holds: the chart's candles, the taker flow of the flow column's ALL VENUES markets (the
@@ -47,8 +99,10 @@ export class ScriptData {
 
   /**
    * The inputs over the chart's candles for each filter (and the change in open interest, `withOi`); null while there are no candles. With
-   * `withCandleFlow` (a script reads the flow), a candle whose flow the page did not record takes the chart market's own candle's buys and
-   * sells, in each set that holds that market (`sourceInputs`). The flow and the liquidations are asked for only while a script reads them
+   * `withCandleFlow` (a script reads the flow), a candle whose flow the page did not record takes the buys and sells of the own candles of the
+   * set's Binance markets, spot and perpetual, added up (`sourceInputs`, `setSides`): a spot set's CVD reaches back as far as the scripts read,
+   * not only its perpetual's (Karl, 2026-11-10: a user's CVD script drew the perpetual's history and only the recorded part of spot's). The
+   * flow and the liquidations are asked for only while a script reads them
    * (`withCandleFlow`; `withLiquidations`, `lbuy` or `lsell`): asked for every script, a VWAP's chart read a liquidation day per answer back
    * over its candles as the page opened, and the flow's minutes again at each step of a zoom out.
    */
@@ -70,17 +124,13 @@ export class ScriptData {
     const liq = withLiquidations ? this.#liquidations(starts, tf, now) : null;
     const sources: BarInputs['sources'] = {};
     this.liquidationsCut = false;
-    // The chart's market as the sets name it: Binance spot is `binance:BTCUSDT:spot` on the chart, `binancespot:BTCUSDT` in the flow feeds.
-    const chart = state.seriesInstrument || state.marketId, chartSpot = flowFeedSpotId(chart);
     // The chart market's own buys and sells are asked for over the chart's own candles only, as before the scripts read further back: from an older
     // start the loader would read every candle from there to now (a 1m chart panned 60 days back: 87,000 candles, Sol 2026-11-03).
     // None while the chart has no candles of its own (a market or timeframe on its way): the start would be the history's again (Sol, round 2).
     const own = state.candles[0]?.[0];
     const taker = withCandleFlow && own !== undefined ? this.#taker.get(this.hub, state, tf, Math.max(starts[0]!, own), () => { this.version++; this.changed(); }) : null;
-    const sides = (start: number): readonly [number, number] | null => {
-      const own = taker?.get(start), s = own ? candleSides(own, candleUsd(own)) : null;
-      return s ? [s.buy, s.sell] : null;
-    };
+    // Further back, and for the sets that do not hold the chart's market: the own candles of each Binance market in the sets (`#takerCandles`).
+    const held = withCandleFlow ? this.#takerCandles(state, new Set([...markets.values()].flat()), tf, starts[0]!, taker) : null;
     const earliest = new Map<string, number | null>();
     for (const [key, ids] of markets) {
       sources[key] = sourceInputs(candles.time, ids, {
@@ -93,10 +143,45 @@ export class ScriptData {
           return read.flows;
         },
         liquidations: list => { if (!liq) return undefined; const b = liquidationBuckets(this.#liqDays, list, starts, tf, liq.cover, now); if (b.cut) this.liquidationsCut = true; return b; },
-        candle: list => taker && (list.includes(chart) || (chartSpot !== null && list.includes(chartSpot))) ? { from: earliest.get(list.join(',')) ?? null, sides } : null,
+        // The set's Binance markets' own candles, added up, where the page recorded nothing: every one of them, or none (`setSides`), so a set
+        // never reads a sum short of a market that is still on its way or could not be read.
+        candle: list => {
+          const binance = held ? list.filter(id => held.binance.has(id)) : [];
+          if (!held || !binance.length || binance.some(id => !held.candles.has(id))) return null;
+          const mine = binance.map(id => held.candles.get(id)!);
+          return { from: earliest.get(list.join(',')) ?? null, sides: (start: number) => setSides(mine, start) };
+        },
       });
     }
     return { tf, ...candles, sources, ...(withOi ? { oichg: ScriptData.oiChange(state, candles.time, candles.close, tf, now) } : {}) };
+  }
+
+  /**
+   * The own candles of each Binance market in `ids` (Binance's are the only exchange candles that say who bought: `shared/history.ts`), as
+   * `TakerCandles`: its history of the chart's timeframe (`hub.scriptHistory`, the one the scripts' candles come from when the chart shows that
+   * market), asked for from where the scripts' candles begin but never further back than the setting reaches (`scriptStart`), once the map has
+   * its first columns, and used only once it is whole (it reaches that start, or holds all the exchange has): handed over in parts, each part
+   * would be another first candle for every script. The chart market's also from its own candles (`taker`, the newer read where both have one),
+   * as before the scripts read further back. `binance`: every Binance market of `ids`, held or not, so a set holding one not held reads none.
+   */
+  #takerCandles(state: AppState, ids: ReadonlySet<string>, tf: number, first: number, taker: ReadonlyMap<number, CandleRow> | null): { binance: Set<string>; candles: Map<string, TakerCandles> } {
+    const binance = new Set<string>(), candles = new Map<string, TakerCandles>(), coin = currentCoin(), bars = state.scriptBars;
+    const chunk = scriptChunk(bars) * tf, from = Math.max(scriptStart(Date.now(), tf, bars), Math.floor(first / chunk) * chunk);
+    const series = historyTarget(state.seriesInstrument || state.marketId, coin);
+    for (const id of ids) {
+      const target = historyTarget(id, coin), venue = target ? target.id.slice(0, target.id.indexOf(':')) : '';
+      if (!target?.own || (venue !== 'binance' && venue !== 'binancespot')) continue;
+      binance.add(id);
+      const h = this.hub.scriptHistory(tf, bars, target.id);
+      // A page that lands has the scripts look again only once the history is whole, and then at each page (the newest bars, a minute apart):
+      // the parts before change nothing they read.
+      if (!this.hub.firstColumnsPending()) h.ensure(target, from, tf, () => { if (wholeHistory(h, target.id, tf, from)) { this.version++; this.changed(); } });
+      const whole = wholeHistory(h, target.id, tf, from);
+      const long = whole ? barsAt(h.bars) : null, mine = series?.own && series.id === target.id ? taker : null;
+      if (!long && !mine) continue;
+      candles.set(id, { get: start => mine?.get(start) ?? long?.(start), listedFrom: whole && h.exhausted ? h.heldFrom : null });
+    }
+    return { binance, candles };
   }
 
   /**

@@ -13,7 +13,7 @@ To write or fix a script with an assistant: open the script in the Scripts panel
 - A plot's named arguments are its style, read once, at its first call: what changes from candle to candle goes in its values, by position or in a point object (a mark's text, tip and colour: mark(v, text, tip, colour) or mark({value: v, text: t, color: c}); a line's colour: line({value: x, color: c})).
 - Plots are line, area, histogram, baseline, candlestick, plotbar, cloudarea, brokenarea, mark (each also as plotline, plothistogram, ...). Each takes title=, priceScaleId=, scaleMargins={top: 0.1, bottom: 0.1} and visible=, and the style its kind reads (see Plots: a candlestick has upColor and downColor, not color); a kind ignores the style it does not read. lineWidth is 1 to 6; lineStyle is 0 solid, 1 dotted, 2 dashed, 3 long dashes, 4 sparse dots. A point can be an object: line({time: time, value: x, color: c}) colours that candle's point.
 - A script draws in a row of its own under the map, or on the map, where plots on the default price scale (priceScaleId right) stand at their prices and the others on scales of their own; the Draw setting in its panel chooses. $price.color colours the map's candles.
-- A candle whose flow is known neither from the recording nor from the chart market's own candle, or whose liquidations were not recorded (no candle reports them), reads NaN: the functions skip it (they do not take it as 0) and a plot draws nothing there. Use nz(x) where 0 is meant.
+- A candle whose flow is known neither from the recording nor from Binance's own candles, or whose liquidations were not recorded (no candle reports them), reads NaN: the functions skip it (they do not take it as 0) and a plot draws nothing there. Use nz(x) where 0 is meant.
 - Each call of a function with a history (sma, ema, cum, ...) keeps its own: call them at fixed places, not in a loop over windows (a loop would share one).
 - Lengths may be any expression (sma(x, options.length)); a window shorter than its length uses the values there are.
 
@@ -22,7 +22,7 @@ To write or fix a script with an assistant: open the script in the Scripts panel
 | Name | What it is |
 |---|---|
 | `time` | The candle's start, in seconds since 1970 (UTC). |
-| `vbuy` | Dollars bought at market (taker buys) in the candle, over the markets the script reads (see source). Where the page did not record the flow (before it was opened, or in a gap) and those markets hold the chart's, the chart market's own candle says it (Binance's candles report who bought): one market, not all of them, so the numbers are smaller there; bar.recorded tells which. NaN where neither is known. |
+| `vbuy` | Dollars bought at market (taker buys) in the candle, over the markets the script reads (see source). Where the page did not record the flow (before it was opened, or in a gap), the candles of the Binance markets among them say it, spot and perpetual added up, as far back as the script reads (Binance's candles report who bought; no other exchange's do): those markets only, not all of them, so the numbers are smaller there; bar.recorded tells which. NaN where neither is known (a set with no Binance market, or a Binance candle not read). |
 | `vsell` | Dollars sold at market (taker sells) in the candle, likewise. |
 | `lbuy` | Dollars of short positions liquidated in the candle (bought back by force), over the markets the script reads. |
 | `lsell` | Dollars of long positions liquidated in the candle (sold by force). |
@@ -30,7 +30,7 @@ To write or fix a script with an assistant: open the script in the Scripts panel
 | `cbuy` | Trade counts are not recorded here: cbuy and csell always read NaN. |
 | `csell` | See cbuy. |
 | `$price` | The chart's candle: $price.open, .high, .low, .close, .volume (the chart market's own volume, in coins), .time (seconds). Setting $price.color = "<colour>" colours the map's candle. |
-| `bar` | The same candle and flow as one object: bar.open, .high, .low, .close, .volume, .vbuy, .vsell, .lbuy, .lsell, .oichg, .timestamp (seconds), and .recorded: 1 where vbuy and vsell were recorded on this page, 0 where they come from the chart market's own candle, NaN where neither is known. |
+| `bar` | The same candle and flow as one object: bar.open, .high, .low, .close, .volume, .vbuy, .vsell, .lbuy, .lsell, .oichg, .timestamp (seconds), and .recorded: 1 where vbuy and vsell were recorded on this page, 0 where they come from the Binance markets' own candles, NaN where neither is known. |
 | `renderer` | renderer.length is the number of candles so far, this one included; renderer.timestamp the candle's start (seconds), renderer.timeframe its length (seconds); renderer.forming is true on the candle still under way (the newest, until it closes) and false on every closed one. |
 | `theme` | The page's colours, read-only: theme.dark (whether the chart's background is dark), theme.background, theme.text, theme.up and theme.down (its candles' colours), as colour texts. A script coloured from them follows the theme the person picks, and runs again when it changes. |
 | `options` | options.name is the value of the option called name (declared with option(...) or set in the panel). |

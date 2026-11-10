@@ -37,6 +37,8 @@ import { ChartPriceHistory } from './price-history.ts';
 import { ColumnHolds, columnReach, columnStepFor, settledBefore, type ColumnDrop } from './column-holds.ts';
 /** How many VWAP histories are kept before those not asked for in five minutes are let go (one market's lines use up to nine). */
 const VWAP_HISTORIES = 16;
+/** The scripts' candle histories kept (`scriptHistory`): a perpetual's and a spot market's, at this timeframe and the one before. */
+const SCRIPT_HISTORIES = 4;
 /** The candle histories' requests: a queue per exchange host, which waits after a venue says it was asked too often (`pacedFetcher`). */
 const historyGet = pacedFetcher(webGet);
 
@@ -284,7 +286,7 @@ export class Hub {
   readonly keyHistory = new KeyLevelHistory(historyGet);
   /** The Liquidation levels layer's file and the candles that take its levels away. */
   readonly liqLevels = new LiqLevelsSource(webGet);
-  /** The scripts' candles of the chart market (`scriptHistory`), by timeframe and count, the three last asked for. */
+  /** The scripts' candles from the exchange (`scriptHistory`), by market, timeframe and count, the last `SCRIPT_HISTORIES` asked for. */
   readonly #scriptHistories = new Map<string, KeyLevelHistory>();
   /** The VWAP lines' candles, one history per kind, market and bar size (`vwapHistory`), and when each was last asked for. */
   readonly #vwapHistories = new Map<string, { h: KeyLevelHistory; used: number }>();
@@ -331,17 +333,21 @@ export class Hub {
     }
   }
   /**
-   * The chart market's candles the scripts read (`script/bars.ts`, `HeatPane.scriptCandles`): one history of the chart's timeframe, kept back
-   * a chunk and two days past the count asked, so the scripts' first candle (`scriptStart`) stays in it until it moves on by a chunk. Another
-   * timeframe or count is another history; the three last asked for are kept, so a timeframe switched to and back is not read again.
+   * One market's candles the scripts read (`script/bars.ts`): the chart market's (`HeatPane.scriptCandles`), and those of the Binance markets
+   * in the sets a script reads the flow of (`ScriptData`: their taker buys say who bought where the page recorded nothing). One history of
+   * the chart's timeframe a market, with its taker buys where the exchange reports them (Binance's), kept back a chunk and two days past the
+   * count asked, so the scripts' first candle (`scriptStart`) stays in it until it moves on by a chunk. Another market, timeframe or count is
+   * another history; the four last asked for are kept (a perpetual's and a spot market's at this timeframe and the one before), so a
+   * timeframe switched to and back is not read again.
    */
-  scriptHistory(tfMs: number, bars: number): KeyLevelHistory {
-    const key = `${tfMs}|${bars}`;
+  scriptHistory(tfMs: number, bars: number, id: string): KeyLevelHistory {
+    const key = `${id}|${tfMs}|${bars}`;
     let h = this.#scriptHistories.get(key);
     if (h) this.#scriptHistories.delete(key);
     else {
       h = new KeyLevelHistory(historyGet, Date.now, 60_000, (bars + scriptChunk(bars)) * tfMs + 2 * 86_400_000);
-      if (this.#scriptHistories.size >= 3) this.#scriptHistories.delete(this.#scriptHistories.keys().next().value!);
+      h.withBuy = true;
+      if (this.#scriptHistories.size >= SCRIPT_HISTORIES) this.#scriptHistories.delete(this.#scriptHistories.keys().next().value!);
     }
     this.#scriptHistories.set(key, h);
     return h;
