@@ -129,8 +129,8 @@ const LOADED_LAG_MS = 10 * 60_000;
 const replayCut = (lines: VwapLine[], at: number): VwapLine[] => cutForReplay(lines, at, replaying());
 /** Up to when several markets' bars are all closed: the earliest of their last reads, on a bar's start (a bar ending by it counts). */
 const cutoffOf = (hs: readonly KeyLevelHistory[], bar: number): number => Math.min(...hs.map(h => Math.floor(h.heldTo / bar) * bar));
-/** Where the markets' bars are all known from: the latest of their starts, so a market that does not reach a line's start holds it back. */
-const knownFrom = (hs: readonly KeyLevelHistory[]): number => Math.max(...hs.map(h => h.heldFrom));
+/** Where the markets' bars are all known from (`KeyLevelHistory.knownFrom`): the latest, so a market that does not reach a line's start holds it back. */
+const knownFrom = (hs: readonly KeyLevelHistory[]): number => Math.max(...hs.map(h => h.knownFrom));
 /**
  * A line of several markets carried on at its last value to when the markets were last read (`to`): it ends at the last bar every one of them
  * has closed, up to a bar back (four hours for a year's window), and would otherwise stop short of the live candle and of its axis tag.
@@ -2302,7 +2302,7 @@ export class HeatPane {
     if (hs.some((h, i) => h.id !== targets[i]!.id || h.barMs !== bar)) return 'coming';
     const reach = hs.map(h => h.reach(need));
     if (reach.every(r => r === 'yes')) return 'yes';
-    if (reach.some((r, i) => r === 'never' && !(hs[i]!.exhausted && hs[i]!.bars.length))) return 'failed';
+    if (reach.some((r, i) => r === 'never' && !((hs[i]!.exhausted || hs[i]!.limited) && hs[i]!.bars.length))) return 'failed';
     return reach.some(r => r === 'coming') ? 'coming' : 'short';
   }
   /**
@@ -2373,12 +2373,12 @@ export class HeatPane {
     const h = this.hub.vwapHistory(target.id, bar);
     if (h.id !== target.id || h.barMs !== bar || !h.bars.length) return null;
     const held = h.bars, lastStart = held[held.length - 1]![0], tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    if (!(target.own && state.seriesInstrument === state.marketId && tf <= bar)) return { rows: this.#barsOf(h), liveFrom: Infinity, from: h.heldFrom, readTo: -Infinity };
+    if (!(target.own && state.seriesInstrument === state.marketId && tf <= bar)) return { rows: this.#barsOf(h), liveFrom: Infinity, from: h.knownFrom, readTo: -Infinity };
     const live = state.candles.filter(c => c[0] >= lastStart);
-    if (!live.length) return { rows: this.#barsOf(h), liveFrom: Infinity, from: h.heldFrom, readTo: -Infinity };
+    if (!live.length) return { rows: this.#barsOf(h), liveFrom: Infinity, from: h.knownFrom, readTo: -Infinity };
     const first = live[0]![0];
     // A held bar reaching into the chart's candles would count that stretch twice.
-    return { rows: [...this.#barsOf(h).filter(b => b[0] + bar <= first), ...vwapBarsOf(live)], liveFrom: first, from: h.heldFrom, readTo: -Infinity };
+    return { rows: [...this.#barsOf(h).filter(b => b[0] + bar <= first), ...vwapBarsOf(live)], liveFrom: first, from: h.knownFrom, readTo: -Infinity };
   }
   /**
    * The rolling VWAPs' lines, from their own histories alone (the chart's candles are not added at the end: the window's start moves by its
@@ -2387,7 +2387,7 @@ export class HeatPane {
    * reaches back to.
    */
   #rollingLines(plan: VwapPlan, targets: readonly HistoryTarget[]): { key: string; lines: VwapLine[] } {
-    const key = plan.rolling.map(r => `${r.days}:${targets.map(t => { const h = this.hub.vwapHistory(t.id, r.bar, true); return `${h.id}:${h.version}:${h.heldTo}:${h.exhausted}`; }).join('+')}`).join(',');
+    const key = plan.rolling.map(r => `${r.days}:${targets.map(t => { const h = this.hub.vwapHistory(t.id, r.bar, true); return `${h.id}:${h.version}:${h.heldTo}:${h.knownFrom}`; }).join('+')}`).join(',');
     if (this.#rollingDrawn?.key === key) return this.#rollingDrawn;
     const lines: VwapLine[] = [];
     for (const r of plan.rolling) {

@@ -45,14 +45,31 @@ const at = (value: unknown, ...path: (string | number)[]): unknown => path.reduc
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const MINUTE = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
-/** One venue's candle endpoint: the intervals it serves natively, how many bars a page holds and how to read one page ending at `endMs`. */
+/**
+ * One venue's candle endpoint: the intervals it serves natively, how many bars a page holds, how to read one page ending at `endMs`, and how
+ * its pages answer for time. Most give the newest `limit` bars at or before the end, so a page short of `limit` is the start of what the
+ * venue holds (`lookback`: a venue that keeps only recent bars of an interval, Bitget's a month of minutes, where that is its limit and not
+ * the market's start); Coinbase, Deribit and Hyperliquid answer for a window of `limit` bars ending there (`window`), so a window with no bar
+ * is time nobody traded, and Hyperliquid holds only its newest 5,000 bars of each interval (`newest`).
+ */
 interface CandleSpec {
   /** Interval length in ms to the venue's name for it. */
   intervals: Readonly<Record<number, string>>;
   limit: number;
-  /** `symbol` is the market's own name for the coin. */
+  /** `symbol` is the market's own name for the coin. An answer that is an error sent with HTTP 200 throws (`failed`). */
   page(interval: string, intervalMs: number, endMs: number, get: Fetcher, symbol: string, limit?: number): Promise<CandleRow[]>;
+  window?: true;
+  lookback?: true;
+  newest?: number;
 }
+
+/**
+ * The rows of a venue's answer, or an error when the answer is one: a page refused with HTTP 200 (Bybit's `retCode`, OKX's and Bitget's
+ * `code`, a JSON-RPC `error`) or rate-limited that way would otherwise read as a page with no candles, which is taken for the start of the
+ * venue's history (Bybit answers an unknown symbol with HTTP 200 and `retCode` 10001, OKX with `code` "51001": checked 2026-11-10).
+ */
+const failed = (venue: string, answer: unknown): Error => new Error(`${venue}: the candle page is an error: ${JSON.stringify(answer)?.slice(0, 200)}`);
+const rowsOf = (venue: string, answer: unknown, ok: boolean, rows: unknown): unknown[] => { if (!ok || !Array.isArray(rows)) throw failed(venue, answer); return rows; };
 
 /** A taker-buy figure that is a number from nothing to the volume, or none: null, '', false or a figure past the volume is not a zero. */
 const takerBuy = (buy: unknown, volume: number): number | null => {
@@ -74,7 +91,17 @@ const row = (start: unknown, open: unknown, high: unknown, low: unknown, close: 
  * Binance's klines, the perpetual's and the spot market's alike: the tenth field is the taker buy volume, the part bought at market; the
  * eighth the quote volume, the ninth the number of trades and the eleventh the taker buy quote volume.
  */
-const binanceRows = (json: unknown): CandleRow[] => list(json).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5), at(r, 9), at(r, 7), at(r, 8), at(r, 10)));
+const binanceRows = (json: unknown): CandleRow[] => rowsOf('binance', json, true, json).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5), at(r, 9), at(r, 7), at(r, 8), at(r, 10)));
+const bybitRows = async (category: string, i: string, end: number, get: Fetcher, symbol: string, limit: number): Promise<CandleRow[]> => {
+  const j = await get(`https://api.bybit.com/v5/market/kline?category=${category}&symbol=${symbol}&interval=${i}&end=${end}&limit=${limit}`);
+  return rowsOf('bybit', j, at(j, 'retCode') === 0, at(j, 'result', 'list')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5)));
+};
+/** OKX's history: `after` asks for bars older than it; up to 300 a page (100 before 2026-11-10, when 300 was checked). */
+const okxPage = async (i: string, end: number, get: Fetcher, symbol: string, limit: number): Promise<unknown[]> => {
+  const j = await get(`https://www.okx.com/api/v5/market/history-candles?instId=${symbol}&bar=${i}&after=${end + 1}&limit=${limit}`);
+  return rowsOf('okx', j, at(j, 'code') === '0', at(j, 'data'));
+};
+const bitgetPage = async (url: string, get: Fetcher): Promise<unknown[]> => { const j = await get(url); return rowsOf('bitget', j, at(j, 'code') === '00000', at(j, 'data')); };
 const BINANCE = { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1d' } as const;
 
 const SPECS: Readonly<Record<string, CandleSpec>> = {
@@ -82,48 +109,51 @@ const SPECS: Readonly<Record<string, CandleSpec>> = {
   binancespot: { intervals: BINANCE, limit: 1000, page: async (i, _ms, end, get, symbol, limit = 1000) => binanceRows(await get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${i}&endTime=${end}&limit=${limit}`)) },
   bybit: {
     intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' }, limit: 1000,
-    page: async (i, _ms, end, get, symbol, limit = 1000) => list(at(await get(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${i}&end=${end}&limit=${limit}`), 'result', 'list')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+    page: async (i, _ms, end, get, symbol, limit = 1000) => bybitRows('linear', i, end, get, symbol, limit),
   },
   bybitspot: {
     intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 14_400_000: '240', 86_400_000: 'D' }, limit: 1000,
-    page: async (i, _ms, end, get, symbol, limit = 1000) => list(at(await get(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${i}&end=${end}&limit=${limit}`), 'result', 'list')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+    page: async (i, _ms, end, get, symbol, limit = 1000) => bybitRows('spot', i, end, get, symbol, limit),
   },
   okx: {
-    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 100,
+    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 300,
     // volCcy (column 6) is in coin; the plain volume is in contracts.
-    page: async (i, _ms, end, get, symbol, limit = 100) => list(at(await get(`https://www.okx.com/api/v5/market/history-candles?instId=${symbol}&bar=${i}&after=${end + 1}&limit=${limit}`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 6))),
+    page: async (i, _ms, end, get, symbol, limit = 300) => (await okxPage(i, end, get, symbol, limit)).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 6))),
   },
   okxspot: {
-    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 100,
+    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 300,
     // On spot the plain volume (column 5) is in coin; volCcy is in USDT.
-    page: async (i, _ms, end, get, symbol, limit = 100) => list(at(await get(`https://www.okx.com/api/v5/market/history-candles?instId=${symbol}&bar=${i}&after=${end + 1}&limit=${limit}`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+    page: async (i, _ms, end, get, symbol, limit = 300) => (await okxPage(i, end, get, symbol, limit)).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
   },
+  // Bitget's candles reach about a month back at a minute (a page asked further back is empty: checked 2026-11-10), so a short page is its
+  // limit, not the market's start.
   bitget: {
-    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 1000,
-    page: async (i, _ms, end, get, symbol, limit = 1000) => list(at(await get(`https://api.bitget.com/api/v2/mix/market/candles?symbol=${symbol}&productType=usdt-futures&granularity=${i}&endTime=${end}&limit=${limit}`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1H', 14_400_000: '4H', 86_400_000: '1Dutc' }, limit: 1000, lookback: true,
+    page: async (i, _ms, end, get, symbol, limit = 1000) => (await bitgetPage(`https://api.bitget.com/api/v2/mix/market/candles?symbol=${symbol}&productType=usdt-futures&granularity=${i}&endTime=${end}&limit=${limit}`, get)).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
   },
   bitgetspot: {
     // Spot names its intervals unlike futures (1min, not 1m).
-    intervals: { 60_000: '1min', 300_000: '5min', 900_000: '15min', 1_800_000: '30min', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1Dutc' }, limit: 1000,
-    page: async (i, _ms, end, get, symbol, limit = 1000) => list(at(await get(`https://api.bitget.com/api/v2/spot/market/candles?symbol=${symbol}&granularity=${i}&endTime=${end}&limit=${limit}`), 'data')).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
+    intervals: { 60_000: '1min', 300_000: '5min', 900_000: '15min', 1_800_000: '30min', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1Dutc' }, limit: 1000, lookback: true,
+    page: async (i, _ms, end, get, symbol, limit = 1000) => (await bitgetPage(`https://api.bitget.com/api/v2/spot/market/candles?symbol=${symbol}&granularity=${i}&endTime=${end}&limit=${limit}`, get)).map(r => row(at(r, 0), at(r, 1), at(r, 2), at(r, 3), at(r, 4), at(r, 5))),
   },
   coinbase: {
-    intervals: { 60_000: '60', 300_000: '300', 900_000: '900', 3_600_000: '3600', 21_600_000: '21600', 86_400_000: '86400' }, limit: 300,
+    intervals: { 60_000: '60', 300_000: '300', 900_000: '900', 3_600_000: '3600', 21_600_000: '21600', 86_400_000: '86400' }, limit: 300, window: true,
     // [time in seconds, low, high, open, close, volume]
-    page: async (i, ms, end, get, symbol, limit = 300) => list(await get(`https://api.exchange.coinbase.com/products/${symbol}/candles?granularity=${i}&start=${new Date(end - Math.max(1, limit - 1) * ms).toISOString()}&end=${new Date(end).toISOString()}`)).map(r => row(num(at(r, 0)) * 1000, at(r, 3), at(r, 2), at(r, 1), at(r, 4), at(r, 5))),
+    page: async (i, ms, end, get, symbol, limit = 300) => { const j = await get(`https://api.exchange.coinbase.com/products/${symbol}/candles?granularity=${i}&start=${new Date(end - Math.max(1, limit - 1) * ms).toISOString()}&end=${new Date(end).toISOString()}`); return rowsOf('coinbase', j, true, j).map(r => row(num(at(r, 0)) * 1000, at(r, 3), at(r, 2), at(r, 1), at(r, 4), at(r, 5))); },
   },
   deribit: {
-    intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 86_400_000: '1D' }, limit: 1000,
+    intervals: { 60_000: '1', 300_000: '5', 900_000: '15', 1_800_000: '30', 3_600_000: '60', 86_400_000: '1D' }, limit: 1000, window: true,
     page: async (i, ms, end, get, symbol, limit = 1000) => {
       const request = { jsonrpc: '2.0', id: 1, method: 'public/get_tradingview_chart_data', params: { instrument_name: symbol, resolution: i, start_timestamp: end - (limit - 1) * ms, end_timestamp: end } };
-      const d = at(await get('wss://www.deribit.com/ws/api/v2', { method: 'RPC', headers: {}, body: JSON.stringify(request) }), 'result');
-      return list(at(d, 'ticks')).map((t, k) => row(t, at(d, 'open', k), at(d, 'high', k), at(d, 'low', k), at(d, 'close', k), at(d, 'volume', k)));
+      const answer = await get('wss://www.deribit.com/ws/api/v2', { method: 'RPC', headers: {}, body: JSON.stringify(request) }), d = at(answer, 'result');
+      // A window nobody traded in answers `status: "no_data"` and no ticks; an error has no `result`.
+      if (d === null || typeof d !== 'object') throw failed('deribit', answer);
+      return (at(d, 'status') === 'no_data' ? [] : rowsOf('deribit', answer, true, at(d, 'ticks'))).map((t, k) => row(t, at(d, 'open', k), at(d, 'high', k), at(d, 'low', k), at(d, 'close', k), at(d, 'volume', k)));
     },
   },
   hyperliquid: {
-    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1d' }, limit: 1000,
-    page: async (i, ms, end, get, symbol, limit = 1000) => list(await get('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'candleSnapshot', req: { coin: symbol, interval: i, startTime: end - (limit - 1) * ms, endTime: end } }) }))
-      .map(r => row(at(r, 't'), at(r, 'o'), at(r, 'h'), at(r, 'l'), at(r, 'c'), at(r, 'v'))),
+    intervals: { 60_000: '1m', 300_000: '5m', 900_000: '15m', 1_800_000: '30m', 3_600_000: '1h', 14_400_000: '4h', 86_400_000: '1d' }, limit: 1000, window: true, newest: 5_000,
+    page: async (i, ms, end, get, symbol, limit = 1000) => { const j = await get('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'candleSnapshot', req: { coin: symbol, interval: i, startTime: end - (limit - 1) * ms, endTime: end } }) }); return rowsOf('hyperliquid', j, true, j).map(r => row(at(r, 't'), at(r, 'o'), at(r, 'h'), at(r, 'l'), at(r, 'c'), at(r, 'v'))); },
   },
 };
 
@@ -149,29 +179,67 @@ export function nativeInterval(spec: Pick<CandleSpec, 'intervals'>, tfMs: number
  * caller to ask on from where it got to (a timeout on the fifteenth page of four months of five-minute bars threw the fourteen away). `buy`:
  * each candle carries its taker buys where the venue reports them (Binance), for the volume profile's split.
  */
-export async function fetchCandles(instrumentId: string, tfMs: number, from: number, to: number, get: Fetcher, listing?: HistoryListing, maxPages = 12, options?: { pageSize?: number; strict?: boolean; partial?: boolean; buy?: boolean }): Promise<Candle[]> {
+export async function fetchCandles(instrumentId: string, tfMs: number, from: number, to: number, get: Fetcher, listing?: HistoryListing, maxPages = 12, options?: CandleReadOptions): Promise<Candle[]> {
+  return (await readCandles(instrumentId, tfMs, from, to, get, listing, maxPages, options)).rows;
+}
+
+/**
+ * `strict`: a page with a bar that is not one (a price or volume that is not a number, a high under the open or close, a start off the interval)
+ * fails the read; 'drop' leaves such bars out and reads on (a history that is asked again every minute would otherwise fail for good on one
+ * odd bar). `now`: the clock for a venue that serves only its newest bars.
+ */
+export interface CandleReadOptions { pageSize?: number; strict?: boolean | 'drop'; partial?: boolean; buy?: boolean; now?: number }
+/**
+ * What a read walking back from `to` found: the candles of [from, to], how far back its pages answered for (`coveredFrom`: the oldest
+ * bar's start of a page that holds the venue's newest bars before its end, or a window's start, with or without bars in it), and why it
+ * stopped: it got to `from` ('reached'), the venue has nothing older ('start': a page short of its limit), the venue serves no older bars
+ * to a page ('limited': Bitget's month of minutes, Hyperliquid's newest 5,000), the page ceiling ('pages'), or a page failed after others
+ * came ('failed', with `partial`). Infinity when no page answered for anything.
+ */
+export interface CandleRead { rows: Candle[]; coveredFrom: number; stop: 'reached' | 'start' | 'limited' | 'pages' | 'failed' }
+
+/** `fetchCandles`, saying how far back the venue answered and why it stopped (`CandleRead`). */
+export async function readCandles(instrumentId: string, tfMs: number, from: number, to: number, get: Fetcher, listing?: HistoryListing, maxPages = 12, options?: CandleReadOptions): Promise<CandleRead> {
   const spec = SPECS[venueOf(instrumentId)], market = listingOf(venueOf(instrumentId), listing);
   const native = spec ? nativeInterval(spec, tfMs) : null;
-  if (!spec || !market || native === null) return [];
+  if (!spec || !market || native === null) return { rows: [], coveredFrom: Infinity, stop: 'reached' };
   const interval = spec.intervals[native]!;
   const rows = new Map<number, CandleRow>();
-  let end = to;
+  // Hyperliquid's oldest bar it still serves: windows before it are not quiet, there is nothing to read there.
+  const oldestServed = spec.newest ? Math.floor((options?.now ?? Date.now()) / native) * native - (spec.newest - 1) * native : -Infinity;
+  let end = to, coveredFrom = Infinity, stop: CandleRead['stop'] = 'pages';
   // Enough pages for the window, with a ceiling so a misbehaving endpoint cannot loop.
-  for (let pages = 0; pages < maxPages && end > from; pages++) {
+  for (let pages = 0; pages < maxPages; pages++) {
+    if (end <= from) { stop = 'reached'; break; }
+    if (end < oldestServed) { stop = 'limited'; break; }
     // Price context and VWAP/levels ask only for the bars they need, including small tail refreshes.
     const limit = options?.pageSize === undefined ? undefined : Math.max(1, Math.min(spec.limit, options.pageSize, Math.ceil((end - from) / native) + 2));
     let received: CandleRow[];
-    try { received = await spec.page(interval, native, end, get, market.symbol, limit); } catch (error) { if (options?.partial && rows.size) break; throw error; }
-    if (options?.strict && received.some(r => ![r.start, r.open, r.high, r.low, r.close, r.volume].every(Number.isFinite) || !Number.isSafeInteger(r.start) || r.start < 0 || r.start % native !== 0 || !(r.low > 0) || r.high < Math.max(r.open, r.close) || r.low > Math.min(r.open, r.close) || !(r.volume! >= 0))) throw new Error('Invalid candle page');
-    const got = received.filter(r => Number.isFinite(r.start) && Number.isFinite(r.open) && Number.isFinite(r.close));
-    if (!got.length) break;
+    try { received = await spec.page(interval, native, end, get, market.symbol, limit); } catch (error) { if (options?.partial && rows.size) { stop = 'failed'; break; } throw error; }
+    const bad = (r: CandleRow): boolean => ![r.start, r.open, r.high, r.low, r.close, r.volume].every(Number.isFinite) || !Number.isSafeInteger(r.start) || r.start < 0 || r.start % native !== 0 || !(r.low > 0) || r.high < Math.max(r.open, r.close) || r.low > Math.min(r.open, r.close) || !(r.volume! >= 0);
+    if (options?.strict === true && received.some(bad)) throw new Error('Invalid candle page');
+    const got = received.filter(r => Number.isFinite(r.start) && Number.isFinite(r.open) && Number.isFinite(r.close) && !(options?.strict === 'drop' && bad(r)));
     let oldest = Infinity;
     for (const r of got) { rows.set(r.start, r); oldest = Math.min(oldest, r.start); }
+    const asked = limit ?? spec.limit;
+    if (spec.window) {
+      // The page answered for its whole window, bars or none (a window with none is time nobody traded), down to what the venue serves.
+      const start = end - (asked - 1) * native;
+      coveredFrom = Math.min(coveredFrom, Math.max(start, oldestServed));
+      // The next window ends at the last bar start before this one began: a whole page of bars, none left between the two.
+      end = Math.floor((start - 1) / native) * native;
+      continue;
+    }
+    if (got.length) coveredFrom = Math.min(coveredFrom, oldest);
+    // Short of what was asked: the venue holds nothing older (or, for a venue that keeps only recent bars, nothing older it serves).
+    if (received.length < asked) { stop = spec.lookback ? 'limited' : 'start'; break; }
     if (oldest >= end) break;
     end = oldest - 1;
   }
+  // The ceiling of pages met just as the last one got there.
+  if (stop === 'pages' && coveredFrom <= from) stop = 'reached';
   const u = market.unit, kept = [...rows.values()].filter(r => r.start >= from - tfMs && r.start <= to);
-  return aggregateCandles(u === 1 ? kept : kept.map(r => ({ ...r, open: r.open / u, high: r.high / u, low: r.low / u, close: r.close / u, ...(r.volume === undefined ? {} : { volume: r.volume * u }), ...(r.buy === undefined ? {} : { buy: r.buy * u }) })), tfMs, options?.buy === true);
+  return { rows: aggregateCandles(u === 1 ? kept : kept.map(r => ({ ...r, open: r.open / u, high: r.high / u, low: r.low / u, close: r.close / u, ...(r.volume === undefined ? {} : { volume: r.volume * u }), ...(r.buy === undefined ? {} : { buy: r.buy * u }) })), tfMs, options?.buy === true), coveredFrom, stop };
 }
 
 /**

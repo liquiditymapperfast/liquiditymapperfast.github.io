@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchCandles, fetchOiHistory, fetchOiSample, nativeInterval, venueOf, type Fetcher } from '../src/shared/history.ts';
+import { fetchCandles, fetchOiHistory, fetchOiSample, nativeInterval, readCandles, venueOf, type Fetcher } from '../src/shared/history.ts';
 import { aggregateCandles } from '../src/shared/series.ts';
 
 const MINUTE = 60_000, HOUR = 3_600_000;
@@ -49,9 +49,10 @@ test('a venue without a native interval for the timeframe builds it from a finer
   assert.equal(nativeInterval({ intervals: { 3_600_000: '60' } }, 60_000), null);
 });
 
-test('an unknown venue, a failing page and garbage rows give nothing instead of throwing garbage onward', async () => {
+test('an unknown venue and garbage rows give nothing instead of throwing garbage onward; a failing page or an error answer throws', async () => {
   assert.deepEqual(await fetchCandles('nowhere:BTC', HOUR, T0, T0 + HOUR, async () => []), []);
-  assert.deepEqual(await fetchCandles('binance:BTCUSDT', HOUR, T0, T0 + HOUR, async () => ({ code: -1121 })), []);
+  // An error sent as the answer fails the read (Sol, 2026-11-10): read as no candles, it was taken for the start of the history.
+  await assert.rejects(fetchCandles('binance:BTCUSDT', HOUR, T0, T0 + HOUR, async () => ({ code: -1121 })), /binance/);
   assert.deepEqual(await fetchCandles('binance:BTCUSDT', HOUR, T0, T0 + HOUR, async () => [['x', 'y', 'z']]), []);
   await assert.rejects(fetchCandles('binance:BTCUSDT', HOUR, T0, T0 + HOUR, async () => { throw new Error('blocked'); }), /blocked/);
 });
@@ -99,7 +100,7 @@ test('a misbehaving endpoint that keeps returning the same page cannot loop', as
 });
 
 test('OKX volume is read in coin, not contracts, and Coinbase rows are reordered to open, high, low, close', async () => {
-  const okx = await fetchCandles('okx:BTC-USDT-SWAP', MINUTE, T0, T0 + MINUTE, async () => ({ data: [[String(T0), '10', '12', '9', '11', '500', '5', '55000', '1']] }));
+  const okx = await fetchCandles('okx:BTC-USDT-SWAP', MINUTE, T0, T0 + MINUTE, async () => ({ code: '0', data: [[String(T0), '10', '12', '9', '11', '500', '5', '55000', '1']] }));
   assert.deepEqual(okx[0]!.slice(0, 6), [T0, 10, 12, 9, 11, 5]);
   const coinbase = await fetchCandles('coinbase:BTC-USD', MINUTE, T0, T0 + MINUTE, async () => [[T0 / 1000, 9, 12, 10, 11, 3]]);
   assert.deepEqual(coinbase[0]!.slice(0, 6), [T0, 10, 12, 9, 11, 3]);
@@ -119,7 +120,7 @@ test('Deribit candles go over its WebSocket, because its HTTP chart endpoint can
 
 test('Hyperliquid candles are asked for with a POST body', async () => {
   let seen: { method?: string; body?: string } | undefined;
-  const rows = await fetchCandles('hyperliquid:BTC-PERP', MINUTE, T0, T0 + MINUTE, async (_url, init) => { seen = init; return [{ t: T0, o: '10', h: '12', l: '9', c: '11', v: '4' }]; });
+  const rows = await fetchCandles('hyperliquid:BTC-PERP', MINUTE, T0, T0 + MINUTE, async (_url, init) => { seen = init; return [{ t: T0, o: '10', h: '12', l: '9', c: '11', v: '4' }]; }, undefined, 12, { now: T0 + MINUTE });
   assert.equal(seen?.method, 'POST');
   assert.equal(JSON.parse(seen!.body!).req.coin, 'BTC');
   assert.deepEqual(rows[0]!.slice(0, 6), [T0, 10, 12, 9, 11, 4]);
@@ -144,4 +145,50 @@ test('live open interest samples come from Binance and from the Hyperliquid asse
 test('the venue is the part of an instrument id before the colon', () => {
   assert.equal(venueOf('binance:BTCUSDT'), 'binance');
   assert.equal(venueOf('okx:BTC-USDT-SWAP'), 'okx');
+});
+
+test('a window with no candles is time nobody traded: the read walks on past quiet windows and says how far back it answered (Sol, 2026-11-10)', async () => {
+  // Coinbase answers for a window of 300 minutes: three windows with no trade, then candles again further back.
+  const asked: number[] = [];
+  const quietFrom = T0 - 900 * MINUTE, quietTo = T0;
+  const get: Fetcher = async url => {
+    const q = new URL(url).searchParams, start = Date.parse(q.get('start')!), end = Date.parse(q.get('end')!); asked.push(end);
+    const rows: unknown[] = [];
+    for (let t = Math.floor(end / MINUTE) * MINUTE; t >= start; t -= MINUTE) if (t < quietFrom || t >= quietTo) rows.push([t / 1000, 99, 101, 100, 100.5, 1]);
+    return rows;
+  };
+  const read = await readCandles('coinbase:BTC-USD', MINUTE, T0 - 1100 * MINUTE, T0 + 10 * MINUTE, get, undefined, 12, { pageSize: 1500, now: T0 + 10 * MINUTE });
+  assert.equal(read.stop, 'reached');
+  assert.ok(read.coveredFrom <= T0 - 1100 * MINUTE, 'answered for the whole window, quiet windows included');
+  assert.ok(asked.length >= 4, `${asked.length} windows`);
+  assert.ok(read.rows.some(r => r[0] < quietFrom) && !read.rows.some(r => r[0] >= quietFrom && r[0] < quietTo));
+});
+
+test('an error sent with HTTP 200 fails the page, never reads as no candles (Bybit retCode, OKX code, Bitget code, Deribit error)', async () => {
+  await assert.rejects(readCandles('bybit:BTCUSDT', MINUTE, T0, T0 + MINUTE, async () => ({ retCode: 10006, retMsg: 'Too many visits!', result: {} })), /bybit/);
+  await assert.rejects(readCandles('okx:BTC-USDT-SWAP', MINUTE, T0, T0 + MINUTE, async () => ({ code: '50011', data: [], msg: 'Too Many Requests' })), /okx/);
+  await assert.rejects(readCandles('bitget:BTCUSDT', MINUTE, T0, T0 + MINUTE, async () => ({ code: '429', msg: 'Too many requests', data: null })), /bitget/);
+  await assert.rejects(readCandles('deribit:BTC-PERPETUAL', MINUTE, T0, T0 + MINUTE, async () => ({ jsonrpc: '2.0', error: { code: 10028, message: 'too_many_requests' } })), /deribit/);
+  await assert.rejects(readCandles('binance:BTCUSDT', MINUTE, T0, T0 + MINUTE, async () => ({ code: -1003, msg: 'Too many requests' })), /binance/);
+  // A failed page after others came, asked for in part: what came, and that it failed (not the start of the history).
+  let n = 0;
+  const flaky: Fetcher = async url => { if (n++ > 0) return { retCode: 10006, result: {} }; const end = Number(new URL(url).searchParams.get('end')); return { retCode: 0, result: { list: Array.from({ length: 1000 }, (_, i) => [String(Math.floor(end / MINUTE) * MINUTE - i * MINUTE), '100', '101', '99', '100', '1']) } }; };
+  const part = await readCandles('bybit:BTCUSDT', MINUTE, T0 - 3000 * MINUTE, T0, flaky, undefined, 12, { pageSize: 1500, partial: true });
+  assert.equal(part.stop, 'failed'); assert.ok(part.rows.length > 900);
+  // Deribit's window nobody traded in: no data, not an error.
+  const quiet = await readCandles('deribit:BTC-PERPETUAL', MINUTE, T0, T0 + MINUTE, async () => ({ result: { status: 'no_data', ticks: [], open: [], high: [], low: [], close: [], volume: [] } }), undefined, 12, { now: T0 });
+  assert.deepEqual(quiet.rows, []); assert.ok(quiet.coveredFrom <= T0);
+});
+
+test('a page short of its limit is the start of the history, except on a venue that keeps only recent bars; Hyperliquid serves its newest 5,000', async () => {
+  const short = (rows: number): Fetcher => async url => { const end = Number(new URL(url).searchParams.get('endTime')); return Array.from({ length: rows }, (_, i) => [Math.floor(end / MINUTE) * MINUTE - (rows - 1 - i) * MINUTE, '100', '101', '99', '100', '1']); };
+  assert.equal((await readCandles('binance:BTCUSDT', MINUTE, T0 - 5000 * MINUTE, T0, short(40), undefined, 12, { pageSize: 1500 })).stop, 'start');
+  const bitget: Fetcher = async () => ({ code: '00000', data: [] });
+  assert.equal((await readCandles('bitget:BTCUSDT', MINUTE, T0 - 5000 * MINUTE, T0, bitget, undefined, 12, { pageSize: 1500 })).stop, 'limited', 'Bitget keeps a month of minutes');
+  let asked = 0;
+  const hl: Fetcher = async () => { asked++; return []; };
+  const read = await readCandles('hyperliquid:BTC-PERP', MINUTE, T0 - 9000 * MINUTE, T0, hl, undefined, 24, { now: T0 });
+  assert.equal(read.stop, 'limited');
+  assert.equal(read.coveredFrom, T0 - 4999 * MINUTE, 'answered for down to its oldest bar served, not further');
+  assert.equal(asked, 5, 'and not asked past it');
 });

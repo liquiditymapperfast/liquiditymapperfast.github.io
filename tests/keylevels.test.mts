@@ -166,30 +166,29 @@ test('a history that ends further back is not asked for more after the exchange 
     const end = Number(new URL(url).searchParams.get('endTime')), first = now - 5 * DAY; // listed five days ago
     asked.push(end);
     const rows: unknown[] = [];
-    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < Number(new URL(url).searchParams.get('limit') ?? 1500); t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
     return rows;
   };
   const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
   const settle = (): Promise<void> => new Promise(r => setTimeout(r, 0));
   h.ensure(target, now - 3 * DAY, HOUR, () => {}); await settle(); await settle();
   h.ensure(target, now - 9 * DAY, HOUR, () => {}); await settle(); await settle();
-  assert.equal(asked.length, 3, 'further back: one page with the two older days, one that came back empty');
-  h.ensure(target, now - 10 * DAY, HOUR, () => {}); await settle(); await settle();
-  assert.equal(asked.length, 4, 'once more, which brought nothing older');
-  for (const back of [11, 12, 20]) { h.ensure(target, now - back * DAY, HOUR, () => {}); await settle(); }
-  assert.equal(asked.length, 4, 'and never again');
+  assert.equal(asked.length, 2, 'further back: one page short of its limit, which says the history begins there');
+  assert.equal(h.exhausted, true);
+  for (const back of [10, 11, 12, 20]) { h.ensure(target, now - back * DAY, HOUR, () => {}); await settle(); }
+  assert.equal(asked.length, 2, 'and never again');
   assert.equal(h.heldFrom, now - 5 * DAY);
 });
 
 test('a history longer than one request\'s pages is read in turns until it reaches back far enough, and bars past two months are dropped', async () => {
-  // OKX: 100 bars a page, records before `after`; on quarter hours 24 pages reach 25 days.
+  // OKX: up to 300 bars a page, records before `after`; on five minutes 24 pages reach 25 days.
   let now = D0 + 10 * DAY, requests = 0;
-  const Q = 15 * 60_000;
+  const Q = 5 * 60_000;
   const get = async (url: string): Promise<unknown> => {
     requests++;
-    const after = Number(new URL(url).searchParams.get('after')), rows: unknown[] = [];
-    for (let t = Math.floor((after - 1) / Q) * Q; rows.length < 100 && t >= now - 200 * DAY; t -= Q) if (t < after) rows.push([String(t), '100', '110', '90', '100', '1', '1']);
-    return { data: rows };
+    const q = new URL(url).searchParams, after = Number(q.get('after')), limit = Number(q.get('limit')), rows: unknown[] = [];
+    for (let t = Math.floor((after - 1) / Q) * Q; rows.length < Math.min(300, limit) && t >= now - 200 * DAY; t -= Q) if (t < after) rows.push([String(t), '100', '110', '90', '100', '1', '1']);
+    return { code: '0', data: rows };
   };
   const h = new KeyLevelHistory(get, () => now), target = historyTarget('okx:BTC-USDT-SWAP', BTC)!;
   const settle = async (): Promise<void> => { for (let i = 0; i < 40; i++) await new Promise(r => setTimeout(r, 0)); };
@@ -214,7 +213,7 @@ test('the history is asked once, then further back when the chart needs it, its 
     if (fail) throw new Error('down');
     const end = Number(new URL(url).searchParams.get('endTime')), first = D0 - 30 * DAY;
     const rows: unknown[] = [];
-    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < Number(new URL(url).searchParams.get('limit') ?? 1500); t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
     asked.push([rows.length ? (rows[0] as number[])[0]! : end, end]);
     return rows;
   };
@@ -266,7 +265,7 @@ test('whether the history reaches back to a time: yes once it does, coming while
     if (down) throw new Error('down');
     const end = Number(new URL(url).searchParams.get('endTime')), first = now - 5 * DAY; // listed five days ago
     const rows: unknown[] = [];
-    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < Number(new URL(url).searchParams.get('limit') ?? 1500); t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
     return rows;
   };
   const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
@@ -301,7 +300,7 @@ test('what the history says while its answer is being told is that answer, not "
     if (down) throw new Error('down');
     const end = Number(new URL(url).searchParams.get('endTime')), first = now - 5 * DAY;
     const rows: unknown[] = [];
-    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < Number(new URL(url).searchParams.get('limit') ?? 1500); t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
     return rows;
   };
   const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
@@ -323,7 +322,7 @@ test('a request started from inside an answer\'s callback is the only one out: t
     inFlight--;
     const end = Number(new URL(url).searchParams.get('endTime')), first = now - 30 * DAY;
     const rows: unknown[] = [];
-    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < Number(new URL(url).searchParams.get('limit') ?? 1500); t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
     return rows;
   };
   const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
@@ -334,4 +333,42 @@ test('a request started from inside an answer\'s callback is the only one out: t
   await wait(40);
   assert.equal(most, 1, 'never two requests out at once');
   assert.ok(asked >= 2);
+});
+
+test('a stretch nobody traded in is known once a read has answered for it: lines reach into it, and it is not asked again (Sol, 2026-11-10)', async () => {
+  // Coinbase answers for windows of 300 hours; the market did not trade between 30 and 10 days back.
+  const now = D0 + 40 * DAY;
+  let asked = 0;
+  const get = async (url: string): Promise<unknown> => {
+    asked++;
+    const q = new URL(url).searchParams, start = Date.parse(q.get('start')!), end = Date.parse(q.get('end')!), rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= start; t -= HOUR) if (t >= now - 10 * DAY || t < now - 30 * DAY) rows.push([t / 1000, 99, 101, 100, 100.5, 1]);
+    return rows;
+  };
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('coinbase:BTC-USD', BTC)!;
+  const settle = async (): Promise<void> => { for (let i = 0; i < 40; i++) await new Promise(r => setTimeout(r, 0)); };
+  h.ensure(target, now - 5 * DAY, HOUR, () => {}); await settle();
+  h.ensure(target, now - 20 * DAY, HOUR, () => {}); await settle();
+  assert.equal(h.heldFrom, now - 10 * DAY, 'no bar before the quiet stretch was asked for');
+  assert.ok(h.knownFrom <= now - 20 * DAY, 'but the stretch is known');
+  assert.equal(h.reach(now - 20 * DAY), 'yes');
+  assert.equal(h.exhausted, false, 'quiet is not the start of the history');
+  const before = asked; h.ensure(target, now - 20 * DAY, HOUR, () => {}); await settle();
+  assert.equal(asked, before, 'not asked again');
+});
+
+test('an error answered with HTTP 200 is a failed read: it never says the history begins there, and it is tried again a minute later', async () => {
+  let now = D0 + 10 * DAY, limited = false;
+  const get = async (url: string): Promise<unknown> => {
+    const q = new URL(url).searchParams, end = Number(q.get('end')), limit = Number(q.get('limit'));
+    if (limited) return { retCode: 10006, retMsg: 'Too many visits!', result: {} };
+    return { retCode: 0, result: { list: Array.from({ length: limit }, (_, i) => [String(Math.floor(end / HOUR) * HOUR - i * HOUR), '100', '101', '99', '100', '1']) } };
+  };
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('bybit:BTCUSDT', BTC)!;
+  const settle = async (): Promise<void> => { for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0)); };
+  h.ensure(target, now - 2 * DAY, HOUR, () => {}); await settle();
+  limited = true; h.ensure(target, now - 8 * DAY, HOUR, () => {}); await settle();
+  assert.equal(h.exhausted, false); assert.equal(h.reach(now - 8 * DAY), 'never', 'not within the minute');
+  limited = false; now += 61_000; h.ensure(target, now - 8 * DAY, HOUR, () => {}); await settle();
+  assert.equal(h.reach(now - 8 * DAY), 'yes', 'read once the venue answers again');
 });

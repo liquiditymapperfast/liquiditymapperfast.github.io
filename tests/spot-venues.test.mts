@@ -70,11 +70,11 @@ test('the server opens no second socket for the spot venues: their connector ven
 
 test('spot candles: OKX spot volume is the coin column, and Bitget spot names its intervals its own way', async () => {
   const asked: string[] = [];
-  const okx = await fetchCandles('okxspot:BTC-USDT', 60_000, 0, 120_000, async url => { asked.push(url); return { data: [['60000', '1', '2', '0.5', '1.5', '3.25', '260000', '260000', '1']] }; });
+  const okx = await fetchCandles('okxspot:BTC-USDT', 60_000, 0, 120_000, async url => { asked.push(url); return { code: '0', data: [['60000', '1', '2', '0.5', '1.5', '3.25', '260000', '260000', '1']] }; });
   assert.equal(okx[0]?.[5], 3.25, 'BTC, not USDT');
   assert.match(asked[0]!, /instId=BTC-USDT&/);
-  await fetchCandles('bitgetspot:BTCUSDT', 60_000, 0, 120_000, async url => { asked.push(url); return { data: [] }; });
+  await fetchCandles('bitgetspot:BTCUSDT', 60_000, 0, 120_000, async url => { asked.push(url); return { code: '00000', data: [] }; });
   assert.match(asked.find(u => u.includes('bitget')) ?? '', /spot\/market\/candles\?symbol=BTCUSDT&granularity=1min&/);
-  await fetchCandles('bybitspot:BTCUSDT', 60_000, 0, 120_000, async url => { asked.push(url); return { result: { list: [] } }; });
+  await fetchCandles('bybitspot:BTCUSDT', 60_000, 0, 120_000, async url => { asked.push(url); return { retCode: 0, result: { list: [] } }; });
   assert.match(asked.find(u => u.includes('bybit')) ?? '', /category=spot&symbol=BTCUSDT&interval=1&/);
 });

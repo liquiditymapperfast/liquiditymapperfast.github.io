@@ -1,4 +1,4 @@
-import { CANDLE_VENUES, fetchCandles, type Fetcher } from '../../shared/history.ts';
+import { CANDLE_VENUES, readCandles, type Fetcher } from '../../shared/history.ts';
 import { instrumentIdFor, type Coin, type Listing, type MarketVenue } from '../../shared/coins.ts';
 import type { CandleRow } from '../store.ts';
 import { MAX_BACK_MS } from './levels.ts';
@@ -17,7 +17,7 @@ const HOUR = 3_600_000, DAY = 86_400_000;
 /** How often the newest bars are asked again by default (the developing levels move with the chart's own candles in between). */
 const REFRESH_MS = 5 * 60_000;
 const RETRY_MS = 60_000;
-/** Pages one request may walk back: OKX gives 100 bars a page, so two months of hours take 15. */
+/** Pages one request may walk back: Coinbase gives 300 bars a page, so two months of half hours take 10. */
 const MAX_PAGES = 24;
 /** The markets tried, in this order, when the chart's own history cannot be read: the most traded first. */
 const FALLBACK: readonly MarketVenue[] = ['binance', 'bybit', 'okx', 'hyperliquid', 'bitget', 'binancespot', 'coinbase', 'bybitspot', 'okxspot', 'bitgetspot', 'deribit'];
@@ -69,12 +69,17 @@ export class KeyLevelHistory {
   #id = '';
   #barMs = HOUR;
   #bars: CandleRow[] = [];
-  /** How far back the history is known to go, or was asked for and is not there: what is not asked again. */
-  #askedFrom = Infinity;
+  /**
+   * How far back the reads have answered for, bars or none (`CandleRead.coveredFrom`): before the first bar there can be time nobody traded,
+   * which a venue answering for a window says. What is not asked again.
+   */
+  #coveredFrom = Infinity;
   /** The time the last successful request of the newest bars reached. */
   #heldTo = -Infinity;
-  /** Set when asking further back brought nothing older: the exchange's history begins there. */
+  /** Set when a page short of its limit said the venue has nothing older: the exchange's history begins there. */
   #exhausted = false;
+  /** Set when the venue serves no older bars to a page (Bitget's month of minutes, Hyperliquid's newest 5,000): neither a start nor a gap. */
+  #limited = false;
   #refreshedAt = 0;
   #pending = false;
   /** Counts the requests made, so a request settling clears only its own `#pending`, never the one a callback has started since. */
@@ -100,16 +105,24 @@ export class KeyLevelHistory {
   get heldFrom(): number { return this.#bars[0]?.[0] ?? Infinity; }
   /** Up to when the bars held are known: the time the last successful request of the newest ones was made. */
   get heldTo(): number { return this.#heldTo; }
-  /** Whether asking further back brought nothing older: the exchange's history begins where the bars held do. */
+  /** Whether a page short of its limit said the venue has nothing older: the exchange's history begins where the bars held do. */
   get exhausted(): boolean { return this.#exhausted; }
+  /** Whether the venue serves no older bars to a page: the history cannot be read further back, though the market traded before. */
+  get limited(): boolean { return this.#limited; }
+  /**
+   * Where the bars are known from: the first bar, or before it as far back as the reads answered for time nobody traded in (Infinity while
+   * nothing is held). A line that starts at or after it is worked out over every bar there was.
+   */
+  get knownFrom(): number { return this.#bars.length ? Math.min(this.#coveredFrom, this.heldFrom) : Infinity; }
 
   /**
-   * Whether the bars held reach back to `from`: 'yes'; 'coming' when they do not yet and may (a request is out, or one can still be asked); 'never'
-   * when they will not (the exchange's history begins later, nothing could be read at all, or the next try is a minute off).
+   * Whether the bars held reach back to `from` (`knownFrom`): 'yes'; 'coming' when they do not yet and may (a request is out, or one can still be
+   * asked); 'never' when they will not (the exchange's history begins later or cannot be read further back, nothing could be read at all, or
+   * the next try is a minute off).
    */
   reach(from: number): 'yes' | 'coming' | 'never' {
-    if (this.#bars.length && this.heldFrom <= from) return 'yes';
-    if (this.state === 'unavailable' || this.#exhausted) return 'never';
+    if (this.knownFrom <= from) return 'yes';
+    if (this.state === 'unavailable' || this.#exhausted || this.#limited) return 'never';
     if (this.#pending || this.state === 'loading' || this.state === 'idle') return 'coming';
     return this.now() < this.#retryAt ? 'never' : 'coming';
   }
@@ -123,27 +136,30 @@ export class KeyLevelHistory {
     if (this.#pending || now < this.#retryAt) return;
     const want = Math.floor(from / DAY) * DAY;
     let a: number, b: number, forward = false;
-    if (!this.#bars.length) { a = want; b = now; forward = true; }
-    else if (want < this.#askedFrom && !this.#exhausted) { a = want; b = this.#bars[0]![0]; }
+    const first = !this.#bars.length;
+    if (first) { a = want; b = now; forward = true; }
+    else if (want < this.knownFrom && !this.#exhausted && !this.#limited) { a = want; b = this.knownFrom; }
     else if (now - this.#refreshedAt >= this.refreshMs) { a = this.#bars[this.#bars.length - 1]![0] - 2 * barMs; b = now; forward = true; }
     else return;
-    const asked = this.#key, before = this.heldFrom;
+    const asked = this.#key, before = this.knownFrom;
     this.#pending = true; if (!this.#bars.length) this.state = 'loading';
     const ask = ++this.#asks;
     // A page that fails after others came keeps them, the next call asking on back from where they reach: on the first load and the walks
     // further back, never on a refresh of the newest bars, where what came could lie apart from what is held and leave a hole.
     const partial = !forward || !this.#bars.length;
-    void fetchCandles(target.id, barMs, a, b, this.get, target.listing, MAX_PAGES, { pageSize: 1500, partial, buy: this.withBuy }).then(rows => {
+    void readCandles(target.id, barMs, a, b, this.get, target.listing, MAX_PAGES, { pageSize: 1500, partial, buy: this.withBuy, now, strict: 'drop' }).then(read => {
       if (asked !== this.#key) return;
+      const rows = read.rows;
       if (forward) this.#refreshedAt = this.now();
       if (rows.length) { this.#merge(rows as CandleRow[]); if (forward) this.#heldTo = Math.max(this.#heldTo, b); }
       else if (!this.#bars.length) this.#retryAt = this.now() + RETRY_MS;
-      // Reached what was asked: done back to there. Stopped short with older bars than before (the page ceiling, or a short history): the
-      // next call asks on from where it got to. Nothing older at all: the exchange's history begins here.
-      const progress = this.heldFrom < before;
-      if (this.heldFrom <= a + barMs) this.#askedFrom = Math.min(this.#askedFrom, a);
-      else if (progress) this.#askedFrom = Math.min(this.#askedFrom, this.heldFrom);
-      else if (!forward || this.#bars.length) this.#exhausted = true;
+      // The first load and the walks back answer for time back to where their pages reached, bars or none; the next call asks on from there.
+      // A page short of its limit: the exchange's history begins here; a venue that serves nothing older: as far as it can be read. A walk
+      // that got no further (the page ceiling with nothing new, a page that failed first) is not asked again for a minute.
+      if (!forward || first) this.#coveredFrom = Math.max(Math.min(this.#coveredFrom, read.coveredFrom), this.now() - this.maxBackMs - DAY);
+      if (read.stop === 'start') this.#exhausted = true;
+      if (read.stop === 'limited') this.#limited = true;
+      if (!forward && !(this.knownFrom < before) && read.stop !== 'reached' && read.stop !== 'start' && read.stop !== 'limited') this.#retryAt = this.now() + RETRY_MS;
       this.state = this.#bars.length ? 'ready' : 'unavailable';
       // Settled before it is said: what `onLoad` reads (`reach`) is then the answer's, not "a request is out".
       this.#pending = false;
@@ -162,11 +178,13 @@ export class KeyLevelHistory {
     for (const r of rows) if (Number.isFinite(r[0]) && r[2] >= r[3]) byStart.set(r[0], r);
     // A page open for weeks would otherwise keep every bar it ever read: none older than the levels can reach is kept.
     this.#bars = [...byStart.values()].filter(r => r[0] >= oldest).sort((x, y) => x[0] - y[0]);
+    // Nor is what was read of the time before: the bars of it are gone.
+    this.#coveredFrom = Math.max(this.#coveredFrom, oldest);
     this.version++;
   }
 
   #reset(key: string, id: string, barMs: number): void {
-    this.#key = key; this.#id = id; this.#barMs = barMs; this.#bars = []; this.#askedFrom = Infinity; this.#heldTo = -Infinity; this.#exhausted = false;
+    this.#key = key; this.#id = id; this.#barMs = barMs; this.#bars = []; this.#coveredFrom = Infinity; this.#heldTo = -Infinity; this.#exhausted = false; this.#limited = false;
     this.#refreshedAt = 0; this.#pending = false; this.#retryAt = 0; this.state = id ? 'loading' : 'idle';
   }
 }

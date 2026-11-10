@@ -6,6 +6,7 @@ import { installV2 } from '../src/server/v2/api.mts';
 import { HistoryStore } from '../src/server/history.mts';
 import { QuotaLedger } from '../src/core/quota.mts';
 import { levelsOf, pointOfControl, valueArea } from '../src/shared/profile.ts';
+import type { CandleRow } from '../src/app/store.ts';
 import { FootprintRecorder, parseProfile, parseValueAreas } from '../src/shared/footprint.ts';
 import { dayWindows, fromWall, lastWindows, offsetMs, sessionWindows, weekWindows, type SessionDef } from '../src/app/traded/sessions.ts';
 import { TRADED_DEFAULTS, chartKinds, linesCount, linesSource, readTraded, recordedCount, resolveZone } from '../src/app/traded/settings.ts';
@@ -462,4 +463,13 @@ test('the estimate in flat arrays gives the row by row estimate: the same rows, 
     assert.deepEqual(fast.levels, slow.levels);
     assert.equal(fast.covered, slow.covered);
   }
+});
+
+test('the two candle estimates read the same value area on a near tie, whatever their last digits (Sol, 2026-11-10)', () => {
+  // Rows that hold the same volume to the last digit or two: compared exactly, the value area low was 105 one way and 104 the other.
+  const BAR = 300_000, tuples: [number, number, number][] = [[103, 105, 1], [105, 111, 1.8], [106, 108, 1.8], [104, 107, 0.6], [105, 109, 1.6]];
+  const bars = tuples.map(([low, high, usd], i): CandleRow => { const mid = (low + high) / 2; return [i * BAR, mid, high, low, mid, usd / mid]; });
+  const fast = candleLevels(bars, 0, 5 * BAR, BAR, 1, 0.7, 5 * BAR), slow = candleLevelsByRow(bars, 0, 5 * BAR, BAR, 1, 0.7, 5 * BAR);
+  assert.deepEqual(fast.levels, slow.levels);
+  assert.deepEqual(slow.levels, { poc: 106.5, val: 104, vah: 109 });
 });

@@ -8,8 +8,15 @@
  */
 
 /**
- * The row with the most volume. Rows that tie go to the one nearest the middle of the rows that traded (the convention of the profile tools),
- * and of two equally near the lower. -1 when nothing traded.
+ * Whether two volumes are the same, to a part in 10^9: the same trades added up in another order differ in their last digits (the candle
+ * estimate's two ways, `traded/levels.ts`, by 2e-16 on a row), and an exact comparison would move the value area or the point of control on
+ * that alone (Sol, 2026-11-10: a value area low of 104 one way and 105 the other).
+ */
+const same = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9 * Math.max(Math.abs(a), Math.abs(b));
+
+/**
+ * The row with the most volume. Rows that tie (`same`) go to the one nearest the middle of the rows that traded (the convention of the profile
+ * tools), and of two equally near the lower. -1 when nothing traded.
  */
 export function pointOfControl(volumes: ArrayLike<number>): number {
   let max = 0, first = -1, last = -1;
@@ -17,13 +24,13 @@ export function pointOfControl(volumes: ArrayLike<number>): number {
   if (!(max > 0)) return -1;
   const middle = (first + last) / 2;
   let best = -1;
-  for (let i = first; i <= last; i++) if (volumes[i] === max && (best < 0 || Math.abs(i - middle) < Math.abs(best - middle))) best = i;
+  for (let i = first; i <= last; i++) if (same(volumes[i]!, max) && (best < 0 || Math.abs(i - middle) < Math.abs(best - middle))) best = i;
   return best;
 }
 
 /**
- * The value area: from the point of control, the next row above or below is added, whichever holds more (both when they hold the same), until
- * the rows taken hold `share` of all the volume. Rows are indices into `volumes`; null when nothing traded.
+ * The value area: from the point of control, the next row above or below is added, whichever holds more (both when they hold the same, to a
+ * part in 10^9), until the rows taken hold `share` of all the volume. Rows are indices into `volumes`; null when nothing traded.
  */
 export function valueArea(volumes: ArrayLike<number>, share: number): { poc: number; lo: number; hi: number } | null {
   const poc = pointOfControl(volumes);
@@ -31,13 +38,13 @@ export function valueArea(volumes: ArrayLike<number>, share: number): { poc: num
   let total = 0; for (let i = 0; i < volumes.length; i++) total += volumes[i]!;
   const target = total * Math.min(1, Math.max(0, share));
   let lo = poc, hi = poc, sum = volumes[poc]!;
-  while (sum < target) {
+  while (sum < target && !same(sum, target)) {
     // A side with no row left reads as -1, so the other is always the one taken.
     const below = lo > 0 ? volumes[lo - 1]! : -1, above = hi < volumes.length - 1 ? volumes[hi + 1]! : -1;
     if (below < 0 && above < 0) break;
-    if (above > below) { hi++; sum += above; }
-    else if (below > above) { lo--; sum += below; }
-    else { hi++; lo--; sum += above + below; }
+    if (same(above, below)) { hi++; lo--; sum += above + below; }
+    else if (above > below) { hi++; sum += above; }
+    else { lo--; sum += below; }
   }
   return { poc, lo, hi };
 }
