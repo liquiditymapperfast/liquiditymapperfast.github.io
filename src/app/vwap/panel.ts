@@ -47,7 +47,7 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
     ...more.map(days => el('button', { type: 'button', textContent: `${days}D`, tip: tn(days, '{n} day up to now', '{n} days up to now'), onclick: () => { store.set({ vwap: { ...withRolling(store.state.vwap, days, true), on: true } }); rebuild(); } }))));
   if (s.on) for (const days of s.rolling) {
     const reach = rollingReach(days), line = vwapCode({ kind: 'rolling', n: days });
-    if (reach === 'short') body.append(note(t('{line}: the exchange\'s history of this market is shorter than its window, so it has no line.', { line })));
+    if (reach === 'short') body.append(note(t('{line}: the history this page could read of this market is shorter than its window, so it has no line.', { line })));
     else if (reach === 'failed') body.append(note(t('{line}: its candles could not be read just now; trying again in a minute.', { line })));
   }
   body.append(

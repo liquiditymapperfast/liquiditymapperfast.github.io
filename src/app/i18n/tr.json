@@ -2206,14 +2206,15 @@
  "Rolling VWAP": "Kayan VWAP",
  "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "Her ana kadar son günlerin ortalaması: zaman geçtikçe en eski işlemler ondan çıkar. Her zaman diliminde aynıdır.",
  "Remove this window": "Bu pencereyi kaldır",
- "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}: bu piyasanın borsadaki geçmişi penceresinden kısa, bu yüzden çizgisi yok.",
  "{line}: its candles could not be read just now; trying again in a minute.": "{line}: mumları şu an okunamadı; bir dakika sonra yeniden denenecek.",
  "RVWAP": "RVWAP",
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "Piyasanın işlem gördüğü, hacimle ağırlıklandırılmış ortalama fiyat: bir seans başladığından beri, son günlerde ya da seçtiğiniz bir andan beri; alıcılarla satıcıların ortalamada nerede işlem yaptığı.",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "Kayan VWAP (RVWAP), her ana kadar son günün, haftanın, ayın, çeyreğin, yarım yılın ya da yılın ortalamasıdır. Başlangıcı zamanla ilerler, böylece en eski işlemler çıkar; seans ya da sabitleme ise başlangıcından beri her işlemi tutar. Kendi çubuklarından hesaplanır (bir gün için beş dakikalık, bir yıl için dört saatlik çubuklara kadar), en yenileri her dakika yeniden okunur; bu yüzden her zaman diliminde aynıdır ve yalnızca geçmişin tam bir pencereyi kapsadığı yerde çizilir.",
- "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Satır {line}: {n} mumluk bir pencere burada hiç dolmaz, çünkü grafik bu betiğe {have} mum veriyor. Daha fazlası için uzaklaştırın, en fazla {max}, ya da daha uzun bir zaman dilimi seçin.",
  "{n} days up to now": {
   "one": "şimdiye kadar {n} gün",
   "other": "şimdiye kadar {n} gün"
- }
+ },
+ "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: bu sayfanın okuyabildiği piyasa geçmişi penceresinden kısa, bu yüzden çizgisi yok.",
+ "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz, çünkü grafik bu betiğe {have} veriyor. Daha fazlası için uzaklaştırın, en fazla {max}, ya da daha uzun bir zaman dilimi seçin.",
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Satır {line}: {n} uzunluğunda bir pencere burada hiç dolmaz: bir betik grafiğin zaman diliminden en fazla {max} okur, bu grafik ise ona {have} veriyor."
 }

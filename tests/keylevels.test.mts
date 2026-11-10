@@ -293,3 +293,23 @@ test('whether the history reaches back to a time: yes once it does, coming while
   assert.equal(part.reach(now - 4.5 * DAY), 'never', 'a failed try waits a minute');
   now += 61_000; assert.equal(part.reach(now - 4.5 * DAY), 'coming', 'then it is asked again');
 });
+
+test('what the history says while its answer is being told is that answer, not "a request is out"', async () => {
+  const now = D0 + 10 * DAY;
+  let down = false;
+  const get = async (url: string): Promise<unknown> => {
+    if (down) throw new Error('down');
+    const end = Number(new URL(url).searchParams.get('endTime')), first = now - 5 * DAY;
+    const rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= first && rows.length < 1500; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    return rows;
+  };
+  const h = new KeyLevelHistory(get, () => now), target = historyTarget('binance:BTCUSDT', BTC)!;
+  const settle = (): Promise<void> => new Promise(r => setTimeout(r, 0));
+  let said = '';
+  h.ensure(target, now - 3 * DAY, HOUR, () => { said = h.reach(now - 3 * DAY); }); await settle(); await settle();
+  assert.equal(said, 'yes');
+  down = true;
+  h.ensure(target, now - 4.5 * DAY, HOUR, () => { said = h.reach(now - 4.5 * DAY); }); await settle(); await settle();
+  assert.equal(said, 'never', 'told after a failure: the minute\'s wait, which a panel shows at once');
+});

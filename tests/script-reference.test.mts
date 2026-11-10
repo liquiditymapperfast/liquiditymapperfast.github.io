@@ -41,8 +41,9 @@ test("each error's example meets that error, and its fix runs cleanly", () => {
   assert.ok(ERRORS.every(e => errorSentence(e.code) !== e.code), 'each has its sentence');
   assert.ok(WARNINGS.length === 9);
   // A window the chart's candles cannot fill says where, how long and how many candles there are (the reference shows X for each).
-  assert.equal(warningSentence('long-window', '36|8760|994'), 'Line 36: a window of 8,760 candles never fills here, as the chart gives this script 994. Zoom out for more, up to 2,000, or choose a longer timeframe.');
-  assert.match(warningSentence('long-window'), /^Line X: a window of X candles never fills here, as the chart gives this script X\./);
+  assert.equal(warningSentence('long-window', '3|720|501'), 'Line 3: a window of 720 candles never fills here, as the chart gives this script 501 candles. Zoom out for more, up to 2,000 candles, or choose a longer timeframe.');
+  assert.equal(warningSentence('long-window', '36|8760|994'), 'Line 36: a window of 8,760 candles never fills here: a script reads at most 2,000 candles of the chart\'s timeframe, and this chart gives it 994 candles.', 'no zoom fills a window longer than a script reads');
+  assert.match(warningSentence('long-window'), /^Line X: a window of X never fills here, as the chart gives this script X\./);
 });
 
 test('what the rules say the interpreter does, it does', () => {

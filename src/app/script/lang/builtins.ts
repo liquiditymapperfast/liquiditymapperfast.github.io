@@ -30,8 +30,10 @@ export function makeInstance(): Instance {
 export interface Candle { open: number; high: number; low: number; close: number }
 export type Builtin = (inst: Instance, args: Value[], named: Record<string, Value> | null, candle: Candle) => Value;
 
+/** The longest window a function counts back over, in candles: a longer one asked is this one. */
+export const MAX_WINDOW = 10_000;
 /** A window's length: a missing or unreadable one is 1, the current value alone, as the scripts' language takes it (`sma(x)` is `x`). */
-const len = (v: Value, fallback = 1): number => { const n = Math.floor(num(v)); return Number.isFinite(n) && n >= 1 ? Math.min(n, 10_000) : fallback; };
+const len = (v: Value, fallback = 1): number => { const n = Math.floor(num(v)); return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_WINDOW) : fallback; };
 const finite = (v: number): boolean => Number.isFinite(v);
 
 /**

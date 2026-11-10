@@ -142,11 +142,14 @@ export class KeyLevelHistory {
       else if (progress) this.#askedFrom = Math.min(this.#askedFrom, this.heldFrom);
       else if (!forward || this.#bars.length) this.#exhausted = true;
       this.state = this.#bars.length ? 'ready' : 'unavailable';
+      // Settled before it is said: what `onLoad` reads (`reach`) is then the answer's, not "a request is out".
+      this.#pending = false;
       onLoad();
     }, () => {
       if (asked !== this.#key) return;
       this.#retryAt = this.now() + RETRY_MS;
       this.state = this.#bars.length ? 'ready' : 'unavailable';
+      this.#pending = false;
       onLoad();
     }).finally(() => { if (asked === this.#key) this.#pending = false; });
   }

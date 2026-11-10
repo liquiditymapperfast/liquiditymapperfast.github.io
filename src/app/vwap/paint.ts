@@ -24,9 +24,9 @@ export interface VwapLine {
 
 /**
  * Tag and label order against the key levels' (0 to 11, earlier periods' from 20): the session VWAP with the previous day's levels, anchors
- * after the opens, rolling VWAPs after the anchors (the shorter window first).
+ * after the opens, rolling VWAPs after the day's levels (there can be six of them; the shorter window first), before earlier periods' levels.
  */
-const RANK = { session: 1.5, anchor: 6.5, rolling: 7.5, whaleBuy: 9, whaleSell: 9 } as const;
+const RANK = { session: 1.5, anchor: 6.5, rolling: 11.5, whaleBuy: 9, whaleSell: 9 } as const;
 const rankOf = (line: Pick<VwapLine, 'kind' | 'n'>): number => line.kind === 'rolling' ? RANK.rolling + line.n / 1_000 : RANK[line.kind];
 
 export const vwapCode = (line: Pick<VwapLine, 'kind' | 'n'>): string => line.kind === 'session' ? t('VWAP') : line.kind === 'anchor' ? `${t('AVWAP')} ${line.n}`
@@ -43,13 +43,27 @@ export function paintVwap(ctx: CanvasRenderingContext2D, lines: readonly VwapLin
   const tags: KeyTag[] = [];
   if (!lines.length) return tags;
   const halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)';
+  // At most four points a pixel column (where it enters, its lowest and highest, where it leaves): zoomed out, a rolling line can have
+  // thousands of points to a column (six windows over months), which cost the stroke and draw nothing more.
   const path = (pts: readonly VwapPoint[], value: (q: VwapPoint) => number): void => {
     ctx.beginPath();
-    let started = false;
+    let started = false, col = NaN, x0 = 0, yIn = 0, yLo = 0, yHi = 0, yOut = 0;
+    const put = (x: number, y: number): void => { if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; } };
+    const flush = (): void => {
+      if (Number.isNaN(col)) return;
+      put(x0, yIn);
+      if (yLo < Math.min(yIn, yOut)) put(x0, yLo);
+      if (yHi > Math.max(yIn, yOut)) put(x0, yHi);
+      if (yOut !== yIn) put(x0, yOut);
+    };
     for (const q of pts) {
-      const x = v.xOf(q.t, pw), y = v.yOf(value(q), ph);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      const x = v.xOf(q.t, pw), y = v.yOf(value(q), ph), c = Math.floor(x);
+      if (c !== col) { flush(); col = c; x0 = x; yIn = yLo = yHi = yOut = y; continue; }
+      if (y < yLo) yLo = y;
+      if (y > yHi) yHi = y;
+      yOut = y;
     }
+    flush();
   };
   const stroke = (pts: readonly VwapPoint[], value: (q: VwapPoint) => number, width: number, dash: number[], alpha: number, color: string = p.vwap): void => {
     ctx.globalAlpha = alpha; ctx.setLineDash(dash);

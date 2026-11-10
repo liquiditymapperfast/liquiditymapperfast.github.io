@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ROLLING_MAX_BARS, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapSeries } from '../src/app/vwap/vwap.ts';
 import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withRolling, withoutAnchor } from '../src/app/vwap/settings.ts';
-import { cutForReplay, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
+import { cutForReplay, paintVwap, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
+import { View } from '../src/app/view.ts';
 import { paintKeyTags, placeKeyTags, type KeyTag } from '../src/app/keylevels/paint.ts';
 import type { Palette } from '../src/app/theme.ts';
 import { MAX_BACK_MS } from '../src/app/keylevels/levels.ts';
@@ -191,4 +192,30 @@ test('a rolling window\'s history is asked for a whole window before the view, n
   const far = rollingFrom(1, now - 400 * DAY, now, now, real), keeps = 5 * MIN * ROLLING_MAX_BARS;
   assert.ok(far > real - keeps + DAY && far <= real - keeps + DAY + 5 * MIN, 'bounded a day and a bar inside what the history keeps');
   assert.equal(far % (5 * MIN), 0, 'on a bar');
+});
+
+test('a thin market\'s window is still a point at the time it was read when no bar is under way', () => {
+  const bars = Array.from({ length: 10 }, (_, k) => bar(D0 + k * HOUR, 101 + k, 99 + k, 100 + k, 1));
+  const asOf = D0 + 11 * HOUR + 30 * MIN, pts = rollingSeries(bars, HOUR, 3 * HOUR, asOf), last = pts[pts.length - 1]!;
+  assert.equal(last.t, asOf, 'nobody traded since the last bar ended at 10:00');
+  assert.ok(close(last.vwap, 109), 'bars starting at or after 08:30: the 09:00 bar alone');
+  assert.equal(pts[pts.length - 2]!.t, D0 + 10 * HOUR);
+  assert.equal(rollingSeries(bars, HOUR, 3 * HOUR, D0 + 20 * HOUR).at(-1)!.t, D0 + 10 * HOUR, 'a window left empty by then has no point');
+});
+
+test('the view\'s start counts from its hour, as the map keeps its plan for the hour', () => {
+  const now = D0 + 500 * DAY;
+  assert.equal(rollingFrom(7, now - 10 * DAY + 25 * MIN, now, now, now), now - 17 * DAY, 'a view moved back inside the hour keeps its whole window');
+});
+
+test('a line with thousands of points to a pixel column is drawn with a few, and rolling tags rank after the day\'s levels', () => {
+  let moves = 0, segments = 0;
+  const ctx = new Proxy({}, { get: (_t, k) => k === 'lineTo' ? () => { segments++; } : k === 'moveTo' ? () => { moves++; } : k === 'measureText' ? () => ({ width: 40 }) : () => {}, set: () => true }) as CanvasRenderingContext2D;
+  const view = new View({ t0: D0, t1: D0 + 100 * DAY, p0: 90, p1: 110 });
+  const points = Array.from({ length: 20_000 }, (_, k) => ({ t: D0 + k * 7 * MIN, vwap: 100 + Math.sin(k / 50), sd: 0 }));
+  const palette = { dark: false, vwap: '#0891b2', bid: '#12a150', ask: '#e0115f', panel: '#ffffff' } as Palette;
+  const tags = paintVwap(ctx, [{ kind: 'rolling', n: 30, points, live: true, key: 'rolling|30' }], view, 200, 300, palette, { ...VWAP_DEFAULTS, on: true });
+  assert.equal(moves, 1);
+  assert.ok(segments <= 4 * 202, `${segments} segments across 200 px, not 20,000`);
+  assert.equal(tags[0]!.rank, 11.5 + 30 / 1000, 'after the day\'s levels (8 to 11), before earlier periods\' (20 on)');
 });

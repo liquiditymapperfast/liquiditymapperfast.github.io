@@ -4,7 +4,7 @@ import { Interpreter, charge, type Budget, type Host } from './interpreter.ts';
 import { declaredNames, numberSites } from './walk.ts';
 import { DEPTH_FUNCTIONS, MAX_PLOTS, PLOTS, RUN_MS, STEPS_PER_CANDLE, analyze, literal, optionTable, sourceFilter, type Analysis } from './analysis.ts';
 import { DateValue, HostObject, NativeFunction, ScriptRuntimeError, isPlain, num, own, plain, text, toData, truthy, type Value } from './values.ts';
-import { BUILTINS, makeInstance, type Candle, type Instance } from './builtins.ts';
+import { BUILTINS, MAX_WINDOW, makeInstance, type Candle, type Instance } from './builtins.ts';
 import { COLOR_NAMES, interpolateColors, rgb, safeColor } from './colors.ts';
 import { ALERT_SOUNDS, ALERT_TEXT, MARK_TEXT, MARK_TIP, MAX_ALERTS, PLOT_FIELDS, type AlertOut, type AlertSound, type PlotKind, type PlotOut, type ScriptResult } from '../protocol.ts';
 import { DEFAULT_SCRIPT_THEME, filterKey, type BarInputs, type SourceFilter, type SourceInputs } from '../inputs.ts';
@@ -278,7 +278,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       const builtin = own(BUILTINS, name);
       if (builtin) {
         const k = own(WINDOW_ARG, name);
-        if (k !== undefined) { const w = Math.floor(num(args[k])); if (w > widest.n) widest = { n: w, line: node.p.line }; }
+        // The window as the function takes it (at most MAX_WINDOW candles).
+        if (k !== undefined) { const w = Math.min(MAX_WINDOW, Math.floor(num(args[k]))); if (w > widest.n) widest = { n: w, line: node.p.line }; }
         const inst = instanceAt(site);
         if (!inst.touched) { inst.touched = true; touched.push(inst); }
         return builtin(inst, args, named, candle);
@@ -438,7 +439,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
   const interp = new Interpreter(a.program, host, budget);
 
   /** What the script held after candle `at` of `inputs` had closed, and what it had drawn by then. */
-  interface Snapshot { at: number; inputs: BarInputs; kept: Map<string, { v: Value; past: Value[] }>; states: Map<number, unknown>; fields: Map<number, Record<string, Float64Array>>; colors: Map<number, string[] | null>; texts: Map<number, [string[] | null, string[] | null]>; candleColors: string[]; styles: Map<number, { title: string; style: Record<string, OptionValue> }>; styled: Set<number> }
+  interface Snapshot { at: number; inputs: BarInputs; kept: Map<string, { v: Value; past: Value[] }>; states: Map<number, unknown>; fields: Map<number, Record<string, Float64Array>>; colors: Map<number, string[] | null>; texts: Map<number, [string[] | null, string[] | null]>; candleColors: string[]; styles: Map<number, { title: string; style: Record<string, OptionValue> }>; styled: Set<number>; widest: { n: number; line: number } }
   let snap: Snapshot | null = null;
   /**
    * Whether what the script holds can be put back exactly: kept names holding plain values (numbers, texts, true/false, dates) and options it
@@ -463,6 +464,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
     candleColors,
     styles: new Map([...plots].map(([site, p]) => [site, { title: p.title, style: JSON.parse(JSON.stringify(p.style)) as Record<string, OptionValue> }])),
     styled: new Set(styled),
+    widest: { ...widest },
   });
   /** Put back what the script held after candle `snap.at`. */
   const restore = (from: Snapshot): void => {
@@ -471,6 +473,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
     // A plot first styled on a candle after the snapshot is styled again by the run that takes that candle over.
     styled.clear(); for (const site of from.styled) styled.add(site);
     for (const [site, p] of plots) { const was = from.styles.get(site); if (was) { p.title = was.title; p.style = JSON.parse(JSON.stringify(was.style)) as Record<string, OptionValue>; } }
+    // The longest window the candles taken over asked: a run of the newest candles alone warns as a run of all of them would.
+    widest = { ...from.widest };
   };
   /** Start from nothing: every kept name at 0, every function's state empty. */
   const fresh = (): void => {
@@ -484,6 +488,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
     optionsWritten = false;
     styled.clear();
     for (const [site, p] of plots) { const s0 = initialStyles.get(site)!; p.title = s0.title; p.style = { ...s0.style }; }
+    widest = { n: 0, line: 0 };
   };
 
   const runner = {
@@ -499,7 +504,6 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       runner.startedAt = start;
       budget.steps = 0; budget.left = Math.max(200_000, STEPS_PER_CANDLE * (n - start)); budget.deadline = started + RUN_MS;
       const warnings = [...a.warnings];
-      widest = { n: 0, line: 0 };
       // The plots' numbers: those of the candles taken over, then NaN until the run gives them.
       for (const [site, p] of plots) {
         const fields: Record<string, Float64Array> = {};
@@ -536,7 +540,6 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       }
       // A run of the candle under way alone keeps the snapshot of the run before (its closed candles are the same); a run over no closed candle has none.
       if (n < 2 || optionsWritten) snap = null;
-      // A run of the candle under way alone asks the same windows as a run of every candle, so it says the same.
       if (n > 0 && widest.n > n) warnings.push({ code: 'long-window', detail: `${widest.line}|${widest.n}|${n}` });
       dropZeros();
       const out: PlotOut[] = plotOrder.map(site => { const p = plots.get(site)!; return { kind: p.kind, title: p.title, style: p.style, fields: p.fields, colors: p.colors, ...(p.kind === 'mark' ? { texts: p.texts, tips: p.tips } : {}) }; });

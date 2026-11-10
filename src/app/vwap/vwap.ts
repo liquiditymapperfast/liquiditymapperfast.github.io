@@ -66,10 +66,11 @@ export const ROLLING_MAX_BARS = 6_000;
  * one): a whole window before the view, no further back than the history keeps by the real clock, with a day and a bar to spare (the history
  * asks from the start of the day a start falls in, and bars it then dropped at once would read as the start of the exchange's history). A view
  * not framed yet (`t1 <= t0`: `{ t0: 0, t1: 0 }` until the first candles or price) reaches a window back from `now`: taken at its word, its
- * start in 1970 had every history read all it keeps at each page load.
+ * start in 1970 had every history read all it keeps at each page load. The view's start counts from its hour, as the map's plan is kept for
+ * the hour: a view moved back inside it still has its whole window.
  */
 export function rollingFrom(days: number, t0: number, t1: number, now: number, real: number): number {
-  const bar = rollingBarMs(days), start = t1 > t0 ? Math.min(t0, now) : now;
+  const bar = rollingBarMs(days), start = t1 > t0 ? Math.min(Math.floor(t0 / HOUR) * HOUR, now) : now;
   return Math.floor(Math.max(start - days * DAY, real - bar * ROLLING_MAX_BARS + DAY + bar) / bar) * bar;
 }
 
@@ -88,13 +89,22 @@ export function rollingSeries(bars: readonly CandleRow[], barMs: number, windowM
   // have come back to about zero is known to be empty.
   let v = 0, dv = 0, ref = NaN, traded = 0, a = 0;
   const tp = (b: CandleRow): number => (b[2] + b[3] + b[4]) / 3;
+  let held = 0;
   for (let j = 0; j < bars.length; j++) {
     const b = bars[j]!, end = Math.min(b[0] + barMs, asOf);
     if (end <= b[0]) break;
+    held = j + 1;
     if (b[5] > 0) { if (!Number.isFinite(ref)) ref = tp(b); v += b[5]; dv += (tp(b) - ref) * b[5]; traded++; }
     while (a <= j && bars[a]![0] < end - windowMs) { const o = bars[a]!; if (o[5] > 0) { v -= o[5]; dv -= (tp(o) - ref) * o[5]; traded--; } a++; }
     if (first > end - windowMs || traded === 0 || !(v > 0)) continue;
     out.push({ t: end, vwap: ref + dv / v, sd: 0 });
+  }
+  // No bar under way (a thin market where nobody has traded since the last one ended): the window at `asOf` is still a point, its start moved
+  // on without anything added.
+  const lastEnd = held ? bars[held - 1]![0] + barMs : Infinity;
+  if (lastEnd < asOf) {
+    while (a < held && bars[a]![0] < asOf - windowMs) { const o = bars[a]!; if (o[5] > 0) { v -= o[5]; dv -= (tp(o) - ref) * o[5]; traded--; } a++; }
+    if (first <= asOf - windowMs && traded > 0 && v > 0) out.push({ t: asOf, vwap: ref + dv / v, sd: 0 });
   }
   return out;
 }

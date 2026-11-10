@@ -2127,11 +2127,12 @@
  "Rolling VWAP": "롤링 VWAP",
  "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "각 시점까지 최근 며칠의 평균. 시간이 지나면 가장 오래된 거래가 빠집니다. 어떤 시간 단위에서도 같습니다.",
  "Remove this window": "이 기간 삭제",
- "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}: 거래소에 있는 이 시장의 이력이 기간보다 짧아 선이 없습니다.",
  "{line}: its candles could not be read just now; trying again in a minute.": "{line}: 지금은 캔들을 읽지 못했습니다. 1분 뒤 다시 시도합니다.",
  "RVWAP": "RVWAP",
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "세션 시작부터, 최근 며칠 동안, 또는 선택한 시점부터 거래량으로 가중한 시장의 평균 거래 가격. 매수자와 매도자가 평균적으로 어디서 거래했는지를 보여 줍니다.",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "롤링 VWAP(RVWAP)는 각 시점까지 최근 하루, 일주일, 한 달, 분기, 반년 또는 1년의 평균입니다. 시작점이 시간과 함께 움직여 가장 오래된 거래가 빠지며, 세션이나 앵커는 시작 이후의 모든 거래를 유지합니다. 자체 봉(하루는 5분봉, 1년은 4시간봉까지)으로 계산하고 최신 봉은 매분 다시 읽으므로 어떤 시간 단위에서도 같으며, 이력이 기간 전체를 담은 곳에만 그려집니다.",
- "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "{line}행: {n}개 캔들 기간은 여기서 채워지지 않습니다. 차트가 이 스크립트에 주는 캔들은 {have}개입니다. 축소하면 최대 {max}개까지 늘어나며, 더 긴 시간 단위를 고를 수도 있습니다.",
- "{n} days up to now": "지금까지 {n}일"
+ "{n} days up to now": "지금까지 {n}일",
+ "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: 이 페이지가 읽을 수 있었던 이 시장의 이력이 기간보다 짧아 선이 없습니다.",
+ "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 차트가 이 스크립트에 주는 것은 {have}입니다. 축소하면 최대 {max}까지 늘어나며, 더 긴 시간 단위를 고를 수도 있습니다.",
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트가 읽는 차트 시간 단위의 캔들은 최대 {max}이고, 이 차트가 주는 것은 {have}입니다."
 }

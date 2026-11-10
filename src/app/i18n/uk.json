@@ -2265,16 +2265,17 @@
  "Rolling VWAP": "Ковзний VWAP",
  "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "Середнє за останні дні до кожного моменту: з часом найстаріші угоди випадають із нього. Воно однакове на будь-якому таймфреймі.",
  "Remove this window": "Прибрати це вікно",
- "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}: історія цього ринку на біржі коротша за його вікно, тож лінії немає.",
  "{line}: its candles could not be read just now; trying again in a minute.": "{line}: зараз не вдалося прочитати його свічки; повторна спроба за хвилину.",
  "RVWAP": "RVWAP",
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "Середня ціна, за якою торгував ринок, зважена за обсягом: від початку сесії, за останні дні або від вибраного моменту; де покупці й продавці в середньому укладали угоди.",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "Ковзний VWAP (RVWAP) — це середнє за останній день, тиждень, місяць, квартал, пів року або рік до кожного моменту. Його початок зсувається з часом, тож найстаріші угоди випадають, тоді як сесія чи прив'язка зберігає кожну угоду від свого початку. Він рахується за власними барами (від п'ятихвилинних для дня до чотиригодинних для року), найновіші перечитуються щохвилини, тому він однаковий на будь-якому таймфреймі й малюється лише там, де історія містить ціле вікно.",
- "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Рядок {line}: вікно з {n} свічок тут ніколи не заповнюється, бо графік дає цьому скрипту {have}. Віддаліть графік, щоб отримати більше, до {max}, або виберіть довший таймфрейм.",
  "{n} days up to now": {
   "one": "{n} день до поточного моменту",
   "few": "{n} дні до поточного моменту",
   "many": "{n} днів до поточного моменту",
   "other": "{n} дня до поточного моменту"
- }
+ },
+ "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: історія цього ринку, яку змогла прочитати сторінка, коротша за його вікно, тож лінії немає.",
+ "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Рядок {line}: вікно на {n} тут ніколи не заповнюється, бо графік дає цьому скрипту {have}. Віддаліть графік, щоб отримати більше, до {max}, або виберіть довший таймфрейм.",
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Рядок {line}: вікно на {n} тут ніколи не заповнюється: скрипт читає щонайбільше {max} таймфрейму графіка, а цей графік дає йому {have}."
 }

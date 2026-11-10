@@ -2233,15 +2233,16 @@
  "Rolling VWAP": "VWAP móvil",
  "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "La media de los últimos días hasta cada momento: a medida que pasa el tiempo, las operaciones más antiguas salen de ella. Es la misma en cualquier temporalidad.",
  "Remove this window": "Quitar esta ventana",
- "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}: el historial de este mercado en la bolsa es más corto que su ventana, así que no tiene línea.",
  "{line}: its candles could not be read just now; trying again in a minute.": "{line}: no se pudieron leer sus velas ahora; se volverá a intentar en un minuto.",
  "RVWAP": "RVWAP",
  "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "El precio medio al que ha negociado el mercado, ponderado por volumen, desde que empezó una sesión, en los últimos días o desde un momento que elijas: donde compradores y vendedores han hecho negocio de media.",
  "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "Un VWAP móvil (RVWAP) es la media del último día, semana, mes, trimestre, semestre o año hasta cada momento. Su inicio avanza con el tiempo, así que las operaciones más antiguas salen, mientras que una sesión o un ancla conserva cada operación desde su inicio. Se calcula con barras propias (de cinco minutos para un día a cuatro horas para un año), y las más recientes se vuelven a leer cada minuto, así que es el mismo en cualquier temporalidad; solo se dibuja donde el historial contiene una ventana entera.",
- "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Línea {line}: una ventana de {n} velas nunca se llena aquí, porque el gráfico da a este script {have}. Aleja el zoom para tener más, hasta {max}, o elige una temporalidad más larga.",
  "{n} days up to now": {
   "one": "{n} día hasta ahora",
   "many": "{n} días hasta ahora",
   "other": "{n} días hasta ahora"
- }
+ },
+ "{line}: the history this page could read of this market is shorter than its window, so it has no line.": "{line}: el historial de este mercado que esta página pudo leer es más corto que su ventana, así que no tiene línea.",
+ "Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Línea {line}: una ventana de {n} nunca se llena aquí, porque el gráfico da a este script {have}. Aleja el zoom para tener más, hasta {max}, o elige una temporalidad más larga.",
+ "Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart's timeframe, and this chart gives it {have}.": "Línea {line}: una ventana de {n} nunca se llena aquí: un script lee como mucho {max} de la temporalidad del gráfico, y este gráfico le da {have}."
 }

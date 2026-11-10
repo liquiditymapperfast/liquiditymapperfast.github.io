@@ -303,4 +303,12 @@ test('a window longer than the candles read is warned of, with its line, its len
   assert.deepEqual(long(runner.run(inputs(20))), [{ code: 'long-window', detail: '1|50|20' }]);
   assert.deepEqual(long(runner.run(inputs(21))), [{ code: 'long-window', detail: '1|50|21' }]);
   assert.ok(runner.startedAt > 0);
+  // A window asked on some candles only (here the early ones): a live update that runs the newest alone still says it (review round 1).
+  const some = createRunner('t', 'y = $price.close < 105 ? sma($price.close, 300) : 1\nline(y)', {});
+  assert.deepEqual(long(some.run(inputs(20))), [{ code: 'long-window', detail: '1|300|20' }]);
+  assert.deepEqual(long(some.run(inputs(21))), [{ code: 'long-window', detail: '1|300|21' }]);
+  assert.ok(some.startedAt > 0);
+  assert.deepEqual(long(some.run(inputs(22))), [{ code: 'long-window', detail: '1|300|22' }]);
+  // A window is taken at most 10,000 candles long, and said so.
+  assert.deepEqual(long(run('line(sma($price.close, 50000))', {}, inputs(20))), [{ code: 'long-window', detail: '1|10000|20' }]);
 });

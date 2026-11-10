@@ -1,4 +1,4 @@
-import { t } from '../i18n.ts';
+import { t, tn } from '../i18n.ts';
 import { price } from '../format.ts';
 import { PRICE_QUERY_BARS } from '../../shared/price-history.ts';
 import type { ScriptError } from './lang/lexer.ts';
@@ -53,10 +53,15 @@ export function warningText(w: Warning): string {
     case 'unread-source': return t('A source(...) names its markets with something only the run can work out: it reads 0. Name them with a word, an option or options.name.');
     case 'liquidations-cut': return t('Some days held more liquidations than the source answers: the smallest are missing from lbuy and lsell.');
     case 'long-window': {
-      // "line|window|candles read", from the run (engine.ts); the reference shows it with X for each.
-      const parts = what.split('|'), part = (k: number): string => { const v = Number(parts[k]); return parts.length === 3 && Number.isFinite(v) ? price(v, 1) : 'X'; };
-      return t('Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.',
-        { line: parts.length === 3 ? String(Number(parts[0])) : 'X', n: part(1), have: part(2), max: price(PRICE_QUERY_BARS, 1) });
+      // "line|window|candles read", from the run (engine.ts); the reference shows it with X for each. Each count is said with its noun.
+      const parts = what.split('|'), known = parts.length === 3 && parts.every(p => p !== '' && Number.isFinite(Number(p)));
+      const candles = (v: number): string => tn(v, '{n} candle', '{n} candles', { n: price(v, 1) });
+      const count = (k: number): string => known ? candles(Number(parts[k])) : 'X';
+      const say = { line: known ? String(Number(parts[0])) : 'X', n: count(1), have: count(2), max: candles(PRICE_QUERY_BARS) };
+      // A window longer than any view gives a script: zooming out cannot fill it, so it is not offered.
+      return known && Number(parts[1]) > PRICE_QUERY_BARS
+        ? t('Line {line}: a window of {n} never fills here: a script reads at most {max} of the chart\'s timeframe, and this chart gives it {have}.', say)
+        : t('Line {line}: a window of {n} never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.', say);
     }
     default: return w.code;
   }
