@@ -3219,8 +3219,9 @@ export class HeatPane {
     const covers = this.#columnCovers(metric);
     if (covers !== null && !loaded) sub = t('since {time}', { time: clock(covers, covers < startOfDay(Date.now())) });
     // Anchored: where its numbers begin, in the line the row's largest figure takes otherwise (the header box still gives it), only where the
-    // answer knows when each of its markets began recording (liquidations do not say: their own line stays), and never over a warning.
-    else if (anchored && !loaded && !measured.warn && !!answer?.instruments.length && answer.instruments.every(inst => inst.earliest !== null)) sub = t('from {time}', { time: fromText });
+    // answer knows when each of its markets with something in it began recording (liquidations do not say: their own line stays; a market
+    // with no trades recorded at all, a venue whose book alone is read, has none and adds nothing), and never over a warning.
+    else if (anchored && !loaded && !measured.warn && !!answer?.instruments.some(inst => inst.earliest !== null) && answer.instruments.every(inst => inst.earliest !== null || !inst.rows.length)) sub = t('from {time}', { time: fromText });
     const warn = !loaded && (covers !== null || measured.warn);
     if (sub) { if (warn) ctx.fillStyle = '#e6a700'; else if (loaded) ctx.fillStyle = p.poc; ctx.fillText(sub, x0 + 4, lineY); }
     if (rows && rows.total > 0 && !unsplit) { const net = tradedNet(rows); ctx.fillStyle = net > 0 ? p.bid : net < 0 ? p.ask : p.muted; ctx.fillText(tradedNetLine(rows), x0 + 4, lineY + 12, W - 8); }
