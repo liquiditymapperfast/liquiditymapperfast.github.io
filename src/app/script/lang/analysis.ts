@@ -25,8 +25,12 @@ export const PLOTS: Readonly<Record<string, PlotKind>> = {
 
 /** The most plots a script may make, and the most named sets of markets it may read. */
 export const MAX_PLOTS = 64, MAX_SOURCES = 24;
-/** The steps a run may take per candle (on average), and its time. */
-export const STEPS_PER_CANDLE = 40_000, RUN_MS = 2_500;
+/**
+ * The steps a run may take per candle (on average), and its time: `RUN_MS` for a run of the newest candles alone (a live update, which takes
+ * the closed candles over from the run before), `FULL_RUN_MS` for a run from the first candle (a chart opened, a script or its options
+ * changed, or a candle before the newest changed). The worker host gives each script the longer time before it ends the worker (`host.ts`).
+ */
+export const STEPS_PER_CANDLE = 40_000, RUN_MS = 2_500, FULL_RUN_MS = 10_000;
 
 export interface Analysis {
   program: Stmt[];

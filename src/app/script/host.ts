@@ -2,6 +2,7 @@ import type { BarInputs } from './inputs.ts';
 import { transferables } from './inputs.ts';
 import type { RunResponse, ScriptJob, ScriptResult, WorkerMessage } from './protocol.ts';
 import type { DepthMessage, DepthTag } from './depth.ts';
+import { FULL_RUN_MS } from './lang/analysis.ts';
 
 /**
  * The page's side of the script worker: one run at a time, the newest request waiting behind it (an older waiting one is dropped, its answer
@@ -22,7 +23,11 @@ export interface WorkerLike {
 
 export interface HostOptions {
   spawn: () => WorkerLike;
-  /** How long a run may take before its worker is ended (ms), and how much longer for each script after the first (each has its own time inside the worker). */
+  /**
+   * How long a run may take before its worker is ended (ms), and how much longer for each script after the first (each has its own time inside
+   * the worker). By default each script has the time of a run from the first candle (`FULL_RUN_MS`; a live update stops itself sooner), the
+   * first 1.5 s more for the messages and the worker's own work, each after it 0.1 s.
+   */
   deadlineMs?: number;
   perScriptMs?: number;
   /** How long a fresh worker may take to load (ms). */
@@ -54,7 +59,7 @@ export class ScriptHost {
   restarts = 0;
 
   constructor(o: HostOptions) {
-    this.#o = { deadlineMs: 4_000, perScriptMs: 2_600, loadMs: 120_000, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: id => clearTimeout(id as ReturnType<typeof setTimeout>), now: () => Date.now(), ...o };
+    this.#o = { deadlineMs: FULL_RUN_MS + 1_500, perScriptMs: FULL_RUN_MS + 100, loadMs: 120_000, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: id => clearTimeout(id as ReturnType<typeof setTimeout>), now: () => Date.now(), ...o };
   }
 
   /**

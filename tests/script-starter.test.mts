@@ -42,7 +42,7 @@ test('the VWAP reads, runs without a warning and draws its line inside its bands
   const r = runScript('vwap', VWAP_SOURCE, {}, inputs());
   assert.ok(r.ok, r.ok ? '' : JSON.stringify(r.error));
   // Its 48 candles are more than these 8: that alone is said (the page reads 500 and more), and nothing once they are there.
-  assert.deepEqual(r.warnings, [{ code: 'long-window', detail: '14|48|8' }]);
+  assert.deepEqual(r.warnings, [{ code: 'long-window', detail: '14|48|48|8' }]);
   const filled = runScript('vwap', VWAP_SOURCE, {}, inputs(48));
   assert.ok(filled.ok && filled.warnings.length === 0);
   assert.deepEqual(r.plots.map(p => [p.kind, p.title]), [['line', 'VWAP'], ['line', '+SD'], ['line', '-SD']]);

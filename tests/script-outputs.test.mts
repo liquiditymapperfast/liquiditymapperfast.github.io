@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRunner, runScript } from '../src/app/script/lang/engine.ts';
+import { BUILTINS, type Builtin } from '../src/app/script/lang/builtins.ts';
 import { interpolateColors, parseColor, rgb, safeColor } from '../src/app/script/lang/colors.ts';
 import type { ScriptResult } from '../src/app/script/protocol.ts';
-import { builtinDigests, candles } from './fixtures/script-builtins-2026-10-27.mts';
+import { BUILTIN_SCRIPTS, builtinDigests, candles } from './fixtures/script-builtins-2026-10-27.mts';
+import { BEFORE } from './fixtures/builtins-before.mts';
 
 /**
  * What the built-in scripts of 2026-10-27 drew, worked out by the interpreter before it was made faster (master d74a834): every value, colour,
@@ -24,8 +26,67 @@ const PINNED: Readonly<Record<string, string>> = {
   "Buy share": "2c58d5c148defdc8f69ce7b94f8e7324",
 };
 
+/**
+ * The scripts whose numbers moved in their last bits when the functions over a window were made to answer in constant time (2026-11-10: a
+ * sum kept as values come and go adds in another order than a loop over the window). `BEFORE` still gives `PINNED`, and each number moved
+ * by less than a millionth of a millionth of itself (the tests below).
+ */
+const MOVED: Readonly<Record<string, string>> = {
+  "VWAP with bands": "63373b8f17196341c3ab1451604cd96f",
+  "Buyer and seller VWAPs": "c968e7d0ab69ba93bbb031c58759c841",
+  "Buy share": "617c2bce30a8c345743c810cda43f8cd",
+};
+
+/** Run `fn` with the functions over a window as they were before 2026-11-10 (`BEFORE`) in place of the new ones. */
+function withBefore<T>(fn: () => T): T {
+  const table = BUILTINS as Record<string, Builtin>, saved = new Map(Object.keys(BEFORE).map(k => [k, table[k]!]));
+  try { for (const [k, f] of Object.entries(BEFORE)) table[k] = f; return fn(); }
+  finally { for (const [k, f] of saved) table[k] = f; }
+}
+
 test('the built-in scripts of 2026-10-27 draw exactly what they drew before the interpreter was made faster, in as many steps', () => {
-  assert.deepEqual(builtinDigests(createRunner), PINNED);
+  assert.deepEqual(withBefore(() => builtinDigests(createRunner)), PINNED, 'with the functions over a window of then: the interpreter moved nothing');
+  assert.deepEqual(builtinDigests(createRunner), { ...PINNED, ...MOVED }, 'with those of now');
+});
+
+test('the built-in scripts draw with the constant-time functions over a window what they drew with the loops, to nine digits', t => {
+  // Nine, not sixteen: a band's deviation is the square root of a mean of squares less a squared mean, two numbers near 6e9 a few apart, so
+  // a difference in the last bit of either moves it by more (about one part in 1e12 of the price here).
+  let worst = 0;
+  // The runs `builtinDigests` makes: every candle, the candle under way changed, a candle closed with a new one begun.
+  const runs = (s: (typeof BUILTIN_SCRIPTS)[number], options: (typeof BUILTIN_SCRIPTS)[number]['variants'][number]): ScriptResult[] => {
+    const now = (): number => 1_790_000_000_000, out = [createRunner('x', s.source, options, now).run(candles(500, 60_000))];
+    const runner = createRunner('x', s.source, options, now), hour = 3_600_000;
+    out.push(runner.run(candles(900, hour)));
+    const moved = candles(900, hour);
+    moved.close[899] = moved.close[899]! * 1.001; moved.high[899] = Math.max(moved.high[899]!, moved.close[899]!);
+    out.push(runner.run(moved), runner.run(candles(901, hour)));
+    return out;
+  };
+  let compared = 0;
+  for (const s of BUILTIN_SCRIPTS) for (const options of s.variants) {
+    const then = withBefore(() => runs(s, options)), now = runs(s, options);
+    for (let r = 0; r < then.length; r++) {
+      const a = ok(then[r]!), b = ok(now[r]!);
+      assert.deepEqual([b.steps, b.warnings, b.candleColors ?? null], [a.steps, a.warnings, a.candleColors ?? null], s.name);
+      assert.equal(b.plots.length, a.plots.length);
+      for (let p = 0; p < a.plots.length; p++) {
+        const pa = a.plots[p]!, pb = b.plots[p]!;
+        assert.deepEqual([pb.kind, pb.title, pb.style, pb.colors], [pa.kind, pa.title, pa.style, pa.colors], `${s.name}: ${pa.title}`);
+        for (const [f, va] of Object.entries(pa.fields)) {
+          const vb = pb.fields[f]!;
+          for (let i = 0; i < va.length; i++) {
+            const x = va[i]!, y = vb[i]!, off = Object.is(x, y) ? 0 : Math.abs(x - y) / Math.max(1, Math.abs(x));
+            assert.ok(off <= 1e-9, `${s.name}: ${pa.title}.${f}[${i}] ${x} then, ${y} now`);
+            worst = Math.max(worst, off);
+            compared++;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(compared > 100_000, `${compared} numbers`);
+  t.diagnostic(`${compared} numbers, the largest difference ${worst.toExponential(1)} of the value`);
 });
 
 const ok = (r: ScriptResult): Extract<ScriptResult, { ok: true }> => { assert.ok(r.ok, r.ok ? '' : JSON.stringify(r.error)); return r; };
@@ -50,6 +111,19 @@ test('a colour the page makes and reads back is the text it would read it as, an
   assert.equal(parseColor(long)?.join(), '1,2,3,1');
   assert.equal(safeColor(long, ''), 'rgb(1, 2, 3)');
   for (let k = 0; k < 2; k++) assert.equal(interpolateColors(0.5, ['x'.repeat(1000), (): number => 1, 'red', 'blue']), 'rgb(128, 0, 128)');
+});
+
+test('interpolate given a ratio and one list answers as its colours flattened would, holes and lists inside it included', () => {
+  const colors = (src: string): string[] | null => ok(runScript('x', src, {}, candles(3, 60_000))).plots[0]!.colors;
+  const flat = colors('line({ value: 1, color: interpolate(0.3, "red", "rgba(0, 0, 255, 0.5)", "#00ff00") })');
+  assert.ok(flat !== null && flat.every(c => c === flat[0] && c !== ''), 'one colour on every candle');
+  assert.deepEqual(colors('var ramp = ["red", "rgba(0, 0, 255, 0.5)", "#00ff00"]\nline({ value: 1, color: interpolate(0.3, ramp) })'), flat);
+  assert.deepEqual(colors('line({ value: 1, color: interpolate(0.3, ["red"], ["rgba(0, 0, 255, 0.5)", "#00ff00"]) })'), flat, 'two lists');
+  // A hole is left out by flattening: the first element is then the next one, which is what is answered when none reads as a colour.
+  assert.deepEqual(first('var a = []\na.length = 2\na[1] = "nope"\nline(interpolate(0.5, a) === "nope" ? 1 : 0)'), [1, 1, 1, 1]);
+  assert.deepEqual(first('var a = []\na.length = 3\na[1] = "red"\na[2] = "blue"\nline(interpolate(0.5, a) === interpolate(0.5, "red", "blue") ? 1 : 0)'), [1, 1, 1, 1]);
+  // A list inside the list is not a colour.
+  assert.deepEqual(first(`line(interpolate(0.5, [["red"], "blue"]) === "${interpolateColors(0.5, ['blue'])}" ? 1 : 0)`), [1, 1, 1, 1]);
 });
 
 test('what a script declares is found before what it keeps, however the faster lookups reach it', () => {

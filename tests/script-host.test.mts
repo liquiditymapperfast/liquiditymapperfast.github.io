@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ScriptHost, type WorkerLike } from '../src/app/script/host.ts';
 import type { RunRequest, RunResponse, ScriptJob } from '../src/app/script/protocol.ts';
 import type { BarInputs } from '../src/app/script/inputs.ts';
+import { FULL_RUN_MS } from '../src/app/script/lang/analysis.ts';
 
 class FakeWorker implements WorkerLike {
   onmessage: ((e: { data: RunResponse }) => void) | null = null;
@@ -177,6 +178,18 @@ test('a worker can be started before any run, and the first run is then sent as 
   assert.equal(workers[0]!.posted.length, 1, 'already loaded: sent at once');
   workers[0]!.answer(workers[0]!.posted[0]!.seq, ['a']);
   assert.equal((await p).results[0]!.ok, true);
+});
+
+test('by default each script of a run has the time of a run from the first candle, the first a little more', async () => {
+  const timers: number[] = [];
+  const host = new ScriptHost({
+    spawn: () => { const w = new FakeWorker(); queueMicrotask(() => w.ready()); return w; },
+    setTimer: (_fn, ms) => { timers.push(ms); return {}; }, clearTimer: () => {},
+  });
+  void host.run([job('a'), job('b')], inputs());
+  await tick();
+  assert.equal(timers.at(-1), FULL_RUN_MS + 1_500 + FULL_RUN_MS + 100, 'a script stops itself at that time inside the worker (too-slow); the host only ends a worker that hangs');
+  host.dispose();
 });
 
 test('disposing ends the worker and answers what waited with nothing and no time', async () => {
