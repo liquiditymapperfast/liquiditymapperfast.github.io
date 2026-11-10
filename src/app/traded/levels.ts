@@ -146,15 +146,19 @@ export interface CandleProfile { levels: ValueLevels | null; covered: number; ro
  * step is a billionth) would make millions of rows a bar. A bar a coin that fell 99 % has in its history is 20 times today's price high at most.
  */
 export const MAX_BAR_ROWS = 100_000, MAX_WINDOW_ROWS = 4_000_000;
-/** The widest span of rows a window is added up on in flat arrays; a wider one (a step far finer than its prices) keeps the row by row map. */
-const DENSE_ROWS = 2_000_000;
+/**
+ * The widest span of rows a window is added up on in flat arrays (about 37 bytes a row, so 37 MB at most); a wider one (a step far finer than
+ * its prices) keeps the row by row map. `levelsOf` finds no levels over a wider span either.
+ */
+const DENSE_ROWS = 1_000_001;
 const takerOf = (b: CandleRow): number | undefined => (b as readonly (number | undefined)[])[7];
 
 /**
  * `candleLevelsByRow`'s answer, worked out in flat arrays (2026-11-10, for anchored profiles, whose window can be 21 weeks at the finest rows):
  * a bar spread evenly over its rows gives every row between its first and its last the same part, so each bar adds its two end rows and marks
- * where its middle begins and ends, and one pass over the rows adds the middles up. 21 weeks of 5-minute bars at $0.50 rows: 15 ms instead of
- * 787, the same rows to a part in 10^14 (`Research_Findings.md`). A span wider than `DENSE_ROWS` rows is left to the row by row loop.
+ * where its middle begins and ends, and one pass over the rows adds the middles up. BTC's perpetual and spot 5-minute bars over 21 weeks
+ * (2026-11-10): 86 ms instead of 1,373 at $0.50 rows, 175 instead of 3,141 at $0.25, 14 instead of 33 at $20; the same rows as the row by row
+ * loop (tests/volume-profile.test.mts holds them to a part in 10^9). A span wider than `DENSE_ROWS` rows is left to the row by row loop.
  */
 export function candleLevels(bars: readonly CandleRow[], from: number, to: number, barMs: number, step: number, share: number, heldTo: number): CandleProfile {
   const end = Math.min(to, Math.floor(heldTo / barMs) * barMs);
