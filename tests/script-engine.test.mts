@@ -292,24 +292,25 @@ test('errors name the code and the place', () => {
   assert.ok(counts.warnings.some(w => w.code === 'no-counts'));
 });
 
-test('a window longer than the candles read is warned of, with its line, its length and the candles there are', () => {
+test('a window longer than the candles read is warned of, with its line, the length asked, the length it has and the candles there are', () => {
   const long = (r: ScriptResult): unknown[] => ok(r).warnings.filter(w => w.code === 'long-window');
-  assert.deepEqual(long(run('var a = sum($price.close, 3)\nline(sma($price.close, 50) + a)', {}, inputs(20))), [{ code: 'long-window', detail: '2|50|20' }], 'the longest one');
+  assert.deepEqual(long(run('var a = sum($price.close, 3)\nline(sma($price.close, 50) + a)', {}, inputs(20))), [{ code: 'long-window', detail: '2|50|50|20' }], 'the longest one');
   assert.deepEqual(long(run('line(sma($price.close, 20))', {}, inputs(20))), [], 'a window the candles fill is not');
   assert.deepEqual(long(run('line(ema($price.close, 500))', {}, inputs(20))), [], 'an average that weighs every candle, not a window, is not');
-  assert.deepEqual(long(run('line(stoch($price.close, $price.high, $price.low, 30))', {}, inputs(20))), [{ code: 'long-window', detail: '1|30|20' }]);
+  assert.deepEqual(long(run('line(stoch($price.close, $price.high, $price.low, 30))', {}, inputs(20))), [{ code: 'long-window', detail: '1|30|30|20' }]);
   // A live update runs the newest candles alone and says the same.
   const runner = createRunner('t', 'line(sum($price.close, 50))', {});
-  assert.deepEqual(long(runner.run(inputs(20))), [{ code: 'long-window', detail: '1|50|20' }]);
-  assert.deepEqual(long(runner.run(inputs(21))), [{ code: 'long-window', detail: '1|50|21' }]);
+  assert.deepEqual(long(runner.run(inputs(20))), [{ code: 'long-window', detail: '1|50|50|20' }]);
+  assert.deepEqual(long(runner.run(inputs(21))), [{ code: 'long-window', detail: '1|50|50|21' }]);
   assert.ok(runner.startedAt > 0);
   // A window asked on some candles only (here the early ones): a live update that runs the newest alone still says it (review round 1).
   const some = createRunner('t', 'y = $price.close < 105 ? sma($price.close, 300) : 1\nline(y)', {});
-  assert.deepEqual(long(some.run(inputs(20))), [{ code: 'long-window', detail: '1|300|20' }]);
-  assert.deepEqual(long(some.run(inputs(21))), [{ code: 'long-window', detail: '1|300|21' }]);
+  assert.deepEqual(long(some.run(inputs(20))), [{ code: 'long-window', detail: '1|300|300|20' }]);
+  assert.deepEqual(long(some.run(inputs(21))), [{ code: 'long-window', detail: '1|300|300|21' }]);
   assert.ok(some.startedAt > 0);
-  assert.deepEqual(long(some.run(inputs(22))), [{ code: 'long-window', detail: '1|300|22' }]);
-  // A window is taken at most 10,000 candles long, and said so; one that is not a number (Infinity too) is one candle, and nothing is said.
-  assert.deepEqual(long(run('line(sma($price.close, 50000))', {}, inputs(20))), [{ code: 'long-window', detail: '1|10000|20' }]);
+  assert.deepEqual(long(some.run(inputs(22))), [{ code: 'long-window', detail: '1|300|300|22' }]);
+  // A window is taken at most 100,000 candles long (MAX_WINDOW), and said so with what was asked; one that is not a number (Infinity too) is
+  // one candle, and nothing is said.
+  assert.deepEqual(long(run('line(sma($price.close, 500000))', {}, inputs(20))), [{ code: 'long-window', detail: '1|500000|100000|20' }]);
   assert.deepEqual(long(run('line(sma($price.close, Infinity))', {}, inputs(20))), []);
 });

@@ -509,6 +509,7 @@
   "marketSets": 24,
   "stepsPerCandle": 40000,
   "runMilliseconds": 2500,
+  "fullRunMilliseconds": 10000,
   "arrayElements": 1000000,
   "textCharacters": 100000
  },
@@ -681,8 +682,8 @@
    "code": "too-slow",
    "message": "Stopped: the script took too long.",
    "when": "running",
-   "note": "The whole run, over every candle of the chart, took longer than 2.5 s; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out.",
-   "wrong": "var s = 0\nfor (var i = 0; i < 8000; i++) s = s + Math.sqrt(i)\nline(s)",
+   "note": "The run took longer than its time: 10 s for a run from the first candle (the chart opened, the script changed), 2.5 s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out. The example below takes about 30,000 steps a candle: it meets the limit on a chart of 2,000 candles.",
+   "wrong": "var s = 0\nfor (var i = 0; i < 10000; i++) s = s + Math.sqrt(i)\nline(s)",
    "right": "var s = 0\nfor (var i = 0; i < 50; i++) s = s + Math.sqrt(i)\nline(s)"
   },
   {

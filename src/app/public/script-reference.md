@@ -117,7 +117,7 @@ source(x, exchange=...) takes these exchange names: BINANCE, BINANCE_FUTURES, BI
 
 ## Limits
 
-At most 20 scripts of 60,000 characters, 64 plots and 24 different sets of markets a script (the unfiltered one counted); about 40,000 steps a candle and 2.5 s a run; arrays of 1,000,000 elements and texts of 100,000 characters. A run that passes them stops with its line and column.
+At most 20 scripts of 60,000 characters, 64 plots and 24 different sets of markets a script (the unfiltered one counted); about 40,000 steps a candle; 10 s a run from the first candle and 2.5 s a live update of the newest candles; arrays of 1,000,000 elements and texts of 100,000 characters. A run that passes them stops with its line and column.
 
 ## Errors
 
@@ -541,13 +541,13 @@ line(s.length)
 
 ### too-slow
 
-Stopped: the script took too long. Met while the script runs, at the candle where it happens. The whole run, over every candle of the chart, took longer than 2.5 s; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out.
+Stopped: the script took too long. Met while the script runs, at the candle where it happens. The run took longer than its time: 10 s for a run from the first candle (the chart opened, the script changed), 2.5 s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out. The example below takes about 30,000 steps a candle: it meets the limit on a chart of 2,000 candles.
 
 Meets it:
 
 ```js
 var s = 0
-for (var i = 0; i < 8000; i++) s = s + Math.sqrt(i)
+for (var i = 0; i < 10000; i++) s = s + Math.sqrt(i)
 line(s)
 ```
 

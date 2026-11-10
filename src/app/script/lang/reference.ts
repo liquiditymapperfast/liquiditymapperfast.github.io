@@ -9,7 +9,7 @@ import { inEnglish } from '../../i18n.ts';
 import { errorText, warningText } from '../messages.ts';
 import { PLOT_FIELDS, type PlotKind, type Warning } from '../protocol.ts';
 import { MAX_SCRIPTS, MAX_SOURCE_CHARS, SCRIPT_API } from '../records.ts';
-import { EXCHANGES, MAX_PLOTS, MAX_SOURCES, PLOTS, RUN_MS, STEPS_PER_CANDLE } from './analysis.ts';
+import { EXCHANGES, FULL_RUN_MS, MAX_PLOTS, MAX_SOURCES, PLOTS, RUN_MS, STEPS_PER_CANDLE } from './analysis.ts';
 import { BUILTINS } from './builtins.ts';
 import type { ScriptError } from './lexer.ts';
 import { MAX_ARRAY, MAX_TEXT } from './values.ts';
@@ -125,7 +125,7 @@ export const RULES: readonly string[] = [
 /** What a script may take. */
 export const LIMITS: Readonly<Record<string, number>> = {
   scripts: MAX_SCRIPTS, characters: MAX_SOURCE_CHARS, plots: MAX_PLOTS, marketSets: MAX_SOURCES,
-  stepsPerCandle: STEPS_PER_CANDLE, runMilliseconds: RUN_MS, arrayElements: MAX_ARRAY, textCharacters: MAX_TEXT,
+  stepsPerCandle: STEPS_PER_CANDLE, runMilliseconds: RUN_MS, fullRunMilliseconds: FULL_RUN_MS, arrayElements: MAX_ARRAY, textCharacters: MAX_TEXT,
 };
 
 /** A script of `n` lines made by `line(k)`, for the examples of limits a short script cannot reach. */
@@ -174,8 +174,8 @@ export const ERRORS: readonly { code: string; wrong?: string; right?: string; sh
   { code: 'budget', when: 'running', wrong: 'while (true) {}\nline(1)', right: 'var i = 0\nwhile (i < 10) i++\nline(i)' },
   { code: 'too-large', when: 'running', wrong: 'var s = "x".padStart(20000)\nline(s.length)', right: 'var s = "x".padStart(200)\nline(s.length)' },
   {
-    code: 'too-slow', when: 'running', note: `The whole run, over every candle of the chart, took longer than ${RUN_MS / 1000} s; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out.`,
-    wrong: 'var s = 0\nfor (var i = 0; i < 8000; i++) s = s + Math.sqrt(i)\nline(s)', right: 'var s = 0\nfor (var i = 0; i < 50; i++) s = s + Math.sqrt(i)\nline(s)',
+    code: 'too-slow', when: 'running', note: `The run took longer than its time: ${FULL_RUN_MS / 1000} s for a run from the first candle (the chart opened, the script changed), ${RUN_MS / 1000} s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out. The example below takes about 30,000 steps a candle: it meets the limit on a chart of 2,000 candles.`,
+    wrong: 'var s = 0\nfor (var i = 0; i < 10000; i++) s = s + Math.sqrt(i)\nline(s)', right: 'var s = 0\nfor (var i = 0; i < 50; i++) s = s + Math.sqrt(i)\nline(s)',
   },
   { code: 'timeout', when: 'page' },
   { code: 'worker-failed', when: 'page' },
@@ -215,7 +215,7 @@ export function referenceMarkdown(): string {
   for (const p of PLOT_KINDS) out.push(`| ${p.kind} | ${callsOf(p.kind).map(c => `\`${c}\``).join(', ')} | ${PLOT_FIELDS[p.kind].join(', ')} | ${p.style} | ${cell(p.is)} |`);
   out.push('', '## Markets', '', `source(x, exchange=...) takes these exchange names: ${Object.keys(EXCHANGES).join(', ')}. type= is spot or perp; quote= is the quote currency (USDT, USDC, USD, ...). A filter can also be an option: exchange=options.venue.`, '');
   out.push('## Not supported', '', ...NOT_SUPPORTED.map(n => `- ${n}`), '');
-  out.push('## Limits', '', `At most ${MAX_SCRIPTS} scripts of ${MAX_SOURCE_CHARS.toLocaleString('en')} characters, ${MAX_PLOTS} plots and ${MAX_SOURCES} different sets of markets a script (the unfiltered one counted); about ${STEPS_PER_CANDLE.toLocaleString('en')} steps a candle and ${RUN_MS / 1000} s a run; arrays of ${MAX_ARRAY.toLocaleString('en')} elements and texts of ${MAX_TEXT.toLocaleString('en')} characters. A run that passes them stops with its line and column.`, '');
+  out.push('## Limits', '', `At most ${MAX_SCRIPTS} scripts of ${MAX_SOURCE_CHARS.toLocaleString('en')} characters, ${MAX_PLOTS} plots and ${MAX_SOURCES} different sets of markets a script (the unfiltered one counted); about ${STEPS_PER_CANDLE.toLocaleString('en')} steps a candle; ${FULL_RUN_MS / 1000} s a run from the first candle and ${RUN_MS / 1000} s a live update of the newest candles; arrays of ${MAX_ARRAY.toLocaleString('en')} elements and texts of ${MAX_TEXT.toLocaleString('en')} characters. A run that passes them stops with its line and column.`, '');
   out.push('## Errors', '', 'An error stops the script and says its line and column. Each code below is what Copy for AI and the panel report; X stands for the name or the text the error is about.', '');
   for (const e of ERRORS) {
     out.push(`### ${e.code}`, '', `${errorSentence(e.code)} ${ERROR_WHEN[e.when]}${e.note ? ` ${e.note}` : ''}`, '');

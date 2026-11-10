@@ -25,8 +25,8 @@ test("each error's example meets that error, and its fix runs cleanly", () => {
   for (const e of ERRORS) {
     if (e.when === 'page') { assert.ok(!e.wrong && !e.right, `${e.code}: the page causes it, no script does`); continue; }
     assert.ok(e.wrong && e.right, `${e.code} has a script that meets it and its fix`);
-    // A run longer than the limit, without waiting for it: a clock that moves a second each time it is read (the example takes the limit on
-    // a chart of 500 candles; these are 30).
+    // A run longer than the limit, without waiting for it: a clock that moves a second each time it is read (the example takes the limit of
+    // a run from the first candle on a chart of 2,000 candles; these are 30).
     let t = 0;
     const clock = e.code === 'too-slow' ? (): number => (t += 1000) : undefined;
     const wrong = runScript('x', e.wrong, {}, inputs(), clock);
@@ -43,6 +43,9 @@ test("each error's example meets that error, and its fix runs cleanly", () => {
   // A window the chart's candles cannot fill says where, how long and how many candles there are (the reference shows X for each).
   assert.equal(warningSentence('long-window', '3|720|501'), 'Line 3: a window of 720 candles never fills here, as the chart gives this script 501 candles. Zoom out for more, up to 2,000 candles, or choose a longer timeframe.');
   assert.equal(warningSentence('long-window', '36|8760|994'), 'Line 36: a window of 8,760 candles never fills here: a script reads at most 2,000 candles of the chart\'s timeframe, and this chart gives it 994 candles.', 'no zoom fills a window longer than a script reads');
+  // The run's detail since a window asked is told apart from the one it has: "line|asked|window|candles".
+  assert.equal(warningSentence('long-window', '3|720|720|501'), warningSentence('long-window', '3|720|501'));
+  assert.equal(warningSentence('long-window', '36|8760|8760|994'), warningSentence('long-window', '36|8760|994'));
   assert.match(warningSentence('long-window'), /^Line X: a window of X never fills here, as the chart gives this script X\./);
 });
 
