@@ -53,7 +53,7 @@ import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
 import { ANCHOR_BAR_MS, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
-import { scriptStart, type ScriptBarsState } from '../script/bars.ts';
+import { liveUpdate, scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
 import { BROWSER_RETENTION_MS, RETENTION_MS } from '../../shared/recorder.ts';
@@ -436,7 +436,7 @@ export class HeatPane {
   /** Each column's point of control and value area over its window, and the answer and rows they were read from. */
   readonly #levelsMemo = new Map<ProfileMetric, { answer: ProfileAnswer; step: number; share: number; levels: ValueLevels | null }>();
   /** The traded-volume column's estimate from the candles, built once for the rows it came from and not oftener than `LOADED_COLUMN_MS` (a drag moves its window every frame). */
-  #loadedCol: { rows: Map<number, number>; step: number; from: number; to: number; at: number; cost: number; answer: ProfileAnswer; split: boolean; markets: string; sources: string } | null = null;
+  #loadedCol: { rows: Map<number, number>; step: number; from: number; to: number; at: number; cost: number; answer: ProfileAnswer; split: boolean; markets: string; sources: string; anchored: boolean } | null = null;
   #loadedTimer = 0;
   /** What the column's window was worked out from the candles as, by what it depends on: one slot that replaces itself, so a drag cannot fill `#candleLevels` with windows nobody asks for twice. */
   #columnSlot: { key: string; value: { levels: ValueLevels; rows: Map<number, number>; buys: Map<number, number> | null; spot: boolean } | null } | null = null;
@@ -1599,8 +1599,9 @@ export class HeatPane {
     // 2026-11-10: filtering 10,000 bars at every trade).
     const held = this.#scriptLongRows, last = candles[candles.length - 1]![0];
     const base = `${r.h.version}|${r.start}|${cut}|${candles.length}|${candles[0]![0]}|${last}`;
-    // A live update keeps every candle but the last as it was (`mergeLive`): a list read again with the same ends is built again.
-    if (held && held.base === base && (held.candles === candles || (candles.length < 2 || held.candles[candles.length - 2] === candles[candles.length - 2]))) {
+    // A live update keeps every candle but the last as the same row (`mergeLive`): a list read again, whose rows are new, is built again
+    // (`liveUpdate`).
+    if (held && held.base === base && (held.candles === candles || liveUpdate(held.candles, candles, held.rows))) {
       if (held.candles === candles) return held.rows;
       const rows = held.rows.slice(0, -1); rows.push(candles[candles.length - 1]!);
       this.#scriptLongRows = { ...held, candles, rows };
@@ -2226,7 +2227,10 @@ export class HeatPane {
     if (s.columns !== 'anchor') return null;
     const coin = currentCoin().coin, anchor = profileAnchorOf(s, coin, Date.now(), PROFILE_CANDLES_BACK_MS);
     if (anchor === null) return null;
-    if (replaying()) { const at = pageNow(), to = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS; return anchor < to ? { key: 'replay', from: anchor, to, at, rev: this.#replayRev } : null; }
+    // In a replay whose moment is not five minutes past the anchor yet (or is before it), the window holds nothing yet, as a live one in its
+    // first five minutes: the columns stay empty (nothing is asked of an empty window), never the chart's totals under the anchor (Sol, code
+    // review 2026-11-10, round 3).
+    if (replaying()) { const at = pageNow(), to = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS; return { key: 'replay', from: anchor, to, at, rev: this.#replayRev }; }
     const held = this.#anchorSnap, now = Date.now(), snap = anchorSnapshot(held, `${coin}|${anchor}|${s.every}`, anchor, s.every, now, this.#anchorForce);
     this.#anchorForce = false;
     if (snap !== held) {
@@ -2273,10 +2277,10 @@ export class HeatPane {
     const mine = this.#columnMarkets(state), sources = `${mine.main?.id ?? ''}|${mine.spot?.id ?? ''}`;
     // A drag, a zoom or a change of the price scale moves the window or the rows every frame: what was worked out stands for a while, longer
     // the longer it took, and the pane is drawn again when it is due. Not once the markets it counts have changed (Spot, a chip): it is of others.
-    // Not across an anchored window taken again or moved (it changes then, not as a drag does): the estimate held would be another stretch's
-    // under this one's header (Sol, code review 2026-11-10).
-    const moved = c !== null && (c.from !== win.from || c.to !== win.to);
-    if (c && c.sources === sources && (c.step !== step || moved) && !(moved && this.anchoredWindow())) {
+    // Not across an anchored window taken again or moved, nor from an anchored window to the chart's or back (the window changes then, not
+    // as a drag does): the estimate held would be another stretch's under this one's header (Sol, code review 2026-11-10, rounds 2 and 3).
+    const moved = c !== null && (c.from !== win.from || c.to !== win.to), anchored = this.anchoredWindow() !== null;
+    if (c && c.sources === sources && (c.step !== step || moved) && !(moved && (anchored || c.anchored))) {
       const hold = Math.max(LOADED_COLUMN_MS, 4 * c.cost);
       if (now - c.at < hold) {
         if (!this.#loadedTimer) this.#loadedTimer = window.setTimeout(() => { this.#loadedTimer = 0; this.invalidate(); }, hold - (now - c.at) + 5);
@@ -2288,7 +2292,7 @@ export class HeatPane {
     if (!r) return null;
     if (!c || c.rows !== r.rows || c.step !== step || c.from !== win.from || c.to !== win.to) {
       const { answer, split } = candleAnswer(r.rows, r.buys, step, win.from, win.to);
-      this.#loadedCol = { rows: r.rows, step, from: win.from, to: win.to, at: now, cost: performance.now() - started, answer, split, markets: r.markets, sources };
+      this.#loadedCol = { rows: r.rows, step, from: win.from, to: win.to, at: now, cost: performance.now() - started, answer, split, markets: r.markets, sources, anchored };
     }
     return this.#loadedCol;
   }
@@ -4079,8 +4083,10 @@ export class HeatPane {
       const column = this.#columnAt(x);
       // A selection on the column is a question to the recording: there is none to ask of an estimate from candles (the press pans the chart),
       // and none either while the estimate is wanted and its candles are on their way (it would shade the estimate that replaces the recording);
-      // where they cannot come the column is the recording's and a press selects.
-      if (this.range && e.button === 0 && column && y >= 0 && y <= this.plotH && !(column.metric === 'volume' && this.#loadedBlocksRange(this.store.state))) {
+      // where they cannot come the column is the recording's and a press selects. Nor on an anchored window that holds nothing yet (its first
+      // five minutes, or a replay before them): there is no stretch to select.
+      const cw = this.#columnWindow();
+      if (this.range && e.button === 0 && column && y >= 0 && y <= this.plotH && cw.to > cw.from && !(column.metric === 'volume' && this.#loadedBlocksRange(this.store.state))) {
         this.#columnSelect = { y, side: column.side, i: column.i };
         const { from, to } = this.#columnWindow(), band = this.#columnBand(y, y);
         this.range.begin({ t: from, p: band.p0 }); this.range.move({ t: to, p: band.p1 }, { t: from, p: band.p0 });

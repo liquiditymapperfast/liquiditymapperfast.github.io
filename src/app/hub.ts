@@ -262,9 +262,10 @@ export class Hub {
   mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && !this.mapCovered && !this.#mapWaited && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
   /**
    * Whether the map's first columns are not drawn yet (for `MAP_FIRST_MS` at most), whatever the source: reads only scripts want (their
-   * candles from the exchange, `scriptHistory`) wait for it, on a page reading the exchanges itself too.
+   * candles from the exchange, `scriptHistory`) wait for it, on a page reading the exchanges itself too. Not while the map is covered (a
+   * phone's Tape or Flow tab: it draws no columns to wait for), nor on a hub that paces nothing (Sol, code review 2026-11-10, round 3).
    */
-  firstColumnsPending(): boolean { return this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
+  firstColumnsPending(): boolean { return this.#paced && !this.mapCovered && !this.#mapWaited && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
   #tapeOn = false;
   /** Ask the source for every order (the trade dust) or stop it; what is held stays until the page goes. */
   setTape(on: boolean): void {

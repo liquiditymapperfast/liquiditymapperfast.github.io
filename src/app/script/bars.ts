@@ -25,6 +25,20 @@ export function scriptStart(now: number, tfMs: number, bars: number): number {
 }
 
 /**
+ * Whether the chart's candles `next` are `prev` with only the last candle changed (a live update of the candle under way, `mergeLive`, keeps
+ * every other row as the same object) and the scripts' series built from `prev` (`rows`) ends with that last candle: only then may the series
+ * keep its rows and put the new last candle in place. A list read again keeps its ends but not its rows, and one of them can differ: a candle
+ * corrected inside it (its close 100, then 220) left the scripts on the old figure until something else changed (Sol, code review 2026-11-10,
+ * round 3). Row by row, a pointer each: a few microseconds for the chart's candles.
+ */
+export function liveUpdate<T>(prev: readonly T[], next: readonly T[], rows: readonly T[]): boolean {
+  const n = next.length;
+  if (!n || prev.length !== n || rows[rows.length - 1] !== prev[n - 1]) return false;
+  for (let i = 0; i < n - 1; i++) if (prev[i] !== next[i]) return false;
+  return true;
+}
+
+/**
  * How the scripts' candles stand, for the Scripts panel: read from the exchange and handed to the scripts ('ready'), being read (`have` of
  * `want` so far), held but fewer than asked because the exchange has no more of this market or serves no older ones ('short'), not read just
  * now and tried again in a minute ('failed'), or not read at all because the chart's market has no history the page can read, or the chart

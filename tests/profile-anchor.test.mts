@@ -74,6 +74,9 @@ test('the columns draw only an answer asked for the anchored window they show (S
   assert.equal(answerFits(anchorTag(now), null), false, 'and following the chart, no anchored one');
   assert.equal(answerFits('', null), true);
   assert.equal(answerFits(anchorTag(now), s(T0, T0)), false, 'a window that holds nothing yet draws nothing');
+  // A replay before its anchor's first five minutes ended (or before the anchor) has such a window, never none: none is the chart's, whose
+  // totals were drawn under the anchor (Sol, code review 2026-11-10, round 3).
+  assert.equal(answerFits('', { ...s(T0, T0 - 2 * HOUR, T0 - HOUR, 'replay'), rev: 0 }), false, 'a replay before the anchor draws no chart total');
   assert.notEqual(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN)), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN)), 'Update now within the same five minutes asks again');
   assert.equal(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay')), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN, 'replay')), 'a replay asks once for its five minutes');
   assert.notEqual(anchorTag({ ...s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay'), rev: 1 }), anchorTag({ ...s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay'), rev: 2 }), 'and again at Update now');
