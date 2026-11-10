@@ -541,7 +541,7 @@ line(s.length)
 
 ### too-slow
 
-Stopped: the script took too long. Met while the script runs, at the candle where it happens. The run took longer than its time: 10 s for a run from the first candle (the chart opened, the script changed), 2.5 s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out.
+Stopped: the script took too long. Met while the script runs, at the candle where it happens. The run took longer than its time: 10 s for a run from the first candle (the chart opened, the script changed), 2.5 s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out. The example below takes about 30,000 steps a candle: it meets the limit on a chart of 2,000 candles.
 
 Meets it:
 

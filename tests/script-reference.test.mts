@@ -26,7 +26,7 @@ test("each error's example meets that error, and its fix runs cleanly", () => {
     if (e.when === 'page') { assert.ok(!e.wrong && !e.right, `${e.code}: the page causes it, no script does`); continue; }
     assert.ok(e.wrong && e.right, `${e.code} has a script that meets it and its fix`);
     // A run longer than the limit, without waiting for it: a clock that moves a second each time it is read (the example takes the limit of
-    // a run from the first candle on a chart of 1,000 candles; these are 30).
+    // a run from the first candle on a chart of 2,000 candles; these are 30).
     let t = 0;
     const clock = e.code === 'too-slow' ? (): number => (t += 1000) : undefined;
     const wrong = runScript('x', e.wrong, {}, inputs(), clock);

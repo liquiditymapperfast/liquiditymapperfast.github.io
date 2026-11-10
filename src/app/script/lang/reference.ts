@@ -174,7 +174,7 @@ export const ERRORS: readonly { code: string; wrong?: string; right?: string; sh
   { code: 'budget', when: 'running', wrong: 'while (true) {}\nline(1)', right: 'var i = 0\nwhile (i < 10) i++\nline(i)' },
   { code: 'too-large', when: 'running', wrong: 'var s = "x".padStart(20000)\nline(s.length)', right: 'var s = "x".padStart(200)\nline(s.length)' },
   {
-    code: 'too-slow', when: 'running', note: `The run took longer than its time: ${FULL_RUN_MS / 1000} s for a run from the first candle (the chart opened, the script changed), ${RUN_MS / 1000} s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out.`,
+    code: 'too-slow', when: 'running', note: `The run took longer than its time: ${FULL_RUN_MS / 1000} s for a run from the first candle (the chart opened, the script changed), ${RUN_MS / 1000} s for a live update of the newest candles; each candle on its own stayed within its steps. Work less a candle, or keep in a kept name what an earlier candle worked out. The example below takes about 30,000 steps a candle: it meets the limit on a chart of 2,000 candles.`,
     wrong: 'var s = 0\nfor (var i = 0; i < 10000; i++) s = s + Math.sqrt(i)\nline(s)', right: 'var s = 0\nfor (var i = 0; i < 50; i++) s = s + Math.sqrt(i)\nline(s)',
   },
   { code: 'timeout', when: 'page' },
