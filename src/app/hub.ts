@@ -260,6 +260,11 @@ export class Hub {
   mapCovered = false;
   /** Whether history reads still wait for the map's first columns (`MAP_FIRST_MS`): the server's page only, its first seconds only. */
   mapFirst(): boolean { return this.#paced && this.source.kind === 'server' && !this.mapCovered && !this.#mapWaited && this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
+  /**
+   * Whether the map's first columns are not drawn yet (for `MAP_FIRST_MS` at most), whatever the source: reads only scripts want (their
+   * candles from the exchange, `scriptHistory`) wait for it, on a page reading the exchanges itself too.
+   */
+  firstColumnsPending(): boolean { return this.columnsVersion === 0 && performance.now() - this.#bornAt < MAP_FIRST_MS; }
   #tapeOn = false;
   /** Ask the source for every order (the trade dust) or stop it; what is held stays until the page goes. */
   setTape(on: boolean): void {
@@ -278,8 +283,8 @@ export class Hub {
   readonly keyHistory = new KeyLevelHistory(historyGet);
   /** The Liquidation levels layer's file and the candles that take its levels away. */
   readonly liqLevels = new LiqLevelsSource(webGet);
-  /** The scripts' candles of the chart market (`scriptHistory`), for one timeframe and count at a time. */
-  #scriptHistory: { key: string; h: KeyLevelHistory } | null = null;
+  /** The scripts' candles of the chart market (`scriptHistory`), by timeframe and count, the three last asked for. */
+  readonly #scriptHistories = new Map<string, KeyLevelHistory>();
   /** The VWAP lines' candles, one history per kind, market and bar size (`vwapHistory`), and when each was last asked for. */
   readonly #vwapHistories = new Map<string, { h: KeyLevelHistory; used: number }>();
   readonly #profileHistories = new Map<string, KeyLevelHistory>();
@@ -327,12 +332,18 @@ export class Hub {
   /**
    * The chart market's candles the scripts read (`script/bars.ts`, `HeatPane.scriptCandles`): one history of the chart's timeframe, kept back
    * a chunk and two days past the count asked, so the scripts' first candle (`scriptStart`) stays in it until it moves on by a chunk. Another
-   * timeframe or count is another history.
+   * timeframe or count is another history; the three last asked for are kept, so a timeframe switched to and back is not read again.
    */
   scriptHistory(tfMs: number, bars: number): KeyLevelHistory {
     const key = `${tfMs}|${bars}`;
-    if (this.#scriptHistory?.key !== key) this.#scriptHistory = { key, h: new KeyLevelHistory(historyGet, Date.now, 60_000, (bars + scriptChunk(bars)) * tfMs + 2 * 86_400_000) };
-    return this.#scriptHistory.h;
+    let h = this.#scriptHistories.get(key);
+    if (h) this.#scriptHistories.delete(key);
+    else {
+      h = new KeyLevelHistory(historyGet, Date.now, 60_000, (bars + scriptChunk(bars)) * tfMs + 2 * 86_400_000);
+      if (this.#scriptHistories.size >= 3) this.#scriptHistories.delete(this.#scriptHistories.keys().next().value!);
+    }
+    this.#scriptHistories.set(key, h);
+    return h;
   }
   /**
    * The VWAP's candles of one market and bar size, asked again every minute: the session's and the anchors' (a minute for a day's session,

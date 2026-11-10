@@ -2162,7 +2162,6 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "このコインにはまだアンカーがありません。置くまでは、列はチャートに表示中の範囲を合算します。",
  "The columns hold {from} to {to}, worked out at {time}.": "列は {from} から {to} までを集計しています（{time} に計算）。",
  "The first five minutes after the anchor are not over yet.": "アンカー後の最初の 5 分がまだ終わっていません。",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "取引量は、ローソク足がある範囲で最大 21 週間さかのぼります（推定値 ≈）。清算・吸収・建玉は、それぞれの記録がある範囲までしかさかのぼれません。各列は数値の開始時点を示します。",
  "Candles scripts read": "スクリプトが読むローソク足",
  "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "各スクリプトが取引所から読むチャートのローソク足の本数です。多いほど、最初の読み込みと最初の足からの計算に時間がかかります。",
  "Reading {have} of {want} candles of {market} from the exchange…": "{market} のローソク足を取引所から読み込み中（{want} 本中 {have} 本）…",
@@ -2172,5 +2171,6 @@
  "The scripts read {want} candles of {market}.": "スクリプトは {market} のローソク足を {want} 本読みます。",
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "{line} 行目：{asked}の期間は期間の上限を超えているため、{n}までさかのぼります。",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読む {max}のうち、このチャートが渡すのは {have}です。",
- "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読むのは {max}です。スクリプトパネルで {most}まで増やすか、より長い時間足を選んでください。"
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読むのは {max}です。スクリプトパネルで {most}まで増やすか、より長い時間足を選んでください。",
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "取引量は、ローソク足がある範囲で最大 21 週間さかのぼります（推定値 ≈）。清算・吸収・建玉は、それぞれの記録がある範囲までしかさかのぼれません。"
 }

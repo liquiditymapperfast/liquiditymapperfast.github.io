@@ -2272,7 +2272,6 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "Ancora nessuna ancora per questa moneta: le colonne sommano ciò che è sul grafico finché non ne viene posizionata una.",
  "The columns hold {from} to {to}, worked out at {time}.": "Le colonne coprono da {from} a {to}, calcolate alle {time}.",
  "The first five minutes after the anchor are not over yet.": "I primi cinque minuti dopo l'ancora non sono ancora trascorsi.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "Il volume scambiato arriva fino a 21 settimane indietro dove ci sono le candele, come stima (≈). Liquidazioni, assorbimento e open interest arrivano solo fin dove arriva la loro registrazione. Ogni colonna dice dove iniziano i suoi numeri.",
  "Candles scripts read": "Candele lette dagli script",
  "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "Quante candele del grafico legge ogni script, dall'exchange. Più candele richiedono più tempo alla prima lettura e per calcolare dalla prima candela.",
  "Reading {have} of {want} candles of {market} from the exchange…": "Lettura di {have} su {want} candele di {market} dall'exchange…",
@@ -2282,5 +2281,6 @@
  "The scripts read {want} candles of {market}.": "Gli script leggono {want} candele di {market}.",
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Riga {line}: una finestra di {asked} è più lunga di quanto possa esserlo una finestra, quindi conta {n} all'indietro.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Riga {line}: una finestra di {n} qui non si riempie mai: questo grafico dà agli script {have} delle {max} che leggono.",
- "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Riga {line}: una finestra di {n} qui non si riempie mai: gli script leggono {max}. Scegline di più nel pannello Script, fino a {most}, o un timeframe più lungo."
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Riga {line}: una finestra di {n} qui non si riempie mai: gli script leggono {max}. Scegline di più nel pannello Script, fino a {most}, o un timeframe più lungo.",
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "Il volume scambiato arriva fino a 21 settimane indietro dove ci sono le candele, come stima (≈). Liquidazioni, assorbimento e open interest arrivano solo fin dove arriva la loro registrazione."
 }

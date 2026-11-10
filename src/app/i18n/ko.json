@@ -2162,7 +2162,6 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "이 코인에는 아직 앵커가 없습니다. 놓을 때까지 열은 차트에 보이는 범위를 합산합니다.",
  "The columns hold {from} to {to}, worked out at {time}.": "열은 {from}부터 {to}까지를 담고 있으며 {time}에 계산했습니다.",
  "The first five minutes after the anchor are not over yet.": "앵커 뒤 첫 5분이 아직 끝나지 않았습니다.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "거래량은 캔들이 있는 곳에서 최대 21주까지 거슬러 올라가며 추정치(≈)입니다. 청산·흡수·미결제약정은 각 기록이 있는 만큼만 거슬러 올라갑니다. 각 열은 숫자가 시작되는 지점을 알려 줍니다.",
  "Candles scripts read": "스크립트가 읽는 캔들",
  "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "각 스크립트가 거래소에서 읽는 차트 캔들 수입니다. 많을수록 처음 읽을 때와 첫 캔들부터 계산할 때 오래 걸립니다.",
  "Reading {have} of {want} candles of {market} from the exchange…": "거래소에서 {market} 캔들을 읽는 중입니다({want}개 중 {have}개)…",
@@ -2172,5 +2171,6 @@
  "The scripts read {want} candles of {market}.": "스크립트는 {market} 캔들 {want}개를 읽습니다.",
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "{line}행: {asked} 기간은 기간의 최대 길이보다 길어서 {n}까지만 거슬러 셉니다.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트가 읽는 {max} 중 이 차트가 주는 것은 {have}입니다.",
- "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트는 {max}을(를) 읽습니다. 스크립트 패널에서 {most}까지 늘리거나 더 긴 시간 단위를 고르세요."
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트는 {max}을(를) 읽습니다. 스크립트 패널에서 {most}까지 늘리거나 더 긴 시간 단위를 고르세요.",
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "거래량은 캔들이 있는 곳에서 최대 21주까지 거슬러 올라가며 추정치(≈)입니다. 청산·흡수·미결제약정은 각 기록이 있는 만큼만 거슬러 올라갑니다."
 }

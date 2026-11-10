@@ -1573,7 +1573,7 @@ export class HeatPane {
   #scriptRows: { answer: PriceHistoryAnswer; candles: readonly CandleRow[]; cut: number; key: string; history: readonly CandleRow[]; rows: readonly CandleRow[] } | null = null;
   /** Told when the scripts' candles from the exchange change how they stand (`scriptBarsState`): the scripts look again (set by the page). */
   onScriptHistory: () => void = () => {};
-  #scriptLongRows: { version: number; candles: readonly CandleRow[]; start: number; cut: number; rows: readonly CandleRow[] } | null = null;
+  #scriptLongRows: { base: string; candles: readonly CandleRow[]; rows: readonly CandleRow[] } | null = null;
   #scriptStateKey = '';
   /**
    * The chart market's candles the scripts read (`script/bars.ts`, `state.scriptBars`): the exchange's, of the chart's timeframe, from
@@ -1592,13 +1592,22 @@ export class HeatPane {
     // A view (nearly) all before the start keeps the price history's candles for it; one that reaches across the start keeps these, which
     // hold far more than one read of the price history (2,000 candles) would.
     if (this.view.t1 < r.start + SCRIPT_WARM_BARS * tf) return null;
-    const held = this.#scriptLongRows;
-    if (held && held.version === r.h.version && held.candles === candles && held.start === r.start && held.cut === cut) return held.rows;
-    const starts = new Set(candles.map(c => c[0])), last = candles[candles.length - 1]?.[0] ?? Infinity;
+    // Made again when the history changes, the start moves, a candle begins or the chart's candles are replaced; a live update of the
+    // candle under way (the series' last: the history's bars all start before it) only puts the new one in its place (Karl's advisor,
+    // 2026-11-10: filtering 10,000 bars at every trade).
+    const held = this.#scriptLongRows, last = candles[candles.length - 1]![0];
+    const base = `${r.h.version}|${r.start}|${cut}|${candles.length}|${candles[0]![0]}|${last}`;
+    if (held && held.base === base) {
+      if (held.candles === candles) return held.rows;
+      const rows = held.rows.slice(0, -1); rows.push(candles[candles.length - 1]!);
+      this.#scriptLongRows = { ...held, candles, rows };
+      return rows;
+    }
+    const starts = new Set(candles.map(c => c[0]));
     const history = r.h.bars.filter(b => b[0] >= r.start && b[0] < last && !starts.has(b[0]) && (!replay || b[0] + tf <= at));
     const own = candles.filter(c => c[0] >= r.start);
     const rows = history.length ? withHistory(history, own) : own;
-    this.#scriptLongRows = { version: r.h.version, candles, start: r.start, cut, rows };
+    this.#scriptLongRows = { base, candles, rows };
     return rows;
   }
   /** Where the scripts' candles from the exchange stand (`ScriptBarsState`), asking for them when they are wanted and the map has its first data. */
@@ -1610,7 +1619,8 @@ export class HeatPane {
     const h = this.hub.scriptHistory(tf, bars), market = `${venueLabel(target.id)} ${target.listing.symbol}`;
     // The chart's own candles not in yet: whose market they are of is not settled, so nothing is asked.
     if (!state.candles.length) return { h: null, start, state: { state: 'loading', have: 0, want: bars, market } };
-    if (!this.hub.mapFirst()) h.ensure(target, start, tf, () => this.#scriptLoaded(this.#scriptReading(this.store.state).state));
+    // Not before the map's first columns, on a page reading the exchanges itself too (every visitor runs the VWAP starter).
+    if (!this.hub.firstColumnsPending()) h.ensure(target, start, tf, () => this.#scriptLoaded(this.#scriptReading(this.store.state).state));
     if (h.id !== target.id || h.barMs !== tf) return { h: null, start, state: { state: 'loading', have: 0, want: bars, market } };
     const have = h.bars.length - lowerBound(h.bars, start), reach = h.reach(start);
     if (h.state === 'unavailable') return { h: null, start, state: { state: 'failed', have, want: bars, market } };
@@ -3198,8 +3208,9 @@ export class HeatPane {
     // than what the column could add up (a source answers eight days at most, `askedSpan`): the column then holds only its newest part.
     const covers = this.#columnCovers(metric);
     if (covers !== null && !loaded) sub = t('since {time}', { time: clock(covers, covers < startOfDay(Date.now())) });
-    // Anchored: where its numbers begin, in the line the row's largest figure takes otherwise (the header box still gives it).
-    else if (anchored && !loaded) sub = t('from {time}', { time: fromText });
+    // Anchored: where its numbers begin, in the line the row's largest figure takes otherwise (the header box still gives it), only where the
+    // answer knows when each of its markets began recording (liquidations do not say: their own line stays), and never over a warning.
+    else if (anchored && !loaded && !measured.warn && !!answer?.instruments.length && answer.instruments.every(inst => inst.earliest !== null)) sub = t('from {time}', { time: fromText });
     const warn = !loaded && (covers !== null || measured.warn);
     if (sub) { if (warn) ctx.fillStyle = '#e6a700'; else if (loaded) ctx.fillStyle = p.poc; ctx.fillText(sub, x0 + 4, lineY); }
     if (rows && rows.total > 0 && !unsplit) { const net = tradedNet(rows); ctx.fillStyle = net > 0 ? p.bid : net < 0 ? p.ask : p.muted; ctx.fillText(tradedNetLine(rows), x0 + 4, lineY + 12, W - 8); }

@@ -2305,7 +2305,6 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "Для цієї монети прив'язки ще немає: поки її не поставлять, колонки складають те, що на графіку.",
  "The columns hold {from} to {to}, worked out at {time}.": "Колонки охоплюють з {from} до {to}, пораховано о {time}.",
  "The first five minutes after the anchor are not over yet.": "Перші п'ять хвилин після прив'язки ще не минули.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "Обсяг торгів доступний до 21 тижня тому, де є свічки, як оцінка (≈). Ліквідації, поглинання та відкритий інтерес — лише наскільки сягає їхній запис. Кожна колонка каже, звідки починаються її числа.",
  "Candles scripts read": "Свічок читають скрипти",
  "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "Скільки свічок графіка читає кожен скрипт, з біржі. Чим більше, тим довше перше читання й розрахунок від першої свічки.",
  "Reading {have} of {want} candles of {market} from the exchange…": "Читання свічок {market} з біржі: {have} з {want}…",
@@ -2315,5 +2314,6 @@
  "The scripts read {want} candles of {market}.": "Скрипти читають {want} свічок {market}.",
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Рядок {line}: вікно ({asked}) довше, ніж може бути вікно, тому воно відлічує назад {n}.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Рядок {line}: вікно ({n}) тут ніколи не заповнюється: із {max}, які читають скрипти, цей графік дає лише {have}.",
- "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Рядок {line}: вікно ({n}) тут ніколи не заповнюється: скрипти читають {max}. Виберіть більше на панелі «Скрипти», до {most}, або довший таймфрейм."
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Рядок {line}: вікно ({n}) тут ніколи не заповнюється: скрипти читають {max}. Виберіть більше на панелі «Скрипти», до {most}, або довший таймфрейм.",
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "Обсяг торгів доступний до 21 тижня тому, де є свічки, як оцінка (≈). Ліквідації, поглинання та відкритий інтерес — лише наскільки сягає їхній запис."
 }

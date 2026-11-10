@@ -252,6 +252,6 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
   const w = sources.anchored?.() ?? null;
   if (at === null) out.push(note(t('No anchor yet for this coin: the columns add up what is on the chart until one is placed.')));
   else if (w) out.push(note(w.to > w.from ? t('The columns hold {from} to {to}, worked out at {time}.', { from: clock(w.from, true), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
-  out.push(note(t('Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.')));
+  out.push(note(t('Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.')));
   return out;
 }

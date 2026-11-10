@@ -2162,7 +2162,6 @@
  "No anchor yet for this coin: the columns add up what is on the chart until one is placed.": "此币种还没有锚点：放置锚点之前，列汇总图表上显示的范围。",
  "The columns hold {from} to {to}, worked out at {time}.": "列涵盖 {from} 到 {to}，计算于 {time}。",
  "The first five minutes after the anchor are not over yet.": "锚点之后的前五分钟尚未结束。",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.": "成交量在有K线的地方最多可回溯 21 周，为估算值（≈）。清算、吸收和持仓量只能回溯到各自记录开始的地方。每一列都会说明其数字从哪里开始。",
  "Candles scripts read": "脚本读取的 K 线数",
  "How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle.": "每个脚本从交易所读取的图表 K 线数量。越多，首次读取和从第一根 K 线开始计算就越慢。",
  "Reading {have} of {want} candles of {market} from the exchange…": "正在从交易所读取 {market} 的 K 线：{want} 根中的 {have} 根…",
@@ -2172,5 +2171,6 @@
  "The scripts read {want} candles of {market}.": "脚本读取 {market} 的 {want} 根 K 线。",
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "第 {line} 行：{asked}的窗口超过了窗口的最大长度，因此只回溯 {n}。",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本读取 {max}，而这个图表只给出 {have}。",
- "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本读取 {max}。请在脚本面板中选择更多（最多 {most}），或选择更长的时间周期。"
+ "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本读取 {max}。请在脚本面板中选择更多（最多 {most}），或选择更长的时间周期。",
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "成交量在有K线的地方最多可回溯 21 周，为估算值（≈）。清算、吸收和持仓量只能回溯到各自记录开始的地方。"
 }
