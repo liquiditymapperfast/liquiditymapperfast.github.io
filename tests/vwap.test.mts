@@ -8,6 +8,8 @@ import { paintKeyTags, placeKeyTags, type KeyTag } from '../src/app/keylevels/pa
 import type { Palette } from '../src/app/theme.ts';
 import { MAX_BACK_MS } from '../src/app/keylevels/levels.ts';
 import type { CandleRow } from '../src/app/store.ts';
+import { MAX_VWAP_MARKETS, VWAP_PICKS, pickTarget, quoteOf, readVwapPicks, seedPicks, vwapTargets } from '../src/app/vwap/markets.ts';
+import { BTC } from '../src/shared/coins.ts';
 
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 const D0 = Date.UTC(2026, 9, 5);
@@ -261,9 +263,7 @@ test('a rolling window over several markets is whole only from where every histo
   assert.equal(rollingOf(vwapBarsOf(bars), HOUR, 3 * HOUR, D0 + 10 * HOUR)[0]!.t, D0 + 3 * HOUR, 'one market: a window after its first bar');
 });
 
-test('the VWAP\'s candles come from the chart market by default; chosen markets are exchange and kind, read back checked, and stand for this coin\'s markets', async () => {
-  const { MAX_VWAP_MARKETS, VWAP_PICKS, pickTarget, quoteOf, readVwapPicks, seedPicks, vwapTargets } = await import('../src/app/vwap/markets.ts');
-  const { BTC } = await import('../src/shared/coins.ts');
+test('the VWAP\'s candles come from the chart market by default; chosen markets are exchange and kind, read back checked, and stand for this coin\'s markets', () => {
   assert.equal(VWAP_DEFAULTS.source, 'chart'); assert.deepEqual(VWAP_DEFAULTS.picks, []);
   assert.equal(readVwap({ source: 'chosen', picks: ['binance/spot', 'nowhere/perp', 'binance/spot', 'coinbase/spot', 3] }).source, 'chosen');
   assert.deepEqual(readVwap({ source: 'chosen', picks: ['binance/spot', 'nowhere/perp', 'binance/spot', 'coinbase/spot', 3] }).picks, ['binance/spot', 'coinbase/spot'], 'offered ones only, each once');
