@@ -60,7 +60,7 @@ import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, profileCompanion, profileTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { TakerRows } from '../measures/taker-rows.ts';
 import { paintKeyLevels, paintKeyTags, periodDate, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
-import { ROLLING_MAX_BARS, rollingBarMs, rollingSeries, sessionsOf, vwapBarMs, vwapSeries, whaleSeries, type RollingState } from '../vwap/vwap.ts';
+import { rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapSeries, whaleSeries, type RollingState } from '../vwap/vwap.ts';
 import { anchorsOf } from '../vwap/settings.ts';
 import { FootprintMarks } from '../footprint/marks.ts';
 import { FootprintRuns, paintRuns } from '../footprint/runs.ts';
@@ -2265,14 +2265,9 @@ export class HeatPane {
     const need = (bar: number, from: number): void => { reach.set(bar, Math.min(reach.get(bar) ?? Infinity, Math.floor(from / bar) * bar)); };
     if (sessions.length && s.session) need(sessionBar, sessions[0]!.from);
     for (const a of anchors) need(a.bar, a.at);
-    // The history drops what is older than it keeps (by the real clock, as it loads), so the line is asked for no further back than that, with
-    // a day and a bar to spare: the history asks from the start of the day `from` falls in, and bars it then dropped at once would have it
-    // take its start for the exchange's.
+    // A whole window before the view, no further back than the history keeps (`rollingFrom`); windows of one bar size share one history.
     const rolling = s.rolling.map(days => ({ days, ms: days * DAY, bar: rollingBarMs(days) })), rollingReach = new Map<number, number>(), real = Date.now();
-    for (const r of rolling) {
-      const from = Math.floor(Math.max(Math.min(v.t0, now) - r.ms, real - r.bar * ROLLING_MAX_BARS + DAY + r.bar) / r.bar) * r.bar;
-      rollingReach.set(r.bar, Math.min(rollingReach.get(r.bar) ?? Infinity, from));
-    }
+    for (const r of rolling) rollingReach.set(r.bar, Math.min(rollingReach.get(r.bar) ?? Infinity, rollingFrom(r.days, v.t0, v.t1, now, real)));
     const plan: VwapPlan = { sessions, sessionBar, anchors, reach, rolling, rollingReach };
     this.#vwapPlanned = { key, plan };
     return plan;

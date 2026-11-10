@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ROLLING_MAX_BARS, rollingBarMs, rollingSeries, sessionsOf, vwapBarMs, vwapSeries } from '../src/app/vwap/vwap.ts';
+import { ROLLING_MAX_BARS, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapSeries } from '../src/app/vwap/vwap.ts';
 import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withRolling, withoutAnchor } from '../src/app/vwap/settings.ts';
 import { cutForReplay, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
-import { placeKeyTags, type KeyTag } from '../src/app/keylevels/paint.ts';
+import { paintKeyTags, placeKeyTags, type KeyTag } from '../src/app/keylevels/paint.ts';
+import type { Palette } from '../src/app/theme.ts';
 import { MAX_BACK_MS } from '../src/app/keylevels/levels.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -172,4 +173,22 @@ test('in a replay a rolling line ends at its last bar over by the moment; a sess
   assert.deepEqual(cut[0]!.points.map(p => p.t), [HOUR, 2 * HOUR], 'points stand at bar ends');
   assert.deepEqual(cut[1]!.points.map(p => p.t), [0, HOUR], 'points stand at bar starts');
   assert.equal(cutForReplay(lines, 0, false), lines, 'live: as they are');
+});
+
+test('a name wider than the price axis is drawn narrower there, never cut at its edge', () => {
+  const texts: unknown[][] = [];
+  const ctx = new Proxy({}, { get: (_t, k) => k === 'fillText' ? (...a: unknown[]) => { texts.push(a); } : () => {}, set: () => true }) as CanvasRenderingContext2D;
+  const palette = { level: '#888', panel: '#fff', bg: '#fff' } as Palette;
+  paintKeyTags(ctx, [{ key: 'r', y: 50, rank: 7.5, text: 'RVWAP 365D', older: false }, { key: 'v', y: 80, rank: 1.5, text: 'VWAP', older: true }], 600, 64, palette);
+  assert.deepEqual(texts.map(a => a[3]), [56, 56], 'the axis less its margins is the most a name may take');
+});
+
+test('a rolling window\'s history is asked for a whole window before the view, never further back than it keeps, nor from 1970', () => {
+  const now = D0 + 500 * DAY, real = now;
+  assert.equal(rollingFrom(30, now - 10 * DAY, now + HOUR, now, real), now - 40 * DAY, 'a window before the view');
+  assert.equal(rollingFrom(30, 0, 0, now, real), now - 30 * DAY, 'a view not framed yet: a window back from now');
+  assert.equal(rollingFrom(30, now + HOUR, now + HOUR, now, real), now - 30 * DAY, 'a view of no width, following the live edge');
+  const far = rollingFrom(1, now - 400 * DAY, now, now, real), keeps = 5 * MIN * ROLLING_MAX_BARS;
+  assert.ok(far > real - keeps + DAY && far <= real - keeps + DAY + 5 * MIN, 'bounded a day and a bar inside what the history keeps');
+  assert.equal(far % (5 * MIN), 0, 'on a bar');
 });

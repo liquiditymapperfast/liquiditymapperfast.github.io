@@ -62,6 +62,18 @@ export type RollingState = 'yes' | 'coming' | 'short' | 'failed';
 export const ROLLING_MAX_BARS = 6_000;
 
 /**
+ * How far back the history of the rolling VWAP over `days` must reach for a view from `t0` to `t1` (`now` the page's clock, `real` the real
+ * one): a whole window before the view, no further back than the history keeps by the real clock, with a day and a bar to spare (the history
+ * asks from the start of the day a start falls in, and bars it then dropped at once would read as the start of the exchange's history). A view
+ * not framed yet (`t1 <= t0`: `{ t0: 0, t1: 0 }` until the first candles or price) reaches a window back from `now`: taken at its word, its
+ * start in 1970 had every history read all it keeps at each page load.
+ */
+export function rollingFrom(days: number, t0: number, t1: number, now: number, real: number): number {
+  const bar = rollingBarMs(days), start = t1 > t0 ? Math.min(t0, now) : now;
+  return Math.floor(Math.max(start - days * DAY, real - bar * ROLLING_MAX_BARS + DAY + bar) / bar) * bar;
+}
+
+/**
  * The rolling VWAP over `windowMs`: at the end of each bar, each bar's typical price weighted by its volume over the bars that start in the
  * window before that end. The window is by time, so a missing bar is a stretch nobody traded, never one bar fewer. Points are drawn where a
  * window is whole only: the first is a whole window after the first bar held, so a history that does not reach back far enough yet (or an

@@ -108,7 +108,8 @@ export function paintKeyTags(ctx: CanvasRenderingContext2D, tags: readonly KeyTa
       ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(axisX + 1.5, y - TAG_H / 2 + 0.5, axisW - 2, TAG_H - 1);
       ctx.fillStyle = color;
     } else { ctx.fillStyle = color; ctx.fillRect(axisX + 1, y - TAG_H / 2, axisW - 1, TAG_H); ctx.fillStyle = p.bg; }
-    ctx.fillText(tag.text, axisX + 6, y + 0.5);
+    // A name wider than the axis (RVWAP 365D, a long translation) is drawn a little narrower rather than cut at the edge.
+    ctx.fillText(tag.text, axisX + 6, y + 0.5, Math.max(12, axisW - 8));
   }
   ctx.restore();
 }
