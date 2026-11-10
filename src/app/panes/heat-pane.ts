@@ -60,11 +60,11 @@ import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, profileCompanion, profileTarget, type HistoryTarget } from '../keylevels/history.ts';
 import { TakerRows } from '../measures/taker-rows.ts';
 import { paintKeyLevels, paintKeyTags, periodDate, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
-import { sessionsOf, vwapBarMs, vwapSeries, whaleSeries } from '../vwap/vwap.ts';
+import { ROLLING_MAX_BARS, rollingBarMs, rollingSeries, sessionsOf, vwapBarMs, vwapSeries, whaleSeries, type RollingState } from '../vwap/vwap.ts';
 import { anchorsOf } from '../vwap/settings.ts';
 import { FootprintMarks } from '../footprint/marks.ts';
 import { FootprintRuns, paintRuns } from '../footprint/runs.ts';
-import { paintVwap, type VwapLine } from '../vwap/paint.ts';
+import { cutForReplay, paintVwap, type VwapLine } from '../vwap/paint.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { draftLabel } from '../range/stats.ts';
@@ -125,10 +125,11 @@ const LOADED_COLUMN_MS = 250;
 /** How far behind a window that has ended the candles known may be for the column's estimate still to stand (the history asks for its newest bars every minute). */
 const LOADED_LAG_MS = 10 * 60_000;
 /** Replay: each VWAP line up to the last bar that ended by its moment (so its tag is the VWAP then); live, the lines as they are. */
-function replayCut(lines: VwapLine[], at: number): VwapLine[] {
-  if (!replaying()) return lines;
-  // A history bar's point counts once the bar is over; the chart's own candles (from `liveFrom`) and the whale lines are cut to the moment already.
-  return lines.map(l => l.bar === undefined ? l : { ...l, points: l.points.filter(q => q.t >= (l.liveFrom ?? Infinity) || q.t + l.bar! <= at) });
+const replayCut = (lines: VwapLine[], at: number): VwapLine[] => cutForReplay(lines, at, replaying());
+/** What the VWAP lines need (`#vwapPlan`): the sessions and their bar, the anchors and theirs, the rolling windows and theirs, and how far back each history must reach. */
+interface VwapPlan {
+  sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number>;
+  rolling: { days: number; ms: number; bar: number }[]; rollingReach: Map<number, number>;
 }
 
 /** Width of the price axis, the profile column and the traded-volume column. A phone gives them less (and no traded column), so the map keeps most of the screen (see `setCompactGutters`). */
@@ -452,11 +453,16 @@ export class HeatPane {
   #keyFrom: { key: string; from: number } | null = null;
   #keyLines: { key: string; lines: KeyLine[] } | null = null;
   /** The VWAP's plan (sessions, anchors, bar sizes) and its lines, kept until what they depend on changes; its tags this frame. */
-  #vwapPlanned: { key: string; plan: { sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number> } } | null = null;
+  #vwapPlanned: { key: string; plan: VwapPlan } | null = null;
+  /** What the rolling windows' histories reach, as the VWAP panel says it (`onRollingReach` when it changes). */
+  #rollingReachKey = '';
   #vwapDrawn: { key: string; lines: VwapLine[] } | null = null;
+  #rollingDrawn: { key: string; lines: VwapLine[] } | null = null;
   #vwapTags: KeyTag[] = [];
   /** A click on the map while an anchor is being placed (set by the page): the time clicked. */
   onAnchor: ((t: number) => void) | null = null;
+  /** Whether a rolling window's history reaches a whole window changed (set by the page): the VWAP panel says which have no line. */
+  onRollingReach: () => void = () => {};
   /** A click on the header of the profile along the top (set by the page): its settings, in the Volume profile panel. */
   onTopProfile: () => void = () => {};
   /** What of the profiles has no room changed (a resize, a taller legend): the open panel says it again. */
@@ -2243,11 +2249,12 @@ export class HeatPane {
   }
 /**
    * What the VWAP lines need: the sessions touching the chart (and their bar size), each anchor of the coin (and its bar size, by its age),
-   * and for each bar size how far back its candles must reach. Worked out again when the settings, the zone, the coin, the view's hour or
-   * the clock's minute change.
+   * each rolling window (and its bar size, by the window alone), and for each bar size how far back its candles must reach: a rolling window
+   * from a whole window before the view, no further back than its history keeps. Worked out again when the settings, the zone, the coin, the
+   * view's hour or the clock's minute change.
    */
-  #vwapPlan(state: AppState): { sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number> } {
-    const s = state.vwap, v = this.view, now = pageNow(), MIN = 60_000, HOUR = 3_600_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
+  #vwapPlan(state: AppState): VwapPlan {
+    const s = state.vwap, v = this.view, now = pageNow(), MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
     const key = `${JSON.stringify(s)}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
     if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
     // The whale VWAP follows the same sessions, so they are worked out for either.
@@ -2258,14 +2265,41 @@ export class HeatPane {
     const need = (bar: number, from: number): void => { reach.set(bar, Math.min(reach.get(bar) ?? Infinity, Math.floor(from / bar) * bar)); };
     if (sessions.length && s.session) need(sessionBar, sessions[0]!.from);
     for (const a of anchors) need(a.bar, a.at);
-    const plan = { sessions, sessionBar, anchors, reach };
+    // The history drops what is older than it keeps (by the real clock, as it loads), so the line is asked for no further back than that, with
+    // a day and a bar to spare: the history asks from the start of the day `from` falls in, and bars it then dropped at once would have it
+    // take its start for the exchange's.
+    const rolling = s.rolling.map(days => ({ days, ms: days * DAY, bar: rollingBarMs(days) })), rollingReach = new Map<number, number>(), real = Date.now();
+    for (const r of rolling) {
+      const from = Math.floor(Math.max(Math.min(v.t0, now) - r.ms, real - r.bar * ROLLING_MAX_BARS + DAY + r.bar) / r.bar) * r.bar;
+      rollingReach.set(r.bar, Math.min(rollingReach.get(r.bar) ?? Infinity, from));
+    }
+    const plan: VwapPlan = { sessions, sessionBar, anchors, reach, rolling, rollingReach };
     this.#vwapPlanned = { key, plan };
     return plan;
+  }
+  /**
+   * Whether the rolling VWAP over `days` can be drawn: its history holds a whole window up to now ('yes'), may still ('coming'), will not
+   * because the exchange's history of the market is shorter than the window ('short'), or could not be read and is tried again in a minute
+   * ('failed'). For the VWAP panel; no market with a history the page can read is said there already.
+   */
+  rollingReach(days: number): RollingState {
+    const { target } = this.#keyLevelContext(this.store.state); if (!target) return 'coming';
+    const bar = rollingBarMs(days), h = this.hub.rollingHistory(bar);
+    if (h.id !== target.id || h.barMs !== bar) return 'coming';
+    const reach = h.reach(Date.now() - days * 86_400_000);
+    return reach !== 'never' ? reach : h.exhausted && h.bars.length ? 'short' : 'failed';
+  }
+  /** Tell the page when what `rollingReach` says of the windows shown has changed, so an open VWAP panel says it (and not on every refresh). */
+  #rollingLoaded(): void {
+    this.invalidate();
+    const s = this.store.state.vwap, key = s.on ? s.rolling.map(days => `${days}:${this.rollingReach(days)}`).join(',') : '';
+    if (key !== this.#rollingReachKey) { this.#rollingReachKey = key; this.onRollingReach(); }
   }
   /** Ask for the candles the VWAP lines need, one history per bar size, and the whale sums from the first session (within the week recorded). */
   #ensureVwap(state: AppState): void {
     const { target } = this.#keyLevelContext(state), plan = this.#vwapPlan(state);
     for (const [bar, from] of plan.reach) this.hub.vwapHistory(bar).ensure(target, from, bar, () => this.invalidate());
+    for (const [bar, from] of plan.rollingReach) this.hub.rollingHistory(bar).ensure(target, from, bar, () => this.#rollingLoaded());
     // The seven days the recorder keeps, from a whole hour: a start moving with the clock would ask again every minute.
     const kept = Math.ceil((Date.now() - 7 * 86_400_000) / 3_600_000) * 3_600_000;
     if (state.vwap.whale && plan.sessions.length) this.hub.ensureWhale(flowIds(state, this.hub.flow.ids), Math.max(plan.sessions[0]!.from, kept), scaledUsd(state.vwap.whaleUsd));
@@ -2285,16 +2319,34 @@ export class HeatPane {
     // A held bar reaching into the chart's candles would count that stretch twice.
     return { rows: [...held.filter(b => b[0] + bar <= from), ...live], liveFrom: from };
   }
+  /**
+   * The rolling VWAPs' lines, from their own histories alone (the chart's candles are not added at the end: the window's start moves by its
+   * bars, and the line is then the same at every timeframe), worked out again only when a window or one of those histories changes, not with
+   * the chart's candle under way.
+   */
+  #rollingLines(plan: VwapPlan, target: HistoryTarget): { key: string; lines: VwapLine[] } {
+    const key = `${target.id}|${plan.rolling.map(r => { const h = this.hub.rollingHistory(r.bar); return `${r.days}:${h.id}:${h.version}:${h.heldTo}`; }).join(',')}`;
+    if (this.#rollingDrawn?.key === key) return this.#rollingDrawn;
+    const lines: VwapLine[] = [];
+    for (const r of plan.rolling) {
+      const h = this.hub.rollingHistory(r.bar);
+      if (h.id !== target.id || h.barMs !== r.bar || !h.bars.length || !Number.isFinite(h.heldTo)) continue;
+      const points = rollingSeries(h.bars, r.bar, r.ms, h.heldTo);
+      if (points.length) lines.push({ kind: 'rolling', n: r.days, points, live: true, key: `rolling|${r.days}` });
+    }
+    this.#rollingDrawn = { key, lines };
+    return this.#rollingDrawn;
+  }
   /** The VWAP lines for the view, worked out again only when the plan, a history or the chart's last candle changes. */
   #vwapLines(state: AppState): VwapLine[] {
     const s = state.vwap; if (!s.on) return [];
     const { target } = this.#keyLevelContext(state); if (!target) return [];
-    const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1];
+    const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1], rolling = this.#rollingLines(plan, target);
     const versions = [...plan.reach.keys()].map(bar => { const h = this.hub.vwapHistory(bar); return `${bar}:${h.id}:${h.version}`; }).join(',');
     // With the venues on screen: switched, the sums held are another set's until the new ones come.
     const whaleIds = flowIds(state, this.hub.flow.ids), w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}|${whaleIds.join(',')}` : '';
     // Replay: again each minute shown, for the whale lines' minutes closed by then.
-    const key = `${this.#vwapPlanned?.key}|${versions}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
+    const key = `${this.#vwapPlanned?.key}|${versions}|${rolling.key}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
     if (this.#vwapDrawn?.key === key) return replayCut(this.#vwapDrawn.lines, pageNow());
     const lines: VwapLine[] = [], now = pageNow();
     const sessionBars = plan.sessions.length ? this.#vwapBars(state, plan.sessionBar, target) : null;
@@ -2305,6 +2357,7 @@ export class HeatPane {
       const points = vwapSeries(sessionBars.rows, w.from, w.to);
       if (points.length) lines.push({ kind: 'session', n: 0, points, live: w.to > now, key: w.key, bar: plan.sessionBar, liveFrom: sessionBars.liveFrom });
     }
+    lines.push(...rolling.lines);
     // The whale lines of each session, from where the recording's count of large orders begins when that is later; only the sums of the size asked.
     const whale = this.hub.whale;
     if (s.whale && whale && whale.minUsd === scaledUsd(s.whaleUsd) && whale.ids.size === whaleIds.length && whaleIds.every(id => whale.ids.has(id))) {

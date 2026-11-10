@@ -985,7 +985,6 @@
  "Its history reaches back to {date} only, so lines of earlier periods are missing.": "其历史只能回溯到 {date}，因此缺少更早周期的线。",
  "VWAP": "VWAP",
  "AVWAP": "AVWAP",
- "The average price the market traded at since a session began or since a moment you choose, weighted by volume: where buyers and sellers have done business on average.": "自时段开始或自你选定的时刻以来，按成交量加权的市场平均成交价：买卖双方平均在哪里成交。",
  "The session VWAP starts again each day, week or month, in the zone the Volume profile and Key levels use; its bands are one and two standard deviations of the prices traded, weighted by volume. An anchored VWAP (AVWAP) runs from a moment you click on the map, such as a low, a high or the candle of a news event; a coin keeps up to four.": "时段 VWAP 按成交量分布和关键价位所用的时区，每日、每周或每月重新开始；其通道是成交价格按成交量加权的一倍和两倍标准差。锚定 VWAP（AVWAP）从你在地图上点击的时刻开始，例如低点、高点或新闻 K 线；每个币种最多保留四个。",
  "Each bar's typical price (its high, low and close) is weighted by its volume, from one market's candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart's own candles.": "用从交易所读取的一个市场的 K 线，把每根 K 线的典型价（最高、最低和收盘）按其成交量加权；一天内用 1 分钟 K 线，更长周期用更粗的 K 线：页面能读取其历史时用图表上的市场，并在面板中注明。进行中的 K 线跟随图表自身的 K 线。",
  "Show VWAP": "显示 VWAP",
@@ -2124,5 +2123,15 @@
  "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "在面板的表格中显示每个交易所的资金费率，取指针所在时刻或最新。点击一行可显示该交易所。",
  "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "在面板的表格中显示每个交易所的持仓量、该K线内的变化及占比，取指针所在时刻或最新。",
  "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "在面板的表格中显示每个交易所的多头、空头及其比率，取指针所在时刻或最新。",
- "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "表格读取指针所在时刻（否则为最新）的每个交易所：有空间时显示在图表旁边，否则在你指向面板时叠在图表左端。"
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "表格读取指针所在时刻（否则为最新）的每个交易所：有空间时显示在图表旁边，否则在你指向面板时叠在图表左端。",
+ "Rolling VWAP": "滚动 VWAP",
+ "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "截至每个时刻的最近几天的平均值：随着时间推移，最早的成交会移出。在任何时间周期上都相同。",
+ "Remove this window": "移除此窗口",
+ "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}：该市场在交易所的历史短于其窗口，因此没有线。",
+ "{line}: its candles could not be read just now; trying again in a minute.": "{line}：暂时无法读取其 K 线；一分钟后重试。",
+ "RVWAP": "RVWAP",
+ "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "按成交量加权的市场平均成交价：自时段开始、最近几天或自你选定的时刻以来；买卖双方平均在哪里成交。",
+ "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "滚动 VWAP（RVWAP）是截至每个时刻最近一天、一周、一个月、一个季度、半年或一年的平均值。它的起点随时间移动，因此最早的成交会移出；而时段或锚点会保留自起点以来的每笔成交。它由自己的 K 线计算（一天用 5 分钟线，一年用 4 小时线），最新的 K 线每分钟重新读取，因此在任何时间周期上都相同，并且只在历史包含完整窗口的地方绘制。",
+ "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "第 {line} 行：{n} 根 K 线的窗口在这里永远填不满，因为图表只给这个脚本 {have} 根。缩小视图可获得更多，最多 {max} 根，或选择更长的时间周期。",
+ "{n} days up to now": "截至现在的 {n} 天"
 }

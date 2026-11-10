@@ -591,6 +591,7 @@ A warning does not stop the script.
 - `unset-option`: Option X is not set: give it a value below.
 - `unread-source`: A source(...) names its markets with something only the run can work out: it reads 0. Name them with a word, an option or options.name.
 - `liquidations-cut`: Some days held more liquidations than the source answers: the smallest are missing from lbuy and lsell.
+- `long-window`: Line X: a window of X candles never fills here, as the chart gives this script X. Zoom out for more, up to 2,000, or choose a longer timeframe.
 
 ## A complete script
 

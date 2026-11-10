@@ -1020,7 +1020,6 @@
  "Its history reaches back to {date} only, so lines of earlier periods are missing.": "Его история доступна только с {date}, поэтому линий более ранних периодов нет.",
  "VWAP": "VWAP",
  "AVWAP": "AVWAP",
- "The average price the market traded at since a session began or since a moment you choose, weighted by volume: where buyers and sellers have done business on average.": "Средняя цена, по которой торговал рынок с начала сессии или с выбранного момента, взвешенная по объёму: где покупатели и продавцы в среднем заключали сделки.",
  "The session VWAP starts again each day, week or month, in the zone the Volume profile and Key levels use; its bands are one and two standard deviations of the prices traded, weighted by volume. An anchored VWAP (AVWAP) runs from a moment you click on the map, such as a low, a high or the candle of a news event; a coin keeps up to four.": "Сессионный VWAP начинается заново каждый день, неделю или месяц в часовом поясе профиля объёма и ключевых уровней; его полосы — одно и два стандартных отклонения цен сделок, взвешенные по объёму. Привязанный VWAP (AVWAP) идёт от момента, на который вы нажали на карте: минимума, максимума или свечи новости; у монеты их может быть до четырёх.",
  "Each bar's typical price (its high, low and close) is weighted by its volume, from one market's candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart's own candles.": "Типичная цена каждой свечи (максимум, минимум и закрытие) взвешивается по её объёму — по свечам одного рынка, прочитанным с биржи, поминутно для дня и крупнее для более долгих периодов: рынка на графике, если страница может прочитать его историю, указанного в панели. Текущая свеча следует за свечами графика.",
  "Show VWAP": "Показывать VWAP",
@@ -2257,5 +2256,20 @@
  "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "Финансирование каждой биржи в таблице на панели, на момент указателя или последнее. Нажмите на строку, чтобы показать эту биржу.",
  "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "Открытый интерес каждой биржи, его изменение за свечу и доля в таблице на панели, на момент указателя или последние.",
  "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "Лонги, шорты и их соотношение по каждой бирже в таблице на панели, на момент указателя или последние.",
- "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "Таблица показывает каждую биржу на момент указателя, иначе последнюю: рядом с графиком, где есть место, иначе поверх его левого края, пока вы наводите на панель."
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "Таблица показывает каждую биржу на момент указателя, иначе последнюю: рядом с графиком, где есть место, иначе поверх его левого края, пока вы наводите на панель.",
+ "Rolling VWAP": "Скользящий VWAP",
+ "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "Среднее за последние дни до каждого момента: со временем самые старые сделки выпадают из него. Оно одинаково на любом таймфрейме.",
+ "Remove this window": "Убрать это окно",
+ "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}: история этого рынка на бирже короче его окна, поэтому линии нет.",
+ "{line}: its candles could not be read just now; trying again in a minute.": "{line}: сейчас не удалось прочитать его свечи; повторная попытка через минуту.",
+ "RVWAP": "RVWAP",
+ "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "Средняя цена, по которой торговал рынок, взвешенная по объёму: с начала сессии, за последние дни или с выбранного момента; где покупатели и продавцы в среднем заключали сделки.",
+ "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "Скользящий VWAP (RVWAP) — это среднее за последний день, неделю, месяц, квартал, полгода или год до каждого момента. Его начало сдвигается со временем, поэтому самые старые сделки выпадают, тогда как сессия или привязка хранит каждую сделку с момента своего начала. Он считается по собственным барам (от пятиминутных для дня до четырёхчасовых для года), самые новые перечитываются каждую минуту, поэтому он одинаков на любом таймфрейме и рисуется только там, где история содержит целое окно.",
+ "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "Строка {line}: окно в {n} свечей здесь никогда не заполняется, так как график даёт этому скрипту {have}. Отдалите график, чтобы получить больше, до {max}, или выберите более длинный таймфрейм.",
+ "{n} days up to now": {
+  "one": "{n} день до текущего момента",
+  "few": "{n} дня до текущего момента",
+  "many": "{n} дней до текущего момента",
+  "other": "{n} дня до текущего момента"
+ }
 }

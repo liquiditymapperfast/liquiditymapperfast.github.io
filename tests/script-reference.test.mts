@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { runScript } from '../src/app/script/lang/engine.ts';
 import { BUILTINS } from '../src/app/script/lang/builtins.ts';
 import { PLOTS } from '../src/app/script/lang/analysis.ts';
-import { BUNDLE, ERRORS, FUNCTIONS, PLOT_KINDS, WARNINGS, aiBundle, errorSentence, llmsText, referenceData, referenceMarkdown } from '../src/app/script/lang/reference.ts';
+import { BUNDLE, ERRORS, FUNCTIONS, PLOT_KINDS, WARNINGS, aiBundle, errorSentence, llmsText, referenceData, referenceMarkdown, warningSentence } from '../src/app/script/lang/reference.ts';
 import { MAX_SOURCE_CHARS } from '../src/app/script/records.ts';
 import { setLanguage } from '../src/app/i18n.ts';
 import type { BarInputs } from '../src/app/script/inputs.ts';
@@ -39,7 +39,10 @@ test("each error's example meets that error, and its fix runs cleanly", () => {
   const said = ['unexpected-end', 'expected', 'expected-end', 'expected-name', 'unterminated-string', 'unterminated-comment', 'unexpected-char', 'bad-number', 'unexpected', 'bad-assignment', 'unsupported', 'too-deep', 'too-many-sources', 'too-many-plots', 'unknown-name', 'not-callable', 'no-member', 'read-only', 'const', 'redeclared', 'bad-jump', 'budget', 'too-slow', 'too-large', 'timeout', 'worker-failed', 'internal', 'no-answer', 'newer-api'];
   assert.deepEqual(ERRORS.map(e => e.code).sort(), said.sort());
   assert.ok(ERRORS.every(e => errorSentence(e.code) !== e.code), 'each has its sentence');
-  assert.ok(WARNINGS.length === 8);
+  assert.ok(WARNINGS.length === 9);
+  // A window the chart's candles cannot fill says where, how long and how many candles there are (the reference shows X for each).
+  assert.equal(warningSentence('long-window', '36|8760|994'), 'Line 36: a window of 8,760 candles never fills here, as the chart gives this script 994. Zoom out for more, up to 2,000, or choose a longer timeframe.');
+  assert.match(warningSentence('long-window'), /^Line X: a window of X candles never fills here, as the chart gives this script X\./);
 });
 
 test('what the rules say the interpreter does, it does', () => {

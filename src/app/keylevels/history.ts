@@ -98,6 +98,8 @@ export class KeyLevelHistory {
   get heldFrom(): number { return this.#bars[0]?.[0] ?? Infinity; }
   /** Up to when the bars held are known: the time the last successful request of the newest ones was made. */
   get heldTo(): number { return this.#heldTo; }
+  /** Whether asking further back brought nothing older: the exchange's history begins where the bars held do. */
+  get exhausted(): boolean { return this.#exhausted; }
 
   /**
    * Whether the bars held reach back to `from`: 'yes'; 'coming' when they do not yet and may (a request is out, or one can still be asked); 'never'

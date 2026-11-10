@@ -3,7 +3,8 @@ import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
 
 /**
  * The VWAP's settings: whether it shows; the session VWAP (restarting each day, week or month in the Volume profile's zone) and its bands;
- * the anchored VWAPs, kept per coin as the moments they start at; and the labels at the lines' ends and on the price axis.
+ * the rolling VWAPs (each over the last days up to now); the anchored VWAPs, kept per coin as the moments they start at; and the labels at
+ * the lines' ends and on the price axis.
  */
 export interface VwapSettings {
   on: boolean;
@@ -13,6 +14,8 @@ export interface VwapSettings {
   startMinute: number | null;
   /** Bands around the session VWAP: none, ±1 standard deviation, or ±1 and ±2. */
   bands: 0 | 1 | 2;
+  /** The rolling VWAPs shown: each a window of days of `ROLLING_DAYS`, shortest first (none by default). */
+  rolling: number[];
   /** Each coin's anchors (ms), oldest first, at most MAX_ANCHORS. */
   anchors: Record<string, number[]>;
   labels: boolean;
@@ -24,6 +27,8 @@ export interface VwapSettings {
 }
 
 export const MAX_ANCHORS = 4;
+/** The rolling VWAPs' windows, in days: a day, a week, a month, a quarter, half a year and a year. */
+export const ROLLING_DAYS: readonly number[] = [1, 7, 30, 90, 180, 365];
 
 /** The choices of a day's start ("HH:MM" shown as the zone's clock reads it): midnight by default, or the hour an exchange's or a market's day opens. */
 export const VWAP_STARTS: readonly [string, string][] = [
@@ -35,12 +40,15 @@ export const VWAP_STARTS: readonly [string, string][] = [
 /** Coins whose anchors are kept (a person tries many coins; the anchors of the oldest go first). */
 const MAX_ANCHOR_COINS = 20;
 
-/** Off until switched on; then the day's session VWAP, no bands, no anchors, no whale VWAP (from $1M when it is switched on). */
-export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', startMinute: null, bands: 0, anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000 };
+/** Off until switched on; then the day's session VWAP, no bands, no rolling VWAP, no anchors, no whale VWAP (from $1M when it is switched on). */
+export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', startMinute: null, bands: 0, rolling: [], anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000 };
 
 const flag = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
 
-/** Settings from storage, field by field: whatever is missing or not valid falls back to the default; anchors must be times, at most four a coin. */
+/**
+ * Settings from storage, field by field: whatever is missing or not valid falls back to the default; rolling windows must be among
+ * `ROLLING_DAYS` (each once, shortest first); anchors must be times, at most four a coin.
+ */
 export function readVwap(saved: unknown): VwapSettings {
   const s = (saved && typeof saved === 'object' ? saved : {}) as Partial<Record<keyof VwapSettings, unknown>>, d = VWAP_DEFAULTS;
   const anchors: Record<string, number[]> = {};
@@ -56,9 +64,16 @@ export function readVwap(saved: unknown): VwapSettings {
     period: s.period === 'week' || s.period === 'month' ? s.period : 'day',
     startMinute: typeof s.startMinute === 'number' && Number.isInteger(s.startMinute) && s.startMinute >= 0 && s.startMinute < 1_440 ? s.startMinute : null,
     bands: s.bands === 1 || s.bands === 2 ? s.bands : 0,
+    rolling: Array.isArray(s.rolling) ? ROLLING_DAYS.filter(days => (s.rolling as unknown[]).includes(days)) : [],
     anchors, labels: flag(s.labels, d.labels), tags: flag(s.tags, d.tags),
     whale: flag(s.whale, d.whale), whaleUsd: typeof s.whaleUsd === 'number' && WHALE_BANDS_USD.includes(s.whaleUsd) ? s.whaleUsd : d.whaleUsd,
   };
+}
+
+/** The settings with the rolling VWAP of `days` shown or not (a window that is not one of `ROLLING_DAYS` changes nothing). */
+export function withRolling(s: VwapSettings, days: number, on: boolean): VwapSettings {
+  if (!ROLLING_DAYS.includes(days)) return s;
+  return { ...s, rolling: ROLLING_DAYS.filter(d => d === days ? on : s.rolling.includes(d)) };
 }
 
 /** A coin's anchors still inside what the history can reach (older ones are dropped: their VWAP could not be worked out). */

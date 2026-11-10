@@ -185,7 +185,7 @@ export const ERRORS: readonly { code: string; wrong?: string; right?: string; sh
 ];
 
 /** The warnings, which do not stop a script. */
-export const WARNINGS: readonly string[] = ['no-counts', 'unknown-reference', 'unsupported-member', 'no-plots', 'no-markets', 'unset-option', 'unread-source', 'liquidations-cut'];
+export const WARNINGS: readonly string[] = ['no-counts', 'unknown-reference', 'unsupported-member', 'no-plots', 'no-markets', 'unset-option', 'unread-source', 'liquidations-cut', 'long-window'];
 
 /** What an error or a warning says, in English, as the panel says it (X standing for the name or the text it is about). */
 export const errorSentence = (code: string, detail = 'X'): string => inEnglish(() => errorText({ code, line: 0, col: 0, detail } as ScriptError));

@@ -49,6 +49,11 @@ function staticValue(e: Expr, opt: Readonly<Record<string, Value>>, scriptNames:
 
 /** The longest title a plot keeps, and the longest text of its style. */
 const MAX_TITLE = 120, MAX_STYLE_TEXT = 200;
+/**
+ * Where the stateful functions that count back over a window of candles take its length: a run whose longest window is longer than the
+ * candles it was given is warned of (`long-window`), since such a window never fills and holds only the candles there are.
+ */
+const WINDOW_ARG: Readonly<Record<string, number>> = Object.assign(Object.create(null) as Record<string, number>, { sum: 1, sma: 1, cma: 1, highest: 1, lowest: 1, linreg: 1, last: 1, stoch: 3 });
 /** A plot's style value held to short texts (a title or a colour, never a long text the page would have to carry). */
 function styleData(v: OptionValue | undefined): OptionValue | undefined {
   if (typeof v === 'string') return v.length <= MAX_STYLE_TEXT ? v : undefined;
@@ -148,6 +153,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
   const byName = new Map<string, { get(): Value; set(v: Value): void } | null>();
 
   let i = 0;
+  /** The longest window a run asked of a function counting back over candles, and the line it was asked on. */
+  let widest = { n: 0, line: 0 };
   const sourceStack: string[] = [''];
   const src = (): SourceInputs | undefined => inputs.sources[sourceStack[sourceStack.length - 1]!] ?? inputs.sources[''];
   const at = (arr: Float64Array | undefined): number => arr ? arr[i]! : NaN;
@@ -270,6 +277,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       if (plotKind) { plot(site, plotKind, args, named); return undefined; }
       const builtin = own(BUILTINS, name);
       if (builtin) {
+        const k = own(WINDOW_ARG, name);
+        if (k !== undefined) { const w = Math.floor(num(args[k])); if (w > widest.n) widest = { n: w, line: node.p.line }; }
         const inst = instanceAt(site);
         if (!inst.touched) { inst.touched = true; touched.push(inst); }
         return builtin(inst, args, named, candle);
@@ -490,6 +499,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       runner.startedAt = start;
       budget.steps = 0; budget.left = Math.max(200_000, STEPS_PER_CANDLE * (n - start)); budget.deadline = started + RUN_MS;
       const warnings = [...a.warnings];
+      widest = { n: 0, line: 0 };
       // The plots' numbers: those of the candles taken over, then NaN until the run gives them.
       for (const [site, p] of plots) {
         const fields: Record<string, Float64Array> = {};
@@ -526,6 +536,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       }
       // A run of the candle under way alone keeps the snapshot of the run before (its closed candles are the same); a run over no closed candle has none.
       if (n < 2 || optionsWritten) snap = null;
+      // A run of the candle under way alone asks the same windows as a run of every candle, so it says the same.
+      if (n > 0 && widest.n > n) warnings.push({ code: 'long-window', detail: `${widest.line}|${widest.n}|${n}` });
       dropZeros();
       const out: PlotOut[] = plotOrder.map(site => { const p = plots.get(site)!; return { kind: p.kind, title: p.title, style: p.style, fields: p.fields, colors: p.colors, ...(p.kind === 'mark' ? { texts: p.texts, tips: p.tips } : {}) }; });
       if (!out.length && !colored && !alertSites) warnings.push({ code: 'no-plots' });

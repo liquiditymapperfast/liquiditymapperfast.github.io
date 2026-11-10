@@ -6,10 +6,11 @@ import type { SumRow } from '../../shared/print-sums.ts';
 /**
  * The volume-weighted average price from one market's candles: each bar's typical price (high + low + close) / 3 weighted by its volume in
  * coins, summed from a start (a session's, or an anchor's), with the volume-weighted standard deviation of those prices for the bands. A
- * session restarts it at each day, week or month of a time zone; an anchor runs it from a chosen moment to now.
+ * session restarts it at each day, week or month of a time zone; an anchor runs it from a chosen moment to now; a rolling VWAP is taken over
+ * the last days up to each moment, its start moving with it.
  */
 
-const MINUTE = 60_000, DAY = 86_400_000;
+const MINUTE = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
 /** The average after each bar (at the bar's start, as a chart draws a bar) and the spread of the prices around it. */
 export interface VwapPoint { t: number; vwap: number; sd: number }
@@ -33,6 +34,55 @@ export function vwapSeries(bars: readonly CandleRow[], from: number, to: number)
     if (!(v > 0)) continue;
     const mean = dv / v;
     out.push({ t, vwap: ref + mean, sd: Math.sqrt(Math.max(0, d2v / v - mean * mean)) });
+  }
+  return out;
+}
+
+/**
+ * The bar size of the rolling VWAP over `days`, from the window alone, so the line is the same at every timeframe and zoom: five minutes for a
+ * day, a quarter hour for a week, an hour for a month and a quarter, four hours for half a year and a year. Against the same window from
+ * finer bars (Binance's BTC perpetual, 38 to 470 days a window, 2026-11-10; `Research_Findings.md`): 0.3 to 0.6 bp apart at the median and
+ * 7.4 bp at worst (half a year on four hours), where a day's bars were up to 39 bp off on a quarter. At most 2,190 bars a window.
+ */
+export function rollingBarMs(days: number): number {
+  return days <= 1 ? 5 * MINUTE : days <= 7 ? 15 * MINUTE : days <= 90 ? HOUR : 4 * HOUR;
+}
+
+/**
+ * Whether a rolling window's history holds a whole window up to now ('yes'), may still ('coming'), is shorter than the window on the exchange
+ * ('short'), or could not be read and is tried again in a minute ('failed').
+ */
+export type RollingState = 'yes' | 'coming' | 'short' | 'failed';
+
+/**
+ * How many bars of one size a rolling VWAP's history keeps, so how far before the view its line can begin: past the longest window of the
+ * size (and a day the map keeps spare), about 19 days of view at five minutes, 54 at a quarter hour, 159 at an hour and 634 at four hours. A
+ * wider view draws the line from where the history reaches, still over whole windows.
+ */
+export const ROLLING_MAX_BARS = 6_000;
+
+/**
+ * The rolling VWAP over `windowMs`: at the end of each bar, each bar's typical price weighted by its volume over the bars that start in the
+ * window before that end. The window is by time, so a missing bar is a stretch nobody traded, never one bar fewer. Points are drawn where a
+ * window is whole only: the first is a whole window after the first bar held, so a history that does not reach back far enough yet (or an
+ * exchange whose history is shorter) begins the line later, or gives none, rather than the average of fewer days under the window's name.
+ * A point is at its bar's end, when what the window holds is known; the bar under way (ending after `asOf`) is drawn at `asOf`.
+ */
+export function rollingSeries(bars: readonly CandleRow[], barMs: number, windowMs: number, asOf: number): VwapPoint[] {
+  const out: VwapPoint[] = [];
+  if (!bars.length || !(windowMs > 0) || !(barMs > 0)) return out;
+  const first = bars[0]![0];
+  // Prices relative to the first traded bar's, as in `vwapSeries`; `traded` counts the bars with volume in the window, so a window whose sums
+  // have come back to about zero is known to be empty.
+  let v = 0, dv = 0, ref = NaN, traded = 0, a = 0;
+  const tp = (b: CandleRow): number => (b[2] + b[3] + b[4]) / 3;
+  for (let j = 0; j < bars.length; j++) {
+    const b = bars[j]!, end = Math.min(b[0] + barMs, asOf);
+    if (end <= b[0]) break;
+    if (b[5] > 0) { if (!Number.isFinite(ref)) ref = tp(b); v += b[5]; dv += (tp(b) - ref) * b[5]; traded++; }
+    while (a <= j && bars[a]![0] < end - windowMs) { const o = bars[a]!; if (o[5] > 0) { v -= o[5]; dv -= (tp(o) - ref) * o[5]; traded--; } a++; }
+    if (first > end - windowMs || traded === 0 || !(v > 0)) continue;
+    out.push({ t: end, vwap: ref + dv / v, sd: 0 });
   }
   return out;
 }

@@ -295,6 +295,8 @@ async function main(): Promise<void> {
   toolbar.liqSource = hub.liqLevels;
   toolbar.profileHistory = barMs => hub.profileHistory(barMs);
   toolbar.whaleInfo = () => ({ since: hub.whale?.since ?? null, state: hub.whaleState, browser: source.kind === 'browser' });
+  toolbar.rollingReach = days => heat.rollingReach(days);
+  heat.onRollingReach = () => toolbar.refreshOpenPanel();
   // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
   heat.onAnchor = at => { const s = store.state; store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, at, Date.now()), vwapAnchoring: false }); };
   hub.onTraded = () => heat.invalidate();

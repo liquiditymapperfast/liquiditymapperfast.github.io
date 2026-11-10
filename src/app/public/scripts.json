@@ -743,6 +743,10 @@
   {
    "code": "liquidations-cut",
    "message": "Some days held more liquidations than the source answers: the smallest are missing from lbuy and lsell."
+  },
+  {
+   "code": "long-window",
+   "message": "Line X: a window of X candles never fills here, as the chart gives this script X. Zoom out for more, up to 2,000, or choose a longer timeframe."
   }
  ],
  "example": "// The cumulative delta of the spot markets, with its 20-candle average.\nlen = option(type=number, default=20, min=2, label=\"Average (candles)\")\nvar delta = source(vbuy, type=spot) - source(vsell, type=spot)\ntotal = total + nz(delta)\nline(total, title=\"Spot CVD\", color=\"rgb(46,155,255)\")\nline(sma(total, len), title=\"Average\", color=\"rgba(128,128,128,0.8)\")"

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionsOf, vwapBarMs, vwapSeries } from '../src/app/vwap/vwap.ts';
-import { MAX_ANCHORS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withoutAnchor } from '../src/app/vwap/settings.ts';
-import { visible, vwapCode } from '../src/app/vwap/paint.ts';
+import { ROLLING_MAX_BARS, rollingBarMs, rollingSeries, sessionsOf, vwapBarMs, vwapSeries } from '../src/app/vwap/vwap.ts';
+import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withRolling, withoutAnchor } from '../src/app/vwap/settings.ts';
+import { cutForReplay, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
 import { placeKeyTags, type KeyTag } from '../src/app/keylevels/paint.ts';
 import { MAX_BACK_MS } from '../src/app/keylevels/levels.ts';
 import type { CandleRow } from '../src/app/store.ts';
@@ -95,4 +95,81 @@ test('only the points on the chart and one either side are drawn', () => {
   assert.deepEqual(visible(pts, 15, 35).map(p => p.t), [10, 20, 30, 40]);
   assert.deepEqual(visible(pts, -5, 5).map(p => p.t), [0, 10]);
   assert.deepEqual(visible(pts, 60, 70).map(p => p.t), [50]);
+});
+
+/** Bars of `bar` ms from D0 with a little random walk, some left out (a stretch nobody traded) and some with no volume. */
+function walk(n: number, barMs: number, seed = 7): CandleRow[] {
+  let s = seed, p = 100_000;
+  const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) % 2_147_483_648; return s / 2_147_483_648; };
+  const out: CandleRow[] = [];
+  for (let k = 0; k < n; k++) {
+    const r = rnd();
+    if (r < 0.06) continue;
+    p *= 1 + (rnd() - 0.5) * 0.004;
+    const h = p * (1 + rnd() * 0.002), l = p * (1 - rnd() * 0.002);
+    out.push(bar(D0 + k * barMs, h, l, p, r < 0.1 ? 0 : 1 + rnd() * 50));
+  }
+  return out;
+}
+/** The rolling VWAP at `end` the slow way: every bar that starts in [end - w, end) and before `end`, typical price by volume. */
+function bruteRolling(bars: readonly CandleRow[], w: number, end: number): number {
+  let pv = 0, v = 0;
+  for (const b of bars) if (b[0] >= end - w && b[0] < end) { pv += (b[2] + b[3] + b[4]) / 3 * b[5]; v += b[5]; }
+  return pv / v;
+}
+
+test('a rolling VWAP is each window\'s typical price by volume, the window by time, so a missing bar is time nobody traded', () => {
+  const bars = walk(600, HOUR), w = 30 * HOUR, asOf = D0 + 10_000 * HOUR;
+  const pts = rollingSeries(bars, HOUR, w, asOf);
+  assert.ok(pts.length > 400);
+  for (const p of pts) assert.ok(close(p.vwap, bruteRolling(bars, w, p.t), 1e-9), `${p.t}: ${p.vwap} against ${bruteRolling(bars, w, p.t)}`);
+  // Every point stands at a bar's end, after the bars it holds.
+  assert.ok(pts.every(p => bars.some(b => b[0] + HOUR === p.t)));
+});
+
+test('a rolling VWAP is drawn only where its window is whole: never the average of fewer days under the window\'s name', () => {
+  const bars = walk(200, HOUR, 3), first = bars[0]![0], w = 48 * HOUR;
+  const pts = rollingSeries(bars, HOUR, w, D0 + 1_000 * HOUR);
+  assert.ok(pts.length > 0 && pts[0]!.t >= first + w, 'the first point is a whole window after the first bar held');
+  assert.equal(pts[0]!.t, Math.min(...bars.map(b => b[0] + HOUR).filter(e => e >= first + w)));
+  assert.deepEqual(rollingSeries(bars.slice(0, 40), HOUR, w, D0 + 1_000 * HOUR), [], 'a history shorter than the window gives no line');
+  assert.deepEqual(rollingSeries([], HOUR, w, D0), []);
+});
+
+test('the bar under way is drawn where the history was last read, its window ending there', () => {
+  const bars = Array.from({ length: 10 }, (_, k) => bar(D0 + k * HOUR, 101 + k, 99 + k, 100 + k, 1));
+  const asOf = D0 + 9 * HOUR + 20 * MIN, pts = rollingSeries(bars, HOUR, 3 * HOUR, asOf);
+  const last = pts[pts.length - 1]!;
+  assert.equal(last.t, asOf, 'at the time it was read, not the bar\'s end');
+  // Bars starting at or after 06:20 count: 07:00, 08:00 and 09:00 (under way).
+  assert.ok(close(last.vwap, (107 + 108 + 109) / 3), `${last.vwap}`);
+  assert.equal(pts[pts.length - 2]!.t, D0 + 9 * HOUR, 'the bar before ends on the hour');
+});
+
+test('each rolling window has the bar size measured for it, from the window alone, and its history keeps a whole window and more', () => {
+  assert.deepEqual(ROLLING_DAYS.map(d => rollingBarMs(d) / MIN), [5, 15, 60, 60, 240, 240]);
+  for (const d of ROLLING_DAYS) assert.ok(d * DAY / rollingBarMs(d) <= 2_190 && rollingBarMs(d) * ROLLING_MAX_BARS > 1.5 * d * DAY, `${d}D`);
+});
+
+test('the rolling windows are read from storage among those offered, once each, shortest first, and switched one at a time', () => {
+  assert.deepEqual(readVwap({ rolling: [365, 7, 'x', 7, 14, 1, -3] }).rolling, [1, 7, 365], 'only the windows offered');
+  assert.deepEqual(readVwap({ rolling: 'all' }).rolling, []);
+  assert.deepEqual(readVwap({ on: true }).rolling, [], 'a save from before has none');
+  const s = withRolling(withRolling(VWAP_DEFAULTS, 90, true), 7, true);
+  assert.deepEqual(s.rolling, [7, 90]);
+  assert.deepEqual(withRolling(s, 90, false).rolling, [7]);
+  assert.equal(withRolling(s, 14, true), s, 'a window not offered changes nothing');
+  assert.equal(vwapCode({ kind: 'rolling', n: 30 }), 'RVWAP 30D');
+});
+
+test('in a replay a rolling line ends at its last bar over by the moment; a session\'s history point counts once its bar is over', () => {
+  const pts = (ts: number[]): { t: number; vwap: number; sd: number }[] => ts.map(t => ({ t, vwap: 1, sd: 0 }));
+  const lines: VwapLine[] = [
+    { kind: 'rolling', n: 7, points: pts([HOUR, 2 * HOUR, 3 * HOUR]), live: true, key: 'r' },
+    { kind: 'session', n: 0, points: pts([0, HOUR, 2 * HOUR]), live: true, key: 's', bar: HOUR, liveFrom: Infinity },
+  ];
+  const cut = cutForReplay(lines, 2 * HOUR + 30 * MIN, true);
+  assert.deepEqual(cut[0]!.points.map(p => p.t), [HOUR, 2 * HOUR], 'points stand at bar ends');
+  assert.deepEqual(cut[1]!.points.map(p => p.t), [0, HOUR], 'points stand at bar starts');
+  assert.equal(cutForReplay(lines, 0, false), lines, 'live: as they are');
 });

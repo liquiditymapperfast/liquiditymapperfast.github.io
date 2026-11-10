@@ -56,8 +56,9 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   vwap: {
     title: t('VWAP'), guide: 'profile',
-    tip: t('The average price the market traded at since a session began or since a moment you choose, weighted by volume: where buyers and sellers have done business on average.'),
+    tip: t('The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.'),
     body: [t('The session VWAP starts again each day, week or month, in the zone the Volume profile and Key levels use; its bands are one and two standard deviations of the prices traded, weighted by volume. An anchored VWAP (AVWAP) runs from a moment you click on the map, such as a low, a high or the candle of a news event; a coin keeps up to four.'),
+      t('A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.'),
       t('Each bar\'s typical price (its high, low and close) is weighted by its volume, from one market\'s candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart\'s own candles.'),
       t('The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.')],
   },

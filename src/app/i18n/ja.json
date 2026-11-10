@@ -985,7 +985,6 @@
  "Its history reaches back to {date} only, so lines of earlier periods are missing.": "履歴は {date} までしかさかのぼれないため、それ以前の期間の線はありません。",
  "VWAP": "VWAP",
  "AVWAP": "AVWAP",
- "The average price the market traded at since a session began or since a moment you choose, weighted by volume: where buyers and sellers have done business on average.": "セッション開始時、または選んだ時点からの、出来高で加重した市場の平均取引価格。買い手と売り手が平均してどこで取引したかを示します。",
  "The session VWAP starts again each day, week or month, in the zone the Volume profile and Key levels use; its bands are one and two standard deviations of the prices traded, weighted by volume. An anchored VWAP (AVWAP) runs from a moment you click on the map, such as a low, a high or the candle of a news event; a coin keeps up to four.": "セッション VWAP は、出来高プロファイルと主要レベルと同じタイムゾーンで、日・週・月ごとにリセットされます。バンドは取引価格の出来高加重標準偏差の 1 倍と 2 倍です。アンカー VWAP（AVWAP）は、安値・高値・ニュースのローソク足など、マップ上でクリックした時点から始まります。1 通貨につき 4 つまで保持します。",
  "Each bar's typical price (its high, low and close) is weighted by its volume, from one market's candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart's own candles.": "取引所から読み込んだ 1 つの市場のローソク足について、各足の典型価格（高値・安値・終値）を出来高で加重します。1 日分は 1 分足、それより長い期間はより粗い足を使います。ページが履歴を読めればチャートの市場で、パネルに表示されます。進行中の足はチャート自身のローソク足に従います。",
  "Show VWAP": "VWAP を表示",
@@ -2124,5 +2123,15 @@
  "Every venue's funding in a table on the pane, at the pointer's time or the newest. Click a row to show that venue.": "各取引所の資金調達率をペインの表に、ポインターの時刻または最新で表示します。行をクリックするとその取引所を表示します。",
  "Each venue's open interest, its change over the candle and its share in a table on the pane, at the pointer's time or the newest.": "各取引所の建玉、そのローソク足での変化、シェアをペインの表に、ポインターの時刻または最新で表示します。",
  "Each venue's longs, shorts and their ratio in a table on the pane, at the pointer's time or the newest.": "各取引所のロング、ショートとその比率をペインの表に、ポインターの時刻または最新で表示します。",
- "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "表はポインターの時刻、なければ最新の各取引所を表示します。余裕があればチャートの横に、なければペインを指している間だけチャートの左端に重ねて表示します。"
+ "The table reads every venue at the pointer's time, else the newest: beside the chart where there is room, else over its left end while you point at the pane.": "表はポインターの時刻、なければ最新の各取引所を表示します。余裕があればチャートの横に、なければペインを指している間だけチャートの左端に重ねて表示します。",
+ "Rolling VWAP": "ローリング VWAP",
+ "The average over the last days up to each moment: as time moves on, the oldest trades drop out of it. It is the same at every timeframe.": "各時点までの直近の日数の平均。時間が進むにつれて、最も古い取引が外れていきます。どの時間足でも同じです。",
+ "Remove this window": "この期間を削除",
+ "{line}: the exchange's history of this market is shorter than its window, so it has no line.": "{line}：この市場の取引所での履歴がその期間より短いため、ラインはありません。",
+ "{line}: its candles could not be read just now; trying again in a minute.": "{line}：今はローソク足を読めませんでした。1 分後に再試行します。",
+ "RVWAP": "RVWAP",
+ "The average price the market traded at, weighted by volume, since a session began, over the last days or since a moment you choose: where buyers and sellers have done business on average.": "セッション開始時から、直近の日数で、または選んだ時点からの、出来高で加重した市場の平均取引価格。買い手と売り手が平均してどこで取引したかを示します。",
+ "A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.": "ローリング VWAP（RVWAP）は、各時点までの直近 1 日・1 週間・1 か月・四半期・半年・1 年の平均です。開始点が時間とともに進むため、最も古い取引が外れていきます。セッションやアンカーは開始以降のすべての取引を含み続けます。専用の足（1 日なら 5 分足、1 年なら 4 時間足まで）から計算し、最新の足は毎分読み直すので、どの時間足でも同じになります。履歴が期間全体を含む範囲にだけ描画されます。",
+ "Line {line}: a window of {n} candles never fills here, as the chart gives this script {have}. Zoom out for more, up to {max}, or choose a longer timeframe.": "{line} 行目：{n} 本の期間はここでは満たされません。チャートがこのスクリプトに渡すのは {have} 本です。ズームアウトすると最大 {max} 本まで増えます。または長い時間足を選んでください。",
+ "{n} days up to now": "現在までの {n} 日"
 }

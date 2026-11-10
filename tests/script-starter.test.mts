@@ -41,7 +41,10 @@ test('the VWAP reads, runs without a warning and draws its line inside its bands
   assert.deepEqual(a.declared.map(d => d.name), ['len', 'mult', 'midColor', 'bandColor']);
   const r = runScript('vwap', VWAP_SOURCE, {}, inputs());
   assert.ok(r.ok, r.ok ? '' : JSON.stringify(r.error));
-  assert.deepEqual(r.warnings, []);
+  // Its 48 candles are more than these 8: that alone is said (the page reads 500 and more), and nothing once they are there.
+  assert.deepEqual(r.warnings, [{ code: 'long-window', detail: '14|48|8' }]);
+  const filled = runScript('vwap', VWAP_SOURCE, {}, inputs(48));
+  assert.ok(filled.ok && filled.warnings.length === 0);
   assert.deepEqual(r.plots.map(p => [p.kind, p.title]), [['line', 'VWAP'], ['line', '+SD'], ['line', '-SD']]);
   for (const p of r.plots) assert.equal(p.style.priceScaleId ?? 'right', 'right', 'drawn at its prices on the map');
   const [mid, upper, lower] = r.plots.map(p => [...p.fields.value!]);
@@ -99,7 +102,8 @@ test('the heat map reads the theme: red-orange low and blue high, light ends on 
   for (const theme of [DARK, LIGHT]) {
     const r = runScript('heat', HEATMAP_SOURCE, {}, swing(theme));
     assert.ok(r.ok, JSON.stringify(!r.ok && r.error));
-    assert.deepEqual(r.warnings, [], 'no warning: theme is an input it knows');
+    // Its longest window (210 candles) is more than these 60, which is said; nothing else is: theme is an input it knows.
+    assert.deepEqual(r.warnings.filter(w => w.code !== 'long-window'), [], 'no other warning: theme is an input it knows');
     const top = r.plots.filter(p => p.kind === 'brokenarea')[15]!, colours = top.colors!;
     const [hr, , hb] = rgbOf(colours[29]!), [lr, , lb] = rgbOf(colours[59]!);
     assert.ok(hb > hr, `high is blue: ${colours[29]}`);

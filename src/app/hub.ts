@@ -26,6 +26,7 @@ import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 import { webGet } from '../shared/history.ts';
 import { KeyLevelHistory } from './keylevels/history.ts';
+import { ROLLING_MAX_BARS } from './vwap/vwap.ts';
 import { LiqLevelsSource } from './liq-levels.ts';
 import { TapeRing, tapeCapacity } from './tape/ring.ts';
 import { isPhone } from './device.ts';
@@ -272,6 +273,8 @@ export class Hub {
   /** The Liquidation levels layer's file and the candles that take its levels away. */
   readonly liqLevels = new LiqLevelsSource(webGet);
   readonly #vwapHistories = new Map<number, KeyLevelHistory>();
+  /** The rolling VWAPs' candles, one history per bar size (`rollingBarMs`: four sizes at most, so none is ever let go for another). */
+  readonly #rollingHistories = new Map<number, KeyLevelHistory>();
   readonly #profileHistories = new Map<string, KeyLevelHistory>();
   /**
    * The whale VWAP's sums: the whole minutes answered (`rows`, before `to`) and since then the minutes added from the orders pushed live
@@ -323,6 +326,16 @@ export class Hub {
       h = new KeyLevelHistory(webGet, Date.now, 60_000);
     } else this.#vwapHistories.delete(barMs);
     this.#vwapHistories.set(barMs, h);
+    return h;
+  }
+  /**
+   * The rolling VWAPs' candles of one bar size, asked again every minute and kept `ROLLING_MAX_BARS` bars back: apart from `vwapHistory`,
+   * whose few sizes the session and the anchors take turns at (with the rolling sizes too it would let one go and read it again every frame),
+   * and whose two months do not hold a year's window.
+   */
+  rollingHistory(barMs: number): KeyLevelHistory {
+    let h = this.#rollingHistories.get(barMs);
+    if (!h) { h = new KeyLevelHistory(webGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS); this.#rollingHistories.set(barMs, h); }
     return h;
   }
   /**
