@@ -2,6 +2,7 @@ import { t } from '../i18n.ts';
 import { knownZone, localZone, minutesOf, type SessionDef } from './sessions.ts';
 import { PROFILE_METRICS, isMetric, type ProfileMetric } from '../measures/registry.ts';
 import { defaultSet, readProfileSet, setFromLegacy, type ProfileSet } from './profiles.ts';
+import { ANCHOR_BAR_MS, ANCHOR_EVERY, ANCHOR_EVERY_DEFAULT } from './anchor.ts';
 
 /**
  * The Traded feature's settings (the column itself is switched on and off with `show.traded`):
@@ -68,6 +69,15 @@ export interface TradedSettings {
   /** Whether the lines that reach the right edge (the window under way, an untouched point of control running on) are named on the price axis. */
   tags: boolean;
   sessions: SessionDef[];
+  /**
+   * What the columns by price add up (Karl, 2026-11-10): what is on the chart (the default, as since 2026-10-19), or from the coin's anchor
+   * up to now (`anchors`, `traded/anchor.ts`), worked out again every `every` minutes. The bands along the top stay with the chart.
+   */
+  columns: 'chart' | 'anchor';
+  /** Each coin's anchor (ms, on five minutes), at most `MAX_ANCHOR_COINS` coins: like the VWAP's, the chart's own, not a layout's. */
+  anchors: Record<string, number>;
+  /** How often an anchored window is worked out again, in minutes (`ANCHOR_EVERY`). */
+  every: number;
 }
 
 /**
@@ -138,6 +148,7 @@ export const TRADED_DEFAULTS: Readonly<TradedSettings> = {
   // longer (Karl, 2026-10-28: the daily profile off by default, the profiles at the side kept): one click in the panel's Profiles row.
   lines: ['day'], windowLines: true, profiles: null, source: 'recorded', zone: 'page', count: 5, naked: true, carry: true,
   sessions: [preset(0, 's1'), preset(1, 's2'), preset(2, 's3')],
+  columns: 'chart', anchors: {}, every: ANCHOR_EVERY_DEFAULT,
 };
 
 /** The IANA name of a stored zone: `page` follows the page's clock setting, `local` is this computer's. */
@@ -194,7 +205,31 @@ export function readTraded(saved: unknown, strip: LegacyTop | null = null): Trad
     profiles: s.profiles === null ? null : kind(s.profiles) ?? (s.pastProfiles === true ? old : s.profiles === undefined ? d.profiles : null),
     source: oneOf(['recorded', 'candles'] as const, s.source, d.source),
     zone: zoneOk(s.zone) ? s.zone : d.zone, count, naked: flag(s.naked, d.naked), carry: flag(s.carry, d.carry), sessions,
+    columns: s.columns === 'anchor' ? 'anchor' : 'chart', anchors: readAnchors(s.anchors), every: oneOf(ANCHOR_EVERY, s.every, d.every),
   };
+}
+
+/** Coins whose profile anchors are kept (a person tries many coins; the oldest coins' go first). */
+const MAX_ANCHOR_COINS = 20;
+/** Saved profile anchors, checked: a coin's name, a time on five minutes. */
+function readAnchors(saved: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return out;
+  for (const [coin, at] of Object.entries(saved as Record<string, unknown>).slice(-MAX_ANCHOR_COINS)) {
+    if (/^[A-Z0-9]{1,20}$/.test(coin) && typeof at === 'number' && Number.isFinite(at) && at > 0) out[coin] = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
+  }
+  return out;
+}
+
+/** A coin's profile anchor while the candle estimate can still reach it (`backMs`) and it has begun, else null. */
+export const profileAnchorOf = (s: Pick<TradedSettings, 'anchors'>, coin: string, now: number, backMs: number): number | null => {
+  const at = s.anchors[coin];
+  return at !== undefined && at >= now - backMs && at <= now ? at : null;
+};
+/** The settings with `coin`'s profile anchor at `at` (the coin's last), or without one (`at` null). */
+export function withProfileAnchor(s: TradedSettings, coin: string, at: number | null): TradedSettings {
+  const { [coin]: _old, ...others } = s.anchors;
+  return { ...s, anchors: at === null ? others : { ...others, [coin]: at } };
 }
 
 /** An older save's profile along the top, or null when it has none to read (a save from before it, or junk). */

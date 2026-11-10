@@ -2,9 +2,11 @@ import type { Store } from '../store.ts';
 import { el } from '../dom.ts';
 import { heading, note, numberRow, selectRow, switchRow } from '../ui.ts';
 import { helpButton } from '../help.ts';
-import { usd } from '../format.ts';
+import { clock, usd } from '../format.ts';
 import { t } from '../i18n.ts';
-import { LINE_KINDS, MAX_SESSIONS, ROW_MULTIPLES, SESSION_PRESETS, SHARES, ZONES, chartKinds, linesSource, mostCount, newSessionId, recordedCount, type KindSettings, type LineKind, type TradedSettings } from './settings.ts';
+import { LINE_KINDS, MAX_SESSIONS, ROW_MULTIPLES, SESSION_PRESETS, SHARES, ZONES, chartKinds, linesSource, mostCount, newSessionId, profileAnchorOf, recordedCount, withProfileAnchor, type KindSettings, type LineKind, type TradedSettings } from './settings.ts';
+import { ANCHOR_EVERY, type AnchorSnapshot } from './anchor.ts';
+import { PROFILE_CANDLES_BACK_MS } from '../hub.ts';
 import type { SessionDef } from './sessions.ts';
 import { candleBarMs } from './levels.ts';
 import { profileTarget, type KeyLevelHistory } from '../keylevels/history.ts';
@@ -22,7 +24,11 @@ import { hiddenText, placementGrid, placementSketch } from './placement-panel.ts
  * What the panel says about where days, weeks and sessions come from (whether the page reads the exchanges itself, and the candles), and
  * the room the map had when it was last drawn, for what of the profiles has no room (null before it was drawn).
  */
-export interface TradedSources { browser: boolean; candles: ((barMs: number) => KeyLevelHistory) | null; room?: () => ProfileRoom | null }
+export interface TradedSources {
+  browser: boolean; candles: ((barMs: number) => KeyLevelHistory) | null; room?: () => ProfileRoom | null;
+  /** The columns' anchored window as the map holds it, and taking it again now (heat-pane.ts `anchoredWindow`, `updateAnchored`). */
+  anchored?: () => AnchorSnapshot | null; updateNow?: () => void;
+}
 
 /**
  * The Volume profile panel: its first row switches everything below on and off, keeping every choice; then what the profiles look like,
@@ -63,6 +69,8 @@ export function buildTradedPanel(store: Store, tools: HTMLElement, body: HTMLEle
     // What has no room stays switched on and is said, here and on the map (a phone has no columns at all, said above).
     ...(!off && arranged && arranged.hidden.some(p => room!.sides > 0 || p.placement === 'top') ? [note(hiddenText(arranged.hidden.filter(p => room!.sides > 0 || p.placement === 'top')))] : []),
     ...(sides ? [note(t('The map keeps at least half the width, counting the columns on both sides: when they do not all fit, the ones nearest the map stay and the outermost wait for room.'))] : []),
+    // What the columns add up (Karl, 2026-11-10): what is on the chart, or everything from an anchor up to now.
+    ...(sides ? columnWindowRows(store, set, rebuild, sources) : []),
     ...(tops ? [note(t('Up to three bands stack along the top, each shorter the more there are and all of them a quarter of the chart\'s height at most; the first in the list is the lowest, nearest the chart.')),
       note(t('Each bar adds up a stretch of a round length, from a second to a day, about as thin as the column\'s rows at the zoom: zoom in for finer ones. Where the data is no finer (the flow before the last day, open interest), the caption says so. Point at a bar for its figures; click its header for these settings.'))] : []),
     // The level rows are dollars of price: they belong to the columns; time has its own interval, set by the zoom.
@@ -218,4 +226,32 @@ function sessionEditor(store: Store, set: (change: Partial<TradedSettings>, agai
     ...(rows.length ? rows : [el('p', { class: 'panel-note', textContent: t('No sessions yet: add one below.') })]),
     adders,
     note(t('Times are the clock in the session\'s zone, so a session follows that zone\'s daylight saving. One that ends at or before its start runs past midnight; the same start and end is a whole day. Crypto trades every day, so every day has its sessions unless Mon–Fri is ticked.')));
+}
+
+/**
+ * What the columns by price add up: what is on the chart (the default), or everything from an anchor placed on the chart up to now, worked
+ * out again every few minutes rather than with every trade, with Update now; when the anchored window was taken, and how far back each
+ * measure can reach (each column says where its own numbers begin).
+ */
+function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, again?: boolean) => void, rebuild: () => void, sources: TradedSources): HTMLElement[] {
+  const s = store.state.traded, coin = currentCoin().coin, out: HTMLElement[] = [];
+  out.push(selectRow(t('Columns add up'), t('The columns beside the map: what is on the chart, or everything from a moment you choose up to now.'), [['chart', t('What is on the chart')], ['anchor', t('From an anchor')]], s.columns, v => set({ columns: v === 'anchor' ? 'anchor' : 'chart' }, true)));
+  if (s.columns !== 'anchor') return out;
+  const at = profileAnchorOf(s, coin, Date.now(), PROFILE_CANDLES_BACK_MS), armed = store.state.profileAnchoring;
+  if (at !== null) {
+    const remove = el('button', { type: 'button', class: 'session-remove', ariaLabel: t('Remove'), tip: t('Remove the anchor'), onclick: () => { store.set({ traded: withProfileAnchor(store.state.traded, coin, null) }); rebuild(); } });
+    out.push(el('div', { class: 'session-row vwap-anchor' }, el('span', { class: 'name', textContent: t('Anchor') }), el('span', { class: 'desc', textContent: clock(at, true) }), remove));
+  }
+  const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : at === null ? t('Place the anchor') : t('Move the anchor'), tip: t('Then click the candle on the map the columns should add up from.'),
+    onclick: () => { store.set(armed ? { profileAnchoring: false } : { profileAnchoring: true, vwapAnchoring: false, rangeTool: false }); rebuild(); } });
+  const again = el('button', { type: 'button', textContent: t('Update now'), disabled: at === null, tip: t('Work the anchored columns out again now, up to the last whole five minutes.'), onclick: () => { sources.updateNow?.(); } });
+  out.push(el('div', { class: 'session-add' }, place, again));
+  if (armed) out.push(note(t('Click the candle on the map the columns should add up from.')));
+  out.push(selectRow(t('Update every'), t('How often the anchored columns are worked out again, each time over everything since the anchor: less often costs less.'),
+    ANCHOR_EVERY.map(m => [String(m), m === 60 ? t('1 hour') : t('{n} min', { n: String(m) })] as [string, string]), String(s.every), v => set({ every: Number(v) })));
+  const w = sources.anchored?.() ?? null;
+  if (at === null) out.push(note(t('No anchor yet for this coin: the columns add up what is on the chart until one is placed.')));
+  else if (w) out.push(note(w.to > w.from ? t('The columns hold {from} to {to}, worked out at {time}.', { from: clock(w.from, true), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
+  out.push(note(t('Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording. Each column says where its numbers begin.')));
+  return out;
 }
