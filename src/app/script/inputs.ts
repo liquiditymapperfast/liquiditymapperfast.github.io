@@ -121,8 +121,9 @@ export interface SourceReader {
   /** Forced buys and sells by candle start over `ids`; a candle missing from the maps was not answered (NaN), one present with 0 had none. */
   liquidations(ids: readonly string[]): { buy: ReadonlyMap<number, number>; sell: ReadonlyMap<number, number> } | undefined;
   /**
-   * For a set that holds the chart's market, read after `flows` (null for another set, or a market whose candles do not say who bought):
-   * where the recording of the set's flow begins (ms; null for none), and the market's own candle's buys and sells at a start.
+   * For a set that holds Binance markets (whose own candles say who bought), read after `flows` (null for a set with none, or while one of
+   * them is not read yet): where the recording of the set's flow begins (ms; null for none), and their candles' buys and sells, added up, at a
+   * start (null where one of them is not known there).
    */
   candle?(ids: readonly string[]): { from: number | null; sides(start: number): readonly [number, number] | null } | null;
 }

@@ -3,7 +3,7 @@ import { TIMEFRAMES } from '../hub.ts';
 import type { AppState, CandleRow } from '../store.ts';
 import { FlowCache } from '../delta/candles.ts';
 import { deltaFlows, deltaIds, ensureDeltaFlow } from '../delta/flows.ts';
-import { flowLoadIds } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds } from '../cvd/ids.ts';
 import { DAY_MS, liquidationBuckets, type LiquidationDay } from '../panes/bar-stats.ts';
 import { LIQUIDATIONS_PER_ANSWER, LIQUIDATION_RETENTION_MS } from '../../shared/liquidations.ts';
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
@@ -14,8 +14,19 @@ import { TakerRows } from '../measures/taker-rows.ts';
 import { candleSides, candleUsd } from '../measures/volume-strip.ts';
 import { DepthFeed } from './depth-feed.ts';
 import { currentCoin } from '../coin.ts';
-import { historyTarget, type KeyLevelHistory } from '../keylevels/history.ts';
+import { historyTarget, type HistoryTarget, type KeyLevelHistory } from '../keylevels/history.ts';
+import type { Coin } from '../../shared/coins.ts';
 import { scriptChunk, scriptStart } from './bars.ts';
+
+/**
+ * The history of a market whose own candles say who bought: the coin's Binance perpetual or spot market, under its own name as the flow feeds
+ * give it (`binancespot:BTCUSDT`), never an alias of it (the chart's `binance:BTCUSDT:spot`, the same market: counted twice, a set's spot buys
+ * doubled). Null for any other.
+ */
+export function takerTarget(id: string, coin: Coin): HistoryTarget | null {
+  const target = historyTarget(id, coin), venue = target ? target.id.slice(0, target.id.indexOf(':')) : '';
+  return target?.own && target.id === id && (venue === 'binance' || venue === 'binancespot') ? target : null;
+}
 
 /**
  * A market's own candles that say who bought (`get`: its candle at a start, or none), and where the exchange's read of them reached the
@@ -86,9 +97,16 @@ export class ScriptData {
 
   constructor(private hub: Hub, private changed: () => void) { this.depth = new DepthFeed(hub, () => { this.version++; this.changed(); }); }
 
-  /** The markets each filter holds, out of the flow column's ALL VENUES markets. */
+  /**
+   * The markets each filter holds, out of the flow column's ALL VENUES markets, and the coin's Binance markets the page reads (chip on, inside
+   * the Spot / Perp filter, book on the map) whether or not a trade of theirs is recorded yet: their own candles say who bought before the
+   * recording (`#takerCandles`), and without them a spot set read nothing but zeros in a visitor's first seconds (Sol, code review 2026-11-10,
+   * round 4). Flow they have none of recorded adds nothing to what the sets count.
+   */
   markets(state: AppState, filters: ReadonlyMap<string, SourceFilter>): Map<string, string[]> {
-    const all = deltaIds(state, this.hub.flow).map(id => marketInfo(state.markets, id));
+    const ids = deltaIds(state, this.hub.flow), held = new Set(ids), coin = currentCoin();
+    for (const id of flowIds(state, this.hub.flow.ids)) if (!held.has(id) && takerTarget(id, coin)) { ids.push(id); held.add(id); }
+    const all = ids.map(id => marketInfo(state.markets, id));
     const out = new Map<string, string[]>();
     for (const [key, f] of filters) out.set(key, key === '' ? all.map(m => m.id) : marketsMatching(all, f));
     return out;
@@ -169,8 +187,8 @@ export class ScriptData {
     const chunk = scriptChunk(bars) * tf, from = Math.max(scriptStart(Date.now(), tf, bars), Math.floor(first / chunk) * chunk);
     const series = historyTarget(state.seriesInstrument || state.marketId, coin);
     for (const id of ids) {
-      const target = historyTarget(id, coin), venue = target ? target.id.slice(0, target.id.indexOf(':')) : '';
-      if (!target?.own || (venue !== 'binance' && venue !== 'binancespot')) continue;
+      const target = takerTarget(id, coin);
+      if (!target) continue;
       binance.add(id);
       const h = this.hub.scriptHistory(tf, bars, target.id);
       // A page that lands has the scripts look again only once the history is whole, and then at each page (the newest bars, a minute apart):
@@ -179,7 +197,7 @@ export class ScriptData {
       const whole = wholeHistory(h, target.id, tf, from);
       const long = whole ? barsAt(h.bars) : null, mine = series?.own && series.id === target.id ? taker : null;
       if (!long && !mine) continue;
-      candles.set(id, { get: start => mine?.get(start) ?? long?.(start), listedFrom: whole && h.exhausted ? h.heldFrom : null });
+      candles.set(id, { get: start => mine?.get(start) ?? long?.(start), listedFrom: whole ? h.listedFrom : null });
     }
     return { binance, candles };
   }

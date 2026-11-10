@@ -2290,7 +2290,8 @@ export class HeatPane {
     const started = performance.now();
     const r = this.#windowFromCandles(state, { key: 'day|map', name: '', from: win.from, to: win.to }, step, state.traded.share / 100, pageNow(), true);
     if (!r) return null;
-    if (!c || c.rows !== r.rows || c.step !== step || c.from !== win.from || c.to !== win.to) {
+    // Built again for an anchored window that has the chart's very bounds too, so the estimate says which it is of (Sol, code review round 4).
+    if (!c || c.rows !== r.rows || c.step !== step || c.from !== win.from || c.to !== win.to || c.anchored !== anchored) {
       const { answer, split } = candleAnswer(r.rows, r.buys, step, win.from, win.to);
       this.#loadedCol = { rows: r.rows, step, from: win.from, to: win.to, at: now, cost: performance.now() - started, answer, split, markets: r.markets, sources, anchored };
     }

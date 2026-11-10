@@ -62,11 +62,11 @@ test('a spot set reads Binance spot\'s own candles before the recording, the per
   // The recording begins in the newest candle: every candle before reads the exchange's candles.
   const flow = new FlowBook();
   flow.apply([['binance:BTCUSDT', last + 1_000, 5, 3, 100], ['binancespot:BTCUSDT', last + 1_000, 2, 1, 100]]);
-  type Fake = { id: string; barMs: number; bars: CandleRow[]; exhausted: boolean; limited: boolean; heldFrom: number; version: number; reach(from: number): 'yes' | 'coming' | 'never'; ensure(target: { id: string }, from: number): void };
+  type Fake = { id: string; barMs: number; bars: CandleRow[]; exhausted: boolean; limited: boolean; heldFrom: number; listedFrom: number | null; version: number; reach(from: number): 'yes' | 'coming' | 'never'; ensure(target: { id: string }, from: number): void };
   const asked: { id: string; from: number }[] = [];
   const fake = (id: string, quote: number, bought: number, over: Partial<Fake> = {}): Fake => {
     const bars = candles.map(c => taker(c[0], quote, bought));
-    return { id, barMs: HOUR, bars, exhausted: false, limited: false, heldFrom: bars[0]![0], version: 1, reach: () => 'yes', ensure: (target, from) => { asked.push({ id: target.id, from }); }, ...over };
+    return { id, barMs: HOUR, bars, exhausted: false, limited: false, heldFrom: bars[0]![0], listedFrom: null, version: 1, reach: () => 'yes', ensure: (target, from) => { asked.push({ id: target.id, from }); }, ...over };
   };
   const histories = new Map<string, Fake>([['binance:BTCUSDT', fake('binance:BTCUSDT', 100, 60)], ['binancespot:BTCUSDT', fake('binancespot:BTCUSDT', 50, 20)]]);
   let pending = false;
@@ -96,7 +96,7 @@ test('a spot set reads Binance spot\'s own candles before the recording, the per
 
   // A spot market listed after the first candles (its read reached its first candle): it adds nothing before it.
   const listed = fake('binancespot:BTCUSDT', 50, 20, { reach: () => 'never', exhausted: true });
-  listed.bars = listed.bars.slice(10); listed.heldFrom = listed.bars[0]![0];
+  listed.bars = listed.bars.slice(10); listed.heldFrom = listed.listedFrom = listed.bars[0]![0];
   histories.set('binancespot:BTCUSDT', listed);
   r = read();
   assert.deepEqual([r.sources.spot!.vbuy[0], r.sources.spot!.vsell[0]], [0, 0], 'spot: nothing traded before its listing');
@@ -107,4 +107,33 @@ test('a spot set reads Binance spot\'s own candles before the recording, the per
   asked.length = 0; pending = true;
   read();
   assert.equal(asked.length, 0, 'the map\'s first columns come first');
+});
+
+test('a Binance market the page reads is in the sets before any trade of it is recorded, under its own name only (Sol, code review round 4)', () => {
+  const now = Date.now(), last = Math.floor(now / HOUR) * HOUR;
+  const candles: CandleRow[] = Array.from({ length: 30 }, (_, i) => [last - (29 - i) * HOUR, 100, 101, 99, 100, 5]);
+  // The chart's own alias of Binance spot (`binance:BTCUSDT:spot`) is listed beside the feeds' name: counted under both, spot would double.
+  const markets: Market[] = [
+    { instrumentId: 'binance:BTCUSDT', venue: 'binance', marketType: 'perpetual', quote: 'USDT' },
+    { instrumentId: 'binance:BTCUSDT:spot', venue: 'binance', marketType: 'spot', quote: 'USDT' },
+    { instrumentId: 'binancespot:BTCUSDT', venue: 'binancespot', marketType: 'spot', quote: 'USDT' },
+  ];
+  // Only the perpetual has a trade recorded: a visitor's first seconds.
+  const flow = new FlowBook();
+  flow.apply([['binance:BTCUSDT', last + 1_000, 5, 3, 100]]);
+  const taker = (t: number, quote: number, bought: number): CandleRow => [t, 100, 101, 99, 100, quote / 100, 1, bought / 100, 10, quote, bought];
+  const fake = (id: string, quote: number, bought: number) => ({ id, barMs: HOUR, bars: candles.map(c => taker(c[0], quote, bought)), exhausted: false, limited: false, heldFrom: candles[0]![0], listedFrom: null, version: 1, reach: () => 'yes' as const, ensure: () => {} });
+  const histories = new Map([['binance:BTCUSDT', fake('binance:BTCUSDT', 100, 60)], ['binancespot:BTCUSDT', fake('binancespot:BTCUSDT', 50, 20)]]);
+  const hub = {
+    flow, recordedSince: 0, source: { kind: 'server' }, ensureFlow: async () => {}, ensureFlowMinutes: async () => {},
+    candleTaker: () => ({ id: 'binance:BTCUSDT', barMs: HOUR, version: 0, bars: [], ensure: () => {} }),
+    scriptHistory: (_tf: number, _bars: number, id: string) => histories.get(id), firstColumnsPending: () => false,
+  };
+  const state = { ...initialState(), timeframe: '1h', candles, markets, marketId: 'binance:BTCUSDT', seriesInstrument: 'binance:BTCUSDT', scriptBars: 2_000 } as never;
+  const filters = new Map([['', {}], ['spot', { kinds: ['spot' as const] }]]);
+  const data = new ScriptData(hub as never, () => {});
+  assert.deepEqual(data.markets(state, filters).get('spot'), ['binancespot:BTCUSDT'], 'Binance spot, once, under the feeds\' name');
+  const r = data.inputs(state, filters, false, true, candles, false)!;
+  assert.deepEqual([r.sources.spot!.vbuy[0], r.sources.spot!.vsell[0]], [20, 30], 'spot reads its own candles from the first look');
+  assert.deepEqual([r.sources['']!.vbuy[0], r.sources['']!.vsell[0]], [80, 70], 'and the default set both markets, spot once');
 });

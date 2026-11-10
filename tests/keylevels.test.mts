@@ -407,3 +407,28 @@ test('a history is never asked again and again for what is older than it keeps (
   now += 61_000; h.ensure(target, now - 3 * DAY, HOUR, () => {}); await settle();
   assert.equal(asked, first + 1, 'only the newest bars, a minute later');
 });
+
+test('where a market\'s trading begins stays where the read found it when old bars are let go (Sol, code review 2026-11-10, round 4)', async () => {
+  let now = D0 + 10 * DAY;
+  const listed = now - 5 * DAY;
+  const get = async (url: string): Promise<unknown> => {
+    const end = Number(new URL(url).searchParams.get('endTime')), limit = Number(new URL(url).searchParams.get('limit') ?? 1500);
+    const rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; t >= listed && rows.length < limit; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    return rows;
+  };
+  // Bars kept six days back (and a day): the listing, five days back, is within reach.
+  const h = new KeyLevelHistory(get, () => now, 60_000, 6 * DAY), target = historyTarget('binance:BTCUSDT', BTC)!;
+  const settle = (): Promise<void> => new Promise(r => setTimeout(r, 0));
+  h.ensure(target, now - 6 * DAY, HOUR, () => {}); await settle(); await settle();
+  assert.equal(h.exhausted, true);
+  assert.equal(h.listedFrom, listed);
+  assert.equal(h.heldFrom, listed);
+  // Four days on, the bars older than the history keeps are let go at the next read: the first bar held moves on, the listing does not.
+  now += 4 * DAY;
+  h.ensure(target, now - 2 * DAY, HOUR, () => {}); await settle(); await settle();
+  assert.ok(h.heldFrom > listed, 'old bars let go');
+  assert.equal(h.listedFrom, listed, 'the market traded between its listing and the first bar held: not before it');
+  const fresh = new KeyLevelHistory(get, () => now, 60_000, 6 * DAY);
+  assert.equal(fresh.listedFrom, null, 'not known before a read says so');
+});

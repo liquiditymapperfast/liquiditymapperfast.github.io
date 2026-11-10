@@ -78,6 +78,11 @@ export class KeyLevelHistory {
   #heldTo = -Infinity;
   /** Set when a page short of its limit said the venue has nothing older: the exchange's history begins there. */
   #exhausted = false;
+  /**
+   * The market's first bar, as the read that said so held it (`listedFrom`): kept when the bars older than the history keeps are let go, which
+   * moves the first bar held on but not the start of the market's trading.
+   */
+  #listedFrom: number | null = null;
   /** Set when the venue serves no older bars to a page (Bitget's month of minutes, Hyperliquid's newest 5,000): neither a start nor a gap. */
   #limited = false;
   #refreshedAt = 0;
@@ -107,6 +112,12 @@ export class KeyLevelHistory {
   get heldTo(): number { return this.#heldTo; }
   /** Whether a page short of its limit said the venue has nothing older: the exchange's history begins where the bars held do. */
   get exhausted(): boolean { return this.#exhausted; }
+  /**
+   * Where the market's trading begins, where a read reached its first bar (`exhausted`): nothing traded before it. Null where that is not
+   * known. Not `heldFrom`, which moves on as old bars are let go: the time between was traded, just not kept (Sol, code review 2026-11-10,
+   * round 4: a script's old candles read as before the listing, 0, after six days of keeping 2,000 bars).
+   */
+  get listedFrom(): number | null { return this.#exhausted ? this.#listedFrom : null; }
   /** Whether the venue serves no older bars to a page: the history cannot be read further back, though the market traded before. */
   get limited(): boolean { return this.#limited; }
   /**
@@ -162,7 +173,7 @@ export class KeyLevelHistory {
       if (!forward || first) this.#coveredFrom = Math.max(Math.min(this.#coveredFrom, read.coveredFrom), this.#keptFrom());
       // What the bars are known from is part of what the lines are read from: a read that only answered for quiet time changes them too.
       if (this.#coveredFrom !== covered) this.version++;
-      if (read.stop === 'start') this.#exhausted = true;
+      if (read.stop === 'start') { this.#exhausted = true; if (this.#listedFrom === null && this.#bars.length) this.#listedFrom = this.heldFrom; }
       if (read.stop === 'limited') this.#limited = true;
       // A walk back that got no further, whatever it says of itself (the page ceiling with nothing new, a page that failed first, a reach let
       // go at once for being older than the history keeps): not asked again for a minute.
@@ -194,7 +205,7 @@ export class KeyLevelHistory {
   }
 
   #reset(key: string, id: string, barMs: number): void {
-    this.#key = key; this.#id = id; this.#barMs = barMs; this.#bars = []; this.#coveredFrom = Infinity; this.#heldTo = -Infinity; this.#exhausted = false; this.#limited = false;
+    this.#key = key; this.#id = id; this.#barMs = barMs; this.#bars = []; this.#coveredFrom = Infinity; this.#heldTo = -Infinity; this.#exhausted = false; this.#listedFrom = null; this.#limited = false;
     this.#refreshedAt = 0; this.#pending = false; this.#retryAt = 0; this.state = id ? 'loading' : 'idle';
   }
 }
