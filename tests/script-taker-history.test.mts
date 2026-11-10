@@ -137,3 +137,41 @@ test('a Binance market the page reads is in the sets before any trade of it is r
   assert.deepEqual([r.sources.spot!.vbuy[0], r.sources.spot!.vsell[0]], [20, 30], 'spot reads its own candles from the first look');
   assert.deepEqual([r.sources['']!.vbuy[0], r.sources['']!.vsell[0]], [80, 70], 'and the default set both markets, spot once');
 });
+
+test('a Binance market joins a set only where its exchange and kind are not held yet, and an alias reads the same history (Sol, round 5)', () => {
+  const now = Date.now(), last = Math.floor(now / HOUR) * HOUR;
+  const candles: CandleRow[] = Array.from({ length: 30 }, (_, i) => [last - (29 - i) * HOUR, 100, 101, 99, 100, 5]);
+  const taker = (t: number, quote: number, bought: number): CandleRow => [t, 100, 101, 99, 100, quote / 100, 1, bought / 100, 10, quote, bought];
+  const fake = (id: string, quote: number, bought: number) => ({ id, barMs: HOUR, bars: candles.map(c => taker(c[0], quote, bought)), exhausted: false, limited: false, heldFrom: candles[0]![0], listedFrom: null, version: 1, reach: () => 'yes' as const, ensure: () => {} });
+  const histories = new Map([['binance:BTCUSDT', fake('binance:BTCUSDT', 100, 60)], ['binancespot:BTCUSDT', fake('binancespot:BTCUSDT', 50, 20)]]);
+  const hubOf = (flow: FlowBook) => ({
+    flow, recordedSince: 0, source: { kind: 'server' }, ensureFlow: async () => {}, ensureFlowMinutes: async () => {},
+    candleTaker: () => ({ id: 'binance:BTCUSDT', barMs: HOUR, version: 0, bars: [], ensure: () => {} }),
+    scriptHistory: (_tf: number, _bars: number, id: string) => histories.get(id), firstColumnsPending: () => false,
+  });
+  const filters = new Map([['', {}], ['spot', { kinds: ['spot' as const] }]]);
+  const markets: Market[] = [
+    { instrumentId: 'binance:BTCUSDT', venue: 'binance', marketType: 'perpetual', quote: 'USDT' },
+    { instrumentId: 'binance:BTCUSDT:spot', venue: 'binance', marketType: 'spot', quote: 'USDT' },
+    { instrumentId: 'binancespot:BTCUSDT', venue: 'binancespot', marketType: 'spot', quote: 'USDT' },
+    { instrumentId: 'binance:BTCUSDC', venue: 'binance', marketType: 'perpetual', quote: 'USDC' },
+  ];
+  const state = { ...initialState(), timeframe: '1h', candles, markets, marketId: 'binance:BTCUSDT', seriesInstrument: 'binance:BTCUSDT', scriptBars: 2_000 } as never;
+
+  // Binance spot's flow recorded under the chart's alias: the ALL VENUES lines hold the alias, and the feeds' name does not join beside it.
+  const aliased = new FlowBook();
+  aliased.apply([['binance:BTCUSDT', last + 1_000, 5, 3, 100], ['binance:BTCUSDT:spot', last + 1_000, 2, 1, 100]]);
+  const a = new ScriptData(hubOf(aliased) as never, () => {});
+  assert.deepEqual(a.markets(state, filters).get('spot'), ['binance:BTCUSDT:spot'], 'one spot market, no second name of it');
+  const ra = a.inputs(state, filters, false, true, candles, false)!;
+  assert.deepEqual([ra.sources.spot!.vbuy[0], ra.sources.spot!.vsell[0]], [20, 30], 'the alias reads Binance spot\'s candles');
+  assert.deepEqual([ra.sources['']!.vbuy[0], ra.sources['']!.vsell[0]], [80, 70], 'each market once in the default set');
+
+  // Another quote's perpetual holds Binance's perpetual lane: BTCUSDT does not join beside it.
+  const usdc = new FlowBook();
+  usdc.apply([['binance:BTCUSDC', last + 1_000, 5, 3, 100]]);
+  const u = new ScriptData(hubOf(usdc) as never, () => {});
+  const all = u.markets(state, filters).get('')!;
+  assert.ok(all.includes('binance:BTCUSDC') && !all.includes('binance:BTCUSDT'), `one Binance perpetual: ${all.join(', ')}`);
+  assert.ok(all.includes('binancespot:BTCUSDT'), 'the empty spot lane still takes Binance spot');
+});
