@@ -40,3 +40,18 @@ export function anchorSnapshot(held: AnchorSnapshot | null, key: string, anchor:
 export function snapshotDue(s: AnchorSnapshot, everyMin: number): number {
   return s.to <= s.from ? Math.min(s.at + everyMin * MINUTE, s.to + ANCHOR_BAR_MS) : s.at + everyMin * MINUTE;
 }
+
+/** The question an anchored window asks the source: its bounds and when it was taken, so Update now asks again even for the same five minutes. */
+export const anchorTag = (s: AnchorSnapshot): string => `anchor|${s.from}|${s.to}|${s.key === 'replay' ? 'replay' : s.at}`;
+
+/**
+ * Whether a held answer, asked with `tag`, may be drawn in the columns now: anchored (`s`), only one of the same anchor, an older one while a
+ * newer is on its way (a later end, Update now), never another anchor's (one moved: its header and Range are the new window's) nor one
+ * ending after the window (a replay moved back), and none while the window holds nothing yet; following the chart (`s` null), never an
+ * anchored one (Sol, code review 2026-11-10).
+ */
+export function answerFits(tag: string, s: AnchorSnapshot | null): boolean {
+  const [kind, from, to] = tag.split('|');
+  if (!s) return kind !== 'anchor';
+  return kind === 'anchor' && s.to > s.from && Number(from) === s.from && Number(to) <= s.to;
+}

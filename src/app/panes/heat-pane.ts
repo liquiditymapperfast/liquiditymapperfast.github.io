@@ -52,7 +52,7 @@ import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
-import { ANCHOR_BAR_MS, anchorSnapshot, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
+import { ANCHOR_BAR_MS, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
 import { scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
@@ -2363,9 +2363,8 @@ export class HeatPane {
    * chart, never an anchored one.
    */
   #heldAnswer(metric: ProfileMetric): ProfileAnswer | null {
-    const held = this.hub.profile(metric), a = this.anchoredWindow();
-    if (!held) return null;
-    return (a ? held.tag === 'anchor' && a.to > a.from : held.tag !== 'anchor') ? held.answer : null;
+    const held = this.hub.profile(metric);
+    return held && answerFits(held.tag, this.anchoredWindow()) ? held.answer : null;
   }
 
   /**
@@ -2375,12 +2374,12 @@ export class HeatPane {
   #ensureTraded(state: AppState, metric: ProfileMetric): void {
     const v = this.view;
     if (!(v.t1 > v.t0) || !(v.p1 > v.p0)) return;
-    const { from, to } = this.#columnWindow(), anchored = this.anchoredWindow() !== null;
+    const { from, to } = this.#columnWindow(), anchor = this.anchoredWindow(), anchored = anchor !== null;
     // What is on the chart keeps changing only while it follows the live edge; an anchored window only when it is taken again (its own key,
     // whether or not the chart follows the live edge). Open interest counts the perpetuals whatever the Spot / Perp filter says (`oiFlowIds`),
     // as the OI pane does.
     const live = !anchored && state.followLive && !replaying(), ids = (metric === 'oi' ? oiFlowIds : flowIds)(state, this.hub.flow.ids), end = to;
-    const step = requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), asked = { tag: anchored ? 'anchor' : '', settled: false };
+    const step = requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), asked = { tag: anchor ? anchorTag(anchor) : '', settled: false };
     this.hub.ensureProfile(metric, ids, from, end, step, live, asked, measureDef(metric).judgedByMarks ? this.#absorptionContext(state).thresholds : undefined);
     if (metric === 'volume' && this.#loadedServes(state)) this.#ensureLoadedColumn(state);
   }
@@ -2522,7 +2521,7 @@ export class HeatPane {
     for (const r of plan.rolling) {
       const hs = this.#vwapHistories(targets, r.bar, true); if (!hs) continue;
       const one = hs.length === 1 ? hs[0]! : null, cutoff = one ? one.heldTo : cutoffOf(hs, r.bar);
-      const points = one ? rollingSeries(this.#barsOf(one), r.bar, r.ms, cutoff) : carried(rollingSeries(mergeVwapBars(hs.map(h => h.bars), r.bar, cutoff), r.bar, r.ms, cutoff, knownFrom(hs)), Math.min(...hs.map(h => h.heldTo)));
+      const points = one ? rollingSeries(this.#barsOf(one), r.bar, r.ms, cutoff, one.knownFrom) : carried(rollingSeries(mergeVwapBars(hs.map(h => h.bars), r.bar, cutoff), r.bar, r.ms, cutoff, knownFrom(hs)), Math.min(...hs.map(h => h.heldTo)));
       if (points.length) lines.push({ kind: 'rolling', n: r.days, points, live: true, key: `rolling|${r.days}` });
     }
     this.#rollingDrawn = { key, lines };
@@ -2533,11 +2532,14 @@ export class HeatPane {
     const s = state.vwap; if (!s.on) return [];
     const targets = this.#vwapMarkets(state); if (!targets.length) return [];
     const plan = this.#vwapPlan(state), tail = state.candles[state.candles.length - 1], rolling = this.#rollingLines(plan, targets);
-    const versions = [...plan.reach.keys()].map(bar => `${bar}:${targets.map(t => { const h = this.hub.vwapHistory(t.id, bar); return `${h.id}:${h.version}:${h.heldTo}`; }).join('+')}`).join(',');
+    const versions = [...plan.reach.keys()].map(bar => `${bar}:${targets.map(t => { const h = this.hub.vwapHistory(t.id, bar); return `${h.id}:${h.version}:${h.heldTo}:${h.knownFrom}`; }).join('+')}`).join(',');
     // With the venues on screen: switched, the sums held are another set's until the new ones come.
     const whaleIds = flowIds(state, this.hub.flow.ids), w = this.hub.whale, whaleKey = w ? `${w.key}|${w.at}|${w.tail.size}|${[...w.tail.values()].at(-1)?.[1] ?? 0}|${[...w.tail.values()].at(-1)?.[3] ?? 0}|${whaleIds.join(',')}` : '';
     // Replay: again each minute shown, for the whale lines' minutes closed by then.
-    const key = `${this.#vwapPlanned?.key}|${versions}|${rolling.key}|${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
+    // The chart's own candles only for one market's lines (several markets' are their histories' closed bars alone): a trade would otherwise
+    // add up every market's bars again (Sol, code review 2026-11-10).
+    const chartKey = targets.length > 1 ? '' : `${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}`;
+    const key = `${this.#vwapPlanned?.key}|${versions}|${rolling.key}|${chartKey}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
     if (this.#vwapDrawn?.key === key) return replayCut(this.#vwapDrawn.lines, pageNow());
     const lines: VwapLine[] = [], now = pageNow();
     // Each bar size's bars once, for the session and the anchors that share it (several markets are added up once).

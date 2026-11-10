@@ -7,6 +7,7 @@ import { placeTags } from '../src/app/keylevels/tags.ts';
 import { KeyLevelHistory, historyTarget } from '../src/app/keylevels/history.ts';
 import { codeOf, periodDate, rankOf } from '../src/app/keylevels/paint.ts';
 import { BTC } from '../src/shared/coins.ts';
+import { readCandles } from '../src/shared/history.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
 const HOUR = 3_600_000, DAY = 86_400_000;
@@ -371,4 +372,38 @@ test('an error answered with HTTP 200 is a failed read: it never says the histor
   assert.equal(h.exhausted, false); assert.equal(h.reach(now - 8 * DAY), 'never', 'not within the minute');
   limited = false; now += 61_000; h.ensure(target, now - 8 * DAY, HOUR, () => {}); await settle();
   assert.equal(h.reach(now - 8 * DAY), 'yes', 'read once the venue answers again');
+});
+
+test('time a page answered for but whose bars were let go is not known: a page of only older bars covers no further back than the bars kept (Sol, code review 2026-11-10)', async () => {
+  // Binance-shaped: bars until 10 days back, then nothing until 2 days back. Asked from 5 days back, the newest page before the quiet stretch
+  // holds only bars older than that, which the read does not keep.
+  const now = D0 + 40 * DAY;
+  const get = async (url: string): Promise<unknown> => {
+    const q = new URL(url).searchParams, end = Number(q.get('endTime')), limit = Number(q.get('limit') ?? 1500), rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; rows.length < limit && t >= now - 60 * DAY; t -= HOUR) if (t < now - 10 * DAY || t >= now - 2 * DAY) rows.unshift([t, '100', '110', '90', '100', '1']);
+    return rows;
+  };
+  const read = await readCandles('binance:BTCUSDT', HOUR, now - 5 * DAY, now - 2 * DAY - 1, get, undefined, 12, { pageSize: 1500 });
+  assert.equal(read.rows.length, 0, 'the older bars are not kept');
+  assert.equal(read.coveredFrom, now - 5 * DAY - HOUR, 'so the time is known only from the start asked (and its interval)');
+});
+
+test('a history is never asked again and again for what is older than it keeps (Sol, code review 2026-11-10)', async () => {
+  let now = D0 + 40 * DAY, asked = 0;
+  const get = async (url: string): Promise<unknown> => {
+    asked++;
+    const q = new URL(url).searchParams, end = Number(q.get('endTime')), limit = Number(q.get('limit') ?? 1500), rows: unknown[] = [];
+    for (let t = Math.floor(end / HOUR) * HOUR; rows.length < limit && t >= now - 60 * DAY; t -= HOUR) rows.unshift([t, '100', '110', '90', '100', '1']);
+    return rows;
+  };
+  // Twelve hours kept (as the liquidation levels' candles): asked from three days back, as a stale snapshot would.
+  const h = new KeyLevelHistory(get, () => now, 60_000, 12 * HOUR), target = historyTarget('binance:BTCUSDT', BTC)!;
+  const settle = async (): Promise<void> => { for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0)); };
+  h.ensure(target, now - 3 * DAY, HOUR, () => {}); await settle();
+  const first = asked;
+  for (let k = 0; k < 6; k++) { h.ensure(target, now - 3 * DAY, HOUR, () => {}); await settle(); }
+  assert.equal(asked, first, 'no walk back past what it keeps');
+  assert.equal(h.reach(now - 3 * DAY), 'never', 'and it says it will never hold that');
+  now += 61_000; h.ensure(target, now - 3 * DAY, HOUR, () => {}); await settle();
+  assert.equal(asked, first + 1, 'only the newest bars, a minute later');
 });

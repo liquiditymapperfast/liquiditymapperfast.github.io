@@ -122,7 +122,8 @@ export class KeyLevelHistory {
    */
   reach(from: number): 'yes' | 'coming' | 'never' {
     if (this.knownFrom <= from) return 'yes';
-    if (this.state === 'unavailable' || this.#exhausted || this.#limited) return 'never';
+    // Further back than the history keeps bars: it never holds that.
+    if (this.state === 'unavailable' || this.#exhausted || this.#limited || from < this.#keptFrom()) return 'never';
     if (this.#pending || this.state === 'loading' || this.state === 'idle') return 'coming';
     return this.now() < this.#retryAt ? 'never' : 'coming';
   }
@@ -134,7 +135,8 @@ export class KeyLevelHistory {
     if (!target) return;
     const now = this.now();
     if (this.#pending || now < this.#retryAt) return;
-    const want = Math.floor(from / DAY) * DAY;
+    // From the day's start, never from before what the history keeps (bars read there would be let go at once, and asked for again).
+    const want = Math.max(Math.floor(from / DAY) * DAY, this.#keptFrom());
     let a: number, b: number, forward = false;
     const first = !this.#bars.length;
     if (first) { a = want; b = now; forward = true; }
@@ -156,10 +158,15 @@ export class KeyLevelHistory {
       // The first load and the walks back answer for time back to where their pages reached, bars or none; the next call asks on from there.
       // A page short of its limit: the exchange's history begins here; a venue that serves nothing older: as far as it can be read. A walk
       // that got no further (the page ceiling with nothing new, a page that failed first) is not asked again for a minute.
-      if (!forward || first) this.#coveredFrom = Math.max(Math.min(this.#coveredFrom, read.coveredFrom), this.now() - this.maxBackMs - DAY);
+      const covered = this.#coveredFrom;
+      if (!forward || first) this.#coveredFrom = Math.max(Math.min(this.#coveredFrom, read.coveredFrom), this.#keptFrom());
+      // What the bars are known from is part of what the lines are read from: a read that only answered for quiet time changes them too.
+      if (this.#coveredFrom !== covered) this.version++;
       if (read.stop === 'start') this.#exhausted = true;
       if (read.stop === 'limited') this.#limited = true;
-      if (!forward && !(this.knownFrom < before) && read.stop !== 'reached' && read.stop !== 'start' && read.stop !== 'limited') this.#retryAt = this.now() + RETRY_MS;
+      // A walk back that got no further, whatever it says of itself (the page ceiling with nothing new, a page that failed first, a reach let
+      // go at once for being older than the history keeps): not asked again for a minute.
+      if (!forward && !(this.knownFrom < before) && !this.#exhausted && !this.#limited) this.#retryAt = this.now() + RETRY_MS;
       this.state = this.#bars.length ? 'ready' : 'unavailable';
       // Settled before it is said: what `onLoad` reads (`reach`) is then the answer's, not "a request is out".
       this.#pending = false;
@@ -173,8 +180,11 @@ export class KeyLevelHistory {
     }).finally(() => { if (asked === this.#key && ask === this.#asks) this.#pending = false; });
   }
 
+  /** The oldest time the history keeps bars of (a page open for weeks would otherwise keep every bar it ever read). */
+  #keptFrom(): number { return this.now() - this.maxBackMs - DAY; }
+
   #merge(rows: readonly CandleRow[]): void {
-    const byStart = new Map<number, CandleRow>(this.#bars.map(r => [r[0], r])), oldest = this.now() - this.maxBackMs - DAY;
+    const byStart = new Map<number, CandleRow>(this.#bars.map(r => [r[0], r])), oldest = this.#keptFrom();
     for (const r of rows) if (Number.isFinite(r[0]) && r[2] >= r[3]) byStart.set(r[0], r);
     // A page open for weeks would otherwise keep every bar it ever read: none older than the levels can reach is kept.
     this.#bars = [...byStart.values()].filter(r => r[0] >= oldest).sort((x, y) => x[0] - y[0]);

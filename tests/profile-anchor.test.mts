@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHOR_BAR_MS, ANCHOR_EVERY, anchorAt, anchorSnapshot, snapshotDue } from '../src/app/traded/anchor.ts';
+import { ANCHOR_BAR_MS, ANCHOR_EVERY, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue } from '../src/app/traded/anchor.ts';
 import { TRADED_DEFAULTS, profileAnchorOf, readTraded, withProfileAnchor } from '../src/app/traded/settings.ts';
 import { readSettings, type AppState } from '../src/app/store.ts';
 import { carriedSettings, completeSettings, settingsOf, settingsToApply } from '../src/app/layouts/layouts.ts';
@@ -61,4 +61,19 @@ test('a layout carries whether the columns are anchored and how often, never the
   assert.deepEqual(settingsToApply(kept, other).traded.anchors, { ETH: T0 + HOUR }, 'the anchors of the chart it is applied to');
   assert.ok(!('anchors' in carriedSettings({ traded: mine.traded } as never).traded!));
   assert.deepEqual(completeSettings({ traded: kept.traded } as never, other).traded!.anchors, { ETH: T0 + HOUR }, 'an Undo leaves them as they are');
+});
+
+test('the columns draw only an answer asked for the anchored window they show (Sol, code review 2026-11-10)', () => {
+  const s = (from: number, to: number, at = to + MIN, key = 'BTC|a|15') => ({ key, from, to, at });
+  const now = s(T0, T0 + 2 * HOUR);
+  assert.equal(answerFits(anchorTag(now), now), true);
+  assert.equal(answerFits(anchorTag(s(T0, T0 + HOUR)), now), true, 'an older snapshot of the same anchor, while the new one loads');
+  assert.equal(answerFits(anchorTag(s(T0 - HOUR, T0 + 2 * HOUR)), now), false, 'another anchor (one moved) is not drawn under the new header');
+  assert.equal(answerFits(anchorTag(s(T0, T0 + 3 * HOUR)), now), false, 'nor one ending after the window (a replay moved back)');
+  assert.equal(answerFits('', now), false, 'nor the chart window\'s');
+  assert.equal(answerFits(anchorTag(now), null), false, 'and following the chart, no anchored one');
+  assert.equal(answerFits('', null), true);
+  assert.equal(answerFits(anchorTag(now), s(T0, T0)), false, 'a window that holds nothing yet draws nothing');
+  assert.notEqual(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN)), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN)), 'Update now within the same five minutes asks again');
+  assert.equal(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay')), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN, 'replay')), 'a replay asks once for its five minutes');
 });

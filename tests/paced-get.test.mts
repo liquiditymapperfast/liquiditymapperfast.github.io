@@ -43,3 +43,21 @@ test('what counts as a venue saying it was asked too often', () => {
   for (const yes of [{ status: 429 }, { status: 418 }, { retCode: 10006 }, { retCode: 10018 }, { code: '50011' }, { code: '50061' }, { code: '429' }]) assert.equal(saysTooMany(yes), true, JSON.stringify(yes));
   for (const no of [null, [], { status: 500 }, { retCode: 0 }, { retCode: 10001 }, { code: '0' }, { code: '00000' }, { code: -1121 }, 'x']) assert.equal(saysTooMany(no), false, JSON.stringify(no));
 });
+
+test('a request given up while it waits its turn leaves the queue at once and is never sent (Sol, code review 2026-11-10)', async () => {
+  let release: () => void = () => {};
+  const sent: string[] = [];
+  const get = async (url: string): Promise<unknown> => { sent.push(url); if (url.endsWith('/1')) await new Promise<void>(r => { release = r; }); return []; };
+  const paced = pacedFetcher(get, { perHost: 1 });
+  const first = paced('https://z.test/1');
+  const stop = new AbortController();
+  const second = paced('https://z.test/2', { signal: stop.signal });
+  await tick(5);
+  stop.abort();
+  await assert.rejects(second, /abort/i);
+  release(); await first;
+  await tick(5);
+  assert.deepEqual(sent, ['https://z.test/1'], 'the one given up was never sent');
+  const done = new AbortController(); done.abort();
+  await assert.rejects(paced('https://z.test/3', { signal: done.signal }), /abort/i, 'one given up before it was asked is not queued');
+});

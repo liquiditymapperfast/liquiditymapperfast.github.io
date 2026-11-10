@@ -36,8 +36,20 @@ export function pacedFetcher(get: Fetcher, o: PacingOptions = {}): Fetcher {
     const key = hostOf(url);
     let found = hosts.get(key);
     if (!found) { found = { running: 0, waiting: [], until: 0, strikes: 0, timer: null }; hosts.set(key, found); }
-    const h = found;
-    await new Promise<void>(resolve => { h.waiting.push(resolve); next(h); });
+    const h = found, signal = init?.signal;
+    const aborted = (): unknown => signal?.reason ?? new DOMException('The request was aborted', 'AbortError');
+    if (signal?.aborted) throw aborted();
+    // A request given up while it waits its turn leaves the queue at once (Sol, code review 2026-11-10), and a cooldown with nothing left
+    // waiting stops its timer.
+    await new Promise<void>((resolve, reject) => {
+      const go = (): void => { signal?.removeEventListener('abort', drop); resolve(); };
+      const drop = (): void => {
+        const i = h.waiting.indexOf(go); if (i >= 0) h.waiting.splice(i, 1);
+        if (!h.waiting.length && h.timer !== null) { clearTimeout(h.timer); h.timer = null; }
+        reject(aborted());
+      };
+      h.waiting.push(go); signal?.addEventListener('abort', drop, { once: true }); next(h);
+    });
     try {
       const answer = await get(url, init);
       if (saysTooMany(answer)) strike(h); else h.strikes = 0;

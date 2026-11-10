@@ -238,6 +238,9 @@ export async function readCandles(instrumentId: string, tfMs: number, from: numb
   }
   // The ceiling of pages met just as the last one got there.
   if (stop === 'pages' && coveredFrom <= from) stop = 'reached';
+  // Never answered for further back than the bars kept (those before `from` and its interval are not returned): a page of only older bars
+  // (the venue's newest before a quiet stretch) must not make time count as known whose bars were let go (Sol, code review 2026-11-10).
+  coveredFrom = Math.max(coveredFrom, from - tfMs);
   const u = market.unit, kept = [...rows.values()].filter(r => r.start >= from - tfMs && r.start <= to);
   return { rows: aggregateCandles(u === 1 ? kept : kept.map(r => ({ ...r, open: r.open / u, high: r.high / u, low: r.low / u, close: r.close / u, ...(r.volume === undefined ? {} : { volume: r.volume * u }), ...(r.buy === undefined ? {} : { buy: r.buy * u }) })), tfMs, options?.buy === true), coveredFrom, stop };
 }

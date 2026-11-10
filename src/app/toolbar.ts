@@ -430,7 +430,10 @@ export class Toolbar {
     };
     this.#settingsKeys.traded.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null, anchored: () => this.anchoredWindow?.() ?? null, updateNow: () => this.updateAnchored?.() });
-      this.#tradedPanel = this.#track(togglePanel(this.#settingsKeys.traded, { title: t('Volume profile'), width: 520, align: 'left', onClose: () => { this.#tradedPanel = null; if (this.store.state.profileAnchoring) this.store.set({ profileAnchoring: false }); } }, build), build);
+      // While Place the anchor is armed the panel stays open over a click on the map (that click places it, Sol: closing it first disarmed
+      // it); otherwise a press outside closes it as before.
+      const store = this.store;
+      this.#tradedPanel = this.#track(togglePanel(this.#settingsKeys.traded, { title: t('Volume profile'), width: 520, align: 'left', get stays(): boolean { return store.state.profileAnchoring; }, onClose: () => { this.#tradedPanel = null; if (this.store.state.profileAnchoring) this.store.set({ profileAnchoring: false }); } }, build), build);
     };
     this.#traded.onclick = () => this.store.set(togglePatch(this.store.state, 'traded'));
     this.#settingsKeys.absorption.onclick = () => {
