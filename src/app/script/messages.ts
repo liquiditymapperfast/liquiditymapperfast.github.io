@@ -63,13 +63,13 @@ export function warningText(w: Warning, reads?: number): string {
       const n = known ? num(at) : NaN, have = known ? num(at + 1) : NaN, asked = known && four ? num(1) : n;
       const say = { line: known ? String(num(0)) : 'X', asked: known ? candles(asked) : 'X', n: known ? candles(n) : 'X', have: known ? candles(have) : 'X', max: known && reads !== undefined ? candles(reads) : 'X', most: candles(MOST_SCRIPT_BARS) };
       // Asked longer than any window can be: it counts back the longest, and says so whether or not that fills.
-      const capped = known && asked > n ? t('Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.', say) : '';
+      const capped = known && asked > n ? t('Line {line}: {asked} is more than a window can hold, so it uses the last {n}.', say) : '';
       if (known && !(n > have)) return capped;
       // Longer than the scripts read: more can be chosen, up to the most, which is the longest a window can be (so a window is never longer than
       // the most they can read); within it, the chart gives fewer (a shorter history, or one still being read).
       const unfilled = known && reads !== undefined && n <= reads
-        ? t('Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.', say)
-        : t('Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.', say);
+        ? t('Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.', say)
+        : t('Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.', say);
       return capped ? `${capped} ${unfilled}` : unfilled;
     }
     default: return w.code;

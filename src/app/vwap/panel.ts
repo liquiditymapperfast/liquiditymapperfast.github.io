@@ -57,7 +57,7 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
     ...more.map(days => el('button', { type: 'button', textContent: `${days}D`, tip: tn(days, '{n} day up to now', '{n} days up to now'), onclick: () => { store.set({ vwap: { ...withRolling(store.state.vwap, days, true), on: true } }); rebuild(); } }))));
   if (s.on) for (const days of s.rolling) {
     const reach = rollingReach(days), line = vwapCode({ kind: 'rolling', n: days });
-    if (reach === 'short') body.append(note(t('{line}: the history this page could read is shorter than its window, so it has no line.', { line })));
+    if (reach === 'short') body.append(note(t('{line}: not enough history for this window, so no line.', { line })));
     else if (reach === 'failed') body.append(note(t('{line}: its candles could not be read just now; trying again in a minute.', { line })));
   }
   body.append(
@@ -102,7 +102,7 @@ export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLEleme
  */
 function candlesFrom(store: Store, body: HTMLElement, rebuild: () => void, markets: VwapMarkets): void {
   const s = store.state.vwap, coin = currentCoin(), chart = store.state.marketId;
-  body.append(selectRow(t('Candles from'), t('Whose candles the session, rolling and anchored lines add up.'), [['chart', t('The chart market')], ['chosen', t('Chosen markets')]], s.source, v => {
+  body.append(selectRow(t('Candles from'), t("Which markets' candles the session, rolling and anchored lines are worked out from."), [['chart', t('The chart market')], ['chosen', t('Chosen markets')]], s.source, v => {
     const source = v === 'chosen' ? 'chosen' : 'chart', now = store.state.vwap;
     store.set({ vwap: { ...now, source, picks: source === 'chosen' && !now.picks.length ? seedPicks(chart, coin) : now.picks } });
     rebuild();
@@ -113,7 +113,7 @@ function candlesFrom(store: Store, body: HTMLElement, rebuild: () => void, marke
     body.append(note(t('From the candles of {market}: each bar\'s typical price (high, low and close) weighted by its volume, a minute at a time for a day and coarser for longer.', { market: marketName(target) })));
     if (!target.own) body.append(note(t('The market on the chart has no history the page can read, so another market of the coin is used; its prices can differ a little.')));
   } else {
-    body.append(note(t('Each line adds up the candles of the markets ticked below, bar by bar, whatever the venue chips say. Every market more is more to read; with none ticked there is no VWAP.')));
+    body.append(note(t('The lines combine the candles of the markets ticked below, even ones switched off in Venues. More markets take longer to load; with none ticked there is no VWAP.')));
     body.append(heading(t('Markets')));
     const list = el('div', { class: 'market-picker' }), boxes: HTMLInputElement[] = [];
     const sync = (): void => { const full = store.state.vwap.picks.length >= MAX_VWAP_MARKETS; for (const box of boxes) box.disabled = full && !box.checked; };
@@ -135,13 +135,13 @@ function candlesFrom(store: Store, body: HTMLElement, rebuild: () => void, marke
     sync();
     if (s.picks.length >= MAX_VWAP_MARKETS) body.append(note(t('Up to six markets: untick one to choose another.')));
     const targets = vwapTargets('chosen', s.picks, chart, coin);
-    if (new Set(targets.map(quoteOf)).size > 1) body.append(note(t('USD, USDT and USDC prices are added as they are, one to one, with no currency conversion.')));
+    if (new Set(targets.map(quoteOf)).size > 1) body.append(note(t('USD, USDT and USDC prices are treated as equal, with no currency conversion.')));
   }
   if (!store.state.vwap.on) return;
   for (const m of markets()) {
     const market = marketName(m.target);
     if (m.state === 'failed') body.append(note(t('{market}: its candles could not be read just now; trying again in a minute. The lines wait for it.', { market })));
-    else if (m.state === 'stale') body.append(note(t('{market}: its candles were last read at {time}; the lines end there.', { market, time: clock(m.readTo, true) })));
+    else if (m.state === 'stale') body.append(note(t('{market}: not updated since {time}; the lines stop there.', { market, time: clock(m.readTo, true) })));
     else if (m.state === 'short') body.append(note(t('{market}: its history reaches back to {date} only, so no line starts before it.', { market, date: clock(m.from, true) })));
   }
 }

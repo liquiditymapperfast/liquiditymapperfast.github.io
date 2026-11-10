@@ -235,7 +235,7 @@ function sessionEditor(store: Store, set: (change: Partial<TradedSettings>, agai
  */
 function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, again?: boolean) => void, rebuild: () => void, sources: TradedSources): HTMLElement[] {
   const s = store.state.traded, coin = currentCoin().coin, out: HTMLElement[] = [];
-  out.push(selectRow(t('Columns add up'), t('The columns beside the map: what is on the chart, or everything from a moment you choose up to now.'), [['chart', t('What is on the chart')], ['anchor', t('From an anchor')]], s.columns, v => set({ columns: v === 'anchor' ? 'anchor' : 'chart' }, true)));
+  out.push(selectRow(t('Columns cover'), t('The columns beside the map: what is on the chart, or everything from a candle you choose up to now.'), [['chart', t('What is on the chart')], ['anchor', t('From an anchor')]], s.columns, v => set({ columns: v === 'anchor' ? 'anchor' : 'chart' }, true)));
   if (s.columns !== 'anchor') return out;
   const at = profileAnchorOf(s, coin, Date.now(), PROFILE_CANDLES_BACK_MS), armed = store.state.profileAnchoring;
   if (at !== null) {
@@ -244,14 +244,14 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
   }
   const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : at === null ? t('Place the anchor') : t('Move the anchor'), tip: t('Then click the candle on the map the columns should add up from.'),
     onclick: () => { store.set(armed ? { profileAnchoring: false } : { profileAnchoring: true, vwapAnchoring: false, rangeTool: false }); rebuild(); } });
-  const again = el('button', { type: 'button', textContent: t('Update now'), disabled: at === null, tip: t('Work the anchored columns out again now, up to the last whole five minutes.'), onclick: () => { sources.updateNow?.(); } });
+  const again = el('button', { type: 'button', textContent: t('Update now'), disabled: at === null, tip: t('Recalculate the anchored columns now, up to the last finished five minutes.'), onclick: () => { sources.updateNow?.(); } });
   out.push(el('div', { class: 'session-add' }, place, again));
   if (armed) out.push(note(t('Click the candle on the map the columns should add up from.')));
-  out.push(selectRow(t('Update every'), t('How often the anchored columns are worked out again, each time over everything since the anchor: less often costs less.'),
+  out.push(selectRow(t('Update every'), t('How often the anchored columns are recalculated from the anchor. Less often means less work for the page.'),
     ANCHOR_EVERY.map(m => [String(m), m === 60 ? t('1 hour') : t('{n} min', { n: String(m) })] as [string, string]), String(s.every), v => set({ every: Number(v) })));
   const w = sources.anchored?.() ?? null;
   if (at === null) out.push(note(t('No anchor yet for this coin: the columns add up what is on the chart until one is placed.')));
-  else if (w) out.push(note(w.to > w.from ? t('The columns hold {from} to {to}, worked out at {time}.', { from: clock(w.from, true), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
-  out.push(note(t('Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.')));
+  else if (w) out.push(note(w.to > w.from ? t('The columns show {from} to {to}, recalculated at {time}.', { from: clock(w.from, true), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
+  out.push(note(t('Traded volume goes back up to 21 weeks, as an estimate from candles (≈). Liquidations, absorption and open interest go back only as far as they were recorded.')));
   return out;
 }

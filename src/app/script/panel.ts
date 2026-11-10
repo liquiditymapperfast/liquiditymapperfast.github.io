@@ -81,7 +81,7 @@ export function buildScriptsPanel(host: ScriptsHost, body: HTMLElement, redraw: 
   body.append(note(t('Scripts draw your own indicators from the candles and the taker flow and liquidations of the exchanges on the page. Each runs on its own, apart from the page, and can read nothing else. Their language is the indicator-script language other charting pages use: JavaScript with plots and functions such as sma and ema.')));
   if (ui.message) body.append(el('p', { class: ui.message.error ? 'panel-note layout-message error' : 'panel-note layout-message', textContent: ui.message.text }));
   // How many of the chart's candles every script reads (Karl, 2026-11-10), and how reading them stands, said again as they come in.
-  body.append(selectRow(t('Candles scripts read'), t("How many of the chart's candles each script reads, from the exchange. More take longer to read the first time and to run from the first candle."),
+  body.append(selectRow(t('Candles per script'), t("How many past candles each script can use, read from the exchange. More candles take longer to load and to run."),
     SCRIPT_BARS.map(n => [String(n), price(n, 1)] as [string, string]), String(host.bars), v => { host.setBars(Number(v)); redraw(); }));
   const bars = note(barsText(host)); bars.dataset.scriptBars = '';
   body.append(bars);

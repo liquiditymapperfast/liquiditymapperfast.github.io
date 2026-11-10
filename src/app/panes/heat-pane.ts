@@ -1739,7 +1739,7 @@ export class HeatPane {
     ctx.save(); ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     ctx.strokeStyle = p.poc; ctx.globalAlpha = 0.7; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
     // Under the legend, the corner buttons and the line credited under the legend, on a box as the lines' labels are.
-    const text = t('Profiles from here, as of {time}', { time: clock(a.to) }), y = Math.max(6, this.#legendBox.bottom + 22), w = ctx.measureText(text).width;
+    const text = t('Profiles from here, updated {time}', { time: clock(a.to) }), y = Math.max(6, this.#legendBox.bottom + 22), w = ctx.measureText(text).width;
     ctx.globalAlpha = 0.85; ctx.fillStyle = p.panel; ctx.fillRect(x + 2, y - 2, w + 6, 15);
     ctx.fillStyle = p.poc; ctx.globalAlpha = 1; ctx.fillText(text, x + 5, y);
     ctx.restore();
