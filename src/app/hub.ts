@@ -33,6 +33,8 @@ import { isPhone } from './device.ts';
 import type { SumRow } from '../shared/print-sums.ts';
 import { ChartPriceHistory } from './price-history.ts';
 import { ColumnHolds, columnReach, columnStepFor, settledBefore, type ColumnDrop } from './column-holds.ts';
+/** How many VWAP histories are kept before those not asked for in five minutes are let go (one market's lines use up to nine). */
+const VWAP_HISTORIES = 16;
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -272,9 +274,8 @@ export class Hub {
   readonly keyHistory = new KeyLevelHistory(webGet);
   /** The Liquidation levels layer's file and the candles that take its levels away. */
   readonly liqLevels = new LiqLevelsSource(webGet);
-  readonly #vwapHistories = new Map<number, KeyLevelHistory>();
-  /** The rolling VWAPs' candles, one history per bar size (`rollingBarMs`: four sizes at most, so none is ever let go for another). */
-  readonly #rollingHistories = new Map<number, KeyLevelHistory>();
+  /** The VWAP lines' candles, one history per kind, market and bar size (`vwapHistory`), and when each was last asked for. */
+  readonly #vwapHistories = new Map<string, { h: KeyLevelHistory; used: number }>();
   readonly #profileHistories = new Map<string, KeyLevelHistory>();
   /**
    * The whale VWAP's sums: the whole minutes answered (`rows`, before `to`) and since then the minutes added from the orders pushed live
@@ -317,25 +318,19 @@ export class Hub {
       if (p.side === 'buy') { row[1] += p.usd; row[2] += p.usd / p.price; } else { row[3] += p.usd; row[4] += p.usd / p.price; }
     }
   }
-  /** The VWAP's candles of one bar size (a minute for a day's session, coarser for longer ones and old anchors), asked again every minute. */
-  vwapHistory(barMs: number): KeyLevelHistory {
-    let h = this.#vwapHistories.get(barMs);
-    if (!h) {
-      // At most a few sizes are in use at once; the one not asked for longest goes first.
-      if (this.#vwapHistories.size >= 4) this.#vwapHistories.delete(this.#vwapHistories.keys().next().value!);
-      h = new KeyLevelHistory(webGet, Date.now, 60_000);
-    } else this.#vwapHistories.delete(barMs);
-    this.#vwapHistories.set(barMs, h);
-    return h;
-  }
   /**
-   * The rolling VWAPs' candles of one bar size, asked again every minute and kept `ROLLING_MAX_BARS` bars back: apart from `vwapHistory`,
-   * whose few sizes the session and the anchors take turns at (with the rolling sizes too it would let one go and read it again every frame),
-   * and whose two months do not hold a year's window.
+   * The VWAP's candles of one market and bar size, asked again every minute: the session's and the anchors' (a minute for a day's session,
+   * coarser for longer ones and old anchors; kept as far back as the key levels reach), or with `rolling` the rolling VWAPs' (kept
+   * `ROLLING_MAX_BARS` bars back, since two months do not hold a year's window). One history per kind, market and size, so lines of several
+   * markets and sizes never take turns at one (each turn read it again). The lines shown ask for theirs at every frame; a history not asked
+   * for in five minutes (another coin's, a size no line uses now) is let go when another is made and there are `VWAP_HISTORIES` or more.
    */
-  rollingHistory(barMs: number): KeyLevelHistory {
-    let h = this.#rollingHistories.get(barMs);
-    if (!h) { h = new KeyLevelHistory(webGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS); this.#rollingHistories.set(barMs, h); }
+  vwapHistory(id: string, barMs: number, rolling = false): KeyLevelHistory {
+    const key = `${rolling ? 'rolling' : 'vwap'}|${id}|${barMs}`, now = Date.now(), held = this.#vwapHistories.get(key);
+    if (held) { held.used = now; return held.h; }
+    if (this.#vwapHistories.size >= VWAP_HISTORIES) for (const [k, x] of this.#vwapHistories) if (now - x.used > 300_000) this.#vwapHistories.delete(k);
+    const h = rolling ? new KeyLevelHistory(webGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS) : new KeyLevelHistory(webGet, Date.now, 60_000);
+    this.#vwapHistories.set(key, { h, used: now });
     return h;
   }
   /**

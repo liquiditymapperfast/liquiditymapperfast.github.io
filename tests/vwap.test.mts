@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ROLLING_MAX_BARS, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapSeries } from '../src/app/vwap/vwap.ts';
+import { ROLLING_MAX_BARS, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries as rollingOf, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries as vwapOf } from '../src/app/vwap/vwap.ts';
 import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withRolling, withoutAnchor } from '../src/app/vwap/settings.ts';
 import { cutForReplay, paintVwap, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
 import { View } from '../src/app/view.ts';
@@ -13,6 +13,9 @@ const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 const D0 = Date.UTC(2026, 9, 5);
 const bar = (t: number, h: number, l: number, c: number, v: number): CandleRow => [t, c, h, l, c, v];
 const close = (a: number, b: number, eps = 1e-9): boolean => Math.abs(a - b) <= eps * Math.max(1, Math.abs(b));
+// One market's candles, as the map hands them over.
+const vwapSeries = (bars: readonly CandleRow[], from: number, to: number): ReturnType<typeof vwapOf> => vwapOf(vwapBarsOf(bars), from, to);
+const rollingSeries = (bars: readonly CandleRow[], barMs: number, w: number, asOf: number): ReturnType<typeof rollingOf> => rollingOf(vwapBarsOf(bars), barMs, w, asOf);
 
 test('the VWAP is each bar\'s typical price weighted by its volume, and the bands its volume-weighted spread', () => {
   const bars = [bar(D0, 102, 98, 100, 1), bar(D0 + MIN, 106, 100, 103, 2), bar(D0 + 2 * MIN, 110, 90, 95, 0)];
@@ -228,4 +231,32 @@ test('a pixel column of a thinned line ends where its last point is, an excursio
   const points = [[50.1, 100], [50.3, 90], [50.5, 130], [50.7, 100], [80, 120]].map(([t, vwap]) => ({ t: t!, vwap: vwap!, sd: 0 }));
   paintVwap(ctx, [{ kind: 'rolling', n: 7, points, live: false, key: 'r' }], view, 1000, 300, { dark: false, vwap: '#08c', panel: '#fff' } as Palette, { ...VWAP_DEFAULTS, on: true });
   assert.deepEqual(calls, ['moveTo 50.1 200', 'lineTo 50.1 170', 'lineTo 50.1 210', 'lineTo 50.1 200', 'lineTo 80 180']);
+});
+
+test('several markets added up keep the spread between them for the bands, and count only bars every market has closed', () => {
+  // Equal volumes at 100 and 200 in one minute: an average of 150 whose prices lie 50 either side, as the brute count over every market's bars.
+  const a = [bar(D0, 100, 100, 100, 2), bar(D0 + MIN, 103, 101, 102, 1), bar(D0 + 2 * MIN, 110, 100, 105, 4)];
+  const b = [bar(D0, 200, 200, 200, 2), bar(D0 + MIN, 99, 97, 98, 3), bar(D0 + 2 * MIN, 120, 110, 115, 9)];
+  const merged = mergeVwapBars([a, b], MIN, D0 + 2 * MIN);
+  assert.deepEqual(merged.map(m => m[0]), [D0, D0 + MIN], 'the bar under way at the cutoff is left out');
+  const first = vwapOf(merged, D0, D0 + DAY)[0]!;
+  assert.ok(close(first.vwap, 150) && close(first.sd, 50), `${first.vwap} ${first.sd}`);
+  const brute = (upTo: number): { vwap: number; sd: number } => {
+    const all = [...a, ...b].filter(c => c[0] <= upTo), v = all.reduce((x, c) => x + c[5], 0), tp = (c: CandleRow): number => (c[2] + c[3] + c[4]) / 3;
+    const vwap = all.reduce((x, c) => x + tp(c) * c[5], 0) / v;
+    return { vwap, sd: Math.sqrt(all.reduce((x, c) => x + c[5] * (tp(c) - vwap) ** 2, 0) / v) };
+  };
+  const second = vwapOf(merged, D0, D0 + DAY)[1]!, want = brute(D0 + MIN);
+  assert.ok(close(second.vwap, want.vwap) && close(second.sd, want.sd), `${second.sd} against ${want.sd}`);
+  // One market merged is that market's line (its quiet bars aside, which add nothing).
+  const one = mergeVwapBars([a], MIN, D0 + 3 * MIN);
+  assert.deepEqual(vwapOf(one, D0, D0 + DAY), vwapSeries(a, D0, D0 + DAY));
+  assert.deepEqual(mergeVwapBars([a, []], MIN, D0 + 3 * MIN).map(m => m[1]), [2, 1, 4], 'a market with no candles traded nothing');
+});
+
+test('a rolling window over several markets is whole only from where every history begins', () => {
+  const bars = Array.from({ length: 10 }, (_, k) => bar(D0 + k * HOUR, 101 + k, 99 + k, 100 + k, 1));
+  const pts = rollingOf(vwapBarsOf(bars), HOUR, 3 * HOUR, D0 + 10 * HOUR, D0 + 4 * HOUR);
+  assert.equal(pts[0]!.t, D0 + 7 * HOUR, 'a market whose history begins at 04:00 holds the first point back to 07:00');
+  assert.equal(rollingOf(vwapBarsOf(bars), HOUR, 3 * HOUR, D0 + 10 * HOUR)[0]!.t, D0 + 3 * HOUR, 'one market: a window after its first bar');
 });

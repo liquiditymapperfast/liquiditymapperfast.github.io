@@ -4,10 +4,10 @@ import type { CandleRow } from '../store.ts';
 import type { SumRow } from '../../shared/print-sums.ts';
 
 /**
- * The volume-weighted average price from one market's candles: each bar's typical price (high + low + close) / 3 weighted by its volume in
- * coins, summed from a start (a session's, or an anchor's), with the volume-weighted standard deviation of those prices for the bands. A
- * session restarts it at each day, week or month of a time zone; an anchor runs it from a chosen moment to now; a rolling VWAP is taken over
- * the last days up to each moment, its start moving with it.
+ * The volume-weighted average price from candles: each bar's typical price (high + low + close) / 3 weighted by its volume in coins, summed
+ * from a start (a session's, or an anchor's), with the volume-weighted standard deviation of those prices for the bands. A session restarts it
+ * at each day, week or month of a time zone; an anchor runs it from a chosen moment to now; a rolling VWAP is taken over the last days up to
+ * each moment, its start moving with it. The candles are one market's, or several markets' added up bar by bar (`mergeVwapBars`).
  */
 
 const MINUTE = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
@@ -16,20 +16,60 @@ const MINUTE = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 export interface VwapPoint { t: number; vwap: number; sd: number }
 
 /**
+ * One bar as the VWAP reads it: its start, its volume in coins, its typical price, and how far the typical prices it was made of lie apart
+ * (the volume-weighted sum of their squared distances from it; 0 for one market's bar). Several markets' bars of one start are one such bar
+ * whose price is their volume-weighted typical price, and the spread keeps them apart for the bands: two markets at 100 and 200 with equal
+ * volume are a bar at 150 whose prices still lie 50 either side, not one price at 150.
+ */
+export type VwapBar = readonly [t: number, volume: number, price: number, spread: number];
+
+/** One market's candles as the VWAP reads them, in the same order. */
+export function vwapBarsOf(candles: readonly CandleRow[]): VwapBar[] {
+  const out: VwapBar[] = new Array(candles.length);
+  for (let i = 0; i < candles.length; i++) { const c = candles[i]!; out[i] = [c[0], c[5], (c[2] + c[3] + c[4]) / 3, 0]; }
+  return out;
+}
+
+/**
+ * Several markets' candles of one bar size as one series: at each start the volumes added, their typical prices weighted by them, and the
+ * spread of those prices around the weighted one. Only the bars over by `cutoff` count (a bar under way on one market has been read up to
+ * another moment than on the next, so the line ends at the last bar every market has closed). A market with no candle at a start traded
+ * nothing there. Each series sorted by start.
+ */
+export function mergeVwapBars(series: readonly (readonly CandleRow[])[], barMs: number, cutoff: number): VwapBar[] {
+  const sums = new Map<number, [v: number, pv: number]>();
+  for (const s of series) for (const c of s) {
+    if (!(c[0] + barMs <= cutoff) || !(c[5] > 0)) continue;
+    const at = sums.get(c[0]), tp = (c[2] + c[3] + c[4]) / 3;
+    if (at) { at[0] += c[5]; at[1] += tp * c[5]; } else sums.set(c[0], [c[5], tp * c[5]]);
+  }
+  // The spread in a second pass, around each start's weighted price: summing squares of prices near 100,000 and taking the square of the mean
+  // off would lose the precision a spread of a few dollars needs.
+  const spread = new Map<number, number>();
+  for (const s of series) for (const c of s) {
+    if (!(c[0] + barMs <= cutoff) || !(c[5] > 0)) continue;
+    const [v, pv] = sums.get(c[0])!, d = (c[2] + c[3] + c[4]) / 3 - pv / v;
+    spread.set(c[0], (spread.get(c[0]) ?? 0) + c[5] * d * d);
+  }
+  return [...sums.entries()].sort((a, b) => a[0] - b[0]).map(([t, [v, pv]]) => [t, v, pv / v, spread.get(t) ?? 0] as VwapBar);
+}
+
+/**
  * The running VWAP over the bars starting in [from, to), sorted by start. A bar with no volume carries the line on unchanged; the line begins at
  * the first bar that traded (none before it: no average of nothing). Prices are taken relative to the first typical price so the variance of
- * prices near 100,000 keeps its precision.
+ * prices near 100,000 keeps its precision. A merged bar's spread is added as it is: its prices' squared distances from any other point are
+ * their spread around the bar's own price plus the bar's volume times its own squared distance from that point.
  */
-export function vwapSeries(bars: readonly CandleRow[], from: number, to: number): VwapPoint[] {
+export function vwapSeries(bars: readonly VwapBar[], from: number, to: number): VwapPoint[] {
   const out: VwapPoint[] = [];
   let v = 0, dv = 0, d2v = 0, ref = NaN;
   for (const b of bars) {
     const t = b[0]; if (t < from) continue; if (t >= to) break;
-    const vol = b[5];
+    const vol = b[1];
     if (vol > 0) {
-      const tp = (b[2] + b[3] + b[4]) / 3;
+      const tp = b[2];
       if (!Number.isFinite(ref)) ref = tp;
-      const d = tp - ref; v += vol; dv += d * vol; d2v += d * d * vol;
+      const d = tp - ref; v += vol; dv += d * vol; d2v += d * d * vol + b[3];
     }
     if (!(v > 0)) continue;
     const mean = dv / v;
@@ -81,21 +121,22 @@ export function rollingFrom(days: number, t0: number, t1: number, now: number, r
  * exchange whose history is shorter) begins the line later, or gives none, rather than the average of fewer days under the window's name.
  * A point is at its bar's end, when what the window holds is known; the bar under way (ending after `asOf`) is drawn at `asOf`.
  */
-export function rollingSeries(bars: readonly CandleRow[], barMs: number, windowMs: number, asOf: number): VwapPoint[] {
+export function rollingSeries(bars: readonly VwapBar[], barMs: number, windowMs: number, asOf: number, knownFrom = bars[0]?.[0] ?? Infinity): VwapPoint[] {
   const out: VwapPoint[] = [];
   if (!bars.length || !(windowMs > 0) || !(barMs > 0)) return out;
-  const first = bars[0]![0];
+  // Where the bars are known from: the first bar's start, or what the histories were read back to (several markets: the latest of those).
+  // A window reaching before it is not whole; one reaching into a quiet stretch the histories cover is.
+  const first = knownFrom;
   // Prices relative to the first traded bar's, as in `vwapSeries`; `traded` counts the bars with volume in the window, so a window whose sums
   // have come back to about zero is known to be empty.
   let v = 0, dv = 0, ref = NaN, traded = 0, a = 0;
-  const tp = (b: CandleRow): number => (b[2] + b[3] + b[4]) / 3;
   let held = 0;
   for (let j = 0; j < bars.length; j++) {
     const b = bars[j]!, end = Math.min(b[0] + barMs, asOf);
     if (end <= b[0]) break;
     held = j + 1;
-    if (b[5] > 0) { if (!Number.isFinite(ref)) ref = tp(b); v += b[5]; dv += (tp(b) - ref) * b[5]; traded++; }
-    while (a <= j && bars[a]![0] < end - windowMs) { const o = bars[a]!; if (o[5] > 0) { v -= o[5]; dv -= (tp(o) - ref) * o[5]; traded--; } a++; }
+    if (b[1] > 0) { if (!Number.isFinite(ref)) ref = b[2]; v += b[1]; dv += (b[2] - ref) * b[1]; traded++; }
+    while (a <= j && bars[a]![0] < end - windowMs) { const o = bars[a]!; if (o[1] > 0) { v -= o[1]; dv -= (o[2] - ref) * o[1]; traded--; } a++; }
     if (first > end - windowMs || traded === 0 || !(v > 0)) continue;
     out.push({ t: end, vwap: ref + dv / v, sd: 0 });
   }
@@ -103,7 +144,7 @@ export function rollingSeries(bars: readonly CandleRow[], barMs: number, windowM
   // on without anything added.
   const lastEnd = held ? bars[held - 1]![0] + barMs : Infinity;
   if (lastEnd < asOf) {
-    while (a < held && bars[a]![0] < asOf - windowMs) { const o = bars[a]!; if (o[5] > 0) { v -= o[5]; dv -= (tp(o) - ref) * o[5]; traded--; } a++; }
+    while (a < held && bars[a]![0] < asOf - windowMs) { const o = bars[a]!; if (o[1] > 0) { v -= o[1]; dv -= (o[2] - ref) * o[1]; traded--; } a++; }
     if (first <= asOf - windowMs && traded > 0 && v > 0) out.push({ t: asOf, vwap: ref + dv / v, sd: 0 });
   }
   return out;

@@ -1,10 +1,11 @@
 import { MAX_BACK_MS, type PeriodKind } from '../keylevels/levels.ts';
 import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
+import { readVwapPicks, type VwapSource } from './markets.ts';
 
 /**
  * The VWAP's settings: whether it shows; the session VWAP (restarting each day, week or month in the Volume profile's zone) and its bands;
- * the rolling VWAPs (each over the last days up to now); the anchored VWAPs, kept per coin as the moments they start at; and the labels at
- * the lines' ends and on the price axis.
+ * the rolling VWAPs (each over the last days up to now); the anchored VWAPs, kept per coin as the moments they start at; the labels at the
+ * lines' ends and on the price axis; and whose candles the session, rolling and anchored lines are worked out from.
  */
 export interface VwapSettings {
   on: boolean;
@@ -24,6 +25,10 @@ export interface VwapSettings {
   whale: boolean;
   /** The smallest order it averages: one of the whale bands, as BTC's (scaled for the coin on the page). */
   whaleUsd: number;
+  /** Whose candles the session, rolling and anchored lines add up: the chart's market, or the markets chosen (`picks`, `vwap/markets.ts`). */
+  source: VwapSource;
+  /** The markets chosen, as exchange and kind (`binance/spot`), at most `MAX_VWAP_MARKETS`: kept when the source is the chart's again. */
+  picks: string[];
 }
 
 export const MAX_ANCHORS = 4;
@@ -40,8 +45,11 @@ export const VWAP_STARTS: readonly [string, string][] = [
 /** Coins whose anchors are kept (a person tries many coins; the anchors of the oldest go first). */
 const MAX_ANCHOR_COINS = 20;
 
-/** Off until switched on; then the day's session VWAP, no bands, no rolling VWAP, no anchors, no whale VWAP (from $1M when it is switched on). */
-export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', startMinute: null, bands: 0, rolling: [], anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000 };
+/**
+ * Off until switched on; then the day's session VWAP, no bands, no rolling VWAP, no anchors, no whale VWAP (from $1M when it is switched on),
+ * from the chart market's candles.
+ */
+export const VWAP_DEFAULTS: Readonly<VwapSettings> = { on: false, session: true, period: 'day', startMinute: null, bands: 0, rolling: [], anchors: {}, labels: true, tags: true, whale: false, whaleUsd: 1_000_000, source: 'chart', picks: [] };
 
 const flag = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
 
@@ -67,6 +75,7 @@ export function readVwap(saved: unknown): VwapSettings {
     rolling: Array.isArray(s.rolling) ? ROLLING_DAYS.filter(days => (s.rolling as unknown[]).includes(days)) : [],
     anchors, labels: flag(s.labels, d.labels), tags: flag(s.tags, d.tags),
     whale: flag(s.whale, d.whale), whaleUsd: typeof s.whaleUsd === 'number' && WHALE_BANDS_USD.includes(s.whaleUsd) ? s.whaleUsd : d.whaleUsd,
+    source: s.source === 'chosen' ? 'chosen' : 'chart', picks: readVwapPicks(s.picks),
   };
 }
 
