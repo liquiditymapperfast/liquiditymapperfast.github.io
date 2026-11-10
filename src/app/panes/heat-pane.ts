@@ -1599,7 +1599,8 @@ export class HeatPane {
     // 2026-11-10: filtering 10,000 bars at every trade).
     const held = this.#scriptLongRows, last = candles[candles.length - 1]![0];
     const base = `${r.h.version}|${r.start}|${cut}|${candles.length}|${candles[0]![0]}|${last}`;
-    if (held && held.base === base) {
+    // A live update keeps every candle but the last as it was (`mergeLive`): a list read again with the same ends is built again.
+    if (held && held.base === base && (held.candles === candles || (candles.length < 2 || held.candles[candles.length - 2] === candles[candles.length - 2]))) {
       if (held.candles === candles) return held.rows;
       const rows = held.rows.slice(0, -1); rows.push(candles[candles.length - 1]!);
       this.#scriptLongRows = { ...held, candles, rows };
