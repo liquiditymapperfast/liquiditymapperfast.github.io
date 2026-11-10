@@ -2310,5 +2310,6 @@
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Строка {line}: окно ({asked}) длиннее, чем может быть окно, поэтому оно отсчитывает назад {n}.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Строка {line}: окно ({n}) здесь никогда не заполняется: из {max}, которые читают скрипты, этот график даёт только {have}.",
  "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Строка {line}: окно ({n}) здесь никогда не заполняется: скрипты читают {max}. Выберите больше в панели «Скрипты», до {most}, или таймфрейм длиннее.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "Объём торгов доступен до 21 недели назад, где есть свечи, как оценка (≈). Ликвидации, поглощение и открытый интерес — только насколько хватает их записи."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "Объём торгов доступен до 21 недели назад, где есть свечи, как оценка (≈). Ликвидации, поглощение и открытый интерес — только насколько хватает их записи.",
+ "Tap the candle on the map where the anchor goes.": "Коснитесь на карте свечи, где будет привязка."
 }

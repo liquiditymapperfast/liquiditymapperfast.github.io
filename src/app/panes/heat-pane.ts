@@ -495,6 +495,8 @@ export class HeatPane {
   /** The anchored window held between its updates, a request to take it again now, and the timer that redraws when it is due. */
   #anchorSnap: AnchorSnapshot | null = null;
   #anchorForce = false;
+  /** Update now pressed in a replay: the window's question asked again (its bounds are the moment shown's, not a snapshot's). */
+  #replayRev = 0;
   #anchorTimer = 0;
   /** Whether a rolling window's history reaches a whole window changed (set by the page): the VWAP panel says which have no line. */
   onRollingReach: () => void = () => {};
@@ -2223,7 +2225,7 @@ export class HeatPane {
     if (s.columns !== 'anchor') return null;
     const coin = currentCoin().coin, anchor = profileAnchorOf(s, coin, Date.now(), PROFILE_CANDLES_BACK_MS);
     if (anchor === null) return null;
-    if (replaying()) { const at = pageNow(), to = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS; return anchor < to ? { key: 'replay', from: anchor, to, at } : null; }
+    if (replaying()) { const at = pageNow(), to = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS; return anchor < to ? { key: 'replay', from: anchor, to, at, rev: this.#replayRev } : null; }
     const held = this.#anchorSnap, now = Date.now(), snap = anchorSnapshot(held, `${coin}|${anchor}|${s.every}`, anchor, s.every, now, this.#anchorForce);
     this.#anchorForce = false;
     if (snap !== held) {
@@ -2235,7 +2237,7 @@ export class HeatPane {
     return snap;
   }
   /** Take the anchored window again now (the panel's Update now). */
-  updateAnchored(): void { this.#anchorForce = true; this.invalidate(); }
+  updateAnchored(): void { this.#anchorForce = true; this.#replayRev++; this.invalidate(); }
   /** The map's grid step at the current price. */
   #gridStep(): number { const m = this.store.state.mark.price; return gridStepFor(m > 0 ? m : Math.max(1e-9, (this.view.p0 + this.view.p1) / 2)); }
   /** The rows the point of control and the value area are read from: the grid step times the setting, never the column's rows, which follow the zoom. */
@@ -2270,7 +2272,10 @@ export class HeatPane {
     const mine = this.#columnMarkets(state), sources = `${mine.main?.id ?? ''}|${mine.spot?.id ?? ''}`;
     // A drag, a zoom or a change of the price scale moves the window or the rows every frame: what was worked out stands for a while, longer
     // the longer it took, and the pane is drawn again when it is due. Not once the markets it counts have changed (Spot, a chip): it is of others.
-    if (c && c.sources === sources && (c.step !== step || c.from !== win.from || c.to !== win.to)) {
+    // Not across an anchored window taken again or moved (it changes then, not as a drag does): the estimate held would be another stretch's
+    // under this one's header (Sol, code review 2026-11-10).
+    const moved = c !== null && (c.from !== win.from || c.to !== win.to);
+    if (c && c.sources === sources && (c.step !== step || moved) && !(moved && this.anchoredWindow())) {
       const hold = Math.max(LOADED_COLUMN_MS, 4 * c.cost);
       if (now - c.at < hold) {
         if (!this.#loadedTimer) this.#loadedTimer = window.setTimeout(() => { this.#loadedTimer = 0; this.invalidate(); }, hold - (now - c.at) + 5);

@@ -2315,5 +2315,6 @@
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Рядок {line}: вікно ({asked}) довше, ніж може бути вікно, тому воно відлічує назад {n}.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Рядок {line}: вікно ({n}) тут ніколи не заповнюється: із {max}, які читають скрипти, цей графік дає лише {have}.",
  "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Рядок {line}: вікно ({n}) тут ніколи не заповнюється: скрипти читають {max}. Виберіть більше на панелі «Скрипти», до {most}, або довший таймфрейм.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "Обсяг торгів доступний до 21 тижня тому, де є свічки, як оцінка (≈). Ліквідації, поглинання та відкритий інтерес — лише наскільки сягає їхній запис."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "Обсяг торгів доступний до 21 тижня тому, де є свічки, як оцінка (≈). Ліквідації, поглинання та відкритий інтерес — лише наскільки сягає їхній запис.",
+ "Tap the candle on the map where the anchor goes.": "Торкніться на карті свічки, де буде прив'язка."
 }

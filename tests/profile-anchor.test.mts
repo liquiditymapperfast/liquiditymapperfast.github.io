@@ -67,7 +67,7 @@ test('the columns draw only an answer asked for the anchored window they show (S
   const s = (from: number, to: number, at = to + MIN, key = 'BTC|a|15') => ({ key, from, to, at });
   const now = s(T0, T0 + 2 * HOUR);
   assert.equal(answerFits(anchorTag(now), now), true);
-  assert.equal(answerFits(anchorTag(s(T0, T0 + HOUR)), now), true, 'an older snapshot of the same anchor, while the new one loads');
+  assert.equal(answerFits(anchorTag(s(T0, T0 + HOUR)), now), false, 'nor an older snapshot of the same anchor: its total is of another stretch than the one named');
   assert.equal(answerFits(anchorTag(s(T0 - HOUR, T0 + 2 * HOUR)), now), false, 'another anchor (one moved) is not drawn under the new header');
   assert.equal(answerFits(anchorTag(s(T0, T0 + 3 * HOUR)), now), false, 'nor one ending after the window (a replay moved back)');
   assert.equal(answerFits('', now), false, 'nor the chart window\'s');
@@ -76,4 +76,5 @@ test('the columns draw only an answer asked for the anchored window they show (S
   assert.equal(answerFits(anchorTag(now), s(T0, T0)), false, 'a window that holds nothing yet draws nothing');
   assert.notEqual(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN)), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN)), 'Update now within the same five minutes asks again');
   assert.equal(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay')), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN, 'replay')), 'a replay asks once for its five minutes');
+  assert.notEqual(anchorTag({ ...s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay'), rev: 1 }), anchorTag({ ...s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay'), rev: 2 }), 'and again at Update now');
 });

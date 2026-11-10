@@ -2172,5 +2172,6 @@
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "第 {line} 行：{asked}的窗口超过了窗口的最大长度，因此只回溯 {n}。",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本读取 {max}，而这个图表只给出 {have}。",
  "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "第 {line} 行：{n}的窗口在这里永远填不满：脚本读取 {max}。请在脚本面板中选择更多（最多 {most}），或选择更长的时间周期。",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "成交量在有K线的地方最多可回溯 21 周，为估算值（≈）。清算、吸收和持仓量只能回溯到各自记录开始的地方。"
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "成交量在有K线的地方最多可回溯 21 周，为估算值（≈）。清算、吸收和持仓量只能回溯到各自记录开始的地方。",
+ "Tap the candle on the map where the anchor goes.": "请在地图上轻点锚点所在的那根K线。"
 }

@@ -2282,5 +2282,6 @@
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "Línea {line}: una ventana de {asked} es más larga de lo que puede ser una ventana, así que cuenta {n} hacia atrás.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "Línea {line}: una ventana de {n} nunca se llena aquí: este gráfico da a los scripts {have} de las {max} que leen.",
  "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "Línea {line}: una ventana de {n} nunca se llena aquí: los scripts leen {max}. Elige más en el panel Scripts, hasta {most}, o una temporalidad más larga.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "El volumen negociado llega hasta 21 semanas atrás donde haya velas, como estimación (≈). Las liquidaciones, la absorción y el interés abierto solo llegan tan atrás como su registro."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "El volumen negociado llega hasta 21 semanas atrás donde haya velas, como estimación (≈). Las liquidaciones, la absorción y el interés abierto solo llegan tan atrás como su registro.",
+ "Tap the candle on the map where the anchor goes.": "Toca en el mapa la vela donde va el ancla."
 }

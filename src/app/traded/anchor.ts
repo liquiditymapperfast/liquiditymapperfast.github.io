@@ -22,8 +22,11 @@ export function anchorAt(t: number, chartMs: number): number {
   return Math.floor(t / bar) * bar;
 }
 
-/** The stretch an anchored column adds up (from the anchor to `to`), what it was taken for (`key`) and when (`at`). */
-export interface AnchorSnapshot { key: string; from: number; to: number; at: number }
+/**
+ * The stretch an anchored column adds up (from the anchor to `to`), what it was taken for (`key`) and when (`at`); in a replay `rev` counts the
+ * Update now presses, the window being worked out again from the moment shown at every five minutes of it.
+ */
+export interface AnchorSnapshot { key: string; from: number; to: number; at: number; rev?: number }
 
 /**
  * The anchored window to add up now: the one held while it is not due, else a new one from the anchor to the last whole five minutes. Due when
@@ -42,16 +45,16 @@ export function snapshotDue(s: AnchorSnapshot, everyMin: number): number {
 }
 
 /** The question an anchored window asks the source: its bounds and when it was taken, so Update now asks again even for the same five minutes. */
-export const anchorTag = (s: AnchorSnapshot): string => `anchor|${s.from}|${s.to}|${s.key === 'replay' ? 'replay' : s.at}`;
+export const anchorTag = (s: AnchorSnapshot): string => `anchor|${s.from}|${s.to}|${s.key === 'replay' ? `replay${s.rev ?? 0}` : s.at}`;
 
 /**
- * Whether a held answer, asked with `tag`, may be drawn in the columns now: anchored (`s`), only one of the same anchor, an older one while a
- * newer is on its way (a later end, Update now), never another anchor's (one moved: its header and Range are the new window's) nor one
- * ending after the window (a replay moved back), and none while the window holds nothing yet; following the chart (`s` null), never an
- * anchored one (Sol, code review 2026-11-10).
+ * Whether a held answer, asked with `tag`, may be drawn in the columns now: anchored (`s`), only one of the very window the header, the box and
+ * Range say (the same anchor and end; an older end's answer drawn while the newer one loads was a total over another stretch than the one
+ * named, and a failed newer one kept it there), and none while the window holds nothing yet; following the chart (`s` null), never an
+ * anchored one (Sol, code review 2026-11-10, rounds 1 and 2).
  */
 export function answerFits(tag: string, s: AnchorSnapshot | null): boolean {
   const [kind, from, to] = tag.split('|');
   if (!s) return kind !== 'anchor';
-  return kind === 'anchor' && s.to > s.from && Number(from) === s.from && Number(to) <= s.to;
+  return kind === 'anchor' && s.to > s.from && Number(from) === s.from && Number(to) === s.to;
 }

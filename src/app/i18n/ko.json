@@ -2172,5 +2172,6 @@
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "{line}행: {asked} 기간은 기간의 최대 길이보다 길어서 {n}까지만 거슬러 셉니다.",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트가 읽는 {max} 중 이 차트가 주는 것은 {have}입니다.",
  "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line}행: {n} 기간은 여기서 채워지지 않습니다. 스크립트는 {max}을(를) 읽습니다. 스크립트 패널에서 {most}까지 늘리거나 더 긴 시간 단위를 고르세요.",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "거래량은 캔들이 있는 곳에서 최대 21주까지 거슬러 올라가며 추정치(≈)입니다. 청산·흡수·미결제약정은 각 기록이 있는 만큼만 거슬러 올라갑니다."
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "거래량은 캔들이 있는 곳에서 최대 21주까지 거슬러 올라가며 추정치(≈)입니다. 청산·흡수·미결제약정은 각 기록이 있는 만큼만 거슬러 올라갑니다.",
+ "Tap the candle on the map where the anchor goes.": "앵커를 놓을 캔들을 맵에서 탭하세요."
 }

@@ -42,6 +42,7 @@ import { DrawBar } from './draw/bar.ts';
 import { browserStore } from './draw/storage.ts';
 import { PALETTES } from './theme.ts';
 import { openedSheet } from './sheet.ts';
+import { dismissToast } from './toast.ts';
 import { topShown } from './measures/strip.ts';
 import { tableHeight } from './panes/bar-stats.ts';
 import { Layout, type LayoutPane } from './layout.ts';
@@ -307,13 +308,14 @@ async function main(): Promise<void> {
   toolbar.vwapMarkets = () => heat.vwapMarketStates();
   heat.onRollingReach = () => toolbar.refreshOpenPanel();
   // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
-  heat.onAnchor = at => { const s = store.state; store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, at, Date.now()), vwapAnchoring: false }); };
+  heat.onAnchor = at => { const s = store.state; store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, at, Date.now()), vwapAnchoring: false }); dismissToast(); };
   // The columns' anchor at the start of the candle clicked (on five minutes); one older than the candle estimate reaches is not taken, and the
   // tool stays armed for another click.
   heat.onProfileAnchor = at => {
     const s = store.state, start = anchorAt(at, TIMEFRAMES[s.timeframe] ?? 3_600_000);
     if (start < Date.now() - PROFILE_CANDLES_BACK_MS || start > Date.now()) return;
     store.set({ traded: withProfileAnchor({ ...s.traded, columns: 'anchor' }, currentCoin().coin, start), profileAnchoring: false, show: { ...s.show, traded: true } });
+    dismissToast();
   };
   hub.onTraded = () => heat.invalidate();
   hub.onAbsorptionChanged = () => { heat.invalidate(); range.refreshHeld(); };
@@ -411,6 +413,8 @@ async function main(): Promise<void> {
     // One tool takes the next press on the map at a time: arming the profile anchor ends the VWAP's, the Range tool's and a drawing's, and
     // arming one of those ends it.
     if (changed.has('profileAnchoring') && state.profileAnchoring) { if (state.vwapAnchoring) store.set({ vwapAnchoring: false }); if (state.rangeTool) range.stop(); }
+    // On a phone the panel and the Settings sheet cover the map: they make way for the tap that places the anchor.
+    if ((changed.has('profileAnchoring') && state.profileAnchoring) || (changed.has('vwapAnchoring') && state.vwapAnchoring)) toolbar.anchorArmed();
     if (((changed.has('rangeTool') && state.rangeTool) || (changed.has('vwapAnchoring') && state.vwapAnchoring)) && state.profileAnchoring) store.set({ profileAnchoring: false });
     if ((changed.has('rangeTool') && state.rangeTool) || (changed.has('vwapAnchoring') && state.vwapAnchoring) || (changed.has('profileAnchoring') && state.profileAnchoring)) draw.disarm();
     if (changed.has('draw')) draw.settingsChanged();

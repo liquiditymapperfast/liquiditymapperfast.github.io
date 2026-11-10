@@ -2172,5 +2172,6 @@
  "Line {line}: a window of {asked} is longer than a window can be, so it counts back {n}.": "{line} 行目：{asked}の期間は期間の上限を超えているため、{n}までさかのぼります。",
  "Line {line}: a window of {n} never fills here: this chart gives scripts {have} of the {max} they read.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読む {max}のうち、このチャートが渡すのは {have}です。",
  "Line {line}: a window of {n} never fills here: scripts read {max}. Choose more in the Scripts panel, up to {most}, or a longer timeframe.": "{line} 行目：{n}の期間はここでは満たされません。スクリプトが読むのは {max}です。スクリプトパネルで {most}まで増やすか、より長い時間足を選んでください。",
- "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "取引量は、ローソク足がある範囲で最大 21 週間さかのぼります（推定値 ≈）。清算・吸収・建玉は、それぞれの記録がある範囲までしかさかのぼれません。"
+ "Traded volume reaches back up to 21 weeks where the candles are there, as an estimate (≈). Liquidations, absorption and open interest reach only as far back as their recording.": "取引量は、ローソク足がある範囲で最大 21 週間さかのぼります（推定値 ≈）。清算・吸収・建玉は、それぞれの記録がある範囲までしかさかのぼれません。",
+ "Tap the candle on the map where the anchor goes.": "アンカーを置くローソク足をマップ上でタップしてください。"
 }
