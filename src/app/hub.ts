@@ -26,6 +26,7 @@ import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 import { webGet } from '../shared/history.ts';
 import { KeyLevelHistory } from './keylevels/history.ts';
+import { pacedFetcher } from './paced-get.ts';
 import { ROLLING_MAX_BARS } from './vwap/vwap.ts';
 import { LiqLevelsSource } from './liq-levels.ts';
 import { TapeRing, tapeCapacity } from './tape/ring.ts';
@@ -35,6 +36,8 @@ import { ChartPriceHistory } from './price-history.ts';
 import { ColumnHolds, columnReach, columnStepFor, settledBefore, type ColumnDrop } from './column-holds.ts';
 /** How many VWAP histories are kept before those not asked for in five minutes are let go (one market's lines use up to nine). */
 const VWAP_HISTORIES = 16;
+/** The candle histories' requests: a queue per exchange host, which waits after a venue says it was asked too often (`pacedFetcher`). */
+const historyGet = pacedFetcher(webGet);
 
 export const TIMEFRAMES: Readonly<Record<string, number>> = { '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 const MINUTE = 60_000;
@@ -271,7 +274,7 @@ export class Hub {
   /** Liquidations held for the map (the venues that publish them), and a call when they change. */
   readonly liquidations = new LiquidationBook();
   /** The hourly candles the key levels are read from, straight from the exchange (keylevels/history.ts). */
-  readonly keyHistory = new KeyLevelHistory(webGet);
+  readonly keyHistory = new KeyLevelHistory(historyGet);
   /** The Liquidation levels layer's file and the candles that take its levels away. */
   readonly liqLevels = new LiqLevelsSource(webGet);
   /** The VWAP lines' candles, one history per kind, market and bar size (`vwapHistory`), and when each was last asked for. */
@@ -329,7 +332,7 @@ export class Hub {
     const key = `${rolling ? 'rolling' : 'vwap'}|${id}|${barMs}`, now = Date.now(), held = this.#vwapHistories.get(key);
     if (held) { held.used = now; return held.h; }
     if (this.#vwapHistories.size >= VWAP_HISTORIES) for (const [k, x] of this.#vwapHistories) if (now - x.used > 300_000) this.#vwapHistories.delete(k);
-    const h = rolling ? new KeyLevelHistory(webGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS) : new KeyLevelHistory(webGet, Date.now, 60_000);
+    const h = rolling ? new KeyLevelHistory(historyGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS) : new KeyLevelHistory(historyGet, Date.now, 60_000);
     this.#vwapHistories.set(key, { h, used: now });
     return h;
   }
@@ -341,7 +344,7 @@ export class Hub {
   profileHistory(barMs: number, market: 'main' | 'spot' = 'main'): KeyLevelHistory {
     const key = `${barMs}|${market}`;
     let h = this.#profileHistories.get(key);
-    if (!h) { h = new KeyLevelHistory(webGet, Date.now, 60_000, PROFILE_CANDLES_BACK_MS); h.withBuy = true; this.#profileHistories.set(key, h); }
+    if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, PROFILE_CANDLES_BACK_MS); h.withBuy = true; this.#profileHistories.set(key, h); }
     return h;
   }
   /**
@@ -351,7 +354,7 @@ export class Hub {
   candleTaker(tfMs: number): KeyLevelHistory {
     const key = `taker|${tfMs}`;
     let h = this.#profileHistories.get(key);
-    if (!h) { h = new KeyLevelHistory(webGet, Date.now, 60_000, 3 * 365 * 86_400_000); h.withBuy = true; this.#profileHistories.set(key, h); }
+    if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, 3 * 365 * 86_400_000); h.withBuy = true; this.#profileHistories.set(key, h); }
     return h;
   }
   onLiquidationsChanged: () => void = () => {};
