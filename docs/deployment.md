@@ -32,6 +32,8 @@ Each visitor's browser connects to the exchanges itself. Measured on 2026-10-05 
 | Hyperliquid trades | delivered |
 | REST with CORS: Binance depth snapshots (spot, perpetual), klines, open-interest history; Bybit klines and open interest; OKX and Bitget candles; Coinbase book snapshot; Deribit order book; Hyperliquid `info` POST | all answered 200 and were readable from the page |
 
+Since 2026-11-11 Bybit's books (perpetual and spot) are its full-depth pair instead of `orderbook.1000`: the REST snapshot `/v5/market/full_orderbook`, whose CORS answer echoes the page's origin (checked from the github.io origin and from `http://127.0.0.1:<port>`, credentials omitted), kept up to date by the `orderbook.full.<symbol>` socket (`src/shared/bybit-full-book.ts`).
+
 WebSockets are not subject to CORS, and these venues' public REST endpoints send CORS headers, with one exception found while building it: **Deribit's `get_tradingview_chart_data` sends none**, so its candles are read over Deribit's JSON-RPC WebSocket instead (the same method; `src/shared/history.ts`). A Pages-hosted client therefore needs no server, no bandwidth bill and no market-data licence of its own (each visitor consumes the feeds directly), and the request guard below does not apply.
 
 How it is built:
