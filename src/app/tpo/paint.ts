@@ -107,7 +107,8 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
   const out: TpoGeometry[] = [];
   const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, safe = p === PALETTES.colorblind || p === PALETTES.daylight;
   const safeStops = dark ? SAFE : SAFE_LIGHT;
-  const timeStops = safe ? safeStops : dark ? TIME_DARK : TIME_LIGHT, countStops = safe ? safeStops : dark ? COUNT_DARK : COUNT_LIGHT, amber = dark ? AMBER_DARK : AMBER_LIGHT;
+  // The marks are amber, but on the colour-blind themes, whose ramp ends in amber, they take the text's colour.
+  const timeStops = safe ? safeStops : dark ? TIME_DARK : TIME_LIGHT, countStops = safe ? safeStops : dark ? COUNT_DARK : COUNT_LIGHT, amber = safe ? p.text : dark ? AMBER_DARK : AMBER_LIGHT;
   const fold = ease(Math.max(0, Math.min(1, o.fold)));
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
   for (const prof of o.profiles) {
@@ -194,8 +195,10 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
     ctx.globalAlpha = 1;
     const label = (text: string, x: number, y: number, colour: string, align: CanvasTextAlign, alpha: number): void => {
       ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; const tw = ctx.measureText(text).width + 8;
-      // Kept inside the plot: the window under way stands at the live edge, where a name would run off the map.
-      const bx = Math.max(0, Math.min(pw - tw - 2, align === 'right' ? x - tw : x));
+      // Kept inside the plot at the right (the window under way stands at the live edge, where a name would run off the map); a name meant
+      // to stand left of something that is off the map at the left is left out rather than pushed onto the profile.
+      if (align === 'right' && x - tw < 0) return;
+      const bx = Math.min(pw - tw - 2, align === 'right' ? x - tw : x);
       if (!o.labels.claim({ x0: bx, x1: bx + tw, y0: y - 7, y1: y + 7 })) return;
       ctx.globalAlpha = 0.85 * alpha; ctx.fillStyle = p.panel; ctx.fillRect(bx, y - 7, tw, 14);
       ctx.globalAlpha = alpha; ctx.fillStyle = colour; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, bx + 4, y);
