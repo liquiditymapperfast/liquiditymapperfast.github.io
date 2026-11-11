@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyze, runScript } from '../src/app/script/lang/engine.ts';
 import { SCRIPTS_KEY, SCRIPT_API, loadScripts, storeScripts } from '../src/app/script/records.ts';
-import { CVD_ID, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, VWAP_SOURCE, starterScripts, updateStarters } from '../src/app/script/starter.ts';
+import { CVD_ID, CVD_SOURCE, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, VWAP_SOURCE, starterScripts, updateStarters } from '../src/app/script/starter.ts';
+import { PREVIOUS_CVD_SOURCES } from '../src/app/script/starter-previous.ts';
 import { PREVIOUS_HEATMAP_SOURCES, PREVIOUS_VWAP_SOURCES } from '../src/app/script/starter-previous.ts';
 import { createRunner, sameCandles } from '../src/app/script/lang/engine.ts';
 import type { BarInputs, ScriptTheme } from '../src/app/script/inputs.ts';
@@ -165,4 +166,17 @@ test('a kept heat map of an earlier version is brought to the current one, unles
   assert.equal(updateStarters([{ ...old, id: 'copy' }])[0]!.source, old.source, 'only the starter itself');
   const current = { ...old, source: HEATMAP_SOURCE };
   assert.equal(updateStarters([current])[0], current, 'the current one is left as it is');
+});
+
+test('an untouched copy of the plain spot and perpetual CVD becomes the labelled one, its colours kept; an edited one stays as it is', () => {
+  const old = { id: 'spot-and-perpetual-cvd--ab12cd', name: 'Spot and perpetual CVD', source: PREVIOUS_CVD_SOURCES[0]!, options: { spotColor: '#ff0000' }, on: true, api: 2, height: 110, place: 'pane' as const };
+  const [up] = updateStarters([old]);
+  assert.equal(up!.source, CVD_SOURCE);
+  assert.deepEqual(up!.options, { spotColor: '#ff0000' }, 'its colour kept');
+  assert.equal(up!.id, old.id);
+  const crlf = updateStarters([{ ...old, source: old.source.replace(/\n/g, '\r\n') }])[0]!;
+  assert.equal(crlf.source, CVD_SOURCE, 'line endings of another system read the same');
+  const edited = { ...old, source: old.source + '// mine\n' };
+  assert.equal(updateStarters([edited])[0]!.source, edited.source, 'an edited one is left as it is');
+  assert.ok(/cum\(spotDelta\)/.test(PREVIOUS_CVD_SOURCES[0]!) && !/renderer\.last/.test(PREVIOUS_CVD_SOURCES[0]!), 'the plain text, as the page wrote it');
 });

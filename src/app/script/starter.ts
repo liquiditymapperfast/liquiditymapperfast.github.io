@@ -1,4 +1,4 @@
-import { PREVIOUS_HEATMAP_SOURCES, PREVIOUS_VWAP_SOURCES } from './starter-previous.ts';
+import { PREVIOUS_CVD_SOURCES, PREVIOUS_HEATMAP_SOURCES, PREVIOUS_VWAP_SOURCES } from './starter-previous.ts';
 import { t } from '../i18n.ts';
 import { ROW_DEFAULT, SCRIPT_API, type ScriptRecord } from './records.ts';
 
@@ -206,6 +206,8 @@ export function updateStarters(list: ScriptRecord[]): ScriptRecord[] {
   return list.map(r => {
     // An untouched VWAP with bands, the starter or a copy added from the examples: the current text, its settings as they were.
     if (PREVIOUS_VWAP_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return { ...r, source: VWAP_SOURCE, api: Math.max(r.api, SCRIPT_API) };
+    // An untouched spot and perpetual CVD from before its labels: the labelled one, its colours kept (its "?" describes the labels by its id).
+    if (PREVIOUS_CVD_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return { ...r, source: CVD_SOURCE, api: Math.max(r.api, SCRIPT_API) };
     if (r.id !== HEATMAP_ID || !PREVIOUS_HEATMAP_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return r;
     const old = Object.keys(r.options).filter(k => Object.prototype.hasOwnProperty.call(OLD_HEATMAP_OPTIONS, k));
     if (old.some(k => r.options[k] !== OLD_HEATMAP_OPTIONS[k])) return r;

@@ -103,3 +103,18 @@ line(upper, title="+SD", color=bandColor)
 line(lower, title="-SD", color=bandColor)
 `,
 ];
+
+/**
+ * The spot and perpetual CVD example as the page wrote it into a browser before its labels (2026-10-27 to 2026-11-11, `updateStarters`): a copy
+ * that still reads exactly so becomes the labelled one. Kept as written, never edited.
+ */
+// Under a `source:` property, as the examples keep their scripts: a script's text is not a sentence of the page.
+const PLAIN_CVD = { source: `// The cumulative delta of the spot markets and of the perpetuals, apart.
+spotColor = option(type=color, default=#2e9bff, label=Spot)
+perpColor = option(type=color, default=#ff9f1c, label=Perpetual)
+spotDelta = source(vbuy, type=spot) - source(vsell, type=spot)
+perpDelta = source(vbuy, type=perp) - source(vsell, type=perp)
+line(cum(spotDelta), title=Spot, color=spotColor)
+line(cum(perpDelta), title=Perp, color=perpColor, priceScaleId=perp)
+` };
+export const PREVIOUS_CVD_SOURCES: readonly string[] = [PLAIN_CVD.source];
