@@ -1,0 +1,681 @@
+{
+ "symbol": "BTCUSDT",
+ "cases": [
+  {
+   "name": "plain",
+   "body": "{\"retCode\":0,\"retMsg\":\"OK\",\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "retCode 0.0",
+   "body": "{\"retCode\":0.0,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "retCode -0",
+   "body": "{\"retCode\":-0,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "retCode 0e0",
+   "body": "{\"retCode\":0e0,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "retCode 1e0",
+   "body": "{\"retCode\":1e0,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1"
+  },
+  {
+   "name": "retCode string 0",
+   "body": "{\"retCode\":\"0\",\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 0"
+  },
+  {
+   "name": "retCode null",
+   "body": "{\"retCode\":null,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode null"
+  },
+  {
+   "name": "retCode absent",
+   "body": "{\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode undefined"
+  },
+  {
+   "name": "retCode true",
+   "body": "{\"retCode\":true,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode true"
+  },
+  {
+   "name": "retCode object",
+   "body": "{\"retCode\":{\"a\":1},\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode [object Object]"
+  },
+  {
+   "name": "retCode empty array",
+   "body": "{\"retCode\":[],\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode"
+  },
+  {
+   "name": "retCode [0]",
+   "body": "{\"retCode\":[0],\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 0"
+  },
+  {
+   "name": "retCode nested array",
+   "body": "{\"retCode\":[1,[2,[3,null]],null,\"x\",{}],\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1,2,3,,,x,[object Object]"
+  },
+  {
+   "name": "retCode 1.5",
+   "body": "{\"retCode\":1.5,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1.5"
+  },
+  {
+   "name": "retCode 1e21",
+   "body": "{\"retCode\":1e21,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1e+21"
+  },
+  {
+   "name": "retCode 1.25e22",
+   "body": "{\"retCode\":1.25e22,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1.25e+22"
+  },
+  {
+   "name": "retCode 1e-7",
+   "body": "{\"retCode\":1e-7,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1e-7"
+  },
+  {
+   "name": "retCode 0.000001",
+   "body": "{\"retCode\":0.000001,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 0.000001"
+  },
+  {
+   "name": "retCode 2^60",
+   "body": "{\"retCode\":1152921504606846976,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1152921504606847000"
+  },
+  {
+   "name": "retCode 10001",
+   "body": "{\"retCode\":10001,\"retMsg\":\"Invalid symbol\"}",
+   "expect": "retCode 10001 Invalid symbol"
+  },
+  {
+   "name": "retCode negative",
+   "body": "{\"retCode\":-3,\"retMsg\":\"x\"}",
+   "expect": "retCode -3 x"
+  },
+  {
+   "name": "retMsg number with retCode 0",
+   "body": "{\"retCode\":0,\"retMsg\":7,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "retMsg number",
+   "body": "{\"retCode\":1,\"retMsg\":7}",
+   "expect": "retCode 1 7"
+  },
+  {
+   "name": "retMsg null",
+   "body": "{\"retCode\":1,\"retMsg\":null}",
+   "expect": "retCode 1"
+  },
+  {
+   "name": "retMsg object",
+   "body": "{\"retCode\":1,\"retMsg\":{\"a\":[1]}}",
+   "expect": "retCode 1 [object Object]"
+  },
+  {
+   "name": "retMsg array",
+   "body": "{\"retCode\":1,\"retMsg\":[1,\"two\",null,[3]]}",
+   "expect": "retCode 1 1,two,,3"
+  },
+  {
+   "name": "retMsg false",
+   "body": "{\"retCode\":1,\"retMsg\":false}",
+   "expect": "retCode 1 false"
+  },
+  {
+   "name": "retMsg emoji long",
+   "body": "{\"retCode\":1,\"retMsg\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}",
+   "expect": "retCode 1 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+  },
+  {
+   "name": "retMsg emoji at the cut",
+   "body": "{\"retCode\":1,\"retMsg\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀tail\"}",
+   "expect": "retCode 1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa�"
+  },
+  {
+   "name": "retMsg emoji before the cut",
+   "body": "{\"retCode\":1,\"retMsg\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀tail\"}",
+   "expect": "retCode 1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀"
+  },
+  {
+   "name": "retMsg long ascii",
+   "body": "{\"retCode\":1,\"retMsg\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+   "expect": "retCode 1 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  {
+   "name": "retMsg spaces then text past the cut",
+   "body": "{\"retCode\":1,\"retMsg\":\"a                                                                                                                                                                                                        z\"}",
+   "expect": "retCode 1 a                                                                                                             "
+  },
+  {
+   "name": "retMsg trailing JS spaces",
+   "body": "{\"retCode\":1,\"retMsg\":\"msg \\u00a0\\ufeff\\u2028\\u3000\\t\\n\"}",
+   "expect": "retCode 1 msg"
+  },
+  {
+   "name": "retMsg trailing NEL",
+   "body": "{\"retCode\":1,\"retMsg\":\"msg\\u0085\"}",
+   "expect": "retCode 1 msg"
+  },
+  {
+   "name": "retMsg empty",
+   "body": "{\"retCode\":1,\"retMsg\":\"\"}",
+   "expect": "retCode 1"
+  },
+  {
+   "name": "retMsg escapes",
+   "body": "{\"retCode\":1,\"retMsg\":\"a\\\"b\\\\c\\/d\\u00e9\"}",
+   "expect": "retCode 1 a\"b\\c/dé"
+  },
+  {
+   "name": "result false with an error code",
+   "body": "{\"retCode\":10001,\"retMsg\":\"Invalid symbol\",\"result\":false}",
+   "expect": "retCode 10001 Invalid symbol"
+  },
+  {
+   "name": "result bad levels with an error code",
+   "body": "{\"retCode\":10001,\"result\":{\"b\":\"x\"}}",
+   "expect": "retCode 10001"
+  },
+  {
+   "name": "result false",
+   "body": "{\"retCode\":0,\"result\":false}",
+   "expect": "no result"
+  },
+  {
+   "name": "result array",
+   "body": "{\"retCode\":0,\"result\":[1,2]}",
+   "expect": "no result"
+  },
+  {
+   "name": "result null",
+   "body": "{\"retCode\":0,\"result\":null}",
+   "expect": "no result"
+  },
+  {
+   "name": "result string",
+   "body": "{\"retCode\":0,\"result\":\"x\"}",
+   "expect": "no result"
+  },
+  {
+   "name": "result absent",
+   "body": "{\"retCode\":0}",
+   "expect": "no result"
+  },
+  {
+   "name": "top-level array",
+   "body": "[0,null,{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}]",
+   "expect": "not an object"
+  },
+  {
+   "name": "top-level string",
+   "body": "\"x\"",
+   "expect": "not an object"
+  },
+  {
+   "name": "top-level number",
+   "body": "5",
+   "expect": "not an object"
+  },
+  {
+   "name": "top-level null",
+   "body": "null",
+   "expect": "not an object"
+  },
+  {
+   "name": "symbol number",
+   "body": "{\"retCode\":0,\"result\":{\"s\":1,\"u\":1,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "another symbol"
+  },
+  {
+   "name": "symbol absent",
+   "body": "{\"retCode\":0,\"result\":{\"u\":1,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "another symbol"
+  },
+  {
+   "name": "another symbol with bad rows",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"ETHUSDT\",\"u\":1,\"seq\":1,\"b\":[[1,2]],\"a\":[]}}",
+   "expect": "another symbol"
+  },
+  {
+   "name": "symbol escaped",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTC\\u0055SDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\",\"1\"]],\"a\":[[\"101\",\"1\"]]}}",
+   "expect": {
+    "u": 1,
+    "seq": 1,
+    "b": [
+     [
+      "99",
+      "1"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "no u with bad rows",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"seq\":1,\"b\":[[1,2]],\"a\":[]}}",
+   "expect": "no sequence"
+  },
+  {
+   "name": "u string",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":\"12\",\"seq\":\"0\",\"b\":[],\"a\":[]}}",
+   "expect": {
+    "u": 12,
+    "seq": 0,
+    "b": [],
+    "a": []
+   }
+  },
+  {
+   "name": "u negative string",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":\"-1\",\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "no sequence"
+  },
+  {
+   "name": "u fraction",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1.5,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "no sequence"
+  },
+  {
+   "name": "u 2^53",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":9007199254740992,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "no sequence"
+  },
+  {
+   "name": "u 2^53-1",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":9007199254740991,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": {
+    "u": 9007199254740991,
+    "seq": 1,
+    "b": [],
+    "a": []
+   }
+  },
+  {
+   "name": "u 17 digits",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":\"12345678901234567\",\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "no sequence"
+  },
+  {
+   "name": "u 1e3, seq -0",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1e3,\"seq\":-0,\"b\":[],\"a\":[]}}",
+   "expect": {
+    "u": 1000,
+    "seq": 0,
+    "b": [],
+    "a": []
+   }
+  },
+  {
+   "name": "u null",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":null,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "no sequence"
+  },
+  {
+   "name": "price a number",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[99,\"1\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "short row",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "row an object",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[{\"p\":\"99\"}],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "levels null",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":null,\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "levels absent",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "levels an object",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":{},\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "size 0",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\",\"0\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "price 0",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"0\",\"1\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "exponent",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"1e3\",\"1\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "leading zero",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"01\",\"1\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "bare fraction",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\".5\",\"1\"]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "extra row elements",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\",\"1\",\"x\",[1],{\"a\":2}]],\"a\":[[\"101.25\",\"0.001\",null]]}}",
+   "expect": {
+    "u": 1,
+    "seq": 1,
+    "b": [
+     [
+      "99",
+      "1"
+     ]
+    ],
+    "a": [
+     [
+      "101.25",
+      "0.001"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "a bad row after good ones",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\",\"1\"],[\"98\",\"1\"],[\"97\",null]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "duplicate retCode, last 0",
+   "body": "{\"retCode\":1,\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "duplicate retCode, last 1",
+   "body": "{\"retCode\":0,\"retCode\":1,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": "retCode 1"
+  },
+  {
+   "name": "duplicate levels, last good",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[1,2]],\"b\":[[\"99\",\"1\"]],\"a\":[]}}",
+   "expect": {
+    "u": 1,
+    "seq": 1,
+    "b": [
+     [
+      "99",
+      "1"
+     ]
+    ],
+    "a": []
+   }
+  },
+  {
+   "name": "duplicate levels, last bad",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\",\"1\"]],\"b\":[[1,2]],\"a\":[]}}",
+   "expect": "unreadable levels"
+  },
+  {
+   "name": "duplicate result, last good",
+   "body": "{\"retCode\":0,\"result\":false,\"result\":{\"s\":\"BTCUSDT\",\"u\":5,\"seq\":50,\"ts\":9,\"b\":[[\"99\",\"1\"],[\"98\",\"2\"]],\"a\":[[\"101\",\"1\"],[\"102\",\"2\"]]}}",
+   "expect": {
+    "u": 5,
+    "seq": 50,
+    "b": [
+     [
+      "99",
+      "1"
+     ],
+     [
+      "98",
+      "2"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ],
+     [
+      "102",
+      "2"
+     ]
+    ]
+   }
+  },
+  {
+   "name": "duplicate symbol",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"s\":\"ETHUSDT\",\"u\":1,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": "another symbol"
+  },
+  {
+   "name": "bids out of order",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"98\",\"1\"],[\"99\",\"1\"]],\"a\":[]}}",
+   "expect": "bids out of order"
+  },
+  {
+   "name": "bids repeated",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99\",\"1\"],[\"99\",\"2\"]],\"a\":[]}}",
+   "expect": "bids out of order"
+  },
+  {
+   "name": "asks out of order",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[],\"a\":[[\"102\",\"1\"],[\"101\",\"1\"]]}}",
+   "expect": "asks out of order"
+  },
+  {
+   "name": "crossed",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"101\",\"1\"]],\"a\":[[\"101\",\"1\"]]}}",
+   "expect": "crossed"
+  },
+  {
+   "name": "one-sided",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[[\"99.5\",\"1.25\"]],\"a\":[]}}",
+   "expect": {
+    "u": 1,
+    "seq": 1,
+    "b": [
+     [
+      "99.5",
+      "1.25"
+     ]
+    ],
+    "a": []
+   }
+  },
+  {
+   "name": "empty book",
+   "body": "{\"retCode\":0,\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"b\":[],\"a\":[]}}",
+   "expect": {
+    "u": 1,
+    "seq": 1,
+    "b": [],
+    "a": []
+   }
+  },
+  {
+   "name": "unknown keys",
+   "body": "{\"retCode\":0,\"time\":1,\"retExtInfo\":{},\"result\":{\"s\":\"BTCUSDT\",\"u\":1,\"seq\":1,\"ts\":\"x\",\"cts\":2,\"b\":[[\"99\",\"1\"]],\"a\":[[\"101\",\"1\"]]}}",
+   "expect": {
+    "u": 1,
+    "seq": 1,
+    "b": [
+     [
+      "99",
+      "1"
+     ]
+    ],
+    "a": [
+     [
+      "101",
+      "1"
+     ]
+    ]
+   }
+  }
+ ]
+}
