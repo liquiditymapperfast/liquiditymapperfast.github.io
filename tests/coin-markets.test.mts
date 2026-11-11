@@ -35,7 +35,7 @@ test('BTC is read exactly as before: the same instruments, addresses and subscri
     'wss://ws.bitget.com/v2/ws/public', 'wss://api.hyperliquid.xyz/ws', 'wss://www.deribit.com/ws/api/v2', 'wss://stream.binance.com:9443/ws/btcusdt@depth@100ms', 'wss://stream.binance.com:9443/ws/btcusdt@aggTrade',
     'wss://ws-feed.exchange.coinbase.com', 'wss://stream.bybit.com/v5/public/spot', 'wss://ws.okx.com/ws/v5/public', 'wss://ws.bitget.com/v2/ws/public', 'wss://contract.mexc.com/edge']);
   const sent = Object.fromEntries(made.map(m => [m.book.id, frames(m.book)]));
-  assert.deepEqual(sent.bybit, [{ op: 'subscribe', args: ['orderbook.1000.BTCUSDT', 'publicTrade.BTCUSDT', 'allLiquidation.BTCUSDT', 'tickers.BTCUSDT'] }], 'its liquidations and its open-interest ticker on the same socket');
+  assert.deepEqual(sent.bybit, [{ op: 'subscribe', args: ['orderbook.full.BTCUSDT', 'publicTrade.BTCUSDT', 'allLiquidation.BTCUSDT', 'tickers.BTCUSDT'] }], 'its full-depth book, liquidations and open-interest ticker on the same socket');
   assert.deepEqual(made.flatMap(m => m.liquidations ?? []).map(c => inside(c).url()), ['wss://fstream.binance.com/market/stream?streams=btcusdt@forceOrder/btcusdt@markPrice@1s'], 'Binance liquidations on a socket of their own');
   assert.deepEqual(sent.bitget, [{ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'books', instId: 'BTCUSDT' }, { instType: 'USDT-FUTURES', channel: 'trade', instId: 'BTCUSDT' }] }]);
   assert.deepEqual(sent.hyperliquid, [{ method: 'subscribe', subscription: { type: 'l2Book', coin: 'BTC', nSigFigs: 3 } }, { method: 'subscribe', subscription: { type: 'trades', coin: 'BTC' } }]);
@@ -304,7 +304,7 @@ test('the server takes MEXC trades from this connector when it has the MEXC book
 test('a venue with no probe that never connects is reported as failing, never as refusing this country', () => {
   class Fake {
     state = 'error'; onTrade = () => {}; everLive = false; failures = 3; lastError = 'socket closed'; lastFailure = 'socket closed';
-    get instrumentId() { return 'mexc:BTC_USDT'; } start() {} stop() {} valued() { return null; }
+    get instrumentId() { return 'mexc:BTC_USDT'; } start() {} stop() {} valued() { return null; } bookDetail() { return null; }
   }
   class Live extends Fake { override state = 'live'; override everLive = true; override failures = 0; override get instrumentId() { return 'binance:BTCUSDT'; } }
   let pinged = 0;

@@ -128,7 +128,8 @@ test('a feed that has delivered its first data is judged by silence, not by the 
   await withFakes(async ({ sockets }) => {
     const c = new BybitConnector();
     c.start(); sockets[0]!.onopen?.();
-    sockets[0]!.onmessage?.({ data: msg({ topic: 'orderbook.1000.BTCUSDT', type: 'snapshot', data: { u: 1, b: [['100', '1']], a: [['101', '1']] } }) });
+    // A trade is the first data (the full-depth book loads from a separate snapshot; tests/bybit-full-connector.test.mts).
+    sockets[0]!.onmessage?.({ data: msg({ topic: 'publicTrade.BTCUSDT', data: [{ i: '1', p: '100', v: '1', S: 'Buy', T: Date.now() }] }) });
     assert.equal(c.state, 'live');
     const t0 = Date.now();
     c.check(t0 + 15_000); assert.equal(c.state, 'live', 'quiet for less than the silence limit');
@@ -137,18 +138,6 @@ test('a feed that has delivered its first data is judged by silence, not by the 
   });
 });
 
-test('Bybit\'s orderbook.1000 deltas are consecutive, as its live stream delivers them (measured: 201 deltas, no gap, in 40 s), so a skipped id is a gap', () => {
-  const c = new BybitConnector(); c.state = 'connecting';
-  const frame = (type: string, u: number) => msg({ topic: 'orderbook.1000.BTCUSDT', type, data: { u, b: [['100', '1']], a: [['101', '1']] } });
-  c.onMessage(frame('snapshot', 100)); c.onMessage(frame('delta', 101));
-  assert.equal(c.failures, 0);
-  c.onMessage(frame('delta', 103));
-  assert.equal(c.failures, 1); assert.match(c.lastError ?? '', /sequence gap 101 -> 103/);
-  const again = new BybitConnector(); again.state = 'connecting';
-  again.onMessage(frame('snapshot', 100)); again.onMessage(frame('snapshot', 1));   // the service restarted: a new snapshot replaces the book, whatever its id
-  again.onMessage(frame('delta', 2));
-  assert.equal(again.failures, 0);
-  c.stop(); again.stop();
-});
+// Bybit's full-depth book (sequence, gaps, a new numbering) is tested in tests/bybit-full-book.test.mts and tests/bybit-full-connector.test.mts.
 
 void BookConnector;

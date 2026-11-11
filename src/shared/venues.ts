@@ -1,6 +1,7 @@
 import { BinanceDiffDepthConnector, BookConnector, type Market } from './connector.ts';
 import { BTC, EARLIER_BROWSER_VENUES, type Coin, type MarketVenue } from './coins.ts';
 import { farSource } from './far-book.ts';
+import { FullBook, fullSnapshotUrl, fullTopic, parseFullDelta, parseFullSnapshot, type FullAction, type SnapshotResult } from './bybit-full-book.ts';
 import { hyperliquidBookStep, hyperliquidLevelBounds } from '../analytics/hyperliquid-bounds.mts';
 
 /**
@@ -126,23 +127,80 @@ export class BinancePerpConnector extends MarketBook {
 
 // ---- Bybit --------------------------------------------------------------------------------------------------------------------------
 
+/** How long a full-depth snapshot may take (the BTC perpetual's is about 1.4 MB, 420 KB on the wire, read in 0.4-3 s from here). */
+const BYBIT_SNAPSHOT_TIMEOUT_MS = 20_000;
+/** The first snapshot is asked for this long after subscribing, so a few deltas are held first and it usually bridges at once. */
+const BYBIT_SNAPSHOT_FIRST_MS = 500;
+/** A snapshot that could not be used is asked for again after a pause that doubles up to this, with up to a quarter more at random. */
+const BYBIT_SNAPSHOT_MAX_PAUSE_MS = 10_000;
+/** How often the price is compared with the book's frontiers for a refresh (shared/bybit-full-book.ts). */
+const BYBIT_REFRESH_LOOK_MS = 5_000;
+/** A snapshot ahead of the stream waits this long for its anchor before another is read (the stream pushes every 200 ms on a change). */
+const BYBIT_ANCHOR_WAIT_MS = 10_000;
 /**
- * Bybit: orderbook.1000 snapshot then deltas (u counts up by one), and publicTrade on the same socket. The USDT linear perpetual and spot
- * differ only by address; sizes are coins in both. The perpetual also subscribes `tickers.<symbol>` for open interest: the snapshot that
- * arrives on subscribing carries the whole ticker, each delta only the fields that changed (open interest among them only when it did).
+ * The book's own freshness: a live socket whose book has taken no delta for this long while trades kept arriving (each trade changes the
+ * book, so a delta follows within 200 ms) has a stalled book channel, and the socket is dropped and connected again. A book that is merely
+ * quiet (no trade, no order changed) stays drawn.
+ */
+const BYBIT_BOOK_STALL_MS = 30_000, BYBIT_BOOK_STALL_TRADES = 3;
+
+/**
+ * Bybit: the full-depth book (`orderbook.full.<symbol>` deltas synchronised with the `full_orderbook` snapshot, shared/bybit-full-book.ts),
+ * and publicTrade on the same socket. The USDT linear perpetual and spot differ only by address; sizes are coins in both. The perpetual also
+ * subscribes `allLiquidation.<symbol>` and `tickers.<symbol>` for open interest: the ticker snapshot that arrives on subscribing carries the
+ * whole ticker, each delta only the fields that changed (open interest among them only when it did).
+ *
+ * The socket and the book are live separately: every frame of a subscribed topic keeps the socket live (trades must keep flowing while the
+ * book loads or re-synchronises), and the book is drawn only while it is synchronised. A snapshot that fails is asked for again on the same
+ * socket; only a book whose numbering breaks over and over drops the socket. A connector run for its trades alone (`bookRead = false`)
+ * subscribes no book and reads no snapshot; spot's then subscribes its ticker, so a quiet market still shows the socket is alive.
  */
 abstract class BybitBook extends MarketBook {
   readonly quote = 'USDT';
   protected abstract readonly category: 'linear' | 'spot';
-  #u = 0;
+  readonly #full = new FullBook();
+  /** The snapshot request out (its connection and epoch: one at a time), and the pause before the next after one that could not be used. */
+  #asking: { generation: number; epoch: number } | null = null;
+  #pause = 0; #retry: ReturnType<typeof setTimeout> | null = null;
+  /** The last traded price (what a refresh is judged at) and when the frontiers were last looked at. */
+  #lastPrice = 0; #lookedAt = 0;
+  /** Trades that arrived since the book last took a delta (a stalled book channel shows as trades without book changes). */
+  #tradesSinceBook = 0;
   protected url() { return `wss://stream.bybit.com/v5/public/${this.category}`; }
   /** Topics this market subscribes that carry open interest: the perpetual's ticker (spot has none). */
   protected oiTopics(): string[] { return []; }
-  protected open(send: (p: unknown) => void) { send({ op: 'subscribe', args: [`orderbook.1000.${this.symbol}`, `publicTrade.${this.symbol}`, ...(this.category === 'linear' ? [`allLiquidation.${this.symbol}`] : []), ...this.oiTopics()] }); }
+  protected open(send: (p: unknown) => void) {
+    const s = this.symbol;
+    const liveness = this.category === 'spot' && !this.bookRead ? [`tickers.${s}`] : [];
+    send({ op: 'subscribe', args: [...(this.bookRead ? [fullTopic(s)] : []), `publicTrade.${s}`, ...(this.category === 'linear' ? [`allLiquidation.${s}`] : []), ...this.oiTopics(), ...liveness] });
+    if (this.bookRead) this.#later(BYBIT_SNAPSHOT_FIRST_MS);
+  }
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping' }) }; }
+  protected override bookReady(now: number): boolean { return this.#full.live && !this.#stalled(now); }
+  protected override bookEpoch(): number { return this.#full.coverageEpoch; }
+  /** Whether the book channel has stopped while trades still arrive. */
+  #stalled(now: number): boolean { return this.#full.live && this.#tradesSinceBook >= BYBIT_BOOK_STALL_TRADES && now - this.#full.appliedAt > BYBIT_BOOK_STALL_MS; }
+  override check(now: number = Date.now()): void {
+    super.check(now);
+    if (this.bookRead && this.state === 'live' && this.#stalled(now)) this.fail(`book silent ${Math.round(BYBIT_BOOK_STALL_MS / 1000)} s while trades arrive`);
+  }
+  override bookDetail(): string | null {
+    if (!this.bookRead || this.#full.live) return null;
+    return this.#full.lastFault ? `book re-synchronising (${this.#full.lastFault})` : 'loading the full book';
+  }
   onMessage(text: string) {
     const m = this.record(JSON.parse(text)); if (!m) return;
+    // A refused subscription is a broken connection (an unknown symbol, a topic the venue no longer serves): retried with backoff.
+    if (m.op === 'subscribe') { if (m.success === false) this.fail(`subscription refused: ${String(m.ret_msg ?? '')}`.slice(0, 160)); return; }
     const topic = String(m.topic ?? '');
+    if (topic === fullTopic(this.symbol)) {
+      if (!this.bookRead) return;
+      const delta = parseFullDelta(m, this.symbol), now = Date.now();
+      const applied = this.#full.appliedAt, action = delta === 'bad' ? this.#full.fault('unreadable book frame', now) : delta ? this.#full.delta(delta, now) : 'none';
+      if (this.#full.appliedAt !== applied) this.#tradesSinceBook = 0;
+      this.#sides(); this.touch(); this.#act(action);
+      return;
+    }
     if (topic === `allLiquidation.${this.symbol}`) {
       // `S` is the side of the position closed (Buy: a long), `p` its bankruptcy price (measured 2026-10-09: 0.3 % under the mark for a long).
       for (const item of Array.isArray(m.data) ? m.data : []) {
@@ -150,6 +208,7 @@ abstract class BybitBook extends MarketBook {
         const price = num(d.p), amount = num(d.v), t = num(d.T), side = d.S === 'Buy' ? 'long' : d.S === 'Sell' ? 'short' : null;
         if (side && price > 0 && amount > 0 && Number.isFinite(t)) this.emitLiquidation({ t, side, price, amount, notionalUsd: price * amount, kind: 'bankruptcy' });
       }
+      this.alive();
       return;
     }
     if (topic.startsWith('publicTrade.')) {
@@ -158,28 +217,91 @@ abstract class BybitBook extends MarketBook {
         const price = num(d.p), amount = num(d.v), t = num(d.T), side = d.S === 'Buy' ? 'buy' : d.S === 'Sell' ? 'sell' : null;
         // Every fill of one market order carries the same `seq` (the matching event), so it names the order.
         const order = d.seq === undefined || d.seq === null ? undefined : String(d.seq);
-        if (side && price > 0 && amount > 0 && Number.isFinite(t)) this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) });
+        if (side && price > 0 && amount > 0 && Number.isFinite(t)) { this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) }); this.#lastPrice = price; this.#tradesSinceBook++; }
       }
+      this.alive(); this.#look();
       return;
     }
     if (topic === `tickers.${this.symbol}`) {
+      this.alive();
+      // Spot's ticker is subscribed only to show a trade-only socket is alive: it carries no open interest.
+      if (this.category === 'spot') return;
       const d = this.record(m.data); if (!d || (d.symbol !== undefined && d.symbol !== this.symbol)) return;
       // A delta without the open-interest fields is not a reading (open interest did not change), never a zero; the `single…` figure is
       // one side of every contract, as every other venue reports it. `emitOi` drops a value or time that is not finite and positive.
       const given = (v: unknown): boolean => v !== undefined && v !== null && v !== '';
       const single = given(d.singleOpenInterest) ? num(d.singleOpenInterest) : given(d.openInterest) ? num(d.openInterest) / 2 : null;
       if (single !== null) this.emitOi({ t: num(m.ts), base: single });
+    }
+  }
+  protected override reset() {
+    super.reset(); this.#full.reset(); this.#sides();
+    this.#asking = null; this.#pause = 0; this.#lastPrice = 0; this.#lookedAt = 0; this.#tradesSinceBook = 0;
+    if (this.#retry) clearTimeout(this.#retry); this.#retry = null;
+  }
+
+  /** The book's sides are the full book's (replaced whole when a snapshot seeds or a refresh swaps in). */
+  #sides(): void { if (this.bids !== this.#full.bids || this.asks !== this.#full.asks) { this.bids = this.#full.bids; this.asks = this.#full.asks; } }
+  #act(action: FullAction): void {
+    if (action === 'snapshot') this.#ask();
+    else if (action === 'reconnect') this.fail(`book: ${this.#full.lastFault ?? 'numbering broken'} (three times in a minute)`.slice(0, 160));
+  }
+  /** Ask for the snapshot after `ms` (a first ask, or a pause after one that could not be used), on this connection only. */
+  #later(ms: number): void {
+    if (this.#retry) clearTimeout(this.#retry);
+    const generation = this.generation;
+    this.#retry = setTimeout(() => { this.#retry = null; if (generation === this.generation && this.state !== 'stopped') this.#ask(); }, ms);
+    (this.#retry as { unref?: () => void }).unref?.();
+  }
+  /** The next pause before asking again: doubling from half a second, at most `BYBIT_SNAPSHOT_MAX_PAUSE_MS`, plus up to a quarter at random. */
+  #nextPause(): number { this.#pause = Math.min(BYBIT_SNAPSHOT_MAX_PAUSE_MS, this.#pause ? this.#pause * 2 : 500); return this.#pause * (1 + Math.random() / 4); }
+  /** Seed the book from a snapshot (one request out at a time per connection and epoch). */
+  #ask(): void {
+    if (!this.bookRead || this.#full.live || this.state === 'stopped') return;
+    const generation = this.generation, epoch = this.#full.epoch;
+    if (this.#asking && this.#asking.generation === generation && this.#asking.epoch === epoch) return;
+    if (this.#retry) { clearTimeout(this.#retry); this.#retry = null; }
+    void this.#read(generation, epoch, false);
+  }
+  /** At most every few seconds, on a trade: whether the price has come near enough a frontier for a refresh, and if so read one. */
+  #look(): void {
+    const now = Date.now();
+    if (!this.bookRead || !this.#full.live || this.#asking || now - this.#lookedAt < BYBIT_REFRESH_LOOK_MS) return;
+    this.#lookedAt = now;
+    if (!this.#full.refreshDue(this.#lastPrice, now)) return;
+    void this.#read(this.generation, this.#full.beginRefresh(now), true);
+  }
+  /** One snapshot request, its answer handed to the full book; a seed that could not be used is asked for again after a pause. */
+  async #read(generation: number, epoch: number, refresh: boolean): Promise<void> {
+    this.#asking = { generation, epoch };
+    let result: SnapshotResult | 'failed' = 'failed';
+    try {
+      // A plain GET without credentials: the answer is public, and a credentialed request would need more of the venue's CORS answer.
+      const response = await fetch(fullSnapshotUrl(this.category, this.symbol), { credentials: 'omit', signal: AbortSignal.timeout(BYBIT_SNAPSHOT_TIMEOUT_MS) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const body: unknown = await response.json();
+      if (generation !== this.generation) return;
+      const snapshot = parseFullSnapshot(body, this.symbol);
+      if (typeof snapshot === 'string') throw new Error(snapshot);
+      result = this.#full.snapshot(snapshot, epoch, Date.now());
+    } catch (error) {
+      if (generation === this.generation && !refresh) this.#full.lastFault = `snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 120);
+    } finally {
+      if (this.#asking?.generation === generation && this.#asking.epoch === epoch) this.#asking = null;
+    }
+    if (generation !== this.generation || this.state === 'stopped') return;
+    if (refresh) {
+      // 'rejected' and 'unchanged' already paused the next refresh; 'wait' finishes once the book reaches the snapshot.
+      if (result === 'failed') this.#full.failRefresh(Date.now());
+      if (result === 'extended') this.touch();
       return;
     }
-    if (topic !== `orderbook.1000.${this.symbol}`) return;
-    const d = this.record(m.data); if (!d) return;
-    const u = num(d.u);
-    if (m.type === 'snapshot') { this.replace(this.bids, this.rows(d.b)); this.replace(this.asks, this.rows(d.a)); this.#u = u; this.touch(); return; }
-    if (!this.#u) return; // deltas before the first snapshot
-    if (u !== this.#u + 1) { this.fail(`sequence gap ${this.#u} -> ${u}`); return; }
-    this.#u = u; this.apply(this.bids, this.rows(d.b)); this.apply(this.asks, this.rows(d.a)); this.touch();
+    if (result === 'seeded') { this.#pause = 0; this.#tradesSinceBook = 0; this.#sides(); this.touch(); return; }
+    // 'wait': the book seeds itself once the stream reaches the snapshot's anchor; one the stream never brings is read again after a
+    // while. 'stale': a newer epoch has asked (or will) for its own.
+    if (result === 'wait') this.#later(BYBIT_ANCHOR_WAIT_MS);
+    else if (result === 'retry' || result === 'failed') this.#later(this.#nextPause());
   }
-  protected override reset() { super.reset(); this.#u = 0; }
 }
 export class BybitConnector extends BybitBook {
   readonly id = 'bybit'; readonly name = 'Bybit'; readonly marketType = 'perpetual' as const; protected readonly category = 'linear';

@@ -115,6 +115,8 @@ export abstract class BookConnector {
    */
   #lastTrade: { price: number; t: number; at: number } | null = null;
   #cachedHint: number | undefined = undefined;
+  /** The grid step and the book's coverage epoch the cached valuation was made with: either changing values the book again at once. */
+  #cachedStep: number | undefined = undefined; #cachedEpoch = 0;
   /** The far book read from REST beyond what the WebSocket sends (shared/far-book.ts), for a venue that has one; and the one last valued with. */
   #far: FarPoller | null = null; #cachedFar: FarBook | null = null;
 
@@ -216,8 +218,26 @@ export abstract class BookConnector {
     const socket = this.#socket; this.#socket = null; try { socket?.close(); } catch { /* already closed */ }
     this.#scheduleReconnect();
   }
-  protected reset(): void { this.bids.clear(); this.asks.clear(); this.#lastTrade = null; this.#version++; }
-  protected touch(): void { this.lastUpdate = Date.now(); this.#version++; if (this.state === 'connecting') { this.state = 'live'; this.#attempt = 0; this.lastError = null; this.everLive = true; this.failures = 0; } }
+  protected reset(): void { this.bids.clear(); this.asks.clear(); this.#lastTrade = null; this.#version++; this.#cached = null; }
+  /** The book changed (and the socket is alive). */
+  protected touch(): void { this.#version++; this.alive(); }
+  /**
+   * The socket delivered a frame of a topic it subscribed (a trade, a ticker, a book change): it is live. A venue whose book synchronises on
+   * its own (`bookReady`) marks trades this way, so a socket carrying trades stays live while its book is still loading.
+   */
+  protected alive(): void { this.lastUpdate = Date.now(); if (this.state === 'connecting') { this.state = 'live'; this.#attempt = 0; this.lastError = null; this.everLive = true; this.failures = 0; } }
+  /**
+   * Whether the book is the venue's now. Most venues' books are whole as soon as their socket is live; one that synchronises from a
+   * separate snapshot (Bybit's full depth) says here when it is, so a live socket carrying trades never makes an unsynchronised book drawn.
+   */
+  protected bookReady(_now: number): boolean { return true; }
+  /**
+   * What the book covers, as a number that changes when that changes (a book seeded again, or one whose coverage grew): 0 for a venue
+   * whose book is whole as it comes. It travels on the valued book (`ValuedBook.epoch`), so what compares a book over time starts again.
+   */
+  protected bookEpoch(): number { return 0; }
+  /** What the venue's status line says about its book while the socket is live but the book is not drawn (null: nothing to say). */
+  bookDetail(): string | null { return null; }
   protected replace(side: Map<number, number>, levels: [number, number][]): void { side.clear(); for (const [p, q] of levels) if (q > 0) side.set(p, q); }
   protected apply(side: Map<number, number>, levels: [number, number][]): void { for (const [p, q] of levels) { if (q > 0) side.set(p, q); else side.delete(p); } }
   protected rows = rows;
@@ -262,15 +282,17 @@ export abstract class BookConnector {
 
   /** The current book in USD (price x base size, all venues here quote in USD or a USD stable), or null when not fresh and uncrossed. Prices are one coin's. */
   valued(now: number, gridStep?: number): ValuedBook | null {
-    if (this.state !== 'live' || now - this.lastUpdate > this.silenceMs() + 10_000) return null;
+    if (this.state !== 'live' || now - this.lastUpdate > this.silenceMs() + 10_000 || !this.bookReady(now)) return null;
     const last = this.coarse ? this.#lastTrade : null, hint = last && Math.abs(now - last.at) <= TOUCH_HINT_MS ? last.price / this.unit : undefined;
     // The far book only while fresh: one ageing out values the book again without it.
     const far = this.coarse || !this.#far ? null : freshFar(this.#far.latest, now);
-    if (this.#cachedVersion === this.#version && this.#cachedHint === hint && this.#cachedFar === far) return this.#cached;
+    const epoch = this.bookEpoch(), same = this.#cachedStep === gridStep && this.#cachedEpoch === epoch;
+    if (same && this.#cachedVersion === this.#version && this.#cachedHint === hint && this.#cachedFar === far) return this.#cached;
     // A deep book changes on nearly every tick and costs a pass over every level; the map and ladder move slowly, so it is re-valued at most once a second.
     const levels = this.bids.size + this.asks.size + (far ? far.bids.length + far.asks.length : 0);
-    if (this.#cached && levels >= DEEP_BOOK_LEVELS && now - this.#cachedAt < DEEP_BOOK_INTERVAL_MS) return this.#cached;
-    this.#cachedVersion = this.#version; this.#cachedAt = now; this.#cachedHint = hint; this.#cachedFar = far;
+    // ... but a book seeded again, or valued on another grid, is valued at once: the cached one is of another book.
+    if (same && this.#cached && levels >= DEEP_BOOK_LEVELS && now - this.#cachedAt < DEEP_BOOK_INTERVAL_MS) return this.#cached;
+    this.#cachedVersion = this.#version; this.#cachedAt = now; this.#cachedHint = hint; this.#cachedFar = far; this.#cachedStep = gridStep; this.#cachedEpoch = epoch;
     // A grouped book's bands depend on its touch (one step for the whole book, the best bid's): found once, before either side.
     const touch = { bid: -Infinity, ask: Infinity };
     if (this.coarse) { for (const p of this.bids.keys()) if (p > touch.bid) touch.bid = p; for (const p of this.asks.keys()) if (p < touch.ask) touch.ask = p; }
@@ -303,7 +325,7 @@ export abstract class BookConnector {
     bids = cap(bids); asks = cap(asks);
     if (!bids.usd.length || !asks.usd.length || bids.lo[0]! >= asks.lo[0]!) { this.#cached = null; return null; }
     // The step the buckets were made on travels with the book (`ValuedBook.step`), cached with it.
-    this.#cached = { instrumentId: this.instrumentId, venue: this.id, timestamp: this.lastUpdate, coarse: false, bids, asks, ...(merged !== undefined ? { step: merged } : {}) };
+    this.#cached = { instrumentId: this.instrumentId, venue: this.id, timestamp: this.lastUpdate, coarse: false, bids, asks, ...(merged !== undefined ? { step: merged } : {}), ...(epoch ? { epoch } : {}) };
     return this.#cached;
   }
 }

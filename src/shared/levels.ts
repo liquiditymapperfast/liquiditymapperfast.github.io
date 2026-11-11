@@ -30,6 +30,13 @@ export interface ValuedBook {
    * representative price crossed a row's edge as liquidity leaving one row and arriving in the next, with nothing changed at the venue.
    */
   step?: number;
+  /**
+   * What the book covers, as a number that changes when that changes (`BookConnector.bookEpoch`): a book that synchronises from a separate
+   * snapshot (Bybit's full depth) was seeded again, or its coverage grew past where it stopped. Absent for a book that is whole as it comes.
+   * A reader that compares the book over time (a wall, a cue) starts again when it changes: more of the book became visible, nothing was
+   * placed or pulled.
+   */
+  epoch?: number;
 }
 /**
  * Whether a merge step (`ValuedBook.step`) is one a reader may divide by: a finite number above zero. Anything else is left off the wire and

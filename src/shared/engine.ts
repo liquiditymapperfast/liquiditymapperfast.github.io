@@ -456,7 +456,8 @@ export class Engine {
       const run = this.#runs.get(venue.id), head = { id: venue.id, name: venue.name, kind: venue.kind, recommended: venue.recommended, selected: !!run, listed: venue.listed };
       if (!run) return { ...head, state: 'off' as const, detail: '' };
       const { book } = run;
-      if (book.state === 'live') return { ...head, state: 'live' as const, detail: run.noBookSince && this.#now() - run.noBookSince >= NO_BOOK_MS ? 'no usable book right now (crossed or one-sided)' : '' };
+      // A book that synchronises on its own (Bybit's full depth) says why it is not drawn yet; any other live book without a usable frame is crossed or one-sided.
+      if (book.state === 'live') return { ...head, state: 'live' as const, detail: book.bookDetail() ?? (run.noBookSince && this.#now() - run.noBookSince >= NO_BOOK_MS ? 'no usable book right now (crossed or one-sided)' : '') };
       // A venue that has never delivered anything, keeps failing, and does not answer a plain REST request either, while the others work,
       // is almost certainly refusing this visitor's country (an exchange does not say so over a WebSocket).
       const others = live, expected = Math.min(2, this.#runs.size - 1);
