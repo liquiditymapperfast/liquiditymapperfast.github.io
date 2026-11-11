@@ -222,6 +222,16 @@ test('a run over fewer candles than the run before (a replay stepped back) runs 
   assert.ok(back.ok, `two looks at the clock, 6 s: within ${FULL_RUN_MS / 1000} s, not ${RUN_MS / 1000} s (Sol, round 5)`);
 });
 
+test('a rerun because an older candle\'s order book changed has the full run\'s time, not a live update\'s', () => {
+  const src = 'var d = askdepth(10)\nvar s = 0\nfor (var i = 0; i < 18000; i++) s += i\nline(s)';
+  let t = 0;
+  const runner = createRunner('t', src, {}, () => (t += 3_000));
+  assert.ok(runner.run({ ...candles(5), depthEpochs: Float64Array.from([1, 1, 1, 1, 1]) }).ok);
+  const settled = runner.run({ ...candles(5), depthEpochs: Float64Array.from([2, 1, 1, 1, 1]) });
+  assert.equal(runner.startedAt, 0, 'from the first candle: the oldest one\'s book was read again');
+  assert.ok(settled.ok, `within ${FULL_RUN_MS / 1000} s, not ${RUN_MS / 1000} s (Sol, round 6)`);
+});
+
 test('a script that cannot be put back between runs has the short time at a live update too, not ten seconds at every update', () => {
   // It keeps an array from candle to candle (a name assigned without a declaration is kept), so every run starts from the first candle; only
   // the first of these is a run over new candles.
