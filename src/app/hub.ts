@@ -37,6 +37,8 @@ import { ChartPriceHistory } from './price-history.ts';
 import { ColumnHolds, columnReach, columnStepFor, settledBefore, type ColumnDrop } from './column-holds.ts';
 /** How many VWAP histories are kept before those not asked for in five minutes are let go (one market's lines use up to nine). */
 const VWAP_HISTORIES = 16;
+/** The TPO's histories held at once: the chart market's and its daily candles, and ten other markets'. */
+const TPO_HISTORIES = 16;
 /** The scripts' candle histories kept (`scriptHistory`): a perpetual's and a spot market's, at this timeframe and the one before. */
 const SCRIPT_HISTORIES = 4;
 /** The candle histories' requests: a queue per exchange host, which waits after a venue says it was asked too often (`pacedFetcher`). */
@@ -290,6 +292,8 @@ export class Hub {
   readonly #scriptHistories = new Map<string, KeyLevelHistory>();
   /** The VWAP lines' candles, one history per kind, market and bar size (`vwapHistory`), and when each was last asked for. */
   readonly #vwapHistories = new Map<string, { h: KeyLevelHistory; used: number }>();
+  /** The TPO's candles, one history per kind, market and bar size (`tpoHistory`), and when each was last asked for. */
+  readonly #tpoHistories = new Map<string, { h: KeyLevelHistory; used: number }>();
   readonly #profileHistories = new Map<string, KeyLevelHistory>();
   /**
    * The whale VWAP's sums: the whole minutes answered (`rows`, before `to`) and since then the minutes added from the orders pushed live
@@ -365,6 +369,20 @@ export class Hub {
     if (this.#vwapHistories.size >= VWAP_HISTORIES) for (const [k, x] of this.#vwapHistories) if (now - x.used > 300_000) this.#vwapHistories.delete(k);
     const h = rolling ? new KeyLevelHistory(historyGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS) : new KeyLevelHistory(historyGet, Date.now, 60_000);
     this.#vwapHistories.set(key, { h, used: now });
+    return h;
+  }
+  /**
+   * The TPO's candles of one market and bar size (tpo/layer.ts): the chart market's (`main`), the other markets' that judge which blocks
+   * stood alone (`peer`), and the daily ones its Auto rows are read from (`days`). Asked again every minute, kept as far back as the key
+   * levels reach; one history per kind, market and size, the same five-minute letting-go as the VWAP's (their own map, so neither feature
+   * pushes the other's out).
+   */
+  tpoHistory(id: string, barMs: number, kind: 'main' | 'peer' | 'days'): KeyLevelHistory {
+    const key = `${kind}|${id}|${barMs}`, now = Date.now(), held = this.#tpoHistories.get(key);
+    if (held) { held.used = now; return held.h; }
+    if (this.#tpoHistories.size >= TPO_HISTORIES) for (const [k, x] of this.#tpoHistories) if (now - x.used > 300_000) this.#tpoHistories.delete(k);
+    const h = new KeyLevelHistory(historyGet, Date.now, kind === 'days' ? 30 * 60_000 : 60_000, kind === 'days' ? 80 * 86_400_000 : undefined);
+    this.#tpoHistories.set(key, { h, used: now });
     return h;
   }
   /**

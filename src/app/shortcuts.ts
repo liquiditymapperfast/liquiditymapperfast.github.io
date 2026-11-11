@@ -10,7 +10,7 @@ import { liqLevelsUrl } from './liq-url.ts';
  */
 
 /** The features a letter switches on or off, each one the switch of its lamp button. */
-export type Feature = 'footprint' | 'trades' | 'liquidations' | 'liqLevels' | 'absorption' | 'traded' | 'keyLevels' | 'vwap' | 'highlights';
+export type Feature = 'footprint' | 'trades' | 'liquidations' | 'liqLevels' | 'absorption' | 'traded' | 'tpo' | 'keyLevels' | 'vwap' | 'highlights';
 export type ShortcutAction =
   | { kind: 'timeframe'; tf: string }
   | { kind: 'recenter' }
@@ -18,6 +18,7 @@ export type ShortcutAction =
   | { kind: 'column'; side: Side }
   | { kind: 'zoom'; dir: 1 | -1 }
   | { kind: 'toggle'; feature: Feature }
+  | { kind: 'fold' }
   | { kind: 'range' }
   | { kind: 'draw' }
   | { kind: 'goto' }
@@ -55,6 +56,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   ...(liqLevelsUrl() ? [toggle('Q', t('Liquidation levels'), 'liqLevels')] : []),
   toggle('A', t('Absorption'), 'absorption'),
   toggle('P', t('Volume profile'), 'traded'),
+  toggle('M', t('TPO'), 'tpo'),
+  { group: 'show', caps: ['U'], label: t('TPO: fold into profiles or lay out in time'), keys: ['u'], action: { kind: 'fold' } },
   toggle('K', t('Key levels'), 'keyLevels'),
   toggle('V', t('VWAP'), 'vwap'),
   toggle('H', t('Highlights'), 'highlights'),
@@ -100,8 +103,14 @@ export function togglePatch(state: AppState, feature: Feature): Partial<AppState
     case 'absorption': return { absorption: { ...state.absorption, on: !state.absorption.on } };
     case 'keyLevels': return { keyLevels: { ...state.keyLevels, on: !state.keyLevels.on } };
     case 'vwap': return { vwap: { ...state.vwap, on: !state.vwap.on } };
+    case 'tpo': return { tpo: { ...state.tpo, on: !state.tpo.on } };
     case 'highlights': return { highlight: { ...state.highlight, on: !state.highlight.on } };
   }
 }
 
 export const GROUP_TITLES: Readonly<Record<ShortcutGroup, string>> = { timeframe: t('Timeframe'), chart: t('Chart'), show: t('On or off'), tools: t('Tools') };
+
+/** The TPO folded into its profiles or laid out in time; with the TPO off, it is switched on laid out (the key asks to see that). */
+export function foldPatch(state: AppState): Partial<AppState> {
+  return { tpo: { ...state.tpo, on: true, unfold: state.tpo.on ? !state.tpo.unfold : true } };
+}

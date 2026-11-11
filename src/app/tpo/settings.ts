@@ -1,0 +1,107 @@
+/**
+ * The TPO's settings (Time Price Opportunity, the Market Profile; Karl, 2026-11-10, proposal docs/proposals/tpo-2026-11-10.md): whether it
+ * shows; the windows it draws (each day or week in the Volume profile's zone, or its sessions) and how many; the length of a block (the
+ * half hour each letter stands for, four hours for a week by default); the size of a row (Auto from the coin's typical day, or a price
+ * chosen for that coin); how it is drawn (blocks, letters or Auto by zoom; coloured by the time of the block or by how full the row is);
+ * folded into profiles or laid out in time; the value area's share; which marks show; whether the Volume profile's lines follow the
+ * TPO's levels; and the windows split or merged by hand, per coin.
+ */
+
+export type TpoPeriod = 'day' | 'week' | 'sessions';
+export const TPO_PERIODS: readonly TpoPeriod[] = ['day', 'week', 'sessions'];
+/** Blocks: letters while a block is tall enough, else plain blocks (`auto`), or always one of the two. */
+export type TpoLook = 'auto' | 'blocks' | 'letters';
+/** A block's colour: the time of its half hour (early to late), or how many blocks its row holds (thin to full). */
+export type TpoColour = 'time' | 'count';
+/** Block lengths offered, in minutes (0: by the period, 30 for a day or a session, 240 for a week). */
+export const TPO_BLOCKS: readonly number[] = [0, 15, 30, 60, 240];
+
+export interface TpoSettings {
+  on: boolean;
+  period: TpoPeriod;
+  /** Minutes per block, one of `TPO_BLOCKS` (0: the period's own). */
+  block: number;
+  /** How many of the latest windows are drawn, the one under way among them. */
+  count: number;
+  look: TpoLook;
+  colour: TpoColour;
+  /** The value area's share of the TPOs, in percent. */
+  share: number;
+  /** Laid out in time (each block in its own column at its half hour) instead of folded into the profile. */
+  unfold: boolean;
+  /** Blocks where only this market's wick went past the rest of the market are drawn hollow (tpo/agreement.ts). */
+  hollow: boolean;
+  /** The initial balance's bracket, the open and close marks. */
+  ib: boolean;
+  /** The extremes' calls (tail or poor, with how many row grids agree) and the single prints. */
+  calls: boolean;
+  /** The few numbers under each profile (range, initial balance, TPOs above and below the point of control). */
+  stats: boolean;
+  /** While the TPO shows, the Volume profile's lines of the same windows are drawn at the TPO's levels (one set of lines, never two). */
+  lines: boolean;
+  /** A row's price per coin, where one was chosen (none: Auto). */
+  rows: Record<string, number>;
+  /** Per coin, the moments a window was split at (each starts a window of its own). */
+  splits: Record<string, number[]>;
+  /** Per coin, the starts of windows merged into the window before them. */
+  merges: Record<string, number[]>;
+}
+
+export const TPO_DEFAULTS: Readonly<TpoSettings> = {
+  on: false, period: 'day', block: 0, count: 5, look: 'auto', colour: 'time', share: 70, unfold: false, hollow: true, ib: true, calls: true,
+  stats: true, lines: true, rows: {}, splits: {}, merges: {},
+};
+
+export const MAX_TPO_COUNT = 20;
+/** Coins whose own rows, splits and merges are kept (the oldest go first). */
+const MAX_COINS = 20;
+/** Splits and merges kept per coin. */
+const MAX_EDITS = 40;
+
+const flag = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
+const coinKey = (coin: string): boolean => /^[A-Z0-9]{1,20}$/.test(coin);
+
+function times(saved: unknown): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  if (!saved || typeof saved !== 'object') return out;
+  for (const [coin, list] of Object.entries(saved as Record<string, unknown>).slice(-MAX_COINS)) {
+    if (!coinKey(coin) || !Array.isArray(list)) continue;
+    const ok = [...new Set(list.filter((t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0))].sort((a, b) => a - b).slice(-MAX_EDITS);
+    if (ok.length) out[coin] = ok;
+  }
+  return out;
+}
+
+/** Settings from storage, field by field: whatever is missing or not valid falls back to the default. */
+export function readTpo(saved: unknown): TpoSettings {
+  const s = (saved && typeof saved === 'object' ? saved : {}) as Partial<Record<keyof TpoSettings, unknown>>, d = TPO_DEFAULTS;
+  const rows: Record<string, number> = {};
+  if (s.rows && typeof s.rows === 'object') for (const [coin, v] of Object.entries(s.rows as Record<string, unknown>).slice(-MAX_COINS)) if (coinKey(coin) && typeof v === 'number' && Number.isFinite(v) && v > 0) rows[coin] = v;
+  return {
+    on: flag(s.on, d.on),
+    period: TPO_PERIODS.includes(s.period as TpoPeriod) ? s.period as TpoPeriod : d.period,
+    block: typeof s.block === 'number' && TPO_BLOCKS.includes(s.block) ? s.block : d.block,
+    count: typeof s.count === 'number' && Number.isInteger(s.count) && s.count >= 1 && s.count <= MAX_TPO_COUNT ? s.count : d.count,
+    look: s.look === 'blocks' || s.look === 'letters' ? s.look : 'auto',
+    colour: s.colour === 'count' ? 'count' : 'time',
+    share: typeof s.share === 'number' && Number.isFinite(s.share) && s.share >= 50 && s.share <= 90 ? Math.round(s.share) : d.share,
+    unfold: flag(s.unfold, d.unfold), hollow: flag(s.hollow, d.hollow), ib: flag(s.ib, d.ib), calls: flag(s.calls, d.calls),
+    stats: flag(s.stats, d.stats), lines: flag(s.lines, d.lines), rows, splits: times(s.splits), merges: times(s.merges),
+  };
+}
+
+/** The block length in milliseconds: the one chosen, or the period's own (a week's blocks are four hours: 42 letters a week). */
+export const blockMsOf = (s: Pick<TpoSettings, 'block' | 'period'>): number => (s.block > 0 ? s.block : s.period === 'week' ? 240 : 30) * 60_000;
+
+/** The settings with `coin`'s list `which` changed by `f` (an empty list is dropped, and the coin with it). */
+export function withEdits(s: TpoSettings, which: 'splits' | 'merges', coin: string, f: (list: number[]) => number[]): TpoSettings {
+  const list = [...new Set(f([...(s[which][coin] ?? [])]))].sort((a, b) => a - b).slice(-MAX_EDITS);
+  const { [coin]: _old, ...others } = s[which];
+  return { ...s, [which]: list.length ? { ...others, [coin]: list } : others };
+}
+
+/** The settings with a row price chosen for `coin` (0: Auto again). */
+export function withRows(s: TpoSettings, coin: string, price: number): TpoSettings {
+  const { [coin]: _old, ...others } = s.rows;
+  return { ...s, rows: price > 0 ? { ...others, [coin]: price } : others };
+}

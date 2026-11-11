@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
 
 export interface HelpTopic {
   title: string;
@@ -61,6 +61,14 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
       t('A rolling VWAP (RVWAP) is the average over the last day, week, month, quarter, half year or year up to each moment. Its start moves with time, so the oldest trades drop out, where a session or an anchor keeps every trade since its start. It is worked out from bars of its own (five minutes for a day up to four hours for a year), the newest read again each minute, so it is the same at every timeframe, and it is drawn only where the history holds a whole window.'),
       t('Each bar\'s typical price (its high, low and close) is weighted by its volume, from one market\'s candles read from the exchange, a minute at a time for a day and coarser for longer: the market on the chart where the page can read its history, named in the panel. The bar under way follows the chart\'s own candles.'),
       t('The whale VWAP averages only the large market orders that are recorded (the same orders as the trade bubbles, from the size you choose), buys and sells apart, on the exchanges switched on, since the session began or since the recording did.')],
+  },
+  tpo: {
+    title: t('TPO'), guide: 'profile',
+    tip: t('TPO (Market Profile): each half hour of a day stacked as a block at every price it traded at, so the day folds into the shape of where the market spent its time.'),
+    body: [t('Each day, week or session (in the zone the Volume profile uses) is cut into blocks, half an hour each by default, lettered A to Z and then a to z. A block stands at every row its half hour traded at, and the rows are stacked from the window\'s start: the longest row is where price spent the most time, its point of control, and the value area holds 70 % of the blocks around it. The first hour is the initial balance (IBH, IBL); the arrows mark the window\'s first price and its last.'),
+      t('At the top and bottom, two or more rows of a single block are a tail: price was there briefly and left. A top or bottom row of two or more blocks is poor: price kept returning without going further. These calls depend on where the row edges fall, so each one is worked out on four row grids, each moved by part of a row, and says how many of the four agree (4/4 is steady, 2/4 could go either way). Single prints are rows of one block between the tails.'),
+      t('A block drawn as an outline is one where this market\'s wick went at least a row and 3 bp past the point most of the market\'s volume reached, from the other venues switched on, each moved by its usual gap to this market first: a price that venue printed alone. Rare on the largest markets.'),
+      t('U lays the blocks out in time, each half hour in its own column behind its own candles, and folds them back. Right-click a block to split its window there or merge it with the window before or after. The candles are the chart market\'s, read from the exchange; the block under way follows the chart\'s own price. While the TPO shows, the Volume profile\'s lines of the same windows follow the TPO\'s levels.')],
   },
   delta: {
     title: t('Delta'), guide: 'delta',

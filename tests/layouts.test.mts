@@ -26,6 +26,21 @@ test('a layout keeps what the chart shows, without the VWAP anchors or the profi
   assert.equal(applied.traded.count, 3);
 });
 
+test("a layout keeps the TPO's look but never a coin's own rows, splits or merges; applying it and Undo keep this chart's", () => {
+  const mine = state({ tpo: { ...defaults.tpo, on: true, period: 'week', look: 'letters', rows: { BTC: 20 }, splits: { BTC: [5] }, merges: { ETH: [9] } } });
+  const kept = settingsOf(mine);
+  assert.ok(!('rows' in kept.tpo!) && !('splits' in kept.tpo!) && !('merges' in kept.tpo!));
+  assert.equal(kept.tpo!.period, 'week');
+  const other = state({ tpo: { ...defaults.tpo, rows: { SOL: 0.05 }, splits: {}, merges: { BTC: [3] } } });
+  const applied = settingsToApply(kept, other);
+  assert.equal(applied.tpo.on, true); assert.equal(applied.tpo.look, 'letters');
+  assert.deepEqual([applied.tpo.rows, applied.tpo.splits, applied.tpo.merges], [{ SOL: 0.05 }, {}, { BTC: [3] }]);
+  const carried = carriedSettings({ tpo: mine.tpo } as never);
+  assert.ok(!('rows' in carried.tpo!) && !('splits' in carried.tpo!));
+  const whole = completeSettings({ tpo: kept.tpo } as never, other);
+  assert.deepEqual(whole.tpo!.merges, { BTC: [3] });
+});
+
 test('a file can come from anywhere: every field is checked, anything else gets its default', () => {
   const junk = readSettings({ timeframe: '2h', layer: 'gamma', show: { depth: 'yes', oi: false, evil: true }, ladderMode: 'tiles', ladderCurves: 4, ladderShow: 7, grouping: -5,
     heat: { style: 'neon', contrast: 999, smooth: 'sometimes', auto: 'no' }, lt: { halfLifeBp: 'x', view: 'radar' }, barStats: ['vol', 3, null], barStatOptions: { imbRatio: Infinity, extra: 1 }, scope: 'futures', pullStack: 30 } as never);

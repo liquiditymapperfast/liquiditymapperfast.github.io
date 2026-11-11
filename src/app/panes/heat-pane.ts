@@ -48,6 +48,8 @@ import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, typ
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
 import { t, tn } from '../i18n.ts';
 import { el } from '../dom.ts';
+import { openMenu, type MenuItem } from '../menu.ts';
+import { withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
@@ -89,6 +91,7 @@ import type { ChartType } from '../chart-type.ts';
 import { candleCoverage, candlePriceRange, isCovered, priceBounds, priceOverviewNeeded, pricePointAt, pricePoints, priceWindow, uncoveredRuns, type Covered, type PricePoint, type PriceWindow } from '../price-history.ts';
 import { liveCanvas } from '../live-canvas.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
+import { TpoLayer, type TpoFrame } from '../tpo/layer.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -471,6 +474,51 @@ export class HeatPane {
   #valueTags: KeyTag[] = [];
   /** The names put at the lines' right ends this frame (Volume profile, key levels, VWAP). */
   readonly #labels = new LabelBoard();
+  /** The TPO on the map (tpo/layer.ts), made on first use (the hub is a constructor parameter). */
+  #tpoLayer: TpoLayer | null = null;
+  get #tpo(): TpoLayer { return this.#tpoLayer ??= new TpoLayer(this.hub, () => this.invalidate()); }
+  /** What the TPO is given each frame. */
+  #tpoFrame(state: AppState): TpoFrame {
+    return { state, view: this.view, pw: this.plotW, ph: this.plotH, now: pageNow(), replay: replaying(), peerIds: state.tpo.hollow ? flowIds(state, this.hub.flow.ids) : [] };
+  }
+  #tpoAnchor: HTMLElement | null = null;
+  /** A TPO block's menu: split its window there, merge the window with the one before or after, fold or lay out, undo this coin's edits. */
+  #tpoMenu(hit: NonNullable<ReturnType<TpoLayer['hit']>>, cx: number, cy: number): void {
+    const state = this.store.state, s = state.tpo, coin = currentCoin().coin, prof = hit.profile, b = prof.blocks.find(x => x.k === hit.k);
+    const windows = this.#tpo.windows(this.#tpoFrame(state)), at = windows.findIndex(w => w.key === prof.key);
+    const items: MenuItem[] = [
+      { id: 'split', label: b ? t('Split the window at {time}', { time: clock(b.t) }) : t('Split the window here'), disabled: !b || b.t <= prof.from },
+      { id: 'prev', label: t('Merge with the window before'), disabled: at <= 0 },
+      { id: 'next', label: t('Merge with the window after'), disabled: at < 0 || at >= windows.length - 1 },
+      { id: 'fold', label: s.unfold ? t('Fold into profiles') : t('Lay out in time') },
+      { id: 'reset', label: t('Undo splits and merges'), disabled: !(s.splits[coin]?.length || s.merges[coin]?.length) },
+    ];
+    const anchor = this.#tpoAnchor ??= document.body.appendChild(el('div', { class: 'tpo-anchor' }));
+    Object.assign(anchor.style, { position: 'fixed', left: `${cx}px`, top: `${cy}px`, width: '1px', height: '1px', pointerEvents: 'none' });
+    // A cut where windows were merged takes the merge back, and a merge where one was cut takes the cut back.
+    const edit = (cut: number, merge: boolean): void => {
+      let next = this.store.state.tpo;
+      const merged = next.merges[coin]?.includes(cut) ?? false, split = next.splits[coin]?.includes(cut) ?? false;
+      if (merge) next = split ? withEdits(next, 'splits', coin, l => l.filter(x => x !== cut)) : withEdits(next, 'merges', coin, l => [...l, cut]);
+      else next = merged ? withEdits(next, 'merges', coin, l => l.filter(x => x !== cut)) : withEdits(next, 'splits', coin, l => [...l, cut]);
+      this.store.set({ tpo: next });
+    };
+    openMenu(anchor, items, '', { onPreview: () => {}, onSelect: id => {
+      const now = this.store.state.tpo;
+      if (id === 'split' && b) edit(b.t, false);
+      else if (id === 'prev') edit(prof.from, true);
+      else if (id === 'next' && windows[at + 1]) edit(windows[at + 1]!.from, true);
+      else if (id === 'fold') this.store.set({ tpo: { ...now, unfold: !now.unfold } });
+      else if (id === 'reset') { const { [coin]: _s, ...splits } = now.splits, { [coin]: _m, ...merges } = now.merges; this.store.set({ tpo: { ...now, splits, merges } }); }
+    } }, 'left', { title: t('TPO') });
+  }
+  /** For the TPO panel: Auto's row size, whose candles, the block's minutes. */
+  tpoInfo(): { auto: number; market: string | null; minutes: number } { return this.#tpo.info(this.#tpoFrame(this.store.state)); }
+  /** Whether the Volume profile draws lines of the TPO's windows, which then follow the TPO's levels (one set of lines, never two). */
+  #tpoLinesElsewhere(state: AppState): boolean {
+    const s = state.traded;
+    return state.tpo.on && state.tpo.lines && state.show.traded && (s.poc || s.va) && s.lines.includes(state.tpo.period);
+  }
   /** The key levels' market and zone, how far back their candles are needed, and their lines, each kept until what it depends on changes. */
   #keyContext: { key: string; target: HistoryTarget | null; zone: string; barMs: number } | null = null;
   #keyFrom: { key: string; from: number } | null = null;
@@ -1013,6 +1061,7 @@ export class HeatPane {
     if (state.liquidations.on) this.hub.ensureLiquidations(this.view, scaledUsd(state.liquidations.minUsd));
     if (state.keyLevels.on && anyLine(state.keyLevels)) this.#ensureKeyLevels(state);
     if (state.vwap.on) this.#ensureVwap(state);
+    if (state.tpo.on) this.#tpo.ensure(this.#tpoFrame(state));
     if (state.show.traded) {
       // What is on the chart draws its lines from the column's answer; a day, week or session draws them from the value areas, so on a map with no
       // room for the column (a phone) its whole-period profile would be read for nothing. Another measure than traded volume draws its lines
@@ -1162,6 +1211,8 @@ export class HeatPane {
     }
     this.#startPulse();
     this.#labels.clear(); // the frame's labels begin here: the profiles' captions first, then the lines'
+    // The TPO's profiles first: a past window's volume profile drawn over one as its outline (layout A) reads where the TPO's blocks stand.
+    if (state.tpo.on) this.#tpo.paint(ctx, this.#tpoFrame(state), p, this.#labels, this.#tpoLinesElsewhere(state)); // under the candles, as the period profiles
     this.#paintPastProfiles(ctx, state, pw, ph); // under the candles: the shape of each past window behind its own bars
     if (state.show.candles) this.#paintOverview(ctx, state, pw, ph);
     if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
@@ -2830,6 +2881,16 @@ export class HeatPane {
    * from candles (`#windowFromCandles`), or from the recording's value area once the answer is for the whole window (one from before it
    * ended waits for the next) and the recording holds `DRAWN_SHARE` of it. Its profile on the chart draws on the same condition.
    */
+  /**
+   * A window's levels for its lines: the TPO's while it shows and the lines follow it (windows of its kind: one set of lines, never two), else
+   * the Volume profile's. Null while the TPO's candles do not reach the window yet (never the volume's in their place: the measure would change
+   * under the line).
+   */
+  #lineLevels(state: AppState, ids: readonly string[], w: ProfileWindow, step: number, share: number, now: number): { levels: ValueLevels; upTo: number; tpo?: boolean } | null {
+    if (this.#tpoFollows(state, w)) { const levels = this.#tpo.levels(this.#tpoFrame(state), w); return levels ? { levels, upTo: Math.min(w.to, now), tpo: true } : null; }
+    return this.#windowLevels(state, ids, w, step, share, now);
+  }
+  #tpoFollows(state: AppState, w: ProfileWindow): boolean { return state.tpo.on && state.tpo.lines && windowKind(w) === state.tpo.period; }
   #windowLevels(state: AppState, ids: readonly string[], w: ProfileWindow, step: number, share: number, now: number): { levels: ValueLevels; upTo: number } | null {
     if (this.#windowSource(state, w) === 'candles') { const r = this.#windowFromCandles(state, w, step, share, now); return r ? { levels: r.levels, upTo: r.upTo } : null; }
     return recordedWindowLevels(this.hub.valueAreas.get(valueAreaKey(ids, step, share, w)), w, now);
@@ -2897,10 +2958,13 @@ export class HeatPane {
       }
       const { rows, max, median, total } = grouped;
       if (!(max > 0)) continue;
-      const room = (x1 - x0) * 0.6, floor = emphasisFloor(), on = state.traded.emphasis && state.traded.bars === 'split', edges: [number, number, number][] = [];
+      // With the TPO drawing this window too, the volume profile is its outline over the TPO's letters, as wide as the TPO's longest row (layout A).
+      const over = state.tpo.on && windowKind(w) === state.tpo.period ? this.#tpo.box(w.key) : null, bx = over ? over.x0 : x0;
+      const room = over ? over.width : (x1 - x0) * 0.6, floor = emphasisFloor(), on = state.traded.emphasis && state.traded.bars === 'split', edges: [number, number, number][] = [];
       for (const [k, [a, b]] of rows) {
         const y0 = v.yOf((k + 1) * row, ph), y1 = v.yOf(k * row, ph); if (y1 < 0 || y0 > ph) continue;
         const hgt = Math.max(1, y1 - y0 - 0.5), len = (a + b) / max * room;
+        if (over) { edges.push([y0, y0 + hgt, bx + len]); continue; }
         // A backing mutes the map under the bar, so the bar reads over the hottest heat as over none.
         ctx.globalAlpha = 1; ctx.fillStyle = halo; ctx.fillRect(x0, y0, len, hgt);
         if (candle) edges.push([y0, y0 + hgt, x0 + len]);
@@ -2914,19 +2978,25 @@ export class HeatPane {
       ctx.globalAlpha = 1;
       const name = this.#windowName(state, w), { target, barMs } = this.#profileCandles(state, kind), minutes = Math.round(barMs / 60_000);
       const market = target ? venueLabel(target.id) : '';
-      if (candle && edges.length) {
-        // From candles, an estimate: outlined in the profile colour along its edge and named with where it comes from (Karl, 2026-10-20).
+      if ((candle || over) && edges.length) {
+        // From candles, an estimate: outlined in the profile colour along its edge and named with where it comes from (Karl, 2026-10-20). Over
+        // the TPO, the outline alone, in the text's colour with a halo so it reads over the coloured blocks.
         edges.sort((a, b) => a[0] - b[0]);
-        ctx.strokeStyle = p.poc; ctx.lineWidth = 1; ctx.globalAlpha = 0.9 * fade; ctx.beginPath();
-        let last: [number, number, number] | null = null;
-        for (const e of edges) {
-          if (!last || e[0] - last[1] > 1.5) { if (last) ctx.lineTo(x0, last[1]); ctx.moveTo(x0, e[0]); }
-          ctx.lineTo(e[2], e[0]); ctx.lineTo(e[2], e[1]); last = e;
-        }
-        if (last) ctx.lineTo(x0, last[1]);
-        ctx.stroke(); ctx.globalAlpha = 1;
+        const trace = (): void => {
+          ctx.beginPath();
+          let last: [number, number, number] | null = null;
+          for (const e of edges) {
+            if (!last || e[0] - last[1] > 1.5) { if (last) ctx.lineTo(bx, last[1]); ctx.moveTo(bx, e[0]); }
+            ctx.lineTo(e[2], e[0]); ctx.lineTo(e[2], e[1]); last = e;
+          }
+          if (last) ctx.lineTo(bx, last[1]);
+          ctx.stroke();
+        };
+        if (over) { ctx.strokeStyle = halo; ctx.lineWidth = 3; ctx.globalAlpha = fade; trace(); }
+        ctx.strokeStyle = over ? p.text : p.poc; ctx.lineWidth = over ? 1.25 : 1; ctx.globalAlpha = 0.9 * fade; trace(); ctx.globalAlpha = 1;
         const top = edges[0]![0];
         ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        if (!candle) { this.#profileHits.push({ x0: bx, room: over!.width, row, max, rows, total, split, name, levels: drawn.levels, source: null }); continue; }
         // Above its top row, but never under the legend or the bands along the top, where a tall profile's top row often is; within its own
         // width on the chart, shortened to its name where the source does not fit, and left out where it would cover another label.
         const clear = Math.max(this.#legendBox.bottom, ...this.#arranged.top.map(b => b.top + b.height)) + 9, ly = Math.max(top - 9, clear), room = Math.min(x1, pw) - x0;
@@ -2941,7 +3011,7 @@ export class HeatPane {
       const source = !candle ? null : split
         ? t('{market} {minutes}-minute candles, each spread over its range and split by its taker buys: an estimate.', { market: candle.spot ? t('{venue} futures and spot', { venue: market }) : market, minutes })
         : t('{market} candles do not say who bought: the total only.', { market });
-      this.#profileHits.push({ x0, room, row, max, rows, total, split, name: candle ? `≈ ${name}` : name, levels: drawn.levels, source });
+      this.#profileHits.push({ x0: bx, room, row, max, rows, total, split, name: candle ? `≈ ${name}` : name, levels: drawn.levels, source });
     }
     ctx.restore();
   }
@@ -2999,7 +3069,7 @@ export class HeatPane {
         if (!s.lines.includes(windowKind(w))) continue;
         const source = this.#windowSource(state, w);
         if (source === 'recorded' && replaying() && w.to > now) continue;
-        const drawn = this.#windowLevels(state, ids, w, step, share, now); if (!drawn) continue;
+        const drawn = this.#lineLevels(state, ids, w, step, share, now); if (!drawn) continue;
         const { levels, upTo } = drawn;
         const end = Math.min(w.to, now, upTo), x0 = v.xOf(w.from, pw), x1 = v.xOf(end, pw);
         let naked: number | null = null;
@@ -3007,7 +3077,7 @@ export class HeatPane {
         if (s.naked && w.to <= now) { const touched = this.#touchedAfter(state, levels.poc, w, step); naked = touched === undefined ? null : touched === null ? pw : v.xOf(touched, pw); }
         if (Math.max(x1, naked ?? x1) < 0 || x0 > pw) continue;
         const name = this.#windowName(state, w);
-        segments.push({ x0, x1, levels, name: source === 'candles' ? `≈ ${name}` : name, naked, live: w.to > now, key: w.key, kind: windowKind(w), rank: ages.get(w.key) ?? MAX_COUNT });
+        segments.push({ x0, x1, levels, name: drawn.tpo ? `${name} ${t('TPO')}` : source === 'candles' ? `≈ ${name}` : name, naked, live: w.to > now, key: w.key, kind: windowKind(w), rank: ages.get(w.key) ?? MAX_COUNT });
       }
     }
     // The previous window's levels carried across the whole of the one under way, whatever the count shown and whether or not price has traded
@@ -3016,12 +3086,12 @@ export class HeatPane {
     const carries: { x0: number; x1: number; lines: CarriedLine[]; name: string; estimate: boolean; kind: LineKind; source: string; key: string }[] = [];
     const hidden = new Map<string, { from: number; to: number }>();
     for (const c of s.poc || s.va ? this.#carries(state) : []) {
-      const drawn = this.#windowLevels(state, ids, c.source, step, share, now); if (!drawn) continue;
+      const drawn = this.#lineLevels(state, ids, c.source, step, share, now); if (!drawn) continue;
       // To the end of the window under way; in a replay only to its moment (what is right of it is masked, and a name there would be cut off).
       const over = { from: c.current.from, to: replaying() ? Math.min(c.current.to, now) : c.current.to };
       const x0 = v.xOf(over.from, pw), x1 = v.xOf(over.to, pw);
       if (x1 < 0 || x0 > pw) continue;
-      carries.push({ x0, x1, lines: carriedLines(drawn.levels, over, s), name: t('Previous {name}', { name: this.#windowName(state, c.source) }), estimate: this.#windowSource(state, c.source) === 'candles', kind: windowKind(c.source), source: c.source.key, key: c.current.key });
+      carries.push({ x0, x1, lines: carriedLines(drawn.levels, over, s), name: t('Previous {name}', { name: this.#windowName(state, c.source) + (drawn.tpo ? ` ${t('TPO')}` : '') }), estimate: !drawn.tpo && this.#windowSource(state, c.source) === 'candles', kind: windowKind(c.source), source: c.source.key, key: c.current.key });
     }
     if (!segments.length && !carries.length) return [];
     // A source's own untouched run is, over the period under way, the carry's line (the same level), which draws it dashed and fainter touched or
@@ -3525,7 +3595,7 @@ export class HeatPane {
   }
 
   #paintCrosshair(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
-    const hv = state.hover; if (!hv) { this.#orders.rest(); return; }
+    const hv = state.hover; if (!hv) { this.#orders.rest(); this.#litTpo(null); return; }
     const p = this.#palette, v = this.view;
     const x = v.xOf(hv.t, pw), inX = x >= 0 && x <= pw, ownY = hv.source === 'heat' && hv.price !== null;
     // Replay: right of its moment everything is covered, so nothing there answers the pointer.
@@ -3538,6 +3608,7 @@ export class HeatPane {
     const axisX = this.#w - AXIS_W;
     if (ownY && y >= 0 && y <= ph) { ctx.fillStyle = p.text; ctx.fillRect(axisX + 1, y - 9, AXIS_W - 1, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'left'; ctx.fillText(fmtPrice(hv.price!), axisX + 6, y); }
     let trapHit: Trap | null = null, rowHit: ReturnType<HeatPane['footprintCellUnder']> = null, measured: ReturnType<TopProfile['readout']> = null, profiled: ProfileRowHit | null = null, stripped = -1;
+    let tpoHit: ReturnType<TpoLayer['hit']> = null;
     const touch = hv.touch === true;
     if (touch && ownY && inX && y >= 0 && y <= ph) { ctx.strokeStyle = p.text; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
     stripped = ownY && here ? this.#stripAt(x, y, ph, pw) : -1;
@@ -3570,6 +3641,8 @@ export class HeatPane {
       ];
       // Beside a mouse pointer the box stands clear of the bubble; above a finger, so the hand does not cover it.
       paintInfoBox(ctx, lines, x, touch ? y - hit.r - 8 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: buy ? p.candleUp : p.candleDown, gap: hit.r + 10, placement: touch ? 'up' : 'center' });
+    } else if (ownY && here && state.tpo.on && (tpoHit = this.#tpo.hit(x, y, v, ph))) { // a block of the TPO: its half hour, its row and what they say
+      paintInfoBox(ctx, this.#tpo.lines(this.#tpoFrame(state), tpoHit), x, touch ? y - 24 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
     } else if (ownY && here && (profiled = this.#periodProfileAt(x, y, ph))) { // a row of a day's, week's, month's or session's profile, painted over the rest
       const { hit, k, buy, sell } = profiled, step = hit.row;
       const lines = periodRowLines({ name: hit.name, low: k * step, high: (k + 1) * step, step, buy, sell, total: hit.total, split: hit.split, levels: hit.levels, source: hit.source });
@@ -3597,6 +3670,15 @@ export class HeatPane {
       }
     }
     if (inX) { ctx.fillStyle = p.text; ctx.fillRect(x - 40, ph + 2, 80, 18); ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.fillText(clock(hv.t, true), x, ph + 11); }
+    this.#litTpo(tpoHit ? { key: tpoHit.profile.key, k: tpoHit.k } : null);
+  }
+
+  /** The TPO block under the pointer: its cells and its half hour are lit on the next frame, which this asks for when it changes. */
+  #litTpo(lit: { key: string; k: number } | null): void {
+    if (!this.#tpoLayer) return;
+    const was = this.#tpoLayer.lit;
+    if (was?.key === lit?.key && was?.k === lit?.k) return;
+    this.#tpoLayer.lit = lit; this.invalidate();
   }
 
   /** The rows of flagged candles that the footprint should mark: the wick's imbalanced cells on the flagged side. */
@@ -4172,6 +4254,16 @@ export class HeatPane {
       // A press that did not move is a click: the drawing tools place a point, or select (or let go of) a drawing.
       const press = this.#press; this.#press = null;
       if (press && !press.moved && e.button === 0 && this.draw) { const at = local(e); if (this.draw.click(at, e.altKey, false)) this.#drawClickAt = performance.now(); }
+      // A right click that did not travel, on a TPO block: its menu (split, merge), the view put back from any pixel the press zoomed.
+      const zd = this.#zoomDrag;
+      if (zd && e.button === 2 && this.store.state.tpo.on) {
+        const at = local(e), hit = Math.hypot(at.x - zd.x, at.y - zd.y) < DRAG_MIN_PX ? this.#tpo.hit(zd.x, zd.y, new View(zd.view), this.plotH) : null;
+        if (hit) {
+          this.view.set(zd.view); this.#zoomDrag = null; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+          this.#tpoMenu(hit, e.clientX, e.clientY); this.invalidate();
+          return;
+        }
+      }
       const moved = !!this.#drag?.panning || !!this.#zoomDrag?.moved;
       this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; el.style.cursor = this.#onScale(local(e).x, local(e).y) ? 'ns-resize' : ''; if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
       // Let go of the map: the next frame decides whether it follows on (`#settleFollow`).

@@ -34,6 +34,7 @@ import type { LiqLevelsSource } from './liq-levels.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import type { AnchorSnapshot } from './traded/anchor.ts';
 import { buildVwapPanel, type RollingReach, type VwapMarkets, type WhaleInfo } from './vwap/panel.ts';
+import { buildTpoPanel, type TpoInfo } from './tpo/panel.ts';
 import { buildFootprintPanel } from './footprint/panel.ts';
 import type { FlowBook } from './flow-book.ts';
 import type { KeyLevelHistory } from './keylevels/history.ts';
@@ -155,6 +156,7 @@ export class Toolbar {
   #settingsKeys: Record<Exclude<Feature, 'highlights'>, HTMLButtonElement> = {
     trades: settingsKey(t('Trades')), footprint: settingsKey(t('Footprint')), vwap: settingsKey(t('VWAP')), keyLevels: settingsKey(t('Key levels')),
     liquidations: settingsKey(t('Liquidations')), liqLevels: settingsKey(t('Liquidation levels')), traded: settingsKey(t('Volume profile')), absorption: settingsKey(t('Absorption')),
+    tpo: settingsKey(t('TPO')),
   };
   /** The Alerts deck's settings keys: Highlights, Sound and Waves are switched and set the same way. */
   #alertKeys = { highlights: settingsKey(t('Highlights')), sound: settingsKey(t('Sounds')), waves: settingsKey(t('Waves')) };
@@ -191,6 +193,11 @@ export class Toolbar {
   get scriptsAnchor(): HTMLElement { return this.#scriptsKey; }
   onOpenScripts: (anchor: HTMLElement) => void = () => {};
   #vwapPanel: Panel | null = null;
+  /** The TPO (tpo/), set in its panel. */
+  #tpo = el('button', { class: 'led-btn', textContent: t('TPO'), tip: HELP.tpo.tip });
+  #tpoPanel: Panel | null = null;
+  /** The Auto row size and whose candles the TPO reads (set by the page), for its panel. */
+  tpoInfo: () => TpoInfo = () => ({ auto: 0, market: null, minutes: 30 });
   /** What the page knows of the whale sums (set by the page), for the VWAP panel. */
   whaleInfo: () => WhaleInfo | null = () => null;
   /** Whether each rolling VWAP's history holds a whole window (set by the page), for the VWAP panel to say which have no line. */
@@ -384,6 +391,11 @@ export class Toolbar {
       this.#vwapPanel = this.#track(togglePanel(this.#settingsKeys.vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring && !this.#placing) this.store.set({ vwapAnchoring: false }); } }, build), build);
     };
     this.#vwap.onclick = () => this.store.set(togglePatch(this.store.state, 'vwap'));
+    this.#settingsKeys.tpo.onclick = () => {
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildTpoPanel(this.store, tools, body, () => this.#tpoPanel?.render(build), this.tpoInfo);
+      this.#tpoPanel = this.#track(togglePanel(this.#settingsKeys.tpo, { title: t('TPO'), width: 440, align: 'left', onClose: () => { this.#tpoPanel = null; } }, build), build);
+    };
+    this.#tpo.onclick = () => this.store.set(togglePatch(this.store.state, 'tpo'));
     this.#scripts.onclick = () => this.store.set({ show: { ...this.store.state.show, script: !this.store.state.show.script } });
     this.#scriptsKey.onclick = () => this.onOpenScripts(this.#scriptsKey);
     this.#settingsKeys.keyLevels.onclick = () => {
@@ -406,7 +418,7 @@ export class Toolbar {
     this.#splits = {
       trades: splitButton(this.#trades, k.trades), footprint: splitButton(this.#footprint, k.footprint), vwap: splitButton(this.#vwap, k.vwap),
       keyLevels: splitButton(this.#keyLevels, k.keyLevels), liquidations: splitButton(this.#liquidations, k.liquidations), liqLevels: splitButton(this.#liqLevels, k.liqLevels),
-      traded: splitButton(this.#traded, k.traded), absorption: splitButton(this.#absorption, k.absorption),
+      traded: splitButton(this.#traded, k.traded), absorption: splitButton(this.#absorption, k.absorption), tpo: splitButton(this.#tpo, k.tpo),
     };
     for (const [value, label] of SCOPE_OPTIONS) this.#scope.append(el('button', { textContent: label, onclick: () => this.store.set({ scope: value }) }));
     this.#alertKeys.sound.onclick = () => {
@@ -688,7 +700,7 @@ export class Toolbar {
         deck('heat', t('Heatmap'), [this.#source, this.#layer, this.#heat.style], [this.#heatScale, this.#heat.auto, this.#heat.smooth]),
         deck('panels', t('Panels'), [this.#toggles]),
         // The Range tool is the map corner's Select when the map holds its tools (Karl, 2026-10-27: the deck's Range was the same button twice).
-        deck('chart', t('Chart'), [sp.footprint, sp.trades, sp.liquidations, ...(liqLevelsUrl() ? [sp.liqLevels] : []), sp.absorption], [sp.traded, sp.keyLevels, sp.vwap, this.#scriptsSplit, ...(inCorner ? [] : [this.#range])]),
+        deck('chart', t('Chart'), [sp.footprint, sp.trades, sp.liquidations, ...(liqLevelsUrl() ? [sp.liqLevels] : []), sp.absorption], [sp.traded, sp.tpo, sp.keyLevels, sp.vwap, this.#scriptsSplit, ...(inCorner ? [] : [this.#range])]),
         // Waves beside Sounds (Karl, 2026-10-30, from the status bar's corner): with Highlights, the three ways the page says that something large
         // happened, marked, heard and seen across the screen.
         deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound, this.#alertSplits!.waves]),
@@ -827,7 +839,7 @@ export class Toolbar {
         section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
         ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')))])]),
-        section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels'] as const : []), 'absorption', 'traded', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),
+        section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels'] as const : []), 'absorption', 'traded', 'tpo', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),
         // Only a phone has the Tape tab; a touch tablet keeps the desktop's panes and gets this sheet without it.
         ...(this.tapeFields && isPhone() ? [section(t('Tape'), this.tapeFields().map(([label, control]) => field(label, control)), helpButton('candlePane'))] : []),
         section(t('Heatmap'), [
@@ -874,7 +886,7 @@ export class Toolbar {
     }
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
-    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#liqLevels, state.liqLevels.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#scripts, state.show.script); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
+    lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#liqLevels, state.liqLevels.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#tpo, state.tpo.on); lamp(this.#scripts, state.show.script); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     if (this.#tabPrice.checked !== state.tabPrice) this.#tabPrice.checked = state.tabPrice;
     if (this.#tabIcon.checked !== state.tabIcon) this.#tabIcon.checked = state.tabIcon;

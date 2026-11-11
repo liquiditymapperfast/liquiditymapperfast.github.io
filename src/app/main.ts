@@ -34,7 +34,7 @@ import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
 import { ScriptPane } from './panes/script-pane.ts';
 import { CandlePane } from './panes/candle-pane.ts';
-import { matchShortcut, togglePatch } from './shortcuts.ts';
+import { foldPatch, matchShortcut, togglePatch } from './shortcuts.ts';
 import { ReplayBar } from './replay/bar.ts';
 import { pageNow, replaying } from './replay/clock.ts';
 import { DrawController } from './draw/controller.ts';
@@ -306,6 +306,7 @@ async function main(): Promise<void> {
   toolbar.whaleInfo = () => ({ since: hub.whale?.since ?? null, state: hub.whaleState, browser: source.kind === 'browser' });
   toolbar.rollingReach = days => heat.rollingReach(days);
   toolbar.vwapMarkets = () => heat.vwapMarketStates();
+  toolbar.tpoInfo = () => heat.tpoInfo();
   heat.onRollingReach = () => toolbar.refreshOpenPanel();
   // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
   heat.onAnchor = at => { const s = store.state; store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, at, Date.now()), vwapAnchoring: false }); dismissToast(); };
@@ -345,6 +346,7 @@ async function main(): Promise<void> {
     else if (a.kind === 'now') heat.jumpToNow();
     else if (a.kind === 'zoom') heat.zoomStep(a.dir);
     else if (a.kind === 'toggle') { store.set(togglePatch(store.state, a.feature)); toolbar.refreshOpenPanel(); }
+    else if (a.kind === 'fold') { store.set(foldPatch(store.state)); toolbar.refreshOpenPanel(); }
     else if (a.kind === 'column') layouts.toggleColumn(a.side);
     else if (a.kind === 'range') range.toggle();
     else if (a.kind === 'draw') drawBar.toggle();
@@ -407,7 +409,7 @@ async function main(): Promise<void> {
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
     if (changed.has('depthBands') || changed.has('liqBands')) depth.settingsChanged();
     if (changed.has('depthSource')) depth.refresh();
-    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded') || changed.has('vwap') || changed.has('vwapAnchoring') || changed.has('profileAnchoring') || changed.has('footprint') || changed.has('customMarkets') || changed.has('barStatOptions')) heat.invalidate();
+    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded') || changed.has('vwap') || changed.has('tpo') || changed.has('vwapAnchoring') || changed.has('profileAnchoring') || changed.has('footprint') || changed.has('customMarkets') || changed.has('barStatOptions')) heat.invalidate();
     // Placing a VWAP anchor, selecting a Range and placing a drawing all take the next press on the map: arming one ends the others.
     if (changed.has('rangeTool') && state.rangeTool && state.vwapAnchoring) store.set({ vwapAnchoring: false });
     // One tool takes the next press on the map at a time: arming the profile anchor ends the VWAP's, the Range tool's and a drawing's, and
@@ -465,7 +467,7 @@ async function main(): Promise<void> {
     if (changed.has('barCollapsed')) toolbar.setCollapsed(state.barCollapsed);
     if (['show', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'oiMarkets', 'customMarkets', 'oiInstrument', 'oiParts', 'seriesInstrument', 'range'].some(k => changed.has(k as never))) ls.invalidate();
     if (['show', 'candles', 'timeframe', 'marketId', 'disabledVenues', 'scope', 'markets', 'traded', 'timeZone', 'range', 'oi', 'oiInstrument', 'oiParts', 'oiFine'].some(k => changed.has(k as never))) delta.invalidate();
-    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'footprint', 'tabPrice', 'tabIcon', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
+    if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'tpo', 'footprint', 'tabPrice', 'tabIcon', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
   for (const p of themed) p.setPalette(store.state.theme);
