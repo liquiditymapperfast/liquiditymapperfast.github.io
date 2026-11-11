@@ -401,6 +401,15 @@ test('bybit full book: a perpetual\'s answer cut to the cap does not shorten wha
   assert.equal(book.frontiers.ask, 107.25 * (1 + GUARD));
 });
 
+test('bybit full book: an answer with no level on either side is no book to seed from', () => {
+  // Seeded, it would leave both frontiers open and keep every delta row, to a billion and without end.
+  const book = new FullBook();
+  book.delta(delta(5), 0);
+  assert.equal(book.snapshot(snap(5, [], []), book.epoch, 0), 'retry');
+  assert.equal(book.live, false);
+  assert.equal(book.snapshot(snap(5, B0, A0), book.epoch, 1), 'seeded', 'the next answer with a book seeds as usual');
+});
+
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {
   const book = seededBook();
   book.delta(delta(6, [[99, 6]]), 1); book.delta(delta(7, [[98, 7]], [[101, 0]]), 2);

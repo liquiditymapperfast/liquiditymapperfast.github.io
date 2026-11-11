@@ -292,7 +292,9 @@ export class FullBook {
   /** The answer to a snapshot asked for in `epoch` (a seed while not live, a refresh while live). */
   snapshot(s: FullSnapshot, epoch: number, now: number): SnapshotResult {
     if (epoch !== this.epoch) return 'stale';
-    if (!this.#live) return this.#seedFrom(s, now);
+    // An answer with no level on either side is no book to seed from: it gives no middle for a cut, so its frontiers would stay open
+    // and every delta row, to a billion, would be kept. Read again (paced like any retry).
+    if (!this.#live) return s.b.length || s.a.length ? this.#seedFrom(s, now) : 'retry';
     if (!this.#refresh || this.#refresh.waiting) return 'stale';
     if (s.u > this.u) { this.#refresh.waiting = s; this.#refresh.since = now; return 'wait'; }
     return this.#finishRefresh(s, now);
