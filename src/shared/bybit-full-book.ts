@@ -24,6 +24,14 @@
  * place. Inside its window the live book stays as the stream kept it: in every matched check the stream-kept book equalled the snapshot at
  * the same `u`, while REST answers come from replicas that disagree on a few far levels (two ETH asks present in six reads of ten, absent in
  * four), so a snapshot's absence never deletes a level the stream keeps. There is no refresh on a clock.
+ *
+ * Auditing the seed. About one linear answer in twenty (measured 2026-11-11: 4 of 66 matched checks, BTC and ETH; no spot answer) is
+ * degraded: whole near the price (about 6.5 %), but beyond it holding only some 40 % of the levels, while still reaching the true deepest
+ * prices, so nothing in the answer itself shows it. A book seeded from one would stay sparse far out for good (the stream names only the
+ * levels that change). So every seed is followed, `AUDIT_DELAY_MS` later, by a second snapshot caught up to the same `(seq, u)` and compared
+ * inside both windows: one side missing many levels the other has, and not the reverse, is the degraded one. A degraded live book is
+ * replaced by the audit's (`repaired`); a degraded audit is ignored; two answers each missing many of the other's levels mean another audit.
+ * The same comparison keeps a degraded snapshot from extending the coverage.
  */
 
 /** One side of a book: price -> size in the venue's own unit (coins, for Bybit's linear and spot markets). */
@@ -47,10 +55,15 @@ function counter(value: unknown): number | null {
   const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d{1,16}$/.test(value) ? Number(value) : NaN;
   return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
+/** Bybit's numbers in a book: plain decimal strings (all 622,352 of seven full answers, 2026-11-11), no sign, no exponent. */
+const DECIMAL = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
+/** At most this many rows in one delta (Bybit's carry a few hundred at most): more is a protocol fault, not a book. */
+export const MAX_FRAME_ROWS = 50_000;
 /**
- * Rows `[price, size]` as Bybit sends them (decimal strings, read with `Number`). Every row must read: a price that is finite and
- * positive, a size that is finite and not negative (zero deletes, in a delta). One bad row makes the whole list unreadable (null): a frame
- * is applied whole or not at all, never with a row skipped while its `u` is taken. A price named twice in one delta: the later row wins.
+ * Rows `[price, size]` as Bybit sends them: two decimal strings (`DECIMAL`; a number, a null or anything else is no row), read with
+ * `Number`. A price above zero, a size of zero or more (zero deletes, in a delta). One bad row makes the whole list unreadable (null): a
+ * frame is applied whole or not at all, never with a row skipped while its `u` is taken. A price named twice in one delta: the later row
+ * wins.
  */
 function rowsOf(value: unknown, allowZero: boolean): [number, number][] | null {
   if (!Array.isArray(value)) return null;
@@ -58,8 +71,10 @@ function rowsOf(value: unknown, allowZero: boolean): [number, number][] | null {
   for (let i = 0; i < value.length; i++) {
     const row = value[i];
     if (!Array.isArray(row) || row.length < 2) return null;
-    const price = Number(row[0]), size = Number(row[1]);
-    if (!(price > 0) || !Number.isFinite(price) || !Number.isFinite(size) || size < 0 || (!allowZero && size === 0)) return null;
+    const p = row[0], s = row[1];
+    if (typeof p !== 'string' || typeof s !== 'string' || !DECIMAL.test(p) || !DECIMAL.test(s)) return null;
+    const price = Number(p), size = Number(s);
+    if (!(price > 0) || !Number.isFinite(price) || !Number.isFinite(size) || (!allowZero && size === 0)) return null;
     out[i] = [price, size];
   }
   return out;
@@ -71,7 +86,7 @@ export function parseFullDelta(message: unknown, symbol: string): FullDelta | nu
   const d = record(m.data);
   if (m.type !== 'delta' || !d || d.s !== symbol) return 'bad';
   const u = counter(d.u), seq = counter(d.seq), b = rowsOf(d.b, true), a = rowsOf(d.a, true), ts = Number(m.ts);
-  if (u === null || u < 1 || seq === null || !b || !a) return 'bad';
+  if (u === null || u < 1 || seq === null || !b || !a || b.length + a.length > MAX_FRAME_ROWS) return 'bad';
   return { u, seq, ts: Number.isFinite(ts) ? ts : 0, b, a };
 }
 
@@ -101,11 +116,12 @@ export type FullAction =
   | 'reconnect';
 
 /**
- * The answer to a snapshot: `seeded` (the book is live), `extended` (a refresh added coverage), `unchanged` (a refresh added nothing),
+ * The answer to a snapshot: `seeded` (the book is live), `extended` (a refresh added coverage), `repaired` (an audit or refresh found the
+ * live book degraded and replaced it), `unchanged` (a refresh added nothing),
  * `retry` (read another: behind the stream, or not anchored), `wait` (kept until the stream reaches it), `stale` (asked for in an earlier
  * epoch, or no longer wanted), `rejected` (a refresh that cannot be caught up with the live book).
  */
-export type SnapshotResult = 'seeded' | 'extended' | 'unchanged' | 'retry' | 'wait' | 'stale' | 'rejected';
+export type SnapshotResult = 'seeded' | 'extended' | 'repaired' | 'unchanged' | 'retry' | 'wait' | 'stale' | 'rejected';
 
 /** The drawn band reaches this share of the price either side (shared/merge.ts MAX_DISTANCE). */
 export const BAND = 0.5;
@@ -117,8 +133,22 @@ export const REFRESH_USED = 0.25;
 export const REFRESH_MIN_MS = 60_000, REFRESH_MAX_BACKOFF_MS = 900_000;
 /** Bybit's documented most levels a snapshot holds on a side: a side with fewer whose frontier is inside the band may have come cut short. */
 export const SNAPSHOT_CAP = 10_000;
+/** The audit after a seed is read this long after it (once the stream has run a little). */
+export const AUDIT_DELAY_MS = 10_000;
+/**
+ * A snapshot is degraded against another (both at the same `(seq, u)`) when it lacks at least `DEGRADED_MIN` levels the other has inside
+ * both windows, at least `DEGRADED_SHARE` of the other's levels there, while the other lacks no more than `ONE_WAY` as many of its own. The
+ * replicas' ordinary disagreement is a few levels; a degraded answer lacks thousands.
+ */
+export const DEGRADED_MIN = 200, DEGRADED_SHARE = 0.02, ONE_WAY = 0.1;
 /** Three resynchronisations within a minute mean the socket itself is bad. */
 const RESYNC_LIMIT = 3, RESYNC_WINDOW_MS = 60_000;
+/**
+ * Coverage epochs come from one counter for every book in this thread, so a book made anew for the same instrument (a connector
+ * replaced) never repeats a number an earlier one published: a reader comparing the instrument over time always sees the change.
+ */
+let coverageCount = 0;
+const nextCoverage = (): number => ++coverageCount;
 
 export interface FullBookOptions {
   /** How a side is made (the connector's sides keep a sorted copy for valuation, shared/connector.ts). */
@@ -129,6 +159,12 @@ export interface FullBookOptions {
   bufferRowsMax?: number;
   /** Deltas applied recently, kept whole for catching a refresh snapshot up with the live book (30 s at 200 ms). */
   recentMax?: number;
+  /** Rows held at most among those recent deltas: past it the oldest go (a refresh whose anchor went with them is rejected). */
+  recentRowsMax?: number;
+  /** How long after a seed its audit is read (`AUDIT_DELAY_MS`; a test's fast-changing book uses less). */
+  auditDelayMs?: number;
+  /** The fewest missing levels that make a snapshot degraded (`DEGRADED_MIN`; small books in tests use fewer). */
+  degradedMin?: number;
 }
 
 /**
@@ -147,12 +183,18 @@ export class FullBook {
   u = 0; seq = 0;
   /** Bumped on every resynchronisation: an answer to a snapshot asked for in an earlier epoch is not this book's. */
   epoch = 0;
-  /** Bumped whenever what the book covers changes (a seed, a withdrawal, an extension): what compares the book over time starts again. */
+  /**
+   * A new number whenever what the book covers changes (a seed, a repair, a withdrawal, an extension; unique across books, `nextCoverage`):
+   * what compares the book over time starts again. 0 before the first.
+   */
   coverageEpoch = 0;
   /** When the last delta was applied or the book seeded (the book's own freshness: trades say nothing about it). */
   appliedAt = 0;
-  /** Levels inside the live window on which the last refresh snapshot disagreed with the stream-kept book (kept as the stream has them). */
-  disagreements = 0;
+  /**
+   * How the last refresh snapshot disagreed with the stream-kept book inside both windows: levels only it had, levels only the live book
+   * had, sizes that differed (the live book keeps its own, unless it was found degraded).
+   */
+  disagreements = { snapshotOnly: 0, liveOnly: 0, sizes: 0 };
   #live = false;
   #lastSeq = 0;
   #buffer: FullDelta[] = []; #bufferRows = 0;
@@ -164,14 +206,20 @@ export class FullBook {
   /** A refresh under way, and a snapshot of it ahead of the live book waiting for the book to reach it. */
   #refresh: { waiting: FullSnapshot | null } | null = null;
   #nextRefreshAt = 0; #refreshFailures = 0;
+  /** When the audit of the current seed is due (0: none pending). */
+  #auditAt = 0;
   #resyncs: number[] = [];
   /** Why the book last stopped being live (for the status line). */
   lastFault: string | null = null;
-  readonly #makeSide: () => Side; readonly #bufferMax: number; readonly #bufferRowsMax: number; readonly #recentMax: number;
+  readonly #makeSide: () => Side; readonly #bufferMax: number; readonly #bufferRowsMax: number; readonly #recentMax: number; readonly #degradedMin: number;
+  readonly #recentRowsMax: number; readonly #auditDelayMs: number;
+  #recentRows = 0;
 
   constructor(options: FullBookOptions = {}) {
     this.#makeSide = options.makeSide ?? (() => new Map());
     this.#bufferMax = options.bufferMax ?? 1_500; this.#bufferRowsMax = options.bufferRowsMax ?? 300_000; this.#recentMax = options.recentMax ?? 150;
+    this.#degradedMin = options.degradedMin ?? DEGRADED_MIN;
+    this.#recentRowsMax = options.recentRowsMax ?? 100_000; this.#auditDelayMs = options.auditDelayMs ?? AUDIT_DELAY_MS;
     this.bids = this.#makeSide(); this.asks = this.#makeSide();
   }
 
@@ -181,10 +229,15 @@ export class FullBook {
   get frontiers(): { bid: number | null; ask: number | null } { return { bid: this.#bid.frontier, ask: this.#ask.frontier }; }
   /** A refresh is being read. */
   get refreshing(): boolean { return this.#refresh !== null; }
+  /** The seed's audit has not been passed yet. */
+  get auditing(): boolean { return this.#auditAt > 0; }
   /** A snapshot is waiting for the stream to reach its anchor. */
   get waiting(): boolean { return this.#waiting !== null; }
   /** Deltas held for the snapshot (for tests and the status line). */
   get buffered(): number { return this.#buffer.length; }
+
+  /** The mid of the live book's best bid and ask (NaN when a side is empty): one pass over each side, for the occasional refresh check. */
+  mid(): number { return midOf(this.bids, this.asks); }
 
   /** A new connection: everything is forgotten (its deltas will be held for a new snapshot). */
   reset(): void {
@@ -210,7 +263,8 @@ export class FullBook {
   /** A frame of the book's topic that did not read (`parseFullDelta` said 'bad'): the book is withdrawn and synchronised again. */
   fault(reason: string, now: number): FullAction {
     this.#withdraw(reason);
-    this.#buffer = []; this.#bufferRows = 0;
+    // What follows the bad frame is judged on its own: an old watermark would discard valid frames of a numbering that started again.
+    this.#buffer = []; this.#bufferRows = 0; this.#lastSeq = 0;
     return this.#counted(now);
   }
 
@@ -227,10 +281,12 @@ export class FullBook {
    * Whether a refresh should be read now, at `mid` (the last traded price): a frontier inside the band that the price has come a quarter
    * of the way toward, or crossed (directed distances: a jump past a frontier counts), or one on a side whose snapshot held fewer than
    * Bybit's 10,000 levels (an answer that may have come cut short: refreshed once a minute at most, then less and less often while that adds
-   * nothing).
+   * nothing). And the seed's audit, `AUDIT_DELAY_MS` after it, whatever the price.
    */
   refreshDue(mid: number, now: number): boolean {
-    if (!this.#live || this.#refresh || now < this.#nextRefreshAt || !(mid > 0)) return false;
+    if (!this.#live || this.#refresh || now < this.#nextRefreshAt) return false;
+    if (this.#auditAt && now >= this.#auditAt) return true;
+    if (!(mid > 0)) return false;
     const due = (c: Coverage, left: number): boolean => c.frontier !== null && left < mid * BAND && (left <= c.seedDistance * (1 - REFRESH_USED) || c.levels < SNAPSHOT_CAP);
     return due(this.#bid, this.#bid.frontier === null ? Infinity : mid - this.#bid.frontier) || due(this.#ask, this.#ask.frontier === null ? Infinity : this.#ask.frontier - mid);
   }
@@ -274,10 +330,14 @@ export class FullBook {
     if (after.some(d => d.seq <= s.seq)) return 'retry';
     const book = this.#build(s);
     for (const d of after) applyRows(book, d);
-    this.bids = book.bids; this.asks = book.asks; this.#bid = book.bid; this.#ask = book.ask; this.coverageEpoch++;
+    this.bids = book.bids; this.asks = book.asks; this.#bid = book.bid; this.#ask = book.ask; this.coverageEpoch = nextCoverage();
     this.u = last.u; this.seq = last.seq; this.#lastSeq = Math.max(this.#lastSeq, last.seq);
-    this.#live = true; this.lastFault = null; this.disagreements = 0; this.appliedAt = now;
-    this.#buffer = []; this.#bufferRows = 0; this.#waiting = null; this.#recent = [anchor, ...after].slice(-this.#recentMax);
+    this.#live = true; this.lastFault = null; this.disagreements = { snapshotOnly: 0, liveOnly: 0, sizes: 0 }; this.appliedAt = now;
+    // A new seed is new coverage: the refresh pauses of the book before it do not hold its audit back (a late audit finds a degraded seed
+    // already half healed by the stream, below what shows it).
+    this.#auditAt = now + this.#auditDelayMs; this.#refreshFailures = 0; this.#nextRefreshAt = 0;
+    this.#buffer = []; this.#bufferRows = 0; this.#waiting = null; this.#recent = []; this.#recentRows = 0;
+    for (const d of [anchor, ...after]) this.#remember(d);
     return 'seeded';
   }
 
@@ -297,8 +357,29 @@ export class FullBook {
     }
     const book = this.#build(s);
     for (const d of after) applyRows(book, d);
-    // Disagreements inside both windows are counted (the stream-kept levels stay); coverage past the live frontiers is added.
-    this.disagreements = differences(this.bids, book.bids, this.#bid.frontier, book.bid.frontier, true) + differences(this.asks, book.asks, this.#ask.frontier, book.ask.frontier, false);
+    // Compared inside both windows, at the same (seq, u).
+    const bid = differences(this.bids, book.bids, this.#bid.frontier, book.bid.frontier, true), ask = differences(this.asks, book.asks, this.#ask.frontier, book.ask.frontier, false);
+    const d = { snapshotOnly: bid.snapshotOnly + ask.snapshotOnly, liveOnly: bid.liveOnly + ask.liveOnly, sizes: bid.sizes + ask.sizes };
+    this.disagreements = d;
+    const many = (missing: number, of: number, other: number): boolean => missing >= Math.max(this.#degradedMin, DEGRADED_SHARE * of) && other <= ONE_WAY * missing;
+    if (many(d.snapshotOnly, bid.snapshotLevels + ask.snapshotLevels, d.liveOnly)) {
+      // The live book lacks many levels the snapshot has, and not the reverse: it was seeded from a degraded answer. The snapshot, caught up
+      // to the same (seq, u), becomes the book.
+      this.bids = book.bids; this.asks = book.asks; this.#bid = book.bid; this.#ask = book.ask; this.coverageEpoch = nextCoverage();
+      this.#auditAt = 0; this.#refresh = null; this.#refreshFailures = 0; this.#nextRefreshAt = now + REFRESH_MIN_MS;
+      return 'repaired';
+    }
+    if (many(d.liveOnly, bid.liveLevels + ask.liveLevels, d.snapshotOnly)) {
+      // The snapshot is the degraded one: nothing is taken from it, and the live book has passed its audit.
+      this.#auditAt = 0; this.failRefresh(now); return 'unchanged';
+    }
+    if (d.snapshotOnly >= this.#degradedMin && d.liveOnly >= this.#degradedMin) {
+      // Each lacks many of the other's levels: which is whole is not known. Nothing is taken, and another audit follows (after the pause).
+      this.#auditAt = now; this.failRefresh(now); return 'unchanged';
+    }
+    // The two agree (a replica's few levels aside): the audit is passed, and coverage past the live frontiers is added.
+    const audit = this.#auditAt > 0;
+    this.#auditAt = 0;
     const mid = midOf(this.bids, this.asks);
     let grew = false;
     const bidEdge = this.#bid.frontier, newBid = book.bid.frontier;
@@ -314,8 +395,10 @@ export class FullBook {
     // What the next refresh is judged against: the distances now, and the snapshot's own counts.
     this.#bid = { ...this.#bid, seedDistance: this.#bid.frontier !== null && mid > 0 ? mid - this.#bid.frontier : this.#bid.seedDistance, levels: Math.max(this.#bid.levels, s.b.length) };
     this.#ask = { ...this.#ask, seedDistance: this.#ask.frontier !== null && mid > 0 ? this.#ask.frontier - mid : this.#ask.seedDistance, levels: Math.max(this.#ask.levels, s.a.length) };
+    // A passed audit that adds nothing is no failed refresh: the next one waits only the usual minute.
+    if (!grew && audit) { this.#refresh = null; this.#nextRefreshAt = now + REFRESH_MIN_MS; return 'unchanged'; }
     if (!grew) { this.failRefresh(now); return 'unchanged'; }
-    this.coverageEpoch++;
+    this.coverageEpoch = nextCoverage();
     this.#refresh = null; this.#refreshFailures = 0; this.#nextRefreshAt = now + REFRESH_MIN_MS;
     return 'extended';
   }
@@ -340,7 +423,12 @@ export class FullBook {
   #apply(d: FullDelta, now: number): void {
     applyRows({ bids: this.bids, asks: this.asks, bid: this.#bid, ask: this.#ask }, d);
     this.u = d.u; this.seq = d.seq; this.#lastSeq = Math.max(this.#lastSeq, d.seq); this.appliedAt = now;
-    this.#recent.push(d); if (this.#recent.length > this.#recentMax) this.#recent.shift();
+    this.#remember(d);
+  }
+  /** One delta among the recent ones, the oldest let go past `recentMax` frames or `recentRowsMax` rows. */
+  #remember(d: FullDelta): void {
+    this.#recent.push(d); this.#recentRows += d.b.length + d.a.length;
+    while (this.#recent.length > this.#recentMax || (this.#recentRows > this.#recentRowsMax && this.#recent.length > 1)) { const old = this.#recent.shift()!; this.#recentRows -= old.b.length + old.a.length; }
   }
 
   /** The book is no longer the venue's: withdrawn, a new epoch, `d` starts the new buffer, and a snapshot is wanted (or a new socket). */
@@ -356,8 +444,8 @@ export class FullBook {
   }
   #withdraw(reason: string | null): void {
     this.#live = false; this.epoch++; this.u = 0; this.seq = 0; this.lastFault = reason;
-    this.bids = this.#makeSide(); this.asks = this.#makeSide(); this.coverageEpoch++;
-    this.#waiting = null; this.#refresh = null; this.#recent = [];
+    this.bids = this.#makeSide(); this.asks = this.#makeSide(); this.coverageEpoch = nextCoverage();
+    this.#waiting = null; this.#refresh = null; this.#recent = []; this.#recentRows = 0; this.#auditAt = 0;
     this.#bid = noCoverage(); this.#ask = noCoverage();
   }
 }
@@ -371,13 +459,13 @@ function applyRows(book: { bids: Side; asks: Side; bid: Coverage; ask: Coverage 
   for (const [p, q] of d.a) { if (askEdge !== null && p > askEdge) continue; if (q > 0) asks.set(p, q); else asks.delete(p); }
 }
 
-/** Levels on which two sides disagree inside both their frontiers (a size that differs, or a level only one of them has). */
-function differences(live: Side, snap: Side, liveEdge: number | null, snapEdge: number | null, isBid: boolean): number {
+/** How two sides disagree inside both frontiers: levels only the snapshot has, only the live side has, sizes that differ; and how many levels each has there. */
+function differences(live: Side, snap: Side, liveEdge: number | null, snapEdge: number | null, isBid: boolean): { snapshotOnly: number; liveOnly: number; sizes: number; snapshotLevels: number; liveLevels: number } {
   const inside = (p: number): boolean => isBid ? (liveEdge === null || p >= liveEdge) && (snapEdge === null || p >= snapEdge) : (liveEdge === null || p <= liveEdge) && (snapEdge === null || p <= snapEdge);
-  let n = 0;
-  for (const [p, q] of snap) if (inside(p) && live.get(p) !== q) n++;
-  for (const p of live.keys()) if (inside(p) && !snap.has(p)) n++;
-  return n;
+  let snapshotOnly = 0, liveOnly = 0, sizes = 0, snapshotLevels = 0, liveLevels = 0;
+  for (const [p, q] of snap) { if (!inside(p)) continue; snapshotLevels++; const mine = live.get(p); if (mine === undefined) snapshotOnly++; else if (mine !== q) sizes++; }
+  for (const p of live.keys()) { if (!inside(p)) continue; liveLevels++; if (!snap.has(p)) liveOnly++; }
+  return { snapshotOnly, liveOnly, sizes, snapshotLevels, liveLevels };
 }
 
 /** The mid of the best bid and ask (NaN when a side is empty). One pass over each side: used only when a refresh is caught up. */

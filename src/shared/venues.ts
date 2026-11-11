@@ -162,8 +162,13 @@ abstract class BybitBook extends MarketBook {
   /** The snapshot request out (its connection and epoch: one at a time), and the pause before the next after one that could not be used. */
   #asking: { generation: number; epoch: number } | null = null;
   #pause = 0; #retry: ReturnType<typeof setTimeout> | null = null;
-  /** The last traded price (what a refresh is judged at) and when the frontiers were last looked at. */
-  #lastPrice = 0; #lookedAt = 0;
+  /** The last traded price and when it came (what a refresh is judged at), and when the frontiers were last looked at. */
+  #lastPrice = 0; #lastPriceAt = 0; #lookedAt = 0;
+  /**
+   * When the book's topic last sent a frame that read (any delta, live or held for a snapshot), or the connection opened: the book
+   * channel's own deadline, which holds whether the book is live, loading or withdrawn after a gap.
+   */
+  #bookFrameAt = 0;
   protected url() { return `wss://stream.bybit.com/v5/public/${this.category}`; }
   /** Topics this market subscribes that carry open interest: the perpetual's ticker (spot has none). */
   protected oiTopics(): string[] { return []; }
@@ -171,16 +176,20 @@ abstract class BybitBook extends MarketBook {
     const s = this.symbol;
     const liveness = this.category === 'spot' && !this.bookRead ? [`tickers.${s}`] : [];
     send({ op: 'subscribe', args: [...(this.bookRead ? [fullTopic(s)] : []), `publicTrade.${s}`, ...(this.category === 'linear' ? [`allLiquidation.${s}`] : []), ...this.oiTopics(), ...liveness] });
+    this.#bookFrameAt = Date.now();
     if (this.bookRead) this.#later(BYBIT_SNAPSHOT_FIRST_MS);
   }
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping' }) }; }
-  protected override bookReady(now: number): boolean { return this.#full.live && !this.#stalled(now); }
+  /** Drawn only while synchronised and fresh by its own deltas (a quiet book's empty ones included): trades say nothing about the book. */
+  protected override bookReady(now: number): boolean { return this.#full.live && now - this.#full.appliedAt <= BYBIT_BOOK_STALL_MS; }
   protected override bookEpoch(): number { return this.#full.coverageEpoch; }
-  /** Whether the book channel has stopped (no delta, not even the quiet book's empty one, for `BYBIT_BOOK_STALL_MS`). */
-  #stalled(now: number): boolean { return this.#full.live && now - this.#full.appliedAt > BYBIT_BOOK_STALL_MS; }
+  /**
+   * The book channel has stopped: no frame of its topic (not even a quiet book's empty one) for `BYBIT_BOOK_STALL_MS`, while the book
+   * was live, loading or withdrawn: other topics keeping the socket alive do not hide it. The socket is dropped and connected again.
+   */
   override check(now: number = Date.now()): void {
     super.check(now);
-    if (this.bookRead && this.state === 'live' && this.#stalled(now)) this.fail(`book silent ${Math.round(BYBIT_BOOK_STALL_MS / 1000)} s`);
+    if (this.bookRead && this.state === 'live' && now - this.#bookFrameAt > BYBIT_BOOK_STALL_MS) this.fail(`book silent ${Math.round(BYBIT_BOOK_STALL_MS / 1000)} s`);
   }
   override bookDetail(): string | null {
     if (!this.bookRead || this.#full.live) return null;
@@ -194,8 +203,11 @@ abstract class BybitBook extends MarketBook {
     if (topic === fullTopic(this.symbol)) {
       if (!this.bookRead) return;
       const delta = parseFullDelta(m, this.symbol), now = Date.now();
+      if (delta && delta !== 'bad') this.#bookFrameAt = now;
       const action = delta === 'bad' ? this.#full.fault('unreadable book frame', now) : delta ? this.#full.delta(delta, now) : 'none';
       this.#sides(); this.touch(); this.#act(action);
+      // A quiet market's book still sends a frame every few seconds: the seed's audit is not left waiting for a trade.
+      this.#look();
       return;
     }
     if (topic === `allLiquidation.${this.symbol}`) {
@@ -214,7 +226,7 @@ abstract class BybitBook extends MarketBook {
         const price = num(d.p), amount = num(d.v), t = num(d.T), side = d.S === 'Buy' ? 'buy' : d.S === 'Sell' ? 'sell' : null;
         // Every fill of one market order carries the same `seq` (the matching event), so it names the order.
         const order = d.seq === undefined || d.seq === null ? undefined : String(d.seq);
-        if (side && price > 0 && amount > 0 && Number.isFinite(t)) { this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) }); this.#lastPrice = price; }
+        if (side && price > 0 && amount > 0 && Number.isFinite(t)) { this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) }); this.#lastPrice = price; this.#lastPriceAt = Date.now(); }
       }
       this.alive(); this.#look();
       return;
@@ -233,7 +245,7 @@ abstract class BybitBook extends MarketBook {
   }
   protected override reset() {
     super.reset(); this.#full.reset(); this.#sides();
-    this.#asking = null; this.#pause = 0; this.#lastPrice = 0; this.#lookedAt = 0;
+    this.#asking = null; this.#pause = 0; this.#lastPrice = 0; this.#lastPriceAt = 0; this.#lookedAt = 0; this.#bookFrameAt = Date.now();
     if (this.#retry) clearTimeout(this.#retry); this.#retry = null;
   }
 
@@ -260,12 +272,14 @@ abstract class BybitBook extends MarketBook {
     if (this.#retry) { clearTimeout(this.#retry); this.#retry = null; }
     void this.#read(generation, epoch, false);
   }
-  /** At most every few seconds, on a trade: whether the price has come near enough a frontier for a refresh, and if so read one. */
+  /** At most every few seconds, on a trade or a book frame: whether the seed's audit is due or the price has come near enough a frontier, and if so read a snapshot. */
   #look(): void {
     const now = Date.now();
     if (!this.bookRead || !this.#full.live || this.#asking || now - this.#lookedAt < BYBIT_REFRESH_LOOK_MS) return;
     this.#lookedAt = now;
-    if (!this.#full.refreshDue(this.#lastPrice, now)) return;
+    // Judged at the last trade while one came in the last minute, else at the book's own mid (a quiet book trades seldom).
+    const mid = this.#lastPrice > 0 && now - this.#lastPriceAt <= 60_000 ? this.#lastPrice : this.#full.mid();
+    if (!this.#full.refreshDue(mid, now)) return;
     void this.#read(this.generation, this.#full.beginRefresh(now), true);
   }
   /** One snapshot request, its answer handed to the full book; a seed that could not be used is asked for again after a pause. */
@@ -290,7 +304,7 @@ abstract class BybitBook extends MarketBook {
     if (refresh) {
       // 'rejected' and 'unchanged' already paused the next refresh; 'wait' finishes once the book reaches the snapshot.
       if (result === 'failed') this.#full.failRefresh(Date.now());
-      if (result === 'extended') this.touch();
+      if (result === 'extended' || result === 'repaired') { this.#sides(); this.touch(); }
       return;
     }
     if (result === 'seeded') { this.#pause = 0; this.#sides(); this.touch(); return; }

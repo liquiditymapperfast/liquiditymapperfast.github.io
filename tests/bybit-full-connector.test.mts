@@ -124,6 +124,45 @@ test('Bybit connector: run for its trades alone, it subscribes no book and reads
   });
 });
 
+test('Bybit connector: a withdrawn book whose channel went silent is dropped even while trades keep the socket alive', async () => {
+  await withFakes(async ({ asked, sockets }) => {
+    const c = new BybitConnector();
+    c.start(); sockets[0]!.onopen?.();
+    sockets[0]!.onmessage?.(delta(10));
+    await untilAsked(asked, 1);
+    asked[0]!.answer(body(10)); await settle();
+    sockets[0]!.onmessage?.(delta(12));                          // a gap: withdrawn, a snapshot wanted
+    assert.equal(c.valued(Date.now()), null);
+    const t0 = Date.now();
+    c.lastUpdate = t0 + 30_500;                                     // trades and the ticker keep coming
+    c.check(t0 + 31_000);
+    assert.equal(c.failures, 1); assert.match(c.lastFailure ?? '', /book silent 30 s/);
+    c.stop();
+  });
+});
+
+test('Bybit connector: a quiet book (heartbeats, no trades) still reads its audit', async () => {
+  await withFakes(async ({ asked, sockets }) => {
+    const realNow = Date.now; let clock = realNow();
+    Date.now = () => clock;
+    try {
+      const c = new BybitConnector();
+      c.start(); sockets[0]!.onopen?.();
+      sockets[0]!.onmessage?.(delta(10));
+      await untilAsked(asked, 1);
+      asked[0]!.answer(body(10)); await settle();
+      assert.ok(c.valued(clock));
+      clock += 11_000;                                              // past the audit delay; no trade at all
+      sockets[0]!.onmessage?.(delta(11));                           // a quiet book's empty delta
+      await untilAsked(asked, 2);
+      assert.equal(asked[1]!.url, asked[0]!.url, 'the audit asks for the same snapshot');
+      asked[1]!.answer(body(11)); await settle();
+      assert.ok(c.valued(clock), 'passed: the book stays');
+      c.stop();
+    } finally { Date.now = realNow; }
+  });
+});
+
 test('Bybit connector: a refused subscription drops the socket; a book channel that stalls is no longer drawn and is dropped too', async () => {
   await withFakes(async ({ asked, sockets }) => {
     const c = new BybitConnector();

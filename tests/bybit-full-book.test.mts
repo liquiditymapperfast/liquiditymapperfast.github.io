@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FullBook, GUARD, REFRESH_MIN_MS, SNAPSHOT_CAP, fullSnapshotUrl, fullTopic, parseFullDelta, parseFullSnapshot, type FullDelta, type FullSnapshot } from '../src/shared/bybit-full-book.ts';
+import { AUDIT_DELAY_MS, FullBook, GUARD, MAX_FRAME_ROWS, REFRESH_MIN_MS, SNAPSHOT_CAP, fullSnapshotUrl, fullTopic, parseFullDelta, parseFullSnapshot, type FullDelta, type FullSnapshot } from '../src/shared/bybit-full-book.ts';
 
 const S = 'BTCUSDT';
 type Rows = [number, number][];
@@ -24,6 +24,14 @@ test('bybit full book: the addresses, and frames read whole or not at all', () =
   assert.equal(parseFullDelta(frame(0), S), 'bad', 'u starts at 1');
   assert.equal(parseFullDelta(frame(2 ** 60), S), 'bad', 'an unsafe u');
   assert.equal(parseFullDelta(frame(7, [], [], { b: null }), S), 'bad');
+  // Only plain decimal strings: a null, a number, an exponent, a sign or an empty string is no row (it would have read as a deletion).
+  for (const row of [['99', null], [99, '1'], ['99', 1], ['1e5', '1'], ['99', '-1'], ['+99', '1'], ['', '1'], ['99', ''], ['99.', '1'], ['099', '1']]) {
+    assert.equal(parseFullDelta(frame(7, [row]), S), 'bad', JSON.stringify(row));
+  }
+  assert.deepEqual(parseFullDelta(frame(7, [['0.00001234', '1234567.5'], ['99', '0']]), S), { u: 7, seq: 70, ts: 1, b: [[0.00001234, 1234567.5], [99, 0]], a: [] });
+  // A frame of more rows than any Bybit sends is a fault, not a book.
+  const many = Array.from({ length: MAX_FRAME_ROWS + 1 }, (_, i) => [String(1 + i), '1']);
+  assert.equal(parseFullDelta(frame(7, many), S), 'bad');
 });
 
 test('bybit full book: snapshots are checked before use', () => {
@@ -146,9 +154,32 @@ test('bybit full book: live continuity, gaps, a new numbering and seq that goes 
   assert.equal(fresh.delta(delta(7), 0), 'snapshot'); fresh.snapshot(snap(7, B0, A0), fresh.epoch, 0);
   assert.equal(fresh.delta(delta(9), 30_000), 'snapshot'); fresh.snapshot(snap(9, B0, A0), fresh.epoch, 0);
   assert.equal(fresh.delta(delta(11), 70_000), 'snapshot', 'the first of the three is more than a minute old');
-  // An unreadable frame withdraws the book like a gap does.
+  // An unreadable frame withdraws the book like a gap does, and forgets the old sequence watermark: a numbering that starts again after it
+  // (low seq) is held, not discarded.
   const faulty = seededBook();
+  faulty.delta(delta(6, [], [], 1_000), 0);
   assert.equal(faulty.fault('unreadable book frame', 0), 'snapshot'); assert.equal(faulty.live, false); assert.equal(faulty.buffered, 0);
+  faulty.delta(delta(1, [], [], 10), 1); faulty.delta(delta(2, [], [], 20), 2);
+  assert.equal(faulty.buffered, 2, 'both frames held');
+  assert.equal(faulty.snapshot(snap(2, B0, A0, 20), faulty.epoch, 3), 'seeded');
+});
+
+test('bybit full book: coverage epochs are unique across books; a new seed audits on time whatever the earlier refreshes did', () => {
+  const one = seededBook(), two = seededBook();
+  assert.ok(one.coverageEpoch > 0 && two.coverageEpoch > 0 && one.coverageEpoch !== two.coverageEpoch, 'a book made anew never repeats an earlier number');
+  const before = one.coverageEpoch;
+  one.delta(delta(7), 0);
+  assert.notEqual(one.coverageEpoch, before, 'a withdrawal is a new number');
+  // Refreshes that failed push the next one back; a seed after a gap starts clean, so its audit is due AUDIT_DELAY_MS after it.
+  const book = seededBook();
+  book.snapshot(snap(5, B0, A0), book.beginRefresh(0), 0);                       // the audit, passed
+  for (let k = 1; k <= 4; k++) { const at = REFRESH_MIN_MS * 2 ** k; book.snapshot(snap(5, B0, A0), book.beginRefresh(at), at); }
+  assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 16 + 1), false, 'paused for a long while');
+  const t = REFRESH_MIN_MS * 16 + 1;
+  book.delta(delta(9), t); book.snapshot(snap(9, B0, A0), book.epoch, t);
+  assert.equal(book.live, true); assert.equal(book.auditing, true);
+  assert.equal(book.refreshDue(100, t + AUDIT_DELAY_MS), true, 'the new seed audits on time');
+  assert.equal(book.mid(), 100);
 });
 
 test('bybit full book: rows beyond the snapshot\'s frontier are left out, and the frontier stays', () => {
@@ -179,6 +210,9 @@ test('bybit full book: a refresh is due when a frontier inside the band is appro
   for (let i = 1; i <= SNAPSHOT_CAP; i++) { bids.push([100 - i * 0.001, 1]); asks.push([100 + i * 0.001, 1]); }
   const book = seededBook(bids, asks);
   assert.deepEqual(book.frontiers, { bid: 90, ask: 110 });
+  // First the seed's audit, due AUDIT_DELAY_MS after it whatever the price; passed (the same book), it pauses the next refresh a minute.
+  assert.equal(book.refreshDue(100, AUDIT_DELAY_MS - 1), false); assert.equal(book.refreshDue(100, AUDIT_DELAY_MS), true);
+  assert.equal(book.snapshot(snap(5, bids, asks), book.beginRefresh(0), 0), 'unchanged'); assert.equal(book.auditing, false);
   assert.equal(book.refreshDue(100, REFRESH_MIN_MS), false);
   assert.equal(book.refreshDue(97.6, REFRESH_MIN_MS), false, '7.6 left of 10');
   assert.equal(book.refreshDue(97.4, REFRESH_MIN_MS), true, '7.4 left');
@@ -212,10 +246,42 @@ test('bybit full book: a refresh adds only coverage past the live frontiers; ins
   const { b, a } = sides(book);
   assert.deepEqual(b, [[99, 6], [98, 7], [97, 8], [96, 4], [95, 5]], 'inside the window, the stream-kept book; delta 8 at 92 stays beyond the frontier');
   assert.deepEqual(a, [[102, 2], [103, 3], [104, 4], [105, 5], [106, 6], [107, 1], [108, 8]], 'past 105 the snapshot caught up with delta 8; inside, nothing changed');
-  assert.equal(book.disagreements, 2, '103 differs and 104 is missing from the snapshot');
+  assert.deepEqual(book.disagreements, { snapshotOnly: 0, liveOnly: 1, sizes: 1 }, '104 is missing from the snapshot and 103 differs');
   // Deltas past the new frontier are still left out; inside it they apply.
   book.delta(delta(9, [], [[108, 2], [109, 1]]), 13);
   assert.equal(book.asks.get(108), 2); assert.equal(book.asks.has(109), false);
+});
+
+test('bybit full book: the seed\'s audit replaces a degraded seed, ignores a degraded audit, and audits again when both differ', () => {
+  // A whole book of 1,000 levels a side around 100, and a degraded copy: whole within 2 % of the price, a third of the levels beyond.
+  const whole: { b: Rows; a: Rows } = { b: [], a: [] };
+  for (let i = 1; i <= 1_000; i++) { whole.b.push([100 - i * 0.01, 1]); whole.a.push([100 + i * 0.01, 1]); }
+  const thin = (rows: Rows, keep: (i: number) => boolean): Rows => rows.filter(([p], i) => Math.abs(p - 100) <= 2 || keep(i));
+  const degraded = { b: thin(whole.b, i => i % 3 === 0), a: thin(whole.a, i => i % 3 === 0) };
+  // Seeded from the degraded answer: the audit (the whole one, at the same (seq, u)) repairs it.
+  let book = seededBook(degraded.b, degraded.a);
+  assert.equal(book.auditing, true);
+  const before = book.coverageEpoch;
+  assert.equal(book.snapshot(snap(5, whole.b, whole.a), book.beginRefresh(AUDIT_DELAY_MS), AUDIT_DELAY_MS), 'repaired');
+  assert.equal(book.bids.size, 1_000); assert.equal(book.asks.size, 1_000); assert.equal(book.auditing, false);
+  assert.ok(book.coverageEpoch > before, 'a repaired book is new coverage');
+  assert.ok(book.disagreements.snapshotOnly > 1_000 && book.disagreements.liveOnly === 0);
+  // Seeded from the whole answer: a degraded audit is ignored, and the audit counts as passed.
+  book = seededBook(whole.b, whole.a);
+  assert.equal(book.snapshot(snap(5, degraded.b, degraded.a), book.beginRefresh(AUDIT_DELAY_MS), AUDIT_DELAY_MS), 'unchanged');
+  assert.equal(book.bids.size, 1_000); assert.equal(book.auditing, false);
+  // Two degraded answers that lack different levels: nothing is taken, and the audit is due again after the pause.
+  const other = { b: thin(whole.b, i => i % 3 === 1), a: thin(whole.a, i => i % 3 === 1) };
+  book = seededBook(degraded.b, degraded.a);
+  assert.equal(book.snapshot(snap(5, other.b, other.a), book.beginRefresh(AUDIT_DELAY_MS), AUDIT_DELAY_MS), 'unchanged');
+  assert.equal(book.auditing, true); assert.equal(book.bids.size, degraded.b.length);
+  assert.equal(book.refreshDue(100, AUDIT_DELAY_MS + REFRESH_MIN_MS), true);
+  // A few levels that differ (a replica's own) are an ordinary audit: passed, the stream-kept levels stay.
+  book = seededBook(whole.b, whole.a);
+  const replica = { b: whole.b.filter((_, i) => i !== 500), a: whole.a.map(([p, q], i): [number, number] => [p, i === 7 ? 9 : q]) };
+  assert.equal(book.snapshot(snap(5, replica.b, replica.a), book.beginRefresh(AUDIT_DELAY_MS), AUDIT_DELAY_MS), 'unchanged');
+  assert.equal(book.auditing, false); assert.equal(book.bids.size, 1_000); assert.equal(book.asks.get(whole.a[7]![0]), 1);
+  assert.deepEqual(book.disagreements, { snapshotOnly: 0, liveOnly: 1, sizes: 1 });
 });
 
 test('bybit full book: a refresh ahead of the book waits; one that adds nothing or cannot be anchored backs off', () => {
@@ -226,20 +292,30 @@ test('bybit full book: a refresh ahead of the book waits; one that adds nothing 
   book.delta(delta(7, [], [[106, 6]]), 0);
   assert.equal(book.refreshing, false, 'finished once the book reached it'); assert.equal(book.asks.get(106), 6); assert.equal(book.frontiers.ask, 106);
 
-  // Nothing new: unchanged, and the next refresh waits longer each time (a minute, two, four ...).
+  // The first refresh after a seed is its audit: passed and adding nothing, it pauses the next one a minute only.
   book = seededBook();
   epoch = book.beginRefresh(0);
   assert.equal(book.snapshot(snap(5, B0, A0), epoch, 0), 'unchanged');
-  assert.equal(book.refreshing, false); assert.equal(book.live, true);
+  assert.equal(book.refreshing, false); assert.equal(book.live, true); assert.equal(book.auditing, false);
   assert.equal(book.refreshDue(100, REFRESH_MIN_MS - 1), false); assert.equal(book.refreshDue(100, REFRESH_MIN_MS), true);
+  // Refreshes that add nothing then wait longer each time (a minute, two, four ...).
   epoch = book.beginRefresh(REFRESH_MIN_MS);
   assert.equal(book.snapshot(snap(5, B0, A0), epoch, REFRESH_MIN_MS), 'unchanged');
-  assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 2.5), false); assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 3), true);
+  assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 2 - 1), false); assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 2), true);
+  epoch = book.beginRefresh(REFRESH_MIN_MS * 2);
+  assert.equal(book.snapshot(snap(5, B0, A0), epoch, REFRESH_MIN_MS * 2), 'unchanged');
+  assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 4 - 1), false); assert.equal(book.refreshDue(100, REFRESH_MIN_MS * 4), true);
 
   // At the live u with another seq, or too far behind the deltas kept: rejected, the live book stays.
   book = seededBook();
   epoch = book.beginRefresh(0);
   assert.equal(book.snapshot(snap(5, B0, A0, 51), epoch, 0), 'rejected');
+  // Its anchor gone with the recent rows' budget: rejected.
+  book = seededBook(B0, A0, 5, { recentRowsMax: 4 });
+  for (let u = 6; u <= 8; u++) book.delta(delta(u, [[99, u], [98, u]]), 0);
+  epoch = book.beginRefresh(0);
+  assert.equal(book.snapshot(snap(6, B0, A0), epoch, 0), 'rejected');
+  // Too far behind the deltas kept: rejected.
   book = seededBook(B0, A0, 5, { recentMax: 2 });
   for (let u = 6; u <= 10; u++) book.delta(delta(u), 0);
   epoch = book.beginRefresh(0);
@@ -260,7 +336,7 @@ function rng(seed: number): () => number {
 }
 
 test('bybit full book: against a simulated exchange, the kept book equals the venue\'s inside the frontiers', () => {
-  const seen = { seeded: 0, extended: 0, unchanged: 0, rejected: 0, retry: 0, wait: 0, compared: 0, lost: 0 };
+  const seen = { seeded: 0, extended: 0, repaired: 0, unchanged: 0, rejected: 0, retry: 0, wait: 0, compared: 0, lost: 0 };
   for (let seed = 1; seed <= 40; seed++) {
     const r = rng(seed), CAP = 120;
     // The venue: a book on a 0.5 grid around a mid that drifts; snapshots capped at CAP levels a side (Bybit's spot cap).
@@ -268,11 +344,15 @@ test('bybit full book: against a simulated exchange, the kept book equals the ve
     let mid = 1000, u = 0, seq = 0;
     for (let i = 1; i <= 150; i++) { vb.set(mid - i * 0.5, 1 + Math.floor(r() * 9)); va.set(mid + i * 0.5, 1 + Math.floor(r() * 9)); }
     const venueSnap = (): FullSnapshot => ({ u, seq, ts: 0, b: [...vb].sort((x, y) => y[0] - x[0]).slice(0, CAP), a: [...va].sort((x, y) => x[0] - y[0]).slice(0, CAP) });
-    // Replicas: an answer may come from one up to 20 steps behind, and now and then cut to half its levels.
+    // Replicas: an answer may come from one up to 20 steps behind, now and then cut to half its levels, and now and then degraded (whole
+    // within 15 of the mid, a third of the levels beyond: what about one linear answer in twenty is, measured).
     const past: FullSnapshot[] = [];
     const replica = (): FullSnapshot => {
       const x = r(), s = x < 0.15 && past.length ? past[Math.floor(r() * past.length)]! : venueSnap();
-      return r() < 0.05 ? { ...s, b: s.b.slice(0, CAP / 2) } : s;
+      const y = r();
+      if (y < 0.05) return { ...s, b: s.b.slice(0, CAP / 2) };
+      if (y < 0.15) { const m = s.b.length && s.a.length ? (s.b[0]![0] + s.a[0]![0]) / 2 : 0, thin = (rows: Rows): Rows => rows.filter(([p], i) => Math.abs(p - m) <= 15 || i % 3 === 0 || i === rows.length - 1); return { ...s, b: thin(s.b), a: thin(s.a) }; }
+      return s;
     };
     const step = (): FullDelta => {
       mid += (r() - 0.5) * 2;
@@ -288,7 +368,8 @@ test('bybit full book: against a simulated exchange, the kept book equals the ve
       for (const p of [...va.keys()]) if (p <= mid) { va.delete(p); a.push([p, 0]); }
       return { u: ++u, seq: (seq += 1 + Math.floor(r() * 3)), ts: 0, b, a };
     };
-    const book = new FullBook({ recentMax: 40 });
+    // Its book changes far faster than a real one's far levels (six rows a side every step over some 180 bins), so the audit comes sooner.
+    const book = new FullBook({ recentMax: 40, degradedMin: 20, auditDelayMs: 1_000 });
     // The stream reaches the book up to three steps late, so a snapshot (read from the venue as it is) can be ahead of the book.
     const transit: { d: FullDelta; at: number }[] = [];
     const inflight: { s: FullSnapshot; epoch: number; due: number }[] = [];
@@ -312,8 +393,8 @@ test('bybit full book: against a simulated exchange, the kept book equals the ve
         if (result in seen) seen[result as keyof typeof seen]++;
         if (result === 'retry') ask(t, book.epoch);
       }
-      // Compared whenever the book has caught up with the venue (every delta made so far applied).
-      if (book.live && book.u === u) {
+      // Compared whenever the book has caught up with the venue (every delta made so far applied) and passed its seed's audit.
+      if (book.live && book.u === u && !book.auditing) {
         seen.compared++;
         const { bid, ask: askEdge } = book.frontiers;
         for (const [p, q] of vb) if (bid === null || p >= bid) assert.equal(book.bids.get(p), q, `seed ${seed} step ${n}: bid ${p}`);
