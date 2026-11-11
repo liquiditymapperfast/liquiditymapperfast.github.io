@@ -50,7 +50,11 @@ export interface HistoryColumn { inst: string; step: number; column: Column }
  * What the service says it has: finished hours from `first` to `last` (null when none), the open hour, each book's grid step, and the
  * instruments whose trade side it records (`trades`: for a coin it records no books of, the only ones).
  */
-export interface HistoryLatest { v: 1; coin: string; first: number | null; last: number | null; open: number | null; steps: Record<string, number>; trades?: string[]; tiles?: unknown }
+export interface HistoryLatest {
+  v: 1; coin: string; first: number | null; last: number | null; open: number | null; steps: Record<string, number>; trades?: string[]; tiles?: unknown;
+  /** The open hour's closed pieces (hlm-history from 2026-11-11, `openHourParts`): `n` of them ready, cut every `ms` at the earliest. */
+  pieces?: { v: 1; ms: number; n: number };
+}
 
 /**
  * An hour file's columns (layout in hlm-history's store.rs: a 16-byte header `HLMC`, version 1, the hour; then length-prefixed records), or
@@ -72,6 +76,51 @@ export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: Histor
   }
   rows.hour = hour;
   return { hour, columns, rows };
+}
+
+/** The open hour's pieces as this page reads them: version 1, cut every ten minutes, at most five closed (`openHourParts`). */
+const PIECE_MS = 600_000, PIECES_MAX = 5;
+
+/**
+ * The open hour as the service also serves it (2026-11-11): its closed pieces, each cached for hours by every cache, then the tail written
+ * since the last of them, which alone changes every few seconds. Each is the hour's 16-byte header and a run of whole records; joined in
+ * order (`joinParts`) they are the hour as written so far, byte for byte what `m1/<open>.bin` answers. Names, inside the hour: piece k is
+ * open + k * 600000, the tail after k pieces open + k * 600000 + 1. Null when `latest.json` names no piece (none closed yet, or a service
+ * from before) or names them in a way this page does not read: the page then reads the whole hour, at most six requests either way.
+ */
+export function openHourParts(latest: Pick<HistoryLatest, 'open' | 'pieces'>): number[] | null {
+  const { open, pieces } = latest;
+  if (typeof open !== 'number' || !Number.isSafeInteger(open) || open % HOUR_MS !== 0) return null;
+  if (!pieces || typeof pieces !== 'object' || pieces.v !== 1 || pieces.ms !== PIECE_MS) return null;
+  const k = pieces.n;
+  if (typeof k !== 'number' || !Number.isSafeInteger(k) || k < 1 || k > PIECES_MAX) return null;
+  const names: number[] = [];
+  for (let i = 1; i <= k; i++) names.push(open + i * PIECE_MS);
+  names.push(open + k * PIECE_MS + 1);
+  return names;
+}
+
+/**
+ * Parts of one hour joined into one hour file: the first part's header, then every part's records in order. Null unless each part is a file
+ * of `hour` (its header) whose records are whole up to its very end: the service cuts pieces and ends the tail between records, so a part
+ * that does not end on one was not sent whole, and a piece cut inside a record would make the next part's first record unreadable.
+ */
+export function joinParts(parts: readonly ArrayBuffer[], hour: number): ArrayBuffer | null {
+  if (!parts.length) return null;
+  let total = 16;
+  for (const part of parts) {
+    const view = new DataView(part), size = part.byteLength;
+    if (size < 16 || view.getUint32(0, false) !== 0x484c4d43 || view.getUint16(4, true) !== 1 || Number(view.getBigInt64(8, true)) !== hour) return null;
+    let at = 16;
+    while (at + 4 <= size) { const length = view.getUint32(at, true); if (length < 31 || at + 4 + length > size) break; at += 4 + length; }
+    if (at !== size) return null;
+    total += size - 16;
+  }
+  const out = new Uint8Array(total);
+  out.set(new Uint8Array(parts[0]!, 0, 16), 0);
+  let at = 16;
+  for (const part of parts) { out.set(new Uint8Array(part, 16), at); at += part.byteLength - 16; }
+  return out.buffer;
 }
 
 /**
@@ -451,11 +500,30 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
     latest = { ...latest, steps };
     const before = Math.floor(now / COLUMN_MS) * COLUMN_MS;
     const queue = hoursToRead(latest, held, since, now).reverse();
+    const address = (n: number): string => `${url}/m1/${String(n).padStart(13, '0')}.bin`;
+    const parts = openHourParts(latest);
+    /** The open hour from its pieces and tail, read at once (`openHourParts`); null when any of them fails, and the whole hour is read. */
+    const openFromParts = async (hour: number): Promise<ArrayBuffer | null> => {
+      if (hour !== latest.open || !parts) return null;
+      try {
+        return joinParts(await Promise.all(parts.map(async n => {
+          const r = await fetcher(address(n), { signal: abort.signal });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.arrayBuffer();
+        })), hour);
+      } catch { return null; }
+    };
     const worker = async (): Promise<void> => {
       for (let hour = queue.shift(); hour !== undefined && !abort.signal.aborted; hour = queue.shift()) {
         try {
-          const r = await fetcher(`${url}/m1/${String(hour).padStart(13, '0')}.bin`, { signal: abort.signal });
-          const file = r.ok ? decodeHour(await r.arrayBuffer()) : null;
+          const joined = await openFromParts(hour);
+          let file: ReturnType<typeof decodeHour>, cache = '';
+          if (joined) file = decodeHour(joined);
+          else {
+            const r = await fetcher(address(hour), { signal: abort.signal });
+            file = r.ok ? decodeHour(await r.arrayBuffer()) : null;
+            cache = r.headers?.get('cache-control') ?? '';
+          }
           if (!file || file.hour !== hour) { done.failed++; continue; }
           // Decoding, taking the columns and taking the rest are each a task of their own: the page's engine runs its live feeds on this
           // thread meanwhile, and an hour in one go held the book still for a few hundred milliseconds.
@@ -468,7 +536,7 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
           done.hours++;
           // A sealed hour (the service answers it `immutable`; an hour still open, or a copy of it a cache kept, is not) will not change:
           // it is not read again (`Held.imported`).
-          if (hour + HOUR_MS <= before && hour !== latest.open && /\bimmutable\b/.test(r.headers?.get('cache-control') ?? '')) { done.read.push(hour); held.imported.add(hour); }
+          if (hour + HOUR_MS <= before && hour !== latest.open && /\bimmutable\b/.test(cache)) { done.read.push(hour); held.imported.add(hour); }
         } catch { done.failed++; }
       }
     };

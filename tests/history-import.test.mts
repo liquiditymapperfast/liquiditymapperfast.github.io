@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, planImport, readLatest, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
+import { HOUR_MS, decodeHour, heldOf, hoursToRead, importHistory, joinParts, openHourParts, planImport, readLatest, within, type HistoryColumn, type HistoryLatest, type HistoryRows } from '../src/app/browser/history-import.ts';
 import { OTHER_COINS_SERVED, historyUrl } from '../src/app/history-url.ts';
 import { Engine } from '../src/shared/engine.ts';
 
@@ -39,6 +39,91 @@ test('a file that is not one, or a record cut short, is refused or ends the list
   assert.equal(decodeHour(bytes.buffer), null);
   const cut = fixture().slice(0, 16 + 100);
   assert.deepEqual(decodeHour(cut)?.columns, []);
+});
+
+/** Where the fixture's records start and end, after its header (the last is the file's end). */
+const boundaries = (buf: ArrayBuffer): number[] => {
+  const view = new DataView(buf), out = [16];
+  for (let at = 16; at + 4 <= buf.byteLength;) { at += 4 + view.getUint32(at, true); out.push(at); }
+  return out;
+};
+/** The fixture's bytes [from, to) as the service serves a part of the open hour: the header, then those bytes. */
+const part = (buf: ArrayBuffer, from: number, to: number): ArrayBuffer => {
+  const out = new Uint8Array(16 + to - from);
+  out.set(new Uint8Array(buf, 0, 16), 0);
+  out.set(new Uint8Array(buf, from, to - from), 16);
+  return out.buffer;
+};
+
+test('the open hour\'s parts: their names from latest.json, joined back byte for byte, refused when a part is not whole', () => {
+  const p = (n: unknown, extra: object = {}) => ({ open: HOUR, pieces: { v: 1, ms: 600_000, n, ...extra } }) as Parameters<typeof openHourParts>[0];
+  assert.deepEqual(openHourParts(p(2)), [HOUR + 600_000, HOUR + 1_200_000, HOUR + 1_200_001]);
+  assert.deepEqual(openHourParts(p(5)), [1, 2, 3, 4, 5].map(k => HOUR + k * 600_000).concat(HOUR + 3_000_001), 'five pieces and the tail: six requests at most');
+  const bad = [{ open: HOUR }, p(0), p(6), p(-1), p(1.5), p('2'), p(2, { v: 2 }), p(2, { ms: 60_000 }), { ...p(1), open: HOUR + 1 }, { ...p(1), open: null }, { open: HOUR, pieces: 3 }];
+  for (const latest of bad) assert.equal(openHourParts(latest as Parameters<typeof openHourParts>[0]), null, JSON.stringify(latest));
+  const file = fixture(), b = boundaries(file), size = file.byteLength;
+  assert.equal(b[b.length - 1], size, 'the fixture ends on a record');
+  const a = b[Math.floor(b.length / 3)]!, c = b[Math.floor(2 * b.length / 3)]!;
+  // Two pieces, an empty one (an empty tail: nothing written since the last cut), then the tail.
+  const joined = joinParts([part(file, 16, a), part(file, a, c), part(file, c, c), part(file, c, size)], HOUR);
+  assert.ok(joined);
+  assert.deepEqual(new Uint8Array(joined), new Uint8Array(file), 'the parts joined are the file');
+  assert.deepEqual(decodeHour(joined), decodeHour(file));
+  assert.equal(joinParts([part(file, 16, a), part(file, a, size - 3)], HOUR), null, 'a tail that does not end on a record was not sent whole');
+  assert.equal(joinParts([part(file, 16, a + 5), part(file, a + 5, size)], HOUR), null, 'a piece cut inside a record');
+  assert.equal(joinParts([part(file, 16, a), part(file, a, size)], HOUR + HOUR_MS), null, 'another hour\'s header');
+  const wrong = new Uint8Array(part(file, a, size)); wrong[0] = 0x58;
+  assert.equal(joinParts([part(file, 16, a), wrong.buffer], HOUR), null, 'not an hour file');
+  assert.equal(joinParts([], HOUR), null);
+});
+
+test('the import reads the open hour from its pieces when the service names them, and the whole hour when one of them fails', async () => {
+  const file = fixture(), b = boundaries(file), size = file.byteLength, a = b[Math.floor(b.length / 2)]!;
+  const steps = Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, 20]));
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: null, last: null, open: HOUR, steps, pieces: { v: 1, ms: 600_000, n: 1 } };
+  const answers = new Map<string, ArrayBuffer>([[`${HOUR + 600_000}.bin`, part(file, 16, a)], [`${HOUR + 600_001}.bin`, part(file, a, size)], [`${HOUR}.bin`, file]]);
+  const run = async (failing: string | null): Promise<{ columns: number; asked: string[] }> => {
+    const asked: string[] = [];
+    const fetcher = async (url: string): Promise<{ ok: boolean; status: number; json(): Promise<unknown>; arrayBuffer(): Promise<ArrayBuffer> }> => {
+      const name = url.slice(url.lastIndexOf('/') + 1);
+      asked.push(name);
+      if (name === 'latest.json') return { ok: true, status: 200, json: async () => latest, arrayBuffer: async () => new ArrayBuffer(0) };
+      const body = name === failing ? undefined : answers.get(name);
+      return body ? { ok: true, status: 200, json: async () => null, arrayBuffer: async () => body.slice(0) } : { ok: false, status: 404, json: async () => null, arrayBuffer: async () => new ArrayBuffer(0) };
+    };
+    const done = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, since: HOUR, now: HOUR + 30 * 60_000, fetcher });
+    return { columns: done.columns, asked };
+  };
+  const pieces = await run(null);
+  assert.equal(pieces.columns, 33);
+  assert.ok(pieces.asked.includes(`${HOUR + 600_000}.bin`) && pieces.asked.includes(`${HOUR + 600_001}.bin`));
+  assert.ok(!pieces.asked.includes(`${HOUR}.bin`), 'the pieces were enough');
+  const fallback = await run(`${HOUR + 600_001}.bin`);
+  assert.equal(fallback.columns, 33);
+  assert.ok(fallback.asked.includes(`${HOUR}.bin`), 'a part that fails: the whole hour, as before');
+  // A service from before (no pieces named): exactly the requests of before.
+  const { pieces: _, ...old } = latest;
+  const asked: string[] = [];
+  await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, since: HOUR, now: HOUR + 30 * 60_000, fetcher: async (url: string) => {
+    const name = url.slice(url.lastIndexOf('/') + 1);
+    asked.push(name);
+    return name === 'latest.json' ? { ok: true, status: 200, json: async () => old, arrayBuffer: async () => new ArrayBuffer(0) } : { ok: true, status: 200, json: async () => null, arrayBuffer: async () => file.slice(0) };
+  } });
+  assert.deepEqual(asked, ['latest.json', `${HOUR}.bin`]);
+});
+
+test('a read open hour gets no receipt, whatever its parts say', async () => {
+  const file = fixture(), b = boundaries(file), size = file.byteLength, a = b[Math.floor(b.length / 2)]!;
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: null, last: null, open: HOUR, steps: Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, 20])), pieces: { v: 1, ms: 600_000, n: 1 } };
+  const answers = new Map<string, ArrayBuffer>([[`${HOUR + 600_000}.bin`, part(file, 16, a)], [`${HOUR + 600_001}.bin`, part(file, a, size)]]);
+  const immutable = { get: (name: string) => name.toLowerCase() === 'cache-control' ? 'public, max-age=7200, immutable' : null };
+  const done = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, since: HOUR, now: HOUR + 30 * 60_000, fetcher: async (url: string) => {
+    const name = url.slice(url.lastIndexOf('/') + 1), body = answers.get(name);
+    if (name === 'latest.json') return { ok: true, status: 200, headers: immutable, json: async () => latest, arrayBuffer: async () => new ArrayBuffer(0) };
+    return body ? { ok: true, status: 200, headers: immutable, json: async () => null, arrayBuffer: async () => body.slice(0) } : { ok: false, status: 404, json: async () => null, arrayBuffer: async () => new ArrayBuffer(0) };
+  } });
+  assert.equal(done.columns, 33);
+  assert.deepEqual(done.read, []);
 });
 
 test('import rules: inside the window, on the page\'s own step for a book it holds (else the service\'s), fuller than the page\'s copy', () => {
