@@ -192,7 +192,8 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
     ctx.globalAlpha = 1;
     const label = (text: string, x: number, y: number, colour: string, align: CanvasTextAlign, alpha: number): void => {
       ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; const tw = ctx.measureText(text).width + 8;
-      const bx = align === 'right' ? x - tw : x;
+      // Kept inside the plot: the window under way stands at the live edge, where a name would run off the map.
+      const bx = Math.max(0, Math.min(pw - tw - 2, align === 'right' ? x - tw : x));
       if (!o.labels.claim({ x0: bx, x1: bx + tw, y0: y - 7, y1: y + 7 })) return;
       ctx.globalAlpha = 0.85 * alpha; ctx.fillStyle = p.panel; ctx.fillRect(bx, y - 7, tw, 14);
       ctx.globalAlpha = alpha; ctx.fillStyle = colour; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, bx + 4, y);
