@@ -14,16 +14,16 @@ function hours(from: number, n: number, step = 1, price = 100): CandleRow[] {
 }
 
 test('the chart\'s candles added up into longer ones: the first open, the highest high, the lowest low, the last close, the volumes', () => {
-  const rows = zoomedCandles(hours(0, 8), H, 4 * H, null);
+  const rows = zoomedCandles(hours(0, 8), H, 4 * H, null, 7.5 * H);
   assert.deepEqual(rows, [[0, 100, 104.5, 99.5, 104, 40], [4 * H, 104, 108.5, 103.5, 108, 40]]);
 });
 
 test('a longer candle the chart\'s candles begin inside is the price history\'s, or left out without one', () => {
   // The chart's candles from 02:00: the 00:00-04:00 candle would hold half its time, opening at 02:00's price.
   const drawn = hours(2 * H, 6);
-  assert.deepEqual(zoomedCandles(drawn, H, 4 * H, null).map(c => c[0]), [4 * H], 'left out where nothing else has it');
+  assert.deepEqual(zoomedCandles(drawn, H, 4 * H, null, 7.5 * H).map(c => c[0]), [4 * H], 'left out where nothing else has it');
   const history = { rows: [[-4 * H, 90, 95, 89, 94, 7], [0, 94, 99, 93, 98, 8]], ms: 4 * H };
-  const rows = zoomedCandles(drawn, H, 4 * H, history);
+  const rows = zoomedCandles(drawn, H, 4 * H, history, 7.5 * H);
   assert.deepEqual(rows.map(c => c[0]), [-4 * H, 0, 4 * H], 'the history\'s whole candle in its place, and the one before it');
   assert.deepEqual(rows[1], [0, 94, 99, 93, 98, 8]);
   assert.equal(rows[2]![1], drawn[2]![1], 'where the chart\'s candles are whole, theirs (live to the minute)');
@@ -31,27 +31,27 @@ test('a longer candle the chart\'s candles begin inside is the price history\'s,
 
 test('a price history finer than the candles drawn is added up too; a coarser one is kept as it is', () => {
   const finer = { rows: hours(-8 * H, 8), ms: H };
-  const rows = zoomedCandles(hours(0, 4), H, 4 * H, finer);
+  const rows = zoomedCandles(hours(0, 4), H, 4 * H, finer, 3.5 * H);
   assert.deepEqual(rows.map(c => c[0]), [-8 * H, -4 * H, 0]);
   assert.equal(rows[0]![5], 40, 'four of its hours in one');
 });
 
 test('in a replay a price-history bar that closes after the moment shown is left out', () => {
   const history = { rows: [[0, 1, 2, 0.5, 1.5, 1], [D, 1.5, 3, 1, 2, 1], [2 * D, 2, 4, 1.5, 3.5, 1]], ms: D };
-  assert.deepEqual(zoomedCandles([], H, D, history, 2 * D + 5 * H).map(c => c[0]), [0, D], 'the day under way at the moment is not shown whole');
-  assert.deepEqual(zoomedCandles([], H, D, history).map(c => c[0]), [0, D, 2 * D]);
+  assert.deepEqual(zoomedCandles([], H, D, history, 2 * D + 5 * H, 2 * D + 5 * H).map(c => c[0]), [0, D], 'the day under way at the moment is not shown whole');
+  assert.deepEqual(zoomedCandles([], H, D, history, 3 * D).map(c => c[0]), [0, D, 2 * D]);
 });
 
 test('the newest longer candle again from the chart\'s candles, as a live update makes it', () => {
   const drawn = hours(0, 7);
-  assert.deepEqual(newestCandle(drawn, 4 * H), zoomedCandles(drawn, H, 4 * H, null).at(-1));
+  assert.deepEqual(newestCandle(drawn, 4 * H), zoomedCandles(drawn, H, 4 * H, null, 6.5 * H).at(-1));
   const moved = drawn.map(c => [...c] as CandleRow); moved[6]![4] = 200; moved[6]![2] = 201;
   assert.equal(newestCandle(moved, 4 * H)[4], 200);
   assert.equal(newestCandle(moved, 4 * H)[2], 201);
 });
 
 test('the candle holding a moment, found among longer candles', () => {
-  const rows = zoomedCandles(hours(0, 12), H, 4 * H, null);
+  const rows = zoomedCandles(hours(0, 12), H, 4 * H, null, 11.5 * H);
   assert.equal(candleHolding(rows, 4 * H, 5 * H)?.[0], 4 * H);
   assert.equal(candleHolding(rows, 4 * H, 12 * H), undefined);
   assert.equal(candleHolding(rows, 4 * H, -1), undefined);
@@ -81,18 +81,26 @@ test('a longer candle with a hole in the chart\'s candles gives way to the histo
   // Hourly 00-03 and 05-07 (04:00 missing): the 04-08 candle would open at 05:00 and miss what 04:00 held.
   const drawn = [...hours(0, 4), ...hours(5 * H, 3, 1, 105)];
   const history = { rows: [[0, 100, 104.5, 99.5, 104, 40], [4 * H, 104, 999, 90, 108, 40]], ms: 4 * H };
-  const rows = zoomedCandles([...drawn, ...hours(8 * H, 2, 1, 108)], H, 4 * H, history);
+  const rows = zoomedCandles([...drawn, ...hours(8 * H, 2, 1, 108)], H, 4 * H, history, 9.5 * H);
   assert.deepEqual(rows.find(c => c[0] === 4 * H), [4 * H, 104, 999, 90, 108, 40], 'the history\'s whole candle, not one made of three hours');
   assert.equal(rows.find(c => c[0] === 0)![1], 100, 'where both are whole, the chart\'s');
-  const alone = zoomedCandles([...drawn, ...hours(8 * H, 2, 1, 108)], H, 4 * H, null);
+  const alone = zoomedCandles([...drawn, ...hours(8 * H, 2, 1, 108)], H, 4 * H, null, 9.5 * H);
   assert.deepEqual(alone.find(c => c[0] === 4 * H), [4 * H, 105, 108.5, 104.5, 108, 30], 'no history: the hours there are, added up');
 });
 
 test('the candle under way is the chart\'s own, live, even where the history has a bar for it', () => {
   const drawn = hours(0, 6);   // 00-05: the 04-08 candle under way holds two hours
   const history = { rows: [[0, 1, 2, 0.5, 1.5, 1], [4 * H, 7, 8, 6, 7.5, 1]], ms: 4 * H };
-  const rows = zoomedCandles(drawn, H, 4 * H, history);
+  const rows = zoomedCandles(drawn, H, 4 * H, history, 5.5 * H);
   assert.deepEqual(rows.at(-1), [4 * H, 104, 106.5, 103.5, 106, 20]);
+});
+
+test('the candle under way is told by the clock: the chart\'s newest, closed hours ago, gives way to the history\'s complete one (Sol)', () => {
+  // The chart's hourly candles end at 05:00 (a quiet market, a feed that stopped, a replay past them); it is 12:00.
+  const drawn = hours(0, 6), history = { rows: [[0, 100, 104.5, 99.5, 104, 40], [4 * H, 104, 999, 90, 108, 40], [8 * H, 108, 110, 107, 109, 40]], ms: 4 * H };
+  assert.deepEqual(zoomedCandles(drawn, H, 4 * H, history, 12 * H).find(c => c[0] === 4 * H), [4 * H, 104, 999, 90, 108, 40], 'live, the feed quiet since 05:00');
+  assert.deepEqual(zoomedCandles(drawn, H, 4 * H, history, 12 * H, 12 * H).find(c => c[0] === 4 * H), [4 * H, 104, 999, 90, 108, 40], 'in a replay at 12:00');
+  assert.deepEqual(zoomedCandles(drawn, H, 4 * H, history, 5.5 * H).find(c => c[0] === 4 * H), [4 * H, 104, 106.5, 103.5, 106, 20], 'at 05:30 it is under way: the chart\'s, live');
 });
 
 test('a live update is the same rows but the last; a refresh that put new rows at the same times is not', () => {

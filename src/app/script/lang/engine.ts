@@ -516,7 +516,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       // newest changed or new ones after them: a script that keeps an array or writes its options cannot be put back, so it runs every candle
       // at every update, and FULL_RUN_MS would let each update take ten seconds (Sol, 2026-11-10). Other candles (a chart opened, more history,
       // a setting, a script changed) have FULL_RUN_MS, as the worker host allows (`host.ts`).
-      const update = start > 0 || (before.time.length >= 2 && sameCandles(before, next, before.time.length - 1));
+      // Fewer candles than the run before (a replay stepped back) is not one: it runs from the first candle with the long time (Sol, round 5).
+      const update = start > 0 || (before.time.length >= 2 && n >= before.time.length && sameCandles(before, next, before.time.length - 1));
       budget.steps = 0; budget.left = Math.max(200_000, STEPS_PER_CANDLE * (n - start)); budget.deadline = started + (update ? RUN_MS : FULL_RUN_MS);
       const warnings = [...a.warnings];
       // The plots' numbers: those of the candles taken over, then NaN until the run gives them.

@@ -8,7 +8,7 @@ import type { CandleRow } from './store.ts';
  * length, or added up into it.
  *
  * Which of the two a longer candle is made of (Sol, review 2026-11-11: a hole in the chart's candles made a whole-looking candle that
- * overrode the history's complete one): the one under way is the chart's, live; otherwise the one whose bars cover all of its time, the
+ * overrode the history's complete one): the one under way at `now` (the page's clock, a replay's moment) is the chart's, live; otherwise the one whose bars cover all of its time, the
  * chart's first; otherwise the one covering more of it. A longer candle that a series begins inside (the chart's first candle, or the
  * history's, is later than its start) would open at that candle's price, not its own: it is not used, so where nothing else has it, it is
  * left out. In a replay the price history's bars that close after the moment shown are left out, so no candle shows what came after (the
@@ -47,19 +47,20 @@ const opens = (b: Bucket | null): b is Bucket => b !== null && (b.head || !b.fir
 
 /**
  * The candles of `tf` drawn while zoomed out: the chart's (`drawn`, sorted, each `drawnMs` long) added up, and the price history's
- * (`history`, of the chart's market, coarser than the chart's candles) where the chart's do not cover them better; `cut`: in a replay, the
- * moment shown.
+ * (`history`, of the chart's market, coarser than the chart's candles) where the chart's do not cover them better; `now`: the page's clock
+ * (a replay's moment), which says which candle is under way (the chart's newest is not: a market quiet since, or a feed that stopped; Sol,
+ * round 5); `cut`: in a replay, the moment shown.
  */
-export function zoomedCandles(drawn: readonly CandleRow[], drawnMs: number, tf: number, history: Bars | null, cut = Infinity): CandleRow[] {
+export function zoomedCandles(drawn: readonly CandleRow[], drawnMs: number, tf: number, history: Bars | null, now: number, cut = Infinity): CandleRow[] {
   const own = addUp(drawn, tf, drawnMs);
   const ext = history ? addUp(Number.isFinite(cut) ? history.rows.filter(c => c[0]! + history.ms <= cut) : history.rows, tf, history.ms) : [];
-  const newest = own.length ? own[own.length - 1]!.row[0] : -Infinity, out: CandleRow[] = [];
+  const forming = Math.floor(now / tf) * tf, out: CandleRow[] = [];
   let i = 0, j = 0;
   while (i < own.length || j < ext.length) {
     const s = Math.min(own[i]?.row[0] ?? Infinity, ext[j]?.row[0] ?? Infinity);
     const mine = own[i]?.row[0] === s ? own[i++]! : null, theirs = ext[j]?.row[0] === s ? ext[j++]! : null;
     let pick: Bucket | null;
-    if (opens(mine) && s === newest) pick = mine;
+    if (opens(mine) && s === forming) pick = mine;
     else if (mine && mine.covered >= tf) pick = mine;
     else if (opens(theirs) && theirs.covered >= tf) pick = theirs;
     else { const a = opens(mine) ? mine : null, b = opens(theirs) ? theirs : null; pick = a && b ? (b.covered > a.covered ? b : a) : a ?? b; }

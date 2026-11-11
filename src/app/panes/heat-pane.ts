@@ -495,7 +495,7 @@ export class HeatPane {
   /** The strip's candles of its longer timeframe (`coarseCandles`), kept while what they come from is the same. */
   #coarseCandles: { drawn: readonly CandleRow[]; exchange: ReadonlyMap<number, CandleRow> | null; tf: number; rows: readonly CandleRow[]; own: ReadonlyMap<number, CandleRow> } | null = null;
   /** The candles drawn while zoomed out (`zoomedRows`), and what they were made from. */
-  #zoomed: { drawn: readonly CandleRow[]; chart: number; answer: PriceHistoryAnswer | null; tf: number; cut: number; rows: CandleRow[] } | null = null;
+  #zoomed: { drawn: readonly CandleRow[]; chart: number; answer: PriceHistoryAnswer | null; tf: number; cut: number; forming: number; rows: CandleRow[] } | null = null;
   #strip: StripState | null = null;
   /** The market orders of the strip's candles pointed at (the footprint's statistics of the strip's markets, read on hover). */
   #orders = new StripOrderCache();
@@ -1726,20 +1726,21 @@ export class HeatPane {
    */
   zoomedRows(state: AppState, tf: number): readonly CandleRow[] {
     const drawn = this.candlesDrawn(state), answer = this.#coarseAnswer(state), held = this.#zoomed, chart = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    const cut = replaying() ? Math.floor(pageNow() / (answer?.tfMs ?? tf)) : 0;
-    if (held && held.answer === answer && held.tf === tf && held.chart === chart && held.cut === cut) {
+    // The longer candle under way, by the page's clock: when it closes they are made again (a quiet market makes no new chart candle then).
+    const now = pageNow(), forming = Math.floor(now / tf) * tf, cut = replaying() ? Math.floor(now / (answer?.tfMs ?? tf)) : 0;
+    if (held && held.answer === answer && held.tf === tf && held.chart === chart && held.cut === cut && held.forming === forming) {
       if (held.drawn === drawn) return held.rows;
       // A live update of the candle under way (every other row the very same one: a refresh that put new rows at the same times is not one,
       // Sol, review 2026-11-11): only the newest longer candle again, while the chart's candles begin before it (so it is theirs).
       const newest = drawn[drawn.length - 1], last = held.rows[held.rows.length - 1];
-      if (newest && last && sameButLast(held.drawn, drawn) && last[0] === Math.floor(newest[0] / tf) * tf && drawn[0]![0] < last[0]) {
+      if (newest && last && sameButLast(held.drawn, drawn) && last[0] === forming && Math.floor(newest[0] / tf) * tf === forming && drawn[0]![0] < last[0]) {
         const rows = held.rows.slice(0, -1); rows.push(newestCandle(drawn, tf));
         this.#zoomed = { ...held, drawn, rows };
         return rows;
       }
     }
-    const rows = zoomedCandles(drawn, chart, tf, answer ? { rows: answer.candles, ms: answer.tfMs } : null, replaying() ? pageNow() : Infinity);
-    this.#zoomed = { drawn, chart, answer, tf, cut, rows };
+    const rows = zoomedCandles(drawn, chart, tf, answer ? { rows: answer.candles, ms: answer.tfMs } : null, now, replaying() ? now : Infinity);
+    this.#zoomed = { drawn, chart, answer, tf, cut, forming, rows };
     return rows;
   }
 
@@ -2799,15 +2800,18 @@ export class HeatPane {
   /**
    * The bars a rule may be searched on without one crossing its period's bounds: the key levels' (their zone's offset over the last 62 days),
    * or finer where the offset over the rule's whole stretch needs it (a previous quarter or year begun under another offset: Lord Howe moves by
-   * half an hour for daylight saving; Sol, review 2026-11-11). Worked out once a day for each rule and zone.
+   * half an hour for daylight saving; Sol, review 2026-11-11). Worked out once a day for each period and zone.
    */
   readonly #ruleZoneBars = new Map<string, number>();
   #ruleZoneBar(rule: AnchorRule, zone: string, zoneBar: number, now: number): number {
     if (rule.point === 'start' || (rule.period !== 'quarter' && rule.period !== 'year')) return zoneBar;
-    const key = `${ruleKey(rule)}|${zone}|${Math.floor(now / 86_400_000)}`;
+    // Over a window that holds every such stretch searched from any moment of this day (a previous year begins under two years back, a
+    // previous quarter under seven months), so a replay that crosses a period's start within the day is not given the wrong bars (Sol, round 5).
+    const DAY = 86_400_000, day = Math.floor(now / DAY) * DAY, back = rule.period === 'year' ? 2 * 366 * DAY : 214 * DAY;
+    const key = `${rule.period}|${zone}|${zoneBar}|${day}`;
     let bar = this.#ruleZoneBars.get(key);
     if (bar === undefined) {
-      bar = Math.min(zoneBar, barMsFor(zone, ruleSpan(rule, zone, now).from, now));
+      bar = Math.min(zoneBar, barMsFor(zone, day - back, day + DAY));
       this.#ruleZoneBars.set(key, bar);
       if (this.#ruleZoneBars.size > 64) this.#ruleZoneBars.delete(this.#ruleZoneBars.keys().next().value!);
     }
