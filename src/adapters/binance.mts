@@ -204,7 +204,13 @@ export function normalizeBinanceOpenInterest(payload: unknown, { symbol, marketT
 }
 /** Normalize Binance's public open-interest statistics history.  These are
  * interval samples; downstream OHLC uses the sample as open=high=low=close
- * rather than inventing intraperiod extrema. */
+ * rather than inventing intraperiod extrema. A row holds the reading at its
+ * stamp (measured against live samples), which closes the bar that ends
+ * there: it is observed a millisecond before the stamp, so it lands in that
+ * bar as a live reading would, not at the start of the next one (the
+ * shared reader does the same, `shared/history.ts` `oiReading`). The server's
+ * reducer keeps that time for a row with `historySource`, and the store puts
+ * the row only in a minute no live sample is in (`HistoryStore.recordOi`). */
 export function normalizeBinanceOpenInterestHistory(payload: unknown, { symbol, marketType = 'perpetual', family = 'usdm', metadata, receivedAt = Date.now() }: AdapterOptions = {}) {
   if (marketType === 'spot') throw new RangeError('Binance spot markets do not expose open interest');
   const rows = dataOf(payload);
@@ -225,7 +231,7 @@ export function normalizeBinanceOpenInterestHistory(payload: unknown, { symbol, 
     const quote = inverseMeta ? contracts * inverseMeta.contractValue : nativeValue;
     if (quote != null && !Number.isFinite(quote)) throw new TypeError('Binance COIN-M OI history conversion overflows');
     if (!(timestamp > 0)) throw new TypeError('Binance open-interest history timestamp missing');
-    return { kind: 'openInterest' as const, instrumentId, sourceTimestamp:timestamp, observationTimestamp:timestamp, receivedAt, base, ...(quote == null ? {} : { quote }), quality: 'sampled' as const, source:'binance-openInterestHist', historySource:'binance-public-statistics' };
+    return { kind: 'openInterest' as const, instrumentId, sourceTimestamp:timestamp, observationTimestamp:timestamp - 1, receivedAt, base, ...(quote == null ? {} : { quote }), quality: 'sampled' as const, source:'binance-openInterestHist', historySource:'binance-public-statistics' };
   }).sort((a, b) => a.sourceTimestamp - b.sourceTimestamp);
 }
 function explicitCandleTime(value: unknown, { allowZero = false }: AdapterOptions = {}) {

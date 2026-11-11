@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chainedOi, heldOiAt, oiChangeByTime, oiPartsUntil, oiUsdChangeByTime, sumOi, type OiPart } from '../src/app/oi-change.ts';
-import { fetchOiSample, fetchOiHistory, OI_SAMPLE_VENUES } from '../src/shared/history.ts';
+import { fetchOiSample, fetchOiHistory, oiBars, OI_SAMPLE_VENUES } from '../src/shared/history.ts';
 import { readSettings } from '../src/app/store.ts';
 import type { OiBar } from '../src/app/store.ts';
 import { normalizeHyperliquidAssetContext, normalizeHyperliquidMetadata } from '../src/adapters/hyperliquid.mts';
@@ -64,7 +64,7 @@ test('every venue\'s open interest reads in coins: Deribit\'s USD at its own mar
   assert.deepEqual(coins, { binance: 94000.5, bybit: 56000, hyperliquid: 19000, bitget: 32000, okx: 29400, deribit: 10_000 });
   const to = 10 * 86_400_000, rows = await fetchOiHistory('bybit:BTCUSDT', 300_000, to - 2 * 86_400_000, to, get);
   assert.ok(rows.length >= 576 && rows.length <= 578, `two days of five-minute bars over pages of 200: ${rows.length}`);
-  assert.ok(rows.every((r, i) => i === 0 || Number(r.start) > Number(rows[i - 1]!.start)), 'oldest first, no bar twice');
+  assert.ok(rows.every((r, i) => i === 0 || Number(r.observationTimestamp) > Number(rows[i - 1]!.observationTimestamp)), 'oldest first, no reading twice');
   assert.deepEqual(await fetchOiHistory('bitget:BTCUSDT', 300_000, 0, to, get), [], 'a venue without a history');
 });
 
@@ -73,7 +73,7 @@ test('Bybit\'s open interest is read as one side: its single field, or half of t
   const rows = (single: boolean) => ({ retCode: 0, result: { list: [{ timestamp: String(2 * H), openInterest: '60000', ...(single ? { singleOpenInterest: '30000' } : {}) }] } });
   for (const single of [true, false]) {
     const got = await fetchOiHistory('bybit:BTCUSDT', 300_000, H, 3 * H, async () => rows(single));
-    assert.deepEqual(got.map(r => r.close), [30000], single ? 'the single field' : 'half of the two-sided one');
+    assert.deepEqual(got.map(r => r.base), [30000], single ? 'the single field' : 'half of the two-sided one');
     assert.equal(await fetchOiSample('bybit', async () => ({ retCode: 0, result: { list: [{ openInterest: '60000', ...(single ? { singleOpenInterest: '30000' } : {}) }] } })), 30000);
   }
 });
@@ -96,13 +96,60 @@ test('every reader of open interest counts one side of every contract: a two-sid
   assert.equal(sum.change.get(M), 10 + 5);
 });
 
-test('an OKX history row is put at the end of its period, the one under way at the time asked', async () => {
+test('an OKX history row closes the period it is stamped with, the one under way at the time asked', async () => {
   const H = 3_600_000, to = 10 * H + 20 * M;
   // OKX stamps the start of a period with the reading at its end: newest first, the hour under way (10 H) included.
   const get = async (url: string): Promise<unknown> => url.includes('rubik/stat/contracts/open-interest-history')
     ? { code: '0', data: [[String(10 * H), '1', '300', '0'], [String(9 * H), '1', '200', '0'], [String(8 * H), '1', '100', '0']] } : {};
   const rows = await fetchOiHistory('okx:BTC-USDT-SWAP', H, 8 * H, to, get);
-  assert.deepEqual(rows.map(r => [r.start, r.close]), [[9 * H, 100], [10 * H, 200], [to, 300]]);
+  assert.deepEqual(rows.map(r => [r.sourceTimestamp, r.base]), [[9 * H, 100], [10 * H, 200], [to, 300]], 'each reading at the end of its period, the one under way now');
+  assert.deepEqual(oiBars(rows, [], H).map(b => [b[0], b[4]]), [[8 * H, 100], [9 * H, 200], [10 * H, 300]], 'the bar a reading closes is the period it is stamped with');
+});
+
+test('a history reading closes the bar that ends at it, at every timeframe, as the live readings of the same open interest do', async () => {
+  // One path of open interest, read two ways: the page's live rows (each minute's last value at the minute's start, Engine.#applyLiveOi) and
+  // Binance's five-minute history (a row stamped T holds the open interest at T, measured against live samples on 2026-11-10).
+  const t0 = 500 * 3_600_000, oiAt = (t: number): number => 50_000 + ((t - t0) / M) ** 1.5;
+  const live = Array.from({ length: 240 }, (_, k) => ({ observationTimestamp: t0 + k * M, base: oiAt(t0 + (k + 1) * M) }));
+  const stamps = Array.from({ length: 49 }, (_, k) => t0 + k * 300_000);
+  const get = async (url: string): Promise<unknown> => url.includes('openInterestHist') ? stamps.map(t => ({ timestamp: t, sumOpenInterest: String(oiAt(t)) })) : {};
+  const history = await fetchOiHistory('binance:BTCUSDT', 300_000, t0, t0 + 240 * M, get);
+  for (const tf of [M, 5 * M, 15 * M, 60 * M]) {
+    const fromLive = new Map(oiBars([], live, tf).map(b => [b[0], b[4]] as const));
+    const fromHistory = oiBars(history, [], tf);
+    // A one-minute series holds a history bar every fifth minute: the minute that ends at the reading.
+    const shared = fromHistory.filter(b => fromLive.has(b[0]));
+    assert.ok(shared.length >= Math.floor(240 * M / Math.max(tf, 5 * M)) - 1, `bars to compare at ${tf / M} min: ${shared.length}`);
+    for (const b of shared) assert.ok(Math.abs(b[4] - fromLive.get(b[0])!) < 1e-6, `${tf / M} min bar at ${(b[0] - t0) / M}: history ${b[4]} against live ${fromLive.get(b[0])}`);
+  }
+  // A venue's readings set no cut (withLiveOi): with the page's live minute rows beside them, a one-minute series has a bar every minute the
+  // page read, not only every fifth, and each close is the open interest at the minute's end, whichever of the two holds it.
+  const both = oiBars(history, live, M);
+  assert.equal(both.length, live.length + 1, 'every live minute, and the minute before t0 that the first reading closes');
+  for (const b of both) assert.ok(Math.abs(b[4] - oiAt(b[0] + M)) < 1e-6, `minute ${(b[0] - t0) / M}`);
+  // Every bar's close is the open interest at its end, never at its start (the start was one period late, 2026-11-10).
+  const hours = oiBars(history, [], 60 * M);
+  assert.deepEqual(hours.map(b => (b[0] - t0) / M), [-60, 0, 60, 120, 180], 'the reading at t0 closes the hour before it');
+  for (const b of hours) assert.equal(b[4], oiAt(b[0] + 60 * M));
+});
+
+test('a history reading fills only a minute the page did not read live, so a few coins between the two sources make no rise and fall', async () => {
+  // The two sources agree within a few coins, not exactly (Binance's hourly row was within 6 BTC of the live bar, 2026-11-10): flat live rows
+  // at 1000 and history at 1006. Each reading is the last of its minute, so beside the live row it would close the minute at 1006 and the
+  // next at 1000: a rise and a fall every five minutes, read by NL/NS as positions opened and closed.
+  const t0 = 500 * 3_600_000, liveFrom = t0 + 60 * M;
+  const live = Array.from({ length: 60 }, (_, k) => ({ observationTimestamp: liveFrom + k * M, base: 1_000 }));
+  const stamps = Array.from({ length: 25 }, (_, k) => t0 + k * 300_000);
+  const get = async (url: string): Promise<unknown> => url.includes('openInterestHist') ? stamps.map(t => ({ timestamp: t, sumOpenInterest: '1006' })) : {};
+  const history = await fetchOiHistory('binance:BTCUSDT', 300_000, t0, t0 + 120 * M, get);
+  assert.ok(history.every(r => r.historySource === 'binance'), 'each reading says it is history');
+  const minutes = oiBars(history, live, M);
+  const recorded = minutes.filter(b => b[0] >= liveFrom);
+  assert.equal(recorded.length, 60);
+  assert.ok(recorded.every(b => b[4] === 1_000 && b[1] === 1_000), 'flat wherever the page read live');
+  const before = minutes.filter(b => b[0] < liveFrom);
+  assert.deepEqual(before.map(b => (b[0] - t0) / M), [-1, 4, 9, 14, 19, 24, 29, 34, 39, 44, 49, 54, 59], 'before the live rows the readings fill their minutes (the one at minute 60 closes minute 59)');
+  assert.ok(before.every(b => b[4] === 1_006));
 });
 
 test('the OI pane adds venues together unless the chart market is chosen', () => {

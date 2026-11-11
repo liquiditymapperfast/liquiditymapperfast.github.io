@@ -266,13 +266,24 @@ const OKX_OI_PERIODS: Readonly<Record<number, string>> = { 300_000: '5m', 3_600_
 /** At most this many pages a history question reads, oldest last. */
 const OI_PAGES = 12;
 
-const oiRow = (t: number, coins: number): OiRow => ({ start: t, open: coins, high: coins, low: coins, close: coins });
+/**
+ * A history row is one reading of the open interest at a moment (`at`), not a bar. It is kept as a sample a millisecond before that moment,
+ * so `aggregateOi` files it in the bucket that ends at it, at any timeframe, as it files the live readings (each minute's last value closes its
+ * minute). Filed at `at` itself, a reading on a bucket's edge opened the next bucket: every bar read from history showed the open interest at
+ * its start, a period late, and NL/NS gave each change to the next candle's takers (measured 2026-11-10 against the live bars: Binance's
+ * hourly row stamped T was within 6 BTC of the bar ending at T and 252 BTC from the bar starting there; Bybit's five-minute rows equalled the
+ * bar ending at their stamp).
+ */
+const oiReading = (venue: string, at: number, coins: number): OiRow => ({ observationTimestamp: at - 1, sourceTimestamp: at, base: coins, historySource: venue });
 
-/** A venue's perpetual open interest in coins per bucket over [from, to), from its public history (empty for a venue that has none). */
+/**
+ * A venue's perpetual open interest in coins over [from, to], from its public history: readings, oldest first, each the close of the bar that
+ * ends at it (`oiReading`; empty for a venue that has none).
+ */
 export async function fetchOiHistory(instrumentId: string, tfMs: number, from: number, to: number, get: Fetcher, listing?: HistoryListing): Promise<OiRow[]> {
   const venue = venueOf(instrumentId), market = listingOf(venue, listing);
   if (!market || !OI_VENUES.includes(venue)) return [];
-  const rows = new Map<number, OiRow>(), take = (t: number, coins: number): void => { if (Number.isFinite(t) && coins > 0 && t >= from - tfMs && t <= to) rows.set(t, oiRow(t, coins * market.unit)); };
+  const rows = new Map<number, OiRow>(), take = (t: number, coins: number): void => { if (Number.isFinite(t) && coins > 0 && t >= from - tfMs && t <= to) rows.set(t, oiReading(venue, t, coins * market.unit)); };
   // An answer that is not the venue's list (an error sent with HTTP 200) fails the read: the sampler tries again later, where an empty
   // history would have been taken as done.
   const rowsOf = (answer: unknown, ok: boolean, path: (string | number)[]): unknown[] => {
@@ -302,7 +313,7 @@ export async function fetchOiHistory(instrumentId: string, tfMs: number, from: n
     for (let end = to, page = 0; page < OI_PAGES && end >= from; page++) {
       // Rows of [ts, contracts, coins, USD], newest first, 100 a page. A row is stamped with the start of its period but holds the reading at
       // its end (it matches a live sample a period after its stamp, measured 2026-10-14 on 5m and 1H; Binance's and Bybit's match at their
-      // stamp), so it is put at the end, the period still under way at `to`.
+      // stamp), so its reading is taken at the end, the period still under way at `to`.
       const answer = await get(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history?instId=${market.symbol}&period=${OKX_OI_PERIODS[period]}&limit=100&end=${Math.floor(end)}`);
       const got = rowsOf(answer, at(answer, 'code') === undefined || String(at(answer, 'code')) === '0', ['data']);
       let oldest = Infinity;
@@ -311,7 +322,7 @@ export async function fetchOiHistory(instrumentId: string, tfMs: number, from: n
       end = oldest - 1;
     }
   }
-  return [...rows.values()].sort((a, b) => Number(a.start) - Number(b.start));
+  return [...rows.values()].sort((a, b) => Number(a.observationTimestamp) - Number(b.observationTimestamp));
 }
 
 /**

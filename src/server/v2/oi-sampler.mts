@@ -27,7 +27,9 @@ const RETRY_MS = 60_000, RETRY_MAX_MS = 3_600_000;
 /** Failures of one venue are logged at most this often. */
 const OI_LOG_EVERY_MS = 10 * 60_000;
 
-export interface OiSampleMessage { kind: 'openInterest'; instrumentId: string; sourceTimestamp: number | null; observationTimestamp?: number; receivedAt: number; base: number; quality: 'native' | 'sampled'; source?: string }
+export interface OiSampleMessage { kind: 'openInterest'; instrumentId: string; sourceTimestamp: number | null; observationTimestamp?: number; receivedAt: number; base: number; quality: 'native' | 'sampled'; source?: string;
+  /** Set on a venue's history reading: the store puts it only in a minute no live sample is in (`HistoryStore.recordOi`). */
+  historySource?: string }
 
 /** One sampled venue's outcome, for the diagnostics route. */
 export interface OiVenueStatus { lastSuccess: number | null; failures: number; lastError: string | null; nextHistoryAt: number | null; fast: boolean }
@@ -215,14 +217,15 @@ export class OiSampler {
     const now = this.now();
     const hourly = await fetchOiHistory(id, 3_600_000, now - HISTORY_HOURLY_MS, now - HISTORY_FINE_MS, this.get, listing);
     const fine = await fetchOiHistory(id, 300_000, now - HISTORY_FINE_MS, now, this.get, listing);
-    const firstFine = fine.length ? Number(fine[0]!.start) : Infinity;
-    const rows = [...hourly.filter(r => Number(r.start) < firstFine), ...fine];
+    const firstFine = fine.length ? Number(fine[0]!.observationTimestamp) : Infinity;
+    const rows = [...hourly.filter(r => Number(r.observationTimestamp) < firstFine), ...fine];
     for (let i = 0; i < rows.length; i += ROWS_PER_TURN) {
       if (this.#closed) return;
       for (const r of rows.slice(i, i + ROWS_PER_TURN)) {
-        const t = Number(r.start);
+        // Each row a reading, stored a millisecond before its moment (`fetchOiHistory`), so it closes the minute that ends at it, as a live
+        // reading does; stored at the moment itself it opened the next minute, and every bar built from it showed its start.
         // A store that refuses writes (over its budget: `recordOi` answers false) leaves the history to be read again later, not done.
-        if (this.record({ kind: 'openInterest', instrumentId: id, sourceTimestamp: t, observationTimestamp: t, receivedAt: now, base: Number(r.close), quality: 'sampled', source: `${venue}-openInterestHistory` }) === false) throw new Error('the history store refused the rows');
+        if (this.record({ kind: 'openInterest', instrumentId: id, sourceTimestamp: Number(r.sourceTimestamp), observationTimestamp: Number(r.observationTimestamp), receivedAt: now, base: Number(r.base), quality: 'sampled', source: `${venue}-openInterestHistory`, historySource: `${venue}-openInterestHistory` }) === false) throw new Error('the history store refused the rows');
       }
       await new Promise<void>(resolve => setImmediate(resolve));
     }

@@ -195,7 +195,7 @@ test('candles and open interest are asked for by the coin\'s own symbols and con
   assert.match(asked[0]!, /symbol=1000PEPEUSDT&/);
   assert.deepEqual(candles[0]!.slice(1, 6), [0.004 / 1000, 0.005 / 1000, 0.003 / 1000, 0.0045 / 1000, 2_000_000]);
   const oi = await fetchOiHistory('binance:1000PEPEUSDT', 3_600_000, 0, 3_600_000, async url => { asked.push(url); return [{ timestamp: 0, sumOpenInterest: '5' }]; }, pepe);
-  assert.match(asked[1]!, /openInterestHist\?symbol=1000PEPEUSDT&/); assert.equal(oi[0]!.close, 5000);
+  assert.match(asked[1]!, /openInterestHist\?symbol=1000PEPEUSDT&/); assert.equal(oi[0]!.base, 5000);
   const ctx = [{ universe: [{ name: 'BTC' }, { name: 'kPEPE' }] }, [{ openInterest: '1' }, { openInterest: '7' }]];
   // Thousands of coins, on one side: Hyperliquid's figure counts both sides of every contract.
   assert.equal(await fetchOiSample('hyperliquid', async () => ctx, { symbol: 'kPEPE', unit: 1000 }), 3500);

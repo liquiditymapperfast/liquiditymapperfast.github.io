@@ -22,6 +22,7 @@ import { venueLabel } from '../venues.ts';
 import { togglePanel, type Panel } from '../ui.ts';
 import { buildOiMarketsPanel } from '../market-picker.ts';
 import { pageNow } from '../replay/clock.ts';
+import { BAR_CUT_H, BAR_CUT_PX, barScale, cutGap, partsWithin } from '../bar-scale.ts';
 
 const signed = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
 
@@ -74,8 +75,9 @@ export class DeltaPane extends TimePane {
       return wrap;
     };
     select(t('Show'), t('Each candle\'s delta as a bar, the cumulative delta as candles, or NL/NS: the change of open interest given to the side that traded at market.'), [['candles', t('CVD candles')], ['bars', t('Delta bars')], ['nlns', 'NL/NS']], () => d().style, v => patch({ style: v === 'bars' || v === 'nlns' ? v : 'candles' }));
-    // NL/NS as one net series or the longs' and shorts' sums apart; only while NL/NS is shown.
-    const split = select(t('As'), t('NL/NS as one net series (bars and their running sum), or the running sums of the longs and of the shorts as two lines.'), [['net', t('Net')], ['split', t('Longs and shorts')]], () => d().nlns, v => patch({ nlns: v === 'split' ? 'split' : 'net' }));
+    // NL/NS as each candle's four parts, or the longs' and shorts' sums apart; only while NL/NS is shown. The setting keeps
+    // its value 'net' for the four parts (saved pages and layouts read it so).
+    const split = select(t('As'), t('NL/NS as each candle\'s four parts (buyers above the line, sellers below; opened solid, closed lighter), or the running sums of the longs and of the shorts as two lines.'), [['net', t('Four parts')], ['split', t('Longs and shorts')]], () => d().nlns, v => patch({ nlns: v === 'split' ? 'split' : 'net' }));
     // Whose open interest NL/NS counts: the OI pane's markets, chosen here too so the OI pane need not be shown.
     const markets = document.createElement('button'); markets.type = 'button'; markets.textContent = t('Markets…');
     setTip(markets, t('Whose open interest NL/NS counts: the OI pane\'s markets, chosen here or in the OI pane.'));
@@ -91,6 +93,10 @@ export class DeltaPane extends TimePane {
     const from = select(t('CVD from'), t('Where the cumulative delta starts: the left edge of the chart, or again each day or week (in the Volume profile\'s zone).'), [['none', t('The left edge')], ['day', t('Each day')], ['week', t('Each week')]], () => d().reset, v => patch({ reset: v === 'day' || v === 'week' ? v : 'none' }));
     group.append(box);
     const swing = select(t('Swing'), t('How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.'), PIVOTS.map((n): [string, string] => [String(n), tn(n, '{n} candle', '{n} candles')]), () => String(d().pivot), v => patch({ pivot: (PIVOTS as readonly number[]).includes(Number(v)) ? Number(v) : d().pivot }));
+    // Divergences are the CVD's: NL/NS draws none, so its header leaves their two controls out (they wrapped the header onto a third row and
+    // took the plot's height for nothing).
+    const showCvd = (): void => { box.hidden = d().style === 'nlns'; swing.hidden = d().style === 'nlns'; };
+    showCvd(); this.#sync.push(showCvd);
     // On a phone what is shown stays in the row; the rest waits behind the key (pane-tune.ts).
     addTune(this.head, [split, markets, from, box, swing], t('Delta'));
   }
@@ -128,8 +134,13 @@ export class DeltaPane extends TimePane {
   /**
    * NL/NS (delta/nlns.ts, the model shared with the OI and Funding panes): each candle's change of open interest of the OI pane's markets, each
    * market's given to the side that traded at market on it (its own flow, minute by minute where its minute readings reach; the way the price
-   * went where none is recorded), as bars (solid: opened, hollow: closed) and its running sum as a line, restarting where the CVD does. In coins;
-   * the readout names the market or how many venues are added together.
+   * went where none is recorded). Four parts (`nlns` 'net'): each candle's bar holds all four, the buyers' above the line (new longs solid,
+   * nearest it, then shorts closed, lighter) and the sellers' below (new shorts solid, then longs closed), the full height of the pane against
+   * `barScale` (bar-scale.ts: the few far larger than the rest are cut and marked, their parts in proportion). No line: a running sum on the bars' axis took the
+   * scale in any long view and pressed the bars to a few pixels (2026-11-10); the running net is in the readout and the popup, and Longs and
+   * shorts (`nlns` 'split') draws each side's running sum. The net bar Four parts replaced drew longs less shorts alone: a candle where both
+   * sides opened and closed hundreds of coins could show a sliver. What went to no side (takers even, side unknown) is in the popup, not the
+   * bars. In coins; the readout names the market or how many venues are added together.
    */
   #paintNlns(state: AppState, now: number, readout: Element | null): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, s = state.delta;
@@ -146,22 +157,28 @@ export class DeltaPane extends TimePane {
     }
     // Split: the longs' and the shorts' running sums as two lines on one scale, no bars (what each candle added is in the popup).
     const split = s.nlns === 'split';
+    // Four parts: what buyers did (new longs, shorts closed) above the line, what sellers did (new shorts, longs closed) below it.
+    const ups = visible.map(c => c.longOpened + c.shortClosed), downs = visible.map(c => c.shortOpened + c.longClosed);
+    const cap = split ? 0 : barScale([...ups, ...downs]);
     let lo = 0, hi = 0;
-    for (const c of visible) {
+    visible.forEach((c, k) => {
       if (split) { lo = Math.min(lo, c.cumLongs, c.cumShorts); hi = Math.max(hi, c.cumLongs, c.cumShorts); }
-      else { lo = Math.min(lo, c.v, c.cum); hi = Math.max(hi, c.v, c.cum); }
-    }
+      else { lo = Math.min(lo, -Math.min(downs[k]!, cap)); hi = Math.max(hi, Math.min(ups[k]!, cap)); }
+    });
     const pad = (hi - lo) * 0.08 || 1, min = lo - pad, max = hi + pad, top = 6, bottom = ph - 6;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (bottom - top);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
     ctx.strokeStyle = p.line; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(0, Math.round(y(0)) + 0.5); ctx.lineTo(pw, Math.round(y(0)) + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
-    ctx.strokeStyle = p.muted; ctx.setLineDash([2, 4]); ctx.beginPath();
-    for (let i = 1; i < candles.length; i++) {
-      const c = candles[i]!;
-      if (c.run === candles[i - 1]!.run || c.t + tf < v.t0 || c.t > v.t1) continue;
-      const x = Math.round(v.xOf(c.t, pw)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, ph);
+    // Where the running sums restart: only where they are drawn (Longs and shorts).
+    if (split) {
+      ctx.strokeStyle = p.muted; ctx.setLineDash([2, 4]); ctx.beginPath();
+      for (let i = 1; i < candles.length; i++) {
+        const c = candles[i]!;
+        if (c.run === candles[i - 1]!.run || c.t + tf < v.t0 || c.t > v.t1) continue;
+        const x = Math.round(v.xOf(c.t, pw)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, ph);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
     }
-    ctx.stroke(); ctx.setLineDash([]);
     // A running sum, broken where it restarts.
     const line = (value: (c: NlnsCandle) => number, color: string, width: number): void => {
       ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
@@ -177,15 +194,31 @@ export class DeltaPane extends TimePane {
       ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'right';
       ctx.fillStyle = p.candleUp; ctx.fillText(t('Longs'), x, Math.max(top + 6, Math.min(bottom - 6, y(last.cumLongs) - 8 * up)));
       ctx.fillStyle = p.candleDown; ctx.fillText(t('Shorts'), x, Math.max(top + 6, Math.min(bottom - 6, y(last.cumShorts) + 8 * up)));
-    } else for (const c of visible) {
-      // Bars: opened solid, closed hollow (or faint where a bar is too narrow to show an outline).
-      const x0 = v.xOf(c.t, pw), x1 = v.xOf(c.t + tf, pw), w = Math.max(1, Math.min((x1 - x0) * 0.7, 40)), xc = (x0 + x1) / 2;
-      const y0 = y(0), y1 = y(c.v), color = c.v >= 0 ? p.candleUp : p.candleDown, h = Math.max(1, Math.abs(y1 - y0));
-      if (c.dOi > 0) { ctx.fillStyle = color; ctx.fillRect(xc - w / 2, Math.min(y0, y1), w, h); }
-      else if (w >= 4) { ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(xc - w / 2) + 0.5, Math.round(Math.min(y0, y1)) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(h) - 1)); }
-      else { ctx.globalAlpha = 0.45; ctx.fillStyle = color; ctx.fillRect(xc - w / 2, Math.min(y0, y1), w, h); ctx.globalAlpha = 1; }
+    } else {
+      // One side's parts outward from the line, each [coins, colour, opened]: opened solid, closed lighter and outlined where there is room.
+      // A side past the scale is drawn to it with each part its share of the side, as the OI pane's bars keep theirs (cut in stacking order,
+      // a closed part behind a large opened one vanished: review, 2026-11-10), and a gap across it near its end (the popup gives the sizes).
+      const stack = (xl: number, w: number, sign: 1 | -1, parts: readonly (readonly [number, string, boolean])[], total: number): void => {
+        const sizes = partsWithin(parts.map(part => part[0]), cap);
+        let at = 0;
+        for (const [i, [, color, opened]] of parts.entries()) {
+          const size = sizes[i]!;
+          if (size > 0) {
+            const ya = y(sign * at), yb = y(sign * (at + size)), top = Math.min(ya, yb), h = Math.max(1, Math.abs(yb - ya));
+            ctx.fillStyle = color; ctx.globalAlpha = opened ? 1 : 0.35; ctx.fillRect(xl, top, w, h);
+            if (!opened && w >= 4 && h >= 3) { ctx.globalAlpha = 0.9; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(xl) + 0.5, Math.round(top) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(h) - 1)); }
+          }
+          at += size;
+        }
+        ctx.globalAlpha = 1;
+        if (total > cap) { const yc = y(sign * cap); cutGap(ctx, xl, sign > 0 ? yc + BAR_CUT_PX : yc - BAR_CUT_PX - BAR_CUT_H, w); }
+      };
+      visible.forEach((c, k) => {
+        const x0 = v.xOf(c.t, pw), x1 = v.xOf(c.t + tf, pw), w = Math.max(1, Math.min((x1 - x0) * 0.7, 40)), xl = (x0 + x1) / 2 - w / 2;
+        stack(xl, w, 1, [[c.longOpened, p.candleUp, true], [c.shortClosed, p.candleUp, false]], ups[k]!);
+        stack(xl, w, -1, [[c.shortOpened, p.candleDown, true], [c.longClosed, p.candleDown, false]], downs[k]!);
+      });
     }
-    if (!split) line(c => c.cum, p.text, 1.25);
     ctx.restore();
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     ctx.fillText(coinText(hi, coin), this.w - AXIS_W + 6, 10); ctx.fillText(coinText(lo, coin), this.w - AXIS_W + 6, ph - 10);

@@ -213,8 +213,9 @@ test('Binance public OI history uses interval samples without invented extrema',
     { symbol: 'BTCUSDT', sumOpenInterest: '12', sumOpenInterestValue: '1200', timestamp: 1700000000000 },
   ], { receivedAt: 1700000400000 });
   assert.deepEqual(rows.map((row) => row.sourceTimestamp), [1700000000000, 1700000300000]);
+  assert.deepEqual(rows.map((row) => row.observationTimestamp), [1699999999999, 1700000299999], 'observed a millisecond before the stamp: the close of the bar ending there');
   assert.equal(rows[0].quality, 'sampled'); assert.equal(rows[0].historySource, 'binance-public-statistics');
-  assert.equal(rows[0].observationTimestamp, rows[0].sourceTimestamp); assert.equal(rows[0].base, 12); assert.equal(rows[0].quote, 1200);
+  assert.equal(rows[0].observationTimestamp, rows[0].sourceTimestamp - 1); assert.equal(rows[0].base, 12); assert.equal(rows[0].quote, 1200);
 });
 
 test('Binance spot IDs are distinct and spot OI fails closed', () => {

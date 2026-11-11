@@ -799,6 +799,11 @@ export class HistoryStore {
       quality: String(row?.quality ?? (sourceTimestamp == null ? 'sampled' : 'native')),
     };
   }
+  /** Whether the bar `observationTimestamp` falls in already holds a sample of the instrument, waiting to be written or stored. */
+  #oiBarHeld(instrumentId: string, observationTimestamp: number): boolean {
+    const bucketStart = Math.floor(observationTimestamp / this.oiBarIntervalMs) * this.oiBarIntervalMs;
+    return this.pendingOiBars.has(oiBarKey(instrumentId, this.oiBarIntervalMs, bucketStart)) || this.selectOiBarByKey.get(instrumentId, this.oiBarIntervalMs, bucketStart) != null;
+  }
   #mergeOiBar(sample: HistoryOiObservation) {
     const instrumentId = String(sample?.instrumentId ?? '');
     const observationTimestamp = Number(sample?.observationTimestamp);
@@ -1516,6 +1521,11 @@ export class HistoryStore {
     if (sourceTimestamp != null && !(sourceTimestamp > 0)) return false;
     const receivedAt = Number(sample.receivedAt ?? Date.now());
     if (!(receivedAt > 0)) return false;
+    // A venue's history reading (`historySource`) fills only a bar nothing else is in: observed a millisecond before its moment it is the
+    // last of its minute, and over live samples it would put another source's figure (a few coins apart) in place of their close, a rise
+    // and a fall in the one-minute series at every reading. Readings are taken before the live samples that follow them, so a live sample
+    // never lands in a reading's minute afterwards; a re-read of the same reading changes nothing either way.
+    if (sample.historySource != null && this.#oiBarHeld(String(sample.instrumentId), observationTimestamp)) return false;
     const merged = this.#mergeOiBar({
       instrumentId: String(sample.instrumentId), observationTimestamp,
       sourceTimestamp: Number.isFinite(sourceTimestamp) ? sourceTimestamp : null,

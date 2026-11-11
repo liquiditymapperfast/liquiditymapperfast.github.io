@@ -130,7 +130,8 @@ test('open interest history drops rows with no number, and a venue without a his
   const rows = await fetchOiHistory('binance:BTCUSDT', HOUR, T0, T0 + 3 * HOUR, async () => [
     { timestamp: T0, sumOpenInterest: '100.5' }, { timestamp: T0 + 300_000, sumOpenInterest: 'n/a' }, { timestamp: T0 + 600_000, sumOpenInterest: '101' },
   ]);
-  assert.deepEqual(rows.map(r => r.close), [100.5, 101]);
+  assert.deepEqual(rows.map(r => r.base), [100.5, 101]);
+  assert.deepEqual(rows.map(r => [r.sourceTimestamp, r.observationTimestamp]), [[T0, T0 - 1], [T0 + 600_000, T0 + 600_000 - 1]], 'each a reading at its stamp, kept a millisecond before it: the close of the bar ending there');
   assert.deepEqual(await fetchOiHistory('bitget:BTCUSDT', HOUR, T0, T0 + HOUR, async () => { throw new Error('should not be asked'); }), []);
 });
 

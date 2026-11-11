@@ -7,7 +7,7 @@ export interface DeltaSettings {
   divergence: boolean;
   /** Candles each side a swing high or low needs to be confirmed (higher than its neighbours, or lower). */
   pivot: number;
-  /** NL/NS as one net series (longs less shorts, bars and their sum) or split: the longs' and the shorts' running sums as two lines. */
+  /** NL/NS as each candle's four parts (`'net'`, the name kept for saved pages: "Four parts") or split: the longs' and the shorts' running sums as two lines. */
   nlns: 'net' | 'split';
 }
 

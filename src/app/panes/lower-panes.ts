@@ -36,6 +36,8 @@ import { panelSwitchRow, panelSwitchOn, panelSwitchTip, setPanelSwitch } from '.
 import { t, tn } from '../i18n.ts';
 import { currentCoin, scaledUsd, unscaledUsd } from '../coin.ts';
 import { fetchOiHistory, webGet } from '../../shared/history.ts';
+import { aggregateOi } from '../../shared/series.ts';
+import { BAR_CUT_H, BAR_CUT_PX, barScale, cutGap } from '../bar-scale.ts';
 import { OiLongHistory, oiLongBars, oiLongPeriod, oiLongSeam, type OiLongHeld, type OiLongSeam } from './oi-long.ts';
 import { DRAG_MIN_PX, selects } from '../range/selection.ts';
 import type { RangeTool } from '../range/tool.ts';
@@ -723,7 +725,8 @@ export class OiPane extends TimePane {
   readonly #long = new OiLongHistory((id, period, from, to) => {
     const listing = currentCoin().markets.bybit;
     if (!listing || `bybit:${listing.symbol}` !== id) return Promise.resolve([]);
-    return fetchOiHistory(id, period, from, to, webGet, listing).then(rows => rows.map((r): OiBar => [Number(r.start), Number(r.open), Number(r.high), Number(r.low), Number(r.close)]));
+    // Readings, each the close of the period that ends at it (`fetchOiHistory`): bars of the period they were read at.
+    return fetchOiHistory(id, period, from, to, webGet, listing).then(rows => aggregateOi(rows, period));
   }, () => this.invalidate());
   #seam: { parts: readonly OiPart[]; oi: readonly OiBar[]; id: string; seam: OiLongSeam | null } | null = null;
   #scaled: { held: OiLongHeld; t: number; k: number; bars: OiBar[] } | null = null;
@@ -772,13 +775,16 @@ export class OiPane extends TimePane {
     if (!visible.length && !shownEarly.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(ext && this.#long.loading ? t('Reading Bybit\'s open-interest history…') : t('No open-interest samples in view.'), 12, ph / 2); say(''); return; }
     // Geometry: the level on top, the change below (when the pane is tall enough to hold both).
     const split = ph >= 84, lineBottom = split ? Math.round(ph * 0.6) : ph - 6, bandTop = lineBottom + 12, bandBottom = ph - 5, mid = (bandTop + bandBottom) / 2, half = (bandBottom - bandTop) / 2;
-    let lo = Infinity, hi = -Infinity, maxDelta = 0;
-    for (const i of visible) { const b = oi[i]!; lo = Math.min(lo, b[3], b[4]); hi = Math.max(hi, b[2], b[4]); maxDelta = Math.max(maxDelta, Math.abs(analysis.delta[i]!)); }
+    let lo = Infinity, hi = -Infinity;
+    for (const i of visible) { const b = oi[i]!; lo = Math.min(lo, b[3], b[4]); hi = Math.max(hi, b[2], b[4]); }
     for (const j of shownEarly) { const b = early[j]!; lo = Math.min(lo, b[3], b[4]); hi = Math.max(hi, b[2], b[4]); }
+    // The change bars against `barScale` (bar-scale.ts): the few changes far larger than the rest are cut at the band's edge and marked,
+    // rather than drawing every other bar as a sliver.
+    const scaleDelta = barScale(visible.map(i => Math.abs(analysis.delta[i]!)));
     const pad = Math.max((hi - lo) * 0.18, hi * 0.0004), min = lo - pad, max = hi + pad;
     const y = (value: number) => 6 + (1 - (value - min) / (max - min)) * (lineBottom - 6);
     this.scaleAt = at => at <= lineBottom ? amount(min + (1 - (at - 6) / (lineBottom - 6)) * (max - min))
-      : split && at >= bandTop && at <= bandBottom && maxDelta > 0 ? `${at <= mid ? '+' : '−'}${amount(Math.abs(mid - at) / half * maxDelta)}` : null;
+      : split && at >= bandTop && at <= bandBottom && scaleDelta > 0 ? `${at <= mid ? '+' : '−'}${amount(Math.abs(mid - at) / half * scaleDelta)}` : null;
     const xc = (i: number) => v.xOf(oi[i]![0] + tf / 2, pw), xe = (j: number) => v.xOf(early[j]![0] + ep / 2, pw);
     const first = visible.length ? Math.max(seamI, visible[0]! - 1) : -1, last = visible.length ? visible[visible.length - 1]! : -1;
     const lastBar = oi[oi.length - 1]!, newestCandle = state.candles[state.candles.length - 1];
@@ -798,12 +804,13 @@ export class OiPane extends TimePane {
       for (const i of visible) {
         if (i === 0) continue;
         const d = analysis.delta[i]!; if (d === 0) continue;
-        const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(oi[i]![0] + tf, pw), h = Math.max(1, Math.abs(d) / (maxDelta || 1) * half), w = Math.max(1, x1 - x0 - 1);
+        const cut = Math.abs(d) > scaleDelta;
+        const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(oi[i]![0] + tf, pw), h = Math.max(1, Math.min(1, Math.abs(d) / (scaleDelta || 1)) * half), w = Math.max(1, x1 - x0 - 1);
         const alpha = !emphasise ? 0.75 : analysis.flag[i] ? 1 : 0.38;
         let cap = d > 0 ? p.bid : p.ask;
         if (who) {
           // Outward from the zero line: the buyers' part, the sellers', then what went to no side, each its share of what opened (a rise) or
-          // closed (a fall). A fall's parts are lighter, outlined where the bar is wide enough: closed, as NL/NS draws them hollow.
+          // closed (a fall). A fall's parts are lighter, outlined where the bar is wide enough: closed, as the Delta pane's Four parts draws them.
           const c = who.get(oi[i]![0]), parts = c ? whoParts(c, d > 0) : null, total = parts ? parts.buy + parts.sell + parts.none : 0;
           const segments: [number, string][] = parts && total > 0 ? [[parts.buy, p.candleUp], [parts.sell, p.candleDown], [parts.none, p.muted]] : [[1, p.muted]];
           const sum = total > 0 ? total : 1;
@@ -820,6 +827,8 @@ export class OiPane extends TimePane {
           ctx.globalAlpha = alpha; ctx.fillStyle = cap;
           ctx.fillRect(x0 + 0.5, d > 0 ? mid - h : mid, w, h);
         }
+        // A bar past the scale is cut at the band's edge: a gap across it near its end says it goes on (the popup gives its size).
+        if (cut) cutGap(ctx, x0 + 0.5, d > 0 ? mid - h + BAR_CUT_PX : mid + h - BAR_CUT_PX - BAR_CUT_H, w);
         if (emphasise && analysis.flag[i]) { // a small cap outside the bar says "this one stands out"
           ctx.globalAlpha = alpha; ctx.fillStyle = cap;
           ctx.fillRect(x0 + 0.5, d > 0 ? mid - h - 2.5 : mid + h + 0.5, w, 2);
@@ -874,7 +883,7 @@ export class OiPane extends TimePane {
     // A coin counted in billions (PEPE) would not fit the axis written out in full.
     const amount = (v: number): string => Math.abs(v) >= 1e6 ? usd(v) : fmtPrice(v, 1);
     ctx.fillText(amount(max), this.w - AXIS_W + 6, 10); ctx.fillText(amount(min), this.w - AXIS_W + 6, lineBottom - 4);
-    if (split && visible.length) { ctx.fillText(`±${amount(maxDelta)}`, this.w - AXIS_W + 6, mid); }
+    if (split && visible.length) { ctx.fillText(`±${amount(scaleDelta)}`, this.w - AXIS_W + 6, mid); }
     // Readout: the hovered sample, else the newest, with where the data comes from and how old it is.
     const hover = state.hover;
     // Over Bybit's history: its reading there, marked as the estimate it is.

@@ -52,6 +52,8 @@ export function aggregateCandles(rows: Iterable<CandleRow>, tfMs: number, withBu
 /** [start, open, high, low, close] of base open interest per bucket. */
 export type OiBar = [number, number, number, number, number];
 export interface OiRow { base?: unknown; quote?: unknown; observationTimestamp?: unknown; sourceTimestamp?: unknown; receivedAt?: unknown; start?: unknown; close?: unknown; open?: unknown; high?: unknown; low?: unknown;
+  /** Set on a venue's history reading (`fetchOiHistory`, the server's history feeds), which fills only a minute no live reading is in. */
+  historySource?: unknown;
   /** A stored bar's USD (`quote`) open, high, low and close, where its samples had one. */
   quoteOpen?: unknown; quoteHigh?: unknown; quoteLow?: unknown; quoteClose?: unknown }
 
@@ -94,11 +96,22 @@ export function aggregateOi(rows: Iterable<OiRow>, tfMs: number): OiBar[] {
  * Stored OI bars plus the live samples from the start of the newest stored bar on. Persistence can lag or be suspended (a history store
  * over its size budget stops writing), so the newest data may exist only in memory, and the newest stored bar may hold only the first
  * of its minute's samples: a window that reaches back into stored history must not hide what came after. A sample that bar already
- * holds only repeats it (the bar's own row sorts before the samples of its minute).
+ * holds only repeats it (the bar's own row sorts before the samples of its minute). Only bars (a server's store, with `start`) set the cut:
+ * a venue's history readings (`fetchOiHistory`, samples a millisecond before their moment) set none, so on a page every live minute row
+ * joins them. Until 2026-11-10 those readings were bars whose newest set the cut, and the page's own minute rows older than it never reached
+ * a one-minute series. A history reading (`historySource`) fills only a minute no other row is in, as the server's store keeps it
+ * (`HistoryStore.recordOi`): the last of its minute, it would put another source's figure in place of the live close, a few coins apart,
+ * a rise and a fall in the one-minute series at every reading, read by NL/NS as positions opened and closed.
  */
 export function withLiveOi(stored: readonly OiRow[], live: readonly OiRow[]): OiRow[] {
   let newest = -Infinity;
   for (const row of stored) { const t = Number(row.start); if (Number.isFinite(t)) newest = Math.max(newest, t); }
-  const fresh = live.filter(sample => { const t = Number(sample.observationTimestamp ?? sample.sourceTimestamp ?? sample.receivedAt); return Number.isFinite(t) && t >= newest; });
-  return [...stored, ...fresh];
+  const fresh = live.filter(sample => { const t = sampleTime(sample); return Number.isFinite(t) && t >= newest; });
+  const rows = [...stored, ...fresh];
+  if (!rows.some(row => row.historySource != null)) return rows; // the server's path, nearly always: its readings are older than the cut
+  const held = new Set<number>();
+  for (const row of rows) if (row.historySource == null) { const t = Number.isFinite(Number(row.start)) ? Number(row.start) : sampleTime(row); if (Number.isFinite(t)) held.add(Math.floor(t / OI_MINUTE_MS)); }
+  return held.size ? rows.filter(row => row.historySource == null || !held.has(Math.floor(sampleTime(row) / OI_MINUTE_MS))) : rows;
 }
+const OI_MINUTE_MS = 60_000;
+const sampleTime = (row: OiRow): number => Number(row.observationTimestamp ?? row.sourceTimestamp ?? row.receivedAt);

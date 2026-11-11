@@ -1232,6 +1232,7 @@ test('Binance public OI history is bounded, explicit, and statused', async () =>
   const rows = await manager.syncOpenInterestHistory({ symbol: 'BTCUSDT', period: '5m', limit: 2 });
   assert.equal(rows.length, 2); assert.match(requests[0].url, /futures\/data\/openInterestHist/); assert.match(requests[0].url, /period=5m/);
   assert.equal(messages.filter((item) => item.message.kind === 'openInterest').length, 2);
+  assert.deepEqual(messages.filter((item) => item.message.kind === 'openInterest').map((item) => [item.message.sourceTimestamp, (item.message as { observationTimestamp?: unknown }).observationTimestamp]), [[1700000000000, 1699999999999], [1700000300000, 1700000299999]], 'a reading closes the bar that ends at its stamp');
   const status = manager.status()['binance-openInterest-history']; assert.equal(status.sampleCount, 2); assert.equal(status.coverageStart, 1700000000000); assert.equal(status.coverageEnd, 1700000300000);
 });
 

@@ -1673,10 +1673,15 @@ export function createLocalServer({
       const rawSourceTimestamp = message.sourceTimestamp;
       const sourceTimestamp = rawSourceTimestamp == null ? null : Number(rawSourceTimestamp);
       const sourceKnown = sourceTimestamp != null && Number.isFinite(sourceTimestamp) && sourceTimestamp > 0;
+      // A venue's history reading (`historySource`, Binance's statistics) is observed a millisecond before its moment, so it closes the bar
+      // that ends there (`normalizeBinanceOpenInterestHistory`); taken at its source time it opened the next one, a period late in any
+      // stretch no live sample covers. A live sample is observed at its source time.
+      const { historySource, observationTimestamp: given } = message as { historySource?: unknown; observationTimestamp?: unknown };
+      const reading = historySource != null && sourceKnown && typeof given === 'number' && Number.isFinite(given) && given > 0 && given < sourceTimestamp;
       const sample = {
         ...(message as RuntimeMessage & OpenInterestSample),
         sourceTimestamp: sourceKnown ? sourceTimestamp : null,
-        observationTimestamp: sourceKnown ? sourceTimestamp : receivedAt,
+        observationTimestamp: reading ? given : sourceKnown ? sourceTimestamp : receivedAt,
         timeBasis: sourceKnown ? 'exchange' : 'receipt',
         quality: message.quality ?? (sourceKnown ? 'native' : 'sampled'),
       };
