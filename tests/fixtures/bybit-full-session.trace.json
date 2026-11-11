@@ -817,22 +817,22 @@
  },
  {
   "event": "audit 16864266",
-  "result": "extended",
+  "result": "unchanged",
   "live": true,
   "u": 16864266,
   "seq": 143215303849,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 563,
-  "asks": 800,
+  "asks": 799,
   "bidUsd": 127065.74398199997,
-  "askUsd": 337498.167357,
+  "askUsd": 337495.214421,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -846,17 +846,17 @@
   "u": 16864267,
   "seq": 143215304049,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 563,
-  "asks": 800,
+  "asks": 799,
   "bidUsd": 127620.65649599998,
-  "askUsd": 337498.167357,
+  "askUsd": 337495.214421,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -870,17 +870,17 @@
   "u": 16864268,
   "seq": 143215304155,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 563,
-  "asks": 800,
+  "asks": 799,
   "bidUsd": 127621.269046,
-  "askUsd": 337498.167357,
+  "askUsd": 337495.214421,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -894,17 +894,17 @@
   "u": 16864269,
   "seq": 143215304670,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 563,
-  "asks": 800,
+  "asks": 799,
   "bidUsd": 127837.90895,
-  "askUsd": 337498.167357,
+  "askUsd": 337495.214421,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -918,17 +918,17 @@
   "u": 16864270,
   "seq": 143215305274,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 120119.897335,
-  "askUsd": 337387.89218200004,
+  "askUsd": 337384.939246,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -942,17 +942,17 @@
   "u": 16864271,
   "seq": 143215305922,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 126454.35796899999,
-  "askUsd": 337621.51050200005,
+  "askUsd": 337618.55756600003,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -966,17 +966,17 @@
   "u": 16864272,
   "seq": 143215306479,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 565,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 124008.92721299997,
-  "askUsd": 334979.170923,
+  "askUsd": 334976.217987,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -990,17 +990,17 @@
   "u": 16864273,
   "seq": 143215306894,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 124044.88333099999,
-  "askUsd": 334755.15477900003,
+  "askUsd": 334752.201843,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1014,17 +1014,17 @@
   "u": 16864274,
   "seq": 143215307177,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 565,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 127336.61527899999,
-  "askUsd": 337195.46501900005,
+  "askUsd": 337192.51208300004,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1038,17 +1038,17 @@
   "u": 16864275,
   "seq": 143215307350,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 565,
-  "asks": 797,
+  "asks": 796,
   "bidUsd": 127674.873731,
-  "askUsd": 337572.485113,
+  "askUsd": 337569.53217699996,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1062,17 +1062,17 @@
   "u": 16864276,
   "seq": 143215307374,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 565,
-  "asks": 797,
+  "asks": 796,
   "bidUsd": 127474.67124499999,
-  "askUsd": 337572.485113,
+  "askUsd": 337569.53217699996,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1086,17 +1086,17 @@
   "u": 16864277,
   "seq": 143215307600,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 797,
+  "asks": 796,
   "bidUsd": 128148.37870300001,
-  "askUsd": 337508.7971380001,
+  "askUsd": 337505.84420200007,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1110,17 +1110,17 @@
   "u": 16864278,
   "seq": 143215307859,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 797,
+  "asks": 796,
   "bidUsd": 128343.87677500001,
-  "askUsd": 337508.7971380001,
+  "askUsd": 337505.84420200007,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1134,17 +1134,17 @@
   "u": 16864279,
   "seq": 143215307963,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 128322.57652300001,
-  "askUsd": 337593.643798,
+  "askUsd": 337590.690862,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1158,17 +1158,17 @@
   "u": 16864280,
   "seq": 143215308155,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 128322.57652300001,
-  "askUsd": 337594.503798,
+  "askUsd": 337591.550862,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1182,17 +1182,17 @@
   "u": 16864281,
   "seq": 143215308306,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 128322.57652300001,
-  "askUsd": 337594.6194680001,
+  "askUsd": 337591.66653200006,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1206,17 +1206,17 @@
   "u": 16864282,
   "seq": 143215309064,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 128322.66411700001,
-  "askUsd": 337594.6194680001,
+  "askUsd": 337591.66653200006,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1230,17 +1230,17 @@
   "u": 16864283,
   "seq": 143215309325,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 127266.54928699999,
-  "askUsd": 337594.6194680001,
+  "askUsd": 337591.66653200006,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1254,17 +1254,17 @@
   "u": 16864284,
   "seq": 143215309338,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 127308.75607099998,
-  "askUsd": 337594.6194680001,
+  "askUsd": 337591.66653200006,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1278,17 +1278,17 @@
   "u": 16864285,
   "seq": 143215309458,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 127308.75607099998,
-  "askUsd": 337594.6194680001,
+  "askUsd": 337591.66653200006,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1302,17 +1302,17 @@
   "u": 16864286,
   "seq": 143215309777,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 800,
+  "asks": 799,
   "bidUsd": 127224.394999,
-  "askUsd": 337615.78848000005,
+  "askUsd": 337612.83554400003,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1326,17 +1326,17 @@
   "u": 16864287,
   "seq": 143215310399,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 800,
+  "asks": 799,
   "bidUsd": 127224.394999,
-  "askUsd": 337616.418506,
+  "askUsd": 337613.46557,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1350,17 +1350,17 @@
   "u": 16864288,
   "seq": 143215310574,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 127224.394999,
-  "askUsd": 337556.09573600005,
+  "askUsd": 337553.14280000003,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1374,17 +1374,17 @@
   "u": 16864289,
   "seq": 143215310658,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 799,
+  "asks": 798,
   "bidUsd": 127124.228313,
-  "askUsd": 337556.09573600005,
+  "askUsd": 337553.14280000003,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1398,17 +1398,17 @@
   "u": 16864290,
   "seq": 143215310763,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 127124.228313,
-  "askUsd": 337558.35573600006,
+  "askUsd": 337555.40280000004,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1422,17 +1422,17 @@
   "u": 16864291,
   "seq": 143215310871,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 127289.93729999999,
-  "askUsd": 337600.89062,
+  "askUsd": 337597.937684,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1446,17 +1446,17 @@
   "u": 16864292,
   "seq": 143215311088,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 127193.27729999999,
-  "askUsd": 337600.89062,
+  "askUsd": 337597.937684,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1470,17 +1470,17 @@
   "u": 16864293,
   "seq": 143215311177,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 127193.55751099999,
-  "askUsd": 337600.89062,
+  "askUsd": 337597.937684,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,
@@ -1494,17 +1494,17 @@
   "u": 16864294,
   "seq": 143215311352,
   "epoch": 0,
-  "auditing": true,
+  "auditing": false,
   "refreshing": false,
   "waiting": false,
   "frontiers": {
    "bid": 0.12892,
-   "ask": 0.4557
+   "ask": 0.4556
   },
   "bids": 564,
-  "asks": 798,
+  "asks": 797,
   "bidUsd": 127193.944022,
-  "askUsd": 337600.89062,
+  "askUsd": 337597.937684,
   "disagreements": {
    "snapshotOnly": 0,
    "liveOnly": 0,

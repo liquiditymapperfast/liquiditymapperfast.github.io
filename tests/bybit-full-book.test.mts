@@ -229,11 +229,51 @@ test('bybit full book: a refresh is due when a frontier inside the band is appro
   assert.equal(whole.refreshDue(100, 0), false);
   assert.equal(whole.refreshDue(90, 0), false, 'frontier 40 is 55 % below 90: outside the band');
   assert.equal(whole.refreshDue(53, 0), true, 'frontier 40 is 25 % below 53, and 13 of the 60 are left');
+  // Past the band at its seed, a frontier is due as soon as the band reaches it (50 % above 107 is 160.5), not once a quarter is used.
+  assert.equal(whole.refreshDue(106, 0), false, '50 % above 106 is 159: inside the ask frontier 160');
+  assert.equal(whole.refreshDue(107, 0), true);
+  // The same with a full snapshot's worth of levels inside the cut (the perpetual's): only the band's reach makes it due.
+  const longBids: Rows = [], longAsks: Rows = [];
+  for (let i = 1; i <= SNAPSHOT_CAP; i++) { longBids.push([99 - i * 0.001, 1]); longAsks.push([101 + i * 0.001, 1]); }
+  const full = seededBook([...longBids, [1, 1]], [...longAsks, [1e9, 1]]);
+  assert.deepEqual(full.frontiers, { bid: 40, ask: 160 });
+  assert.equal(full.refreshDue(100, 0), false); assert.equal(full.refreshDue(106, 0), false);
+  assert.equal(full.refreshDue(107, 0), true, 'a quarter of the 60 is not used yet, but the band reaches past 160');
+  assert.equal(full.refreshDue(80.1, 0), false, '50 % below 80.1 is 40.05: inside the bid frontier 40');
+  assert.equal(full.refreshDue(79.9, 0), true, '50 % below 79.9 is 39.95: past it');
   // A side of fewer than SNAPSHOT_CAP levels whose frontier is inside the band may have come cut short: due at once (after the minute).
   const short = seededBook();
   assert.equal(short.refreshDue(100, 0), true);
   short.beginRefresh(0);
   assert.equal(short.refreshDue(100, 1), false, 'not while one is being read');
+});
+
+test('bybit full book: an audit only checks, so a side cut at the guard is not read again each time the mid moves', () => {
+  // A linear book whose sides run far past the guard, cut at 40 and 160 around 100.
+  const book = seededBook([[99, 1], [50, 1], [1, 1]], [[101, 1], [150, 1], [1e9, 1]]);
+  assert.deepEqual(book.frontiers, { bid: 40, ask: 160 });
+  // The price rises to 102 before the audit, whose own cut is then at 163.2: the audit passes and adds nothing.
+  book.delta(delta(6, [[99, 0], [101.5, 1]], [[101, 0], [102.5, 1]]), 1);
+  const seeded = book.coverageEpoch;
+  assert.equal(book.refreshDue(102, AUDIT_DELAY_MS), true, "the seed's audit");
+  let epoch = book.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(book.snapshot(snap(6, [[101.5, 1], [50, 1], [1, 1]], [[102.5, 1], [150, 1], [1e9, 1]]), epoch, AUDIT_DELAY_MS), 'unchanged');
+  assert.equal(book.coverageEpoch, seeded, 'no new coverage'); assert.deepEqual(book.frontiers, { bid: 40, ask: 160 }); assert.equal(book.auditing, false);
+  // Nothing is read again while the band stays inside the frontiers.
+  for (const minutes of [1, 2, 5, 30]) assert.equal(book.refreshDue(102, AUDIT_DELAY_MS + minutes * REFRESH_MIN_MS), false, `${minutes} min on`);
+  // Once the band reaches past the ask frontier, a refresh is due, and it extends to the snapshot's own cut.
+  const at = AUDIT_DELAY_MS + REFRESH_MIN_MS;
+  assert.equal(book.refreshDue(107, at), true);
+  epoch = book.beginRefresh(at);
+  assert.equal(book.snapshot(snap(6, [[101.5, 1], [50, 1], [1, 1]], [[102.5, 1], [150, 1], [1e9, 1]]), epoch, at), 'extended');
+  assert.equal(book.coverageEpoch, seeded + 1); assert.equal(book.frontiers.ask, 102 * (1 + GUARD)); assert.equal(book.auditing, true);
+  // Its audit (a minute on) passes without extending again, though the mid has moved on to 104 and the audit's cut with it.
+  book.delta(delta(7, [[101.5, 0], [103.5, 1]], [[102.5, 0], [104.5, 1]]), at + 1);
+  assert.equal(book.refreshDue(104, at + REFRESH_MIN_MS), true, "the extension's audit");
+  epoch = book.beginRefresh(at + REFRESH_MIN_MS);
+  assert.equal(book.snapshot(snap(7, [[103.5, 1], [50, 1], [1, 1]], [[104.5, 1], [150, 1], [1e9, 1]]), epoch, at + REFRESH_MIN_MS), 'unchanged');
+  assert.equal(book.coverageEpoch, seeded + 1); assert.equal(book.frontiers.ask, 102 * (1 + GUARD)); assert.equal(book.auditing, false);
+  assert.equal(book.refreshDue(104, at + 3 * REFRESH_MIN_MS), false);
 });
 
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {

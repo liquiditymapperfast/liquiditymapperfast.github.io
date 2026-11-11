@@ -212,7 +212,8 @@ export class FullBook {
   #recent: FullDelta[] = [];
   #bid: Coverage = noCoverage(); #ask: Coverage = noCoverage();
   /** A refresh under way, and a snapshot of it ahead of the live book waiting for the book to reach it. */
-  #refresh: { waiting: FullSnapshot | null; since: number } | null = null;
+  /** The refresh being read: its snapshot when it is ahead of the book, since when, and whether it was asked for as the audit. */
+  #refresh: { waiting: FullSnapshot | null; since: number; audit: boolean } | null = null;
   #nextRefreshAt = 0; #refreshFailures = 0;
   /** When the audit of the current seed is due (0: none pending). */
   #auditAt = 0;
@@ -297,11 +298,14 @@ export class FullBook {
     if (!this.#live || this.#refresh || now < this.#nextRefreshAt) return false;
     if (this.#auditAt && now >= this.#auditAt) return true;
     if (!(mid > 0)) return false;
-    const due = (c: Coverage, left: number): boolean => c.frontier !== null && left < mid * BAND && (left <= c.seedDistance * (1 - REFRESH_USED) || c.levels < SNAPSHOT_CAP);
+    // Inside the band, a frontier is refreshed once a quarter of its distance is used, at once when its snapshot ran short of the cap
+    // (the whole side), or at once when it was past the band at its seed (cut at the guard: the perpetual's, which the band reaches
+    // after a move of a fifteenth, long before a quarter of the distance is used).
+    const due = (c: Coverage, left: number): boolean => c.frontier !== null && left < mid * BAND && (left <= c.seedDistance * (1 - REFRESH_USED) || c.levels < SNAPSHOT_CAP || c.seedDistance >= mid * BAND);
     return due(this.#bid, this.#bid.frontier === null ? Infinity : mid - this.#bid.frontier) || due(this.#ask, this.#ask.frontier === null ? Infinity : this.#ask.frontier - mid);
   }
   /** A refresh is being read for the current epoch: the connector asks for the snapshot and hands the answer to `snapshot`. */
-  beginRefresh(now: number): number { this.#refresh = { waiting: null, since: now }; this.#nextRefreshAt = now + REFRESH_MIN_MS; return this.epoch; }
+  beginRefresh(now: number): number { this.#refresh = { waiting: null, since: now, audit: this.#auditAt > 0 && now >= this.#auditAt }; this.#nextRefreshAt = now + REFRESH_MIN_MS; return this.epoch; }
   /** The refresh's request failed (or added nothing): the live book stays, the next try waits longer. */
   failRefresh(now: number, epoch: number = this.epoch): void {
     // A failure of a request made for an earlier epoch (the book was seeded again since) is not this book's: its audit is not held back.
@@ -390,18 +394,21 @@ export class FullBook {
       // Each lacks many of the other's levels: which is whole is not known. Nothing is taken, and another audit follows (after the pause).
       this.#auditAt = now; this.failRefresh(now); return 'unchanged';
     }
-    // The two agree (a replica's few levels aside): the audit is passed, and coverage past the live frontiers is added.
-    const audit = this.#auditAt > 0;
+    // The two agree (a replica's few levels aside). An audit is passed and only checks: it adds nothing past the live frontiers, or a
+    // frontier at the guard's cut (the perpetual's, whose snapshot runs far past it) would move with the mid at every audit, each move an
+    // extension audited again: the whole book read every minute, and a new coverage epoch each time. A refresh asked for by the frontiers
+    // adds the coverage past them.
+    const audit = this.#auditAt > 0, asked = this.#refresh?.audit === true;
     this.#auditAt = 0;
     const mid = midOf(this.bids, this.asks);
     let grew = false;
     const bidEdge = this.#bid.frontier, newBid = book.bid.frontier;
-    if (bidEdge !== null && newBid !== null && newBid < bidEdge) {
+    if (!asked && bidEdge !== null && newBid !== null && newBid < bidEdge) {
       const floor = mid > 0 ? Math.max(newBid, mid * (1 - GUARD)) : newBid;
       if (floor < bidEdge) { for (const [p, q] of book.bids) if (p < bidEdge && p >= floor) this.bids.set(p, q); this.#bid = { ...this.#bid, frontier: floor }; grew = true; }
     }
     const askEdge = this.#ask.frontier, newAsk = book.ask.frontier;
-    if (askEdge !== null && newAsk !== null && newAsk > askEdge) {
+    if (!asked && askEdge !== null && newAsk !== null && newAsk > askEdge) {
       const ceiling = mid > 0 ? Math.min(newAsk, mid * (1 + GUARD)) : newAsk;
       if (ceiling > askEdge) { for (const [p, q] of book.asks) if (p > askEdge && p <= ceiling) this.asks.set(p, q); this.#ask = { ...this.#ask, frontier: ceiling }; grew = true; }
     }
