@@ -1,5 +1,5 @@
 /**
- * The TPO's settings (Time Price Opportunity, the Market Profile; Karl, 2026-11-10, proposal docs/proposals/tpo-2026-11-10.md): whether it
+ * The TPO's settings (Time Price Opportunity, the Market Profile; Karl, 2026-11-10; README "TPO (Market Profile)"): whether it
  * shows; the windows it draws (each day or week in the Volume profile's zone, or its sessions) and how many; the length of a block (the
  * half hour each letter stands for, four hours for a week by default); the size of a row (Auto from the coin's typical day, or a price
  * chosen for that coin); how it is drawn (blocks, letters or Auto by zoom; coloured by the time of the block or by how full the row is);

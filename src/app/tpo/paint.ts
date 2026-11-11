@@ -33,8 +33,9 @@ const TIME_LIGHT = ['#d62f2f', '#dd5e0b', '#b07800', '#4e8f0f', '#0b9a6f', '#0f8
 /** How full a row is: thin to full, cool to hot. */
 const COUNT_DARK = ['#4f6bff', '#2fb7d6', '#3ddc97', '#ffd166', '#ff9f43', '#ff5c5c'];
 const COUNT_LIGHT = ['#3550d8', '#0f8ea3', '#0b9a6f', '#b07800', '#dd5e0b', '#d62f2f'];
-/** The Colour-blind safe theme's ramp: blue to yellow, one lightness step at a time, no red against green (for both orders). */
+/** The Colour-blind safe themes' ramps: blue to yellow, one lightness step at a time, no red against green (for both orders); darker on a light page. */
 const SAFE = ['#3b6fd8', '#2a9fd0', '#3fbfa8', '#9fcf6a', '#e8d64b', '#f5b941'];
+const SAFE_LIGHT = ['#1f4fbf', '#1979ad', '#178f86', '#5f9a35', '#8f7f00', '#a8650a'];
 /** The initial balance's and the single prints' marks: amber, as the other marks of what stands out. */
 const AMBER_DARK = '#f2b84b', AMBER_LIGHT = '#a35f00';
 
@@ -104,8 +105,9 @@ export interface TpoPaint {
 
 export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometry[] {
   const out: TpoGeometry[] = [];
-  const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, safe = p === PALETTES.colorblind;
-  const timeStops = safe ? SAFE : dark ? TIME_DARK : TIME_LIGHT, countStops = safe ? SAFE : dark ? COUNT_DARK : COUNT_LIGHT, amber = dark ? AMBER_DARK : AMBER_LIGHT;
+  const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, safe = p === PALETTES.colorblind || p === PALETTES.daylight;
+  const safeStops = dark ? SAFE : SAFE_LIGHT;
+  const timeStops = safe ? safeStops : dark ? TIME_DARK : TIME_LIGHT, countStops = safe ? safeStops : dark ? COUNT_DARK : COUNT_LIGHT, amber = dark ? AMBER_DARK : AMBER_LIGHT;
   const fold = ease(Math.max(0, Math.min(1, o.fold)));
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
   for (const prof of o.profiles) {
@@ -255,6 +257,7 @@ export function paintLit(ctx: CanvasRenderingContext2D, geo: TpoGeometry, k: num
   const prof = geo.profile, b = prof.blocks.find(x => x.k === k);
   if (!b) return;
   ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
   const a = v.xOf(b.t, pw), z = v.xOf(b.t + prof.blockMs, pw);
   ctx.globalAlpha = 0.08; ctx.fillStyle = p.text; ctx.fillRect(a, 0, Math.max(1, z - a), ph);
   const gap = geo.cw >= 5 && geo.rh >= 5 ? 1 : 0, w = Math.max(1, (geo.fold > 0.5 ? geo.ucw : geo.cw) - gap), h = Math.max(1, geo.rh - gap);

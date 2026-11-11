@@ -11,6 +11,7 @@ import { historyTarget, type HistoryTarget, type KeyLevelHistory } from '../keyl
 import { linesWindows, periodWindows } from '../traded/levels.ts';
 import type { ProfileWindow } from '../traded/sessions.ts';
 import type { ValueLevels } from '../../shared/profile.ts';
+import { TIMEFRAMES } from '../../shared/series.ts';
 import { autoRows, blockStart, blocksOf, buildProfile, editedWindows, hollowRows, letterOf, levelsOfProfile, overshootOf, trailingGaps, withLive, type Block, type EditedWindow, type Peer, type TpoProfile } from './model.ts';
 import { blockMsOf, editScope, type TpoSettings } from './settings.ts';
 import { cellAt, paintLit, paintTpo, type TpoGeometry } from './paint.ts';
@@ -59,7 +60,10 @@ export class TpoLayer {
   #hollow = new Map<number, { key: string; byBlock: Map<number, Set<number>>; peers: Peer[] }>();
   #fold = { target: 0, from: 0, start: 0 };
   #autoR = new Map<string, number>();
-  /** How far back a window the lines asked about reaches (`levels`), for the chart market it was asked on: another market starts again. */
+  /**
+   * How far back a window the lines asked about reaches (`levels`), for the chart market, kind of window and block it was asked on: any
+   * other starts again.
+   */
   #reach = { id: '', from: Infinity };
   #drawn: { key: string; windows: TpoWindow[] } | null = null;
   #bar: { key: string; barMs: number } | null = null;
@@ -105,7 +109,7 @@ export class TpoLayer {
     // A Range selected on the map: the composite of every block in it, drawn last (over the windows it crosses), from its first whole block.
     if (r && range) {
       const from = Math.floor(r.t0 / blockMs) * blockMs, to = Math.ceil(r.t1 / blockMs) * blockMs;
-      if (to - from >= blockMs) windows.push({ key: `range|${from}|${to}`, from, to, base: 'range', members: [], name: t('Range') });
+      if (to - from >= blockMs) windows.push({ key: `range|${from}|${to}`, from, to, base: 'range', members: [], spans: [], name: t('Range') });
     }
     this.#drawn = { key, windows };
     return windows;
@@ -117,7 +121,8 @@ export class TpoLayer {
     if (!target) return;
     const windows = this.windows(f);
     if (!windows.length) return;
-    if (this.#reach.id !== target.id) this.#reach = { id: target.id, from: Infinity };
+    const reachId = `${target.id}|${s.period}|${blockMsOf(s)}`;
+    if (this.#reach.id !== reachId) this.#reach = { id: reachId, from: Infinity };
     const barMs = this.barMs(f), first = Math.min(this.#reach.from, ...windows.map(w => w.from));
     // A day before the first window: the other markets' usual gaps are read over the day before each block.
     this.hub.tpoHistory(target.id, barMs, 'main').ensure(target, first - DAY, barMs, () => this.invalidate());
@@ -154,7 +159,7 @@ export class TpoLayer {
   #live(f: TpoFrame, target: HistoryTarget, blockMs: number, from: number): { t: number; h: number; l: number; c: number } | null {
     const state = f.state;
     if (f.replay || !target.own || state.seriesInstrument !== state.marketId) return null;
-    const start = blockStart(f.now, from, blockMs), tf = state.candles.length > 1 ? state.candles[1]![0] - state.candles[0]![0] : Infinity;
+    const start = blockStart(f.now, from, blockMs), tf = TIMEFRAMES[state.timeframe] ?? Infinity;
     let h = -Infinity, l = Infinity, c = NaN;
     if (tf <= blockMs) for (let i = state.candles.length - 1; i >= 0 && state.candles[i]![0] >= start; i--) { const b = state.candles[i]!; h = Math.max(h, b[2]); l = Math.min(l, b[3]); if (Number.isNaN(c)) c = b[4]; }
     const mark = state.mark.price;
@@ -178,8 +183,15 @@ export class TpoLayer {
       const theirs = new Map(blocksOf(h.bars, start, end, blockMs, barMs, f.now, f.replay).map(b => [b.t, b] as const)), gaps = trailingGaps(mine, theirs, blockMs);
       out.push({ blocks: theirs, gap: t => gaps.get(t) ?? 0, heldTo: f.replay ? f.now : Math.min(h.heldTo, f.now) });
     }
+    // A block is judged once the chart market and every other market loaded have read past its end, or ten minutes after it ends with
+    // whichever have (one that read early cannot decide alone, and one that stopped reading cannot hold the marks back for ever).
     const byBlock = new Map<number, Set<number>>(), mineTo = f.replay ? f.now : Math.min(main.heldTo, f.now);
-    for (const b of mine) if (b.t >= first && b.t + blockMs <= mineTo) { const rows = hollowRows(b, out, R, blockMs); if (rows.size) byBlock.set(b.t, rows); }
+    const allTo = Math.min(mineTo, ...out.map(x => x.heldTo ?? Infinity));
+    for (const b of mine) {
+      const end = b.t + blockMs;
+      if (b.t < first || end > mineTo || (end > allTo && f.now - end < 10 * MIN)) continue;
+      const rows = hollowRows(b, out, R, blockMs); if (rows.size) byBlock.set(b.t, rows);
+    }
     const next = { key, byBlock, peers: out };
     if (this.#hollow.size > 4) this.#hollow.clear();
     this.#hollow.set(residue, next);
@@ -191,8 +203,10 @@ export class TpoLayer {
     const s = f.state.tpo, target = this.#target(f.state), R = this.rows(f);
     if (!target || !(R > 0) || (f.replay && w.from > f.now)) return null;
     const blockMs = blockMsOf(s), barMs = this.barMs(f), main = this.hub.tpoHistory(target.id, barMs, 'main');
-    if (main.id !== target.id || main.barMs !== barMs || !main.bars.length || main.knownFrom > w.from) { if (this.#reach.id === target.id) this.#reach.from = Math.min(this.#reach.from, w.from); return null; }
-    const residue = residueOf(w.from, blockMs), first = Math.min(...this.windows(f).map(x => x.from), w.from);
+    if (main.id !== target.id || main.barMs !== barMs || !main.bars.length || main.knownFrom > w.from) { if (this.#reach.id === `${target.id}|${s.period}|${blockMs}`) this.#reach.from = Math.min(this.#reach.from, w.from); return null; }
+    // Hollow rows are worked out for the windows drawn only (a window the lines ask about needs none: its levels count blocks, not marks),
+    // so the work and its cache do not move with every window the lines read.
+    const residue = residueOf(w.from, blockMs), first = Math.min(...this.windows(f).map(x => x.from));
     const hollowed = s.hollow ? this.#hollowOf(f, target, main, barMs, blockMs, R, residue, first) : null;
     const developing = w.to > f.now, live = developing ? this.#live(f, target, blockMs, w.from) : null;
     const key = `${main.id}|${main.version}|${w.from}|${w.to}|${R}|${s.share}|${blockMs}|${barMs}|${s.hollow ? this.#hollow.get(residue)?.key ?? '' : 'off'}|${developing ? `${Math.floor(f.now / 1000)}|${live ? `${live.t}|${live.h}|${live.l}|${live.c}` : ''}` : ''}|${f.replay}`;

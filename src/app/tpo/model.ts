@@ -120,7 +120,8 @@ export const MAX_TPO_ROWS = 4_000;
 function spanOf(blocks: readonly Block[], R: number, phase: number): { lo: number; hi: number } | null {
   let lo = Infinity, hi = -Infinity;
   for (const b of blocks) { const a = rowOf(b.l + phase, R), z = rowOf(b.h + phase, R); if (a < lo) lo = a; if (z > hi) hi = z; }
-  return Number.isFinite(lo) && Number.isFinite(hi) && hi - lo + 1 <= MAX_TPO_ROWS ? { lo, hi } : null;
+  // Whole row numbers only: past 2^53 a row and the next are the same number, and a loop over them would never end.
+  return Number.isSafeInteger(lo) && Number.isSafeInteger(hi) && hi - lo + 1 <= MAX_TPO_ROWS ? { lo, hi } : null;
 }
 
 /** The calls at the two extremes of blocks read on rows of `R` moved by `phase`, and the runs of one-block rows that touch them. */
@@ -270,8 +271,11 @@ export function hollowRows(mine: Block, peers: readonly Peer[], R: number, block
   const out = new Set<number>(), m = majority(mine, peers, blockMs);
   if (!m) return out;
   const up = 1e4 * Math.log(mine.h / m.top), down = 1e4 * Math.log(m.bottom / mine.l), need = Math.max(1e4 * R / mine.h, HOLLOW_MIN_BP);
-  if (up >= need && -down < up / 2) for (let r = rowOf(m.top, R) + 1; r <= rowOf(mine.h, R); r++) if (r * R >= m.top) out.add(r);
-  if (down >= need && -up < down / 2) for (let r = rowOf(mine.l, R); r < rowOf(m.bottom, R); r++) if ((r + 1) * R <= m.bottom) out.add(r);
+  // Rows far finer than the prices would be millions: none are marked then (the profile itself refuses such rows).
+  const rows = (a: number, z: number): boolean => Number.isSafeInteger(a) && Number.isSafeInteger(z) && z - a <= MAX_TPO_ROWS;
+  const ta = rowOf(m.top, R) + 1, tz = rowOf(mine.h, R), ba = rowOf(mine.l, R), bz = rowOf(m.bottom, R);
+  if (up >= need && -down < up / 2 && rows(ta, tz)) for (let r = ta; r <= tz; r++) if (r * R >= m.top) out.add(r);
+  if (down >= need && -up < down / 2 && rows(ba, bz)) for (let r = ba; r < bz; r++) if ((r + 1) * R <= m.bottom) out.add(r);
   return out;
 }
 
@@ -281,8 +285,11 @@ export function overshootOf(mine: Block, peers: readonly Peer[], blockMs = 30 * 
   return m ? { up: Math.max(0, 1e4 * Math.log(mine.h / m.top)), down: Math.max(0, 1e4 * Math.log(m.bottom / mine.l)), top: m.top, bottom: m.bottom } : null;
 }
 
-/** A window as drawn: its key, its span, the calendar window it came from (`base`), and every calendar window it holds (`members`). */
-export interface EditedWindow { key: string; from: number; to: number; base: string; members: string[] }
+/**
+ * A window as drawn: its key, its span, the calendar window it came from (`base`), every calendar window it holds (`members`) and their
+ * spans as the calendar has them (`spans`, for a split inside a merged window to name the member it cuts).
+ */
+export interface EditedWindow { key: string; from: number; to: number; base: string; members: string[]; spans: { key: string; from: number; to: number }[] }
 
 /**
  * The windows as a person edited them (for one coin, kind of window and block length). A split (`moment@window key`) cuts that calendar
@@ -291,7 +298,7 @@ export interface EditedWindow { key: string; from: number; to: number; base: str
  * longer the calendar's; `members` lists the calendar windows each holds.
  */
 export function editedWindows(windows: readonly { key: string; from: number; to: number }[], splits: readonly string[], merges: readonly string[], blockMs: number): EditedWindow[] {
-  const out: EditedWindow[] = windows.map(w => ({ key: w.key, from: w.from, to: w.to, base: w.key, members: [w.key] }));
+  const out: EditedWindow[] = windows.map(w => ({ key: w.key, from: w.from, to: w.to, base: w.key, members: [w.key], spans: [{ key: w.key, from: w.from, to: w.to }] }));
   const starts = new Map(windows.map(w => [w.key, w.from]));
   for (const e of splits) {
     const at = e.indexOf('@'); if (at <= 0) continue;
@@ -300,7 +307,7 @@ export function editedWindows(windows: readonly { key: string; from: number; to:
     if (i < 0) continue;
     const w = out[i]!, cut = w.from + Math.round((s - w.from) / blockMs) * blockMs;
     if (cut <= w.from || cut >= w.to) continue;
-    out.splice(i, 1, { key: `${w.key}|<${cut}`, from: w.from, to: cut, base: w.base, members: w.members }, { key: `${w.key}|>${cut}`, from: cut, to: w.to, base: w.base, members: w.members });
+    out.splice(i, 1, { key: `${w.key}|<${cut}`, from: w.from, to: cut, base: w.base, members: w.members, spans: w.spans }, { key: `${w.key}|>${cut}`, from: cut, to: w.to, base: w.base, members: w.members, spans: w.spans });
   }
   for (const base of merges) {
     const from = starts.get(base);
@@ -308,7 +315,7 @@ export function editedWindows(windows: readonly { key: string; from: number; to:
     if (!b) continue;
     const a = out.find(w => w !== b && w.to === b.from);
     if (!a) continue;
-    const merged: EditedWindow = { key: `${a.key}+${b.key}`, from: a.from, to: b.to, base: a.base, members: [...a.members, ...b.members.filter(m => !a.members.includes(m))] };
+    const merged: EditedWindow = { key: `${a.key}+${b.key}`, from: a.from, to: b.to, base: a.base, members: [...a.members, ...b.members.filter(m => !a.members.includes(m))], spans: [...a.spans, ...b.spans.filter(x => !a.members.includes(x.key))] };
     out.splice(out.indexOf(a), 1); out.splice(out.indexOf(b), 1, merged);
   }
   return out.sort((x, y) => x.from - y.from || x.to - y.to);

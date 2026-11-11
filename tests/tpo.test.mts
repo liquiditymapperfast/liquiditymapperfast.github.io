@@ -187,3 +187,27 @@ test('the candle size fits every window of the calendar, both daylight-saving of
   // A session starting at :15 needs quarter hours.
   assert.equal(barFor(HALF, [{ from: 15 * MIN, to: 4 * HALF + 15 * MIN }]), 15 * MIN);
 });
+
+test('rows too fine to count give no profile and no hollow rows, without looping (review r2)', () => {
+  const started = Date.now();
+  const flat: Block = { t: 0, h: 80_000, l: 80_000, o: 80_000, c: 80_000, usd: 1, closed: true };
+  // Past 2^53 a row and the next are one number: refused. Below it a flat block is one row, worked out at once.
+  assert.equal(buildProfile({ key: 'w', from: 0, to: DAY }, [flat], HALF, 1e-12, 0.7, DAY), null);
+  for (const R of [1e-11, 1e-9]) assert.equal(buildProfile({ key: 'w', from: 0, to: DAY }, [flat], HALF, R, 0.7, DAY)?.total ?? 1, 1);
+  const peer = (h: number, l: number): Peer => ({ blocks: new Map([[0, { t: 0, h, l, o: l, c: h, usd: 100, closed: true }]]), gap: () => 0 });
+  const wick: Block = { t: 0, h: 80_320, l: 80_000, o: 80_000, c: 80_100, usd: 50, closed: true };
+  assert.equal(hollowRows(wick, [peer(80_010, 80_000), peer(80_010, 80_000), peer(80_012, 80_000)], 1e-5, HALF).size, 0);
+  assert.ok(hollowRows(wick, [peer(80_010, 80_000), peer(80_010, 80_000), peer(80_012, 80_000)], 10, HALF).size > 0);
+  assert.ok(Date.now() - started < 200);
+});
+
+test('a split inside a merged window cuts the member it names; the window keeps every member\'s span', () => {
+  const ws = [{ key: 'a', from: 0, to: DAY }, { key: 'b', from: DAY, to: 2 * DAY }];
+  const merged = editedWindows(ws, [], ['b'], HALF);
+  assert.deepEqual(merged[0]!.spans.map(x => [x.key, x.from, x.to]), [['a', 0, DAY], ['b', DAY, 2 * DAY]]);
+  // Merged a+b, then cut at 14:00 of b: the cut names b (the member holding the moment), so the result is a+b's first part and the rest of b.
+  const cut = editedWindows(ws, [`${DAY + 28 * HALF}@b`], ['b'], HALF);
+  assert.deepEqual(cut.map(w => [w.from, w.to]), [[0, DAY + 28 * HALF], [DAY + 28 * HALF, 2 * DAY]]);
+  // The same cut named after the first member cuts nothing (what the menu did before it looked the member up).
+  assert.deepEqual(editedWindows(ws, [`${DAY + 28 * HALF}@a`], ['b'], HALF).map(w => [w.from, w.to]), [[0, 2 * DAY]]);
+});

@@ -491,7 +491,7 @@ export class HeatPane {
     const before = range ? undefined : windows.find(x => x !== w && x.base !== 'range' && x.to === w!.from);
     const after = range ? undefined : windows.find(x => x !== w && x.base !== 'range' && x.from === w!.to);
     const items: MenuItem[] = [
-      { id: 'split', label: b ? t('Split the window at {time}', { time: clock(b.t) }) : t('Split the window here'), disabled: range || !b || b.t <= prof.from },
+      { id: 'split', label: b && !hit.outline ? t('Split the window at {time}', { time: clock(b.t) }) : t('Split the window here'), disabled: range || hit.outline || !b || b.t <= prof.from },
       { id: 'prev', label: t('Merge with the window before'), disabled: !before },
       { id: 'next', label: t('Merge with the window after'), disabled: !after },
       { id: 'fold', label: s.unfold ? t('Fold into profiles') : t('Lay out in time') },
@@ -506,7 +506,13 @@ export class HeatPane {
     };
     openMenu(anchor, items, '', { onPreview: () => {}, onSelect: id => {
       const now = this.store.state.tpo;
-      if (id === 'split' && b && w && !range) this.store.set({ tpo: withEdits(now, 'splits', scope, l => [...l, `${b.t}@${w.base}`]) });
+      if (id === 'split' && b && w && !range) {
+        // The calendar window the moment falls in (a merged window holds several): a cut at one's start takes that merge back.
+        const member = w.spans.find(x => b.t >= x.from && b.t < x.to);
+        if (!member) return;
+        if (member.from === b.t && now.merges[scope]?.includes(member.key)) this.store.set({ tpo: withEdits(now, 'merges', scope, l => l.filter(x => x !== member.key)) });
+        else this.store.set({ tpo: withEdits(now, 'splits', scope, l => [...l, `${b.t}@${member.key}`]) });
+      }
       else if (id === 'prev' && w && before) join(w);
       else if (id === 'next' && after) join(after);
       else if (id === 'fold') this.store.set({ tpo: { ...now, unfold: !now.unfold } });
@@ -3076,7 +3082,8 @@ export class HeatPane {
         // profile (its kind's lines off) draws none.
         if (!s.lines.includes(windowKind(w))) continue;
         const source = this.#windowSource(state, w);
-        if (source === 'recorded' && replaying() && w.to > now) continue;
+        // In a replay the recording's window under way is not drawn (its answer is from after the moment); the TPO's is, from candles over by then.
+        if (source === 'recorded' && replaying() && w.to > now && !this.#tpoFollows(state, w)) continue;
         const drawn = this.#lineLevels(state, ids, w, step, share, now); if (!drawn) continue;
         const { levels, upTo } = drawn;
         const end = Math.min(w.to, now, upTo), x0 = v.xOf(w.from, pw), x1 = v.xOf(end, pw);
