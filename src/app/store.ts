@@ -148,6 +148,10 @@ export interface AppState {
   vwapAnchoring: boolean;
   /** The Volume profile panel's Place anchor is armed: the next click on the map sets the columns' anchor (not saved). */
   profileAnchoring: boolean;
+  /** The VWAP anchor being moved by the next click on the map (its id; null: the click adds one). Not saved. */
+  anchorMove: string | null;
+  /** Where an anchor being placed would go before it is placed: a tap on a touch screen, or the arrow keys (a candle's start). Not saved. */
+  anchorPreview: number | null;
   /** How the drawing tools behave: the magnet, walls, keeping a tool, showing and locking (draw/settings.ts; the drawings are kept apart, draw/storage.ts). */
   draw: DrawSettings;
   /** How the map draws its price (chart-type.ts). */
@@ -379,7 +383,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   const saved = readSaved();
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null, bookGone: {},
-    layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, oiReading: false, oiFine: [], sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, profileAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
+    layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, oiReading: false, oiFine: [], sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, anchorMove: null, anchorPreview: null, profileAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
     ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', waveStrength: WAVE_STRENGTH_DEFAULT, followLive: true, keepAwake: false, tabPrice: true, tabIcon: true, phoneHistory: 'auto', scriptBars: readScriptBars(undefined, false), barCollapsed: false, timeZone: 'local', hover: null, bookHover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };

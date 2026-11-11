@@ -54,7 +54,7 @@ import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
-import { ANCHOR_BAR_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
+import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot, type ProfileAnchorStart } from '../traded/anchor.ts';
 import { liveUpdate, scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
@@ -64,9 +64,10 @@ import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, profileCompanion, profileTarget, type HistoryTarget, type KeyLevelHistory } from '../keylevels/history.ts';
 import { TakerRows } from '../measures/taker-rows.ts';
 import { paintKeyLevels, paintKeyTags, periodDate, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
-import { ANCHOR_REACH_MS, anchorBarMs, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries, whaleSeries, type RollingState, type VwapBar, type VwapPoint } from '../vwap/vwap.ts';
+import { ANCHOR_REACH_MS, anchorBars, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries, whaleSeries, type RollingState, type VwapBar, type VwapPoint } from '../vwap/vwap.ts';
 import { vwapTargets, type VwapMarketState } from '../vwap/markets.ts';
 import { anchorsOf } from '../vwap/settings.ts';
+import { resolveRule, ruleCode, ruleKey, ruleSpan, searchBarMs, type Anchor, type AnchorRule, type Resolved } from '../anchors/anchors.ts';
 import { FootprintMarks } from '../footprint/marks.ts';
 import { FootprintRuns, paintRuns } from '../footprint/runs.ts';
 import { cutForReplay, paintVwap, type VwapLine } from '../vwap/paint.ts';
@@ -148,8 +149,14 @@ const carried = (points: VwapPoint[], to: number): VwapPoint[] => { const last =
  * and for several markets when those were last read (the lines are carried on to it; -Infinity for one market, whose bar under way is drawn).
  */
 interface VwapBars { rows: readonly VwapBar[]; liveFrom: number; from: number; readTo: number }
+/**
+ * An anchored VWAP as the plan has it: the anchor's id, its number in the coin's list, where it starts now (a live one where its rule
+ * resolves), its bars (`anchorBars`: the body's, and the head's for the stretch to its first whole bar), its colour slot and own colour, and
+ * a live one's rule name for its label.
+ */
+interface PlannedAnchor { id: string; n: number; at: number; bar: number; head: number; slot: number; name?: string }
 interface VwapPlan {
-  sessions: ProfileWindow[]; sessionBar: number; anchors: { at: number; bar: number }[]; reach: Map<number, number>;
+  sessions: ProfileWindow[]; sessionBar: number; anchors: PlannedAnchor[]; reach: Map<number, number>;
   rolling: { days: number; ms: number; bar: number }[]; rollingReach: Map<number, number>;
 }
 
@@ -424,6 +431,20 @@ export class HeatPane {
   /** Back to the live candle at the zoom the map has, shown while the map stays where it was left in time or a hand holds the price (`jumpToNow`). */
   readonly #liveButton = el('button', { class: 'map-live', type: 'button', tip: t('Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.') }, t('Live'));
   #palette = PALETTES.light!;
+  /** The palette the volume profile is drawn in (`#tradedPalette`), kept while neither the theme nor the colours chosen change. */
+  #tradedPal: { key: string; base: Palette; p: Palette } | null = null;
+  /**
+   * The palette the volume profile is drawn in, wherever (its columns, its bands along the top, its profiles and lines on the chart, the volume
+   * strip, the line where an anchored window begins): the theme's, with the buy, sell and level colours chosen in its panel (`traded.colors`).
+   * One object while they stay the same, so what is worked out from a palette once (`emphasisRamps`) is not worked out again every frame.
+   */
+  #tradedPalette(state: AppState): Palette {
+    const c = state.traded.colors, base = this.#palette;
+    if (!c.buy && !c.sell && !c.levels) return base;
+    const key = `${c.buy ?? ''}|${c.sell ?? ''}|${c.levels ?? ''}`;
+    if (this.#tradedPal?.key !== key || this.#tradedPal.base !== base) this.#tradedPal = { key, base, p: { ...base, bid: c.buy ?? base.bid, ask: c.sell ?? base.ask, poc: c.levels ?? base.poc } };
+    return this.#tradedPal.p;
+  }
   /** The frame's corner radius (CSS `--radius`, read when the palette changes): the legend plate has the corners the page's boxes have. */
   #radius = 3;
   /** Colour window from the raster's percentiles (nextBaseline): new for a new view, then held, or blended toward the cells every 10 s in Auto. */
@@ -546,6 +567,8 @@ export class HeatPane {
   onAnchor: ((t: number) => void) | null = null;
   /** A click on the map while the profile anchor is being placed (set by the page): the time clicked. */
   onProfileAnchor: ((t: number) => void) | null = null;
+  /** A tap on a touch screen while an anchor is being placed (set by the page): where it would go, shown before it is put there. */
+  onAnchorPreview: ((t: number) => void) | null = null;
   /** Told when the anchored window is taken again, so an open Volume profile panel says when (set by the page). */
   onAnchoredWindow: () => void = () => {};
   /** The anchored window held between its updates, a request to take it again now, and the timer that redraws when it is due. */
@@ -1200,13 +1223,13 @@ export class HeatPane {
     this.mirror = null;
     this.#paintHistoryStart(ctx, pw, ph, p);
     this.#paintTapeStart(ctx, state, pw, ph, p);
-    this.#paintProfileAnchor(ctx, pw, ph, p);
+    this.#paintProfileAnchor(ctx, pw, ph, this.#tradedPalette(state));
     this.#paintLayers(ctx, state, pw, ph);
     if (state.liqLevels.on) this.#paintLiquidationLevels(ctx, state, pw, ph);
     this.#paintVolume(ctx, state, pw, ph, this.#lodFrame.narrowing);
     // Under the candles as the volume bars are, and under the legend and the corner buttons, whose bottoms it is placed by; over what the
     // columns add up, with the marks' absorption thresholds; what it asked for redraws the map when it comes.
-    this.#bands.paint(ctx, state, this.hub, { view: v, pw, ph, palette: p, legendBottom: this.#legendBox.bottom, window: this.#tradedWindow(), absorption: () => this.#absorptionContext(state), loaded: () => this.invalidate() }, this.#arranged.top);
+    this.#bands.paint(ctx, state, this.hub, { view: v, pw, ph, palette: this.#tradedPalette(state), legendBottom: this.#legendBox.bottom, window: this.#tradedWindow(), absorption: () => this.#absorptionContext(state), loaded: () => this.invalidate() }, this.#arranged.top);
     this.#pulseRects = [];
     if (state.show.footprint) {
       const marks = this.#footprintMarks.get(this.#footprint, state.barStatOptions), fp = state.footprint;
@@ -1237,7 +1260,7 @@ export class HeatPane {
     // The Volume profile's, the key levels' and the VWAP's names at the lines' right ends share one board, so none is printed over another.
     this.#valueTags = this.#paintValueLines(ctx, state, pw, ph);
     this.#keyTags = state.keyLevels.on ? paintKeyLevels(ctx, this.#keyLevelLines(state), v, pw, ph, p, state.keyLevels, pageNow(), this.#keyLevelContext(state).zone, this.#labels) : [];
-    this.#vwapTags = state.vwap.on ? paintVwap(ctx, this.#vwapLines(state), v, pw, ph, p, state.vwap, this.#labels) : [];
+    this.#vwapTags = state.vwap.on ? paintVwap(ctx, this.#vwapLines(state), v, pw, ph, p, state.vwap, this.#labels, state.vwap.anchors[currentCoin().coin] ?? []) : [];
     this.scriptLayer?.(ctx, pw, ph);
     this.#drawTags = this.draw ? paintDrawings(ctx, this.draw, this.drawProjection(), p) : [];
     // Replay: nothing after its moment is shown (the heatmap under this canvas included), and a line marks it.
@@ -1331,13 +1354,13 @@ export class HeatPane {
    * a click would say instead. A touch screen has no pointer to follow: its note says to tap the candle.
    */
   #paintAnchorPreview(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
-    const hover = state.hover, vwap = state.vwapAnchoring;
-    if ((!vwap && !state.profileAnchoring) || !hover || hover.source !== 'heat') return;
+    const vwap = state.vwapAnchoring, chosen = state.anchorPreview, hover = state.hover?.source === 'heat' ? state.hover : null;
+    if ((!vwap && !state.profileAnchoring) || (chosen === null && !hover)) return;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = Date.now(), p = this.#palette;
-    const at = vwap ? candleStartAt(hover.t, tf) : anchorAt(hover.t, tf), x = Math.round(this.view.xOf(at, pw)) + 0.5;
-    const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_CANDLES_BACK_MS), future = at > now;
+    const at = chosen ?? (vwap ? candleStartAt(hover!.t, tf) : anchorAt(hover!.t, tf)), x = Math.round(this.view.xOf(at, pw)) + 0.5;
+    const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS), future = at > now;
     const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach 21 weeks.'))
-      : `${clock(at, true)} · ${t('click to place')}`;
+      : chosen !== null ? clock(at, true) : `${clock(at, true)} · ${t('click to place')}`;
     const color = future || tooOld ? p.muted : vwap ? p.vwap : p.poc;
     ctx.save();
     if (!future && !tooOld && x >= 0 && x <= pw) {
@@ -1348,9 +1371,9 @@ export class HeatPane {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    const w = ctx.measureText(text).width + 14, h = 20, y = Math.max(14, Math.min(ph - h - 4, (hover.y ?? 40) - h - 14));
+    const w = ctx.measureText(text).width + 14, h = 20, y = Math.max(14, Math.min(ph - h - 4, (hover?.y ?? 54) - h - 14));
     // Beside the line, on whichever side has room.
-    const base = future || tooOld ? this.view.xOf(hover.t, pw) : x, left = base + 8 + w > pw ? base - 8 - w : base + 8;
+    const base = (future || tooOld) && hover ? this.view.xOf(hover.t, pw) : x, left = base + 8 + w > pw ? base - 8 - w : base + 8;
     ctx.globalAlpha = 0.94; ctx.fillStyle = p.panel; ctx.fillRect(left, y, w, h);
     ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(left) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, h - 1);
     ctx.fillStyle = future || tooOld ? p.muted : p.text; ctx.fillText(text, left + 7, y + h / 2);
@@ -1833,7 +1856,7 @@ export class HeatPane {
   /** Where the anchored columns begin: a dashed line in the profile colour, named with when the window was taken. */
   #paintProfileAnchor(ctx: CanvasRenderingContext2D, pw: number, ph: number, p: Palette): void {
     const a = this.store.state.show.traded ? this.anchoredWindow() : null, v = this.view;
-    if (!a || !(a.from > v.t0 && a.from < v.t1)) return;
+    if (!a || a.state || !(a.from > v.t0 && a.from < v.t1)) return;
     const x = Math.round(v.xOf(a.from, pw)) + 0.5;
     ctx.save(); ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     ctx.strokeStyle = p.poc; ctx.globalAlpha = 0.7; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
@@ -2072,7 +2095,7 @@ export class HeatPane {
     const hovered = hy >= top && hy <= ph ? bars.findIndex(b => Math.abs(hx - b.x) <= Math.max(b.w, slot) / 2) : -1;
     // The candles' part named ≈ while any of its bars is an estimate (its volume at its typical price), plainly where all are as reported.
     const estimated = bars.some(b => b.source === 'candle' && !b.exact);
-    paintVolumeStrip(ctx, bars, { pw, ph, height, palette: p, bars: state.traded.bars, emphasis: state.traded.emphasis, highlights,
+    paintVolumeStrip(ctx, bars, { pw, ph, height, palette: this.#tradedPalette(state), bars: state.traded.bars, emphasis: state.traded.emphasis, highlights,
       recorded: `${t('Volume')} · ${tfName}`, candles: estimated ? t('≈ {market} {tf} candles', { market, tf: tfName }) : t('{market} {tf} candles', { market, tf: tfName }), hovered });
     this.#strip = { bars, rows, ids, tf, top, market, tfName, reports: binance, total };
   }
@@ -2322,8 +2345,17 @@ export class HeatPane {
   anchoredWindow(): AnchorSnapshot | null {
     const s = this.store.state.traded;
     if (s.columns !== 'anchor') return null;
-    const coin = currentCoin().coin, anchor = profileAnchorOf(s, coin, Date.now(), PROFILE_CANDLES_BACK_MS);
-    if (anchor === null) return null;
+    const coin = currentCoin().coin, mine = profileAnchorOf(s, coin);
+    if (!mine) return null;
+    // A live anchor whose candle is still being found, whose period has none yet, or an anchor further back than the columns reach: the
+    // window holds nothing and the columns say why (Sol and the advisor, 2026-11-11: never the chart's totals under an anchor).
+    const start = this.profileAnchorStart(mine);
+    if (start.state !== 'ready') {
+      const to = Math.floor(Date.now() / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
+      if (start.state === 'coming' && !this.#anchorTimer) this.#anchorTimer = window.setTimeout(() => { this.#anchorTimer = 0; this.invalidate(); }, 2_000);
+      return { key: `${coin}|${start.state}`, from: to, to, at: Date.now(), state: start.state };
+    }
+    const anchor = start.at;
     // In a replay whose moment is not five minutes past the anchor yet (or is before it), the window holds nothing yet, as a live one in its
     // first five minutes: the columns stay empty (nothing is asked of an empty window), never the chart's totals under the anchor (Sol, code
     // review 2026-11-10, round 3).
@@ -2337,6 +2369,18 @@ export class HeatPane {
       queueMicrotask(() => this.onAnchoredWindow());
     }
     return snap;
+  }
+  /**
+   * Where the profile's anchor starts now: a fixed one at its moment, a live one where its rule lands (`ruleStart`), on the five minutes the
+   * columns' window is on; 'far' when further back than the columns reach (`PROFILE_ANCHOR_REACH_MS`), 'none' when not begun.
+   */
+  profileAnchorStart(a: Anchor): ProfileAnchorStart {
+    let at: number;
+    if (a.rule) { const r = this.ruleStart(a.rule); if (r.state !== 'ready') return r; at = r.at; } else at = a.at!;
+    at = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
+    const now = Date.now();
+    if (at > now) return { state: 'none' };
+    return at < now - PROFILE_ANCHOR_REACH_MS ? { state: 'far', at } : { state: 'ready', at };
   }
   /** Take the anchored window again now (the panel's Update now). */
   updateAnchored(): void { this.#anchorForce = true; this.#replayRev++; this.invalidate(); }
@@ -2522,22 +2566,75 @@ export class HeatPane {
    */
   #vwapPlan(state: AppState): VwapPlan {
     const s = state.vwap, v = this.view, now = pageNow(), MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000, { zone, barMs } = this.#keyLevelContext(state), coin = currentCoin().coin;
-    const key = `${JSON.stringify(s)}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
+    // Where each anchor stands now (a live one moves with its rule), before the key: an anchor that moves is another plan. The colours are
+    // not part of it: a colour chosen repaints the lines, it does not work them out again (Sol, 2026-11-11).
+    const anchors = this.#planAnchors(state, coin, zone, barMs, now), { colors: _colors, anchors: _anchors, ...rest } = s;
+    const key = `${JSON.stringify(rest)}|${anchors.map(a => `${a.id}:${a.at}:${a.slot}`).join(',')}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
     if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
     // The whale VWAP follows the same sessions, so they are worked out for either.
     const sessions = s.session || s.whale ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now, s.startMinute) : [];
     const sessionBar = vwapBarMs(sessions.length ? now - sessions[0]!.from : 0, barMs);
-    const anchors = anchorsOf(s, coin, now).map(at => ({ at, bar: anchorBarMs(at, now) }));
     const reach = new Map<number, number>();
     const need = (bar: number, from: number): void => { reach.set(bar, Math.min(reach.get(bar) ?? Infinity, Math.floor(from / bar) * bar)); };
     if (sessions.length && s.session) need(sessionBar, sessions[0]!.from);
-    for (const a of anchors) need(a.bar, a.at);
+    // The body from the first whole bar after the anchor; the stretch before it is the head's, read on its own.
+    for (const a of anchors) need(a.bar, Math.ceil(a.at / a.bar) * a.bar);
     // A whole window before the view, no further back than the history keeps (`rollingFrom`); windows of one bar size share one history.
     const rolling = s.rolling.map(days => ({ days, ms: days * DAY, bar: rollingBarMs(days) })), rollingReach = new Map<number, number>(), real = Date.now();
     for (const r of rolling) rollingReach.set(r.bar, Math.min(rollingReach.get(r.bar) ?? Infinity, rollingFrom(r.days, v.t0, v.t1, now, real)));
     const plan: VwapPlan = { sessions, sessionBar, anchors, reach, rolling, rollingReach };
     this.#vwapPlanned = { key, plan };
     return plan;
+  }
+  /**
+   * The coin's anchors drawn (not hidden), each where it stands now: a fixed one at its moment, a live one where its rule resolves
+   * (`#resolveRule`). One whose candles are still on their way, or that nothing resolves (no candle in its stretch), is left out until it does.
+   */
+  #planAnchors(state: AppState, coin: string, zone: string, zoneBar: number, now: number): PlannedAnchor[] {
+    const out: PlannedAnchor[] = [];
+    // A fixed anchor is numbered among the fixed ones (AVWAP 1, as the panel names it); a live one is named by its rule's code.
+    let fixed = 0;
+    for (const a of anchorsOf(state.vwap, coin, now)) {
+      const n = a.rule ? 0 : ++fixed;
+      if (a.hidden) continue;
+      const r = a.rule ? this.#resolveRule(a.rule, state, zone, zoneBar, now) : null;
+      const at = a.rule ? (r?.state === 'ready' ? r.at : undefined) : a.at;
+      if (at === undefined || at > now) continue;
+      out.push({ id: a.id, n, at, ...anchorBars(at, now), slot: a.slot, ...(a.rule ? { name: `${t('AVWAP')} ${ruleCode(a.rule)}` } : {}) });
+    }
+    return out;
+  }
+  /** Where a live anchor's rule lands now, for the panels (the VWAP's rows, the profile's): the reading the lines use. */
+  ruleStart(rule: AnchorRule): Resolved {
+    const state = this.store.state, { zone, barMs } = this.#keyLevelContext(state);
+    return this.#resolveRule(rule, state, zone, barMs, pageNow());
+  }
+  /** Where each live anchor resolved, by rule, zone and market, and what it was read from (a minute, the candles, the spans landed). */
+  readonly #ruleMemo = new Map<string, { key: string; out: Resolved }>();
+  /** Counts the short spans of candles that landed (`Hub.spanBars`): a line or a rule waiting for one is worked out again. */
+  #spanVersion = 0;
+  #spanLanded = (): void => { this.#spanVersion++; this.invalidate(); };
+  /**
+   * Where a live anchor's rule resolves now (`anchors/anchors.ts resolveRule`), on the chart market's own candles (the key levels' market:
+   * the one standing in for it where its history cannot be read): its period's bars of `searchBarMs`, asked for back to the start of the
+   * stretch it searches, then the minutes inside the bar that won. In a replay, at its moment, with the bar under way left out.
+   */
+  #resolveRule(rule: AnchorRule, state: AppState, zone: string, zoneBar: number, now: number): Resolved {
+    const target = this.#keyLevelContext(state).target;
+    if (!target) return { state: 'none' };
+    const barMs = searchBarMs(rule.period, zoneBar), span = ruleSpan(rule, zone, now), replay = replaying();
+    const h = rule.point === 'start' ? null : this.hub.vwapHistory(target.id, barMs);
+    if (h) h.ensure(target, span.from, barMs, () => this.invalidate());
+    const memoKey = `${ruleKey(rule)}|${zone}|${target.id}|${barMs}`;
+    const key = `${Math.floor(now / 60_000)}|${h ? `${h.id}:${h.version}:${h.knownFrom}:${h.exhausted}` : ''}|${replay}|${this.#spanVersion}`;
+    const held = this.#ruleMemo.get(memoKey);
+    if (held?.key === key) return held.out;
+    // A market listed after the stretch began (its history begins later) is read from its first candle: nothing traded before it.
+    const coarse = h && h.id === target.id && h.barMs === barMs && h.bars.length ? { bars: h.bars, barMs, knownFrom: h.exhausted ? Math.min(h.knownFrom, span.from) : h.knownFrom } : null;
+    const out = resolveRule(rule, zone, now, replay, coarse, (from, to) => this.hub.spanBars(target, 60_000, from, to, this.#spanLanded));
+    this.#ruleMemo.set(memoKey, { key, out });
+    if (this.#ruleMemo.size > 64) this.#ruleMemo.delete(this.#ruleMemo.keys().next().value!);
+    return out;
   }
   /**
    * Whether the rolling VWAP over `days` can be drawn: its histories hold a whole window up to now ('yes'), may still ('coming'), will not
@@ -2657,7 +2754,7 @@ export class HeatPane {
     // The chart's own candles only for one market's lines (several markets' are their histories' closed bars alone): a trade would otherwise
     // add up every market's bars again (Sol, code review 2026-11-10).
     const chartKey = targets.length > 1 ? '' : `${state.candles.length}|${tail ? `${tail[0]}|${tail[2]}|${tail[3]}|${tail[5]}` : ''}`;
-    const key = `${this.#vwapPlanned?.key}|${versions}|${rolling.key}|${chartKey}|${whaleKey}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
+    const key = `${this.#vwapPlanned?.key}|${versions}|${rolling.key}|${chartKey}|${whaleKey}|${this.#spanVersion}${replaying() ? `|r${Math.floor(pageNow() / 60_000)}` : ''}`;
     if (this.#vwapDrawn?.key === key) return replayCut(this.#vwapDrawn.lines, pageNow());
     const lines: VwapLine[] = [], now = pageNow();
     // Each bar size's bars once, for the session and the anchors that share it (several markets are added up once).
@@ -2688,13 +2785,22 @@ export class HeatPane {
         if (sells.length) lines.push({ kind: 'whaleSell', n: 0, points: sells, live, key: `whale-sell|${w.key}` });
       }
     }
-    plan.anchors.forEach((a, i) => {
-      // From the first whole bar after the anchor: a bar begun before it would carry volume from before the moment chosen.
-      const bars = barsFor(a.bar), start = Math.ceil(a.at / a.bar) * a.bar;
-      if (!bars || bars.from > start) return;
-      const points = carried(vwapSeries(bars.rows, start, Infinity), bars.readTo);
-      if (points.length) lines.push({ kind: 'anchor', n: i + 1, points, live: true, key: `anchor|${a.at}`, bar: a.bar, liveFrom: bars.liveFrom });
-    });
+    for (const a of plan.anchors) {
+      // The body's bars from the first whole one after the anchor (a bar begun before it would carry volume from before the moment chosen),
+      // and before them the head: the anchor's own stretch to that bar, read at the finest size that starts at it. A head still on its way
+      // keeps the line back rather than start it late.
+      const body = barsFor(a.bar), boundary = Math.ceil(a.at / a.bar) * a.bar;
+      if (!body || body.from > boundary) continue;
+      let head: VwapBar[] = [];
+      if (a.head && boundary > a.at) {
+        const spans = targets.map(target => this.hub.spanBars(target, a.head, a.at, boundary, this.#spanLanded));
+        if (spans.some(x => x === null)) continue;
+        head = spans.length === 1 ? vwapBarsOf(spans[0]!) : mergeVwapBars(spans as (readonly CandleRow[])[], a.head, boundary);
+      }
+      const rows = head.length ? [...head, ...body.rows.filter(b => b[0] >= boundary)] : body.rows;
+      const points = carried(vwapSeries(rows, a.at, Infinity), body.readTo);
+      if (points.length) lines.push({ kind: 'anchor', n: a.n, id: a.id, slot: a.slot, ...(a.name ? { name: a.name } : {}), points, live: true, key: `anchor|${a.id}|${a.at}`, bar: a.bar, liveFrom: body.liveFrom });
+    }
     this.#vwapDrawn = { key, lines };
     return replayCut(lines, now);
   }
@@ -2975,7 +3081,7 @@ export class HeatPane {
   #paintPastProfiles(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#profileHits = [];
     const kind = this.#profilesKind(state); if (!kind) return;
-    const v = this.view, p = this.#palette, now = pageNow(), step = this.#levelStep(), share = state.traded.share / 100, ids = this.#recordedIds(state);
+    const v = this.view, p = this.#tradedPalette(state), now = pageNow(), step = this.#levelStep(), share = state.traded.share / 100, ids = this.#recordedIds(state);
     const row = Math.max(step, this.#tradedStep()), fromCandles = linesSource({ period: kind, source: state.traded.source }) === 'candles';
     const halo = p.dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)', ages = this.#ageRanks(state);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
@@ -3090,7 +3196,7 @@ export class HeatPane {
   #paintValueLines(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): KeyTag[] {
     const s = state.traded;
     if (!state.show.traded || (!s.poc && !s.va)) return [];
-    const v = this.view, p = this.#palette, now = pageNow(), step = this.#levelStep();
+    const v = this.view, p = this.#tradedPalette(state), now = pageNow(), step = this.#levelStep();
     // `live`: the window under way (or what is on the chart), whose lines end at the right edge. `kind`: whose they are.
     // `rank`: how many windows of its series come after it among those shown, for the fading.
     const segments: { x0: number; x1: number; levels: ValueLevels; name: string; naked: number | null; live: boolean; key: string; kind: LineKind | 'view'; estimate?: boolean; rank: number }[] = [];
@@ -3245,7 +3351,7 @@ export class HeatPane {
    * price tags stand at its outer edge, so both sides face the chart; its header reads as the others do.
    */
   #paintColumn(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number, metric: ProfileMetric, side: Side, i: number, x0: number): ColumnBox | null {
-    const p = this.#palette, v = this.view, W = TRADED_W, answer = this.#columnAnswer(metric), left = side === 'left';
+    const p = this.#tradedPalette(state), v = this.view, W = TRADED_W, answer = this.#columnAnswer(metric), left = side === 'left';
     // Where a bar of `length` starting `from` px off the map-side edge lies: rightward from the left edge on the right, leftward on the left.
     const bar = (from: number, length: number): [number, number] => left ? [x0 + W - 1 - from - length, length] : [x0 + 1 + from, length];
     // The column's inside, off the edge line on the map's side.
@@ -3343,7 +3449,8 @@ export class HeatPane {
     // with no trades recorded at all, a venue whose book alone is read, has none and adds nothing), and never over a warning.
     else if (anchored && !loaded && !measured.warn && !!answer?.instruments.some(inst => inst.earliest !== null) && answer.instruments.every(inst => inst.earliest !== null || !inst.rows.length)) sub = t('from {time}', { time: fromText });
     const warn = !loaded && (covers !== null || measured.warn);
-    if (sub) { if (warn) ctx.fillStyle = '#e6a700'; else if (loaded) ctx.fillStyle = p.poc; ctx.fillText(sub, x0 + 4, lineY); }
+    if (anchored?.state) sub = anchored.state === 'coming' ? t('finding the anchor…') : anchored.state === 'far' ? t('anchor too far back') : t('anchor not begun yet');
+    if (sub) { if (warn || anchored?.state === 'far') ctx.fillStyle = '#e6a700'; else if (loaded) ctx.fillStyle = p.poc; ctx.fillText(sub, x0 + 4, lineY); }
     if (rows && rows.total > 0 && !unsplit) { const net = tradedNet(rows); ctx.fillStyle = net > 0 ? p.bid : net < 0 ? p.ask : p.muted; ctx.fillText(tradedNetLine(rows), x0 + 4, lineY + 12, W - 8); }
     ctx.restore(); ctx.textBaseline = 'middle';
     // The edge line on the map's side: a right column's left edge, a left column's right edge.
@@ -4008,8 +4115,8 @@ export class HeatPane {
       // a pan's not yet settled is counted into the gesture the finger starts.
       down: () => { this.#stopFling(); if (this.#settlePending && !this.#followHeld()) this.#settleFollow(); },
       tap: p => {
-        if (this.store.state.vwapAnchoring && p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH) { this.onAnchor?.(this.view.tOf(p.x, this.plotW)); return; }
-        if (this.store.state.profileAnchoring && p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH) { this.onProfileAnchor?.(this.view.tOf(p.x, this.plotW)); return; }
+        // Placing an anchor: a tap shows where it would go, and Place here puts it there (a finger covers the candle it lands on).
+        if ((this.store.state.vwapAnchoring || this.store.state.profileAnchoring) && p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH) { this.onAnchorPreview?.(this.view.tOf(p.x, this.plotW)); return; }
         if (this.#bands.onHeader(p.x, p.y) || this.#onHiddenTag(p.x, p.y)) { this.onTopProfile(); return; }
         if (p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH && this.draw?.click(p, false, true)) { this.#drawClickAt = performance.now(); this.#unpin(); return; }
         if (this.#pinActive() && Math.hypot(this.#pin!.x - p.x, this.#pin!.y - p.y) < 28) this.#unpin(); else this.#pinAt(p);

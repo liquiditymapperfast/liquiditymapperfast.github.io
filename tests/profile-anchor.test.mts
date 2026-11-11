@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ANCHOR_BAR_MS, ANCHOR_EVERY, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue } from '../src/app/traded/anchor.ts';
-import { TRADED_DEFAULTS, profileAnchorOf, readTraded, withProfileAnchor } from '../src/app/traded/settings.ts';
+import { TRADED_DEFAULTS, profileAnchorOf, readTraded, restoreProfileAnchor, withProfileAnchor } from '../src/app/traded/settings.ts';
 import { readSettings, type AppState } from '../src/app/store.ts';
 import { carriedSettings, completeSettings, settingsOf, settingsToApply } from '../src/app/layouts/layouts.ts';
 
@@ -35,32 +35,42 @@ test('the anchored window is held until it is due, then taken again up to the la
   assert.deepEqual(ANCHOR_EVERY, [5, 15, 60]);
 });
 
-test('the profile\'s anchors are read back checked, one a coin, and kept within what the candle estimate reaches', () => {
+test('the profile\'s anchors are read back checked, one a coin, fixed on five minutes or live by a rule', () => {
   assert.equal(TRADED_DEFAULTS.columns, 'chart'); assert.equal(TRADED_DEFAULTS.every, 15); assert.deepEqual(TRADED_DEFAULTS.anchors, {});
-  const s = readTraded({ columns: 'anchor', every: 60, anchors: { BTC: T0 + 2 * MIN, eth: T0, SOL: 'x', XRP: -5 } });
+  // Saved before 2026-11-11 as bare times: read as fixed anchors at those times, on five minutes.
+  const s = readTraded({ columns: 'anchor', every: 60, anchors: { BTC: T0 + 2 * MIN, eth: T0, SOL: 'x', XRP: -5, ADA: { rule: { period: 'month', point: 'start' } } } });
   assert.equal(s.columns, 'anchor'); assert.equal(s.every, 60);
-  assert.deepEqual(s.anchors, { BTC: T0 }, 'a coin\'s name in capitals, a time, on five minutes');
+  assert.deepEqual(s.anchors.BTC, { id: `t${T0 + 2 * MIN}`, at: T0, slot: 0 }, 'a coin\'s name in capitals, a time, on five minutes');
+  assert.deepEqual(Object.keys(s.anchors), ['BTC', 'ADA'], 'a live one by a rule offered; no lower-case coin, no junk');
+  assert.deepEqual(s.anchors.ADA!.rule, { period: 'month', point: 'start' });
   assert.equal(readTraded({ every: 7, columns: 'week' }).every, 15); assert.equal(readTraded({ columns: 'week' }).columns, 'chart');
-  const moved = withProfileAnchor(s, 'BTC', T0 + HOUR);
-  assert.deepEqual(moved.anchors, { BTC: T0 + HOUR }, 'one a coin: placing it again moves it');
-  assert.deepEqual(withProfileAnchor(moved, 'BTC', null).anchors, {});
-  const back = 21 * 7 * DAY;
-  assert.equal(profileAnchorOf(moved, 'BTC', T0 + 2 * HOUR, back), T0 + HOUR);
-  assert.equal(profileAnchorOf(moved, 'BTC', T0 + back + 2 * HOUR, back), null, 'older than the estimate reaches: none');
-  assert.equal(profileAnchorOf(moved, 'BTC', T0, back), null, 'not begun yet: none');
-  assert.equal(profileAnchorOf(moved, 'ETH', T0 + 2 * HOUR, back), null);
+  const moved = withProfileAnchor(s, 'BTC', { at: T0 + HOUR + 3 * MIN });
+  assert.equal(moved.anchors.BTC!.at, T0 + HOUR, 'one a coin: setting it again moves it, on five minutes');
+  assert.equal(moved.anchors.BTC!.id, s.anchors.BTC!.id, 'and keeps its id');
+  const live = withProfileAnchor(moved, 'BTC', { rule: { period: 'week', point: 'low' } });
+  assert.deepEqual([live.anchors.BTC!.rule, live.anchors.BTC!.at], [{ period: 'week', point: 'low' }, undefined], 'a rule instead: its moment dropped');
+  const none = withProfileAnchor(live, 'BTC', null);
+  assert.equal(none.anchors.BTC, undefined);
+  assert.deepEqual(restoreProfileAnchor(none, 'BTC', live.anchors.BTC!).anchors.BTC, live.anchors.BTC, 'Undo puts it back as it was');
+  assert.equal(profileAnchorOf(live, 'BTC'), live.anchors.BTC); assert.equal(profileAnchorOf(live, 'ETH'), null);
+});
+
+test('the profile\'s colours are read back as #rrggbb, each one or none', () => {
+  assert.deepEqual(TRADED_DEFAULTS.colors, {});
+  assert.deepEqual(readTraded({ colors: { buy: '#00FF00', sell: 'red', levels: '#123456', poc: '#ffffff' } }).colors, { buy: '#00ff00', levels: '#123456' });
+  assert.deepEqual(readTraded({ colors: 'no' }).colors, {});
 });
 
 test('a layout carries whether the columns are anchored and how often, never the anchors, as with the VWAP\'s', () => {
   const defaults = readSettings({});
   const state = (patch: Partial<AppState>): AppState => ({ ...defaults, ...patch } as AppState);
-  const mine = state({ traded: { ...defaults.traded, columns: 'anchor', every: 5, anchors: { BTC: T0 } } });
+  const mine = state({ traded: { ...defaults.traded, columns: 'anchor', every: 5, anchors: { BTC: { id: 'a', at: T0, slot: 0 } } } });
   const kept = settingsOf(mine);
   assert.ok(!('anchors' in kept.traded!)); assert.equal(kept.traded!.columns, 'anchor'); assert.equal(kept.traded!.every, 5);
-  const other = state({ traded: { ...defaults.traded, anchors: { ETH: T0 + HOUR } } });
-  assert.deepEqual(settingsToApply(kept, other).traded.anchors, { ETH: T0 + HOUR }, 'the anchors of the chart it is applied to');
+  const other = state({ traded: { ...defaults.traded, anchors: { ETH: { id: 'b', at: T0 + HOUR, slot: 0 } } } });
+  assert.deepEqual(settingsToApply(kept, other).traded.anchors, { ETH: { id: 'b', at: T0 + HOUR, slot: 0 } }, 'the anchors of the chart it is applied to');
   assert.ok(!('anchors' in carriedSettings({ traded: mine.traded } as never).traded!));
-  assert.deepEqual(completeSettings({ traded: kept.traded } as never, other).traded!.anchors, { ETH: T0 + HOUR }, 'an Undo leaves them as they are');
+  assert.deepEqual(completeSettings({ traded: kept.traded } as never, other).traded!.anchors, { ETH: { id: 'b', at: T0 + HOUR, slot: 0 } }, 'an Undo leaves them as they are');
 });
 
 test('the columns draw only an answer asked for the anchored window they show (Sol, code review 2026-11-10)', () => {

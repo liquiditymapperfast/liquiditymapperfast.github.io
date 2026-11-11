@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHOR_PRESETS, extremeBar, freeSlot, periodStart, readAnchor, resolveRule, ruleKey, ruleName, ruleOf, ruleSpan, searchBarMs, type AnchorRule } from '../src/app/anchors/anchors.ts';
+import { ANCHOR_PERIODS, ANCHOR_POINTS, extremeBar, freeSlot, periodStart, readAnchor, resolveRule, ruleKey, ruleCode, ruleName, ruleOf, ruleSpan, searchBarMs, type AnchorRule } from '../src/app/anchors/anchors.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
@@ -56,19 +56,24 @@ test('a rule resolves to the very minute of the extreme, and a replay never read
   assert.deepEqual(resolveRule(high, zone, now, false, { bars: [], barMs, knownFrom: 0 }, fine), { state: 'none' });
 });
 
-test('every rule offered has a name and a key it is found by again', () => {
-  const rules = ANCHOR_PRESETS.flatMap(g => g.rules);
-  assert.equal(rules.length, 21, 'five starts; the highs and lows so far and previous of week, month, quarter and year');
-  for (const r of rules) { assert.ok(ruleName(r).length > 3); assert.deepEqual(ruleOf(ruleKey(r)), r); }
-  assert.equal(ruleOf('day|high'), null, 'a day offers its start only');
+test('every rule of the grid has a name, a chart code and a key it is found by again', () => {
+  const rules = ANCHOR_PERIODS.flatMap(period => ANCHOR_POINTS.map(point => ({ period, point })));
+  assert.equal(rules.length, 25, 'each of five periods: its start, its high and low so far, the previous one\'s high and low');
+  const names = new Set<string>(), codes = new Set<string>();
+  for (const r of rules) { assert.ok(ruleName(r).length > 3); assert.deepEqual(ruleOf(ruleKey(r)), r); names.add(ruleName(r)); codes.add(ruleCode(r)); }
+  assert.equal(names.size, 25, 'no two rules share a name'); assert.equal(codes.size, 25, 'nor a code');
+  assert.equal(ruleOf('day|middle'), null); assert.equal(ruleOf('decade|high'), null);
   assert.equal(ruleName({ period: 'month', point: 'prevLow' }), 'Previous month low');
+  assert.equal(ruleCode({ period: 'week', point: 'prevHigh' }), 'PWH'); assert.equal(ruleCode({ period: 'year', point: 'start' }), 'YO');
 });
 
 test('an anchor saved as a bare time is read as a fixed one at that very time; others field by field', () => {
   assert.deepEqual(readAnchor(1_788_339_600_000, 2), { id: 't1788339600000', at: 1_788_339_600_000, slot: 2 });
   assert.deepEqual(readAnchor({ id: 'abc', rule: { period: 'year', point: 'high' }, slot: 3, color: '#A78BFA', hidden: true }, 0), { id: 'abc', rule: { period: 'year', point: 'high' }, slot: 3, color: '#a78bfa', hidden: true });
   assert.deepEqual(readAnchor({ id: 'x', at: 5, slot: 1, color: 'red' }, 0), { id: 'x', at: 5, slot: 1 }, 'a colour that is not #rrggbb is left out');
-  assert.equal(readAnchor({ rule: { period: 'day', point: 'high' } }, 0), null, 'a rule not offered');
+  assert.equal(readAnchor({ rule: { period: 'day', point: 'middle' } }, 0), null, 'a rule not offered');
+  assert.equal(readAnchor({ rule: { period: 'decade', point: 'high' } }, 0), null);
+  assert.deepEqual(readAnchor({ rule: { period: 'day', point: 'high' } }, 0), { id: 't0dayhigh', rule: { period: 'day', point: 'high' }, slot: 0 }, 'a day offers its highs and lows too');
   assert.equal(readAnchor('soon', 0), null);
   assert.equal(readAnchor(-1, 0), null);
   assert.equal(freeSlot([{ slot: 0 }, { slot: 2 }]), 1, 'the lowest slot free: the others keep theirs');

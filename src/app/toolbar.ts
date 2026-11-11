@@ -33,7 +33,9 @@ import { buildLiqLevelPanel } from './liq-panel.ts';
 import type { LiqLevelsSource } from './liq-levels.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import type { AnchorSnapshot } from './traded/anchor.ts';
-import { buildVwapPanel, type RollingReach, type VwapMarkets, type WhaleInfo } from './vwap/panel.ts';
+import type { Anchor } from './anchors/anchors.ts';
+import type { ProfileAnchorStart } from './traded/anchor.ts';
+import { buildVwapPanel, type RollingReach, type RuleStart, type VwapMarkets, type WhaleInfo } from './vwap/panel.ts';
 import { buildTpoPanel, type TpoInfo } from './tpo/panel.ts';
 import { buildFootprintPanel } from './footprint/panel.ts';
 import type { FlowBook } from './flow-book.ts';
@@ -204,6 +206,8 @@ export class Toolbar {
   rollingReach: RollingReach = () => 'coming';
   /** The markets the VWAP lines read and how each stands (`HeatPane.vwapMarketStates`), for the VWAP panel. */
   vwapMarkets: VwapMarkets = () => [];
+  /** Where a live anchor's rule lands now (`HeatPane.ruleStart`), for the VWAP and Volume profile panels' anchor rows. */
+  ruleStart: RuleStart = () => ({ state: 'coming' });
   /** The key levels' candles (set by the page), for the panel to say whose they are and whether they could be read. */
   keyHistory: KeyLevelHistory | null = null;
   /** The volume profile's candles of one bar size (set by the page), for its panel to say whether they could be read. */
@@ -213,6 +217,8 @@ export class Toolbar {
   /** The columns' anchored window and taking it again now (heat-pane.ts `anchoredWindow`, `updateAnchored`), for the Volume profile panel; set by the page. */
   anchoredWindow: (() => AnchorSnapshot | null) | null = null;
   updateAnchored: (() => void) | null = null;
+  /** Where the profile's anchor starts now (`HeatPane.profileAnchorStart`), for its row in the Volume profile panel; set by the page. */
+  profileAnchorStart: ((a: Anchor) => ProfileAnchorStart) | null = null;
   /** Where the page's data comes from (set by the page): a page reading the exchanges itself keeps liquidations only while it is open. */
   sourceKind: 'server' | 'browser' = 'server';
   #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
@@ -387,7 +393,7 @@ export class Toolbar {
     };
     this.#footprint.onclick = () => this.store.set(togglePatch(this.store.state, 'footprint'));
     this.#settingsKeys.vwap.onclick = () => {
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo, this.rollingReach, this.vwapMarkets);
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo, this.rollingReach, this.vwapMarkets, this.ruleStart);
       this.#vwapPanel = this.#track(togglePanel(this.#settingsKeys.vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring && !this.#placing) this.store.set({ vwapAnchoring: false }); } }, build), build);
     };
     this.#vwap.onclick = () => this.store.set(togglePatch(this.store.state, 'vwap'));
@@ -442,7 +448,7 @@ export class Toolbar {
       this.#track(togglePanel(this.#alertKeys.waves, { title: t('Waves'), width: 400, align: 'left' }, build), build);
     };
     this.#settingsKeys.traded.onclick = () => {
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null, anchored: () => this.anchoredWindow?.() ?? null, updateNow: () => this.updateAnchored?.() });
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null, anchored: () => this.anchoredWindow?.() ?? null, updateNow: () => this.updateAnchored?.(), anchorStart: a => this.profileAnchorStart?.(a) ?? { state: 'coming' } });
       // While Place the anchor is armed the panel stays open over a click on the map (that click places it, Sol: closing it first disarmed
       // it); otherwise a press outside closes it as before.
       const store = this.store;

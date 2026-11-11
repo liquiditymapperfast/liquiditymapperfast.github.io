@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHOR_REACH_MS, ROLLING_MAX_BARS, anchorBarMs, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries as rollingOf, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries as vwapOf } from '../src/app/vwap/vwap.ts';
-import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withRolling, withoutAnchor } from '../src/app/vwap/settings.ts';
+import { ANCHOR_REACH_MS, ROLLING_MAX_BARS, anchorBars, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries as rollingOf, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries as vwapOf } from '../src/app/vwap/vwap.ts';
+import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, changeAnchor, hasOwnColors, readVwap, restoreAnchor, withAnchor, withRolling, withThemeColors, withoutAnchor } from '../src/app/vwap/settings.ts';
+import { anchorDefault, lineColor, rollingDefault } from '../src/app/vwap/colours.ts';
 import { cutForReplay, paintVwap, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
 import { View } from '../src/app/view.ts';
 import { paintKeyTags, placeKeyTags, type KeyTag } from '../src/app/keylevels/paint.ts';
@@ -63,31 +64,82 @@ test('a day whose session starts at a set hour runs from there to the next day\'
   assert.deepEqual(sessionsOf('day', 'UTC', D0 + 12 * HOUR, now + HOUR, now, null).map(w => w.from), [D0, D0 + DAY, D0 + 2 * DAY]);
 });
 
-test('anchors are kept per coin, to the minute, at most six, none in the future or beyond ten years back', () => {
-  const now = D0 + 10 * DAY;
+test('anchors are kept per coin, fixed to the minute or live by a rule, at most six, none in the future or beyond ten years back', () => {
+  const now = D0 + 10 * DAY, at = (s: typeof VWAP_DEFAULTS, coin = 'BTC') => (s.anchors[coin] ?? []).map(a => a.at ?? a.rule);
   let s = { ...VWAP_DEFAULTS };
-  s = withAnchor(s, 'BTC', now - DAY + 30_500, now);
-  assert.deepEqual(s.anchors, { BTC: [now - DAY] });
-  assert.equal(withAnchor(s, 'BTC', now - DAY + 10_000, now), s, 'the same minute again: unchanged');
-  assert.equal(withAnchor(s, 'BTC', now + MIN, now), s, 'not in the future');
-  for (const back of [5, 4, 3, 6, 7]) s = withAnchor(s, 'BTC', now - back * HOUR, now);
+  s = withAnchor(s, 'BTC', { at: now - DAY + 30_500 }, now);
+  assert.deepEqual(at(s), [now - DAY]);
+  assert.equal(s.anchors.BTC![0]!.slot, 0);
+  assert.equal(withAnchor(s, 'BTC', { at: now - DAY + 10_000 }, now), s, 'the same minute again: unchanged');
+  assert.equal(withAnchor(s, 'BTC', { at: now + MIN }, now), s, 'not in the future');
+  assert.equal(withAnchor(s, 'BTC', { at: now - ANCHOR_REACH_MS - DAY }, now), s, 'nor beyond ten years');
+  s = withAnchor(s, 'BTC', { rule: { period: 'week', point: 'high' } }, now);
+  assert.equal(withAnchor(s, 'BTC', { rule: { period: 'week', point: 'high' } }, now), s, 'the same rule again: unchanged');
+  for (const back of [5, 4, 3, 6]) s = withAnchor(s, 'BTC', { at: now - back * HOUR }, now);
   assert.equal(s.anchors.BTC!.length, MAX_ANCHORS);
-  assert.equal(withAnchor(s, 'BTC', now - 2 * HOUR, now), s, 'a seventh is refused');
-  s = withAnchor(s, 'ETH', now - HOUR, now);
+  assert.deepEqual(s.anchors.BTC!.map(a => a.slot), [0, 1, 2, 3, 4, 5], 'each a colour slot of its own');
+  assert.equal(new Set(s.anchors.BTC!.map(a => a.id)).size, MAX_ANCHORS, 'and an id of its own');
+  assert.equal(withAnchor(s, 'BTC', { at: now - 2 * HOUR }, now), s, 'a seventh is refused');
+  s = withAnchor(s, 'ETH', { at: now - HOUR }, now);
   assert.deepEqual(Object.keys(s.anchors), ['BTC', 'ETH']);
-  assert.deepEqual(withoutAnchor(s, 'ETH', now - HOUR).anchors.ETH, undefined);
+  assert.deepEqual(withoutAnchor(s, 'ETH', s.anchors.ETH![0]!.id).anchors.ETH, undefined);
+  // A removed anchor's slot is free again, and a new one takes it; the others keep theirs (and their colours).
+  const second = s.anchors.BTC![1]!, fewer = withoutAnchor(s, 'BTC', second.id);
+  assert.deepEqual(fewer.anchors.BTC!.map(a => a.slot), [0, 2, 3, 4, 5]);
+  assert.equal(withAnchor(fewer, 'BTC', { at: now - 9 * HOUR }, now).anchors.BTC!.at(-1)!.slot, 1);
+  // Undo puts it back where it was, as it was; not when that would make a seventh or a duplicate.
+  assert.deepEqual(restoreAnchor(fewer, 'BTC', second, 1).anchors.BTC, s.anchors.BTC);
+  assert.equal(restoreAnchor(s, 'BTC', second, 1), s, 'already there');
   // Kept two months until 2026-11-11: one clicked 70 days back was saved and never drawn (a user).
-  const old = { ...s, anchors: { BTC: [now - ANCHOR_REACH_MS - DAY, now - 70 * DAY, now - HOUR] } };
-  assert.deepEqual(anchorsOf(old, 'BTC', now), [now - 70 * DAY, now - HOUR], 'one 70 days back is kept, one beyond ten years is not');
+  const old = readVwap({ anchors: { BTC: [now - ANCHOR_REACH_MS - DAY, now - 70 * DAY, now - HOUR] } });
+  assert.deepEqual(at(old), [now - ANCHOR_REACH_MS - DAY, now - 70 * DAY, now - HOUR], 'a save of bare times is read as fixed anchors at those very times');
+  assert.deepEqual(anchorsOf(old, 'BTC', now).map(a => a.at), [now - 70 * DAY, now - HOUR], 'one 70 days back is drawn, one beyond ten years is not');
   assert.ok(MAX_BACK_MS < 70 * DAY);
+});
+
+test('an anchor is changed in place: moved (fixed from then on), frozen from a rule, recoloured, hidden', () => {
+  const now = D0 + 10 * DAY;
+  let s = withAnchor({ ...VWAP_DEFAULTS }, 'BTC', { rule: { period: 'month', point: 'low' } }, now);
+  s = withAnchor(s, 'BTC', { at: now - 3 * HOUR }, now);
+  const [live, fixed] = s.anchors.BTC!;
+  const frozen = changeAnchor(s, 'BTC', live!.id, { at: now - 5 * DAY + 17 * MIN + 20_000 });
+  assert.deepEqual(frozen.anchors.BTC![0], { id: live!.id, at: now - 5 * DAY + 17 * MIN, slot: 0 }, 'frozen: its rule dropped, to the minute, its id and slot kept');
+  assert.equal(changeAnchor(s, 'BTC', live!.id, { at: now - 3 * HOUR }), s, 'not onto the minute of another');
+  const red = changeAnchor(s, 'BTC', fixed!.id, { color: '#FF0000' });
+  assert.equal(red.anchors.BTC![1]!.color, '#ff0000');
+  assert.equal(changeAnchor(red, 'BTC', fixed!.id, { color: null }).anchors.BTC![1]!.color, undefined, 'null: back to the theme colour');
+  assert.equal(changeAnchor(s, 'BTC', fixed!.id, { color: 'red' }).anchors.BTC![1]!.color, undefined, 'only #rrggbb');
+  assert.equal(changeAnchor(s, 'BTC', fixed!.id, { hidden: true }).anchors.BTC![1]!.hidden, true);
+  assert.equal(changeAnchor(s, 'BTC', 'nope', { hidden: true }), s);
+});
+
+test('each line has a colour: its own, else its theme default (greens for rolling, violets for anchors); reset clears them all', () => {
+  const dark = { dark: true, vwap: '#f4e04d' }, light = { dark: false, vwap: '#0891b2' };
+  let s = withAnchor({ ...VWAP_DEFAULTS }, 'BTC', { at: D0 }, D0 + DAY);
+  assert.equal(lineColor({ kind: 'session', n: 0 }, s.colors, dark), '#f4e04d', 'the session keeps the theme\'s VWAP colour');
+  assert.equal(lineColor({ kind: 'rolling', n: 7 }, s.colors, light), rollingDefault(7, light));
+  assert.notEqual(rollingDefault(7, dark), rollingDefault(7, light), 'lighter on dark themes, deeper on light ones');
+  assert.equal(lineColor({ kind: 'anchor', n: 1, slot: 3 }, s.colors, dark), anchorDefault(3, dark));
+  assert.equal(new Set([0, 1, 2, 3, 4, 5].map(i => anchorDefault(i, dark))).size, 6, 'six anchors, six colours');
+  assert.equal(hasOwnColors(s, 'BTC'), false);
+  s = { ...s, colors: { session: '#123456', rolling: { 30: '#abcdef' } } };
+  s = changeAnchor(s, 'BTC', s.anchors.BTC![0]!.id, { color: '#00ff00' });
+  assert.equal(lineColor({ kind: 'rolling', n: 30 }, s.colors, dark), '#abcdef');
+  assert.equal(hasOwnColors(s, 'BTC'), true);
+  const back = withThemeColors(s, 'BTC');
+  assert.equal(hasOwnColors(back, 'BTC'), false);
+  assert.equal(back.anchors.BTC![0]!.at, D0, 'the anchors stay');
+  const read = readVwap({ colors: { session: '#ABCDEF', rolling: { 7: '#00ff00', 8: '#ffffff', 30: 'blue' } } });
+  assert.deepEqual(read.colors, { session: '#abcdef', rolling: { 7: '#00ff00' } }, 'colours as #rrggbb, rolling ones by a window offered');
 });
 
 test('settings from storage are read field by field', () => {
   assert.deepEqual(readVwap(undefined), VWAP_DEFAULTS);
   assert.equal(VWAP_DEFAULTS.on, false, 'off until switched on');
-  const read = readVwap({ on: true, period: 'month', bands: 2, anchors: { BTC: [3, 'x', 1, 2, 5, 4, 8, 6, 7], 'bad coin': [1], ETH: 'no' }, labels: 'yes' });
+  const read = readVwap({ on: true, period: 'month', bands: 2, anchors: { BTC: [3, 'x', 1, 2, 5, 4, 8, 6, 7, 7], 'bad coin': [1], ETH: 'no' }, labels: 'yes' });
   assert.deepEqual([read.on, read.period, read.bands, read.labels], [true, 'month', 2, true]);
-  assert.deepEqual(read.anchors, { BTC: [3, 4, 5, 6, 7, 8] }, 'times only, the newest six, a coin by its name');
+  assert.deepEqual(Object.keys(read.anchors), ['BTC'], 'a coin by its name');
+  assert.deepEqual(read.anchors.BTC!.map(a => a.at), [2, 5, 4, 8, 6, 7], 'times and rules only, each once, the last six in the order kept');
   assert.equal(readVwap({ period: 'year', bands: 3 }).period, 'day');
 });
 
@@ -286,14 +338,17 @@ test('an anchor placed on the chart starts where its candle does, and its line i
   const now = D0 + 400 * DAY, at = D0 + 10 * DAY + 14 * HOUR;
   assert.equal(candleStartAt(at + 37 * MIN, HOUR), at, 'a click inside the 14:00 candle of a 1h chart: 14:00, not the minute');
   assert.equal(candleStartAt(at + 37 * MIN, 15 * MIN), at + 30 * MIN);
-  // By age: a minute for a day and a half, five minutes for eight days, half an hour for two months, an hour for thirteen months, a day beyond.
-  assert.equal(anchorBarMs(now - HOUR, now), MIN);
-  assert.equal(anchorBarMs(now - 3 * DAY, now), 5 * MIN);
-  assert.equal(anchorBarMs(now - 30 * DAY, now), 30 * MIN);
-  assert.equal(anchorBarMs(now - 300 * DAY, now), HOUR);
-  assert.equal(anchorBarMs(now - 500 * DAY, now), DAY, 'midnight UTC, five hundred days back: daily bars');
-  // Never a bar that began before the anchor: the largest of the sizes that starts at it.
-  assert.equal(anchorBarMs(now - 30 * DAY + 15 * MIN, now), 15 * MIN, 'a quarter past: quarter hours, not half hours');
-  assert.equal(anchorBarMs(now - 500 * DAY + 4 * HOUR, now), 4 * HOUR);
-  assert.equal(anchorBarMs(now - 500 * DAY + 3 * HOUR, now), HOUR);
+  // The body by age: a minute for a day and a half, five minutes for eight days, half an hour for two months, an hour for thirteen months,
+  // a day beyond; on its bar, no head.
+  assert.deepEqual(anchorBars(now - HOUR, now), { bar: MIN, head: 0 });
+  assert.deepEqual(anchorBars(now - 3 * DAY, now), { bar: 5 * MIN, head: 0 });
+  assert.deepEqual(anchorBars(now - 30 * DAY, now), { bar: 30 * MIN, head: 0 });
+  assert.deepEqual(anchorBars(now - 300 * DAY, now), { bar: HOUR, head: 0 });
+  assert.deepEqual(anchorBars(now - 500 * DAY, now), { bar: DAY, head: 0 }, 'midnight UTC, five hundred days back: daily bars');
+  // Off its body's bar, the stretch up to the first whole one is read on the largest size that starts at the anchor (Sol: a fine head
+  // stitched to a coarse body), never a bar that began before it.
+  assert.deepEqual(anchorBars(now - 30 * DAY + 15 * MIN, now), { bar: 30 * MIN, head: 15 * MIN }, 'a quarter past: a quarter-hour head');
+  assert.deepEqual(anchorBars(now - 500 * DAY + 4 * HOUR, now), { bar: DAY, head: 4 * HOUR });
+  assert.deepEqual(anchorBars(now - 500 * DAY + 3 * HOUR, now), { bar: DAY, head: HOUR });
+  assert.deepEqual(anchorBars(now - 500 * DAY + 3 * HOUR + 7 * MIN, now), { bar: DAY, head: MIN }, 'a date typed to the minute: a minute head');
 });

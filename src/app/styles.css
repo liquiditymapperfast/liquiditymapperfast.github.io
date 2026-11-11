@@ -851,6 +851,42 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .period-grid .head { line-height: 1.25; }
 .period-grid .head.period-name { text-align: left; }
 .period-grid .none { display: flex; justify-content: center; align-self: stretch; align-items: center; border-top: 1px solid var(--line); color: var(--muted); }
+/* Anchors (anchors/controls.ts; the VWAP and Volume profile panels): the same grid, a column a period from day to year, each box ticked in its
+   line's colour; a greyed box says why when pointed at. */
+.anchor-grid { grid-template-columns: minmax(0, 1fr) repeat(5, 46px); }
+.anchor-grid label.greyed, .anchor-grid label.greyed input { cursor: not-allowed; }
+.anchor-sub { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--text); }
+/* An anchor's row: its colour, its name over where it starts, show or hide, Edit, remove. A hidden one is faded; its editor opens under it. */
+.anchor-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.anchor-row .anchor-what { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.anchor-row .anchor-what .name { font-weight: 600; }
+.anchor-row .anchor-when { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.anchor-row.hidden-one .anchor-what { opacity: .5; }
+.anchor-row .anchor-edit { flex: 0 0 auto; padding: 2px 8px; font-size: 11px; }
+.anchor-eye { position: relative; flex: 0 0 auto; width: 24px; height: 24px; min-width: 0; padding: 0; }
+.anchor-eye::before { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); background: currentColor; -webkit-mask: var(--mark-eye) center / contain no-repeat; mask: var(--mark-eye) center / contain no-repeat; }
+.anchor-eye[data-hidden="true"]::before { -webkit-mask-image: var(--mark-eye-off); mask-image: var(--mark-eye-off); }
+.anchor-editor { padding: 6px 0 8px 26px; border-bottom: 1px solid var(--line); }
+.anchor-editor .session-add { margin-top: 6px; }
+/* A date and an optional time on the chart's clock, the clock's zone, the button; under them where the anchor would start, or why it cannot. */
+.anchor-date-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.anchor-date-fields :is(.anchor-date, .anchor-time) { box-sizing: border-box; height: 26px; padding: 2px 6px; font: inherit; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--text); background: var(--well, var(--bg)); border: 1px solid var(--edge, var(--line)); border-radius: var(--radius); }
+.anchor-date-fields .anchor-date { width: 142px; }
+.anchor-date-fields .anchor-time { width: 104px; }
+.anchor-zone { color: var(--muted); font-size: 11px; }
+.anchor-say { margin-top: 4px; }
+.anchor-say.warn { color: var(--caution, var(--muted)); }
+/* A line's colour: a round swatch opening the system's colour picker, and a way back to the theme's beside it while it has a colour of its own. */
+.line-swatch { -webkit-appearance: none; appearance: none; flex: 0 0 auto; box-sizing: border-box; width: 20px; height: 20px; min-width: 0; padding: 0; border: 2px solid var(--panel); border-radius: 50%; box-shadow: 0 0 0 1px var(--line); background: none; cursor: pointer; }
+.line-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.line-swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
+.line-swatch::-moz-color-swatch { border: none; border-radius: 50%; }
+.line-swatch:focus-visible { outline: 2px solid var(--ui); outline-offset: 2px; }
+.line-swatch-reset { flex: 0 0 auto; width: 20px; height: 20px; min-width: 0; padding: 0; font-size: 13px; line-height: 1; }
+.line-swatch-reset::before { content: "↺"; }
+.swatch-pair { display: inline-flex; align-items: center; gap: 4px; }
+.session-row .row-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
 .panel .field { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 7px 8px; margin: 0 -8px; border-radius: var(--radius); }
 .panel .field > select, .panel .field > input[type=number] { width: 150px; }
 /* A long choice ("Aggregated: every market switched on") does not fit 150 px beside the name: the select takes a line of its own under it. */

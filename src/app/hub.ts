@@ -24,8 +24,8 @@ import { ABSORPTION_RETENTION_MS, MAX_ABSORPTION_INSTRUMENTS } from '../shared/a
 import { measureDef, type MetricFlags, type ProfileMetric } from './measures/registry.ts';
 import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
-import { webGet } from '../shared/history.ts';
-import { KeyLevelHistory } from './keylevels/history.ts';
+import { readCandles, webGet } from '../shared/history.ts';
+import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
 import { TPO_DAYS_REACH_MS, TPO_MAX_BARS, TPO_REACH_MS } from './tpo/settings.ts';
 import { pacedFetcher } from './paced-get.ts';
 import { scriptChunk } from './script/bars.ts';
@@ -42,6 +42,8 @@ const VWAP_HISTORIES = 16;
 const TPO_HISTORIES = 16;
 /** The scripts' candle histories kept (`scriptHistory`): a perpetual's and a spot market's, at this timeframe and the one before. */
 const SCRIPT_HISTORIES = 4;
+/** Short spans of candles kept (`spanBars`): an anchored VWAP's first stretch and a rule's minutes, a few each. */
+const SPANS = 64;
 /** The candle histories' requests: a queue per exchange host, which waits after a venue says it was asked too often (`pacedFetcher`). */
 const historyGet = pacedFetcher(webGet);
 
@@ -410,6 +412,26 @@ export class Hub {
     let h = this.#profileHistories.get(key);
     if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, 3 * 365 * 86_400_000); h.withBuy = true; this.#profileHistories.set(key, h); }
     return h;
+  }
+  /** Short spans of candles read once (`spanBars`), the last `SPANS` asked for. */
+  readonly #spans = new Map<string, { rows: CandleRow[] | null; at: number }>();
+  /**
+   * One market's candles of `barMs` over [from, to), read once through the venue's queue: an anchored VWAP's first stretch, from the anchor
+   * to its first whole coarse bar (a minute anchor a year back is not read as a year of minutes), and the minutes inside the bar that holds a
+   * rule's high or low. Null while it is read, or for a minute after it failed; one that reaches the last two minutes is read again each
+   * minute (it is still being traded). `onLoad` when it lands.
+   */
+  spanBars(target: HistoryTarget, barMs: number, from: number, to: number, onLoad: () => void): readonly CandleRow[] | null {
+    const now = Date.now(), live = to > now - 120_000, key = `${target.id}|${barMs}|${from}|${to}${live ? `|${Math.floor(now / 60_000)}` : ''}`;
+    const held = this.#spans.get(key);
+    if (held) { this.#spans.delete(key); this.#spans.set(key, held); if (held.rows || now - held.at < 60_000) return held.rows; }
+    const entry: { rows: CandleRow[] | null; at: number } = { rows: null, at: now };
+    this.#spans.set(key, entry);
+    while (this.#spans.size > SPANS) this.#spans.delete(this.#spans.keys().next().value!);
+    void readCandles(target.id, barMs, from, Math.min(to, now) - 1, historyGet, target.listing, 4, { pageSize: 1500, strict: 'drop', now }).then(read => {
+      entry.rows = (read.rows as CandleRow[]).filter(b => b[0] >= from && b[0] < to); entry.at = Date.now(); onLoad();
+    }, () => { entry.at = Date.now(); onLoad(); });
+    return null;
   }
   onLiquidationsChanged: () => void = () => {};
   /** A series whose answer came back empty has candles now (the reference market's, read once it was known, or a later reload): the page frames them. */

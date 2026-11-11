@@ -188,15 +188,18 @@ export const candleStartAt = (t: number, tfMs: number): number => Math.floor(t /
 /** The candle sizes an anchored VWAP is worked out on, finest first: every exchange the lines read serves them or builds them from finer ones. */
 const ANCHOR_BARS: readonly number[] = [MINUTE, 5 * MINUTE, 15 * MINUTE, 30 * MINUTE, HOUR, 4 * HOUR, DAY];
 /**
- * The bar an anchored VWAP from `at` is worked out on: by the anchor's age (a minute for a day and a half, five minutes for eight days, half
- * an hour for two months, an hour for thirteen months, a day beyond), the largest of `ANCHOR_BARS` no coarser than that which starts at the
- * anchor itself, so the line counts every trade from the candle chosen and none before it. Unlike a session's bar it need not start on the
- * zone's period boundaries: an anchor is a moment, not a period.
+ * The bars an anchored VWAP from `at` is worked out on (Sol, 2026-11-11: "stitch a fine head to a coarse body"): `bar`, by the anchor's age
+ * (a minute for a day and a half, five minutes for eight days, half an hour for two months, an hour for thirteen months, a day beyond), from
+ * its first whole bar on; and where the anchor does not start one, `head`, the largest of `ANCHOR_BARS` that starts at it, for the stretch
+ * from the anchor to that first whole bar, read once (`Hub.spanBars`). So the line counts every trade from the minute chosen and none before
+ * it, and an anchor at 10:07 a year back is a year of hours and an hour of minutes, not a year of minutes. Unlike a session's bar it need
+ * not start on the zone's period boundaries: an anchor is a moment, not a period. `head` 0: none needed.
  */
-export function anchorBarMs(at: number, now: number): number {
-  const age = now - at, rule = age <= 1.5 * DAY ? MINUTE : age <= 8 * DAY ? 5 * MINUTE : age <= 62 * DAY ? 30 * MINUTE : age <= 400 * DAY ? HOUR : DAY;
-  for (let i = ANCHOR_BARS.length - 1; i >= 0; i--) { const bar = ANCHOR_BARS[i]!; if (bar <= rule && at % bar === 0) return bar; }
-  return MINUTE;
+export function anchorBars(at: number, now: number): { bar: number; head: number } {
+  const age = now - at, bar = age <= 1.5 * DAY ? MINUTE : age <= 8 * DAY ? 5 * MINUTE : age <= 62 * DAY ? 30 * MINUTE : age <= 400 * DAY ? HOUR : DAY;
+  if (at % bar === 0) return { bar, head: 0 };
+  for (let i = ANCHOR_BARS.length - 1; i >= 0; i--) { const head = ANCHOR_BARS[i]!; if (head < bar && at % head === 0) return { bar, head }; }
+  return { bar, head: MINUTE };
 }
 
 /**

@@ -3,6 +3,7 @@ import { knownZone, localZone, minutesOf, type SessionDef } from './sessions.ts'
 import { PROFILE_METRICS, isMetric, type ProfileMetric } from '../measures/registry.ts';
 import { defaultSet, readProfileSet, setFromLegacy, type ProfileSet } from './profiles.ts';
 import { ANCHOR_BAR_MS, ANCHOR_EVERY, ANCHOR_EVERY_DEFAULT } from './anchor.ts';
+import { newAnchorId, readAnchor, readColor, type Anchor, type AnchorRule } from '../anchors/anchors.ts';
 
 /**
  * The Traded feature's settings (the column itself is switched on and off with `show.traded`):
@@ -74,10 +75,27 @@ export interface TradedSettings {
    * up to now (`anchors`, `traded/anchor.ts`), worked out again every `every` minutes. The bands along the top stay with the chart.
    */
   columns: 'chart' | 'anchor';
-  /** Each coin's anchor (ms, on five minutes), at most `MAX_ANCHOR_COINS` coins: like the VWAP's, the chart's own, not a layout's. */
-  anchors: Record<string, number>;
+  /**
+   * Each coin's anchor (`anchors/anchors.ts`): fixed at a moment on five minutes, or live by a rule ("Start of month", "Week low so far"); at
+   * most `MAX_ANCHOR_COINS` coins. Like the VWAP's, the chart's own, not a layout's. Saved as a bare time before 2026-11-11.
+   */
+  anchors: Record<string, Anchor>;
   /** How often an anchored window is worked out again, in minutes (`ANCHOR_EVERY`). */
   every: number;
+  /**
+   * Colours chosen instead of the theme's (a user, 2026-11-10: colours for screenshots): the buys, the sells, and the point of control with the
+   * value area, wherever the profile is drawn. Layouts carry them.
+   */
+  colors: TradedColors;
+}
+
+/** The volume profile's own colours (`#rrggbb`); one not chosen is the theme's (its buy, sell and point-of-control colours). */
+export interface TradedColors { buy?: string; sell?: string; levels?: string }
+/** The profile's colours as kept, each a `#rrggbb` or none. */
+export function readTradedColors(saved: unknown): TradedColors {
+  const c = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>, out: TradedColors = {};
+  for (const key of ['buy', 'sell', 'levels'] as const) { const color = readColor(c[key]); if (color) out[key] = color; }
+  return out;
 }
 
 /**
@@ -148,7 +166,7 @@ export const TRADED_DEFAULTS: Readonly<TradedSettings> = {
   // longer (Karl, 2026-10-28: the daily profile off by default, the profiles at the side kept): one click in the panel's Profiles row.
   lines: ['day'], windowLines: true, profiles: null, source: 'recorded', zone: 'page', count: 5, naked: true, carry: true,
   sessions: [preset(0, 's1'), preset(1, 's2'), preset(2, 's3')],
-  columns: 'chart', anchors: {}, every: ANCHOR_EVERY_DEFAULT,
+  columns: 'chart', anchors: {}, every: ANCHOR_EVERY_DEFAULT, colors: {},
 };
 
 /** The IANA name of a stored zone: `page` follows the page's clock setting, `local` is this computer's. */
@@ -206,30 +224,43 @@ export function readTraded(saved: unknown, strip: LegacyTop | null = null): Trad
     source: oneOf(['recorded', 'candles'] as const, s.source, d.source),
     zone: zoneOk(s.zone) ? s.zone : d.zone, count, naked: flag(s.naked, d.naked), carry: flag(s.carry, d.carry), sessions,
     columns: s.columns === 'anchor' ? 'anchor' : 'chart', anchors: readAnchors(s.anchors), every: oneOf(ANCHOR_EVERY, s.every, d.every),
+    colors: readTradedColors(s.colors),
   };
 }
 
 /** Coins whose profile anchors are kept (a person tries many coins; the oldest coins' go first). */
 const MAX_ANCHOR_COINS = 20;
-/** Saved profile anchors, checked: a coin's name, a time on five minutes. */
-function readAnchors(saved: unknown): Record<string, number> {
-  const out: Record<string, number> = {};
+/**
+ * Saved profile anchors, checked: a coin's name, and an anchor (`readAnchor`), a fixed one's time on five minutes. A save from before
+ * 2026-11-11 holds bare times: read as fixed anchors at those times.
+ */
+function readAnchors(saved: unknown): Record<string, Anchor> {
+  const out: Record<string, Anchor> = {};
   if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return out;
-  for (const [coin, at] of Object.entries(saved as Record<string, unknown>).slice(-MAX_ANCHOR_COINS)) {
-    if (/^[A-Z0-9]{1,20}$/.test(coin) && typeof at === 'number' && Number.isFinite(at) && at > 0) out[coin] = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
+  for (const [coin, x] of Object.entries(saved as Record<string, unknown>).slice(-MAX_ANCHOR_COINS)) {
+    if (!/^[A-Z0-9]{1,20}$/.test(coin)) continue;
+    const a = readAnchor(x, 0);
+    if (a) out[coin] = a.at !== undefined ? { ...a, at: Math.floor(a.at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS } : a;
   }
   return out;
 }
 
-/** A coin's profile anchor while the candle estimate can still reach it (`backMs`) and it has begun, else null. */
-export const profileAnchorOf = (s: Pick<TradedSettings, 'anchors'>, coin: string, now: number, backMs: number): number | null => {
-  const at = s.anchors[coin];
-  return at !== undefined && at >= now - backMs && at <= now ? at : null;
-};
-/** The settings with `coin`'s profile anchor at `at` (the coin's last), or without one (`at` null). */
-export function withProfileAnchor(s: TradedSettings, coin: string, at: number | null): TradedSettings {
-  const { [coin]: _old, ...others } = s.anchors;
-  return { ...s, anchors: at === null ? others : { ...others, [coin]: at } };
+/** A coin's profile anchor, fixed or live; null when it has none (where it starts now is the map's to say: `HeatPane.profileAnchorStart`). */
+export const profileAnchorOf = (s: Pick<TradedSettings, 'anchors'>, coin: string): Anchor | null => s.anchors[coin] ?? null;
+/**
+ * The settings with `coin`'s profile anchor fixed at `add.at` (on five minutes) or following `add.rule` (one a coin: setting it again
+ * replaces it, keeping its id), or without one (null).
+ */
+export function withProfileAnchor(s: TradedSettings, coin: string, add: { at: number } | { rule: AnchorRule } | null): TradedSettings {
+  const { [coin]: old, ...others } = s.anchors;
+  if (add === null) return { ...s, anchors: others };
+  const id = old?.id ?? newAnchorId();
+  const anchor: Anchor = 'at' in add ? { id, at: Math.floor(add.at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS, slot: 0 } : { id, rule: add.rule, slot: 0 };
+  return { ...s, anchors: { ...others, [coin]: anchor } };
+}
+/** The settings with `coin`'s profile anchor put back as it was (Undo after a remove). */
+export function restoreProfileAnchor(s: TradedSettings, coin: string, anchor: Anchor): TradedSettings {
+  return { ...s, anchors: { ...s.anchors, [coin]: anchor } };
 }
 
 /** An older save's profile along the top, or null when it has none to read (a save from before it, or junk). */

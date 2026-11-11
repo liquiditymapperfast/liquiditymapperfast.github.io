@@ -24,24 +24,18 @@ export interface AnchorRule { period: AnchorPeriod; point: AnchorPoint }
  */
 export interface Anchor { id: string; at?: number; rule?: AnchorRule; slot: number; color?: string; hidden?: boolean }
 
-const PERIODS: readonly AnchorPeriod[] = ['day', 'week', 'month', 'quarter', 'year'];
-const POINTS: readonly AnchorPoint[] = ['start', 'high', 'low', 'prevHigh', 'prevLow'];
+/** The periods a rule can follow, and the points of each: every period offers every point, a grid of them (the panels' grid of boxes). */
+export const ANCHOR_PERIODS: readonly AnchorPeriod[] = ['day', 'week', 'month', 'quarter', 'year'];
+export const ANCHOR_POINTS: readonly AnchorPoint[] = ['start', 'high', 'low', 'prevHigh', 'prevLow'];
+const PERIODS = ANCHOR_PERIODS, POINTS = ANCHOR_POINTS;
 
-/** The rules offered, in groups as the person reads them (Sol, 2026-11-11): the starts, then each period's highs and lows. */
-export const ANCHOR_PRESETS: readonly { label: () => string; rules: readonly AnchorRule[] }[] = [
-  { label: () => t('Starts'), rules: PERIODS.map(period => ({ period, point: 'start' as const })) },
-  ...(['week', 'month', 'quarter', 'year'] as const).map(period => ({
-    label: () => periodWord(period), rules: (['high', 'low', 'prevHigh', 'prevLow'] as const).map(point => ({ period, point })),
-  })),
-];
+/** A period's name as the grid's column gives it. */
+export const periodWord = (p: AnchorPeriod): string => p === 'day' ? t('Day') : p === 'week' ? t('Week') : p === 'month' ? t('Month') : p === 'quarter' ? t('Quarter') : t('Year');
 
-const periodWord = (p: Exclude<AnchorPeriod, 'day'>): string => p === 'week' ? t('Week') : p === 'month' ? t('Month') : p === 'quarter' ? t('Quarter') : t('Year');
-
-/** A rule's name as the panel and the line's box give it: "Start of week", "Month high so far", "Previous year low". */
+/** A rule's name as the panels give it: "Start of week", "Month high so far", "Previous year low". */
 export function ruleName(r: AnchorRule): string {
-  // A day offers its start only (the session VWAP and the Key levels have its highs and lows).
-  if (r.period === 'day') return t('Start of day');
-  const names: Record<Exclude<AnchorPeriod, 'day'>, Record<AnchorPoint, () => string>> = {
+  const names: Record<AnchorPeriod, Record<AnchorPoint, () => string>> = {
+    day: { start: () => t('Start of day'), high: () => t('Day high so far'), low: () => t('Day low so far'), prevHigh: () => t('Previous day high'), prevLow: () => t('Previous day low') },
     week: { start: () => t('Start of week'), high: () => t('Week high so far'), low: () => t('Week low so far'), prevHigh: () => t('Previous week high'), prevLow: () => t('Previous week low') },
     month: { start: () => t('Start of month'), high: () => t('Month high so far'), low: () => t('Month low so far'), prevHigh: () => t('Previous month high'), prevLow: () => t('Previous month low') },
     quarter: { start: () => t('Start of quarter'), high: () => t('Quarter high so far'), low: () => t('Quarter low so far'), prevHigh: () => t('Previous quarter high'), prevLow: () => t('Previous quarter low') },
@@ -50,12 +44,27 @@ export function ruleName(r: AnchorRule): string {
   return names[r.period][r.point]();
 }
 
+/**
+ * A rule's short name on the chart, after "AVWAP" in the line's label and on its axis tag, as traders write the levels and as the Key levels
+ * name theirs: DO a day's open (its start), WH the week's high so far, PML the previous month's low; Q a quarter, Y a year.
+ */
+export function ruleCode(r: AnchorRule): string {
+  const codes: Record<AnchorPeriod, Record<AnchorPoint, () => string>> = {
+    day: { start: () => t('DO'), high: () => t('DH'), low: () => t('DL'), prevHigh: () => t('PDH'), prevLow: () => t('PDL') },
+    week: { start: () => t('WO'), high: () => t('WH'), low: () => t('WL'), prevHigh: () => t('PWH'), prevLow: () => t('PWL') },
+    month: { start: () => t('MO'), high: () => t('MH'), low: () => t('ML'), prevHigh: () => t('PMH'), prevLow: () => t('PML') },
+    quarter: { start: () => t('QO'), high: () => t('QH'), low: () => t('QL'), prevHigh: () => t('PQH'), prevLow: () => t('PQL') },
+    year: { start: () => t('YO'), high: () => t('YH'), low: () => t('YL'), prevHigh: () => t('PYH'), prevLow: () => t('PYL') },
+  };
+  return codes[r.period][r.point]();
+}
+
 /** A rule's key, to tell rules apart and find one in a list (`week|high`). */
 export const ruleKey = (r: AnchorRule): string => `${r.period}|${r.point}`;
 /** A rule from its key; null for one that is not offered. */
 export function ruleOf(key: string): AnchorRule | null {
   const [period, point] = key.split('|') as [AnchorPeriod, AnchorPoint];
-  return ANCHOR_PRESETS.some(g => g.rules.some(r => r.period === period && r.point === point)) ? { period, point } : null;
+  return PERIODS.includes(period) && POINTS.includes(point) ? { period, point } : null;
 }
 
 let counter = 0;

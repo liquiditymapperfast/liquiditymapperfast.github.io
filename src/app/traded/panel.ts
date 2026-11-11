@@ -2,11 +2,13 @@ import type { Store } from '../store.ts';
 import { el } from '../dom.ts';
 import { heading, note, numberRow, selectRow, switchRow } from '../ui.ts';
 import { helpButton } from '../help.ts';
-import { clock, usd } from '../format.ts';
+import { clock, clockYear, usd } from '../format.ts';
+import { toast } from '../toast.ts';
+import { ruleKey, ruleName, type Anchor } from '../anchors/anchors.ts';
+import { dateField, lineSwatch, ruleGrid } from '../anchors/controls.ts';
 import { t } from '../i18n.ts';
-import { LINE_KINDS, MAX_SESSIONS, ROW_MULTIPLES, SESSION_PRESETS, SHARES, ZONES, chartKinds, linesSource, mostCount, newSessionId, profileAnchorOf, recordedCount, withProfileAnchor, type KindSettings, type LineKind, type TradedSettings } from './settings.ts';
-import { ANCHOR_EVERY, type AnchorSnapshot } from './anchor.ts';
-import { PROFILE_CANDLES_BACK_MS } from '../hub.ts';
+import { LINE_KINDS, MAX_SESSIONS, ROW_MULTIPLES, SESSION_PRESETS, SHARES, ZONES, chartKinds, linesSource, mostCount, newSessionId, profileAnchorOf, recordedCount, restoreProfileAnchor, withProfileAnchor, type KindSettings, type LineKind, type TradedColors, type TradedSettings } from './settings.ts';
+import { ANCHOR_BAR_MS, ANCHOR_EVERY, PROFILE_ANCHOR_REACH_MS, type AnchorSnapshot, type ProfileAnchorStart } from './anchor.ts';
 import type { SessionDef } from './sessions.ts';
 import { candleBarMs } from './levels.ts';
 import { profileTarget, type KeyLevelHistory } from '../keylevels/history.ts';
@@ -28,6 +30,8 @@ export interface TradedSources {
   browser: boolean; candles: ((barMs: number) => KeyLevelHistory) | null; room?: () => ProfileRoom | null;
   /** The columns' anchored window as the map holds it, and taking it again now (heat-pane.ts `anchoredWindow`, `updateAnchored`). */
   anchored?: () => AnchorSnapshot | null; updateNow?: () => void;
+  /** Where the coin's anchor starts now (heat-pane.ts `profileAnchorStart`). */
+  anchorStart?: (a: Anchor) => ProfileAnchorStart;
 }
 
 /**
@@ -61,6 +65,7 @@ export function buildTradedPanel(store: Store, tools: HTMLElement, body: HTMLEle
     ...emphasisRows(store, set),
     switchRow(t('Mark the value area'), t('Shade the value area on the columns and along the top, and draw its point of control and its edges across them.'), s.valueArea, valueArea => set({ valueArea })),
     selectRow(t('Value area'), t('The share of the volume the value area holds around the point of control. 70% is the usual one.'), SHARES.map(v => [String(v), `${v}%`] as [string, string]), String(s.share), v => set({ share: Number(v) })),
+    profileColors(store, rebuild),
     // Where each measure is drawn (Karl, 2026-10-20): any measure right of the map, left of it or along the top, in any number of places.
     placeHead,
     note(t('Tick where each measure goes: a column right or left of the map adds it up by price, a band along the top by time, each over what is on the chart in the look set above. A measure can be in several places at once, and the columns left of the map mirror those on the right, so both face the chart.')),
@@ -237,21 +242,63 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
   const s = store.state.traded, coin = currentCoin().coin, out: HTMLElement[] = [];
   out.push(selectRow(t('Columns cover'), t('The columns beside the map: what is on the chart, or everything from a candle you choose up to now.'), [['chart', t('What is on the chart')], ['anchor', t('From an anchor')]], s.columns, v => set({ columns: v === 'anchor' ? 'anchor' : 'chart' }, true)));
   if (s.columns !== 'anchor') return out;
-  const at = profileAnchorOf(s, coin, Date.now(), PROFILE_CANDLES_BACK_MS), armed = store.state.profileAnchoring;
-  if (at !== null) {
-    const remove = el('button', { type: 'button', class: 'session-remove', ariaLabel: t('Remove'), tip: t('Remove the anchor'), onclick: () => { store.set({ traded: withProfileAnchor(store.state.traded, coin, null) }); rebuild(); } });
-    out.push(el('div', { class: 'session-row vwap-anchor' }, el('span', { class: 'name', textContent: t('Anchor') }), el('span', { class: 'desc', textContent: clock(at, true) }), remove));
-  }
-  const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : at === null ? t('Place the anchor') : t('Move the anchor'), tip: t('Then click the candle on the map the columns should add up from.'),
+  const a = profileAnchorOf(s, coin), armed = store.state.profileAnchoring;
+  const put = (add: Parameters<typeof withProfileAnchor>[2]): void => { store.set({ traded: withProfileAnchor(store.state.traded, coin, add) }); rebuild(); };
+  // The coin's anchor: what it follows (or that it is fixed), where it starts now, and remove (with Undo: the columns go back to the chart's).
+  if (a) {
+    const name = a.rule ? ruleName(a.rule) : t('Fixed anchor'), when = el('span', { class: 'desc anchor-when' });
+    const say = (): void => {
+      const r = sources.anchorStart?.(a) ?? { state: 'coming' as const };
+      when.textContent = r.state === 'ready' ? t('from {time}', { time: clockYear(r.at) }) : r.state === 'far' ? t('{time}: further back than the columns reach', { time: clockYear(r.at) })
+        : r.state === 'coming' ? t('finding it…') : t('no candle in this period yet');
+    };
+    say();
+    if (a.rule) { const timer = window.setInterval(() => { if (!when.isConnected) window.clearInterval(timer); else say(); }, 2_000); }
+    const x = el('button', { type: 'button', class: 'session-remove', ariaLabel: t('Remove the anchor'), tip: t('Remove the anchor'), onclick: () => {
+      store.set({ traded: withProfileAnchor(store.state.traded, coin, null) }); rebuild();
+      toast(t('Anchor removed: the columns add up what is on the chart.'), { ms: 8_000, action: { label: t('Undo'), run: () => { store.set({ traded: restoreProfileAnchor(store.state.traded, coin, a) }); rebuild(); } } });
+    } });
+    out.push(el('div', { class: 'anchor-row' }, el('span', { class: 'anchor-what' }, el('span', { class: 'name', textContent: name }), when), x));
+  } else out.push(note(t('No anchor yet for this coin: the columns add up what is on the chart until one is set below.')));
+  // One anchor a coin: a round button of the grid sets it to follow a period, a date or a candle fixes it.
+  out.push(el('p', { class: 'anchor-sub', textContent: t('Follow a period') }), ruleGrid({
+    name: 'profile-anchor', single: true,
+    chosen: rule => a?.rule && ruleKey(a.rule) === ruleKey(rule) ? {} : null,
+    toggle: (rule, on) => { if (on) put({ rule }); },
+  }));
+  out.push(el('p', { class: 'anchor-sub', textContent: t('From a date') }), dateField({
+    focus: 'profile-anchor', action: t('Set'), value: a?.at ?? null, reachMs: PROFILE_ANCHOR_REACH_MS, tooOld: t('Too far back: the columns reach 21 weeks.'),
+    startOf: at => Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS, add: at => put({ at }),
+  }));
+  const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : t('Click a candle'), tip: t('Then click the candle on the map the columns should add up from.'),
     onclick: () => { store.set(armed ? { profileAnchoring: false } : { profileAnchoring: true, vwapAnchoring: false, rangeTool: false }); rebuild(); } });
-  const again = el('button', { type: 'button', textContent: t('Update now'), disabled: at === null, tip: t('Recalculate the anchored columns now, up to the last finished five minutes.'), onclick: () => { sources.updateNow?.(); } });
-  out.push(el('div', { class: 'session-add' }, place, again));
-  if (armed) out.push(note(t('Click the candle on the map the columns should add up from.')));
+  const again = el('button', { type: 'button', textContent: t('Update now'), disabled: !a, tip: t('Recalculate the anchored columns now, up to the last finished five minutes.'), onclick: () => { sources.updateNow?.(); } });
+  out.push(el('p', { class: 'anchor-sub', textContent: t('From a candle') }), el('div', { class: 'session-add' }, place, again));
+  if (armed) out.push(note(t('Click the candle on the map the columns should add up from; the arrow keys and Enter work too. Esc cancels.')));
   out.push(selectRow(t('Update every'), t('How often the anchored columns are recalculated from the anchor. Less often means less work for the page.'),
     ANCHOR_EVERY.map(m => [String(m), m === 60 ? t('1 hour') : t('{n} min', { n: String(m) })] as [string, string]), String(s.every), v => set({ every: Number(v) })));
   const w = sources.anchored?.() ?? null;
-  if (at === null) out.push(note(t('No anchor yet for this coin: the columns add up what is on the chart until one is placed.')));
-  else if (w) out.push(note(w.to > w.from ? t('The columns show {from} to {to}, recalculated at {time}.', { from: clock(w.from, true), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
+  if (a && w && !w.state) out.push(note(w.to > w.from ? t('The columns show {from} to {to}, recalculated at {time}.', { from: clockYear(w.from), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
+  else if (a && w?.state === 'far') out.push(note(t('This anchor starts further back than the columns reach, so they are empty: choose a later one.')));
   out.push(note(t('Traded volume goes back up to 21 weeks, as an estimate from candles (≈). Liquidations, absorption and open interest go back only as far as they were recorded.')));
   return out;
+}
+
+/**
+ * The volume profile's colours (a user, 2026-11-10: colours for screenshots): the buys, the sells, and the point of control with the value
+ * area, wherever it is drawn (the columns, the bands along the top, the profiles and lines on the chart); each the theme's until one is chosen,
+ * with a way back to it.
+ */
+function profileColors(store: Store, rebuild: () => void): HTMLElement {
+  const p = PALETTES[resolveThemeId(store.state.theme)] ?? PALETTES.dark!, c = store.state.traded.colors;
+  const one = (key: keyof TradedColors, label: string, theme: string): HTMLElement => {
+    const own = c[key], pick = lineSwatch(own ?? theme, own !== undefined, label, color => {
+      const { [key]: _old, ...rest } = store.state.traded.colors;
+      store.set({ traded: { ...store.state.traded, colors: color ? { ...rest, [key]: color } : rest } });
+    }, rebuild);
+    return el('span', { class: 'swatch-pair profile-color' }, el('span', { class: 'desc', textContent: label }), pick.swatch, ...(pick.reset ? [pick.reset] : []));
+  };
+  return el('div', { class: 'field color-field profile-colors' },
+    el('span', { class: 'label' }, el('span', { class: 'name', textContent: t('Colours') }), el('span', { class: 'desc', textContent: t('The buys, the sells, and the point of control with the value area, wherever the profile is drawn.') })),
+    el('span', { class: 'swatch-row' }, one('buy', t('Buys'), p.bid), one('sell', t('Sells'), p.ask), one('levels', t('POC and VA'), p.poc)));
 }

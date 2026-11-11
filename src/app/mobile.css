@@ -218,6 +218,12 @@ html[data-bar="compact"] .panel .opt input[type=checkbox], html[data-bar="compac
 html[data-bar="compact"] .panel .opt { grid-template-columns: 24px 1fr; }
 html[data-bar="compact"] .keylevel-grid { grid-template-columns: 1fr repeat(3, 48px); }
 html[data-bar="compact"] .period-grid { grid-template-columns: minmax(0, 1fr) 72px 88px; }
+html[data-bar="compact"] .anchor-grid { grid-template-columns: minmax(0, 1fr) repeat(5, 40px); }
+html[data-bar="compact"] :is(.line-swatch, .line-swatch-reset, .anchor-eye) { width: 30px; height: 30px; }
+html[data-bar="compact"] .anchor-row .anchor-edit { min-height: 30px; }
+html[data-bar="compact"] .anchor-date-fields :is(.anchor-date, .anchor-time) { height: 36px; font-size: 16px; }
+html[data-bar="compact"] .anchor-date-fields .anchor-date { width: 160px; }
+html[data-bar="compact"] .anchor-date-fields .anchor-time { width: 116px; }
 html[data-bar="compact"] .keylevel-grid input:is([type=checkbox], [type=radio]) { width: 20px; height: 20px; }
 html[data-bar="compact"] .keylevel-grid .what { padding: 8px 0; }
 html[data-bar="compact"] .panel .grip { width: 30px; height: 36px; }

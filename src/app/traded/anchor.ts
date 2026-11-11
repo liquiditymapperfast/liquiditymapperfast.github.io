@@ -6,7 +6,11 @@
  * column says where it begins and when it was taken. Designed with Sol 6.1 and the advisor (2026-11-10).
  */
 
-const MINUTE = 60_000;
+const MINUTE = 60_000, DAY = 86_400_000;
+/** Where the profile's anchor starts now (`HeatPane.profileAnchorStart`): as `Resolved`, and 'far' for a start further back than the columns reach. */
+export type ProfileAnchorStart = { state: 'ready'; at: number } | { state: 'far'; at: number } | { state: 'coming' } | { state: 'none' };
+/** How far back the profile's anchor can be: as far as the candle estimate of traded volume reaches. */
+export const PROFILE_ANCHOR_REACH_MS = 21 * 7 * DAY;
 /** The bars the window is on: the candle estimate's (`candleBarMs`), so its start and its end are where an estimate's bars begin and end. */
 export const ANCHOR_BAR_MS = 5 * MINUTE;
 /** How often an anchored window is taken again, in minutes; 15 by default. */
@@ -26,7 +30,14 @@ export function anchorAt(t: number, chartMs: number): number {
  * The stretch an anchored column adds up (from the anchor to `to`), what it was taken for (`key`) and when (`at`); in a replay `rev` counts the
  * Update now presses, the window being worked out again from the moment shown at every five minutes of it.
  */
-export interface AnchorSnapshot { key: string; from: number; to: number; at: number; rev?: number }
+export interface AnchorSnapshot {
+  key: string; from: number; to: number; at: number; rev?: number;
+  /**
+   * Why the window holds nothing (from and to the same), when it cannot yet: a live anchor's candle is being found ('coming'), its period has
+   * none yet ('none'), or it is further back than the columns reach ('far'). The columns are then empty and say so, never the chart's totals.
+   */
+  state?: 'coming' | 'none' | 'far';
+}
 
 /**
  * The anchored window to add up now: the one held while it is not due, else a new one from the anchor to the last whole five minutes. Due when

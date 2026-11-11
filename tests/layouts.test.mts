@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { TIMEFRAMES } from '../src/app/hub.ts';
 import { LAYOUT_KEYS, TIMEFRAME_IDS, readSettings, type AppState } from '../src/app/store.ts';
 import { MAX_FILE_CHARS, MAX_LAYOUTS, MAX_NAME, PANE_SWITCHES, arrangeOrder, carriedSettings, changedSettings, cleanName, completeSettings, copyName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, paneSettings, readArrangement, readLayouts, samePanes, settingsOf, settingsToApply, undoPatch, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
+/** A fixed VWAP anchor at `at` (its id from the time, as an old save's is read). */
+const A = (at: number, slot = 0): { id: string; at: number; slot: number } => ({ id: `t${at}`, at, slot });
 
 const defaults = readSettings({});
 const state = (patch: Partial<AppState> = {}): AppState => ({ ...defaults, ...patch } as AppState);
@@ -12,16 +14,16 @@ const layout = (name: string, settings = settingsOf(state())): SavedLayout => ({
 test('the timeframes the settings accept are the chart\'s', () => assert.deepEqual(TIMEFRAME_IDS, Object.keys(TIMEFRAMES)));
 
 test('a layout keeps what the chart shows, without the VWAP anchors or the profile\'s zone, and applying it keeps this chart\'s own', () => {
-  const mine = state({ timeframe: '15m', ladderMode: 'compact', vwap: { ...defaults.vwap, on: true, anchors: { BTC: [1, 2] } }, traded: { ...defaults.traded, zone: 'Asia/Tokyo', count: 3 } });
+  const mine = state({ timeframe: '15m', ladderMode: 'compact', vwap: { ...defaults.vwap, on: true, anchors: { BTC: [A(1), A(2, 1)] } }, traded: { ...defaults.traded, zone: 'Asia/Tokyo', count: 3 } });
   const kept = settingsOf(mine);
   assert.deepEqual(Object.keys(kept).sort(), [...LAYOUT_KEYS].sort());
   assert.ok(!('anchors' in kept.vwap!) && !('zone' in kept.traded!), 'neither in the layout, nor in a file written from it');
-  const other = state({ vwap: { ...defaults.vwap, anchors: { ETH: [5] } }, traded: { ...defaults.traded, zone: 'UTC' } });
+  const other = state({ vwap: { ...defaults.vwap, anchors: { ETH: [A(5)] } }, traded: { ...defaults.traded, zone: 'UTC' } });
   const applied = settingsToApply(kept, other);
   assert.equal(applied.timeframe, '15m');
   assert.equal(applied.ladderMode, 'compact');
   assert.equal(applied.vwap.on, true);
-  assert.deepEqual(applied.vwap.anchors, { ETH: [5] }, 'the anchors of the chart it is applied to');
+  assert.deepEqual(applied.vwap.anchors, { ETH: [A(5)] }, 'the anchors of the chart it is applied to');
   assert.equal(applied.traded.zone, 'UTC');
   assert.equal(applied.traded.count, 3);
 });
@@ -209,7 +211,7 @@ test('Undo puts back what an action changed and what still stands as it left it,
 });
 
 test('Undo keeps this chart\'s VWAP anchors and the profile\'s zone: a snapshot has neither, so a patch never writes them back as missing', () => {
-  const mine = state({ vwap: { ...defaults.vwap, on: true, bands: 2, anchors: { BTC: [1, 2], ETH: [7] } }, traded: { ...defaults.traded, count: 3, zone: 'Asia/Tokyo' } });
+  const mine = state({ vwap: { ...defaults.vwap, on: true, bands: 2, anchors: { BTC: [A(1), A(2, 1)], ETH: [A(7)] } }, traded: { ...defaults.traded, count: 3, zone: 'Asia/Tokyo' } });
   const before = settingsOf(mine);
   // A saved layout applied: bands and the profile's count changed, the anchors and the zone are the chart's own.
   const applied = state({ ...mine, vwap: { ...mine.vwap, bands: 0 }, traded: { ...mine.traded, count: 9 } });
@@ -217,13 +219,13 @@ test('Undo keeps this chart\'s VWAP anchors and the profile\'s zone: a snapshot 
   assert.ok(!('anchors' in patch.vwap!) && !('zone' in patch.traded!), 'the bare patch is incomplete, which is why the store must not be given it');
   const whole = completeSettings(patch, applied);
   assert.equal(whole.vwap!.bands, 2);
-  assert.deepEqual(whole.vwap!.anchors, { BTC: [1, 2], ETH: [7] }, 'the anchors stand');
+  assert.deepEqual(whole.vwap!.anchors, { BTC: [A(1), A(2, 1)], ETH: [A(7)] }, 'the anchors stand');
   assert.equal(whole.traded!.count, 3);
   assert.equal(whole.traded!.zone, 'Asia/Tokyo', 'the zone stands');
   // Anchors drawn and a zone chosen since the action are kept, not the ones the snapshot never had.
-  const drawn = state({ ...applied, vwap: { ...applied.vwap, anchors: { BTC: [1, 2, 3] } }, traded: { ...applied.traded, zone: 'UTC' } });
+  const drawn = state({ ...applied, vwap: { ...applied.vwap, anchors: { BTC: [A(1), A(2, 1), A(3, 2)] } }, traded: { ...applied.traded, zone: 'UTC' } });
   const later = completeSettings(undoPatch(before, settingsOf(applied), settingsOf(drawn)), drawn);
-  assert.deepEqual(later.vwap!.anchors, { BTC: [1, 2, 3] });
+  assert.deepEqual(later.vwap!.anchors, { BTC: [A(1), A(2, 1), A(3, 2)] });
   assert.equal(later.traded!.zone, 'UTC');
   assert.deepEqual(completeSettings({ timeframe: '4h' }, applied), { timeframe: '4h' }, 'a patch that names neither is left as it is');
 });
