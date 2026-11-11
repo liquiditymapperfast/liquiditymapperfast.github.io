@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyze, createRunner, runScript } from '../src/app/script/lang/engine.ts';
 import type { BarInputs } from '../src/app/script/inputs.ts';
 import { MARK_TEXT, MARK_TIP, MAX_ALERTS, type PlotOut, type ScriptResult } from '../src/app/script/protocol.ts';
-import { markBox, markPosition, markShape, paintPlot, textOn, type Frame, type MarkBox } from '../src/app/script/paint.ts';
+import { markBox, markPlace, markPosition, markShape, paintPlot, textOn, type Frame, type MarkBox } from '../src/app/script/paint.ts';
 import { markAt, markLines, markText, type DrawnMark } from '../src/app/script/marks.ts';
 import { ALERT_FRESH_MS, AlertNews, fingerprint } from '../src/app/script/alert-news.ts';
 import { scriptNotes } from '../src/app/sound/rules.ts';
@@ -218,4 +218,21 @@ test('a mark drawn wholly outside its row is not found, and a stepped line joins
   const steps = recorder();
   paintPlot(frame(steps.ctx, 2, 10), { kind: 'line', title: '', style: { lineType: 1 }, fields: { value: Float64Array.from([50, 20]) }, colors: ['red', 'green'] }, scale);
   assert.deepEqual(steps.segments, [[0, 50, 10, 50], [10, 50, 10, 80], [10, 80, 20, 80]]);
+});
+
+test('a plate the row\'s edge would cut goes to the other side of its value, or is kept inside the row; one wholly outside stays out', () => {
+  const row = { width: 200, top: 0, height: 80 };
+  // Below a value near the row's foot (y 70, a plate 14 tall 3 below it would end at 87): turned above it.
+  assert.deepEqual(markPlace(100, 70, 60, 14, 'below', 3, row), { x: 70, y: 53, w: 60, h: 14 });
+  // Above a value near the top: turned below it.
+  assert.deepEqual(markPlace(100, 8, 60, 14, 'above', 3, row), { x: 70, y: 11, w: 60, h: 14 });
+  // At the newest candle by the right edge (a phone): moved left into the row, its side kept.
+  assert.deepEqual(markPlace(190, 40, 60, 14, 'above', 3, row), { x: 140, y: 23, w: 60, h: 14 });
+  assert.deepEqual(markPlace(5, 40, 60, 14, 'below', 3, row), { x: 0, y: 43, w: 60, h: 14 });
+  // A row too short for either side: inside it, over the value.
+  assert.deepEqual(markPlace(100, 10, 60, 14, 'below', 3, { width: 200, top: 0, height: 20 }), { x: 70, y: 6, w: 60, h: 14 });
+  // Where it fits it is where markBox puts it.
+  assert.deepEqual(markPlace(100, 40, 60, 14, 'below', 3, row), markBox(100, 40, 60, 14, 'below', 3));
+  // Wholly outside the row (a value off its scale, or an offset that lifts it out): left there.
+  assert.deepEqual(markPlace(100, 140, 60, 14, 'below', 3, row), markBox(100, 140, 60, 14, 'below', 3));
 });

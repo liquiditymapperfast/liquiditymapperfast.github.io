@@ -130,6 +130,23 @@ export function markBox(cx: number, y: number, w: number, h: number, at: 'above'
   return { x: cx - w / 2, y: top, w, h };
 }
 
+/**
+ * Where a plate or a text goes in its row (left 0, right `width`, from `top`, `height` tall): as `markBox` puts it, or, where the row's edge
+ * would cut it, on the other side of its value if it fits there, else moved inside the row (a label at the newest candle ran off the right
+ * edge of a phone's row; one below a line at the foot of a short row was cut in half; 2026-11-11). One wholly outside the row stays where it
+ * is, outside, as a value off the row's scale is not drawn.
+ */
+export function markPlace(cx: number, y: number, w: number, h: number, at: 'above' | 'below' | 'at', gap: number, row: { width: number; top: number; height: number }): { x: number; y: number; w: number; h: number } {
+  const box = markBox(cx, y, w, h, at, gap), bottom = row.top + row.height;
+  const touches = (b: { x: number; y: number; w: number; h: number }): boolean => b.x < row.width && b.x + b.w > 0 && b.y < bottom && b.y + b.h > row.top;
+  const fits = (b: { y: number; h: number }): boolean => b.y >= row.top && b.y + b.h <= bottom;
+  if (!touches(box)) return box;
+  let out = box;
+  if (!fits(box) && at !== 'at') { const other = markBox(cx, y, w, h, at === 'above' ? 'below' : 'above', gap); if (fits(other)) out = other; }
+  const x = w <= row.width ? Math.min(Math.max(out.x, 0), row.width - w) : out.x, top = h <= row.height ? Math.min(Math.max(out.y, row.top), bottom - h) : out.y;
+  return { x, y: top, w, h };
+}
+
 const color = (raw: OptionValue | undefined, fallback: string): string => safeColor(raw, fallback);
 /** The colour of point `i`: its own, else the plot's. */
 const pointColor = (plot: PlotOut, i: number, fallback: string): string => { const c = plot.colors?.[i]; return c ? safeColor(c, fallback) : fallback; };
@@ -317,12 +334,12 @@ function paintMarks(f: Frame, plot: PlotOut, y: (v: number) => number): void {
       continue;
     }
     if (!asShape) {
-      const box = markBox(cx, yy, w, lineH, at, gap);
+      const box = markPlace(cx, yy, w, lineH, at, gap, { width: f.w, top: f.top, height: f.height });
       if (shape === 'label') {
         ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 3); ctx.fill();
         ctx.fillStyle = ownText || textOn(c);
       } else ctx.fillStyle = ownText || c;
-      ctx.fillText(label, cx, box.y + box.h / 2 + 0.5);
+      ctx.fillText(label, box.x + box.w / 2, box.y + box.h / 2 + 0.5);
       tell(box, i); lastRight = box.x + box.w;
       continue;
     }
