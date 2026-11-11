@@ -11,8 +11,10 @@ import type { VwapColors } from './settings.ts';
 
 const ROLLING_DARK: Record<number, string> = { 1: '#d9f99d', 7: '#a3e635', 30: '#4ade80', 90: '#34d399', 180: '#86efac', 365: '#a7f3d0' };
 const ROLLING_LIGHT: Record<number, string> = { 1: '#4d7c0f', 7: '#65a30d', 30: '#15803d', 90: '#047857', 180: '#16a34a', 365: '#065f46' };
-const ANCHOR_DARK: readonly string[] = ['#c4b5fd', '#a78bfa', '#f0abfc', '#d8b4fe', '#e9d5ff', '#ddd6fe'];
-const ANCHOR_LIGHT: readonly string[] = ['#6d28d9', '#7c3aed', '#a21caf', '#9333ea', '#581c87', '#5b21b6'];
+// Six apart within the family: lavender, light fuchsia, violet, periwinkle, fuchsia, light purple (on dark themes; none near the heat map's
+// white, where two pale lavenders vanished), and their deep counterparts on light ones; each with its own dash too (`paint.ts dashOf`).
+const ANCHOR_DARK: readonly string[] = ['#c4b5fd', '#f0abfc', '#a78bfa', '#818cf8', '#e879f9', '#d8b4fe'];
+const ANCHOR_LIGHT: readonly string[] = ['#6d28d9', '#a21caf', '#7c3aed', '#4338ca', '#c026d3', '#9333ea'];
 
 /** A rolling window's default colour on this theme. */
 export const rollingDefault = (days: number, p: Pick<Palette, 'dark'>): string => (p.dark ? ROLLING_DARK : ROLLING_LIGHT)[days] ?? (p.dark ? '#86efac' : '#15803d');

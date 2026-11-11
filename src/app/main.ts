@@ -373,7 +373,7 @@ async function main(): Promise<void> {
     const spot = anchorSpot(at);
     if ('refused' in spot) { toolbar.anchorHint(spot.refused); return; }
     store.set({ anchorPreview: spot.start });
-    toast(`${clock(spot.start, true)} ${zoneName(store.state.timeZone, spot.start)}`, { ms: 120_000, actions: [
+    toast(`${clockYear(spot.start)} ${zoneName(store.state.timeZone, spot.start).replace(/-/g, '\u2011')}`, { ms: 120_000, actions: [
       { label: t('Place here'), run: () => placeAnchor(spot.start) },
       { label: t('Cancel'), run: () => store.set({ vwapAnchoring: false, profileAnchoring: false, anchorPreview: null }) },
     ] });

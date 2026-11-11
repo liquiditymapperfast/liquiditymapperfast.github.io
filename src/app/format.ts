@@ -109,6 +109,8 @@ export function fromWallFields(date: string, time: string): number | 'date' | 't
   if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo || back.getUTCDate() !== day) return 'date';
   return back.getUTCHours() === hh && back.getUTCMinutes() === mi ? t : 'time';
 }
+/** A fixed anchor's day alone ("Nov 9"; "Nov 9, 2024" in another year), for its tag on the price axis, which has room for little. */
+export function anchorDay(t: number, now = Date.now()): string { const s = clockYear(t, now); return s.slice(0, s.lastIndexOf(' ')); }
 /** A fixed anchor's date as its line is named on the chart ("Nov 9 06:00"; "Nov 9" at midnight; with its year in another year). */
 export function anchorDate(t: number, now = Date.now()): string {
   const s = clockYear(t, now), d = onWall(t);

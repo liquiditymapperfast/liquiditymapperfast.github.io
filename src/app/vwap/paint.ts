@@ -23,6 +23,8 @@ export interface VwapLine {
   color?: string;
   /** Its code on the chart instead of `vwapCode`'s, in its label and on its axis tag: a live anchor's, by its rule ("AVWAP PWH"). */
   name?: string;
+  /** Its tag on the price axis instead of its code, where that is long: a fixed anchor's day ("AVWAP Nov 4"; its label keeps the time). */
+  tag?: string;
   /** An anchored line's head: the finer bars its points stand on before `to` (`cutForReplay` cuts those on their own bars). */
   head?: { bar: number; to: number };
   points: readonly VwapPoint[];
@@ -128,7 +130,7 @@ export function paintVwap(ctx: CanvasRenderingContext2D, lines: readonly VwapLin
     if (!line.live) continue;
     const last = line.points[line.points.length - 1]!, y = v.yOf(last.vwap, ph), code = line.name ?? vwapCode(line), rank = rankOf(line);
     if (s.labels && v.xOf(last.t, pw) <= pw + 4 && v.xOf(last.t, pw) > 40) labels.push({ text: `${code} ${fmtPrice(last.vwap)}`, y, rank, color });
-    if (s.tags && !whale(line)) tags.push({ key: `vwap|${line.key}`, y, rank, text: code, older: false, color });
+    if (s.tags && !whale(line)) tags.push({ key: `vwap|${line.key}`, y, rank, text: line.tag ?? code, older: false, color });
   }
   ctx.setLineDash([]); ctx.globalAlpha = 1;
   // The names at the right edge, the session's first; one that would cover another is left out.

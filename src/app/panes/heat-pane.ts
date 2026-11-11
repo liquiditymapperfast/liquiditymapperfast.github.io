@@ -17,7 +17,7 @@ import type { ProfileWindow, SessionDef } from '../traded/sessions.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, textOn, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
-import { anchorDate, clock, clockYear, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
+import { anchorDate, anchorDay, clock, clockYear, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
 import { timeAxis } from '../time-axis.ts';
 export { timeTicks } from '../time-axis.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
@@ -154,7 +154,7 @@ interface VwapBars { rows: readonly VwapBar[]; liveFrom: number; from: number; r
  * resolves), its bars (`anchorBars`: the body's, and the head's for the stretch to its first whole bar), its colour slot and own colour, and
  * a live one's rule name for its label.
  */
-interface PlannedAnchor { id: string; n: number; at: number; bar: number; head: number; slot: number; name?: string }
+interface PlannedAnchor { id: string; n: number; at: number; bar: number; head: number; slot: number; name?: string; tag?: string }
 interface VwapPlan {
   sessions: ProfileWindow[]; sessionBar: number; anchors: PlannedAnchor[]; reach: Map<number, number>;
   rolling: { days: number; ms: number; bar: number }[]; rollingReach: Map<number, number>;
@@ -1360,7 +1360,7 @@ export class HeatPane {
     const at = chosen ?? (vwap ? candleStartAt(hover!.t, tf) : anchorAt(hover!.t, tf)), x = Math.round(this.view.xOf(at, pw)) + 0.5;
     const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS), future = at > now;
     const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.'))
-      : chosen !== null ? clock(at, true) : `${clock(at, true)} · ${t('click to place')}`;
+      : chosen !== null ? clockYear(at, now) : `${clockYear(at, now)} · ${t('click to place')}`;   // its year when not this year's (an anchor reaches ten years)
     const color = future || tooOld ? p.muted : vwap ? p.vwap : p.poc;
     ctx.save();
     if (!future && !tooOld && x >= 0 && x <= pw) {
@@ -1371,7 +1371,8 @@ export class HeatPane {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    const w = ctx.measureText(text).width + 14, h = 20, y = Math.max(14, Math.min(ph - h - 4, (hover?.y ?? 54) - h - 14));
+    // Beside the pointer; a tap's or the keys' preview (no pointer) mid-height, clear of the legend and its buttons at the top.
+    const w = ctx.measureText(text).width + 14, h = 20, y = Math.max(14, Math.min(ph - h - 4, (hover?.y ?? ph * 0.45) - h - 14));
     // Beside the line, on whichever side has room.
     const base = (future || tooOld) && hover ? this.view.xOf(hover.t, pw) : x, left = base + 8 + w > pw ? base - 8 - w : base + 8;
     ctx.globalAlpha = 0.94; ctx.fillStyle = p.panel; ctx.fillRect(left, y, w, h);
@@ -2615,7 +2616,7 @@ export class HeatPane {
       const r = a.rule ? this.#resolveRule(a.rule, state, zone, zoneBar, now) : null;
       const at = a.rule ? (r?.state === 'ready' ? r.at : undefined) : a.at;
       if (at === undefined || at > now) continue;
-      out.push({ id: a.id, n, at, ...anchorBars(at, now), slot: a.slot, name: `${t('AVWAP')} ${a.rule ? ruleCode(a.rule) : anchorDate(at)}` });
+      out.push({ id: a.id, n, at, ...anchorBars(at, now), slot: a.slot, name: `${t('AVWAP')} ${a.rule ? ruleCode(a.rule) : anchorDate(at)}`, ...(a.rule ? {} : { tag: `${t('AVWAP')} ${anchorDay(at)}` }) });
     }
     return out;
   }
@@ -2830,7 +2831,7 @@ export class HeatPane {
       }
       const rows = head.length ? [...head, ...body.rows.filter(b => b[0] >= boundary)] : body.rows;
       const points = carried(vwapSeries(rows, a.at, Infinity), body.readTo);
-      if (points.length) lines.push({ kind: 'anchor', n: a.n, id: a.id, slot: a.slot, ...(a.name ? { name: a.name } : {}), points, live: true, key: `anchor|${a.id}|${a.at}`, bar: a.bar, liveFrom: body.liveFrom, ...(head.length ? { head: { bar: a.head, to: boundary } } : {}) });
+      if (points.length) lines.push({ kind: 'anchor', n: a.n, id: a.id, slot: a.slot, ...(a.name ? { name: a.name } : {}), ...(a.tag ? { tag: a.tag } : {}), points, live: true, key: `anchor|${a.id}|${a.at}`, bar: a.bar, liveFrom: body.liveFrom, ...(head.length ? { head: { bar: a.head, to: boundary } } : {}) });
       // Where the line is drawn from: later than the anchor where no finer candles reach it on this market (the panel says so).
       this.#anchorDrawn.set(`${a.id}|${a.at}`, points[0]?.t ?? null);
       if (this.#anchorDrawn.size > 32) this.#anchorDrawn.delete(this.#anchorDrawn.keys().next().value!);

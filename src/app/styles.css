@@ -299,6 +299,8 @@ body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-sel
 .toast { position: fixed; left: 50%; bottom: calc(44px + env(safe-area-inset-bottom)); z-index: 400; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 24px)); padding: 7px 8px 7px 14px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--text); color: var(--bg); font-size: 13px; line-height: 1.4; box-shadow: 3px 3px 0 var(--shadow); }
 .toast-action { flex: none; padding: 2px 10px; border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
 .toast-action:hover { background: var(--bg); color: var(--text); border-color: var(--bg); }
+.toast.toast-many { flex-wrap: wrap; row-gap: 6px; }
+.toast.toast-many .toast-text { flex: 1 0 100%; }
 html[data-bar="compact"] .toast { bottom: 76px; }
 @media (pointer: coarse) {
   main { --rail-w: 30px; }

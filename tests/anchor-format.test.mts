@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { anchorDate, clockYear, fromWallFields, setTimeZone, wallFields } from '../src/app/format.ts';
+import { anchorDate, anchorDay, clockYear, fromWallFields, setTimeZone, wallFields } from '../src/app/format.ts';
 
 test('a date and a time typed on the chart\'s clock name one moment; one that does not exist is refused, not moved', () => {
   setTimeZone('utc');
@@ -20,4 +20,6 @@ test('a fixed anchor is named by its date on the chart: its time unless midnight
   assert.equal(anchorDate(Date.UTC(2026, 10, 9), now), 'Nov 9');
   assert.equal(anchorDate(Date.UTC(2024, 10, 5), now), 'Nov 5, 2024');
   assert.equal(clockYear(Date.UTC(2024, 10, 5, 14, 7), now), 'Nov 5, 2024 14:07');
+  assert.equal(anchorDay(Date.UTC(2026, 10, 4, 12), now), 'Nov 4', 'the axis tag: its day alone');
+  assert.equal(anchorDay(Date.UTC(2024, 10, 5, 14, 7), now), 'Nov 5, 2024');
 });
