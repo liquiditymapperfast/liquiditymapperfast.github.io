@@ -421,10 +421,12 @@ export class FullBook {
       if (ceiling > askEdge) { for (const [p, q] of book.asks) if (p > askEdge && p <= ceiling) this.asks.set(p, q); this.#ask = { ...this.#ask, frontier: ceiling }; askGrew = true; }
     }
     const grew = bidGrew || askGrew;
-    // What the next refresh is judged against: what this snapshot reaches, on both sides (it passed the comparison, audit or not), and the
-    // count of a side whose frontier it set (an audit, or a side it did not extend, cut nothing from it: a short side stays short).
-    this.#bid = { ...this.#bid, reach: book.bid.reach, levels: bidGrew ? s.b.length : this.#bid.levels };
-    this.#ask = { ...this.#ask, reach: book.ask.reach, levels: askGrew ? s.a.length : this.#ask.levels };
+    // What the next refresh is judged against: what this snapshot reaches (it passed the comparison, audit or not) on a side where it
+    // reaches at least as far as the live frontier (one cut to its nearest levels stops short and says nothing of what lies past it),
+    // and the count of a side whose frontier it set (an audit, or a side it did not extend, cut nothing from it: a short side stays short).
+    const far = (live: number | null, edge: number | null, below: boolean): boolean => live === null || (edge !== null && (below ? edge <= live : edge >= live));
+    this.#bid = { ...this.#bid, reach: far(bidEdge, newBid, true) ? book.bid.reach : this.#bid.reach, levels: bidGrew ? s.b.length : this.#bid.levels };
+    this.#ask = { ...this.#ask, reach: far(askEdge, newAsk, false) ? book.ask.reach : this.#ask.reach, levels: askGrew ? s.a.length : this.#ask.levels };
     // A passed audit that adds nothing is no failed refresh: the next one waits only the usual minute.
     if (!grew && audit) { this.#refresh = null; this.#nextRefreshAt = now + REFRESH_MIN_MS; return 'unchanged'; }
     if (!grew) { this.failRefresh(now); return 'unchanged'; }

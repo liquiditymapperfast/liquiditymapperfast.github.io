@@ -96,7 +96,9 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
     }
     return { u: ++u, seq: (seq += 1 + Math.floor(r() * 3)), ts: 0, b, a };
   };
-  // Replicas: one answer in ten from one to three minutes back, three in a hundred degraded (whole near the mid, a third beyond).
+  // Replicas: one answer in ten from one to three minutes back, three in a hundred degraded (whole near the mid, a third beyond), and
+  // three in a hundred cut to their nearest levels (a perpetual's to a fifth of the cap, about 12 % here, spot's to half of it): whole
+  // as far as they go, and short.
   const kept: FullSnapshot[] = [];
   const replica = (): FullSnapshot => {
     const x = r();
@@ -106,6 +108,10 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
       const m = s.b.length && s.a.length ? (s.b[0]![0] + s.a[0]![0]) / 2 : mid, near = m * 0.02;
       const thin = (rows: [number, number][]): [number, number][] => rows.filter(([p], i) => Math.abs(p - m) <= near || i % 3 === 0 || i === rows.length - 1);
       return { ...s, b: thin(s.b), a: thin(s.a) };
+    }
+    if (x < 0.16) {
+      const keep = kind === 'perp' ? Math.floor(SNAPSHOT_CAP / 5) : Math.floor(SNAPSHOT_CAP / 2);
+      return { ...s, b: s.b.slice(0, keep), a: s.a.slice(0, keep) };
     }
     return s;
   };
