@@ -198,3 +198,15 @@ test('a session renamed in place is named anew', () => {
   assert.ok(named('London').every(n => n.startsWith('London ')));
   assert.ok(named('LDN').every(n => n.startsWith('LDN ')));
 });
+
+test('in a zone off the half hour (Kathmandu), every market reading past a window\'s last block judges it: counted on the window\'s own grid', () => {
+  const now = Date.UTC(2026, 10, 11, 18, 20), closed = Date.UTC(2026, 10, 11, 18, 15);
+  const tpo = { source: 'chosen' as const, picks: ['binance/perp', 'bybit/perp', 'coinbase/spot'], hollow: true };
+  const h = hub(standard), layer = new TpoLayer(h, () => {}, Infinity), view = { t0: now - 3 * DAY, t1: now };
+  const f = (): TpoFrame => { const x = frame(tpo, view); (x.state as unknown as { traded: { zone: string } }).traded.zone = 'Asia/Kathmandu'; return { ...x, now }; };
+  const before = layer.profiles(f()).find(p => p.to === closed);
+  assert.ok(before, 'the Kathmandu day that ended at 18:15 UTC');
+  // The same candles, read past the end of the window's last block (17:45-18:15): its lone wicks can now be judged.
+  for (const x of h.held.values()) x.heldTo = now;
+  assert.notEqual(layer.profiles(f()).find(p => p.to === closed), before);
+});
