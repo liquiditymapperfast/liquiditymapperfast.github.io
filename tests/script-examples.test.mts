@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyze, createRunner, runScript } from '../src/app/script/lang/engine.ts';
 import { STEPS_PER_CANDLE } from '../src/app/script/lang/analysis.ts';
 import { examples, exampleHeight } from '../src/app/script/examples.ts';
-import { HEATMAP_SOURCE } from '../src/app/script/starter.ts';
+import { CVD_SOURCE, HEATMAP_SOURCE } from '../src/app/script/starter.ts';
 import { filterKey, type BarInputs, type ScriptTheme, type SourceInputs } from '../src/app/script/inputs.ts';
 import { AlertNews } from '../src/app/script/alert-news.ts';
 import { interpolateColors, safeColor } from '../src/app/script/lang/colors.ts';
@@ -52,6 +52,39 @@ test('every example reads, declares the options it reads, runs without a warning
     assert.ok(r.plots.some(p => Object.values(p.fields).some(f => f.some(Number.isFinite))), `${ex.name} draws`);
     assert.ok(r.steps / N < STEPS_PER_CANDLE / 4, `${ex.name}: ${Math.round(r.steps / N)} steps a candle, well under the ${STEPS_PER_CANDLE} each may take`);
   }
+});
+
+test('spot and perpetual CVD: a label at each line\'s newest value only, forming or closed, the perpetual\'s on its own scale', () => {
+  const at = N - 1, labels = (r: ScriptResult) => {
+    assert.ok(r.ok, JSON.stringify(r.ok ? '' : r.error));
+    const spot = r.plots.find(p => p.title === 'Spot label')!, perp = r.plots.find(p => p.title === 'Perp label')!;
+    return { spot, perp, shown: (p: typeof spot) => [...p.fields.value!].flatMap((v, i) => Number.isFinite(v) ? [i] : []) };
+  };
+  const data = inputs(), live = labels(runScript('cvd', CVD_SOURCE, {}, data));
+  assert.deepEqual(live.shown(live.spot), [at], 'the spot label on the newest candle alone');
+  assert.deepEqual(live.shown(live.perp), [at]);
+  assert.match(live.spot.texts![at]!, /^Spot [+-]\$[\d.]+[KMBT]? [▲▼▶] (rising|falling|flat)$/, live.spot.texts![at]);
+  assert.match(live.perp.texts![at]!, /^Perp [+-]\$/);
+  assert.match(live.spot.tips![at]!, /over the last 20 candles/);
+  assert.equal(live.perp.style.priceScaleId, 'perp', 'the perpetual\'s label on the perpetual\'s scale, beside its line');
+  // The newest candle closed (a replay at a candle's end, a market quiet since): the labels stay on it.
+  const closed = labels(runScript('cvd', CVD_SOURCE, {}, { ...inputs(), forming: false }));
+  assert.deepEqual(closed.shown(closed.spot), [at], 'renderer.last, not renderer.forming');
+  // The label's figures: the move over the lookback is the sum of the last deltas, and Labels off draws none.
+  const spot = data.sources[filterKey({ kinds: ['spot'] })]!;
+  let move = 0; for (let i = at - 19; i <= at; i++) move += spot.vbuy[i]! - spot.vsell[i]!;
+  const sign = move < 0 ? '-' : '+', a = Math.abs(move), shown = a >= 1e9 ? `${(a / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(1)}M` : `${(a / 1e3).toFixed(0)}K`;
+  assert.ok(live.spot.texts![at]!.startsWith(`Spot ${sign}$${shown} `), `${live.spot.texts![at]} for a move of ${move}`);
+  const off = labels(runScript('cvd', CVD_SOURCE, { showLabels: false }, data));
+  assert.deepEqual(off.shown(off.spot), []);
+  // A new candle: the label moves to it, the one before is a plain candle again (the run takes the last closed candle over).
+  const runner = createRunner('cvd', CVD_SOURCE, {}), first = runner.run(data);
+  const grown = inputs(), more = (a: Float64Array, v: number): Float64Array => Float64Array.from([...a, v]);
+  const next: BarInputs = { ...grown, time: more(grown.time, N * HOUR), open: more(grown.open, grown.close[at]!), high: more(grown.high, grown.close[at]! * 1.001), low: more(grown.low, grown.close[at]! * 0.999), close: more(grown.close, grown.close[at]!), volume: more(grown.volume, 1),
+    sources: Object.fromEntries(Object.entries(grown.sources).map(([k, v]) => [k, { ...v, vbuy: more(v.vbuy, 1e6), vsell: more(v.vsell, 2e6), lbuy: more(v.lbuy, 0), lsell: more(v.lsell, 0) }])) };
+  const moved = labels(runner.run(next));
+  assert.ok(first.ok);
+  assert.deepEqual(moved.shown(moved.spot), [N], 'on the new newest candle, and no longer on the one before');
 });
 
 test('the heat map: sixteen rows of colour on 0..100, its average over them, its widest windows within budget, and kept between runs', () => {

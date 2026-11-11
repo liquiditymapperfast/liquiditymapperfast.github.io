@@ -117,13 +117,69 @@ if (showAverage) line(average, title="Average", color=theme.dark ? "#f2f2f2" : "
 if (colorCandles) $price.color = shade(average)
 `;
 
+/**
+ * The cumulative delta of the spot markets and of the perpetuals, apart, with a label at each line's newest value: how far it moved over the
+ * lookback and whether that move was straight enough to call rising or falling (a user's script, 2026-11-11, from the example of this name;
+ * `renderer.last` keeps its labels when the newest candle has closed, `$` and a Labels switch added).
+ */
+export const CVD_SOURCE = `// Spot and perpetual CVD: the cumulative delta (what was bought at market less what was sold) of the spot markets and of
+// the perpetuals, apart, each on a scale of its own. A label at each line's newest value says which it is, how far it has
+// moved over the last candles (the lookback) and where it is heading: rising, falling or flat.
+spotColor = option(type=color, default=#2e9bff, label=Spot)
+perpColor = option(type=color, default=#ff9f1c, label=Perpetual)
+trendLength = option(type=number, default=20, min=2, max=500, step=1, label="Lookback (candles)")
+showLabels = option(type=checkbox, default=true, label="Labels")
+
+spotDelta = source(vbuy, type=spot) - source(vsell, type=spot)
+perpDelta = source(vbuy, type=perp) - source(vsell, type=perp)
+spotCvd = cum(spotDelta)
+perpCvd = cum(perpDelta)
+
+// The move: how far each line has come over the lookback, which its label says. The path: how far it travelled candle
+// by candle to get there. A line that went straight has a move as long as its path; one that went back and forth, a
+// long path and a short move. A move under a quarter of its path counts as flat.
+spotMove = spotCvd - last(spotCvd, trendLength + 1)
+perpMove = perpCvd - last(perpCvd, trendLength + 1)
+spotPath = sum(Math.abs(nz(spotDelta)), trendLength)
+perpPath = sum(Math.abs(nz(perpDelta)), trendLength)
+
+// Dollars, short: +$12.3M, -$850K.
+function money(x) {
+  var a = Math.abs(x), sign = x < 0 ? "-" : "+"
+  if (a >= 1e12) return sign + "$" + (a / 1e12).toFixed(2) + "T"
+  if (a >= 1e9) return sign + "$" + (a / 1e9).toFixed(2) + "B"
+  if (a >= 1e6) return sign + "$" + (a / 1e6).toFixed(1) + "M"
+  if (a >= 1e3) return sign + "$" + (a / 1e3).toFixed(0) + "K"
+  return sign + "$" + a.toFixed(0)
+}
+function trendOf(move, path) {
+  if (!(path > 0) || Math.abs(move) < 0.25 * path) return "flat"
+  return move > 0 ? "rising" : "falling"
+}
+function arrowOf(word) { return word == "rising" ? "▲" : word == "falling" ? "▼" : "▶" }
+function tipOf(name, cvd, move, path, word) {
+  var straight = path > 0 ? Math.round(100 * Math.abs(move) / path) : 0
+  return name + " CVD over the last " + trendLength + " candles: " + money(move) + ", " + word + "\\nIt travelled " + money(path).slice(1) + " candle by candle, so the move is " + straight + " % straight (under 25 % counts as flat).\\nSince the first candle read: " + money(cvd)
+}
+
+line(spotCvd, title=Spot, color=spotColor)
+line(perpCvd, title=Perp, color=perpColor, priceScaleId=perp)
+
+// The labels stand on the newest candle only (renderer.last), under way or closed: a value that is not a number draws none.
+var newest = showLabels && renderer.last
+var spotWord = trendOf(spotMove, spotPath), perpWord = trendOf(perpMove, perpPath)
+mark({value: newest ? spotCvd : NaN, text: "Spot " + money(spotMove) + " " + arrowOf(spotWord) + " " + spotWord, tip: tipOf("Spot", spotCvd, spotMove, spotPath, spotWord), color: spotColor}, title="Spot label", shape=label, position=above)
+mark({value: newest ? perpCvd : NaN, text: "Perp " + money(perpMove) + " " + arrowOf(perpWord) + " " + perpWord, tip: tipOf("Perp", perpCvd, perpMove, perpPath, perpWord), color: perpColor}, title="Perp label", shape=label, position=below, priceScaleId=perp)
+`;
+
 /** The ids of the scripts a page starts with. */
-export const STARTER_ID = 'vwap-with-bands', HEATMAP_ID = 'stochastic-heat-map';
+export const STARTER_ID = 'vwap-with-bands', HEATMAP_ID = 'stochastic-heat-map', CVD_ID = 'spot-and-perpetual-cvd';
 
 /**
  * The scripts a page starts with before it has kept any: the rolling VWAP with its bands on the map, on (Karl, 2026-10-28: shown to every
  * visitor), and the stochastic heat map in a row under the map, off until switched on (it was on from 2026-10-27; a row under the map takes
- * height from it), so the Scripts panel opens on two to read, change and learn from.
+ * height from it), and the spot and perpetual CVD with its labels in a row, off (a user's, 2026-11-11), so the Scripts panel opens on three to
+ * read, change and learn from.
  * Deleting one keeps the list as it is left; its example brings it back. A browser that already kept a list keeps it as it is, but for an
  * untouched heat map of an earlier version (`updateStarters`).
  */
@@ -131,6 +187,7 @@ export function starterScripts(): ScriptRecord[] {
   return [
     { id: STARTER_ID, name: t('VWAP with bands'), source: VWAP_SOURCE, options: {}, on: true, api: SCRIPT_API, height: ROW_DEFAULT, place: 'map' },
     { id: HEATMAP_ID, name: t('Stochastic heat map'), source: HEATMAP_SOURCE, options: {}, on: false, api: SCRIPT_API, height: 160, place: 'pane' },
+    { id: CVD_ID, name: t('Spot and perpetual CVD'), source: CVD_SOURCE, options: {}, on: false, api: SCRIPT_API, height: ROW_DEFAULT, place: 'pane' },
   ];
 }
 

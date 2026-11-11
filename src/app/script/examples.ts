@@ -1,15 +1,16 @@
 import { t } from '../i18n.ts';
 import type { ScriptRecord } from './records.ts';
-import { HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, VWAP_SOURCE } from './starter.ts';
+import { CVD_ID, CVD_SOURCE, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, VWAP_SOURCE } from './starter.ts';
 
 /** Each example's key, the same in every language: the starters' ids, and the start of the id of a script added from an example (about.ts). */
-export type ExampleKey = typeof STARTER_ID | typeof HEATMAP_ID | 'depth-bands' | 'bar-patterns' | 'buyer-and-seller-vwaps' | 'liquidations' | 'volume-anomalies' | 'cumulative-delta' | 'spot-and-perpetual-cvd' | 'delta-histogram' | 'buy-share';
+export type ExampleKey = typeof STARTER_ID | typeof HEATMAP_ID | typeof CVD_ID | 'depth-bands' | 'bar-patterns' | 'buyer-and-seller-vwaps' | 'liquidations' | 'volume-anomalies' | 'cumulative-delta' | 'delta-histogram' | 'buy-share';
 
-/** Scripts to start from, written for this page: the two a page starts with first, then the others. */
+/** Scripts to start from, written for this page: the three a page starts with first, then the others. */
 export function examples(): { key: ExampleKey; name: string; source: string; place?: ScriptRecord['place'] }[] {
   return [
     { key: STARTER_ID, name: t('VWAP with bands'), source: VWAP_SOURCE, place: 'map' },
     { key: HEATMAP_ID, name: t('Stochastic heat map'), source: HEATMAP_SOURCE },
+    { key: CVD_ID, name: t('Spot and perpetual CVD'), source: CVD_SOURCE },
     // How far a size of the recorded order books reaches from the close, up and down: the asks above it and the bids below it.
     { key: 'depth-bands', name: t('Depth bands'), place: 'map', source: `// Depth bands: how far a given number of dollars of the order book reaches from the close, on the books the page recorded.
 // Above the close, the price at which that many dollars of the book are passed going up; below it, going down. It shows
@@ -329,7 +330,6 @@ if (showDelta && size > dMean + mult * dSpread) histogram({ time: time, value: s
 if (colorCandles && unusual) $price.color = bought ? upBright : downBright
 ` },
     { key: 'cumulative-delta', name: t('Cumulative delta'), source: '// What was bought at market less what was sold, added up candle after candle.\nline(cum(vbuy - vsell), title=CVD)\n' },
-    { key: 'spot-and-perpetual-cvd', name: t('Spot and perpetual CVD'), source: '// The cumulative delta of the spot markets and of the perpetuals, apart.\nspotColor = option(type=color, default=#2e9bff, label=Spot)\nperpColor = option(type=color, default=#ff9f1c, label=Perpetual)\nspotDelta = source(vbuy, type=spot) - source(vsell, type=spot)\nperpDelta = source(vbuy, type=perp) - source(vsell, type=perp)\nline(cum(spotDelta), title=Spot, color=spotColor)\nline(cum(perpDelta), title=Perp, color=perpColor, priceScaleId=perp)\n' },
     { key: 'delta-histogram', name: t('Delta histogram'), source: '// Each candle\'s delta, in the buy colour where buyers led and the sell colour where sellers did.\nup = option(type=color, default=rgb(38,166,154), label=Buys)\ndown = option(type=color, default=rgb(239,83,80), label=Sells)\nvar delta = vbuy - vsell\nhistogram({ time: time, value: delta, color: delta > 0 ? up : down }, title=Delta)\n' },
     { key: 'buy-share', name: t('Buy share'), source: '// The share of the volume bought at market over the last candles, in percent.\nlength = option(default=20, min=1, label=Candles)\nline(100 * sum(vbuy, length) / sum(vbuy + vsell, length), title="Buy share %")\nline(50, color=rgba(128,128,128,0.6), title=Even)\n' },
   ];

@@ -58,7 +58,7 @@
   },
   {
    "name": "renderer",
-   "is": "renderer.length is the number of candles so far, this one included; renderer.timestamp the candle's start (seconds), renderer.timeframe its length (seconds); renderer.forming is true on the candle still under way (the newest, until it closes) and false on every closed one."
+   "is": "renderer.length is the number of candles so far, this one included; renderer.timestamp the candle's start (seconds), renderer.timeframe its length (seconds); renderer.forming is true on the candle still under way (the newest, until it closes) and false on every closed one; renderer.last is true on the newest candle the script reads, under way or not (a replay, a quiet market), and false on all the others: where a label of the newest value goes."
   },
   {
    "name": "theme",

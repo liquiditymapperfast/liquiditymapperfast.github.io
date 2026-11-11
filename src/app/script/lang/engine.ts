@@ -203,6 +203,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       case 'type': return 'time';
       case 'lastTradeTimestamp': return i === n - 1 && inputs.forming ? now() / 1000 : (inputs.time[i]! + inputs.tf) / 1000;
       case 'forming': return i === n - 1 && inputs.forming;
+      // The newest candle the script reads, under way or closed (a replay, a market quiet since its last candle): where a label of the newest value goes.
+      case 'last': return i === n - 1;
       default: return undefined;
     }
   });

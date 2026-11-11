@@ -61,7 +61,8 @@ const about = (): Readonly<Record<ExampleKey, { tip: string; body: readonly stri
     tip: t('Two cumulative deltas kept apart: one over the spot markets, in blue, and one over the perpetual futures, in amber.'),
     body: [t('Spot is coins bought and sold outright; perpetuals are futures with no expiry, traded with leverage. Each line adds up what was bought less what was sold at market in its own kind of market, on a scale of its own, since perpetuals usually trade far more: compare shapes and directions, not heights.'),
       t('When the two move together, both kinds of market agree. When the perpetual line climbs while spot falls, the buying is in leveraged futures rather than in coins changing hands, or the other way round: it shows which kind of market carries a move.'),
-      t('Only the markets of the exchanges switched on count, from when the page recorded their trades; as with any CVD, its level depends on where the chart starts.')],
+      t('Only the markets of the exchanges switched on count, from when the page recorded their trades; as with any CVD, its level depends on where the chart starts.'),
+      t('A label at each line\'s newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line\'s path, candle by candle.')],
   },
   'delta-histogram': {
     tip: t('Each candle\'s delta, what was bought at market less what was sold, as a bar: up in green where buyers led, down in red where sellers did.'),

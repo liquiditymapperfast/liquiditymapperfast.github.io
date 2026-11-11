@@ -53,7 +53,7 @@ export interface Analysis {
 export const DEPTH_FUNCTIONS = new Set(['askdepth', 'biddepth', 'depthabove', 'depthbelow', 'depthbooks', 'depthatclose']);
 
 /** What `renderer` answers when a script runs (the engine's `rendererObject`); any other member reads nothing and is warned of. */
-export const RENDERER_MEMBERS = new Set(['length', 'timestamp', 'localTimestamp', 'timeframe', 'type', 'lastTradeTimestamp', 'forming']);
+export const RENDERER_MEMBERS = new Set(['length', 'timestamp', 'localTimestamp', 'timeframe', 'type', 'lastTradeTimestamp', 'forming', 'last']);
 /** What `theme` answers (the engine's `themeObject`). */
 export const THEME_MEMBERS = new Set(['dark', 'background', 'text', 'up', 'down']);
 export const KNOWN_INPUTS = new Set(['time', 'vbuy', 'vsell', 'cbuy', 'csell', 'lbuy', 'lsell', 'bar', '$price', 'options', 'renderer', 'fns', 'Math', 'Number', 'String', 'Boolean', 'Date', 'Array', 'Object', 'JSON', 'Infinity', 'NaN', 'undefined', 'isFinite', 'isNaN', 'parseFloat', 'parseInt', 'rgb', 'rgba', 'option', 'source', 'nz', 'na']);
