@@ -6,6 +6,7 @@ import { instrumentIdFor } from '../shared/coins.ts';
 import { MAX_ANCHORS, changeAnchor, putBackAnchor, withAnchor } from './vwap/settings.ts';
 import { ruleName } from './anchors/anchors.ts';
 import { closeAnchorEditor } from './vwap/panel.ts';
+import { forgetDraft } from './anchors/controls.ts';
 import { ANCHOR_REACH_MS, candleStartAt } from './vwap/vwap.ts';
 import { withProfileAnchor } from './traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/anchor.ts';
@@ -345,8 +346,9 @@ async function main(): Promise<void> {
       const was = move ? s.vwap.anchors[coin]?.find(a => a.id === move) : undefined;
       store.set({ vwap: next, vwapAnchoring: false, anchorMove: null, anchorPreview: null });
       if (move && was) {
-        // A move by a candle has its Undo, as a move by date has (Sol, review round 2).
-        closeAnchorEditor(move);
+        // A move by a candle has its Undo, as a move by date has (Sol, review round 2); the editor's typed date is let go, or Undo would bring
+        // the anchor back to where that draft was typed and the draft with it (round 3).
+        closeAnchorEditor(move); forgetDraft(`vwap-anchor-${move}`);
         const now = next.anchors[coin]!.find(a => a.id === move)!;
         const label = was.rule ? ruleName(was.rule) : `${t('AVWAP')} ${anchorDate(was.at!)}`;
         toolbar.refreshOpenPanel();

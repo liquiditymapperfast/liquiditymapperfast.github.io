@@ -2648,7 +2648,9 @@ export class HeatPane {
     const barMs = searchBarMs(rule.period, zoneBar), replay = replaying();
     const h = rule.point === 'start' ? null : this.hub.vwapHistory(target.id, barMs);
     const memoKey = `${ruleKey(rule)}|${zone}|${target.id}|${barMs}`;
-    const key = `${Math.floor(now / 60_000)}|${h ? `${h.id}:${h.version}:${h.knownFrom}:${h.exhausted}:${h.limited}:${h.state}` : ''}|${replay}|${this.#spanVersion}`;
+    // The real clock's minute too: a history that failed is asked again within a minute even while a replay is paused (its `now` stands
+    // still; Sol, review round 3), and a read that settled (`settled`, a failure included) is worked out again at once.
+    const key = `${Math.floor(now / 60_000)}|${Math.floor(Date.now() / 60_000)}|${h ? `${h.id}:${h.version}:${h.settled}:${h.knownFrom}:${h.exhausted}:${h.limited}:${h.state}` : ''}|${replay}|${this.#spanVersion}`;
     const held = this.#ruleMemo.get(memoKey);
     if (held?.key === key) return held.out;
     const span = ruleSpan(rule, zone, now);
