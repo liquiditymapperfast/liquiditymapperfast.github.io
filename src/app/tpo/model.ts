@@ -3,60 +3,70 @@ import type { CandleRow } from '../store.ts';
 
 /**
  * The TPO's arithmetic, pure (tests/tpo.test.mts; the rules were measured in study TPO-1, Research_Results/tpo_agreement_20261110):
- * - blocks: a window cut into blocks of a fixed length (30 minutes), each the high, low, open and close of the candles inside it;
+ * - blocks: a window cut into blocks of a fixed length (30 minutes), each the high, low, open and close of the candles inside it, on the
+ *   window's own grid (a block starts at the window's start plus whole blocks);
  * - rows: a block holds every row of `R` from its low to its high (as every TPO counts a price touched in the half hour);
  * - the point of control is the row most blocks reached (a tie: the one nearest the middle of the profile, then the lower); the value
  *   area grows from it one row at a time on the larger side until it holds the share (a tie takes both);
- * - the initial balance is the first two blocks' range; tails and poor extremes are read at the profile's top and bottom: two or more rows
- *   with one block each make a tail, a top row with two or more blocks is poor. Those calls depend on where the row edges fall (TPO-1:
- *   moving every row by a fraction of a row changed Binance's own BTC call on 47 % of days at $50 rows), so each is also read with the rows
- *   moved by a quarter, a half and three quarters of a row, and says how many of the four agree;
+ * - the initial balance is the range of the blocks of the window's first hour (its first block, where a block is an hour or longer);
+ *   tails and poor extremes are read at the profile's top and bottom: two or more rows with one block each make a tail, a top row with two
+ *   or more blocks is poor. Those calls depend on where the row edges fall (TPO-1: moving every row by a fraction of a row changed
+ *   Binance's own BTC call on 47 % of days at $50 rows), so each is also read with the rows moved by a quarter, a half and three quarters
+ *   of a row, and says how many of the four agree;
  * - single prints are rows with one block between the runs of one-block rows at the two extremes.
  */
 
-const DAY = 86_400_000;
+const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
 /** One block: its start, high, low, open and close, its volume in USD, and whether it is over (a block under way can still grow). */
 export interface Block { t: number; h: number; l: number; o: number; c: number; usd: number; closed: boolean }
 
+/** The start of the block holding `t` on the grid of blocks of `blockMs` that starts at `from`. */
+export const blockStart = (t: number, from: number, blockMs: number): number => from + Math.floor((t - from) / blockMs) * blockMs;
+
 /**
- * The blocks of [from, to) from candles of `barMs` (start, open, high, low, close, volume in coins), oldest first: a block with no candle
- * is left out (nobody traded, or the history does not reach it). A block is over once its end is at or before `now`. `replay`: candles
- * that end after `now` are not read (one still forming at a replay's moment carries its future high and low); live, the candle under way
- * is the newest price known and is read.
+ * The blocks of [from, to) from candles of `barMs` (start, open, high, low, close, volume in coins), oldest first, on the grid that starts at
+ * `from`: a block with no candle is left out (nobody traded, or the history does not reach it). A block is over once its end is at or
+ * before `now`. `replay`: candles that end after `now` are not read (one still forming at a replay's moment carries its future high and
+ * low); live, the candle under way is the newest price known and is read.
  */
 export function blocksOf(bars: readonly CandleRow[], from: number, to: number, blockMs: number, barMs: number, now: number, replay = false): Block[] {
-  const out = new Map<number, Block>();
+  const out = new Map<number, Block & { first: number; last: number }>();
   for (const b of bars) {
     const t = b[0];
     if (t < from || t >= to || t > now || (replay && t + barMs > now)) continue;
     const high = b[2], low = b[3];
     if (!(high >= low) || !(low > 0)) continue;
-    const k = from + Math.floor((t - from) / blockMs) * blockMs, usd = (b[5] > 0 ? b[5] : 0) * (high + low + b[4]) / 3;
+    const k = blockStart(t, from, blockMs), usd = (b[5] > 0 ? b[5] : 0) * (high + low + b[4]) / 3;
     const x = out.get(k);
-    if (!x) out.set(k, { t: k, h: high, l: low, o: b[1], c: b[4], usd, closed: k + blockMs <= now, last: t } as Block & { last: number });
+    if (!x) out.set(k, { t: k, h: high, l: low, o: b[1], c: b[4], usd, closed: k + blockMs <= now, first: t, last: t });
     else {
-      const y = x as Block & { last: number };
-      if (high > y.h) y.h = high;
-      if (low < y.l) y.l = low;
-      if (t >= y.last) { y.c = b[4]; y.last = t; }
-      y.usd += usd;
+      if (high > x.h) x.h = high;
+      if (low < x.l) x.l = low;
+      if (t >= x.last) { x.c = b[4]; x.last = t; }
+      if (t < x.first) { x.o = b[1]; x.first = t; }
+      x.usd += usd;
     }
   }
   return [...out.values()].sort((a, b) => a.t - b.t).map(({ t, h, l, o, c, usd, closed }) => ({ t, h, l, o, c, usd, closed }));
 }
 
-/** A block widened to the chart's own price where it is fresher than the history (the half hour under way between two refreshes). */
+/**
+ * The block under way from the chart's own price where it is fresher than the history: widened where the history holds it, started where
+ * the history has not reached it yet (the first minutes after a block's start, between two refreshes). `live.t` is its block's start on the
+ * window's grid, and its high and low are the chart's since then.
+ */
 export function withLive(blocks: Block[], blockMs: number, live: { t: number; h: number; l: number; c: number } | null): Block[] {
-  if (!live || !blocks.length) return blocks;
-  const last = blocks[blocks.length - 1]!;
-  if (live.t < last.t || live.t >= last.t + blockMs || last.closed) return blocks;
-  return [...blocks.slice(0, -1), { ...last, h: Math.max(last.h, live.h), l: Math.min(last.l, live.l), c: live.c }];
+  if (!live) return blocks;
+  const last = blocks[blocks.length - 1];
+  if (last && last.t === live.t) return last.closed ? blocks : [...blocks.slice(0, -1), { ...last, h: Math.max(last.h, live.h), l: Math.min(last.l, live.l), c: live.c }];
+  if (last && live.t < last.t + blockMs) return blocks;
+  return [...blocks, { t: live.t, h: live.h, l: live.l, o: live.c, c: live.c, usd: 0, closed: false }];
 }
 
 export type Extreme = 'poor' | 'tail' | 'neither';
 
-/** One block on its rows: its letter's index in the window, its start, its first and last row, its high and low, and the rows drawn hollow. */
+/** One block on its rows: its letter's index in the window, its start, its first and last row, its high, low and volume, and the rows drawn hollow. */
 export interface BlockRows { k: number; t: number; a: number; z: number; h: number; l: number; usd: number; closed: boolean; hollow: ReadonlySet<number> }
 
 export interface TpoProfile {
@@ -67,8 +77,8 @@ export interface TpoProfile {
   lo: number; hi: number; total: number;
   /** Rows: the point of control, the value area's top and bottom rows. */
   poc: number; vah: number; val: number;
-  /** The initial balance's top and bottom rows (null without its blocks). */
-  ibh: number | null; ibl: number | null;
+  /** The initial balance's top and bottom rows (null without its blocks), and how many blocks it spans. */
+  ibh: number | null; ibl: number | null; ibBlocks: number;
   /** The rows of the window's first price and of its last. */
   open: number | null; close: number | null;
   top: Extreme; bottom: Extreme;
@@ -91,7 +101,8 @@ export function valueArea(counts: ReadonlyMap<number, number>, lo: number, hi: n
     const c = counts.get(r) ?? 0; total += c;
     if (c > best || (c === best && (Math.abs(r - mid) < Math.abs(poc - mid) || (Math.abs(r - mid) === Math.abs(poc - mid) && r < poc)))) { best = c; poc = r; }
   }
-  const target = share * total;
+  // A share of a whole count that is a whole number in decimals (68 % of 75 is 51) can come out a hair over it in binary: not one row more.
+  const target = share * total - 1e-9;
   let acc = counts.get(poc) ?? 0, up = poc + 1, dn = poc - 1, vah = poc, val = poc;
   while (acc < target && (up <= hi || dn >= lo)) {
     const cu = up <= hi ? (counts.get(up) ?? 0) : -1, cd = dn >= lo ? (counts.get(dn) ?? 0) : -1;
@@ -102,23 +113,28 @@ export function valueArea(counts: ReadonlyMap<number, number>, lo: number, hi: n
   return { poc, vah, val, total };
 }
 
-/** The calls at the two extremes of blocks read on rows of `R` moved by `phase`, and the runs of one-block rows that touch them. */
-function extremes(blocks: readonly Block[], R: number, phase: number): { top: Extreme; bottom: Extreme; topRun: number; botRun: number; counts: Map<number, number>; lo: number; hi: number } {
-  const counts = new Map<number, number>();
+/** The most rows a window may span (a row far finer than its prices would otherwise make millions). */
+export const MAX_TPO_ROWS = 4_000;
+
+/** The rows the blocks span on rows of `R` moved by `phase` (null where they would be more than `MAX_TPO_ROWS`). */
+function spanOf(blocks: readonly Block[], R: number, phase: number): { lo: number; hi: number } | null {
   let lo = Infinity, hi = -Infinity;
-  for (const b of blocks) {
-    const a = rowOf(b.l + phase, R), z = rowOf(b.h + phase, R);
-    if (a < lo) lo = a; if (z > hi) hi = z;
-    for (let r = a; r <= z; r++) counts.set(r, (counts.get(r) ?? 0) + 1);
-  }
+  for (const b of blocks) { const a = rowOf(b.l + phase, R), z = rowOf(b.h + phase, R); if (a < lo) lo = a; if (z > hi) hi = z; }
+  return Number.isFinite(lo) && Number.isFinite(hi) && hi - lo + 1 <= MAX_TPO_ROWS ? { lo, hi } : null;
+}
+
+/** The calls at the two extremes of blocks read on rows of `R` moved by `phase`, and the runs of one-block rows that touch them. */
+function extremes(blocks: readonly Block[], R: number, phase: number, lo: number, hi: number): { top: Extreme; bottom: Extreme; topRun: number; botRun: number; counts: Map<number, number> } {
+  const counts = new Map<number, number>();
+  for (const b of blocks) for (let r = rowOf(b.l + phase, R), z = rowOf(b.h + phase, R); r <= z; r++) counts.set(r, (counts.get(r) ?? 0) + 1);
   const c = (r: number): number => counts.get(r) ?? 0;
   let topRun = 0; for (let r = hi; r >= lo && c(r) === 1; r--) topRun++;
   let botRun = 0; for (let r = lo; r <= hi && c(r) === 1; r++) botRun++;
-  return { top: c(hi) >= 2 ? 'poor' : topRun >= 2 ? 'tail' : 'neither', bottom: c(lo) >= 2 ? 'poor' : botRun >= 2 ? 'tail' : 'neither', topRun, botRun, counts, lo, hi };
+  return { top: c(hi) >= 2 ? 'poor' : topRun >= 2 ? 'tail' : 'neither', bottom: c(lo) >= 2 ? 'poor' : botRun >= 2 ? 'tail' : 'neither', topRun, botRun, counts };
 }
 
-/** The most rows a window may span (a row far finer than its prices would otherwise make millions). */
-export const MAX_TPO_ROWS = 4_000;
+/** How many blocks make the initial balance: those of the first hour, at least one. */
+export const ibBlocksOf = (blockMs: number): number => Math.max(1, Math.round(HOUR / blockMs));
 
 /**
  * The profile of one window from its blocks, on rows of `R`, with the value area holding `share` of the TPOs; null when nothing traded or
@@ -126,16 +142,21 @@ export const MAX_TPO_ROWS = 4_000;
  */
 export function buildProfile(win: { key: string; from: number; to: number }, blocks: readonly Block[], blockMs: number, R: number, share: number, now: number, hollow?: ReadonlyMap<number, ReadonlySet<number>>): TpoProfile | null {
   if (!blocks.length || !(R > 0)) return null;
-  const e = extremes(blocks, R, 0);
-  if (!Number.isFinite(e.lo) || e.hi - e.lo + 1 > MAX_TPO_ROWS) return null;
-  const { counts, lo, hi } = e;
+  const span = spanOf(blocks, R, 0);
+  if (!span) return null;
+  const { lo, hi } = span, e = extremes(blocks, R, 0, lo, hi), { counts } = e;
   const area = valueArea(counts, lo, hi, share);
   const none: ReadonlySet<number> = new Set();
   const rows: BlockRows[] = blocks.map(b => ({ k: Math.round((b.t - win.from) / blockMs), t: b.t, a: rowOf(b.l, R), z: rowOf(b.h, R), h: b.h, l: b.l, usd: b.usd, closed: b.closed, hollow: hollow?.get(b.t) ?? none }));
-  const first = rows.filter(b => b.k <= 1);
+  const ibBlocks = ibBlocksOf(blockMs), first = rows.filter(b => b.k < ibBlocks);
   // The four grids: a call that holds on all of them does not depend on where the row edges fall.
   let topVotes = 0, bottomVotes = 0;
-  for (const phase of [0, R / 4, R / 2, 3 * R / 4]) { const x = extremes(blocks, R, phase); if (x.top === e.top) topVotes++; if (x.bottom === e.bottom) bottomVotes++; }
+  for (const phase of [0, R / 4, R / 2, 3 * R / 4]) {
+    const s = phase ? spanOf(blocks, R, phase) : span;
+    if (!s) continue;
+    const x = phase ? extremes(blocks, R, phase, s.lo, s.hi) : e;
+    if (x.top === e.top) topVotes++; if (x.bottom === e.bottom) bottomVotes++;
+  }
   const singles: number[] = [];
   for (let r = lo; r <= hi; r++) if ((counts.get(r) ?? 0) === 1 && r < hi - e.topRun + 1 && r > lo + e.botRun - 1) singles.push(r);
   let above = 0, below = 0;
@@ -144,7 +165,7 @@ export function buildProfile(win: { key: string; from: number; to: number }, blo
   return {
     key: win.key, from: win.from, to: win.to, blockMs, R, blocks: rows, counts, lo, hi, total: area.total,
     poc: area.poc, vah: area.vah, val: area.val,
-    ibh: first.length ? Math.max(...first.map(b => b.z)) : null, ibl: first.length ? Math.min(...first.map(b => b.a)) : null,
+    ibh: first.length ? Math.max(...first.map(b => b.z)) : null, ibl: first.length ? Math.min(...first.map(b => b.a)) : null, ibBlocks,
     open: blocks[0]!.t < win.from + blockMs ? rowOf(blocks[0]!.o, R) : null, close: rowOf(last.c, R),
     top: e.top, bottom: e.bottom, topVotes, bottomVotes, singles, above, below,
     high: Math.max(...blocks.map(b => b.h)), low: Math.min(...blocks.map(b => b.l)), usd: blocks.reduce((s, b) => s + b.usd, 0),
@@ -194,24 +215,28 @@ export function autoRows(days: readonly CandleRow[], now: number, period: 'day' 
   return ladder(m / per);
 }
 
-/** One other market's blocks for the agreement, and its usual gap to the chart market at each block (bp, `trailingGaps`). */
-export interface Peer { blocks: ReadonlyMap<number, Block>; gap: (t: number) => number }
+/**
+ * One other market's blocks for the agreement, its usual gap to the chart market at each block (bp, `trailingGaps`), and up to when its
+ * history is known (a block that ended after that is not judged on it: its range may not be whole yet).
+ */
+export interface Peer { blocks: ReadonlyMap<number, Block>; gap: (t: number) => number; heldTo?: number }
 
 /**
  * Each market's gap to the chart market at the start of each of its blocks: the median, in basis points, of its closes against the chart
- * market's over the day before (its last 48 half hours), so a block is judged on what was known before it. 0 until half a day is known.
+ * market's over the day before (strictly earlier blocks), so a block is judged on what was known before it. 0 until half a day is known.
+ * A sorted window slides along the blocks, so a week of half hours is a few thousand steps.
  */
 export function trailingGaps(mine: readonly Block[], theirs: ReadonlyMap<number, Block>, blockMs: number, windowMs = DAY): Map<number, number> {
   const series: [number, number][] = [];
   for (const b of mine) { const o = theirs.get(b.t); if (o && b.c > 0 && o.c > 0) series.push([b.t, 1e4 * Math.log(o.c / b.c)]); }
-  const out = new Map<number, number>();
+  const out = new Map<number, number>(), sorted: number[] = [], enough = Math.max(3, Math.floor(windowMs / blockMs / 2));
+  const at = (v: number): number => { let a = 0, z = sorted.length; while (a < z) { const m = (a + z) >> 1; if (sorted[m]! < v) a = m + 1; else z = m; } return a; };
   for (let i = 0, j = 0; i < series.length; i++) {
     const t = series[i]![0];
-    while (j < i && series[j]![0] < t - windowMs) j++;
-    const prev = series.slice(j, i).map(x => x[1]).sort((a, b) => a - b), n = prev.length;
-    // Half a day of half hours at least (24 blocks of 30 minutes; 3 of 4 hours): fewer say too little of the usual gap.
-    const enough = Math.max(3, Math.floor(windowMs / blockMs / 2));
-    out.set(t, n >= enough ? (n % 2 ? prev[n >> 1]! : (prev[n / 2 - 1]! + prev[n / 2]!) / 2) : 0);
+    while (j < i && series[j]![0] < t - windowMs) { sorted.splice(at(series[j]![1]), 1); j++; }
+    const n = sorted.length;
+    out.set(t, n >= enough ? (n % 2 ? sorted[n >> 1]! : (sorted[n / 2 - 1]! + sorted[n / 2]!) / 2) : 0);
+    sorted.splice(at(series[i]![1]), 0, series[i]![1]);
   }
   return out;
 }
@@ -219,59 +244,72 @@ export function trailingGaps(mine: readonly Block[], theirs: ReadonlyMap<number,
 /** The smallest overshoot a hollow block needs, in basis points, beside one row (TPO-1: the gaps between venues wander 1-2 bp). */
 export const HOLLOW_MIN_BP = 3;
 
+/** Where most of the market's volume reached in a block (the chart market's own among them, each other moved by its usual gap), or null with fewer than three markets. */
+function majority(mine: Block, peers: readonly Peer[], blockMs: number): { top: number; bottom: number } | null {
+  const ms: { h: number; l: number; w: number }[] = [{ h: mine.h, l: mine.l, w: mine.usd }];
+  for (const p of peers) {
+    const b = p.blocks.get(mine.t);
+    if (!b || b.t + blockMs > (p.heldTo ?? Infinity)) continue;
+    const f = Math.exp(-p.gap(mine.t) / 1e4); ms.push({ h: b.h * f, l: b.l * f, w: b.usd });
+  }
+  const total = ms.reduce((s, x) => s + x.w, 0);
+  if (ms.length < 3 || !(total > 0)) return null;
+  // Walking the highs down from the top until half the volume is counted gives where most of the market reached; the lows likewise.
+  let acc = 0, top = NaN; for (const x of [...ms].sort((a, b) => b.h - a.h)) { acc += x.w; if (acc >= total / 2) { top = x.h; break; } }
+  acc = 0; let bottom = NaN; for (const x of [...ms].sort((a, b) => a.l - b.l)) { acc += x.w; if (acc >= total / 2) { bottom = x.l; break; } }
+  return { top, bottom };
+}
+
 /**
  * The rows of a block of the chart market drawn hollow: where its wick went at least a row and `HOLLOW_MIN_BP` past the point most of the
  * market's volume reached (each market moved by its usual gap first), and only where its range widened there (when the other end falls
  * short of the market by half the overshoot or more, the whole range moved: its gap to the others changed, which is not a wick). Rows wholly
  * past that point. Needs at least three markets with volume.
  */
-export function hollowRows(mine: Block, peers: readonly Peer[], R: number): Set<number> {
-  const out = new Set<number>();
-  const ms: { h: number; l: number; w: number }[] = [{ h: mine.h, l: mine.l, w: mine.usd }];
-  for (const p of peers) { const b = p.blocks.get(mine.t); if (!b) continue; const f = Math.exp(-p.gap(mine.t) / 1e4); ms.push({ h: b.h * f, l: b.l * f, w: b.usd }); }
-  const total = ms.reduce((s, x) => s + x.w, 0);
-  if (ms.length < 3 || !(total > 0)) return out;
-  // Walking the highs down from the top until half the volume is counted gives where most of the market reached; the lows likewise.
-  let acc = 0, top = NaN; for (const x of [...ms].sort((a, b) => b.h - a.h)) { acc += x.w; if (acc >= total / 2) { top = x.h; break; } }
-  acc = 0; let bottom = NaN; for (const x of [...ms].sort((a, b) => a.l - b.l)) { acc += x.w; if (acc >= total / 2) { bottom = x.l; break; } }
-  const up = 1e4 * Math.log(mine.h / top), down = 1e4 * Math.log(bottom / mine.l), need = Math.max(1e4 * R / mine.h, HOLLOW_MIN_BP);
-  if (up >= need && -down < up / 2) for (let r = rowOf(top, R) + 1; r <= rowOf(mine.h, R); r++) if (r * R >= top) out.add(r);
-  if (down >= need && -up < down / 2) for (let r = rowOf(mine.l, R); r < rowOf(bottom, R); r++) if ((r + 1) * R <= bottom) out.add(r);
+export function hollowRows(mine: Block, peers: readonly Peer[], R: number, blockMs = 30 * MIN): Set<number> {
+  const out = new Set<number>(), m = majority(mine, peers, blockMs);
+  if (!m) return out;
+  const up = 1e4 * Math.log(mine.h / m.top), down = 1e4 * Math.log(m.bottom / mine.l), need = Math.max(1e4 * R / mine.h, HOLLOW_MIN_BP);
+  if (up >= need && -down < up / 2) for (let r = rowOf(m.top, R) + 1; r <= rowOf(mine.h, R); r++) if (r * R >= m.top) out.add(r);
+  if (down >= need && -up < down / 2) for (let r = rowOf(mine.l, R); r < rowOf(m.bottom, R); r++) if ((r + 1) * R <= m.bottom) out.add(r);
   return out;
 }
 
-/** How far this market's wick went past most of the market in a block, in bp (for the hover; 0 where it did not). */
-export function overshootOf(mine: Block, peers: readonly Peer[]): { up: number; down: number; top: number; bottom: number } | null {
-  const ms: { h: number; l: number; w: number }[] = [{ h: mine.h, l: mine.l, w: mine.usd }];
-  for (const p of peers) { const b = p.blocks.get(mine.t); if (!b) continue; const f = Math.exp(-p.gap(mine.t) / 1e4); ms.push({ h: b.h * f, l: b.l * f, w: b.usd }); }
-  const total = ms.reduce((s, x) => s + x.w, 0);
-  if (ms.length < 3 || !(total > 0)) return null;
-  let acc = 0, top = NaN; for (const x of [...ms].sort((a, b) => b.h - a.h)) { acc += x.w; if (acc >= total / 2) { top = x.h; break; } }
-  acc = 0; let bottom = NaN; for (const x of [...ms].sort((a, b) => a.l - b.l)) { acc += x.w; if (acc >= total / 2) { bottom = x.l; break; } }
-  return { up: Math.max(0, 1e4 * Math.log(mine.h / top)), down: Math.max(0, 1e4 * Math.log(bottom / mine.l)), top, bottom };
+/** How far this market's wick went past most of the market in a block, in bp (for the box under the pointer; 0 where it did not). */
+export function overshootOf(mine: Block, peers: readonly Peer[], blockMs = 30 * MIN): { up: number; down: number; top: number; bottom: number } | null {
+  const m = majority(mine, peers, blockMs);
+  return m ? { up: Math.max(0, 1e4 * Math.log(mine.h / m.top)), down: Math.max(0, 1e4 * Math.log(m.bottom / mine.l)), top: m.top, bottom: m.bottom } : null;
 }
+
+/** A window as drawn: its key, its span, the calendar window it came from (`base`), and every calendar window it holds (`members`). */
+export interface EditedWindow { key: string; from: number; to: number; base: string; members: string[] }
 
 /**
- * The windows as a person edited them (per coin): a split moment inside a window cuts it in two there (to the block); a merge joins the
- * window starting at that moment to the one before it. Keys say what was done, so a profile's cache and the lines know an edited window
- * is no longer the calendar's.
+ * The windows as a person edited them (for one coin, kind of window and block length). A split (`moment@window key`) cuts that calendar
+ * window in two at the block nearest the moment; a merge (a calendar window's key) joins that window, from its start, to the window that
+ * ends where it begins (none: nothing happens). Keys say what was done, so a profile's cache and the lines know an edited window is no
+ * longer the calendar's; `members` lists the calendar windows each holds.
  */
-export function editedWindows<W extends { key: string; name?: string; from: number; to: number }>(windows: readonly W[], splits: readonly number[], merges: readonly number[], blockMs: number): { key: string; from: number; to: number; base: string }[] {
-  let out = windows.map(w => ({ key: w.key, from: w.from, to: w.to, base: w.key }));
-  for (const s of splits) {
-    const at = out.findIndex(w => s > w.from && s < w.to);
-    if (at < 0) continue;
-    const w = out[at]!, cut = w.from + Math.round((s - w.from) / blockMs) * blockMs;
+export function editedWindows(windows: readonly { key: string; from: number; to: number }[], splits: readonly string[], merges: readonly string[], blockMs: number): EditedWindow[] {
+  const out: EditedWindow[] = windows.map(w => ({ key: w.key, from: w.from, to: w.to, base: w.key, members: [w.key] }));
+  const starts = new Map(windows.map(w => [w.key, w.from]));
+  for (const e of splits) {
+    const at = e.indexOf('@'); if (at <= 0) continue;
+    const s = Number(e.slice(0, at)), base = e.slice(at + 1);
+    const i = out.findIndex(w => w.base === base && s > w.from && s < w.to);
+    if (i < 0) continue;
+    const w = out[i]!, cut = w.from + Math.round((s - w.from) / blockMs) * blockMs;
     if (cut <= w.from || cut >= w.to) continue;
-    out.splice(at, 1, { key: `${w.key}|<${cut}`, from: w.from, to: cut, base: w.base }, { key: `${w.key}|>${cut}`, from: cut, to: w.to, base: w.base });
+    out.splice(i, 1, { key: `${w.key}|<${cut}`, from: w.from, to: cut, base: w.base, members: w.members }, { key: `${w.key}|>${cut}`, from: cut, to: w.to, base: w.base, members: w.members });
   }
-  for (const m of merges) {
-    const at = out.findIndex(w => w.from === m);
-    if (at <= 0) continue;
-    const a = out[at - 1]!, b = out[at]!;
-    if (a.to !== b.from) continue;
-    out.splice(at - 1, 2, { key: `${a.key}+${b.key}`, from: a.from, to: b.to, base: a.base });
+  for (const base of merges) {
+    const from = starts.get(base);
+    const b = out.find(w => w.members.includes(base) && w.from === from);
+    if (!b) continue;
+    const a = out.find(w => w !== b && w.to === b.from);
+    if (!a) continue;
+    const merged: EditedWindow = { key: `${a.key}+${b.key}`, from: a.from, to: b.to, base: a.base, members: [...a.members, ...b.members.filter(m => !a.members.includes(m))] };
+    out.splice(out.indexOf(a), 1); out.splice(out.indexOf(b), 1, merged);
   }
-  out = out.sort((a, b) => a.from - b.from);
-  return out;
+  return out.sort((x, y) => x.from - y.from || x.to - y.to);
 }

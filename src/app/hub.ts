@@ -381,7 +381,8 @@ export class Hub {
     const key = `${kind}|${id}|${barMs}`, now = Date.now(), held = this.#tpoHistories.get(key);
     if (held) { held.used = now; return held.h; }
     if (this.#tpoHistories.size >= TPO_HISTORIES) for (const [k, x] of this.#tpoHistories) if (now - x.used > 300_000) this.#tpoHistories.delete(k);
-    const h = new KeyLevelHistory(historyGet, Date.now, kind === 'days' ? 30 * 60_000 : 60_000, kind === 'days' ? 80 * 86_400_000 : undefined);
+    // The other markets judge only blocks that are over (a block lasts half an hour), so their candles are read again every five minutes.
+    const h = new KeyLevelHistory(historyGet, Date.now, kind === 'days' ? 30 * 60_000 : kind === 'peer' ? 5 * 60_000 : 60_000, kind === 'days' ? 80 * 86_400_000 : undefined);
     this.#tpoHistories.set(key, { h, used: now });
     return h;
   }

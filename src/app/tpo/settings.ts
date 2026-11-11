@@ -4,7 +4,7 @@
  * half hour each letter stands for, four hours for a week by default); the size of a row (Auto from the coin's typical day, or a price
  * chosen for that coin); how it is drawn (blocks, letters or Auto by zoom; coloured by the time of the block or by how full the row is);
  * folded into profiles or laid out in time; the value area's share; which marks show; whether the Volume profile's lines follow the
- * TPO's levels; and the windows split or merged by hand, per coin.
+ * TPO's levels; and the windows split or merged by hand, per coin, kind of window and block length.
  */
 
 export type TpoPeriod = 'day' | 'week' | 'sessions';
@@ -41,10 +41,13 @@ export interface TpoSettings {
   lines: boolean;
   /** A row's price per coin, where one was chosen (none: Auto). */
   rows: Record<string, number>;
-  /** Per coin, the moments a window was split at (each starts a window of its own). */
-  splits: Record<string, number[]>;
-  /** Per coin, the starts of windows merged into the window before them. */
-  merges: Record<string, number[]>;
+  /**
+   * Splits per coin, kind of window and block length (`editScope`): each `moment@window key`, a calendar window cut in two at the block
+   * nearest the moment (tpo/model.ts `editedWindows`).
+   */
+  splits: Record<string, string[]>;
+  /** Merges per coin, kind of window and block length: each a calendar window's key, joined from its start to the window that ends there. */
+  merges: Record<string, string[]>;
 }
 
 export const TPO_DEFAULTS: Readonly<TpoSettings> = {
@@ -53,30 +56,35 @@ export const TPO_DEFAULTS: Readonly<TpoSettings> = {
 };
 
 export const MAX_TPO_COUNT = 20;
-/** Coins whose own rows, splits and merges are kept (the oldest go first). */
+/** Coins whose own rows are kept, and scopes of edits (three per coin), the oldest going first. */
 const MAX_COINS = 20;
 /** Splits and merges kept per coin. */
 const MAX_EDITS = 40;
 
 const flag = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
 const coinKey = (coin: string): boolean => /^[A-Z0-9]{1,20}$/.test(coin);
+/** The edits of one coin, kind of window and block length are kept together: a day's split never cuts a week. */
+export const editScope = (coin: string, period: TpoPeriod, blockMs: number): string => `${coin}|${period}|${Math.round(blockMs / 60_000)}`;
+const scopeKey = (key: string): boolean => /^[A-Z0-9]{1,20}\|(day|week|sessions)\|\d{1,4}$/.test(key);
 
-function times(saved: unknown): Record<string, number[]> {
-  const out: Record<string, number[]> = {};
+function edits(saved: unknown, entry: (e: string) => boolean): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
   if (!saved || typeof saved !== 'object') return out;
-  for (const [coin, list] of Object.entries(saved as Record<string, unknown>).slice(-MAX_COINS)) {
-    if (!coinKey(coin) || !Array.isArray(list)) continue;
-    const ok = [...new Set(list.filter((t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0))].sort((a, b) => a - b).slice(-MAX_EDITS);
-    if (ok.length) out[coin] = ok;
+  for (const [scope, list] of Object.entries(saved as Record<string, unknown>).slice(-MAX_COINS * 3)) {
+    if (!scopeKey(scope) || !Array.isArray(list)) continue;
+    const ok = [...new Set(list.filter((e): e is string => typeof e === 'string' && e.length <= 300 && entry(e)))].slice(-MAX_EDITS);
+    if (ok.length) out[scope] = ok;
   }
   return out;
 }
+const splitEntry = (e: string): boolean => /^\d{10,14}@.+$/.test(e);
 
 /** Settings from storage, field by field: whatever is missing or not valid falls back to the default. */
 export function readTpo(saved: unknown): TpoSettings {
   const s = (saved && typeof saved === 'object' ? saved : {}) as Partial<Record<keyof TpoSettings, unknown>>, d = TPO_DEFAULTS;
   const rows: Record<string, number> = {};
-  if (s.rows && typeof s.rows === 'object') for (const [coin, v] of Object.entries(s.rows as Record<string, unknown>).slice(-MAX_COINS)) if (coinKey(coin) && typeof v === 'number' && Number.isFinite(v) && v > 0) rows[coin] = v;
+  // A row as fine as a billionth of a dollar stays possible (a coin priced in millionths); the profile refuses more than its rows' limit.
+  if (s.rows && typeof s.rows === 'object') for (const [coin, v] of Object.entries(s.rows as Record<string, unknown>).slice(-MAX_COINS)) if (coinKey(coin) && typeof v === 'number' && Number.isFinite(v) && v >= 1e-12 && v <= 1e9) rows[coin] = v;
   return {
     on: flag(s.on, d.on),
     period: TPO_PERIODS.includes(s.period as TpoPeriod) ? s.period as TpoPeriod : d.period,
@@ -86,18 +94,18 @@ export function readTpo(saved: unknown): TpoSettings {
     colour: s.colour === 'count' ? 'count' : 'time',
     share: typeof s.share === 'number' && Number.isFinite(s.share) && s.share >= 50 && s.share <= 90 ? Math.round(s.share) : d.share,
     unfold: flag(s.unfold, d.unfold), hollow: flag(s.hollow, d.hollow), ib: flag(s.ib, d.ib), calls: flag(s.calls, d.calls),
-    stats: flag(s.stats, d.stats), lines: flag(s.lines, d.lines), rows, splits: times(s.splits), merges: times(s.merges),
+    stats: flag(s.stats, d.stats), lines: flag(s.lines, d.lines), rows, splits: edits(s.splits, splitEntry), merges: edits(s.merges, e => e.length > 0),
   };
 }
 
 /** The block length in milliseconds: the one chosen, or the period's own (a week's blocks are four hours: 42 letters a week). */
 export const blockMsOf = (s: Pick<TpoSettings, 'block' | 'period'>): number => (s.block > 0 ? s.block : s.period === 'week' ? 240 : 30) * 60_000;
 
-/** The settings with `coin`'s list `which` changed by `f` (an empty list is dropped, and the coin with it). */
-export function withEdits(s: TpoSettings, which: 'splits' | 'merges', coin: string, f: (list: number[]) => number[]): TpoSettings {
-  const list = [...new Set(f([...(s[which][coin] ?? [])]))].sort((a, b) => a - b).slice(-MAX_EDITS);
-  const { [coin]: _old, ...others } = s[which];
-  return { ...s, [which]: list.length ? { ...others, [coin]: list } : others };
+/** The settings with the list `which` of one edit scope (`editScope`) changed by `f` (an empty list is dropped, and the scope with it). */
+export function withEdits(s: TpoSettings, which: 'splits' | 'merges', scope: string, f: (list: string[]) => string[]): TpoSettings {
+  const list = [...new Set(f([...(s[which][scope] ?? [])]))].slice(-MAX_EDITS);
+  const { [scope]: _old, ...others } = s[which];
+  return { ...s, [which]: list.length ? { ...others, [scope]: list } : others };
 }
 
 /** The settings with a row price chosen for `coin` (0: Auto again). */

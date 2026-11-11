@@ -1,5 +1,5 @@
 import type { View } from '../view.ts';
-import type { Palette } from '../theme.ts';
+import { PALETTES, type Palette } from '../theme.ts';
 import type { LabelBoard } from '../labels.ts';
 import { t } from '../i18n.ts';
 import { price as fmtPrice, usd } from '../format.ts';
@@ -11,12 +11,12 @@ import type { TpoSettings } from './settings.ts';
  * Drawing the TPO on the map (Karl's reference, 2026-11-10: block profiles per session, coloured by the time of each block, the point of
  * control's row standing out, the value area full and the rest dimmer, the initial balance marked at the left, the open and the last price,
  * a few numbers under each profile). Each window's profile stands at its start, under the candles, over a backing that mutes the heat map;
- * laid out in time (`fold` 1), each block stands in its own column at its half hour, behind its own candles. By zoom: letters while a block
- * is tall enough, blocks, then the profile's outline alone. A block this market's wick alone reached (tpo/model.ts `hollowRows`) is drawn
- * as an outline.
+ * laid out in time (`fold` 1), each block stands in its own column at its time, behind its own candles. By zoom: letters while a block is
+ * big enough to hold one, blocks, then the profile's outline alone. A block this market's wick alone reached (tpo/model.ts `hollowRows`) is
+ * drawn as an outline. A block's cells share one colour, so they are filled a block at a time (by time) or a row at a time (by row length).
  */
 
-/** Where one profile's cells were drawn, for the pointer (`cellAt`). */
+/** Where one profile's cells were drawn, for the pointer (`cellAt`) and the lit block (`paintLit`). */
 export interface TpoGeometry {
   profile: TpoProfile;
   x0: number; cw: number; ucw: number; rh: number; fold: number;
@@ -29,25 +29,63 @@ export interface TpoGeometry {
 
 /** The time ramp, early to late: warm to cool as on the reference chart, a hue apart from the heat map's ramp (dark and light pages). */
 const TIME_DARK = ['#ff6b6b', '#ff9f43', '#ffd166', '#a3e05f', '#3ddc97', '#35c9d6', '#4f9cff', '#9b7bff'];
-const TIME_LIGHT = ['#d62f2f', '#dd5e0b', '#c98a00', '#4e8f0f', '#0b9a6f', '#0f8ea3', '#1f6fd1', '#6a45e0'];
+const TIME_LIGHT = ['#d62f2f', '#dd5e0b', '#b07800', '#4e8f0f', '#0b9a6f', '#0f8ea3', '#1f6fd1', '#6a45e0'];
 /** How full a row is: thin to full, cool to hot. */
 const COUNT_DARK = ['#4f6bff', '#2fb7d6', '#3ddc97', '#ffd166', '#ff9f43', '#ff5c5c'];
-const COUNT_LIGHT = ['#3550d8', '#0f8ea3', '#0b9a6f', '#c98a00', '#dd5e0b', '#d62f2f'];
+const COUNT_LIGHT = ['#3550d8', '#0f8ea3', '#0b9a6f', '#b07800', '#dd5e0b', '#d62f2f'];
+/** The Colour-blind safe theme's ramp: blue to yellow, one lightness step at a time, no red against green (for both orders). */
+const SAFE = ['#3b6fd8', '#2a9fd0', '#3fbfa8', '#9fcf6a', '#e8d64b', '#f5b941'];
 /** The initial balance's and the single prints' marks: amber, as the other marks of what stands out. */
-const AMBER_DARK = '#f2b84b', AMBER_LIGHT = '#b26a00';
+const AMBER_DARK = '#f2b84b', AMBER_LIGHT = '#a35f00';
 
 function hex(c: string): [number, number, number] { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
-function ramp(stops: readonly string[], f: number): string {
+const rgb = (c: [number, number, number]): string => `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`;
+function at(stops: readonly string[], f: number): [number, number, number] {
   const x = Math.max(0, Math.min(1, f)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), u = x - i;
   const a = hex(stops[i]!), b = hex(stops[i + 1]!);
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * u)},${Math.round(a[1] + (b[1] - a[1]) * u)},${Math.round(a[2] + (b[2] - a[2]) * u)})`;
+  return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
 }
-/** `c` (rgb() or #hex) moved `f` of the way toward `to` (#hex). */
-function mix(c: string, to: string, f: number): string {
-  const a = c.startsWith('#') ? hex(c) : (c.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number) as [number, number, number], b = hex(to);
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+const mixed = (a: [number, number, number], b: [number, number, number], f: number): [number, number, number] => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+/** Dark or white letters, whichever stands out more on the colour (WCAG luminance). */
+function inkOn(c: [number, number, number]): string {
+  const lin = (v: number): number => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  const l = 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  return (l + 0.05) / 0.0561 >= 1.05 / (l + 0.05) ? '#121418' : '#ffffff';
+}
+
+/** One colour of a ramp: its fill, its light stripe (the point of control's row) and the letters on each. */
+interface Swatch { fill: string; stripe: string; ink: string; stripeInk: string }
+const swatches = new Map<string, Swatch[]>();
+/** `n` colours along a ramp (cached), each with its stripe and inks. */
+function ramp(stops: readonly string[], n: number, dark: boolean): Swatch[] {
+  const key = `${stops.join()}|${n}|${dark}`;
+  let out = swatches.get(key);
+  if (!out) {
+    out = [];
+    const light: [number, number, number] = dark ? [255, 255, 255] : [27, 29, 33];
+    for (let i = 0; i < n; i++) { const c = at(stops, n > 1 ? i / (n - 1) : 0), s = mixed(c, light, 0.72); out.push({ fill: rgb(c), stripe: rgb(s), ink: inkOn(c), stripeInk: inkOn(s) }); }
+    if (swatches.size > 64) swatches.clear();
+    swatches.set(key, out);
+  }
+  return out;
 }
 const ease = (u: number): number => u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
+
+/** A profile's rows, each block's index in them and its hollow rows, kept per profile (they do not change while it is drawn). */
+interface Layout { rows: Map<number, number[]>; maxCount: number; index: Map<number, Map<number, number>>; hollow: Map<number, ReadonlySet<number>> }
+const layouts = new WeakMap<TpoProfile, Layout>();
+function layoutOf(p: TpoProfile): Layout {
+  let out = layouts.get(p);
+  if (!out) {
+    const rows = new Map<number, number[]>();
+    for (const b of p.blocks) for (let r = b.a; r <= b.z; r++) { const list = rows.get(r); if (list) list.push(b.k); else rows.set(r, [b.k]); }
+    let maxCount = 0; const index = new Map<number, Map<number, number>>();
+    for (const [r, list] of rows) { maxCount = Math.max(maxCount, list.length); list.forEach((k, i) => { let m = index.get(k); if (!m) { m = new Map(); index.set(k, m); } m.set(r, i); }); }
+    out = { rows, maxCount, index, hollow: new Map(p.blocks.map(b => [b.k, b.hollow])) };
+    layouts.set(p, out);
+  }
+  return out;
+}
 
 export interface TpoPaint {
   profiles: readonly TpoProfile[];
@@ -56,19 +94,18 @@ export interface TpoPaint {
   labels: LabelBoard;
   /** 0 folded, 1 laid out in time, between while it moves. */
   fold: number;
-  /** The block under the pointer: its window and index (its cells and its half hour are lit). */
-  lit: { key: string; k: number } | null;
   /** How old each window is among those drawn (0 the newest). */
   rank: (key: string) => number;
   name: (p: TpoProfile) => string;
   now: number;
-  /** Whether the Volume profile's lines are drawn for these windows (then the TPO draws none of its own: they follow it). */
-  linesElsewhere: boolean;
+  /** Whether the Volume profile's lines stand for a window (then the TPO draws no point-of-control line of its own for it). */
+  linesFor: (key: string) => boolean;
 }
 
 export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometry[] {
   const out: TpoGeometry[] = [];
-  const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, timeStops = dark ? TIME_DARK : TIME_LIGHT, countStops = dark ? COUNT_DARK : COUNT_LIGHT, amber = dark ? AMBER_DARK : AMBER_LIGHT;
+  const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, safe = p === PALETTES.colorblind;
+  const timeStops = safe ? SAFE : dark ? TIME_DARK : TIME_LIGHT, countStops = safe ? SAFE : dark ? COUNT_DARK : COUNT_LIGHT, amber = dark ? AMBER_DARK : AMBER_LIGHT;
   const fold = ease(Math.max(0, Math.min(1, o.fold)));
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
   for (const prof of o.profiles) {
@@ -77,25 +114,22 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
     const rh = Math.abs(v.yOf(0, ph) - v.yOf(prof.R, ph));
     const yTop = (r: number): number => v.yOf((r + 1) * prof.R, ph);
     if (yTop(prof.lo - 1) < -40 || yTop(prof.hi) > ph + 40) continue;
-    const rows = new Map<number, number[]>();
-    for (const b of prof.blocks) for (let r = b.a; r <= b.z; r++) { const list = rows.get(r); if (list) list.push(b.k); else rows.set(r, [b.k]); }
-    let maxCount = 0; for (const list of rows.values()) maxCount = Math.max(maxCount, list.length);
+    const { rows, maxCount, index, hollow } = layoutOf(prof);
     // Square blocks as tall as a row, no wider than 16 px, the longest row no wider than three fifths of the window on the chart (its
     // candles keep the rest), as the Volume profile's windows.
-    const room = Math.max(8, (v.xOf(prof.to, pw) - wx0) * 0.6), letters = s.look === 'letters' || (s.look === 'auto' && rh >= 11);
-    let cw = Math.min(16, Math.max(letters ? 9 : 2, rh));
+    const room = Math.max(8, (v.xOf(prof.to, pw) - wx0) * 0.6);
+    let cw = Math.min(16, Math.max(s.look === 'letters' ? 9 : 2, rh));
     if (maxCount * cw > room) cw = room / maxCount;
     const outline = rh < 1.6 || cw < 1.6;
     const x0 = Math.max(wx0, Math.min(0, wx1 - maxCount * cw)), blockPx = v.xOf(prof.from + prof.blockMs, pw) - wx0;
     const ucw = Math.max(1, Math.min(cw, blockPx - 1));
     const unfoldX = new Map<number, number>();
     for (const b of prof.blocks) unfoldX.set(b.k, v.xOf(b.t, pw) + (blockPx - ucw) / 2);
-    const geo: TpoGeometry = { profile: prof, x0, cw, ucw, rh, fold, rows, unfoldX, outline };
-    out.push(geo);
-    const fade = ageAlpha(o.rank(prof.key)), n = Math.max(1, Math.round((prof.to - prof.from) / prof.blockMs) - 1);
-    const gap = cw >= 5 && rh >= 5 ? 1 : 0, w = (fold > 0.5 ? ucw : cw) - gap, h = Math.max(1, rh - gap);
-    const colourOf = (k: number, r: number): string => s.colour === 'count' ? ramp(countStops, ((rows.get(r)?.length ?? 1) - 1) / Math.max(1, maxCount - 1)) : ramp(timeStops, k / n);
-    const hollowAt = new Map<number, ReadonlySet<number>>(prof.blocks.map(b => [b.k, b.hollow]));
+    out.push({ profile: prof, x0, cw, ucw, rh, fold, rows, unfoldX, outline });
+    const fade = ageAlpha(o.rank(prof.key)), n = Math.max(1, Math.round((prof.to - prof.from) / prof.blockMs));
+    const gap = cw >= 5 && rh >= 5 ? 1 : 0, cellW = fold > 0.5 ? ucw : cw, w = Math.max(1, cellW - gap), h = Math.max(1, rh - gap);
+    // Letters where the cell as drawn can hold one: a row of about 11 px and a cell of about 7 (Auto), or 6 px when letters are asked for.
+    const letters = s.look === 'letters' ? cellW >= 6 && rh >= 7 : s.look === 'auto' && rh >= 11 && cellW >= 7;
     const xAt = (r: number, i: number, k: number): number => x0 + i * cw + ((unfoldX.get(k) ?? 0) - x0 - i * cw) * fold;
     const backing = dark ? 'rgba(0,0,0,0.62)' : 'rgba(255,255,255,0.72)';
     if (outline) {
@@ -109,32 +143,50 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
       ctx.globalAlpha = 1;
     } else {
       // The backing first (not faded: it mutes the heat map under every block alike), then the blocks.
-      ctx.fillStyle = backing;
+      ctx.globalAlpha = 1; ctx.fillStyle = backing;
       if (fold < 0.5) for (const [r, list] of rows) ctx.fillRect(x0 - 1, yTop(r), list.length * cw + 1, rh);
-      else for (const [r, list] of rows) for (let i = 0; i < list.length; i++) ctx.fillRect(xAt(r, i, list[i]!) - 1, yTop(r), w + 2, rh);
-      const font = letters ? `600 ${Math.max(7, Math.min(12, Math.floor(Math.min(rh * 0.78, cw * 1.05))))}px ui-monospace, SFMono-Regular, Menlo, monospace` : '';
-      if (letters) { ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; }
-      for (const [r, list] of rows) {
-        const y = yTop(r), inVa = r >= prof.val && r <= prof.vah, poc = r === prof.poc;
-        if (y > ph || y + rh < 0) continue;
-        for (let i = 0; i < list.length; i++) {
-          // The point of control's row as a light stripe across the profile (the reference's white row), its letters still in their colours' order.
-          const k = list[i]!, x = xAt(r, i, k), colour = poc ? mix(colourOf(k, r), dark ? '#ffffff' : '#1b1d21', 0.72) : colourOf(k, r), hollow = hollowAt.get(k)?.has(r) ?? false;
-          const alpha = fade * (inVa || poc ? 1 : 0.4);
-          ctx.globalAlpha = alpha;
-          if (hollow) { ctx.strokeStyle = colour; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1)); }
-          else { ctx.fillStyle = colour; ctx.fillRect(x, y, w, h); }
-          if (letters) {
-            ctx.fillStyle = hollow ? colour : poc ? (dark ? '#101216' : '#ffffff') : dark ? '#101216' : '#ffffff';
-            ctx.globalAlpha = alpha * (hollow ? 1 : 0.9);
-            ctx.fillText(letterOf(k), x + w / 2, y + h / 2 + 0.5);
+      else for (const b of prof.blocks) { const x = xAt(b.a, index.get(b.k)!.get(b.a)!, b.k); ctx.fillRect(x - 1, yTop(b.z), w + 2, yTop(b.a) + rh - yTop(b.z)); }
+      const byTime = s.colour !== 'count', colours = byTime ? ramp(timeStops, n, dark) : ramp(countStops, Math.max(1, maxCount), dark);
+      const swatchOf = (k: number, r: number): Swatch => byTime ? colours[Math.min(colours.length - 1, Math.max(0, k))]! : colours[Math.max(0, (rows.get(r)?.length ?? 1) - 1)]!;
+      // A cell: filled, or an outline where it is hollow.
+      const cell = (r: number, x: number, sw: Swatch, hollowCell: boolean): void => {
+        const y = yTop(r);
+        if (y > ph || y + rh < 0) return;
+        if (hollowCell) { ctx.strokeStyle = sw.fill; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1)); }
+        else ctx.fillRect(x, y, w, h);
+      };
+      // Three passes, one alpha each: the value area in full, the rows outside it dimmer, the point of control's row as a light stripe.
+      for (const pass of [0, 1, 2] as const) {
+        ctx.globalAlpha = fade * (pass === 1 ? 0.4 : 1);
+        const wanted = (r: number): boolean => pass === 2 ? r === prof.poc : r !== prof.poc && (pass === 0) === (r >= prof.val && r <= prof.vah);
+        if (byTime) {
+          for (const b of prof.blocks) {
+            const sw = swatchOf(b.k, 0), rowIndex = index.get(b.k)!;
+            ctx.fillStyle = pass === 2 ? sw.stripe : sw.fill;
+            for (let r = b.a; r <= b.z; r++) if (wanted(r)) cell(r, xAt(r, rowIndex.get(r)!, b.k), sw, b.hollow.has(r));
+          }
+        } else {
+          for (const [r, list] of rows) {
+            if (!wanted(r)) continue;
+            const sw = swatchOf(0, r); ctx.fillStyle = pass === 2 ? sw.stripe : sw.fill;
+            for (let i = 0; i < list.length; i++) { const k = list[i]!; cell(r, xAt(r, i, k), sw, hollow.get(k)?.has(r) ?? false); }
           }
         }
       }
-      // The block under the pointer: its cells framed, wherever they stand.
-      if (o.lit?.key === prof.key) {
-        ctx.globalAlpha = 1; ctx.strokeStyle = p.text; ctx.lineWidth = 1;
-        for (const [r, list] of rows) { const i = list.indexOf(o.lit.k); if (i >= 0) ctx.strokeRect(xAt(r, i, o.lit.k) - 0.5, yTop(r) - 0.5, w + 1, h + 1); }
+      if (letters) {
+        // Letters: on the colour in the ink that stands out on it; outside the value area in the page's text colour over the dim cell.
+        ctx.font = `600 ${Math.max(7, Math.min(12, Math.floor(Math.min(rh * 0.78, cellW * 1.05))))}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (const b of prof.blocks) {
+          const rowIndex = index.get(b.k)!, letter = letterOf(b.k);
+          for (let r = b.a; r <= b.z; r++) {
+            const y = yTop(r); if (y > ph || y + rh < 0) continue;
+            const sw = swatchOf(b.k, r), poc = r === prof.poc, inVa = r >= prof.val && r <= prof.vah, hollowCell = b.hollow.has(r);
+            ctx.fillStyle = hollowCell ? sw.fill : poc ? sw.stripeInk : inVa ? sw.ink : p.text;
+            ctx.globalAlpha = fade * (hollowCell || poc || inVa ? 1 : 0.8);
+            ctx.fillText(letter, xAt(r, rowIndex.get(r)!, b.k) + w / 2, y + h / 2 + 0.5);
+          }
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -181,28 +233,38 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
       label(first, x0, y0, p.muted, 'left', named);
       label(second, x0, y0 + 15, p.muted, 'left', named);
     }
-    if (!o.linesElsewhere && !outline) {
-      // The point of control across the rest of its window (the Volume profile's lines follow the TPO when they are drawn instead).
-      const y = Math.round(yTop(prof.poc) + rh / 2) + 0.5, from = x0 + (rows.get(prof.poc)?.length ?? 0) * cw + 4, to = Math.min(pw, wx1);
+    if (!o.linesFor(prof.key) && !outline) {
+      // The point of control across the rest of its window, where the Volume profile's lines do not stand for it.
+      const y = Math.round(yTop(prof.poc) + rh / 2) + 0.5, from = fold < 0.5 ? x0 + (rows.get(prof.poc)?.length ?? 0) * cw + 4 : Math.max(0, wx0), to = Math.min(pw, wx1);
       if (to > from + 10) {
         ctx.globalAlpha = 0.85 * fade; ctx.strokeStyle = p.poc; ctx.lineWidth = 1.5; ctx.setLineDash([]);
         ctx.beginPath(); ctx.moveTo(from, y); ctx.lineTo(to, y); ctx.stroke();
-        if (to - from > 90) label(`${o.name(prof)} ${t('POC')} ${fmtPrice((prof.poc + 0.5) * prof.R, prof.R)}`, to - 2, y, p.poc, 'right', named);
+        if (to - from > 90) { const name = o.name(prof); label(`${name ? `${name} ` : ''}${t('TPO')} ${t('POC')} ${fmtPrice((prof.poc + 0.5) * prof.R, prof.R)}`, to - 2, y, p.poc, 'right', named); }
       }
     }
     ctx.globalAlpha = 1;
   }
-  // The half hour under the pointer, across the map: when it happened.
-  if (o.lit) {
-    const prof = o.profiles.find(x => x.key === o.lit!.key), b = prof?.blocks.find(x => x.k === o.lit!.k);
-    if (prof && b) {
-      const a = v.xOf(b.t, pw), z = v.xOf(b.t + prof.blockMs, pw);
-      ctx.globalAlpha = 0.08; ctx.fillStyle = p.text; ctx.fillRect(a, 0, Math.max(1, z - a), ph); ctx.globalAlpha = 1;
-    }
-  }
   ctx.restore();
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   return out;
+}
+
+/** The block under the pointer, on the pointer's own layer: its cells framed wherever they stand, and its time lit across the map. */
+export function paintLit(ctx: CanvasRenderingContext2D, geo: TpoGeometry, k: number, v: View, pw: number, ph: number, p: Palette): void {
+  const prof = geo.profile, b = prof.blocks.find(x => x.k === k);
+  if (!b) return;
+  ctx.save();
+  const a = v.xOf(b.t, pw), z = v.xOf(b.t + prof.blockMs, pw);
+  ctx.globalAlpha = 0.08; ctx.fillStyle = p.text; ctx.fillRect(a, 0, Math.max(1, z - a), ph);
+  const gap = geo.cw >= 5 && geo.rh >= 5 ? 1 : 0, w = Math.max(1, (geo.fold > 0.5 ? geo.ucw : geo.cw) - gap), h = Math.max(1, geo.rh - gap);
+  ctx.globalAlpha = 1; ctx.strokeStyle = p.text; ctx.lineWidth = 1;
+  for (let r = b.a; r <= b.z; r++) {
+    const list = geo.rows.get(r), i = list?.indexOf(k) ?? -1;
+    if (i < 0) continue;
+    const x = geo.x0 + i * geo.cw + ((geo.unfoldX.get(k) ?? 0) - geo.x0 - i * geo.cw) * geo.fold, y = v.yOf((r + 1) * prof.R, ph);
+    ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+  }
+  ctx.restore();
 }
 
 /** The block and row under (x, y) on the profiles drawn last, the newest drawn first. */

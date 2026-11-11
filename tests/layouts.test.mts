@@ -27,18 +27,18 @@ test('a layout keeps what the chart shows, without the VWAP anchors or the profi
 });
 
 test("a layout keeps the TPO's look but never a coin's own rows, splits or merges; applying it and Undo keep this chart's", () => {
-  const mine = state({ tpo: { ...defaults.tpo, on: true, period: 'week', look: 'letters', rows: { BTC: 20 }, splits: { BTC: [5] }, merges: { ETH: [9] } } });
+  const mine = state({ tpo: { ...defaults.tpo, on: true, period: 'week', look: 'letters', rows: { BTC: 20 }, splits: { 'BTC|week|240': ['1794000000000@w'] }, merges: { 'ETH|day|30': ['d'] } } });
   const kept = settingsOf(mine);
   assert.ok(!('rows' in kept.tpo!) && !('splits' in kept.tpo!) && !('merges' in kept.tpo!));
   assert.equal(kept.tpo!.period, 'week');
-  const other = state({ tpo: { ...defaults.tpo, rows: { SOL: 0.05 }, splits: {}, merges: { BTC: [3] } } });
+  const other = state({ tpo: { ...defaults.tpo, rows: { SOL: 0.05 }, splits: {}, merges: { 'BTC|day|30': ['x'] } } });
   const applied = settingsToApply(kept, other);
   assert.equal(applied.tpo.on, true); assert.equal(applied.tpo.look, 'letters');
-  assert.deepEqual([applied.tpo.rows, applied.tpo.splits, applied.tpo.merges], [{ SOL: 0.05 }, {}, { BTC: [3] }]);
+  assert.deepEqual([applied.tpo.rows, applied.tpo.splits, applied.tpo.merges], [{ SOL: 0.05 }, {}, { 'BTC|day|30': ['x'] }]);
   const carried = carriedSettings({ tpo: mine.tpo } as never);
   assert.ok(!('rows' in carried.tpo!) && !('splits' in carried.tpo!));
   const whole = completeSettings({ tpo: kept.tpo } as never, other);
-  assert.deepEqual(whole.tpo!.merges, { BTC: [3] });
+  assert.deepEqual(whole.tpo!.merges, { 'BTC|day|30': ['x'] });
 });
 
 test('a file can come from anywhere: every field is checked, anything else gets its default', () => {

@@ -6,7 +6,7 @@ import { t } from '../i18n.ts';
 import { price as fmtPrice } from '../format.ts';
 import { currentCoin } from '../coin.ts';
 import { rowChoices } from './model.ts';
-import { MAX_TPO_COUNT, TPO_BLOCKS, withRows, type TpoSettings } from './settings.ts';
+import { MAX_TPO_COUNT, TPO_BLOCKS, blockMsOf, editScope, withRows, type TpoSettings } from './settings.ts';
 
 /** What the map knows for the panel: the Auto row size for this coin (0 until its days are read) and whose candles the TPO reads. */
 export interface TpoInfo { auto: number; market: string | null; minutes: number }
@@ -37,7 +37,7 @@ export function buildTpoPanel(store: Store, tools: HTMLElement, body: HTMLElemen
     switchRow(t('Laid out in time'), t('Each block in its own column at its half hour, behind its own candles, instead of folded into the profile (U).'), s.unfold, unfold => set({ unfold })),
     selectRow(t('Value area'), t('The share of the TPOs around the point of control that the value area holds.'), ['60', '65', '68', '70', '75', '80'].map(v => [v, `${v} %`] as [string, string]), String(s.share), v => set({ share: Number(v) })),
     heading(t('Marks')),
-    switchRow(t('Initial balance, open and last'), t('The first hour\'s range as a bracket at the left (IBH, IBL), the window\'s first price and its last.'), s.ib, ib => set({ ib })),
+    switchRow(t('Initial balance, open and last'), t('The range of the first hour\'s blocks (the first block where a block is an hour or longer) as a bracket at the left (IBH, IBL), the window\'s first price and its last.'), s.ib, ib => set({ ib })),
     switchRow(t('Tails, poor extremes, single prints'), t('Two or more rows of one block at an extreme make a tail; a top or bottom row of two or more blocks is poor. Each call says how many of four row grids agree: moving the rows by part of a row changes these calls on many days.'), s.calls, calls => set({ calls })),
     switchRow(t('Numbers under each profile'), t('Its range, its initial balance, its TPOs above and below the point of control, and its volume.'), s.stats, stats => set({ stats })),
     switchRow(t('Hollow where one venue stood alone'), t('A block drawn as an outline where this market\'s wick went at least a row and 3 bp past where most of the market stopped, from the other venues switched on (each moved by its usual gap first). Rare on the largest markets, more common on smaller ones.'), s.hollow, hollow => set({ hollow })),
@@ -45,9 +45,10 @@ export function buildTpoPanel(store: Store, tools: HTMLElement, body: HTMLElemen
     heading(t('Split and merge')),
     note(t('Right-click a block to split its window there, or to merge it with the window before or after.')),
   );
-  const edits = (s.splits[coin]?.length ?? 0) + (s.merges[coin]?.length ?? 0);
+  // Edits belong to this coin, kind of window and block length: undone here for those alone.
+  const scope = editScope(coin, s.period, blockMsOf(s)), edits = (s.splits[scope]?.length ?? 0) + (s.merges[scope]?.length ?? 0);
   if (edits) body.append(el('div', { class: 'session-add' }, el('button', { type: 'button', textContent: t('Undo splits and merges'), onclick: () => {
-    const { [coin]: _s, ...splits } = store.state.tpo.splits, { [coin]: _m, ...merges } = store.state.tpo.merges;
+    const { [scope]: _s, ...splits } = store.state.tpo.splits, { [scope]: _m, ...merges } = store.state.tpo.merges;
     store.set({ tpo: { ...store.state.tpo, splits, merges } }); rebuild();
   } })));
   body.append(note(i.market ? t('From the candles of {market}, in blocks of {n} minutes.', { market: i.market, n: i.minutes }) : t('No market of this coin has a history the page can read, so there is no TPO.')));

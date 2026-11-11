@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { autoRows, blocksOf, buildProfile, editedWindows, hollowRows, ladder, letterOf, levelsOfProfile, rowChoices, trailingGaps, valueArea, withLive, type Block, type Peer } from '../src/app/tpo/model.ts';
-import { TPO_DEFAULTS, blockMsOf, readTpo, withEdits, withRows } from '../src/app/tpo/settings.ts';
+import { MAX_TPO_ROWS, autoRows, blocksOf, buildProfile, editedWindows, hollowRows, ibBlocksOf, ladder, letterOf, levelsOfProfile, rowChoices, trailingGaps, valueArea, withLive, type Block, type Peer } from '../src/app/tpo/model.ts';
+import { TPO_DEFAULTS, blockMsOf, editScope, readTpo, withEdits, withRows } from '../src/app/tpo/settings.ts';
+import { barFor } from '../src/app/tpo/layer.ts';
 import type { CandleRow } from '../src/app/store.ts';
 import { TPO_BTC_2026_09_28 } from './fixtures/tpo-btc-2026-09-28.mts';
 
@@ -77,8 +78,8 @@ test('blocks: a replay never reads a candle still forming at its moment, live do
   const replay = blocksOf(rows, 0, HALF, HALF, 5 * MIN, 7 * MIN, true);
   assert.equal(replay[0]!.h, 12);
   // The chart's own fresher price widens the block under way only.
-  assert.equal(withLive(live, HALF, { t: 8 * MIN, h: 16, l: 8, c: 15 })[0]!.h, 16);
-  assert.equal(withLive(live, HALF, { t: HALF + MIN, h: 16, l: 8, c: 15 })[0]!.h, 15);
+  assert.equal(withLive(live, HALF, { t: 0, h: 16, l: 8, c: 15 })[0]!.h, 16);
+  assert.equal(withLive(live, HALF, { t: HALF, h: 16, l: 8, c: 15 })[0]!.h, 15);
 });
 
 test('Auto rows come from the last complete days, so they do not move as history loads', () => {
@@ -95,24 +96,94 @@ test('letters run A to Z, a to z, then again', () => {
   assert.deepEqual([0, 25, 26, 47, 51, 52].map(letterOf), ['A', 'Z', 'a', 'v', 'z', 'A']);
 });
 
-test('splits cut a window at the block, merges join one to the window before it', () => {
+test('splits cut one calendar window at the block, merges join a window to the one that ends where it begins', () => {
   const ws = [{ key: 'a', from: 0, to: DAY }, { key: 'b', from: DAY, to: 2 * DAY }, { key: 'c', from: 2 * DAY, to: 3 * DAY }];
-  const split = editedWindows(ws, [DAY + 7 * HALF + 5 * MIN], [], HALF);
-  assert.deepEqual(split.map(w => [w.from, w.to]), [[0, DAY], [DAY, DAY + 7 * HALF], [DAY + 7 * HALF, 2 * DAY], [2 * DAY, 3 * DAY]]);
-  const merged = editedWindows(ws, [], [2 * DAY], HALF);
-  assert.deepEqual(merged.map(w => [w.from, w.to, w.base]), [[0, DAY, 'a'], [DAY, 3 * DAY, 'b']]);
-  // A merge with nothing before it, or a split on a window's edge, changes nothing.
-  assert.deepEqual(editedWindows(ws, [DAY], [0], HALF).map(w => w.key), ['a', 'b', 'c']);
+  const split = editedWindows(ws, [`${DAY + 7 * HALF + 5 * MIN}@b`], [], HALF);
+  assert.deepEqual(split.map(w => [w.from, w.to, w.base]), [[0, DAY, 'a'], [DAY, DAY + 7 * HALF, 'b'], [DAY + 7 * HALF, 2 * DAY, 'b'], [2 * DAY, 3 * DAY, 'c']]);
+  const merged = editedWindows(ws, [], ['c'], HALF);
+  assert.deepEqual(merged.map(w => [w.from, w.to, w.base, w.members.join()]), [[0, DAY, 'a', 'a'], [DAY, 3 * DAY, 'b', 'b,c']]);
+  // A split names its window: a moment inside another window, or on a window's edge, cuts nothing; a merge with nothing before it does nothing.
+  assert.deepEqual(editedWindows(ws, [`${DAY + HALF}@a`, `${DAY}@b`], ['a'], HALF).map(w => w.key), ['a', 'b', 'c']);
+  // Overlapping windows (two sessions) never merge: none ends where the other begins.
+  const sessions = [{ key: 'L', from: 7 * HALF * 2, to: 16 * HALF * 2 }, { key: 'N', from: 13 * HALF * 2, to: 22 * HALF * 2 }];
+  assert.deepEqual(editedWindows(sessions, [`${14 * HALF * 2}@N`], ['N'], HALF).map(w => [w.from, w.to, w.base]), [[7 * HALF * 2, 16 * HALF * 2, 'L'], [13 * HALF * 2, 14 * HALF * 2, 'N'], [14 * HALF * 2, 22 * HALF * 2, 'N']]);
 });
 
-test('settings read back field by field', () => {
+test('settings read back field by field; edits are kept per coin, kind of window and block length', () => {
   assert.deepEqual(readTpo(undefined), { ...TPO_DEFAULTS });
-  const s = readTpo({ on: true, period: 'week', block: 240, count: 99, look: 'letters', colour: 'count', share: 68, rows: { BTC: 20, bad: 3, ETH: -1 }, splits: { BTC: [3, 1, 'x'] } });
+  const scope = editScope('BTC', 'day', HALF);
+  assert.equal(scope, 'BTC|day|30');
+  const s = readTpo({ on: true, period: 'week', block: 240, count: 99, look: 'letters', colour: 'count', share: 68, rows: { BTC: 20, bad: 3, ETH: -1, PEPE: 1e-13 }, splits: { [scope]: ['1794000000000@k', 'x', 3], BTC: ['1794000000000@k'] }, merges: { [scope]: ['k'] } });
   assert.equal(s.on, true); assert.equal(s.period, 'week'); assert.equal(s.block, 240); assert.equal(s.count, TPO_DEFAULTS.count);
   assert.equal(s.look, 'letters'); assert.equal(s.colour, 'count'); assert.equal(s.share, 68);
-  assert.deepEqual(s.rows, { BTC: 20 }); assert.deepEqual(s.splits, { BTC: [1, 3] });
+  assert.deepEqual(s.rows, { BTC: 20 }); assert.deepEqual(s.splits, { [scope]: ['1794000000000@k'] }); assert.deepEqual(s.merges, { [scope]: ['k'] });
   assert.equal(blockMsOf({ block: 0, period: 'week' }), 240 * MIN); assert.equal(blockMsOf({ block: 0, period: 'day' }), HALF); assert.equal(blockMsOf({ block: 60, period: 'day' }), 60 * MIN);
-  assert.deepEqual(withEdits(s, 'merges', 'BTC', l => [...l, 5]).merges, { BTC: [5] });
-  assert.deepEqual(withEdits(withEdits(s, 'merges', 'BTC', l => [...l, 5]), 'merges', 'BTC', () => []).merges, {});
+  assert.deepEqual(withEdits(s, 'merges', scope, () => []).merges, {});
+  assert.deepEqual(withEdits(s, 'merges', 'ETH|day|30', l => [...l, 'q']).merges, { [scope]: ['k'], 'ETH|day|30': ['q'] });
   assert.deepEqual(withRows(s, 'BTC', 0).rows, {}); assert.deepEqual(withRows(s, 'ETH', 2).rows, { BTC: 20, ETH: 2 });
+});
+
+test('the value area does not take a row more for a share that comes out a hair over a whole count', () => {
+  // 68 % of 75 is 51, which binary arithmetic makes 51.00000000000001.
+  const counts = new Map<number, number>(); for (let r = 0; r < 15; r++) counts.set(r, 5);
+  const a = valueArea(counts, 0, 14, 0.68);
+  let held = 0; for (let r = a.val; r <= a.vah; r++) held += counts.get(r) ?? 0;
+  assert.ok(held >= 51 && held < 56, `held ${held}`);
+});
+
+test('the initial balance is the first hour of blocks, at least one', () => {
+  assert.deepEqual([15, 30, 60, 240].map(m => ibBlocksOf(m * MIN)), [4, 2, 1, 1]);
+  const rows: CandleRow[] = [];
+  for (let i = 0; i < 8; i++) rows.push([i * 15 * MIN, 100, 101 + i, 99 - i, 100, 1] as unknown as CandleRow);
+  const p = buildProfile({ key: 'w', from: 0, to: DAY }, blocksOf(rows, 0, DAY, 15 * MIN, 15 * MIN, DAY), 15 * MIN, 1, 0.7, DAY)!;
+  assert.equal(p.ibBlocks, 4); assert.equal(p.ibh, 104); assert.equal(p.ibl, 96);
+});
+
+test('rows far finer than the prices make no profile, quickly, instead of millions of rows', () => {
+  const block: Block = { t: 0, h: 80_010, l: 80_000, o: 80_000, c: 80_005, usd: 1, closed: true };
+  const started = Date.now();
+  assert.equal(buildProfile({ key: 'w', from: 0, to: DAY }, [block], HALF, 1e-9, 0.7, DAY), null);
+  assert.equal(buildProfile({ key: 'w', from: 0, to: DAY }, [block], HALF, 10 / (MAX_TPO_ROWS + 10), 0.7, DAY), null);
+  assert.ok(Date.now() - started < 100);
+});
+
+test('the chart\'s own price starts the block under way where the history has not reached it, on the window\'s grid', () => {
+  const rows: CandleRow[] = [[0, 10, 12, 9, 11, 1]] as unknown as CandleRow[];
+  const blocks = blocksOf(rows, 0, DAY, HALF, HALF, HALF + MIN);
+  const next = withLive(blocks, HALF, { t: HALF, h: 13, l: 10.5, c: 12 });
+  assert.deepEqual(next.map(b => [b.t, b.h, b.l, b.closed]), [[0, 12, 9, true], [HALF, 13, 10.5, false]]);
+  // A block on a grid that starts off the half hour: the window's own, not the clock's.
+  const off = blocksOf([[20 * MIN, 1, 2, 0.5, 1.5, 1]] as unknown as CandleRow[], 10 * MIN, DAY, HALF, 5 * MIN, DAY);
+  assert.equal(off[0]!.t, 10 * MIN);
+});
+
+test('the usual gap is the median of the day before, the same as worked out one block at a time', () => {
+  const mine: Block[] = [], theirs = new Map<number, Block>();
+  for (let i = 0; i < 200; i++) {
+    const t = i * HALF, c = 100 + Math.sin(i) * 3;
+    mine.push({ t, h: c, l: c, o: c, c, usd: 1, closed: true });
+    theirs.set(t, { t, h: c, l: c, o: c, c: c * (1 + ((i * 7919) % 13 - 6) / 1e4), usd: 1, closed: true });
+  }
+  const fast = trailingGaps(mine, theirs, HALF);
+  for (const i of [0, 10, 24, 47, 48, 49, 120, 199]) {
+    const t = i * HALF, prev = mine.filter(b => b.t < t && b.t >= t - DAY).map(b => 1e4 * Math.log(theirs.get(b.t)!.c / b.c)).sort((a, b) => a - b), n = prev.length;
+    const want = n >= 24 ? (n % 2 ? prev[n >> 1]! : (prev[n / 2 - 1]! + prev[n / 2]!) / 2) : 0;
+    assert.ok(Math.abs(fast.get(t)! - want) < 1e-9, `block ${i}`);
+  }
+});
+
+test('a peer whose history stops inside a block does not judge it', () => {
+  const peer = (h: number, l: number, heldTo = Infinity): Peer => ({ blocks: new Map([[0, { t: 0, h, l, o: l, c: h, usd: 100, closed: true }]]), gap: () => 0, heldTo });
+  const wick: Block = { t: 0, h: 100.1, l: 99.0, o: 99, c: 100, usd: 50, closed: true };
+  assert.ok(hollowRows(wick, [peer(100, 99), peer(100, 99), peer(100.01, 99)], 0.01, HALF).size > 0);
+  // Two of the three read before the block ended: fewer than three markets judge it, so nothing is hollow.
+  assert.equal(hollowRows(wick, [peer(100, 99, HALF / 2), peer(100, 99, HALF / 2), peer(100.01, 99)], 0.01, HALF).size, 0);
+});
+
+test('the candle size fits every window of the calendar, both daylight-saving offsets', () => {
+  assert.equal(barFor(240 * MIN, [{ from: 0, to: DAY }]), 240 * MIN);
+  // Madrid's midnight is 23:00 or 22:00 UTC: four-hour blocks are built from hours.
+  assert.equal(barFor(240 * MIN, [{ from: -60 * MIN, to: DAY - 60 * MIN }, { from: -120 * MIN, to: DAY - 120 * MIN }]), 60 * MIN);
+  // A session starting at :15 needs quarter hours.
+  assert.equal(barFor(HALF, [{ from: 15 * MIN, to: 4 * HALF + 15 * MIN }]), 15 * MIN);
 });
