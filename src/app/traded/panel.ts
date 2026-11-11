@@ -267,7 +267,7 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
     toggle: (rule, on) => { if (on) put({ rule }); },
   }));
   out.push(el('p', { class: 'anchor-sub', textContent: t('From a date') }), dateField({
-    focus: 'profile-anchor', action: t('Set'), value: a?.at ?? null, reachMs: PROFILE_ANCHOR_REACH_MS, tooOld: t('Too far back: the columns reach 21 weeks.'),
+    focus: 'profile-anchor', action: t('Set'), value: a?.at ?? null, reachMs: PROFILE_ANCHOR_REACH_MS, tooOld: t('Too far back: the columns reach two years.'),
     startOf: at => Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS, add: at => put({ at }),
   }));
   const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : t('Click a candle'), tip: t('Then click the candle on the map the columns should add up from.'),
@@ -280,7 +280,7 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
   const w = sources.anchored?.() ?? null;
   if (a && w && !w.state) out.push(note(w.to > w.from ? t('The columns show {from} to {to}, recalculated at {time}.', { from: clockYear(w.from), to: clock(w.to, true), time: clock(w.at) }) : t('The first five minutes after the anchor are not over yet.')));
   else if (a && w?.state === 'far') out.push(note(t('This anchor starts further back than the columns reach, so they are empty: choose a later one.')));
-  out.push(note(t('Traded volume goes back up to 21 weeks, as an estimate from candles (≈). Liquidations, absorption and open interest go back only as far as they were recorded.')));
+  out.push(note(t('Traded volume goes back two years, as an estimate from candles (≈): five-minute ones for the last 21 weeks, hourly ones before (the start is then on the hour). Liquidations, absorption and open interest go back only as far as they were recorded.')));
   return out;
 }
 

@@ -9,8 +9,13 @@
 const MINUTE = 60_000, DAY = 86_400_000;
 /** Where the profile's anchor starts now (`HeatPane.profileAnchorStart`): as `Resolved`, and 'far' for a start further back than the columns reach. */
 export type ProfileAnchorStart = { state: 'ready'; at: number } | { state: 'far'; at: number } | { state: 'coming' } | { state: 'none' };
-/** How far back the profile's anchor can be: as far as the candle estimate of traded volume reaches. */
-export const PROFILE_ANCHOR_REACH_MS = 21 * 7 * DAY;
+/**
+ * How far back the profile's anchor can be: two years, and the days a zone and a leap year add (a previous year's high is up to two years back),
+ * the window being worked out from the zone's hourly bars where the five-minute ones do not reach (`PROFILE_FINE_REACH_MS`).
+ */
+export const PROFILE_ANCHOR_REACH_MS = 733 * DAY;
+/** How far back the five-minute candles of the estimate reach (the hub's `PROFILE_CANDLES_BACK_MS`): an older anchored window takes coarser bars. */
+export const PROFILE_FINE_REACH_MS = 21 * 7 * DAY;
 /** The bars the window is on: the candle estimate's (`candleBarMs`), so its start and its end are where an estimate's bars begin and end. */
 export const ANCHOR_BAR_MS = 5 * MINUTE;
 /** How often an anchored window is taken again, in minutes; 15 by default. */
@@ -44,8 +49,9 @@ export interface AnchorSnapshot {
  * there is none, when it was taken for another anchor, coin or interval (`key`), when `everyMin` has passed since it was taken, when asked to
  * (`force`: Update now), or while it holds nothing yet (an anchor in the five minutes under way) and five more minutes have ended since.
  */
-export function anchorSnapshot(held: AnchorSnapshot | null, key: string, anchor: number, everyMin: number, now: number, force = false): AnchorSnapshot {
-  const to = Math.floor(now / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
+export function anchorSnapshot(held: AnchorSnapshot | null, key: string, anchor: number, everyMin: number, now: number, force = false, barMs = ANCHOR_BAR_MS): AnchorSnapshot {
+  // To the last whole bar of the window's candles: five minutes, or the hour of a window older than they reach.
+  const to = Math.floor(now / barMs) * barMs;
   const due = !held || held.key !== key || force || now - held.at >= everyMin * MINUTE || (held.to <= held.from && to > held.to);
   return due ? { key, from: anchor, to, at: now } : held;
 }

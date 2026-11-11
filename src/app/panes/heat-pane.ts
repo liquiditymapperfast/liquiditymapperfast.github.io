@@ -17,7 +17,7 @@ import type { ProfileWindow, SessionDef } from '../traded/sessions.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, textOn, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
-import { clock, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
+import { clock, clockYear, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
 import { timeAxis } from '../time-axis.ts';
 export { timeTicks } from '../time-axis.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
@@ -54,7 +54,7 @@ import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
-import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot, type ProfileAnchorStart } from '../traded/anchor.ts';
+import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, PROFILE_FINE_REACH_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot, type ProfileAnchorStart } from '../traded/anchor.ts';
 import { liveUpdate, scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
@@ -1359,7 +1359,7 @@ export class HeatPane {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = Date.now(), p = this.#palette;
     const at = chosen ?? (vwap ? candleStartAt(hover!.t, tf) : anchorAt(hover!.t, tf)), x = Math.round(this.view.xOf(at, pw)) + 0.5;
     const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS), future = at > now;
-    const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach 21 weeks.'))
+    const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.'))
       : chosen !== null ? clock(at, true) : `${clock(at, true)} · ${t('click to place')}`;
     const color = future || tooOld ? p.muted : vwap ? p.vwap : p.poc;
     ctx.save();
@@ -2355,12 +2355,12 @@ export class HeatPane {
       if (start.state === 'coming' && !this.#anchorTimer) this.#anchorTimer = window.setTimeout(() => { this.#anchorTimer = 0; this.invalidate(); }, 2_000);
       return { key: `${coin}|${start.state}`, from: to, to, at: Date.now(), state: start.state };
     }
-    const anchor = start.at;
+    const anchor = start.at, bar = this.#anchorBar(anchor);
     // In a replay whose moment is not five minutes past the anchor yet (or is before it), the window holds nothing yet, as a live one in its
     // first five minutes: the columns stay empty (nothing is asked of an empty window), never the chart's totals under the anchor (Sol, code
     // review 2026-11-10, round 3).
-    if (replaying()) { const at = pageNow(), to = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS; return { key: 'replay', from: anchor, to, at, rev: this.#replayRev }; }
-    const held = this.#anchorSnap, now = Date.now(), snap = anchorSnapshot(held, `${coin}|${anchor}|${s.every}`, anchor, s.every, now, this.#anchorForce);
+    if (replaying()) { const at = pageNow(), to = Math.floor(at / bar) * bar; return { key: 'replay', from: anchor, to, at, rev: this.#replayRev }; }
+    const held = this.#anchorSnap, now = Date.now(), snap = anchorSnapshot(held, `${coin}|${anchor}|${s.every}`, anchor, s.every, now, this.#anchorForce, bar);
     this.#anchorForce = false;
     if (snap !== held) {
       this.#anchorSnap = snap;
@@ -2378,9 +2378,23 @@ export class HeatPane {
     let at: number;
     if (a.rule) { const r = this.ruleStart(a.rule); if (r.state !== 'ready') return r; at = r.at; } else at = a.at!;
     at = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
+    // Older than the five-minute candles reach: on the bar of the coarser ones the window is worked out from (said as its start).
+    const bar = this.#anchorBar(at); at = Math.floor(at / bar) * bar;
     const now = Date.now();
     if (at > now) return { state: 'none' };
     return at < now - PROFILE_ANCHOR_REACH_MS ? { state: 'far', at } : { state: 'ready', at };
+  }
+  /**
+   * The bars an anchored window from `at` is worked out on: five minutes while they reach it (`PROFILE_FINE_REACH_MS`, 21 weeks), else the
+   * zone's own bar (an hour, or half an hour in a zone off the hour), so every period's start falls on one; reaching two years.
+   */
+  #anchorBar(at: number): number {
+    return at < Date.now() - PROFILE_FINE_REACH_MS ? this.#keyLevelContext(this.store.state).barMs : ANCHOR_BAR_MS;
+  }
+  /** The candle size the traded-volume column's estimate is read from: the anchored window's bars (`#anchorBar`), else the profile's own. */
+  #columnBar(state: AppState): number {
+    const a = this.anchoredWindow();
+    return a && !a.state ? Math.max(this.#anchorBar(a.from), this.#profileCandles(state, 'day').barMs) : this.#profileCandles(state, 'day').barMs;
   }
   /** Take the anchored window again now (the panel's Update now). */
   updateAnchored(): void { this.#anchorForce = true; this.#replayRev++; this.invalidate(); }
@@ -2444,7 +2458,7 @@ export class HeatPane {
    * none are asked for beyond it), and a market of the column's own is there to read (`#columnMarkets`).
    */
   #loadedWanted(state: AppState, win: { from: number; to: number } = this.#columnWindow()): boolean {
-    if (replaying() || !state.show.traded || !(win.to > win.from) || win.from < Date.now() - PROFILE_CANDLES_BACK_MS) return false;
+    if (replaying() || !state.show.traded || !(win.to > win.from) || win.from < Date.now() - (this.anchoredWindow() ? PROFILE_ANCHOR_REACH_MS : PROFILE_CANDLES_BACK_MS)) return false;
     const mine = this.#columnMarkets(state);
     if (!mine.main && !mine.spot) return false;
     const ids = flowIds(state, this.hub.flow.ids);
@@ -2462,7 +2476,7 @@ export class HeatPane {
     if (!this.#loadedWanted(state, win)) return false;
     const mine = this.#columnMarkets(state), spotOnly = !mine.main, primary = spotOnly ? mine.spot : mine.main;
     if (!primary) return false;
-    const h = this.hub.profileHistory(this.#profileCandles(state, 'day').barMs, spotOnly ? 'spot' : 'main');
+    const h = this.hub.profileHistory(this.#columnBar(state), spotOnly ? 'spot' : 'main');
     return h.id !== primary.id || h.reach(win.from) === 'coming';
   }
   /**
@@ -2501,7 +2515,7 @@ export class HeatPane {
   #ensureLoadedColumn(state: AppState): void {
     const win = this.#columnWindow();
     if (!this.#loadedWanted(state, win)) return;
-    const mine = this.#columnMarkets(state), { barMs } = this.#profileCandles(state, 'day'), at = Math.floor(win.from / barMs) * barMs;
+    const mine = this.#columnMarkets(state), barMs = this.#columnBar(state), at = Math.floor(win.from / barMs) * barMs;
     if (mine.main) this.hub.profileHistory(barMs, 'main').ensure(mine.main, at, barMs, () => this.invalidate());
     if (mine.spot) this.hub.profileHistory(barMs, 'spot').ensure(mine.spot, at, barMs, () => this.invalidate());
   }
@@ -2973,7 +2987,7 @@ export class HeatPane {
    * The spot market's candles join once they reach the window as the perpetual's do (`spot`); until then the perpetual's draw alone.
    */
   #windowFromCandles(state: AppState, w: ProfileWindow, step: number, share: number, now: number, column = false): { levels: ValueLevels; upTo: number; rows: Map<number, number>; buys: Map<number, number> | null; spot: boolean; markets: string } | null {
-    const { target, spot, barMs } = this.#profileCandles(state, windowKind(w));
+    const { target, spot, barMs: own } = this.#profileCandles(state, windowKind(w)), barMs = column ? this.#columnBar(state) : own;
     // The traded-volume column counts the markets the chips and the Spot / Perp filter leave on (`#columnMarkets`), and may be the spot market's
     // alone; the days, weeks and sessions on the chart are the coin's usual market with its spot market, whatever is on. `lag`: how far behind a
     // window that has ended the candles known may be (a column follows a pan off the live edge; a period's lines are drawn only once final).
@@ -3435,7 +3449,7 @@ export class HeatPane {
     const measured = measureDef(metric).header(rows, flags);
     let { head, sub } = measured;
     // An estimate from the candles says so, in the profile colour, where a recording's window says "since" in amber.
-    const anchored = this.anchoredWindow(), fromText = anchored ? clock(anchored.from, anchored.from < startOfDay(Date.now())) : '';
+    const anchored = this.anchoredWindow(), fromText = anchored ? (anchored.from < startOfDay(Date.now()) ? clockYear(anchored.from) : clock(anchored.from)) : '';
     if (loaded) { head = `≈ ${head}`; sub = anchored ? t('≈ from {time}', { time: fromText }) : t('≈ from candles'); }
     if (this.hub.profileState(metric) === 'unavailable' && !rows) sub = t('not on this server');
     ctx.fillText(head, x0 + 4, 4);
@@ -3459,8 +3473,9 @@ export class HeatPane {
     // The box stands beside the columns, over the map, like the profile's comparison.
     // It opens downward from under the chart's corner buttons, which would otherwise cover its first lines.
     // Where the estimate comes from, and, where its candles do not say who bought, that its column has one volume and no sides.
-    const note = loaded ? [t('An estimate from the candles of {market}, the volume of each spread over its range: not the recording.', { market: loaded.markets }), ...(unsplit ? [t('{market} candles do not say who bought: the total only.', { market: loaded.markets })] : [])].join(' ') : null;
-    const windowWords = anchored ? t('From {from} to {to}', { from: clock(anchored.from, true), to: clock(anchored.to, true) }) : t('What is on the chart');
+    const coarse = this.#columnBar(state), note = loaded ? [t('An estimate from the candles of {market}, the volume of each spread over its range: not the recording.', { market: loaded.markets }),
+      ...(coarse > ANCHOR_BAR_MS ? [t('The anchor is older than the five-minute candles reach (21 weeks), so these are {minutes}-minute ones.', { minutes: String(Math.round(coarse / 60_000)) })] : []), ...(unsplit ? [t('{market} candles do not say who bought: the total only.', { market: loaded.markets })] : [])].join(' ') : null;
+    const windowWords = anchored ? t('From {from} to {to}', { from: clockYear(anchored.from), to: clock(anchored.to, true) }) : t('What is on the chart');
     if (rows && hover && onHead) return { lines: tradedFigures(rows, levels, state.mark.price, windowWords, metricWords(metric), note, !unsplit), y: 34, placement: 'down' };
     return rows && hover && hoverRow >= 0 ? { lines: tradedLines(rows, hoverRow, levels, metricWords(metric), note, !unsplit), y: hover.y } : null;
   }

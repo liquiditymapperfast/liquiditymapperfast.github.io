@@ -1,3 +1,4 @@
+import { PROFILE_ANCHOR_REACH_MS, PROFILE_FINE_REACH_MS } from './traded/anchor.ts';
 import { connectionStatus } from './net.ts';
 import type { BootstrapState, DataSource, FootprintResponse, TickMessage } from './source.ts';
 import { PrintBook, fromWire, type Print } from './prints.ts';
@@ -102,7 +103,7 @@ export interface RasterResult { id: number; w: number; h: number; data: Float32A
  */
 export const VALUE_AREA_SETTLE_MS = 60 * MINUTE;
 /** How far back the volume profile's candles reach: twenty weeks of lines and the week before the first. */
-export const PROFILE_CANDLES_BACK_MS = 21 * 7 * 86_400_000;
+export const PROFILE_CANDLES_BACK_MS = PROFILE_FINE_REACH_MS;
 /** A value area's key: the instruments, the row step and share it was read with, and its window. */
 export const valueAreaKey = (ids: readonly string[], step: number, share: number, w: { from: number; to: number }): string => `${ids.join(',')}|${step}|${share}|${w.from}-${w.to}`;
 /** The key a past window's traded volume by price is held by (`Hub.windowProfiles`): the instruments first, as `valueAreaKey`'s. */
@@ -400,7 +401,8 @@ export class Hub {
   profileHistory(barMs: number, market: 'main' | 'spot' = 'main'): KeyLevelHistory {
     const key = `${barMs}|${market}`;
     let h = this.#profileHistories.get(key);
-    if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, PROFILE_CANDLES_BACK_MS); h.withBuy = true; this.#profileHistories.set(key, h); }
+    // Half-hour and hourly bars are an anchored column's older than the five-minute ones reach: they reach as far as such an anchor can be.
+    if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, barMs >= 30 * 60_000 ? PROFILE_ANCHOR_REACH_MS : PROFILE_CANDLES_BACK_MS); h.withBuy = true; this.#profileHistories.set(key, h); }
     return h;
   }
   /**

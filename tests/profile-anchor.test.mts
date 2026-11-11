@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHOR_BAR_MS, ANCHOR_EVERY, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue } from '../src/app/traded/anchor.ts';
+import { ANCHOR_BAR_MS, ANCHOR_EVERY, PROFILE_ANCHOR_REACH_MS, PROFILE_FINE_REACH_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue } from '../src/app/traded/anchor.ts';
 import { TRADED_DEFAULTS, profileAnchorOf, readTraded, restoreProfileAnchor, withProfileAnchor } from '../src/app/traded/settings.ts';
 import { readSettings, type AppState } from '../src/app/store.ts';
 import { carriedSettings, completeSettings, settingsOf, settingsToApply } from '../src/app/layouts/layouts.ts';
@@ -90,4 +90,13 @@ test('the columns draw only an answer asked for the anchored window they show (S
   assert.notEqual(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN)), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN)), 'Update now within the same five minutes asks again');
   assert.equal(anchorTag(s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay')), anchorTag(s(T0, T0 + HOUR, T0 + HOUR + 2 * MIN, 'replay')), 'a replay asks once for its five minutes');
   assert.notEqual(anchorTag({ ...s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay'), rev: 1 }), anchorTag({ ...s(T0, T0 + HOUR, T0 + HOUR + MIN, 'replay'), rev: 2 }), 'and again at Update now');
+});
+
+test('an anchored window older than the five-minute candles reach is on the zone\'s hourly bars, as far as two years back', () => {
+  const now = T0 + 300 * DAY + 37 * MIN;
+  const w = anchorSnapshot(null, 'BTC|old|15', T0, 15, now, false, HOUR);
+  assert.deepEqual([w.from, w.to], [T0, Math.floor(now / HOUR) * HOUR], 'to its last whole hour');
+  assert.equal(anchorSnapshot(w, 'BTC|old|15', T0, 15, now + 10 * MIN, false, HOUR), w, 'held while not due');
+  assert.equal(PROFILE_FINE_REACH_MS, 21 * 7 * DAY);
+  assert.ok(PROFILE_ANCHOR_REACH_MS >= 2 * 366 * DAY, 'a previous year\'s high on New Year\'s Eve is reached');
 });

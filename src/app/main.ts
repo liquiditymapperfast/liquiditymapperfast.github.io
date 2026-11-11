@@ -3,7 +3,7 @@ import { ServerSource } from './server-source.ts';
 import { BrowserSource } from './browser-source.ts';
 import { chooseCoin, currentCoin, forCoin, keepCoinRecordings, scaledUsd, type CoinChoice } from './coin.ts';
 import { instrumentIdFor } from '../shared/coins.ts';
-import { changeAnchor, withAnchor } from './vwap/settings.ts';
+import { MAX_ANCHORS, changeAnchor, withAnchor } from './vwap/settings.ts';
 import { ANCHOR_REACH_MS, candleStartAt } from './vwap/vwap.ts';
 import { withProfileAnchor } from './traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/anchor.ts';
@@ -318,7 +318,7 @@ async function main(): Promise<void> {
     const s = store.state, tf = TIMEFRAMES[s.timeframe] ?? 3_600_000, now = Date.now(), vwap = s.vwapAnchoring;
     const start = vwap ? candleStartAt(at, tf) : anchorAt(at, tf);
     if (start > now) return { refused: t('No candle there yet.') };
-    if (start < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS)) return { refused: vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach 21 weeks.') };
+    if (start < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS)) return { refused: vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.') };
     return { start };
   };
   // Put the anchor there: a VWAP one added, or the one being moved (its Move) put there and fixed from now on; the profile's set (one a coin).
@@ -326,7 +326,16 @@ async function main(): Promise<void> {
     const s = store.state, coin = currentCoin().coin;
     if (s.vwapAnchoring) {
       const vwap = { ...s.vwap, on: true }, move = s.anchorMove;
-      store.set({ vwap: move ? changeAnchor(vwap, coin, move, { at: start }) : withAnchor(vwap, coin, { at: start }, Date.now()), vwapAnchoring: false, anchorMove: null, anchorPreview: null });
+      const next = move ? changeAnchor(vwap, coin, move, { at: start }) : withAnchor(vwap, coin, { at: start }, Date.now());
+      // Refused (another anchor starts on that candle, or the coin has six already): said, never a silent disarm (the advisor, 2026-11-11);
+      // on a taken candle the tool stays armed for another.
+      if (next === vwap) {
+        const full = !move && (s.vwap.anchors[coin]?.length ?? 0) >= MAX_ANCHORS;
+        if (full) { store.set({ vwapAnchoring: false, anchorMove: null, anchorPreview: null }); toast(t('Up to six anchors: remove one to add another.')); toolbar.refreshOpenPanel(); }
+        else { store.set({ anchorPreview: null }); toolbar.anchorHint(t('An anchor starts on that candle already: choose another.')); }
+        return;
+      }
+      store.set({ vwap: next, vwapAnchoring: false, anchorMove: null, anchorPreview: null });
     } else if (s.profileAnchoring) {
       store.set({ traded: withProfileAnchor({ ...s.traded, columns: 'anchor' }, coin, { at: start }), profileAnchoring: false, anchorPreview: null, show: { ...s.show, traded: true } });
     }
