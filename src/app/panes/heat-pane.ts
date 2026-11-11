@@ -1412,7 +1412,8 @@ export class HeatPane {
    * caught on it lands on the body seen.
    */
   candleAt(x: number): CandleUnder | null {
-    const state = this.store.state; if (!state.show.candles) return null;
+    // The candles as the map draws them: in a replay, cut to its moment (`#displayState`), so the magnet never catches one from after it.
+    const state = this.#displayState(); if (!state.show.candles) return null;
     // Zoomed out, the longer candles drawn (`zoomedRows`), whole and in the middle of their slots.
     const zoom = this.#zoomedShown(state) ? this.drawnTf(state) : 0;
     const candles = zoom ? this.zoomedRows(state, zoom) : this.candlesDrawn(state), tf = zoom || (TIMEFRAMES[state.timeframe] ?? 3_600_000), v = this.view, pw = this.plotW, ph = this.plotH;
