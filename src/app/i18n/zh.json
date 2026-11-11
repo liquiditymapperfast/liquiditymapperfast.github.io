@@ -2173,5 +2173,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "每个脚本可以使用的历史 K 线数量，从交易所读取。越多，加载和运行就越慢。",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "第 {line} 行：这需要 {n}，但脚本读取的 {max}中，这个图表只给出 {have}。",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "第 {line} 行：这需要 {n}，但脚本只读取 {max}。请调高“每个脚本的 K 线数”（最多 {most}），或使用更长的时间周期。",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "第 {line} 行：{asked}超过了窗口能容纳的数量，因此使用最近的 {n}。"
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "第 {line} 行：{asked}超过了窗口能容纳的数量，因此使用最近的 {n}。",
+ "Search the guide": "搜索指南",
+ "Clear the search": "清除搜索",
+ "Nothing in the guide matches that.": "指南中没有匹配的内容。"
 }

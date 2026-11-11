@@ -22,6 +22,23 @@ test('sections have unique ids and every figure and help link points at somethin
   assert.deepEqual(Object.keys(SCENES).sort(), [...new Set(SECTIONS.flatMap(s => s.blocks.flatMap(b => (b.t === 'fig' ? [b.id] : []))))].sort(), 'every scene is used');
 });
 
+test('the contents list is in groups: the first section starts one, and no group is named twice', () => {
+  assert.ok(SECTIONS[0]!.part, 'the first section begins a group');
+  const parts = SECTIONS.flatMap(s => (s.part ? [s.part] : []));
+  assert.equal(new Set(parts).size, parts.length, 'a group heading is used once');
+  assert.ok(parts.length >= 5 && parts.length <= 9, `${parts.length} groups`);
+  for (const section of SECTIONS) assert.ok(section.blocks.some(b => b.t === 'p' || b.t === 'list'), `${section.id} has text to show under its title in a search result`);
+});
+
+test('a feature with a "?" panel goes to the section of its own (it once pointed at a section that never mentioned it)', () => {
+  const have = new Set(SECTIONS.map(s => s.id));
+  const wanted: Record<string, string> = { vwap: 'vwap', keyLevels: 'key-levels', range: 'range', script: 'scripts', scriptPane: 'scripts', funding: 'funding', fundingPane: 'funding', ls: 'ls', lsPane: 'ls', delta: 'delta', deltaPane: 'delta', replay: 'goto', stats: 'bar-stats', sounds: 'sounds', depth: 'depth', depthPane: 'depth', oi: 'open-interest', oiPane: 'open-interest', lt: 'lt', ltPane: 'lt', candlePane: 'phones' };
+  for (const [topic, id] of Object.entries(wanted)) {
+    assert.ok(have.has(id), `a section ${id}`);
+    assert.equal(HELP[topic as keyof typeof HELP].guide, id, `the "?" of ${topic} goes to ${id}`);
+  }
+});
+
 test('the guide says what the user asked it to say', () => {
   const text = SECTIONS.map(s => plain(JSON.stringify(s))).join(' ').toLowerCase();
   assert.match(text, /no history to download/);

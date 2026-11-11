@@ -2283,5 +2283,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "Quantas velas passadas cada script pode usar, lidas da exchange. Mais velas demoram mais a carregar e a executar.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "Linha {line}: isto precisa de {n}, mas este gráfico só dá aos scripts {have} das {max} que leem.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "Linha {line}: isto precisa de {n}, mas os scripts só leem {max}. Aumente Velas por script (até {most}) ou use um timeframe mais longo.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Linha {line}: {asked} é mais do que uma janela pode conter, por isso usa as últimas {n}."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Linha {line}: {asked} é mais do que uma janela pode conter, por isso usa as últimas {n}.",
+ "Search the guide": "Pesquisar no guia",
+ "Clear the search": "Limpar a pesquisa",
+ "Nothing in the guide matches that.": "Nada no guia corresponde a isso."
 }

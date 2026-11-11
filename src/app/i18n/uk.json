@@ -2316,5 +2316,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "Скільки минулих свічок може використати кожен скрипт, з біржі. Що більше, то довше завантаження й розрахунок.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "Рядок {line}: потрібно {n}, але із {max}, які читають скрипти, цей графік дає лише {have}.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "Рядок {line}: потрібно {n}, але скрипти читають лише {max}. Збільште «Свічок на скрипт» (до {most}) або візьміть довший таймфрейм.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Рядок {line}: {asked} — більше, ніж вміщує вікно, тому беруться останні {n}."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Рядок {line}: {asked} — більше, ніж вміщує вікно, тому беруться останні {n}.",
+ "Search the guide": "Пошук у посібнику",
+ "Clear the search": "Очистити пошук",
+ "Nothing in the guide matches that.": "У посібнику нічого не знайдено."
 }

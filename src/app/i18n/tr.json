@@ -2255,5 +2255,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "Her betiğin kullanabildiği geçmiş mum sayısı, borsadan okunur. Daha çok mum daha uzun sürede yüklenir ve çalışır.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "Satır {line}: bunun için {n} gerekiyor, ama bu grafik betiklerin okuduğu {max} içinden yalnızca {have} veriyor.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "Satır {line}: bunun için {n} gerekiyor, ama betikler yalnızca {max} okuyor. Betik başına mum sayısını artırın ({most} sayısına kadar) ya da daha uzun bir zaman dilimi kullanın.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Satır {line}: {asked} bir pencerenin alabileceğinden fazla, bu yüzden son {n} kullanılıyor."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Satır {line}: {asked} bir pencerenin alabileceğinden fazla, bu yüzden son {n} kullanılıyor.",
+ "Search the guide": "Kılavuzda ara",
+ "Clear the search": "Aramayı temizle",
+ "Nothing in the guide matches that.": "Kılavuzda eşleşen bir şey yok."
 }

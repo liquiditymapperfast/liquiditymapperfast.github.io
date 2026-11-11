@@ -578,7 +578,7 @@ dialog.shot::backdrop { background: transparent; }
 /* The Guide is told apart by its bold label alone: a lasting outline looked held and left it no hover (Karl, 2026-10-17). */
 button.guide-btn { font-weight: 600; }
 dialog.guide { width: min(1180px, 96vw); height: min(860px, 93vh); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); overflow: hidden; box-shadow: 3px 3px 0 var(--shadow); }
-dialog.guide[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+dialog.guide[open] { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 dialog.guide::backdrop { background: rgba(8, 10, 14, .5);  }
 .guide-head { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
 .guide-head h1 { margin: 0; font-size: 18px; letter-spacing: .01em; }
@@ -590,11 +590,42 @@ dialog.guide::backdrop { background: rgba(8, 10, 14, .5);  }
 .guide-body { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
 .guide-toc { display: flex; flex-direction: column; gap: 1px; padding: 12px 10px 20px; border-right: 1px solid var(--line); overflow-y: auto; scrollbar-width: thin; }
 .guide-link { display: flex; gap: 9px; align-items: baseline; padding: 7px 10px; border-radius: var(--radius); color: var(--muted); text-decoration: none; font-size: 12.5px; line-height: 1.3; }
-.guide-link .num, .guide-section h2 .num { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 10.5px; font-weight: 650; color: var(--muted); }
+.guide-link .num, .guide-hit .num, .guide-section h2 .num { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 10.5px; font-weight: 650; color: var(--muted); }
 .guide-link:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
 .guide-link.on { background: color-mix(in srgb, var(--ui) 14%, transparent); color: var(--text); font-weight: 600; }
 .guide-link.on .num { background: var(--ui); color: var(--on-ui, #fff); }
-.guide-scroll { overflow-y: auto; scroll-behavior: auto; scrollbar-width: thin; padding: 6px 0 60px; }
+/* The contents list's group headings, and the search: a box above the list whose place the answer takes while something is typed. The box takes its
+   border and surface from the frame's own text fields (chrome.css), so only its size is set here. */
+.guide-part { margin: 12px 10px 3px; color: var(--muted); font-size: 10.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
+.guide-part:first-child { margin-top: 2px; }
+.guide-side { position: relative; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.guide-side > .guide-toc { flex: 1 1 auto; min-height: 0; border-right: 0; }
+.guide-search { position: relative; flex: none; padding: 10px 10px 6px; }
+.guide-q { width: 100%; box-sizing: border-box; height: 30px; padding: 0 28px 0 10px; font: inherit; font-size: 12.5px; }
+.guide-q-x { position: absolute; right: 14px; top: 14px; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  background-image: linear-gradient(45deg, transparent calc(50% - .9px), currentColor calc(50% - .9px), currentColor calc(50% + .9px), transparent calc(50% + .9px)), linear-gradient(-45deg, transparent calc(50% - .9px), currentColor calc(50% - .9px), currentColor calc(50% + .9px), transparent calc(50% + .9px));
+  background-size: 10px 10px; background-repeat: no-repeat; background-position: center; }
+.guide-q-x:hover { color: var(--text); }
+.guide-results { display: none; }
+.guide-side[data-searching] > .guide-toc:not(.guide-results) { display: none; }
+.guide-side[data-searching] > .guide-results { display: flex; }
+.guide-hit { display: flex; gap: 9px; align-items: flex-start; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--radius); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.guide-hit:hover, .guide-hit:focus-visible { background: color-mix(in srgb, var(--ui) 12%, transparent); }
+.guide-hit-t { display: grid; gap: 2px; min-width: 0; }
+.guide-hit-t > b { font-size: 12.5px; font-weight: 650; line-height: 1.3; }
+.guide-hit-s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.guide-hit mark { padding: 0 1px; border-radius: 2px; background: color-mix(in srgb, var(--caution) 20%, transparent); color: var(--text); }
+.guide-scroll:focus { outline: none; }
+.guide-none { margin: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+/* The paragraph a search result names, lit for a moment. */
+.guide-article .flash { border-radius: var(--radius); animation: guide-flash 2.4s ease-out; }
+@keyframes guide-flash {
+  0%, 55% { background: color-mix(in srgb, var(--ui) 20%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ui) 20%, transparent); }
+  100% { background: transparent; box-shadow: 0 0 0 5px transparent; }
+}
+/* Positioned so that a section's `offsetTop` is measured from the top of this scroller, as `guide.ts` scrolls and keeps its place by it (from the dialog it
+   was the title bar's height too far, and a section scrolled to had its heading cut off). */
+.guide-scroll { position: relative; overflow-y: auto; scroll-behavior: auto; scrollbar-width: thin; padding: 6px 0 60px; }
 .guide-article { max-width: 780px; margin: 0 auto; padding: 0 36px; }
 .guide-section { padding-top: 26px; }
 .guide-section h2 { display: flex; align-items: center; gap: 11px; margin: 0 0 12px; font-size: 22px; letter-spacing: -.005em; }
@@ -619,12 +650,20 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
 .fig-hover { min-height: 38px; padding: 0 14px 10px; font-size: 12.5px; line-height: 1.5; color: var(--text); }
 .guide-end { margin-top: 36px; padding: 18px 0; border-top: 1px solid var(--line); color: var(--muted); }
 @media (max-width: 860px) {
-  .guide-body { grid-template-columns: minmax(0, 1fr); }
+  .guide-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .guide-toc { display: none; }
-  .guide-jump { display: block; }
+  .guide-side { border-right: 0; border-bottom: 1px solid var(--line); }
+  /* A result chosen on a narrow window puts the answer away so the text shows; it stays away only while the window is narrow. */
+  .guide-results.away { display: none !important; }
+  .guide-side[data-searching] > .guide-results { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; max-height: min(60vh, 420px); background: var(--panel); border: 1px solid var(--line); box-shadow: 2px 2px 0 var(--shadow); }
+  /* The picker takes a row of its own: left to its longest section name (a wide text-mode font made it 415 px) it pushed the close button off the window. */
+  .guide-head { flex-wrap: wrap; row-gap: 8px; }
+  .guide-jump { display: block; flex: 1 1 100%; width: 100%; min-width: 0; max-width: none; }
   .guide-article { padding: 0 18px; }
 }
-@media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } }
+/* A field of 16 px or more is not zoomed in on by an iPhone. */
+@media (max-width: 860px), (pointer: coarse) { .guide-q { height: 36px; font-size: 16px; } .guide-q-x { top: 17px; } }
+@media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } .guide-article .flash { animation: none; background: color-mix(in srgb, var(--ui) 20%, transparent); } }
 /* The tour's button: the one filled button of the page, wider than its neighbours and with a play mark (the invitation's Take the tour is the same). */
 .toolbar.cockpit .deck-tools button.tour-btn, .sheet-tiles > button.tour-btn { font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
 :is(button.tour-btn, button.guide-tour, .tour-invite-go) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }

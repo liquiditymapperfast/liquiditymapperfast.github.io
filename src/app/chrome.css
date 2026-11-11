@@ -60,7 +60,7 @@ button.help:hover, button.help.open { color: var(--bg); background: var(--text);
 .pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout):hover { background: var(--face); border-color: var(--text); }
 
 /* Numbers that label things are squares, not discs. */
-.guide-link .num, .guide-section h2 .num { border-radius: var(--radius); }
+.guide-link .num, .guide-hit .num, .guide-section h2 .num { border-radius: var(--radius); }
 .sheet-head h3 { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
 .sheet, html[data-bar="compact"] .panel, html[data-bar="compact"] .menu { border-color: var(--edge); }
 /* The guide and the picture tool keep their own dark and light surfaces but take the shapes. */
@@ -488,6 +488,18 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :where([data-frame="bevel"]) .guide-link.on { background: var(--bar); color: var(--bar-text); font-weight: 400; }
 :where([data-frame="bevel"]) .guide-link .num { background: var(--face); color: var(--text); }
 :where([data-frame="bevel"]) .guide-link.on .num { background: var(--bar-text); color: var(--bar); }
+/* The search box sits over the contents well; its answers read like the list's rows. */
+:root[data-frame="bevel"] .guide-side { border: 0; }
+:root[data-frame="bevel"] .guide-search { padding: 2px 2px 4px; }
+:where([data-frame="bevel"]) .guide-hit { padding: 3px 6px; color: var(--text); font-size: 11px; }
+:where([data-frame="bevel"]) .guide-hit:is(:hover, :focus-visible) { background: var(--bar); color: var(--bar-text); }
+:where([data-frame="bevel"]) .guide-hit:is(:hover, :focus-visible) .guide-hit-s { color: inherit; }
+:where([data-frame="bevel"]) .guide-hit .num { background: var(--face); color: var(--text); }
+:where([data-frame="bevel"]) .guide-hit-t > b { font-size: 11px; font-weight: 700; }
+:where([data-frame="bevel"]) .guide-hit:is(:hover, :focus-visible) mark { background: color-mix(in srgb, var(--bar-text) 28%, transparent); color: inherit; }
+/* The cross is placed from the box above (padding 2 + half of the 30 px field less its own 11), the narrow window's taller field (36 px) a little lower. */
+:root[data-frame="bevel"] .guide-q-x { top: 6px; right: 6px; }
+@media (max-width: 860px), (pointer: coarse) { :root[data-frame="bevel"] .guide-q-x { top: 9px; } }
 /* The guide's caution note and the words of the sound state "locked" take the derived caution tone, as in the other frames: the literal
    ambers they had read 1.8:1 on the grey face. The Sound button's lamp is not text and keeps its own look. */
 :root[data-frame="bevel"] .guide-section .note.warn { border-left-color: var(--caution); background: color-mix(in srgb, var(--caution) 11%, transparent); }

@@ -2173,5 +2173,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "各スクリプトが使える過去のローソク足の本数で、取引所から読み込みます。多いほど読み込みと実行に時間がかかります。",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "{line} 行目：{n}が必要ですが、スクリプトが読む {max}のうち、このチャートが渡すのは {have}だけです。",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "{line} 行目：{n}が必要ですが、スクリプトが読むのは {max}だけです。「スクリプトごとのローソク足」を増やすか（最大 {most}）、より長い時間足を使ってください。",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "{line} 行目：{asked}は期間の上限を超えるため、直近の {n}を使います。"
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "{line} 行目：{asked}は期間の上限を超えるため、直近の {n}を使います。",
+ "Search the guide": "ガイドを検索",
+ "Clear the search": "検索をクリア",
+ "Nothing in the guide matches that.": "一致する内容はガイドにありません。"
 }

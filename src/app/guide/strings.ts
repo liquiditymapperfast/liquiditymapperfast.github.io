@@ -9,6 +9,7 @@ export function guideStrings(sections: readonly Section[], figuresSource: string
   const out = new Set<string>();
   for (const section of sections) {
     out.add(section.title);
+    if (section.part) out.add(section.part);
     for (const block of section.blocks) {
       if (block.t === 'p' || block.t === 'note') out.add(block.text);
       else if (block.t === 'list') for (const item of block.items) out.add(item);

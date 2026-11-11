@@ -2311,5 +2311,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "Сколько прошлых свечей может использовать каждый скрипт, с биржи. Чем больше, тем дольше загрузка и расчёт.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "Строка {line}: нужно {n}, но из {max}, которые читают скрипты, этот график даёт только {have}.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "Строка {line}: нужно {n}, но скрипты читают только {max}. Увеличьте «Свечей на скрипт» (до {most}) или возьмите таймфрейм длиннее.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Строка {line}: {asked} — больше, чем вмещает окно, поэтому берутся последние {n}."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Строка {line}: {asked} — больше, чем вмещает окно, поэтому берутся последние {n}.",
+ "Search the guide": "Поиск по руководству",
+ "Clear the search": "Очистить поиск",
+ "Nothing in the guide matches that.": "В руководстве ничего не найдено."
 }

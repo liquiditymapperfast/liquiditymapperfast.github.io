@@ -2283,5 +2283,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "Quante candele passate può usare ogni script, lette dall'exchange. Più candele richiedono più tempo per caricarsi ed eseguirsi.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "Riga {line}: servono {n}, ma questo grafico dà agli script solo {have} delle {max} che leggono.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "Riga {line}: servono {n}, ma gli script leggono solo {max}. Aumenta Candele per script (fino a {most}) o usa un timeframe più lungo.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Riga {line}: {asked} è più di quanto una finestra possa contenere, quindi usa le ultime {n}."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Riga {line}: {asked} è più di quanto una finestra possa contenere, quindi usa le ultime {n}.",
+ "Search the guide": "Cerca nella guida",
+ "Clear the search": "Cancella la ricerca",
+ "Nothing in the guide matches that.": "Nulla nella guida corrisponde."
 }

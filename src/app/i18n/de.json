@@ -2255,5 +2255,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "Wie viele vergangene Kerzen jedes Skript nutzen kann, von der Börse gelesen. Mehr Kerzen laden und laufen länger.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "Zeile {line}: Das braucht {n}, aber dieser Chart gibt den Skripten nur {have} der {max}, die sie lesen.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "Zeile {line}: Das braucht {n}, aber Skripte lesen nur {max}. Kerzen pro Skript erhöhen (bis {most}) oder einen längeren Zeitrahmen nehmen.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Zeile {line}: {asked} ist mehr, als ein Fenster fassen kann, daher nutzt es die letzten {n}."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "Zeile {line}: {asked} ist mehr, als ein Fenster fassen kann, daher nutzt es die letzten {n}.",
+ "Search the guide": "In der Anleitung suchen",
+ "Clear the search": "Suche löschen",
+ "Nothing in the guide matches that.": "In der Anleitung passt nichts dazu."
 }

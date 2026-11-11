@@ -2173,5 +2173,8 @@
  "How many past candles each script can use, read from the exchange. More candles take longer to load and to run.": "각 스크립트가 쓸 수 있는 과거 캔들 수로, 거래소에서 읽어 옵니다. 많을수록 불러오고 실행하는 데 오래 걸립니다.",
  "Line {line}: this needs {n}, but this chart gives scripts only {have} of the {max} they read.": "{line}행: {n}이(가) 필요하지만, 스크립트가 읽는 {max} 중 이 차트가 주는 것은 {have}뿐입니다.",
  "Line {line}: this needs {n}, but scripts read only {max}. Raise Candles per script (up to {most}) or use a longer timeframe.": "{line}행: {n}이(가) 필요하지만 스크립트는 {max}만 읽습니다. '스크립트당 캔들'을 늘리거나(최대 {most}) 더 긴 시간 단위를 쓰세요.",
- "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "{line}행: {asked}은(는) 기간에 담을 수 있는 것보다 많아 최근 {n}만 씁니다."
+ "Line {line}: {asked} is more than a window can hold, so it uses the last {n}.": "{line}행: {asked}은(는) 기간에 담을 수 있는 것보다 많아 최근 {n}만 씁니다.",
+ "Search the guide": "가이드 검색",
+ "Clear the search": "검색어 지우기",
+ "Nothing in the guide matches that.": "가이드에 일치하는 내용이 없습니다."
 }
