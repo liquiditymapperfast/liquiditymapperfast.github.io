@@ -2419,5 +2419,7 @@
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "地图上显示实时成交时，K 线改画成轮廓；若边框有自己的颜色，则用该颜色。",
  "Every candle colour back to the theme's.": "所有 K 线颜色恢复为主题颜色。",
  "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "时间周期之后的“图表类型”菜单把价格画成 K 线、空心 K 线、OHLC 美国线或收盘价连线。它的最后一行“K 线颜色”可为上涨和下跌 K 线的实体、边框和影线设定自己的颜色；保留主题颜色的部分会跟随主题。",
- "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "每条线最新值处的标签给出它在回看期（20 根 K 线）内的变动，并说明是上升、下降还是持平：若变动不到该线逐根 K 线所走路程的四分之一，即为持平。"
+ "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "每条线最新值处的标签给出它在回看期（20 根 K 线）内的变动，并说明是上升、下降还是持平：若变动不到该线逐根 K 线所走路程的四分之一，即为持平。",
+ "zoomed out: {timeframe} candles": "已缩小：{timeframe} K 线",
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "缩小到 K 线会细于两个像素时，图表会画出由同样的 K 线和交易所历史合成的更长 K 线（4h、1d，最长一周），图例会写出它们的长度；为放置锚点而点击的 K 线就是画出来的那根。折线图仍保持为线。"
 }

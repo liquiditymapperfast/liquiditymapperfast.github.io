@@ -38,7 +38,7 @@ export function candlePriceRange(candles: readonly CandleRow[], tfMs: number, t0
  * retaining a resolution near its changeover), days where even days are more (up to the 2,000 one read holds: a view a year wide draws a few
  * hundred, one just short of the weeks about 1,700), and weeks past what one read of days holds.
  */
-export function priceWindow(view: Window, width: number, now: number, previousMs = 0, chartMs = 0, warmBars = 0): PriceWindow | null {
+export function priceWindow(view: Window, width: number, now: number, previousMs = 0, chartMs = 0, warmBars = 0, candleMs = 0): PriceWindow | null {
   const span = view.t1 - view.t0;
   if (!(span > 0 && width > 0 && Number.isFinite(span) && view.t0 < now)) return null;
   const own = Object.entries(TIMEFRAMES).find(([, ms]) => ms === chartMs);
@@ -47,6 +47,14 @@ export function priceWindow(view: Window, width: number, now: number, previousMs
     // `warmBars` more before it (what the scripts read before the left edge, `SCRIPT_WARM_BARS`), as many as the read's ceiling leaves: the
     // warm-up gives way first, so a view that is drawn as its own candles stays so (one bar over the ceiling and it would be a coarser line).
     if (to > from && to - from <= PRICE_QUERY_BARS * chartMs) return { tf: own[0], tfMs: chartMs, from: Math.max(0, to - PRICE_QUERY_BARS * chartMs, from - Math.max(0, Math.floor(warmBars)) * chartMs), to };
+  }
+  // Candles drawn longer than the chart's while zoomed out (`candleMs`, heat-pane `drawnTf`: the chart's own would be narrower than
+  // CANDLE_LINE_PX): the exchange's candles of that length wherever one read holds the window, so the candles before the chart's own are as long
+  // as the chart's added up (a user, 2026-11-11: candles on higher zoom outs). Past that, the line's own choice below, drawn as candles too.
+  const longer = Object.entries(TIMEFRAMES).find(([, ms]) => ms === candleMs && ms > chartMs);
+  if (longer) {
+    const from = Math.max(0, Math.floor((view.t0 - span * 0.15) / candleMs) * candleMs - candleMs), to = Math.ceil(Math.min(view.t1 + span * 0.15, now + 1) / candleMs) * candleMs;
+    if (to > from && to - from <= PRICE_QUERY_BARS * candleMs) return { tf: longer[0], tfMs: candleMs, from, to };
   }
   const budget = Math.max(100, Math.min(400, Math.floor(width / 4)));
   const minimum = Math.max(chartMs, span >= 30 * DAY ? DAY : 0);

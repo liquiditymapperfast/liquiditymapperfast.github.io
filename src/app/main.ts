@@ -320,7 +320,8 @@ async function main(): Promise<void> {
   // minutes), or why it cannot go there (the empty future, further back than it reaches: a word, and the tool stays armed; it disarmed
   // silently, and a VWAP anchor older than two months was saved and never drawn: a user, 2026-11-10).
   const anchorSpot = (at: number): { start: number } | { refused: string } => {
-    const s = store.state, tf = TIMEFRAMES[s.timeframe] ?? 3_600_000, now = Date.now(), vwap = s.vwapAnchoring;
+    // The start of the candle drawn there: zoomed out, a longer one made of the chart's (heat-pane `drawnTf`), as its preview shows.
+    const s = store.state, tf = heat.drawnTf(s), now = Date.now(), vwap = s.vwapAnchoring;
     const start = vwap ? candleStartAt(at, tf) : anchorAt(at, tf);
     if (start > now) return { refused: t('No candle there yet.') };
     if (start < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS)) return { refused: vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.') };
@@ -407,7 +408,7 @@ async function main(): Promise<void> {
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); store.set({ vwapAnchoring: false, profileAnchoring: false, anchorMove: null, anchorPreview: null }); dismissToast(); toolbar.refreshOpenPanel(); return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault(); e.stopImmediatePropagation();
-      const s = store.state, tf = Math.max(TIMEFRAMES[s.timeframe] ?? 3_600_000, s.vwapAnchoring ? 0 : ANCHOR_BAR_MS);
+      const s = store.state, tf = Math.max(heat.drawnTf(s), s.vwapAnchoring ? 0 : ANCHOR_BAR_MS);
       const from = s.anchorPreview ?? (s.hover?.source === 'heat' ? s.hover.t : s.candles.at(-1)?.[0] ?? Date.now());
       previewAnchor(from + (s.anchorPreview === null ? 0 : e.key === 'ArrowLeft' ? -tf : tf));
       return;

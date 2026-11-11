@@ -80,6 +80,7 @@ import { TopBands, topMarks, type TopProfile } from '../measures/strip.ts';
 import { BAND_GAP, flowRows, volumeBand, type TimeRows } from '../measures/model.ts';
 import { CANDLE_LINE_PX, LINE_POINT_PX, countdown, lineSide, thinLine, type LinePoint } from '../price-line.ts';
 import { candleInk, candleTone } from '../candle-colours.ts';
+import { candleHolding, newestCandle, zoomedCandles } from '../zoomed-candles.ts';
 import { candlesAt, formingCandle, pageNow, replaying, replayView } from '../replay/clock.ts';
 import { TapeGL, type DustStyle } from '../tape/gl.ts';
 import { TraceIndex, gapMarks, secondsPath, traceGapColumns } from '../tape/trace.ts';
@@ -246,6 +247,9 @@ function withHistory(history: readonly CandleRow[], candles: readonly CandleRow[
   const before = !candles.length || history[history.length - 1]![0] < candles[0]![0];
   return before ? [...history, ...candles] : [...history, ...candles].sort((a, b) => a[0] - b[0]);
 }
+
+/** A candle length's name ("4h", "1d", "1w"), as the price history names its intervals. */
+const priceTimeframeName = (ms: number): string => Object.entries(PRICE_TIMEFRAMES).find(([, v]) => v === ms)?.[0] ?? '';
 
 /** A plot narrower than this (a phone, a split screen) gets the compact legend, whole-dollar prices and a shorter history note. */
 const NARROW_PLOT = 420;
@@ -490,6 +494,8 @@ export class HeatPane {
   readonly #coarseTaker = new TakerRows();
   /** The strip's candles of its longer timeframe (`coarseCandles`), kept while what they come from is the same. */
   #coarseCandles: { drawn: readonly CandleRow[]; exchange: ReadonlyMap<number, CandleRow> | null; tf: number; rows: readonly CandleRow[]; own: ReadonlyMap<number, CandleRow> } | null = null;
+  /** The candles drawn while zoomed out (`zoomedRows`), and what they were made from. */
+  #zoomed: { drawn: readonly CandleRow[]; base: string; answer: PriceHistoryAnswer | null; tf: number; cut: number; rows: CandleRow[] } | null = null;
   #strip: StripState | null = null;
   /** The market orders of the strip's candles pointed at (the footprint's statistics of the strip's markets, read on hover). */
   #orders = new StripOrderCache();
@@ -1357,7 +1363,8 @@ export class HeatPane {
   #paintAnchorPreview(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const vwap = state.vwapAnchoring, chosen = state.anchorPreview, hover = state.hover?.source === 'heat' ? state.hover : null;
     if ((!vwap && !state.profileAnchoring) || (chosen === null && !hover)) return;
-    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = Date.now(), p = this.#palette;
+    // The candle drawn (a longer one zoomed out, `drawnTf`): a click puts the anchor at its start (main.ts `anchorSpot`).
+    const tf = this.drawnTf(state), now = Date.now(), p = this.#palette;
     const at = chosen ?? (vwap ? candleStartAt(hover!.t, tf) : anchorAt(hover!.t, tf)), x = Math.round(this.view.xOf(at, pw)) + 0.5;
     const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS), future = at > now;
     const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.'))
@@ -1406,9 +1413,11 @@ export class HeatPane {
    */
   candleAt(x: number): CandleUnder | null {
     const state = this.store.state; if (!state.show.candles) return null;
-    const candles = this.candlesDrawn(state), tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, v = this.view, pw = this.plotW, ph = this.plotH;
+    // Zoomed out, the longer candles drawn (`zoomedRows`), whole and in the middle of their slots.
+    const zoom = this.#zoomedShown(state) ? this.drawnTf(state) : 0;
+    const candles = zoom ? this.zoomedRows(state, zoom) : this.candlesDrawn(state), tf = zoom || (TIMEFRAMES[state.timeframe] ?? 3_600_000), v = this.view, pw = this.plotW, ph = this.plotH;
     if (!candles.length || !(pw > 0)) return null;
-    const bar = Math.max(1, pw * tf / (v.t1 - v.t0)), layout = footprintLayout(bar), narrowing = this.#lodFrame.narrowing;
+    const bar = Math.max(1, pw * tf / (v.t1 - v.t0)), layout = footprintLayout(bar), narrowing = zoom ? 0 : this.#lodFrame.narrowing;
     const at = v.tOf(x, pw);
     // The candles are in time order: the one whose slot holds the pointer, and its neighbours (a narrowed body sits left of its slot's middle).
     let lo = 0, hi = candles.length - 1;
@@ -1521,11 +1530,14 @@ export class HeatPane {
   #paintLegend(ctx: CanvasRenderingContext2D, state: AppState): void {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, p = this.#palette;
     const under = (c: CandleRow): boolean => state.hover!.t >= c[0] && state.hover!.t < c[0] + tf;
-    const hovered = state.hover ? state.candles.find(under) ?? this.historyCandles(state).find(under) : undefined;
-    const c = hovered ?? state.candles[state.candles.length - 1];
+    // Zoomed out, the candle drawn under the pointer (a longer one, made of the chart's), and the title says how long the drawn ones are.
+    const zoom = this.#zoomedShown(state) ? this.drawnTf(state) : 0, rows = zoom ? this.zoomedRows(state, zoom) : null;
+    const hovered = rows ? (state.hover ? candleHolding(rows, zoom, state.hover.t) : undefined) : state.hover ? state.candles.find(under) ?? this.historyCandles(state).find(under) : undefined;
+    const c = hovered ?? (rows ? rows[rows.length - 1] : state.candles[state.candles.length - 1]);
     const name = state.marketId.replace(':', ' · ');
     const borrowed = state.seriesInstrument && state.seriesInstrument !== state.marketId ? `  ·  ${t('candles from {instrument}', { instrument: state.seriesInstrument.replace(':', ' · ') })}` : '';
-    const title = `${name}  ${state.timeframe}${borrowed}`;
+    const zoomed = zoom ? `  ·  ${t('zoomed out: {timeframe} candles', { timeframe: priceTimeframeName(zoom) })}` : '';
+    const title = `${name}  ${state.timeframe}${borrowed}${zoomed}`;
     // On a phone the plate has to fit the plot beside a narrow profile: whole prices, and the volume on the title's line.
     const phone = this.plotW < NARROW_PLOT, px = (value: number): string => phone && value >= 1000 ? fmtPrice(value, 1) : fmtPrice(value);
     let detail = '', tail = '', up = true;
@@ -1611,14 +1623,17 @@ export class HeatPane {
     // While scripts run they read the candles drawn (`candlesDrawn`) and some before the left edge, so a line is already worked out where the view
     // begins (Karl, 2026-11-03: the VWAP script began at the 500th candle back, wherever that fell): those are asked for too.
     const warm = this.scriptsReading() ? SCRIPT_WARM_BARS : 0;
-    const key = `${state.marketId}|${state.seriesInstrument}|${tf}|${Math.floor(v.t0 / 60_000)}|${Math.ceil(v.t1 / 60_000)}|${Math.floor(now / 60_000)}|${this.plotW}|${history.answer?.tfMs ?? 0}|${warm}`;
+    // Candles longer than the chart's while zoomed out (`drawnTf`): their length, so the exchange's candles before the chart's own are as long. Not
+    // for a line, which keeps its own resolution, nor for a type only previewed in the menu.
+    const wide = state.chartType === 'line' ? tf : stripTimeframe(tf, v.t1 - v.t0, this.plotW).ms;
+    const key = `${state.marketId}|${state.seriesInstrument}|${tf}|${Math.floor(v.t0 / 60_000)}|${Math.ceil(v.t1 / 60_000)}|${Math.floor(now / 60_000)}|${this.plotW}|${history.answer?.tfMs ?? 0}|${warm}|${wide}`;
     let context = this.#overviewContext;
     if (!context || context.key !== key || context.candles !== state.candles) {
       // The candles that are drawn, whichever market they are of: the line is cut on exactly these, so a line is planned only where it will show
       // (and, for the scripts, where their warm-up before the view lies: drawn there, it is off the screen).
       const wanted = priceOverviewNeeded(state.candles, tf, { t0: v.t0 - warm * tf, t1: v.t1 }, this.plotW, now);
       this.#overviewTarget = wanted ? priceTarget(currentCoin(), state.marketId, kindOf(state.markets, state.marketId) ?? 'perp') : null;
-      const window = wanted && this.#overviewTarget ? priceWindow(v, this.plotW, now, history.answer?.tfMs, tf, warm) : null;
+      const window = wanted && this.#overviewTarget ? priceWindow(v, this.plotW, now, history.answer?.tfMs, tf, warm, wide > tf ? wide : 0) : null;
       // Shown (its legend, its line) only where the view itself needs it, not for the scripts' warm-up alone, which lies off the screen (Sol).
       const shown = warm > 0 ? priceOverviewNeeded(state.candles, tf, v, this.plotW, now) : wanted;
       context = this.#overviewContext = { key, candles: state.candles, window, shown };
@@ -1675,6 +1690,105 @@ export class HeatPane {
     if (!history.length) return candles;
     if (this.#allCandles?.history !== history || this.#allCandles.candles !== candles) this.#allCandles = { history, candles, rows: withHistory(history, candles) };
     return this.#allCandles.rows;
+  }
+
+  /**
+   * The price history's answer where its bars are the candles before the chart's own while zoomed out: coarser than the chart's candles, of the
+   * market they are of, and needed for the view (`#overviewShown`). Null otherwise (another market's history is the dashed line).
+   */
+  #coarseAnswer(state: AppState): PriceHistoryAnswer | null {
+    const a = this.hub.priceHistory.answer, tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+    return this.#overviewShown && a !== null && a.candles.length > 0 && a.tfMs > tf && a.instrumentId === priceInstrument(state.seriesInstrument || state.marketId) ? a : null;
+  }
+
+  /**
+   * How long the candles drawn are: the chart's own; zoomed out until those would be narrower than CANDLE_LINE_PX, the shortest longer
+   * timeframe whose candles are not (the Volume bars' rule, `stripTimeframe`), or the price history's bars before the chart's candles where
+   * they are longer still. The chart's own for a line, which runs through the closes at any zoom.
+   */
+  drawnTf(state: AppState = this.store.state): number {
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
+    if ((this.previewChartType ?? state.chartType) === 'line' || !(this.plotW > 0)) return tf;
+    const v = this.view, wide = stripTimeframe(tf, v.t1 - v.t0, this.plotW).ms;
+    return wide > tf ? Math.max(wide, this.#coarseAnswer(state)?.tfMs ?? 0) : tf;
+  }
+  /** Whether the candles drawn are longer ones (`drawnTf`), at least CANDLE_LINE_PX wide. */
+  #zoomedShown(state: AppState): boolean {
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, zoom = this.drawnTf(state), v = this.view;
+    return zoom > tf && this.plotW * zoom / (v.t1 - v.t0) >= CANDLE_LINE_PX;
+  }
+
+  /**
+   * The candles drawn while zoomed out (`zoomed-candles.ts`): the chart's added up into candles of `tf`, the price history's before them. Made
+   * again when either changes; a live update of the candle under way (the chart's candles the same but for their last) only makes the newest
+   * longer candle again. In a replay, made again as the moment shown passes the end of a price-history bar.
+   */
+  zoomedRows(state: AppState, tf: number): readonly CandleRow[] {
+    const drawn = this.candlesDrawn(state), answer = this.#coarseAnswer(state), held = this.#zoomed;
+    const cut = replaying() ? Math.floor(pageNow() / (answer?.tfMs ?? tf)) : 0;
+    const base = `${drawn.length}|${drawn[0]?.[0] ?? 0}|${drawn[drawn.length - 1]?.[0] ?? 0}`;
+    if (held && held.answer === answer && held.tf === tf && held.cut === cut) {
+      if (held.drawn === drawn) return held.rows;
+      // The candle under way moved: the newest longer candle again, when the chart's candles begin before it (it is whole, so it is theirs).
+      const newest = drawn[drawn.length - 1], last = held.rows[held.rows.length - 1];
+      if (held.base === base && newest && last && last[0] === Math.floor(newest[0] / tf) * tf && drawn[0]![0] < last[0]) {
+        const rows = held.rows.slice(0, -1); rows.push(newestCandle(drawn, tf));
+        this.#zoomed = { ...held, drawn, rows };
+        return rows;
+      }
+    }
+    const rows = zoomedCandles(drawn, tf, answer ? { rows: answer.candles, ms: answer.tfMs } : null, replaying() ? pageNow() : Infinity);
+    this.#zoomed = { drawn, base, answer, tf, cut, rows };
+    return rows;
+  }
+
+  /**
+   * The longer candles drawn while zoomed out, all of them in a few drawing calls (a path a colour: the halos, the wicks, the bodies, the
+   * borders), in the candles' own colours or the theme's (`candleInk`). No Highlights rings (the Volume bars still mark the candles) and no
+   * script colours, which are a chart candle's each. A body under 3 px has its wick in its own colour, not the theme's edge, so the direction
+   * still shows; the halo is one shape under them all, so it does not darken where neighbours meet.
+   */
+  #paintZoomed(ctx: CanvasRenderingContext2D, state: AppState, rows: readonly CandleRow[], tf: number, pw: number, ph: number, kind: 'filled' | 'outline' | 'dust' | 'bars'): void {
+    const v = this.view, p = this.#palette, slot = Math.max(1, pw * tf / (v.t1 - v.t0)), body = candleBody(slot);
+    const halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
+    const filled = kind === 'filled', ink = { up: candleInk(state.candleColors, 'up', p, filled), down: candleInk(state.candleColors, 'down', p, filled) };
+    const small = body < 3, wickW = small ? 1 : 1.6;
+    const wickInk = (d: 'up' | 'down'): string => filled && small ? state.candleColors[d].wick ?? ink[d].body : ink[d].wick;
+    const shade = new Path2D(), wicks = { up: new Path2D(), down: new Path2D() }, bodies = { up: new Path2D(), down: new Path2D() }, borders = { up: new Path2D(), down: new Path2D() };
+    const tick = slot < 4 ? 0 : Math.min(8, slot / 2 - 1);
+    for (const c of rows) {
+      if (c[0] + tf < v.t0 || c[0] > v.t1) continue;
+      const x = v.xOf(c[0] + tf / 2, pw), cx = Math.round(x) + 0.5, d = c[4] >= c[1] ? 'up' : 'down';
+      const yh = v.yOf(c[2], ph), yl = v.yOf(c[3], ph), yo = v.yOf(c[1], ph), yc = v.yOf(c[4], ph), top = Math.min(yo, yc), height = Math.max(1.5, Math.abs(yc - yo));
+      if (kind === 'bars') {
+        const line = (path: Path2D): void => { path.moveTo(cx, yh); path.lineTo(cx, yl); if (tick > 0) { const o = Math.round(yo) + 0.5, k = Math.round(yc) + 0.5; path.moveTo(cx - tick, o); path.lineTo(cx, o); path.moveTo(cx, k); path.lineTo(cx + tick, k); } };
+        line(shade); line(bodies[d]);
+        continue;
+      }
+      shade.rect(cx - 1.75, yh, 3.5, Math.max(0, yl - yh)); shade.rect(x - body / 2 - 1.5, top - 1.5, body + 3, height + 3);
+      if (filled) {
+        wicks[d].rect(cx - wickW / 2, yh, wickW, Math.max(0, yl - yh));
+        bodies[d].rect(x - body / 2, top, body, height);
+        if (body >= 3) borders[d].rect(x - body / 2 + 0.5, top + 0.5, body - 1, Math.max(0.5, height - 1));
+      } else {
+        if (top > yh) wicks[d].rect(cx - 0.7, yh, 1.4, top - yh);
+        if (yl > top + height) wicks[d].rect(cx - 0.7, top + height, 1.4, yl - top - height);
+        borders[d].rect(Math.round(x - body / 2) + 0.75, Math.round(top) + 0.75, Math.max(1, Math.round(body) - 1.5), Math.max(1, Math.round(height) - 1.5));
+      }
+    }
+    ctx.save();
+    if (kind === 'bars') {
+      ctx.lineWidth = 3.6; ctx.strokeStyle = halo; ctx.stroke(shade);
+      ctx.lineWidth = 1.6; for (const d of ['up', 'down'] as const) { ctx.strokeStyle = ink[d].body; ctx.stroke(bodies[d]); }
+      ctx.restore(); return;
+    }
+    // Outline candles chosen as the type stand on the halo as filled ones do; under the trade dust the outline stays bare.
+    if (kind !== 'dust') { ctx.fillStyle = halo; ctx.fill(shade); }
+    for (const d of ['up', 'down'] as const) { ctx.fillStyle = wickInk(d); ctx.fill(wicks[d]); }
+    if (filled) for (const d of ['up', 'down'] as const) { ctx.fillStyle = ink[d].body; ctx.fill(bodies[d]); }
+    ctx.lineWidth = filled ? 1 : 1.5;
+    for (const d of ['up', 'down'] as const) { ctx.strokeStyle = ink[d].border; ctx.stroke(borders[d]); }
+    ctx.restore();
   }
 
   /**
@@ -1785,7 +1899,7 @@ export class HeatPane {
       // The price only where the line is drawn: over a candle the candle says it, and the line's close would be one nothing on the chart shows.
       this.#overviewLine(state);
       const at = state.hover?.t ?? Math.min(pageNow(), this.view.t1);
-      const point = this.#historyAsCandles(state, a) || isCovered(this.#overviewDrawn?.covered ?? [], at) ? null : pricePointAt(this.#overviewRuns(), at, a.tfMs);
+      const point = this.#historyAsCandles(state, a) || isCovered(this.#overviewDrawn?.covered ?? [], at) || (this.#zoomedShown(state) && this.#coarseAnswer(state) === a) ? null : pricePointAt(this.#overviewRuns(), at, a.tfMs);
       if (point) text += `  ${fmtPrice(point.price)}`;
     }
     const status = h.status === 'stale' ? t('Price history is stale; trying again in a minute.') : h.status === 'failed' ? t('Price history could not be loaded; trying again in a minute.') : h.status === 'empty' ? t('No price history for this time.') : !a?.candles.length ? t('Reading price history…') : '';
@@ -1795,6 +1909,8 @@ export class HeatPane {
   /** A true price series; separate paths preserve exchange gaps and never splice a reference market into the selected market's live trades. */
   #paintOverview(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const answer = this.hub.priceHistory.answer; if (!this.#overviewShown || !answer || this.#historyAsCandles(state, answer)) return;
+    // Zoomed out, the chart market's history is drawn as candles (`zoomedRows`); another market's stays the dashed line.
+    if (this.#zoomedShown(state) && this.#coarseAnswer(state) === answer) return;
     const runs = this.#overviewLine(state), v = this.view, p = this.#palette;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip(); ctx.lineJoin = 'round';
     ctx.globalAlpha = 0.9 * (1 - 0.85 * this.#lodFrame.barAlpha);
@@ -2210,8 +2326,10 @@ export class HeatPane {
     // candles are outlines always; OHLC bars and the line are drawn their own way (chart-type.ts).
     const type = this.previewChartType ?? state.chartType, hollow = type === 'outline' || (this.#dustOn(state) && !this.#dustFailed);
     // Narrower than CANDLE_LINE_PX a candle is a few overlapping marks per pixel (a 45-day view of hourly ones drew 1,100 of them, six to
-    // eight drawing calls and a blurred ring each, on every pointer move: 14 frames a second, 2026-10-30): the candles are then the line
-    // through their closes, as the price history beyond them is.
+    // eight drawing calls and a blurred ring each, on every pointer move: 14 frames a second, 2026-10-30): the candles drawn are then longer
+    // ones made of them (`drawnTf`, `zoomedRows`; a user, 2026-11-11: "need to be able to see candles on higher zoom outs"), a few drawing
+    // calls for all of them. Only where even those would be too narrow (a view of years with no price history) is it the line through the closes.
+    if (type !== 'line' && this.#zoomedShown(state)) { const zoom = this.drawnTf(state); this.#paintZoomed(ctx, state, this.zoomedRows(state, zoom), zoom, pw, ph, type === 'bars' ? 'bars' : type === 'outline' ? 'outline' : hollow ? 'dust' : 'filled'); return; }
     const thin = bar < CANDLE_LINE_PX;
     if (type === 'line' || thin) { this.#paintCloseLine(ctx, state, pw, ph, tf, layout, narrowing, hot, thin); return; }
     const history = this.historyCandles(state), count = history.length + state.candles.length;

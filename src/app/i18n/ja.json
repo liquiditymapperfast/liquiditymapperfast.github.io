@@ -2419,5 +2419,7 @@
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "マップにライブ約定を表示している間、ローソク足は枠線で描かれ、枠線に自分の色があればその色になります。",
  "Every candle colour back to the theme's.": "ローソク足のすべての色をテーマの色に戻します。",
  "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "時間足の後にある「チャートの種類」メニューは、価格をローソク足、中空ローソク足、OHLC バー、終値の線のいずれかで描きます。最後の行「ローソク足の色」で、陽線と陰線の実体・枠線・ヒゲに自分の色を付けられます。テーマの色のままの部分はテーマに従います。",
- "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "各線の最新値に付くラベルは、振り返り期間（20 本）の動きと、それが上昇・下降・横ばいのどれかを示します。動きが線のローソク足ごとの道のりの 4 分の 1 未満なら横ばいです。"
+ "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "各線の最新値に付くラベルは、振り返り期間（20 本）の動きと、それが上昇・下降・横ばいのどれかを示します。動きが線のローソク足ごとの道のりの 4 分の 1 未満なら横ばいです。",
+ "zoomed out: {timeframe} candles": "ズームアウト中: {timeframe} 足",
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "ローソク足が2ピクセルより細くなるほどズームアウトすると、チャートは同じローソク足と取引所の履歴をまとめた長いローソク足（4h、1d、最長1週間）を描き、凡例にその長さが表示されます。アンカーを置くためにクリックするローソク足は描かれているものです。ラインチャートは線のままです。"
 }
