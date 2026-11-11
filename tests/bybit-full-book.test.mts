@@ -276,6 +276,33 @@ test('bybit full book: an audit only checks, so a side cut at the guard is not r
   assert.equal(book.refreshDue(104, at + 3 * REFRESH_MIN_MS), false);
 });
 
+test('bybit full book: an audit that only checks leaves what the next refresh is judged by as it was', () => {
+  // A short seed (five levels a side) whose audit brings a full snapshot: checked, nothing taken, and the short side is still due.
+  const book = seededBook();
+  const longB: Rows = [...B0], longA: Rows = [...A0];
+  for (let i = 1; longB.length < SNAPSHOT_CAP; i++) { longB.push([95 - i * 0.0001, 1]); longA.push([105 + i * 0.0001, 1]); }
+  assert.equal(book.refreshDue(100, AUDIT_DELAY_MS), true);
+  let epoch = book.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(book.snapshot(snap(5, longB, longA), epoch, AUDIT_DELAY_MS), 'unchanged');
+  assert.deepEqual(book.frontiers, { bid: 95, ask: 105 }); assert.equal(book.auditing, false);
+  assert.equal(book.refreshDue(100, AUDIT_DELAY_MS + REFRESH_MIN_MS), true, 'the short side is still due');
+  epoch = book.beginRefresh(AUDIT_DELAY_MS + REFRESH_MIN_MS);
+  assert.equal(book.snapshot(snap(5, longB, longA), epoch, AUDIT_DELAY_MS + REFRESH_MIN_MS), 'extended');
+  assert.deepEqual(book.frontiers, { bid: longB.at(-1)![0], ask: longA.at(-1)![0] });
+  // A side cut at the guard, audited once the price has moved to 107.25: its distance stays the seed's, so it is due as the band nears.
+  const tailB: Rows = [[99, 1]], tailA: Rows = [[101, 1]];
+  for (let i = 1; i <= SNAPSHOT_CAP; i++) { tailB.push([99 - i * 0.001, 1]); tailA.push([108 + i * 0.001, 1]); }
+  tailB.push([1, 1]); tailA.push([1e9, 1]);
+  const moved = seededBook(tailB, tailA);
+  assert.deepEqual(moved.frontiers, { bid: 40, ask: 160 });
+  moved.delta(delta(6, [[99, 0], [106.5, 1]], [[101, 0]]), 1);
+  assert.equal(moved.refreshDue(107.25, AUDIT_DELAY_MS), true);
+  epoch = moved.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(moved.snapshot(snap(6, [[106.5, 1], ...tailB.slice(1)], tailA.slice(1)), epoch, AUDIT_DELAY_MS), 'unchanged');
+  assert.deepEqual(moved.frontiers, { bid: 40, ask: 160 });
+  assert.equal(moved.refreshDue(107.25, AUDIT_DELAY_MS + REFRESH_MIN_MS), true, '50 % above 107.25 is 160.875, past the ask frontier');
+});
+
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {
   const book = seededBook();
   book.delta(delta(6, [[99, 6]]), 1); book.delta(delta(7, [[98, 7]], [[101, 0]]), 2);

@@ -412,9 +412,13 @@ export class FullBook {
       const ceiling = mid > 0 ? Math.min(newAsk, mid * (1 + GUARD)) : newAsk;
       if (ceiling > askEdge) { for (const [p, q] of book.asks) if (p > askEdge && p <= ceiling) this.asks.set(p, q); this.#ask = { ...this.#ask, frontier: ceiling }; grew = true; }
     }
-    // What the next refresh is judged against: the distances now, and the snapshot's own counts.
-    this.#bid = { ...this.#bid, seedDistance: this.#bid.frontier !== null && mid > 0 ? mid - this.#bid.frontier : this.#bid.seedDistance, levels: Math.max(this.#bid.levels, s.b.length) };
-    this.#ask = { ...this.#ask, seedDistance: this.#ask.frontier !== null && mid > 0 ? this.#ask.frontier - mid : this.#ask.seedDistance, levels: Math.max(this.#ask.levels, s.a.length) };
+    // What the next refresh is judged against: the distances now, and the snapshot's own counts. Not after an audit, which took
+    // nothing from its snapshot: its counts would end a short side's refresh without its coverage, and its distances would put off
+    // a frontier the band is reaching.
+    if (!asked) {
+      this.#bid = { ...this.#bid, seedDistance: this.#bid.frontier !== null && mid > 0 ? mid - this.#bid.frontier : this.#bid.seedDistance, levels: Math.max(this.#bid.levels, s.b.length) };
+      this.#ask = { ...this.#ask, seedDistance: this.#ask.frontier !== null && mid > 0 ? this.#ask.frontier - mid : this.#ask.seedDistance, levels: Math.max(this.#ask.levels, s.a.length) };
+    }
     // A passed audit that adds nothing is no failed refresh: the next one waits only the usual minute.
     if (!grew && audit) { this.#refresh = null; this.#nextRefreshAt = now + REFRESH_MIN_MS; return 'unchanged'; }
     if (!grew) { this.failRefresh(now); return 'unchanged'; }
