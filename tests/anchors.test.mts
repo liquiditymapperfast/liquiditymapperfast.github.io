@@ -49,11 +49,32 @@ test('a rule resolves to the very minute of the extreme, and a replay never read
   assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, fine), { state: 'ready', at: coarse.at(-1)![0] + 3 * MIN }, 'live: the bar under way counts, to its minute');
   // In a replay at 13:20 the bar under way is not known yet: Monday 05:00's high stands, to its minute.
   assert.deepEqual(resolveRule(high, zone, now, true, { bars: coarse, barMs, knownFrom: monday }, fine), { state: 'ready', at: coarse[20]![0] + 3 * MIN });
-  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, () => null), { state: 'ready', at: coarse.at(-1)![0] }, 'minutes on their way: the coarse bar\'s start');
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, () => null), { state: 'coming' }, 'minutes on their way: not drawn yet, never the coarse start passed off as exact');
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, () => false), { state: 'failed' }, 'minutes that could not be read: said');
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, () => []), { state: 'ready', at: coarse.at(-1)![0], approx: true }, 'no minutes there at all: the candle\'s start, said as approximate');
   assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday + HOUR }, fine), { state: 'coming' }, 'candles not back to Monday yet');
   assert.deepEqual(resolveRule(high, zone, now, false, null, fine), { state: 'coming' });
   assert.deepEqual(resolveRule({ period: 'week', point: 'start' }, zone, now, false, null, fine), { state: 'ready', at: monday }, 'a start needs no candles');
   assert.deepEqual(resolveRule(high, zone, now, false, { bars: [], barMs, knownFrom: 0 }, fine), { state: 'none' });
+  // A history that failed, or that its exchange cuts short of the period's start (Hyperliquid's newest 5,000 bars), says so.
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday + HOUR, failed: true }, fine), { state: 'failed' });
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday + HOUR, limited: true }, fine), { state: 'short', from: monday + HOUR });
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: [], barMs, knownFrom: Infinity, failed: true }, fine), { state: 'failed' });
+});
+
+test('a previous period\'s high or low is searched in that period only: the next one\'s first candle is not part of it (live and replay)', () => {
+  const zone = 'UTC', today = Date.UTC(2026, 10, 11), now = today + 3 * HOUR + 10 * MIN, barMs = searchBarMs('day', HOUR);
+  const coarse: CandleRow[] = [];
+  for (let t = today - DAY; t < now; t += barMs) coarse.push(bar(t, 100, 90));
+  coarse[56] = bar(coarse[56]![0], 100.5, 89);                    // yesterday 14:00: its high and its low
+  const at0 = coarse.findIndex(b => b[0] === today);
+  coarse[at0] = bar(today, 105, 80);                              // today's first candle breaks both
+  const fine = (from: number, to: number): CandleRow[] => Array.from({ length: 15 }, (_, k) => bar(from + k * MIN, k === 7 ? 1_000 : 99, k === 7 ? 1 : 91)).filter(b => b[0] < to);
+  for (const replay of [false, true]) {
+    assert.deepEqual(resolveRule({ period: 'day', point: 'prevHigh' }, zone, now, replay, { bars: coarse, barMs, knownFrom: today - DAY }, fine), { state: 'ready', at: coarse[56]![0] + 7 * MIN }, `yesterday's high (replay ${replay})`);
+    assert.deepEqual(resolveRule({ period: 'day', point: 'prevLow' }, zone, now, replay, { bars: coarse, barMs, knownFrom: today - DAY }, fine), { state: 'ready', at: coarse[56]![0] + 7 * MIN }, `yesterday's low (replay ${replay})`);
+  }
+  assert.deepEqual(resolveRule({ period: 'day', point: 'high' }, zone, now, false, { bars: coarse, barMs, knownFrom: today - DAY }, fine), { state: 'ready', at: today + 7 * MIN }, 'today\'s high so far is today\'s');
 });
 
 test('every rule of the grid has a name, a chart code and a key it is found by again', () => {

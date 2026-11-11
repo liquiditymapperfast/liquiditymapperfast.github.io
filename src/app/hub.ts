@@ -401,8 +401,9 @@ export class Hub {
   profileHistory(barMs: number, market: 'main' | 'spot' = 'main'): KeyLevelHistory {
     const key = `${barMs}|${market}`;
     let h = this.#profileHistories.get(key);
-    // Half-hour and hourly bars are an anchored column's older than the five-minute ones reach: they reach as far as such an anchor can be.
-    if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, barMs >= 30 * 60_000 ? PROFILE_ANCHOR_REACH_MS : PROFILE_CANDLES_BACK_MS); h.withBuy = true; this.#profileHistories.set(key, h); }
+    // Bars coarser than the estimate's five minutes (an hour, or the half or quarter hour of a zone off the hour) are an anchored column's older
+    // than the five-minute ones reach: they reach as far as such an anchor can be.
+    if (!h) { h = new KeyLevelHistory(historyGet, Date.now, 60_000, barMs > 5 * 60_000 ? PROFILE_ANCHOR_REACH_MS : PROFILE_CANDLES_BACK_MS); h.withBuy = true; this.#profileHistories.set(key, h); }
     return h;
   }
   /**
@@ -416,7 +417,7 @@ export class Hub {
     return h;
   }
   /** Short spans of candles read once (`spanBars`), the last `SPANS` asked for. */
-  readonly #spans = new Map<string, { rows: CandleRow[] | null; at: number }>();
+  readonly #spans = new Map<string, { rows: CandleRow[] | null; at: number; failed?: boolean }>();
   /**
    * One market's candles of `barMs` over [from, to), read once through the venue's queue: an anchored VWAP's first stretch, from the anchor
    * to its first whole coarse bar (a minute anchor a year back is not read as a year of minutes), and the minutes inside the bar that holds a
@@ -424,17 +425,34 @@ export class Hub {
    * minute (it is still being traded). `onLoad` when it lands.
    */
   spanBars(target: HistoryTarget, barMs: number, from: number, to: number, onLoad: () => void): readonly CandleRow[] | null {
-    const now = Date.now(), live = to > now - 120_000, key = `${target.id}|${barMs}|${from}|${to}${live ? `|${Math.floor(now / 60_000)}` : ''}`;
+    const got = this.spanRead(target, barMs, from, to, onLoad);
+    return got === false ? null : got;
+  }
+  /** `spanBars`, telling a read that failed (false, until it is asked again a minute later) from one on its way (null). */
+  spanRead(target: HistoryTarget, barMs: number, from: number, to: number, onLoad: () => void): readonly CandleRow[] | null | false {
+    const now = Date.now(), live = to > now - 120_000, base = `${target.id}|${barMs}|${from}|${to}`, key = `${base}${live ? `|${Math.floor(now / 60_000)}` : ''}`;
     const held = this.#spans.get(key);
-    if (held) { this.#spans.delete(key); this.#spans.set(key, held); if (held.rows || now - held.at < 60_000) return held.rows; }
-    const entry: { rows: CandleRow[] | null; at: number } = { rows: null, at: now };
+    if (held) {
+      this.#spans.delete(key); this.#spans.set(key, held);
+      if (held.rows) { if (live) this.#spanLast.set(base, held.rows); return held.rows; }
+      // A live span read again for the new minute keeps the last minute's rows while that read is out: an anchor at the extreme in the bar
+      // under way would otherwise vanish for a moment every minute (code review 2026-11-11).
+      if (now - held.at < 60_000) return held.failed ? false : (live ? this.#spanLast.get(base) ?? null : null);
+    }
+    const entry: { rows: CandleRow[] | null; at: number; failed?: boolean } = { rows: null, at: now };
     this.#spans.set(key, entry);
     while (this.#spans.size > SPANS) this.#spans.delete(this.#spans.keys().next().value!);
-    void readCandles(target.id, barMs, from, Math.min(to, now) - 1, historyGet, target.listing, 4, { pageSize: 1500, strict: 'drop', now }).then(read => {
-      entry.rows = (read.rows as CandleRow[]).filter(b => b[0] >= from && b[0] < to); entry.at = Date.now(); onLoad();
-    }, () => { entry.at = Date.now(); onLoad(); });
-    return null;
+    // As many pages as the span needs where an exchange serves 300 bars a page (a head can be a day of minutes, 1,439 bars), four at least.
+    const pages = Math.min(8, Math.max(4, Math.ceil((to - from) / barMs / 300) + 1));
+    void readCandles(target.id, barMs, from, Math.min(to, now) - 1, historyGet, target.listing, pages, { pageSize: 1500, strict: 'drop', now }).then(read => {
+      entry.rows = (read.rows as CandleRow[]).filter(b => b[0] >= from && b[0] < to); entry.at = Date.now();
+      if (live) { this.#spanLast.set(base, entry.rows); while (this.#spanLast.size > SPANS) this.#spanLast.delete(this.#spanLast.keys().next().value!); }
+      onLoad();
+    }, () => { entry.at = Date.now(); entry.failed = true; onLoad(); });
+    return live ? this.#spanLast.get(base) ?? null : null;
   }
+  /** A live span's last rows, by the span without its minute: what stands while the next minute's read is out (`spanRead`). */
+  readonly #spanLast = new Map<string, CandleRow[]>();
   onLiquidationsChanged: () => void = () => {};
   /** A series whose answer came back empty has candles now (the reference market's, read once it was known, or a later reload): the page frames them. */
   onSeriesRefilled: () => void = () => {};

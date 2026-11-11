@@ -8,7 +8,7 @@
 
 const MINUTE = 60_000, DAY = 86_400_000;
 /** Where the profile's anchor starts now (`HeatPane.profileAnchorStart`): as `Resolved`, and 'far' for a start further back than the columns reach. */
-export type ProfileAnchorStart = { state: 'ready'; at: number } | { state: 'far'; at: number } | { state: 'coming' } | { state: 'none' };
+export type ProfileAnchorStart = { state: 'ready'; at: number; approx?: boolean } | { state: 'far'; at: number } | { state: 'coming' } | { state: 'failed' } | { state: 'short'; from: number } | { state: 'none' };
 /**
  * How far back the profile's anchor can be: two years, and the days a zone and a leap year add (a previous year's high is up to two years back),
  * the window being worked out from the zone's hourly bars where the five-minute ones do not reach (`PROFILE_FINE_REACH_MS`).
@@ -41,7 +41,7 @@ export interface AnchorSnapshot {
    * Why the window holds nothing (from and to the same), when it cannot yet: a live anchor's candle is being found ('coming'), its period has
    * none yet ('none'), or it is further back than the columns reach ('far'). The columns are then empty and say so, never the chart's totals.
    */
-  state?: 'coming' | 'none' | 'far';
+  state?: 'coming' | 'failed' | 'short' | 'none' | 'far';
 }
 
 /**

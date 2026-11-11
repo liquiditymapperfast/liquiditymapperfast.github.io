@@ -224,6 +224,9 @@ html[data-bar="compact"] .anchor-row .anchor-edit { min-height: 30px; }
 html[data-bar="compact"] .anchor-date-fields :is(.anchor-date, .anchor-time) { height: 36px; font-size: 16px; }
 html[data-bar="compact"] .anchor-date-fields .anchor-date { width: 160px; }
 html[data-bar="compact"] .anchor-date-fields .anchor-time { width: 116px; }
+html[data-bar="compact"] .anchor-date-fields .anchor-go { flex: 1 0 100%; min-height: 40px; }
+html[data-bar="compact"] .anchor-row { gap: 10px; }
+html[data-bar="compact"] .panel-jump button { min-height: 34px; padding: 4px 12px; font-size: 13px; }
 html[data-bar="compact"] .keylevel-grid input:is([type=checkbox], [type=radio]) { width: 20px; height: 20px; }
 html[data-bar="compact"] .keylevel-grid .what { padding: 8px 0; }
 html[data-bar="compact"] .panel .grip { width: 30px; height: 36px; }

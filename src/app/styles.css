@@ -856,6 +856,10 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .anchor-grid { grid-template-columns: minmax(0, 1fr) repeat(5, 46px); }
 .anchor-grid label.greyed, .anchor-grid label.greyed input { cursor: not-allowed; }
 .anchor-sub { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--text); }
+/* The VWAP panel's links to its sections, under its first switch. */
+.panel-jump { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
+.panel-jump button { padding: 2px 8px; font-size: 11px; }
+.anchor-row .anchor-later { color: var(--caution, var(--muted)); font-size: 11px; }
 /* An anchor's row: its colour, its name over where it starts, show or hide, Edit, remove. A hidden one is faded; its editor opens under it. */
 .anchor-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .anchor-row .anchor-what { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }

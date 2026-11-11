@@ -1,4 +1,4 @@
-import { Hub, PROFILE_CANDLES_BACK_MS, TIMEFRAMES } from './hub.ts';
+import { Hub, TIMEFRAMES } from './hub.ts';
 import { ServerSource } from './server-source.ts';
 import { BrowserSource } from './browser-source.ts';
 import { chooseCoin, currentCoin, forCoin, keepCoinRecordings, scaledUsd, type CoinChoice } from './coin.ts';
@@ -216,6 +216,7 @@ async function main(): Promise<void> {
   toolbar.anchoredWindow = () => heat.anchoredWindow();
   toolbar.updateAnchored = () => heat.updateAnchored();
   toolbar.profileAnchorStart = a => heat.profileAnchorStart(a);
+  toolbar.profileAnchorBar = at => heat.profileAnchorBar(at);
   heat.onAnchoredWindow = () => toolbar.refreshTradedPanel();
   // The Range tool: a drag on the map, on a pane under it or across the flow column selects, and its panel adds up what happened there.
   const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton; range.mapWindow = () => ({ t0: heat.view.t0, t1: heat.view.t1 });
@@ -309,6 +310,7 @@ async function main(): Promise<void> {
   toolbar.rollingReach = days => heat.rollingReach(days);
   toolbar.vwapMarkets = () => heat.vwapMarketStates();
   toolbar.ruleStart = rule => heat.ruleStart(rule);
+  toolbar.anchorDrawnFrom = id => heat.anchorDrawnFrom(id);
   toolbar.tpoInfo = () => heat.tpoInfo();
   heat.onRollingReach = () => toolbar.refreshOpenPanel();
   // Placing an anchor, the VWAP's or the profile's: where a moment on the map would put it (the start of its candle; the profile's on its five
@@ -326,6 +328,8 @@ async function main(): Promise<void> {
     const s = store.state, coin = currentCoin().coin;
     if (s.vwapAnchoring) {
       const vwap = { ...s.vwap, on: true }, move = s.anchorMove;
+      // The anchor being moved was removed meanwhile (its row's x, Undo elsewhere): placing stops, said as what happened.
+      if (move && !s.vwap.anchors[coin]?.some(a => a.id === move)) { store.set({ vwapAnchoring: false, anchorMove: null, anchorPreview: null }); toast(t('That anchor was removed, so there is nothing to move.')); toolbar.refreshOpenPanel(); return; }
       const next = move ? changeAnchor(vwap, coin, move, { at: start }) : withAnchor(vwap, coin, { at: start }, Date.now());
       // Refused (another anchor starts on that candle, or the coin has six already): said, never a silent disarm (the advisor, 2026-11-11);
       // on a taken candle the tool stays armed for another.
@@ -371,21 +375,24 @@ async function main(): Promise<void> {
   window.setTimeout(() => preload(() => import('./screenshot/editor.ts')), 5_000);
 
   // The keyboard shortcuts (shortcuts.ts: the table, and when a key is left alone).
+  // Placing an anchor (the VWAP's or the profile's), from the keyboard: Esc stops, the arrows step the candle it would take (from the one under
+  // the pointer, or the newest), Enter puts it there. Not while a field, a window or a menu has the keys, nor with a modifier held. It runs
+  // before the panels' own keys, so Esc stops the placing and leaves the panel open (a second Esc closes it; Sol, review 2026-11-11).
   window.addEventListener('keydown', e => {
-    // Placing an anchor (the VWAP's or the profile's), from the keyboard: Esc stops, the arrows step the candle it would take (from the one
-    // under the pointer, or the newest), Enter puts it there. Not while a field or a window has the keys.
     const placing = store.state.vwapAnchoring || store.state.profileAnchoring, field = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLSelectElement || document.activeElement instanceof HTMLTextAreaElement;
-    if (placing && document.querySelector('dialog[open]') === null && !field) {
-      if (e.key === 'Escape') { e.preventDefault(); store.set({ vwapAnchoring: false, profileAnchoring: false, anchorMove: null, anchorPreview: null }); dismissToast(); toolbar.refreshOpenPanel(); return; }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        e.preventDefault();
-        const s = store.state, tf = Math.max(TIMEFRAMES[s.timeframe] ?? 3_600_000, s.vwapAnchoring ? 0 : ANCHOR_BAR_MS);
-        const from = s.anchorPreview ?? (s.hover?.source === 'heat' ? s.hover.t : s.candles.at(-1)?.[0] ?? Date.now());
-        previewAnchor(from + (s.anchorPreview === null ? 0 : e.key === 'ArrowLeft' ? -tf : tf));
-        return;
-      }
-      if (e.key === 'Enter' && store.state.anchorPreview !== null) { e.preventDefault(); placeAnchor(store.state.anchorPreview); return; }
+    // A toast's own button (Place here, Cancel, Undo) takes its Enter.
+    if (!placing || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || field || document.querySelector('dialog[open], .menu') !== null || document.activeElement?.closest('.toast')) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); store.set({ vwapAnchoring: false, profileAnchoring: false, anchorMove: null, anchorPreview: null }); dismissToast(); toolbar.refreshOpenPanel(); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      const s = store.state, tf = Math.max(TIMEFRAMES[s.timeframe] ?? 3_600_000, s.vwapAnchoring ? 0 : ANCHOR_BAR_MS);
+      const from = s.anchorPreview ?? (s.hover?.source === 'heat' ? s.hover.t : s.candles.at(-1)?.[0] ?? Date.now());
+      previewAnchor(from + (s.anchorPreview === null ? 0 : e.key === 'ArrowLeft' ? -tf : tf));
+      return;
     }
+    if (e.key === 'Enter' && store.state.anchorPreview !== null) { e.preventDefault(); e.stopImmediatePropagation(); placeAnchor(store.state.anchorPreview); }
+  }, true);
+  window.addEventListener('keydown', e => {
     // The drawing tools' keys first (Esc, Delete, Undo and Redo), when no field or window has them.
     const inPanel = document.activeElement instanceof HTMLElement && document.activeElement.closest('.panel') !== null;
     if (draw.key(e, document.querySelector('dialog[open]') !== null || openedSheet() !== null || inPanel)) { e.preventDefault(); return; }
@@ -467,6 +474,10 @@ async function main(): Promise<void> {
     // Placing ended, however it ended (placed, Esc, Cancel, another tool): the anchor being moved, if any, is no longer.
     if (changed.has('vwapAnchoring') && !state.vwapAnchoring && state.anchorMove !== null) store.set({ anchorMove: null });
     if ((changed.has('vwapAnchoring') || changed.has('profileAnchoring')) && !state.vwapAnchoring && !state.profileAnchoring && state.anchorPreview !== null) store.set({ anchorPreview: null });
+    // The preview line moved by the keys or a tap is drawn at once, not at the pointer's next move (Sol, review 2026-11-11).
+    if (changed.has('anchorPreview')) heat.invalidate();
+    // Placing ended or begun elsewhere (a toast's Cancel, another tool armed, Esc): the open panel's buttons say so at once (code review).
+    if (changed.has('vwapAnchoring') || changed.has('profileAnchoring') || changed.has('anchorMove')) toolbar.refreshOpenPanel();
     // One tool takes the next press on the map at a time: arming the profile anchor ends the VWAP's, the Range tool's and a drawing's, and
     // arming one of those ends it.
     if (changed.has('profileAnchoring') && state.profileAnchoring) { if (state.vwapAnchoring) store.set({ vwapAnchoring: false }); if (state.rangeTool) range.stop(); }

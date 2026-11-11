@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ANCHOR_REACH_MS, ROLLING_MAX_BARS, anchorBars, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries as rollingOf, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries as vwapOf } from '../src/app/vwap/vwap.ts';
-import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, changeAnchor, hasOwnColors, readVwap, restoreAnchor, withAnchor, withRolling, withThemeColors, withoutAnchor } from '../src/app/vwap/settings.ts';
+import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, changeAnchor, hasOwnColors, putBackAnchor, readVwap, restoreAnchor, withAnchor, withRolling, withThemeColors, withoutAnchor } from '../src/app/vwap/settings.ts';
+import { dashOf } from '../src/app/vwap/paint.ts';
 import { anchorDefault, lineColor, rollingDefault } from '../src/app/vwap/colours.ts';
+import { lowContrast } from '../src/app/anchors/controls.ts';
 import { cutForReplay, paintVwap, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
 import { View } from '../src/app/view.ts';
 import { paintKeyTags, placeKeyTags, type KeyTag } from '../src/app/keylevels/paint.ts';
@@ -111,6 +113,35 @@ test('an anchor is changed in place: moved (fixed from then on), frozen from a r
   assert.equal(changeAnchor(s, 'BTC', fixed!.id, { color: 'red' }).anchors.BTC![1]!.color, undefined, 'only #rrggbb');
   assert.equal(changeAnchor(s, 'BTC', fixed!.id, { hidden: true }).anchors.BTC![1]!.hidden, true);
   assert.equal(changeAnchor(s, 'BTC', 'nope', { hidden: true }), s);
+  // Undo of a move or a freeze puts it back as it was, only while nobody has changed it since.
+  const movedOnce = changeAnchor(s, 'BTC', live!.id, { at: now - DAY }), now1 = movedOnce.anchors.BTC![0]!;
+  assert.deepEqual(putBackAnchor(movedOnce, 'BTC', now1, live!).anchors.BTC![0], live, 'back to the rule it followed');
+  const changedSince = changeAnchor(movedOnce, 'BTC', live!.id, { color: '#ffffff' });
+  assert.equal(putBackAnchor(changedSince, 'BTC', now1, live!), changedSince, 'changed since: left alone');
+  const ruleTaken = withAnchor(withoutAnchor(movedOnce, 'BTC', fixed!.id), 'BTC', { rule: { period: 'month', point: 'low' } }, now);
+  assert.equal(putBackAnchor(ruleTaken, 'BTC', now1, live!), ruleTaken, 'its rule taken by another since: left alone');
+});
+
+test('Undo after a remove gives a colour slot taken since a free one; a fixed anchor no longer drawn neither counts nor stays', () => {
+  const now = D0 + 10 * DAY;
+  let s = { ...VWAP_DEFAULTS };
+  for (const back of [1, 2, 3]) s = withAnchor(s, 'BTC', { at: now - back * HOUR }, now);
+  const second = s.anchors.BTC![1]!, fewer = withoutAnchor(s, 'BTC', second.id), refilled = withAnchor(fewer, 'BTC', { at: now - 9 * HOUR }, now);
+  assert.equal(refilled.anchors.BTC!.at(-1)!.slot, second.slot, 'the new one took the freed slot');
+  const back = restoreAnchor(refilled, 'BTC', second, 1);
+  assert.equal(new Set(back.anchors.BTC!.map(a => a.slot)).size, back.anchors.BTC!.length, 'no two lines share a default colour');
+  const old = { ...s, anchors: { BTC: Array.from({ length: MAX_ANCHORS }, (_, i) => ({ id: `o${i}`, at: now - ANCHOR_REACH_MS - (i + 1) * DAY, slot: i })) } };
+  assert.equal(anchorsOf(old, 'BTC', now).length, 0, 'six beyond ten years: none drawn');
+  const added = withAnchor(old, 'BTC', { at: now - HOUR }, now);
+  assert.deepEqual(added.anchors.BTC!.map(a => a.at), [now - HOUR], 'a new one is not refused by them, and they are dropped');
+});
+
+test('each rolling window and each anchor slot has a dash of its own; the session is solid', () => {
+  assert.deepEqual(dashOf({ kind: 'session', n: 0 }), []);
+  const rolling = ROLLING_DAYS.map(n => JSON.stringify(dashOf({ kind: 'rolling', n })));
+  assert.equal(new Set(rolling).size, ROLLING_DAYS.length);
+  const anchors = [0, 1, 2, 3, 4, 5].map(slot => JSON.stringify(dashOf({ kind: 'anchor', n: 1, slot })));
+  assert.equal(new Set(anchors).size, 6);
 });
 
 test('each line has a colour: its own, else its theme default (greens for rolling, violets for anchors); reset clears them all', () => {
@@ -131,6 +162,10 @@ test('each line has a colour: its own, else its theme default (greens for rollin
   assert.equal(back.anchors.BTC![0]!.at, D0, 'the anchors stay');
   const read = readVwap({ colors: { session: '#ABCDEF', rolling: { 7: '#00ff00', 8: '#ffffff', 30: 'blue' } } });
   assert.deepEqual(read.colors, { session: '#abcdef', rolling: { 7: '#00ff00' } }, 'colours as #rrggbb, rolling ones by a window offered');
+  // A colour chosen on a dark theme and kept on a light one is said to be hard to see there, never changed.
+  assert.equal(lowContrast('#fef08a', { bg: '#ffffff' }), true);
+  assert.equal(lowContrast('#fef08a', { bg: '#0b0e14' }), false);
+  assert.equal(lowContrast('#6d28d9', { bg: '#ffffff' }), false);
 });
 
 test('settings from storage are read field by field', () => {

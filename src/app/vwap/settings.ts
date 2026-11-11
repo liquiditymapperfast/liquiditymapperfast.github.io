@@ -123,7 +123,9 @@ export const anchorsOf = (s: VwapSettings, coin: string, now: number): Anchor[] 
  * further back than an anchor reaches.
  */
 export function withAnchor(s: VwapSettings, coin: string, add: { at: number } | { rule: AnchorRule }, now: number): VwapSettings {
-  const list = s.anchors[coin] ?? [];
+  // A fixed anchor no longer drawn (further back than an anchor reaches) is dropped here, not counted: six such would refuse every new one
+  // while the list showed none (Sol, review 2026-11-11).
+  const list = anchorsOf(s, coin, now);
   if (list.length >= MAX_ANCHORS) return s;
   let anchor: Anchor;
   if ('at' in add) {
@@ -146,7 +148,22 @@ export function restoreAnchor(s: VwapSettings, coin: string, anchor: Anchor, ind
   const list = s.anchors[coin] ?? [];
   const same = (a: Anchor): boolean => a.id === anchor.id || (anchor.rule ? a.rule !== undefined && ruleKey(a.rule) === ruleKey(anchor.rule) : a.at === anchor.at);
   if (list.length >= MAX_ANCHORS || list.some(same)) return s;
-  const copy = [...list]; copy.splice(Math.max(0, Math.min(index, copy.length)), 0, anchor);
+  // An anchor added since may hold its colour slot: it takes a free one then, so no two lines share a default colour (Sol, review 2026-11-11).
+  const back = list.some(a => a.slot === anchor.slot) ? { ...anchor, slot: freeSlot(list) } : anchor;
+  const copy = [...list]; copy.splice(Math.max(0, Math.min(index, copy.length)), 0, back);
+  return { ...s, anchors: { ...s.anchors, [coin]: copy } };
+}
+
+/**
+ * The settings with the anchor `was` put back as it was before a move or a freeze (Undo), only while it is still as that left it (`now`): a
+ * change since (another move, a colour, a remove) leaves it alone. Unchanged too when putting it back would make it the same as another.
+ */
+export function putBackAnchor(s: VwapSettings, coin: string, now: Anchor, was: Anchor): VwapSettings {
+  const list = s.anchors[coin] ?? [], i = list.findIndex(a => a.id === was.id);
+  if (i < 0 || JSON.stringify(list[i]) !== JSON.stringify(now)) return s;
+  const clash = list.some((a, k) => k !== i && (was.rule ? a.rule !== undefined && ruleKey(a.rule) === ruleKey(was.rule) : a.at === was.at));
+  if (clash) return s;
+  const copy = [...list]; copy[i] = was;
   return { ...s, anchors: { ...s.anchors, [coin]: copy } };
 }
 

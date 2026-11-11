@@ -35,7 +35,7 @@ import { liqLevelsUrl } from './liq-url.ts';
 import type { AnchorSnapshot } from './traded/anchor.ts';
 import type { Anchor } from './anchors/anchors.ts';
 import type { ProfileAnchorStart } from './traded/anchor.ts';
-import { buildVwapPanel, type RollingReach, type RuleStart, type VwapMarkets, type WhaleInfo } from './vwap/panel.ts';
+import { buildVwapPanel, type DrawnFrom, type RollingReach, type RuleStart, type VwapMarkets, type WhaleInfo } from './vwap/panel.ts';
 import { buildTpoPanel, type TpoInfo } from './tpo/panel.ts';
 import { buildFootprintPanel } from './footprint/panel.ts';
 import type { FlowBook } from './flow-book.ts';
@@ -208,6 +208,8 @@ export class Toolbar {
   vwapMarkets: VwapMarkets = () => [];
   /** Where a live anchor's rule lands now (`HeatPane.ruleStart`), for the VWAP and Volume profile panels' anchor rows. */
   ruleStart: RuleStart = () => ({ state: 'coming' });
+  /** Where each anchored VWAP's line is drawn from (`HeatPane.anchorDrawnFrom`), for the VWAP panel's rows. */
+  anchorDrawnFrom: DrawnFrom = () => null;
   /** The key levels' candles (set by the page), for the panel to say whose they are and whether they could be read. */
   keyHistory: KeyLevelHistory | null = null;
   /** The volume profile's candles of one bar size (set by the page), for its panel to say whether they could be read. */
@@ -219,6 +221,8 @@ export class Toolbar {
   updateAnchored: (() => void) | null = null;
   /** Where the profile's anchor starts now (`HeatPane.profileAnchorStart`), for its row in the Volume profile panel; set by the page. */
   profileAnchorStart: ((a: Anchor) => ProfileAnchorStart) | null = null;
+  /** The bar a profile anchor at a moment is worked out on (`HeatPane.profileAnchorBar`), for the panel's date field. */
+  profileAnchorBar: ((at: number) => number) | null = null;
   /** Where the page's data comes from (set by the page): a page reading the exchanges itself keeps liquidations only while it is open. */
   sourceKind: 'server' | 'browser' = 'server';
   #highlights = el('button', { class: 'led-btn', textContent: t('Highlights'), tip: t('What stands out: unusual volume, open-interest changes and depth imbalance') });
@@ -393,7 +397,7 @@ export class Toolbar {
     };
     this.#footprint.onclick = () => this.store.set(togglePatch(this.store.state, 'footprint'));
     this.#settingsKeys.vwap.onclick = () => {
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo, this.rollingReach, this.vwapMarkets, this.ruleStart);
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildVwapPanel(this.store, tools, body, () => this.#vwapPanel?.render(build), this.whaleInfo, this.rollingReach, this.vwapMarkets, this.ruleStart, this.anchorDrawnFrom);
       this.#vwapPanel = this.#track(togglePanel(this.#settingsKeys.vwap, { title: t('VWAP'), width: 420, align: 'left', stays: true, onClose: () => { this.#vwapPanel = null; if (this.store.state.vwapAnchoring && !this.#placing) this.store.set({ vwapAnchoring: false }); } }, build), build);
     };
     this.#vwap.onclick = () => this.store.set(togglePatch(this.store.state, 'vwap'));
@@ -448,7 +452,7 @@ export class Toolbar {
       this.#track(togglePanel(this.#alertKeys.waves, { title: t('Waves'), width: 400, align: 'left' }, build), build);
     };
     this.#settingsKeys.traded.onclick = () => {
-      const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null, anchored: () => this.anchoredWindow?.() ?? null, updateNow: () => this.updateAnchored?.(), anchorStart: a => this.profileAnchorStart?.(a) ?? { state: 'coming' } });
+      const build = (tools: HTMLElement, body: HTMLElement): void => buildTradedPanel(this.store, tools, body, () => this.#tradedPanel?.render(build), () => gridStepFor(this.store.state.mark.price > 0 ? this.store.state.mark.price : 1), { browser: this.sourceKind === 'browser', candles: this.profileHistory, room: () => this.profileRoom?.() ?? null, anchored: () => this.anchoredWindow?.() ?? null, updateNow: () => this.updateAnchored?.(), anchorStart: a => this.profileAnchorStart?.(a) ?? { state: 'coming' }, anchorBar: at => this.profileAnchorBar?.(at) ?? 5 * 60_000 });
       // While Place the anchor is armed the panel stays open over a click on the map (that click places it, Sol: closing it first disarmed
       // it); otherwise a press outside closes it as before.
       const store = this.store;
@@ -530,7 +534,19 @@ export class Toolbar {
   }
 
   /** Redraw the lamp panel that is open, after its feature was switched from the keyboard, so its switch says what the lamp does. */
-  refreshOpenPanel(): void { if (this.#open && openedPanel() === this.#open.panel) this.#open.redraw(); }
+  refreshOpenPanel(): void {
+    if (!this.#open || openedPanel() !== this.#open.panel) return;
+    // A field being worked in the panel (a date half typed, a colour picker open) is not pulled away by a refresh from the page (history
+    // that landed, a profile taken again): the refresh waits until the field is left (Sol, review 2026-11-11).
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && this.#open.panel.body.contains(active) && active.matches('input:not([type=checkbox]):not([type=radio]), select, textarea')) {
+      if (this.#refreshWaits !== active) { this.#refreshWaits = active; active.addEventListener('blur', () => { if (this.#refreshWaits === active) this.#refreshWaits = null; this.refreshOpenPanel(); }, { once: true }); }
+      return;
+    }
+    this.#open.redraw();
+  }
+  /** The field of the open panel a refresh waits to be left (`refreshOpenPanel`), if any. */
+  #refreshWaits: HTMLElement | null = null;
   /** Redraw the Volume profile panel if it is the one open: what of the profiles has no room changed (a resize), and its sketch and note say so. */
   refreshTradedPanel(): void { if (this.#tradedPanel && this.#open?.panel === this.#tradedPanel) this.refreshOpenPanel(); }
   /** Set while the panels close for an anchor to be placed on a phone, so their closing does not disarm it. */

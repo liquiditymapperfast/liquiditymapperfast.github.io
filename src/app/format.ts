@@ -93,18 +93,26 @@ export function wallFields(t: number): { date: string; time: string } {
 }
 /**
  * The moment a date field and a time field name on the page's clock ("2026-11-04" and "14:23"; an empty time is midnight), as the chart's time
- * axis reads (a user, 2026-11-10: "so i can enter a date instead of clicking"); null for a date that does not exist (Feb 30 is refused, not
- * rolled on to March). A local time skipped by a clock change comes out an hour later, as the browser's clock has it.
+ * axis reads (a user, 2026-11-10: "so i can enter a date instead of clicking"); 'date' for a date that does not exist (Feb 30 is refused, not
+ * rolled on to March), 'time' for one that cannot be read or that a clock change skips (02:30 the night the clocks go forward: refused, not
+ * moved to 03:30; Sol, review 2026-11-11).
  */
-export function fromWallFields(date: string, time: string): number | null {
+export function fromWallFields(date: string, time: string): number | 'date' | 'time' {
   const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date), h = time === '' ? ['', '00', '00'] : /^(\d{2}):(\d{2})$/.exec(time);
-  if (!d || !h) return null;
+  if (!d) return 'date';
+  if (!h) return 'time';
   const y = Number(d[1]), mo = Number(d[2]) - 1, day = Number(d[3]), hh = Number(h[1]), mi = Number(h[2]);
-  if (hh > 23 || mi > 59) return null;
+  if (hh > 23 || mi > 59) return 'time';
   const t = zone === 'utc' ? Date.UTC(y, mo, day, hh, mi) : new Date(y, mo, day, hh, mi).getTime();
-  if (!Number.isFinite(t)) return null;
+  if (!Number.isFinite(t)) return 'date';
   const back = onWall(t);
-  return back.getUTCFullYear() === y && back.getUTCMonth() === mo && back.getUTCDate() === day ? t : null;
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo || back.getUTCDate() !== day) return 'date';
+  return back.getUTCHours() === hh && back.getUTCMinutes() === mi ? t : 'time';
+}
+/** A fixed anchor's date as its line is named on the chart ("Nov 9 06:00"; "Nov 9" at midnight; with its year in another year). */
+export function anchorDate(t: number, now = Date.now()): string {
+  const s = clockYear(t, now), d = onWall(t);
+  return d.getUTCHours() === 0 && d.getUTCMinutes() === 0 ? s.slice(0, s.lastIndexOf(' ')) : s;
 }
 /** The time with its seconds ("13:42:05") on the page's clock, for a window of minutes, where the minute alone says too little. */
 export function clockSeconds(t: number): string {

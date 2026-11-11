@@ -23,6 +23,8 @@ export interface VwapLine {
   color?: string;
   /** Its code on the chart instead of `vwapCode`'s, in its label and on its axis tag: a live anchor's, by its rule ("AVWAP PWH"). */
   name?: string;
+  /** An anchored line's head: the finer bars its points stand on before `to` (`cutForReplay` cuts those on their own bars). */
+  head?: { bar: number; to: number };
   points: readonly VwapPoint[];
   /** Whether it runs to now (the session under way, an anchor): its last value gets a tag on the price axis. */
   live: boolean;
@@ -43,6 +45,18 @@ const rankOf = (line: Pick<VwapLine, 'kind' | 'n'>): number => line.kind === 'ro
 export const vwapCode = (line: Pick<VwapLine, 'kind' | 'n'>): string => line.kind === 'session' ? t('VWAP') : line.kind === 'anchor' ? `${t('AVWAP')} ${line.n}`
   : line.kind === 'rolling' ? `${t('RVWAP')} ${line.n}D` : line.kind === 'whaleBuy' ? t('Whale buys') : t('Whale sells');
 const whale = (line: Pick<VwapLine, 'kind'>): boolean => line.kind === 'whaleBuy' || line.kind === 'whaleSell';
+/**
+ * A line's dash: the session solid; each rolling window and each anchor's colour slot a pattern of its own, so six lines of one family tell
+ * apart without their colours (Sol, review 2026-11-11: six violets with one dash); the rolling ones dashes, the anchors dash-dots.
+ */
+const ROLLING_DASH: Readonly<Record<number, number[]>> = { 1: [5, 4], 7: [10, 5], 30: [16, 5], 90: [16, 4, 4, 4], 180: [24, 6], 365: [24, 4, 4, 4, 4, 4] };
+const ANCHOR_DASH: readonly number[][] = [[9, 3, 2, 3], [14, 4, 2, 4], [6, 3, 2, 3], [9, 3, 2, 3, 2, 3], [18, 4, 4, 4], [4, 3, 2, 3]];
+export function dashOf(line: Pick<VwapLine, 'kind' | 'n' | 'slot'>): number[] {
+  if (line.kind === 'session') return [];
+  if (line.kind === 'rolling') return ROLLING_DASH[line.n] ?? [10, 5];
+  const slot = line.slot ?? Math.max(0, line.n - 1);
+  return ANCHOR_DASH[((slot % ANCHOR_DASH.length) + ANCHOR_DASH.length) % ANCHOR_DASH.length]!;
+}
 /** The colour a line is drawn, labelled and tagged in: its own, else its default on this theme; the whale lines the buy and sell colours. */
 export const vwapColor = (line: VwapLine, s: Pick<VwapSettings, 'colors'>, p: Palette, anchors: readonly Pick<Anchor, 'id' | 'color'>[] = []): string => {
   if (line.kind === 'whaleBuy') return p.bid;
@@ -104,7 +118,7 @@ export function paintVwap(ctx: CanvasRenderingContext2D, lines: readonly VwapLin
       stroke(pts, q => q.vwap - k * q.sd, 1.1, [3, 4], k === 1 ? 0.8 : 0.55, color);
     }
     if (whale(line)) stroke(pts, q => q.vwap, 1.3, [], 0.95, color);
-    else stroke(pts, q => q.vwap, line.kind === 'session' ? 1.8 : 1.5, line.kind === 'session' ? [] : line.kind === 'rolling' ? [10, 5] : [9, 3, 2, 3], 1, color);
+    else stroke(pts, q => q.vwap, line.kind === 'session' ? 1.8 : 1.5, dashOf(line), 1, color);
     const first = line.points[0]!;
     if (line.kind === 'anchor' && first.t >= v.t0 && first.t <= v.t1) { // where it starts: a small triangle under the line
       const x = v.xOf(first.t, pw), y = v.yOf(first.vwap, ph) + 7;
@@ -137,7 +151,7 @@ export function paintVwap(ctx: CanvasRenderingContext2D, lines: readonly VwapLin
 export function cutForReplay(lines: VwapLine[], at: number, replay: boolean): VwapLine[] {
   if (!replay) return lines;
   return lines.map(l => l.kind === 'rolling' ? { ...l, points: l.points.filter(q => q.t <= at) }
-    : l.bar === undefined ? l : { ...l, points: l.points.filter(q => q.t >= (l.liveFrom ?? Infinity) || q.t + l.bar! <= at) });
+    : l.bar === undefined ? l : { ...l, points: l.points.filter(q => q.t >= (l.liveFrom ?? Infinity) || q.t + (l.head && q.t < l.head.to ? l.head.bar : l.bar!) <= at) });
 }
 
 /** The points inside [t0, t1] and the one just outside each end, so the line runs to the chart's edges. `points` sorted by time. */

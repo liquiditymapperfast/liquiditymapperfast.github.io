@@ -1,13 +1,15 @@
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { clockYear, fromWallFields, timeZone, wallFields, zoneName } from '../format.ts';
-import { ANCHOR_PERIODS, ANCHOR_POINTS, periodWord, ruleKey, ruleName, type AnchorPoint, type AnchorRule } from './anchors.ts';
+import { contrastRatio, type Palette } from '../theme.ts';
+import { ZONES, resolveZone } from '../traded/settings.ts';
+import { ANCHOR_PERIODS, ANCHOR_POINTS, periodWord, ruleKey, ruleName, type AnchorPoint, type AnchorRule, type Resolved } from './anchors.ts';
 
 /**
  * What the VWAP and Volume profile panels share to choose an anchor (Karl, 2026-11-11: "nobody wants to click the exact candle"; a user: "so i
  * can enter a date instead of clicking"): a grid of the periods' starts, highs and lows, one box each, as the Key levels choose theirs; a date
- * and an optional time, said back as where the anchor would start before it is added; and the colour of a line, the theme's until one is
- * chosen. Designed with Sol 6.1 and the advisor (2026-11-11).
+ * and an optional time, said back as where the anchor would start before it is added; the colour of a line, the theme's until one is
+ * chosen; and how an anchor's start is said. Designed with Sol 6.1 and the advisor, reviewed by Sol (2026-11-11).
  */
 
 /** Each row of the grid: its name, and what it means. */
@@ -15,8 +17,8 @@ const POINT_ROWS: Readonly<Record<AnchorPoint, { name: () => string; desc: () =>
   start: { name: () => t('Start'), desc: () => t('Where the period began') },
   high: { name: () => t('High so far'), desc: () => t('Moves to each new high') },
   low: { name: () => t('Low so far'), desc: () => t('Moves to each new low') },
-  prevHigh: { name: () => t('Previous high'), desc: () => t('The last whole period\'s high') },
-  prevLow: { name: () => t('Previous low'), desc: () => t('The last whole period\'s low') },
+  prevHigh: { name: () => t('Previous high'), desc: () => t('The previous period\'s high') },
+  prevLow: { name: () => t('Previous low'), desc: () => t('The previous period\'s low') },
 };
 
 export interface RuleGridOptions {
@@ -55,46 +57,66 @@ export function ruleGrid(o: RuleGridOptions): HTMLElement {
   return grid;
 }
 
+/** The zone the rules' periods follow (the Volume profile's and Key levels' days), as the panels name it ("UTC", "New York", an IANA name). */
+export function periodZoneName(tradedZone: string, pageZone: 'local' | 'utc'): string {
+  const zone = resolveZone(tradedZone, pageZone);
+  return ZONES.find(z => z.zone === zone)?.label ?? zone.replace(/_/g, ' ');
+}
+
+/** What is typed in a date field and not yet added, by the field's focus key: a panel built again (a refresh, a toggle) keeps it. */
+const drafts = new Map<string, { date: string; time: string }>();
+/** Forget a date field's draft (its editor closed, or its anchor moved). */
+export const forgetDraft = (focus: string): void => { drafts.delete(focus); };
+
 export interface DateFieldOptions {
-  /** The button's word: Add (another VWAP anchor), Move (a fixed one being changed), Set (the profile's one anchor). */
+  /** The button's word: Add (another VWAP anchor), Move (an anchor being changed), Set (the profile's one anchor). */
   action: string;
+  /** The button's name for a screen reader, when the word alone says too little ("Move Week high so far to this date"). */
+  actionLabel?: string;
   /** How far back an anchor can go, and what is said for a date further back. */
   reachMs: number; tooOld: string;
-  /** Where an anchor at a moment typed starts (the profile's on its five minutes), when not at that very minute. */
+  /** Where an anchor at a moment typed starts (the profile's on the bar its window is worked out on), when not at that very minute. */
   startOf?: (at: number) => number;
   /** Put it there. */
   add: (at: number) => void;
-  /** The fields as they open: a fixed anchor's moment being changed; empty for a new one. */
+  /** The fields as they open: an anchor's moment being changed; empty for a new one. */
   value?: number | null;
   /** Why it cannot be added, when it cannot (no room for another): the button is greyed and the line says it. */
   full?: string | null;
-  /** The field's focus key, so a panel built again keeps the keys there. */
+  /** The field's focus key: a panel built again keeps the keys there, and what was typed. */
   focus: string;
 }
 
 /**
  * A date and an optional time (midnight when left empty), on the chart's clock as its time axis reads, said back before it is added: where
- * the anchor would start, or why it cannot (a date that does not exist, still to come, further back than the anchor reaches). Enter in either
- * field adds it, as the button.
+ * the anchor would start, or why it cannot (a date that does not exist, a time a clock change skips, a time half typed, still to come,
+ * further back than the anchor reaches). Enter in either field adds it, as the button.
  */
 export function dateField(o: DateFieldOptions): HTMLElement {
-  const first = o.value != null ? wallFields(o.value) : null, now = Date.now();
+  const now = Date.now(), first = drafts.get(o.focus) ?? (o.value != null ? wallFields(o.value) : null), clockZone = zoneName(timeZone());
   const date = el('input', { type: 'date', value: first?.date ?? '', class: 'anchor-date', ariaLabel: t('Date'), min: wallFields(now - o.reachMs).date, max: wallFields(now).date });
   const time = el('input', { type: 'time', value: first?.time ?? '', step: '60', class: 'anchor-time', ariaLabel: t('Time (optional)'), tip: t('Leave it empty for midnight.') });
   date.dataset.focus = `${o.focus}-date`; time.dataset.focus = `${o.focus}-time`;
-  const zone = el('span', { class: 'anchor-zone', textContent: zoneName(timeZone()), tip: t('The chart\'s clock, as its time axis reads (set in the page\'s settings).') });
-  const go = el('button', { type: 'button', textContent: o.action, class: 'anchor-go' });
+  const zone = el('span', { class: 'anchor-zone', textContent: clockZone, tip: t('The chart\'s clock, as its time axis reads (set in the page\'s settings).') });
+  const go = el('button', { type: 'button', textContent: o.action, class: 'anchor-go', ...(o.actionLabel ? { ariaLabel: o.actionLabel } : {}) });
+  go.dataset.focus = `${o.focus}-go`;
   const say = el('p', { class: 'panel-note anchor-say', ariaLive: 'polite' });
+  say.id = `say-${o.focus}`; date.setAttribute('aria-describedby', say.id); time.setAttribute('aria-describedby', say.id);
   const check = (): number | null => {
-    const typed = fromWallFields(date.value, time.value), at = Date.now();
+    const at = Date.now();
     let start: number | null = null, why = '';
-    if (!date.value) why = t('Type or pick a date; the time is optional.');
-    else if (typed === null) why = t('There is no such date.');
+    if (!date.value) why = date.validity.badInput ? t('Finish the date, or clear it.') : t('Type or pick a date; the time is optional (midnight). On the chart\'s clock, {zone}.', { zone: clockZone });
+    else if (time.validity.badInput) why = t('Finish the time, or clear it for midnight.');
     else {
-      const s = o.startOf ? o.startOf(typed) : typed;
-      if (s > at) why = t('That is still to come.');
-      else if (s < at - o.reachMs) why = o.tooOld;
-      else start = s;
+      const typed = fromWallFields(date.value, time.value);
+      if (typed === 'date') why = t('There is no such date.');
+      else if (typed === 'time') why = t('The clocks skip that time on this day.');
+      else {
+        const s = o.startOf ? o.startOf(typed) : typed;
+        if (s > at) why = t('That is still to come.');
+        else if (s < at - o.reachMs) why = o.tooOld;
+        else start = s;
+      }
     }
     if (start !== null && o.full) why = o.full;
     say.textContent = start !== null && !o.full ? t('Starts {time} {zone}', { time: clockYear(start, at), zone: zoneName(timeZone(), start) }) : why;
@@ -102,8 +124,8 @@ export function dateField(o: DateFieldOptions): HTMLElement {
     go.disabled = start === null || !!o.full;
     return start;
   };
-  date.oninput = time.oninput = () => { check(); };
-  go.onclick = () => { const start = check(); if (start !== null && !o.full) o.add(start); };
+  date.oninput = time.oninput = () => { drafts.set(o.focus, { date: date.value, time: time.value }); check(); };
+  go.onclick = () => { const start = check(); if (start !== null && !o.full) { drafts.delete(o.focus); o.add(start); } };
   date.onkeydown = time.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } };
   check();
   return el('div', { class: 'anchor-date-row' }, el('div', { class: 'anchor-date-fields' }, date, time, zone, go), say);
@@ -113,13 +135,37 @@ export function dateField(o: DateFieldOptions): HTMLElement {
  * A line's colour: a round swatch that opens the system's colour picker, the line repainting while it is dragged (no more than every 80 ms:
  * each change is saved), and, while the line has a colour of its own, a button back to the theme's (`reset`, null otherwise: a row puts it
  * among its buttons on the right, so the names stay in line). `set` gets the colour chosen, or null for the theme's; `done` runs when the
- * picker is closed (the panel is built again then, not while the picker is open, which would close it).
+ * picker is closed (the panel is built again then, not while the picker is open, which would close it). `focus`: the swatch's focus key.
  */
-export function lineSwatch(color: string, own: boolean, line: string, set: (color: string | null) => void, done: () => void): { swatch: HTMLInputElement; reset: HTMLButtonElement | null } {
+export function lineSwatch(color: string, own: boolean, line: string, set: (color: string | null) => void, done: () => void, focus = ''): { swatch: HTMLInputElement; reset: HTMLButtonElement | null } {
   const input = el('input', { type: 'color', value: color, class: 'line-swatch', ariaLabel: t('Colour of {line}', { line }), tip: t('Colour of {line}', { line }) });
+  if (focus) input.dataset.focus = `${focus}-colour`;
   let timer = 0, pending = '';
   input.oninput = () => { pending = input.value; if (!timer) timer = window.setTimeout(() => { timer = 0; set(pending); }, 80); };
   input.onchange = () => { window.clearTimeout(timer); timer = 0; set(input.value); done(); };
   const reset = own ? el('button', { type: 'button', class: 'line-swatch-reset', ariaLabel: t('Use the theme colour for {line}', { line }), tip: t('Use the theme colour'), onclick: () => { set(null); done(); } }) : null;
+  if (reset && focus) reset.dataset.focus = `${focus}-reset`;
   return { swatch: input, reset };
+}
+
+/**
+ * Whether a colour chosen for a line is hard to see on this theme (a yellow chosen on a dark one, kept on a light one): under 1.6:1 against
+ * the background. The colour is kept as chosen; the panel says so (Sol, review 2026-11-11).
+ */
+export const lowContrast = (color: string, p: Pick<Palette, 'bg'>): boolean => contrastRatio(color, p.bg) < 1.6;
+
+/**
+ * Where an anchor starts now, as its row says it: from when (≈ where the exchange had no minutes inside the candle, so it is the candle's
+ * start), or that it is being found, could not be read, is beyond the market's history, has no candle yet in its period, or (the profile's)
+ * is further back than the columns reach.
+ */
+export function anchorWhen(r: Resolved | { state: 'far'; at: number }): string {
+  switch (r.state) {
+    case 'ready': return r.approx ? t('from ≈ {time} (no minute candles there)', { time: clockYear(r.at) }) : t('from {time}', { time: clockYear(r.at) });
+    case 'far': return t('{time}: further back than the columns reach', { time: clockYear(r.at) });
+    case 'coming': return t('finding it…');
+    case 'failed': return t('its candles could not be read just now; trying again');
+    case 'short': return t('this market\'s history begins {time}', { time: clockYear(r.from) });
+    case 'none': return t('no candle in this period yet');
+  }
 }

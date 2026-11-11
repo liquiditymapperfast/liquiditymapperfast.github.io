@@ -17,7 +17,7 @@ import type { ProfileWindow, SessionDef } from '../traded/sessions.ts';
 import type { Kernels } from '../kernels.ts';
 import { PALETTES, rgb, textOn, type Palette } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
-import { clock, clockYear, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
+import { anchorDate, clock, clockYear, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
 import { timeAxis } from '../time-axis.ts';
 export { timeTicks } from '../time-axis.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
@@ -2583,7 +2583,7 @@ export class HeatPane {
     // Where each anchor stands now (a live one moves with its rule), before the key: an anchor that moves is another plan. The colours are
     // not part of it: a colour chosen repaints the lines, it does not work them out again (Sol, 2026-11-11).
     const anchors = this.#planAnchors(state, coin, zone, barMs, now), { colors: _colors, anchors: _anchors, ...rest } = s;
-    const key = `${JSON.stringify(rest)}|${anchors.map(a => `${a.id}:${a.at}:${a.slot}`).join(',')}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
+    const key = `${JSON.stringify(rest)}|${anchors.map(a => `${a.id}:${a.at}:${a.slot}:${a.name ?? ''}`).join(',')}|${zone}|${barMs}|${coin}|${Math.floor(v.t0 / HOUR)}|${Math.ceil(v.t1 / HOUR)}|${Math.floor(now / MIN)}`;
     if (this.#vwapPlanned?.key === key) return this.#vwapPlanned.plan;
     // The whale VWAP follows the same sessions, so they are worked out for either.
     const sessions = s.session || s.whale ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now, s.startMinute) : [];
@@ -2606,7 +2606,8 @@ export class HeatPane {
    */
   #planAnchors(state: AppState, coin: string, zone: string, zoneBar: number, now: number): PlannedAnchor[] {
     const out: PlannedAnchor[] = [];
-    // A fixed anchor is numbered among the fixed ones (AVWAP 1, as the panel names it); a live one is named by its rule's code.
+    // A live anchor is named by its rule's code (AVWAP PWH), a fixed one by its date (AVWAP Nov 9 06:00): a name that says where it starts and
+    // stays when another is removed (Sol, review 2026-11-11: "AVWAP 1" said nothing and changed number).
     let fixed = 0;
     for (const a of anchorsOf(state.vwap, coin, now)) {
       const n = a.rule ? 0 : ++fixed;
@@ -2614,10 +2615,16 @@ export class HeatPane {
       const r = a.rule ? this.#resolveRule(a.rule, state, zone, zoneBar, now) : null;
       const at = a.rule ? (r?.state === 'ready' ? r.at : undefined) : a.at;
       if (at === undefined || at > now) continue;
-      out.push({ id: a.id, n, at, ...anchorBars(at, now), slot: a.slot, ...(a.rule ? { name: `${t('AVWAP')} ${ruleCode(a.rule)}` } : {}) });
+      out.push({ id: a.id, n, at, ...anchorBars(at, now), slot: a.slot, name: `${t('AVWAP')} ${a.rule ? ruleCode(a.rule) : anchorDate(at)}` });
     }
     return out;
   }
+  /** Where each anchored VWAP's line was last drawn from, by the anchor's id (`anchorDrawnFrom`). */
+  readonly #anchorDrawn = new Map<string, number | null>();
+  /** Where an anchored VWAP's line is drawn from (its first point), null when it has none: later than its anchor where no finer candles reach it. */
+  anchorDrawnFrom(id: string): number | null { return this.#anchorDrawn.get(id) ?? null; }
+  /** The bar a profile anchor at `at` is worked out on (`#anchorBar`), for its panel's date field. */
+  profileAnchorBar(at: number): number { return this.#anchorBar(at); }
   /** Where a live anchor's rule lands now, for the panels (the VWAP's rows, the profile's): the reading the lines use. */
   ruleStart(rule: AnchorRule): Resolved {
     const state = this.store.state, { zone, barMs } = this.#keyLevelContext(state);
@@ -2636,16 +2643,22 @@ export class HeatPane {
   #resolveRule(rule: AnchorRule, state: AppState, zone: string, zoneBar: number, now: number): Resolved {
     const target = this.#keyLevelContext(state).target;
     if (!target) return { state: 'none' };
-    const barMs = searchBarMs(rule.period, zoneBar), span = ruleSpan(rule, zone, now), replay = replaying();
+    // The memo first: this runs dozens of times a frame (the anchored window is asked for by every column), and the period's bounds take the
+    // zone's clock arithmetic (code review 2026-11-11, about 0.1 ms each). Worked out again each minute or when what it reads changes.
+    const barMs = searchBarMs(rule.period, zoneBar), replay = replaying();
     const h = rule.point === 'start' ? null : this.hub.vwapHistory(target.id, barMs);
-    if (h) h.ensure(target, span.from, barMs, () => this.invalidate());
     const memoKey = `${ruleKey(rule)}|${zone}|${target.id}|${barMs}`;
-    const key = `${Math.floor(now / 60_000)}|${h ? `${h.id}:${h.version}:${h.knownFrom}:${h.exhausted}` : ''}|${replay}|${this.#spanVersion}`;
+    const key = `${Math.floor(now / 60_000)}|${h ? `${h.id}:${h.version}:${h.knownFrom}:${h.exhausted}:${h.limited}:${h.state}` : ''}|${replay}|${this.#spanVersion}`;
     const held = this.#ruleMemo.get(memoKey);
     if (held?.key === key) return held.out;
+    const span = ruleSpan(rule, zone, now);
+    if (h) h.ensure(target, span.from, barMs, () => this.invalidate());
     // A market listed after the stretch began (its history begins later) is read from its first candle: nothing traded before it.
-    const coarse = h && h.id === target.id && h.barMs === barMs && h.bars.length ? { bars: h.bars, barMs, knownFrom: h.exhausted ? Math.min(h.knownFrom, span.from) : h.knownFrom } : null;
-    const out = resolveRule(rule, zone, now, replay, coarse, (from, to) => this.hub.spanBars(target, 60_000, from, to, this.#spanLanded));
+    // A history that could not be read, or whose exchange serves no further back, says so (Sol, review 2026-11-11: "finding it" forever).
+    const mine = !!h && h.id === target.id && h.barMs === barMs, failed = mine && h.state === 'unavailable';
+    const coarse = mine && h.bars.length ? { bars: h.bars, barMs, knownFrom: h.exhausted ? Math.min(h.knownFrom, span.from) : h.knownFrom, failed, limited: h.limited }
+      : mine && (failed || h.exhausted) ? { bars: [], barMs, knownFrom: failed ? Infinity : span.from, failed } : null;
+    const out = resolveRule(rule, zone, now, replay, coarse, (from, to) => this.hub.spanRead(target, 60_000, from, to, this.#spanLanded));
     this.#ruleMemo.set(memoKey, { key, out });
     if (this.#ruleMemo.size > 64) this.#ruleMemo.delete(this.#ruleMemo.keys().next().value!);
     return out;
@@ -2813,7 +2826,10 @@ export class HeatPane {
       }
       const rows = head.length ? [...head, ...body.rows.filter(b => b[0] >= boundary)] : body.rows;
       const points = carried(vwapSeries(rows, a.at, Infinity), body.readTo);
-      if (points.length) lines.push({ kind: 'anchor', n: a.n, id: a.id, slot: a.slot, ...(a.name ? { name: a.name } : {}), points, live: true, key: `anchor|${a.id}|${a.at}`, bar: a.bar, liveFrom: body.liveFrom });
+      if (points.length) lines.push({ kind: 'anchor', n: a.n, id: a.id, slot: a.slot, ...(a.name ? { name: a.name } : {}), points, live: true, key: `anchor|${a.id}|${a.at}`, bar: a.bar, liveFrom: body.liveFrom, ...(head.length ? { head: { bar: a.head, to: boundary } } : {}) });
+      // Where the line is drawn from: later than the anchor where no finer candles reach it on this market (the panel says so).
+      this.#anchorDrawn.set(a.id, points[0]?.t ?? null);
+      if (this.#anchorDrawn.size > 32) this.#anchorDrawn.delete(this.#anchorDrawn.keys().next().value!);
     }
     this.#vwapDrawn = { key, lines };
     return replayCut(lines, now);
@@ -3463,8 +3479,9 @@ export class HeatPane {
     // with no trades recorded at all, a venue whose book alone is read, has none and adds nothing), and never over a warning.
     else if (anchored && !loaded && !measured.warn && !!answer?.instruments.some(inst => inst.earliest !== null) && answer.instruments.every(inst => inst.earliest !== null || !inst.rows.length)) sub = t('from {time}', { time: fromText });
     const warn = !loaded && (covers !== null || measured.warn);
-    if (anchored?.state) sub = anchored.state === 'coming' ? t('finding the anchor…') : anchored.state === 'far' ? t('anchor too far back') : t('anchor not begun yet');
-    if (sub) { if (warn || anchored?.state === 'far') ctx.fillStyle = '#e6a700'; else if (loaded) ctx.fillStyle = p.poc; ctx.fillText(sub, x0 + 4, lineY); }
+    if (anchored?.state) sub = anchored.state === 'coming' ? t('finding the anchor…') : anchored.state === 'far' ? t('anchor too far back') : anchored.state === 'failed' ? t('anchor: candles not read, retrying')
+      : anchored.state === 'short' ? t('anchor: history too short') : t('anchor not begun yet');
+    if (sub) { if (warn || (anchored?.state && anchored.state !== 'coming')) ctx.fillStyle = '#e6a700'; else if (loaded) ctx.fillStyle = p.poc; ctx.fillText(sub, x0 + 4, lineY); }
     if (rows && rows.total > 0 && !unsplit) { const net = tradedNet(rows); ctx.fillStyle = net > 0 ? p.bid : net < 0 ? p.ask : p.muted; ctx.fillText(tradedNetLine(rows), x0 + 4, lineY + 12, W - 8); }
     ctx.restore(); ctx.textBaseline = 'middle';
     // The edge line on the map's side: a right column's left edge, a left column's right edge.
@@ -4136,7 +4153,7 @@ export class HeatPane {
         if (p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH && this.draw?.click(p, false, true)) { this.#drawClickAt = performance.now(); this.#unpin(); return; }
         if (this.#pinActive() && Math.hypot(this.#pin!.x - p.x, this.#pin!.y - p.y) < 28) this.#unpin(); else this.#pinAt(p);
       },
-      doubleTap: () => { if (this.draw?.placing || performance.now() - this.#drawClickAt < 600) return; this.#unpin(); this.fit(); },
+      doubleTap: () => { if (this.draw?.placing || this.store.state.vwapAnchoring || this.store.state.profileAnchoring || performance.now() - this.#drawClickAt < 600) return; this.#unpin(); this.fit(); },
       // A short tick under the finger says the hold registered (where the browser allows it: it wants the page to have been used first).
       hold: p => { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(8); this.#pinAt(p); },
       holdMove: p => this.#pinAt(p),
@@ -4354,6 +4371,9 @@ export class HeatPane {
     el.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
+      // A mouse moved while the keys had chosen where an anchor goes takes the choice back: the preview follows it again, and a click places
+      // where it shows (Sol, review 2026-11-11: the line drawn was the keys' while a click placed at the mouse).
+      if (this.store.state.anchorPreview !== null && (this.store.state.vwapAnchoring || this.store.state.profileAnchoring) && (e.movementX || e.movementY)) this.store.set({ anchorPreview: null });
       if (this.#scaleDrag) { this.#dragScale(y); return; }
       if (this.draw?.dragging) { this.draw.move({ x, y }, e.altKey, false); const axis = this.draw.dragAxis; el.style.cursor = axis === 'p' ? 'ns-resize' : axis === 't' ? 'ew-resize' : 'grabbing'; return; }
       const press = this.#press;
@@ -4444,7 +4464,7 @@ export class HeatPane {
     });
     el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.draw?.dragging) this.draw?.leave(); if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; this.#tradedHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidateHover(); } });
     // A double click recentres the map, except while a tool is armed or when it selected a drawing (its first click was the drawing tools').
-    el.addEventListener('dblclick', () => { if (this.draw?.placing || performance.now() - this.#drawClickAt < 600) return; this.fit(); });
+    el.addEventListener('dblclick', () => { if (this.draw?.placing || this.store.state.vwapAnchoring || this.store.state.profileAnchoring || performance.now() - this.#drawClickAt < 600) return; this.fit(); });
     bindTouch(el, new GestureRecognizer(this.#touchHandlers()), () => this.#left);
   }
 }

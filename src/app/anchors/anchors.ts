@@ -140,28 +140,38 @@ export function searchBarMs(period: AnchorPeriod, zoneBarMs: number): number {
   return period === 'week' || period === 'day' ? Math.min(15 * MINUTE, zoneBarMs) : zoneBarMs;
 }
 
-/** How a rule stands: where it resolves now, or that its candles are still on their way, or that none can tell (no candle in its stretch). */
-export type Resolved = { state: 'ready'; at: number } | { state: 'coming' } | { state: 'none' };
+/**
+ * How a rule stands: where it lands now ('ready'; `approx` when the minutes inside its candle could not be had, so it is that candle's start);
+ * its candles are on their way ('coming'); they could not be read just now and are asked again ('failed'); the market's history, as its
+ * exchange serves it, begins after the stretch (`short`, from where it begins); or the stretch has no candle (yet: 'none').
+ */
+export type Resolved = { state: 'ready'; at: number; approx?: boolean } | { state: 'coming' } | { state: 'failed' } | { state: 'short'; from: number } | { state: 'none' };
+/** What a rule's search is given of the coarse bars: the bars and their size, where they are known from, and whether they failed or are cut short. */
+export interface CoarseBars { bars: readonly CandleRow[]; barMs: number; knownFrom: number; failed?: boolean; limited?: boolean }
 
 /**
  * Where a rule resolves at `now` (`replay`: a replay's moment, whose bar under way is left out, its high and low being known only later):
  * a start is its period's start; a high or low is the minute of the extreme, found over `coarse` (the chart market's bars of
- * `searchBarMs`, with where they are known from) and then over `fine` (that market's minutes inside the coarse bar that won; null while they
- * come: the coarse bar's start stands meanwhile, never a guess).
+ * `searchBarMs`, with where they are known from) and then over `fine` (that market's minutes inside the coarse bar that won: null while they
+ * come, false when they could not be read). Until the minute is known it is not drawn (Sol, review 2026-11-11: the coarse start passed off as
+ * the exact candle moved later, and Freeze kept the wrong minute); where the exchange has no minutes there, it is the candle's start, said
+ * as approximate. A previous period's search ends at its end: the next one's first candle is not part of it (Sol, the same review).
  */
-export function resolveRule(r: AnchorRule, zone: string, now: number, replay: boolean,
-  coarse: { bars: readonly CandleRow[]; barMs: number; knownFrom: number } | null,
-  fine: (from: number, to: number) => readonly CandleRow[] | null): Resolved {
+export function resolveRule(r: AnchorRule, zone: string, now: number, replay: boolean, coarse: CoarseBars | null,
+  fine: (from: number, to: number) => readonly CandleRow[] | null | false): Resolved {
   const span = ruleSpan(r, zone, now);
   if (r.point === 'start') return { state: 'ready', at: span.from };
   if (!coarse) return { state: 'coming' };
-  if (coarse.knownFrom > span.from) return { state: 'coming' };
-  const high = r.point === 'high' || r.point === 'prevHigh';
-  const to = replay ? Math.min(span.to, Math.floor(now / coarse.barMs) * coarse.barMs) : span.to + 1;
+  if (coarse.knownFrom > span.from) return coarse.failed ? { state: 'failed' } : coarse.limited && coarse.bars.length ? { state: 'short', from: coarse.knownFrom } : { state: 'coming' };
+  const high = r.point === 'high' || r.point === 'prevHigh', previous = r.point === 'prevHigh' || r.point === 'prevLow';
+  // The period under way takes its candle forming (live), or stops before it (a replay, whose forming candle carries its future).
+  const to = previous ? span.to : replay ? Math.min(span.to, Math.floor(now / coarse.barMs) * coarse.barMs) : span.to + 1;
   const bar = extremeBar(coarse.bars, span.from, to, high);
-  if (!bar) return { state: 'none' };
-  const end = Math.min(bar[0] + coarse.barMs, span.to, replay ? Math.floor(now / MINUTE) * MINUTE : Infinity);
+  if (!bar) return coarse.failed ? { state: 'failed' } : { state: 'none' };
+  const end = Math.min(bar[0] + coarse.barMs, previous ? span.to : Infinity, replay ? Math.floor(now / MINUTE) * MINUTE : Infinity);
   const minutes = fine(bar[0], bar[0] + coarse.barMs);
-  const exact = minutes ? extremeBar(minutes, bar[0], end, high) : null;
-  return { state: 'ready', at: exact ? exact[0] : bar[0] };
+  if (minutes === null) return { state: 'coming' };
+  if (minutes === false) return { state: 'failed' };
+  const exact = extremeBar(minutes, bar[0], end, high);
+  return exact ? { state: 'ready', at: exact[0] } : { state: 'ready', at: bar[0], approx: true };
 }
