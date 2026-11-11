@@ -45,6 +45,13 @@ const marketName = (target: HistoryTarget): string => `${venueLabel(target.id)} 
  */
 const settled = (h: KeyLevelHistory, from: number): boolean => h.knownFrom <= from || h.exhausted || h.limited || h.state === 'unavailable' || from < h.keptFrom;
 
+/**
+ * Where the blocks worked out for windows ending at `last` stop: after its last block, or after the block under way (on the grid at offset
+ * `residue`), whichever is first. A block's end, never the time now, so what they are worked out from is the same from frame to frame.
+ */
+const spanEnd = (now: number, last: number, residue: number, blockMs: number): number =>
+  Math.min(residue + Math.ceil((last - residue) / blockMs) * blockMs, residue + Math.floor((now - residue) / blockMs) * blockMs + blockMs);
+
 /** A gap at any moment: the one at the latest block at or before it that had one (a market's block where the chart market had none). */
 function gapLookup(gaps: ReadonlyMap<number, number>): (t: number) => number {
   const times = [...gaps.keys()].sort((a, b) => a - b);
@@ -254,7 +261,8 @@ export class TpoLayer {
   #hollowOf(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, barMs: number, blockMs: number, R: number, residue: number, first: number, last: number): { byBlock: Map<number, Set<number>>; peers: Peer[] } {
     const peers = this.#peers(f, target).map(p => this.hub.tpoHistory(p.id, barMs, 'peer')).filter(h => h.bars.length);
     // Over the windows drawn and the day before them only: a window a year back is not worked out from every block since.
-    const start = residue + Math.floor((Math.max(main.heldFrom, first - DAY) - residue) / blockMs) * blockMs, end = Math.min(f.now, last) + blockMs;
+    // The other venues' candles reach two months back: no block older is judged, however far back the windows go.
+    const start = residue + Math.floor((Math.max(main.heldFrom, first - DAY, f.now - MAX_BACK_MS - DAY) - residue) / blockMs) * blockMs, end = spanEnd(f.now, last, residue, blockMs);
     const key = `${main.id}|${main.version}|${barMs}|${blockMs}|${R}|${start}|${end}|${f.replay ? Math.floor(f.now / barMs) : ''}|${peers.map(h => `${h.id}:${h.version}`).join(',')}`;
     const held = this.#hollow.get(residue);
     if (held?.key === key) return held;
@@ -286,7 +294,7 @@ export class TpoLayer {
    */
   #merging(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, barMs: number, blockMs: number, R: number, residue: number, first: number, last: number, keep: boolean): { key: string; blocks: () => Block[] } {
     const ms = this.#markets(f, target).map(m => this.hub.tpoHistory(m.id, barMs, 'main')).filter(h => h.bars.length);
-    const start = residue + Math.floor((first - DAY - residue) / blockMs) * blockMs, from = residue + Math.floor((first - residue) / blockMs) * blockMs, end = Math.min(f.now, last) + blockMs;
+    const start = residue + Math.floor((first - DAY - residue) / blockMs) * blockMs, from = residue + Math.floor((first - residue) / blockMs) * blockMs, end = spanEnd(f.now, last, residue, blockMs);
     const key = `${main.id}|${main.version}|${barMs}|${blockMs}|${R}|${start}|${end}|${f.state.tpo.hollow}|${f.replay ? Math.floor(f.now / barMs) : ''}|${ms.map(h => `${h.id}:${h.version}`).join(',')}`;
     const blocks = (): Block[] => {
       const held = keep ? this.#merged.get(residue) : undefined;
@@ -330,10 +338,11 @@ export class TpoLayer {
       if (!main.bars.length || main.knownFrom > w.from) return waiting();
       // Hollow rows are worked out for the windows drawn only (a window the lines ask about needs none: its levels count blocks, not marks),
       // so the work and its cache do not move with every window the lines read.
-      hollowed = s.hollow ? this.#hollowOf(f, target, main, barMs, blockMs, R, residue, first, last) : null;
+      // Rows under 1.6 px are drawn compact, where hollow marks are left out: none are worked out then.
+      hollowed = s.hollow && Math.abs(f.view.yOf(0, f.ph) - f.view.yOf(R, f.ph)) >= 1.6 ? this.#hollowOf(f, target, main, barMs, blockMs, R, residue, first, last) : null;
       blocksNow = () => blocksOf(main.bars, w.from, w.to, blockMs, barMs, f.now, f.replay);
       own = true;
-      source = `chart|${main.id}|${main.version}|${s.hollow ? this.#hollow.get(residue)?.key ?? '' : 'off'}`;
+      source = `chart|${main.id}|${main.version}|${hollowed ? this.#hollow.get(residue)?.key ?? '' : 'off'}`;
     }
     const live = developing && own ? this.#live(f, target, blockMs, w.from) : null;
     const key = `${source}|${w.from}|${w.to}|${R}|${s.share}|${blockMs}|${barMs}|${developing ? `${Math.floor(f.now / 1000)}|${live ? `${live.t}|${live.h}|${live.l}|${live.c}` : ''}` : ''}|${f.replay}`;
