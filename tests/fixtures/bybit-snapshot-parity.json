@@ -297,6 +297,51 @@
    "expect": "retCode 1 a\"b\\c/dé"
   },
   {
+   "name": "retMsg array past the cap",
+   "body": "{\"retCode\":1,\"retMsg\":[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]}",
+   "expect": "retCode 1 [object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object"
+  },
+  {
+   "name": "retCode array past the cap",
+   "body": "{\"retCode\":[\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\",\"xy\"],\"retMsg\":\"m\"}",
+   "expect": "retCode xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,xy,x"
+  },
+  {
+   "name": "retMsg string, only spaces past the cap",
+   "body": "{\"retCode\":1,\"retMsg\":\"a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \"}",
+   "expect": "retCode 1 a"
+  },
+  {
+   "name": "retMsg string, ink past the cap",
+   "body": "{\"retCode\":1,\"retMsg\":\"a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            z\"}",
+   "expect": "retCode 1 a                                                                                                             "
+  },
+  {
+   "name": "retMsg array, only spaces past the cap",
+   "body": "{\"retCode\":1,\"retMsg\":[\"a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \"]}",
+   "expect": "retCode 1 a"
+  },
+  {
+   "name": "retMsg array, ink past the cap",
+   "body": "{\"retCode\":1,\"retMsg\":[\"a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \",null]}",
+   "expect": "retCode 1 a                                                                                                             "
+  },
+  {
+   "name": "retMsg nested arrays past the cap",
+   "body": "{\"retCode\":1,\"retMsg\":[[\"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \"],\"z\"]}",
+   "expect": "retCode 1                                                                                                               "
+  },
+  {
+   "name": "retMsg spaces only",
+   "body": "{\"retCode\":1,\"retMsg\":\"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \"}",
+   "expect": "retCode 1"
+  },
+  {
+   "name": "retCode spaces past the cap, then a message",
+   "body": "{\"retCode\":[\"x                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \"],\"retMsg\":\"m\"}",
+   "expect": "retCode x                                                                                                               "
+  },
+  {
    "name": "result false with an error code",
    "body": "{\"retCode\":10001,\"retMsg\":\"Invalid symbol\",\"result\":false}",
    "expect": "retCode 10001 Invalid symbol"
