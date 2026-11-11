@@ -205,8 +205,10 @@ abstract class BybitBook extends MarketBook {
     if (topic === fullTopic(this.symbol)) {
       if (!this.bookRead) return;
       const delta = parseFullDelta(m, this.symbol), now = Date.now();
-      if (delta && delta !== 'bad') this.#bookFrameAt = now;
-      const action = delta === 'bad' ? this.#full.fault('unreadable book frame', now) : delta ? this.#full.delta(delta, now) : 'none';
+      const progress = this.#full.progressAt, action = delta === 'bad' ? this.#full.fault('unreadable book frame', now) : delta ? this.#full.delta(delta, now) : 'none';
+      // Only a frame that moved the book on (applied, or held for a snapshot) keeps the book channel's deadline: one that repeats a `u`
+      // already applied does not, so a stream stuck on old frames is caught.
+      if (this.#full.progressAt !== progress) this.#bookFrameAt = now;
       this.#sides(); this.touch(); this.#act(action);
       // A quiet market's book still sends a frame every few seconds: the seed's audit is not left waiting for a trade.
       this.#look();
@@ -305,11 +307,11 @@ abstract class BybitBook extends MarketBook {
     if (generation !== this.generation || this.state === 'stopped') return;
     if (refresh) {
       // 'rejected' and 'unchanged' already paused the next refresh; 'wait' finishes once the book reaches the snapshot.
-      if (result === 'failed') this.#full.failRefresh(Date.now());
+      if (result === 'failed') this.#full.failRefresh(Date.now(), epoch);
       if (result === 'extended' || result === 'repaired') { this.#sides(); this.touch(); }
       return;
     }
-    if (result === 'seeded') { this.#pause = 0; this.#sides(); this.touch(); return; }
+    if (result === 'seeded') { this.#pause = 0; this.#bookFrameAt = Date.now(); this.#sides(); this.touch(); return; }
     // 'wait': the book seeds itself once the stream reaches the snapshot's anchor; one the stream never brings is read again after a
     // while. 'stale': a newer epoch has asked (or will) for its own.
     if (result === 'wait') this.#later(BYBIT_ANCHOR_WAIT_MS);

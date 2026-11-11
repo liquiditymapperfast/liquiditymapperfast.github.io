@@ -141,6 +141,22 @@ test('Bybit connector: a withdrawn book whose channel went silent is dropped eve
   });
 });
 
+test('Bybit connector: a stream that only repeats old frames is no book channel: dropped after 30 s', async () => {
+  await withFakes(async ({ asked, sockets }) => {
+    const c = new BybitConnector();
+    c.start(); sockets[0]!.onopen?.();
+    sockets[0]!.onmessage?.(delta(10));
+    await untilAsked(asked, 1);
+    asked[0]!.answer(body(10)); await settle();
+    const t0 = Date.now();
+    for (let i = 0; i < 20; i++) sockets[0]!.onmessage?.(delta(10));   // the same u again and again
+    c.lastUpdate = t0 + 30_500;
+    c.check(t0 + 31_000);
+    assert.equal(c.failures, 1); assert.match(c.lastFailure ?? '', /book silent 30 s/);
+    c.stop();
+  });
+});
+
 test('Bybit connector: a quiet book (heartbeats, no trades) still reads its audit', async () => {
   await withFakes(async ({ asked, sockets }) => {
     const realNow = Date.now; let clock = realNow();

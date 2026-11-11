@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AUDIT_DELAY_MS, FullBook, GUARD, MAX_FRAME_ROWS, REFRESH_MIN_MS, SNAPSHOT_CAP, fullSnapshotUrl, fullTopic, parseFullDelta, parseFullSnapshot, type FullDelta, type FullSnapshot } from '../src/shared/bybit-full-book.ts';
+import { ANCHOR_WAIT_MS, AUDIT_DELAY_MS, FullBook, GUARD, MAX_FRAME_ROWS, REFRESH_MIN_MS, SNAPSHOT_CAP, fullSnapshotUrl, fullTopic, parseFullDelta, parseFullSnapshot, type FullDelta, type FullSnapshot } from '../src/shared/bybit-full-book.ts';
 
 const S = 'BTCUSDT';
 type Rows = [number, number][];
@@ -180,6 +180,11 @@ test('bybit full book: coverage epochs are unique across books; a new seed audit
   assert.equal(book.live, true); assert.equal(book.auditing, true);
   assert.equal(book.refreshDue(100, t + AUDIT_DELAY_MS), true, 'the new seed audits on time');
   assert.equal(book.mid(), 100);
+  // Progress: held and applied deltas and seeds move it, a repeat of an applied u does not.
+  const p = seededBook();
+  const at = p.progressAt; p.delta(delta(5), 50);
+  assert.equal(p.progressAt, at, 'a repeat is no progress');
+  p.delta(delta(6), 60); assert.equal(p.progressAt, 60);
 });
 
 test('bybit full book: rows beyond the snapshot\'s frontier are left out, and the frontier stays', () => {
@@ -322,6 +327,19 @@ test('bybit full book: a refresh ahead of the book waits; one that adds nothing 
   assert.equal(book.snapshot(snap(7, B0, A0), epoch, 0), 'rejected');
   assert.equal(book.live, true);
 
+  // A refresh snapshot ahead of the book that the stream never reaches is given up after ANCHOR_WAIT_MS, and the next one is paused.
+  book = seededBook();
+  epoch = book.beginRefresh(0);
+  assert.equal(book.snapshot(snap(9, B0, A0), epoch, 0), 'wait');
+  assert.equal(book.refreshDue(100, ANCHOR_WAIT_MS), false); assert.equal(book.refreshing, true, 'still waiting at the limit');
+  assert.equal(book.refreshDue(100, ANCHOR_WAIT_MS + 1), false); assert.equal(book.refreshing, false, 'given up past it');
+  assert.equal(book.refreshDue(100, ANCHOR_WAIT_MS + 1 + REFRESH_MIN_MS), true, 'and the next waits the pause');
+  // A request failure from an earlier epoch does not touch the book seeded since: its audit is due on time.
+  book = seededBook();
+  const old = book.beginRefresh(0);
+  book.delta(delta(9), 1); book.snapshot(snap(9, B0, A0), book.epoch, 2);
+  book.failRefresh(3, old);
+  assert.equal(book.refreshDue(100, 2 + AUDIT_DELAY_MS), true, 'the new seed audits on time');
   // A gap during a refresh ends it with the book; its answer is then stale.
   book = seededBook();
   epoch = book.beginRefresh(0);

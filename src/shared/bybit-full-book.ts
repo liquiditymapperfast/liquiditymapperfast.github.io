@@ -141,6 +141,8 @@ export const AUDIT_DELAY_MS = 10_000;
  * replicas' ordinary disagreement is a few levels; a degraded answer lacks thousands.
  */
 export const DEGRADED_MIN = 200, DEGRADED_SHARE = 0.02, ONE_WAY = 0.1;
+/** A refresh snapshot ahead of the live book waits this long for the stream to reach it (frames come every 5 s at most). */
+export const ANCHOR_WAIT_MS = 10_000;
 /** Three resynchronisations within a minute mean the socket itself is bad. */
 const RESYNC_LIMIT = 3, RESYNC_WINDOW_MS = 60_000;
 /**
@@ -191,6 +193,11 @@ export class FullBook {
   /** When the last delta was applied or the book seeded (the book's own freshness: trades say nothing about it). */
   appliedAt = 0;
   /**
+   * When the book last made progress: a delta applied or held for a snapshot, or a seed. The book channel's deadline is judged on it
+   * (shared/venues.ts): frames that only repeat what is held (a `u` already applied) are no progress.
+   */
+  progressAt = 0;
+  /**
    * How the last refresh snapshot disagreed with the stream-kept book inside both windows: levels only it had, levels only the live book
    * had, sizes that differed (the live book keeps its own, unless it was found degraded).
    */
@@ -204,7 +211,7 @@ export class FullBook {
   #recent: FullDelta[] = [];
   #bid: Coverage = noCoverage(); #ask: Coverage = noCoverage();
   /** A refresh under way, and a snapshot of it ahead of the live book waiting for the book to reach it. */
-  #refresh: { waiting: FullSnapshot | null } | null = null;
+  #refresh: { waiting: FullSnapshot | null; since: number } | null = null;
   #nextRefreshAt = 0; #refreshFailures = 0;
   /** When the audit of the current seed is due (0: none pending). */
   #auditAt = 0;
@@ -273,7 +280,7 @@ export class FullBook {
     if (epoch !== this.epoch) return 'stale';
     if (!this.#live) return this.#seedFrom(s, now);
     if (!this.#refresh || this.#refresh.waiting) return 'stale';
-    if (s.u > this.u) { this.#refresh.waiting = s; return 'wait'; }
+    if (s.u > this.u) { this.#refresh.waiting = s; this.#refresh.since = now; return 'wait'; }
     return this.#finishRefresh(s, now);
   }
 
@@ -284,6 +291,8 @@ export class FullBook {
    * nothing). And the seed's audit, `AUDIT_DELAY_MS` after it, whatever the price.
    */
   refreshDue(mid: number, now: number): boolean {
+    // A refresh snapshot ahead of the book that the stream has not reached in `ANCHOR_WAIT_MS` is given up (and paused like a failure).
+    if (this.#refresh?.waiting && now - this.#refresh.since > ANCHOR_WAIT_MS) this.failRefresh(now);
     if (!this.#live || this.#refresh || now < this.#nextRefreshAt) return false;
     if (this.#auditAt && now >= this.#auditAt) return true;
     if (!(mid > 0)) return false;
@@ -291,9 +300,11 @@ export class FullBook {
     return due(this.#bid, this.#bid.frontier === null ? Infinity : mid - this.#bid.frontier) || due(this.#ask, this.#ask.frontier === null ? Infinity : this.#ask.frontier - mid);
   }
   /** A refresh is being read for the current epoch: the connector asks for the snapshot and hands the answer to `snapshot`. */
-  beginRefresh(now: number): number { this.#refresh = { waiting: null }; this.#nextRefreshAt = now + REFRESH_MIN_MS; return this.epoch; }
+  beginRefresh(now: number): number { this.#refresh = { waiting: null, since: now }; this.#nextRefreshAt = now + REFRESH_MIN_MS; return this.epoch; }
   /** The refresh's request failed (or added nothing): the live book stays, the next try waits longer. */
-  failRefresh(now: number): void {
+  failRefresh(now: number, epoch: number = this.epoch): void {
+    // A failure of a request made for an earlier epoch (the book was seeded again since) is not this book's: its audit is not held back.
+    if (epoch !== this.epoch) return;
     this.#refresh = null; this.#refreshFailures++;
     this.#nextRefreshAt = now + Math.min(REFRESH_MAX_BACKOFF_MS, REFRESH_MIN_MS * 2 ** (this.#refreshFailures - 1));
   }
@@ -310,7 +321,7 @@ export class FullBook {
       // A gap inside the buffer: Bybit's procedure starts holding again from here. A waiting snapshot can no longer be anchored.
       if (d.u !== last.u + 1) { this.#buffer = []; this.#bufferRows = 0; lost = this.#waiting !== null; this.#waiting = null; }
     }
-    this.#buffer.push(d); this.#bufferRows += d.b.length + d.a.length; this.#lastSeq = Math.max(this.#lastSeq, d.seq);
+    this.#buffer.push(d); this.#bufferRows += d.b.length + d.a.length; this.#lastSeq = Math.max(this.#lastSeq, d.seq); this.progressAt = now;
     while (this.#buffer.length > this.#bufferMax || (this.#bufferRows > this.#bufferRowsMax && this.#buffer.length > 1)) { const old = this.#buffer.shift()!; this.#bufferRows -= old.b.length + old.a.length; }
     const waiting = this.#waiting;
     if (waiting && d.u >= waiting.u) { this.#waiting = null; return this.#seedFrom(waiting, now) === 'seeded' ? 'none' : 'snapshot'; }
@@ -332,7 +343,7 @@ export class FullBook {
     for (const d of after) applyRows(book, d);
     this.bids = book.bids; this.asks = book.asks; this.#bid = book.bid; this.#ask = book.ask; this.coverageEpoch = nextCoverage();
     this.u = last.u; this.seq = last.seq; this.#lastSeq = Math.max(this.#lastSeq, last.seq);
-    this.#live = true; this.lastFault = null; this.disagreements = { snapshotOnly: 0, liveOnly: 0, sizes: 0 }; this.appliedAt = now;
+    this.#live = true; this.lastFault = null; this.disagreements = { snapshotOnly: 0, liveOnly: 0, sizes: 0 }; this.appliedAt = now; this.progressAt = now;
     // A new seed is new coverage: the refresh pauses of the book before it do not hold its audit back (a late audit finds a degraded seed
     // already half healed by the stream, below what shows it).
     this.#auditAt = now + this.#auditDelayMs; this.#refreshFailures = 0; this.#nextRefreshAt = 0;
@@ -422,7 +433,7 @@ export class FullBook {
   /** A delta onto the live sides; kept whole among the recent ones (before any frontier filter) for a refresh to be caught up with. */
   #apply(d: FullDelta, now: number): void {
     applyRows({ bids: this.bids, asks: this.asks, bid: this.#bid, ask: this.#ask }, d);
-    this.u = d.u; this.seq = d.seq; this.#lastSeq = Math.max(this.#lastSeq, d.seq); this.appliedAt = now;
+    this.u = d.u; this.seq = d.seq; this.#lastSeq = Math.max(this.#lastSeq, d.seq); this.appliedAt = now; this.progressAt = now;
     this.#remember(d);
   }
   /** One delta among the recent ones, the oldest let go past `recentMax` frames or `recentRowsMax` rows. */
@@ -434,7 +445,7 @@ export class FullBook {
   /** The book is no longer the venue's: withdrawn, a new epoch, `d` starts the new buffer, and a snapshot is wanted (or a new socket). */
   #restart(d: FullDelta, reason: string, now: number): FullAction {
     this.#withdraw(reason);
-    this.#buffer = [d]; this.#bufferRows = d.b.length + d.a.length; this.#lastSeq = d.seq;
+    this.#buffer = [d]; this.#bufferRows = d.b.length + d.a.length; this.#lastSeq = d.seq; this.progressAt = now;
     return this.#counted(now);
   }
   /** One more resynchronisation: a snapshot is wanted, or a new socket when this is the third within a minute. */
