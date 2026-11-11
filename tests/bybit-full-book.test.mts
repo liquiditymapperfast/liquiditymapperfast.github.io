@@ -346,6 +346,16 @@ test('bybit full book: a refresh that adds nothing, or a side left empty, keeps 
   assert.deepEqual(sides(empty).a, [[106, 1], [107, 1]]); assert.equal(empty.mid(), (99 + 106) / 2);
 });
 
+test('bybit full book: a side that came empty is whole, and empty, out to the guard of the other side\'s best', () => {
+  // Without a mid the empty side had no frontier, and every delta on it was taken, to a billion and without end.
+  const book = seededBook([[99, 1], [98, 1]], []);
+  assert.deepEqual(book.frontiers, { bid: 98, ask: 99 * (1 + GUARD) });
+  book.delta(delta(6, [], [[101, 1], [158, 1], [160, 1], [1e9, 1]]), 1);
+  assert.deepEqual(sides(book).a, [[101, 1], [158, 1]], 'past the cut nothing is taken');
+  // An empty side is due for a refresh (paced), and the refresh brings what lies past the frontier.
+  assert.equal(book.refreshDue(100, REFRESH_MIN_MS), true);
+});
+
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {
   const book = seededBook();
   book.delta(delta(6, [[99, 6]]), 1); book.delta(delta(7, [[98, 7]], [[101, 0]]), 2);

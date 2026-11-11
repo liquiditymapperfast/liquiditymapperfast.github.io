@@ -166,15 +166,18 @@ export interface FullBookOptions {
   recentRowsMax?: number;
   /** How long after a seed its audit is read (`AUDIT_DELAY_MS`; a test's fast-changing book uses less). */
   auditDelayMs?: number;
+  /** The levels a side a snapshot holds at most (`SNAPSHOT_CAP`; a test's small book uses less). */
+  snapshotCap?: number;
   /** The fewest missing levels that make a snapshot degraded (`DEGRADED_MIN`; small books in tests use fewer). */
   degradedMin?: number;
 }
 
 /**
- * What is known of one side: the frontier (the deepest price inside which the side is whole; null for a side that came empty, which has
- * nothing anywhere), its distance from the mid when it was set, and how many levels the snapshot that set it had on this side.
+ * What is known of one side: the frontier (the deepest price inside which the side is whole; null only for a book with neither side),
+ * how far the venue's snapshots reach on this side (from their own middle to their frontier: measured from the snapshot alone, and
+ * renewed by every one that passes the comparison), and how many levels the snapshot that set the frontier had on this side.
  */
-interface Coverage { frontier: number | null; seedDistance: number; levels: number }
+interface Coverage { frontier: number | null; reach: number; levels: number }
 
 /**
  * One instrument's full-depth book. `bids` and `asks` are the live sides: replaced whole when a snapshot seeds, changed in place by deltas
@@ -221,7 +224,7 @@ export class FullBook {
   /** Why the book last stopped being live (for the status line). */
   lastFault: string | null = null;
   readonly #makeSide: () => Side; readonly #bufferMax: number; readonly #bufferRowsMax: number; readonly #recentMax: number; readonly #degradedMin: number;
-  readonly #recentRowsMax: number; readonly #auditDelayMs: number;
+  readonly #recentRowsMax: number; readonly #auditDelayMs: number; readonly #snapshotCap: number;
   #recentRows = 0;
 
   constructor(options: FullBookOptions = {}) {
@@ -229,6 +232,7 @@ export class FullBook {
     this.#bufferMax = options.bufferMax ?? 1_500; this.#bufferRowsMax = options.bufferRowsMax ?? 300_000; this.#recentMax = options.recentMax ?? 150;
     this.#degradedMin = options.degradedMin ?? DEGRADED_MIN;
     this.#recentRowsMax = options.recentRowsMax ?? 100_000; this.#auditDelayMs = options.auditDelayMs ?? AUDIT_DELAY_MS;
+    this.#snapshotCap = options.snapshotCap ?? SNAPSHOT_CAP;
     this.bids = this.#makeSide(); this.asks = this.#makeSide();
   }
 
@@ -301,10 +305,11 @@ export class FullBook {
     // draws nothing: it is due (paced like any refresh), and the refresh brings back what lies past the frontier.
     if (this.bids.size === 0 || this.asks.size === 0) return true;
     if (!(mid > 0)) return false;
-    // Inside the band, a frontier is refreshed once a quarter of its distance is used, at once when its snapshot ran short of the cap
-    // (the whole side), or at once when it was past the band at its seed (cut at the guard: the perpetual's, which the band reaches
-    // after a move of a fifteenth, long before a quarter of the distance is used).
-    const due = (c: Coverage, left: number): boolean => c.frontier !== null && left < mid * BAND && (left <= c.seedDistance * (1 - REFRESH_USED) || c.levels < SNAPSHOT_CAP || c.seedDistance >= mid * BAND);
+    // Inside the band, a frontier is refreshed once what is left of it is a quarter short of what a snapshot reaches, at once when the
+    // snapshot that set it ran short of the cap (the whole side), or at once when snapshots reach past the band (cut at the guard: the
+    // perpetual's, which the band passes after a move of a fifteenth). What a snapshot reaches is the venue's, never the live book's, so
+    // no refresh (an audit, one that added nothing, one from before a move) can make a frontier the band needs look covered.
+    const due = (c: Coverage, left: number): boolean => c.frontier !== null && left < mid * BAND && (left <= c.reach * (1 - REFRESH_USED) || c.levels < this.#snapshotCap || c.reach >= mid * BAND);
     return due(this.#bid, this.#bid.frontier === null ? Infinity : mid - this.#bid.frontier) || due(this.#ask, this.#ask.frontier === null ? Infinity : this.#ask.frontier - mid);
   }
   /** A refresh is being read for the current epoch: the connector asks for the snapshot and hands the answer to `snapshot`. */
@@ -416,13 +421,10 @@ export class FullBook {
       if (ceiling > askEdge) { for (const [p, q] of book.asks) if (p > askEdge && p <= ceiling) this.asks.set(p, q); this.#ask = { ...this.#ask, frontier: ceiling }; askGrew = true; }
     }
     const grew = bidGrew || askGrew;
-    // What the next refresh is judged against (not after an audit, which took nothing from its snapshot): the snapshot's counts, and
-    // the distance of a side this refresh extended, from now. A side it did not extend keeps the distance its coverage was set at: a
-    // refresh that added nothing (one read before a move, say) still owes the reach the band needs, and stays due after its pause.
-    if (!asked) {
-      this.#bid = { ...this.#bid, seedDistance: bidGrew && mid > 0 ? mid - this.#bid.frontier! : this.#bid.seedDistance, levels: Math.max(this.#bid.levels, s.b.length) };
-      this.#ask = { ...this.#ask, seedDistance: askGrew && mid > 0 ? this.#ask.frontier! - mid : this.#ask.seedDistance, levels: Math.max(this.#ask.levels, s.a.length) };
-    }
+    // What the next refresh is judged against: what this snapshot reaches, on both sides (it passed the comparison, audit or not), and the
+    // count of a side whose frontier it set (an audit, or a side it did not extend, cut nothing from it: a short side stays short).
+    this.#bid = { ...this.#bid, reach: book.bid.reach, levels: bidGrew ? s.b.length : this.#bid.levels };
+    this.#ask = { ...this.#ask, reach: book.ask.reach, levels: askGrew ? s.a.length : this.#ask.levels };
     // A passed audit that adds nothing is no failed refresh: the next one waits only the usual minute.
     if (!grew && audit) { this.#refresh = null; this.#nextRefreshAt = now + REFRESH_MIN_MS; return 'unchanged'; }
     if (!grew) { this.failRefresh(now); return 'unchanged'; }
@@ -434,19 +436,23 @@ export class FullBook {
     return 'extended';
   }
 
-  /** A snapshot's sides with their frontiers (each side's deepest price), cut at `GUARD` of its mid. */
+  /**
+   * A snapshot's sides with their frontiers (each side's deepest price), cut at `GUARD` of its middle: its mid, or the best price of its
+   * one side when the other came empty (that side is then whole, and empty, out to the cut, so no delta past it is taken either).
+   */
   #build(s: FullSnapshot): { bids: Side; asks: Side; bid: Coverage; ask: Coverage } {
     const bids = this.#makeSide(), asks = this.#makeSide();
-    const mid = s.b.length && s.a.length ? (s.b[0]![0] + s.a[0]![0]) / 2 : NaN;
-    const low = mid > 0 ? mid * (1 - GUARD) : -Infinity, high = mid > 0 ? mid * (1 + GUARD) : Infinity;
+    const center = s.b.length && s.a.length ? (s.b[0]![0] + s.a[0]![0]) / 2 : s.b.length ? s.b[0]![0] : s.a.length ? s.a[0]![0] : NaN;
+    const low = center > 0 ? center * (1 - GUARD) : -Infinity, high = center > 0 ? center * (1 + GUARD) : Infinity;
     for (const [p, q] of s.b) if (p >= low) bids.set(p, q);
     for (const [p, q] of s.a) if (p <= high) asks.set(p, q);
     // Beyond the cut nothing is kept (the linear book's asks run to a billion), and the frontier moves in to it: inside, the side is whole.
-    const bidEdge = s.b.length ? Math.max(s.b[s.b.length - 1]![0], low) : null, askEdge = s.a.length ? Math.min(s.a[s.a.length - 1]![0], high) : null;
+    const bidEdge = s.b.length ? Math.max(s.b[s.b.length - 1]![0], low) : center > 0 ? low : null;
+    const askEdge = s.a.length ? Math.min(s.a[s.a.length - 1]![0], high) : center > 0 ? high : null;
     return {
       bids, asks,
-      bid: { frontier: bidEdge, seedDistance: bidEdge !== null && mid > 0 ? mid - bidEdge : 0, levels: s.b.length },
-      ask: { frontier: askEdge, seedDistance: askEdge !== null && mid > 0 ? askEdge - mid : 0, levels: s.a.length },
+      bid: { frontier: bidEdge, reach: bidEdge !== null && center > 0 ? center - bidEdge : 0, levels: s.b.length },
+      ask: { frontier: askEdge, reach: askEdge !== null && center > 0 ? askEdge - center : 0, levels: s.a.length },
     };
   }
 
@@ -481,7 +487,7 @@ export class FullBook {
   }
 }
 
-const noCoverage = (): Coverage => ({ frontier: null, seedDistance: 0, levels: 0 });
+const noCoverage = (): Coverage => ({ frontier: null, reach: 0, levels: 0 });
 
 /** A delta's rows inside the frontiers. */
 function applyRows(book: { bids: Side; asks: Side; bid: Coverage; ask: Coverage }, d: FullDelta): void {
