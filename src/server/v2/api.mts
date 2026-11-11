@@ -211,7 +211,10 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   /** Make, replace or stop the full-depth owner; the flow sources leave its venue's trades to it (stopped first, before it starts). */
   const syncFullDepth = (): void => {
     const spec = fullDepthSource();
-    if (ownedMarket(spec)) { flowSources.exclude('bybit', true); fullDepth.sync(spec); }
+    // Owned only once the feed manager has accepted the market: its market row says a perpetual sized in coins, not inverse.
+    const row = spec ? marketOf(spec.instrumentId) : null;
+    const accepted = row !== null && row.marketType === 'perpetual' && row.quantityUnit === 'base' && row.inverse !== true;
+    if (accepted && ownedMarket(spec)) { flowSources.exclude('bybit', true); fullDepth.sync(spec); }
     else { fullDepth.sync(null); flowSources.exclude('bybit', false); }
   };
   /**

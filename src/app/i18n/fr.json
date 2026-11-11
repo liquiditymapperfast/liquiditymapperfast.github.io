@@ -2353,5 +2353,8 @@
  "Right-click a block to split its window there, or to merge it with the window before or after.": "Faites un clic droit sur un bloc pour y diviser sa fenêtre, ou pour la fusionner avec la fenêtre d'avant ou d'après.",
  "From the candles of {market}, in blocks of {n} minutes.": "À partir des bougies de {market}, en blocs de {n} minutes.",
  "No market of this coin has a history the page can read, so there is no TPO.": "Aucun marché de cette crypto n'a un historique que la page puisse lire, il n'y a donc pas de TPO.",
- "Four parts": "Quatre parties"
+ "Four parts": "Quatre parties",
+ "loading the full book": "chargement du carnet d'ordres complet",
+ "book re-synchronising ({reason})": "resynchronisation du carnet d'ordres ({reason})",
+ "no usable book right now (crossed or one-sided)": "aucun carnet d'ordres utilisable pour l'instant (croisé ou d'un seul côté)"
 }

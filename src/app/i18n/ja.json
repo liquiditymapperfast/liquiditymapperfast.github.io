@@ -2243,5 +2243,8 @@
  "Right-click a block to split its window there, or to merge it with the window before or after.": "ブロックを右クリックすると、その位置で期間を分割したり、前後の期間と結合したりできます。",
  "From the candles of {market}, in blocks of {n} minutes.": "{market} のローソク足から、{n} 分ブロックで作成。",
  "No market of this coin has a history the page can read, so there is no TPO.": "この通貨のどの市場にも、ページが読み込める履歴がないため、TPO は表示されません。",
- "Four parts": "4つの部分"
+ "Four parts": "4つの部分",
+ "loading the full book": "板全体を読み込み中",
+ "book re-synchronising ({reason})": "板を再同期中（{reason}）",
+ "no usable book right now (crossed or one-sided)": "現在使える板がありません（クロスまたは片側のみ）"
 }

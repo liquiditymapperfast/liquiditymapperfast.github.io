@@ -40,6 +40,8 @@ export interface VenueSnap {
   bin0: number; bid: Float32Array; ask: Float32Array; cover: Cover; bestBid: number; bestAsk: number;
   /** A grouped book's top bid and ask groups as reported (`ValuedBook.touch`): where its touch may be. */
   touchSpan?: { lo: number; hi: number };
+  /** What the book covered (`ValuedBook.epoch`): two snapshots of other coverage are not compared (more became visible, nothing moved). */
+  epoch?: number;
 }
 export interface BookSnap {
   seq: number; t: number; base: number;
@@ -63,7 +65,7 @@ export function snapshot(kernels: Kernels, frame: LevelsFrame, base: number, mar
     for (let i = 0; i < book.bids.usd.length; i++) if (book.bids.usd[i]! > 0 && book.bids.hi[i]! > bestBid) bestBid = book.bids.hi[i]!;
     for (let i = 0; i < book.asks.usd.length; i++) if (book.asks.usd[i]! > 0 && book.asks.lo[i]! < bestAsk) bestAsk = book.asks.lo[i]!;
     // A grouped book's top groups are split between bids and asks at an estimate (`splitTouch`): kept so its change there is not counted.
-    venues.set(id, { bin0: g.bin0 + lo, bid: g.bid[k]!.slice(lo, hi + 1), ask: g.ask[k]!.slice(lo, hi + 1), cover, bestBid, bestAsk, ...(book.touch ? { touchSpan: book.touch } : {}) });
+    venues.set(id, { bin0: g.bin0 + lo, bid: g.bid[k]!.slice(lo, hi + 1), ask: g.ask[k]!.slice(lo, hi + 1), cover, bestBid, bestAsk, ...(book.touch ? { touchSpan: book.touch } : {}), ...(book.epoch ? { epoch: book.epoch } : {}) });
   });
   return { seq, t, base, venues, markLo: Math.min(markLo, mark), markHi: Math.max(markHi, mark) };
 }
@@ -95,7 +97,8 @@ export function pullRows(then: BookSnap, now: BookSnap, between: readonly BookSn
   const bid = new Float64Array(n).fill(NaN), ask = new Float64Array(n).fill(NaN), touched = new Uint8Array(n);
   for (const id of ids) {
     const a = then.venues.get(id), b = now.venues.get(id);
-    if (!a || !b) continue;
+    // A venue whose coverage changed between the two (a book seeded again, or grown past its frontier) does not count: unknown, not moved.
+    if (!a || !b || (a.epoch ?? 0) !== (b.epoch ?? 0)) continue;
     for (let j = 0; j < n; j++) {
       const lo = (bin0 + j) * step, hi = lo + step;
       if (!inside(a.cover, lo, hi) || !inside(b.cover, lo, hi)) continue;

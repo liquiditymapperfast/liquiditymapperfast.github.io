@@ -2243,5 +2243,8 @@
  "Right-click a block to split its window there, or to merge it with the window before or after.": "右键单击方块，可在该处拆分其窗口，或与前一个或后一个窗口合并。",
  "From the candles of {market}, in blocks of {n} minutes.": "来自 {market} 的 K 线，按 {n} 分钟分块。",
  "No market of this coin has a history the page can read, so there is no TPO.": "此币种没有任何市场拥有页面可读取的历史，因此没有 TPO。",
- "Four parts": "四个部分"
+ "Four parts": "四个部分",
+ "loading the full book": "正在加载完整订单簿",
+ "book re-synchronising ({reason})": "订单簿正在重新同步（{reason}）",
+ "no usable book right now (crossed or one-sided)": "暂时没有可用的订单簿（交叉或只有一侧）"
 }

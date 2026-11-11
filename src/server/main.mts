@@ -161,8 +161,9 @@ try {
     const activeFeeds = feeds;
     // The Bybit perpetual's full-depth book follows the feed manager's Bybit depth spec, which exists only while Bybit is selected (v2/full-depth.mts).
     v2.setFullDepthSource(() => {
+      // Only a spec whose market metadata the feed manager verified (its instrument info answered and was accepted).
       const spec = activeFeeds.specs.get('bybit-depth');
-      return spec ? { instrumentId: String(spec.instrumentId ?? ''), symbol: String(spec.symbol ?? ''), category: String(spec.category ?? '') } : null;
+      return spec && spec.metadata ? { instrumentId: String(spec.instrumentId ?? ''), symbol: String(spec.symbol ?? ''), category: String(spec.category ?? '') } : null;
     });
     let activeFeedOptions: LiveFeedStartOptions = liveFeedCoreConfig;
     const feedSelectionFile = live && !memoryOnly ? path.join(path.dirname(path.resolve(String(effectiveHistoryPath))), 'v2-feed-venues.json') : null;

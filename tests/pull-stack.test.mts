@@ -72,6 +72,16 @@ test('a row gains what was stacked and loses what was pulled, a venue counting o
   assert.equal(pullRows(then, now, [now], ['a:BTC'], 0.2, Math.floor(81_990 / 0.2), 10), null, 'a step finer than the base');
 });
 
+test('a venue whose coverage epoch changed between the snapshots is not compared: a book seeded again is no stack or pull', async () => {
+  const kernels = await loadWasm();
+  const before = { ...wide('a:BTC', [[81_950, 81_950, 100_000]]), epoch: 3 }, after = { ...wide('a:BTC', [[81_950, 81_950, 1_000_000]]), epoch: 4 };
+  const then = snapshot(kernels, frame(before), BASE, MARK, 0, 1), now = snapshot(kernels, frame(after), BASE, MARK, 60_000, 2);
+  const step = 10, bin0 = 8_188, n = 30, at = (price: number) => Math.floor(price / step) - bin0;
+  assert.ok(Number.isNaN(pullRows(then, now, [now], ['a:BTC'], step, bin0, n)!.bid[at(81_950)]!), 'not +900,000: unknown');
+  const same = snapshot(kernels, frame({ ...after, epoch: 3 }), BASE, MARK, 60_000, 2);
+  assert.equal(pullRows(then, same, [same], ['a:BTC'], step, bin0, n)!.bid[at(81_950)], 900_000, 'within one epoch the change counts');
+});
+
 test('rows the price reached between the snapshots are marked: the inside market and the trades seen', async () => {
   const kernels = await loadWasm();
   const then = snapshot(kernels, frame(wide('a:BTC')), BASE, MARK, 0, 1);

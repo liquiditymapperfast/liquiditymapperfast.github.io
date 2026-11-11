@@ -97,6 +97,12 @@ test('full depth on the server: the owner\'s book replaces the feed manager\'s, 
   try {
     await until(() => seen.some(s => s.deepest === 99.5));
     assert.ok(seen.some(s => s.deepest === 99.5), 'before an owner: the feed manager\'s book');
+    // Not owned before the feed manager has accepted the market (no market row for it yet).
+    const rows = app.state.markets ?? [], kept = rows.slice();
+    app.state.markets = rows.filter(m => (m.instrumentId ?? m.id) !== id);
+    v2.setFullDepthSource(() => SPEC);
+    assert.equal(FakeBook.made.length, 0, 'no owner without an accepted market row');
+    app.state.markets = kept;
     v2.setFullDepthSource(() => SPEC);
     const owner = FakeBook.made[0]!;
     assert.ok(owner, 'made at once'); assert.equal(owner.started, 1);

@@ -300,7 +300,7 @@ abstract class BybitBook extends MarketBook {
       if (typeof snapshot === 'string') throw new Error(snapshot);
       result = this.#full.snapshot(snapshot, epoch, Date.now());
     } catch (error) {
-      if (generation === this.generation && !refresh) this.#full.lastFault = `snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 120);
+      if (generation === this.generation && !refresh && epoch === this.#full.epoch) this.#full.lastFault = `snapshot failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 120);
     } finally {
       if (this.#asking?.generation === generation && this.#asking.epoch === epoch) this.#asking = null;
     }
@@ -312,6 +312,8 @@ abstract class BybitBook extends MarketBook {
       return;
     }
     if (result === 'seeded') { this.#pause = 0; this.#bookFrameAt = Date.now(); this.#sides(); this.touch(); return; }
+    // An answer to an earlier epoch's request schedules nothing: the current epoch asks for its own.
+    if (epoch !== this.#full.epoch) return;
     // 'wait': the book seeds itself once the stream reaches the snapshot's anchor; one the stream never brings is read again after a
     // while. 'stale': a newer epoch has asked (or will) for its own.
     if (result === 'wait') this.#later(BYBIT_ANCHOR_WAIT_MS);

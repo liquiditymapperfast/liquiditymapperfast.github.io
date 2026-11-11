@@ -2386,5 +2386,8 @@
  "Right-click a block to split its window there, or to merge it with the window before or after.": "Клацніть блок правою кнопкою миші, щоб розділити його вікно в цьому місці або об'єднати з попереднім чи наступним вікном.",
  "From the candles of {market}, in blocks of {n} minutes.": "За свічками {market}, блоками по {n} хвилин.",
  "No market of this coin has a history the page can read, so there is no TPO.": "Жоден ринок цієї монети не має історії, яку сторінка може прочитати, тому TPO немає.",
- "Four parts": "Чотири частини"
+ "Four parts": "Чотири частини",
+ "loading the full book": "завантаження повного стакана",
+ "book re-synchronising ({reason})": "стакан синхронізується знову ({reason})",
+ "no usable book right now (crossed or one-sided)": "зараз немає придатного стакана (перехрещений або однобічний)"
 }

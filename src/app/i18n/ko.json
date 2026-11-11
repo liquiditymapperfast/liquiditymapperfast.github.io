@@ -2243,5 +2243,8 @@
  "Right-click a block to split its window there, or to merge it with the window before or after.": "블록을 오른쪽 클릭하면 그 지점에서 구간을 나누거나 앞뒤 구간과 합칠 수 있습니다.",
  "From the candles of {market}, in blocks of {n} minutes.": "{market}의 캔들에서, {n}분 블록으로.",
  "No market of this coin has a history the page can read, so there is no TPO.": "이 코인의 어떤 시장도 페이지가 읽을 수 있는 이력이 없어 TPO가 없습니다.",
- "Four parts": "네 부분"
+ "Four parts": "네 부분",
+ "loading the full book": "전체 호가창을 불러오는 중",
+ "book re-synchronising ({reason})": "호가창 재동기화 중 ({reason})",
+ "no usable book right now (crossed or one-sided)": "지금은 쓸 수 있는 호가창이 없습니다 (교차 또는 한쪽만)"
 }

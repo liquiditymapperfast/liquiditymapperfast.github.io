@@ -61,9 +61,20 @@ function saveSelection(selected: readonly string[], known: readonly string[]): v
   try { localStorage.setItem(SELECTION_KEY, JSON.stringify(selected)); if (known.length) localStorage.setItem(KNOWN_KEY, JSON.stringify(known)); } catch { /* private mode: the choice lasts for this visit */ }
 }
 
+/**
+ * A live venue's detail in the page's language: the engine's words for its book (shared/engine.ts, `BookConnector.bookDetail`) are
+ * translated, the reason a book re-synchronises kept as the venue gave it; any other detail as it came.
+ */
+function detailText(detail: string): string {
+  if (detail === 'loading the full book') return t('loading the full book');
+  if (detail === 'no usable book right now (crossed or one-sided)') return t('no usable book right now (crossed or one-sided)');
+  const resync = /^book re-synchronising \((.*)\)$/.exec(detail);
+  return resync ? t('book re-synchronising ({reason})', { reason: resync[1]! }) : detail;
+}
+
 function statusText(venue: VenueStatus): string {
   switch (venue.state) {
-    case 'live': return venue.detail ? t('live — {detail}', { detail: venue.detail }) : t('live');
+    case 'live': return venue.detail ? t('live — {detail}', { detail: detailText(venue.detail) }) : t('live');
     case 'connecting': return t('connecting…');
     case 'off': return t('off');
     case 'blocked': return BLOCKED_TEXT;

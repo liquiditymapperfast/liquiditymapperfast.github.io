@@ -2325,5 +2325,8 @@
  "Right-click a block to split its window there, or to merge it with the window before or after.": "Penceresini orada bölmek ya da öncesindeki veya sonrasındaki pencereyle birleştirmek için bir bloğa sağ tıklayın.",
  "From the candles of {market}, in blocks of {n} minutes.": "{market} mumlarından, {n} dakikalık bloklarla.",
  "No market of this coin has a history the page can read, so there is no TPO.": "Bu coin'in hiçbir piyasasının sayfanın okuyabileceği bir geçmişi yok, bu yüzden TPO yok.",
- "Four parts": "Dört parça"
+ "Four parts": "Dört parça",
+ "loading the full book": "tam emir defteri yükleniyor",
+ "book re-synchronising ({reason})": "emir defteri yeniden eşitleniyor ({reason})",
+ "no usable book right now (crossed or one-sided)": "şu anda kullanılabilir emir defteri yok (çapraz ya da tek taraflı)"
 }
