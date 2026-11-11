@@ -236,3 +236,13 @@ test('a plate the row\'s edge would cut goes to the other side of its value, or 
   // Wholly outside the row (a value off its scale, or an offset that lifts it out): left there.
   assert.deepEqual(markPlace(100, 140, 60, 14, 'below', 3, row), markBox(100, 140, 60, 14, 'below', 3));
 });
+
+test('a plate moved inside the row at its right edge is judged where it stands: it does not cover the one before it (Sol)', () => {
+  // Two plates 68 px wide in a row 200 px wide: the first at [66, 134]; the second, centred at 180, would be [146, 214] and moves to
+  // [132, 200], over the first. It is a dot instead.
+  const rec = recorder(), boxes: MarkBox[] = [];
+  const f = { ...frame(rec.ctx, 5, 40, b => boxes.push(b)), w: 200 };
+  paintPlot(f, { kind: 'mark', title: '', style: { shape: 'label', position: 'above' }, fields: { value: Float64Array.from([NaN, NaN, 50, NaN, 50]) }, colors: null, texts: ['', '', 'abcdefghij', '', 'abcdefghij'], tips: null }, scale);
+  assert.equal(rec.texts.length, 1, 'one plate written, the other a dot');
+  assert.ok(boxes.length === 2 && boxes[1]!.x >= boxes[0]!.x + boxes[0]!.w, `no overlap: ${JSON.stringify(boxes)}`);
+});

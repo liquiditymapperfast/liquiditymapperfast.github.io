@@ -322,7 +322,10 @@ function paintMarks(f: Frame, plot: PlotOut, y: (v: number) => number): void {
     // The box the whole mark takes: the shape, and its text beyond it.
     const textW = label ? wide(label) : 0;
     const w = asShape ? Math.max(2 * r, textW) : shape === 'label' ? textW + 8 : textW;
-    const crowded = !label && !asShape ? false : cx - w / 2 < lastRight + 2;
+    // A plate or a text is judged where it will stand (`markPlace` keeps it inside the row): one moved left at the row's right edge is not
+    // drawn over the one before it (Sol, round 7).
+    const placed = !asShape && label ? markPlace(cx, yy, w, lineH, at, gap, { width: f.w, top: f.top, height: f.height }) : null;
+    const crowded = !label && !asShape ? false : (placed ? placed.x : cx - w / 2) < lastRight + 2;
     // A text alone gives way where there is no room (a row of them under the candles would be a row of dots zoomed out).
     if (crowded && shape === 'text') continue;
     if ((!label && !asShape) || crowded) {
@@ -334,7 +337,7 @@ function paintMarks(f: Frame, plot: PlotOut, y: (v: number) => number): void {
       continue;
     }
     if (!asShape) {
-      const box = markPlace(cx, yy, w, lineH, at, gap, { width: f.w, top: f.top, height: f.height });
+      const box = placed ?? markPlace(cx, yy, w, lineH, at, gap, { width: f.w, top: f.top, height: f.height });
       if (shape === 'label') {
         ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 3); ctx.fill();
         ctx.fillStyle = ownText || textOn(c);
