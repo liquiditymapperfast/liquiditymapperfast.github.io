@@ -264,6 +264,86 @@ pub fn blur_rows(data: &[f32], w: u32, h: u32, sigma: f32) -> Vec<f32> {
     a
 }
 
+
+// ---- Distance merge (shared/merge.ts `mergeByDistance`) ----------------------------------------------------------------------------
+
+/// The merge's constants, as shared/merge.ts has them.
+const MAX_DISTANCE: f64 = 0.5;
+const DISTANCE_SHARE: f64 = 0.004;
+const DIVISORS: [f64; 6] = [20.0, 10.0, 5.0, 4.0, 2.0, 1.0];
+const FINEST: f64 = 20.0;
+const MAX_MULTIPLE: f64 = 16.0;
+
+/// `bucketWidth`: the finest allowed width not narrower than the distance's share.
+#[inline]
+fn bucket_width(distance: f64, step: f64) -> f64 {
+    let target = distance * DISTANCE_SHARE;
+    for divisor in DIVISORS {
+        if step / divisor >= target {
+            return step / divisor;
+        }
+    }
+    let mut width = step * 2.0;
+    while width < target && width < step * MAX_MULTIPLE {
+        width *= 2.0;
+    }
+    width
+}
+
+/// `mergeByDistance` for a point side (`lo`, `usd`, nearest first; the caller has checked there are no bands): its levels in buckets
+/// that widen with distance from `mid`, each reported at its farthest member and in the order a bucket was first met (the TypeScript
+/// Map's), the USD added in the same order, so the result is the same to the last bit; levels past `MAX_DISTANCE` dropped. Returned
+/// packed: the buckets' prices, then their USD (`2 * buckets` numbers). A key is `floor(price / width)` in twentieths of a step: a
+/// positive double, so its bit pattern is never the table's empty mark.
+#[wasm_bindgen]
+pub fn merge_by_distance(lo: &[f64], usd: &[f64], mid: f64, step: f64, is_bid: bool) -> Vec<f64> {
+    let count = lo.len().min(usd.len());
+    if count == 0 || !(step > 0.0) || !(mid > 0.0) {
+        let mut out = lo[..count].to_vec();
+        out.extend_from_slice(&usd[..count]);
+        return out;
+    }
+    let limit = mid * MAX_DISTANCE;
+    const EMPTY: u64 = u64::MAX;
+    let size = (count * 2).next_power_of_two().max(16);
+    let shift = 64 - size.trailing_zeros();
+    let mut keys = vec![EMPTY; size];
+    let mut slot_of = vec![0u32; size];
+    let mut price_of: Vec<f64> = Vec::with_capacity(count.min(4096));
+    let mut usd_of: Vec<f64> = Vec::with_capacity(count.min(4096));
+    for i in 0..count {
+        let price = lo[i];
+        let distance = (price - mid).abs();
+        if distance > limit {
+            break;
+        }
+        let width = bucket_width(distance, step);
+        let divisor = step / width;
+        let key = ((price / width).floor() * (FINEST / divisor)).to_bits();
+        let mut h = (key.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> shift) as usize;
+        loop {
+            if keys[h] == EMPTY {
+                keys[h] = key;
+                slot_of[h] = price_of.len() as u32;
+                price_of.push(price);
+                usd_of.push(usd[i]);
+                break;
+            }
+            if keys[h] == key {
+                let b = slot_of[h] as usize;
+                usd_of[b] += usd[i];
+                if if is_bid { price < price_of[b] } else { price > price_of[b] } {
+                    price_of[b] = price;
+                }
+                break;
+            }
+            h = (h + 1) & (size - 1);
+        }
+    }
+    price_of.extend_from_slice(&usd_of);
+    price_of
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,5 +571,21 @@ mod tests {
         assert_eq!(blur_rows(&data, 0, 2, 5.0), data);
         assert_eq!(blur_rows(&data, 1, 3, 5.0), data, "a short buffer is returned as given");
         assert!(blur_rows(&[0.0; 8], 1, 4, 3.0).iter().all(|v| *v == 0.0), "empty stays exactly empty");
+    }
+    #[test]
+    fn merge_by_distance_buckets_far_levels_and_keeps_near_ones() {
+        // Asks from 100.01 out: the near ones stay single, far ones share buckets reported at their farthest member.
+        let lo: Vec<f64> = (1..=2000).map(|i| 100.0 + i as f64 * 0.01).collect();
+        let usd = vec![1.0; lo.len()];
+        let out = merge_by_distance(&lo, &usd, 100.0, 0.02, false);
+        let m = out.len() / 2;
+        assert!(m < lo.len() && m > 100);
+        assert_eq!(out[0], 100.01);
+        assert_eq!(out[m..].iter().sum::<f64>(), 2000.0, "no USD lost inside the band");
+        // Past half the mid nothing is kept.
+        let far = merge_by_distance(&[100.5, 151.0], &[1.0, 1.0], 100.0, 0.02, false);
+        assert_eq!(far, vec![100.5, 1.0]);
+        // Nothing to merge, or no step: the side as it came, packed.
+        assert_eq!(merge_by_distance(&[1.0, 2.0], &[3.0, 4.0], 0.0, 0.02, true), vec![1.0, 2.0, 3.0, 4.0]);
     }
 }

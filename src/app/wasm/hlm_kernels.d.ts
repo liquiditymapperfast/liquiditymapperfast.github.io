@@ -8,6 +8,15 @@
 export function blur_rows(data: Float32Array, w: number, h: number, sigma: number): Float32Array;
 
 /**
+ * `mergeByDistance` for a point side (`lo`, `usd`, nearest first; the caller has checked there are no bands): its levels in buckets
+ * that widen with distance from `mid`, each reported at its farthest member and in the order a bucket was first met (the TypeScript
+ * Map's), the USD added in the same order, so the result is the same to the last bit; levels past `MAX_DISTANCE` dropped. Returned
+ * packed: the buckets' prices, then their USD (`2 * buckets` numbers). A key is `floor(price / width)` in twentieths of a step: a
+ * positive double, so its bit pattern is never the table's empty mark.
+ */
+export function merge_by_distance(lo: Float64Array, usd: Float64Array, mid: number, step: number, is_bid: boolean): Float64Array;
+
+/**
  * Rasterise recorded minute columns into a `w x h` grid of interleaved `[bid, ask]` USD values.
  *
  * Row 0 is the lowest price `p0`; column 0 is time `t0`. Per pixel column each instrument's value is the
@@ -40,6 +49,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly blur_rows: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly merge_by_distance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly raster_columns: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly spread_levels: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;

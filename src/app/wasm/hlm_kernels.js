@@ -26,6 +26,37 @@ export function blur_rows(data, w, h, sigma) {
 }
 
 /**
+ * `mergeByDistance` for a point side (`lo`, `usd`, nearest first; the caller has checked there are no bands): its levels in buckets
+ * that widen with distance from `mid`, each reported at its farthest member and in the order a bucket was first met (the TypeScript
+ * Map's), the USD added in the same order, so the result is the same to the last bit; levels past `MAX_DISTANCE` dropped. Returned
+ * packed: the buckets' prices, then their USD (`2 * buckets` numbers). A key is `floor(price / width)` in twentieths of a step: a
+ * positive double, so its bit pattern is never the table's empty mark.
+ * @param {Float64Array} lo
+ * @param {Float64Array} usd
+ * @param {number} mid
+ * @param {number} step
+ * @param {boolean} is_bid
+ * @returns {Float64Array}
+ */
+export function merge_by_distance(lo, usd, mid, step, is_bid) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(lo, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(usd, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.merge_by_distance(retptr, ptr0, len0, ptr1, len1, mid, step, is_bid);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v3 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 8, 8);
+        return v3;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * Rasterise recorded minute columns into a `w x h` grid of interleaved `[bid, ask]` USD values.
  *
  * Row 0 is the lowest price `p0`; column 0 is time `t0`. Per pixel column each instrument's value is the
@@ -136,6 +167,11 @@ function __wbg_get_imports() {
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayF64FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
 
 let cachedDataViewMemory0 = null;

@@ -15,6 +15,18 @@ const FINEST = 20;
 /** Widest bucket, in grid steps. */
 const MAX_MULTIPLE = 16;
 
+/**
+ * The same merge compiled to WebAssembly (`crates/hlm-kernels` `merge_by_distance`, the same arithmetic in the same order, so the same
+ * result to the last bit; tests/app-client.test.mts holds them together): the browser's feeds worker installs it once its kernels have
+ * loaded, for sides long enough that the copy in and out costs less than the merge. Node keeps this file's own.
+ */
+export type MergeKernel = (lo: Float64Array, usd: Float64Array, mid: number, step: number, isBid: boolean) => Float64Array;
+let kernel: MergeKernel | null = null;
+/** Sides of at least this many levels go to the kernel. */
+export const KERNEL_FROM = 512;
+/** Install the kernel (null: this file's own merge for every side). */
+export function useMergeKernel(next: MergeKernel | null): void { kernel = next; }
+
 /** Width of the bucket for levels `distance` away from the mark: the finest allowed width that is not narrower than the target. */
 export function bucketWidth(distance: number, step: number): number {
   const target = distance * DISTANCE_SHARE;
@@ -34,6 +46,11 @@ export function mergeByDistance(side: SideLevels, mid: number, step: number, isB
   const count = side.usd.length;
   if (count === 0 || !(step > 0) || !(mid > 0)) return side;
   for (let i = 0; i < count; i++) if (side.hi[i]! > side.lo[i]!) return side;
+  if (kernel && count >= KERNEL_FROM) {
+    // Packed: the buckets' prices, then their USD.
+    const packed = kernel(side.lo, side.usd, mid, step, isBid), m = packed.length >> 1, lo = packed.subarray(0, m);
+    return { lo, hi: lo, usd: packed.subarray(m) };
+  }
   const limit = mid * MAX_DISTANCE;
   const buckets = new Map<number, { price: number; usd: number }>();
   for (let i = 0; i < count; i++) {

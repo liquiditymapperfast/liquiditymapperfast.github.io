@@ -11,11 +11,17 @@ import { heldOf, importHistory, readLatest } from './history-import.ts';
 import { importSince } from '../history-window.ts';
 import type { TilesInfo } from '../archive/tiles.ts';
 import { CONTIGUOUS_GAP_MS } from '../../shared/columns.ts';
+import { useMergeKernel } from '../../shared/merge.ts';
+import { loadKernels } from '../kernels.ts';
 
 /**
  * The data engine on its own thread: exchange sockets, book valuation, recording and the history requests all run here, and the page
  * receives the same frames and answers a server would send. Nothing in this file talks to a server of ours.
  */
+
+// The books' distance merge runs in WebAssembly once the kernels have loaded (until then, and if they never do, in JavaScript: the same
+// result either way, shared/merge.ts).
+void loadKernels().then(k => useMergeKernel(k.mergeByDistance), () => { /* the JavaScript merge stays */ });
 
 const scope = self as unknown as { postMessage(message: FeedsOut, transfer?: Transferable[]): void; onmessage: ((event: MessageEvent<FeedsIn>) => void) | null };
 const post = (message: FeedsOut, transfer: Transferable[] = []): void => scope.postMessage(message, transfer);

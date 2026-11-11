@@ -8,7 +8,7 @@ import { PullHistory, binsPerRow, pullBase, pullRows, readPullWindow, snapshot }
 import type { Kernels } from '../src/app/kernels.ts';
 import type { LevelsFrame, LiveBook } from '../src/app/wire.ts';
 
-interface Glue { default(options: { module_or_path: Uint8Array }): Promise<unknown>; spread_levels: (...a: unknown[]) => Float32Array; raster_columns: (...a: unknown[]) => Float32Array; blur_rows: (data: Float32Array, w: number, h: number, sigma: number) => Float32Array }
+interface Glue { default(options: { module_or_path: Uint8Array }): Promise<unknown>; spread_levels: (...a: unknown[]) => Float32Array; raster_columns: (...a: unknown[]) => Float32Array; blur_rows: (data: Float32Array, w: number, h: number, sigma: number) => Float32Array; merge_by_distance: (lo: Float64Array, usd: Float64Array, mid: number, step: number, isBid: boolean) => Float64Array }
 async function loadWasm(): Promise<Kernels> {
   const root = path.resolve(import.meta.dirname, '..', '..', '..');
   const glue = await import(pathToFileURL(path.join(root, 'src', 'app', 'wasm', 'hlm_kernels.js')).href) as Glue;
@@ -17,6 +17,7 @@ async function loadWasm(): Promise<Kernels> {
     spreadLevels: (lo, hi, usd, inst, nInst, step, bin0, nBins) => glue.spread_levels(lo, hi, usd, inst, nInst, step, bin0, nBins),
     blurRows: (data, w, h, sigma) => glue.blur_rows(data, w, h, sigma),
     rasterColumns: a => glue.raster_columns(a.steps, a.colInst, a.colTime, a.colCount, a.bins, a.bid, a.ask, a.stepMs, a.t0, a.t1, a.p0, a.p1, a.w, a.h, a.sigma),
+    mergeByDistance: (lo, usd, mid, step, isBid) => glue.merge_by_distance(lo, usd, mid, step, isBid),
   };
 }
 
