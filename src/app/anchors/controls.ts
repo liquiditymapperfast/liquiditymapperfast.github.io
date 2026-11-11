@@ -96,7 +96,7 @@ export interface DateFieldOptions {
  */
 export function dateField(o: DateFieldOptions): HTMLElement {
   // A draft stands only while the anchor is where it was when it was typed: moved another way since (a candle clicked), the field shows where it is now.
-  const now = Date.now(), base = `${o.context ?? ''}|${o.value ?? ''}|${timeZone()}`, kept = drafts.get(o.focus), draft = kept && kept.base === base ? kept : null, clockZone = zoneName(timeZone());
+  const now = Date.now(), base = `${o.context ?? ''}|${o.value ?? ''}|${timeZone()}`, kept = drafts.get(o.focus), draft = kept && kept.base === base ? kept : null, clockZone = zoneName(timeZone()).replace(/-/g, '‑');   // "GMT-3" never broken at its hyphen
   if (kept && !draft) drafts.delete(o.focus);
   const first = draft ?? (o.value != null ? wallFields(o.value) : null);
   const date = el('input', { type: 'date', value: first?.date ?? '', class: 'anchor-date', ariaLabel: t('Date'), min: wallFields(now - o.reachMs).date, max: wallFields(now).date });
