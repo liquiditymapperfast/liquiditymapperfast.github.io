@@ -508,7 +508,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       inputs = next; n = next.time.length;
       // From the candle after the last one that had closed at the run before, when every candle before it is the same.
       // A closed candle whose order book changed since (a window settled, a book added) is run again with every candle after it.
-      const start = snap && snap.at === snap.inputs.time.length - 2 && snap.at + 1 <= n && sameCandles(snap.inputs, next, snap.at + 1) && (!readsDepth || sameDepth(snap.inputs, next, snap.at + 1)) ? snap.at + 1 : 0;
+      const start = snap && snap.at === snap.inputs.time.length - 2 && snap.at + 1 < n && sameCandles(snap.inputs, next, snap.at + 1) && (!readsDepth || sameDepth(snap.inputs, next, snap.at + 1)) ? snap.at + 1 : 0;
       const from = start > 0 ? snap : null;
       if (from) restore(from); else { fresh(); snap = null; }
       runner.startedAt = start;

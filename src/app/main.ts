@@ -322,7 +322,7 @@ async function main(): Promise<void> {
   const anchorSpot = (at: number): { start: number } | { refused: string } => {
     // The start of the candle drawn there: zoomed out, a longer one made of the chart's (heat-pane `drawnTf`), as its preview shows.
     const s = store.state, tf = heat.drawnTf(s), now = Date.now(), vwap = s.vwapAnchoring;
-    const start = vwap ? candleStartAt(at, tf) : anchorAt(at, tf);
+    const start = vwap ? candleStartAt(at, tf) : heat.profileAnchorAt(at, s);
     if (start > now) return { refused: t('No candle there yet.') };
     if (start < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS)) return { refused: vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.') };
     return { start };
@@ -408,8 +408,9 @@ async function main(): Promise<void> {
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); store.set({ vwapAnchoring: false, profileAnchoring: false, anchorMove: null, anchorPreview: null }); dismissToast(); toolbar.refreshOpenPanel(); return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault(); e.stopImmediatePropagation();
-      const s = store.state, tf = Math.max(heat.drawnTf(s), s.vwapAnchoring ? 0 : ANCHOR_BAR_MS);
-      const from = s.anchorPreview ?? (s.hover?.source === 'heat' ? s.hover.t : s.candles.at(-1)?.[0] ?? Date.now());
+      const s = store.state, from = s.anchorPreview ?? (s.hover?.source === 'heat' ? s.hover.t : s.candles.at(-1)?.[0] ?? Date.now());
+      // A step is a candle drawn, or the profile's bar there where that is longer (hours past 21 weeks).
+      const tf = s.vwapAnchoring ? heat.drawnTf(s) : Math.max(heat.drawnTf(s), ANCHOR_BAR_MS, heat.profileAnchorBar(from));
       previewAnchor(from + (s.anchorPreview === null ? 0 : e.key === 'ArrowLeft' ? -tf : tf));
       return;
     }
@@ -514,6 +515,8 @@ async function main(): Promise<void> {
     if (changed.has('timeframe') || changed.has('marketId') || changed.has('chartType') || changed.has('replay')) draw.contextChanged();
     if (changed.has('mark')) draw.markMoved(state.mark.price);
     if (changed.has('chartType')) heat.invalidate();
+    // The candles' own colours: the map, the book's price row and the Tape view's mark are drawn in them (Sol: nothing else asked for a frame).
+    if (changed.has('candleColors')) { heat.invalidate(); ladder.invalidate(); candle.invalidate(); }
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show')) range.refreshHeld();
     if (changed.has('tradeBubbles') || changed.has('show')) hub.setTape(tapeWanted());
     if (changed.has('sounds')) heat.invalidate();

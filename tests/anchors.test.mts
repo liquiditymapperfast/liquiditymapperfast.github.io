@@ -99,3 +99,26 @@ test('an anchor saved as a bare time is read as a fixed one at that very time; o
   assert.equal(readAnchor(-1, 0), null);
   assert.equal(freeSlot([{ slot: 0 }, { slot: 2 }]), 1, 'the lowest slot free: the others keep theirs');
 });
+
+test('minutes that begin inside the winning candle and miss its extreme give its start as approximate, never a lesser extreme as exact', () => {
+  const zone = 'UTC', monday = Date.UTC(2026, 10, 9), now = monday + 2 * DAY + 13 * HOUR + 20 * MIN, barMs = 15 * MIN;
+  const coarse: CandleRow[] = [];
+  for (let t = monday; t <= now; t += barMs) coarse.push(bar(t, 100, 90));
+  coarse[20] = bar(coarse[20]![0], 200, 95);  // Monday 05:00: the week's high so far, 200
+  const high: AnchorRule = { period: 'week', point: 'high' }, at = coarse[20]![0];
+  // An exchange whose minutes begin at 05:08 (its reach ends there): they peak at 105, not at the candle's 200.
+  const late = (from: number, to: number): CandleRow[] => Array.from({ length: 15 }, (_, k) => bar(from + k * MIN, k === 9 ? 105 : 99, 91)).filter(b => b[0] >= at + 8 * MIN && b[0] < to);
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, late), { state: 'ready', at, approx: true });
+  // The minutes holding the 200: that minute, exact.
+  const whole = (from: number, to: number): CandleRow[] => Array.from({ length: 15 }, (_, k) => bar(from + k * MIN, k === 4 ? 200 : 99, 91)).filter(b => b[0] < to);
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, whole), { state: 'ready', at: at + 4 * MIN });
+  // A low the same way.
+  coarse[30] = bar(coarse[30]![0], 100, 10);
+  const low: AnchorRule = { period: 'week', point: 'low' }, lowAt = coarse[30]![0];
+  const lateLow = (from: number, to: number): CandleRow[] => Array.from({ length: 15 }, (_, k) => bar(from + k * MIN, 99, k === 12 ? 50 : 91)).filter(b => b[0] >= lowAt + 10 * MIN && b[0] < to);
+  assert.deepEqual(resolveRule(low, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, lateLow), { state: 'ready', at: lowAt, approx: true });
+  // The candle under way: its minutes can be newer than it, so they are taken as they say.
+  coarse[coarse.length - 1] = bar(coarse.at(-1)![0], 300, 92);
+  const live = (from: number, to: number): CandleRow[] => Array.from({ length: 15 }, (_, k) => bar(from + k * MIN, k === 2 ? 250 : 99, 91)).filter(b => b[0] < to);
+  assert.deepEqual(resolveRule(high, zone, now, false, { bars: coarse, barMs, knownFrom: monday }, live), { state: 'ready', at: coarse.at(-1)![0] + 2 * MIN });
+});

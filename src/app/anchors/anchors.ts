@@ -10,6 +10,8 @@ import type { CandleRow } from '../store.ts';
  */
 
 const MINUTE = 60_000, DAY = 86_400_000;
+/** How near the minutes' extreme must come to the candle's own (a share of the price) for the minute to count as found. */
+const AGREE = 1e-4;
 
 /** The calendar periods a rule follows. */
 export type AnchorPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year';
@@ -173,5 +175,10 @@ export function resolveRule(r: AnchorRule, zone: string, now: number, replay: bo
   if (minutes === null) return { state: 'coming' };
   if (minutes === false) return { state: 'failed' };
   const exact = extremeBar(minutes, bar[0], end, high);
-  return exact ? { state: 'ready', at: exact[0] } : { state: 'ready', at: bar[0], approx: true };
+  // The minute only where it holds the candle's own extreme (Sol, review 2026-11-11: an exchange whose minutes begin inside the candle, as
+  // Hyperliquid's do past their reach, gave a lesser extreme as exact). A candle under way (its minutes can be newer than it) or cut short by
+  // its period's end is taken as its minutes say.
+  const closed = end >= bar[0] + coarse.barMs && bar[0] + coarse.barMs <= now;
+  const agrees = (e: CandleRow): boolean => !closed || (high ? e[2] >= bar[2] * (1 - AGREE) : e[3] <= bar[3] * (1 + AGREE));
+  return exact && agrees(exact) ? { state: 'ready', at: exact[0] } : { state: 'ready', at: bar[0], approx: true };
 }

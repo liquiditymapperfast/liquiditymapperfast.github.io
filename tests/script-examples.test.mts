@@ -85,6 +85,14 @@ test('spot and perpetual CVD: a label at each line\'s newest value only, forming
   const moved = labels(runner.run(next));
   assert.ok(first.ok);
   assert.deepEqual(moved.shown(moved.spot), [N], 'on the new newest candle, and no longer on the one before');
+  // A replay stepped back a candle: the same candles but the newest, which is the newest no longer; the labels go to the one before (Sol).
+  const back = (k: number): BarInputs => { const d = inputs(); const cut = (a: Float64Array): Float64Array => a.slice(0, k); return { ...d, time: cut(d.time), open: cut(d.open), high: cut(d.high), low: cut(d.low), close: cut(d.close), volume: cut(d.volume),
+    sources: Object.fromEntries(Object.entries(d.sources).map(([key, v]) => [key, { ...v, vbuy: cut(v.vbuy), vsell: cut(v.vsell), lbuy: cut(v.lbuy), lsell: cut(v.lsell) }])) }; };
+  const stepper = createRunner('cvd', CVD_SOURCE, {});
+  assert.ok(stepper.run(back(N)).ok);
+  const stepped = labels(stepper.run(back(N - 1)));
+  assert.deepEqual(stepped.shown(stepped.spot), [N - 2], 'the newest candle after the step back has the label');
+  assert.deepEqual(stepped.shown(stepped.perp), [N - 2]);
 });
 
 test('the heat map: sixteen rows of colour on 0..100, its average over them, its widest windows within budget, and kept between runs', () => {

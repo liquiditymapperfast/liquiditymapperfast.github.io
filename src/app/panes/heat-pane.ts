@@ -80,7 +80,7 @@ import { TopBands, topMarks, type TopProfile } from '../measures/strip.ts';
 import { BAND_GAP, flowRows, volumeBand, type TimeRows } from '../measures/model.ts';
 import { CANDLE_LINE_PX, LINE_POINT_PX, countdown, lineSide, thinLine, type LinePoint } from '../price-line.ts';
 import { candleInk, candleTone } from '../candle-colours.ts';
-import { candleHolding, newestCandle, zoomedCandles } from '../zoomed-candles.ts';
+import { candleHolding, newestCandle, sameButLast, zoomedCandles } from '../zoomed-candles.ts';
 import { candlesAt, formingCandle, pageNow, replaying, replayView } from '../replay/clock.ts';
 import { TapeGL, type DustStyle } from '../tape/gl.ts';
 import { TraceIndex, gapMarks, secondsPath, traceGapColumns } from '../tape/trace.ts';
@@ -495,7 +495,7 @@ export class HeatPane {
   /** The strip's candles of its longer timeframe (`coarseCandles`), kept while what they come from is the same. */
   #coarseCandles: { drawn: readonly CandleRow[]; exchange: ReadonlyMap<number, CandleRow> | null; tf: number; rows: readonly CandleRow[]; own: ReadonlyMap<number, CandleRow> } | null = null;
   /** The candles drawn while zoomed out (`zoomedRows`), and what they were made from. */
-  #zoomed: { drawn: readonly CandleRow[]; base: string; answer: PriceHistoryAnswer | null; tf: number; cut: number; rows: CandleRow[] } | null = null;
+  #zoomed: { drawn: readonly CandleRow[]; chart: number; answer: PriceHistoryAnswer | null; tf: number; cut: number; rows: CandleRow[] } | null = null;
   #strip: StripState | null = null;
   /** The market orders of the strip's candles pointed at (the footprint's statistics of the strip's markets, read on hover). */
   #orders = new StripOrderCache();
@@ -1365,7 +1365,7 @@ export class HeatPane {
     if ((!vwap && !state.profileAnchoring) || (chosen === null && !hover)) return;
     // The candle drawn (a longer one zoomed out, `drawnTf`): a click puts the anchor at its start (main.ts `anchorSpot`).
     const tf = this.drawnTf(state), now = Date.now(), p = this.#palette;
-    const at = chosen ?? (vwap ? candleStartAt(hover!.t, tf) : anchorAt(hover!.t, tf)), x = Math.round(this.view.xOf(at, pw)) + 0.5;
+    const at = chosen ?? (vwap ? candleStartAt(hover!.t, tf) : this.profileAnchorAt(hover!.t, state)), x = Math.round(this.view.xOf(at, pw)) + 0.5;
     const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_ANCHOR_REACH_MS), future = at > now;
     const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach two years.'))
       : chosen !== null ? clockYear(at, now) : `${clockYear(at, now)} · ${t('click to place')}`;   // its year when not this year's (an anchor reaches ten years)
@@ -1724,21 +1724,21 @@ export class HeatPane {
    * longer candle again. In a replay, made again as the moment shown passes the end of a price-history bar.
    */
   zoomedRows(state: AppState, tf: number): readonly CandleRow[] {
-    const drawn = this.candlesDrawn(state), answer = this.#coarseAnswer(state), held = this.#zoomed;
+    const drawn = this.candlesDrawn(state), answer = this.#coarseAnswer(state), held = this.#zoomed, chart = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     const cut = replaying() ? Math.floor(pageNow() / (answer?.tfMs ?? tf)) : 0;
-    const base = `${drawn.length}|${drawn[0]?.[0] ?? 0}|${drawn[drawn.length - 1]?.[0] ?? 0}`;
-    if (held && held.answer === answer && held.tf === tf && held.cut === cut) {
+    if (held && held.answer === answer && held.tf === tf && held.chart === chart && held.cut === cut) {
       if (held.drawn === drawn) return held.rows;
-      // The candle under way moved: the newest longer candle again, when the chart's candles begin before it (it is whole, so it is theirs).
+      // A live update of the candle under way (every other row the very same one: a refresh that put new rows at the same times is not one,
+      // Sol, review 2026-11-11): only the newest longer candle again, while the chart's candles begin before it (so it is theirs).
       const newest = drawn[drawn.length - 1], last = held.rows[held.rows.length - 1];
-      if (held.base === base && newest && last && last[0] === Math.floor(newest[0] / tf) * tf && drawn[0]![0] < last[0]) {
+      if (newest && last && sameButLast(held.drawn, drawn) && last[0] === Math.floor(newest[0] / tf) * tf && drawn[0]![0] < last[0]) {
         const rows = held.rows.slice(0, -1); rows.push(newestCandle(drawn, tf));
         this.#zoomed = { ...held, drawn, rows };
         return rows;
       }
     }
-    const rows = zoomedCandles(drawn, tf, answer ? { rows: answer.candles, ms: answer.tfMs } : null, replaying() ? pageNow() : Infinity);
-    this.#zoomed = { drawn, base, answer, tf, cut, rows };
+    const rows = zoomedCandles(drawn, chart, tf, answer ? { rows: answer.candles, ms: answer.tfMs } : null, replaying() ? pageNow() : Infinity);
+    this.#zoomed = { drawn, chart, answer, tf, cut, rows };
     return rows;
   }
 
@@ -2747,6 +2747,12 @@ export class HeatPane {
   anchorDrawnFrom(id: string, at: number): number | null { return this.#anchorDrawn.get(`${id}|${at}`) ?? null; }
   /** The bar a profile anchor at `at` is worked out on (`#anchorBar`), for its panel's date field. */
   profileAnchorBar(at: number): number { return this.#anchorBar(at); }
+  /**
+   * Where a profile anchor placed at `t` goes (a click, the arrow keys, the preview of either): the start of the candle drawn there, on the bar
+   * its columns are worked out on (five minutes, hours past 21 weeks; `#anchorBar`), so the moment previewed is the moment added up from (Sol,
+   * review 2026-11-11: 13:35 shown and kept, 13:00 used).
+   */
+  profileAnchorAt(t: number, state: AppState = this.store.state): number { const at = anchorAt(t, this.drawnTf(state)), bar = this.#anchorBar(at); return Math.floor(at / bar) * bar; }
   /** Where a live anchor's rule lands now, for the panels (the VWAP's rows, the profile's): the reading the lines use. */
   ruleStart(rule: AnchorRule): Resolved {
     const state = this.store.state, { zone, barMs } = this.#keyLevelContext(state);
@@ -2767,7 +2773,7 @@ export class HeatPane {
     if (!target) return { state: 'none' };
     // The memo first: this runs dozens of times a frame (the anchored window is asked for by every column), and the period's bounds take the
     // zone's clock arithmetic (code review 2026-11-11, about 0.1 ms each). Worked out again each minute or when what it reads changes.
-    const barMs = searchBarMs(rule.period, zoneBar), replay = replaying();
+    const barMs = searchBarMs(rule.period, this.#ruleZoneBar(rule, zone, zoneBar, now)), replay = replaying();
     const h = rule.point === 'start' ? null : this.hub.vwapHistory(target.id, barMs);
     const memoKey = `${ruleKey(rule)}|${zone}|${target.id}|${barMs}`;
     // The real clock's minute too: a history that failed is asked again within a minute even while a replay is paused (its `now` stands
@@ -2789,6 +2795,24 @@ export class HeatPane {
     if (this.#ruleMemo.size > 64) this.#ruleMemo.delete(this.#ruleMemo.keys().next().value!);
     return out;
   }
+  /**
+   * The bars a rule may be searched on without one crossing its period's bounds: the key levels' (their zone's offset over the last 62 days),
+   * or finer where the offset over the rule's whole stretch needs it (a previous quarter or year begun under another offset: Lord Howe moves by
+   * half an hour for daylight saving; Sol, review 2026-11-11). Worked out once a day for each rule and zone.
+   */
+  readonly #ruleZoneBars = new Map<string, number>();
+  #ruleZoneBar(rule: AnchorRule, zone: string, zoneBar: number, now: number): number {
+    if (rule.point === 'start' || (rule.period !== 'quarter' && rule.period !== 'year')) return zoneBar;
+    const key = `${ruleKey(rule)}|${zone}|${Math.floor(now / 86_400_000)}`;
+    let bar = this.#ruleZoneBars.get(key);
+    if (bar === undefined) {
+      bar = Math.min(zoneBar, barMsFor(zone, ruleSpan(rule, zone, now).from, now));
+      this.#ruleZoneBars.set(key, bar);
+      if (this.#ruleZoneBars.size > 64) this.#ruleZoneBars.delete(this.#ruleZoneBars.keys().next().value!);
+    }
+    return bar;
+  }
+
   /**
    * Whether the rolling VWAP over `days` can be drawn: its histories hold a whole window up to now ('yes'), may still ('coming'), will not
    * because the history of a market is shorter than the window ('short'; with several markets every one must reach), or one could not be

@@ -97,6 +97,16 @@ export function wallFields(t: number): { date: string; time: string } {
  * rolled on to March), 'time' for one that cannot be read or that a clock change skips (02:30 the night the clocks go forward: refused, not
  * moved to 03:30; Sol, review 2026-11-11).
  */
+/**
+ * The moment a date field names: `own` itself while the fields still say it (in the hour a clock change repeats, one wall time names two moments
+ * and reading it again gave the first: an anchor at the second 01:30 moved an hour back when its editor was confirmed unchanged; Sol, review
+ * 2026-11-11), else the fields read as `fromWallFields` does (a time typed new in that hour takes the first, as a clock's own reading does).
+ */
+export function typedMoment(own: number | null | undefined, date: string, time: string): number | 'date' | 'time' {
+  if (own != null) { const w = wallFields(own); if (w.date === date && w.time === time) return own; }
+  return fromWallFields(date, time);
+}
+
 export function fromWallFields(date: string, time: string): number | 'date' | 'time' {
   const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date), h = time === '' ? ['', '00', '00'] : /^(\d{2}):(\d{2})$/.exec(time);
   if (!d) return 'date';

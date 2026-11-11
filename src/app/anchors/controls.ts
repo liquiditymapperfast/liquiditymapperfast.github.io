@@ -1,6 +1,6 @@
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
-import { clockYear, fromWallFields, timeZone, wallFields, zoneName } from '../format.ts';
+import { clockYear, timeZone, typedMoment, wallFields, zoneName } from '../format.ts';
 import { contrastRatio, type Palette } from '../theme.ts';
 import { ZONES, resolveZone } from '../traded/settings.ts';
 import { ANCHOR_PERIODS, ANCHOR_POINTS, periodWord, ruleKey, ruleName, type AnchorPoint, type AnchorRule, type Resolved } from './anchors.ts';
@@ -113,7 +113,8 @@ export function dateField(o: DateFieldOptions): HTMLElement {
     if (!date.value) why = date.validity.badInput ? t('Finish the date, or clear it.') : t('Type or pick a date; the time is optional (midnight). On the chart\'s clock, {zone}.', { zone: clockZone });
     else if (time.validity.badInput) why = t('Finish the time, or clear it for midnight.');
     else {
-      const typed = fromWallFields(date.value, time.value);
+      // Fields that still say the anchor's own moment keep that very instant (`typedMoment`: the hour a clock change repeats names two).
+      const typed = typedMoment(o.value, date.value, time.value);
       if (typed === 'date') why = t('There is no such date.');
       else if (typed === 'time') why = t('The clocks skip that time on this day.');
       else {
