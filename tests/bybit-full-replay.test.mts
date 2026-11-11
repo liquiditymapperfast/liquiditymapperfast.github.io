@@ -49,7 +49,8 @@ test('bybit full book: a real session seeds on its anchor, passes its audit and 
   const seed = trace.find(t => String(t.event).startsWith('seed'))!, audit = trace.find(t => String(t.event).startsWith('audit'))!;
   assert.equal(seed.result, 'seeded', 'the seed snapshot had its anchor among the held deltas');
   assert.ok(['unchanged', 'extended'].includes(String(audit.result)), `the audit: ${String(audit.result)}`);
-  assert.equal(audit.auditing, false, 'passed');
+  // Passed: no audit pending, unless it extended the coverage, which is audited in turn.
+  assert.equal(audit.auditing, audit.result === 'extended', 'passed');
   const last = JSON.parse(session.frames.at(-1)!.text).data.u as number;
   assert.equal(trace.at(-1)!.u, last, 'every frame applied, none missed');
   assert.ok(trace.every(t => t.result !== 'snapshot' && t.result !== 'reconnect'), 'no resynchronisation in a clean session');

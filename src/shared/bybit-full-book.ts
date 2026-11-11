@@ -31,7 +31,8 @@
  * levels that change). So every seed is followed, `AUDIT_DELAY_MS` later, by a second snapshot caught up to the same `(seq, u)` and compared
  * inside both windows: one side missing many levels the other has, and not the reverse, is the degraded one. A degraded live book is
  * replaced by the audit's (`repaired`); a degraded audit is ignored; two answers each missing many of the other's levels mean another audit.
- * The same comparison keeps a degraded snapshot from extending the coverage.
+ * The same comparison keeps a degraded snapshot from extending the coverage, and an extension (or a repair) is audited in turn: what a
+ * refresh adds past the old frontiers was checked against nothing.
  */
 
 /** One side of a book: price -> size in the venue's own unit (coins, for Bybit's linear and spot markets). */
@@ -377,7 +378,8 @@ export class FullBook {
       // The live book lacks many levels the snapshot has, and not the reverse: it was seeded from a degraded answer. The snapshot, caught up
       // to the same (seq, u), becomes the book.
       this.bids = book.bids; this.asks = book.asks; this.#bid = book.bid; this.#ask = book.ask; this.coverageEpoch = nextCoverage();
-      this.#auditAt = 0; this.#refresh = null; this.#refreshFailures = 0; this.#nextRefreshAt = now + REFRESH_MIN_MS;
+      // The repaired book is audited in turn (a snapshot less degraded than the live book is still not known whole).
+      this.#auditAt = now + this.#auditDelayMs; this.#refresh = null; this.#refreshFailures = 0; this.#nextRefreshAt = now + REFRESH_MIN_MS;
       return 'repaired';
     }
     if (many(d.liveOnly, bid.liveLevels + ask.liveLevels, d.snapshotOnly)) {
@@ -410,6 +412,9 @@ export class FullBook {
     if (!grew && audit) { this.#refresh = null; this.#nextRefreshAt = now + REFRESH_MIN_MS; return 'unchanged'; }
     if (!grew) { this.failRefresh(now); return 'unchanged'; }
     this.coverageEpoch = nextCoverage();
+    // What was added past the old frontiers was checked against nothing (the live book did not reach there): a degraded answer can agree
+    // inside the window and bring a sparse tail. The widened book is audited like a seed, AUDIT_DELAY_MS on, against a fresh snapshot.
+    this.#auditAt = now + this.#auditDelayMs;
     this.#refresh = null; this.#refreshFailures = 0; this.#nextRefreshAt = now + REFRESH_MIN_MS;
     return 'extended';
   }

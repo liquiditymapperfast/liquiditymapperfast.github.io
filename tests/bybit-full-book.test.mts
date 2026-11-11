@@ -268,7 +268,8 @@ test('bybit full book: the seed\'s audit replaces a degraded seed, ignores a deg
   assert.equal(book.auditing, true);
   const before = book.coverageEpoch;
   assert.equal(book.snapshot(snap(5, whole.b, whole.a), book.beginRefresh(AUDIT_DELAY_MS), AUDIT_DELAY_MS), 'repaired');
-  assert.equal(book.bids.size, 1_000); assert.equal(book.asks.size, 1_000); assert.equal(book.auditing, false);
+  assert.equal(book.bids.size, 1_000); assert.equal(book.asks.size, 1_000);
+  assert.equal(book.auditing, true, 'the repaired book is audited in turn');
   assert.ok(book.coverageEpoch > before, 'a repaired book is new coverage');
   assert.ok(book.disagreements.snapshotOnly > 1_000 && book.disagreements.liveOnly === 0);
   // Seeded from the whole answer: a degraded audit is ignored, and the audit counts as passed.
