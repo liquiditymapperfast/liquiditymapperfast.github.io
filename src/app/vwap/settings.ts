@@ -1,4 +1,5 @@
-import { MAX_BACK_MS, type PeriodKind } from '../keylevels/levels.ts';
+import type { PeriodKind } from '../keylevels/levels.ts';
+import { ANCHOR_REACH_MS } from './vwap.ts';
 import { WHALE_BANDS_USD } from '../../shared/print-sums.ts';
 import { readVwapPicks, type VwapSource } from './markets.ts';
 
@@ -31,7 +32,8 @@ export interface VwapSettings {
   picks: string[];
 }
 
-export const MAX_ANCHORS = 4;
+/** Anchors a coin can have at once: the period highs and lows a person anchors at come several at a time (4 until 2026-11-11). */
+export const MAX_ANCHORS = 6;
 /** The rolling VWAPs' windows, in days: a day, a week, a month, a quarter, half a year and a year. */
 export const ROLLING_DAYS: readonly number[] = [1, 7, 30, 90, 180, 365];
 
@@ -85,8 +87,8 @@ export function withRolling(s: VwapSettings, days: number, on: boolean): VwapSet
   return { ...s, rolling: ROLLING_DAYS.filter(d => d === days ? on : s.rolling.includes(d)) };
 }
 
-/** A coin's anchors still inside what the history can reach (older ones are dropped: their VWAP could not be worked out). */
-export const anchorsOf = (s: VwapSettings, coin: string, now: number): number[] => (s.anchors[coin] ?? []).filter(t => t >= now - MAX_BACK_MS && t <= now);
+/** A coin's anchors within what an anchored VWAP reaches (`ANCHOR_REACH_MS`, ten years) and not after now. */
+export const anchorsOf = (s: VwapSettings, coin: string, now: number): number[] => (s.anchors[coin] ?? []).filter(t => t >= now - ANCHOR_REACH_MS && t <= now);
 
 /** The settings with an anchor added for `coin` at `t` (to the minute); refused (unchanged) when the coin has MAX_ANCHORS already. */
 export function withAnchor(s: VwapSettings, coin: string, t: number, now: number): VwapSettings {

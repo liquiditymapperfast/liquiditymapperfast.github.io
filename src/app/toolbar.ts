@@ -540,6 +540,14 @@ export class Toolbar {
     try { this.#vwapPanel?.close(); this.#tradedPanel?.close(); closeSheet(); } finally { this.#placing = false; }
     toast(t('Tap the candle on the map where the anchor goes.'), { ms: 30_000, action: { label: t('Cancel'), run: () => this.store.set({ vwapAnchoring: false, profileAnchoring: false }) } });
   }
+  /**
+   * A word while an anchor is being placed and a click placed nothing (the empty future, too far back): the tool stays armed, with Cancel. On
+   * a phone it says again to tap a candle, and stays as long as the first note did, since it took that note's place.
+   */
+  anchorHint(message: string): void {
+    const phone = compactBar(), text = phone ? `${message} ${t('Tap the candle on the map where the anchor goes.')}` : message;
+    toast(text, { ms: phone ? 30_000 : 4_000, action: { label: t('Cancel'), run: () => this.store.set({ vwapAnchoring: false, profileAnchoring: false }) } });
+  }
 
   /**
    * The Go to panel: a date and time on the page's clock, the map centred on it at its zoom. It says how far back the depth and the candles

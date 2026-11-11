@@ -54,7 +54,7 @@ import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
-import { ANCHOR_BAR_MS, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
+import { ANCHOR_BAR_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot } from '../traded/anchor.ts';
 import { liveUpdate, scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
@@ -64,7 +64,7 @@ import { anyLine } from '../keylevels/settings.ts';
 import { historyTarget, profileCompanion, profileTarget, type HistoryTarget, type KeyLevelHistory } from '../keylevels/history.ts';
 import { TakerRows } from '../measures/taker-rows.ts';
 import { paintKeyLevels, paintKeyTags, periodDate, placeKeyTags, underTag, type KeyTag } from '../keylevels/paint.ts';
-import { mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries, whaleSeries, type RollingState, type VwapBar, type VwapPoint } from '../vwap/vwap.ts';
+import { ANCHOR_REACH_MS, anchorBarMs, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries, whaleSeries, type RollingState, type VwapBar, type VwapPoint } from '../vwap/vwap.ts';
 import { vwapTargets, type VwapMarketState } from '../vwap/markets.ts';
 import { anchorsOf } from '../vwap/settings.ts';
 import { FootprintMarks } from '../footprint/marks.ts';
@@ -1322,6 +1322,39 @@ export class HeatPane {
     this.#paintRange(ctx, state, pw, ph);
     this.#paintBookRow(ctx, state, pw, ph);
     this.#paintCrosshair(ctx, state, pw, ph);
+    this.#paintAnchorPreview(ctx, state, pw, ph);
+  }
+
+  /**
+   * While an anchor is being placed with a mouse: where a click would put it, before it is put there. A dashed line at the start of the candle
+   * under the pointer (the anchor snaps to it) and its date and time; over the empty future, or further back than the anchor can reach, what
+   * a click would say instead. A touch screen has no pointer to follow: its note says to tap the candle.
+   */
+  #paintAnchorPreview(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    const hover = state.hover, vwap = state.vwapAnchoring;
+    if ((!vwap && !state.profileAnchoring) || !hover || hover.source !== 'heat') return;
+    const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000, now = Date.now(), p = this.#palette;
+    const at = vwap ? candleStartAt(hover.t, tf) : anchorAt(hover.t, tf), x = Math.round(this.view.xOf(at, pw)) + 0.5;
+    const tooOld = at < now - (vwap ? ANCHOR_REACH_MS : PROFILE_CANDLES_BACK_MS), future = at > now;
+    const text = future ? t('No candle there yet') : tooOld ? (vwap ? t('Too far back: an anchor reaches ten years.') : t('Too far back: the columns reach 21 weeks.'))
+      : `${clock(at, true)} · ${t('click to place')}`;
+    const color = future || tooOld ? p.muted : vwap ? p.vwap : p.poc;
+    ctx.save();
+    if (!future && !tooOld && x >= 0 && x <= pw) {
+      // The candle itself, faintly, and the line where it opens.
+      const x2 = this.view.xOf(at + (vwap ? tf : Math.max(tf, ANCHOR_BAR_MS)), pw);
+      ctx.fillStyle = color; ctx.globalAlpha = 0.1; ctx.fillRect(x, 0, Math.max(2, x2 - x), ph);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.95; ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    const w = ctx.measureText(text).width + 14, h = 20, y = Math.max(14, Math.min(ph - h - 4, (hover.y ?? 40) - h - 14));
+    // Beside the line, on whichever side has room.
+    const base = future || tooOld ? this.view.xOf(hover.t, pw) : x, left = base + 8 + w > pw ? base - 8 - w : base + 8;
+    ctx.globalAlpha = 0.94; ctx.fillStyle = p.panel; ctx.fillRect(left, y, w, h);
+    ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(left) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, h - 1);
+    ctx.fillStyle = future || tooOld ? p.muted : p.text; ctx.fillText(text, left + 7, y + h / 2);
+    ctx.restore();
   }
 
   /** What belongs to editing the drawings, on its own canvas over the map, in the plot's coordinates as the overlay draws. */
@@ -2494,7 +2527,7 @@ export class HeatPane {
     // The whale VWAP follows the same sessions, so they are worked out for either.
     const sessions = s.session || s.whale ? sessionsOf(s.period, zone, Math.max(v.t0, now - MAX_BACK_MS), v.t1, now, s.startMinute) : [];
     const sessionBar = vwapBarMs(sessions.length ? now - sessions[0]!.from : 0, barMs);
-    const anchors = anchorsOf(s, coin, now).map(at => ({ at, bar: vwapBarMs(now - at, barMs) }));
+    const anchors = anchorsOf(s, coin, now).map(at => ({ at, bar: anchorBarMs(at, now) }));
     const reach = new Map<number, number>();
     const need = (bar: number, from: number): void => { reach.set(bar, Math.min(reach.get(bar) ?? Infinity, Math.floor(from / bar) * bar)); };
     if (sessions.length && s.session) need(sessionBar, sessions[0]!.from);
@@ -4163,11 +4196,10 @@ export class HeatPane {
     el.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch') return;
       const { x, y } = local(e);
-      // Placing a VWAP anchor: the click is the anchor, nothing else.
-      // The plot is from 0 to plotW: the columns left of the map are at negative x and take their own presses.
+      // The plot is from 0 to plotW: the columns left of the map are at negative x and take their own presses. Placing an anchor, a press is
+      // a press like any other (a drag pans, a wheel zooms): the anchor is placed by a click, on the release (`pointerup`). Placed on the
+      // press, a drag meant to bring older candles into view put the anchor where it began, on today's (a user, 2026-11-10).
       const onPlot = x >= 0 && x <= this.plotW && y <= this.plotH;
-      if (this.store.state.vwapAnchoring && e.button === 0 && onPlot) { this.onAnchor?.(this.view.tOf(x, this.plotW)); return; }
-      if (this.store.state.profileAnchoring && e.button === 0 && onPlot) { this.onProfileAnchor?.(this.view.tOf(x, this.plotW)); return; }
       if (e.button === 0 && (this.#bands.onHeader(x, y) || this.#onHiddenTag(x, y))) { this.onTopProfile(); return; }
       if (this.range && selects(this.range.armed, e) && onPlot) {
         this.#selecting = { x, y }; this.range.begin(this.#rangePoint(x, y)); el.setPointerCapture(e.pointerId); return;
@@ -4259,9 +4291,14 @@ export class HeatPane {
         if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
         return;
       }
-      // A press that did not move is a click: the drawing tools place a point, or select (or let go of) a drawing.
+      // A press that did not move is a click: it places the anchor being placed; else the drawing tools place a point, or select (or let go
+      // of) a drawing.
       const press = this.#press; this.#press = null;
-      if (press && !press.moved && e.button === 0 && this.draw) { const at = local(e); if (this.draw.click(at, e.altKey, false)) this.#drawClickAt = performance.now(); }
+      const anchoring = this.store.state.vwapAnchoring || this.store.state.profileAnchoring;
+      if (press && !press.moved && e.button === 0 && anchoring) {
+        const at = this.view.tOf(local(e).x, this.plotW);
+        if (this.store.state.vwapAnchoring) this.onAnchor?.(at); else this.onProfileAnchor?.(at);
+      } else if (press && !press.moved && e.button === 0 && this.draw) { const at = local(e); if (this.draw.click(at, e.altKey, false)) this.#drawClickAt = performance.now(); }
       // A right click that did not travel, on a TPO block: its menu (split, merge), the view put back from any pixel the press zoomed.
       const zd = this.#zoomDrag;
       if (zd && e.button === 2 && this.store.state.tpo.on) {

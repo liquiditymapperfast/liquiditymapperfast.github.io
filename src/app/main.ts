@@ -4,6 +4,7 @@ import { BrowserSource } from './browser-source.ts';
 import { chooseCoin, currentCoin, forCoin, keepCoinRecordings, scaledUsd, type CoinChoice } from './coin.ts';
 import { instrumentIdFor } from '../shared/coins.ts';
 import { withAnchor } from './vwap/settings.ts';
+import { ANCHOR_REACH_MS, candleStartAt } from './vwap/vwap.ts';
 import { withProfileAnchor } from './traded/settings.ts';
 import { anchorAt } from './traded/anchor.ts';
 import type { DataSource } from './source.ts';
@@ -308,13 +309,21 @@ async function main(): Promise<void> {
   toolbar.vwapMarkets = () => heat.vwapMarketStates();
   toolbar.tpoInfo = () => heat.tpoInfo();
   heat.onRollingReach = () => toolbar.refreshOpenPanel();
-  // A click on the map while placing a VWAP anchor: the anchor, for the coin on the page.
-  heat.onAnchor = at => { const s = store.state; store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, at, Date.now()), vwapAnchoring: false }); dismissToast(); };
-  // The columns' anchor at the start of the candle clicked (on five minutes); one older than the candle estimate reaches is not taken, and the
-  // tool stays armed for another click.
+  // A click on the map while placing a VWAP anchor: the start of the candle clicked (`candleStartAt`), for the coin on the page. A click in the
+  // empty future, or further back than an anchor reaches, places nothing and leaves the tool armed with a word on why: it disarmed silently,
+  // and an anchor older than two months was saved and never drawn (a user, 2026-11-10).
+  heat.onAnchor = at => {
+    const s = store.state, now = Date.now(), start = candleStartAt(at, TIMEFRAMES[s.timeframe] ?? 3_600_000);
+    if (start > now) { toolbar.anchorHint(t('No candle there yet.')); return; }
+    if (start < now - ANCHOR_REACH_MS) { toolbar.anchorHint(t('Too far back: an anchor reaches ten years.')); return; }
+    store.set({ vwap: withAnchor({ ...s.vwap, on: true }, currentCoin().coin, start, now), vwapAnchoring: false }); dismissToast();
+  };
+  // The columns' anchor at the start of the candle clicked (on five minutes); one in the empty future or older than the candle estimate
+  // reaches is not taken, and the tool stays armed for another click, with a word on why.
   heat.onProfileAnchor = at => {
     const s = store.state, start = anchorAt(at, TIMEFRAMES[s.timeframe] ?? 3_600_000);
-    if (start < Date.now() - PROFILE_CANDLES_BACK_MS || start > Date.now()) return;
+    if (start > Date.now()) { toolbar.anchorHint(t('No candle there yet.')); return; }
+    if (start < Date.now() - PROFILE_CANDLES_BACK_MS) { toolbar.anchorHint(t('Too far back: the columns reach 21 weeks.')); return; }
     store.set({ traded: withProfileAnchor({ ...s.traded, columns: 'anchor' }, currentCoin().coin, start), profileAnchoring: false, show: { ...s.show, traded: true } });
     dismissToast();
   };
@@ -334,6 +343,10 @@ async function main(): Promise<void> {
 
   // The keyboard shortcuts (shortcuts.ts: the table, and when a key is left alone).
   window.addEventListener('keydown', e => {
+    // Esc stops placing an anchor (the VWAP's or the profile's), as it stops a drawing tool.
+    if (e.key === 'Escape' && (store.state.vwapAnchoring || store.state.profileAnchoring) && document.querySelector('dialog[open]') === null) {
+      e.preventDefault(); store.set({ vwapAnchoring: false, profileAnchoring: false }); dismissToast(); toolbar.refreshOpenPanel(); return;
+    }
     // The drawing tools' keys first (Esc, Delete, Undo and Redo), when no field or window has them.
     const inPanel = document.activeElement instanceof HTMLElement && document.activeElement.closest('.panel') !== null;
     if (draw.key(e, document.querySelector('dialog[open]') !== null || openedSheet() !== null || inPanel)) { e.preventDefault(); return; }

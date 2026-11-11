@@ -29,7 +29,7 @@ import { KeyLevelHistory } from './keylevels/history.ts';
 import { TPO_DAYS_REACH_MS, TPO_MAX_BARS, TPO_REACH_MS } from './tpo/settings.ts';
 import { pacedFetcher } from './paced-get.ts';
 import { scriptChunk } from './script/bars.ts';
-import { ROLLING_MAX_BARS } from './vwap/vwap.ts';
+import { ANCHOR_REACH_MS, ROLLING_MAX_BARS } from './vwap/vwap.ts';
 import { LiqLevelsSource } from './liq-levels.ts';
 import { TapeRing, tapeCapacity } from './tape/ring.ts';
 import { isPhone } from './device.ts';
@@ -368,7 +368,8 @@ export class Hub {
     const key = `${rolling ? 'rolling' : 'vwap'}|${id}|${barMs}`, now = Date.now(), held = this.#vwapHistories.get(key);
     if (held) { held.used = now; return held.h; }
     if (this.#vwapHistories.size >= VWAP_HISTORIES) for (const [k, x] of this.#vwapHistories) if (now - x.used > 300_000) this.#vwapHistories.delete(k);
-    const h = rolling ? new KeyLevelHistory(historyGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS) : new KeyLevelHistory(historyGet, Date.now, 60_000);
+    // A session's or an anchor's: kept back as far as an anchor reaches (only what a line asks for is read; this is how long it is kept).
+    const h = rolling ? new KeyLevelHistory(historyGet, Date.now, 60_000, barMs * ROLLING_MAX_BARS) : new KeyLevelHistory(historyGet, Date.now, 60_000, ANCHOR_REACH_MS);
     this.#vwapHistories.set(key, { h, used: now });
     return h;
   }

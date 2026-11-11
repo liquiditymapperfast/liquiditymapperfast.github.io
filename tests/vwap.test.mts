@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ROLLING_MAX_BARS, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries as rollingOf, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries as vwapOf } from '../src/app/vwap/vwap.ts';
+import { ANCHOR_REACH_MS, ROLLING_MAX_BARS, anchorBarMs, candleStartAt, mergeVwapBars, rollingBarMs, rollingFrom, rollingSeries as rollingOf, sessionsOf, vwapBarMs, vwapBarsOf, vwapSeries as vwapOf } from '../src/app/vwap/vwap.ts';
 import { MAX_ANCHORS, ROLLING_DAYS, VWAP_DEFAULTS, anchorsOf, readVwap, withAnchor, withRolling, withoutAnchor } from '../src/app/vwap/settings.ts';
 import { cutForReplay, paintVwap, visible, vwapCode, type VwapLine } from '../src/app/vwap/paint.ts';
 import { View } from '../src/app/view.ts';
@@ -63,29 +63,31 @@ test('a day whose session starts at a set hour runs from there to the next day\'
   assert.deepEqual(sessionsOf('day', 'UTC', D0 + 12 * HOUR, now + HOUR, now, null).map(w => w.from), [D0, D0 + DAY, D0 + 2 * DAY]);
 });
 
-test('anchors are kept per coin, to the minute, at most four, none in the future or older than the history reaches', () => {
+test('anchors are kept per coin, to the minute, at most six, none in the future or beyond ten years back', () => {
   const now = D0 + 10 * DAY;
   let s = { ...VWAP_DEFAULTS };
   s = withAnchor(s, 'BTC', now - DAY + 30_500, now);
   assert.deepEqual(s.anchors, { BTC: [now - DAY] });
   assert.equal(withAnchor(s, 'BTC', now - DAY + 10_000, now), s, 'the same minute again: unchanged');
   assert.equal(withAnchor(s, 'BTC', now + MIN, now), s, 'not in the future');
-  for (const back of [5, 4, 3]) s = withAnchor(s, 'BTC', now - back * HOUR, now);
+  for (const back of [5, 4, 3, 6, 7]) s = withAnchor(s, 'BTC', now - back * HOUR, now);
   assert.equal(s.anchors.BTC!.length, MAX_ANCHORS);
-  assert.equal(withAnchor(s, 'BTC', now - 2 * HOUR, now), s, 'a fifth is refused');
+  assert.equal(withAnchor(s, 'BTC', now - 2 * HOUR, now), s, 'a seventh is refused');
   s = withAnchor(s, 'ETH', now - HOUR, now);
   assert.deepEqual(Object.keys(s.anchors), ['BTC', 'ETH']);
   assert.deepEqual(withoutAnchor(s, 'ETH', now - HOUR).anchors.ETH, undefined);
-  const old = { ...s, anchors: { BTC: [now - MAX_BACK_MS - DAY, now - HOUR] } };
-  assert.deepEqual(anchorsOf(old, 'BTC', now), [now - HOUR], 'one older than the history reaches is dropped');
+  // Kept two months until 2026-11-11: one clicked 70 days back was saved and never drawn (a user).
+  const old = { ...s, anchors: { BTC: [now - ANCHOR_REACH_MS - DAY, now - 70 * DAY, now - HOUR] } };
+  assert.deepEqual(anchorsOf(old, 'BTC', now), [now - 70 * DAY, now - HOUR], 'one 70 days back is kept, one beyond ten years is not');
+  assert.ok(MAX_BACK_MS < 70 * DAY);
 });
 
 test('settings from storage are read field by field', () => {
   assert.deepEqual(readVwap(undefined), VWAP_DEFAULTS);
   assert.equal(VWAP_DEFAULTS.on, false, 'off until switched on');
-  const read = readVwap({ on: true, period: 'month', bands: 2, anchors: { BTC: [3, 'x', 1, 2, 5, 4], 'bad coin': [1], ETH: 'no' }, labels: 'yes' });
+  const read = readVwap({ on: true, period: 'month', bands: 2, anchors: { BTC: [3, 'x', 1, 2, 5, 4, 8, 6, 7], 'bad coin': [1], ETH: 'no' }, labels: 'yes' });
   assert.deepEqual([read.on, read.period, read.bands, read.labels], [true, 'month', 2, true]);
-  assert.deepEqual(read.anchors, { BTC: [2, 3, 4, 5] }, 'times only, the newest four, a coin by its name');
+  assert.deepEqual(read.anchors, { BTC: [3, 4, 5, 6, 7, 8] }, 'times only, the newest six, a coin by its name');
   assert.equal(readVwap({ period: 'year', bands: 3 }).period, 'day');
 });
 
@@ -278,4 +280,20 @@ test('the VWAP\'s candles come from the chart market by default; chosen markets 
   assert.deepEqual(vwapTargets('chosen', ['binance/perp', 'coinbase/spot'], 'binance:BTCUSDT', BTC).map(t => t.id), ['binance:BTCUSDT', 'coinbase:BTC-USD']);
   assert.deepEqual(vwapTargets('chosen', [], 'binance:BTCUSDT', BTC), [], 'none ticked: none');
   assert.deepEqual(vwapTargets('chosen', ['binance/perp', 'coinbase/spot', 'hyperliquid/perp'], 'binance:BTCUSDT', BTC).map(quoteOf), ['USDT', 'USD', 'USDC']);
+});
+
+test('an anchor placed on the chart starts where its candle does, and its line is worked out on the largest bar that starts there', () => {
+  const now = D0 + 400 * DAY, at = D0 + 10 * DAY + 14 * HOUR;
+  assert.equal(candleStartAt(at + 37 * MIN, HOUR), at, 'a click inside the 14:00 candle of a 1h chart: 14:00, not the minute');
+  assert.equal(candleStartAt(at + 37 * MIN, 15 * MIN), at + 30 * MIN);
+  // By age: a minute for a day and a half, five minutes for eight days, half an hour for two months, an hour for thirteen months, a day beyond.
+  assert.equal(anchorBarMs(now - HOUR, now), MIN);
+  assert.equal(anchorBarMs(now - 3 * DAY, now), 5 * MIN);
+  assert.equal(anchorBarMs(now - 30 * DAY, now), 30 * MIN);
+  assert.equal(anchorBarMs(now - 300 * DAY, now), HOUR);
+  assert.equal(anchorBarMs(now - 500 * DAY, now), DAY, 'midnight UTC, five hundred days back: daily bars');
+  // Never a bar that began before the anchor: the largest of the sizes that starts at it.
+  assert.equal(anchorBarMs(now - 30 * DAY + 15 * MIN, now), 15 * MIN, 'a quarter past: quarter hours, not half hours');
+  assert.equal(anchorBarMs(now - 500 * DAY + 4 * HOUR, now), 4 * HOUR);
+  assert.equal(anchorBarMs(now - 500 * DAY + 3 * HOUR, now), HOUR);
 });

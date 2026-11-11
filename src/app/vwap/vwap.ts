@@ -179,6 +179,27 @@ export function vwapBarMs(spanMs: number, zoneBarMs: number): number {
 }
 
 /**
+ * How far back an anchor can be: ten years, the whole history of nearly every market (an anchor before a market's first candle has no line,
+ * and the panel says so). Anchors were kept two months, and an older one clicked was saved and never drawn (a user, 2026-11-10).
+ */
+export const ANCHOR_REACH_MS = 3_653 * DAY;
+/** The start of the chart's candle of `tfMs` that `t` falls in: an anchor placed on the chart starts where its candle does, not at the minute clicked. */
+export const candleStartAt = (t: number, tfMs: number): number => Math.floor(t / tfMs) * tfMs;
+/** The candle sizes an anchored VWAP is worked out on, finest first: every exchange the lines read serves them or builds them from finer ones. */
+const ANCHOR_BARS: readonly number[] = [MINUTE, 5 * MINUTE, 15 * MINUTE, 30 * MINUTE, HOUR, 4 * HOUR, DAY];
+/**
+ * The bar an anchored VWAP from `at` is worked out on: by the anchor's age (a minute for a day and a half, five minutes for eight days, half
+ * an hour for two months, an hour for thirteen months, a day beyond), the largest of `ANCHOR_BARS` no coarser than that which starts at the
+ * anchor itself, so the line counts every trade from the candle chosen and none before it. Unlike a session's bar it need not start on the
+ * zone's period boundaries: an anchor is a moment, not a period.
+ */
+export function anchorBarMs(at: number, now: number): number {
+  const age = now - at, rule = age <= 1.5 * DAY ? MINUTE : age <= 8 * DAY ? 5 * MINUTE : age <= 62 * DAY ? 30 * MINUTE : age <= 400 * DAY ? HOUR : DAY;
+  for (let i = ANCHOR_BARS.length - 1; i >= 0; i--) { const bar = ANCHOR_BARS[i]!; if (bar <= rule && at % bar === 0) return bar; }
+  return MINUTE;
+}
+
+/**
  * The sessions of `period` in `zone` that have begun and touch [t0, t1] (the one under way among them), oldest first. A day with
  * `startMinute` set (minutes after midnight) starts there instead of at midnight: the stretch an exchange's or a market's day runs.
  */
