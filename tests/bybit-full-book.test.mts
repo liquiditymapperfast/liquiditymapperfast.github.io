@@ -378,6 +378,29 @@ test('bybit full book: an answer cut to its nearest levels never shrinks what a 
   assert.equal(book.frontiers.ask, 116);
 });
 
+test('bybit full book: a perpetual\'s answer cut to the cap does not shorten what its sides are judged to reach', () => {
+  // A whole perpetual book (20,000 dense levels a side and a few far ones: frontiers at the cuts, 40 and 160), the price at 107.25
+  // before the seed's audit, and the audit cut to its nearest 10,000 levels a side (Bybit's documented limit, the asks ending near
+  // 118): whole as far as it goes and agreeing, but a tenth of what the side was set from. Counted full by the cap, it set the ask
+  // reach to 10 %, and the band passing the frontier 160 was never due.
+  const grid = (from: number, step: number, count: number): Rows => Array.from({ length: count }, (_, i) => [Math.round((from + step * i) * 1000) / 1000, 1] as [number, number]);
+  const bids = [...grid(99.999, -0.001, 20_000), [50, 1], [1, 1]] as Rows, asks = [...grid(100.001, 0.001, 20_000), [130, 1], [150, 1], [170, 1], [1e9, 1]] as Rows;
+  const book = seededBook(bids, asks);
+  assert.deepEqual(book.frontiers, { bid: 40, ask: 160 });
+  // The move: asks below 108 taken, a bid at 106.5.
+  book.delta(delta(6, [[106.5, 1]], grid(100.001, 0.001, 7_999).map(([p]): [number, number] => [p, 0])), 1);
+  assert.equal(book.mid(), 107.25);
+  let epoch = book.beginRefresh(AUDIT_DELAY_MS);
+  const cut = snap(6, [[106.5, 1], ...grid(99.999, -0.001, SNAPSHOT_CAP - 1)], grid(108, 0.001, SNAPSHOT_CAP));
+  assert.equal(book.snapshot(cut, epoch, AUDIT_DELAY_MS), 'unchanged', 'the cut audit agrees and only checks');
+  assert.deepEqual(book.frontiers, { bid: 40, ask: 160 });
+  assert.equal(book.refreshDue(107.25, AUDIT_DELAY_MS + REFRESH_MIN_MS), true, '50 % above 107.25 is 160.875, past the ask frontier');
+  epoch = book.beginRefresh(AUDIT_DELAY_MS + REFRESH_MIN_MS);
+  const whole = snap(6, [[106.5, 1], ...bids], asks.filter(([p]) => p >= 108));
+  assert.equal(book.snapshot(whole, epoch, AUDIT_DELAY_MS + REFRESH_MIN_MS), 'extended');
+  assert.equal(book.frontiers.ask, 107.25 * (1 + GUARD));
+});
+
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {
   const book = seededBook();
   book.delta(delta(6, [[99, 6]]), 1); book.delta(delta(7, [[98, 7]], [[101, 0]]), 2);

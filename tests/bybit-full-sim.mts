@@ -39,12 +39,12 @@ const STEP_MS = 2_000;
 
 /** A grid: prices are (lo + i) / denom for i below n. A power-of-two denom keeps every price and mid exact (the cross-port trace). */
 export interface Grid { denom: number; lo: number; n: number }
-export const LARGE: Record<'perp' | 'spot', Grid> = { perp: { denom: 20, lo: 20, n: 60_000 }, spot: { denom: 200, lo: 100_000, n: 200_000 } };
+export const LARGE: Record<'perp' | 'spot', Grid> = { perp: { denom: 50, lo: 50, n: 150_000 }, spot: { denom: 200, lo: 100_000, n: 200_000 } };
 
 export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, kind: 'perp' | 'spot', hours: number, grids: Record<'perp' | 'spot', Grid> = LARGE): SimResult {
   const r = rng(seed * 7919 + (kind === 'perp' ? 1 : 2));
   const { BAND, GUARD, REFRESH_USED, SNAPSHOT_CAP } = rules;
-  // The grid: a perpetual's levels every 0.05 from 1 to 3,000 (a whole book far past the guard, plus a far junk ask); spot's every 0.005
+  // The grid: a perpetual's levels every 0.02 from 1 to 3,000 (its nearest 10,000 reach about a quarter of the price) (a whole book far past the guard, plus a far junk ask); spot's every 0.005
   // from 500 to 1,500, read 10,000 levels a side at most (about 6 % of the price).
   const { denom, lo, n } = grids[kind];
   const price = (i: number): number => (lo + i) / denom;
@@ -102,7 +102,7 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
     return { u: ++u, seq: (seq += 1 + Math.floor(r() * 3)), ts: 0, b, a };
   };
   // Replicas: one answer in ten from one to three minutes back, three in a hundred degraded (whole near the mid, a third beyond), and
-  // six in a hundred cut to their nearest levels (a perpetual's to a fifth of the cap, about 12 % here, spot's to half of it): whole
+  // six in a hundred cut to their nearest levels (a perpetual's to the cap, Bybit's documented limit, spot's to half of it): whole
   // as far as they go, and short.
   const kept: FullSnapshot[] = [];
   const replica = (): FullSnapshot => {
@@ -115,7 +115,7 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
       return { ...s, b: thin(s.b), a: thin(s.a) };
     }
     if (x < 0.19) {
-      const keep = kind === 'perp' ? Math.floor(SNAPSHOT_CAP / 5) : Math.floor(SNAPSHOT_CAP / 2);
+      const keep = kind === 'perp' ? SNAPSHOT_CAP : Math.floor(SNAPSHOT_CAP / 2);
       return { ...s, b: s.b.slice(0, keep), a: s.a.slice(0, keep) };
     }
     return s;

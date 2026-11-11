@@ -135,9 +135,9 @@ export const REFRESH_MIN_MS = 60_000, REFRESH_MAX_BACKOFF_MS = 900_000;
 /** Bybit's documented most levels a snapshot holds on a side: a side with fewer whose frontier is inside the band may have come cut short. */
 export const SNAPSHOT_CAP = 10_000;
 /**
- * A side's snapshot is a full answer when it holds at least this share of the levels the side's frontier was set from (or of the cap):
- * a perpetual's answers vary by well under 1 % (30,861 to 30,981 bid levels on BTC, 2026-11-11), one cut to its nearest levels holds far
- * fewer. Only a full answer renews what a side is judged to reach.
+ * A side's snapshot is a full answer when it holds at least this share of the levels the side's frontier was set from: a perpetual's
+ * answers vary by well under 1 % (30,861 to 30,981 bid levels on BTC, 2026-11-11), spot's are the cap every time, and one cut to its
+ * nearest levels (to the cap, on a perpetual of 30,000) holds far fewer. Only a full answer renews what a side is judged to reach.
  */
 export const FULL_SHARE = 0.9;
 /** The audit after a seed is read this long after it (once the stream has run a little). */
@@ -182,8 +182,8 @@ export interface FullBookOptions {
  * What is known of one side: the frontier (the deepest price inside which the side is whole; null only for a book with neither side),
  * how far the venue's snapshots reach on this side (from their own middle to their frontier, as a share of that middle: measured from
  * the snapshot alone, set at the seed and a repair, then renewed by every full answer that passes the comparison: one holding at least
- * `FULL_SHARE` of the levels its side was set from, or of the cap, so an answer cut to its nearest levels never shortens it), and how
- * many levels the snapshot that set the frontier had on this side.
+ * `FULL_SHARE` of the levels its side was set from, so an answer cut to its nearest levels, even to the cap, never shortens it), and
+ * how many levels the snapshot that set the frontier had on this side.
  */
 interface Coverage { frontier: number | null; reach: number; levels: number }
 
@@ -432,7 +432,7 @@ export class FullBook {
     // What the next refresh is judged against: this snapshot's reach on a side where it is a full answer (it passed the comparison, audit
     // or not; one cut to its nearest levels holds far fewer and says nothing of what lies past them), and the count of a side whose
     // frontier it set (an audit, or a side it did not extend, cut nothing from it: a short side stays short).
-    const full = (rows: number, levels: number): boolean => rows >= FULL_SHARE * Math.min(this.#snapshotCap, levels);
+    const full = (rows: number, levels: number): boolean => rows >= FULL_SHARE * levels;
     this.#bid = { ...this.#bid, reach: full(s.b.length, this.#bid.levels) ? book.bid.reach : this.#bid.reach, levels: bidGrew ? s.b.length : this.#bid.levels };
     this.#ask = { ...this.#ask, reach: full(s.a.length, this.#ask.levels) ? book.ask.reach : this.#ask.reach, levels: askGrew ? s.a.length : this.#ask.levels };
     // A passed audit that adds nothing is no failed refresh: the next one waits only the usual minute.
