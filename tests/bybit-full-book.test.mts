@@ -303,6 +303,49 @@ test('bybit full book: an audit that only checks leaves what the next refresh is
   assert.equal(moved.refreshDue(107.25, AUDIT_DELAY_MS + REFRESH_MIN_MS), true, '50 % above 107.25 is 160.875, past the ask frontier');
 });
 
+test('bybit full book: a refresh that adds nothing, or a side left empty, keeps the refresh due', () => {
+  // A side cut at the guard, the price moved to 107.25, and a refresh answered by a snapshot from before the move (anchored on an
+  // earlier delta, its own cut still at 160): nothing added, and the side keeps the distance its coverage was set at, so it is due
+  // again after the pause.
+  const tailB: Rows = [[99, 1]], tailA: Rows = [[101, 1]];
+  for (let i = 1; i <= SNAPSHOT_CAP; i++) { tailB.push([99 - i * 0.001, 1]); tailA.push([108 + i * 0.001, 1]); }
+  tailB.push([1, 1]); tailA.push([1e9, 1]);
+  const book = seededBook(tailB, tailA);
+  let epoch = book.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(book.snapshot(snap(5, tailB, tailA), epoch, AUDIT_DELAY_MS), 'unchanged', 'the audit passes');
+  book.delta(delta(6, [[99, 0], [106.5, 1]], [[101, 0]]), AUDIT_DELAY_MS + 1);
+  const at = AUDIT_DELAY_MS + REFRESH_MIN_MS;
+  assert.equal(book.refreshDue(107.25, at), true);
+  epoch = book.beginRefresh(at);
+  assert.equal(book.snapshot(snap(5, tailB, tailA), epoch, at), 'unchanged', 'a snapshot from before the move adds nothing');
+  assert.deepEqual(book.frontiers, { bid: 40, ask: 160 });
+  assert.equal(book.refreshDue(107.25, at + REFRESH_MIN_MS - 1), false, 'paced');
+  assert.equal(book.refreshDue(107.25, at + REFRESH_MIN_MS), true, 'and due again');
+  // The same on the bid side, the price fallen to 79.85.
+  const lowB: Rows = [[99, 1]], lowA: Rows = [[101, 1]];
+  for (let i = 1; i <= SNAPSHOT_CAP; i++) { lowB.push([79.8 - i * 0.001, 1]); lowA.push([101 + i * 0.001, 1]); }
+  lowB.push([1, 1]); lowA.push([1e9, 1]);
+  const fallen = seededBook(lowB, lowA);
+  assert.deepEqual(fallen.frontiers, { bid: 40, ask: 160 });
+  epoch = fallen.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(fallen.snapshot(snap(5, lowB, lowA), epoch, AUDIT_DELAY_MS), 'unchanged');
+  fallen.delta(delta(6, [[99, 0]], [[79.9, 1]]), AUDIT_DELAY_MS + 1);
+  assert.equal(fallen.refreshDue(79.85, at), true, '50 % below 79.85 is 39.925, past the bid frontier');
+  epoch = fallen.beginRefresh(at);
+  assert.equal(fallen.snapshot(snap(5, lowB, lowA), epoch, at), 'unchanged');
+  assert.equal(fallen.refreshDue(79.85, at + REFRESH_MIN_MS), true, 'due again after the pause');
+  // A side whose last levels are deleted while the new ones arrive past its frontier (left out): no mid, and still due.
+  const empty = seededBook();
+  empty.delta(delta(6, [], [[101, 0], [102, 0], [103, 0], [104, 0], [105, 0], [106, 1], [107, 1]]), 1);
+  assert.equal(empty.asks.size, 0); assert.ok(Number.isNaN(empty.mid()));
+  epoch = empty.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(empty.snapshot(snap(6, B0, [[106, 1], [107, 1]]), epoch, AUDIT_DELAY_MS), 'unchanged', 'the audit only checks');
+  assert.equal(empty.refreshDue(empty.mid(), AUDIT_DELAY_MS + REFRESH_MIN_MS), true, 'an empty side is due');
+  epoch = empty.beginRefresh(AUDIT_DELAY_MS + REFRESH_MIN_MS);
+  assert.equal(empty.snapshot(snap(6, B0, [[106, 1], [107, 1]]), epoch, AUDIT_DELAY_MS + REFRESH_MIN_MS), 'extended');
+  assert.deepEqual(sides(empty).a, [[106, 1], [107, 1]]); assert.equal(empty.mid(), (99 + 106) / 2);
+});
+
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {
   const book = seededBook();
   book.delta(delta(6, [[99, 6]]), 1); book.delta(delta(7, [[98, 7]], [[101, 0]]), 2);

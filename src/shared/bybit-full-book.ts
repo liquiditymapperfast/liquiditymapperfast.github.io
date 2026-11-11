@@ -297,6 +297,9 @@ export class FullBook {
     if (this.#refresh?.waiting && now - this.#refresh.since > ANCHOR_WAIT_MS) this.failRefresh(now);
     if (!this.#live || this.#refresh || now < this.#nextRefreshAt) return false;
     if (this.#auditAt && now >= this.#auditAt) return true;
+    // A side left with no level inside its frontier (its last ones deleted, new ones past it left out) gives no mid to judge by and
+    // draws nothing: it is due (paced like any refresh), and the refresh brings back what lies past the frontier.
+    if (this.bids.size === 0 || this.asks.size === 0) return true;
     if (!(mid > 0)) return false;
     // Inside the band, a frontier is refreshed once a quarter of its distance is used, at once when its snapshot ran short of the cap
     // (the whole side), or at once when it was past the band at its seed (cut at the guard: the perpetual's, which the band reaches
@@ -401,23 +404,24 @@ export class FullBook {
     const audit = this.#auditAt > 0, asked = this.#refresh?.audit === true;
     this.#auditAt = 0;
     const mid = midOf(this.bids, this.asks);
-    let grew = false;
+    let bidGrew = false, askGrew = false;
     const bidEdge = this.#bid.frontier, newBid = book.bid.frontier;
     if (!asked && bidEdge !== null && newBid !== null && newBid < bidEdge) {
       const floor = mid > 0 ? Math.max(newBid, mid * (1 - GUARD)) : newBid;
-      if (floor < bidEdge) { for (const [p, q] of book.bids) if (p < bidEdge && p >= floor) this.bids.set(p, q); this.#bid = { ...this.#bid, frontier: floor }; grew = true; }
+      if (floor < bidEdge) { for (const [p, q] of book.bids) if (p < bidEdge && p >= floor) this.bids.set(p, q); this.#bid = { ...this.#bid, frontier: floor }; bidGrew = true; }
     }
     const askEdge = this.#ask.frontier, newAsk = book.ask.frontier;
     if (!asked && askEdge !== null && newAsk !== null && newAsk > askEdge) {
       const ceiling = mid > 0 ? Math.min(newAsk, mid * (1 + GUARD)) : newAsk;
-      if (ceiling > askEdge) { for (const [p, q] of book.asks) if (p > askEdge && p <= ceiling) this.asks.set(p, q); this.#ask = { ...this.#ask, frontier: ceiling }; grew = true; }
+      if (ceiling > askEdge) { for (const [p, q] of book.asks) if (p > askEdge && p <= ceiling) this.asks.set(p, q); this.#ask = { ...this.#ask, frontier: ceiling }; askGrew = true; }
     }
-    // What the next refresh is judged against: the distances now, and the snapshot's own counts. Not after an audit, which took
-    // nothing from its snapshot: its counts would end a short side's refresh without its coverage, and its distances would put off
-    // a frontier the band is reaching.
+    const grew = bidGrew || askGrew;
+    // What the next refresh is judged against (not after an audit, which took nothing from its snapshot): the snapshot's counts, and
+    // the distance of a side this refresh extended, from now. A side it did not extend keeps the distance its coverage was set at: a
+    // refresh that added nothing (one read before a move, say) still owes the reach the band needs, and stays due after its pause.
     if (!asked) {
-      this.#bid = { ...this.#bid, seedDistance: this.#bid.frontier !== null && mid > 0 ? mid - this.#bid.frontier : this.#bid.seedDistance, levels: Math.max(this.#bid.levels, s.b.length) };
-      this.#ask = { ...this.#ask, seedDistance: this.#ask.frontier !== null && mid > 0 ? this.#ask.frontier - mid : this.#ask.seedDistance, levels: Math.max(this.#ask.levels, s.a.length) };
+      this.#bid = { ...this.#bid, seedDistance: bidGrew && mid > 0 ? mid - this.#bid.frontier! : this.#bid.seedDistance, levels: Math.max(this.#bid.levels, s.b.length) };
+      this.#ask = { ...this.#ask, seedDistance: askGrew && mid > 0 ? this.#ask.frontier! - mid : this.#ask.seedDistance, levels: Math.max(this.#ask.levels, s.a.length) };
     }
     // A passed audit that adds nothing is no failed refresh: the next one waits only the usual minute.
     if (!grew && audit) { this.#refresh = null; this.#nextRefreshAt = now + REFRESH_MIN_MS; return 'unchanged'; }
