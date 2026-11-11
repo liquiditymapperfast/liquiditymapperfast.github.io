@@ -124,7 +124,7 @@ test('Bybit connector: run for its trades alone, it subscribes no book and reads
   });
 });
 
-test('Bybit connector: a refused subscription drops the socket; a book channel that stalls while trades arrive is dropped too', async () => {
+test('Bybit connector: a refused subscription drops the socket; a book channel that stalls is no longer drawn and is dropped too', async () => {
   await withFakes(async ({ asked, sockets }) => {
     const c = new BybitConnector();
     c.start(); sockets[0]!.onopen?.();
@@ -139,14 +139,14 @@ test('Bybit connector: a refused subscription drops the socket; a book channel t
     assert.equal(asked[0]!.url.includes('BTCUSDT'), true, 'the refused connection never asked for its snapshot (its retry was cancelled with it)');
     asked[0]!.answer(body(10)); await settle();
     assert.ok(s.valued(Date.now()));
-    for (let i = 0; i < 3; i++) sockets[1]!.onmessage?.(trade());
     const t0 = Date.now();
-    s.check(t0 + 10_000); assert.equal(s.state, 'live', 'trades without book changes for ten seconds: not yet');
-    // Trades keep arriving (the socket is fresh), the book takes no delta: past 30 s the book is no longer drawn and the socket is dropped.
+    s.lastUpdate = t0 + 10_000;
+    s.check(t0 + 10_000); assert.equal(s.state, 'live', 'no book delta for ten seconds (a quiet book gets an empty one every 5 s at most): not yet');
+    // Other topics keep the socket fresh, the book takes no delta: past 30 s the book is no longer drawn and the socket is dropped.
     s.lastUpdate = t0 + 30_500;
     assert.equal(s.valued(t0 + 31_000), null, 'a stalled book is not drawn');
     s.check(t0 + 31_000);
-    assert.equal(s.failures, 1); assert.match(s.lastFailure ?? '', /book silent 30 s while trades arrive/);
+    assert.equal(s.failures, 1); assert.match(s.lastFailure ?? '', /book silent 30 s/);
     s.stop();
   });
 });

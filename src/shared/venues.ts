@@ -138,11 +138,11 @@ const BYBIT_REFRESH_LOOK_MS = 5_000;
 /** A snapshot ahead of the stream waits this long for its anchor before another is read (the stream pushes every 200 ms on a change). */
 const BYBIT_ANCHOR_WAIT_MS = 10_000;
 /**
- * The book's own freshness: a live socket whose book has taken no delta for this long while trades kept arriving (each trade changes the
- * book, so a delta follows within 200 ms) has a stalled book channel, and the socket is dropped and connected again. A book that is merely
- * quiet (no trade, no order changed) stays drawn.
+ * The book's own freshness: the stream sends an empty delta (its `u` moving on) when a book is quiet, at most about 5 s apart on every
+ * listed market (measured 2026-11-11). A book that has taken no delta for this long has a stalled channel, whatever the trades on the
+ * same socket do: it is no longer drawn, and the socket is dropped and connected again.
  */
-const BYBIT_BOOK_STALL_MS = 30_000, BYBIT_BOOK_STALL_TRADES = 3;
+const BYBIT_BOOK_STALL_MS = 30_000;
 
 /**
  * Bybit: the full-depth book (`orderbook.full.<symbol>` deltas synchronised with the `full_orderbook` snapshot, shared/bybit-full-book.ts),
@@ -164,8 +164,6 @@ abstract class BybitBook extends MarketBook {
   #pause = 0; #retry: ReturnType<typeof setTimeout> | null = null;
   /** The last traded price (what a refresh is judged at) and when the frontiers were last looked at. */
   #lastPrice = 0; #lookedAt = 0;
-  /** Trades that arrived since the book last took a delta (a stalled book channel shows as trades without book changes). */
-  #tradesSinceBook = 0;
   protected url() { return `wss://stream.bybit.com/v5/public/${this.category}`; }
   /** Topics this market subscribes that carry open interest: the perpetual's ticker (spot has none). */
   protected oiTopics(): string[] { return []; }
@@ -178,11 +176,11 @@ abstract class BybitBook extends MarketBook {
   override keepalive() { return { everyMs: 20_000, frame: () => ({ op: 'ping' }) }; }
   protected override bookReady(now: number): boolean { return this.#full.live && !this.#stalled(now); }
   protected override bookEpoch(): number { return this.#full.coverageEpoch; }
-  /** Whether the book channel has stopped while trades still arrive. */
-  #stalled(now: number): boolean { return this.#full.live && this.#tradesSinceBook >= BYBIT_BOOK_STALL_TRADES && now - this.#full.appliedAt > BYBIT_BOOK_STALL_MS; }
+  /** Whether the book channel has stopped (no delta, not even the quiet book's empty one, for `BYBIT_BOOK_STALL_MS`). */
+  #stalled(now: number): boolean { return this.#full.live && now - this.#full.appliedAt > BYBIT_BOOK_STALL_MS; }
   override check(now: number = Date.now()): void {
     super.check(now);
-    if (this.bookRead && this.state === 'live' && this.#stalled(now)) this.fail(`book silent ${Math.round(BYBIT_BOOK_STALL_MS / 1000)} s while trades arrive`);
+    if (this.bookRead && this.state === 'live' && this.#stalled(now)) this.fail(`book silent ${Math.round(BYBIT_BOOK_STALL_MS / 1000)} s`);
   }
   override bookDetail(): string | null {
     if (!this.bookRead || this.#full.live) return null;
@@ -196,8 +194,7 @@ abstract class BybitBook extends MarketBook {
     if (topic === fullTopic(this.symbol)) {
       if (!this.bookRead) return;
       const delta = parseFullDelta(m, this.symbol), now = Date.now();
-      const applied = this.#full.appliedAt, action = delta === 'bad' ? this.#full.fault('unreadable book frame', now) : delta ? this.#full.delta(delta, now) : 'none';
-      if (this.#full.appliedAt !== applied) this.#tradesSinceBook = 0;
+      const action = delta === 'bad' ? this.#full.fault('unreadable book frame', now) : delta ? this.#full.delta(delta, now) : 'none';
       this.#sides(); this.touch(); this.#act(action);
       return;
     }
@@ -217,7 +214,7 @@ abstract class BybitBook extends MarketBook {
         const price = num(d.p), amount = num(d.v), t = num(d.T), side = d.S === 'Buy' ? 'buy' : d.S === 'Sell' ? 'sell' : null;
         // Every fill of one market order carries the same `seq` (the matching event), so it names the order.
         const order = d.seq === undefined || d.seq === null ? undefined : String(d.seq);
-        if (side && price > 0 && amount > 0 && Number.isFinite(t)) { this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) }); this.#lastPrice = price; this.#tradesSinceBook++; }
+        if (side && price > 0 && amount > 0 && Number.isFinite(t)) { this.emitTrade({ tradeId: String(d.i), side, price, amount, notionalUsd: price * amount, t, ...(order ? { order } : {}) }); this.#lastPrice = price; }
       }
       this.alive(); this.#look();
       return;
@@ -236,7 +233,7 @@ abstract class BybitBook extends MarketBook {
   }
   protected override reset() {
     super.reset(); this.#full.reset(); this.#sides();
-    this.#asking = null; this.#pause = 0; this.#lastPrice = 0; this.#lookedAt = 0; this.#tradesSinceBook = 0;
+    this.#asking = null; this.#pause = 0; this.#lastPrice = 0; this.#lookedAt = 0;
     if (this.#retry) clearTimeout(this.#retry); this.#retry = null;
   }
 
@@ -296,7 +293,7 @@ abstract class BybitBook extends MarketBook {
       if (result === 'extended') this.touch();
       return;
     }
-    if (result === 'seeded') { this.#pause = 0; this.#tradesSinceBook = 0; this.#sides(); this.touch(); return; }
+    if (result === 'seeded') { this.#pause = 0; this.#sides(); this.touch(); return; }
     // 'wait': the book seeds itself once the stream reaches the snapshot's anchor; one the stream never brings is read again after a
     // while. 'stale': a newer epoch has asked (or will) for its own.
     if (result === 'wait') this.#later(BYBIT_ANCHOR_WAIT_MS);
