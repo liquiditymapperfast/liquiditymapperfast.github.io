@@ -159,6 +159,11 @@ try {
   if (feeds) await feeds.start(liveFeedCoreConfig);
   if (feeds) {
     const activeFeeds = feeds;
+    // The Bybit perpetual's full-depth book follows the feed manager's Bybit depth spec, which exists only while Bybit is selected (v2/full-depth.mts).
+    v2.setFullDepthSource(() => {
+      const spec = activeFeeds.specs.get('bybit-depth');
+      return spec ? { instrumentId: String(spec.instrumentId ?? ''), symbol: String(spec.symbol ?? ''), category: String(spec.category ?? '') } : null;
+    });
     let activeFeedOptions: LiveFeedStartOptions = liveFeedCoreConfig;
     const feedSelectionFile = live && !memoryOnly ? path.join(path.dirname(path.resolve(String(effectiveHistoryPath))), 'v2-feed-venues.json') : null;
     const selectOrderbooks = async (product: RuntimeMarket, venues: readonly string[]) => {
@@ -183,13 +188,15 @@ try {
           ? [...activeFeedOptions.selectedOrderbookVenues]
           : [...new Set([...activeFeeds.specs.values()].filter(spec => spec.publicDepth || spec.channel === 'l2Book' || spec.channel === 'depth').map(spec => String(spec.venue)))];
         const statuses = activeFeeds.status();
-        const degraded = v2?.degradedVenues();
+        const degraded = v2?.degradedVenues(), owned = v2?.ownedBookStates();
         return { ok: true, maxSelected: ORDERBOOK_VENUE_MAX_SELECTED, selectedVenues, venues: publicOrderbookVenueCatalog().map(venue => {
           const depthStates = [...activeFeeds.specs].filter(([, spec]) => spec.venue === venue.id
             && (spec.publicDepth || spec.channel === 'l2Book' || spec.channel === 'depth'))
             .map(([id]) => statuses[id]?.state).filter((value): value is string => typeof value === 'string');
+          // A venue whose book the full-depth owner draws (v2/full-depth.mts) shows that book's state; the selection stays the feed manager's.
+          const own = owned?.get(venue.id);
           // A degraded venue's reason is free text from the feed, so it is bounded here: an over-long one must not make the whole catalogue invalid.
-          return { ...venue, status: orderbookVenueStatus({ selected: selectedVenues.includes(venue.id), depthStates, fallback: statuses[venue.id + '-depth']?.state, fault: degraded?.get(venue.id) }) };
+          return { ...venue, status: orderbookVenueStatus({ selected: selectedVenues.includes(venue.id), depthStates: own ? [own.state] : depthStates, fallback: statuses[venue.id + '-depth']?.state, fault: own ? own.detail ?? undefined : degraded?.get(venue.id) }) };
         }) };
       },
       selectOrderbooks,

@@ -23,6 +23,8 @@ export class FlowSources {
   readonly #running = new Map<string, { connectors: BookConnector[]; trades: BookConnector[]; instrument: string; unwantedSince: number }>();
   /** Connectors made but not started: a venue has to be made to tell which instrument it trades, and that one is what starts if the venue is wanted. */
   readonly #spare = new Map<string, Made>();
+  /** Venues whose trades another source owns now (full-depth.mts: the Bybit perpetual's own connector): never run here meanwhile. */
+  readonly #excluded = new Set<string>();
 
   constructor(private onTrade: (trade: TradeEvent) => void, private now: () => number = Date.now, private venues: readonly BrowserVenue[] = BROWSER_VENUES, private onLiquidation: (event: LiquidationEvent) => void = () => {}) {}
 
@@ -34,10 +36,22 @@ export class FlowSources {
     return out;
   }
 
+  /**
+   * Whether another source owns a venue's trades: an excluded venue's connectors stop at once (not after the minute's grace) and none starts
+   * while it is, so one trade never arrives twice.
+   */
+  exclude(venueId: string, excluded: boolean): void {
+    if (!excluded) { this.#excluded.delete(venueId); return; }
+    this.#excluded.add(venueId);
+    const run = this.#running.get(venueId);
+    if (run) { for (const connector of run.connectors) connector.stop(); this.#running.delete(venueId); }
+  }
+
   /** Start the sources of the venues whose instrument is in `wanted` (the instrument ids the server has a book for) and are not running; stop those that have not been wanted for a minute. */
   sync(wanted: ReadonlySet<string>): void {
     const now = this.now();
     for (const venue of this.venues) {
+      if (this.#excluded.has(venue.id)) continue;
       const run = this.#running.get(venue.id);
       if (run) {
         if (wanted.has(run.instrument)) run.unwantedSince = 0;

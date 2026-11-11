@@ -38,14 +38,21 @@ import { CoinList } from './coin-list.mts';
 import { guardRequest, guardUpgrade } from '../request-guard.mts';
 import { sendVerdict, type FrameKind } from './backpressure.mts';
 import { TIMEFRAMES, aggregateCandles, aggregateOi, quoteRows, timeframeMs, withLiveOi, type CandleRow, type OiRow } from './series.mts';
+import { FullDepthBooks, ownedMarket, type FullDepthSpec } from './full-depth.mts';
+import type { BookConnector, Market } from '../../shared/connector.ts';
 
 type App = ReturnType<typeof createLocalServer>;
 /** `oiSampling`: read the open interest of the venues the feed manager does not (oi-sampler.mts); a live server only, never a test. */
-export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number; oiSampling?: boolean; priceHistoryGet?: Fetcher }
+/** `fullDepthMake`: how the full-depth owner makes its connector (full-depth.mts; tests give a fake that opens no socket). */
+export interface V2Options { dataDir: string; liveMs?: number; persist?: boolean; heartbeatMs?: number; oiSampling?: boolean; priceHistoryGet?: Fetcher; fullDepthMake?: (market: Market) => BookConnector }
 export interface V2Handle {
   recorder: DepthRecorder; footprint: FootprintRecorder; prints: PrintStream; liquidations: LiquidationStream; flow: FlowRecorder; absorption: AbsorptionRecorder; extra: ExtraVenues; close(): void; handle(req: IncomingMessage, res: ServerResponse): boolean;
   /** Venues (the part of an instrument id before the colon) whose book is being left off the map, with the reason. */
   degradedVenues(): Map<string, string>;
+  /** Where the feed manager's Bybit depth spec is read (main.mts): what the full-depth owner takes (full-depth.mts). */
+  setFullDepthSource(read: () => FullDepthSpec | null): void;
+  /** The state of each venue whose book the full-depth owner draws, for its chip in the order-book venue list. */
+  ownedBookStates(): Map<string, { state: string; detail: string | null }>;
 }
 
 const MAX_COLUMN_SPAN_MS = MAX_PROFILE_SPAN_MS;
@@ -118,7 +125,7 @@ const BAD_CUTS = (floor: number): string => `cuts must be up to ${MAX_CUTS} size
 const BAD_SERIES = 'inst and a supported tf are required';
 
 /** Attach the v2 data plane (depth recorder, live WebSocket, series endpoints) to a running local server. */
-export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, heartbeatMs = HEARTBEAT_MS, oiSampling = false, priceHistoryGet = webGet }: V2Options): V2Handle {
+export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, heartbeatMs = HEARTBEAT_MS, oiSampling = false, priceHistoryGet = webGet, fullDepthMake }: V2Options): V2Handle {
   let store: SqliteColumnStore | null = null;
   if (persist) { fs.mkdirSync(dataDir, { recursive: true }); store = new SqliteColumnStore(path.join(dataDir, 'depth-v2.sqlite')); }
   // A day of columns in memory; older ones are read back from the store when a question reaches them, and kept (COLD_COLUMN_BINS).
@@ -198,6 +205,15 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   extra.onTrade(takeTrade);
   // Exchanges the feed manager has depth for but no trade feed: their trades come from the browser engine's connectors (see flow-sources.mts).
   const flowSources = new FlowSources(takeTrade, undefined, undefined, takeLiquidation);
+  // The Bybit perpetual's full-depth book, with its trades and liquidations, from the page's own connector (full-depth.mts).
+  const fullDepth = new FullDepthBooks(takeTrade, takeLiquidation, fullDepthMake);
+  let fullDepthSource: () => FullDepthSpec | null = () => null;
+  /** Make, replace or stop the full-depth owner; the flow sources leave its venue's trades to it (stopped first, before it starts). */
+  const syncFullDepth = (): void => {
+    const spec = fullDepthSource();
+    if (ownedMarket(spec)) { flowSources.exclude('bybit', true); fullDepth.sync(spec); }
+    else { fullDepth.sync(null); flowSources.exclude('bybit', false); }
+  };
   /**
    * Whether each instrument's trade source is live now: the feed manager's trade feeds (`<venue>-trades`, by the venue its rows name), the
    * trade connectors run for venues it has depth for (FlowSources), and the connector venues. One with none is not recorded.
@@ -211,6 +227,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
       out.set(id, { live: mine.every(([, s]) => (s as { state?: unknown } | null)?.state === 'live'), lastData: success.length ? Math.min(...success) : now });
     }
     for (const [id, source] of flowSources.trades()) out.set(id, { live: source.live, lastData: source.lastData || now });
+    const owned = fullDepth.ownedId, ownedTrades = fullDepth.trades(now);
+    if (owned && ownedTrades) out.set(owned, ownedTrades);
     for (const v of extra.list()) if (v.enabled) out.set(v.instrumentId, { live: v.state === 'live', lastData: v.lastUpdate || now });
     return out;
   };
@@ -291,8 +309,10 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
 
   const marketOf = (id: string) => app.state.markets?.find(m => (m.instrumentId ?? m.id) === id) ?? null;
   const refreshBooks = (now: number) => {
-    const live = new Set<string>();
+    const live = new Set<string>(), owned = fullDepth.ownedId;
     for (const [id, book] of Object.entries(app.state.books ?? {})) {
+      // The full-depth owner's instrument is valued from its own connector (`liveBooks`): the feed manager's shallower copy is not drawn.
+      if (id === owned) continue;
       live.add(id);
       // Every applied snapshot or delta builds a new book object (the state is never edited in place), so the object is the revision: a
       // key made of the stamp, the counts and the touch cannot see a change that leaves those alone (a venue with no stamp and a
@@ -317,8 +337,13 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     }
     for (const id of [...valued.keys()]) if (!live.has(id)) { valued.delete(id); degraded.delete(id); levelsDirty = true; }
   };
-  const liveBooks = (now: number): ValuedBook[] =>
-    [...valued.values()].map(v => v.book).filter((b): b is ValuedBook => b !== null && now - b.timestamp <= STALE_MS * 4).concat(extra.books(now));
+  /** The books on the map: the feed manager's, the full-depth owner's (one book per instrument: none while it loads) and the connector venues'. */
+  const liveBooks = (now: number): ValuedBook[] => {
+    const owned = fullDepth.ownedId, ownedBook = owned ? fullDepth.book(now, recorder.steps.get(owned)) : null;
+    const books = [...valued.values()].map(v => v.book).filter((b): b is ValuedBook => b !== null && now - b.timestamp <= STALE_MS * 4);
+    if (ownedBook && now - ownedBook.timestamp <= STALE_MS * 4) books.push(ownedBook);
+    return books.concat(extra.books(now));
+  };
   const membersOf = (books: readonly ValuedBook[]): string => books.map(b => b.instrumentId).sort().join('|');
 
   const lastCandles = () => {
@@ -347,7 +372,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     // A record past its time says nothing any more: dropped, so instruments that come and go leave nothing behind.
     for (const [id, hint] of touchHints) if (now - hint.at > TOUCH_HINT_MS) touchHints.delete(id);
     refreshBooks(now);
-    if (extra.enabledCount > 0) levelsDirty = true;
+    // Connector books (the venues' own and the full-depth owner's) change in place: every pass publishes them.
+    if (extra.enabledCount > 0 || fullDepth.ownedId) levelsDirty = true;
     const books = liveBooks(now), members = membersOf(books);
     // A book can leave the map without any update: it passes the staleness cutoff. That is a change like any other (the last one leaving
     // is an empty frame), or a client would draw liquidity that is no longer there while the heartbeats go on.
@@ -365,7 +391,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     detect(orders.add(trades));
     takeOrders(false);
     absorption.step();
-    if (now - lastSources >= 5_000) { lastSources = now; flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); syncFar(Object.keys(app.state.books ?? {})); oiSampler?.sync(Object.keys(app.state.books ?? {}).filter(perpetual)); oiSampler?.setFast(oiFastVenues()); }
+    if (now - lastSources >= 5_000) { lastSources = now; syncFullDepth(); flowSources.sync(new Set([...Object.keys(app.state.books ?? {}), ...extra.enabledInstrumentIds])); syncFar(Object.keys(app.state.books ?? {})); oiSampler?.sync(Object.keys(app.state.books ?? {}).filter(perpetual)); oiSampler?.setFast(oiFastVenues()); }
     // Each store on its own: one that cannot write (a full disk) keeps its rows for the next round and does not stop the others or the rest of this pass.
     if (now - lastFlush >= 30_000) { lastFlush = now; for (const store of [footprint, prints, liquidations, flow, absorption, coverage]) { try { store.flush(); } catch (error) { fault('recordings could not be saved; will try again:', error); } } }
     if (now - lastPrune >= 3_600_000) { lastPrune = now; recorder.prune(now); }
@@ -828,6 +854,8 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
   return {
     recorder, footprint, prints, liquidations, flow, absorption, extra,
     degradedVenues() { return new Map([...degraded].map(([id, reason]) => [id.split(':')[0]!, reason])); },
+    setFullDepthSource(read) { fullDepthSource = read; syncFullDepth(); },
+    ownedBookStates() { return fullDepth.states(Date.now()); },
     handle(req, res) {
       const url = new URL(req.url ?? '/', 'http://localhost');
       // A route that fails answers 500 and the server goes on: an exception out of a request listener ends the process.
@@ -867,7 +895,7 @@ export function attachV2(app: App, { dataDir, liveMs = 250, persist = true, hear
     },
     close() {
       closed = true;
-      clearInterval(loop); clearTimeout(absorptionWarm); clearTimeout(ltWarm); syncFar([]); oiSampler?.close(); coins?.close(); (app.server as Server).off('upgrade', onUpgrade);
+      clearInterval(loop); clearTimeout(absorptionWarm); clearTimeout(ltWarm); syncFar([]); fullDepth.close(); oiSampler?.close(); coins?.close(); (app.server as Server).off('upgrade', onUpgrade);
       for (const client of wss.clients) client.terminate();
       // Each part gets its turn even when one of them fails, so what can still be written is (the open minutes and the open orders are written here).
       for (const part of [() => takeOrders(true), () => recorder.flush(), () => store?.close(), () => lsStore?.close(), () => footprint.close(), () => coverage.close(), () => prints.close(), () => liquidations.close(), () => flow.close(), () => absorption.close(), () => flowSources.close(), () => extra.close()]) {
