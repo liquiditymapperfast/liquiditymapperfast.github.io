@@ -887,6 +887,10 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .line-swatch-reset::before { content: "↺"; }
 .swatch-pair { display: inline-flex; align-items: center; gap: 4px; }
 .session-row .row-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+/* The Volume profile's colours: each named, its swatch and, while it has its own, the way back, the three apart from each other. */
+.swatch-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 16px; max-width: 260px; }
+.profile-color { gap: 5px; }
+.profile-color .desc { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .panel .field { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 7px 8px; margin: 0 -8px; border-radius: var(--radius); }
 .panel .field > select, .panel .field > input[type=number] { width: 150px; }
 /* A long choice ("Aggregated: every market switched on") does not fit 150 px beside the name: the select takes a line of its own under it. */
