@@ -43,7 +43,7 @@ test('no two shortcuts share a key, and every switch has one', () => {
   const seen = new Set<string>();
   for (const s of SHORTCUTS) for (const k of [...(s.codes ?? []).map(c => `code:${c}`), ...(s.keys ?? []).map(k => `key:${k}`)]) { assert.ok(!seen.has(k), k); seen.add(k); }
   // Liquidation levels only where its file has an address (liq-url.ts).
-  const features: Feature[] = ['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels' as const] : []), 'absorption', 'traded', 'keyLevels', 'vwap', 'highlights'];
+  const features: Feature[] = ['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels' as const] : []), 'absorption', 'traded', 'tpo', 'keyLevels', 'vwap', 'highlights'];
   assert.deepEqual(SHORTCUTS.flatMap(s => s.action.kind === 'toggle' ? [s.action.feature] : []).sort(), [...features].sort());
   assert.ok(!seen.has('key:m'), 'M is the Mirror toggle on the toolbar: not taken');
 });

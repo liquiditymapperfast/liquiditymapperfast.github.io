@@ -1,5 +1,6 @@
 import { LAYOUT_KEYS, readSettings, type AppState, type Settings } from '../store.ts';
 import { PANE_SHOW_KEY, legacyPlan, readPlan, samePlan, type DockPlan } from './dock-model.ts';
+import { readTpo } from '../tpo/settings.ts';
 
 /**
  * Saved layouts: a name for the panes as they are arranged (order, heights, column widths) and the settings of what the chart shows
@@ -81,7 +82,7 @@ export function settingsOf(state: AppState): Partial<Settings> {
   for (const key of LAYOUT_KEYS) out[key] = state[key];
   const { anchors: _anchors, ...vwap } = state.vwap;
   const { zone: _zone, anchors: _profileAnchors, ...traded } = state.traded;
-  const { rows: _rows, splits: _splits, merges: _merges, ...tpo } = state.tpo;
+  const { rows: _rows, splits: _splits, merges: _merges, ...tpo } = state.tpo ?? readTpo(undefined);
   return { ...out, vwap: vwap as Settings['vwap'], traded: traded as Settings['traded'], tpo: tpo as Settings['tpo'] };
 }
 
@@ -127,7 +128,7 @@ export function completeSettings(patch: Partial<Settings>, current: AppState): P
   const out: Partial<Settings> = { ...patch };
   if (out.vwap) out.vwap = { ...out.vwap, anchors: current.vwap.anchors };
   if (out.traded) out.traded = { ...out.traded, zone: current.traded.zone, anchors: current.traded.anchors };
-  if (out.tpo) out.tpo = { ...out.tpo, rows: current.tpo.rows, splits: current.tpo.splits, merges: current.tpo.merges };
+  if (out.tpo && current.tpo) out.tpo = { ...out.tpo, rows: current.tpo.rows, splits: current.tpo.splits, merges: current.tpo.merges };
   return out;
 }
 
@@ -168,7 +169,7 @@ export function carriedSettings(raw: Partial<Settings>): Partial<Settings> {
 export function settingsToApply(saved: Partial<Settings>, current: AppState): Settings {
   const settings = readSettings({ ...settingsOf(current), ...saved, ...(saved.show ? { show: { ...current.show, ...saved.show } } : {}) });
   return { ...settings, vwap: { ...settings.vwap, anchors: current.vwap.anchors }, traded: { ...settings.traded, zone: current.traded.zone, anchors: current.traded.anchors },
-    tpo: { ...settings.tpo, rows: current.tpo.rows, splits: current.tpo.splits, merges: current.tpo.merges } };
+    tpo: { ...settings.tpo, rows: current.tpo?.rows ?? {}, splits: current.tpo?.splits ?? {}, merges: current.tpo?.merges ?? {} } };
 }
 
 /** A pane arrangement from storage or a file, or null: ids are strings, sizes are finite and within reason. */

@@ -56,7 +56,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   ...(liqLevelsUrl() ? [toggle('Q', t('Liquidation levels'), 'liqLevels')] : []),
   toggle('A', t('Absorption'), 'absorption'),
   toggle('P', t('Volume profile'), 'traded'),
-  toggle('M', t('TPO'), 'tpo'),
+  toggle('O', t('TPO'), 'tpo'),
   { group: 'show', caps: ['U'], label: t('TPO: fold into profiles or lay out in time'), keys: ['u'], action: { kind: 'fold' } },
   toggle('K', t('Key levels'), 'keyLevels'),
   toggle('V', t('VWAP'), 'vwap'),
