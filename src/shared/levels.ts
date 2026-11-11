@@ -43,6 +43,8 @@ export interface ValuedBook {
  * off the frame, so the one rule is the same where a step is sent, posted and read.
  */
 export const usableStep = (step: unknown): step is number => typeof step === 'number' && Number.isFinite(step) && step > 0;
+/** Whether a coverage epoch (`ValuedBook.epoch`) is one to carry: a whole number above zero. Anything else is left off the wire and off the frame. */
+export const usableEpoch = (epoch: unknown): epoch is number => typeof epoch === 'number' && Number.isSafeInteger(epoch) && epoch > 0;
 /** A single venue's book crossed by more than this many basis points is a feed fault, not a market state. */
 export const MAX_CROSSED_BP = 5;
 

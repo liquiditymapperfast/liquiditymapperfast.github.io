@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { decodeColumns, decodeLevels, frameType } from '../src/app/wire.ts';
 import { encodeColumns, encodeLevels } from '../src/server/v2/wire.mts';
+import { frameOf } from '../src/app/browser/levels-frame.ts';
 import { DepthRecorder, accumulateSide, COLUMN_MS } from '../src/server/v2/recorder.mts';
 import { View, niceStep } from '../src/app/view.ts';
 import { mergeLive } from '../src/app/hub.ts';
@@ -86,6 +87,21 @@ test('levels frames carry the step a book was merged on, and a page takes only a
   }
   const older = decodeLevels(exactBuffer(withHeader(wire, text => text.replace(',"step":20', ''))));
   assert.equal(older.books[0]!.step, undefined, 'an older server\'s frame has no step at all');
+});
+
+test('levels frames carry the coverage epoch of a book that has one, from the server and from the feeds worker alike', () => {
+  const full: ValuedBook = { instrumentId: 'bybit:BTCUSDT', venue: 'bybit', timestamp: T0, coarse: false, bids: side([[100, 100, 5]]), asks: side([[101, 101, 7]]), step: 20, epoch: 7 };
+  const plain: ValuedBook = { ...full, instrumentId: 'okx:BTC-USDT-SWAP', venue: 'okx', epoch: undefined };
+  const wire = encodeLevels([full, plain], T0), header = headerOf(wire);
+  assert.equal(header.instruments[0]!.epoch, 7); assert.ok(!('epoch' in header.instruments[1]!));
+  const levels = decodeLevels(exactBuffer(wire));
+  assert.deepEqual(levels.books.map(b => b.epoch), [7, undefined]); assert.ok(!('epoch' in levels.books[1]!));
+  assert.deepEqual(frameOf([full, plain], T0).books.map(b => b.epoch), [7, undefined], 'the frame of the feeds worker says the same');
+  for (const unusable of [0, -1, 1.5, NaN]) assert.ok(!('epoch' in headerOf(encodeLevels([{ ...full, epoch: unusable }], T0)).instruments[0]!), `epoch ${unusable} is not sent`);
+  for (const literal of ['null', '0', '-3', '"7"', '1.5', '1e999']) {
+    const bad = decodeLevels(exactBuffer(withHeader(wire, text => text.replace('"epoch":7', `"epoch":${literal}`))));
+    assert.ok(!('epoch' in bad.books[0]!), `epoch ${literal} is left out`); assert.equal(bad.books[0]!.step, 20, 'the rest is read as before');
+  }
 });
 
 test('wasm spread_levels agrees with the server recorder on random banded books', async () => {

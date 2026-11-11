@@ -129,7 +129,7 @@ export const DEFAULT_TUNING: CueTuning = {
 };
 
 /** What the tracker reads of a `LiveBook` (structural: a `LiveBook` is one). `step` is the grid the server merged the book on (`ValuedBook.step`). */
-export interface CueBook { id: string; timestamp: number; coarse: boolean; step?: number; touch?: { lo: number; hi: number }; bids: SideArrays; asks: SideArrays }
+export interface CueBook { id: string; timestamp: number; coarse: boolean; step?: number; epoch?: number; touch?: { lo: number; hi: number }; bids: SideArrays; asks: SideArrays }
 export type CueSide = 'bid' | 'ask';
 
 /**
@@ -357,6 +357,8 @@ interface Book {
   fine: [Fine, Fine] | null;
   bands: [Bands, Bands] | null;
   touchLo: number; touchHi: number;
+  /** What the book covered when its baseline began (`ValuedBook.epoch`, 0 for a book that is whole as it comes). */
+  epoch: number;
 }
 
 /** What `judge` decided about one cell: the kind, the value before the change, and the change. Module scratch: no allocation per cell. */
@@ -524,13 +526,16 @@ export class BookCueTracker {
     for (const book of books) {
       if (!book) continue;
       let st = this.#books.get(book.id);
+      // A book whose coverage changed (seeded again, or more of it became visible) starts over as on first sight: its new levels are not
+      // liquidity placed, nor its withdrawn ones liquidity pulled.
+      if (st && st.epoch !== (book.epoch ?? 0)) { this.#books.delete(book.id); st = undefined; }
       if (st) st.frame = frame;
       if (!this.#want.has(book.id) || this.#done.has(book.id)) continue;
       this.#done.add(book.id);
       this.stats.observations++;
       if (!st) {
         st = { id: book.id, seen: wall, frame, pub: new Publication(), usable: false, mode: null, grid: 0, approx: false, lastWall: wall, lastStamp: NaN, cadence: 0, observations: 0,
-          zoneLo: NaN, zoneHi: NaN, midSteps: NaN, fine: null, bands: null, touchLo: NaN, touchHi: NaN };
+          zoneLo: NaN, zoneHi: NaN, midSteps: NaN, fine: null, bands: null, touchLo: NaN, touchHi: NaN, epoch: book.epoch ?? 0 };
         this.#books.set(book.id, st);
       }
       st.seen = wall;

@@ -2,7 +2,7 @@
 import type { ColumnSet, ColumnsFrame } from '../shared/columns.ts';
 import { LT_FIELDS, LT_LENGTH } from '../shared/lt-sample.ts';
 import { checkTape, type TapeBatch } from '../shared/tape.ts';
-import { usableStep } from '../shared/levels.ts';
+import { usableEpoch, usableStep } from '../shared/levels.ts';
 export type { ColumnSet, ColumnsFrame };
 type PartKind = 'f64' | 'f32' | 'i32';
 interface PartSpec { kind: PartKind; offset: number; length: number }
@@ -14,7 +14,7 @@ export interface SideArrays { lo: Float64Array; hi: Float64Array; usd: Float64Ar
  * merged on, so out to about 250 steps from its mid it keeps its USD per bin of that grid (`ValuedBook.step`); none from an older server,
  * for a grouped book, or for one nothing merged.
  */
-export interface LiveBook { id: string; venue: string; timestamp: number; coarse: boolean; bids: SideArrays; asks: SideArrays; touch?: { lo: number; hi: number }; step?: number }
+export interface LiveBook { id: string; venue: string; timestamp: number; coarse: boolean; bids: SideArrays; asks: SideArrays; touch?: { lo: number; hi: number }; step?: number; epoch?: number }
 export interface LevelsFrame { asOf: number; books: LiveBook[] }
 
 function open(buffer: ArrayBuffer): { header: FrameHeader & Record<string, unknown>; part(index: number): Float64Array | Float32Array | Int32Array } {
@@ -81,7 +81,7 @@ export function decodeColumns(buffer: ArrayBuffer): ColumnsFrame {
 export function decodeLevels(buffer: ArrayBuffer): LevelsFrame {
   const { header, part } = open(buffer);
   if (header.type !== 'levels') throw new Error(`Expected a levels frame, got ${header.type}`);
-  const raw = header.instruments as { id: string; venue: string; timestamp: number; coarse: boolean; touch?: unknown; step?: unknown }[];
+  const raw = header.instruments as { id: string; venue: string; timestamp: number; coarse: boolean; touch?: unknown; step?: unknown; epoch?: unknown }[];
   const side = (at: number): SideArrays => ({ lo: part(at) as Float64Array, hi: part(at + 1) as Float64Array, usd: part(at + 2) as Float64Array });
   // A touch span is taken only when it is two ordered finite prices (an older server sends none).
   const touchOf = (value: unknown): { lo: number; hi: number } | undefined =>
@@ -90,6 +90,6 @@ export function decodeLevels(buffer: ArrayBuffer): LevelsFrame {
     const touch = touchOf(item.touch), step = item.step;
     // A merge step is taken only when it is a finite number above zero (an older server sends none): a reader that compares books on this grid
     // would divide by anything else, so a malformed one is left out, not thrown on, and the reader falls back to the grid it can infer.
-    return { id: item.id, venue: item.venue, timestamp: item.timestamp, coarse: item.coarse, bids: side(i * 6), asks: side(i * 6 + 3), ...(touch ? { touch } : {}), ...(usableStep(step) ? { step } : {}) };
+    return { id: item.id, venue: item.venue, timestamp: item.timestamp, coarse: item.coarse, bids: side(i * 6), asks: side(i * 6 + 3), ...(touch ? { touch } : {}), ...(usableStep(step) ? { step } : {}), ...(usableEpoch(item.epoch) ? { epoch: item.epoch } : {}) };
   }) };
 }

@@ -1,7 +1,7 @@
 import type { Column } from './recorder.mts';
 import { packLt } from '../../shared/columns.ts';
 import type { ValuedBook } from './levels.mts';
-import { usableStep } from '../../shared/levels.ts';
+import { usableEpoch, usableStep } from '../../shared/levels.ts';
 import type { TapeBatch } from '../../shared/tape.ts';
 import type { LtWindows } from '../../shared/lt-windows.ts';
 
@@ -78,8 +78,9 @@ export function encodeLevels(books: ValuedBook[], asOf: number): Buffer {
     for (const side of [book.bids, book.asks]) parts.push({ kind: 'f64', data: side.lo }, { kind: 'f64', data: side.hi }, { kind: 'f64', data: side.usd });
     // `touch`: a grouped book's top-group span (`ValuedBook.touch`), only where there is one; a page that does not know it ignores it.
     // `step`: the grid its far levels were merged on (`ValuedBook.step`), only where something merged and only a usable number (JSON would turn
-    // NaN or Infinity into null); a page that does not know it ignores it, and an older server sends none.
-    return { id: book.instrumentId, venue: book.venue, timestamp: book.timestamp, coarse: book.coarse, bids: book.bids.usd.length, asks: book.asks.usd.length, ...(book.touch ? { touch: [book.touch.lo, book.touch.hi] } : {}), ...(usableStep(book.step) ? { step: book.step } : {}) };
+    // NaN or Infinity into null); a page that does not know it ignores it, and an older server sends none. `epoch`: what the book covers
+    // (`ValuedBook.epoch`), only where the book has one, so a page's walls and cues start again when more of it became visible.
+    return { id: book.instrumentId, venue: book.venue, timestamp: book.timestamp, coarse: book.coarse, bids: book.bids.usd.length, asks: book.asks.usd.length, ...(book.touch ? { touch: [book.touch.lo, book.touch.hi] } : {}), ...(usableStep(book.step) ? { step: book.step } : {}), ...(usableEpoch(book.epoch) ? { epoch: book.epoch } : {}) };
   });
   return frame({ type: WIRE_LEVELS, asOf, instruments }, parts);
 }

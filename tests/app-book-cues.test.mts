@@ -195,6 +195,25 @@ test('a changed grid, a changed kind or a stamp far back starts the book again, 
   assert.equal(tr.stats.baselines, 2);
 });
 
+test('a book whose coverage epoch changes starts over as on first sight: a book seeded again raises nothing from its differences', () => {
+  // A full-depth book seeded again after a gap can differ inside its window from the copy before it (the stream moved on, a replica
+  // differs): with a new epoch that is a new baseline, not liquidity placed or pulled. Growth past the old reach raises nothing either way
+  // (bins past the deepest level were unknown), so the epoch matters for the inside.
+  const l = ladder(1_000_000, 100), reseeded = copy(l);
+  reseeded.bids.set(MID - 5, 9_000_000); reseeded.asks.delete(MID + 7);
+  const tr = new BookCueTracker({ ...DEFAULT_TUNING, ...open });
+  assert.deepEqual(tr.observe([{ ...book(ID, 1_000, l), epoch: 3 }], [ID], tiny(1_000)), []);
+  assert.deepEqual(tr.observe([{ ...book(ID, 1_250, reseeded), epoch: 4 }], [ID], tiny(1_250)), [], 'a new epoch: a baseline, no events');
+  assert.equal(tr.stats.baselines, 2);
+  // Within one epoch a change is raised as before.
+  const changed = copy(reseeded); changed.bids.set(MID - 6, 5_000_000);
+  assert.equal(only(tr.observe([{ ...book(ID, 1_500, changed), epoch: 4 }], [ID], tiny(1_500))).usd, 4_000_000);
+  // The same differences without a new epoch are two events.
+  const plain = new BookCueTracker({ ...DEFAULT_TUNING, ...open });
+  plain.observe([book(ID, 1_000, l)], [ID], tiny(1_000));
+  assert.equal(plain.observe([book(ID, 1_250, reseeded)], [ID], tiny(1_250)).length, 2);
+});
+
 test('a published grid and an inferred one agree on the cells but not on the claim: the events say which', () => {
   const tr = new BookCueTracker(), l = ladder();
   tr.observe([book(ID, 1_000, l, { step: null })], [ID], ctx(1_000));
