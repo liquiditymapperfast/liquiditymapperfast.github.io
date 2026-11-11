@@ -1,6 +1,7 @@
 import type { AppState } from './store.ts';
 import type { OiPart } from './oi-change.ts';
 import { HISTORY_CAP_MS } from './delta/flows.ts';
+import { FLOW_STORE_MS } from '../shared/flow.ts';
 import { fundingVenueOf } from './funding.ts';
 import { currentCoin } from './coin.ts';
 import { instrumentIdFor } from '../shared/coins.ts';
@@ -11,6 +12,24 @@ import { instrumentIdFor } from '../shared/coins.ts';
  * given to that minute's takers, so minute readings without minute flow would say nothing.
  */
 export const OI_FINE_MS = HISTORY_CAP_MS;
+/**
+ * How far back the Funding pane's share of new positions reaches (Hyperliquid's perpetual, `NlnsSource.hourly`): a day in a page; a week on a
+ * server, the flow minutes it stores (`FLOW_STORE_MS`; its open interest it keeps a month). Until 2026-11-11 a server's stopped a day back too,
+ * on a chart days wide (Karl). Only that market's minutes are read so far back: a week of every counted market's, re-read every
+ * `OI_WHOLE_MS` for the OI and Delta panes, cost the server about a second of work and the page 5 MB each time (review, 2026-11-11), and
+ * those panes keep their day.
+ */
+export const OI_FINE_SERVER_MS = FLOW_STORE_MS;
+export const fundingReachMs = (kind: 'server' | 'browser'): number => kind === 'server' ? OI_FINE_SERVER_MS : OI_FINE_MS;
+/** Hyperliquid's perpetual of the coin while the Funding pane shows Hyperliquid, else null. */
+export function fundingFineId(state: Pick<AppState, 'show' | 'fundingVenue'>): string | null {
+  if (!state.show.funding) return null;
+  const coin = currentCoin();
+  return fundingVenueOf(state.fundingVenue, v => !!coin.markets[v]) === 'hyperliquid' ? instrumentIdFor('hyperliquid', coin) ?? null : null;
+}
+/** How far back one market's minute readings are read: `fundingReachMs` for the Funding pane's market, a day for every other. */
+export const fineSpanMs = (state: Pick<AppState, 'show' | 'fundingVenue'>, kind: 'server' | 'browser', id: string): number =>
+  id === fundingFineId(state) ? fundingReachMs(kind) : OI_FINE_MS;
 /** Their newest minutes are read again at most this often; the pushes keep the newest minute current meanwhile (`Hub.loadOiFine`). */
 export const OI_FINE_TAIL_MS = 60_000;
 
@@ -56,6 +75,7 @@ export function fineKept(state: Pick<AppState, 'show' | 'oiChange' | 'delta' | '
 
 /**
  * Which markets a set of minute readings is read for. Not an inverse market's one price: that follows each whole read of the bars on screen,
- * and a new one must not ask for a day of minutes again (the minutes take it at their own next whole read).
+ * and a new one must not ask for a day of minutes again (the minutes take it at their own next whole read). With each market's span
+ * (`fineSpanMs`): opening the Funding pane beside the OI pane reads Hyperliquid's week at once, not at the next whole read.
  */
-export const fineKey = (parts: readonly OiPart[]): string => parts.map(part => part.id).join(',');
+export const fineKey = (parts: readonly OiPart[], span: (id: string) => number = () => OI_FINE_MS): string => parts.map(part => `${part.id}@${span(part.id)}`).join(',');

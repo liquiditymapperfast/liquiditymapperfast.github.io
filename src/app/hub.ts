@@ -14,7 +14,7 @@ import { pickOi, weakOi, type OiCandidate } from './oi-source.ts';
 import { takeOiPushes, withOiPushes, type OiPush } from './oi-push.ts';
 import { replaying } from './replay/clock.ts';
 import { atOnePrice, inverseOi, oiSumOf, oiTail, type OiPart } from './oi-change.ts';
-import { OI_FINE_MS, OI_FINE_TAIL_MS, fineKept, fineKey, fineTargets, fineWant } from './oi-fine.ts';
+import { OI_FINE_TAIL_MS, fineKept, fineKey, fineSpanMs, fineTargets, fineWant } from './oi-fine.ts';
 import { oiMarketIds } from './market-choice.ts';
 import { nextBookGone } from './cvd/ids.ts';
 import { t } from './i18n.ts';
@@ -967,7 +967,8 @@ export class Hub {
 
   /**
    * The minute readings of the markets that need them (store `oiFine`, `fineTargets`), for NL/NS to work candles out minute by minute where they
-   * reach (delta/nlns.ts): read whole over the last OI_FINE_MS when those markets change and every OI_WHOLE_MS, else each one's newest minutes
+   * reach (delta/nlns.ts): read whole over each one's span (`fineSpanMs`: a day; on a server a week for the Funding pane's Hyperliquid) when
+   * those markets change and every OI_WHOLE_MS, else each one's newest minutes
    * again at most every OI_FINE_TAIL_MS (the pushes keep the newest minute current, `#oiPush`, and those pushed during a read are put on its
    * answer). They do not depend on the chart's timeframe, so a switch keeps them. A market with no minute reading yet is kept, empty, so the
    * pushes build it up. Nothing is read on a one-minute chart or while nothing that works NL/NS out is shown, and what was read is let go then;
@@ -982,7 +983,7 @@ export class Hub {
     const parts = fineTargets(state, tf), keep = fineKept(state, tf, parts);
     if (keep && state.oiFine.some(part => !keep.has(part.id))) this.store.set({ oiFine: state.oiFine.filter(part => keep.has(part.id)) });
     if (!parts.length) return Promise.resolve();
-    const key = fineKey(parts), now = Date.now(), held = this.#fineHeld;
+    const key = fineKey(parts, this.#fineSpan(state)), now = Date.now(), held = this.#fineHeld;
     if (this.#fineInflight?.key === key) return this.#fineInflight.promise;
     const whole = !held || held.key !== key || now - held.at >= OI_WHOLE_MS;
     if (!whole && now - held.tailAt < OI_FINE_TAIL_MS) return Promise.resolve();
@@ -997,25 +998,29 @@ export class Hub {
   /** The markets whose minute readings were read whole last, when, and when their newest minutes were read again. */
   #fineHeld: { key: string; at: number; tailAt: number } | null = null;
   /** Whether the markets wanting minute readings are still those of `key` (an answer for others is dropped). */
-  #fineStill(key: string): boolean { return fineKey(fineTargets(this.store.state, TIMEFRAMES[this.store.state.timeframe] ?? 3_600_000)) === key; }
+  #fineStill(key: string): boolean { const state = this.store.state; return fineKey(fineTargets(state, TIMEFRAMES[state.timeframe] ?? 3_600_000), this.#fineSpan(state)) === key; }
+  /** How far back each market's minute readings are read (`fineSpanMs`). */
+  #fineSpan(state: AppState): (id: string) => number { return id => fineSpanMs(state, this.source.kind, id); }
   async #readFineWhole(key: string, parts: readonly OiPart[], now: number): Promise<void> {
     // An inverse market's minutes at the one price the bars on screen are at now: a whole read replaces them all, so they stay one price
     // within themselves, and close to the bars' (kept at their first price, they drifted from them with the price all session).
-    const read = await Promise.all(parts.map(async part => ({ id: part.id, ...(part.usdAt ? { usdAt: part.usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - OI_FINE_MS, now + MINUTE, part.usdAt).catch((): OiBar[] => []) })));
+    const span = this.#fineSpan(this.store.state);
+    const read = await Promise.all(parts.map(async part => ({ id: part.id, ...(part.usdAt ? { usdAt: part.usdAt } : {}), bars: await this.oiBars(part.id, '1m', now - span(part.id), now + MINUTE, part.usdAt).catch((): OiBar[] => []) })));
     if (!this.#fineStill(key)) return;
     const pushed = this.#fineDuring;
     this.store.set({ oiFine: read.map(part => withPushed(part, pushed, MINUTE)) });
     this.#fineHeld = { key, at: now, tailAt: now };
   }
   async #readFineTail(key: string, now: number): Promise<void> {
-    // A market with no reading held (none yet, or none in the last OI_FINE_MS) is left to its pushes and the next whole read: asking it for the
+    // A market with no reading held (none yet, or none in the source's reach) is left to its pushes and the next whole read: asking it for the
     // whole window each minute asked a venue that answers nothing 25 times in 25 minutes.
-    const held = this.store.state.oiFine, froms = held.map(part => { const last = part.bars[part.bars.length - 1]; return last ? Math.max(now - OI_FINE_MS, last[0] - MINUTE) : now; });
+    const span = this.#fineSpan(this.store.state), held = this.store.state.oiFine, reach = held.map(part => now - span(part.id));
+    const froms = held.map((part, i) => { const last = part.bars[part.bars.length - 1]; return last ? Math.max(reach[i]!, last[0] - MINUTE) : now; });
     const tails = await Promise.all(held.map((part, i) => part.bars.length ? this.oiBars(part.id, '1m', froms[i]!, now + MINUTE, part.usdAt).catch((): OiBar[] => []) : Promise.resolve<OiBar[]>([])));
     // On the readings held now: pushes may have moved them while the tails were read, and those are put on the answer again.
     const current = this.store.state.oiFine, pushed = this.#fineDuring;
     if (!this.#fineStill(key) || current.length !== held.length || current.some((part, i) => part.id !== held[i]!.id)) return;
-    this.store.set({ oiFine: current.map((part, i) => withPushed({ ...part, bars: oiTail(part.bars, tails[i]!, froms[i]!, now - OI_FINE_MS) }, pushed, MINUTE)) });
+    this.store.set({ oiFine: current.map((part, i) => withPushed({ ...part, bars: oiTail(part.bars, tails[i]!, froms[i]!, reach[i]!) }, pushed, MINUTE)) });
     if (this.#fineHeld) this.#fineHeld = { ...this.#fineHeld, tailAt: now };
   }
   /** The key of the open interest in the store (`#loadOi`): '' while none, or after a series change cleared it. */

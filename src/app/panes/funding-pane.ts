@@ -3,7 +3,7 @@ import type { Store, AppState } from '../store.ts';
 import type { View } from '../view.ts';
 import { helpButton } from '../help.ts';
 import { setTip } from '../tip.ts';
-import { t } from '../i18n.ts';
+import { t, tn } from '../i18n.ts';
 import { addTune } from '../pane-tune.ts';
 import { clock } from '../format.ts';
 import { HoverCard } from '../hovercard.ts';
@@ -25,6 +25,25 @@ import { fitText } from '../text-fit.ts';
 const HOUR = 3_600_000;
 /** Settlements a year at one every eight hours: the APR of a rate per eight hours. */
 const PER_YEAR = 3 * 365;
+
+/**
+ * Where the Funding pane marks that its share begins (pure): the first hour drawn (`NlnsSource.hourly`), where that is later than the view's
+ * first two hours; else null (the view starts inside what is held, or a bar is missing only at its edge). The first bar, not a reach worked out
+ * from the clock: the bars also wait for flow (older minutes still on their way, a server that recorded less flow than open interest), and in
+ * a replay the readings are those held before it began (review, 2026-11-11).
+ */
+export function markHour(firstBar: number | undefined, viewStart: number): number | null {
+  return firstBar !== undefined && firstBar > Math.floor(viewStart / HOUR) * HOUR + HOUR ? firstBar : null;
+}
+
+/**
+ * A span back from now as the Funding pane's mark says it (pure): whole hours rounded up below two days, else days rounded. Two minutes come
+ * off first: the readings reach a minute or so past a whole hour (`#fine`'s cut), which would make a day "25 hours" in an hour's first minute.
+ */
+export function reachSpan(ms: number): { n: number; days: boolean } {
+  const hours = Math.max(1, Math.ceil((ms - 2 * 60_000) / HOUR));
+  return hours >= 48 ? { n: Math.round(hours / 24), days: true } : { n: hours, days: false };
+}
 
 /** A rate (a fraction) as a signed percentage: "+0.0100%", "−0.0453%". */
 export function rateText(x: number, digits = 4): string { return `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(digits)}%`; }
@@ -215,6 +234,18 @@ export class FundingPane extends TimePane {
         ctx.fillRect(x0 + 0.5, share >= 0.5 ? mid - len : mid, Math.max(1, x1 - x0 - 1), len);
       }
       ctx.globalAlpha = 1;
+      // Where who opened begins (`markHour`: a day back in a page, a week on a server, later where less is held): a dotted mark across the band
+      // and, left of it, how far back that is, so the empty band before it reads as out of reach, not as nobody opening (Karl, 2026-11-11: the
+      // bars stopped a day back on a chart days wide, with nothing to say why).
+      const markT = markHour(opens[0]?.t, v.t0), rx = markT === null ? -1 : Math.round(v.xOf(markT, pw)) + 0.5;
+      if (markT !== null && rx > 0 && rx < pw) {
+        ctx.strokeStyle = p.muted; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(rx, bandTop); ctx.lineTo(rx, bandBottom); ctx.stroke(); ctx.setLineDash([]);
+        // The whole label where it fits, else the span alone, else nothing (cut with an ellipsis it said only "Who opened…").
+        const { n, days } = reachSpan(now - markT), room = rx - 12;
+        const label = (days ? [t('Who opened: the last {n} days', { n }), t('last {n} days', { n })] : [tn(n, 'Who opened: the last {n} hour', 'Who opened: the last {n} hours'), tn(n, 'last {n} hour', 'last {n} hours')])
+          .find(text => ctx.measureText(text).width <= room);
+        if (label) { ctx.fillStyle = p.muted; ctx.textAlign = 'right'; ctx.fillText(label, rx - 6, mid); }
+      }
     }
     ctx.restore();
     // The scale: the top and bottom of the rates, and the band's even line.

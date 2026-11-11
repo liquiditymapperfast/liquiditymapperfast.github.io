@@ -5,7 +5,7 @@ import { FlowCache, candleStarts, resetKeys, unrecorded, type CandleFlow, type R
 import { ensureDeltaFlow } from './flows.ts';
 import { minuteOpens, nlnsModel, withLead, type NlnsCandle, type NlnsFine, type NlnsMarket } from './nlns.ts';
 import { oiPartsUntil, type OiPart } from '../oi-change.ts';
-import { OI_FINE_MS } from '../oi-fine.ts';
+import { OI_FINE_MS, fundingReachMs } from '../oi-fine.ts';
 import { replaying } from '../replay/clock.ts';
 
 const MINUTE = 60_000, HOUR = 3_600_000;
@@ -29,7 +29,10 @@ export class NlnsSource {
   readonly #caches = new Map<string, FlowCache>();
   readonly #fineCaches = new Map<string, FlowCache>();
 
-  constructor(private readonly hub: Pick<Hub, 'flow' | 'ensureFlow' | 'ensureFlowMinutes'>) {}
+  constructor(private readonly hub: Pick<Hub, 'flow' | 'ensureFlow' | 'ensureFlowMinutes' | 'source'>) {}
+
+  /** How far back the Funding pane's share reaches (`fundingReachMs`: a day in a page, a week on a server). */
+  get fineReach(): number { return fundingReachMs(this.hub.source.kind); }
 
   /** The candle starts NL/NS is worked out over for the view [t0, t1]: from where the sums restart (`candleStarts`; 'none': the left edge). */
   starts(state: AppState, t0: number, t1: number, now: number, reset: ResetMode = state.delta.reset): number[] {
@@ -84,13 +87,13 @@ export class NlnsSource {
   hourly(state: AppState, id: string, from: number, now: number): HourOpens[] {
     const part = (replaying() ? oiPartsUntil(state.oiFine, MINUTE, now) : state.oiFine).find(p => p.id === id), track = this.hub.flow.track(id);
     if (!part || !track) return [];
-    const first = Math.floor(Math.max(from, now - OI_FINE_MS) / HOUR) * HOUR, hours: number[] = [];
+    const first = Math.floor(Math.max(from, now - this.fineReach) / HOUR) * HOUR, hours: number[] = [];
     for (let t = first; t <= now; t += HOUR) hours.push(t);
     // Its flow is asked for here too: with the Delta pane, the OI pane and the flow column all closed, nothing else would ask.
     ensureDeltaFlow(this.hub, [id], first - HOUR, Date.now());
     const key = `${id}|${first}|${hours.length}|${this.hub.flow.loads}|${Math.floor(now / 10_000)}`, held = this.#hourly;
     if (held && held.key === key && held.part === part) return held.hours;
-    const fine = this.#fine(part, track, hours, HOUR, now), opens = fine ? minuteOpens(hours, fine, HOUR, now) : [];
+    const fine = this.#fine(part, track, hours, HOUR, now, this.fineReach), opens = fine ? minuteOpens(hours, fine, HOUR, now) : [];
     const out = hours.flatMap((t, i) => { const o = opens[i]; return o ? [{ t, ...o }] : []; });
     this.#hourly = { key, part, hours: out };
     return out;
@@ -104,18 +107,28 @@ export class NlnsSource {
 
   /**
    * One market's minute readings and its flow each minute over the candles `all` (and the hold before them, where a reading's stretch can
-   * start), from its first minute reading on and at most OI_FINE_MS back; null where it has none there. Only the delta of each minute is
+   * start), from its first minute reading on and at most `reach` back (a day for the OI and Delta panes, `fineReach` for the Funding pane's
+   * hours), the readings before that cut away (the store holds a week of the Funding pane's market on a server); null where it has none there. Only the delta of each minute is
    * read (one sample), and a long stretch with no trade is taken as not recorded, as for the candles.
    */
-  #fine(part: OiPart | undefined, track: NonNullable<ReturnType<Hub['flow']['track']>>, all: readonly number[], tf: number, now: number): NlnsFine | null {
-    if (!part || part.bars.length < 2) return null;
-    const from = Math.max(all[0]!, Math.floor(part.bars[0]![0] / MINUTE) * MINUTE, Math.floor((now - OI_FINE_MS) / MINUTE) * MINUTE - MINUTE);
+  #fine(part: OiPart | undefined, track: NonNullable<ReturnType<Hub['flow']['track']>>, all: readonly number[], tf: number, now: number, reach: number = OI_FINE_MS): NlnsFine | null {
+    if (!part) return null;
+    const cut = Math.floor((now - reach) / MINUTE) * MINUTE - MINUTE, bars = barsFrom(part.bars, cut);
+    if (bars.length < 2) return null;
+    const from = Math.max(all[0]!, Math.floor(bars[0]![0] / MINUTE) * MINUTE, cut);
     const to = Math.min(all[all.length - 1]! + tf, now);
     if (!(to > from)) return null;
     const starts: number[] = [];
     for (let t = from; t < to; t += MINUTE) starts.push(t);
     // Keyed by the clock, not by `from`: the model and the hourly opening read the same minutes from different starts and share the cache.
     const raw: (CandleFlow | null)[] = this.#cache(this.#fineCaches, part.id).get(`${part.id}|${this.hub.flow.loads}|${Math.floor(now / FINE_CACHE_MS)}`, [track], starts, MINUTE, now, 5_000, 1);
-    return { starts, bars: part.bars, flows: unrecorded(starts, raw, MINUTE, now) };
+    return { starts, bars, flows: unrecorded(starts, raw, MINUTE, now) };
   }
+}
+
+/** The bars from the first at or after `t` on (sorted by time; the same array when none is before). */
+function barsFrom(bars: readonly OiBar[], t: number): readonly OiBar[] {
+  let lo = 0, hi = bars.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (bars[mid]![0] < t) lo = mid + 1; else hi = mid; }
+  return lo === 0 ? bars : bars.slice(lo);
 }

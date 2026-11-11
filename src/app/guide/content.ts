@@ -342,7 +342,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: '**Funding** is what holders of a perpetual pay each other every interval to keep its price near the index: when it is positive, longs pay shorts. The **Funding** pane shows one exchange\'s (Hyperliquid, Binance, Bybit, OKX, Bitget or Deribit, chosen by *Venue*): settled funding as thick steps, the one accruing now dashed, and where the exchange publishes it the **premium** (how far the perpetual\'s price sits from the index) as a thin line.' },
       { t: 'p', text: 'Every rate is per eight hours, so the base rate (0.01%, dashed) and the band where the premium moves while funding stays put are the same on every exchange that has them. Hyperliquid settles every hour, which the pane scales to eight, and Deribit\'s funding is continuous, with no base rate. The table lists every exchange that lists the coin: click a row to show that one.' },
-      { t: 'p', text: 'On Hyperliquid, under each hour of the last day, the pane shows the share of new positions that buyers opened at market (NL/NS). Measured on BTC and ETH, funding moved with that share hour by hour. It is context: whether any of it says where the price goes was not tested.' },
+      { t: 'p', text: 'On Hyperliquid, under each hour back to the dotted mark, the pane shows the share of new positions that buyers opened at market (NL/NS). Measured on BTC and ETH, funding moved with that share hour by hour. It is context: whether any of it says where the price goes was not tested.' },
     ],
   },
   {

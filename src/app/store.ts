@@ -113,7 +113,7 @@ export interface AppState {
   oiReading: boolean;
   /**
    * The minute readings of the markets counted (`oi`/`oiParts`), each its own bars a minute apart where it was read that often, over the last
-   * `OI_FINE_MS` (an inverse market's at the one price its bars on screen are at): NL/NS works a candle out minute by minute where they cover it
+   * `fineSpanMs` (a day; on a server a week of Hyperliquid's while the Funding pane shows it; an inverse market's at the one price its bars on screen are at): NL/NS works a candle out minute by minute where they cover it
    * (delta/nlns.ts). Empty on a one-minute chart (the candle is the minute) and while nothing that uses NL/NS is shown (`Hub.loadOiFine`).
    */
   oiFine: OiPart[];

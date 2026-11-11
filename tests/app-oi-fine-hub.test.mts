@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { Hub } from '../src/app/hub.ts';
 import { Store, initialState, type CandleRow, type OiBar } from '../src/app/store.ts';
 import type { BootstrapState, DataSource, LiveHandlers } from '../src/app/source.ts';
-import type { FlowFrame } from '../src/shared/flow.ts';
+import { FLOW_STORE_MS, type FlowFrame } from '../src/shared/flow.ts';
+import { OI_FINE_MS, fundingReachMs } from '../src/app/oi-fine.ts';
 
 // The minute readings NL/NS works candles out on (Hub.loadOiFine, store oiFine) as the page asks for them: kept across a timeframe switch,
 // which clears the bars on screen for a moment (review round 2, 2026-11-07: they were let go and a day of minutes read again on every switch),
@@ -108,5 +109,51 @@ test('an inverse market\'s minutes take the bars\' price at each whole read; mar
     assert.equal(store.state.oiFine.length, 0, 'nothing wants them');
   } finally {
     Date.now = realNow;
+  }
+});
+
+test('on a server the Funding pane\x27s Hyperliquid minutes are read a week back, every other market\x27s a day, the whole read and the tail alike', async () => {
+  // Karl, 2026-11-11: on his server the Funding pane's share of new positions stopped a day back on a chart days wide, though the server holds
+  // a week of flow minutes (FLOW_STORE_MS). Only that market: a week of every counted market's, re-read every ten minutes, cost the server
+  // about a second and the page 5 MB (review). In a page every market keeps a day.
+  assert.equal(fundingReachMs('browser'), OI_FINE_MS);
+  assert.equal(fundingReachMs('server'), FLOW_STORE_MS);
+  const HL = 'hyperliquid:BTC-PERP', DAY = 86_400_000;
+  class BrowserSource extends FakeSource { override readonly kind = 'browser' as unknown as 'server'; }
+  const realNow = Date.now;
+  for (const [source, hlSpan] of [[new FakeSource(), FLOW_STORE_MS], [new BrowserSource(), OI_FINE_MS]] as const) {
+    let clock = now0;
+    Date.now = () => clock;
+    try {
+      const store = new Store({ ...initialState(), marketId: MARKET, timeframe: '15m', oiMarkets: 'chart' });
+      const hub = new Hub(store, source as unknown as DataSource);
+      (hub.worker as unknown as FakeWorker).onmessage!({ data: { type: 'ready' } });
+      await hub.start();
+      const parts = [{ id: MARKET, bars: [[now0 - 15 * MIN, 1, 1, 1, 1], [now0, 2, 2, 2, 2]] as OiBar[] }, { id: HL, bars: [[now0, 3, 3, 3, 3]] as OiBar[] }];
+      // The OI pane (every counted market) and the Funding pane on Hyperliquid, the first venue listing BTC.
+      store.set({ show: { ...store.state.show, oi: true, funding: true }, oi: parts[0]!.bars, oiInstrument: '', oiParts: parts });
+      await hub.loadOiFine();
+      const whole = (id: string) => source.asked.find(q => q.tf === '1m' && q.id === id)!;
+      assert.equal(now0 - whole(HL).from, hlSpan, `${source.kind}: Hyperliquid's whole read`);
+      assert.equal(now0 - whole(MARKET).from, OI_FINE_MS, `${source.kind}: every other market a day`);
+      // A minute later the newest minutes are read again, and what is held is cut to each market's span: Hyperliquid keeps its week.
+      const minutes = (back: number): OiBar[] => Array.from({ length: back / MIN / 60 }, (_, i): OiBar => { const t = now0 - back + i * 60 * MIN; return [t, 5, 5, 5, 5]; });
+      store.set({ oiFine: store.state.oiFine.map(part => ({ ...part, bars: [...minutes(3 * DAY), ...part.bars] })) });
+      clock += 61_000;
+      await hub.loadOiFine();
+      const oldest = (id: string): number => (clock - store.state.oiFine.find(part => part.id === id)!.bars[0]![0]) / DAY;
+      assert.ok(source.asked.filter(q => q.tf === '1m').length > 2, `${source.kind}: the tail was read`);
+      if (hlSpan > DAY) assert.ok(oldest(HL) > 2.9, `server: Hyperliquid still holds three days, ${oldest(HL).toFixed(2)}`);
+      else assert.ok(oldest(HL) <= 1, `browser: Hyperliquid cut to a day, ${oldest(HL).toFixed(2)}`);
+      assert.ok(oldest(MARKET) <= 1, `${source.kind}: every other market cut to a day, ${oldest(MARKET).toFixed(2)}`);
+      // The key says the span: the Funding pane closed, Hyperliquid's minutes (still counted by the OI pane) are read again over a day.
+      if (hlSpan > DAY) {
+        const before = source.asked.length;
+        store.set({ show: { ...store.state.show, funding: false } });
+        await hub.loadOiFine();
+        const again = source.asked.slice(before).find(q => q.tf === '1m' && q.id === HL);
+        assert.ok(again && clock - again.from === OI_FINE_MS, 'a new span is a new whole read');
+      }
+    } finally { Date.now = realNow; }
   }
 });
