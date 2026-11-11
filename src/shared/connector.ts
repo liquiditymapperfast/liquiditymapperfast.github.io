@@ -1,3 +1,4 @@
+import { BookSide } from './book-side.ts';
 import { MAX_CROSSED_BP, crossedByBp, splitTouch, TOUCH_HINT_MS, type ValuedBook, type SideLevels } from './levels.ts';
 import { gridStepFor } from './grid.ts';
 import { mergeByDistance } from './merge.ts';
@@ -66,6 +67,15 @@ export const rowsNear = (value: unknown, side: 'bid' | 'ask', share: number): [n
   return all.filter(([p]) => p >= lo && p <= hi);
 };
 
+/** A side's prices ascending with their sizes: kept sorted by a `BookSide`, sorted here for any other Map. */
+function sortedSide(map: Map<number, number>): { prices: Float64Array; sizes: Float64Array; n: number } {
+  if (map instanceof BookSide) return map.sorted();
+  const prices = Float64Array.from(map.keys()); prices.sort();
+  const sizes = new Float64Array(prices.length);
+  for (let i = 0; i < prices.length; i++) sizes[i] = map.get(prices[i]!)!;
+  return { prices, sizes, n: prices.length };
+}
+
 /** A self-contained public order-book connector: owns its socket, reconnects with backoff and keeps a local book. */
 export abstract class BookConnector {
   abstract readonly id: string;
@@ -79,8 +89,9 @@ export abstract class BookConnector {
   get base(): string { return this.market?.coin ?? 'BTC'; }
   /** Coins per listed unit: prices leave the connector divided by it and sizes multiplied, so everything downstream sees one coin. */
   protected get unit(): number { return this.market?.unit ?? 1; }
-  protected bids = new Map<number, number>();
-  protected asks = new Map<number, number>();
+  /** The book's sides: Maps that keep themselves sorted for valuation (shared/book-side.ts). */
+  protected bids: Map<number, number> = new BookSide();
+  protected asks: Map<number, number> = new BookSide();
   state: ConnectorState = 'stopped';
   lastError: string | null = null;
   lastFailure: string | null = null;
@@ -115,8 +126,8 @@ export abstract class BookConnector {
    */
   #lastTrade: { price: number; t: number; at: number } | null = null;
   #cachedHint: number | undefined = undefined;
-  /** The grid step and the book's coverage epoch the cached valuation was made with: either changing values the book again at once. */
-  #cachedStep: number | undefined = undefined; #cachedEpoch = 0;
+  /** The book's coverage epoch the cached valuation was made with: a new one values the book again at once. */
+  #cachedEpoch = 0;
   /** The far book read from REST beyond what the WebSocket sends (shared/far-book.ts), for a venue that has one; and the one last valued with. */
   #far: FarPoller | null = null; #cachedFar: FarBook | null = null;
 
@@ -286,24 +297,32 @@ export abstract class BookConnector {
     const last = this.coarse ? this.#lastTrade : null, hint = last && Math.abs(now - last.at) <= TOUCH_HINT_MS ? last.price / this.unit : undefined;
     // The far book only while fresh: one ageing out values the book again without it.
     const far = this.coarse || !this.#far ? null : freshFar(this.#far.latest, now);
-    const epoch = this.bookEpoch(), same = this.#cachedStep === gridStep && this.#cachedEpoch === epoch;
+    // The cached valuation is of this book only while its coverage is the same and it was merged on the step asked for now (a step not asked
+    // for takes the one it was merged on; a grouped book is never merged): a book valued on another grid is valued again at once.
+    const epoch = this.bookEpoch(), wanted = gridStep && gridStep > 0 ? gridStep : undefined, cachedStep = this.#cached?.step;
+    const same = this.#cachedEpoch === epoch && (this.coarse || wanted === undefined || cachedStep === undefined || wanted === cachedStep);
     if (same && this.#cachedVersion === this.#version && this.#cachedHint === hint && this.#cachedFar === far) return this.#cached;
     // A deep book changes on nearly every tick and costs a pass over every level; the map and ladder move slowly, so it is re-valued at most once a second.
     const levels = this.bids.size + this.asks.size + (far ? far.bids.length + far.asks.length : 0);
     // ... but a book seeded again, or valued on another grid, is valued at once: the cached one is of another book.
     if (same && this.#cached && levels >= DEEP_BOOK_LEVELS && now - this.#cachedAt < DEEP_BOOK_INTERVAL_MS) return this.#cached;
-    this.#cachedVersion = this.#version; this.#cachedAt = now; this.#cachedHint = hint; this.#cachedFar = far; this.#cachedStep = gridStep; this.#cachedEpoch = epoch;
+    this.#cachedVersion = this.#version; this.#cachedAt = now; this.#cachedHint = hint; this.#cachedFar = far; this.#cachedEpoch = epoch;
     // A grouped book's bands depend on its touch (one step for the whole book, the best bid's): found once, before either side.
     const touch = { bid: -Infinity, ask: Infinity };
     if (this.coarse) { for (const p of this.bids.keys()) if (p > touch.bid) touch.bid = p; for (const p of this.asks.keys()) if (p < touch.ask) touch.ask = p; }
     const side = (map: Map<number, number>, descending: boolean): SideLevels => {
-      const prices = [...map.keys()].sort((a, b) => descending ? b - a : a - b), which = descending ? 'bid' : 'ask';
+      // Ascending, kept sorted by the side itself (shared/book-side.ts): bids are read from the top down, best first either way.
+      const { prices, sizes, n: count } = sortedSide(map), which = descending ? 'bid' : 'ask';
+      const deepest = count ? (descending ? prices[0]! : prices[count - 1]!) : NaN;
       // The far book's levels past the WebSocket book's deepest one, after it (the WebSocket book is the authority wherever it reaches).
-      const extra = far ? beyond(descending ? far.bids : far.asks, prices[prices.length - 1] ?? NaN, which) : [], n = prices.length + extra.length;
+      const extra = far ? beyond(descending ? far.bids : far.asks, deepest, which) : [], n = count + extra.length;
       const lo = new Float64Array(n), hi = this.coarse ? new Float64Array(n) : lo, usd = new Float64Array(n);
       const unit = this.unit, coarse = this.coarse;
-      prices.forEach((p, i) => { const b = coarse ? this.band(p, which, touch) : null; lo[i] = (b ? b.lo : p) / unit; if (b) hi[i] = b.hi / unit; usd[i] = this.usdOf(p, map.get(p)!); });
-      extra.forEach(([p, size], k) => { const i = prices.length + k; lo[i] = p / unit; usd[i] = this.usdOf(p, size); });
+      for (let i = 0; i < count; i++) {
+        const k = descending ? count - 1 - i : i, p = prices[k]!, b = coarse ? this.band(p, which, touch) : null;
+        lo[i] = (b ? b.lo : p) / unit; if (b) hi[i] = b.hi / unit; usd[i] = this.usdOf(p, sizes[k]!);
+      }
+      extra.forEach(([p, size], k) => { const i = count + k; lo[i] = p / unit; usd[i] = this.usdOf(p, size); });
       return { lo, hi, usd };
     };
     let bids = side(this.bids, true), asks = side(this.asks, false);

@@ -2,6 +2,7 @@ import { BinanceDiffDepthConnector, BookConnector, type Market } from './connect
 import { BTC, EARLIER_BROWSER_VENUES, type Coin, type MarketVenue } from './coins.ts';
 import { farSource } from './far-book.ts';
 import { FullBook, fullSnapshotUrl, fullTopic, parseFullDelta, parseFullSnapshot, type FullAction, type SnapshotResult } from './bybit-full-book.ts';
+import { BookSide } from './book-side.ts';
 import { hyperliquidBookStep, hyperliquidLevelBounds } from '../analytics/hyperliquid-bounds.mts';
 
 /**
@@ -158,7 +159,8 @@ const BYBIT_BOOK_STALL_MS = 30_000;
 abstract class BybitBook extends MarketBook {
   readonly quote = 'USDT';
   protected abstract readonly category: 'linear' | 'spot';
-  readonly #full = new FullBook();
+  /** Its sides are `BookSide`s, as every connector's: a full book of 70,000 levels is valued from sorted arrays kept up to date. */
+  readonly #full = new FullBook({ makeSide: () => new BookSide() });
   /** The snapshot request out (its connection and epoch: one at a time), and the pause before the next after one that could not be used. */
   #asking: { generation: number; epoch: number } | null = null;
   #pause = 0; #retry: ReturnType<typeof setTimeout> | null = null;

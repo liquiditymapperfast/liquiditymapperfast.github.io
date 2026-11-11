@@ -1,0 +1,1514 @@
+[
+ {
+  "event": "frame 16864234",
+  "result": "none",
+  "live": false,
+  "u": 0,
+  "seq": 0,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": null,
+   "ask": null
+  },
+  "bids": 0,
+  "asks": 0,
+  "bidUsd": 0,
+  "askUsd": 0,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864235",
+  "result": "none",
+  "live": false,
+  "u": 0,
+  "seq": 0,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": null,
+   "ask": null
+  },
+  "bids": 0,
+  "asks": 0,
+  "bidUsd": 0,
+  "askUsd": 0,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "seed 16864235",
+  "result": "seeded",
+  "live": true,
+  "u": 16864235,
+  "seq": 143215291689,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 126592.35432999997,
+  "askUsd": 337710.970038,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864236",
+  "result": "none",
+  "live": true,
+  "u": 16864236,
+  "seq": 143215292211,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 126859.76868199997,
+  "askUsd": 337742.83182900003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864237",
+  "result": "none",
+  "live": true,
+  "u": 16864237,
+  "seq": 143215292625,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 127082.70582299997,
+  "askUsd": 337688.26306699996,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864238",
+  "result": "none",
+  "live": true,
+  "u": 16864238,
+  "seq": 143215292951,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 124381.90199499996,
+  "askUsd": 335039.19154699997,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864239",
+  "result": "none",
+  "live": true,
+  "u": 16864239,
+  "seq": 143215293306,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 127870.42224199996,
+  "askUsd": 337796.26356600004,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864240",
+  "result": "none",
+  "live": true,
+  "u": 16864240,
+  "seq": 143215293656,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 127870.42224199996,
+  "askUsd": 337796.36719200003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864241",
+  "result": "none",
+  "live": true,
+  "u": 16864241,
+  "seq": 143215293983,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 127773.85224199996,
+  "askUsd": 337796.36719200003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864242",
+  "result": "none",
+  "live": true,
+  "u": 16864242,
+  "seq": 143215294837,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 800,
+  "bidUsd": 127815.80966999996,
+  "askUsd": 337796.36719200003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864243",
+  "result": "none",
+  "live": true,
+  "u": 16864243,
+  "seq": 143215296810,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 800,
+  "bidUsd": 128415.41766199996,
+  "askUsd": 337519.67923899996,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864244",
+  "result": "none",
+  "live": true,
+  "u": 16864244,
+  "seq": 143215297231,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 799,
+  "bidUsd": 128373.79596699997,
+  "askUsd": 337666.48522200005,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864245",
+  "result": "none",
+  "live": true,
+  "u": 16864245,
+  "seq": 143215297351,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 561,
+  "asks": 799,
+  "bidUsd": 128373.79596699997,
+  "askUsd": 337665.13818899996,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864246",
+  "result": "none",
+  "live": true,
+  "u": 16864246,
+  "seq": 143215297711,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 799,
+  "bidUsd": 128876.43593799997,
+  "askUsd": 337680.16489700007,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864247",
+  "result": "none",
+  "live": true,
+  "u": 16864247,
+  "seq": 143215297741,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 799,
+  "bidUsd": 128598.96298299996,
+  "askUsd": 337680.16489700007,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864248",
+  "result": "none",
+  "live": true,
+  "u": 16864248,
+  "seq": 143215298016,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 799,
+  "bidUsd": 128598.96298299996,
+  "askUsd": 337680.16489700007,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864249",
+  "result": "none",
+  "live": true,
+  "u": 16864249,
+  "seq": 143215298642,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 799,
+  "bidUsd": 128037.60036499998,
+  "askUsd": 337680.16489700007,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864250",
+  "result": "none",
+  "live": true,
+  "u": 16864250,
+  "seq": 143215299168,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 798,
+  "bidUsd": 127068.03471999998,
+  "askUsd": 337317.87595600006,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864251",
+  "result": "none",
+  "live": true,
+  "u": 16864251,
+  "seq": 143215299306,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 798,
+  "bidUsd": 127068.03471999998,
+  "askUsd": 337318.195528,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864252",
+  "result": "none",
+  "live": true,
+  "u": 16864252,
+  "seq": 143215299772,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 127068.52264399998,
+  "askUsd": 337496.65360900003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864253",
+  "result": "none",
+  "live": true,
+  "u": 16864253,
+  "seq": 143215299996,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127067.91544899998,
+  "askUsd": 337496.65360900003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864254",
+  "result": "none",
+  "live": true,
+  "u": 16864254,
+  "seq": 143215300185,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127166.04690399997,
+  "askUsd": 337496.65360900003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864255",
+  "result": "none",
+  "live": true,
+  "u": 16864255,
+  "seq": 143215300305,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127167.39015899997,
+  "askUsd": 337496.65360900003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864256",
+  "result": "none",
+  "live": true,
+  "u": 16864256,
+  "seq": 143215300738,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 798,
+  "bidUsd": 126627.17714999997,
+  "askUsd": 337533.686749,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864257",
+  "result": "none",
+  "live": true,
+  "u": 16864257,
+  "seq": 143215300750,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 798,
+  "bidUsd": 126991.44614699997,
+  "askUsd": 337533.686749,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864258",
+  "result": "none",
+  "live": true,
+  "u": 16864258,
+  "seq": 143215300929,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 798,
+  "bidUsd": 127086.96179499997,
+  "askUsd": 337533.686749,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864259",
+  "result": "none",
+  "live": true,
+  "u": 16864259,
+  "seq": 143215301058,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 798,
+  "bidUsd": 127088.16491899996,
+  "askUsd": 337533.686749,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864260",
+  "result": "none",
+  "live": true,
+  "u": 16864260,
+  "seq": 143215301191,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 562,
+  "asks": 799,
+  "bidUsd": 127089.36721899998,
+  "askUsd": 337536.06241899997,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864261",
+  "result": "none",
+  "live": true,
+  "u": 16864261,
+  "seq": 143215301645,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 127001.91814799998,
+  "askUsd": 337494.354421,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864262",
+  "result": "none",
+  "live": true,
+  "u": 16864262,
+  "seq": 143215301812,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 127001.91814799998,
+  "askUsd": 337495.214421,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864263",
+  "result": "none",
+  "live": true,
+  "u": 16864263,
+  "seq": 143215302176,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 127103.35849499998,
+  "askUsd": 337495.214421,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864264",
+  "result": "none",
+  "live": true,
+  "u": 16864264,
+  "seq": 143215303185,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 126899.31252299999,
+  "askUsd": 337495.214421,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864265",
+  "result": "none",
+  "live": true,
+  "u": 16864265,
+  "seq": 143215303595,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 127287.13745599998,
+  "askUsd": 337495.214421,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864266",
+  "result": "none",
+  "live": true,
+  "u": 16864266,
+  "seq": 143215303849,
+  "epoch": 0,
+  "auditing": true,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4556
+  },
+  "bids": 563,
+  "asks": 799,
+  "bidUsd": 127065.74398199997,
+  "askUsd": 337495.214421,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "audit 16864266",
+  "result": "extended",
+  "live": true,
+  "u": 16864266,
+  "seq": 143215303849,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 563,
+  "asks": 800,
+  "bidUsd": 127065.74398199997,
+  "askUsd": 337498.167357,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864267",
+  "result": "none",
+  "live": true,
+  "u": 16864267,
+  "seq": 143215304049,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 563,
+  "asks": 800,
+  "bidUsd": 127620.65649599998,
+  "askUsd": 337498.167357,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864268",
+  "result": "none",
+  "live": true,
+  "u": 16864268,
+  "seq": 143215304155,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 563,
+  "asks": 800,
+  "bidUsd": 127621.269046,
+  "askUsd": 337498.167357,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864269",
+  "result": "none",
+  "live": true,
+  "u": 16864269,
+  "seq": 143215304670,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 563,
+  "asks": 800,
+  "bidUsd": 127837.90895,
+  "askUsd": 337498.167357,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864270",
+  "result": "none",
+  "live": true,
+  "u": 16864270,
+  "seq": 143215305274,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 120119.897335,
+  "askUsd": 337387.89218200004,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864271",
+  "result": "none",
+  "live": true,
+  "u": 16864271,
+  "seq": 143215305922,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 126454.35796899999,
+  "askUsd": 337621.51050200005,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864272",
+  "result": "none",
+  "live": true,
+  "u": 16864272,
+  "seq": 143215306479,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 565,
+  "asks": 799,
+  "bidUsd": 124008.92721299997,
+  "askUsd": 334979.170923,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864273",
+  "result": "none",
+  "live": true,
+  "u": 16864273,
+  "seq": 143215306894,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 124044.88333099999,
+  "askUsd": 334755.15477900003,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864274",
+  "result": "none",
+  "live": true,
+  "u": 16864274,
+  "seq": 143215307177,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 565,
+  "asks": 798,
+  "bidUsd": 127336.61527899999,
+  "askUsd": 337195.46501900005,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864275",
+  "result": "none",
+  "live": true,
+  "u": 16864275,
+  "seq": 143215307350,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 565,
+  "asks": 797,
+  "bidUsd": 127674.873731,
+  "askUsd": 337572.485113,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864276",
+  "result": "none",
+  "live": true,
+  "u": 16864276,
+  "seq": 143215307374,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 565,
+  "asks": 797,
+  "bidUsd": 127474.67124499999,
+  "askUsd": 337572.485113,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864277",
+  "result": "none",
+  "live": true,
+  "u": 16864277,
+  "seq": 143215307600,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 797,
+  "bidUsd": 128148.37870300001,
+  "askUsd": 337508.7971380001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864278",
+  "result": "none",
+  "live": true,
+  "u": 16864278,
+  "seq": 143215307859,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 797,
+  "bidUsd": 128343.87677500001,
+  "askUsd": 337508.7971380001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864279",
+  "result": "none",
+  "live": true,
+  "u": 16864279,
+  "seq": 143215307963,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 128322.57652300001,
+  "askUsd": 337593.643798,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864280",
+  "result": "none",
+  "live": true,
+  "u": 16864280,
+  "seq": 143215308155,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 128322.57652300001,
+  "askUsd": 337594.503798,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864281",
+  "result": "none",
+  "live": true,
+  "u": 16864281,
+  "seq": 143215308306,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 128322.57652300001,
+  "askUsd": 337594.6194680001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864282",
+  "result": "none",
+  "live": true,
+  "u": 16864282,
+  "seq": 143215309064,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 128322.66411700001,
+  "askUsd": 337594.6194680001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864283",
+  "result": "none",
+  "live": true,
+  "u": 16864283,
+  "seq": 143215309325,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127266.54928699999,
+  "askUsd": 337594.6194680001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864284",
+  "result": "none",
+  "live": true,
+  "u": 16864284,
+  "seq": 143215309338,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127308.75607099998,
+  "askUsd": 337594.6194680001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864285",
+  "result": "none",
+  "live": true,
+  "u": 16864285,
+  "seq": 143215309458,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127308.75607099998,
+  "askUsd": 337594.6194680001,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864286",
+  "result": "none",
+  "live": true,
+  "u": 16864286,
+  "seq": 143215309777,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 800,
+  "bidUsd": 127224.394999,
+  "askUsd": 337615.78848000005,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864287",
+  "result": "none",
+  "live": true,
+  "u": 16864287,
+  "seq": 143215310399,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 800,
+  "bidUsd": 127224.394999,
+  "askUsd": 337616.418506,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864288",
+  "result": "none",
+  "live": true,
+  "u": 16864288,
+  "seq": 143215310574,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127224.394999,
+  "askUsd": 337556.09573600005,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864289",
+  "result": "none",
+  "live": true,
+  "u": 16864289,
+  "seq": 143215310658,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 799,
+  "bidUsd": 127124.228313,
+  "askUsd": 337556.09573600005,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864290",
+  "result": "none",
+  "live": true,
+  "u": 16864290,
+  "seq": 143215310763,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 127124.228313,
+  "askUsd": 337558.35573600006,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864291",
+  "result": "none",
+  "live": true,
+  "u": 16864291,
+  "seq": 143215310871,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 127289.93729999999,
+  "askUsd": 337600.89062,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864292",
+  "result": "none",
+  "live": true,
+  "u": 16864292,
+  "seq": 143215311088,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 127193.27729999999,
+  "askUsd": 337600.89062,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864293",
+  "result": "none",
+  "live": true,
+  "u": 16864293,
+  "seq": 143215311177,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 127193.55751099999,
+  "askUsd": 337600.89062,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ },
+ {
+  "event": "frame 16864294",
+  "result": "none",
+  "live": true,
+  "u": 16864294,
+  "seq": 143215311352,
+  "epoch": 0,
+  "auditing": false,
+  "refreshing": false,
+  "waiting": false,
+  "frontiers": {
+   "bid": 0.12892,
+   "ask": 0.4557
+  },
+  "bids": 564,
+  "asks": 798,
+  "bidUsd": 127193.944022,
+  "askUsd": 337600.89062,
+  "disagreements": {
+   "snapshotOnly": 0,
+   "liveOnly": 0,
+   "sizes": 0
+  }
+ }
+]
