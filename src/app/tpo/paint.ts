@@ -15,7 +15,8 @@ import type { TpoSettings } from './settings.ts';
  * big enough to hold one, blocks, then compact: zoomed out, each row as one bar as long as its blocks (Karl, 2026-11-11: a 1-pixel outline
  * vanished on the heat map, so the TPO seemed to be drawn only where the page had recorded), in the colour of when the market was at that
  * price, or of how full the row is; laid out, each block as one bar at its time. A block this market's wick alone reached (tpo/model.ts
- * `hollowRows`) is drawn as an outline (left out when compact). A block's cells share one colour, so they are filled a block at a time (by
+ * `hollowRows`) is drawn as an outline; compact, each block's own rows are counted, as the point of control counts them, and what one chosen
+ * market alone reached is left out. A block's cells share one colour, so they are filled a block at a time (by
  * time) or a row at a time (by row length).
  */
 
@@ -29,6 +30,8 @@ export interface TpoGeometry {
   unfoldX: Map<number, number>;
   /** Drawn compact (rows or blocks too fine for cells): the row under the pointer is known, not the block. */
   compact: boolean;
+  /** Per row, the blocks counted there (the compact bar's length). */
+  solid: Map<number, { n: number; mean: number }>;
 }
 
 /** The time ramp, early to late: warm to cool as on the reference chart, a hue apart from the heat map's ramp (dark and light pages). */
@@ -77,10 +80,11 @@ function ramp(stops: readonly string[], n: number, dark: boolean): Swatch[] {
 const ease = (u: number): number => u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
 
 /**
- * A profile's rows (as drawn: with what one market alone reached), each block's index in them, its hollow rows, and per row the blocks not
+ * A profile's rows (as drawn: with what one market alone reached), each block's index in them (worked out when cells are drawn), its hollow
+ * rows, and per row the blocks counted there (each block's own rows, not what one market alone reached) and the mean of their letters (when
  * hollow there and the mean of their letters (when the market was at that price, for the compact look), kept per profile.
  */
-interface Layout { rows: Map<number, number[]>; maxCount: number; index: Map<number, Map<number, number>>; hollow: Map<number, ReadonlySet<number>>; solid: Map<number, { n: number; mean: number }> }
+interface Layout { rows: Map<number, number[]>; maxCount: number; index: () => Map<number, Map<number, number>>; hollow: Map<number, ReadonlySet<number>>; solid: Map<number, { n: number; mean: number }> }
 const layouts = new WeakMap<TpoProfile, Layout>();
 function layoutOf(p: TpoProfile): Layout {
   let out = layouts.get(p);
@@ -88,11 +92,15 @@ function layoutOf(p: TpoProfile): Layout {
     const rows = new Map<number, number[]>(), solid = new Map<number, { n: number; mean: number }>();
     for (const b of p.blocks) for (let r = b.ra; r <= b.rz; r++) {
       const list = rows.get(r); if (list) list.push(b.k); else rows.set(r, [b.k]);
-      if (!b.hollow.has(r)) { const s = solid.get(r); if (s) { s.mean += (b.k - s.mean) / ++s.n; } else solid.set(r, { n: 1, mean: b.k }); }
+      if (r >= b.a && r <= b.z) { const s = solid.get(r); if (s) { s.mean += (b.k - s.mean) / ++s.n; } else solid.set(r, { n: 1, mean: b.k }); }
     }
-    let maxCount = 0; const index = new Map<number, Map<number, number>>();
-    for (const [r, list] of rows) { maxCount = Math.max(maxCount, list.length); list.forEach((k, i) => { let m = index.get(k); if (!m) { m = new Map(); index.set(k, m); } m.set(r, i); }); }
-    out = { rows, maxCount, index, hollow: new Map(p.blocks.map(b => [b.k, b.hollow])), solid };
+    let maxCount = 0, index: Map<number, Map<number, number>> | null = null;
+    for (const list of rows.values()) maxCount = Math.max(maxCount, list.length);
+    const indexOf = (): Map<number, Map<number, number>> => {
+      if (!index) { index = new Map(); for (const [r, list] of rows) list.forEach((k, i) => { let m = index!.get(k); if (!m) { m = new Map(); index!.set(k, m); } m.set(r, i); }); }
+      return index;
+    };
+    out = { rows, maxCount, index: indexOf, hollow: new Map(p.blocks.map(b => [b.k, b.hollow])), solid };
     layouts.set(p, out);
   }
   return out;
@@ -101,9 +109,12 @@ function layoutOf(p: TpoProfile): Layout {
 /** What `paintCompact` draws one profile with. */
 interface Compact {
   prof: TpoProfile; x0: number; cw: number; ucw: number; rh: number; fold: number; yTop: (r: number) => number;
-  solid: Map<number, { n: number; mean: number }>;
+  solid: Map<number, { n: number; mean: number }>; maxCount: number; winPx: number;
   colours: Swatch[]; byTime: boolean; fade: number; backing: string; ph: number; unfoldX: Map<number, number>;
 }
+
+/** Narrower than this (its longest row, px), a profile zoomed out is drawn as a strip: too thin for its shape to show. */
+const STRIP_PX = 3;
 
 /**
  * Compact, for rows or blocks too fine for cells. Folded: the rows are gathered into the pixel rows they fall in, each drawn once over the
@@ -112,8 +123,19 @@ interface Compact {
  * as one bar at its time, from its low to its high.
  */
 function paintCompact(ctx: CanvasRenderingContext2D, c: Compact): void {
-  const { prof, x0, cw, rh, yTop, solid, colours, byTime, fade, backing, ph } = c;
-  if (c.fold < 0.5) {
+  const { prof, x0, cw, rh, yTop, solid, colours, byTime, fade, backing, ph } = c, batch = new RectBatch();
+  if (c.fold < 0.5 && (c.winPx < 2 * STRIP_PX || c.maxCount * cw < STRIP_PX)) {
+    // A strip as wide as the profile: its range dim, its value area in full and its point of control's row as the light stripe, in the
+    // colour of when the market was at the point of control (a year on the map: each day's value moving, at a few rectangles a day).
+    const s = solid.get(prof.poc), sw = byTime ? colours[Math.min(colours.length - 1, Math.max(0, Math.round(s?.mean ?? 0)))]! : colours[colours.length - 1]!;
+    const w = Math.max(1, Math.min(c.maxCount * cw, Math.max(1, c.winPx))), top = (r: number): number => yTop(r), bottom = (r: number): number => yTop(r) + rh;
+    const span = (a: number, z: number): [number, number] => { const y0 = Math.floor(top(z)), y1 = Math.max(y0 + 1, Math.ceil(bottom(a))); return [y0, y1 - y0]; };
+    const [ry, rh2] = span(prof.lo, prof.hi), [vy, vh] = span(prof.val, prof.vah), [py, phh] = span(prof.poc, prof.poc);
+    fillRects(ctx, backing, 1, [x0 - 1, ry, w + 1, rh2]);
+    fillRects(ctx, sw.fill, fade * 0.4, [x0, ry, w, rh2]);
+    fillRects(ctx, sw.fill, fade, [x0, vy, w, vh]);
+    fillRects(ctx, sw.stripe, fade, [x0, py, w, phh]);
+  } else if (c.fold < 0.5) {
     // Rows a pixel tall or more: one bar each. Finer: the rows whose tops fall in one pixel row make one bar a pixel tall.
     interface Px { y: number; h: number; n: number; kSum: number; kN: number; va: boolean; poc: boolean }
     const bins: Px[] = [], fine = rh < 1;
@@ -129,24 +151,47 @@ function paintCompact(ctx: CanvasRenderingContext2D, c: Compact): void {
       if (r >= prof.val && r <= prof.vah) cur.va = true;
       if (r === prof.poc) cur.poc = true;
     }
-    ctx.globalAlpha = 1; ctx.fillStyle = backing;
-    for (const b of bins) ctx.fillRect(x0 - 1, b.y, Math.max(1, b.n * cw) + 1, b.h);
+    const backs: number[] = [];
     for (const b of bins) {
       const sw = byTime ? colours[Math.min(colours.length - 1, Math.max(0, Math.round(b.kSum / b.kN)))]! : colours[Math.min(colours.length - 1, Math.max(0, b.n - 1))]!;
-      ctx.globalAlpha = fade * (b.poc || b.va ? 1 : 0.4); ctx.fillStyle = b.poc ? sw.stripe : sw.fill;
-      ctx.fillRect(x0, b.y, Math.max(1, b.n * cw), b.h);
+      backs.push(x0 - 1, b.y, Math.max(1, b.n * cw) + 1, b.h);
+      batch.add(b.poc ? sw.stripe : sw.fill, fade * (b.poc || b.va ? 1 : 0.4), x0, b.y, Math.max(1, b.n * cw), b.h);
     }
+    fillRects(ctx, backing, 1, backs);
   } else {
-    const mid = colours[Math.floor((colours.length - 1) / 2)]!;
-    for (const pass of [0, 1] as const) for (const b of prof.blocks) {
+    const mid = colours[Math.floor((colours.length - 1) / 2)]!, backs: number[] = [];
+    for (const b of prof.blocks) {
       const x = c.unfoldX.get(b.k) ?? 0, y = yTop(b.z), h = Math.max(1, yTop(b.a) + rh - y);
       if (y > ph || y + h < 0) continue;
-      if (pass === 0) { ctx.globalAlpha = 1; ctx.fillStyle = backing; ctx.fillRect(x - 1, y, c.ucw + 2, h); continue; }
-      const sw = byTime ? colours[Math.min(colours.length - 1, Math.max(0, b.k))]! : mid;
-      ctx.globalAlpha = fade; ctx.fillStyle = sw.fill; ctx.fillRect(x, y, c.ucw, h);
+      backs.push(x - 1, y, c.ucw + 2, h);
+      batch.add((byTime ? colours[Math.min(colours.length - 1, Math.max(0, b.k))]! : mid).fill, fade, x, y, c.ucw, h);
     }
+    fillRects(ctx, backing, 1, backs);
   }
+  batch.flush(ctx);
   ctx.globalAlpha = 1;
+}
+
+/** Rectangles `xs` (x, y, width, height, ...) filled in one colour and alpha, as one path: one fill for all of them. */
+function fillRects(ctx: CanvasRenderingContext2D, style: string, alpha: number, xs: readonly number[]): void {
+  if (!xs.length) return;
+  ctx.globalAlpha = alpha; ctx.fillStyle = style; ctx.beginPath();
+  for (let i = 0; i < xs.length; i += 4) ctx.rect(xs[i]!, xs[i + 1]!, xs[i + 2]!, xs[i + 3]!);
+  ctx.fill();
+}
+
+/** Rectangles gathered by colour and alpha, filled one group at a time (a profile zoomed out is hundreds of bars in a few colours). */
+class RectBatch {
+  /** By alpha, then colour: no key is built for a rectangle. */
+  readonly #groups = new Map<number, Map<string, number[]>>();
+  add(style: string, alpha: number, x: number, y: number, w: number, h: number): void {
+    let byStyle = this.#groups.get(alpha);
+    if (!byStyle) { byStyle = new Map(); this.#groups.set(alpha, byStyle); }
+    let xs = byStyle.get(style);
+    if (!xs) { xs = []; byStyle.set(style, xs); }
+    xs.push(x, y, w, h);
+  }
+  flush(ctx: CanvasRenderingContext2D): void { for (const [alpha, byStyle] of this.#groups) for (const [style, xs] of byStyle) fillRects(ctx, style, alpha, xs); this.#groups.clear(); }
 }
 
 export interface TpoPaint {
@@ -178,10 +223,11 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
     const rh = Math.abs(v.yOf(0, ph) - v.yOf(prof.R, ph));
     const yTop = (r: number): number => v.yOf((r + 1) * prof.R, ph);
     if (yTop(prof.drawLo - 1) < -40 || yTop(prof.drawHi) > ph + 40) continue;
-    const { rows, maxCount, index, hollow, solid } = layoutOf(prof);
+    const { rows, maxCount, index: indexOf, hollow, solid } = layoutOf(prof);
     // Square blocks as tall as a row, no wider than 16 px, the longest row no wider than three fifths of the window on the chart (its
     // candles keep the rest), as the Volume profile's windows.
-    const room = Math.max(8, (v.xOf(prof.to, pw) - wx0) * 0.6);
+    // Never wider than its window either: zoomed out to months, a day of a few pixels would otherwise lie over the days after it.
+    const winPx = v.xOf(prof.to, pw) - wx0, room = Math.max(Math.min(8, winPx), winPx * 0.6);
     let cw = Math.min(16, Math.max(s.look === 'letters' ? 9 : 2, rh));
     if (maxCount * cw > room) cw = room / maxCount;
     const compact = rh < 1.6 || cw < 1.6;
@@ -189,7 +235,7 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
     const ucw = Math.max(1, Math.min(cw, blockPx - 1));
     const unfoldX = new Map<number, number>();
     for (const b of prof.blocks) unfoldX.set(b.k, v.xOf(b.t, pw) + (blockPx - ucw) / 2);
-    out.push({ profile: prof, x0, cw, ucw, rh, fold, rows, unfoldX, compact });
+    out.push({ profile: prof, x0, cw, ucw, rh, fold, rows, unfoldX, compact, solid });
     const fade = ageAlpha(o.rank(prof.key)), n = Math.max(1, Math.round((prof.to - prof.from) / prof.blockMs));
     const gap = cw >= 5 && rh >= 5 ? 1 : 0, cellW = fold > 0.5 ? ucw : cw, w = Math.max(1, cellW - gap), h = Math.max(1, rh - gap);
     // Letters where the cell as drawn can hold one: a row of about 11 px and a cell of about 7 (Auto), or 6 px when letters are asked for.
@@ -197,8 +243,9 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
     const xAt = (r: number, i: number, k: number): number => x0 + i * cw + ((unfoldX.get(k) ?? 0) - x0 - i * cw) * fold;
     const backing = dark ? 'rgba(0,0,0,0.62)' : 'rgba(255,255,255,0.72)';
     const byTime = s.colour !== 'count', colours = byTime ? ramp(timeStops, n, dark) : ramp(countStops, Math.max(1, maxCount), dark);
-    if (compact) paintCompact(ctx, { prof, x0, cw, ucw, rh, fold, yTop, solid, colours, byTime, fade, backing, ph, unfoldX });
+    if (compact) paintCompact(ctx, { prof, x0, cw, ucw, rh, fold, yTop, solid, maxCount, winPx, colours, byTime, fade, backing, ph, unfoldX });
     else {
+      const index = indexOf();
       // The backing first (not faded: it mutes the heat map under every block alike), then the blocks.
       ctx.globalAlpha = 1; ctx.fillStyle = backing;
       if (fold < 0.5) for (const [r, list] of rows) ctx.fillRect(x0 - 1, yTop(r), list.length * cw + 1, rh);
@@ -332,7 +379,7 @@ export function cellAt(geos: readonly TpoGeometry[], x: number, y: number, view:
   for (let g = geos.length - 1; g >= 0; g--) {
     const geo = geos[g]!, prof = geo.profile, price = view.pOf(y, ph), r = Math.floor(price / prof.R * (1 + 1e-12)), list = geo.rows.get(r);
     if (!list) continue;
-    if (geo.compact && geo.fold < 0.5) { if (x >= geo.x0 && x <= geo.x0 + Math.max(1, list.length * geo.cw)) return { geo, k: list[0]!, r }; continue; }
+    if (geo.compact && geo.fold < 0.5) { const n = geo.solid.get(r)?.n ?? 0; if (n && x >= geo.x0 && x <= geo.x0 + Math.max(1, n * geo.cw)) return { geo, k: list[0]!, r }; continue; }
     for (let i = 0; i < list.length; i++) {
       const k = list[i]!, cx = geo.x0 + i * geo.cw + ((geo.unfoldX.get(k) ?? 0) - geo.x0 - i * geo.cw) * geo.fold, w = geo.fold > 0.5 ? geo.ucw : geo.cw;
       if (x >= cx - 1 && x <= cx + w + 1) return { geo, k, r };

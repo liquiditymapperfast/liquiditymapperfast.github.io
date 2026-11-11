@@ -32,7 +32,7 @@ export interface Block { t: number; h: number; l: number; o: number; c: number; 
 export const blockStart = (t: number, from: number, blockMs: number): number => from + Math.floor((t - from) / blockMs) * blockMs;
 
 /** The index of the first bar starting at or after `t` in bars sorted by start. */
-function firstAt(bars: readonly CandleRow[], t: number): number {
+export function firstBarAt(bars: readonly CandleRow[], t: number): number {
   let a = 0, z = bars.length;
   while (a < z) { const m = (a + z) >> 1; if (bars[m]![0] < t) a = m + 1; else z = m; }
   return a;
@@ -47,7 +47,7 @@ function firstAt(bars: readonly CandleRow[], t: number): number {
  */
 export function blocksOf(bars: readonly CandleRow[], from: number, to: number, blockMs: number, barMs: number, now: number, replay = false): Block[] {
   const out = new Map<number, Block & { first: number; last: number }>();
-  for (let i = firstAt(bars, from); i < bars.length; i++) {
+  for (let i = firstBarAt(bars, from); i < bars.length; i++) {
     const b = bars[i]!, t = b[0];
     if (t >= to) break;
     if (t > now || (replay && t + barMs > now)) continue;
@@ -175,7 +175,10 @@ export function buildProfile(win: { key: string; from: number; to: number }, blo
     const a = rowOf(b.l, R), z = rowOf(b.h, R), given = hollow?.get(b.t);
     // Past the block, as far as one market alone reached: rows drawn hollow (none where they would be too many to draw).
     let ra = b.xl !== undefined ? rowOf(b.xl, R) : a, rz = b.xh !== undefined ? rowOf(b.xh, R) : z;
-    if (!Number.isSafeInteger(ra) || !Number.isSafeInteger(rz) || ra > a || rz < z || rz - ra + 1 > MAX_TPO_ROWS) { ra = a; rz = z; }
+    // Each side on its own: the chart's live price can pass one lone wick (the block under way) and leave the other.
+    if (!Number.isSafeInteger(ra) || ra > a) ra = a;
+    if (!Number.isSafeInteger(rz) || rz < z) rz = z;
+    if (rz - ra + 1 > MAX_TPO_ROWS) { ra = a; rz = z; }
     let marks: ReadonlySet<number> = given ?? none;
     if (ra < a || rz > z) { const s = new Set(given ?? []); for (let r = ra; r < a; r++) s.add(r); for (let r = z + 1; r <= rz; r++) s.add(r); marks = s; }
     if (ra < drawLo) drawLo = ra; if (rz > drawHi) drawHi = rz;

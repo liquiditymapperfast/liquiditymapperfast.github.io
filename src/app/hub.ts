@@ -26,7 +26,7 @@ import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
 import { webGet } from '../shared/history.ts';
 import { KeyLevelHistory } from './keylevels/history.ts';
-import { TPO_DAYS_REACH_MS, TPO_REACH_MS } from './tpo/settings.ts';
+import { TPO_DAYS_REACH_MS, TPO_MAX_BARS, TPO_REACH_MS } from './tpo/settings.ts';
 import { pacedFetcher } from './paced-get.ts';
 import { scriptChunk } from './script/bars.ts';
 import { ROLLING_MAX_BARS } from './vwap/vwap.ts';
@@ -374,7 +374,8 @@ export class Hub {
   }
   /**
    * The TPO's candles of one market and bar size (tpo/layer.ts): the blocks' (`main`: the chart market's and the chosen markets', asked again
-   * every minute and kept about thirteen months back, `TPO_REACH_MS`), the other venues' that judge which blocks stood alone (`peer`: every
+   * every minute and kept about thirteen months back, `TPO_REACH_MS`, no more than `TPO_MAX_BARS` of them: a session that starts off the
+   * quarter hour reads minutes, four weeks of them), the other venues' that judge which blocks stood alone (`peer`: every
    * five minutes, kept as far back as the key levels reach), and the daily ones its Auto rows are read from (`days`, `TPO_DAYS_REACH_MS`).
    * One history per kind, market and size, the same five-minute letting-go as the VWAP's (their own map, so neither feature pushes the
    * other's out).
@@ -384,7 +385,7 @@ export class Hub {
     if (held) { held.used = now; return held.h; }
     if (this.#tpoHistories.size >= TPO_HISTORIES) for (const [k, x] of this.#tpoHistories) if (now - x.used > 300_000) this.#tpoHistories.delete(k);
     // The other markets judge only blocks that are over (a block lasts half an hour), so their candles are read again every five minutes.
-    const h = new KeyLevelHistory(historyGet, Date.now, kind === 'days' ? 30 * 60_000 : kind === 'peer' ? 5 * 60_000 : 60_000, kind === 'days' ? TPO_DAYS_REACH_MS : kind === 'main' ? TPO_REACH_MS : undefined);
+    const h = new KeyLevelHistory(historyGet, Date.now, kind === 'days' ? 30 * 60_000 : kind === 'peer' ? 5 * 60_000 : 60_000, kind === 'days' ? TPO_DAYS_REACH_MS : kind === 'main' ? Math.min(TPO_REACH_MS, barMs * TPO_MAX_BARS) : undefined);
     this.#tpoHistories.set(key, { h, used: now });
     return h;
   }

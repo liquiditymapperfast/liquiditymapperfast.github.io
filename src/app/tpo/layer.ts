@@ -14,8 +14,8 @@ import { lastWindows, type ProfileWindow } from '../traded/sessions.ts';
 import { vwapTargets } from '../vwap/markets.ts';
 import type { ValueLevels } from '../../shared/profile.ts';
 import { TIMEFRAMES } from '../../shared/series.ts';
-import { autoRows, blockStart, blocksOf, buildProfile, editedWindows, hollowRows, letterOf, levelsOfProfile, mergeBlocks, overshootOf, trailingGaps, withLive, type Block, type EditedWindow, type Part, type Peer, type TpoProfile } from './model.ts';
-import { MAX_TPO_IN_VIEW, TPO_REACH_MS, blockMsOf, editScope, type TpoSettings } from './settings.ts';
+import { autoRows, blockStart, blocksOf, buildProfile, editedWindows, firstBarAt, hollowRows, letterOf, levelsOfProfile, mergeBlocks, overshootOf, trailingGaps, withLive, type Block, type EditedWindow, type Part, type Peer, type TpoProfile } from './model.ts';
+import { MAX_TPO_DRAWN, MAX_TPO_IN_VIEW, TPO_REACH_MS, blockMsOf, editScope, type TpoSettings } from './settings.ts';
 import { cellAt, paintLit, paintTpo, type TpoGeometry } from './paint.ts';
 import type { TpoInfo } from './panel.ts';
 
@@ -38,12 +38,6 @@ const AUTO_STEP = 28 * DAY;
 
 /** A market as the panel and the box under the pointer name it: its exchange and its own name for the coin. */
 const marketName = (target: HistoryTarget): string => `${venueLabel(target.id)} ${target.listing.symbol}`;
-
-/**
- * Whether a history has said all it will about the time from `from`: it reaches it, or it never will (the market began later, the venue
- * serves nothing older, nothing could be read, or the history keeps nothing that old). A history waiting a minute to try again has not.
- */
-const settled = (h: KeyLevelHistory, from: number): boolean => h.knownFrom <= from || h.exhausted || h.limited || h.state === 'unavailable' || from < h.keptFrom;
 
 /**
  * Where the blocks worked out for windows ending at `last` stop: after its last block, or after the block under way (on the grid at offset
@@ -87,13 +81,29 @@ export function barFor(blockMs: number, windows: readonly { from: number; to: nu
 /** Where a window's blocks fall: its start's offset on the grid of blocks (windows on one offset share their blocks' starts). */
 const residueOf = (from: number, blockMs: number): number => ((from % blockMs) + blockMs) % blockMs;
 
+/** What every window of one frame shares (`#ctx`), worked out once for all of them. */
+interface FrameCtx {
+  s: TpoSettings; target: HistoryTarget | null; R: number; blockMs: number; barMs: number; main: KeyLevelHistory | null;
+  windows: TpoWindow[]; first: number; last: number;
+  /** The chosen markets and their histories (none for the chart market's own candles). */
+  markets: HistoryTarget[]; hs: KeyLevelHistory[];
+  /** What a profile is worked out with beside its candles: kept while a market is on its way again only when this is the same. */
+  ident: string;
+  /** Rows tall enough for cells (under 1.6 px every profile is drawn compact, which counts each block's own rows: no hollow marks then). */
+  cells: boolean;
+}
+
 export class TpoLayer {
   #geos: TpoGeometry[] = [];
-  #profiles = new Map<string, { key: string; profile: TpoProfile | null }>();
-  /** The hollow rows and the other markets' blocks, per grid offset (`residueOf`). */
-  #hollow = new Map<number, { key: string; byBlock: Map<number, Set<number>>; peers: Peer[] }>();
-  /** The chosen markets' blocks as one (`mergeBlocks`), per grid offset. */
-  #merged = new Map<number, { key: string; blocks: Block[] }>();
+  #profiles = new Map<string, { key: string; ident: string; profile: TpoProfile | null }>();
+  /** The hollow rows and the other markets' blocks, per grid offset (`residueOf`), and each window's share of them (`sigOf`). */
+  #hollow = new Map<number, { key: string; byBlock: Map<number, Set<number>>; peers: Peer[]; sigOf: (from: number, to: number) => string }>();
+  /** What a history's candles in a span add up to (`#spanSig`), per history, span and version. */
+  #sigs = new Map<string, { version: number; sig: string }>();
+  /** Histories that could not be read at all (no candles yet): a window does not wait for them while they try again. */
+  #down = new Set<string>();
+  /** The calendar of the TPO's kind of window over the whole reach, oldest first, worked out once a day (`#calendarOf`). */
+  #calendar: { key: string; list: ProfileWindow[] } | null = null;
   #fold = { target: 0, from: 0, start: 0 };
   /** Auto's row size per coin, period, market and days read (`#asOf`), with the version of the daily candles it was read from. */
   #autoR = new Map<string, { version: string; r: number }>();
@@ -104,7 +114,9 @@ export class TpoLayer {
    * other starts again.
    */
   #reach = { id: '', from: Infinity };
-  #drawn: { key: string; windows: TpoWindow[] } | null = null;
+  #drawn: { key: string; windows: TpoWindow[]; first: number; last: number } | null = null;
+  /** The windows' names by key (`windows`). */
+  #names = new Map<string, string>();
   #bar: { key: string; barMs: number } | null = null;
 
   constructor(private hub: TpoHub, private invalidate: () => void) {}
@@ -124,14 +136,68 @@ export class TpoLayer {
   }
 
   /**
+   * The calendar of the TPO's kind of window over the whole reach and a week ahead, sorted by start: worked out once a day (a year of a day's
+   * windows is hundreds of time-zone conversions, too many for a frame), and sliced for the windows in view.
+   */
+  #calendarOf(f: TpoFrame): ProfileWindow[] {
+    const k = this.#kind(f), key = `${k.period}|${k.zone}|${JSON.stringify(k.sessions)}|${f.state.timeZone}|${Math.floor(f.now / DAY)}`;
+    if (this.#calendar?.key !== key) {
+      // In two halves: the calendar lays out at most 400 days at a time.
+      const mid = f.now - 200 * DAY, byKey = new Map<string, ProfileWindow>();
+      for (const w of [...periodWindows(k, f.state.timeZone, f.now - BAR_LOOKBACK, mid), ...periodWindows(k, f.state.timeZone, mid, f.now + 7 * DAY)]) byKey.set(w.key, w);
+      this.#calendar = { key, list: [...byKey.values()].sort((a, b) => a.from - b.from) };
+    }
+    return this.#calendar.list;
+  }
+
+  /**
    * The candle size, from the calendar alone (every window the candles reach back to, both daylight-saving offsets among them), so the
    * drawn windows, the lines' windows and the requests always agree on it, however far back the chart is.
    */
   barMs(f: TpoFrame): number {
-    const blockMs = blockMsOf(f.state.tpo), k = this.#kind(f), day = Math.floor(f.now / DAY);
-    const key = `${blockMs}|${k.period}|${k.zone}|${JSON.stringify(k.sessions)}|${f.state.timeZone}|${day}`;
-    if (this.#bar?.key !== key) this.#bar = { key, barMs: barFor(blockMs, periodWindows(k, f.state.timeZone, f.now - BAR_LOOKBACK, f.now + 7 * DAY)) };
+    const blockMs = blockMsOf(f.state.tpo), list = this.#calendarOf(f), key = `${this.#calendar!.key}|${blockMs}`;
+    if (this.#bar?.key !== key) this.#bar = { key, barMs: barFor(blockMs, list) };
     return this.#bar.barMs;
+  }
+
+  /**
+   * Whether a history has said all it will about the time from `from`: it reaches it, or it never will (the market began later, the venue
+   * serves nothing older, the history keeps nothing that old, the next try is a minute off) or could not be read at all: such a market
+   * stays down until candles come, though each try marks it loading again, so the windows neither wait for it nor blink with its retries.
+   */
+  #settled(h: KeyLevelHistory, from: number): boolean {
+    const key = `${h.id}|${h.barMs}`;
+    if (h.bars.length) this.#down.delete(key); else if (h.state === 'unavailable') this.#down.add(key);
+    return h.knownFrom <= from || h.exhausted || h.limited || this.#down.has(key) || from < h.keptFrom || h.reach(from) === 'never';
+  }
+
+  /**
+   * What a history's candles in [from, to) add up to: how many, where they start, and a sum of their prices and volumes, kept per version.
+   * A window's profile is keyed by it, so a refresh of the newest candles, or the candles read further back, leaves the other windows as
+   * they are.
+   */
+  #spanSig(h: KeyLevelHistory, from: number, to: number): string {
+    const key = `${h.id}|${h.barMs}|${from}|${to}`, held = this.#sigs.get(key);
+    if (held?.version === h.version) return held.sig;
+    const bars = h.bars, a = firstBarAt(bars, from), z = firstBarAt(bars, to);
+    let sum = 0;
+    for (let i = a; i < z; i++) { const b = bars[i]!; sum += (i - a + 1) * (b[1] + 3 * b[2] + 5 * b[3] + 7 * b[4]) + 11 * b[5]; }
+    const sig = `${h.id}:${z - a}:${a < z ? bars[a]![0] : ''}:${sum}`;
+    if (this.#sigs.size > 8000) this.#sigs.clear();
+    this.#sigs.set(key, { version: h.version, sig });
+    return sig;
+  }
+
+  /** What every window of this frame shares. */
+  #ctx(f: TpoFrame): FrameCtx {
+    const s = f.state.tpo, target = this.#target(f.state), R = this.rows(f), blockMs = blockMsOf(s), barMs = this.barMs(f);
+    const windows = target ? this.windows(f) : [], first = this.#drawn?.first ?? Infinity, last = this.#drawn?.last ?? -Infinity;
+    const markets = s.source === 'chosen' ? this.#markets(f, target) : [], hs = markets.map(m => this.hub.tpoHistory(m.id, barMs, 'main'));
+    return {
+      s, target, R, blockMs, barMs, main: target ? this.hub.tpoHistory(target.id, barMs, 'main') : null, windows, first, last, markets, hs,
+      ident: `${target?.id}|${s.source}|${markets.map(m => m.id).join(',')}|${R}|${s.share}|${blockMs}|${barMs}|${s.hollow}|${f.replay}`,
+      cells: Math.abs(f.view.yOf(0, f.ph) - f.view.yOf(R, f.ph)) >= 1.6,
+    };
   }
 
   /**
@@ -145,7 +211,8 @@ export class TpoLayer {
       const h = this.hub.tpoHistory(m.id, barMs, 'main');
       if (h.id === m.id && h.bars.length && (h.exhausted || h.limited) && h.knownFrom > first) short.push({ name: marketName(m), from: h.knownFrom });
     }
-    return { auto: this.auto(f), market: target ? marketName(target) : null, minutes: Math.round(blockMsOf(f.state.tpo) / MIN), names: markets.map(marketName), short, hollowFrom: f.now - MAX_BACK_MS };
+    const kept = target ? this.hub.tpoHistory(target.id, barMs, 'main').keptFrom : null;
+    return { auto: this.auto(f), market: target ? marketName(target) : null, minutes: Math.round(blockMsOf(f.state.tpo) / MIN), names: markets.map(marketName), short, hollowFrom: f.now - MAX_BACK_MS, keptFrom: kept, chosen: f.state.tpo.source === 'chosen' };
   }
 
   /**
@@ -159,18 +226,34 @@ export class TpoLayer {
     const key = `${range}|${s.period}|${s.count}|${blockMs}|${f.state.traded.zone}|${JSON.stringify(f.state.traded.sessions)}|${f.state.timeZone}|${scope}|${(s.splits[scope] ?? []).join(',')}|${(s.merges[scope] ?? []).join(',')}|${all ? Math.floor(v.t0 / MIN) : ''}|${Math.floor(v.t1 / MIN)}|${Math.floor(f.now / MIN)}`;
     if (this.#drawn?.key === key) return this.#drawn.windows;
     const span = s.period === 'week' ? 7 * DAY : DAY, right = Math.min(v.t1, f.now);
-    const base = all
-      ? lastWindows(periodWindows({ period: s.period, zone: f.state.traded.zone, sessions: f.state.traded.sessions }, f.state.timeZone, Math.max(v.t0 - span, f.now - TPO_REACH_MS), right), MAX_TPO_IN_VIEW, f.now)
-      : linesWindows({ ...f.state.traded, period: s.period, count: s.count }, f.state.timeZone, right - (s.count + 1) * span - 3 * DAY, right, f.now, s.count);
+    let base: ProfileWindow[];
+    if (all) {
+      // From the day's calendar: those touching the view (and the one before it), never more than the newest `MAX_TPO_IN_VIEW` of each kind
+      // could use, nor older than the candles are kept; `MAX_TPO_DRAWN` in all, the newest.
+      const list = this.#calendarOf(f), t0 = Math.max(v.t0 - span, right - (MAX_TPO_IN_VIEW + 1) * span, f.now - TPO_REACH_MS), touching: ProfileWindow[] = [];
+      let a = 0, z = list.length;
+      while (a < z) { const m = (a + z) >> 1; if (list[m]!.from < t0 - 8 * DAY) a = m + 1; else z = m; }
+      for (let i = a; i < list.length && list[i]!.from < right; i++) if (list[i]!.to > t0) touching.push(list[i]!);
+      base = lastWindows(touching, MAX_TPO_IN_VIEW, f.now);
+      if (base.length > MAX_TPO_DRAWN) base = base.slice(-MAX_TPO_DRAWN);
+    } else base = linesWindows({ ...f.state.traded, period: s.period, count: s.count }, f.state.timeZone, right - (s.count + 1) * span - 3 * DAY, right, f.now, s.count);
     const byKey = new Map(base.map(w => [w.key, w]));
-    const nameOf = (key: string): string => { const w = byKey.get(key); return w ? f.nameOf?.(w) ?? w.name : ''; };
+    // A window's name is a date written in its zone: kept by key (which holds the zone), so a pan does not write hundreds of dates again.
+    if (this.#names.size > 4 * MAX_TPO_DRAWN) this.#names.clear();
+    const nameOf = (key: string): string => {
+      const w = byKey.get(key);
+      if (!w) return '';
+      let name = this.#names.get(key);
+      if (name === undefined) { name = f.nameOf?.(w) ?? w.name; this.#names.set(key, name); }
+      return name;
+    };
     const windows: TpoWindow[] = editedWindows(base, s.splits[scope] ?? [], s.merges[scope] ?? [], blockMs).map(w => ({ ...w, name: nameOf(w.base) }));
     // A Range selected on the map: the composite of every block in it, drawn last (over the windows it crosses), from its first whole block.
     if (r && range) {
       const from = Math.floor(r.t0 / blockMs) * blockMs, to = Math.ceil(r.t1 / blockMs) * blockMs;
       if (to - from >= blockMs) windows.push({ key: `range|${from}|${to}`, from, to, base: 'range', members: [], spans: [], name: t('Range') });
     }
-    this.#drawn = { key, windows };
+    this.#drawn = { key, windows, first: Math.min(...windows.map(w => w.from)), last: Math.max(...windows.map(w => w.to)) };
     return windows;
   }
 
@@ -258,7 +341,7 @@ export class TpoLayer {
    * any of their candles change), over the windows drawn and the day before them. A block is judged once its end is known to every history
    * that judges it.
    */
-  #hollowOf(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, barMs: number, blockMs: number, R: number, residue: number, first: number, last: number): { byBlock: Map<number, Set<number>>; peers: Peer[] } {
+  #hollowOf(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, barMs: number, blockMs: number, R: number, residue: number, first: number, last: number): { byBlock: Map<number, Set<number>>; peers: Peer[]; sigOf: (from: number, to: number) => string } {
     const peers = this.#peers(f, target).map(p => this.hub.tpoHistory(p.id, barMs, 'peer')).filter(h => h.bars.length);
     // Over the windows drawn and the day before them only: a window a year back is not worked out from every block since.
     // The other venues' candles reach two months back: no block older is judged, however far back the windows go.
@@ -280,87 +363,88 @@ export class TpoLayer {
       if (b.t < first || end > mineTo || (end > allTo && f.now - end < 10 * MIN)) continue;
       const rows = hollowRows(b, out, R, blockMs); if (rows.size) byBlock.set(b.t, rows);
     }
-    const next = { key, byBlock, peers: out };
+    // A window's share of the marks, for its profile's key: the other windows keep theirs when marks change elsewhere.
+    const sigs = new Map<string, string>(), sigOf = (from: number, to: number): string => {
+      const k = `${from}|${to}`; let sig = sigs.get(k);
+      if (sig === undefined) { sig = ''; for (const [t, rows] of byBlock) if (t >= from && t < to) sig += `${t}:${[...rows].join(',')};`; sigs.set(k, sig); }
+      return sig;
+    };
+    const next = { key, byBlock, peers: out, sigOf };
     if (this.#hollow.size > 4) this.#hollow.clear();
     this.#hollow.set(residue, next);
     return next;
   }
 
   /**
-   * The chosen markets' blocks as one (`mergeBlocks`) over [first, last) on the grid of windows starting at offset `residue`, and the day
-   * before (each market's usual gap to the chart market is read over the day before each block): what they are worked out from (`key`, the
-   * markets' versions among it) and the blocks, worked out when asked. `keep`: the windows drawn, whose span is the same every frame, keep
-   * theirs per grid offset; a window only the lines ask about is worked out when its profile is.
+   * The chosen markets' blocks of one window as one (`mergeBlocks`), from its own candles and the day before (each market's usual gap is
+   * read over the day before each block), in the chart market's prices, or, where the chart market has no candles in the window (its
+   * history begins later), the first chosen market's that has.
    */
-  #merging(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, barMs: number, blockMs: number, R: number, residue: number, first: number, last: number, keep: boolean): { key: string; blocks: () => Block[] } {
-    const ms = this.#markets(f, target).map(m => this.hub.tpoHistory(m.id, barMs, 'main')).filter(h => h.bars.length);
-    const start = residue + Math.floor((first - DAY - residue) / blockMs) * blockMs, from = residue + Math.floor((first - residue) / blockMs) * blockMs, end = spanEnd(f.now, last, residue, blockMs);
-    const key = `${main.id}|${main.version}|${barMs}|${blockMs}|${R}|${start}|${end}|${f.state.tpo.hollow}|${f.replay ? Math.floor(f.now / barMs) : ''}|${ms.map(h => `${h.id}:${h.version}`).join(',')}`;
-    const blocks = (): Block[] => {
-      const held = keep ? this.#merged.get(residue) : undefined;
-      if (held?.key === key) return held.blocks;
-      const mine = blocksOf(main.bars, start, end, blockMs, barMs, f.now, f.replay);
-      const parts: Part[] = ms.map(h => {
-        const theirs = new Map(blocksOf(h.bars, start, end, blockMs, barMs, f.now, f.replay).map(b => [b.t, b] as const));
-        const gap = h.id === main.id ? (): number => 0 : gapLookup(trailingGaps(mine, theirs, blockMs));
-        return { id: h.id, blocks: theirs, gap, heldTo: f.replay ? f.now : Math.min(h.heldTo, f.now) };
-      });
-      const out = mergeBlocks(parts, target.own ? target.id : null, from, end, blockMs, R, f.now, f.state.tpo.hollow);
-      if (keep) { if (this.#merged.size > 4) this.#merged.clear(); this.#merged.set(residue, { key, blocks: out }); }
-      return out;
-    };
-    return { key, blocks };
+  #mergeWindow(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, hs: readonly KeyLevelHistory[], w: { from: number; to: number }, residue: number, blockMs: number, barMs: number, R: number): Block[] {
+    const start = w.from - DAY, end = spanEnd(f.now, w.to, residue, blockMs);
+    const blocksIn = (h: KeyLevelHistory): Block[] => blocksOf(h.bars, start, end, blockMs, barMs, f.now, f.replay);
+    const theirs = hs.filter(h => h.bars.length).map(h => ({ h, blocks: blocksIn(h) }));
+    let ref: KeyLevelHistory = main, mine = blocksIn(main);
+    if (!mine.some(b => b.t >= w.from)) { const other = theirs.find(x => x.blocks.some(b => b.t >= w.from)); if (other) { ref = other.h; mine = other.blocks; } }
+    const parts: Part[] = theirs.map(({ h, blocks }) => {
+      const map = new Map(blocks.map(b => [b.t, b] as const));
+      return { id: h.id, blocks: map, gap: h === ref ? (): number => 0 : gapLookup(trailingGaps(mine, map, blockMs)), heldTo: f.replay ? f.now : Math.min(h.heldTo, f.now) };
+    });
+    return mergeBlocks(parts, target.own ? target.id : null, w.from, end, blockMs, R, f.now, f.state.tpo.hollow);
   }
 
-  /** The profile of one window (null until its candles are read, or where nothing traded). */
-  #profileOf(f: TpoFrame, w: { key: string; from: number; to: number }): TpoProfile | null {
-    const s = f.state.tpo, target = this.#target(f.state), R = this.rows(f);
-    if (!target || !(R > 0) || (f.replay && w.from > f.now)) return null;
-    const blockMs = blockMsOf(s), barMs = this.barMs(f), main = this.hub.tpoHistory(target.id, barMs, 'main'), chosen = s.source === 'chosen';
-    const waiting = (): null => { if (this.#reach.id === `${target.id}|${s.period}|${blockMs}|${s.source}`) this.#reach.from = Math.min(this.#reach.from, w.from); return null; };
+  /**
+   * The profile of one window (null until its candles are read, or where nothing traded), keyed by what its own candles add up to: a
+   * window is worked out again only when they change. While a market it waits for is on its way again (a retry, a walk further back), it
+   * keeps the profile it had from the same markets and rows.
+   */
+  #profileOf(f: TpoFrame, w: { key: string; from: number; to: number }, c: FrameCtx): TpoProfile | null {
+    const { s, target, main, R, blockMs, barMs } = c;
+    if (!target || !main || !(R > 0) || (f.replay && w.from > f.now)) return null;
+    const held = this.#profiles.get(w.key);
+    const waiting = (): TpoProfile | null => {
+      if (this.#reach.id === `${target.id}|${s.period}|${blockMs}|${s.source}`) this.#reach.from = Math.min(this.#reach.from, w.from);
+      return held?.ident === c.ident ? held.profile : null;
+    };
     if (main.id !== target.id || main.barMs !== barMs) return waiting();
-    const windows = this.windows(f), first = Math.min(...windows.map(x => x.from)), last = Math.max(...windows.map(x => x.to)), residue = residueOf(w.from, blockMs);
-    const developing = w.to > f.now;
+    const developing = w.to > f.now, residue = residueOf(w.from, blockMs);
     // What the window's blocks are worked out from (its key), and the blocks, read only when the profile is worked out again.
-    let blocksNow: () => Block[], hollowed: { byBlock: Map<number, Set<number>> } | null = null, own: boolean, source: string;
-    if (chosen) {
+    let blocksNow: () => Block[], hollowed: { byBlock: Map<number, Set<number>>; sigOf: (from: number, to: number) => string } | null = null, own: boolean, source: string;
+    if (s.source === 'chosen') {
       // Drawn once every chosen market, and the chart market they are moved into, has said all it will about this window: a market that
       // comes later would change it.
-      const markets = this.#markets(f, target), hs = markets.map(m => this.hub.tpoHistory(m.id, barMs, 'main'));
-      if (!markets.length || hs.some((h, i) => h.id !== markets[i]!.id) || ![main, ...hs].every(h => settled(h, w.from))) return waiting();
+      const { markets, hs } = c;
+      if (!markets.length || hs.some((h, i) => h.id !== markets[i]!.id) || ![main, ...hs].every(h => this.#settled(h, w.from))) return waiting();
       if (!hs.some(h => h.bars.length)) return null;
-      // A window drawn shares the drawn windows' merge; one only the lines ask about (further back) is merged on its own.
-      const inside = w.from >= first && w.to <= last, m = this.#merging(f, target, main, barMs, blockMs, R, residue, inside ? first : w.from, inside ? last : w.to, inside);
-      blocksNow = () => m.blocks().filter(b => b.t >= w.from && b.t < w.to);
+      const from = w.from - DAY, end = spanEnd(f.now, w.to, residue, blockMs);
+      source = `chosen|${[main, ...hs].map(h => this.#spanSig(h, from, end)).join(';')}`;
+      blocksNow = () => this.#mergeWindow(f, target, main, hs, w, residue, blockMs, barMs, R);
       own = target.own && markets.some(x => x.id === target.id);
-      source = `chosen|${m.key}`;
     } else {
       if (!main.bars.length || main.knownFrom > w.from) return waiting();
       // Hollow rows are worked out for the windows drawn only (a window the lines ask about needs none: its levels count blocks, not marks),
       // so the work and its cache do not move with every window the lines read.
-      // Rows under 1.6 px are drawn compact, where hollow marks are left out: none are worked out then.
-      hollowed = s.hollow && Math.abs(f.view.yOf(0, f.ph) - f.view.yOf(R, f.ph)) >= 1.6 ? this.#hollowOf(f, target, main, barMs, blockMs, R, residue, first, last) : null;
+      hollowed = s.hollow && c.cells ? this.#hollowOf(f, target, main, barMs, blockMs, R, residue, c.first, c.last) : null;
       blocksNow = () => blocksOf(main.bars, w.from, w.to, blockMs, barMs, f.now, f.replay);
       own = true;
-      source = `chart|${main.id}|${main.version}|${hollowed ? this.#hollow.get(residue)?.key ?? '' : 'off'}`;
+      source = `chart|${this.#spanSig(main, w.from, w.to)}|${hollowed ? hollowed.sigOf(w.from, w.to) : 'off'}`;
     }
     const live = developing && own ? this.#live(f, target, blockMs, w.from) : null;
-    const key = `${source}|${w.from}|${w.to}|${R}|${s.share}|${blockMs}|${barMs}|${developing ? `${Math.floor(f.now / 1000)}|${live ? `${live.t}|${live.h}|${live.l}|${live.c}` : ''}` : ''}|${f.replay}`;
-    const held = this.#profiles.get(w.key);
-    if (held?.key === key) return held.profile;
+    const key = `${source}|${w.from}|${w.to}|${developing ? `${Math.floor(f.now / 1000)}|${live ? `${live.t}|${live.h}|${live.l}|${live.c}` : ''}` : ''}`;
+    if (held?.key === key && held.ident === c.ident) return held.profile;
     let blocks = blocksNow();
     if (developing) blocks = withLive(blocks, blockMs, live && live.t >= w.from && live.t < w.to ? live : null);
     const profile = buildProfile(w, blocks, blockMs, R, s.share / 100, f.now, hollowed?.byBlock);
-    // Every window in view of several sessions is a few hundred: the cache holds them all, and the lines' windows beside them.
-    if (this.#profiles.size > 4 * MAX_TPO_IN_VIEW + 200) this.#profiles.clear();
-    this.#profiles.set(w.key, { key, profile });
+    // Every window in view, and the lines' windows beside them.
+    if (this.#profiles.size > MAX_TPO_DRAWN + 200) this.#profiles.clear();
+    this.#profiles.set(w.key, { key, ident: c.ident, profile });
     return profile;
   }
 
   /** The profiles of the windows drawn, oldest first, a Range's composite last. */
   profiles(f: TpoFrame): TpoProfile[] {
-    const out: TpoProfile[] = [];
-    for (const w of this.windows(f)) { const p = this.#profileOf(f, w); if (p) out.push(p); }
+    const out: TpoProfile[] = [], c = this.#ctx(f);
+    for (const w of c.windows) { const p = this.#profileOf(f, w, c); if (p) out.push(p); }
     return out;
   }
 
@@ -369,8 +453,9 @@ export class TpoLayer {
    * say: its candles do not reach it yet, or the window is part of one edited by hand (split or merged), whose lines the TPO draws itself.
    */
   levels(f: TpoFrame, w: ProfileWindow): ValueLevels | null {
-    if (this.windows(f).some(x => x.members.includes(w.key) && x.key !== w.key)) return null;
-    const p = this.#profileOf(f, w);
+    const c = this.#ctx(f);
+    if (c.windows.some(x => x.members.includes(w.key) && x.key !== w.key)) return null;
+    const p = this.#profileOf(f, w, c);
     return p ? levelsOfProfile(p) : null;
   }
 

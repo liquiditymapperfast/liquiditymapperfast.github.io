@@ -302,11 +302,12 @@ test('Auto rows read up to an earlier day come from the days before it', () => {
 });
 
 /** A canvas that counts what is drawn. */
-function countingCanvas(): { ctx: CanvasRenderingContext2D; fills: number; strokes: number } {
-  const out = { fills: 0, strokes: 0, ctx: null as unknown as CanvasRenderingContext2D };
+/** A canvas that counts what is drawn: rectangles (filled one by one, or added to a path), fills, strokes. */
+function countingCanvas(): { ctx: CanvasRenderingContext2D; rects: number; fills: number; strokes: number } {
+  const out = { rects: 0, fills: 0, strokes: 0, ctx: null as unknown as CanvasRenderingContext2D };
   const noop = (): void => {};
   out.ctx = new Proxy({}, {
-    get: (_t, k) => k === 'fillRect' ? () => { out.fills++; } : k === 'strokeRect' || k === 'stroke' ? () => { out.strokes++; } : k === 'measureText' ? () => ({ width: 10 }) : noop,
+    get: (_t, k) => k === 'fillRect' ? () => { out.rects++; out.fills++; } : k === 'rect' ? () => { out.rects++; } : k === 'fill' ? () => { out.fills++; } : k === 'strokeRect' || k === 'stroke' ? () => { out.strokes++; } : k === 'measureText' ? () => ({ width: 10 }) : noop,
     set: () => true,
   }) as unknown as CanvasRenderingContext2D;
   return out;
@@ -323,12 +324,26 @@ test('zoomed out, a profile is drawn compact: one bar a pixel row, no outline, t
   assert.equal(geos.length, 1); assert.ok(geos[0]!.compact);
   const rowsPx = Math.ceil(((p.high + 5) - p.low) / (view.p1 - view.p0) * 300) + 2;
   // Backing and bar per pixel row (no cell per block and row), under the rows the profile spans.
-  assert.ok(c.fills <= 2 * rowsPx + 4, `${c.fills} rects for ${rowsPx} pixel rows (${rows} rows)`);
-  assert.ok(c.fills >= 2 * Math.floor(rowsPx / 2));
+  assert.ok(c.rects <= 2 * rowsPx + 4, `${c.rects} rects for ${rowsPx} pixel rows (${rows} rows)`);
+  assert.ok(c.rects >= 2 * Math.floor(rowsPx / 2));
+  // Gathered by colour: a fill for the backing and one for each colour and alpha, not one a bar (the 48 time colours at two alphas at most).
+  assert.ok(c.fills <= 1 + 2 * 48 + 2, `${c.fills} fills`);
   // Its point of control drawn across the window (the Volume profile's lines do not stand for it here).
   assert.ok(c.strokes >= 1);
   // Laid out in time: one bar a block, not a cell a row.
   const u = countingCanvas();
   paintTpo(u.ctx, { profiles: [p], settings: { ...TPO_DEFAULTS, on: true, unfold: true }, view, pw: 600, ph: 300, p: PALETTES.dark!, labels: new LabelBoard(), fold: 1, rank: () => 0, name: () => '', now: NOW, linesFor: () => true });
-  assert.equal(u.fills, 2 * p.blocks.length);
+  assert.equal(u.rects, 2 * p.blocks.length + 1);   // and the plot's clip
+  assert.ok(u.fills <= 1 + p.blocks.length);
+});
+
+test('zoomed out to months, a profile narrower than 3 px is a strip: its range, value area and point of control, a few rectangles', () => {
+  const blocks = blocksOf(bars('binance'), win.from, win.to, HALF, HALF, NOW);
+  const p = buildProfile(win, blocks, HALF, 5, 0.7, NOW)!;
+  const view = new View({ t0: win.from - 200 * DAY, t1: win.from + 2 * DAY, p0: p.low - 2_000, p1: p.high + 2_000 });
+  const c = countingCanvas();
+  const geos = paintTpo(c.ctx, { profiles: [p], settings: { ...TPO_DEFAULTS, on: true }, view, pw: 600, ph: 300, p: PALETTES.dark!, labels: new LabelBoard(), fold: 0, rank: () => 0, name: () => '', now: NOW, linesFor: () => true });
+  assert.ok(geos[0]!.compact);
+  // The plot's clip, the backing, the range, the value area, the stripe.
+  assert.equal(c.rects, 5);
 });

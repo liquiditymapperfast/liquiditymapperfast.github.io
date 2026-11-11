@@ -72,8 +72,13 @@ export const TPO_DEFAULTS: Readonly<TpoSettings> = {
 };
 
 export const MAX_TPO_COUNT = 20;
-/** Every window in view is at most this many of each kind (a session's, a day's): zoomed out further, the newest of them. */
-export const MAX_TPO_IN_VIEW = 120;
+/**
+ * Every window in view is at most this many of each kind (a session's, a day's: as many days as the candles are kept), and `MAX_TPO_DRAWN`
+ * in all (several sessions a day): zoomed out further, the newest of them.
+ */
+export const MAX_TPO_IN_VIEW = 400, MAX_TPO_DRAWN = 800;
+/** The most candles of one market a TPO keeps: a year of half hours, five months of five minutes, four weeks of minutes. */
+export const TPO_MAX_BARS = 40_000;
 /** Coins whose own rows are kept, and scopes of edits (three per coin), the oldest going first. */
 const MAX_COINS = 20;
 /** Splits and merges kept per coin. */

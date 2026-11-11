@@ -17,7 +17,13 @@ import { MAX_TPO_COUNT, TPO_BLOCKS, blockMsOf, editScope, withRows, type TpoSett
  * market, and the chosen markets' names), the block's minutes, the markets whose history begins after the oldest window drawn, and since
  * when the other venues mark hollow blocks.
  */
-export interface TpoInfo { auto: number; market: string | null; minutes: number; names?: string[]; short?: { name: string; from: number }[]; hollowFrom?: number }
+export interface TpoInfo {
+  auto: number; market: string | null; minutes: number; names?: string[]; short?: { name: string; from: number }[]; hollowFrom?: number;
+  /** The oldest time the chart market's candles are kept from at this block length (null: none read). */
+  keptFrom?: number | null;
+  /** Whether the blocks come from chosen markets (a market reaching less far is then left out of older windows, not the whole TPO). */
+  chosen?: boolean;
+}
 
 /**
  * The TPO panel, in the order a person decides: whether it shows; which windows and how many (the zone and the sessions are the Volume
@@ -48,7 +54,7 @@ export function buildTpoPanel(store: Store, tools: HTMLElement, body: HTMLElemen
     switchRow(t('Initial balance, open and last'), t('The range of the first hour\'s blocks (the first block where a block is an hour or longer) as a bracket at the left (IBH, IBL), the window\'s first price and its last.'), s.ib, ib => set({ ib })),
     switchRow(t('Tails, poor extremes, single prints'), t('Two or more rows of one block at an extreme make a tail; a top or bottom row of two or more blocks is poor. Each call says how many of four row grids agree: moving the rows by part of a row changes these calls on many days.'), s.calls, calls => set({ calls })),
     switchRow(t('Numbers under each profile'), t('Its range, its initial balance, its TPOs above and below the point of control, and its volume.'), s.stats, stats => set({ stats })),
-    switchRow(t('Hollow where one venue stood alone'), t('A block drawn as an outline where this market\'s wick went at least a row and 3 bp past where most of the market stopped, from the other venues switched on (each moved by its usual gap first). Rare on the largest markets, more common on smaller ones.'), s.hollow, hollow => set({ hollow })),
+    switchRow(t('Hollow where one venue stood alone'), s.source === 'chosen' ? t('A row only one of the ticked markets reached, at least a row and 3 bp past where most of them stopped (each moved by its usual gap first), is drawn as an outline and not counted. Needs three markets or more.') : t('A block drawn as an outline where this market\'s wick went at least a row and 3 bp past where most of the market stopped, from the other venues switched on (each moved by its usual gap first). Rare on the largest markets, more common on smaller ones.'), s.hollow, hollow => set({ hollow })),
     switchRow(t('Volume profile lines follow the TPO'), t('While the TPO shows, the Volume profile\'s lines of the same windows (point of control, value area, carried and untouched) are drawn at the TPO\'s levels, so there is one set of lines. With them off, the TPO draws its own point of control.'), s.lines, lines => set({ lines })),
     heading(t('Split and merge')),
     note(t('Right-click a block to split its window there, or to merge it with the window before or after.')),
@@ -101,6 +107,8 @@ function candlesFrom(store: Store, body: HTMLElement, rebuild: () => void, i: Tp
     if (s.picks.length >= MAX_VWAP_MARKETS) body.append(note(t('Up to six markets: untick one to choose another.')));
     if (i.names && i.names.length) body.append(note(t('From the candles of {markets}, in blocks of {n} minutes.', { markets: i.names.join(', '), n: i.minutes })));
   }
-  body.append(note(t('Days and weeks reach back about thirteen months; scroll the chart back to see them.')));
-  for (const m of i.short ?? []) body.append(note(t('{market}: its history reaches back to {date} only, so older windows are drawn without it.', { market: m.name, date: clock(m.from, true) })));
+  // Kept as far back as a year of half hours: a block length read from finer candles (a session off the quarter hour) reaches less far.
+  const kept = i.keptFrom ?? null;
+  body.append(note(kept !== null && Date.now() - kept < 300 * 86_400_000 ? t('At this block length the candles reach back to {date}; scroll the chart back to see older windows.', { date: clock(kept, true) }) : t('Days and weeks reach back about thirteen months; scroll the chart back to see them.')));
+  for (const m of i.short ?? []) body.append(note(i.chosen ? t('{market}: its history reaches back to {date} only, so older windows are drawn without it.', { market: m.name, date: clock(m.from, true) }) : t('{market}: its history reaches back to {date} only, so no TPO is drawn before it.', { market: m.name, date: clock(m.from, true) })));
 }

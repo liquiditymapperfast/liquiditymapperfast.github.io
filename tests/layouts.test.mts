@@ -41,6 +41,14 @@ test("a layout keeps the TPO's look but never a coin's own rows, splits or merge
   assert.deepEqual(whole.tpo!.merges, { 'BTC|day|30': ['x'] });
 });
 
+test('a layout carries whose candles the TPO reads (as exchange and kind, so it means the same on another coin) and how many windows', () => {
+  const mine = state({ tpo: { ...defaults.tpo, on: true, source: 'chosen', picks: ['binance/perp', 'coinbase/spot'], count: 7 } });
+  const kept = settingsOf(mine);
+  assert.equal(kept.tpo!.source, 'chosen'); assert.deepEqual(kept.tpo!.picks, ['binance/perp', 'coinbase/spot']); assert.equal(kept.tpo!.count, 7);
+  const applied = settingsToApply(kept, state({}));
+  assert.deepEqual([applied.tpo.source, applied.tpo.picks, applied.tpo.count], ['chosen', ['binance/perp', 'coinbase/spot'], 7]);
+});
+
 test('a file can come from anywhere: every field is checked, anything else gets its default', () => {
   const junk = readSettings({ timeframe: '2h', layer: 'gamma', show: { depth: 'yes', oi: false, evil: true }, ladderMode: 'tiles', ladderCurves: 4, ladderShow: 7, grouping: -5,
     heat: { style: 'neon', contrast: 999, smooth: 'sometimes', auto: 'no' }, lt: { halfLifeBp: 'x', view: 'radar' }, barStats: ['vol', 3, null], barStatOptions: { imbRatio: Infinity, extra: 1 }, scope: 'futures', pullStack: 30 } as never);
