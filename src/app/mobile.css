@@ -219,6 +219,8 @@ html[data-bar="compact"] .panel .opt { grid-template-columns: 24px 1fr; }
 html[data-bar="compact"] .keylevel-grid { grid-template-columns: 1fr repeat(3, 48px); }
 html[data-bar="compact"] .period-grid { grid-template-columns: minmax(0, 1fr) 72px 88px; }
 html[data-bar="compact"] .anchor-grid { grid-template-columns: minmax(0, 1fr) repeat(5, 40px); }
+/* The candle colours' grid keeps its three columns (the Key levels' four above would scatter it): a swatch and its reset, 30 px each, a cell. */
+html[data-bar="compact"] .candle-color-grid { grid-template-columns: minmax(0, 1fr) repeat(2, 76px); }
 html[data-bar="compact"] :is(.line-swatch, .line-swatch-reset, .anchor-eye) { width: 30px; height: 30px; }
 html[data-bar="compact"] .anchor-row .anchor-edit { min-height: 30px; }
 html[data-bar="compact"] .anchor-date-fields :is(.anchor-date, .anchor-time) { height: 36px; font-size: 16px; }
