@@ -505,13 +505,16 @@ export async function importHistory({ url, held, add, addRows, since, now, budge
     /** The open hour from its pieces and tail, read at once (`openHourParts`); null when any of them fails, and the whole hour is read. */
     const openFromParts = async (hour: number): Promise<ArrayBuffer | null> => {
       if (hour !== latest.open || !parts) return null;
+      // The first part that fails stops the others: the whole hour is read instead, within the same budget.
+      const own = new AbortController(), stop = (): void => own.abort();
+      abort.signal.addEventListener('abort', stop);
       try {
         return joinParts(await Promise.all(parts.map(async n => {
-          const r = await fetcher(address(n), { signal: abort.signal });
+          const r = await fetcher(address(n), { signal: own.signal });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.arrayBuffer();
         })), hour);
-      } catch { return null; }
+      } catch { own.abort(); return null; } finally { abort.signal.removeEventListener('abort', stop); }
     };
     const worker = async (): Promise<void> => {
       for (let hour = queue.shift(); hour !== undefined && !abort.signal.aborted; hour = queue.shift()) {
