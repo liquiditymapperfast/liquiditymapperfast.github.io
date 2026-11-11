@@ -856,6 +856,11 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 /* Anchors (anchors/controls.ts; the VWAP and Volume profile panels): the same grid, a column a period from day to year, each box ticked in its
    line's colour; a greyed box says why when pointed at. */
 .anchor-grid { grid-template-columns: minmax(0, 1fr) repeat(5, 46px); }
+/* The Candle colours grid: a row a part (body, border, wick), a column a direction; each cell a swatch, and its way back to the theme's. */
+.candle-color-grid { grid-template-columns: minmax(0, 1fr) repeat(2, 64px); }
+.candle-color-grid .cell { display: flex; justify-content: center; align-items: center; gap: 4px; align-self: stretch; border-top: 1px solid var(--line); }
+.candle-preview { display: flex; justify-content: center; margin: 4px 0 8px; padding: 4px 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.candle-preview svg { display: block; }
 .anchor-grid label.greyed, .anchor-grid label.greyed input { cursor: not-allowed; }
 .anchor-sub { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--text); }
 /* The VWAP panel's links to its sections, under its first switch. */
@@ -947,6 +952,9 @@ button.open { border-color: var(--ui); }
 .menu-item.current .label { font-weight: 650; }
 .menu-item.plain { grid-template-columns: minmax(0, 1fr) 14px; }
 .menu-item:disabled { opacity: .45; cursor: default; }
+/* A row that does something (opens a panel) rather than choosing: after a line. */
+.menu-item.action { margin-top: 5px; position: relative; }
+.menu-item.action::after { content: ""; position: absolute; left: 6px; right: 6px; top: -3px; border-top: 1px solid var(--line); }
 .menu-title { display: none; }
 .menu-item .tick { color: var(--ui); }
 /* The chosen row's tick is a drawn check, 1em of the row's text (the Bevel frame draws its own on a tick that has no size of its text). */

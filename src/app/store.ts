@@ -17,6 +17,7 @@ import { readVwap, type VwapSettings } from './vwap/settings.ts';
 import { readTpo, type TpoSettings } from './tpo/settings.ts';
 import { readDrawSettings, type DrawSettings } from './draw/settings.ts';
 import { readChartType, type ChartType } from './chart-type.ts';
+import { readCandleColors, type CandleColors } from './candle-colours.ts';
 import { readFootprint, type FootprintSettings } from './footprint/settings.ts';
 import { readDelta, type DeltaSettings } from './delta/settings.ts';
 import { isCoarse, isPhone } from './device.ts';
@@ -156,6 +157,8 @@ export interface AppState {
   draw: DrawSettings;
   /** How the map draws its price (chart-type.ts). */
   chartType: ChartType;
+  /** The candles' own colours, rising and falling, body, border and wick; the theme's where none is chosen (candle-colours.ts). */
+  candleColors: CandleColors;
   /** The footprint's own settings (whether it shows is `show.footprint`; its imbalance options are `barStatOptions`). */
   footprint: FootprintSettings;
   /** The Delta pane's settings: bars or CVD candles, where the CVD restarts, divergences. */
@@ -249,7 +252,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'lsMetric', 'customMarkets', 'draw', 'chartType'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'lsMetric', 'customMarkets', 'draw', 'chartType', 'candleColors'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -260,7 +263,7 @@ export type LadderCurves = (typeof LADDER_CURVES)[number];
 
 /** The settings a saved layout holds: what the chart shows and how, never the coin, the venues, the theme, the time zone or the sounds. */
 export const LAYOUT_KEYS = ['timeframe', 'layer', 'show', 'cvd', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta',
-  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'lsMetric', 'customMarkets', 'chartType'] as const satisfies readonly (keyof AppState)[];
+  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'lsMetric', 'customMarkets', 'chartType', 'candleColors'] as const satisfies readonly (keyof AppState)[];
 export type Settings = Pick<AppState, (typeof LAYOUT_KEYS)[number]>;
 
 /** The timeframes (hub.ts TIMEFRAMES; a test keeps the two the same). */
@@ -325,6 +328,7 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     lsTable: saved.lsTable !== false,
     customMarkets: readCustomMarkets(saved.customMarkets),
     chartType: readChartType(saved.chartType),
+    candleColors: readCandleColors(saved.candleColors),
   };
 }
 

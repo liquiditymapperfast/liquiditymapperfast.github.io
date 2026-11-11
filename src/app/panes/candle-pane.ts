@@ -21,6 +21,7 @@ import { strengthGain } from '../glass/waves.ts';
 import * as M from '../candle/model.ts';
 import { liveCanvas } from '../live-canvas.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
+import { candleTone } from '../candle-colours.ts';
 
 const NUM_FONT = '10.5px ui-monospace, SFMono-Regular, Menlo, monospace', BOLD_NUM = `700 ${NUM_FONT}`;
 const SMALL_FONT = '10px ui-sans-serif, system-ui, sans-serif';
@@ -549,7 +550,7 @@ export class CandlePane {
       ctx.fillText(fmtPrice(q, pStep), l.axisX1 - 4, y);
     }
     if (!(mark > 0)) return;
-    const col = bar.c >= bar.o ? p.candleUp : p.candleDown;
+    const col = candleTone(this.store.state.candleColors, bar.c >= bar.o ? 'up' : 'down', p);
     ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([2, 3]); ctx.globalAlpha = 0.85;
     ctx.beginPath(); ctx.moveTo(0, Math.round(markY) + 0.5); ctx.lineTo(l.axisX0, Math.round(markY) + 0.5); ctx.stroke();
     ctx.setLineDash([]); ctx.globalAlpha = 1;

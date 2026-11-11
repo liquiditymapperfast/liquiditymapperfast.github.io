@@ -32,6 +32,7 @@ import { t } from '../i18n.ts';
 import { replaying } from '../replay/clock.ts';
 import { FitGrid } from '../ui/fit-grid.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
+import { candleTone } from '../candle-colours.ts';
 
 const ROW_H = 17;
 const HEAD_H = 20;
@@ -1125,7 +1126,7 @@ export class LadderPane {
         }
       }
       // The price row's line in the colour of the map's price line (the candle under way rising or falling).
-      if (bin === markBin) { const side = lineSide(state.candles, state.seriesInstrument, state.marketId); ctx.fillStyle = side === 'up' ? p.candleUp : side === 'down' ? p.candleDown : p.ask; ctx.fillRect(x0, y + ROW_H - 1, w, 1); }
+      if (bin === markBin) { const side = lineSide(state.candles, state.seriesInstrument, state.marketId); ctx.fillStyle = side ? candleTone(state.candleColors, side, p) : p.ask; ctx.fillRect(x0, y + ROW_H - 1, w, 1); }
     }
     // The venue lines over the bars, and which one the pointer is on: near a line across its row, or on its entry in the key.
     const hv = this.#hover, keyLine = head - HEAD_H / 2, maxShown = o.title || barW >= 170;

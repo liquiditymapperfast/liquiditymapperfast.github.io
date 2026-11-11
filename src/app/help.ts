@@ -136,7 +136,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   candles: {
     title: t('Candles'), guide: 'chart',
     tip: t('Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.'),
-    body: [],
+    body: [t('The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme\'s colour follows the theme.')],
   },
   footprint: {
     title: t('Footprint'), guide: 'footprint',

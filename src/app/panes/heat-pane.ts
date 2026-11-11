@@ -79,6 +79,7 @@ import { paintDivergence, type Divergence } from '../delta/divergence.ts';
 import { TopBands, topMarks, type TopProfile } from '../measures/strip.ts';
 import { BAND_GAP, flowRows, volumeBand, type TimeRows } from '../measures/model.ts';
 import { CANDLE_LINE_PX, LINE_POINT_PX, countdown, lineSide, thinLine, type LinePoint } from '../price-line.ts';
+import { candleInk, candleTone } from '../candle-colours.ts';
 import { candlesAt, formingCandle, pageNow, replaying, replayView } from '../replay/clock.ts';
 import { TapeGL, type DustStyle } from '../tape/gl.ts';
 import { TraceIndex, gapMarks, secondsPath, traceGapColumns } from '../tape/trace.ts';
@@ -1271,7 +1272,7 @@ export class HeatPane {
     }
     // The price line, in the colour of the candle under way (rising or falling), as is its tag on the axis.
     const mark = state.mark.price, side = lineSide(state.candles, state.seriesInstrument, state.marketId);
-    const markColor = side === 'up' ? p.candleUp : side === 'down' ? p.candleDown : p.ask;
+    const markColor = side ? candleTone(state.candleColors, side, p) : p.ask;
     if (mark > 0) {
       const y = v.yOf(mark, ph);
       if (y >= 0 && y <= ph) { ctx.strokeStyle = markColor; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
@@ -1582,7 +1583,7 @@ export class HeatPane {
     ctx.fillText(shownTitle, 12, 16);
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     if (tail) { ctx.fillStyle = p.muted; ctx.fillText(tail, 12 + titleW + 10, 16); }
-    if (detail) { ctx.fillStyle = up ? p.candleUp : p.candleDown; ctx.fillText(detail, 12, 32); if (detail2) ctx.fillText(detail2, 12, 46); }
+    if (detail) { ctx.fillStyle = candleTone(state.candleColors, up ? 'up' : 'down', p); ctx.fillText(detail, 12, 32); if (detail2) ctx.fillText(detail2, 12, 46); }
     // The note stands under the prices, or under the title where there are none (it stood below the plate then, over what follows).
     if (note) { ctx.fillStyle = p.muted; ctx.fillText(note, 12, detail ? (detail2 ? 60 : 46) : 32); }
     const places: { id: string; x: number; y: number }[] = [];
@@ -2204,7 +2205,7 @@ export class HeatPane {
     const body = normal + (Math.max(1, layout.body) - normal) * narrowing;
     const volume = this.#volumeAnalysis(state), hot = (i: number) => state.highlight.on && volume.found.flag[i] === 1;
     // A contrasting halo/outline keeps candles legible over both pink and green heat; it fades out over the dimmed footprint view.
-    const edge = p.dark ? 'rgba(255,255,255,0.92)' : 'rgba(18,20,24,0.92)', halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)', outline = 1 - 0.85 * narrowing;
+    const halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)', outline = 1 - 0.85 * narrowing;
     // While the trade dust shows, a candle is its outline and a thin wick: a filled body (and its halo) would hide the orders inside it. Outline
     // candles are outlines always; OHLC bars and the line are drawn their own way (chart-type.ts).
     const type = this.previewChartType ?? state.chartType, hollow = type === 'outline' || (this.#dustOn(state) && !this.#dustFailed);
@@ -2220,7 +2221,8 @@ export class HeatPane {
       if (c[0] + tf < v.t0 || c[0] > v.t1) continue;
       // Every candle, the one still forming too, has the same body and stands in the middle of its slot, so the spacing is the same all along.
       const xClassic = v.xOf(c[0] + tf / 2, pw), x = xClassic + (v.xOf(c[0], pw) + layout.candleCenter - xClassic) * narrowing, up = c[4] >= c[1];
-      const color = this.candleColor(c[0]) || (up ? p.candleUp : p.candleDown);
+      // Its own colours or the theme's (candle-colours.ts); a script's colour for the candle comes first.
+      const dir = up ? 'up' : 'down', ink = candleInk(state.candleColors, dir, p, type !== 'bars' && !hollow, this.candleColor(c[0])), color = ink.body;
       const yh = v.yOf(c[2], ph), yl = v.yOf(c[3], ph), yo = v.yOf(c[1], ph), yc = v.yOf(c[4], ph), cx = Math.round(x) + 0.5;
       const top = Math.min(yo, yc), height = Math.max(1.5, Math.abs(yc - yo));
       // A wick is a rectangle filled, not a line stroked: the same pixels (butt ends), and a canvas strokes even a straight line as a path,
@@ -2230,7 +2232,7 @@ export class HeatPane {
         // A line from the low to the high, the open a tick to the left and the close a tick to the right, over the same halo as a candle.
         const tick = bar < 4 ? 0 : Math.min(8, bar / 2 - 1), path = (): void => { ctx.beginPath(); ctx.moveTo(cx, yh); ctx.lineTo(cx, yl); if (tick > 0) { ctx.moveTo(cx - tick, Math.round(yo) + 0.5); ctx.lineTo(cx, Math.round(yo) + 0.5); ctx.moveTo(cx, Math.round(yc) + 0.5); ctx.lineTo(cx + tick, Math.round(yc) + 0.5); } };
         ctx.globalAlpha = outline; ctx.lineWidth = 3.6; ctx.strokeStyle = halo; path(); ctx.stroke();
-        ctx.globalAlpha = 1; ctx.lineWidth = 1.6; ctx.strokeStyle = color; path(); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.lineWidth = 1.6; ctx.strokeStyle = ink.body; path(); ctx.stroke();
         ctx.lineWidth = 1;
       } else if (hollow) {
         const rect = [Math.round(x - body / 2) + 0.75, Math.round(top) + 0.75, Math.max(1, Math.round(body) - 1.5), Math.max(1, Math.round(height) - 1.5)] as const;
@@ -2241,18 +2243,19 @@ export class HeatPane {
           wick(3.5, yh, top); wick(3.5, top + height, yl); ctx.strokeRect(...rect);
         }
         const thinWick = type === 'outline' ? 1.4 : 1;
-        ctx.globalAlpha = type === 'outline' ? 1 : 0.9; ctx.strokeStyle = ctx.fillStyle = color;
+        ctx.globalAlpha = type === 'outline' ? 1 : 0.9; ctx.fillStyle = ink.wick;
         wick(thinWick, yh, top); wick(thinWick, top + height, yl);
-        ctx.lineWidth = 1.5; ctx.strokeRect(...rect);
+        ctx.strokeStyle = ink.border; ctx.lineWidth = 1.5; ctx.strokeRect(...rect);
       } else {
         ctx.globalAlpha = outline;
         ctx.fillStyle = halo; wick(3.5, yh, yl);
-        ctx.fillStyle = edge; wick(1.6, yh, yl);
-        if (narrowing > 0.01) { ctx.globalAlpha = Math.min(1, narrowing * 1.5); ctx.fillStyle = color; wick(1.4, yh, yl); }
+        ctx.fillStyle = ink.wick; wick(1.6, yh, yl);
+        // Beside the footprint's rows the wick takes the body's colour (its own, where it has one), the edge fading under it.
+        if (narrowing > 0.01) { ctx.globalAlpha = Math.min(1, narrowing * 1.5); ctx.fillStyle = state.candleColors[dir].wick ?? color; wick(1.4, yh, yl); }
         ctx.lineWidth = 1;
         ctx.globalAlpha = outline; ctx.fillStyle = halo; ctx.fillRect(x - body / 2 - 1.5, top - 1.5, body + 3, height + 3);
         ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillRect(x - body / 2, top, body, height);
-        if (body >= 3) { ctx.globalAlpha = outline; ctx.strokeStyle = edge; ctx.strokeRect(x - body / 2 + 0.5, top + 0.5, body - 1, Math.max(0.5, height - 1)); }
+        if (body >= 3) { ctx.globalAlpha = outline; ctx.strokeStyle = ink.border; ctx.strokeRect(x - body / 2 + 0.5, top + 0.5, body - 1, Math.max(0.5, height - 1)); }
       }
       // Hollow, filled or a bar, a candle of unusual volume keeps its ring (Highlights), while it is wide enough to be told from its
       // neighbours: narrower, the ring (a blur each) covers the candles beside it, and the volume strip marks the candle as well. Its width

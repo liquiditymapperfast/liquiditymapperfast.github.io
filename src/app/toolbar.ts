@@ -41,7 +41,8 @@ import { buildFootprintPanel } from './footprint/panel.ts';
 import type { FlowBook } from './flow-book.ts';
 import type { KeyLevelHistory } from './keylevels/history.ts';
 import { INLINE_CHIPS, chipPlan, exchangeGroups } from './chips.ts';
-import { openMenu } from './menu.ts';
+import { openMenu, type MenuItem } from './menu.ts';
+import { buildCandleColorsPanel } from './candle-colours-panel.ts';
 import { buildSoundPanel } from './sound/panel.ts';
 import type { Sounds } from './sound/sounds.ts';
 import type { Alerts } from './sound/alerts.ts';
@@ -82,6 +83,9 @@ const IDLE_GRACE_MS = 20_000;
 const UPCOMING = 'upcoming';
 
 /** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
+/** The Chart type menu's row that opens the Candle colours panel (not a chart type). */
+const CANDLE_COLOURS_ITEM = 'candle-colours';
+
 const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['funding', t('Funding')], ['candles', t('Candles')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['stats', t('Stats')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
@@ -338,6 +342,7 @@ export class Toolbar {
   onPreviewChartType: (id: ChartType | null) => void = () => {};
   /** How the map draws its price (chart-type.ts): a cell of the Time deck, beside the timeframes, as a chart's type usually sits. */
   #chartType = el('button', { type: 'button', class: 'chart-type', ariaLabel: t('Chart type') });
+  #candlePanel: Panel | null = null;
   /** The drawing tools' button (draw/bar.ts, set by the page), in the map's corner beside Select. */
   #drawCorner: HTMLElement | null = null;
   setDrawButton(button: HTMLElement): void { this.#drawCorner = button; this.#arrange(); }
@@ -373,8 +378,14 @@ export class Toolbar {
     }
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
     this.#chartType.onclick = () => {
-      const items = CHART_TYPES.map(id => ({ id, label: chartTypeName(id) }));
-      openMenu(this.#chartType, items, this.store.state.chartType, { onPreview: id => this.onPreviewChartType(id as ChartType | null), onSelect: id => { this.onPreviewChartType(null); this.store.set({ chartType: id as ChartType }); } }, 'left', { title: t('Chart type') });
+      // The four types, previewed on the map while the pointer or the keys are on one, and after a line the candles' colours (a panel).
+      const items: MenuItem[] = [...CHART_TYPES.map(id => ({ id, label: chartTypeName(id) })), { id: CANDLE_COLOURS_ITEM, label: t('Candle colours…'), action: true }];
+      const type = (id: string | null): ChartType | null => id !== null && (CHART_TYPES as readonly string[]).includes(id) ? id as ChartType : null;
+      openMenu(this.#chartType, items, this.store.state.chartType, { onPreview: id => this.onPreviewChartType(type(id)), onSelect: id => {
+        this.onPreviewChartType(null);
+        const chosen = type(id);
+        if (chosen) this.store.set({ chartType: chosen }); else if (id === CANDLE_COLOURS_ITEM) this.#openCandleColours();
+      } }, 'left', { title: t('Chart type') });
     };
     for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, tip: t('{timeframe} candles. The footprint, the bar stats and the open-interest bars follow this too.', { timeframe: TIMEFRAME_NAMES[tf] ?? tf }), onclick: () => this.store.set({ timeframe: tf }) }));
     this.#timeframes.append(this.#chartType);
@@ -531,6 +542,12 @@ export class Toolbar {
 
   /** The desktop status bar takes the language and theme buttons (and the connection text) from the top bar. */
   /** Remember the lamp panel just opened (or none) and how to redraw it. */
+  /** The Candle colours panel (the Chart type menu's last row), under the chart type's button. */
+  #openCandleColours(): void {
+    const build = (tools: HTMLElement, body: HTMLElement): void => buildCandleColorsPanel(this.store, tools, body, () => this.#candlePanel?.render(build));
+    this.#candlePanel = this.#track(togglePanel(this.#chartType, { title: t('Candle colours'), width: 380, align: 'left', onClose: () => { this.#candlePanel = null; } }, build), build);
+  }
+
   #track(panel: Panel | null, build: (tools: HTMLElement, body: HTMLElement) => void): Panel | null {
     this.#open = panel ? { panel, redraw: () => panel.render(build) } : null;
     return panel;

@@ -3,7 +3,7 @@ import { closePanel } from './ui.ts';
 import { compactBar, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
 
-export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[]; /** Shown but not choosable. */ disabled?: boolean }
+export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[]; /** Shown but not choosable. */ disabled?: boolean; /** Something to do rather than a choice (it opens a panel): after a line, never ticked. */ action?: boolean }
 export interface MenuOptions {
   /** A heading for the menu where it is a sheet (a phone). */
   title?: string;
@@ -37,7 +37,7 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   const rows = items.map(item => {
     const isCurrent = item.id === current;
     const swatch = item.swatch ? [el('span', { class: 'swatch' }, ...item.swatch.map(color => { const dot = el('i'); dot.style.background = color; return dot; }))] : [];
-    const row = el('button', { type: 'button', class: (isCurrent ? 'menu-item current' : 'menu-item') + (swatch.length ? '' : ' plain'), role: 'option', disabled: item.disabled === true }, ...swatch, el('span', { class: 'label', textContent: item.label }), el('span', { class: 'tick' }));
+    const row = el('button', { type: 'button', class: (isCurrent ? 'menu-item current' : 'menu-item') + (swatch.length ? '' : ' plain') + (item.action ? ' action' : ''), role: 'option', disabled: item.disabled === true }, ...swatch, el('span', { class: 'label', textContent: item.label }), el('span', { class: 'tick' }));
     row.setAttribute('aria-selected', String(isCurrent)); row.dataset.id = item.id;
     // With a mouse the row under the pointer takes the focus too: the pointer and the keyboard move one place, so the keys go on from where
     // the pointer is, and a row the keys have left is not lit for the pointer still resting on it (the frames light the focused row).
