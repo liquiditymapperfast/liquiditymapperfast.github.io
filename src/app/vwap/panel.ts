@@ -30,7 +30,7 @@ export type VwapMarkets = () => VwapMarketState[];
 /** The map's `ruleStart`: where a live anchor's rule lands now. */
 export type RuleStart = (rule: AnchorRule) => Resolved;
 /** The map's `anchorDrawnFrom`: where an anchor's line is drawn from (later than the anchor where no finer candles reach it), null if not drawn. */
-export type DrawnFrom = (id: string) => number | null;
+export type DrawnFrom = (id: string, at: number) => number | null;
 
 /** A market as the panel names it: its exchange and its own name for the coin (Binance BTCUSDT, Coinbase BTC-USD). */
 const marketName = (target: HistoryTarget): string => `${venueLabel(target.id)} ${target.listing.symbol}`;
@@ -118,6 +118,8 @@ function section(text: string, key: string): HTMLElement { const h = heading(tex
 
 /** The anchor whose editor is open in the panel (its id), kept while the panel is built again. */
 let editing: string | null = null;
+/** Close an anchor's editor: it was moved on the chart (`main.ts` `placeAnchor`), as a move by date closes it. */
+export const closeAnchorEditor = (id: string): void => { if (editing === id) editing = null; };
 
 /**
  * The anchored VWAPs (Karl, 2026-11-11: "nobody wants to click the exact candle"; designed with Sol 6.1 and the advisor, reviewed by Sol): the
@@ -147,7 +149,9 @@ function anchoredSection(store: Store, body: HTMLElement, rebuild: () => void, r
   body.append(section(t('Anchored VWAP'), 'anchored'), note(t('The average from a moment up to now. Choose a period below, enter a date, or click a candle.')));
   list.forEach((a, index) => {
     const open = editing === a.id, key = `vwap-anchor-${a.id}`;
-    const name = a.rule ? ruleName(a.rule) : t('Fixed anchor');
+    // Its name: a live one's rule; a fixed one's line as the chart names it ("AVWAP Nov 9 07:00"), which tells fixed ones apart, also to a
+    // screen reader (Sol, review round 2), its kind under it.
+    const name = a.rule ? ruleName(a.rule) : `${t('AVWAP')} ${anchorDate(a.at!)}`;
     const swatch = lineSwatch(a.color ?? anchorDefault(a.slot, p), a.color !== undefined, name, color => store.set({ vwap: changeAnchor(store.state.vwap, coin, a.id, { color }) }), rebuild, key);
     // Where it starts: a live one's as its rule lands now (read again every two seconds while the panel is open: it moves with new highs);
     // and where its line is drawn from, when that is later (no finer candles reach the anchor on this market).
@@ -156,14 +160,14 @@ function anchoredSection(store: Store, body: HTMLElement, rebuild: () => void, r
     const listeners: ((r: Resolved) => void)[] = [];
     const say = (): void => {
       const r = read(), code = a.rule ? `${t('AVWAP')} ${ruleCode(a.rule)}` : `${t('AVWAP')} ${anchorDate(a.at!)}`;
-      // A fixed one's chart name is its date already: said once.
-      when.textContent = a.rule ? `${code} · ${anchorWhen(r)}` : code;
-      const drawn = a.hidden || r.state !== 'ready' ? null : drawnFrom(a.id);
+      // A fixed one's chart name is its name already.
+      when.textContent = a.rule ? `${code} · ${anchorWhen(r)}` : t('Fixed anchor');
+      const drawn = a.hidden || r.state !== 'ready' ? null : drawnFrom(a.id, r.at);
       later.textContent = r.state === 'ready' && drawn !== null && drawn > r.at + 60_000 ? t('drawn from {time}: no finer candles reach the anchor on this market', { time: clockYear(drawn) }) : '';
       later.hidden = !later.textContent;
       for (const listen of listeners) listen(r);
     };
-    if (a.rule || open) { const timer = window.setInterval(() => { if (!when.isConnected) window.clearInterval(timer); else say(); }, 2_000); }
+    const timer = window.setInterval(() => { if (!when.isConnected) window.clearInterval(timer); else say(); }, 2_000);
     // One name, its state in aria-pressed (pressed: hidden), so a screen reader does not hear "Show" and "pressed" at once (code review).
     const eye = el('button', { type: 'button', class: 'anchor-eye', ariaLabel: t('Hide {line}', { line: name }), tip: a.hidden ? t('Show this line') : t('Hide this line, keeping it') });
     eye.dataset.hidden = String(!!a.hidden); eye.dataset.focus = `${key}-eye`; eye.setAttribute('aria-pressed', String(!!a.hidden));
@@ -202,7 +206,7 @@ function anchoredSection(store: Store, body: HTMLElement, rebuild: () => void, r
   const armed = store.state.vwapAnchoring && store.state.anchorMove === null;
   const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : t('Click a candle'), disabled: full && !armed, tip: fullWhy ?? t('Then click the candle on the map where the average should start.'),
     onclick: () => { store.set(armed ? { vwapAnchoring: false } : { vwapAnchoring: true, anchorMove: null, rangeTool: false }); rebuild(); } });
-  place.dataset.focus = 'vwap-anchor-place';
+  place.dataset.focus = 'vwap-anchor-place'; place.dataset.placing = 'true';
   body.append(el('p', { class: 'anchor-sub', textContent: t('From a candle') }), el('div', { class: 'session-add' }, place));
   if (armed) body.append(note(t('Click the candle on the map where the average should start; the arrow keys and Enter work too. Esc cancels.')));
 }
@@ -217,7 +221,7 @@ function anchorEditor(store: Store, rebuild: () => void, a: Anchor, name: string
   const moving = store.state.vwapAnchoring && store.state.anchorMove === a.id;
   const pick = el('button', { type: 'button', textContent: moving ? t('Cancel') : t('Click a candle'), ariaLabel: moving ? t('Cancel') : t('Move {line} to a candle you click', { line: name }), tip: t('Then click the candle on the map to move it there.'),
     onclick: () => { store.set(moving ? { vwapAnchoring: false, anchorMove: null } : { vwapAnchoring: true, anchorMove: a.id, rangeTool: false }); rebuild(); } });
-  pick.dataset.focus = `${key}-pick`;
+  pick.dataset.focus = `${key}-pick`; pick.dataset.placing = 'true';
   // Moved or frozen: the anchor as it was can be put back (only while nobody has changed it since).
   const moved = (next: VwapSettings, what: string): void => {
     if (next === store.state.vwap) { toast(t('An anchor starts at that minute already.')); return; }
@@ -229,7 +233,7 @@ function anchorEditor(store: Store, rebuild: () => void, a: Anchor, name: string
       store.set({ vwap: back }); rebuild();
     } } });
   };
-  const date = dateField({ focus: key, action: t('Move'), actionLabel: t('Move {line} to this date', { line: name }), value: a.at ?? null, reachMs: ANCHOR_REACH_MS, tooOld: t('Too far back: an anchor reaches ten years.'),
+  const date = dateField({ focus: key, context: a.rule ? ruleKey(a.rule) : '', action: t('Move'), actionLabel: t('Move {line} to this date', { line: name }), value: a.at ?? null, reachMs: ANCHOR_REACH_MS, tooOld: t('Too far back: an anchor reaches ten years.'),
     add: at => moved(changeAnchor(store.state.vwap, coin, a.id, { at }), t('{line} moved to {time}.', { line: name, time: clockYear(at) })) });
   if (a.rule) {
     // The button says the time it keeps, and keeps the time it says.

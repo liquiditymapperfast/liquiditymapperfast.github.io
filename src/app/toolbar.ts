@@ -355,6 +355,9 @@ export class Toolbar {
   }
 
   constructor(private store: Store, private venueControl: VenueControl) {
+    // Whether a press is under way, for a refresh of the open panel that waits for one to end (`refreshOpenPanel`).
+    window.addEventListener('pointerdown', () => { this.#pressing = true; }, true);
+    for (const end of ['pointerup', 'pointercancel'] as const) window.addEventListener(end, () => { this.#pressing = false; }, true);
     // The Guide's link to the tour starts it as the Tour button does (the bar unfolded for it).
     setTourStarter(() => this.startTour());
     // A notice that comes, goes, or wraps differently moves the ones under it.
@@ -540,13 +543,21 @@ export class Toolbar {
     // that landed, a profile taken again): the refresh waits until the field is left (Sol, review 2026-11-11).
     const active = document.activeElement;
     if (active instanceof HTMLElement && this.#open.panel.body.contains(active) && active.matches('input:not([type=checkbox]):not([type=radio]), select, textarea')) {
-      if (this.#refreshWaits !== active) { this.#refreshWaits = active; active.addEventListener('blur', () => { if (this.#refreshWaits === active) this.#refreshWaits = null; this.refreshOpenPanel(); }, { once: true }); }
+      if (this.#refreshWaits !== active) {
+        this.#refreshWaits = active;
+        // Not inside the blur: a press on the panel's Move or Add blurs the field first, and a redraw then would remove the button before its
+        // click (Sol, review round 2). After the press is over (its click dispatched), and only for the panel still open.
+        const panel = this.#open.panel, later = (): void => { window.setTimeout(() => { if (this.#refreshWaits === active) this.#refreshWaits = null; if (this.#open?.panel === panel) this.refreshOpenPanel(); }, 0); };
+        active.addEventListener('blur', () => { if (this.#pressing) window.addEventListener('pointerup', later, { once: true, capture: true }); else later(); }, { once: true });
+      }
       return;
     }
     this.#open.redraw();
   }
   /** The field of the open panel a refresh waits to be left (`refreshOpenPanel`), if any. */
   #refreshWaits: HTMLElement | null = null;
+  /** A pointer is down somewhere on the page (a press under way; `refreshOpenPanel` waits for it to end). Kept by the constructor's listeners. */
+  #pressing = false;
   /** Redraw the Volume profile panel if it is the one open: what of the profiles has no room changed (a resize), and its sketch and note say so. */
   refreshTradedPanel(): void { if (this.#tradedPanel && this.#open?.panel === this.#tradedPanel) this.refreshOpenPanel(); }
   /** Set while the panels close for an anchor to be placed on a phone, so their closing does not disarm it. */

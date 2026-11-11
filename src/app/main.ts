@@ -3,7 +3,9 @@ import { ServerSource } from './server-source.ts';
 import { BrowserSource } from './browser-source.ts';
 import { chooseCoin, currentCoin, forCoin, keepCoinRecordings, scaledUsd, type CoinChoice } from './coin.ts';
 import { instrumentIdFor } from '../shared/coins.ts';
-import { MAX_ANCHORS, changeAnchor, withAnchor } from './vwap/settings.ts';
+import { MAX_ANCHORS, changeAnchor, putBackAnchor, withAnchor } from './vwap/settings.ts';
+import { ruleName } from './anchors/anchors.ts';
+import { closeAnchorEditor } from './vwap/panel.ts';
 import { ANCHOR_REACH_MS, candleStartAt } from './vwap/vwap.ts';
 import { withProfileAnchor } from './traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/anchor.ts';
@@ -16,7 +18,7 @@ import { Sounds } from './sound/sounds.ts';
 import { Alerts } from './sound/alerts.ts';
 import { Toolbar } from './toolbar.ts';
 import { StatusBar } from './statusbar.ts';
-import { clock, setTimeZone, zoneName } from './format.ts';
+import { anchorDate, clock, clockYear, setTimeZone, zoneName } from './format.ts';
 import { installTips } from './tip.ts';
 import { installClassicSelects, installTouchSelects } from './touch-select.ts';
 import { lazy, preload } from './lazy.ts';
@@ -310,7 +312,7 @@ async function main(): Promise<void> {
   toolbar.rollingReach = days => heat.rollingReach(days);
   toolbar.vwapMarkets = () => heat.vwapMarketStates();
   toolbar.ruleStart = rule => heat.ruleStart(rule);
-  toolbar.anchorDrawnFrom = id => heat.anchorDrawnFrom(id);
+  toolbar.anchorDrawnFrom = (id, at) => heat.anchorDrawnFrom(id, at);
   toolbar.tpoInfo = () => heat.tpoInfo();
   heat.onRollingReach = () => toolbar.refreshOpenPanel();
   // Placing an anchor, the VWAP's or the profile's: where a moment on the map would put it (the start of its candle; the profile's on its five
@@ -339,7 +341,22 @@ async function main(): Promise<void> {
         else { store.set({ anchorPreview: null }); toolbar.anchorHint(t('An anchor starts on that candle already: choose another.')); }
         return;
       }
+      // The anchor as it was, read before the store takes the move (the store's state object is changed in place).
+      const was = move ? s.vwap.anchors[coin]?.find(a => a.id === move) : undefined;
       store.set({ vwap: next, vwapAnchoring: false, anchorMove: null, anchorPreview: null });
+      if (move && was) {
+        // A move by a candle has its Undo, as a move by date has (Sol, review round 2).
+        closeAnchorEditor(move);
+        const now = next.anchors[coin]!.find(a => a.id === move)!;
+        const label = was.rule ? ruleName(was.rule) : `${t('AVWAP')} ${anchorDate(was.at!)}`;
+        toolbar.refreshOpenPanel();
+        toast(t('{line} moved to {time}.', { line: label, time: clockYear(start) }), { ms: 8_000, action: { label: t('Undo'), run: () => {
+          const back = putBackAnchor(store.state.vwap, coin, now, was);
+          if (back === store.state.vwap) { toast(t('Not undone: the anchor has changed since.')); return; }
+          store.set({ vwap: back }); toolbar.refreshOpenPanel();
+        } } });
+        return;
+      }
     } else if (s.profileAnchoring) {
       store.set({ traded: withProfileAnchor({ ...s.traded, columns: 'anchor' }, coin, { at: start }), profileAnchoring: false, anchorPreview: null, show: { ...s.show, traded: true } });
     }
@@ -380,8 +397,11 @@ async function main(): Promise<void> {
   // before the panels' own keys, so Esc stops the placing and leaves the panel open (a second Esc closes it; Sol, review 2026-11-11).
   window.addEventListener('keydown', e => {
     const placing = store.state.vwapAnchoring || store.state.profileAnchoring, field = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLSelectElement || document.activeElement instanceof HTMLTextAreaElement;
-    // A toast's own button (Place here, Cancel, Undo) takes its Enter.
-    if (!placing || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || field || document.querySelector('dialog[open], .menu') !== null || document.activeElement?.closest('.toast')) return;
+    if (!placing || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || field || document.querySelector('dialog[open], .menu') !== null) return;
+    // The arrows and Enter only where the keyboard is on the page itself, the chart, or a "Click a candle" button: any other control keeps
+    // its keys (a pane splitter its arrows, a button or a toast's its Enter; Sol, review round 2). Esc stops placing wherever it is.
+    const active = document.activeElement, neutral = !active || active === document.body || active instanceof HTMLCanvasElement || (active instanceof HTMLElement && active.dataset.placing === 'true');
+    if (e.key !== 'Escape' && !neutral) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); store.set({ vwapAnchoring: false, profileAnchoring: false, anchorMove: null, anchorPreview: null }); dismissToast(); toolbar.refreshOpenPanel(); return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault(); e.stopImmediatePropagation();

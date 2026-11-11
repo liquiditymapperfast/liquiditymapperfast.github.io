@@ -2375,14 +2375,14 @@ export class HeatPane {
    * columns' window is on; 'far' when further back than the columns reach (`PROFILE_ANCHOR_REACH_MS`), 'none' when not begun.
    */
   profileAnchorStart(a: Anchor): ProfileAnchorStart {
-    let at: number;
-    if (a.rule) { const r = this.ruleStart(a.rule); if (r.state !== 'ready') return r; at = r.at; } else at = a.at!;
+    let at: number, approx = false;
+    if (a.rule) { const r = this.ruleStart(a.rule); if (r.state !== 'ready') return r; at = r.at; approx = !!r.approx; } else at = a.at!;
     at = Math.floor(at / ANCHOR_BAR_MS) * ANCHOR_BAR_MS;
     // Older than the five-minute candles reach: on the bar of the coarser ones the window is worked out from (said as its start).
     const bar = this.#anchorBar(at); at = Math.floor(at / bar) * bar;
     const now = Date.now();
     if (at > now) return { state: 'none' };
-    return at < now - PROFILE_ANCHOR_REACH_MS ? { state: 'far', at } : { state: 'ready', at };
+    return at < now - PROFILE_ANCHOR_REACH_MS ? { state: 'far', at } : { state: 'ready', at, ...(approx ? { approx } : {}) };
   }
   /**
    * The bars an anchored window from `at` is worked out on: five minutes while they reach it (`PROFILE_FINE_REACH_MS`, 21 weeks), else the
@@ -2619,10 +2619,10 @@ export class HeatPane {
     }
     return out;
   }
-  /** Where each anchored VWAP's line was last drawn from, by the anchor's id (`anchorDrawnFrom`). */
+  /** Where each anchored VWAP's line was last drawn from, by the anchor's id and where it starts (`anchorDrawnFrom`). */
   readonly #anchorDrawn = new Map<string, number | null>();
   /** Where an anchored VWAP's line is drawn from (its first point), null when it has none: later than its anchor where no finer candles reach it. */
-  anchorDrawnFrom(id: string): number | null { return this.#anchorDrawn.get(id) ?? null; }
+  anchorDrawnFrom(id: string, at: number): number | null { return this.#anchorDrawn.get(`${id}|${at}`) ?? null; }
   /** The bar a profile anchor at `at` is worked out on (`#anchorBar`), for its panel's date field. */
   profileAnchorBar(at: number): number { return this.#anchorBar(at); }
   /** Where a live anchor's rule lands now, for the panels (the VWAP's rows, the profile's): the reading the lines use. */
@@ -2655,7 +2655,9 @@ export class HeatPane {
     if (h) h.ensure(target, span.from, barMs, () => this.invalidate());
     // A market listed after the stretch began (its history begins later) is read from its first candle: nothing traded before it.
     // A history that could not be read, or whose exchange serves no further back, says so (Sol, review 2026-11-11: "finding it" forever).
-    const mine = !!h && h.id === target.id && h.barMs === barMs, failed = mine && h.state === 'unavailable';
+    const mine = !!h && h.id === target.id && h.barMs === barMs;
+    // Failed: nothing could be read, or the read further back failed and waits its minute (it still holds newer bars; Sol, review round 2).
+    const failed = mine && (h.state === 'unavailable' || (h.knownFrom > span.from && !h.exhausted && !h.limited && h.reach(span.from) === 'never'));
     const coarse = mine && h.bars.length ? { bars: h.bars, barMs, knownFrom: h.exhausted ? Math.min(h.knownFrom, span.from) : h.knownFrom, failed, limited: h.limited }
       : mine && (failed || h.exhausted) ? { bars: [], barMs, knownFrom: failed ? Infinity : span.from, failed } : null;
     const out = resolveRule(rule, zone, now, replay, coarse, (from, to) => this.hub.spanRead(target, 60_000, from, to, this.#spanLanded));
@@ -2828,7 +2830,7 @@ export class HeatPane {
       const points = carried(vwapSeries(rows, a.at, Infinity), body.readTo);
       if (points.length) lines.push({ kind: 'anchor', n: a.n, id: a.id, slot: a.slot, ...(a.name ? { name: a.name } : {}), points, live: true, key: `anchor|${a.id}|${a.at}`, bar: a.bar, liveFrom: body.liveFrom, ...(head.length ? { head: { bar: a.head, to: boundary } } : {}) });
       // Where the line is drawn from: later than the anchor where no finer candles reach it on this market (the panel says so).
-      this.#anchorDrawn.set(a.id, points[0]?.t ?? null);
+      this.#anchorDrawn.set(`${a.id}|${a.at}`, points[0]?.t ?? null);
       if (this.#anchorDrawn.size > 32) this.#anchorDrawn.delete(this.#anchorDrawn.keys().next().value!);
     }
     this.#vwapDrawn = { key, lines };
@@ -4439,6 +4441,7 @@ export class HeatPane {
       const anchoring = this.store.state.vwapAnchoring || this.store.state.profileAnchoring;
       if (press && !press.moved && e.button === 0 && anchoring) {
         const at = this.view.tOf(local(e).x, this.plotW);
+        this.#drawClickAt = performance.now();   // the double click this may begin does not refit the chart (Sol, review round 2)
         if (this.store.state.vwapAnchoring) this.onAnchor?.(at); else this.onProfileAnchor?.(at);
       } else if (press && !press.moved && e.button === 0 && this.draw) { const at = local(e); if (this.draw.click(at, e.altKey, false)) this.#drawClickAt = performance.now(); }
       // A right click that did not travel, on a TPO block: its menu (split, merge), the view put back from any pixel the press zoomed.

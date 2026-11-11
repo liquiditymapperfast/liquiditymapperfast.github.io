@@ -240,10 +240,15 @@ function sessionEditor(store: Store, set: (change: Partial<TradedSettings>, agai
  */
 function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, again?: boolean) => void, rebuild: () => void, sources: TradedSources): HTMLElement[] {
   const s = store.state.traded, coin = currentCoin().coin, out: HTMLElement[] = [];
-  out.push(selectRow(t('Columns cover'), t('The columns beside the map: what is on the chart, or everything from a candle you choose up to now.'), [['chart', t('What is on the chart')], ['anchor', t('From an anchor')]], s.columns, v => set({ columns: v === 'anchor' ? 'anchor' : 'chart' }, true)));
+  const stopPlacing = (): void => { if (store.state.profileAnchoring) store.set({ profileAnchoring: false, anchorPreview: null }); };
+  out.push(selectRow(t('Columns cover'), t('The columns beside the map: what is on the chart, or everything from a candle you choose up to now.'), [['chart', t('What is on the chart')], ['anchor', t('From an anchor')]], s.columns, v => {
+    if (v !== 'anchor') stopPlacing();
+    set({ columns: v === 'anchor' ? 'anchor' : 'chart' }, true);
+  }));
   if (s.columns !== 'anchor') return out;
   const a = profileAnchorOf(s, coin), armed = store.state.profileAnchoring;
-  const put = (add: Parameters<typeof withProfileAnchor>[2]): void => { store.set({ traded: withProfileAnchor(store.state.traded, coin, add) }); rebuild(); };
+  // Whatever sets the anchor ends placing it on the chart (Sol, review round 2: a click on the chart replaced the one just chosen).
+  const put = (add: Parameters<typeof withProfileAnchor>[2]): void => { stopPlacing(); store.set({ traded: withProfileAnchor(store.state.traded, coin, add) }); rebuild(); };
   // The coin's anchor: what it follows (or that it is fixed), where it starts now, and remove (with Undo: the columns go back to the chart's).
   if (a) {
     const name = a.rule ? ruleName(a.rule) : t('Fixed anchor'), when = el('span', { class: 'desc anchor-when' });
@@ -251,7 +256,7 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
     say();
     if (a.rule) { const timer = window.setInterval(() => { if (!when.isConnected) window.clearInterval(timer); else say(); }, 2_000); }
     const x = el('button', { type: 'button', class: 'session-remove', ariaLabel: t('Remove the anchor'), tip: t('Remove the anchor'), onclick: () => {
-      store.set({ traded: withProfileAnchor(store.state.traded, coin, null) }); rebuild();
+      stopPlacing(); store.set({ traded: withProfileAnchor(store.state.traded, coin, null) }); rebuild();
       // Undo puts it back only while no other anchor has been set since (Sol, review 2026-11-11: it replaced the new one).
       toast(t('Anchor removed: the columns add up what is on the chart.'), { ms: 8_000, action: { label: t('Undo'), run: () => {
         if (store.state.traded.anchors[coin]) { toast(t('Not undone: another anchor has been set since.')); return; }
@@ -268,14 +273,14 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
     toggle: (rule, on) => { if (on) put({ rule }); },
   }), note(t('Periods follow {zone} time, as the Key levels do.', { zone: periodZoneName(s.zone, store.state.timeZone) })));
   out.push(el('p', { class: 'anchor-sub', textContent: t('From a date') }), dateField({
-    focus: 'profile-anchor', action: t('Set'), value: a?.at ?? null, reachMs: PROFILE_ANCHOR_REACH_MS, tooOld: t('Too far back: the columns reach two years.'),
+    focus: 'profile-anchor', context: a ? `${a.id}|${a.rule ? ruleKey(a.rule) : ''}` : '', action: t('Set'), value: a?.at ?? null, reachMs: PROFILE_ANCHOR_REACH_MS, tooOld: t('Too far back: the columns reach two years.'),
     // Said back on the bar the window is worked out on: five minutes, or the hour (the zone's bar) for one older than 21 weeks.
     startOf: at => { const bar = sources.anchorBar?.(at) ?? ANCHOR_BAR_MS; return Math.floor(at / bar) * bar; }, add: at => put({ at }),
   }));
   const place = el('button', { type: 'button', textContent: armed ? t('Cancel') : t('Click a candle'), tip: t('Then click the candle on the map the columns should add up from.'),
     onclick: () => { store.set(armed ? { profileAnchoring: false } : { profileAnchoring: true, vwapAnchoring: false, rangeTool: false }); rebuild(); } });
   const again = el('button', { type: 'button', textContent: t('Update now'), disabled: !a, tip: t('Recalculate the anchored columns now, up to the last finished candle.'), onclick: () => { sources.updateNow?.(); } });
-  place.dataset.focus = 'profile-anchor-place'; again.dataset.focus = 'profile-anchor-update';
+  place.dataset.focus = 'profile-anchor-place'; place.dataset.placing = 'true'; again.dataset.focus = 'profile-anchor-update';
   out.push(el('p', { class: 'anchor-sub', textContent: t('From a candle') }), el('div', { class: 'session-add' }, place, again));
   if (armed) out.push(note(t('Click the candle on the map the columns should add up from; the arrow keys and Enter work too. Esc cancels.')));
   out.push(selectRow(t('Update every'), t('How often the anchored columns are recalculated from the anchor. Less often means less work for the page.'),

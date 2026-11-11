@@ -64,7 +64,7 @@ export function periodZoneName(tradedZone: string, pageZone: 'local' | 'utc'): s
 }
 
 /** What is typed in a date field and not yet added, by the field's focus key: a panel built again (a refresh, a toggle) keeps it. */
-const drafts = new Map<string, { date: string; time: string }>();
+const drafts = new Map<string, { date: string; time: string; base: string }>();
 /** Forget a date field's draft (its editor closed, or its anchor moved). */
 export const forgetDraft = (focus: string): void => { drafts.delete(focus); };
 
@@ -85,6 +85,8 @@ export interface DateFieldOptions {
   full?: string | null;
   /** The field's focus key: a panel built again keeps the keys there, and what was typed. */
   focus: string;
+  /** What the anchor is now (its moment or its rule): a draft typed for another stands no longer (Sol, review round 2). */
+  context?: string;
 }
 
 /**
@@ -93,7 +95,10 @@ export interface DateFieldOptions {
  * further back than the anchor reaches). Enter in either field adds it, as the button.
  */
 export function dateField(o: DateFieldOptions): HTMLElement {
-  const now = Date.now(), first = drafts.get(o.focus) ?? (o.value != null ? wallFields(o.value) : null), clockZone = zoneName(timeZone());
+  // A draft stands only while the anchor is where it was when it was typed: moved another way since (a candle clicked), the field shows where it is now.
+  const now = Date.now(), base = `${o.context ?? ''}|${o.value ?? ''}|${timeZone()}`, kept = drafts.get(o.focus), draft = kept && kept.base === base ? kept : null, clockZone = zoneName(timeZone());
+  if (kept && !draft) drafts.delete(o.focus);
+  const first = draft ?? (o.value != null ? wallFields(o.value) : null);
   const date = el('input', { type: 'date', value: first?.date ?? '', class: 'anchor-date', ariaLabel: t('Date'), min: wallFields(now - o.reachMs).date, max: wallFields(now).date });
   const time = el('input', { type: 'time', value: first?.time ?? '', step: '60', class: 'anchor-time', ariaLabel: t('Time (optional)'), tip: t('Leave it empty for midnight.') });
   date.dataset.focus = `${o.focus}-date`; time.dataset.focus = `${o.focus}-time`;
@@ -124,7 +129,7 @@ export function dateField(o: DateFieldOptions): HTMLElement {
     go.disabled = start === null || !!o.full;
     return start;
   };
-  date.oninput = time.oninput = () => { drafts.set(o.focus, { date: date.value, time: time.value }); check(); };
+  date.oninput = time.oninput = () => { drafts.set(o.focus, { date: date.value, time: time.value, base }); check(); };
   go.onclick = () => { const start = check(); if (start !== null && !o.full) { drafts.delete(o.focus); o.add(start); } };
   date.onkeydown = time.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } };
   check();
@@ -165,7 +170,7 @@ export function anchorWhen(r: Resolved | { state: 'far'; at: number }): string {
     case 'far': return t('{time}: further back than the columns reach', { time: clockYear(r.at) });
     case 'coming': return t('finding it…');
     case 'failed': return t('its candles could not be read just now; trying again');
-    case 'short': return t('this market\'s history begins {time}', { time: clockYear(r.from) });
-    case 'none': return t('no candle in this period yet');
+    case 'short': return t('only candles from {time} are available on this market', { time: clockYear(r.from) });
+    case 'none': return t('no candles in this period');
   }
 }
