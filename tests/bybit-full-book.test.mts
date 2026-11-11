@@ -219,8 +219,9 @@ test('bybit full book: a refresh is due when a frontier inside the band is appro
   assert.equal(book.refreshDue(100, AUDIT_DELAY_MS - 1), false); assert.equal(book.refreshDue(100, AUDIT_DELAY_MS), true);
   assert.equal(book.snapshot(snap(5, bids, asks), book.beginRefresh(0), 0), 'unchanged'); assert.equal(book.auditing, false);
   assert.equal(book.refreshDue(100, REFRESH_MIN_MS), false);
-  assert.equal(book.refreshDue(97.6, REFRESH_MIN_MS), false, '7.6 left of 10');
-  assert.equal(book.refreshDue(97.4, REFRESH_MIN_MS), true, '7.4 left');
+  // What a snapshot reaches is a share of the price (10 % here): a quarter short of it is 7.32 at 97.6 and 7.29 at 97.2.
+  assert.equal(book.refreshDue(97.6, REFRESH_MIN_MS), false, '7.6 left');
+  assert.equal(book.refreshDue(97.2, REFRESH_MIN_MS), true, '7.2 left');
   assert.equal(book.refreshDue(102.6, REFRESH_MIN_MS), true, 'the ask side too');
   assert.equal(book.refreshDue(85, REFRESH_MIN_MS), true, 'a price past the bid frontier (directed distance below zero)');
   assert.equal(book.refreshDue(115, REFRESH_MIN_MS), true, 'and past the ask frontier');
@@ -354,6 +355,27 @@ test('bybit full book: a side that came empty is whole, and empty, out to the gu
   assert.deepEqual(sides(book).a, [[101, 1], [158, 1]], 'past the cut nothing is taken');
   // An empty side is due for a refresh (paced), and the refresh brings what lies past the frontier.
   assert.equal(book.refreshDue(100, REFRESH_MIN_MS), true);
+});
+
+test('bybit full book: an answer cut to its nearest levels never shrinks what a side is judged to reach', () => {
+  // Capped sides of 10,000 levels on a 0.001 grid around 100 (frontiers 90 and 110), the price at 106 before the seed's audit, and
+  // the audit cut to its nearest 5,000 levels a side: whole as far as it goes (111 on the ask side, past the frontier 110), short of
+  // what the venue holds (a full answer reaches 116). Taken as the side's reach, it left the ask side (4 left of 10 a full snapshot
+  // reaches) never due while the price held.
+  const grid = (from: number, step: number, count: number): Rows => Array.from({ length: count }, (_, i) => [Math.round((from + step * i) * 1000) / 1000, 1] as [number, number]);
+  const book = seededBook(grid(99.999, -0.001, SNAPSHOT_CAP), grid(100.001, 0.001, SNAPSHOT_CAP));
+  assert.deepEqual(book.frontiers, { bid: 90, ask: 110 });
+  // The jump: asks up to 106 taken, bids from 100 to 105.999 placed.
+  book.delta(delta(6, grid(100, 0.001, 6_000), grid(100.001, 0.001, 5_999).map(([p]): [number, number] => [p, 0])), 1);
+  assert.equal(book.mid(), (105.999 + 106) / 2);
+  let epoch = book.beginRefresh(AUDIT_DELAY_MS);
+  assert.equal(book.snapshot(snap(6, grid(105.999, -0.001, 5_000), grid(106, 0.001, 5_001).slice(1)), epoch, AUDIT_DELAY_MS), 'unchanged', 'the cut audit agrees and only checks');
+  assert.deepEqual(book.frontiers, { bid: 90, ask: 110 });
+  // The price holds: the ask side, 4 left where a full snapshot reaches 10, is due after the pace.
+  assert.equal(book.refreshDue(106, AUDIT_DELAY_MS + REFRESH_MIN_MS), true);
+  epoch = book.beginRefresh(AUDIT_DELAY_MS + REFRESH_MIN_MS);
+  assert.equal(book.snapshot(snap(6, grid(105.999, -0.001, SNAPSHOT_CAP), grid(106.001, 0.001, SNAPSHOT_CAP)), epoch, AUDIT_DELAY_MS + REFRESH_MIN_MS), 'extended');
+  assert.equal(book.frontiers.ask, 116);
 });
 
 test('bybit full book: a refresh adds only coverage past the live frontiers; inside, the stream-kept book stays', () => {

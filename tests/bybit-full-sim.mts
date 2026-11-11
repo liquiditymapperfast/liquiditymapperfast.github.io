@@ -75,8 +75,13 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
     // Drift (about 2 % an hour), and about three times an hour a jump of 3 to 12 % (spot's is past its whole reach at the top). The
     // mid stays where the grid holds a snapshot's whole reach: a perpetual's cut, spot's 10,000 levels.
     // Each hour has its own trend, up to 3 % an hour either way (a trending market sets a new high or low every minute).
-    // Some hours are clean trends (little noise: a new high or low nearly every minute), others noisy.
-    if (u % (3_600_000 / STEP_MS) === 0) { trend = (r() * 2 - 1) * 0.03 * mid / (3_600_000 / STEP_MS); noise = r() < 0.4 ? 0.1 : 1.6; }
+    // Some hours are clean trends (little noise: a new high or low nearly every minute), others noisy, and some plateaus (no trend,
+    // little noise: whatever a jump left uncovered stays uncovered unless a refresh comes).
+    if (u % (3_600_000 / STEP_MS) === 0) {
+      const regime = r();
+      trend = regime < 0.3 ? 0 : (r() * 2 - 1) * 0.03 * mid / (3_600_000 / STEP_MS);
+      noise = regime < 0.3 || regime < 0.6 ? 0.1 : 1.6;
+    }
     let move = trend + (r() - 0.5) * noise;
     if (r() < (3 * STEP_MS) / 3_600_000) move += (r() < 0.5 ? -1 : 1) * mid * (0.03 + r() * 0.09);
     const [floor, ceiling] = kind === 'perp' ? [300, 1800] : [700, 1300];
@@ -97,7 +102,7 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
     return { u: ++u, seq: (seq += 1 + Math.floor(r() * 3)), ts: 0, b, a };
   };
   // Replicas: one answer in ten from one to three minutes back, three in a hundred degraded (whole near the mid, a third beyond), and
-  // three in a hundred cut to their nearest levels (a perpetual's to a fifth of the cap, about 12 % here, spot's to half of it): whole
+  // six in a hundred cut to their nearest levels (a perpetual's to a fifth of the cap, about 12 % here, spot's to half of it): whole
   // as far as they go, and short.
   const kept: FullSnapshot[] = [];
   const replica = (): FullSnapshot => {
@@ -109,7 +114,7 @@ export function simulate(make: () => BookUnderTest, rules: Rules, seed: number, 
       const thin = (rows: [number, number][]): [number, number][] => rows.filter(([p], i) => Math.abs(p - m) <= near || i % 3 === 0 || i === rows.length - 1);
       return { ...s, b: thin(s.b), a: thin(s.a) };
     }
-    if (x < 0.16) {
+    if (x < 0.19) {
       const keep = kind === 'perp' ? Math.floor(SNAPSHOT_CAP / 5) : Math.floor(SNAPSHOT_CAP / 2);
       return { ...s, b: s.b.slice(0, keep), a: s.a.slice(0, keep) };
     }
