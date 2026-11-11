@@ -2295,7 +2295,6 @@
  "Windows": "Pencereler",
  "Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).": "Hacim profilinin kullandığı saat diliminde her gün veya hafta, ya da seansları (hacim profili panelinde ayarlanır).",
  "How many": "Kaç tane",
- "The latest windows up to the chart's right edge.": "Grafiğin sağ kenarına kadar en son pencereler.",
  "Block": "Blok",
  "How long each letter stands for: half an hour for a day or a session, four hours for a week.": "Her harfin neyi temsil ettiği: gün veya seans için yarım saat, hafta için dört saat.",
  "By the window": "Pencereye göre",
@@ -2332,5 +2331,17 @@
  "Who opened: the last {n} days": "“Kimin açtığı”: son {n} gün",
  "Who opened: the last {n} hours": "“Kimin açtığı”: son {n} saat",
  "last {n} days": "son {n} gün",
- "last {n} hours": "son {n} saat"
+ "last {n} hours": "son {n} saat",
+ "{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).": "{market} piyasasının zirvesi, seçilen piyasaların çoğunun durduğu yerin ({price}) {bp} bp üstüne çıktı.",
+ "{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).": "{market} piyasasının dibi, seçilen piyasaların çoğunun durduğu yerin ({price}) {bp} bp altına indi.",
+ "{markets}, {n}-minute blocks": "{markets}, {n} dakikalık bloklar",
+ "Every window in view, or the latest few up to the chart's right edge.": "Görünümdeki tüm pencereler ya da grafiğin sağ kenarına kadar son birkaçı.",
+ "All in view": "Görünümdekilerin tümü",
+ "Which markets' candles the blocks are made from.": "Blokların hangi piyasaların mumlarından oluşturulacağı.",
+ "Hollow blocks need the other venues' candles, read back to {date}: older blocks are drawn without them.": "İçi boş bloklar diğer borsaların mumlarına ihtiyaç duyar; mumlar {date} tarihine kadar geriye okunur: daha eski bloklar bunlar olmadan çizilir.",
+ "Each block spans where most of the ticked markets' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.": "Her blok, işaretlenen piyasaların hacminin çoğunun işlem gördüğü aralığı kapsar; her piyasa önce grafik piyasasına olan olağan farkı kadar kaydırılır. Yalnızca birinin ulaştığı satır içi boş çizilir (üç veya daha fazla piyasada). Daha çok piyasa daha uzun sürede yüklenir; hiçbiri işaretli değilse TPO yoktur.",
+ "From the candles of {markets}, in blocks of {n} minutes.": "{markets} mumlarından, {n} dakikalık bloklarla.",
+ "Days and weeks reach back about thirteen months; scroll the chart back to see them.": "Günler ve haftalar yaklaşık on üç ay geriye uzanır; görmek için grafiği geriye kaydırın.",
+ "{market}: its history reaches back to {date} only, so older windows are drawn without it.": "{market}: geçmişi yalnızca {date} tarihine kadar uzanıyor, bu yüzden daha eski pencereler onsuz çizilir.",
+ "Every window in view is drawn (or, under How many, the latest few), back about thirteen months: scroll the chart back to see older days. Zoomed out, each row is one bar as long as its blocks, in the colour of when the market was at that price. Candles from can take markets you tick instead of the chart market: each block then spans where most of their volume traded, and a row only one of them reached is drawn hollow.": "Görünümdeki her pencere çizilir (ya da Kaç tane altında yalnızca son birkaçı), yaklaşık on üç ay geriye kadar: eski günleri görmek için grafiği geriye kaydırın. Uzaklaştırıldığında her satır, blokları kadar uzun tek bir çubuktur ve piyasanın o fiyatta bulunduğu zamanın renginde çizilir. Mumların kaynağı, grafik piyasası yerine işaretlediğiniz piyasaları alabilir: her blok o zaman hacimlerinin çoğunun işlem gördüğü aralığı kapsar ve yalnızca birinin ulaştığı satır içi boş çizilir."
 }

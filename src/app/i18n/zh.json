@@ -2213,7 +2213,6 @@
  "Windows": "窗口",
  "Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).": "按成交量分布所用的时区划分的每日或每周，或其时段（在成交量分布面板中设置）。",
  "How many": "数量",
- "The latest windows up to the chart's right edge.": "最近的窗口，直到图表右边缘。",
  "Block": "方块",
  "How long each letter stands for: half an hour for a day or a session, four hours for a week.": "每个字母代表多长时间：日或时段为半小时，周为四小时。",
  "By the window": "按窗口",
@@ -2250,5 +2249,17 @@
  "Who opened: the last {n} days": "“谁在开仓”：最近 {n} 天",
  "Who opened: the last {n} hours": "“谁在开仓”：最近 {n} 小时",
  "last {n} days": "最近 {n} 天",
- "last {n} hours": "最近 {n} 小时"
+ "last {n} hours": "最近 {n} 小时",
+ "{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).": "{market} 的高点超出所选市场大部分停下的位置（{price}）{bp} 基点。",
+ "{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).": "{market} 的低点低于所选市场大部分停下的位置（{price}）{bp} 基点。",
+ "{markets}, {n}-minute blocks": "{markets}，{n} 分钟方块",
+ "Every window in view, or the latest few up to the chart's right edge.": "视图中的所有窗口，或直到图表右边缘的最近几个。",
+ "All in view": "视图内全部",
+ "Which markets' candles the blocks are made from.": "方块由哪些市场的 K 线生成。",
+ "Hollow blocks need the other venues' candles, read back to {date}: older blocks are drawn without them.": "空心方块需要其他交易所的 K 线，回溯读取到 {date}：更早的方块在绘制时不包含它们。",
+ "Each block spans where most of the ticked markets' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.": "每个方块覆盖所勾选市场的大部分成交量成交的位置，每个市场先按其与图表市场的通常差价平移；仅其中一个市场到达的行绘为空心（三个及以上市场时）。市场越多，加载越慢；一个都不勾选则没有 TPO。",
+ "From the candles of {markets}, in blocks of {n} minutes.": "来自 {markets} 的 K 线，按 {n} 分钟分块。",
+ "Days and weeks reach back about thirteen months; scroll the chart back to see them.": "日和周大约可回溯十三个月；向后滚动图表即可查看。",
+ "{market}: its history reaches back to {date} only, so older windows are drawn without it.": "{market}：其历史只能回溯到 {date}，因此更早的窗口绘制时不含它。",
+ "Every window in view is drawn (or, under How many, the latest few), back about thirteen months: scroll the chart back to see older days. Zoomed out, each row is one bar as long as its blocks, in the colour of when the market was at that price. Candles from can take markets you tick instead of the chart market: each block then spans where most of their volume traded, and a row only one of them reached is drawn hollow.": "视图中的每个窗口都会绘制（或在“数量”下只绘制最近几个），回溯约十三个月：向后滚动图表可查看更早的日期。缩小后，每一行是一条与其方块等长的柱，颜色表示市场处于该价格的时间。“K 线来源”可改用勾选的市场，而不是图表的市场：每个方块此时覆盖这些市场大部分成交量成交的位置，仅其中一个市场到达的行绘为空心。"
 }

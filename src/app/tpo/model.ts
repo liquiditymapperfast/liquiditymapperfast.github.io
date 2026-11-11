@@ -18,23 +18,39 @@ import type { CandleRow } from '../store.ts';
 
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
-/** One block: its start, high, low, open and close, its volume in USD, and whether it is over (a block under way can still grow). */
-export interface Block { t: number; h: number; l: number; o: number; c: number; usd: number; closed: boolean }
+/** A market whose wick alone went past where most of the chosen markets stopped: which, how far (bp) and that point (`mergeBlocks`). */
+export interface Alone { id: string; bp: number; price: number }
+
+/**
+ * One block: its start, high, low, open and close, its volume in USD, and whether it is over (a block under way can still grow). A block of
+ * chosen markets (`mergeBlocks`) also says how far one market's wick alone reached past its high or low (`xh`, `xl`, drawn hollow and never
+ * counted), and which market that was.
+ */
+export interface Block { t: number; h: number; l: number; o: number; c: number; usd: number; closed: boolean; xh?: number; xl?: number; up?: Alone; down?: Alone }
 
 /** The start of the block holding `t` on the grid of blocks of `blockMs` that starts at `from`. */
 export const blockStart = (t: number, from: number, blockMs: number): number => from + Math.floor((t - from) / blockMs) * blockMs;
+
+/** The index of the first bar starting at or after `t` in bars sorted by start. */
+function firstAt(bars: readonly CandleRow[], t: number): number {
+  let a = 0, z = bars.length;
+  while (a < z) { const m = (a + z) >> 1; if (bars[m]![0] < t) a = m + 1; else z = m; }
+  return a;
+}
 
 /**
  * The blocks of [from, to) from candles of `barMs` (start, open, high, low, close, volume in coins), oldest first, on the grid that starts at
  * `from`: a block with no candle is left out (nobody traded, or the history does not reach it). A block is over once its end is at or
  * before `now`. `replay`: candles that end after `now` are not read (one still forming at a replay's moment carries its future high and
- * low); live, the candle under way is the newest price known and is read.
+ * low); live, the candle under way is the newest price known and is read. `bars` are sorted by start (a history's are): only those inside
+ * the window are visited, so a window a year back in a year of half hours is read as quickly as today's.
  */
 export function blocksOf(bars: readonly CandleRow[], from: number, to: number, blockMs: number, barMs: number, now: number, replay = false): Block[] {
   const out = new Map<number, Block & { first: number; last: number }>();
-  for (const b of bars) {
-    const t = b[0];
-    if (t < from || t >= to || t > now || (replay && t + barMs > now)) continue;
+  for (let i = firstAt(bars, from); i < bars.length; i++) {
+    const b = bars[i]!, t = b[0];
+    if (t >= to) break;
+    if (t > now || (replay && t + barMs > now)) continue;
     const high = b[2], low = b[3];
     if (!(high >= low) || !(low > 0)) continue;
     const k = blockStart(t, from, blockMs), usd = (b[5] > 0 ? b[5] : 0) * (high + low + b[4]) / 3;
@@ -66,15 +82,20 @@ export function withLive(blocks: Block[], blockMs: number, live: { t: number; h:
 
 export type Extreme = 'poor' | 'tail' | 'neither';
 
-/** One block on its rows: its letter's index in the window, its start, its first and last row, its high, low and volume, and the rows drawn hollow. */
-export interface BlockRows { k: number; t: number; a: number; z: number; h: number; l: number; usd: number; closed: boolean; hollow: ReadonlySet<number> }
+/**
+ * One block on its rows: its letter's index in the window, its start, its first and last row counted (`a`, `z`) and drawn (`ra`, `rz`: past
+ * them, where one chosen market alone reached, the rows are drawn hollow and not counted), its high, low and volume, the rows drawn hollow,
+ * and the market that reached each side alone.
+ */
+export interface BlockRows { k: number; t: number; a: number; z: number; ra: number; rz: number; h: number; l: number; usd: number; closed: boolean; hollow: ReadonlySet<number>; up?: Alone; down?: Alone }
 
 export interface TpoProfile {
   key: string; from: number; to: number; blockMs: number; R: number;
   blocks: BlockRows[];
-  /** Blocks per row. */
+  /** Blocks per row (the rows counted). */
   counts: Map<number, number>;
-  lo: number; hi: number; total: number;
+  /** The rows counted (the calls are read at their extremes), and the rows drawn (with what one market alone reached). */
+  lo: number; hi: number; drawLo: number; drawHi: number; total: number;
   /** Rows: the point of control, the value area's top and bottom rows. */
   poc: number; vah: number; val: number;
   /** The initial balance's top and bottom rows (null without its blocks), and how many blocks it spans. */
@@ -139,7 +160,8 @@ export const ibBlocksOf = (blockMs: number): number => Math.max(1, Math.round(HO
 
 /**
  * The profile of one window from its blocks, on rows of `R`, with the value area holding `share` of the TPOs; null when nothing traded or
- * the rows would be too many. `hollow`: per block start, the rows drawn hollow (`hollowRows`).
+ * the rows would be too many. `hollow`: per block start, the rows drawn hollow (`hollowRows`). What one chosen market alone reached past a
+ * block (`xh`, `xl`) is drawn hollow too, and never counted: the point of control, the value area and every call are the blocks' own.
  */
 export function buildProfile(win: { key: string; from: number; to: number }, blocks: readonly Block[], blockMs: number, R: number, share: number, now: number, hollow?: ReadonlyMap<number, ReadonlySet<number>>): TpoProfile | null {
   if (!blocks.length || !(R > 0)) return null;
@@ -148,7 +170,17 @@ export function buildProfile(win: { key: string; from: number; to: number }, blo
   const { lo, hi } = span, e = extremes(blocks, R, 0, lo, hi), { counts } = e;
   const area = valueArea(counts, lo, hi, share);
   const none: ReadonlySet<number> = new Set();
-  const rows: BlockRows[] = blocks.map(b => ({ k: Math.round((b.t - win.from) / blockMs), t: b.t, a: rowOf(b.l, R), z: rowOf(b.h, R), h: b.h, l: b.l, usd: b.usd, closed: b.closed, hollow: hollow?.get(b.t) ?? none }));
+  let drawLo = lo, drawHi = hi;
+  const rows: BlockRows[] = blocks.map(b => {
+    const a = rowOf(b.l, R), z = rowOf(b.h, R), given = hollow?.get(b.t);
+    // Past the block, as far as one market alone reached: rows drawn hollow (none where they would be too many to draw).
+    let ra = b.xl !== undefined ? rowOf(b.xl, R) : a, rz = b.xh !== undefined ? rowOf(b.xh, R) : z;
+    if (!Number.isSafeInteger(ra) || !Number.isSafeInteger(rz) || ra > a || rz < z || rz - ra + 1 > MAX_TPO_ROWS) { ra = a; rz = z; }
+    let marks: ReadonlySet<number> = given ?? none;
+    if (ra < a || rz > z) { const s = new Set(given ?? []); for (let r = ra; r < a; r++) s.add(r); for (let r = z + 1; r <= rz; r++) s.add(r); marks = s; }
+    if (ra < drawLo) drawLo = ra; if (rz > drawHi) drawHi = rz;
+    return { k: Math.round((b.t - win.from) / blockMs), t: b.t, a, z, ra, rz, h: b.h, l: b.l, usd: b.usd, closed: b.closed, hollow: marks, ...(rz > z && b.up ? { up: b.up } : {}), ...(ra < a && b.down ? { down: b.down } : {}) };
+  });
   const ibBlocks = ibBlocksOf(blockMs), first = rows.filter(b => b.k < ibBlocks);
   // The four grids: a call that holds on all of them does not depend on where the row edges fall.
   let topVotes = 0, bottomVotes = 0;
@@ -164,7 +196,7 @@ export function buildProfile(win: { key: string; from: number; to: number }, blo
   for (const [r, c] of counts) { if (r > area.poc) above += c; else if (r < area.poc) below += c; }
   const last = blocks[blocks.length - 1]!;
   return {
-    key: win.key, from: win.from, to: win.to, blockMs, R, blocks: rows, counts, lo, hi, total: area.total,
+    key: win.key, from: win.from, to: win.to, blockMs, R, blocks: rows, counts, lo, hi, drawLo, drawHi, total: area.total,
     poc: area.poc, vah: area.vah, val: area.val,
     ibh: first.length ? Math.max(...first.map(b => b.z)) : null, ibl: first.length ? Math.min(...first.map(b => b.a)) : null, ibBlocks,
     open: blocks[0]!.t < win.from + blockMs ? rowOf(blocks[0]!.o, R) : null, close: rowOf(last.c, R),
@@ -283,6 +315,61 @@ export function hollowRows(mine: Block, peers: readonly Peer[], R: number, block
 export function overshootOf(mine: Block, peers: readonly Peer[], blockMs = 30 * MIN): { up: number; down: number; top: number; bottom: number } | null {
   const m = majority(mine, peers, blockMs);
   return m ? { up: Math.max(0, 1e4 * Math.log(mine.h / m.top)), down: Math.max(0, 1e4 * Math.log(m.bottom / mine.l)), top: m.top, bottom: m.bottom } : null;
+}
+
+/**
+ * One chosen market for `mergeBlocks`: its id, its blocks, its usual gap to the chart market at each block (bp, `trailingGaps`) and up to
+ * when its history is known.
+ */
+export interface Part { id: string; blocks: ReadonlyMap<number, Block>; gap: (t: number) => number; heldTo: number }
+
+/** The volume-weighted median of `xs` (each with its weight), walking from the top (`down`) or the bottom: where half the volume is counted. */
+function weightedMedian(xs: readonly { x: number; w: number }[], down: boolean): number {
+  const total = xs.reduce((s, v) => s + v.w, 0), sorted = [...xs].sort((a, b) => down ? b.x - a.x : a.x - b.x);
+  let acc = 0;
+  for (const v of sorted) { acc += v.w; if (acc >= total / 2) return v.x; }
+  return sorted[sorted.length - 1]!.x;
+}
+
+/**
+ * The blocks of several chosen markets as one, in the chart market's prices (Karl, 2026-11-11: candles from chosen markets, as the VWAP's):
+ * each market moved by its usual gap to the chart market first, a block spans where most of their volume reached (the volume-weighted median
+ * of their highs, and of their lows: one market's lone wick adds no row), its volume is all of theirs, its open and close are the chart
+ * market's where it is among them (`ref`), else the largest's. With `hollow`, where one market's wick went at least a row and
+ * `HOLLOW_MIN_BP` past that (its range widened there, not moved: as `hollowRows`), the block reaches on to it (`xh`, `xl`), naming the market
+ * that went farthest; judged only with three markets or more, and once each has read past the block's end or ten minutes after it ended.
+ * Blocks of [from, to) on the grid the parts' blocks were cut on, oldest first.
+ */
+export function mergeBlocks(parts: readonly Part[], ref: string | null, from: number, to: number, blockMs: number, R: number, now: number, hollow: boolean): Block[] {
+  const times = new Set<number>();
+  for (const p of parts) for (const t of p.blocks.keys()) if (t >= from && t < to) times.add(t);
+  const out: Block[] = [];
+  for (const t of [...times].sort((a, b) => a - b)) {
+    const here: { id: string; h: number; l: number; o: number; c: number; w: number; read: boolean }[] = [];
+    for (const p of parts) {
+      const b = p.blocks.get(t);
+      if (!b) continue;
+      const f = Math.exp(-p.gap(t) / 1e4);
+      here.push({ id: p.id, h: b.h * f, l: b.l * f, o: b.o * f, c: b.c * f, w: b.usd, read: t + blockMs <= p.heldTo });
+    }
+    if (!here.length) continue;
+    // No volume known (a venue's candles without it): each market counts the same.
+    const weighed = here.some(x => x.w > 0) ? here : here.map(x => ({ ...x, w: 1 }));
+    const top = weightedMedian(weighed.map(x => ({ x: x.h, w: x.w })), true), bottom = weightedMedian(weighed.map(x => ({ x: x.l, w: x.w })), false);
+    const lead = here.find(x => x.id === ref) ?? [...weighed].sort((a, b) => b.w - a.w)[0]!;
+    const usd = here.reduce((s, x) => s + x.w, 0), end = t + blockMs;
+    const block: Block = { t, h: top, l: bottom, o: Math.min(top, Math.max(bottom, lead.o)), c: Math.min(top, Math.max(bottom, lead.c)), usd, closed: end <= now };
+    if (hollow && here.length >= 3 && (here.every(x => x.read) || now - end >= 10 * MIN)) {
+      const need = Math.max(1e4 * R / top, HOLLOW_MIN_BP);
+      for (const x of here) {
+        const up = 1e4 * Math.log(x.h / top), down = 1e4 * Math.log(bottom / x.l);
+        if (up >= need && -down < up / 2 && rowOf(x.h, R) > rowOf(top, R) && (block.xh === undefined || x.h > block.xh)) { block.xh = x.h; block.up = { id: x.id, bp: up, price: top }; }
+        if (down >= need && -up < down / 2 && rowOf(x.l, R) < rowOf(bottom, R) && (block.xl === undefined || x.l < block.xl)) { block.xl = x.l; block.down = { id: x.id, bp: down, price: bottom }; }
+      }
+    }
+    out.push(block);
+  }
+  return out;
 }
 
 /**

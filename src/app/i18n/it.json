@@ -2323,7 +2323,6 @@
  "Windows": "Finestre",
  "Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).": "Ogni giorno o settimana nel fuso usato dal profilo del volume, o le sue sessioni (impostate nel pannello del profilo del volume).",
  "How many": "Quante",
- "The latest windows up to the chart's right edge.": "Le finestre più recenti fino al bordo destro del grafico.",
  "Block": "Blocco",
  "How long each letter stands for: half an hour for a day or a session, four hours for a week.": "Quanto vale ogni lettera: mezz'ora per un giorno o una sessione, quattro ore per una settimana.",
  "By the window": "Secondo la finestra",
@@ -2368,5 +2367,17 @@
   "many": "ultime {n} ore",
   "one": "ultima {n} ora",
   "other": "ultime {n} ore"
- }
+ },
+ "{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).": "Il massimo di {market} è salito di {bp} pb sopra il punto in cui si è fermata la maggior parte dei mercati scelti ({price}).",
+ "{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).": "Il minimo di {market} è sceso di {bp} pb sotto il punto in cui si è fermata la maggior parte dei mercati scelti ({price}).",
+ "{markets}, {n}-minute blocks": "{markets}, blocchi da {n} minuti",
+ "Every window in view, or the latest few up to the chart's right edge.": "Tutte le finestre in vista, o solo le ultime fino al bordo destro del grafico.",
+ "All in view": "Tutte in vista",
+ "Which markets' candles the blocks are made from.": "Le candele di quali mercati formano i blocchi.",
+ "Hollow blocks need the other venues' candles, read back to {date}: older blocks are drawn without them.": "I blocchi vuoti richiedono le candele degli altri exchange, lette all'indietro fino al {date}: i blocchi più vecchi sono disegnati senza di esse.",
+ "Each block spans where most of the ticked markets' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.": "Ogni blocco copre dove è stata scambiata la maggior parte del volume dei mercati spuntati, ciascuno spostato prima del suo scarto abituale rispetto al mercato del grafico; una riga raggiunta da uno solo di essi è disegnata vuota (con tre mercati o più). Più mercati richiedono più tempo per caricarsi; senza nessuno spuntato non c'è TPO.",
+ "From the candles of {markets}, in blocks of {n} minutes.": "Dalle candele di {markets}, in blocchi da {n} minuti.",
+ "Days and weeks reach back about thirteen months; scroll the chart back to see them.": "I giorni e le settimane risalgono a circa tredici mesi fa; scorri il grafico indietro per vederli.",
+ "{market}: its history reaches back to {date} only, so older windows are drawn without it.": "{market}: il suo storico arriva solo fino al {date}, quindi le finestre più vecchie sono disegnate senza di esso.",
+ "Every window in view is drawn (or, under How many, the latest few), back about thirteen months: scroll the chart back to see older days. Zoomed out, each row is one bar as long as its blocks, in the colour of when the market was at that price. Candles from can take markets you tick instead of the chart market: each block then spans where most of their volume traded, and a row only one of them reached is drawn hollow.": "Viene disegnata ogni finestra in vista (o, sotto Quante, solo le ultime), fino a circa tredici mesi indietro: scorri il grafico indietro per vedere i giorni più vecchi. Con lo zoom allargato, ogni riga è una barra lunga come i suoi blocchi, del colore di quando il mercato era a quel prezzo. Candele da può usare i mercati che spunti al posto del mercato del grafico: ogni blocco copre allora dove è stata scambiata la maggior parte del loro volume, e una riga raggiunta da uno solo di essi è disegnata vuota."
 }

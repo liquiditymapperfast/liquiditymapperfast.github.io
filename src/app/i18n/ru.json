@@ -2351,7 +2351,6 @@
  "Windows": "Окна",
  "Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).": "Каждый день или неделя в часовом поясе профиля объёма либо его сессии (настраиваются в панели профиля объёма).",
  "How many": "Сколько",
- "The latest windows up to the chart's right edge.": "Последние окна до правого края графика.",
  "Block": "Блок",
  "How long each letter stands for: half an hour for a day or a session, four hours for a week.": "Сколько означает каждая буква: полчаса для дня или сессии, четыре часа для недели.",
  "By the window": "По окну",
@@ -2388,5 +2387,17 @@
  "Who opened: the last {n} days": "«Кто открывал»: последние {n} дн.",
  "Who opened: the last {n} hours": "«Кто открывал»: последние {n} ч",
  "last {n} days": "последние {n} дн.",
- "last {n} hours": "последние {n} ч"
+ "last {n} hours": "последние {n} ч",
+ "{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).": "Максимум {market} ушёл на {bp} б.п. выше того места, где остановилась основная часть выбранных рынков ({price}).",
+ "{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).": "Минимум {market} ушёл на {bp} б.п. ниже того места, где остановилась основная часть выбранных рынков ({price}).",
+ "{markets}, {n}-minute blocks": "{markets}, {n}-минутные блоки",
+ "Every window in view, or the latest few up to the chart's right edge.": "Все видимые окна или несколько последних до правого края графика.",
+ "All in view": "Все видимые",
+ "Which markets' candles the blocks are made from.": "Из свечей каких рынков строятся блоки.",
+ "Hollow blocks need the other venues' candles, read back to {date}: older blocks are drawn without them.": "Полым блокам нужны свечи других бирж, прочитанные назад до {date}: более старые блоки рисуются без них.",
+ "Each block spans where most of the ticked markets' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.": "Каждый блок охватывает то место, где торговалась основная часть объёма отмеченных рынков; сначала каждый рынок сдвигается на свой обычный разрыв с рынком графика. Строка, которой достиг только один из них, рисуется полой (от трёх рынков). Чем больше рынков, тем дольше загрузка; если ничего не отмечено, TPO нет.",
+ "From the candles of {markets}, in blocks of {n} minutes.": "По свечам {markets}, блоками по {n} мин.",
+ "Days and weeks reach back about thirteen months; scroll the chart back to see them.": "Дни и недели доступны примерно за тринадцать месяцев; прокрутите график назад, чтобы их увидеть.",
+ "{market}: its history reaches back to {date} only, so older windows are drawn without it.": "{market}: его история доступна только с {date}, поэтому более старые окна рисуются без него.",
+ "Every window in view is drawn (or, under How many, the latest few), back about thirteen months: scroll the chart back to see older days. Zoomed out, each row is one bar as long as its blocks, in the colour of when the market was at that price. Candles from can take markets you tick instead of the chart market: each block then spans where most of their volume traded, and a row only one of them reached is drawn hollow.": "Рисуется каждое видимое окно (или, в «Сколько», несколько последних) примерно за тринадцать месяцев: прокрутите график назад, чтобы увидеть более старые дни. При уменьшении масштаба каждая строка — одна полоса, такая же длинная, как её блоки, цвета того времени, когда рынок был на этой цене. «Свечи с» может брать отмеченные вами рынки вместо рынка графика: каждый блок тогда охватывает то место, где торговалась основная часть их объёма, а строка, которой достиг только один из них, рисуется полой."
 }

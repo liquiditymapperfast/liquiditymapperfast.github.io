@@ -4,8 +4,18 @@
  * half hour each letter stands for, four hours for a week by default); the size of a row (Auto from the coin's typical day, or a price
  * chosen for that coin); how it is drawn (blocks, letters or Auto by zoom; coloured by the time of the block or by how full the row is);
  * folded into profiles or laid out in time; the value area's share; which marks show; whether the Volume profile's lines follow the
- * TPO's levels; and the windows split or merged by hand, per coin, kind of window and block length.
+ * TPO's levels; whose candles it is worked out from (the chart market's, or markets chosen as the VWAP's are); and the windows split or
+ * merged by hand, per coin, kind of window and block length.
  */
+import { readVwapPicks, type VwapSource } from '../vwap/markets.ts';
+
+const DAY = 86_400_000;
+/**
+ * How far back the TPO's candles are kept (Karl, 2026-11-11: "make it also work with loading historical data"): about thirteen months, so
+ * a day a year back or twenty weeks can be drawn. The other venues' candles that mark hollow blocks are read two months back at most (a
+ * year of every venue switched on would be hundreds of requests); the daily candles Auto rows come from, a year and the weeks before it.
+ */
+export const TPO_REACH_MS = 400 * DAY, TPO_DAYS_REACH_MS = 475 * DAY;
 
 export type TpoPeriod = 'day' | 'week' | 'sessions';
 export const TPO_PERIODS: readonly TpoPeriod[] = ['day', 'week', 'sessions'];
@@ -21,8 +31,12 @@ export interface TpoSettings {
   period: TpoPeriod;
   /** Minutes per block, one of `TPO_BLOCKS` (0: the period's own). */
   block: number;
-  /** How many of the latest windows are drawn, the one under way among them. */
+  /** How many of the latest windows up to the chart's right edge are drawn, the one under way among them; 0: every window in view. */
   count: number;
+  /** Whose candles: the chart market's (or the one standing in for it), or the markets chosen (`picks`, as the VWAP's: `vwap/markets.ts`). */
+  source: VwapSource;
+  /** The markets chosen, as exchange and kind (`binance/spot`), at most `MAX_VWAP_MARKETS`: kept when the source is the chart's again. */
+  picks: string[];
   look: TpoLook;
   colour: TpoColour;
   /** The value area's share of the TPOs, in percent. */
@@ -48,14 +62,18 @@ export interface TpoSettings {
   splits: Record<string, string[]>;
   /** Merges per coin, kind of window and block length: each a calendar window's key, joined from its start to the window that ends there. */
   merges: Record<string, string[]>;
+  /** The settings' revision: 2 since every window in view became the default (a count of 5 saved before was the old default). */
+  v: number;
 }
 
 export const TPO_DEFAULTS: Readonly<TpoSettings> = {
-  on: false, period: 'day', block: 0, count: 5, look: 'auto', colour: 'time', share: 70, unfold: false, hollow: true, ib: true, calls: true,
-  stats: true, lines: true, rows: {}, splits: {}, merges: {},
+  on: false, period: 'day', block: 0, count: 0, source: 'chart', picks: [], look: 'auto', colour: 'time', share: 70, unfold: false, hollow: true,
+  ib: true, calls: true, stats: true, lines: true, rows: {}, splits: {}, merges: {}, v: 2,
 };
 
 export const MAX_TPO_COUNT = 20;
+/** Every window in view is at most this many of each kind (a session's, a day's): zoomed out further, the newest of them. */
+export const MAX_TPO_IN_VIEW = 120;
 /** Coins whose own rows are kept, and scopes of edits (three per coin), the oldest going first. */
 const MAX_COINS = 20;
 /** Splits and merges kept per coin. */
@@ -85,11 +103,14 @@ export function readTpo(saved: unknown): TpoSettings {
   const rows: Record<string, number> = {};
   // A row as fine as a billionth of a dollar stays possible (a coin priced in millionths); the profile refuses more than its rows' limit.
   if (s.rows && typeof s.rows === 'object') for (const [coin, v] of Object.entries(s.rows as Record<string, unknown>).slice(-MAX_COINS)) if (coinKey(coin) && typeof v === 'number' && Number.isFinite(v) && v >= 1e-12 && v <= 1e9) rows[coin] = v;
+  let count = typeof s.count === 'number' && Number.isInteger(s.count) && s.count >= 0 && s.count <= MAX_TPO_COUNT ? s.count : d.count;
+  // Saved before revision 2, a count of 5 was the default nobody chose (the TPO shipped with it on 2026-11-11): every window in view now.
+  if (s.v !== 2 && count === 5) count = 0;
   return {
     on: flag(s.on, d.on),
     period: TPO_PERIODS.includes(s.period as TpoPeriod) ? s.period as TpoPeriod : d.period,
     block: typeof s.block === 'number' && TPO_BLOCKS.includes(s.block) ? s.block : d.block,
-    count: typeof s.count === 'number' && Number.isInteger(s.count) && s.count >= 1 && s.count <= MAX_TPO_COUNT ? s.count : d.count,
+    count, source: s.source === 'chosen' ? 'chosen' : 'chart', picks: readVwapPicks(s.picks), v: 2,
     look: s.look === 'blocks' || s.look === 'letters' ? s.look : 'auto',
     colour: s.colour === 'count' ? 'count' : 'time',
     share: typeof s.share === 'number' && Number.isFinite(s.share) && s.share >= 50 && s.share <= 90 ? Math.round(s.share) : d.share,

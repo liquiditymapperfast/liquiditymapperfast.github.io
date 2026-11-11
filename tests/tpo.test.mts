@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_TPO_ROWS, autoRows, blocksOf, buildProfile, editedWindows, hollowRows, ibBlocksOf, ladder, letterOf, levelsOfProfile, rowChoices, trailingGaps, valueArea, withLive, type Block, type Peer } from '../src/app/tpo/model.ts';
+import { MAX_TPO_ROWS, autoRows, blocksOf, buildProfile, editedWindows, hollowRows, ibBlocksOf, ladder, letterOf, levelsOfProfile, mergeBlocks, rowChoices, trailingGaps, valueArea, withLive, type Block, type Part, type Peer } from '../src/app/tpo/model.ts';
 import { TPO_DEFAULTS, blockMsOf, editScope, readTpo, withEdits, withRows } from '../src/app/tpo/settings.ts';
 import { barFor } from '../src/app/tpo/layer.ts';
+import { paintTpo } from '../src/app/tpo/paint.ts';
+import { View } from '../src/app/view.ts';
+import { PALETTES } from '../src/app/theme.ts';
+import { LabelBoard } from '../src/app/labels.ts';
+import { rowOf } from '../src/shared/profile.ts';
 import type { CandleRow } from '../src/app/store.ts';
 import { TPO_BTC_2026_09_28 } from './fixtures/tpo-btc-2026-09-28.mts';
 
@@ -210,4 +215,120 @@ test('a split inside a merged window cuts the member it names; the window keeps 
   assert.deepEqual(cut.map(w => [w.from, w.to]), [[0, DAY + 28 * HALF], [DAY + 28 * HALF, 2 * DAY]]);
   // The same cut named after the first member cuts nothing (what the menu did before it looked the member up).
   assert.deepEqual(editedWindows(ws, [`${DAY + 28 * HALF}@a`], ['b'], HALF).map(w => [w.from, w.to]), [[0, 2 * DAY]]);
+});
+
+// --- Candles from chosen markets, every window in view, the compact look (2026-11-11) ---
+
+const part = (id: string, blocks: Block[], gap = 0, heldTo = Infinity): Part => ({ id, blocks: blockMap(blocks), gap: () => gap, heldTo });
+const blk = (t: number, h: number, l: number, usd: number, o = l, c = h): Block => ({ t, h, l, o, c, usd, closed: true });
+
+test('one chosen market alone gives its own blocks back', () => {
+  const mine = blocksOf(bars('binance'), win.from, win.to, HALF, HALF, NOW);
+  const merged = mergeBlocks([part('binance:BTCUSDT', mine)], 'binance:BTCUSDT', win.from, win.to, HALF, 50, NOW, true);
+  assert.deepEqual(merged.map(b => [b.t, b.h, b.l, b.o, b.c, b.usd]), mine.map(b => [b.t, b.h, b.l, b.o, b.c, b.usd]));
+  assert.ok(merged.every(b => b.xh === undefined && b.xl === undefined));
+});
+
+test('a block of chosen markets spans where most of their volume reached; a lone wick is drawn hollow and named, never counted', () => {
+  // Three markets: two agree on 100-101, the smallest wicks 30 bp over them.
+  const t0 = 0, parts = [part('a', [blk(t0, 101, 100, 600)]), part('b', [blk(t0, 101, 100, 300)]), part('c', [blk(t0, 101.3, 100, 100)])];
+  const [m] = mergeBlocks(parts, 'a', 0, HALF, HALF, 0.1, NOW, true);
+  assert.equal(m!.h, 101); assert.equal(m!.l, 100); assert.equal(m!.usd, 1000);
+  assert.equal(m!.xh, 101.3); assert.equal(m!.up!.id, 'c'); assert.ok(Math.abs(m!.up!.bp - 1e4 * Math.log(101.3 / 101)) < 1e-9);
+  // Drawn up to the wick, hollow there; counted as if the wick were not there at all.
+  const withWick = buildProfile({ key: 'w', from: 0, to: HALF }, [m!], HALF, 0.1, 0.7, NOW)!;
+  const without = buildProfile({ key: 'w', from: 0, to: HALF }, [{ ...m!, xh: undefined, up: undefined }], HALF, 0.1, 0.7, NOW)!;
+  assert.equal(withWick.drawHi, rowOf(101.3, 0.1)); assert.equal(withWick.hi, without.hi);
+  assert.deepEqual([withWick.poc, withWick.vah, withWick.val, withWick.top, withWick.topVotes, withWick.total], [without.poc, without.vah, without.val, without.top, without.topVotes, without.total]);
+  const b = withWick.blocks[0]!;
+  assert.ok(b.rz > b.z && b.hollow.size === b.rz - b.z && [...b.hollow].every(r => r > b.z));
+  assert.equal(b.up!.id, 'c');
+  // Off, the block is the body alone.
+  const [plain] = mergeBlocks(parts, 'a', 0, HALF, HALF, 0.1, NOW, false);
+  assert.equal(plain!.xh, undefined);
+});
+
+test('chosen markets: the larger volume decides, a moved range is no wick, two markets judge nothing, a market is moved by its gap first', () => {
+  // The largest market holds more than half the volume: its range is the block's.
+  const big = mergeBlocks([part('a', [blk(0, 102, 100, 700)]), part('b', [blk(0, 101, 99, 200)]), part('c', [blk(0, 101, 99, 100)])], 'a', 0, HALF, HALF, 0.1, NOW, true)[0]!;
+  assert.deepEqual([big.h, big.l], [102, 100]);
+  // A market whose whole range sits 30 bp higher moved (its gap changed): not hollow.
+  const moved = mergeBlocks([part('a', [blk(0, 101, 100, 400)]), part('b', [blk(0, 101, 100, 400)]), part('c', [blk(0, 101.3, 100.3, 200)])], 'a', 0, HALF, HALF, 0.1, NOW, true)[0]!;
+  assert.equal(moved.xh, undefined);
+  // Two markets: no hollow, however far one wick goes.
+  const two = mergeBlocks([part('a', [blk(0, 101, 100, 600)]), part('b', [blk(0, 103, 100, 400)])], 'a', 0, HALF, HALF, 0.1, NOW, true)[0]!;
+  assert.equal(two.xh, undefined); assert.equal(two.h, 101);
+  // A market 50 bp over the chart market as usual is moved down by that before it is weighed: no wick left.
+  const gap = 1e4 * Math.log(101.505 / 101);
+  const shifted = mergeBlocks([part('a', [blk(0, 101, 100, 400)]), part('b', [blk(0, 101, 100, 400)]), part('c', [blk(0, 101.505, 100.5, 200)], gap)], 'a', 0, HALF, HALF, 0.1, NOW, true)[0]!;
+  assert.equal(shifted.xh, undefined); assert.ok(Math.abs(shifted.h - 101) < 1e-9);
+  // A block a market has not read to its end is not judged until ten minutes after it ends.
+  const parts = [part('a', [blk(0, 101, 100, 600)]), part('b', [blk(0, 101, 100, 300)]), part('c', [blk(0, 101.3, 100, 100)], 0, HALF - MIN)];
+  assert.equal(mergeBlocks(parts, 'a', 0, HALF, HALF, 0.1, HALF + 5 * MIN, true)[0]!.xh, undefined);
+  assert.equal(mergeBlocks(parts, 'a', 0, HALF, HALF, 0.1, HALF + 10 * MIN, true)[0]!.xh, 101.3);
+  // The open and close are the chart market's where it is among them, else the largest's; a market with no block is left out.
+  const oc = mergeBlocks([part('a', [blk(0, 101, 100, 100, 100.2, 100.8)]), part('b', [blk(0, 101, 100, 900, 100.4, 100.6)]), part('c', [])], 'a', 0, HALF, HALF, 0.1, NOW, true)[0]!;
+  assert.deepEqual([oc.o, oc.c, oc.usd], [100.2, 100.8, 1000]);
+  assert.deepEqual([mergeBlocks([part('b', [blk(0, 101, 100, 900, 100.4, 100.6)]), part('d', [blk(0, 101, 100, 100, 100.1, 100.9)])], null, 0, HALF, HALF, 0.1, NOW, true)[0]!.o], [100.4]);
+});
+
+test('blocks read only the bars inside the window, as quickly at the end of a long history as at its start', () => {
+  const long: CandleRow[] = [];
+  for (let i = 0; i < 20_000; i++) long.push([i * HALF, 100, 101 + (i % 7), 99 - (i % 5), 100, 1] as unknown as CandleRow);
+  const from = 19_000 * HALF, to = from + DAY;
+  const fast = blocksOf(long, from, to, HALF, HALF, Infinity);
+  const slow = blocksOf(long.filter(b => b[0] >= from && b[0] < to), from, to, HALF, HALF, Infinity);
+  assert.deepEqual(fast, slow); assert.equal(fast.length, 48);
+});
+
+test('settings: candles from chosen markets, every window in view by default, an old default of five read as every window in view', () => {
+  assert.equal(TPO_DEFAULTS.count, 0); assert.equal(TPO_DEFAULTS.source, 'chart');
+  const read = readTpo({ source: 'chosen', picks: ['binance/perp', 'nowhere/perp', 'binance/perp', 'coinbase/spot'], count: 0 });
+  assert.equal(read.source, 'chosen'); assert.deepEqual(read.picks, ['binance/perp', 'coinbase/spot']); assert.equal(read.count, 0);
+  // Saved before revision 2 a count of five was the default: every window in view now. Saved since, or any other count, is kept.
+  assert.equal(readTpo({ count: 5 }).count, 0);
+  assert.equal(readTpo({ count: 5, v: 2 }).count, 5);
+  assert.equal(readTpo({ count: 7 }).count, 7);
+  assert.equal(readTpo({ source: 'nonsense' }).source, 'chart');
+  assert.equal(readTpo(readTpo({ count: 5, v: 2 })).count, 5);
+});
+
+test('Auto rows read up to an earlier day come from the days before it', () => {
+  const days: CandleRow[] = [];
+  // Ranges of 900 for the first 30 days, 90 for the 30 after.
+  for (let i = 0; i < 60; i++) days.push([DAY0 + i * DAY, 1000, 1000 + (i < 30 ? 900 : 90), 1000, 1000, 1] as unknown as CandleRow);
+  assert.equal(autoRows(days, DAY0 + 30 * DAY, 'day'), ladder(900 / 90));
+  assert.equal(autoRows(days, DAY0 + 60 * DAY, 'day'), ladder(90 / 90));
+});
+
+/** A canvas that counts what is drawn. */
+function countingCanvas(): { ctx: CanvasRenderingContext2D; fills: number; strokes: number } {
+  const out = { fills: 0, strokes: 0, ctx: null as unknown as CanvasRenderingContext2D };
+  const noop = (): void => {};
+  out.ctx = new Proxy({}, {
+    get: (_t, k) => k === 'fillRect' ? () => { out.fills++; } : k === 'strokeRect' || k === 'stroke' ? () => { out.strokes++; } : k === 'measureText' ? () => ({ width: 10 }) : noop,
+    set: () => true,
+  }) as unknown as CanvasRenderingContext2D;
+  return out;
+}
+
+test('zoomed out, a profile is drawn compact: one bar a pixel row, no outline, the point of control still there', () => {
+  const blocks = blocksOf(bars('binance'), win.from, win.to, HALF, HALF, NOW);
+  const p = buildProfile(win, blocks, HALF, 5, 0.7, NOW)!;
+  const rows = p.drawHi - p.drawLo + 1;
+  // Two days on 600 px and BTC's range on 300 px: blocks under a pixel wide, rows under a pixel tall.
+  const view = new View({ t0: win.from, t1: win.from + 2 * DAY, p0: p.low - 200, p1: p.high + 200 });
+  const c = countingCanvas();
+  const geos = paintTpo(c.ctx, { profiles: [p], settings: { ...TPO_DEFAULTS, on: true }, view, pw: 600, ph: 300, p: PALETTES.dark!, labels: new LabelBoard(), fold: 0, rank: () => 0, name: () => 'Sep 28', now: NOW, linesFor: () => false });
+  assert.equal(geos.length, 1); assert.ok(geos[0]!.compact);
+  const rowsPx = Math.ceil(((p.high + 5) - p.low) / (view.p1 - view.p0) * 300) + 2;
+  // Backing and bar per pixel row (no cell per block and row), under the rows the profile spans.
+  assert.ok(c.fills <= 2 * rowsPx + 4, `${c.fills} rects for ${rowsPx} pixel rows (${rows} rows)`);
+  assert.ok(c.fills >= 2 * Math.floor(rowsPx / 2));
+  // Its point of control drawn across the window (the Volume profile's lines do not stand for it here).
+  assert.ok(c.strokes >= 1);
+  // Laid out in time: one bar a block, not a cell a row.
+  const u = countingCanvas();
+  paintTpo(u.ctx, { profiles: [p], settings: { ...TPO_DEFAULTS, on: true, unfold: true }, view, pw: 600, ph: 300, p: PALETTES.dark!, labels: new LabelBoard(), fold: 1, rank: () => 0, name: () => '', now: NOW, linesFor: () => true });
+  assert.equal(u.fills, 2 * p.blocks.length);
 });

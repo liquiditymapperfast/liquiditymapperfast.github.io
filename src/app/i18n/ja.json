@@ -2213,7 +2213,6 @@
  "Windows": "期間",
  "Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).": "出来高プロファイルが使うタイムゾーンでの各日または各週、またはそのセッション（出来高プロファイルのパネルで設定）。",
  "How many": "表示数",
- "The latest windows up to the chart's right edge.": "チャートの右端までの直近の期間。",
  "Block": "ブロック",
  "How long each letter stands for: half an hour for a day or a session, four hours for a week.": "1文字が表す長さ：日またはセッションは30分、週は4時間。",
  "By the window": "期間に合わせる",
@@ -2250,5 +2249,17 @@
  "Who opened: the last {n} days": "「誰が建てたか」：直近 {n} 日",
  "Who opened: the last {n} hours": "「誰が建てたか」：直近 {n} 時間",
  "last {n} days": "直近 {n} 日",
- "last {n} hours": "直近 {n} 時間"
+ "last {n} hours": "直近 {n} 時間",
+ "{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).": "{market} の高値は、選んだ市場の大半が止まった所（{price}）を {bp} bp 超えました。",
+ "{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).": "{market} の安値は、選んだ市場の大半が止まった所（{price}）を {bp} bp 下回りました。",
+ "{markets}, {n}-minute blocks": "{markets}、{n} 分ブロック",
+ "Every window in view, or the latest few up to the chart's right edge.": "表示中のすべての期間、またはチャートの右端までの直近のいくつか。",
+ "All in view": "表示中すべて",
+ "Which markets' candles the blocks are made from.": "ブロックをどの市場のローソク足から作るか。",
+ "Hollow blocks need the other venues' candles, read back to {date}: older blocks are drawn without them.": "中抜きブロックには他の取引所のローソク足が必要で、{date} までさかのぼって読み込みます。それより古いブロックはそれなしで描かれます。",
+ "Each block spans where most of the ticked markets' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.": "各ブロックは、チェックした市場の出来高の大半が約定した範囲に広がります。各市場は先に、チャートの市場との通常の差だけずらします。1つの市場だけが届いた行は中抜きで描かれます（3市場以上のとき）。市場が多いほど読み込みに時間がかかります。何もチェックしなければ TPO はありません。",
+ "From the candles of {markets}, in blocks of {n} minutes.": "{markets} のローソク足から、{n} 分ブロックで作成。",
+ "Days and weeks reach back about thirteen months; scroll the chart back to see them.": "日と週は約13か月さかのぼれます。チャートを過去へスクロールして見てください。",
+ "{market}: its history reaches back to {date} only, so older windows are drawn without it.": "{market}：履歴は {date} までしかさかのぼれないため、それより古い期間はこの市場なしで描かれます。",
+ "Every window in view is drawn (or, under How many, the latest few), back about thirteen months: scroll the chart back to see older days. Zoomed out, each row is one bar as long as its blocks, in the colour of when the market was at that price. Candles from can take markets you tick instead of the chart market: each block then spans where most of their volume traded, and a row only one of them reached is drawn hollow.": "表示中のすべての期間が描かれます（「表示数」で指定した場合は直近のいくつかだけ）。さかのぼれるのは約13か月で、古い日はチャートを過去へスクロールして見てください。ズームアウトすると、各行はブロックの長さと同じ長さの 1 本のバーになり、市場がその価格にいた時期の色で描かれます。「ローソク足の出所」では、チャートの市場の代わりにチェックした市場を使えます。その場合、各ブロックはそれらの出来高の大半が約定した範囲に広がり、1つの市場だけが届いた行は中抜きで描かれます。"
 }

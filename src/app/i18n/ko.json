@@ -2213,7 +2213,6 @@
  "Windows": "구간",
  "Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).": "거래량 프로파일이 쓰는 시간대 기준의 각 일 또는 주, 또는 그 세션(거래량 프로파일 패널에서 설정).",
  "How many": "개수",
- "The latest windows up to the chart's right edge.": "차트 오른쪽 끝까지의 최근 구간.",
  "Block": "블록",
  "How long each letter stands for: half an hour for a day or a session, four hours for a week.": "글자 하나가 나타내는 길이: 일이나 세션은 30분, 주는 4시간.",
  "By the window": "구간별",
@@ -2250,5 +2249,17 @@
  "Who opened: the last {n} days": "“누가 열었는지”: 최근 {n}일",
  "Who opened: the last {n} hours": "“누가 열었는지”: 최근 {n}시간",
  "last {n} days": "최근 {n}일",
- "last {n} hours": "최근 {n}시간"
+ "last {n} hours": "최근 {n}시간",
+ "{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).": "{market}의 고점이 선택한 시장 대부분이 멈춘 곳({price})을 {bp} bp 넘어갔습니다.",
+ "{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).": "{market}의 저점이 선택한 시장 대부분이 멈춘 곳({price}) 아래로 {bp} bp 내려갔습니다.",
+ "{markets}, {n}-minute blocks": "{markets}, {n}분 블록",
+ "Every window in view, or the latest few up to the chart's right edge.": "보이는 모든 구간, 또는 차트 오른쪽 끝까지의 최근 몇 개.",
+ "All in view": "보이는 것 모두",
+ "Which markets' candles the blocks are made from.": "블록을 만들 캔들이 어느 시장의 것인지.",
+ "Hollow blocks need the other venues' candles, read back to {date}: older blocks are drawn without them.": "속 빈 블록에는 다른 거래소의 캔들이 필요하며, {date}까지 거슬러 읽습니다. 그보다 오래된 블록은 그것 없이 그려집니다.",
+ "Each block spans where most of the ticked markets' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.": "각 블록은 체크한 시장의 거래량 대부분이 거래된 범위에 걸칩니다. 각 시장은 먼저 차트 시장과의 평소 차이만큼 옮깁니다. 그중 한 시장만 닿은 행은 속 빈 블록으로 그려집니다(시장이 셋 이상일 때). 시장이 많을수록 불러오는 데 오래 걸리며, 아무것도 체크하지 않으면 TPO가 없습니다.",
+ "From the candles of {markets}, in blocks of {n} minutes.": "{markets}의 캔들에서, {n}분 블록으로.",
+ "Days and weeks reach back about thirteen months; scroll the chart back to see them.": "일과 주는 약 13개월 전까지 거슬러 올라갑니다. 차트를 과거로 스크롤하면 볼 수 있습니다.",
+ "{market}: its history reaches back to {date} only, so older windows are drawn without it.": "{market}: 이력이 {date}까지만 있어 그보다 오래된 구간은 이 시장 없이 그려집니다.",
+ "Every window in view is drawn (or, under How many, the latest few), back about thirteen months: scroll the chart back to see older days. Zoomed out, each row is one bar as long as its blocks, in the colour of when the market was at that price. Candles from can take markets you tick instead of the chart market: each block then spans where most of their volume traded, and a row only one of them reached is drawn hollow.": "보이는 모든 구간이 그려집니다('개수'에서 정하면 최근 몇 개만). 약 13개월 전까지 거슬러 올라가며, 더 오래된 날은 차트를 과거로 스크롤하면 볼 수 있습니다. 축소하면 각 행은 블록의 길이만큼 긴 막대 하나가 되고, 시장이 그 가격에 있던 때의 색으로 그려집니다. '캔들 출처'에서는 차트의 시장 대신 체크한 시장을 쓸 수 있습니다. 이때 각 블록은 그 시장들의 거래량 대부분이 거래된 범위에 걸치고, 그중 한 시장만 닿은 행은 속 빈 블록으로 그려집니다."
 }

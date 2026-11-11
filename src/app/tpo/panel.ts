@@ -3,13 +3,21 @@ import { el } from '../dom.ts';
 import { heading, note, selectRow, switchRow } from '../ui.ts';
 import { helpButton } from '../help.ts';
 import { t } from '../i18n.ts';
-import { price as fmtPrice } from '../format.ts';
+import { clock, price as fmtPrice } from '../format.ts';
 import { currentCoin } from '../coin.ts';
+import { venueLabel } from '../venues.ts';
+import { venueMark } from '../venue-marks.ts';
+import { parsePick } from '../market-choice.ts';
+import { MAX_VWAP_MARKETS, VWAP_PICKS, pickTarget, seedPicks } from '../vwap/markets.ts';
 import { rowChoices } from './model.ts';
 import { MAX_TPO_COUNT, TPO_BLOCKS, blockMsOf, editScope, withRows, type TpoSettings } from './settings.ts';
 
-/** What the map knows for the panel: the Auto row size for this coin (0 until its days are read) and whose candles the TPO reads. */
-export interface TpoInfo { auto: number; market: string | null; minutes: number }
+/**
+ * What the map knows for the panel: the Auto row size for this coin (0 until its days are read), whose candles the TPO reads (the chart
+ * market, and the chosen markets' names), the block's minutes, the markets whose history begins after the oldest window drawn, and since
+ * when the other venues mark hollow blocks.
+ */
+export interface TpoInfo { auto: number; market: string | null; minutes: number; names?: string[]; short?: { name: string; from: number }[]; hollowFrom?: number }
 
 /**
  * The TPO panel, in the order a person decides: whether it shows; which windows and how many (the zone and the sessions are the Volume
@@ -23,7 +31,7 @@ export function buildTpoPanel(store: Store, tools: HTMLElement, body: HTMLElemen
   body.append(
     switchRow(t('Show TPO'), t('Time Price Opportunity: each half hour of a day stacked at the prices it traded at, so the day\'s shape shows where the market spent its time.'), s.on, on => set({ on }, true)),
     selectRow(t('Windows'), t('Each day or week in the zone the Volume profile uses, or its sessions (set in the Volume profile panel).'), [['day', t('Day')], ['week', t('Week')], ['sessions', t('Sessions')]], s.period, v => set({ period: v === 'week' || v === 'sessions' ? v : 'day' }, true)),
-    selectRow(t('How many'), t('The latest windows up to the chart\'s right edge.'), Array.from({ length: MAX_TPO_COUNT }, (_, k) => [String(k + 1), String(k + 1)] as [string, string]), String(s.count), v => set({ count: Number(v) })),
+    selectRow(t('How many'), t('Every window in view, or the latest few up to the chart\'s right edge.'), [['0', t('All in view')], ...Array.from({ length: MAX_TPO_COUNT }, (_, k) => [String(k + 1), String(k + 1)] as [string, string])], String(s.count), v => set({ count: Number(v) })),
     selectRow(t('Block'), t('How long each letter stands for: half an hour for a day or a session, four hours for a week.'), TPO_BLOCKS.map(m => [String(m), m === 0 ? t('By the window') : m < 60 ? t('{n} min', { n: m }) : t('{n} h', { n: m / 60 })] as [string, string]), String(s.block), v => set({ block: Number(v) }, true)),
   );
   const auto = i.auto, chosen = s.rows[coin] ?? 0;
@@ -51,5 +59,48 @@ export function buildTpoPanel(store: Store, tools: HTMLElement, body: HTMLElemen
     const { [scope]: _s, ...splits } = store.state.tpo.splits, { [scope]: _m, ...merges } = store.state.tpo.merges;
     store.set({ tpo: { ...store.state.tpo, splits, merges } }); rebuild();
   } })));
-  body.append(note(i.market ? t('From the candles of {market}, in blocks of {n} minutes.', { market: i.market, n: i.minutes }) : t('No market of this coin has a history the page can read, so there is no TPO.')));
+  candlesFrom(store, body, rebuild, i);
+}
+
+/**
+ * Whose candles the blocks are made from: the chart market's (the default: the market on the chart, or the one standing in for it where its
+ * history cannot be read), or markets ticked as the VWAP's (each exchange's spot and perpetual apart, at most `MAX_VWAP_MARKETS`; switched
+ * to them, the boxes start from the chart market, so nothing changes until one is ticked); how far back they reach, and a market whose
+ * history begins after the oldest window drawn.
+ */
+function candlesFrom(store: Store, body: HTMLElement, rebuild: () => void, i: TpoInfo): void {
+  const s = store.state.tpo, coin = currentCoin(), chart = store.state.marketId;
+  body.append(heading(t('Candles')), selectRow(t('Candles from'), t("Which markets' candles the blocks are made from."), [['chart', t('The chart market')], ['chosen', t('Chosen markets')]], s.source, v => {
+    const source = v === 'chosen' ? 'chosen' : 'chart', now = store.state.tpo;
+    store.set({ tpo: { ...now, source, picks: source === 'chosen' && !now.picks.length ? seedPicks(chart, coin) : now.picks } });
+    rebuild();
+  }));
+  if (s.source === 'chart') {
+    body.append(note(i.market ? t('From the candles of {market}, in blocks of {n} minutes.', { market: i.market, n: i.minutes }) : t('No market of this coin has a history the page can read, so there is no TPO.')));
+    if (s.hollow && i.hollowFrom) body.append(note(t('Hollow blocks need the other venues\' candles, read back to {date}: older blocks are drawn without them.', { date: clock(i.hollowFrom, true) })));
+  } else {
+    body.append(note(t('Each block spans where most of the ticked markets\' volume traded, each moved by its usual gap to the chart market first; a row only one of them reached is drawn hollow (with three markets or more). More markets take longer to load; with none ticked there is no TPO.')));
+    const list = el('div', { class: 'market-picker' }), boxes: HTMLInputElement[] = [];
+    const sync = (): void => { const full = store.state.tpo.picks.length >= MAX_VWAP_MARKETS; for (const box of boxes) box.disabled = full && !box.checked; };
+    // Every exchange and kind this coin is listed on, and a saved choice it is not, greyed.
+    for (const pick of VWAP_PICKS.filter(p => pickTarget(p, coin, chart) || s.picks.includes(p))) {
+      const parts = parsePick(pick)!, target = pickTarget(pick, coin, chart);
+      const box = el('input', { type: 'checkbox', checked: s.picks.includes(pick) });
+      box.onchange = () => {
+        const kept = store.state.tpo.picks.filter(p => p !== pick);
+        store.set({ tpo: { ...store.state.tpo, picks: box.checked ? [...kept, pick] : kept } });
+        sync(); rebuild();
+      };
+      boxes.push(box);
+      list.append(el('label', { class: `opt pick${target ? '' : ' missing'}`, tip: target?.id ?? '' }, box,
+        el('span', { class: 'name' }, venueMark(target?.id ?? parts.family, 14), ` ${venueLabel(parts.family)} · ${parts.kind === 'spot' ? t('Spot') : t('Perpetual')}`),
+        el('span', { class: 'desc', textContent: target ? target.listing.symbol : t('not listed for this coin here') })));
+    }
+    body.append(heading(t('Markets')), list);
+    sync();
+    if (s.picks.length >= MAX_VWAP_MARKETS) body.append(note(t('Up to six markets: untick one to choose another.')));
+    if (i.names && i.names.length) body.append(note(t('From the candles of {markets}, in blocks of {n} minutes.', { markets: i.names.join(', '), n: i.minutes })));
+  }
+  body.append(note(t('Days and weeks reach back about thirteen months; scroll the chart back to see them.')));
+  for (const m of i.short ?? []) body.append(note(t('{market}: its history reaches back to {date} only, so older windows are drawn without it.', { market: m.name, date: clock(m.from, true) })));
 }

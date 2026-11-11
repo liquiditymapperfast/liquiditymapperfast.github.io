@@ -120,6 +120,8 @@ export class KeyLevelHistory {
   get listedFrom(): number | null { return this.#exhausted ? this.#listedFrom : null; }
   /** Whether the venue serves no older bars to a page: the history cannot be read further back, though the market traded before. */
   get limited(): boolean { return this.#limited; }
+  /** The oldest time this history keeps bars of: nothing before it is ever held. */
+  get keptFrom(): number { return this.#keptFrom(); }
   /**
    * Where the bars are known from: the first bar, or before it as far back as the reads answered for time nobody traded in (Infinity while
    * nothing is held). A line that starts at or after it is worked out over every bar there was.

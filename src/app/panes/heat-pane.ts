@@ -92,6 +92,7 @@ import { candleCoverage, candlePriceRange, isCovered, priceBounds, priceOverview
 import { liveCanvas } from '../live-canvas.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { TpoLayer, type TpoFrame } from '../tpo/layer.ts';
+import type { TpoInfo } from '../tpo/panel.ts';
 
 /** The colour of a flag on a candle's wick: amber reads on every theme and is neither side's colour. */
 const TRAP_COLOR = '#f5a524';
@@ -479,7 +480,7 @@ export class HeatPane {
   get #tpo(): TpoLayer { return this.#tpoLayer ??= new TpoLayer(this.hub, () => this.invalidate()); }
   /** What the TPO is given each frame. */
   #tpoFrame(state: AppState): TpoFrame {
-    return { state, view: this.view, pw: this.plotW, ph: this.plotH, now: pageNow(), replay: replaying(), peerIds: state.tpo.hollow ? flowIds(state, this.hub.flow.ids) : [], nameOf: w => this.#windowName(state, w) };
+    return { state, view: this.view, pw: this.plotW, ph: this.plotH, now: pageNow(), replay: replaying(), peerIds: state.tpo.hollow && state.tpo.source === 'chart' ? flowIds(state, this.hub.flow.ids) : [], nameOf: w => this.#windowName(state, w) };
   }
   #tpoAnchor: HTMLElement | null = null;
   /** A TPO block's menu: split its window there, merge the window with the one before or after, fold or lay out, undo this coin's edits. */
@@ -491,7 +492,7 @@ export class HeatPane {
     const before = range ? undefined : windows.find(x => x !== w && x.base !== 'range' && x.to === w!.from);
     const after = range ? undefined : windows.find(x => x !== w && x.base !== 'range' && x.from === w!.to);
     const items: MenuItem[] = [
-      { id: 'split', label: b && !hit.outline ? t('Split the window at {time}', { time: clock(b.t) }) : t('Split the window here'), disabled: range || hit.outline || !b || b.t <= prof.from },
+      { id: 'split', label: b && !hit.compact ? t('Split the window at {time}', { time: clock(b.t) }) : t('Split the window here'), disabled: range || hit.compact || !b || b.t <= prof.from },
       { id: 'prev', label: t('Merge with the window before'), disabled: !before },
       { id: 'next', label: t('Merge with the window after'), disabled: !after },
       { id: 'fold', label: s.unfold ? t('Fold into profiles') : t('Lay out in time') },
@@ -520,7 +521,7 @@ export class HeatPane {
     } }, 'left', { title: t('TPO') });
   }
   /** For the TPO panel: Auto's row size, whose candles, the block's minutes. */
-  tpoInfo(): { auto: number; market: string | null; minutes: number } { return this.#tpo.info(this.#tpoFrame(this.store.state)); }
+  tpoInfo(): TpoInfo { return this.#tpo.info(this.#tpoFrame(this.store.state)); }
   /** Whether the Volume profile draws lines of the TPO's windows, which then follow the TPO's levels (one set of lines, never two). */
   #tpoLinesElsewhere(state: AppState): boolean {
     const s = state.traded;
