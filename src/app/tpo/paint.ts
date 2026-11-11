@@ -167,7 +167,7 @@ export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometr
       // The extremes' calls, with how many of the four row grids agree; an unsure one in amber.
       const call = (what: TpoProfile['top'], votes: number, top: boolean): void => {
         if (what === 'neither') return;
-        const text = `${what === 'poor' ? (top ? t('Poor high') : t('Poor low')) : top ? t('Tail') : t('Tail')} · ${votes}/4`;
+        const text = `${what === 'poor' ? (top ? t('Poor high') : t('Poor low')) : t('Tail')} · ${votes}/4`;
         label(text, x0, top ? yTop(prof.hi) - 9 : yTop(prof.lo) + rh + 9, votes >= 3 ? p.muted : amber, 'left', named);
       };
       call(prof.top, prof.topVotes, true); call(prof.bottom, prof.bottomVotes, false);

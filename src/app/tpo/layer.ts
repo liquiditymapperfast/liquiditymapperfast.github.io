@@ -48,7 +48,8 @@ export class TpoLayer {
   #hollow: { key: string; byBlock: Map<number, Set<number>>; peers: Peer[] } | null = null;
   #fold = { target: 0, from: 0, start: 0 };
   #autoR = new Map<string, number>();
-  #reach = Infinity;
+  /** How far back a window the lines asked about reaches (`levels`), for the chart market it was asked on: another market starts again. */
+  #reach = { id: '', from: Infinity };
   #drawn: { key: string; windows: { key: string; from: number; to: number; base: string; name: string }[] } | null = null;
   lit: { key: string; k: number } | null = null;
 
@@ -88,7 +89,8 @@ export class TpoLayer {
     if (!target) return;
     const windows = this.windows(f), blockMs = blockMsOf(s);
     if (!windows.length) return;
-    const barMs = barFor(blockMs, windows), first = Math.min(this.#reach, ...windows.map(w => w.from));
+    if (this.#reach.id !== target.id) this.#reach = { id: target.id, from: Infinity };
+    const barMs = barFor(blockMs, windows), first = Math.min(this.#reach.from, ...windows.map(w => w.from));
     // A day before the first window: the other markets' usual gaps are read over the day before each block.
     this.hub.tpoHistory(target.id, barMs, 'main').ensure(target, first - DAY, barMs, () => this.invalidate());
     this.hub.tpoHistory(target.id, DAY, 'days').ensure(target, f.now - 75 * DAY, DAY, () => this.invalidate());
@@ -153,7 +155,7 @@ export class TpoLayer {
     if (!target || !(R > 0) || (f.replay && w.from > f.now)) return null;
     const blockMs = blockMsOf(s), windows = this.windows(f), barMs = barFor(blockMs, windows.some(x => x.key === w.key) ? windows : [w]);
     const main = this.hub.tpoHistory(target.id, barMs, 'main');
-    if (main.id !== target.id || main.barMs !== barMs || !main.bars.length || main.knownFrom > w.from) { this.#reach = Math.min(this.#reach, w.from); return null; }
+    if (main.id !== target.id || main.barMs !== barMs || !main.bars.length || main.knownFrom > w.from) { if (this.#reach.id === target.id) this.#reach.from = Math.min(this.#reach.from, w.from); return null; }
     const hollow = s.hollow ? this.#hollowOf(f, target, main, barMs, blockMs, R).byBlock : undefined;
     const developing = w.to > f.now, live = developing ? this.#live(f, target, blockMs) : null;
     const key = `${main.version}|${R}|${s.share}|${blockMs}|${barMs}|${this.#hollow?.key ?? ''}|${developing ? `${Math.floor(f.now / 1000)}|${live ? `${live.h}|${live.l}|${live.c}` : ''}` : ''}|${f.replay}`;
