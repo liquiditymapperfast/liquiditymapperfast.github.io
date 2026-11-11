@@ -112,6 +112,29 @@ test('the import reads the open hour from its pieces when the service names them
   assert.deepEqual(asked, ['latest.json', `${HOUR}.bin`]);
 });
 
+test('the first part that fails stops the others, and the whole hour is read once', async () => {
+  const file = fixture();
+  const latest: HistoryLatest = { v: 1, coin: 'BTC', first: null, last: null, open: HOUR, steps: Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, 20])), pieces: { v: 1, ms: 600_000, n: 2 } };
+  const asked: string[] = [], signals = new Map<string, AbortSignal>();
+  type Answer = { ok: boolean; status: number; json(): Promise<unknown>; arrayBuffer(): Promise<ArrayBuffer> };
+  const fetcher = (url: string, init: { signal: AbortSignal }): Promise<Answer> => {
+    const name = url.slice(url.lastIndexOf('/') + 1);
+    asked.push(name);
+    signals.set(name, init.signal);
+    if (name === 'latest.json') return Promise.resolve({ ok: true, status: 200, json: async () => latest, arrayBuffer: async () => new ArrayBuffer(0) });
+    if (name === `${HOUR}.bin`) return Promise.resolve({ ok: true, status: 200, json: async () => null, arrayBuffer: async () => file.slice(0) });
+    if (name === `${HOUR + 1_200_001}.bin`) return Promise.resolve({ ok: false, status: 404, json: async () => null, arrayBuffer: async () => new ArrayBuffer(0) });
+    // The pieces hang until stopped.
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+  };
+  const done = await importHistory({ url: 'https://h.test/v1/btc', held: heldOf([]), add: c => c.length, since: HOUR, now: HOUR + 30 * 60_000, fetcher });
+  assert.equal(done.columns, 33);
+  assert.equal(done.failed, 0);
+  assert.ok(signals.get(`${HOUR + 600_000}.bin`)?.aborted && signals.get(`${HOUR + 1_200_000}.bin`)?.aborted, 'the pieces still pending are stopped');
+  assert.equal(signals.get(`${HOUR}.bin`)?.aborted, false, 'the whole hour runs on the import\'s own signal');
+  assert.equal(asked.filter(n => n === `${HOUR}.bin`).length, 1);
+});
+
 test('a read open hour gets no receipt, whatever its parts say', async () => {
   const file = fixture(), b = boundaries(file), size = file.byteLength, a = b[Math.floor(b.length / 2)]!;
   const latest: HistoryLatest = { v: 1, coin: 'BTC', first: null, last: null, open: HOUR, steps: Object.fromEntries(decodeHour(file)!.columns.map(c => [c.inst, 20])), pieces: { v: 1, ms: 600_000, n: 1 } };
