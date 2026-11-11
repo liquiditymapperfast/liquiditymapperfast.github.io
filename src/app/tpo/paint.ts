@@ -82,7 +82,7 @@ const ease = (u: number): number => u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) *
 /**
  * A profile's rows (as drawn: with what one market alone reached), each block's index in them (worked out when cells are drawn), its hollow
  * rows, and per row the blocks counted there (each block's own rows, not what one market alone reached) and the mean of their letters (when
- * hollow there and the mean of their letters (when the market was at that price, for the compact look), kept per profile.
+ * the market was at that price, for the compact look), kept per profile.
  */
 interface Layout { rows: Map<number, number[]>; maxCount: number; index: () => Map<number, Map<number, number>>; hollow: Map<number, ReadonlySet<number>>; solid: Map<number, { n: number; mean: number }> }
 const layouts = new WeakMap<TpoProfile, Layout>();

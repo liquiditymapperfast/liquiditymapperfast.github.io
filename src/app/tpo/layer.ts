@@ -81,6 +81,12 @@ export function barFor(blockMs: number, windows: readonly { from: number; to: nu
 /** Where a window's blocks fall: its start's offset on the grid of blocks (windows on one offset share their blocks' starts). */
 const residueOf = (from: number, blockMs: number): number => ((from % blockMs) + blockMs) % blockMs;
 
+/** A number's bits, for `#spanSig`. */
+const F64 = new Float64Array(1), U32 = new Uint32Array(F64.buffer);
+
+/** Once the frame is drawn (a profile left for the next frame asks for it). */
+const later = (fn: () => void): void => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fn); else setTimeout(fn, 16); };
+
 /** What every window of one frame shares (`#ctx`), worked out once for all of them. */
 interface FrameCtx {
   s: TpoSettings; target: HistoryTarget | null; R: number; blockMs: number; barMs: number; main: KeyLevelHistory | null;
@@ -95,9 +101,13 @@ interface FrameCtx {
 
 export class TpoLayer {
   #geos: TpoGeometry[] = [];
-  #profiles = new Map<string, { key: string; ident: string; profile: TpoProfile | null }>();
-  /** The hollow rows and the other markets' blocks, per grid offset (`residueOf`), and each window's share of them (`sigOf`). */
-  #hollow = new Map<number, { key: string; byBlock: Map<number, Set<number>>; peers: Peer[]; sigOf: (from: number, to: number) => string }>();
+  #profiles = new Map<string, { key: string; ident: string; target: string; profile: TpoProfile | null }>();
+  /** Each window's hollow rows and the other markets' blocks they were judged on (`#hollowOfWindow`), by window key. */
+  #hollowWin = new Map<string, { key: string; byBlock: Map<number, Set<number>>; peers: Peer[]; sig: string }>();
+  /** How much of this frame's work is left (`profiles`): past `end`, the windows not worked out yet wait for the next frame. */
+  #budget = { end: Infinity, built: 0, deferred: false };
+  /** What the windows' names were written for (sessions, zone, page clock): any change writes them again. */
+  #namesFor = '';
   /** What a history's candles in a span add up to (`#spanSig`), per history, span and version. */
   #sigs = new Map<string, { version: number; sig: string }>();
   /** Histories that could not be read at all (no candles yet): a window does not wait for them while they try again. */
@@ -119,7 +129,11 @@ export class TpoLayer {
   #names = new Map<string, string>();
   #bar: { key: string; barMs: number } | null = null;
 
-  constructor(private hub: TpoHub, private invalidate: () => void) {}
+  /**
+   * `budgetMs`: how long one frame may spend working out profiles (a first look at a year of windows, or a change of rows, is hundreds of
+   * them): the newest first, the rest on the frames after, each drawing as it was until then.
+   */
+  constructor(private hub: TpoHub, private invalidate: () => void, private budgetMs = 12) {}
 
   /** The chart market's candles (null where no market of the coin has a history the page can read). */
   #target(state: AppState): HistoryTarget | null { return historyTarget(state.marketId, currentCoin()); }
@@ -180,9 +194,13 @@ export class TpoLayer {
     const key = `${h.id}|${h.barMs}|${from}|${to}`, held = this.#sigs.get(key);
     if (held?.version === h.version) return held.sig;
     const bars = h.bars, a = firstBarAt(bars, from), z = firstBarAt(bars, to);
-    let sum = 0;
-    for (let i = a; i < z; i++) { const b = bars[i]!; sum += (i - a + 1) * (b[1] + 3 * b[2] + 5 * b[3] + 7 * b[4]) + 11 * b[5]; }
-    const sig = `${h.id}:${z - a}:${a < z ? bars[a]![0] : ''}:${sum}`;
+    // Two 32-bit hashes of every number's bits (not a sum, where a high up and a low down by as much would cancel).
+    let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+    for (let i = a; i < z; i++) {
+      const b = bars[i]!;
+      for (let j = 0; j < 6; j++) { F64[0] = b[j] ?? 0; h1 = Math.imul(h1 ^ U32[0]!, 0x01000193); h1 = Math.imul(h1 ^ U32[1]!, 0x01000193); h2 = (Math.imul(h2 ^ U32[1]!, 0x85ebca6b) + U32[0]!) | 0; }
+    }
+    const sig = `${h.id}:${z - a}:${a < z ? bars[a]![0] : ''}:${h1 >>> 0}:${h2 >>> 0}`;
     if (this.#sigs.size > 8000) this.#sigs.clear();
     this.#sigs.set(key, { version: h.version, sig });
     return sig;
@@ -238,8 +256,10 @@ export class TpoLayer {
       if (base.length > MAX_TPO_DRAWN) base = base.slice(-MAX_TPO_DRAWN);
     } else base = linesWindows({ ...f.state.traded, period: s.period, count: s.count }, f.state.timeZone, right - (s.count + 1) * span - 3 * DAY, right, f.now, s.count);
     const byKey = new Map(base.map(w => [w.key, w]));
-    // A window's name is a date written in its zone: kept by key (which holds the zone), so a pan does not write hundreds of dates again.
-    if (this.#names.size > 4 * MAX_TPO_DRAWN) this.#names.clear();
+    // A window's name is a date written in its zone, or a session's name: kept by key, so a pan does not write hundreds of dates again,
+    // and written again when a session, the zone or the page's clock changes.
+    const namesFor = `${JSON.stringify(f.state.traded.sessions)}|${f.state.traded.zone}|${f.state.timeZone}`;
+    if (this.#names.size > 4 * MAX_TPO_DRAWN || namesFor !== this.#namesFor) { this.#names.clear(); this.#namesFor = namesFor; }
     const nameOf = (key: string): string => {
       const w = byKey.get(key);
       if (!w) return '';
@@ -337,41 +357,42 @@ export class TpoLayer {
   }
 
   /**
-   * The other markets' blocks and gaps and the rows drawn hollow, on the grid of windows starting at offset `residue` (worked out again when
-   * any of their candles change), over the windows drawn and the day before them. A block is judged once its end is known to every history
-   * that judges it.
+   * One window's hollow rows and the other markets' blocks and gaps they were judged on, from the window's own candles and the day before
+   * (each market's usual gap is read over the day before each block), worked out again only when those candles change or more of its
+   * blocks can be judged: a block is judged once the chart market and every other market loaded have read past its end, or ten minutes after
+   * it ends with whichever have (one that read early cannot decide alone, and one that stopped reading cannot hold the marks back for ever).
+   * The other venues' candles reach two months back: an older window has none.
    */
-  #hollowOf(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, barMs: number, blockMs: number, R: number, residue: number, first: number, last: number): { byBlock: Map<number, Set<number>>; peers: Peer[]; sigOf: (from: number, to: number) => string } {
+  #hollowOfWindow(f: TpoFrame, target: HistoryTarget, main: KeyLevelHistory, w: { key: string; from: number; to: number }, residue: number, blockMs: number, barMs: number, R: number): { byBlock: Map<number, Set<number>>; peers: Peer[]; sig: string } | null {
+    const none = { byBlock: new Map<number, Set<number>>(), peers: [] as Peer[], sig: '' };
+    if (w.to <= f.now - MAX_BACK_MS) return none;
     const peers = this.#peers(f, target).map(p => this.hub.tpoHistory(p.id, barMs, 'peer')).filter(h => h.bars.length);
-    // Over the windows drawn and the day before them only: a window a year back is not worked out from every block since.
-    // The other venues' candles reach two months back: no block older is judged, however far back the windows go.
-    const start = residue + Math.floor((Math.max(main.heldFrom, first - DAY, f.now - MAX_BACK_MS - DAY) - residue) / blockMs) * blockMs, end = spanEnd(f.now, last, residue, blockMs);
-    const key = `${main.id}|${main.version}|${barMs}|${blockMs}|${R}|${start}|${end}|${f.replay ? Math.floor(f.now / barMs) : ''}|${peers.map(h => `${h.id}:${h.version}`).join(',')}`;
-    const held = this.#hollow.get(residue);
+    const start = w.from - DAY, end = spanEnd(f.now, w.to, residue, blockMs);
+    const mineTo = f.replay ? f.now : Math.min(main.heldTo, f.now), heldTo = (h: KeyLevelHistory): number => f.replay ? f.now : Math.min(h.heldTo, f.now);
+    const allTo = Math.min(mineTo, ...peers.map(heldTo)), judged = Math.min(mineTo, Math.max(allTo, f.now - 10 * MIN));
+    const key = `${R}|${this.#spanSig(main, start, end)}|${peers.map(h => this.#spanSig(h, start, end)).join(',')}|${Math.floor(Math.min(judged, w.to) / blockMs)}|${f.replay ? Math.floor(f.now / barMs) : ''}`;
+    const held = this.#hollowWin.get(w.key);
     if (held?.key === key) return held;
+    // Past the frame's budget: left for a frame after (null), as the profiles are.
+    const budget = this.#budget;
+    if (budget.built >= 2 && performance.now() > budget.end) { budget.deferred = true; return null; }
+    budget.built++;
     const mine = blocksOf(main.bars, start, end, blockMs, barMs, f.now, f.replay), out: Peer[] = [];
     for (const h of peers) {
       const theirs = new Map(blocksOf(h.bars, start, end, blockMs, barMs, f.now, f.replay).map(b => [b.t, b] as const)), gaps = trailingGaps(mine, theirs, blockMs);
-      out.push({ blocks: theirs, gap: t => gaps.get(t) ?? 0, heldTo: f.replay ? f.now : Math.min(h.heldTo, f.now) });
+      out.push({ blocks: theirs, gap: t => gaps.get(t) ?? 0, heldTo: heldTo(h) });
     }
-    // A block is judged once the chart market and every other market loaded have read past its end, or ten minutes after it ends with
-    // whichever have (one that read early cannot decide alone, and one that stopped reading cannot hold the marks back for ever).
-    const byBlock = new Map<number, Set<number>>(), mineTo = f.replay ? f.now : Math.min(main.heldTo, f.now);
-    const allTo = Math.min(mineTo, ...out.map(x => x.heldTo ?? Infinity));
+    const byBlock = new Map<number, Set<number>>();
+    let sig = '';
     for (const b of mine) {
-      const end = b.t + blockMs;
-      if (b.t < first || end > mineTo || (end > allTo && f.now - end < 10 * MIN)) continue;
-      const rows = hollowRows(b, out, R, blockMs); if (rows.size) byBlock.set(b.t, rows);
+      const blockEnd = b.t + blockMs;
+      if (b.t < w.from || blockEnd > mineTo || (blockEnd > allTo && f.now - blockEnd < 10 * MIN)) continue;
+      const rows = hollowRows(b, out, R, blockMs);
+      if (rows.size) { byBlock.set(b.t, rows); sig += `${b.t}:${[...rows].join(',')};`; }
     }
-    // A window's share of the marks, for its profile's key: the other windows keep theirs when marks change elsewhere.
-    const sigs = new Map<string, string>(), sigOf = (from: number, to: number): string => {
-      const k = `${from}|${to}`; let sig = sigs.get(k);
-      if (sig === undefined) { sig = ''; for (const [t, rows] of byBlock) if (t >= from && t < to) sig += `${t}:${[...rows].join(',')};`; sigs.set(k, sig); }
-      return sig;
-    };
-    const next = { key, byBlock, peers: out, sigOf };
-    if (this.#hollow.size > 4) this.#hollow.clear();
-    this.#hollow.set(residue, next);
+    const next = { key, byBlock, peers: out, sig };
+    if (this.#hollowWin.size > MAX_TPO_DRAWN + 200) this.#hollowWin.clear();
+    this.#hollowWin.set(w.key, next);
     return next;
   }
 
@@ -401,7 +422,7 @@ export class TpoLayer {
   #profileOf(f: TpoFrame, w: { key: string; from: number; to: number }, c: FrameCtx): TpoProfile | null {
     const { s, target, main, R, blockMs, barMs } = c;
     if (!target || !main || !(R > 0) || (f.replay && w.from > f.now)) return null;
-    const held = this.#profiles.get(w.key);
+    const held = this.#profiles.get(w.key), budget = this.#budget;
     const waiting = (): TpoProfile | null => {
       if (this.#reach.id === `${target.id}|${s.period}|${blockMs}|${s.source}`) this.#reach.from = Math.min(this.#reach.from, w.from);
       return held?.ident === c.ident ? held.profile : null;
@@ -409,7 +430,7 @@ export class TpoLayer {
     if (main.id !== target.id || main.barMs !== barMs) return waiting();
     const developing = w.to > f.now, residue = residueOf(w.from, blockMs);
     // What the window's blocks are worked out from (its key), and the blocks, read only when the profile is worked out again.
-    let blocksNow: () => Block[], hollowed: { byBlock: Map<number, Set<number>>; sigOf: (from: number, to: number) => string } | null = null, own: boolean, source: string;
+    let blocksNow: () => Block[], hollowed: { byBlock: Map<number, Set<number>>; sig: string } | null = null, own: boolean, source: string;
     if (s.source === 'chosen') {
       // Drawn once every chosen market, and the chart market they are moved into, has said all it will about this window: a market that
       // comes later would change it.
@@ -417,35 +438,47 @@ export class TpoLayer {
       if (!markets.length || hs.some((h, i) => h.id !== markets[i]!.id) || ![main, ...hs].every(h => this.#settled(h, w.from))) return waiting();
       if (!hs.some(h => h.bars.length)) return null;
       const from = w.from - DAY, end = spanEnd(f.now, w.to, residue, blockMs);
-      source = `chosen|${[main, ...hs].map(h => this.#spanSig(h, from, end)).join(';')}`;
+      // And how many of its blocks can be judged for lone wicks (`mergeBlocks`: read past by every market, or ten minutes over).
+      const readTo = Math.min(...hs.filter(h => h.bars.length).map(h => f.replay ? f.now : Math.min(h.heldTo, f.now))), judged = Math.max(readTo, f.now - 10 * MIN);
+      source = `chosen|${[main, ...hs].map(h => this.#spanSig(h, from, end)).join(';')}|${s.hollow ? Math.floor(Math.min(judged, w.to) / blockMs) : ''}`;
       blocksNow = () => this.#mergeWindow(f, target, main, hs, w, residue, blockMs, barMs, R);
       own = target.own && markets.some(x => x.id === target.id);
     } else {
       if (!main.bars.length || main.knownFrom > w.from) return waiting();
-      // Hollow rows are worked out for the windows drawn only (a window the lines ask about needs none: its levels count blocks, not marks),
-      // so the work and its cache do not move with every window the lines read.
-      hollowed = s.hollow && c.cells ? this.#hollowOf(f, target, main, barMs, blockMs, R, residue, c.first, c.last) : null;
+      // Hollow marks need rows tall enough for cells (compact counts every block's own rows, marked or not). A window without marks has
+      // the same key with or without them, so crossing that zoom works out again only the windows that have some.
+      hollowed = s.hollow && c.cells ? this.#hollowOfWindow(f, target, main, w, residue, blockMs, barMs, R) : null;
+      if (s.hollow && c.cells && !hollowed) return held?.target === target.id ? held.profile : null;
       blocksNow = () => blocksOf(main.bars, w.from, w.to, blockMs, barMs, f.now, f.replay);
       own = true;
-      source = `chart|${this.#spanSig(main, w.from, w.to)}|${hollowed ? hollowed.sigOf(w.from, w.to) : 'off'}`;
+      source = `chart|${this.#spanSig(main, w.from, w.to)}|${hollowed?.sig ?? ''}`;
     }
     const live = developing && own ? this.#live(f, target, blockMs, w.from) : null;
     const key = `${source}|${w.from}|${w.to}|${developing ? `${Math.floor(f.now / 1000)}|${live ? `${live.t}|${live.h}|${live.l}|${live.c}` : ''}` : ''}`;
     if (held?.key === key && held.ident === c.ident) return held.profile;
+    // Past the frame's budget (a few at least each frame), drawn as it was, or not yet, until a frame after.
+    if (budget.built >= 2 && performance.now() > budget.end) { budget.deferred = true; return held?.target === target.id ? held.profile : null; }
+    budget.built++;
     let blocks = blocksNow();
     if (developing) blocks = withLive(blocks, blockMs, live && live.t >= w.from && live.t < w.to ? live : null);
     const profile = buildProfile(w, blocks, blockMs, R, s.share / 100, f.now, hollowed?.byBlock);
-    // Every window in view, and the lines' windows beside them.
-    if (this.#profiles.size > MAX_TPO_DRAWN + 200) this.#profiles.clear();
-    this.#profiles.set(w.key, { key, ident: c.ident, profile });
+    // Every window in view, and the lines' windows beside them: past that, those no longer drawn go (never the ones drawn, which a window
+    // waiting for a market draws as they were).
+    if (this.#profiles.size > MAX_TPO_DRAWN + 200) { const drawn = new Set(c.windows.map(x => x.key)); for (const k of this.#profiles.keys()) if (!drawn.has(k)) this.#profiles.delete(k); }
+    this.#profiles.set(w.key, { key, ident: c.ident, target: target.id, profile });
     return profile;
   }
 
   /** The profiles of the windows drawn, oldest first, a Range's composite last. */
   profiles(f: TpoFrame): TpoProfile[] {
-    const out: TpoProfile[] = [], c = this.#ctx(f);
-    for (const w of c.windows) { const p = this.#profileOf(f, w, c); if (p) out.push(p); }
-    return out;
+    const c = this.#ctx(f), out: (TpoProfile | null)[] = new Array(c.windows.length);
+    this.#budget = { end: performance.now() + this.budgetMs, built: 0, deferred: false };
+    // Newest first: when not all fit in a frame, the windows at the right edge come first.
+    for (let i = c.windows.length - 1; i >= 0; i--) out[i] = this.#profileOf(f, c.windows[i]!, c);
+    const deferred = this.#budget.deferred;
+    this.#budget = { end: Infinity, built: 0, deferred: false };
+    if (deferred) later(() => this.invalidate());
+    return out.filter((p): p is TpoProfile => p !== null);
   }
 
   /**
@@ -525,7 +558,7 @@ export class TpoLayer {
       const side = r > b.z ? b.up : r < b.a ? b.down : undefined;
       if (side) out.push({ text: r > b.z ? t("{market}'s high went {bp} bp past where most of the chosen markets stopped ({price}).", { market: venueLabel(side.id), bp: side.bp.toFixed(1), price: fmtPrice(side.price, R) }) : t("{market}'s low went {bp} bp past where most of the chosen markets stopped ({price}).", { market: venueLabel(side.id), bp: side.bp.toFixed(1), price: fmtPrice(side.price, R) }), color: 'muted', wrap: true });
     }
-    const peers = f.state.tpo.source === 'chart' ? this.#hollow.get(residueOf(p.from, p.blockMs))?.peers : undefined;
+    const peers = f.state.tpo.source === 'chart' ? this.#hollowWin.get(p.key)?.peers : undefined;
     if (b && peers && target && b.hollow.has(r)) {
       const o = overshootOf({ t: b.t, h: b.h, l: b.l, o: b.l, c: b.h, usd: b.usd, closed: b.closed }, peers, p.blockMs), market = venueLabel(target.id);
       // The side of the row under the pointer: above where most of the market reached is the high's, below it the low's.

@@ -77,7 +77,7 @@ function frame(tpo: Partial<TpoSettings>, view: { t0: number; t1: number }, peer
 
 test('panning by a day or refreshing the newest candles keeps every closed window\'s profile; only the window under way is worked out again', () => {
   for (const tpo of [{ hollow: false }, { source: 'chosen' as const, picks: ['binance/perp', 'bybit/perp', 'coinbase/spot'] }]) {
-    const h = hub(standard), layer = new TpoLayer(h, () => {});
+    const h = hub(standard), layer = new TpoLayer(h, () => {}, Infinity);
     const view = { t0: NOW - 30 * DAY, t1: NOW + DAY };
     const before = new Map(layer.profiles(frame(tpo, view)).map(p => [p.key, p]));
     assert.ok(before.size >= 29, `${before.size} profiles`);
@@ -95,7 +95,7 @@ test('panning by a day or refreshing the newest candles keeps every closed windo
 test('a chosen market that cannot be read neither blanks the windows while it tries again nor holds them back', () => {
   const tpo = { source: 'chosen' as const, picks: ['binance/perp', 'bybit/perp', 'coinbase/spot'] };
   const h = hub((kind, id, barMs) => id === IDS['coinbase/spot'] && kind === 'main' ? Object.assign(new Fake(id, barMs, []), { state: 'unavailable' as const }) : standard(kind, id, barMs));
-  const layer = new TpoLayer(h, () => {}), view = { t0: NOW - 6 * DAY, t1: NOW + DAY / 4 };
+  const layer = new TpoLayer(h, () => {}, Infinity), view = { t0: NOW - 6 * DAY, t1: NOW + DAY / 4 };
   const drawn = layer.profiles(frame(tpo, view)).length;
   assert.ok(drawn >= 6);
   // Each retry marks it loading again: the windows stay.
@@ -110,11 +110,11 @@ test('a chosen market that cannot be read neither blanks the windows while it tr
   assert.ok(waiting.filter(p => p.to <= NOW - 3 * DAY).every(p => first.includes(p)));
   // A market read for the first time: its windows wait for it.
   const fresh = hub((kind, id, barMs) => id === IDS['coinbase/spot'] && kind === 'main' ? new Fake(id, barMs, []) : standard(kind, id, barMs));
-  assert.equal(new TpoLayer(fresh, () => {}).profiles(frame(tpo, view)).length, 0);
+  assert.equal(new TpoLayer(fresh, () => {}, Infinity).profiles(frame(tpo, view)).length, 0);
 });
 
 test('every window in view is drawn, the newest 400 of a kind at most, from a calendar worked out once', () => {
-  const h = hub(standard), layer = new TpoLayer(h, () => {});
+  const h = hub(standard), layer = new TpoLayer(h, () => {}, Infinity);
   const year = layer.windows(frame({ hollow: false }, { t0: NOW - 500 * DAY, t1: NOW }));
   // As far back as the candles are kept (400 days), and no further.
   assert.ok(year.length >= 399 && year.length <= 402, String(year.length));
@@ -127,7 +127,7 @@ test('every window in view is drawn, the newest 400 of a kind at most, from a ca
 
 test('what is asked for: the blocks\' markets a day before the oldest window, the other venues two months back at most, the days before the right edge', () => {
   const peers = [IDS['bybit/perp']!, IDS['okx/perp']!];
-  const h = hub(standard), layer = new TpoLayer(h, () => {});
+  const h = hub(standard), layer = new TpoLayer(h, () => {}, Infinity);
   // Recent: the other venues are asked from a day before the oldest window.
   const recent = frame({ hollow: true }, { t0: NOW - 5 * DAY, t1: NOW + DAY / 4 }, peers);
   layer.ensure(recent);
@@ -155,11 +155,46 @@ test('Auto rows for a chart five months back come from the days before its right
   // Days of 900 until four months ago, of 90 since.
   const cut = NOW - 120 * DAY;
   const make = (kind: string, id: string, barMs: number): Fake => kind === 'days' ? new Fake(id, DAY, days(NOW - 475 * DAY, NOW, t => t < cut ? 900 : 90), 475 * DAY) : standard(kind, id, barMs);
-  const h = hub(make), layer = new TpoLayer(h, () => {});
+  const h = hub(make), layer = new TpoLayer(h, () => {}, Infinity);
   assert.equal(layer.auto(frame({ rows: {} }, { t0: NOW - 5 * DAY, t1: NOW })), ladder(90 / 90));
   assert.equal(layer.auto(frame({ rows: {} }, { t0: NOW - 160 * DAY, t1: NOW - 150 * DAY })), ladder(900 / 90));
   // The days before that edge not held yet: the last size known, not none.
-  const late = hub((kind, id, barMs) => kind === 'days' ? new Fake(id, DAY, days(NOW - 40 * DAY, NOW, () => 90), 475 * DAY) : standard(kind, id, barMs)), l2 = new TpoLayer(late, () => {});
+  const late = hub((kind, id, barMs) => kind === 'days' ? new Fake(id, DAY, days(NOW - 40 * DAY, NOW, () => 90), 475 * DAY) : standard(kind, id, barMs)), l2 = new TpoLayer(late, () => {}, Infinity);
   assert.equal(l2.auto(frame({ rows: {} }, { t0: NOW - 5 * DAY, t1: NOW })), 1);
   assert.equal(l2.auto(frame({ rows: {} }, { t0: NOW - 160 * DAY, t1: NOW - 150 * DAY })), 1);
+});
+
+test('with hollow marks from the other venues (rows tall enough for cells), a refresh of the newest candles keeps every closed window', () => {
+  const peers = [IDS['bybit/perp']!, IDS['okx/perp']!, IDS['coinbase/spot']!];
+  const h = hub(standard), layer = new TpoLayer(h, () => {}, Infinity), view = { t0: NOW - 8 * DAY, t1: NOW + DAY / 4 };
+  const f = (): TpoFrame => frame({ hollow: true, rows: { BTC: 50 } }, view, peers);
+  const before = new Map(layer.profiles(f()).map(p => [p.key, p]));
+  assert.ok(before.size >= 8);
+  for (const x of h.held.values()) { if (x.barMs !== HALF) continue; const last = x.bars[x.bars.length - 1]!; x.bars = [...x.bars.slice(0, -1), [last[0], last[1], last[2] + 30, last[3], last[4], last[5] + 1] as unknown as CandleRow]; x.version++; }
+  const changed = layer.profiles(f()).filter(p => p !== before.get(p.key));
+  assert.deepEqual(changed.map(p => p.developing), [true]);
+});
+
+test('a frame works out a few profiles at least and leaves the rest for the next, drawing what it had meanwhile', () => {
+  const h = hub(standard), layer = new TpoLayer(h, () => {}, 0), view = { t0: NOW - 30 * DAY, t1: NOW + DAY / 4 };
+  const all = new TpoLayer(hub(standard), () => {}, Infinity).profiles(frame({ hollow: false }, view)).length;
+  let n = layer.profiles(frame({ hollow: false }, view)).length, frames = 1;
+  assert.ok(n >= 2 && n < all, `${n} of ${all}`);
+  while (n < all && frames < 100) { n = layer.profiles(frame({ hollow: false }, view)).length; frames++; }
+  assert.equal(n, all);
+  // Another value area share: every window is worked out again, a few a frame, and none blinks out meanwhile.
+  assert.equal(layer.profiles(frame({ hollow: false, share: 80 }, view)).length, all);
+});
+
+test('a session renamed in place is named anew', () => {
+  const h = hub(standard), layer = new TpoLayer(h, () => {}, Infinity), view = { t0: NOW - 3 * DAY, t1: NOW };
+  const session = (name: string) => [{ id: 's1', name, zone: 'Europe/London', start: '08:00', end: '17:00', on: true, weekdays: false }];
+  const named = (name: string): string[] => {
+    const f = frame({ period: 'sessions', hollow: false }, view);
+    (f.state as unknown as { traded: { sessions: unknown } }).traded.sessions = session(name);
+    f.nameOf = w => `${(f.state as unknown as { traded: { sessions: { name: string }[] } }).traded.sessions[0]!.name} ${w.from}`;
+    return layer.windows(f).map(w => w.name);
+  };
+  assert.ok(named('London').every(n => n.startsWith('London ')));
+  assert.ok(named('LDN').every(n => n.startsWith('LDN ')));
 });
