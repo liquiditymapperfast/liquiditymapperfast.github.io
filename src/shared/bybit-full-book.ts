@@ -196,7 +196,7 @@ export class FullBook {
   delta(d: FullDelta, now: number): FullAction {
     // A new numbering comes first: what is held belongs to the old one, and this delta starts the new buffer.
     if (d.u === 1 && (this.#live || this.#buffer.length > 0 || this.#waiting)) return this.#restart(d, 'numbering restarted (u = 1)', now);
-    if (!this.#live) return this.#hold(d);
+    if (!this.#live) return this.#hold(d, now);
     if (d.u <= this.u) return 'none';
     // Bybit: a delta whose seq went back is discarded; `u` does not move, so the next one shows whether anything was missed.
     if (d.seq < this.#lastSeq) return 'none';
@@ -245,7 +245,7 @@ export class FullBook {
   // ---- internals ------------------------------------------------------------------------------------------------------------------
 
   /** Hold a delta while not live; a snapshot waiting for the stream is judged once the stream reaches it. */
-  #hold(d: FullDelta): FullAction {
+  #hold(d: FullDelta, now: number): FullAction {
     const last = this.#buffer[this.#buffer.length - 1];
     let lost = false;
     if (last) {
@@ -257,7 +257,7 @@ export class FullBook {
     this.#buffer.push(d); this.#bufferRows += d.b.length + d.a.length; this.#lastSeq = Math.max(this.#lastSeq, d.seq);
     while (this.#buffer.length > this.#bufferMax || (this.#bufferRows > this.#bufferRowsMax && this.#buffer.length > 1)) { const old = this.#buffer.shift()!; this.#bufferRows -= old.b.length + old.a.length; }
     const waiting = this.#waiting;
-    if (waiting && d.u >= waiting.u) { this.#waiting = null; return this.#seedFrom(waiting, 0) === 'seeded' ? 'none' : 'snapshot'; }
+    if (waiting && d.u >= waiting.u) { this.#waiting = null; return this.#seedFrom(waiting, now) === 'seeded' ? 'none' : 'snapshot'; }
     return lost ? 'snapshot' : 'none';
   }
 
@@ -276,7 +276,7 @@ export class FullBook {
     for (const d of after) applyRows(book, d);
     this.bids = book.bids; this.asks = book.asks; this.#bid = book.bid; this.#ask = book.ask; this.coverageEpoch++;
     this.u = last.u; this.seq = last.seq; this.#lastSeq = Math.max(this.#lastSeq, last.seq);
-    this.#live = true; this.lastFault = null; this.disagreements = 0; this.appliedAt = Math.max(this.appliedAt, now);
+    this.#live = true; this.lastFault = null; this.disagreements = 0; this.appliedAt = now;
     this.#buffer = []; this.#bufferRows = 0; this.#waiting = null; this.#recent = [anchor, ...after].slice(-this.#recentMax);
     return 'seeded';
   }

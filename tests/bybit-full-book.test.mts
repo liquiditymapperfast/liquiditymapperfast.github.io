@@ -80,6 +80,7 @@ test('bybit full book: seeding only on a held delta with the snapshot\'s own (se
   assert.equal(book.snapshot(snap(5, B0, A0), book.epoch, 0), 'wait'); assert.equal(book.waiting, true);
   assert.equal(book.delta(delta(5, [[99, 7]]), 3), 'none');
   assert.equal(book.live, true); assert.equal(book.u, 5); assert.equal(book.bids.get(99), 1, 'the anchor is already in the snapshot');
+  assert.equal(book.appliedAt, 3, 'seeded when the anchor arrived, at its time');
   book = new FullBook();
   book.delta(delta(10), 0);
   assert.equal(book.snapshot(snap(12, B0, A0), book.epoch, 0), 'wait');
