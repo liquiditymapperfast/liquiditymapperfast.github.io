@@ -81,7 +81,7 @@ const DEFAULTS: Readonly<Record<DrawKind, Pick<Drawing, 'extendLeft' | 'extendRi
 export function positionOk(points: readonly Anchor[]): boolean {
   const [e, s, g] = points;
   if (!e || !s || !g || points.length !== 3) return false;
-  return s.t === g.t && s.t > e.t && s.p !== e.p && g.p !== e.p && (s.p < e.p) === (g.p > e.p);
+  return s.t === g.t && s.t > e.t && e.p > 0 && s.p > 0 && g.p > 0 && s.p !== e.p && g.p !== e.p && (s.p < e.p) === (g.p > e.p);
 }
 
 /** A long (the stop below the entry) or a short (above it). */
@@ -89,13 +89,15 @@ export const positionSide = (d: Pick<Drawing, 'points'>): 'long' | 'short' => d.
 
 /**
  * A position from the points clicked: the entry (its time is where the position starts), the stop, and the target (or, while only the stop
- * is placed, a target twice as far as the stop on the other side, to show the shape). It ends at the later of the other two clicks, or
- * `span` after the entry when both are at or before it. Null when the stop is at the entry or the target on the stop's side.
+ * is placed, a target twice as far as the stop on the other side, to show the shape). It ends where the target was clicked (the stop while
+ * there is none), or `span` after the entry when that is less than `min` after it (at or before it, or a few pixels right of an upright
+ * gesture, which would make a box too narrow to take hold of). Null when the stop is at the entry, the target on the stop's side or a price
+ * at or below zero.
  */
-export function positionFromClicks(clicks: readonly Anchor[], span: number): Anchor[] | null {
+export function positionFromClicks(clicks: readonly Anchor[], span: number, min = 0): Anchor[] | null {
   const [e, s, g] = clicks;
   if (!e || !s || !(span > 0)) return null;
-  const target = g ? g.p : e.p + 2 * (e.p - s.p), late = Math.max(s.t, g?.t ?? -Infinity), end = late > e.t ? late : e.t + span;
+  const target = g ? g.p : e.p + 2 * (e.p - s.p), last = (g ?? s).t, end = last - e.t >= Math.max(min, Number.MIN_VALUE) ? last : e.t + Math.max(span, min);
   const points = [{ t: e.t, p: e.p }, { t: end, p: s.p }, { t: end, p: target }];
   return positionOk(points) ? points : null;
 }

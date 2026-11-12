@@ -468,6 +468,11 @@ test('a position is placed by its entry, its stop and its target; a target on th
   s.draw.click({ x: x(4), y: y(145) }, false, false);
   assert.equal(s.draw.list().length, 0, 'a target below the entry, as the stop is, is not one');
   assert.match(s.draw.message!.text, /other side/); assert.equal(s.draw.draft?.points.length, 2, 'the stop stays placed');
+  s.draw.cancel(); assert.equal(s.draw.message, null, 'Esc drops the half-placed position and its warning');
+  s.draw.arm('position'); s.draw.click({ x: x(1), y: y(150) }, false, false); s.draw.click({ x: x(3), y: y(140) }, false, false); s.draw.click({ x: x(4), y: y(145) }, false, false);
+  s.settings = { shown: false }; s.draw.settingsChanged(); assert.equal(s.draw.message, null, 'so does switching the drawings off');
+  s.settings = { shown: true }; s.draw.arm('position');
+  s.draw.click({ x: x(1), y: y(150) }, false, false); s.draw.click({ x: x(3), y: y(140) }, false, false);
   s.draw.click({ x: x(5), y: y(170) }, false, false);
   const d = s.draw.list()[0]!;
   assert.equal(d.kind, 'position'); assert.equal(s.draw.message, null, 'the warning goes with the click that is taken');

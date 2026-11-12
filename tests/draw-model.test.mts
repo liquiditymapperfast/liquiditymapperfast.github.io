@@ -87,6 +87,9 @@ test('a position is an entry, its stop and its target: on opposite sides, ending
   assert.deepEqual(positionFigures(p), { side: 'long', entry: 100, stop: 95, target: 110, risk: 5, reward: 10, riskPct: 5, rewardPct: 10, ratio: 2 });
   assert.deepEqual(positionFromClicks([at(0, 100), at(1, 104)], H), [at(0, 100), at(1, 104), at(1, 92)], 'while only the stop is placed: a target twice as far on the other side');
   assert.deepEqual(positionFromClicks([at(2, 100), at(1, 95), at(0, 110)], H)!.map(q => q.t), [at(2, 0).t, at(3, 0).t, at(3, 0).t], 'clicked at or before the entry: it lasts the span given');
+  assert.deepEqual(positionFromClicks([at(0, 100), at(8, 95), at(4, 110)], H)!.map(q => q.t), [at(0, 0).t, at(4, 0).t, at(4, 0).t], 'it ends where the target was clicked, not at the later click');
+  assert.deepEqual(positionFromClicks([at(2, 100), at(2.03, 95), at(2.05, 110)], H, H / 2)!.map(q => q.t), [at(2, 0).t, at(3, 0).t, at(3, 0).t], 'a target a few pixels right of the entry: the span, not a hairline box');
+  assert.equal(positionFromClicks([at(0, 100), at(1, 160)], H), null, 'a target twice as far as the stop would be below zero: no shape');
   assert.equal(positionFromClicks([at(0, 100), at(1, 100)], H), null, 'a stop at the entry risks nothing');
   assert.equal(positionFromClicks([at(0, 100), at(1, 95), at(2, 98)], H), null, 'the target on the stop\'s side');
   assert.deepEqual(readDrawing(JSON.parse(JSON.stringify(p))), p, 'read back as it was written');

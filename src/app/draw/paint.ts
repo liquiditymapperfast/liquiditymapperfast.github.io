@@ -2,7 +2,7 @@ import { t } from '../i18n.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Palette } from '../theme.ts';
 import type { KeyTag } from '../keylevels/paint.ts';
-import { ANCHORS, newDrawing, positionFigures, positionFromClicks, type DrawColor, type Drawing } from './model.ts';
+import { ANCHORS, newDrawing, positionFigures, type DrawColor, type Drawing } from './model.ts';
 import { channelLines, extendSegment, fibLevels, handlesOf, noteBox, positionBox, strokesOf, type Projection, type Segment } from './geometry.ts';
 import type { DrawController } from './controller.ts';
 import type { SnapField } from './magnet.ts';
@@ -37,6 +37,8 @@ const halo = (p: Palette): string => p.dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,
 let plotBox = { x0: -CUT_FAR, y0: -CUT_FAR, x1: CUT_FAR, y1: CUT_FAR };
 const cutToPlot = (s: Segment): Segment | null => extendSegment(s.a, s.b, false, false, plotBox);
 
+/** How tall (px) a position's side must be for its label to stand inside it: 10 px in from the edge, clear of the entry's label (16 px plates). */
+const INSIDE_PX = 30;
 /** Far past the plot's edges, where a stroke is cut. */
 const CUT = 24;
 function strokeSegments(ctx: CanvasRenderingContext2D, all: readonly Segment[], color: string, width: number, dashed: boolean, p: Palette, alpha = 1): void {
@@ -185,7 +187,7 @@ export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, pr: Proj
       const [lx, align]: [number, CanvasTextAlign] = vx1 - vx0 >= need + 12 ? [(vx0 + vx1) / 2, 'center'] : x1 + 6 + need <= pr.w ? [x1 + 6, 'left']
         : x0 - 6 - need >= 0 ? [x0 - 6, 'right'] : [Math.min(pr.w - need / 2 - 2, Math.max(need / 2 + 2, (vx0 + vx1) / 2)), 'center'];
       const edgeLabel = (y: number, toward: number, text: string, color: string): void => {
-        const inside = Math.abs(toward - y) >= 22, dir = Math.sign(toward - y) || 1;
+        const inside = Math.abs(toward - y) >= INSIDE_PX, dir = Math.sign(toward - y) || 1;
         label(ctx, text, lx, y + dir * (inside ? 10 : -10), color, p, align, alpha);
       };
       edgeLabel(b.target, b.entry, texts[0]!, win);
@@ -193,7 +195,7 @@ export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, pr: Proj
       label(ctx, texts[2]!, lx, b.entry, p.text, p, align, alpha);
       // Its own label above the box, over the top edge's when that one stands outside.
       const top = Math.min(b.stop, b.target);
-      if (d.text) label(ctx, d.text, vx0 + 4, top - (Math.abs(top - b.entry) >= 22 ? 10 : 30), p.text, p, 'left', alpha);
+      if (d.text) label(ctx, d.text, vx0 + 4, top - (Math.abs(top - b.entry) >= INSIDE_PX ? 10 : 30), p.text, p, 'left', alpha);
       return;
     }
     case 'note': {
@@ -267,7 +269,7 @@ export function paintEditing(ctx: CanvasRenderingContext2D, draw: DrawController
     const kind = draw.tool, points = [...(draft?.points ?? []), ...(cursor ? [cursor.at] : [])];
     // A position as it would be with the next point where the pointer is (a target twice as far as the stop while only that is placed);
     // none while the pointer is on the wrong side of the entry.
-    const shaped = kind === 'position' && points.length > 1 ? positionFromClicks(points, draw.positionSpan()) : null;
+    const shaped = kind === 'position' && points.length > 1 ? draw.shapePosition(points) : null;
     if (shaped) paintDrawing(ctx, newDrawing(kind, shaped, 0), pr, p, 0.75);
     // The drawing as it would be with the next point where the pointer is: the missing points sit on the pointer too.
     else if (kind !== 'position' && points.length && (points.length > 1 || ANCHORS[kind] === 1)) {

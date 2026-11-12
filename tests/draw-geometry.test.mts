@@ -176,6 +176,8 @@ test('a position has its entry\'s handle and its stop\'s and target\'s on its le
   assert.deepEqual(withHandleAt(pos, hs[3]!, at(7, 999)).points, [at(1, 150), at(7, 140), at(7, 170)], 'the end moves the stop\'s and the target\'s time together');
   assert.deepEqual(withHandleAt(pos, hs[1]!, at(9, 135)).points, [at(1, 150), at(5, 135), at(5, 170)], 'the stop\'s handle moves its price alone');
   assert.equal(strokesOf(pos, pr).length, 5, 'the entry, the two edges and the two sides');
+  const early = newDrawing('position', [at(-3, 150), at(5, 140), at(5, 170)], T);
+  assert.deepEqual(handlesOf(early, pr).map(h => [h.x, h.y]), [[-300, 250], [0, 300], [0, 150], [500, 250]], 'started left of the plot: the stop and target handles on its part in view');
   assert.deepEqual(hitDrawing({ x: 300, y: 250 }, [pos], pr, 6, null, size), { id: pos.id, part: 'stroke' }, 'on the entry line');
   assert.deepEqual(hitDrawing({ x: 300, y: 200 }, [pos], pr, 6, null, size), { id: pos.id, part: 'inside' }, 'in the target\'s side');
   assert.equal(hitDrawing({ x: 300, y: 320 }, [pos], pr, 6, null, size), null, 'below the stop');
