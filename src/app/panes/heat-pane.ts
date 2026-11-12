@@ -264,6 +264,8 @@ const priceTimeframeName = (ms: number): string => Object.entries(PRICE_TIMEFRAM
 
 /** A plot narrower than this (a phone, a split screen) gets the compact legend, whole-dollar prices and a shorter history note. */
 const NARROW_PLOT = 420;
+/** The wide liquidation column's heading band (LIQ LEVELS, LEVEL MAX, CUM MAX), drawn over its rows. */
+const LIQ_HEAD_H = 40;
 /** The most room the legend's title and prices ask beside the map's corner tools before these drop their names (px): about a candle's line of figures. */
 const LEGEND_NEED_PX = 272;
 /** The least room beside the corner tools the legend takes (px): with less (a narrow map) it stands under them, as wide as the plot. */
@@ -1405,18 +1407,20 @@ export class HeatPane {
     if (!(y >= 0 && y <= ph)) return;
     const s = src.standing(), price = this.#liqPrice(state), at = this.view.pOf(y, ph), way = s ? onTheWay(s, price, at) : null;
     if (!way) return;
-    const p = this.#palette, color = way.side === 'long' ? p.candleDown : p.candleUp, { x0, W } = scale;
-    const x = x0 + Math.min(1, way.usd / scale.maxCum) * scale.width, line = Math.round(y) + 0.5;
+    const p = this.#palette, color = way.side === 'long' ? p.candleDown : p.candleUp, { x0, W } = scale, line = Math.round(y) + 0.5;
+    // The dot on the curve, whole even where nothing goes yet (the curve then runs along the column's left edge), and on the dashed line.
+    const x = Math.min(x0 + W - 4, Math.max(x0 + 4, x0 + Math.min(1, way.usd / scale.maxCum) * scale.width));
     ctx.save();
     ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
     ctx.strokeStyle = color; ctx.globalAlpha = 0.75; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x0, line); ctx.lineTo(x0 + W, line); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = p.panel; ctx.stroke();
-    // How far, and what goes on the way: the distance is dropped where both do not fit the column.
+    ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(x, line, 3.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = p.panel; ctx.stroke();
+    // How far (in the precision the stripe's box and Mirror use), and what goes on the way: the distance is dropped where both do not fit.
     const pct = Math.abs(at - price) / price * 100, arrow = way.side === 'long' ? '▼' : '▲', money = `$${usd(way.usd)}`;
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
-    const full = `${arrow} ${pct < 10 ? pct.toFixed(2) : pct.toFixed(1)}% · ${money}`, text = ctx.measureText(full).width <= W - 14 ? full : `${arrow} ${money}`;
-    const tw = ctx.measureText(text).width, right = x0 + W - 4, ty = y - 12 < 7 ? y + 12 : y - 12;
+    const full = `${arrow} ${pct < 1 ? pct.toFixed(2) : pct.toFixed(1)}% · ${money}`, text = ctx.measureText(full).width <= W - 14 ? full : `${arrow} ${money}`;
+    // Above the line, or below it near the top, and never on the column's heading (its 40 px band hides the curve there anyway).
+    const tw = ctx.measureText(text).width, right = x0 + W - 4, ty = y - 12 < LIQ_HEAD_H + 8 ? Math.max(y + 12, LIQ_HEAD_H + 8) : y - 12;
     ctx.globalAlpha = 0.94; ctx.fillStyle = p.panel; ctx.fillRect(right - tw - 5, ty - 7, tw + 9, 14);
     ctx.globalAlpha = 1; ctx.lineWidth = 1; ctx.strokeStyle = color; ctx.strokeRect(right - tw - 4.5, ty - 6.5, tw + 8, 13);
     ctx.fillStyle = p.text; ctx.fillText(text, right, ty);
@@ -2154,7 +2158,7 @@ export class HeatPane {
   /**
    * What a liquidation level under the pointer holds, for the hover box: only on the stripe, on a row strong enough to be drawn there. It
    * says what would be liquidated at that level (and how much of it still stands), how far it is from the price and how much would be
-   * liquidated on the way there (the profile column's faint bar, as a number), how many positions make it up and how big the largest is, and
+   * liquidated on the way there (the liquidation column's cumulative curve at the level's far edge, as a number), how many positions make it up and how big the largest is, and
    * how much is isolated (a fixed price) or cross margin (a price that moves with the account).
    */
   #liquidationLines(state: AppState, x: number, y: number, pw: number, ph: number, touch: boolean): InfoLine[] {
@@ -3905,11 +3909,11 @@ export class HeatPane {
       for (const q of pts) ctx.lineTo(xOf(q), v.yOf(q.p, ph));
       ctx.strokeStyle = color; ctx.stroke();
     }
-    ctx.globalAlpha = 1; ctx.lineWidth = 1;
+    ctx.globalAlpha = 1; ctx.lineWidth = 1; ctx.lineJoin = 'miter';
     // The pointer's layer reads the curve where the pointer is (`#paintLiqReadout`), on this scale.
     this.#liqScale = curves ? { x0, width, maxCum, W } : null;
     if (!strip) {
-      ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 40); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, LIQ_HEAD_H); ctx.globalAlpha = 1;
       ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
       ctx.fillStyle = p.muted; ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 16); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 28);
     }

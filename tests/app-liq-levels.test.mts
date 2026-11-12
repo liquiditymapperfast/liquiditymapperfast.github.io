@@ -159,6 +159,10 @@ test('the cumulative curves run from the price out through every row\'s far edge
   const high = liqCurves(liqProfile(s, 10, 80, 85, 95), 95);
   assert.deepEqual(high.long, [{ p: 90, usd: 100 }, { p: 80, usd: 250 }]);
   assert.equal(high.short.length, 0);
+  // And below them: the short curve starts at their bottom edge with the half of bin 11 above the price already counted.
+  const low = liqCurves(liqProfile(s, 10, 120, 125, 115), 115);
+  assert.deepEqual(low.short, [{ p: 120, usd: 150 }, { p: 130, usd: 190 }]);
+  assert.equal(low.long.length, 0);
   assert.deepEqual(liqCurves(p, NaN), { long: [], short: [] });
 });
 
