@@ -73,18 +73,19 @@ test('footprint minutes are taken where the page did not record the whole minute
   const t0 = HOUR;
   // The page recorded bybit from 00:01:30 on, on a step of 0.5.
   const state = tradeImport([{ inst: 'bybit:BTCUSDT', metric: 'trades', from: t0 + 90_000, to: t0 + 600_000 }, { inst: 'x', metric: 'depth', from: 0, to: Infinity }], [{ inst: 'bybit:BTCUSDT', step: 0.5 }]);
-  const held = new Map([[`bybit:BTCUSDT|${t0 + 60_000}`, fpRow('bybit:BTCUSDT', t0 + 60_000, 500)]]);
+  const held = new Map([[`bybit:BTCUSDT|${t0 + 60_000}`, fpRow('bybit:BTCUSDT', t0 + 60_000, 500)], [`bybit:BTCUSDT|${t0 + 120_000}`, fpRow('bybit:BTCUSDT', t0 + 120_000, 1_000)]]);
   const taken = planFootprint(state, [
     fpRow('bybit:BTCUSDT', t0, 100), // before the page: taken
     fpRow('bybit:BTCUSDT', t0 + 60_000, 400), // the page's part of the minute holds more: not taken
     fpRow('bybit:BTCUSDT', t0 + 60_000, 900), // more than the page's part: taken
-    fpRow('bybit:BTCUSDT', t0 + 120_000, 900), // the page recorded the whole minute: not taken
+    fpRow('bybit:BTCUSDT', t0 + 120_000, 900), // the page recorded the whole minute and holds it: not taken
+    fpRow('bybit:BTCUSDT', t0 + 240_000, 700), // its coverage holds the minute, it holds no copy: taken
     fpRow('bybit:BTCUSDT', t0 + 180_000, 9, 1), // another step: never re-binned
     fpRow('okx:BTC-USDT-SWAP', t0, 50, 2), // no rows of okx on the page: the service's step is taken
     fpRow('okx:BTC-USDT-SWAP', t0 + 60_000, 50, 0.5),
     fpRow('okx:BTC-USDT-SWAP', t0, 40, 2), // a second, thinner copy of a minute (a restart): the fuller stays
   ], key => held.get(key));
-  assert.deepEqual(taken.map(r => [r.inst, r.t - t0, footprintVolume(r)]), [['bybit:BTCUSDT', 0, 100], ['bybit:BTCUSDT', 60_000, 900], ['okx:BTC-USDT-SWAP', 0, 50]]);
+  assert.deepEqual(taken.map(r => [r.inst, r.t - t0, footprintVolume(r)]), [['bybit:BTCUSDT', 0, 100], ['bybit:BTCUSDT', 60_000, 900], ['bybit:BTCUSDT', 240_000, 700], ['okx:BTC-USDT-SWAP', 0, 50]]);
   assert.equal(state.steps.get('okx:BTC-USDT-SWAP'), 2);
   assert.ok(ownsTime(state, 'bybit:BTCUSDT', t0 + 90_000) && !ownsTime(state, 'bybit:BTCUSDT', t0 + 89_999));
   assert.ok(ownsMinute(state, 'bybit:BTCUSDT', t0 + 120_000) && !ownsMinute(state, 'bybit:BTCUSDT', t0 + 60_000));
@@ -203,10 +204,11 @@ test('a minute the page holds part of (the tab opened inside it): the service\'s
   const own: CoverageRow = { inst: 'binance:BTCUSDT', metric: 'trades', from: F32_HOUR + 30_000, to: F32_HOUR + 3_600_000, kind: 'live' };
   const pageCopy: FootprintMinuteRow = { inst: 'binance:BTCUSDT', t: F32_HOUR, step: 0.25, bins: [[400_131, 1_234.5, 60_000.25, 2, 1]], stats: { buyN: 2, sellN: 1, buy: sizes(1_234.5, 0), sell: [0, 0, 60_000.25, 0, 0, 0, 0, 0], v: 2, big: [-60_000.25] } };
   const state = tradeImport([own], [pageCopy]);
-  const chosen = planFootprint(state, rows.footprint, key => key === `binance:BTCUSDT|${F32_HOUR}` ? pageCopy : undefined);
+  const whole: FootprintMinuteRow = { ...pageCopy, t: F32_HOUR + 60_000 };
+  const chosen = planFootprint(state, rows.footprint, key => key === `binance:BTCUSDT|${F32_HOUR}` ? pageCopy : key === `binance:BTCUSDT|${F32_HOUR + 60_000}` ? whole : undefined);
   const seam = chosen.find(r => r.t === F32_HOUR && r.inst === 'binance:BTCUSDT')!;
   assert.deepEqual(seam.stats!.big, [55_618.123_456_7, -60_000.25], 'the whole minute\'s list, not the page\'s half');
-  assert.ok(!chosen.some(r => r.t === F32_HOUR + 60_000 && r.inst === 'binance:BTCUSDT'), 'a minute the page recorded whole stays its own');
+  assert.ok(!chosen.some(r => r.t === F32_HOUR + 60_000 && r.inst === 'binance:BTCUSDT'), 'a minute the page recorded whole and holds stays its own');
 });
 
 test('copies of a minute that differ only by f32 rounding hold the same volume: the orders counted decide, and a tie keeps the copy held', () => {
@@ -312,4 +314,18 @@ test('an hour a page from before kind 11 read from the hour this page was built 
   const imported = marks.filter(importedMark).map(r => r.from), again = marks.filter(staleMark).map(r => r.from);
   assert.deepEqual(again, [built, built + HOUR_MS]);
   assert.deepEqual(hoursToRead(latest, heldOf(rows, [], imported, again), built - 5 * HOUR_MS, now), [built], 'the restart hour is read again; the hour this page already read is not');
+});
+
+test('the hour of the service restart, read by a page from before kind 11 that claimed its trades: read again, its kind-11 minutes are taken', () => {
+  const m0 = HOUR;
+  const rows = decodeHour(copiesFile(HOUR, [
+    { print: { t: m0 + 1_000, usd: 30_000 } }, { minute: { t: m0, buy1: 30_000, usd: 30_500, orders: 2, list: [30_000] } },
+    { print: { t: m0 + 61_000, usd: 40_000 } }, { minute: { t: m0 + 60_000, buy1: 40_000, usd: 40_100, orders: 1 } },
+    { minute: { t: m0 + 120_000, buy1: 0, usd: 900, orders: 1 } },
+  ]))!.rows;
+  // That page took the kind-7 minute and joined the service's coverage over the whole hour.
+  const claimed: CoverageRow = { inst: 'binance:BTCUSDT', metric: 'trades', from: m0, to: m0 + HOUR_MS, kind: 'live' };
+  const kept = rows.footprint[0]!, state = tradeImport([claimed], [kept]);
+  const taken = planFootprint(state, rows.footprint, key => key === `binance:BTCUSDT|${m0}` ? kept : undefined);
+  assert.deepEqual(taken.map(r => [r.t - m0, r.stats!.big]), [[60_000, [40_000]], [120_000, []]]);
 });

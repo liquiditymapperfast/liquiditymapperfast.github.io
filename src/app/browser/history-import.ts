@@ -250,6 +250,8 @@ function footprintMinute(view: DataView, from: number, end: number, inst: string
  * is tried first with the minute's trades written before it, then with those after each earlier copy of the minute (the nearest first),
  * then with all of them; a fitting run is the copy's list (two runs that both fit are the same list: an order is at least the floor).
  */
+/** Earlier copies of a minute each copy's runs start after (a file holds one copy a flush, two a minute, more only after restarts). */
+const EARLIER_COPIES = 8;
 function fillListsFromPrints(rows: HistoryRows, printAt: readonly number[], footprintAt: readonly number[]): void {
   if (!rows.footprint.some(row => row.stats && row.stats.big === undefined)) return;
   const found = new Map<string, { value: number; at: number }[]>();
@@ -261,12 +263,17 @@ function fillListsFromPrints(rows: HistoryRows, printAt: readonly number[], foot
   const placed = printAt.length === rows.prints.length && footprintAt.length === rows.footprint.length;
   const earlier = new Map<string, number[]>();
   rows.footprint.forEach((row, i) => {
-    const key = `${row.inst}|${row.t}`, at = placed ? footprintAt[i]! : Infinity, copies = earlier.get(key) ?? [], stats = row.stats;
-    earlier.set(key, [...copies, at]);
+    const key = `${row.inst}|${row.t}`, at = footprintAt[i]!, stats = row.stats;
+    let copies = earlier.get(key);
+    if (!copies) earlier.set(key, copies = []);
+    const since = copies.slice(-EARLIER_COPIES).reverse();
+    copies.push(at);
     if (!stats || stats.big !== undefined) return;
-    const trades = found.get(key) ?? [], before = placed ? trades.filter(p => p.at < at) : trades;
-    // Its trades before it, then those after each earlier copy, the nearest first (a run may have written copies of its own), then all.
-    const picks = [before, ...copies.slice().reverse().map(since => before.filter(p => p.at > since)), trades];
+    const trades = found.get(key) ?? [];
+    // Its trades before it, then those after each of the nearest earlier copies, the nearest first (a run may have written copies of its
+    // own), then all of them. A minute with no large trade here has one choice: none.
+    let picks: (readonly { value: number; at: number }[])[] = [trades];
+    if (placed && trades.length) { const before = trades.filter(p => p.at < at); picks = [before, ...since.map(after => before.filter(p => p.at > after)), trades]; }
     for (const pick of picks) {
       const list = pick.map(p => p.value);
       if (listFits(list, stats)) { stats.big = list; return; }
@@ -411,14 +418,16 @@ export function fullerFootprint(kept: Pick<FootprintMinuteRow, 'bins' | 'stats'>
 /**
  * The footprint minutes of an hour worth taking: where the page did not record the whole minute itself, on the page's step for the market
  * (rows on another step are not re-binned), and fuller (`fullerFootprint`) than the copy the page holds (`held`, or undefined), the fuller
- * of two copies the service wrote of a minute. Taking one fixes the market's step (`state.steps`).
+ * of two copies the service wrote of a minute. Taking one fixes the market's step (`state.steps`). A minute the page's coverage holds whole
+ * but whose copy it does not hold is taken too: the page saw no trade there, or the coverage came from the service (a page from before kind
+ * 11 read the hour of the service's restart onto it, took its kind-7 minutes alone and joined the service's coverage over the whole hour).
  */
 export function planFootprint(state: TradeImport, rows: readonly FootprintMinuteRow[], held: (key: string) => FootprintMinuteRow | undefined): FootprintMinuteRow[] {
   const chosen = new Map<string, FootprintMinuteRow>();
   for (const row of rows) {
-    const step = state.steps.get(row.inst) ?? row.step;
-    if (row.step !== step || ownsMinute(state, row.inst, row.t)) continue;
-    const key = `${row.inst}|${row.t}`, have = chosen.get(key) ?? held(key);
+    const step = state.steps.get(row.inst) ?? row.step, key = `${row.inst}|${row.t}`, mine = held(key);
+    if (row.step !== step || (mine && ownsMinute(state, row.inst, row.t))) continue;
+    const have = chosen.get(key) ?? mine;
     if (have && !fullerFootprint(have, row)) continue;
     state.steps.set(row.inst, step);
     chosen.set(key, row);
