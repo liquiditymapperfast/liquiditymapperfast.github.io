@@ -132,6 +132,18 @@ test('a view with more bars than are held for long is not asked for again on eve
   } finally { time.restore(); }
 });
 
+test('the bars held are said to be those of the markets and timeframe asked last, or of none once cleared', () => {
+  const data = new FootprintData(), { load } = source(100), view = { t0: 10 * H, t1: 20 * H, p0: 0, p1: 1 };
+  assert.equal(data.holds([], '1h'), true, 'nothing asked yet: no markets');
+  assert.equal(data.holds(['a', 'b'], '1h'), false);
+  data.ensure('a,b', '1h', view, 5, load, () => {}, [], 30 * H);
+  assert.equal(data.holds(['a', 'b'], '1h'), true);
+  assert.equal(data.holds(['a'], '1h'), false, 'other markets: the bars are not theirs yet');
+  assert.equal(data.holds(['a', 'b'], '5m'), false, 'another timeframe');
+  data.clear();
+  assert.deepEqual([data.holds([], '1h'), data.holds(['a', 'b'], '1h')], [true, false], 'every venue off: the cleared bars are the none counted');
+});
+
 test('venue rows read as ids whatever each answer\'s order, a malformed one is left out whole, and the order follows the volume held', () => {
   const row = [[100, 30, 5], [105, 2, 9]] as [number, number, number][];
   const a = readBar({ t: 0, rows: row, buyUsd: 32, sellUsd: 14, venueRows: [[0, 20, 5, 1, 10, 0], [1, 2, 9]] }, 0, ['binance:BTCUSDT', 'bybit:BTCUSDT']);

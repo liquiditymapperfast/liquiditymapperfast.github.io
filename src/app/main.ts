@@ -28,7 +28,7 @@ import { ScreenWake } from './wake.ts';
 import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
-import { BarStatsPane, DepthPane, LtPane, OiPane, oiHeldKey } from './panes/lower-panes.ts';
+import { BarStatsPane, barStatsHeldKey, DepthPane, LtPane, OiPane, oiHeldKey } from './panes/lower-panes.ts';
 import { LiqPane } from './panes/liq-pane.ts';
 import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
@@ -49,7 +49,7 @@ import { PALETTES } from './theme.ts';
 import { openedSheet } from './sheet.ts';
 import { dismissToast, toast } from './toast.ts';
 import { topShown } from './measures/strip.ts';
-import { tableHeight } from './panes/bar-stats.ts';
+import { enabledStats, tableHeight } from './panes/bar-stats.ts';
 import { Layout, type LayoutPane } from './layout.ts';
 import { LayoutActions } from './layouts/actions.ts';
 import { PANE_SHOW_KEY } from './layouts/dock-model.ts';
@@ -57,6 +57,7 @@ import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
 import { OiRangeSummary } from './range/oi-lines.ts';
 import { DeltaRangeSummary } from './range/delta-lines.ts';
+import { BarsRangeSummary } from './range/bars-lines.ts';
 import { deltaIds } from './delta/flows.ts';
 import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode, compactBar } from './device.ts';
 import './styles.css';
@@ -244,6 +245,12 @@ async function main(): Promise<void> {
   range.useProvider({
     pane: 'oi', title: () => t('Open interest'), shown: () => store.state.show.oi, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
     lines: (sel, shown) => oiSummary.lines(sel, oi.rangeHeld, shown, store.state.liquidations.on ? { items: hub.liquidations.items, version: hub.liquidations.version, min: scaledUsd(store.state.liquidations.minUsd), held: hub.liquidationsHeld } : null, oiHeldKey(store.state), pageNow(), store.state.timeZone),
+  });
+  // A drag in the Bar stats pane sums up its chosen statistics over the candles (range/bars-lines.ts), each by its own rule.
+  const barsSummary = new BarsRangeSummary();
+  range.useProvider({
+    pane: 'bars', title: () => t('Bar stats'), shown: () => store.state.show.stats, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
+    lines: (sel, shown) => barsSummary.lines(sel, bars.rangeHeld, shown, barStatsHeldKey(store.state, heat.footprintMarkets(store.state)), pageNow(), store.state.timeZone, !enabledStats(store.state.barStats).length),
   });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.

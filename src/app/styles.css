@@ -909,6 +909,20 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .range-signed .bars i.down { right: 50%; background: var(--candle-down); }
 .range-signed.muted { color: var(--muted); }
 .range-signed.muted .bars i { opacity: .5; }
+/* Bar stats' chosen statistics: tiles two to a row, one where the panel is narrow; a category's tile lists its kinds with their counts. */
+.range-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 6px 10px; margin: 2px 0 4px; }
+.range-tile { display: flex; flex-direction: column; min-width: 0; padding: 3px 6px; border-left: 2px solid var(--line); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.range-tile .label { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.range-tile .value { font-weight: 600; overflow-wrap: anywhere; }
+.range-tile.buy .value { color: var(--bid); }
+.range-tile.sell .value { color: var(--ask); }
+.range-tile.muted .value { color: var(--muted); font-weight: 400; }
+.range-tile .count { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; }
+.range-tile .count b { font-weight: 600; }
+.range-tile .count.buy b { color: var(--bid); }
+.range-tile .count.sell b { color: var(--ask); }
+.range-tile small { color: var(--muted); font-size: 10.5px; line-height: 1.3; margin-top: 1px; }
+.range-stat.muted .value { color: var(--muted); }
 .range-show-ctl { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .panel .name { font-weight: 600; color: var(--text); }
 .panel .desc { display: block; color: var(--muted); font-size: 11px; line-height: 1.4; }

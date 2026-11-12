@@ -71,6 +71,8 @@ export interface ProfileBar { label: string; buy: number; sell: number; total: s
  * `down` the sellers'; `none` neither), whether it is closing (drawn lighter, as the OI pane draws what closed), and its words for a tip.
  */
 export interface StackPart { size: number; tone: 'up' | 'down' | 'none'; closed?: boolean; tip: string }
+/** A tile of a grid: a label, its figure, its tip, a note under it, and lines of counts (a category's kinds) in place of one figure. */
+export interface GridItem { key: string; label: string; value: string; tone?: 'buy' | 'sell' | 'text' | 'muted'; tip?: string; note?: string; rows?: { label: string; value: string; tone?: 'buy' | 'sell' | 'text' }[] }
 
 /** One line of the panel. `cells` are its texts; a split's `share` is the buy side's part, 0..1, a row's the length of its bar. */
 export interface RangeLine {
@@ -78,14 +80,17 @@ export interface RangeLine {
   /**
    * `stack`: a label, a bar of parts laid end to end on a scale shared with the other stacks of its section, and its total (`cells` label,
    * total). `signed`: a label, a bar out of a zero line shared with the others of its section, right for more and left for less (`signed`,
-   * -1..1 of the longest), and its value, with an optional note under it (`cells` label, value, note).
+   * -1..1 of the longest), and its value, with an optional note under it (`cells` label, value, note). `grid`: tiles two to a row (one
+   * where the panel is narrow), each a label and its figure (`grid`).
    */
-  kind: 'title' | 'heading' | 'stat' | 'split' | 'row' | 'note' | 'profile' | 'stack' | 'signed';
+  kind: 'title' | 'heading' | 'stat' | 'split' | 'row' | 'note' | 'profile' | 'stack' | 'signed' | 'grid';
   cells: string[];
   /** A stack's parts. */
   parts?: StackPart[];
   /** A signed bar's length and side, -1..1. */
   signed?: number;
+  /** A grid's tiles. */
+  grid?: GridItem[];
   share?: number;
   /** A row's bars, buys then sells, each 0..1 of the longest. */
   bars?: [number, number];

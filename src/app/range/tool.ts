@@ -27,7 +27,7 @@ export class LineList {
   update(lines: readonly RangeLine[]): void {
     const next: HTMLElement[] = [], keep = new Set<string>();
     for (const line of lines) {
-      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark, line.profile, line.stack, line.parts, line.signed]);
+      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark, line.profile, line.stack, line.parts, line.signed, line.grid]);
       let held = this.#nodes.get(line.key);
       if (!held || held.sig !== sig) { held = { node: lineNode(line), sig }; this.#nodes.set(line.key, held); }
       keep.add(line.key); next.push(held.node);
@@ -78,6 +78,18 @@ function lineNode(line: RangeLine): HTMLElement {
       const total = el('span', { class: 'total', textContent: line.cells[1] ?? '' });
       if (line.cells[2]) total.append(el('small', { textContent: line.cells[2] }));
       return el('div', { class: `range-signed${tone}${v < 0 ? ' less' : ''}` }, label, bar, total);
+    }
+    case 'grid': {
+      // Tiles two to a row: a label, the figure (or lines of counts) and a note; the tip says what the statistic is.
+      const grid = el('div', { class: 'range-grid' });
+      for (const item of line.grid ?? []) {
+        const tile = el('div', { class: `range-tile${item.tone && item.tone !== 'text' ? ` ${item.tone}` : ''}`, ...(item.tip ? { tip: item.tip } : {}) }, el('span', { class: 'label', textContent: item.label }));
+        if (item.value) tile.append(el('span', { class: 'value', textContent: item.value }));
+        for (const row of item.rows ?? []) tile.append(el('span', { class: `count${row.tone && row.tone !== 'text' ? ` ${row.tone}` : ''}` }, el('span', { textContent: row.label }), el('b', { textContent: row.value })));
+        if (item.note) tile.append(el('small', { textContent: item.note }));
+        grid.append(tile);
+      }
+      return grid;
     }
     case 'profile': {
       const box = el('div', { class: 'range-profile' });

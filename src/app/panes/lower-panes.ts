@@ -49,6 +49,7 @@ import type { NlnsSource } from '../delta/nlns-source.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { candleSplitStyles, emphasisFloor, medianRow } from '../traded/emphasis.ts';
 import type { OiPaneHeld } from '../range/oi-lines.ts';
+import type { BarsPaneHeld } from '../range/bars-lines.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -631,6 +632,17 @@ export function oiCohorts(oi: readonly OiBar[], parts: readonly OiPart[], tf: nu
 /** What the OI pane's open interest is of: the coin, the timeframe and whose (the Range summary's snapshot must be of the same). */
 export const oiHeldKey = (state: Pick<AppState, 'marketId' | 'timeframe' | 'oiMarkets' | 'oiParts' | 'oiInstrument'>): string =>
   `${state.marketId}|${state.timeframe}|${state.oiMarkets}|${state.oiParts.length > 1 ? state.oiParts.map(part => part.id).join(',') : state.oiInstrument}`;
+
+/**
+ * What the Bar stats pane's Range summary is worked out for (range/bars-lines.ts): the chart and candle markets, the timeframe, the markets
+ * the footprint counts, the OI pane's markets, the statistics chosen in their order and the options their arithmetic uses (not how the cells
+ * look, nor where the running sums start: the summary adds up each candle's own increment).
+ */
+export const barStatsHeldKey = (state: Pick<AppState, 'marketId' | 'seriesInstrument' | 'timeframe' | 'barStats' | 'barStatOptions' | 'oiMarkets' | 'oiParts' | 'oiInstrument'>, markets: readonly string[]): string => {
+  const o = state.barStatOptions;
+  return [state.marketId, state.seriesInstrument, state.timeframe, markets.join(','), state.oiMarkets, state.oiParts.length > 1 ? state.oiParts.map(part => part.id).join(',') : state.oiInstrument,
+    enabledStats(state.barStats).map(def => def.id).join(','), o.imbRatio, o.imbMinUsd, o.stackedN, o.imbZeros, o.retailUsd, o.whaleUsd, o.oiUnits].join('|');
+};
 
 /** The chart market's coin ("BTC"), for amounts of it. */
 const coinOf = (state: Pick<AppState, 'markets' | 'marketId'>): string => state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '';
@@ -1301,7 +1313,9 @@ export class BarStatsPane extends TimePane {
 
   protected draw(): void {
     this.#cell = null; this.#viewLines = null;
-    const pins = this.#strip();
+    const held = this.#held, pins = this.#strip();
+    // The Range summary is worked out again only for a new table (a pointer move draws the pane from the same one).
+    if (this.#held !== held) this.rangeChanged();
     const at = this.pointer, lines = this.#cell ? statCellLines(this.#cell) : this.#viewLines;
     if (lines && at) this.#card.show(lines, at.x, at.y); else this.#card.hide();
     this.#showPins(pins);
@@ -1317,6 +1331,9 @@ export class BarStatsPane extends TimePane {
 
   protected override undrawn(): void { this.#cell = null; this.#viewLines = null; this.#card.hide(); for (const card of this.#pinCards) card.hide(); }
 
+  /** What the table worked out last, for the Range summary of a selection made in this pane (range/bars-lines.ts); null without a table. */
+  get rangeHeld(): BarsPaneHeld | null { return this.#held; }
+  #held: BarsPaneHeld | null = null;
   /** What the table worked out last, kept while nothing it was worked out from changes (a pointer move only redraws), and what Export CSV writes. */
   #table: { key: unknown[]; times: number[]; defs: StatDef[]; values: (number | null)[][]; input: StatInput; view: { at: string; cells: (ViewCell | null)[] } | null } | null = null;
   /** Where the View column is (plot coordinates), while it is drawn: the pointer there reads it, not a candle. */
@@ -1396,7 +1413,7 @@ export class BarStatsPane extends TimePane {
     const rowSize = data.step > 0 ? ` · ${t('rows of {step}', { step: `$${fmtPrice(data.step, data.step)}` })}` : '';
     setText(readout, (markets.length > 1 ? `${t('{n} markets', { n: markets.length })} · ${stats}` : stats) + rowSize);
     this.#viewSpan = null; this.#layout = [];
-    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use Stats to add some.'), 12, ph / 2); this.#table = null; return []; }
+    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use Stats to add some.'), 12, ph / 2); this.#table = null; this.#held = null; return []; }
     // Replay: only the candles that ended by its moment (a candle under way would carry its future executions).
     // The candles of the view and one each side (what the footprint asks for), not every bar it still holds: the running sums (cvd) start at the
     // view, whatever was looked at before; from each day's start, at the start of the day the left edge falls in (loaded whole for it).
@@ -1408,7 +1425,7 @@ export class BarStatsPane extends TimePane {
     for (const c of state.candles) if (near(c[0])) starts.add(c[0]);
     for (const b of data.bars.values()) if (near(b.t)) starts.add(b.t);
     const times = [...starts].sort((a, b) => a - b);
-    if (!times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Bar stats appear once executions are recorded for the visible candles.'), 12, ph / 2); this.#table = null; return []; }
+    if (!times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Bar stats appear once executions are recorded for the visible candles.'), 12, ph / 2); this.#table = null; this.#held = null; return []; }
     const parts = oiPartsUntil(state.oiParts, tfMs, replaying() ? Math.floor(now / tfMs) * tfMs : Infinity);
     // The exchange's own candles (Binance's): the candle delta and the fills read them.
     const taker = defs.some(def => def.id === 'takerDelta' || def.id === 'fills' || def.id === 'avgFill') ? this.heat.takerRows(state, tfMs, times[0]!) : null;
@@ -1434,6 +1451,17 @@ export class BarStatsPane extends TimePane {
       const input: StatInput = { bars: times.map(start => data.bars.get(start) ?? null), times, tfMs, now, ...(taker ? { taker } : {}), ...(liquidations ? { liquidations } : {}), ...(restart ? { restart } : {}),
         step: data.step, options, cuts: data.cuts, candles, oi: new Map(state.oi.map(b => [b[0], b] as const)), oiChange: oiChangeByTime(state.oi, parts, tfMs), oiUsd: this.#oiUsd(state, parts, tfMs, candles), perps };
       table = this.#table = { key, times, defs, values: defs.map(def => def.compute(input)), input, view: null };
+    }
+    // The Range summary's snapshot: the same object while the table and what it is worked out for stay (range/bars-lines.ts). Only once the
+    // footprint holds the bars of these markets and this timeframe: the map switches it in its own frame, and this pane can draw first after
+    // a click, with the new choice but the old bars (published under the new key, they would be summed up, and kept, as the new markets').
+    const heldKey = barStatsHeldKey(state, markets), ours = data.holds(markets, state.timeframe);
+    if (ours && (this.#held?.input !== table.input || this.#held.key !== heldKey)) {
+      const chart = state.seriesInstrument || state.marketId;
+      this.#held = { key: heldKey, tfMs, tf: state.timeframe, input: table.input, times: table.times, defs: table.defs, values: table.values,
+        markets: markets.length, oiMarkets: Math.max(1, state.oiParts.length), coin: coinOf(state),
+        candleMarket: chart ? `${venueLabel(chart)} ${chart.split(':').slice(1).join(':')}` : '', quote: state.markets.find(m => (m.instrumentId ?? m.id) === chart)?.quote ?? '',
+        replayAt: replaying() ? Math.floor(now / tfMs) * tfMs : null, answered: data.answered };
     }
     const { input, values: rowsValues } = table, all = input.bars;
     // A row taken at the nearest box edge for some bar (the source had no sums for the size set), or from a cut answer, says so: ≈ before its name.

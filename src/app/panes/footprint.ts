@@ -226,6 +226,17 @@ export class FootprintData {
     h.settled = Math.min(h.settled, Math.max(h.from, Math.floor(from / tfMs) * tfMs)); h.at = -Infinity;
   }
 
+  /**
+   * The span the bars held were answered for, [from, to), or null before the first answer: a candle inside it without a bar had no trades
+   * recorded; one outside it was not asked about (Bar stats' Range summary counts its minutes as unknown).
+   */
+  get answered(): { from: number; to: number } | null { const h = this.#held; return h ? { from: h.from, to: h.to } : null; }
+  /**
+   * Whether the bars held are those of `markets` (as the map asks for them, sorted) at `tf`: the context the last `ensure` set, or, with no
+   * markets to count, the cleared one. The map switches it in its own frame, so a pane drawn first after a click still holds the old bars.
+   */
+  holds(markets: readonly string[], tf: string): boolean { return markets.length ? this.#context === `${markets.join(',')}|${tf}` : this.#context === ''; }
+
   /** No markets to count (Aggregated with every venue off, or none inside the filter): no bars, and nothing asked for. */
   clear(): void {
     if (this.#context === '' && !this.bars.size) return;

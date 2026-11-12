@@ -203,7 +203,8 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
       t('Every market order fills resting orders on its own exchange, so the prices that took the most are where the resting orders were that absorbed them. The absorption marks and the resting orders are the ones the map draws.'),
       t('On a narrow band the average order leans: a sweep that began inside the band and ran out of it counts here with only part of its volume, one that began outside counts its volume here without the order.'),
       t('A drag across the Open Interest pane holds whole candles and sums up that pane in its own terms: the known change and the line\'s level, what NL/NS estimates was added and reduced, each venue\'s part, and how the stretch compares with the ones held. Show at the top of the panel switches between the map\'s summary and the pane\'s for the same stretch.'),
-      t('A drag across the Delta pane does the same in its terms: the recorded taker flow (bought, sold, the delta and its share of the volume), the price over the same candles, the CVD inside a daily or weekly run, how the delta was spread, and with NL/NS the estimated added and reduced.')],
+      t('A drag across the Delta pane does the same in its terms: the recorded taker flow (bought, sold, the delta and its share of the volume), the price over the same candles, the CVD inside a daily or weekly run, how the delta was spread, and with NL/NS the estimated added and reduced.'),
+      t('A drag across the Bar stats pane sums up the statistics chosen there, each by its own rule: volumes, dollars and counts added up, ratios worked out from the sums (never averaged candle by candle), the point of control of all the rows together, each CVD\'s change, the marks counted kind by kind, and how much of the stretch the recording holds. A point of control\'s move is per candle only and says so.')],
   },
   heatmap: {
     title: t('The heatmap'), guide: 'heatmap',

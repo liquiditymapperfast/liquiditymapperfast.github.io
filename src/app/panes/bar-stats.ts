@@ -42,7 +42,7 @@ export interface StatInput {
    * Liquidations reported on the markets counted, by candle start: shorts liquidated (forced buys) and longs liquidated (forced sells), USD, 0 in
    * a candle the loaded window covers with none; `cut` when the source answered only its largest. Absent where the source has none.
    */
-  liquidations?: { buy: ReadonlyMap<number, number>; sell: ReadonlyMap<number, number>; cut: boolean };
+  liquidations?: { buy: ReadonlyMap<number, number>; sell: ReadonlyMap<number, number>; cut: boolean; cutStarts?: ReadonlySet<number> };
   /** Where the running sums start again: a key per slot (the start of its day), a new key a new start. Absent: they run from the first slot. */
   restart?: readonly number[];
   /** Price step of the loaded rows. */
@@ -194,6 +194,12 @@ function viewPoc(input: StatInput, at: readonly number[]): number | null {
   return rows.size ? pocOf([...rows.values()], input.step) : null;
 }
 const orderUsd = (stats: NonNullable<Bar['stats']>): number => sumBuckets(stats.buy, 0, 7) + sumBuckets(stats.sell, 0, 7);
+/** The market orders of some bars added together: the dollars of their size buckets and their counts, buys and sells (bars without trade statistics left out). */
+export function orderPool(bars: readonly Bar[]): { buyUsd: number; sellUsd: number; buyN: number; sellN: number } {
+  let buyUsd = 0, sellUsd = 0, buyN = 0, sellN = 0;
+  for (const b of bars) if (b.stats) { buyUsd += sumBuckets(b.stats.buy, 0, 7); sellUsd += sumBuckets(b.stats.sell, 0, 7); buyN += b.stats.buyN; sellN += b.stats.sellN; }
+  return { buyUsd, sellUsd, buyN, sellN };
+}
 
 /** A bar's buys and sells by market, from its rows' parts; null for a bar without them (one market, or a source that does not say). */
 function venueSums(bar: Bar, into = new Map<string, [number, number]>()): Map<string, [number, number]> | null {
@@ -227,19 +233,19 @@ export const DAY_MS = 86_400_000;
  * held more than the source answers.
  */
 export function liquidationBuckets(days: ReadonlyMap<number, LiquidationDay>, ids: readonly string[], times: readonly number[], tfMs: number, coverFrom: number, now: number): NonNullable<StatInput['liquidations']> {
-  const buy = new Map<number, number>(), sell = new Map<number, number>(), wanted = new Set(ids), used = new Set<number>();
+  const buy = new Map<number, number>(), sell = new Map<number, number>(), wanted = new Set(ids), used = new Set<number>(), cutStarts = new Set<number>();
   let cut = false;
   for (const start of times) {
     const day = Math.floor(start / DAY_MS) * DAY_MS, held = days.get(day);
     if (!held || start < coverFrom || !(start + tfMs <= held.to || (start < held.to && start + tfMs > now))) continue;
-    buy.set(start, 0); sell.set(start, 0); used.add(day); if (held.cut) cut = true;
+    buy.set(start, 0); sell.set(start, 0); used.add(day); if (held.cut) { cut = true; cutStarts.add(start); }
   }
   for (const day of used) for (const l of days.get(day)!.rows) {
     if (!wanted.has(l.id)) continue;
     const start = Math.floor(l.t / tfMs) * tfMs, side = l.side === 'short' ? buy : sell, sum = side.get(start);
     if (sum !== undefined) side.set(start, sum + l.usd);
   }
-  return { buy, sell, cut };
+  return { buy, sell, cut, cutStarts };
 }
 
 /** A row flagged by `diagonalImbalances`: its low price, the heavier side, and how many times the opposite volume it is (Infinity against an empty row). */
@@ -314,10 +320,14 @@ export function lineOf(bar: Bar, input: Pick<StatInput, 'options' | 'cuts'>, lin
   return overFromBoxes(stats.buy, stats.sell, size, sizeScale());
 }
 /** The delta of a bar's retail orders (under the retail size) or of its whales (from the whale size up). */
-function sizeDelta(bar: Bar, input: StatInput, line: 'retail' | 'whale'): number | null {
+export function sizeDelta(bar: Bar, input: Pick<StatInput, 'options' | 'cuts'>, line: 'retail' | 'whale'): number | null {
   const sums = lineOf(bar, input, line), stats = bar.stats;
   if (!sums || !stats) return null;
   return line === 'whale' ? sums.buy - sums.sell : (sumBuckets(stats.buy, 0, 7) - sums.buy) - (sumBuckets(stats.sell, 0, 7) - sums.sell);
+}
+/** The average market buy against the average market sell of pooled orders, as log2 of their ratio; null without both sides. */
+export function pooledSkew(o: { buyUsd: number; sellUsd: number; buyN: number; sellN: number }): number | null {
+  return o.buyN > 0 && o.sellN > 0 && o.buyUsd > 0 && o.sellUsd > 0 ? Math.log2((o.buyUsd / o.buyN) / (o.sellUsd / o.sellN)) : null;
 }
 const approxLine = (line: 'retail' | 'whale') => (input: StatInput): boolean => input.bars.some(bar => bar && lineOf(bar, input, line)?.exact === false);
 /** The marks of the open interest against delta, by value (0 none). */
@@ -380,11 +390,11 @@ export const BAR_STATS: readonly StatDef[] = [
   tradeStat('buys', 'buys', t('Number of market buys in the bar'), 'sequential', count, stats => stats.buyN, sumView(count, false)),
   tradeStat('sells', 'sells', t('Number of market sells in the bar'), 'sequential', count, stats => stats.sellN, sumView(count, false)),
   tradeStat('avgTrade', t('avg order'), t('Average market order size: volume divided by the number of market orders (USD)'), 'sequential', volText, stats => stats.buyN + stats.sellN > 0 ? orderUsd(stats) / (stats.buyN + stats.sellN) : null,
-    ratioView(volText, () => 'text', bars => { let usd = 0, n = 0; for (const b of bars) if (b.stats) { usd += orderUsd(b.stats); n += b.stats.buyN + b.stats.sellN; } return n > 0 ? usd / n : null; })),
+    ratioView(volText, () => 'text', bars => { const o = orderPool(bars), n = o.buyN + o.sellN; return n > 0 ? (o.buyUsd + o.sellUsd) / n : null; })),
   tradeStat('avgBuy', t('avg buy'), t('Average market buy: the dollars of the market buys divided by their number (USD)'), 'sequential', volText, stats => stats.buyN > 0 ? sumBuckets(stats.buy, 0, 7) / stats.buyN : null,
-    ratioView(volText, () => 'text', bars => { let usd = 0, n = 0; for (const b of bars) if (b.stats) { usd += sumBuckets(b.stats.buy, 0, 7); n += b.stats.buyN; } return n > 0 ? usd / n : null; })),
+    ratioView(volText, () => 'text', bars => { const o = orderPool(bars); return o.buyN > 0 ? o.buyUsd / o.buyN : null; })),
   tradeStat('avgSell', t('avg sell'), t('Average market sell: the dollars of the market sells divided by their number (USD)'), 'sequential', volText, stats => stats.sellN > 0 ? sumBuckets(stats.sell, 0, 7) / stats.sellN : null,
-    ratioView(volText, () => 'text', bars => { let usd = 0, n = 0; for (const b of bars) if (b.stats) { usd += sumBuckets(b.stats.sell, 0, 7); n += b.stats.sellN; } return n > 0 ? usd / n : null; })),
+    ratioView(volText, () => 'text', bars => { const o = orderPool(bars); return o.sellN > 0 ? o.sellUsd / o.sellN : null; })),
   // The exchange's own candle (Binance's) counts trades, not orders: a fill each, so one market order is often several. One market, the chart's.
   { id: 'fills', label: t('fills'), group: 'trades', source: 'market', scale: 'sequential', format: count,
     title: t('Trades in the chart market\'s own candle as the exchange counts them: every fill counts, so one market order filled against several resting orders counts several times. Binance reports them, so the row fills for a Binance chart market, before the recording too, and stays empty for others.'),
@@ -399,7 +409,7 @@ export const BAR_STATS: readonly StatDef[] = [
     } },
   { ...tradeStat('sizeSkew', t('size skew'), t('The average market buy against the average market sell: ×2 in green, buy orders were twice the size of sell orders; in red, sell orders were'), 'diverging', v => `×${(2 ** Math.abs(v)).toFixed(1)}`,
     stats => { const buy = sumBuckets(stats.buy, 0, 7), sell = sumBuckets(stats.sell, 0, 7); return stats.buyN > 0 && stats.sellN > 0 && buy > 0 && sell > 0 ? Math.log2((buy / stats.buyN) / (sell / stats.sellN)) : null; },
-    ratioView(v => `×${(2 ** Math.abs(v)).toFixed(1)}`, signTone, bars => { let buy = 0, sell = 0, nb = 0, ns = 0; for (const b of bars) if (b.stats) { buy += sumBuckets(b.stats.buy, 0, 7); sell += sumBuckets(b.stats.sell, 0, 7); nb += b.stats.buyN; ns += b.stats.sellN; } return nb > 0 && ns > 0 && buy > 0 && sell > 0 ? Math.log2((buy / nb) / (sell / ns)) : null; })),
+    ratioView(v => `×${(2 ** Math.abs(v)).toFixed(1)}`, signTone, bars => pooledSkew(orderPool(bars)))),
     // The table keeps the logarithm, so a skew either way is shaded alike; the file gives the ratio itself.
     csv: { head: 'sizeSkew_buy_over_sell', cell: v => String(2 ** v) } },
   { ...tradeStat('whaleShare', t('whale %'), t('Share of the market-order volume in orders from the whale size up (set in the options)'), 'sequential', pctText, (stats, input, bar) => { const whale = lineOf(bar, input, 'whale'), all = orderUsd(stats); return whale && all > 0 ? (whale.buy + whale.sell) / all * 100 : null; }),
@@ -421,7 +431,7 @@ export const BAR_STATS: readonly StatDef[] = [
     compute: input => perCandle(input, c => { const bp = c[1] > 0 ? (c[2] - c[3]) / c[1] * 10_000 : 0, usd = candleUsd(c); return bp > 0 && usd > 0 ? usd / bp : null; }),
     view: (input, at) => { const c = viewCandle(input, at), bp = c && c.open > 0 ? (c.high - c.low) / c.open * 10_000 : 0; return c && bp > 0 && c.usd > 0 ? { value: volText(c.usd / bp), tone: 'text', how: t('The volume of the candles in view over the basis points of their whole range.') } : null; } },
   { id: 'divergence', label: t('delta vs candle'), group: 'market', source: 'executions', scale: 'category',
-    title: t('A candle that fell on net market buying (▲: resting sellers took it) or rose on net market selling (▼: resting buyers took it), with delta at least 5 % of its volume'),
+    title: t('A candle that fell on net market buying (▲) or rose on net market selling (▼), with delta at least 5 % of its volume: taker flow against the price, which does not by itself show who absorbed it'),
     format: v => v > 0 ? '▲' : v < 0 ? '▼' : '', tone: v => markTone(v === 0 ? null : v > 0),
     compute: input => perBar(input, (bar, i) => {
       const c = input.candles.get(slotTime(input, i)), volume = total(bar); if (!c || !(volume > 0)) return null;
