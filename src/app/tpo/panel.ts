@@ -57,7 +57,7 @@ export function buildTpoPanel(store: Store, tools: HTMLElement, body: HTMLElemen
     switchRow(t('Hollow where one venue stood alone'), s.source === 'chosen' ? t('A row only one of the ticked markets reached, at least a row and 3 bp past where most of them stopped (each moved by its usual gap first), is drawn as an outline and not counted. Needs three markets or more.') : t('A block drawn as an outline where this market\'s wick went at least a row and 3 bp past where most of the market stopped, from the other venues switched on (each moved by its usual gap first). Rare on the largest markets, more common on smaller ones.'), s.hollow, hollow => set({ hollow })),
     switchRow(t('Volume profile lines follow the TPO'), t('While the TPO shows, the Volume profile\'s lines of the same windows (point of control, value area, carried and untouched) are drawn at the TPO\'s levels, so there is one set of lines. With them off, the TPO draws its own point of control.'), s.lines, lines => set({ lines })),
     heading(t('Split and merge')),
-    note(t('Right-click a block to split its window there, or to merge it with the window before or after.')),
+    note(t('Right-click a block to split its window there, or to merge it with the window before or after. On a touch screen, tap the block, then tap its box.')),
   );
   // Edits belong to this coin, kind of window and block length: undone here for those alone.
   const scope = editScope(coin, s.period, blockMsOf(s)), edits = (s.splits[scope]?.length ?? 0) + (s.merges[scope]?.length ?? 0);

@@ -9,7 +9,7 @@ import { currentCoin } from '../coin.ts';
 import { venueLabel } from '../venues.ts';
 import { historyTarget, type HistoryTarget, type KeyLevelHistory } from '../keylevels/history.ts';
 import { MAX_BACK_MS } from '../keylevels/levels.ts';
-import { linesWindows, periodWindows } from '../traded/levels.ts';
+import { LinesCalendar, periodWindows } from '../traded/levels.ts';
 import { lastWindows, type ProfileWindow } from '../traded/sessions.ts';
 import { vwapTargets } from '../vwap/markets.ts';
 import type { ValueLevels } from '../../shared/profile.ts';
@@ -127,6 +127,8 @@ export class TpoLayer {
   #drawn: { key: string; windows: TpoWindow[]; first: number; last: number } | null = null;
   /** The windows' names by key (`windows`). */
   #names = new Map<string, string>();
+  /** The last few windows (a count under How many), picked from a calendar laid out once as the chart pans (`LinesCalendar`). */
+  readonly #latest = new LinesCalendar();
   #bar: { key: string; barMs: number } | null = null;
 
   /**
@@ -254,7 +256,7 @@ export class TpoLayer {
       for (let i = a; i < list.length && list[i]!.from < right; i++) if (list[i]!.to > t0) touching.push(list[i]!);
       base = lastWindows(touching, MAX_TPO_IN_VIEW, f.now);
       if (base.length > MAX_TPO_DRAWN) base = base.slice(-MAX_TPO_DRAWN);
-    } else base = linesWindows({ ...f.state.traded, period: s.period, count: s.count }, f.state.timeZone, right - (s.count + 1) * span - 3 * DAY, right, f.now, s.count);
+    } else base = this.#latest.windows({ ...f.state.traded, period: s.period }, f.state.timeZone, right, s.count);
     const byKey = new Map(base.map(w => [w.key, w]));
     // A window's name is a date written in its zone, or a session's name: kept by key, so a pan does not write hundreds of dates again,
     // and written again when a session, the zone or the page's clock changes.

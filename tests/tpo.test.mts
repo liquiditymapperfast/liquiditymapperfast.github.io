@@ -347,3 +347,46 @@ test('zoomed out to months, a profile narrower than 3 px is a strip: its range, 
   // The plot's clip, the backing, the range, the value area, the stripe.
   assert.equal(c.rects, 5);
 });
+
+/** A canvas that records each fill in order: its colour, its alpha and the rectangles of its path (or the one of a fillRect). */
+function recordingCanvas(): { ctx: CanvasRenderingContext2D; fills: { style: string; alpha: number; rects: number[][] }[] } {
+  const out = { fills: [] as { style: string; alpha: number; rects: number[][] }[], ctx: null as unknown as CanvasRenderingContext2D };
+  const state: Record<string, unknown> = { fillStyle: '', globalAlpha: 1 };
+  let path: number[][] = [];
+  const noop = (): void => {};
+  out.ctx = new Proxy({}, {
+    get: (_t, k) => k === 'beginPath' ? () => { path = []; } : k === 'rect' ? (...r: number[]) => { path.push(r); }
+      : k === 'fill' ? () => { out.fills.push({ style: String(state.fillStyle), alpha: Number(state.globalAlpha), rects: path }); }
+      : k === 'fillRect' ? (...r: number[]) => { out.fills.push({ style: String(state.fillStyle), alpha: Number(state.globalAlpha), rects: [r] }); }
+      : k === 'measureText' ? () => ({ width: 10 }) : typeof k === 'string' && k in state ? state[k] : noop,
+    set: (_t, k, v) => { state[k as string] = v; return true; },
+  }) as unknown as CanvasRenderingContext2D;
+  return out;
+}
+
+test('zoomed out, the compact profiles stand on a casing of the page colour a pixel round each bar, laid under all of them first', () => {
+  const day1 = buildProfile(win, blocksOf(bars('binance'), win.from, win.to, HALF, HALF, NOW), HALF, 5, 0.7, NOW)!;
+  // The next day: the same candles a day later and $400 higher, so its strip stands beside the first one's and overlaps its prices.
+  const later = bars('binance').map(r => { const c = [...r] as unknown as number[]; c[0]! += DAY; for (const i of [1, 2, 3, 4]) c[i]! += 400; return c as unknown as CandleRow; });
+  const win2 = { key: 'd2', from: DAY0 + DAY, to: DAY0 + 2 * DAY };
+  const day2 = buildProfile(win2, blocksOf(later, win2.from, win2.to, HALF, HALF, NOW + DAY), HALF, 5, 0.7, NOW + DAY)!;
+  for (const [palette, label] of [[PALETTES.dark!, 'dark'], [PALETTES.latte!, 'latte']] as const) {
+    // Two hundred days on 600 px: each day 3 px wide, a strip.
+    const view = new View({ t0: DAY0 - 198 * DAY, t1: DAY0 + 2 * DAY, p0: day1.low - 2_000, p1: day2.high + 2_000 });
+    const c = recordingCanvas();
+    const geos = paintTpo(c.ctx, { profiles: [day1, day2], settings: { ...TPO_DEFAULTS, on: true }, view, pw: 600, ph: 300, p: palette, labels: new LabelBoard(), fold: 0, rank: () => 0, name: () => '', now: NOW + 2 * DAY, linesFor: () => true });
+    assert.ok(geos.every(g => g.compact), label);
+    const casings = c.fills.filter(f => f.style === palette.bg);
+    assert.equal(casings.length, 1, `${label}: one casing fill for both profiles`);
+    assert.equal(casings[0]!.alpha, 0.85);
+    assert.equal(casings[0]!.rects.length, 2);
+    const at = c.fills.indexOf(casings[0]!), bars2 = c.fills.filter((f, i) => i !== at && f.rects.length && f.style !== palette.bg && f.rects[0]!.length === 4 && f.rects[0]![2]! < 600);
+    assert.ok(bars2.length >= 6, `${label}: range, value area and stripe of each`);
+    assert.ok(bars2.every(f => c.fills.indexOf(f) > at), `${label}: every bar after the casing, so the second day's casing covers none of the first day's`);
+    // A pixel round each strip: its range (the dimmest bar, the first of its three) one pixel larger every way.
+    for (const [g, cased] of geos.map((g, i) => [g, casings[0]!.rects[i]!] as const)) {
+      const range = bars2.find(f => f.rects.some(r => r[0] === g.x0))!.rects.find(r => r[0] === g.x0)!;
+      assert.deepEqual(cased, [range[0]! - 1, range[1]! - 1, range[2]! + 2, range[3]! + 2], label);
+    }
+  }
+});

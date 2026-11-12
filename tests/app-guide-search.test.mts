@@ -107,6 +107,11 @@ test('the real guide answers the questions a visitor types, in English', () => {
   assert.equal(ids('nl/ns').slice(0, 3).includes('delta'), true);
   assert.equal(ids('history').slice(0, 2).includes('recording'), true);
   assert.equal(ids('mirror')[0], 'mirror');
+  assert.equal(ids('tpo')[0], 'tpo');
+  assert.equal(ids('market profile')[0], 'tpo');
+  assert.equal(ids('initial balance')[0], 'tpo');
+  assert.equal(ids('poor high')[0], 'tpo');
+  assert.ok(ids('split merge').slice(0, 2).includes('tpo'));
   assert.deepEqual(ids('qwertyuiop'), []);
 });
 

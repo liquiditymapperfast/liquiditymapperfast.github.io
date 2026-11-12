@@ -32,7 +32,7 @@ test('the contents list is in groups: the first section starts one, and no group
 
 test('a feature with a "?" panel goes to the section of its own (it once pointed at a section that never mentioned it)', () => {
   const have = new Set(SECTIONS.map(s => s.id));
-  const wanted: Record<string, string> = { vwap: 'vwap', keyLevels: 'key-levels', range: 'range', script: 'scripts', scriptPane: 'scripts', funding: 'funding', fundingPane: 'funding', ls: 'ls', lsPane: 'ls', delta: 'delta', deltaPane: 'delta', replay: 'goto', stats: 'bar-stats', sounds: 'sounds', depth: 'depth', depthPane: 'depth', oi: 'open-interest', oiPane: 'open-interest', lt: 'lt', ltPane: 'lt', candlePane: 'phones' };
+  const wanted: Record<string, string> = { vwap: 'vwap', keyLevels: 'key-levels', range: 'range', script: 'scripts', scriptPane: 'scripts', funding: 'funding', fundingPane: 'funding', ls: 'ls', lsPane: 'ls', delta: 'delta', deltaPane: 'delta', replay: 'goto', stats: 'bar-stats', sounds: 'sounds', depth: 'depth', depthPane: 'depth', oi: 'open-interest', oiPane: 'open-interest', lt: 'lt', ltPane: 'lt', candlePane: 'phones', tpo: 'tpo' };
   for (const [topic, id] of Object.entries(wanted)) {
     assert.ok(have.has(id), `a section ${id}`);
     assert.equal(HELP[topic as keyof typeof HELP].guide, id, `the "?" of ${topic} goes to ${id}`);

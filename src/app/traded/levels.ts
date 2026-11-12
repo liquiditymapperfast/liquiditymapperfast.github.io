@@ -57,6 +57,67 @@ export function linesWindows(s: KindSettings, pageZone: 'local' | 'utc', t0: num
   return lastWindows(periodWindows(s, pageZone, t0, Math.min(t1, now)), count, now);
 }
 
+const DAY_MS = 86_400_000;
+/**
+ * How far back from the chart's right edge the windows drawn are looked for: twice what holds `count` of the kind, and a week more (a
+ * weekday session skips the weekends, so `count` of them take up to 7/5 as many days, and two more for the weekend at the edge).
+ */
+export function linesReach(period: LineKind, count: number): number {
+  return 2 * Math.max(1, count) * (period === 'month' ? 31 : period === 'week' ? 7 : 1) * DAY_MS + 7 * DAY_MS;
+}
+/** How much more of the calendar than a frame needs is laid out, either side, so a pan lays it out again only now and then. */
+const LAYOUT_MARGIN = 28 * DAY_MS;
+const NO_WINDOWS: ProfileWindow[] = [];
+
+/**
+ * The windows of one kind drawn on the chart (`linesWindows`'s answer: the last `count` of each that began before the chart's right edge
+ * `end`, which is never past now), for a chart that pans: the calendar is laid out once over what the frame needs and a margin either
+ * side, and each frame picks from it, so panning does not work out every day's start in its time zone again (Karl's chart a year wide spent
+ * ~24 ms of each pan frame on that, 2026-11-12). Laid out again when the edge leaves it or the kind's zone or sessions change. The same
+ * answer while the edge pans inside one window is the same array, so what is worked out from it is kept too.
+ */
+export class LinesCalendar {
+  #laid: { key: string; lo: number; hi: number; windows: ProfileWindow[]; id: number } | null = null;
+  #picked: { sig: string; windows: ProfileWindow[] } | null = null;
+  #layouts = 0;
+  /** How many times the calendar was laid out (for the tests: a pan inside it lays out nothing). */
+  get layouts(): number { return this.#layouts; }
+
+  /** The calendar's key for the settings given (their zones resolved: the computer's zone is asked again at most once a minute). */
+  #named: { period: string; zone: string; pageZone: string; sessions: readonly unknown[]; minute: number; key: string } | null = null;
+  #keyOf(s: Pick<KindSettings, 'period' | 'zone' | 'sessions'>, pageZone: 'local' | 'utc'): string {
+    const n = this.#named, minute = Math.floor(Date.now() / 60_000);
+    if (n && n.period === s.period && n.zone === s.zone && n.pageZone === pageZone && n.sessions === s.sessions && n.minute === minute) return n.key;
+    const key = s.period === 'sessions' ? `sessions|${JSON.stringify(s.sessions.map(x => ({ ...x, zone: resolveZone(x.zone, pageZone) })))}` : `${s.period}|${resolveZone(s.zone, pageZone)}`;
+    this.#named = { period: s.period, zone: s.zone, pageZone, sessions: s.sessions, minute, key };
+    return key;
+  }
+
+  windows(s: Pick<KindSettings, 'period' | 'zone' | 'sessions'>, pageZone: 'local' | 'utc', end: number, count: number): ProfileWindow[] {
+    if (count < 1 || !Number.isFinite(end)) return NO_WINDOWS;
+    const lower = end - linesReach(s.period, count), key = this.#keyOf(s, pageZone);
+    let laid = this.#laid;
+    if (!laid || laid.key !== key || lower < laid.lo || end > laid.hi) {
+      const lo = lower - LAYOUT_MARGIN, hi = end + LAYOUT_MARGIN;
+      laid = this.#laid = { key, lo, hi, windows: periodWindows(s, pageZone, lo, hi), id: ++this.#layouts };
+    }
+    // The calendar is oldest first by start: those that began before the edge are a prefix of it, and of those the ones that ended by the
+    // reach's start drop out (a set that only grows as the edge moves on, so its size names it).
+    const all = laid.windows;
+    let a = 0, b = all.length;
+    while (a < b) { const m = (a + b) >>> 1; if (all[m].from < end) a = m + 1; else b = m; }
+    let gone = 0;
+    for (let i = 0; i < a; i++) if (all[i].to <= lower) gone++;
+    const sig = `${laid.id}|${count}|${a}|${gone}`;
+    if (this.#picked?.sig === sig) return this.#picked.windows;
+    const touching: ProfileWindow[] = [];
+    for (let i = 0; i < a; i++) if (all[i].to > lower) touching.push(all[i]);
+    const windows = lastWindows(touching, count, end);
+    this.#picked = { sig, windows };
+    return windows;
+  }
+}
+
 /** How far back from now the calendar is laid out to find a window under way and the one before it: a month and a half is more than the longest. */
 const CARRY_BACK: Readonly<Record<LineKind, number>> = { day: 3 * 86_400_000, week: 15 * 86_400_000, month: 65 * 86_400_000, sessions: 6 * 86_400_000 };
 

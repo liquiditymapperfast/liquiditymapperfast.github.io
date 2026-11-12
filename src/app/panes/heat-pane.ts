@@ -10,7 +10,7 @@ import { StripOrderCache, WHOLE_RANGE_STEP, stripOrdersOf } from '../measures/st
 import { gridStepFor } from '../../shared/grid.ts';
 import { MAX_PROFILE_INSTRUMENTS, type ProfileAnswer } from '../../shared/footprint.ts';
 import type { ValueLevels } from '../../shared/profile.ts';
-import { DRAWN_SHARE, answerLevels, candleAnswer, candleBarMs, candleLevels, gatedCarries, linesWindows, loadedColumnWanted, mergeCandleProfiles, periodWindows, recordedWindowLevels, recordedWindows, recordingStart, requestStep, touchedAt, windowKind, windowLabel, windowZone } from '../traded/levels.ts';
+import { DRAWN_SHARE, answerLevels, candleAnswer, candleBarMs, candleLevels, gatedCarries, LinesCalendar, loadedColumnWanted, mergeCandleProfiles, periodWindows, recordedWindowLevels, recordedWindows, recordingStart, requestStep, touchedAt, windowKind, windowLabel, windowZone } from '../traded/levels.ts';
 import { LABEL_FLOOR, ageAlpha, ageRanks, carriedLines, runPieces, type CarriedLine, type Carry } from '../traded/carry.ts';
 import { LabelBoard } from '../labels.ts';
 import type { ProfileWindow, SessionDef } from '../traded/sessions.ts';
@@ -42,7 +42,7 @@ import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FOOTPRINT_SETTLE_MS, FootprintData, FootprintLod, VENUE_LINES, candleBody, footprintLayout, paintFootprint, readBar, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
-import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine } from '../infobox.ts';
+import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
@@ -179,6 +179,17 @@ type ColumnBox = { lines: InfoLine[]; y: number; placement?: 'center' | 'down' }
 type ProfileHit = { x0: number; room: number; row: number; max: number; rows: Map<number, [number, number]>; total: number; split: boolean; name: string; levels: ValueLevels; source: string | null };
 /** The row of a period profile under the pointer. */
 type ProfileRowHit = { hit: ProfileHit; k: number; buy: number; sell: number };
+/**
+ * Keep the click a browser makes of a tap (after the finger lifts) from landing on what the tap just opened under the finger: a menu's row
+ * would be chosen, a sheet's scrim would close it. The first click within `ms` is dropped, wherever it lands.
+ */
+function swallowClick(ms = 400): void {
+  const drop = (e: MouseEvent): void => { e.preventDefault(); e.stopPropagation(); stop(); };
+  const stop = (): void => { clearTimeout(timer); document.removeEventListener('click', drop, true); };
+  document.addEventListener('click', drop, true);
+  const timer = setTimeout(stop, ms);
+}
+
 /** The width the price labels need for the coin on screen: BTC's fit the usual width, a coin priced in millionths needs about eleven characters. */
 function axisNeed(): number {
   const price = currentCoin().price;
@@ -479,7 +490,9 @@ export class HeatPane {
   /** What the column's window was worked out from the candles as, by what it depends on: one slot that replaces itself, so a drag cannot fill `#candleLevels` with windows nobody asks for twice. */
   #columnSlot: { key: string; value: { levels: ValueLevels; rows: Map<number, number>; buys: Map<number, number> | null; spot: boolean } | null } | null = null;
   /** The days, weeks or sessions the lines are drawn for, and what they were worked out for. */
-  #vaWindows: { key: string; windows: ProfileWindow[] } | null = null;
+  #vaWindows: { key: string; picks: ProfileWindow[][]; windows: ProfileWindow[] } | null = null;
+  /** Each kind's calendar of windows for the lines, laid out once and picked from as the chart pans (`#linesWindows`). */
+  readonly #linesCalendars = new Map<LineKind, LinesCalendar>();
   /** How old each window is among its own series by the calendar up to now (`#ageRanks`), for the fading of the lines and profiles, and the carries (`#carries`): each by what it was worked out for. */
   #aged: { lines: LineKind[]; profiles: LineKind | null; sessions: SessionDef[]; zone: string; tz: string; minute: number; ranks: Map<string, number> } | null = null;
   #carried: { lines: LineKind[]; sessions: SessionDef[]; source: string; keeps: number; zone: string; tz: string; minute: number; real: number; carries: Carry[] } | null = null;
@@ -519,8 +532,17 @@ export class HeatPane {
     return { state, view: this.view, pw: this.plotW, ph: this.plotH, now: pageNow(), replay: replaying(), peerIds: state.tpo.hollow && state.tpo.source === 'chart' ? flowIds(state, this.hub.flow.ids) : [], nameOf: w => this.#windowName(state, w) };
   }
   #tpoAnchor: HTMLElement | null = null;
-  /** A TPO block's menu: split its window there, merge the window with the one before or after, fold or lay out, undo this coin's edits. */
-  #tpoMenu(hit: NonNullable<ReturnType<TpoLayer['hit']>>, cx: number, cy: number): void {
+  /**
+   * The TPO block's box last drawn for a finger's pinned crosshair, where it stands (plot coordinates) and the block it is for: a tap on it
+   * opens the block's menu, a touch screen's right click. Worked out again each time the pointer's layer is drawn, so it is never older than
+   * the box on the screen.
+   */
+  #tpoCard: { rect: InfoRect; hit: NonNullable<ReturnType<TpoLayer['hit']>> } | null = null;
+  /**
+   * A TPO block's menu: split its window there, merge the window with the one before or after, fold or lay out, undo this coin's edits.
+   * `done` runs after a choice (a finger's pinned box is put away: what it said is about the windows before the edit).
+   */
+  #tpoMenu(hit: NonNullable<ReturnType<TpoLayer['hit']>>, cx: number, cy: number, done?: () => void): void {
     const state = this.store.state, s = state.tpo, prof = hit.profile, b = prof.blocks.find(x => x.k === hit.k);
     const scope = editScope(currentCoin().coin, s.period, blockMsOf(s)), windows = this.#tpo.windows(this.#tpoFrame(state));
     const w = windows.find(x => x.key === prof.key), range = !w || w.base === 'range';
@@ -543,6 +565,9 @@ export class HeatPane {
     };
     openMenu(anchor, items, '', { onPreview: () => {}, onSelect: id => {
       const now = this.store.state.tpo;
+      // The coin, kind of window or block length changed while the menu was open: its choices were about windows no longer drawn.
+      if (editScope(currentCoin().coin, now.period, blockMsOf(now)) !== scope) return;
+      done?.();
       if (id === 'split' && b && w && !range) {
         // The calendar window the moment falls in (a merged window holds several): a cut at one's start takes that merge back.
         const member = w.spans.find(x => b.t >= x.from && b.t < x.to);
@@ -3034,29 +3059,29 @@ export class HeatPane {
   /** How much of its trades the page's data source keeps (a server a week, a page reading the exchanges itself a day). */
   #recordingKeeps(): number { return this.hub.source.kind === 'browser' ? BROWSER_RETENTION_MS : RETENTION_MS; }
   /**
-   * The days, weeks or sessions the lines are drawn for (worked out again when the settings, the view's minutes or the clock's minute
-   * change): from the recording, only as many as it can still work out and only those that began inside what it keeps. They are the last
-   * ones up to the chart's right edge, whether or not they reach its left one: zoomed in on the last hours, last month's untouched point of
-   * control still runs on across the chart, and says whose it is. Each kind drawn on the chart (`chartKinds`: those whose lines are on, and
-   * the profiles' kind) gives its own, in turn.
+   * The days, weeks or sessions the lines are drawn for: from the recording, only as many as it can still work out and only those that
+   * began inside what it keeps. They are the last ones up to the chart's right edge, whether or not they reach its left one: zoomed in on
+   * the last hours, last month's untouched point of control still runs on across the chart, and says whose it is; zoomed in or out, the same
+   * number (a weekday session's too, which used to get fewer zoomed in). Each kind drawn on the chart (`chartKinds`: those whose lines are on,
+   * and the profiles' kind) gives its own, in turn.
    */
   #linesWindows(state: AppState): ProfileWindow[] {
-    const v = this.view, MIN = 60_000, s = state.traded, now = pageNow(), real = Date.now(), keeps = this.#recordingKeeps();
+    const MIN = 60_000, s = state.traded, now = pageNow(), real = Date.now(), keeps = this.#recordingKeeps(), end = Math.min(this.view.t1, now);
     const kinds = chartKinds(s);
-    const key = `${kinds.join(',')}|${s.source}|${keeps}|${s.zone}|${s.count}|${JSON.stringify(s.sessions)}|${state.timeZone}|${Math.floor(v.t0 / MIN)}|${Math.ceil(v.t1 / MIN)}|${Math.floor(now / MIN)}|${Math.floor(real / MIN)}`;
-    if (this.#vaWindows?.key !== key) {
+    // Each kind's last `count` up to the edge, from its calendar laid out once (`LinesCalendar`): the same array while the edge pans inside one
+    // window, so the list is put together again only when one of them changes (or the settings, or the real clock's minute).
+    const picks = kinds.map(period => {
+      const k = { ...s, period }, calendar = this.#linesCalendars.get(period) ?? new LinesCalendar();
+      this.#linesCalendars.set(period, calendar);
+      return calendar.windows(k, state.timeZone, end, linesCount(k, keeps));
+    });
+    const key = `${kinds.join(',')}|${s.source}|${keeps}|${Math.floor(real / MIN)}`, held = this.#vaWindows;
+    if (held?.key !== key || held.picks.length !== picks.length || picks.some((p, i) => p !== held.picks[i])) {
       const out: ProfileWindow[] = [];
-      for (const period of kinds) {
-        const k = { ...s, period };
-        // Far enough back to hold `count` of them (a weekday session skips a weekend): the last `count` are kept of what is found.
-        const DAY_MS = 86_400_000, count = linesCount(k, keeps), span = period === 'month' ? 31 * DAY_MS : period === 'week' ? 7 * DAY_MS : DAY_MS;
-        const back = Math.min(v.t0, Math.min(v.t1, now) - count * span - 3 * DAY_MS);
-        const windows = linesWindows(k, state.timeZone, back, v.t1, now, count);
-        out.push(...(linesSource(k) === 'recorded' ? recordedWindows(windows, real, keeps) : windows));
-      }
-      this.#vaWindows = { key, windows: out };
+      kinds.forEach((period, i) => out.push(...(linesSource({ ...s, period }) === 'recorded' ? recordedWindows(picks[i], real, keeps) : picks[i])));
+      this.#vaWindows = { key, picks, windows: out };
     }
-    return this.#vaWindows.windows;
+    return this.#vaWindows!.windows;
   }
   /**
    * How old each window is: the number of windows of its own series that have begun after it by now (0: the one under way, or the last of a
@@ -3947,6 +3972,7 @@ export class HeatPane {
   }
 
   #paintCrosshair(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    this.#tpoCard = null;
     const hv = state.hover; if (!hv) { this.#orders.rest(); return; }
     const p = this.#palette, v = this.view;
     const x = v.xOf(hv.t, pw), inX = x >= 0 && x <= pw, ownY = hv.source === 'heat' && hv.price !== null;
@@ -3995,7 +4021,10 @@ export class HeatPane {
       paintInfoBox(ctx, lines, x, touch ? y - hit.r - 8 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { edge: buy ? p.candleUp : p.candleDown, gap: hit.r + 10, placement: touch ? 'up' : 'center' });
     } else if (ownY && here && state.tpo.on && (tpoHit = this.#tpo.hit(x, y, v, ph))) { // a block of the TPO: its half hour, its row and what they say
       this.#tpo.paintHit(ctx, tpoHit, v, pw, ph, p);
-      paintInfoBox(ctx, this.#tpo.lines(this.#tpoFrame(state), tpoHit), x, touch ? y - 24 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
+      // A finger has no right click: its box ends by saying a tap on it opens the block's menu (`#openTpoCard`).
+      const lines = this.#tpo.lines(this.#tpoFrame(state), tpoHit);
+      const rect = paintInfoBox(ctx, touch ? [...lines, { text: t('Tap this box for the TPO menu'), color: 'muted' }] : lines, x, touch ? y - 24 : y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, { placement: touch ? 'up' : 'center' });
+      if (touch && rect) this.#tpoCard = { rect, hit: tpoHit };
     } else if (ownY && here && (profiled = this.#periodProfileAt(x, y, ph))) { // a row of a day's, week's, month's or session's profile, painted over the rest
       const { hit, k, buy, sell } = profiled, step = hit.row;
       const lines = periodRowLines({ name: hit.name, low: k * step, high: (k + 1) * step, step, buy, sell, total: hit.total, split: hit.split, levels: hit.levels, source: hit.source });
@@ -4315,9 +4344,12 @@ export class HeatPane {
         if ((this.store.state.vwapAnchoring || this.store.state.profileAnchoring) && p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH) { this.onAnchorPreview?.(this.view.tOf(p.x, this.plotW)); return; }
         if (this.#bands.onHeader(p.x, p.y) || this.#onHiddenTag(p.x, p.y)) { this.onTopProfile(); return; }
         if (p.x >= 0 && p.x <= this.plotW && p.y <= this.plotH && this.draw?.click(p, false, true)) { this.#drawClickAt = performance.now(); this.#unpin(); return; }
+        // A tap on a TPO block's box opens its menu (before the pin's own rule: a box kept inside the map can stand over the pin).
+        if (this.#openTpoCard(p)) return;
         if (this.#pinActive() && Math.hypot(this.#pin!.x - p.x, this.#pin!.y - p.y) < 28) this.#unpin(); else this.#pinAt(p);
       },
-      doubleTap: () => { if (this.draw?.placing || this.store.state.vwapAnchoring || this.store.state.profileAnchoring || performance.now() - this.#drawClickAt < 600) return; this.#unpin(); this.fit(); },
+      // A tap on the box soon after the tap that pinned it, near it, is a double tap to the recogniser: still the box's, not a refit.
+      doubleTap: p => { if (this.#openTpoCard(p)) return; if (this.draw?.placing || this.store.state.vwapAnchoring || this.store.state.profileAnchoring || performance.now() - this.#drawClickAt < 600) return; this.#unpin(); this.fit(); },
       // A short tick under the finger says the hold registered (where the browser allows it: it wants the page to have been used first).
       hold: p => { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(8); this.#pinAt(p); },
       holdMove: p => this.#pinAt(p),
@@ -4376,6 +4408,24 @@ export class HeatPane {
   }
 
   /** Whether a finger's pin is what is on show now (a tap on a pane under the map replaces it with its own). */
+  /**
+   * A tap at `p` on the TPO block's box drawn for the pinned crosshair: open the block's menu there. Only while that box is the one on the
+   * screen and the block under the pin is still the one it names (a box drawn before the map moved is not acted on); after a choice the pin
+   * is put away. The tap the browser turns into a click after it is kept from landing on the menu just opened under the finger.
+   */
+  #openTpoCard(p: Pt): boolean {
+    const card = this.#tpoCard, hv = this.store.state.hover, state = this.store.state;
+    if (!card || !hv?.touch || hv.price === null || !state.tpo.on || state.vwapAnchoring || state.profileAnchoring || this.draw?.placing) return false;
+    const { rect } = card;
+    if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) return false;
+    const pw = this.plotW, ph = this.plotH, now = this.#tpo.hit(this.view.xOf(hv.t, pw), this.view.yOf(hv.price, ph), this.view, ph);
+    if (!now || now.profile.key !== card.hit.profile.key || now.k !== card.hit.k) { this.#tpoCard = null; return false; }
+    const r = this.overlay.getBoundingClientRect();
+    swallowClick();
+    this.#tpoMenu(now, r.left + this.#left + p.x, r.top + p.y, () => this.#unpin());
+    this.invalidate();
+    return true;
+  }
   #pinActive(): boolean { const hv = this.store.state.hover; return this.#pin !== null && (this.#profileHover !== null || this.#tradedHover !== null || (hv?.touch === true && hv.source === 'heat')); }
   /** Drop the pinned crosshair (and the profile comparison), if any. */
   #unpin(): void {
