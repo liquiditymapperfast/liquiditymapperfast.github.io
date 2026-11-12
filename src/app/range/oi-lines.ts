@@ -168,12 +168,12 @@ export class OiRangeSummary {
  * (not merely as many), and every market whose level is in the line making the change (a market read once and never again is in the level
  * and not in the change). The chained line is built back from the newest total, so a market that joined later would be in the start.
  */
-function sameMarkets(held: OiPaneHeld, i0: number, i1: number): boolean {
+function sameMarkets(held: OiPaneHeld, i0: number, _i1: number): boolean {
+  // Every bar from the stretch's first to the line's newest: a market read only in the bars between is in the chain's steps and not in
+  // its total, so its start would be off too.
   const last = held.oi.length - 1, markets = held.cohorts![last] ?? '';
   if (!markets) return false;
-  for (const i of [...Array.from({ length: i1 - i0 + 1 }, (_, k) => i0 + k), last]) {
-    if (held.cohorts![i] !== markets || (held.venues && held.counted && held.venues[i] !== held.counted[i])) return false;
-  }
+  for (let i = i0; i <= last; i++) if (held.cohorts![i] !== markets || (held.venues && held.counted && held.venues[i] !== held.counted[i])) return false;
   return true;
 }
 
@@ -195,14 +195,15 @@ function statusText(s: OiStretch, held: OiPaneHeld, sel: RangeSelection): string
 
 /** What NL/NS estimates was added and reduced over the stretch: two bars on one scale, the four parts and their shares, and how it was read. */
 function whoLines(s: OiStretch, w: OiWho | null, kept: boolean, held: OiPaneHeld, n: number): RangeLine[] {
-  const head: RangeLine = { key: 'h-oi-who', kind: 'heading', cells: [t('Estimated added and reduced')] };
+  const head: RangeLine = { key: 'h-oi-who', kind: 'heading', cells: [held.coin ? `${t('Estimated added and reduced')} · ${held.coin}` : t('Estimated added and reduced')] };
   if (!held.who && !kept && !held.whoOn) return [head, { key: 'oi-who-off', kind: 'note', tone: 'muted', cells: [t("Set the OI pane's Bars to NL/NS for what was added and reduced.")] }];
   if (!w) return [head, { key: 'oi-who-none', kind: 'note', tone: 'muted', cells: [t('NL/NS is worked out for the candles in view: none of this stretch is in view.')] }];
   const scale = Math.max(w.added, w.reduced) || 1, coin = held.coin;
   const part = (x: number, tone: StackPart['tone'], tip: string, closed = false): StackPart => ({ size: x / scale, tone, tip: `${tip} ${signedCoins(closed ? -x : x, coin)}`, ...(closed ? { closed } : {}) });
   const out: RangeLine[] = [head,
-    { key: 'oi-added', kind: 'stack', cells: [t('Added'), signedCoins(w.added, coin)], parts: [part(w.longOpened, 'up', t('New longs')), part(w.shortOpened, 'down', t('New shorts')), part(w.unsidedUp, 'none', t('No side'))] },
-    { key: 'oi-reduced', kind: 'stack', cells: [t('Reduced'), signedCoins(-w.reduced, coin)], parts: [part(w.shortClosed, 'up', t('Shorts closed'), true), part(w.longClosed, 'down', t('Longs closed'), true), part(w.unsidedDown, 'none', t('No side'), true)] },
+    // The totals without the coin (it is in the heading), so a long ticker never overflows the total's column.
+    { key: 'oi-added', kind: 'stack', cells: [t('Added'), signedCoins(w.added, '')], parts: [part(w.longOpened, 'up', t('New longs')), part(w.shortOpened, 'down', t('New shorts')), part(w.unsidedUp, 'none', t('No side'))] },
+    { key: 'oi-reduced', kind: 'stack', cells: [t('Reduced'), signedCoins(-w.reduced, '')], parts: [part(w.shortClosed, 'up', t('Shorts closed'), true), part(w.longClosed, 'down', t('Longs closed'), true), part(w.unsidedDown, 'none', t('No side'), true)] },
     { key: 'oi-opened', kind: 'stat', cells: [t('New longs · new shorts'), `${signedCoins(w.longOpened, coin)}${share(w.longOpened, w.added)} · ${signedCoins(w.shortOpened, coin)}${share(w.shortOpened, w.added)}`] },
     { key: 'oi-closed', kind: 'stat', cells: [t('Shorts closed · longs closed'), `${signedCoins(-w.shortClosed, coin)}${share(w.shortClosed, w.reduced)} · ${signedCoins(-w.longClosed, coin)}${share(w.longClosed, w.reduced)}`] },
   ];

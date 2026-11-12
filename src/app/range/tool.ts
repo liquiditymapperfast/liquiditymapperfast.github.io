@@ -356,6 +356,8 @@ export class RangeTool {
     const sel = this.store.state.range;
     if (!sel || sel.draft || !sel.live || !this.#panel || document.hidden || this.#context !== 'map') return;
     this.#timer = window.setTimeout(() => {
+      // Nothing is due once it fired, whatever it does next (cancel() re-arms only when nothing is).
+      this.#timer = 0;
       const now = this.store.state.range; if (!now || now.draft || !this.#panel) return;
       const moved = follow(now, Date.now());
       if (moved !== now) this.store.set({ range: moved });

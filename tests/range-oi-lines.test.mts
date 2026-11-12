@@ -66,15 +66,15 @@ test('NL/NS: added and reduced on one scale with their shares, the difference fr
   const who = new Map([c(T + H, 9, 3, 1, 1), c(T + 2 * H, 1, 0, 4, 2)].map(x => [x.t, x] as const));
   const summary = new OiRangeSummary(), s = sel(T + H, T + 3 * H);
   const lines = summary.lines(s, one(oi, { who }), true, null, KEY, NOW);
-  assert.equal(text(lines, 'oi-added'), 'Added | +13 BTC');
-  assert.equal(text(lines, 'oi-reduced'), 'Reduced | −8.0 BTC');
+  assert.equal(text(lines, 'oi-added'), 'Added | +13');
+  assert.equal(text(lines, 'oi-reduced'), 'Reduced | −8.0');
   assert.deepEqual(lines.find(l => l.key === 'oi-reduced')!.parts!.map(p => [p.tone, p.closed, +p.size.toFixed(3)]), [['up', true, 0.231], ['down', true, 0.385], ['none', true, 0]], 'on the scale of the larger, Added');
   assert.equal(text(lines, 'oi-opened'), 'New longs · new shorts | +10 BTC (77%) · +3.0 BTC (23%)');
   assert.equal(text(lines, 'oi-who-diff'), undefined, 'the estimate\'s net +5 is the known change');
   // The view moved on: the pane's model holds one of the two candles. The full result stays, said so.
   const partial = new Map([[T + 2 * H, who.get(T + 2 * H)!]]);
   const later = summary.lines(s, one(oi, { who: partial }), true, null, KEY, NOW);
-  assert.equal(text(later, 'oi-added'), 'Added | +13 BTC');
+  assert.equal(text(later, 'oi-added'), 'Added | +13');
   assert.equal(text(later, 'oi-who-kept'), 'As worked out while these candles were in view.');
   // Another selection has no result kept: what the model holds now, and how much of the stretch it covers.
   const other = new OiRangeSummary().lines(s, one(oi, { who: partial }), true, null, KEY, NOW);
