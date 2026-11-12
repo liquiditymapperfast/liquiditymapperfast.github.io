@@ -175,17 +175,22 @@ export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, pr: Proj
       strokeSegments(ctx, [...across(b.target), { a: { x: x0, y: b.entry }, b: { x: x0, y: b.target } }, { a: { x: x1, y: b.entry }, b: { x: x1, y: b.target } }], win, 1, false, p, alpha * 0.9);
       strokeSegments(ctx, [...across(b.stop), { a: { x: x0, y: b.entry }, b: { x: x0, y: b.stop } }, { a: { x: x1, y: b.entry }, b: { x: x1, y: b.stop } }], loss, 1, false, p, alpha * 0.9);
       strokeSegments(ctx, across(b.entry), p.text, 1.5, false, p, alpha);
-      // Centred on the part in view when there is room, else to the right of the box; inside an edge when its side is tall enough, else outside.
-      const vx0 = Math.max(x0, 0), vx1 = Math.min(x1, pr.w), wide = vx1 - vx0 >= 170, lx = wide ? (vx0 + vx1) / 2 : x1 + 6, align: CanvasTextAlign = wide ? 'center' : 'left';
+      const pctOf = (x: number): string => `${x < 1 ? x.toFixed(2) : x.toFixed(1)}%`, ratio = Number.isFinite(f.ratio) ? f.ratio.toFixed(2) : '–';
+      const texts = [t('Target {price} ({pct})', { price: fmtPrice(f.target), pct: pctOf(f.rewardPct) }), t('Stop {price} ({pct})', { price: fmtPrice(f.stop), pct: pctOf(f.riskPct) }),
+        f.side === 'long' ? t('Long · risk/reward {ratio}', { ratio }) : t('Short · risk/reward {ratio}', { ratio })];
+      // Centred on the part in view when they fit inside it, else beside the box on whichever side has room (a phone's narrow box), else
+      // centred and kept on the plot; each edge's inside the edge when its side is tall enough, else outside it.
+      ctx.save(); ctx.font = FONT; const need = Math.max(...texts.map(s => ctx.measureText(s).width)) + 6; ctx.restore();
+      const vx0 = Math.max(x0, 0), vx1 = Math.min(x1, pr.w);
+      const [lx, align]: [number, CanvasTextAlign] = vx1 - vx0 >= need + 12 ? [(vx0 + vx1) / 2, 'center'] : x1 + 6 + need <= pr.w ? [x1 + 6, 'left']
+        : x0 - 6 - need >= 0 ? [x0 - 6, 'right'] : [Math.min(pr.w - need / 2 - 2, Math.max(need / 2 + 2, (vx0 + vx1) / 2)), 'center'];
       const edgeLabel = (y: number, toward: number, text: string, color: string): void => {
         const inside = Math.abs(toward - y) >= 22, dir = Math.sign(toward - y) || 1;
         label(ctx, text, lx, y + dir * (inside ? 10 : -10), color, p, align, alpha);
       };
-      const pctOf = (x: number): string => `${x < 1 ? x.toFixed(2) : x.toFixed(1)}%`;
-      edgeLabel(b.target, b.entry, t('Target {price} ({pct})', { price: fmtPrice(f.target), pct: pctOf(f.rewardPct) }), win);
-      edgeLabel(b.stop, b.entry, t('Stop {price} ({pct})', { price: fmtPrice(f.stop), pct: pctOf(f.riskPct) }), loss);
-      const ratio = Number.isFinite(f.ratio) ? f.ratio.toFixed(2) : '–';
-      label(ctx, f.side === 'long' ? t('Long · risk/reward {ratio}', { ratio }) : t('Short · risk/reward {ratio}', { ratio }), lx, b.entry, p.text, p, align, alpha);
+      edgeLabel(b.target, b.entry, texts[0]!, win);
+      edgeLabel(b.stop, b.entry, texts[1]!, loss);
+      label(ctx, texts[2]!, lx, b.entry, p.text, p, align, alpha);
       // Its own label above the box, over the top edge's when that one stands outside.
       const top = Math.min(b.stop, b.target);
       if (d.text) label(ctx, d.text, vx0 + 4, top - (Math.abs(top - b.entry) >= 22 ? 10 : 30), p.text, p, 'left', alpha);
