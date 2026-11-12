@@ -2585,5 +2585,41 @@
  "A newer version of this page is out.": "Eine neuere Version dieser Seite ist da.",
  "Reload": "Neu laden",
  "Load the newer version now. Your settings are kept; the live trades start empty again.": "Die neuere Version jetzt laden. Deine Einstellungen bleiben erhalten; die Live-Trades beginnen wieder leer.",
- "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Die Seite wurde aktualisiert, nachdem dieser Tab geöffnet wurde. Ein Tab behält die Version, mit der er gestartet ist, bis er neu geladen wird, und lädt nie von selbst neu."
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Die Seite wurde aktualisiert, nachdem dieser Tab geöffnet wurde. Ein Tab behält die Version, mit der er gestartet ist, bis er neu geladen wird, und lädt nie von selbst neu.",
+ "Drag across the pane with Select armed, or Ctrl+drag (Cmd on a Mac), to sum up a stretch of its candles in the Range panel: the recorded delta and its share of the volume, bought and sold, the price over the same candles, how the delta was spread over them, and with NL/NS the same estimated added and reduced as the OI pane.": "Ziehe über den Bereich bei aktivem „Auswählen“ oder mit Strg+Ziehen (Cmd auf dem Mac), um einen Abschnitt seiner Kerzen im Bereich-Panel zusammenzufassen: das aufgezeichnete Delta und sein Anteil am Volumen, gekauft und verkauft, der Preis in denselben Kerzen, wie sich das Delta auf sie verteilt hat, und mit NL/NS dieselbe Schätzung, was aufgebaut und was abgebaut wurde, wie im OI-Bereich.",
+ "A drag across the Delta pane does the same in its terms: the recorded taker flow (bought, sold, the delta and its share of the volume), the price over the same candles, the CVD inside a daily or weekly run, how the delta was spread, and with NL/NS the estimated added and reduced.": "Ein Ziehen über den Delta-Bereich tut dasselbe in seinen eigenen Kennzahlen: der aufgezeichnete Taker-Flow (gekauft, verkauft, das Delta und sein Anteil am Volumen), der Preis in denselben Kerzen, das CVD innerhalb eines Tages- oder Wochensegments, wie sich das Delta verteilt hat, und mit NL/NS die geschätzte Menge, die aufgebaut und abgebaut wurde.",
+ "The Delta pane has not drawn this market yet: show it to sum up this selection.": "Der Delta-Bereich hat diesen Markt noch nicht gezeichnet: Zeige ihn, um diese Auswahl zusammenzufassen.",
+ "The Delta pane last drew another market, timeframe or setting: show it to sum up this selection.": "Der Delta-Bereich hat zuletzt einen anderen Markt, Zeitrahmen oder eine andere Einstellung gezeichnet: Zeige ihn, um diese Auswahl zusammenzufassen.",
+ "No {tf} candle of the Delta pane starts in this range.": "Keine {tf}-Kerze des Delta-Bereichs beginnt in dieser Auswahl.",
+ "Recorded taker flow of {n} markets of the flow column": {
+  "one": "Aufgezeichneter Taker-Flow von {n} Markt der Flow-Spalte",
+  "other": "Aufgezeichneter Taker-Flow von {n} Märkten der Flow-Spalte"
+ },
+ "Recorded taker flow of {lo}–{hi} of the flow column's {n} markets": "Aufgezeichneter Taker-Flow von {lo}–{hi} der {n} Märkte der Flow-Spalte",
+ "{n} candles without recorded flow": {
+  "one": "{n} Kerze ohne aufgezeichneten Flow",
+  "other": "{n} Kerzen ohne aufgezeichneten Flow"
+ },
+ "{n} candles left out: no trade on any market for 10 min or more": {
+  "one": "{n} Kerze ausgelassen: 10 min oder länger kein Trade an irgendeinem Markt",
+  "other": "{n} Kerzen ausgelassen: 10 min oder länger kein Trade an irgendeinem Markt"
+ },
+ "the CVD starts again inside it": "das CVD beginnt darin neu",
+ "The Delta pane is hidden: these are the candles it last held.": "Der Delta-Bereich ist ausgeblendet: Das sind die Kerzen, die er zuletzt enthielt.",
+ "Delta uses all prices.": "Delta nutzt alle Preise.",
+ "The pane holds {k} of the {n} candles: the rest are outside the view.": "Der Bereich enthält {k} der {n} Kerzen: Der Rest liegt außerhalb der Ansicht.",
+ "Taker flow": "Taker-Flow",
+ "Net buying while the price fell: taker flow against the price, not proof that resting orders absorbed it.": "Nettokäufe, während der Preis fiel: Taker-Flow gegen den Preis, kein Beweis, dass ruhende Orders ihn absorbiert haben.",
+ "Net selling while the price rose: taker flow against the price, not proof that resting orders absorbed it.": "Nettoverkäufe, während der Preis stieg: Taker-Flow gegen den Preis, kein Beweis, dass ruhende Orders ihn absorbiert haben.",
+ "{b} buying · {s} selling · {f} flat": "{b} kaufend · {s} verkaufend · {f} ausgeglichen",
+ "How it was spread": "Wie es sich verteilt hat",
+ "Longs net · shorts net": "Longs netto · Shorts netto",
+ "Recorded taker volume": "Aufgezeichnetes Taker-Volumen",
+ "Recorded CVD, before → after selection": "Aufgezeichnetes CVD, vor → nach der Auswahl",
+ "Candles making half the absolute delta": "Kerzen, die das halbe absolute Delta ausmachen",
+ "Cancellation between candle deltas": "Aufhebung zwischen den Kerzen-Deltas",
+ "Of the candle deltas added up by size, {share} remained in the net.": "Von den nach Größe addierten Kerzen-Deltas sind {share} im Netto übrig geblieben.",
+ "Candle delta signs": "Vorzeichen der Kerzen-Deltas",
+ "Largest absolute candle delta": "Größtes absolutes Kerzen-Delta",
+ "NL/NS for {k} of the {n} candles: the others have no change of open interest held.": "NL/NS für {k} der {n} Kerzen: Für die übrigen ist keine Änderung des Open Interest vorhanden."
 }

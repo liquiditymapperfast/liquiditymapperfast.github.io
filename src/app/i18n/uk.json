@@ -2648,5 +2648,47 @@
  "A newer version of this page is out.": "Вийшла новіша версія цієї сторінки.",
  "Reload": "Перезавантажити",
  "Load the newer version now. Your settings are kept; the live trades start empty again.": "Завантажити новішу версію зараз. Ваші налаштування збережуться, а угоди в реальному часі почнуться з нуля.",
- "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Сайт оновили після того, як цю вкладку було відкрито. Вкладка працює у версії, з якою запустилася, доки її не перезавантажать, і сама ніколи не перезавантажується."
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Сайт оновили після того, як цю вкладку було відкрито. Вкладка працює у версії, з якою запустилася, доки її не перезавантажать, і сама ніколи не перезавантажується.",
+ "Drag across the pane with Select armed, or Ctrl+drag (Cmd on a Mac), to sum up a stretch of its candles in the Range panel: the recorded delta and its share of the volume, bought and sold, the price over the same candles, how the delta was spread over them, and with NL/NS the same estimated added and reduced as the OI pane.": "Перетягніть по панелі з увімкненим «Виділити» або Ctrl+перетягуванням (Cmd на Mac), щоб підсумувати відрізок її свічок на панелі «Діапазон»: записана дельта та її частка обсягу, куплене й продане, ціна за тими самими свічками, як дельта розподілялася по них і, з NL/NS, ті самі оцінки доданого й скороченого, що й на панелі OI.",
+ "A drag across the Delta pane does the same in its terms: the recorded taker flow (bought, sold, the delta and its share of the volume), the price over the same candles, the CVD inside a daily or weekly run, how the delta was spread, and with NL/NS the estimated added and reduced.": "Перетягування по панелі «Дельта» робить те саме в її термінах: записаний потік тейкерів (куплено, продано, дельта та її частка обсягу), ціна за тими самими свічками, CVD усередині денної чи тижневої серії, як розподілялася дельта й, з NL/NS, оцінка доданого й скороченого.",
+ "The Delta pane has not drawn this market yet: show it to sum up this selection.": "Панель «Дельта» ще не малювала цей ринок: покажіть її, щоб підсумувати це виділення.",
+ "The Delta pane last drew another market, timeframe or setting: show it to sum up this selection.": "Панель «Дельта» востаннє малювала інший ринок, таймфрейм або налаштування: покажіть її, щоб підсумувати це виділення.",
+ "No {tf} candle of the Delta pane starts in this range.": "У цьому діапазоні не починається жодна свічка {tf} панелі «Дельта».",
+ "Recorded taker flow of {n} markets of the flow column": {
+  "one": "Записаний потік тейкерів {n} ринку колонки потоку",
+  "few": "Записаний потік тейкерів {n} ринків колонки потоку",
+  "many": "Записаний потік тейкерів {n} ринків колонки потоку",
+  "other": "Записаний потік тейкерів {n} ринку колонки потоку"
+ },
+ "Recorded taker flow of {lo}–{hi} of the flow column's {n} markets": "Записаний потік тейкерів {lo}–{hi} із {n} ринків колонки потоку",
+ "{n} candles without recorded flow": {
+  "one": "{n} свічка без записаного потоку",
+  "few": "{n} свічки без записаного потоку",
+  "many": "{n} свічок без записаного потоку",
+  "other": "{n} свічки без записаного потоку"
+ },
+ "{n} candles left out: no trade on any market for 10 min or more": {
+  "one": "{n} свічку виключено: жодної угоди на жодному ринку впродовж 10 хв або більше",
+  "few": "{n} свічки виключено: жодної угоди на жодному ринку впродовж 10 хв або більше",
+  "many": "{n} свічок виключено: жодної угоди на жодному ринку впродовж 10 хв або більше",
+  "other": "{n} свічки виключено: жодної угоди на жодному ринку впродовж 10 хв або більше"
+ },
+ "the CVD starts again inside it": "CVD усередині нього починається заново",
+ "The Delta pane is hidden: these are the candles it last held.": "Панель «Дельта» схована: це свічки, які були в ній востаннє.",
+ "Delta uses all prices.": "Дельта рахується за всіма цінами.",
+ "The pane holds {k} of the {n} candles: the rest are outside the view.": "На панелі {k} із {n} свічок: решта поза видимою областю.",
+ "Taker flow": "Потік тейкерів",
+ "Net buying while the price fell: taker flow against the price, not proof that resting orders absorbed it.": "Чисті купівлі, поки ціна падала: потік тейкерів проти ціни, а не доказ того, що його поглинули ордери, що стоять.",
+ "Net selling while the price rose: taker flow against the price, not proof that resting orders absorbed it.": "Чисті продажі, поки ціна зростала: потік тейкерів проти ціни, а не доказ того, що його поглинули ордери, що стоять.",
+ "{b} buying · {s} selling · {f} flat": "купівлі {b} · продажі {s} · рівно {f}",
+ "How it was spread": "Як розподілялася",
+ "Longs net · shorts net": "Лонги нетто · шорти нетто",
+ "Recorded taker volume": "Записаний обсяг тейкерів",
+ "Recorded CVD, before → after selection": "Записаний CVD, до → після виділення",
+ "Candles making half the absolute delta": "Свічки, що дають половину абсолютної дельти",
+ "Cancellation between candle deltas": "Взаємне погашення дельт свічок",
+ "Of the candle deltas added up by size, {share} remained in the net.": "Із дельт свічок, складених за величиною, у нетто залишилося {share}.",
+ "Candle delta signs": "Знаки дельт свічок",
+ "Largest absolute candle delta": "Найбільша абсолютна дельта свічки",
+ "NL/NS for {k} of the {n} candles: the others have no change of open interest held.": "NL/NS для {k} із {n} свічок: в інших немає зміни відкритого інтересу."
 }

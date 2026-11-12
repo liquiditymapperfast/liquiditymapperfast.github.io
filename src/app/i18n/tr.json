@@ -2579,5 +2579,41 @@
  "A newer version of this page is out.": "Bu sayfanın daha yeni bir sürümü çıktı.",
  "Reload": "Yeniden yükle",
  "Load the newer version now. Your settings are kept; the live trades start empty again.": "Yeni sürümü şimdi yükleyin. Ayarlarınız korunur; canlı işlemler yeniden boş başlar.",
- "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Site, bu sekme açıldıktan sonra güncellendi. Bir sekme yeniden yüklenene kadar başladığı sürümle çalışır ve asla kendiliğinden yeniden yüklenmez."
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Site, bu sekme açıldıktan sonra güncellendi. Bir sekme yeniden yüklenene kadar başladığı sürümle çalışır ve asla kendiliğinden yeniden yüklenmez.",
+ "Drag across the pane with Select armed, or Ctrl+drag (Cmd on a Mac), to sum up a stretch of its candles in the Range panel: the recorded delta and its share of the volume, bought and sold, the price over the same candles, how the delta was spread over them, and with NL/NS the same estimated added and reduced as the OI pane.": "Bölmenin mumlarından bir dilimi Aralık panelinde toplamak için Seç etkinken bölmede sürükleyin ya da Ctrl+sürükle (Mac'te Cmd) kullanın: kaydedilen delta ve hacimdeki payı, alınan ve satılan, aynı mumlardaki fiyat, deltanın bunlara nasıl dağıldığı ve NL/NS ile OI bölmesindekiyle aynı tahmini eklenen ve azaltılan.",
+ "A drag across the Delta pane does the same in its terms: the recorded taker flow (bought, sold, the delta and its share of the volume), the price over the same candles, the CVD inside a daily or weekly run, how the delta was spread, and with NL/NS the estimated added and reduced.": "Delta bölmesinde sürükleme aynısını kendi terimleriyle yapar: kaydedilen taker akışı (alınan, satılan, delta ve hacimdeki payı), aynı mumlardaki fiyat, günlük ya da haftalık bir seri içindeki CVD, deltanın nasıl dağıldığı ve NL/NS ile tahmini eklenen ve azaltılan.",
+ "The Delta pane has not drawn this market yet: show it to sum up this selection.": "Delta bölmesi bu piyasayı henüz çizmedi: bu seçimi özetlemek için onu gösterin.",
+ "The Delta pane last drew another market, timeframe or setting: show it to sum up this selection.": "Delta bölmesi en son başka bir piyasa, zaman dilimi ya da ayar çizdi: bu seçimi özetlemek için onu gösterin.",
+ "No {tf} candle of the Delta pane starts in this range.": "Delta bölmesinin {tf} mumlarından hiçbiri bu aralıkta başlamıyor.",
+ "Recorded taker flow of {n} markets of the flow column": {
+  "one": "Akış sütunundaki {n} piyasanın kaydedilen taker akışı",
+  "other": "Akış sütunundaki {n} piyasanın kaydedilen taker akışı"
+ },
+ "Recorded taker flow of {lo}–{hi} of the flow column's {n} markets": "Akış sütunundaki {n} piyasadan {lo}–{hi} tanesinin kaydedilen taker akışı",
+ "{n} candles without recorded flow": {
+  "one": "Kaydedilmiş akışı olmayan {n} mum",
+  "other": "Kaydedilmiş akışı olmayan {n} mum"
+ },
+ "{n} candles left out: no trade on any market for 10 min or more": {
+  "one": "{n} mum dışarıda bırakıldı: hiçbir piyasada 10 dk veya daha uzun süre işlem yok",
+  "other": "{n} mum dışarıda bırakıldı: hiçbir piyasada 10 dk veya daha uzun süre işlem yok"
+ },
+ "the CVD starts again inside it": "CVD bunun içinde yeniden başlıyor",
+ "The Delta pane is hidden: these are the candles it last held.": "Delta bölmesi gizli: bunlar onun en son tuttuğu mumlar.",
+ "Delta uses all prices.": "Delta tüm fiyatları kullanır.",
+ "The pane holds {k} of the {n} candles: the rest are outside the view.": "Bölmede {n} mumdan {k} tanesi var: kalanlar görünümün dışında.",
+ "Taker flow": "Taker akışı",
+ "Net buying while the price fell: taker flow against the price, not proof that resting orders absorbed it.": "Fiyat düşerken net alım: taker akışı fiyata karşı, bekleyen emirlerin onu emdiğinin kanıtı değil.",
+ "Net selling while the price rose: taker flow against the price, not proof that resting orders absorbed it.": "Fiyat yükselirken net satım: taker akışı fiyata karşı, bekleyen emirlerin onu emdiğinin kanıtı değil.",
+ "{b} buying · {s} selling · {f} flat": "{b} alış · {s} satış · {f} nötr",
+ "How it was spread": "Nasıl dağıldı",
+ "Longs net · shorts net": "Net long'lar · net short'lar",
+ "Recorded taker volume": "Kaydedilen taker hacmi",
+ "Recorded CVD, before → after selection": "Kaydedilen CVD, seçimden önce → sonra",
+ "Candles making half the absolute delta": "Mutlak deltanın yarısını oluşturan mumlar",
+ "Cancellation between candle deltas": "Mum deltalarının birbirini götürmesi",
+ "Of the candle deltas added up by size, {share} remained in the net.": "Büyüklüklerine göre toplanan mum deltalarının {share} kadarı nette kaldı.",
+ "Candle delta signs": "Mum delta işaretleri",
+ "Largest absolute candle delta": "En büyük mutlak mum deltası",
+ "NL/NS for {k} of the {n} candles: the others have no change of open interest held.": "{n} mumdan {k} tanesi için NL/NS: diğerlerinde açık pozisyon değişimi yok."
 }
