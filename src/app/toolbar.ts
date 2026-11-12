@@ -564,7 +564,7 @@ export class Toolbar {
    * the Settings sheet, grouped by purpose. The same elements move in both directions, so their handlers and state survive a rotation
    * or a window resize.
    */
-  /** The heatmap colour controls as the desktop toolbar has them, in one group. */
+  /** The heatmap's colour controls gathered in one holding place, from which the full bar's Heatmap deck and a phone's Settings take them. */
   #fillHeatControls(): void { this.#heatctl.replaceChildren(this.#heat.style, this.#heatScale, this.#heat.auto, this.#heat.smooth); }
 
   /** The desktop status bar takes the language and theme buttons (and the connection text) from the top bar. */
@@ -1163,10 +1163,6 @@ export class Toolbar {
   }
 
   /**
-   * The Waves panel (Karl, 2026-11-06: "a configuration key to the Waves button just like the Sounds button has, with a scale so people can
-   * adjust the strength"): the same switch as the lamp, how strongly the waves are drawn, and what holds them back on a busy market.
-   */
-  /**
    * The Heatmap key's panel: the colour range (the window the colours span follows the data, or stays) and the vertical smoothing, the two
    * that left the bar (Karl, 2026-11-12). Both are choices of Auto or Off, as the tips say; a phone's Settings has them as rows.
    */
@@ -1180,6 +1176,10 @@ export class Toolbar {
     );
   }
 
+  /**
+   * The Waves panel (Karl, 2026-11-06: "a configuration key to the Waves button just like the Sounds button has, with a scale so people can
+   * adjust the strength"): the same switch as the lamp, how strongly the waves are drawn, and what holds them back on a busy market.
+   */
   #buildWaves(_tools: HTMLElement, body: HTMLElement): void {
     const s = this.store.state;
     // Nothing else in the panel depends on the switch, so it is not built again: the keyboard stays on the switch.

@@ -61,9 +61,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar .deck.deck-flush > .deck-row > :is(button, select, .seg, .split, .scale):not(.coin-btn) { flex: 1 1 auto; }
 .toolbar .deck.deck-flush .split > button:first-child { flex: 1 1 auto; }
 .toolbar .deck.deck-flush .seg:not(.toggles) > button { flex: 1 1 0; }
-/* The heatmap's menus (Source, Colours, and Layer once there is a layer to choose) of one width once its deck has grown with its row and is flush (their own cap is for the bar at its own size); its colour scale, with the Heatmap key at its end, the row under them. */
-.toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .deck-row:first-of-type > select { flex: 1 1 0; min-width: 0; max-width: none; }
-.toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .scale { flex: 2 1 120px; }
 .toolbar.cockpit.fitting { zoom: var(--fit-zoom, 1); flex-wrap: nowrap; }
 .toolbar.cockpit.fitting > .deck { flex: none; }
 .toolbar.cockpit > .deck-break { flex: 0 0 100%; height: 0; margin-top: -4px; }
@@ -78,11 +75,12 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar .deck-time .seg button:nth-child(4n + 1) { margin-left: 0; }
 .toolbar .deck-time .seg button:nth-child(-n + 4) { margin-top: 0; }
 .toolbar .deck-heat select { max-width: 104px; }
-/* The last row's select (Smoothing) is as wide as its longest choice in every language: "Glättung: auto" and "Сглаживание: авто" were cut at
-   104 px, and the word that changes is the one after the colon. A held width for each language, so the bar still never moves. */
-.toolbar .deck-heat .deck-row:last-child select { max-width: none; }
-/* The source's choices grow as the venues connect: a held width, so the selects beside it never move. */
-.toolbar .deck-heat select.heat-source { width: 96px; }
+/* The source's choices grow as the venues connect: a held width, so the selects beside it never move. The Heatmap deck is a grid of its menus
+   over the colour scale and its key, and the grid's rule gives every control the width of what it holds: with the scale spanning the menus,
+   nothing else in Source's column holds it, so the held width is kept there too (review, 2026-11-12). In a deck grown with its row Source
+   fills its column (`min-width: 100%`, which the grid's sizing of its columns does not count), while the column is still sized from 96 px. */
+.toolbar .deck-heat select.heat-source, .toolbar .deck.deck-grid.deck-heat > .deck-row > select.heat-source { width: 96px; }
+.toolbar.cockpit.wrapped:not(.fitting) .deck.deck-grid.deck-heat > .deck-row > select.heat-source { min-width: 100%; }
 .toolbar.cockpit select.market { width: 172px; }
 /* A notice lies over the top of the chart, not in the bar's flow: the bar keeps its height when one comes or goes. */
 .toolbar.cockpit { position: relative; z-index: 30; }
