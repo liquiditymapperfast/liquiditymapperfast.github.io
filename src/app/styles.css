@@ -61,7 +61,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar .deck.deck-flush > .deck-row > :is(button, select, .seg, .split, .scale):not(.coin-btn) { flex: 1 1 auto; }
 .toolbar .deck.deck-flush .split > button:first-child { flex: 1 1 auto; }
 .toolbar .deck.deck-flush .seg:not(.toggles) > button { flex: 1 1 0; }
-/* The heatmap's three menus of one width once its deck has grown with its row (their own cap is for the bar at its own size); its colour scale the widest of the row under them. */
+/* The heatmap's menus (two, three once there is a layer to choose) of one width once its deck has grown with its row (their own cap is for the bar at its own size); its colour scale the widest of the row under them. */
 .toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .deck-row:first-of-type > select { flex: 1 1 0; min-width: 0; max-width: none; }
 .toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .scale { flex: 2 1 120px; }
 .toolbar.cockpit.fitting { zoom: var(--fit-zoom, 1); flex-wrap: nowrap; }
