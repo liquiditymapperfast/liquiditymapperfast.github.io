@@ -209,17 +209,22 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 /* A notice that only informs (the coin is not on the list) takes the theme's accent; one that reports a fault keeps the warning colour. */
 .notice.info { border-color: color-mix(in srgb, var(--ui) 45%, var(--line)); background: color-mix(in srgb, var(--ui) 12%, var(--panel)); }
 .toolbar .notice-close { margin-left: auto; width: 24px; height: 22px; --cross: 9px; }
-/* The notice that a newer version of the page is out (update-notice.ts). Under the bar (a phone): its words, then Reload and the ✕ at the end of the line. */
-.toolbar .update-notice .update-text { flex: 1 1 auto; min-width: 0; }
+/* The notice that a newer version of the page is out (update-notice.ts). Under the bar (a phone): its words in balanced lines (two lines on a
+   phone, never one word alone on the second), then Reload and a ✕ that keeps its width: a thinner ✕ beside Reload invited the wrong tap. */
+.toolbar .update-notice .update-text { flex: 1 1 auto; min-width: 0; text-wrap: balance; }
 .toolbar .update-notice button.update-reload { flex: none; height: 24px; padding: 0 12px; }
-.toolbar .update-notice button.notice-close { margin-left: 0; }
-/* On a computer a line of the status bar, where it covers nothing: as tall as the bar's buttons, and never cut (the words before it give way). */
+.toolbar .update-notice button.notice-close { flex: none; width: 32px; margin-left: 0; }
+/* On a computer a line of the status bar, where it covers nothing, as tall as the bar's buttons. Where the bar is short it gives way first: its
+   words are cut before any of the bar's own (they are its tip too), down to its mark, Reload and ✕, which a grid keeps whole (its words' column
+   alone can shrink, to nothing). Kept whole itself it cut the venues and saving words to nothing at 800 px and pushed the theme button out of the
+   window below about 790 px; shrinking as a flex box with no floor, it cut its own Reload at 1,100 px in French. */
 .statusbar .status-notices { display: contents; }
-.statusbar .update-notice { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 0 2px 0 6px; border: 1px solid color-mix(in srgb, var(--ui) 45%, var(--line)); border-radius: var(--radius); background: color-mix(in srgb, var(--ui) 12%, var(--panel)); color: var(--text); white-space: nowrap; }
+.statusbar .update-notice { flex: 0 20 auto; display: inline-grid; grid-template-columns: auto minmax(0, max-content) auto auto; align-items: center; column-gap: 6px; min-height: 20px; padding: 0 2px 0 6px; border: 1px solid color-mix(in srgb, var(--ui) 45%, var(--line)); border-radius: var(--radius); background: color-mix(in srgb, var(--ui) 12%, var(--panel)); color: var(--text); white-space: nowrap; }
 .statusbar .update-notice[hidden] { display: none; }
+.statusbar .update-notice .update-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .statusbar .update-notice .notice-mark { width: 12px; height: 12px; }
 .statusbar .update-notice button.update-reload { min-height: 16px; height: 16px; padding: 0 6px; font-size: 11px; }
-.statusbar .update-notice button.notice-close { flex: none; width: 18px; height: 16px; --cross: 8px; }
+.statusbar .update-notice button.notice-close { width: 18px; height: 16px; --cross: 8px; }
 .venue-list .blocked { color: var(--ask); }
 .seg.scope.inert { opacity: .6; }
 .seg:is(.scope, .zone-seg) button.on { background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }

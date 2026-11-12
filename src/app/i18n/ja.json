@@ -2484,6 +2484,6 @@
  "the largest only: the answer was cut": "最大のものだけ：応答が途中で切られました",
  "A newer version of this page is out.": "このページの新しいバージョンが公開されています。",
  "Reload": "再読み込み",
- "Load the newer version now. Your settings are kept.": "新しいバージョンを今すぐ読み込みます。設定はそのまま残ります。",
+ "Load the newer version now. Your settings are kept; the live trades start empty again.": "新しいバージョンを今すぐ読み込みます。設定はそのまま残り、ライブ約定は空の状態から始まります。",
  "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "このタブを開いた後にサイトが更新されました。タブは再読み込みされるまで開いたときのバージョンのまま動き、自動で再読み込みされることはありません。"
 }

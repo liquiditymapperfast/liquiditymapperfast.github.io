@@ -2578,6 +2578,6 @@
  "the largest only: the answer was cut": "yalnızca en büyükler: yanıt kesildi",
  "A newer version of this page is out.": "Bu sayfanın daha yeni bir sürümü çıktı.",
  "Reload": "Yeniden yükle",
- "Load the newer version now. Your settings are kept.": "Yeni sürümü şimdi yükleyin. Ayarlarınız korunur.",
+ "Load the newer version now. Your settings are kept; the live trades start empty again.": "Yeni sürümü şimdi yükleyin. Ayarlarınız korunur; canlı işlemler yeniden boş başlar.",
  "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Site, bu sekme açıldıktan sonra güncellendi. Bir sekme yeniden yüklenene kadar başladığı sürümle çalışır ve asla kendiliğinden yeniden yüklenmez."
 }

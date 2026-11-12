@@ -2484,6 +2484,6 @@
  "the largest only: the answer was cut": "가장 큰 것만: 응답이 잘렸습니다",
  "A newer version of this page is out.": "이 페이지의 새 버전이 나왔습니다.",
  "Reload": "새로고침",
- "Load the newer version now. Your settings are kept.": "지금 새 버전을 불러옵니다. 설정은 그대로 유지됩니다.",
+ "Load the newer version now. Your settings are kept; the live trades start empty again.": "지금 새 버전을 불러옵니다. 설정은 그대로 유지되고, 실시간 체결은 빈 상태에서 다시 시작됩니다.",
  "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "이 탭을 연 뒤에 사이트가 업데이트되었습니다. 탭은 새로고침할 때까지 처음 시작한 버전을 유지하며, 스스로 새로고침하지 않습니다."
 }

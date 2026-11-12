@@ -2642,6 +2642,6 @@
  "the largest only: the answer was cut": "только крупнейшие: ответ был обрезан",
  "A newer version of this page is out.": "Вышла новая версия этой страницы.",
  "Reload": "Перезагрузить",
- "Load the newer version now. Your settings are kept.": "Загрузить новую версию сейчас. Ваши настройки сохранятся.",
+ "Load the newer version now. Your settings are kept; the live trades start empty again.": "Загрузить новую версию сейчас. Ваши настройки сохранятся, а сделки в реальном времени начнутся с нуля.",
  "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Сайт обновили после того, как была открыта эта вкладка. Вкладка работает в той версии, с которой запустилась, пока её не перезагрузят, и сама никогда не перезагружается."
 }

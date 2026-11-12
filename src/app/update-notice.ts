@@ -19,7 +19,7 @@ export class UpdateNotice {
     this.root.append(
       el('span', { class: 'notice-mark mark-info', ariaHidden: 'true' }),
       el('span', { class: 'update-text', textContent: t('A newer version of this page is out.') }),
-      el('button', { type: 'button', class: 'update-reload', textContent: t('Reload'), tip: t('Load the newer version now. Your settings are kept.'), onclick: () => reload() }),
+      el('button', { type: 'button', class: 'update-reload', textContent: t('Reload'), tip: t('Load the newer version now. Your settings are kept; the live trades start empty again.'), onclick: () => reload() }),
       el('button', { type: 'button', class: 'notice-close', tip: t('Not now'), ariaLabel: t('Not now'), onclick: () => { this.#dismissedAt = this.now(); this.root.hidden = true; } }));
   }
 

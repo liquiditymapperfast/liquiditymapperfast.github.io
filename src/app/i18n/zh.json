@@ -2484,6 +2484,6 @@
  "the largest only: the answer was cut": "仅最大的：返回结果被截断",
  "A newer version of this page is out.": "此页面已有新版本。",
  "Reload": "重新加载",
- "Load the newer version now. Your settings are kept.": "立即加载新版本。设置会保留。",
+ "Load the newer version now. Your settings are kept; the live trades start empty again.": "立即加载新版本。设置会保留；实时成交会重新从空白开始。",
  "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "此标签页打开后网站已更新。标签页在重新加载之前会一直使用打开时的版本，并且从不自行重新加载。"
 }

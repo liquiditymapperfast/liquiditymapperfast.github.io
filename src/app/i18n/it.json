@@ -2618,6 +2618,6 @@
  "the largest only: the answer was cut": "solo le maggiori: la risposta è stata tagliata",
  "A newer version of this page is out.": "È uscita una versione più recente di questa pagina.",
  "Reload": "Ricarica",
- "Load the newer version now. Your settings are kept.": "Carica ora la versione più recente. Le tue impostazioni restano.",
+ "Load the newer version now. Your settings are kept; the live trades start empty again.": "Carica ora la versione più recente. Le tue impostazioni restano; i trade in tempo reale ripartono da zero.",
  "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Il sito è stato aggiornato dopo l’apertura di questa scheda. Una scheda mantiene la versione con cui è partita finché non viene ricaricata, e non si ricarica mai da sola."
 }

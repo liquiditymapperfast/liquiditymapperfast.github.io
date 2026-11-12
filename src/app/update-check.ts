@@ -1,21 +1,23 @@
 /**
  * Whether the site serves a newer build than this tab runs. A tab keeps the build it was opened with for as long as it lives: the page
- * never reloads itself (lazy.ts: a reload loses what the tab holds only in memory) and fetches its parts soon after it starts, so a deploy
- * cannot take them away. On 2026-11-08 a tab fifteen hours old still drew pictures without the fixes the site had had since the night
- * before, and nothing said so. So the page asks now and then which build the site serves, and when it is another one it says so
+ * never reloads itself (lazy.ts: a reload loses what the tab holds only in memory), and it fetches the screenshot tool soon after it starts,
+ * so a deploy cannot take that away. On 2026-11-08 a tab opened before a deploy was still drawing pictures without its fixes fifteen hours
+ * later, and nothing said so. So the page asks now and then which build the site serves, and when it is another one it says so
  * (update-notice.ts). Only the person reloads.
  *
  * A build is named by its first script, `assets/index-<hash>.js`: each file's name carries a hash of what it holds and of the names of the
  * files it loads, so the name changes with any change to the code or the styles (a one-value change to `styles.css` renamed it, measured
- * 2026-11-12), and the same build gives the same name. A page that is not a build (the development server's `/boot.ts`) has no name and
- * asks nothing.
+ * 2026-11-12), and the same build gives the same name (a build on this PC named its files as the site's own build of that commit did; the
+ * daily rebuild of the coin list changes `coins.json` alone, which the page fetches). A page that is not a build (the development server's
+ * `/boot.ts`), or not served over HTTP, has no name and asks nothing.
  */
+import { STALE_EVENT } from './lazy.ts';
 
 /** How often a tab that is shown asks (ms). */
 export const CHECK_EVERY_MS = 15 * 60_000;
 /** The first question, after the start: a page opened from the browser's cache (GitHub Pages lets it keep the page ten minutes) can be stale from the start. */
 export const FIRST_CHECK_MS = 2 * 60_000;
-/** A tab shown again asks at once when its last question is at least this old (ms). */
+/** A tab shown again asks at once when its last question is at least this old (ms), and no question comes sooner after another. */
 export const SHOWN_AGAIN_MS = 5 * 60_000;
 /**
  * How long a notice put away stays away (ms): a day, whatever is deployed meanwhile. The site is deployed several times on some days, and a
@@ -55,13 +57,21 @@ export function answerFor(own: string | null, deployed: string | null): BuildAns
 /** Whether a notice may be shown at `now`: not within a day of the person's putting one away at `dismissedAt` (0: never). */
 export const mayOffer = (dismissedAt: number, now: number): boolean => !(dismissedAt > 0 && now - dismissedAt < QUIET_MS);
 
-/** Whether a tab shown again asks at once, its last question asked at `lastAsked`. */
+/** Whether a question is due at `now`, the last asked at `lastAsked`: a shown tab asks again no sooner than five minutes after the last. */
 export const dueWhenShown = (lastAsked: number, now: number): boolean => now - lastAsked >= SHOWN_AGAIN_MS;
 
-/** The build this page runs: its first module script that is a build's. */
+/**
+ * The build this page runs: its first module script of this page's own origin that is a build's. A script another origin put on the page
+ * (an extension's) is not the page's build: taken for it, it would differ from every answer and the notice would never go.
+ */
 export function ownBuild(doc: Document = document): string | null {
-  for (const script of doc.querySelectorAll('script[type="module"][src]')) {
-    const name = buildOf(script.getAttribute('src'));
+  const here = doc.location;
+  if (!here || !/^https?:$/.test(here.protocol)) return null;
+  for (const script of doc.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')) {
+    let url: URL;
+    try { url = new URL(script.src, here.href); } catch { continue; }
+    if (url.origin !== here.origin) continue;
+    const name = buildOf(url.pathname);
     if (name) return name;
   }
   return null;
@@ -76,17 +86,20 @@ export interface BuildWatch {
 
 /**
  * Ask the site which build it serves, the page itself (`./`) past the browser's cache (`no-cache`: an unchanged page is a short "not
- * modified"): a couple of minutes after the start, then every quarter of an hour while the tab is shown, and when it is shown again after
- * five minutes or more. A hidden tab asks nothing (a notice it cannot show is no use). One question at a time; one that fails changes nothing.
- * `answer` gets what each answer means (`answerFor`) and the name the site gave.
+ * modified"): a couple of minutes after the start, then every quarter of an hour while the tab is shown, when it is shown again after five
+ * minutes or more, and at once when a part of the page could not be fetched (lazy.ts: a deploy took it away). A hidden tab asks nothing (a
+ * notice it cannot show is no use). One question at a time, and the timed ones no sooner than five minutes after the last; one that fails
+ * changes nothing. `answer` gets what each answer means (`answerFor`) and the name the site gave.
  */
 export function watchBuild(answer: (meaning: BuildAnswer, deployed: string | null) => void, doc: Document = document): BuildWatch {
   const own = ownBuild(doc);
-  let asking: Promise<string | null> | null = null, lastAsked = Date.now();
+  // As if asked three minutes before the start: the first question's time is the first time a question is due, so a tab hidden at two
+  // minutes and shown again soon after asks then rather than at the quarter of an hour.
+  let asking: Promise<string | null> | null = null, lastAsked = Date.now() + FIRST_CHECK_MS - SHOWN_AGAIN_MS;
   const ask = async (): Promise<string | null> => {
     try {
       const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(CHECK_TIMEOUT_MS) : undefined;
-      const res = await fetch(new URL('./', location.href), { cache: 'no-cache', ...(signal ? { signal } : {}) });
+      const res = await fetch(new URL('./', doc.location.href), { cache: 'no-cache', ...(signal ? { signal } : {}) });
       return res.ok ? buildIn(await res.text()) : null;
     } catch { return null; }
   };
@@ -98,10 +111,11 @@ export function watchBuild(answer: (meaning: BuildAnswer, deployed: string | nul
     return asking;
   };
   if (own) {
-    const shown = (): boolean => doc.visibilityState !== 'hidden';
-    setTimeout(() => { if (shown()) void check(); }, FIRST_CHECK_MS);
-    setInterval(() => { if (shown()) void check(); }, CHECK_EVERY_MS);
-    doc.addEventListener('visibilitychange', () => { if (shown() && dueWhenShown(lastAsked, Date.now())) void check(); });
+    const due = (): boolean => doc.visibilityState !== 'hidden' && dueWhenShown(lastAsked, Date.now());
+    setTimeout(() => { if (due()) void check(); }, FIRST_CHECK_MS);
+    setInterval(() => { if (due()) void check(); }, CHECK_EVERY_MS);
+    doc.addEventListener('visibilitychange', () => { if (due()) void check(); });
+    doc.addEventListener(STALE_EVENT, () => { void check(); });
   }
   return { own, check };
 }

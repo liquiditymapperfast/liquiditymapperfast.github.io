@@ -1,7 +1,8 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CHECK_EVERY_MS, FIRST_CHECK_MS, QUIET_MS, SHOWN_AGAIN_MS, answerFor, buildIn, buildOf, dueWhenShown, mayOffer, watchBuild, type BuildAnswer } from '../src/app/update-check.ts';
+import { CHECK_EVERY_MS, FIRST_CHECK_MS, QUIET_MS, SHOWN_AGAIN_MS, answerFor, buildIn, buildOf, dueWhenShown, mayOffer, ownBuild, watchBuild, type BuildAnswer } from '../src/app/update-check.ts';
+import { STALE_EVENT } from '../src/app/lazy.ts';
 
 test('a build is named by its first script, a hashed file under assets/; the development server\'s scripts name none', () => {
   assert.equal(buildOf('./assets/index-NYsfP7Ku.js'), 'index-NYsfP7Ku.js');
@@ -47,82 +48,129 @@ test('a notice put away stays away a day, whatever is deployed meanwhile', () =>
   assert.equal(QUIET_MS, 86_400_000);
 });
 
-test('a tab shown again asks at once only when its last question is five minutes old', () => {
+test('a question is due five minutes after the last one', () => {
   assert.equal(dueWhenShown(0, SHOWN_AGAIN_MS - 1), false);
   assert.equal(dueWhenShown(0, SHOWN_AGAIN_MS), true);
 });
 
-/** A page for `watchBuild`: its first script, whether it is shown, and its visibility listeners. */
-function fakePage(src: string | null): { doc: Document; show(on: boolean): void } {
+const ORIGIN = 'https://site.test';
+
+/** A page for `watchBuild`: its address, its module scripts (absolute, as the DOM gives them), whether it is shown, and its listeners. */
+function fakePage(scripts: string[], href = `${ORIGIN}/app/?coin=ETH`): { doc: Document; show(on: boolean): void; send(type: string): void } {
   let state: DocumentVisibilityState = 'visible';
-  const listeners: (() => void)[] = [];
+  const listeners = new Map<string, (() => void)[]>();
+  const url = new URL(href);
   const doc = {
+    location: { href: url.href, origin: url.origin, protocol: url.protocol },
     get visibilityState() { return state; },
-    querySelectorAll: () => (src ? [{ getAttribute: (name: string) => (name === 'src' ? src : null) }] : []),
-    addEventListener: (type: string, fn: () => void) => { if (type === 'visibilitychange') listeners.push(fn); },
+    querySelectorAll: () => scripts.map(src => ({ src })),
+    addEventListener: (type: string, fn: () => void) => { listeners.set(type, [...(listeners.get(type) ?? []), fn]); },
   } as unknown as Document;
-  return { doc, show(on) { state = on ? 'visible' : 'hidden'; for (const fn of listeners) fn(); } };
+  const send = (type: string): void => { for (const fn of listeners.get(type) ?? []) fn(); };
+  return { doc, show(on) { state = on ? 'visible' : 'hidden'; send('visibilitychange'); }, send };
 }
+
+test('the page\'s own build is its own origin\'s first build script, and only a page served over HTTP has one', () => {
+  assert.equal(ownBuild(fakePage([`${ORIGIN}/app/assets/index-A1234567.js`]).doc), 'index-A1234567.js');
+  assert.equal(ownBuild(fakePage(['chrome-extension://abc/assets/index-EXT12345.js', `${ORIGIN}/app/assets/index-A1234567.js`]).doc), 'index-A1234567.js', 'an extension\'s script before it is not the build');
+  assert.equal(ownBuild(fakePage(['https://cdn.test/assets/index-CDN12345.js']).doc), null, 'another origin\'s build is not this page\'s');
+  assert.equal(ownBuild(fakePage([`${ORIGIN}/@vite/client`, `${ORIGIN}/boot.ts`]).doc), null, 'the development server');
+  assert.equal(ownBuild(fakePage(['file:///C:/share/site/assets/index-A1234567.js'], 'file:///C:/share/site/index.html').doc), null, 'a page opened from a file share asks nothing');
+});
 
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 
+/** A stubbed site: what it serves (an HTML text, or a failure), and the questions it was asked. */
+function fakeSite(t: TestContext, first: string): { asked: { url: string; cache: RequestCache | undefined }[]; serve(reply: string | Error | number): void; hold(): () => void } {
+  let reply: string | Error | number = first, held: Promise<void> | null = null;
+  const asked: { url: string; cache: RequestCache | undefined }[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: URL | string, init?: RequestInit) => {
+    asked.push({ url: String(url), cache: init?.cache });
+    if (held) await held;
+    if (reply instanceof Error) throw reply;
+    return typeof reply === 'number' ? new Response('gone', { status: reply }) : new Response(reply);
+  });
+  return { asked, serve(next) { reply = next; }, hold() { let release = (): void => {}; held = new Promise<void>(resolve => { release = resolve; }); return () => { held = null; release(); }; } };
+}
+const page = (name: string): string => `<script type="module" src="./assets/${name}"></script>`;
+
 test('the page asks a couple of minutes in, then every quarter of an hour while shown, and when shown again after five minutes', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_800_000_000_000 });
-  const asked: { url: string; cache: RequestCache | undefined }[] = [];
-  let html = '<script type="module" src="./assets/index-A1234567.js"></script>';
-  t.mock.method(globalThis, 'fetch', async (url: URL | string, init?: RequestInit) => { asked.push({ url: String(url), cache: init?.cache }); return new Response(html); });
-  Object.defineProperty(globalThis, 'location', { value: { href: 'https://site.test/app/?coin=ETH' }, configurable: true });
-  t.after(() => { delete (globalThis as { location?: unknown }).location; });
-  const page = fakePage('./assets/index-A1234567.js'), answers: [BuildAnswer, string | null][] = [];
-  const watch = watchBuild((meaning, deployed) => answers.push([meaning, deployed]), page.doc);
+  const site = fakeSite(t, page('index-A1234567.js')), tab = fakePage([`${ORIGIN}/app/assets/index-A1234567.js`]), answers: [BuildAnswer, string | null][] = [];
+  const watch = watchBuild((meaning, deployed) => answers.push([meaning, deployed]), tab.doc);
   assert.equal(watch.own, 'index-A1234567.js');
 
+  tab.show(true); await settle();
+  assert.equal(site.asked.length, 0, 'nothing at the start, shown or not');
   t.mock.timers.tick(FIRST_CHECK_MS - 1); await settle();
-  assert.equal(asked.length, 0, 'nothing at the start');
+  assert.equal(site.asked.length, 0);
   t.mock.timers.tick(1); await settle();
-  assert.deepEqual(asked, [{ url: 'https://site.test/app/', cache: 'no-cache' }], 'the page itself, past the cache');
+  assert.deepEqual(site.asked, [{ url: `${ORIGIN}/app/`, cache: 'no-cache' }], 'the page itself, past the cache');
   assert.deepEqual(answers, [['withdraw', 'index-A1234567.js']], 'the same build');
 
-  html = '<script type="module" src="./assets/index-B1234567.js"></script>';
+  site.serve(page('index-B1234567.js'));
   t.mock.timers.tick(CHECK_EVERY_MS - FIRST_CHECK_MS); await settle();
-  assert.equal(asked.length, 2, 'a quarter of an hour from the start');
+  assert.equal(site.asked.length, 2, 'a quarter of an hour from the start');
   assert.deepEqual(answers.at(-1), ['offer', 'index-B1234567.js']);
 
-  page.show(false);
+  tab.show(false);
   t.mock.timers.tick(CHECK_EVERY_MS); await settle();
-  assert.equal(asked.length, 2, 'a hidden tab asks nothing');
-  page.show(true); await settle();
-  assert.equal(asked.length, 3, 'shown again, the last question a quarter of an hour old');
-  page.show(false); t.mock.timers.tick(SHOWN_AGAIN_MS - 1); page.show(true); await settle();
-  assert.equal(asked.length, 3, 'shown again within five minutes of the last question');
+  assert.equal(site.asked.length, 2, 'a hidden tab asks nothing');
+  tab.show(true); await settle();
+  assert.equal(site.asked.length, 3, 'shown again, the last question a quarter of an hour old');
+  tab.show(false); t.mock.timers.tick(SHOWN_AGAIN_MS - 1); tab.show(true); await settle();
+  assert.equal(site.asked.length, 3, 'shown again within five minutes of the last question');
+  tab.show(false); t.mock.timers.tick(7 * 60_000); tab.show(true); await settle();
+  assert.equal(site.asked.length, 4, 'shown again twelve minutes after it');
+  t.mock.timers.tick(3 * 60_000 + 1); await settle();
+  assert.equal(site.asked.length, 4, 'the quarter-hourly question three minutes after a shown-again one waits for the next quarter');
+  t.mock.timers.tick(CHECK_EVERY_MS); await settle();
+  assert.equal(site.asked.length, 5);
+});
+
+test('a tab hidden when its first question was due asks when it is shown again, not a quarter of an hour later', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_800_000_000_000 });
+  const site = fakeSite(t, page('index-B1234567.js')), tab = fakePage([`${ORIGIN}/app/assets/index-A1234567.js`]), answers: BuildAnswer[] = [];
+  watchBuild(meaning => answers.push(meaning), tab.doc);
+  tab.show(false);
+  t.mock.timers.tick(FIRST_CHECK_MS); await settle();
+  assert.equal(site.asked.length, 0, 'hidden at two minutes');
+  t.mock.timers.tick(60_000); tab.show(true); await settle();
+  assert.equal(site.asked.length, 1, 'shown at three minutes: a page opened from the cache is told then');
+  assert.deepEqual(answers, ['offer']);
+});
+
+test('a part of the page that could not be fetched makes it ask at once', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_800_000_000_000 });
+  const site = fakeSite(t, page('index-B1234567.js')), tab = fakePage([`${ORIGIN}/app/assets/index-A1234567.js`]), answers: BuildAnswer[] = [];
+  watchBuild(meaning => answers.push(meaning), tab.doc);
+  tab.send(STALE_EVENT); await settle();
+  assert.equal(site.asked.length, 1, 'before the first question\'s time');
+  assert.deepEqual(answers, ['offer']);
 });
 
 test('one question at a time, and one that fails or names no build changes nothing', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
-  let release: (r: Response) => void = () => {};
-  const calls: number[] = [];
-  t.mock.method(globalThis, 'fetch', () => { calls.push(1); return new Promise<Response>(resolve => { release = resolve; }); });
-  Object.defineProperty(globalThis, 'location', { value: { href: 'https://site.test/' }, configurable: true });
-  t.after(() => { delete (globalThis as { location?: unknown }).location; });
-  const answers: BuildAnswer[] = [];
-  const watch = watchBuild(meaning => answers.push(meaning), fakePage('./assets/index-A1234567.js').doc);
+  const site = fakeSite(t, '<html><body>Not Found</body></html>'), answers: BuildAnswer[] = [];
+  const watch = watchBuild(meaning => answers.push(meaning), fakePage([`${ORIGIN}/app/assets/index-A1234567.js`]).doc);
+  const release = site.hold();
   const first = watch.check(), second = watch.check();
-  assert.equal(calls.length, 1, 'the second waits for the first');
-  release(new Response('<html><body>Not Found</body></html>'));
+  await settle();
+  assert.equal(site.asked.length, 1, 'the second waits for the first');
+  release();
   assert.equal(await first, null); assert.equal(await second, null);
-  assert.deepEqual(answers, ['none']);
-  t.mock.method(globalThis, 'fetch', async () => { throw new TypeError('offline'); });
+  site.serve(new TypeError('offline'));
   assert.equal(await watch.check(), null);
-  t.mock.method(globalThis, 'fetch', async () => new Response('gone', { status: 404 }));
+  site.serve(404);
   assert.equal(await watch.check(), null);
   assert.deepEqual(answers, ['none', 'none', 'none']);
 });
 
 test('a page that is not a build asks nothing and listens to nothing', async () => {
-  const page = fakePage('./boot.ts');
+  const tab = fakePage([`${ORIGIN}/boot.ts`]);
   let listened = false;
-  (page.doc as unknown as { addEventListener: () => void }).addEventListener = () => { listened = true; };
-  const watch = watchBuild(() => assert.fail('no answer'), page.doc);
+  (tab.doc as unknown as { addEventListener: () => void }).addEventListener = () => { listened = true; };
+  const watch = watchBuild(() => assert.fail('no answer'), tab.doc);
   assert.equal(watch.own, null);
   assert.equal(await watch.check(), null);
   assert.equal(listened, false);

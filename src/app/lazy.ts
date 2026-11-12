@@ -12,6 +12,12 @@ import { t } from './i18n.ts';
  */
 const KEY = 'hlm-stale-reload', COOLDOWN_MS = 30_000;
 
+/**
+ * What a part that could not be fetched sends on the document: the site may have been deployed since the tab opened, so the page asks at
+ * once which build it serves (update-check.ts), and the notice with its Reload comes with the words below.
+ */
+export const STALE_EVENT = 'hlm-stale';
+
 /** Whether a stale page may reload itself now: not if it already did a moment ago. */
 export const mayReload = (now: number, last: number): boolean => !(now - last < COOLDOWN_MS);
 
@@ -32,6 +38,7 @@ export function lazy<T>(load: () => Promise<T>, { reload = false }: { reload?: b
       const last = Number(window.sessionStorage.getItem(KEY) ?? 0), now = Date.now();
       if (onStale(reload, now, last) === 'reload') { window.sessionStorage.setItem(KEY, String(now)); window.location.reload(); return null; }
     } catch { /* storage unavailable: just say so */ }
+    document.dispatchEvent(new Event(STALE_EVENT));
     notify(t('This page was updated while it was open, or a file could not be loaded. Reload the page to continue.'));
     return null;
   });
