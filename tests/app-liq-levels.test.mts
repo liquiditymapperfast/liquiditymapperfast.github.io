@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqProfile, liqRows, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, paintLiqStripe, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqCurves, liqProfile, liqRows, onTheWay, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, paintLiqStripe, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
 import { View } from '../src/app/view.ts';
 import { LIQ_LEVELS_URL, liqLevelsUrl, readLiqLevels } from '../src/app/liq-url.ts';
 import { FIRST_LEAD_MS, LATE_EVERY_MS, SNAPSHOT_DUE_MS, SNAPSHOT_LATE_MS, createdOnPageClock, nextAskAt } from '../src/app/liq-schedule.ts';
@@ -135,6 +135,31 @@ test('the profile column adds up what stands, row by row and from the price outw
   // What price has traded through no longer stands: half of bin 9 gone leaves 100 there.
   const after = liqStanding(l, takenByCandles(l, candles([[101, 95]])));
   assert.equal(standingBelow(after, 'long', 1000), 250);
+});
+
+test('what goes on the way to a price: the longs below the price, the shorts above, a cut bin in proportion', () => {
+  const s = liqStanding(levels(), null);
+  assert.deepEqual(onTheWay(s, 105, 85), { side: 'long', usd: 275 }, 'bin 9 and half of bin 8');
+  assert.deepEqual(onTheWay(s, 105, 125), { side: 'short', usd: 320 }, 'bin 11 and half of bin 12');
+  assert.deepEqual(onTheWay(s, 105, 102), { side: 'long', usd: 0 });
+  assert.equal(onTheWay(s, 105, 105), null, 'nothing at the price itself');
+  assert.equal(onTheWay(s, NaN, 90), null);
+  assert.equal(onTheWay(s, 0, 90), null);
+});
+
+test('the cumulative curves run from the price out through every row\'s far edge, and read what goes on the way there', () => {
+  const s = liqStanding(levels(), null), p = liqProfile(s, 10, 80, 130, 105), c = liqCurves(p, 105);
+  // Rows [80, 90) to [130, 140), the price inside [100, 110): longs down from it, shorts up.
+  assert.deepEqual(c.long, [{ p: 105, usd: 0 }, { p: 100, usd: 0 }, { p: 90, usd: 200 }, { p: 80, usd: 350 }]);
+  assert.deepEqual(c.short, [{ p: 105, usd: 0 }, { p: 110, usd: 0 }, { p: 120, usd: 300 }, { p: 130, usd: 340 }, { p: 140, usd: 340 }]);
+  // Every point is what the pointer would read there (the stripe's "If price gets here" uses the same sum), and the widest is the column's scale.
+  for (const q of [...c.long, ...c.short]) if (q.p !== 105) assert.equal(onTheWay(s, 105, q.p)!.usd, q.usd, String(q.p));
+  assert.equal(Math.max(...[...c.long, ...c.short].map(q => q.usd)), p.maxCum);
+  // A price above the rows in view: the long curve starts at their top edge with what lies between it and the price already counted.
+  const high = liqCurves(liqProfile(s, 10, 80, 85, 95), 95);
+  assert.deepEqual(high.long, [{ p: 90, usd: 100 }, { p: 80, usd: 250 }]);
+  assert.equal(high.short.length, 0);
+  assert.deepEqual(liqCurves(p, NaN), { long: [], short: [] });
 });
 
 test('rows are at least two pixels tall, and the colour scale ignores the dust', () => {

@@ -249,8 +249,19 @@ export function standingBelow(s: LiqStanding, side: 'long' | 'short', price: num
 }
 
 /**
- * The profile column's rows from `p0` to `p1`, `step` dollars each: what stands of each side in the row and, faint behind it, everything
- * from the price out to the row (the longs that go if price falls that far, the shorts if it rises).
+ * What would be liquidated on the way from `price` to `at`: the longs standing between them when `at` is below the price (they go as it
+ * falls there), the shorts when it is above (as it rises); a bin `at` cuts counts in proportion. Null at the price itself or without one.
+ * The liquidation column's curve, its reading at the pointer and the stripe's "If price gets here" all come from here.
+ */
+export function onTheWay(s: LiqStanding, price: number, at: number): { side: 'long' | 'short'; usd: number } | null {
+  if (!(price > 0) || !Number.isFinite(price) || !Number.isFinite(at) || at === price) return null;
+  return at < price ? { side: 'long', usd: Math.max(0, standingBelow(s, 'long', price) - standingBelow(s, 'long', at)) }
+    : { side: 'short', usd: Math.max(0, standingBelow(s, 'short', at) - standingBelow(s, 'short', price)) };
+}
+
+/**
+ * The profile column's rows from `p0` to `p1`, `step` dollars each: what stands of each side in the row and everything from the price out
+ * to the row's far edge (the longs that go if price falls that far, the shorts if it rises), which the column draws as a curve.
  */
 export interface LiqProfile { row0: number; step: number; long: Float64Array; short: Float64Array; cumLong: Float64Array; cumShort: Float64Array; maxLevel: number; maxCum: number }
 
@@ -269,6 +280,32 @@ export function liqProfile(s: LiqStanding, step: number, p0: number, p1: number,
     longBelow = longTo; shortBelow = shortTo;
   }
   return out;
+}
+
+/** A point of a cumulative curve: a price and what would be liquidated on the way there from the price. */
+export interface CurvePoint { p: number; usd: number }
+
+/**
+ * The column's two cumulative curves (as CoinMarketCap's liquidation map draws them, turned upright): from the price, where nothing has gone
+ * yet, out through every row's far edge, the longs downward and the shorts upward. A price beyond the rows starts its curve at the rows'
+ * edge nearest it, with what lies between already counted, so the part in view is drawn as it stands.
+ */
+export function liqCurves(prof: LiqProfile, price: number): { long: CurvePoint[]; short: CurvePoint[] } {
+  const long: CurvePoint[] = [], short: CurvePoint[] = [], n = prof.long.length;
+  if (!(price > 0) || !Number.isFinite(price)) return { long, short };
+  for (let r = n - 1; r >= 0; r--) {
+    const a = (prof.row0 + r) * prof.step, b = a + prof.step;
+    if (a >= price) continue;
+    if (!long.length) long.push(b <= price ? { p: b, usd: Math.max(0, prof.cumLong[r]! - prof.long[r]!) } : { p: price, usd: 0 });
+    long.push({ p: a, usd: prof.cumLong[r]! });
+  }
+  for (let r = 0; r < n; r++) {
+    const a = (prof.row0 + r) * prof.step, b = a + prof.step;
+    if (b <= price) continue;
+    if (!short.length) short.push(a >= price ? { p: a, usd: Math.max(0, prof.cumShort[r]! - prof.short[r]!) } : { p: price, usd: 0 });
+    short.push({ p: b, usd: prof.cumShort[r]! });
+  }
+  return { long, short };
 }
 
 /** The colour strength of a row's dollars against the largest rows in view (the 97th percentile, so one wallet does not wash out the rest). */

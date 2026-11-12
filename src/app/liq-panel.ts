@@ -17,7 +17,7 @@ export function buildLiqLevelPanel(store: Store, tools: HTMLElement, body: HTMLE
   tools.append(helpButton('liqLevels'));
   body.append(
     switchRow(t('Show liquidation levels'), HELP.liqLevels.tip, s.on, on => set({ on }, true)),
-    switchRow(t('Liquidation column'), t('A column of its own beside the profile column: in each row what still stands of the liquidation levels, and faint behind it everything from the price out to that row.'), s.column, column => set({ column })),
+    switchRow(t('Liquidation column'), t('A column of its own beside the profile column: in each row what still stands of the liquidation levels, and a curve of everything from the price out to each price, read where you point.'), s.column, column => set({ column })),
   );
   // What the map leaves unsaid, it being on by default: why nothing shows.
   if (replaying()) body.append(note(t('Liquidation levels show the live market only.')));

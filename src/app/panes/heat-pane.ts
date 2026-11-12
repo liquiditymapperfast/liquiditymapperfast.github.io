@@ -26,7 +26,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText } from '../text-fit.ts';
 import { distanceText } from './ladder-info.ts';
-import { binsPerRow, dollarPriceOf, liqProfile, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
+import { binsPerRow, dollarPriceOf, liqCurves, liqProfile, onTheWay, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, type CurvePoint, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -345,6 +345,8 @@ export class HeatPane {
   #historyNote: { x0: number; x1: number; top: number } | null = null;
   /** Liquidation levels' rows in view and what they were grouped for (#liqRowsInView). */
   #liqRows: { key: string; rows: LiqRow[]; heat: (usd: number) => number } | null = null;
+  /** The wide liquidation column as last drawn with its curves (its left and width, the curves' width, their dollars at full width), for `#paintLiqReadout`. */
+  #liqScale: { x0: number; W: number; width: number; maxCum: number } | null = null;
   /** The pointer over a volume profile column (its y, and which column: its side and its place there, nearest the map first), or null. */
   #tradedHover: { y: number; side: Side; i: number } | null = null;
   #profileBox: { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null = null;
@@ -1319,7 +1321,7 @@ export class HeatPane {
     }
     // profile column, traded-volume column and price axis
     // The liquidation column, then the profile column: the book as it is now, not shown in replay, which has no book of its moment.
-    if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph);
+    if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph); else this.#liqScale = null;
     if (state.show.profile && !replaying()) this.#paintProfile(ctx, state, pw, ph);
     if (this.#profileHover?.column === 'seam' && !replaying()) this.#paintSeam(ctx, state, pw, ph);
     if (tradedShown(state)) this.#paintTraded(ctx, state, pw, ph);
@@ -1385,8 +1387,40 @@ export class HeatPane {
     }
     this.#paintRange(ctx, state, pw, ph);
     this.#paintBookRow(ctx, state, pw, ph);
+    this.#paintLiqReadout(ctx, state, ph);
     this.#paintCrosshair(ctx, state, pw, ph);
     this.#paintAnchorPreview(ctx, state, pw, ph);
+  }
+
+  /**
+   * The liquidation column's cumulative curve read at the pointer's price (an X request of 2026-11-12: "can I see cumulative levels at each
+   * price point?"): wherever the map's crosshair is, or the pointer on the column itself while Mirror is off (with it on, its band says the
+   * same), a dashed line across the column, a dot on the curve, and what would be liquidated if price got there, with how far that is. The
+   * column's strip (a compact map) has no curve and no room: nothing there.
+   */
+  #paintLiqReadout(ctx: CanvasRenderingContext2D, state: AppState, ph: number): void {
+    const scale = this.#liqScale, src = this.hub.liqLevels, hv = state.hover, col = this.#profileHover;
+    if (!scale || !liqColumnShown(state) || replaying() || src.state !== 'ready') return;
+    const y = hv?.source === 'heat' && hv.price !== null ? this.view.yOf(hv.price, ph) : col?.column === 'liq' && !state.show.mirror ? col.y : NaN;
+    if (!(y >= 0 && y <= ph)) return;
+    const s = src.standing(), price = this.#liqPrice(state), at = this.view.pOf(y, ph), way = s ? onTheWay(s, price, at) : null;
+    if (!way) return;
+    const p = this.#palette, color = way.side === 'long' ? p.candleDown : p.candleUp, { x0, W } = scale;
+    const x = x0 + Math.min(1, way.usd / scale.maxCum) * scale.width, line = Math.round(y) + 0.5;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
+    ctx.strokeStyle = color; ctx.globalAlpha = 0.75; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x0, line); ctx.lineTo(x0 + W, line); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = p.panel; ctx.stroke();
+    // How far, and what goes on the way: the distance is dropped where both do not fit the column.
+    const pct = Math.abs(at - price) / price * 100, arrow = way.side === 'long' ? '▼' : '▲', money = `$${usd(way.usd)}`;
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+    const full = `${arrow} ${pct < 10 ? pct.toFixed(2) : pct.toFixed(1)}% · ${money}`, text = ctx.measureText(full).width <= W - 14 ? full : `${arrow} ${money}`;
+    const tw = ctx.measureText(text).width, right = x0 + W - 4, ty = y - 12 < 7 ? y + 12 : y - 12;
+    ctx.globalAlpha = 0.94; ctx.fillStyle = p.panel; ctx.fillRect(right - tw - 5, ty - 7, tw + 9, 14);
+    ctx.globalAlpha = 1; ctx.lineWidth = 1; ctx.strokeStyle = color; ctx.strokeRect(right - tw - 4.5, ty - 6.5, tw + 8, 13);
+    ctx.fillStyle = p.text; ctx.fillText(text, right, ty);
+    ctx.restore();
   }
 
   /**
@@ -2146,8 +2180,9 @@ export class HeatPane {
       const edge = side === 'long' ? row.p1 : row.p0;
       if (price > 0) lines.push({ label: t('Distance'), text: distanceText(edge, price) });
       if (price > 0 && standing) {
-        const way = side === 'long' ? standingBelow(standing, 'long', price) - standingBelow(standing, 'long', row.p0) : standingBelow(standing, 'short', row.p1) - standingBelow(standing, 'short', price);
-        lines.push({ label: t('If price gets here'), text: `$${usd(Math.max(0, way))}` });
+        // To the edge price reaches last, so the level itself counts; the column's curve and its reading at the pointer use the same sum.
+        const way = onTheWay(standing, price, side === 'long' ? row.p0 : row.p1);
+        lines.push({ label: t('If price gets here'), text: `$${usd(way?.side === side ? way.usd : 0)}` });
       }
       lines.push({ label: t('Positions'), text: String(row[`${side}Wallets`]) });
       if (top > 0) lines.push({ label: t('Largest position'), text: `$${usd(top)} (${Math.round(top / total * 100)}%)` });
@@ -3806,10 +3841,12 @@ export class HeatPane {
 
   /**
    * The liquidation column (Liquidation levels' own, between the map and the profile column): in each row what still stands of them (longs
-   * in the falling colour, shorts in the rising one) and, faint behind it, everything from the price out to that row, so a faint bar reads
-   * "this much goes if price gets here". Until the levels are there, or in a replay, it says why it is empty.
+   * in the falling colour, shorts in the rising one) and a curve of everything from the price out to each price, lightly filled behind the
+   * bars, which reads "this much goes if price gets here" (and the pointer reads it at its price: `#paintLiqReadout`). Until the levels are
+   * there, or in a replay, it says why it is empty.
    */
   #paintLiqColumn(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
+    this.#liqScale = null;
     const p = this.#palette, v = this.view, src = this.hub.liqLevels, x0 = pw, W = liqColumnW(state), strip = W < PROFILE_W;
     const s = src.levels && src.state === 'ready' && !replaying() ? src.standing() : null;
     ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
@@ -3837,10 +3874,20 @@ export class HeatPane {
     const step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
     const prof = liqProfile(s, step, v.p0, v.p1, price);
     const maxLevel = Math.max(prof.maxLevel, 1), maxCum = Math.max(prof.maxCum, 1), width = W - 6;
+    // The cumulative curves (the wide column only: the strip has no room for one), as CoinMarketCap's liquidation map draws them turned
+    // upright: lightly filled behind the rows' bars, their edge drawn over them, so "this much goes if price gets here" reads at every price.
+    const curves = strip ? null : liqCurves(prof, price), xOf = (q: CurvePoint): number => x0 + Math.min(1, q.usd / maxCum) * width;
+    const sides = curves ? ([[curves.long, p.candleDown], [curves.short, p.candleUp]] as const).filter(([pts]) => pts.length > 1) : [];
+    for (const [pts, color] of sides) {
+      ctx.beginPath(); ctx.moveTo(x0, v.yOf(pts[0]!.p, ph));
+      for (const q of pts) ctx.lineTo(xOf(q), v.yOf(q.p, ph));
+      ctx.lineTo(x0, v.yOf(pts[pts.length - 1]!.p, ph)); ctx.closePath();
+      ctx.globalAlpha = 0.16; ctx.fillStyle = color; ctx.fill();
+    }
     for (let r = 0; r < prof.long.length; r++) {
       const lo = (prof.row0 + r) * step, y1 = v.yOf(lo, ph), y0 = v.yOf(lo + step, ph);
       if (y1 < 0 || y0 > ph) continue;
-      const hgt = Math.max(1, y1 - y0 - 0.5), long = prof.long[r]!, short = prof.short[r]!, cumLong = prof.cumLong[r]!, cumShort = prof.cumShort[r]!;
+      const hgt = Math.max(1, y1 - y0 - 0.5), long = prof.long[r]!, short = prof.short[r]!;
       if (strip) {
         // The strip, as the book's: each row's levels as the strength of their side's colour, the largest the boldest; longs below the price,
         // shorts above, in the candles' colours as in the column. By the logarithm, not the book's square root: the levels are a few spikes
@@ -3849,12 +3896,18 @@ export class HeatPane {
         if (level > 0) { ctx.globalAlpha = 0.22 + 0.78 * Math.log1p(level / (maxLevel / 1000)) / Math.log1p(1000); ctx.fillStyle = long >= short ? p.candleDown : p.candleUp; ctx.fillRect(x0 + 1, y0, W - 1, hgt); }
         continue;
       }
-      if (cumLong > 0) { ctx.globalAlpha = 0.16; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, cumLong / maxCum * width, hgt); }
-      if (cumShort > 0) { ctx.globalAlpha = 0.16; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, cumShort / maxCum * width, hgt); }
       if (long > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, Math.max(1, long / maxLevel * width), hgt); }
       if (short > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, Math.max(1, short / maxLevel * width), hgt); }
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.95; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+    for (const [pts, color] of sides) {
+      ctx.beginPath(); ctx.moveTo(xOf(pts[0]!), v.yOf(pts[0]!.p, ph));
+      for (const q of pts) ctx.lineTo(xOf(q), v.yOf(q.p, ph));
+      ctx.strokeStyle = color; ctx.stroke();
+    }
+    ctx.globalAlpha = 1; ctx.lineWidth = 1;
+    // The pointer's layer reads the curve where the pointer is (`#paintLiqReadout`), on this scale.
+    this.#liqScale = curves ? { x0, width, maxCum, W } : null;
     if (!strip) {
       ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, 40); ctx.globalAlpha = 1;
       ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
