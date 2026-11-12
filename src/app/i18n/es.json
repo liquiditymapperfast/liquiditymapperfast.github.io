@@ -2615,5 +2615,9 @@
  "replay: candles closed by {time}": "repetición: velas cerradas hasta {time}",
  "Over those candles: estimate net {model}; known change {change}; difference {diff}.": "En esas velas: neto estimado {model}; cambio conocido {change}; diferencia {diff}.",
  "not held for this stretch": "no disponible para este tramo",
- "the largest only: the answer was cut": "solo las mayores: la respuesta se cortó"
+ "the largest only: the answer was cut": "solo las mayores: la respuesta se cortó",
+ "A newer version of this page is out.": "Hay una versión más reciente de esta página.",
+ "Reload": "Recargar",
+ "Load the newer version now. Your settings are kept.": "Carga ahora la versión más reciente. Tus ajustes se conservan.",
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "El sitio se actualizó después de abrir esta pestaña. Una pestaña conserva la versión con la que empezó hasta que se recarga, y nunca se recarga sola."
 }

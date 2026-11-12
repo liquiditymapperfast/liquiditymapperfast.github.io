@@ -270,6 +270,7 @@
  "**A fresh page is shallow far from the price.** The far side fills in over some minutes.": "**刚打开的页面在远离价格处很浅。**远端会在几分钟内逐渐填满。",
  "**A phone only records while the page is open and awake.** A sleeping screen leaves a gap in the map; **Keep screen on** in Settings holds it awake. With all eleven markets the page reads about 200 to 300 MB an hour: on a mobile connection, switch some off in **Venues**.": "**手机只在页面打开且保持唤醒时才记录。**屏幕休眠会在地图上留下空白；设置中的**保持屏幕常亮**可让它保持唤醒。开启全部十一个市场时，页面每小时读取约 200 到 300 MB：用移动网络时，请在**交易所**中关闭一些。",
  "**Nothing you do leaves your machine.** The page talks to the exchanges and, only to read, to this site's history and levels services. Recordings live in your browser; clearing the site's data erases them.": "**你做的任何操作都不会离开你的电脑。**页面与交易所通信，并且只为读取而与本站的历史和价位服务通信。记录保存在你的浏览器里；清除网站数据会删除它们。",
+ "**A tab keeps the version it was opened with.** The site is updated often. When a newer version is out, the page says so, in the bottom bar on a computer and under the top bar on a phone, with a **Reload** button. It never reloads by itself, since a reload starts the live trades over; ✕ puts the notice away for a day.": "**标签页会一直使用打开时的版本。**网站经常更新。有新版本时，页面会提示：电脑上在底部栏，手机上在顶部栏下方，并附有**重新加载**按钮。页面从不自行重新加载，因为重新加载会让实时成交从头开始；点 ✕ 可让提示隐藏一天。",
  "Toolbar": "工具栏",
  "The toolbar: market, timeframe, which panes to show, colours, exchanges, Screenshot and Guide.": "工具栏：市场、时间周期、显示哪些面板、颜色、交易所、截图和指南。",
  "Flow column": "资金流栏",

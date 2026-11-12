@@ -23,6 +23,7 @@ import { anchorDate, clock, clockYear, setTimeZone, zoneName } from './format.ts
 import { installTips } from './tip.ts';
 import { installClassicSelects, installTouchSelects } from './touch-select.ts';
 import { lazy, preload } from './lazy.ts';
+import { watchBuild } from './update-check.ts';
 import { ScreenWake } from './wake.ts';
 import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
@@ -126,7 +127,7 @@ async function main(): Promise<void> {
   // The bar along the bottom (desktop only): connection, venues live, price age, recording, data source, language and theme.
   const statusbar = new StatusBar(source.kind);
   app.append(toolbar.root, main, dock.root, statusbar.root);
-  toolbar.hostStatusControls(statusbar.controls);
+  toolbar.hostStatusControls(statusbar.controls, statusbar.notices);
   toolbar.setCollapsed(store.state.barCollapsed);
   source.venues.watch?.(entries => statusbar.setVenues(entries));
   const showStatus = (): void => statusbar.update(store.state, hub.recordedSince, source.kind === 'server' ? 'server' : source.saving?.(Date.now()) ?? 'starting');
@@ -400,6 +401,9 @@ async function main(): Promise<void> {
 
   // The screenshot tool is fetched a few seconds in, so a deploy while the page is open cannot leave it asking for a file that is gone.
   window.setTimeout(() => preload(() => import('./screenshot/editor.ts')), 5_000);
+  // A tab goes on with the build it was opened with: when the site serves a newer one, the page says so, and only the person reloads
+  // (update-check.ts, update-notice.ts).
+  const update = watchBuild(meaning => toolbar.answerBuild(meaning));
 
   // The keyboard shortcuts (shortcuts.ts: the table, and when a key is left alone).
   // Placing an anchor (the VWAP's or the profile's), from the keyboard: Esc stops, the arrows step the candle it would take (from the one under
@@ -593,7 +597,7 @@ async function main(): Promise<void> {
     const offer = (): void => { if (!toolbar.inviteToTour() && ++asked < 12) window.setTimeout(offer, 5_000); };
     window.setTimeout(offer, 2500);
   }
-  (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, cvd, candle, sounds, alerts, glass, script };
+  (window as unknown as { __hlm: unknown }).__hlm = { store, hub, heat, ladder, cvd, candle, sounds, alerts, glass, script, update };
 }
 
 main().catch(error => {

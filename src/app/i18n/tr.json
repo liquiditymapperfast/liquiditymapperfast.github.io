@@ -2575,5 +2575,9 @@
  "replay: candles closed by {time}": "yeniden oynatma: {time} itibarıyla kapanan mumlar",
  "Over those candles: estimate net {model}; known change {change}; difference {diff}.": "Bu mumlarda: tahmini net {model}; bilinen değişim {change}; fark {diff}.",
  "not held for this stretch": "bu dilim için yok",
- "the largest only: the answer was cut": "yalnızca en büyükler: yanıt kesildi"
+ "the largest only: the answer was cut": "yalnızca en büyükler: yanıt kesildi",
+ "A newer version of this page is out.": "Bu sayfanın daha yeni bir sürümü çıktı.",
+ "Reload": "Yeniden yükle",
+ "Load the newer version now. Your settings are kept.": "Yeni sürümü şimdi yükleyin. Ayarlarınız korunur.",
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Site, bu sekme açıldıktan sonra güncellendi. Bir sekme yeniden yüklenene kadar başladığı sürümle çalışır ve asla kendiliğinden yeniden yüklenmez."
 }

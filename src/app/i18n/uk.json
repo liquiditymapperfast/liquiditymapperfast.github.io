@@ -2644,5 +2644,9 @@
  "replay: candles closed by {time}": "відтворення: свічки, закриті до {time}",
  "Over those candles: estimate net {model}; known change {change}; difference {diff}.": "За цими свічками: оцінка нетто {model}; відома зміна {change}; різниця {diff}.",
  "not held for this stretch": "для цього відрізка немає",
- "the largest only: the answer was cut": "лише найбільші: відповідь було обрізано"
+ "the largest only: the answer was cut": "лише найбільші: відповідь було обрізано",
+ "A newer version of this page is out.": "Вийшла новіша версія цієї сторінки.",
+ "Reload": "Перезавантажити",
+ "Load the newer version now. Your settings are kept.": "Завантажити новішу версію зараз. Ваші налаштування збережуться.",
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Сайт оновили після того, як цю вкладку було відкрито. Вкладка працює у версії, з якою запустилася, доки її не перезавантажать, і сама ніколи не перезавантажується."
 }

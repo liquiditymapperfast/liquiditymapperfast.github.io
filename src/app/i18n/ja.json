@@ -2481,5 +2481,9 @@
  "replay: candles closed by {time}": "リプレイ：{time} までに確定した足",
  "Over those candles: estimate net {model}; known change {change}; difference {diff}.": "それらのローソク足では：推定ネット {model}；判明している変化 {change}；差 {diff}。",
  "not held for this stretch": "この区間は保持していません",
- "the largest only: the answer was cut": "最大のものだけ：応答が途中で切られました"
+ "the largest only: the answer was cut": "最大のものだけ：応答が途中で切られました",
+ "A newer version of this page is out.": "このページの新しいバージョンが公開されています。",
+ "Reload": "再読み込み",
+ "Load the newer version now. Your settings are kept.": "新しいバージョンを今すぐ読み込みます。設定はそのまま残ります。",
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "このタブを開いた後にサイトが更新されました。タブは再読み込みされるまで開いたときのバージョンのまま動き、自動で再読み込みされることはありません。"
 }

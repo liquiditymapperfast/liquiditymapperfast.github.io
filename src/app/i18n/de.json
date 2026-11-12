@@ -2581,5 +2581,9 @@
  "replay: candles closed by {time}": "Wiedergabe: bis {time} geschlossene Kerzen",
  "Over those candles: estimate net {model}; known change {change}; difference {diff}.": "Über diese Kerzen: geschätztes Netto {model}; bekannte Änderung {change}; Differenz {diff}.",
  "not held for this stretch": "für diesen Abschnitt nicht vorhanden",
- "the largest only: the answer was cut": "nur die größten: Die Antwort wurde abgeschnitten"
+ "the largest only: the answer was cut": "nur die größten: Die Antwort wurde abgeschnitten",
+ "A newer version of this page is out.": "Eine neuere Version dieser Seite ist da.",
+ "Reload": "Neu laden",
+ "Load the newer version now. Your settings are kept.": "Die neuere Version jetzt laden. Deine Einstellungen bleiben erhalten.",
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Die Seite wurde aktualisiert, nachdem dieser Tab geöffnet wurde. Ein Tab behält die Version, mit der er gestartet ist, bis er neu geladen wird, und lädt nie von selbst neu."
 }

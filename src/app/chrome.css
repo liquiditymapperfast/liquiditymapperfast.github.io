@@ -422,6 +422,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :where([data-frame="bevel"]) .hovercard .rule { border-top-color: var(--lo); }
 :where([data-frame="bevel"]) .toolbar .notice { background: var(--bv-tip); color: #000; border: 1px solid #000; border-radius: 0; box-shadow: none; font-size: 11px; padding: 3px 4px 3px 8px; }
 :root[data-frame="bevel"] .toolbar.cockpit .notice { box-shadow: none; }
+:where([data-frame="bevel"]) .statusbar .update-notice { background: var(--bv-tip); color: #000; border: 1px solid #000; border-radius: 0; }
 :where([data-frame="bevel"]) .toast { background: var(--face); color: var(--text); border: 2px solid; border-color: var(--bv-c-window); border-image: var(--bv-window) 2 / 2px; box-shadow: var(--bv-shadow); font-size: 11px; padding: 8px 14px; }
 
 /* ---- scrollbars: sixteen pixels, a checkered track, raised keys with drawn arrows and a raised thumb ---------------------------------------- */

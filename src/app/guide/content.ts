@@ -467,6 +467,7 @@ export const SECTIONS: readonly Section[] = [
         '**A fresh page is shallow far from the price.** The far side fills in over some minutes.',
         '**A phone only records while the page is open and awake.** A sleeping screen leaves a gap in the map; **Keep screen on** in Settings holds it awake. With all eleven markets the page reads about 200 to 300 MB an hour: on a mobile connection, switch some off in **Venues**.',
         '**Nothing you do leaves your machine.** The page talks to the exchanges and, only to read, to this site\'s history and levels services. Recordings live in your browser; clearing the site\'s data erases them.',
+        '**A tab keeps the version it was opened with.** The site is updated often. When a newer version is out, the page says so, in the bottom bar on a computer and under the top bar on a phone, with a **Reload** button. It never reloads by itself, since a reload starts the live trades over; ✕ puts the notice away for a day.',
         '**If something looks wrong**: check the connection status (the dot at the left of the bottom bar, at the top right on a phone), try Recenter, and if hovering shows nothing, check Mirror in the order book\'s Cues panel.',
       ] },
     ],

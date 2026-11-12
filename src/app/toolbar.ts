@@ -24,6 +24,8 @@ import { GROUP_TITLES, SHORTCUTS, togglePatch, type Feature, type ShortcutGroup 
 import { buildGallery, newGalleryState } from './layouts/gallery.ts';
 import type { LayoutActions } from './layouts/actions.ts';
 import { TourInvite } from './tour/invite.ts';
+import { UpdateNotice } from './update-notice.ts';
+import type { BuildAnswer } from './update-check.ts';
 import { clampGoTo, formatDateTime, parseDateTime } from './price-line.ts';
 import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
@@ -155,6 +157,8 @@ export class Toolbar {
   #tour = el('button', { type: 'button', class: 'tour-btn', textContent: t('Tour'), tip: t('A one-minute tour of the page: what the map shows and where everything is. The Guide goes deeper.'), onclick: () => { this.#sheet?.close(); this.startTour(); } });
   /** Offers the tour once to a visitor who has never been offered it (a notice under the bar). */
   readonly #invite = new TourInvite(() => this.startTour(), () => compactBar() ? t('You can take the tour any time from Settings.') : t('You can take the tour any time with the Tour button at the top right.'));
+  /** Says when the site serves a newer build than this tab runs (update-notice.ts): in the status bar on a computer, under the bar otherwise. */
+  readonly #update = new UpdateNotice();
   #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Screenshot'), tip: t('Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.'), onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
   #author = el('button', { type: 'button', textContent: t('Author'), tip: t('Who made this, and where to find the code. Free, no sign-ups, open source.') });
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
@@ -163,6 +167,8 @@ export class Toolbar {
   #sounds: Sounds | null = null;
   /** Where the language and theme buttons live on a desktop screen (the status bar), or null. */
   #statusHost: HTMLElement | null = null;
+  /** Where the update notice lives on a desktop screen (its slot in the status bar), or null. */
+  #statusNotices: HTMLElement | null = null;
   #venueMenu: Panel | null = null;
   #alerts: Alerts | null = null;
   /**
@@ -390,7 +396,7 @@ export class Toolbar {
     // A notice that comes, goes, or wraps differently moves the ones under it.
     if (typeof ResizeObserver === 'function') {
       const stack = new ResizeObserver(() => this.#stackNotices());
-      for (const notice of [this.#notice.root, this.#coinNotice, this.#invite.root]) stack.observe(notice);
+      for (const notice of this.#notices()) stack.observe(notice);
     }
     const missing = coinChoice().notice;
     if (missing) {
@@ -691,7 +697,10 @@ export class Toolbar {
     });
   }
 
-  hostStatusControls(host: HTMLElement): void { this.#statusHost = host; this.#arrange(); }
+  hostStatusControls(host: HTMLElement, notices: HTMLElement | null = null): void { this.#statusHost = host; this.#statusNotices = notices; this.#arrange(); }
+
+  /** What the site's answer about the build it serves means (update-check.ts `watchBuild`): offer the newer one, take the offer back, or nothing. */
+  answerBuild(meaning: BuildAnswer): void { this.#update.answer(meaning); }
 
   /** The browser tab's two switches, from the status bar's Tab key. */
   #openTab(): void {
@@ -726,12 +735,16 @@ export class Toolbar {
    */
   #stackNotices(): void {
     let top = 4;
-    for (const notice of [this.#notice.root, this.#coinNotice, this.#invite.root]) {
-      if (notice.hidden) { notice.style.top = ''; continue; }
+    for (const notice of this.#notices()) {
+      // One that lies elsewhere (the update notice in the status bar) is not stacked.
+      if (notice.hidden || notice.parentElement !== this.root) { notice.style.top = ''; continue; }
       notice.style.top = `calc(100% + ${top}px)`;
       top += notice.offsetHeight + 4;
     }
   }
+
+  /** The notices that can lie under the bar, top first (the update notice is a line of the status bar on a computer). */
+  #notices(): HTMLElement[] { return [this.#notice.root, this.#coinNotice, this.#invite.root, this.#update.root]; }
 
   /** Fold the bar away or bring it back (`state.barCollapsed`): folded, only its strip (`#expand`) and its notices show. */
   setCollapsed(collapsed: boolean): void {
@@ -792,7 +805,11 @@ export class Toolbar {
         // happened, marked, heard and seen across the screen.
         deck('alerts', t('Alerts'), [this.#alertSplits!.highlights], [this.#alertSplits!.sound, this.#alertSplits!.waves]),
         tools];
-      this.root.replaceChildren(...this.#decks, this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
+      // The update notice is a line of the status bar, where it covers nothing (under the bar it would lie over the map's own buttons);
+      // without a status bar it waits under the bar with the others.
+      const notices = host ? this.#statusNotices : null;
+      notices?.replaceChildren(this.#update.root);
+      this.root.replaceChildren(...this.#decks, this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root, ...(notices ? [] : [this.#update.root]));
       this.#fit();
       return;
     }
@@ -806,7 +823,7 @@ export class Toolbar {
         // The coin alone (Karl, 2026-10-17): the market is chosen in Settings, where the venues are.
         el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#spacer, this.#status, this.#flip, this.#more, this.#collapse),
         el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter)),
-      this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root);
+      this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root, this.#update.root);
   }
 
   /**

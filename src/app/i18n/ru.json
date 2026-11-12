@@ -2639,5 +2639,9 @@
  "replay: candles closed by {time}": "воспроизведение: свечи, закрытые к {time}",
  "Over those candles: estimate net {model}; known change {change}; difference {diff}.": "По этим свечам: оценка нетто {model}; известное изменение {change}; разница {diff}.",
  "not held for this stretch": "для этого отрезка нет",
- "the largest only: the answer was cut": "только крупнейшие: ответ был обрезан"
+ "the largest only: the answer was cut": "только крупнейшие: ответ был обрезан",
+ "A newer version of this page is out.": "Вышла новая версия этой страницы.",
+ "Reload": "Перезагрузить",
+ "Load the newer version now. Your settings are kept.": "Загрузить новую версию сейчас. Ваши настройки сохранятся.",
+ "The site was updated after this tab was opened. A tab keeps the version it started with until it is reloaded, and it never reloads by itself.": "Сайт обновили после того, как была открыта эта вкладка. Вкладка работает в той версии, с которой запустилась, пока её не перезагрузят, и сама никогда не перезагружается."
 }
