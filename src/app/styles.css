@@ -217,7 +217,8 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 /* On a computer a line of the status bar, where it covers nothing, as tall as the bar's buttons. Where the bar is short it gives way first: its
    words are cut before any of the bar's own (they are its tip too), down to its mark, Reload and ✕, which a grid keeps whole (its words' column
    alone can shrink, to nothing). Kept whole itself it cut the venues and saving words to nothing at 800 px and pushed the theme button out of the
-   window below about 790 px; shrinking as a flex box with no floor, it cut its own Reload at 1,100 px in French. */
+   window below about 790 px; shrinking as a flex box with no floor, it cut its own Reload at 1,100 px in French. Its floor is not nothing: below
+   about 800 px a long language's Reload still pushes the bar's end out while it shows (Russian at 768 px by about 20 px), its ✕ in reach. */
 .statusbar .status-notices { display: contents; }
 .statusbar .update-notice { flex: 0 20 auto; display: inline-grid; grid-template-columns: auto minmax(0, max-content) auto auto; align-items: center; column-gap: 6px; min-height: 20px; padding: 0 2px 0 6px; border: 1px solid color-mix(in srgb, var(--ui) 45%, var(--line)); border-radius: var(--radius); background: color-mix(in srgb, var(--ui) 12%, var(--panel)); color: var(--text); white-space: nowrap; }
 .statusbar .update-notice[hidden] { display: none; }

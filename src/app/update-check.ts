@@ -17,7 +17,7 @@ import { STALE_EVENT } from './lazy.ts';
 export const CHECK_EVERY_MS = 15 * 60_000;
 /** The first question, after the start: a page opened from the browser's cache (GitHub Pages lets it keep the page ten minutes) can be stale from the start. */
 export const FIRST_CHECK_MS = 2 * 60_000;
-/** A tab shown again asks at once when its last question is at least this old (ms), and no question comes sooner after another. */
+/** A tab shown again asks at once when its last question is at least this old (ms), and no timed question comes sooner after another. */
 export const SHOWN_AGAIN_MS = 5 * 60_000;
 /**
  * How long a notice put away stays away (ms): a day, whatever is deployed meanwhile. The site is deployed several times on some days, and a
@@ -94,8 +94,9 @@ export interface BuildWatch {
 export function watchBuild(answer: (meaning: BuildAnswer, deployed: string | null) => void, doc: Document = document): BuildWatch {
   const own = ownBuild(doc);
   // As if asked three minutes before the start: the first question's time is the first time a question is due, so a tab hidden at two
-  // minutes and shown again soon after asks then rather than at the quarter of an hour.
-  let asking: Promise<string | null> | null = null, lastAsked = Date.now() + FIRST_CHECK_MS - SHOWN_AGAIN_MS;
+  // minutes and shown again soon after asks then rather than at the quarter of an hour. A second to spare: the timer keeps its own clock,
+  // and with the wall clock a millisecond behind it when it fires, the first question would wait for the quarter.
+  let asking: Promise<string | null> | null = null, lastAsked = Date.now() + FIRST_CHECK_MS - SHOWN_AGAIN_MS - 1_000;
   const ask = async (): Promise<string | null> => {
     try {
       const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(CHECK_TIMEOUT_MS) : undefined;
