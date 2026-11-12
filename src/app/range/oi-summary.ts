@@ -95,6 +95,23 @@ export interface OiStretch {
   rank: { larger: number; of: number } | null;
 }
 
+/**
+ * NL/NS candles added up: the four parts, what went to no side, estimated added and reduced, the model's own change and (`known`, each
+ * candle's) the bars' known change over the same candles, and how they were read; null for none. The OI and the Delta panes' summaries both
+ * add up with it, so the two never give different parts for one stretch.
+ */
+export function sumWho(candles: readonly { c: NlnsCandle; known?: number }[]): OiWho | null {
+  const w: OiWho = { longOpened: 0, shortOpened: 0, longClosed: 0, shortClosed: 0, unsidedUp: 0, unsidedDown: 0, added: 0, reduced: 0, dOi: 0, known: 0, candles: 0, byPrice: 0, fineAll: 0 };
+  for (const { c, known } of candles) {
+    w.candles++; w.longOpened += c.longOpened; w.shortOpened += c.shortOpened; w.longClosed += c.longClosed; w.shortClosed += c.shortClosed;
+    w.unsidedUp += c.unsidedUp; w.unsidedDown += c.unsidedDown; w.dOi += c.dOi; w.known += known ?? 0;
+    if (c.byPrice) w.byPrice++;
+    if (c.fine > 0 && c.fine >= c.counted) w.fineAll++;
+  }
+  w.added = w.longOpened + w.shortOpened + w.unsidedUp; w.reduced = w.longClosed + w.shortClosed + w.unsidedDown;
+  return w.candles ? w : null;
+}
+
 /** The candle of `candles` (oldest first) that starts at `t`, by bisection; undefined when none does. */
 function candleAt(candles: readonly CandleRow[], t: number): CandleRow | undefined {
   let lo = 0, hi = candles.length;
@@ -139,19 +156,12 @@ export function oiStretch(input: OiStretchInput): OiStretch | null {
     let got = 0, k = 0; while (k < sorted.length && got < movement / 2) got += sorted[k++]!;
     half = { bars: k, movement };
   }
-  // Who: the NL/NS candles of the stretch's bars added up.
+  // Who: the NL/NS candles of the stretch's bars added up (the same sum the Delta pane's summary makes: `sumWho`).
   let who: OiWho | null = null;
   if (input.who) {
-    const w: OiWho = { longOpened: 0, shortOpened: 0, longClosed: 0, shortClosed: 0, unsidedUp: 0, unsidedDown: 0, added: 0, reduced: 0, dOi: 0, known: 0, candles: 0, byPrice: 0, fineAll: 0 };
-    for (let i = i0; i <= i1; i++) {
-      const c = input.who.get(oi[i]![0]); if (!c) continue;
-      w.candles++; w.longOpened += c.longOpened; w.shortOpened += c.shortOpened; w.longClosed += c.longClosed; w.shortClosed += c.shortClosed;
-      w.unsidedUp += c.unsidedUp; w.unsidedDown += c.unsidedDown; w.dOi += c.dOi; w.known += d(i) ?? 0;
-      if (c.byPrice) w.byPrice++;
-      if (c.fine > 0 && c.fine >= c.counted) w.fineAll++;
-    }
-    w.added = w.longOpened + w.shortOpened + w.unsidedUp; w.reduced = w.longClosed + w.shortClosed + w.unsidedDown;
-    who = w.candles ? w : null;
+    const held: { c: NlnsCandle; known: number }[] = [];
+    for (let i = i0; i <= i1; i++) { const c = input.who.get(oi[i]![0]); if (c) held.push({ c, known: d(i) ?? 0 }); }
+    who = sumWho(held);
   }
   // Each venue's own part, bar by bar as the sum counts it (a venue whose readings start inside the stretch counts from its first).
   const carry = Math.max(2 * tfMs, 10 * 60_000);

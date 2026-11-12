@@ -32,7 +32,7 @@ import { BarStatsPane, DepthPane, LtPane, OiPane, oiHeldKey } from './panes/lowe
 import { LiqPane } from './panes/liq-pane.ts';
 import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
-import { DeltaPane } from './panes/delta-pane.ts';
+import { DeltaPane, deltaHeldKey } from './panes/delta-pane.ts';
 import { NlnsSource } from './delta/nlns-source.ts';
 import { LsPane } from './panes/ls-pane.ts';
 import { FundingPane } from './panes/funding-pane.ts';
@@ -56,6 +56,8 @@ import { PANE_SHOW_KEY } from './layouts/dock-model.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
 import { OiRangeSummary } from './range/oi-lines.ts';
+import { DeltaRangeSummary } from './range/delta-lines.ts';
+import { deltaIds } from './delta/flows.ts';
 import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode, compactBar } from './device.ts';
 import './styles.css';
 import './mobile.css';
@@ -227,6 +229,12 @@ async function main(): Promise<void> {
   const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton; range.mapWindow = () => ({ t0: heat.view.t0, t1: heat.view.t1 });
   heat.range = range; cvd.range = range; for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useRange(range);
   toolbar.onRange = () => range.toggle();
+  // A drag in the Delta pane sums up its own candles (range/delta-lines.ts): what it drew, in its own terms.
+  const deltaSummary = new DeltaRangeSummary();
+  range.useProvider({
+    pane: 'delta', title: () => t('Delta'), shown: () => store.state.show.delta, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
+    lines: (sel, shown) => deltaSummary.lines(sel, delta.rangeHeld, shown, deltaHeldKey(store.state, deltaIds(store.state, hub.flow)), pageNow(), store.state.timeZone),
+  });
   // A drag in the OI pane sums up its own bars (range/oi-lines.ts): what it drew, and the liquidations the map holds on its markets.
   const oiSummary = new OiRangeSummary();
   range.useProvider({

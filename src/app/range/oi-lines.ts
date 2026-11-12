@@ -63,16 +63,16 @@ export function stretchBars(held: Pick<OiPaneHeld, 'oi' | 'seam'>, sel: Pick<Ran
 }
 
 /** Coins as the pane's scale writes them (245,097), with a decimal below 10 and two figures below 1, so a small change never reads as 0. */
-const amount = (v: number): string => { const a = Math.abs(v); return a >= 1e6 ? usd(v) : a >= 10 ? fmtPrice(v, 1) : a >= 1 ? v.toFixed(1) : a === 0 ? '0' : v.toPrecision(2); };
-const signedCoins = (v: number, coin: string): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${amount(Math.abs(v))}${coin ? ` ${coin}` : ''}`;
-const signedUsd = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
+export const amount = (v: number): string => { const a = Math.abs(v); return a >= 1e6 ? usd(v) : a >= 10 ? fmtPrice(v, 1) : a >= 1 ? v.toFixed(1) : a === 0 ? '0' : v.toPrecision(2); };
+export const signedCoins = (v: number, coin: string): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${amount(Math.abs(v))}${coin ? ` ${coin}` : ''}`;
+export const signedUsd = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${usd(Math.abs(v))}`;
 const share = (x: number, of: number): string => of > 0 ? ` (${Math.round(x / of * 100)}%)` : '';
 /** The day of a moment as the clock writes it ("Nov 12"), to say a time with its date only where the day changes. */
-const dayOf = (at: number): string => clock(at, true).slice(0, -6);
+export const dayOf = (at: number): string => clock(at, true).slice(0, -6);
 /** A span's two ends: the first with its date, the second with its date too when it falls on another day (a minute before the end decides). */
-const spanText = (t0: number, t1: number): string => `${clock(t0, true)} – ${clock(t1, dayOf(t1 - 1) !== dayOf(t0))}`;
+export const spanText = (t0: number, t1: number): string => `${clock(t0, true)} – ${clock(t1, dayOf(t1 - 1) !== dayOf(t0))}`;
 const tone = (v: number): 'buy' | 'sell' | undefined => v > 0 ? 'buy' : v < 0 ? 'sell' : undefined;
-const durationText = (ms: number): string => {
+export const durationText = (ms: number): string => {
   const minutes = Math.round(ms / 60_000);
   if (minutes < 120) return tn(minutes, '{n} min', '{n} min');
   const hours = minutes / 60;
@@ -198,16 +198,7 @@ function whoLines(s: OiStretch, w: OiWho | null, kept: boolean, held: OiPaneHeld
   const head: RangeLine = { key: 'h-oi-who', kind: 'heading', cells: [held.coin ? `${t('Estimated added and reduced')} · ${held.coin}` : t('Estimated added and reduced')] };
   if (!held.who && !kept && !held.whoOn) return [head, { key: 'oi-who-off', kind: 'note', tone: 'muted', cells: [t("Set the OI pane's Bars to NL/NS for what was added and reduced.")] }];
   if (!w) return [head, { key: 'oi-who-none', kind: 'note', tone: 'muted', cells: [t('NL/NS is worked out for the candles in view: none of this stretch is in view.')] }];
-  const scale = Math.max(w.added, w.reduced) || 1, coin = held.coin;
-  const part = (x: number, tone: StackPart['tone'], tip: string, closed = false): StackPart => ({ size: x / scale, tone, tip: `${tip} ${signedCoins(closed ? -x : x, coin)}`, ...(closed ? { closed } : {}) });
-  const out: RangeLine[] = [head,
-    // The totals without the coin (it is in the heading), so a long ticker never overflows the total's column.
-    { key: 'oi-added', kind: 'stack', cells: [t('Added'), signedCoins(w.added, '')], parts: [part(w.longOpened, 'up', t('New longs')), part(w.shortOpened, 'down', t('New shorts')), part(w.unsidedUp, 'none', t('No side'))] },
-    { key: 'oi-reduced', kind: 'stack', cells: [t('Reduced'), signedCoins(-w.reduced, '')], parts: [part(w.shortClosed, 'up', t('Shorts closed'), true), part(w.longClosed, 'down', t('Longs closed'), true), part(w.unsidedDown, 'none', t('No side'), true)] },
-    { key: 'oi-opened', kind: 'stat', cells: [t('New longs · new shorts'), `${signedCoins(w.longOpened, coin)}${share(w.longOpened, w.added)} · ${signedCoins(w.shortOpened, coin)}${share(w.shortOpened, w.added)}`] },
-    { key: 'oi-closed', kind: 'stat', cells: [t('Shorts closed · longs closed'), `${signedCoins(-w.shortClosed, coin)}${share(w.shortClosed, w.reduced)} · ${signedCoins(-w.longClosed, coin)}${share(w.longClosed, w.reduced)}`] },
-  ];
-  if (w.unsidedUp + w.unsidedDown > 0) out.push({ key: 'oi-unsided', kind: 'stat', tone: 'muted', cells: [t('No side (added · reduced)'), `${signedCoins(w.unsidedUp, coin)} · ${signedCoins(-w.unsidedDown, coin)}`] });
+  const coin = held.coin, out: RangeLine[] = [head, ...estimateStacks(w, coin, 'oi')];
   // The estimate's own net against the bars' known change over the same candles: where they part, both are said and the difference (never
   // "covers"). Over fewer candles than the stretch the comparison is of those candles, and says so.
   const model = w.added - w.reduced, partial = w.candles < n, against = partial ? w.known : s.change, quantum = Math.abs(against) >= 1_000 ? 1 : 0.01;
@@ -216,10 +207,36 @@ function whoLines(s: OiStretch, w: OiWho | null, kept: boolean, held: OiPaneHeld
     const words = { model: signedCoins(model, coin), change: signedCoins(against, coin), diff: signedCoins(model - against, coin) };
     out.push({ key: 'oi-who-diff', kind: 'note', tone: 'muted', cells: [partial ? t('Over those candles: estimate net {model}; known change {change}; difference {diff}.', words) : t('Estimate net {model}; known change {change}; difference {diff}.', words)] });
   }
-  if (kept) out.push({ key: 'oi-who-kept', kind: 'note', tone: 'muted', cells: [t('As worked out while these candles were in view.')] });
-  if (w.byPrice > 0) out.push({ key: 'oi-who-price', kind: 'note', tone: 'muted', cells: [t('Price direction used in {k} of {n} candles (no flow recorded there).', { k: w.byPrice, n: w.candles })] });
-  if (held.tfMs > 60_000 && w.fineAll < w.candles) out.push({ key: 'oi-who-fine', kind: 'note', tone: 'muted', cells: [t('Minute by minute in {k} of {n} candles, the rest a candle at a time.', { k: w.fineAll, n: w.candles })] });
-  out.push({ key: 'oi-who-note', kind: 'note', tone: 'muted', cells: [t('Estimated from sampled OI changes and taker direction; price direction is used where stated. Opening and closing within a sampling interval can cancel.')] });
+  out.push(...estimateNotes(w, kept, held.tfMs, 'oi'));
+  return out;
+}
+
+/**
+ * NL/NS's estimated added and reduced as two bars on one scale (the parts end to end: buyers' in the candle-up colour, sellers' in the
+ * candle-down one, closed lighter), and the four parts with their shares and what went to no side. The OI and the Delta panes' summaries
+ * both say it with this (`prefix` keeps their lines' keys apart).
+ */
+export function estimateStacks(w: OiWho, coin: string, prefix: string): RangeLine[] {
+  const scale = Math.max(w.added, w.reduced) || 1;
+  const part = (x: number, tone: StackPart['tone'], tip: string, closed = false): StackPart => ({ size: x / scale, tone, tip: `${tip} ${signedCoins(closed ? -x : x, coin)}`, ...(closed ? { closed } : {}) });
+  const out: RangeLine[] = [
+    // The totals without the coin (it is in the heading), so a long ticker never overflows the total's column.
+    { key: `${prefix}-added`, kind: 'stack', cells: [t('Added'), signedCoins(w.added, '')], parts: [part(w.longOpened, 'up', t('New longs')), part(w.shortOpened, 'down', t('New shorts')), part(w.unsidedUp, 'none', t('No side'))] },
+    { key: `${prefix}-reduced`, kind: 'stack', cells: [t('Reduced'), signedCoins(-w.reduced, '')], parts: [part(w.shortClosed, 'up', t('Shorts closed'), true), part(w.longClosed, 'down', t('Longs closed'), true), part(w.unsidedDown, 'none', t('No side'), true)] },
+    { key: `${prefix}-opened`, kind: 'stat', cells: [t('New longs · new shorts'), `${signedCoins(w.longOpened, coin)}${share(w.longOpened, w.added)} · ${signedCoins(w.shortOpened, coin)}${share(w.shortOpened, w.added)}`] },
+    { key: `${prefix}-closed`, kind: 'stat', cells: [t('Shorts closed · longs closed'), `${signedCoins(-w.shortClosed, coin)}${share(w.shortClosed, w.reduced)} · ${signedCoins(-w.longClosed, coin)}${share(w.longClosed, w.reduced)}`] },
+  ];
+  if (w.unsidedUp + w.unsidedDown > 0) out.push({ key: `${prefix}-unsided`, kind: 'stat', tone: 'muted', cells: [t('No side (added · reduced)'), `${signedCoins(w.unsidedUp, coin)} · ${signedCoins(-w.unsidedDown, coin)}`] });
+  return out;
+}
+
+/** How NL/NS was read for a stretch: kept from when it was in view, price direction where no flow was recorded, minute pieces, the estimate's limits. */
+export function estimateNotes(w: OiWho, kept: boolean, tfMs: number, prefix: string): RangeLine[] {
+  const out: RangeLine[] = [];
+  if (kept) out.push({ key: `${prefix}-who-kept`, kind: 'note', tone: 'muted', cells: [t('As worked out while these candles were in view.')] });
+  if (w.byPrice > 0) out.push({ key: `${prefix}-who-price`, kind: 'note', tone: 'muted', cells: [t('Price direction used in {k} of {n} candles (no flow recorded there).', { k: w.byPrice, n: w.candles })] });
+  if (tfMs > 60_000 && w.fineAll < w.candles) out.push({ key: `${prefix}-who-fine`, kind: 'note', tone: 'muted', cells: [t('Minute by minute in {k} of {n} candles, the rest a candle at a time.', { k: w.fineAll, n: w.candles })] });
+  out.push({ key: `${prefix}-who-note`, kind: 'note', tone: 'muted', cells: [t('Estimated from sampled OI changes and taker direction; price direction is used where stated. Opening and closing within a sampling interval can cancel.')] });
   return out;
 }
 
