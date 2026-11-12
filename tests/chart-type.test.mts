@@ -13,16 +13,26 @@ test('the Chart type menu ticks the type while the price is drawn, and Hidden wh
 
 test('Hidden takes the price off the map and keeps the type; a type draws the price that way, whichever was kept', () => {
   const show = { ...DEFAULT_SHOW, candles: true, volume: false };
-  const hidden = chartChoicePatch(CHART_HIDDEN, show);
-  assert.equal(hidden.show.candles, false);
+  const hidden = chartChoicePatch(CHART_HIDDEN, show), hiddenShow = hidden.show;
+  assert.ok(hiddenShow);
+  assert.equal(hiddenShow.candles, false);
   assert.equal('chartType' in hidden, false, 'Hidden leaves the type as it was, for when the price comes back');
-  assert.equal(hidden.show.volume, false, 'the other switches stay as they were');
+  assert.equal(hiddenShow.volume, false, 'the other switches stay as they were');
   for (const type of CHART_TYPES) {
-    const back = chartChoicePatch(type, hidden.show);
+    // Typed here: the assertions in the loop would otherwise make the narrowing of hiddenShow depend on itself (TS7022).
+    const back: { chartType?: string; show?: typeof show } = chartChoicePatch(type, hiddenShow), backShow = back.show;
     assert.equal(back.chartType, type);
-    assert.equal(back.show.candles, true);
-    assert.deepEqual({ ...back.show, candles: false }, hidden.show, 'only the price comes back');
+    assert.ok(backShow);
+    assert.equal(backShow.candles, true);
+    assert.deepEqual({ ...backShow, candles: false }, hiddenShow, 'only the price comes back');
   }
+});
+
+test('a choice changes only what it changes: a type while the price is drawn sets the type alone, Hidden while hidden nothing', () => {
+  // A new show lays the panes out again (main.ts), which a change of type alone has no reason to do.
+  const show = { ...DEFAULT_SHOW, candles: true };
+  for (const type of CHART_TYPES) assert.deepEqual(chartChoicePatch(type, show), { chartType: type });
+  assert.deepEqual(chartChoicePatch(CHART_HIDDEN, { ...show, candles: false }), {});
 });
 
 test('only the four types and Hidden are choices: Candle colours, an unknown row and none are not', () => {
@@ -52,4 +62,12 @@ test('the Panels deck holds twelve switches, none for the candles, in a grid of 
   assert.match(css, /\.deck-panels \.seg\.toggles \{ grid-template-columns: repeat\(6, minmax\(max-content, 1fr\)\); \}/);
   assert.match(css, /\.deck-panels \.seg\.toggles button:nth-child\(6n \+ 1\) \{ margin-left: 0; \}/);
   assert.match(css, /\.deck-panels \.seg\.toggles button:nth-child\(-n \+ 6\) \{ margin-top: 0; \}/);
+});
+
+test('a lit button stays lit while its menu or panel is open: the open tint is for buttons that are not lit', () => {
+  // The Chart type button is lit and open at once while its menu or its Candle colours panel is open; with the tint over it, its light glyph
+  // read at 1.1-1.4 : 1 in ten themes (review, 2026-11-12).
+  const chrome = fs.readFileSync('src/app/chrome.css', 'utf8');
+  assert.ok(chrome.includes(':where(:root:not([data-frame="bevel"])) button.open:not(.on) {'), 'the open tint skips a lit button');
+  assert.ok(!chrome.includes(':where(:root:not([data-frame="bevel"])) button.open {'), 'no open tint over every button');
 });

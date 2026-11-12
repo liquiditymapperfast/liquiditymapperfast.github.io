@@ -90,7 +90,8 @@ button, select { border-color: var(--edge); border-radius: var(--radius); backgr
 button:hover, select:hover { border-color: var(--text); }
 button.open { border-color: var(--text); }
 /* The lamp button of a panel that is open sits a step in from its face (the bevel presses it in its own way). */
-:where(:root:not([data-frame="bevel"])) button.open { background: color-mix(in srgb, var(--text) 9%, var(--face)); }
+/* A button lit and open at once (the Chart type button with its menu or its Candle colours panel open) stays lit: the open tint is for one that is not (review 2026-11-12: the tint under a lit button's light glyph read at 1.1-1.4 : 1 in ten themes). */
+:where(:root:not([data-frame="bevel"])) button.open:not(.on) { background: color-mix(in srgb, var(--text) 9%, var(--face)); }
 /* The keyboard's place: a ring in the theme's own blue, just outside the control. */
 :is(button, select, summary):focus-visible { outline: 2px solid var(--ui); outline-offset: 1px; }
 /* A text box's keyboard ring is the same (the bevel's text boxes are left as they are). A dialog that took the focus on opening has none around the whole

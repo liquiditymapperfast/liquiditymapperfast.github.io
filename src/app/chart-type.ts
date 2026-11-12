@@ -34,9 +34,13 @@ export type ChartChoice = ChartType | typeof CHART_HIDDEN;
 export const chartChoiceOf = (chartType: ChartType, shown: boolean): ChartChoice => shown ? chartType : CHART_HIDDEN;
 /** A menu row as a choice, or null for any other row (Candle colours) or none. */
 export const readChartChoice = (id: string | null): ChartChoice | null => id === CHART_HIDDEN || CHART_TYPES.includes(id as ChartType) ? id as ChartChoice : null;
-/** What a choice sets: a type draws the price that way, Hidden takes it away and leaves the type as it was. */
-export function chartChoicePatch<S extends { candles: boolean }>(choice: ChartChoice, show: S): { chartType?: ChartType; show: S } {
-  return choice === CHART_HIDDEN ? { show: { ...show, candles: false } } : { chartType: choice, show: { ...show, candles: true } };
+/**
+ * What a choice sets, and only what it changes (a new `show` lays the panes out again): a type draws the price that way, bringing it back
+ * from Hidden; Hidden takes it away and leaves the type as it was.
+ */
+export function chartChoicePatch<S extends { candles: boolean }>(choice: ChartChoice, show: S): { chartType?: ChartType; show?: S } {
+  if (choice === CHART_HIDDEN) return show.candles ? { show: { ...show, candles: false } } : {};
+  return show.candles ? { chartType: choice } : { chartType: choice, show: { ...show, candles: true } };
 }
 export const chartChoiceName = (c: ChartChoice): string => c === CHART_HIDDEN ? t('Hidden') : chartTypeName(c);
 

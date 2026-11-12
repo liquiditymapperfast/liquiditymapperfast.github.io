@@ -361,8 +361,8 @@ export class HeatPane {
   onDrawFrame: ((f: { left: number; pr: Projection; legendBottom: number }) => void) | null = null;
   /**
    * A row of the Chart type menu pointed at, drawn without being kept: a type (the price drawn that way, even while it is hidden) or Hidden
-   * (the map without the price); null: as kept, `state.chartType` and `state.show.candles`. Only the painting follows it: the price history,
-   * the magnet and the pointer's readout go by what is kept.
+   * (the map without the price); null: as kept, `state.chartType` and `state.show.candles`. What is drawn follows it, and so does the drawn
+   * candles' length (`drawnTf`); the price history and the countdown go by what is kept (while a preview lasts the pointer is on the menu).
    */
   previewChartType: ChartChoice | null = null;
   /** The type the candles are drawn in this frame (the one pointed at in the menu, else the one kept). */
