@@ -38,8 +38,10 @@ interface CoverRow extends Omit<CoverageRow, 'metric'> { metric: CoverageRow['me
 /**
  * The mark of an hour of the recorded history read whole is a coverage row of metric `history` whose instrument names the reader's version:
  * `v2` reads the footprint and absorption too, `v3` also the footprint minutes of kind 11 (f32 USD, no list). An hour an older page read
- * (instrument '') is read again once, for what that page passed over; so is an hour from `V3_FROM` on that a `v2` page read (it passed kind 11
- * over), while a `v2` mark before it stands: the service wrote kind 11 only after this page was published.
+ * (instrument '') is read again once, for what that page passed over; so is an hour from `V3_FROM` on that a `v2` page read, where it found
+ * kind 11 alone (it took no footprint there, so it claimed none of the hour's trades), while a `v2` mark before it stands: the service wrote
+ * kind 11 only after this page was published. The one hour holding both kinds (the service's restart onto kind 11) a `v2` page would claim
+ * whole, and it is not read again: the service is restarted only once no `v2` page can still open (hlm-history docs/DEPLOY.md).
  */
 const IMPORTED = 'history', IMPORTED_INST = 'v3', HOUR = 3_600_000, MINUTE = 60_000;
 /** The hour this page was built in (2026-11-12 22:00Z): the service's hours before it hold no footprint minute of kind 11. */

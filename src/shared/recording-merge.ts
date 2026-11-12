@@ -28,11 +28,22 @@ export function fullerFlowMinute(kept: FlowMinuteRow | undefined, next: FlowMinu
   return { inst: next.inst, t: next.t, buy, sell, ...(kept.px || next.px ? { px } : {}) };
 }
 
-/** A footprint minute is one set of rows and the statistics that go with them, so the copy with more volume replaces the other whole. */
+/**
+ * Volumes of two copies of one footprint minute this close (a share of the larger) hold the same trades: the recorded history writes each
+ * row's USD as an f32 (hlm-history kind 11), whose sum is good to 2^-24 (6e-8) of the copy this page added up in doubles.
+ */
+export const SAME_VOLUME = 2e-7;
+
+/**
+ * A footprint minute is one set of rows and the statistics that go with them, so the copy with more volume replaces the other whole; one
+ * whose volume is short by f32 rounding alone (`SAME_VOLUME`) replaces it too, as the import has judged it fuller by its orders counted
+ * (app/browser/history-import.ts `fullerFootprint`).
+ */
 export function fullerFootprintMinute(kept: FootprintMinuteRow | undefined, next: FootprintMinuteRow): FootprintMinuteRow | null {
   if (!kept) return next;
   const volume = (row: FootprintMinuteRow): number => { let sum = 0; for (const bin of row.bins) sum += bin[1] + bin[2]; return sum; };
-  return volume(next) >= volume(kept) ? next : null;
+  const a = volume(kept), b = volume(next);
+  return b >= a - SAME_VOLUME * Math.max(a, b) ? next : null;
 }
 
 /** A depth column is the mean of its samples, so the copy built from more samples is the better one. */

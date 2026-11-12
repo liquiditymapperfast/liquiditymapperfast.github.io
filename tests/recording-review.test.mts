@@ -174,7 +174,7 @@ test('depth: a column the store refused is offered again with the next one, and 
 
 // ---- two tabs writing the same minutes ------------------------------------------------------------------------------------------------------------
 
-import { fullerColumn, fullerFlowMinute, fullerFootprintMinute } from '../src/shared/recording-merge.ts';
+import { SAME_VOLUME, fullerColumn, fullerFlowMinute, fullerFootprintMinute } from '../src/shared/recording-merge.ts';
 
 const flowRow = (cells: Record<number, [number, number, number]>): FlowMinuteRow => {
   const buy = new Float32Array(60), sell = new Float32Array(60), px = new Float32Array(60);
@@ -220,4 +220,13 @@ test('prints: what has outlived the retention window leaves memory when it leave
   assert.deepEqual(stream.query(0, T0 + MIN).map(p => p.usd), [50_000], 'the print from eight days ago is gone, the recent one stays');
   now += 7 * 24 * 3_600_000; stream.flush();
   assert.equal(stream.query(0, now + MIN).length, 0);
+});
+
+test('a footprint minute short of the stored copy by f32 rounding alone still replaces it; short by a trade it does not', () => {
+  const row = (usd: number, orders: number) => ({ inst: 'a', t: 0, step: 0.5, bins: [[1, usd, 0, orders, 0]] as [number, number, number, number, number][], stats: null });
+  const kept = row(50_000_001.5, 10);
+  assert.equal(Math.fround(50_000_001.5), 50_000_000);
+  assert.equal(fullerFootprintMinute(kept, row(Math.fround(50_000_001.5), 11))?.bins[0]![3], 11, 'rounding alone');
+  assert.equal(fullerFootprintMinute(kept, row(50_000_001.5 - 50, 11)), null, 'a $50 trade is 1e-6 of it, past what rounding allows');
+  assert.ok(SAME_VOLUME < 1e-6 && SAME_VOLUME > 6e-8);
 });

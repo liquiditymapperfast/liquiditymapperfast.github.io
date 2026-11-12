@@ -6,6 +6,7 @@ import { coveredMs, union, type CoverageRow, type SeamTrade } from '../../shared
 import type { OiReading } from '../../shared/engine.ts';
 import { hyperliquidOneSide } from '../../shared/oi-sides.ts';
 import { SIZE_EDGES, STATS_VERSION, listFits, type FootprintMinuteRow, type StoredBin, type TradeStats } from '../../shared/footprint.ts';
+import { SAME_VOLUME } from '../../shared/recording-merge.ts';
 import type { AbsorptionGroup, AbsorptionMinute, AbsorptionStep } from '../../shared/absorption.ts';
 import { parseTilesInfo, type TilesInfo } from '../archive/tiles.ts';
 
@@ -65,16 +66,23 @@ export function decodeHour(buffer: ArrayBuffer): { hour: number; columns: Histor
   const view = new DataView(buffer), size = buffer.byteLength;
   if (size < 16 || view.getUint32(0, false) !== 0x484c4d43 || view.getUint16(4, true) !== 1) return null;
   const hour = Number(view.getBigInt64(8, true)), text = new TextDecoder(), columns: HistoryColumn[] = [], rows = noRows();
+  // Where each large trade and footprint minute taken stood in the file (record offsets), for `fillListsFromPrints`.
+  const printAt: number[] = [], footprintAt: number[] = [];
   for (let at = 16; at + 4 <= size;) {
     const length = view.getUint32(at, true), end = at + 4 + length;
     // The smallest record is 31 bytes (kind, id length, a one-letter id, time, samples, step, count, tracker samples): a shorter length is
     // not a record boundary (a zero-filled tail after a crash), and nothing after it can be trusted.
     if (end > size || length < 31) break;
     if (view.getUint8(at + 4) === 1) { const column = record(view, buffer, text, at + 4, end, hour); if (column) columns.push(column); }
-    else other(view, buffer, text, at + 4, end, rows);
+    else {
+      const prints = rows.prints.length, footprints = rows.footprint.length;
+      other(view, buffer, text, at + 4, end, rows);
+      if (rows.prints.length > prints) printAt.push(at);
+      if (rows.footprint.length > footprints) footprintAt.push(at);
+    }
     at = end;
   }
-  fillListsFromPrints(rows);
+  fillListsFromPrints(rows, printAt, footprintAt);
   rows.hour = hour;
   return { hour, columns, rows };
 }
@@ -236,20 +244,30 @@ function footprintMinute(view: DataView, from: number, end: number, inst: string
  * same orders at the same times (2026-11-12: 56,386 minutes of 92 hours, all 21 coins, rebuilt exactly). A list is taken only where it adds
  * up to the minute's sums by size (`listFits`, as `FootprintRecorder.fillLists` checks); a minute where it does not (a trade written into
  * the next hour's file) keeps no list, and the engine fills it from every large trade it holds once the import is in (shared/engine.ts).
+ *
+ * A file can hold two copies of a minute: one written while an order was still open and one once it was counted, or one from before a
+ * restart and a thinner one after it. The service writes a flush's large trades before its footprint minutes (tape.rs `flush`), so each copy
+ * is tried first with the minute's trades written before it, then with those since the previous copy, then with all of them.
  */
-function fillListsFromPrints(rows: HistoryRows): void {
+function fillListsFromPrints(rows: HistoryRows, printAt: readonly number[], footprintAt: readonly number[]): void {
   if (!rows.footprint.some(row => row.stats && row.stats.big === undefined)) return;
-  const found = new Map<string, number[]>();
-  for (const print of rows.prints) {
-    const key = `${print.id}|${Math.floor(print.t / COLUMN_MS) * COLUMN_MS}`, value = print.side === 'buy' ? print.usd : -print.usd, list = found.get(key);
-    if (list) list.push(value); else found.set(key, [value]);
-  }
-  for (const row of rows.footprint) {
-    const stats = row.stats;
-    if (!stats || stats.big !== undefined) continue;
-    const list = found.get(`${row.inst}|${row.t}`) ?? [];
-    if (listFits(list, stats)) stats.big = [...list];
-  }
+  const found = new Map<string, { value: number; at: number }[]>();
+  rows.prints.forEach((print, i) => {
+    const key = `${print.id}|${Math.floor(print.t / COLUMN_MS) * COLUMN_MS}`, entry = { value: print.side === 'buy' ? print.usd : -print.usd, at: printAt[i]! }, list = found.get(key);
+    if (list) list.push(entry); else found.set(key, [entry]);
+  });
+  const previous = new Map<string, number>();
+  rows.footprint.forEach((row, i) => {
+    const key = `${row.inst}|${row.t}`, at = footprintAt[i]!, since = previous.get(key) ?? -1, stats = row.stats;
+    previous.set(key, at);
+    if (!stats || stats.big !== undefined) return;
+    const trades = found.get(key) ?? [];
+    const before = trades.filter(p => p.at < at), between = before.filter(p => p.at > since);
+    for (const pick of [before, between, trades]) {
+      const list = pick.map(p => p.value);
+      if (listFits(list, stats)) { stats.big = list; return; }
+    }
+  });
 }
 
 /** One record of an hour file, or null when it is not a column of this hour that can be shown. */
@@ -365,13 +383,11 @@ export const ownsTime = (state: TradeImport, id: string, t: number): boolean => 
 /** Whether the page recorded `id`'s trades over the whole minute from `t` itself. */
 export const ownsMinute = (state: TradeImport, id: string, t: number): boolean => coveredMs(union(state.own.get(id) ?? [], t, t + COLUMN_MS), t, t + COLUMN_MS) >= COLUMN_MS;
 export const footprintVolume = (row: Pick<FootprintMinuteRow, 'bins'>): number => { let sum = 0; for (const bin of row.bins) sum += bin[1] + bin[2]; return sum; };
-/** Volumes of two copies of one minute this close (a share of the larger) are the same trades (`fullerFootprint`): an f32 is good to 6e-8. */
-const SAME_VOLUME = 1e-6;
 /**
  * Whether `next` is a fuller copy of a footprint minute than `kept`: more volume, or as much and more of its market orders counted (a
- * minute is written while its last order is still open, and written again once that order is counted, with the same trades). Volumes a
- * millionth apart count as the same: the service writes each row's USD as an f32 (kind 11, 7 significant digits), so its copy of the trades
- * this page holds as doubles differs from the page's by rounding alone, and the orders counted decide (ties keep `kept`).
+ * minute is written while its last order is still open, and written again once that order is counted, with the same trades). Volumes
+ * `SAME_VOLUME` apart count as the same: the service writes each row's USD as an f32 (kind 11, 7 significant digits), so its copy of the
+ * trades this page holds as doubles differs from the page's by rounding alone, and the orders counted decide (ties keep `kept`).
  */
 export function fullerFootprint(kept: Pick<FootprintMinuteRow, 'bins' | 'stats'>, next: Pick<FootprintMinuteRow, 'bins' | 'stats'>): boolean {
   const a = footprintVolume(kept), b = footprintVolume(next);

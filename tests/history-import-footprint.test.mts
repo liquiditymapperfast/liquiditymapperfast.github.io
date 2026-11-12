@@ -228,3 +228,66 @@ test('an hour a page from before kind 11 marked as read is read again from the h
   assert.ok(!importedMark({ inst: 'v2', from: built }));
   assert.ok(!importedMark({ inst: '', from: built - HOUR_MS }));
 });
+
+/** An hour file of large trades (kind 5) and footprint minutes (kind 11, or 7 with its own list), in the order given, as rows.rs writes them. */
+type Rec = { print: { t: number; usd: number } } | { minute: { t: number; buy1: number; usd: number; orders: number; list?: number[] } };
+function copiesFile(hour: number, records: Rec[], inst = 'binance:BTCUSDT'): ArrayBuffer {
+  const out: number[] = [];
+  const put = (size: number, set: (view: DataView) => void, to: number[]): void => { const b = new Uint8Array(size); set(new DataView(b.buffer)); to.push(...b); };
+  put(16, d => { d.setUint32(0, 0x484c4d43, false); d.setUint16(4, 1, true); d.setBigInt64(8, BigInt(hour), true); }, out);
+  for (const r of records) {
+    const body: number[] = [];
+    const u8 = (v: number): void => { body.push(v); }, u32 = (v: number): void => put(4, d => d.setUint32(0, v, true), body);
+    const i32 = (v: number): void => put(4, d => d.setInt32(0, v, true), body), i64 = (v: number): void => put(8, d => d.setBigInt64(0, BigInt(v), true), body);
+    const f64 = (v: number): void => put(8, d => d.setFloat64(0, v, true), body), f32 = (v: number): void => put(4, d => d.setFloat32(0, v, true), body);
+    if ('print' in r) {
+      u8(5); u8(inst.length); for (const c of inst) u8(c.charCodeAt(0));
+      i64(r.print.t); u8(1); f64(100_000); f64(r.print.usd); u8(0); f64(0); f64(0); u32(0);
+    } else {
+      const m = r.minute, old = m.list !== undefined;
+      u8(old ? 7 : 11); u8(inst.length); for (const c of inst) u8(c.charCodeAt(0));
+      i64(m.t); f64(0.25); u32(1); i32(400_000); (old ? f64 : f32)(m.usd); (old ? f64 : f32)(0); u32(m.orders); u32(0);
+      u8(1); u32(m.orders); u32(0);
+      for (let i = 0; i < 8; i++) f64(i === 0 ? m.usd - m.buy1 : i === 1 ? m.buy1 : 0);
+      for (let i = 0; i < 8; i++) f64(0);
+      if (old) { u32(m.list!.length); for (const v of m.list!) f64(v); }
+    }
+    put(4, d => d.setUint32(0, body.length, true), out); out.push(...body);
+  }
+  return Uint8Array.from(out).buffer;
+}
+
+test('two copies of a minute in one file each get the list of the orders they counted: the trades written before each copy, else since the one before', () => {
+  const m = HOUR;
+  // Written while its second large order was still open, then again once it was counted.
+  const late = decodeHour(copiesFile(HOUR, [
+    { print: { t: m + 1_000, usd: 30_000 } }, { minute: { t: m, buy1: 30_000, usd: 30_500, orders: 2 } },
+    { print: { t: m + 59_900, usd: 40_000 } }, { minute: { t: m, buy1: 70_000, usd: 70_500, orders: 3 } },
+  ]))!.rows.footprint;
+  assert.deepEqual(late.map(r => r.stats!.big), [[30_000], [30_000, 40_000]]);
+  // Before a restart and after it: the copy the new run wrote counts only its own orders.
+  const restart = decodeHour(copiesFile(HOUR, [
+    { print: { t: m + 1_000, usd: 30_000 } }, { minute: { t: m, buy1: 30_000, usd: 30_500, orders: 2 } },
+    { print: { t: m + 40_000, usd: 40_000 } }, { minute: { t: m, buy1: 40_000, usd: 40_100, orders: 1 } },
+  ]))!.rows.footprint;
+  assert.deepEqual(restart.map(r => r.stats!.big), [[30_000], [40_000]]);
+  // A copy whose orders add up to no run of the file's trades keeps no list, and never a wrong one.
+  const none = decodeHour(copiesFile(HOUR, [
+    { print: { t: m + 1_000, usd: 30_000 } }, { minute: { t: m, buy1: 55_000, usd: 55_500, orders: 2 } },
+  ]))!.rows.footprint;
+  assert.equal(none[0]!.stats!.big, undefined);
+  // The planned copy is the fuller one, with its own list.
+  assert.deepEqual(planFootprint(tradeImport([], []), late, () => undefined).map(r => r.stats!.big), [[30_000, 40_000]]);
+});
+
+test('the hour of the service\'s restart onto kind 11: a minute written once as kind 7 and once as kind 11, the fuller copy taken whichever kind it is', () => {
+  const m = HOUR + 60_000;
+  const rows = decodeHour(copiesFile(HOUR, [
+    { print: { t: m + 1_000, usd: 30_000 } }, { minute: { t: m, buy1: 30_000, usd: 30_500, orders: 2, list: [30_000] } },
+    { print: { t: m + 50_000, usd: 26_000 } }, { minute: { t: m, buy1: 26_000, usd: 26_000, orders: 1 } },
+  ]))!.rows;
+  assert.deepEqual(rows.footprint.map(r => r.stats!.big), [[30_000], [26_000]], 'kind 7 keeps its own list, kind 11 rebuilds its run');
+  const chosen = planFootprint(tradeImport([], []), rows.footprint, () => undefined);
+  assert.equal(chosen.length, 1);
+  assert.deepEqual(chosen[0]!.stats!.big, [30_000], 'the kind-7 copy before the restart is the fuller');
+});
