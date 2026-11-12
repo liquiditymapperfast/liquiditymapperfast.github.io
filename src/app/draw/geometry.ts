@@ -59,6 +59,13 @@ export function channelLines(d: Drawing, pr: Projection): { base: Segment | null
   return { base: line(0), parallel: line(offset), offset };
 }
 
+/** A position on the screen: its start and end, and the heights of its entry, stop and target. */
+export interface PositionBox { x0: number; x1: number; entry: number; stop: number; target: number }
+export function positionBox(d: Drawing, pr: Projection): PositionBox {
+  const [e, s, g] = d.points as [Anchor, Anchor, Anchor];
+  return { x0: pr.x(e.t), x1: pr.x(s.t), entry: pr.y(e.p), stop: pr.y(s.p), target: pr.y(g.p) };
+}
+
 /** Where a note's text box stands from its point: up and to the right, so the point stays in view. */
 export const NOTE_OFFSET = { x: 14, y: -30 };
 
@@ -79,6 +86,12 @@ export function strokesOf(d: Drawing, pr: Projection): Segment[] {
     case 'fib': return fibLevels(d, pr).map(l => ({ a: { x: l.x0, y: l.y }, b: { x: l.x1, y: l.y } }));
     case 'channel': { const c = channelLines(d, pr); return [c.base, c.parallel].filter((s): s is Segment => s !== null); }
     case 'note': return d.leader ? [{ a: pts[0]!, b: { x: pts[0]!.x + NOTE_OFFSET.x, y: pts[0]!.y + NOTE_OFFSET.y } }] : [];
+    case 'position': {
+      // The entry across the box, the stop's and the target's edges, and its two sides.
+      const b = positionBox(d, pr), top = Math.min(b.stop, b.target), bottom = Math.max(b.stop, b.target);
+      return [{ a: { x: b.x0, y: b.entry }, b: { x: b.x1, y: b.entry } }, { a: { x: b.x0, y: b.stop }, b: { x: b.x1, y: b.stop } }, { a: { x: b.x0, y: b.target }, b: { x: b.x1, y: b.target } },
+        { a: { x: b.x0, y: top }, b: { x: b.x0, y: bottom } }, { a: { x: b.x1, y: top }, b: { x: b.x1, y: bottom } }];
+    }
   }
 }
 
@@ -114,6 +127,12 @@ export const edgeMinFor = (tol: number): number => Math.max(EDGE_MIN, tol * 4);
  * corners: six. A middle stands on the part of its edge that is in view, and only where that part is `minEdge` long (`EDGE_MIN`, longer for a finger).
  */
 export function handlesOf(d: Drawing, pr: Projection, minEdge: number = EDGE_MIN): Handle[] {
+  if (d.kind === 'position') {
+    // The entry's at the box's left end moves its price and where the position starts; the stop's and the target's on the left side move
+    // their price alone; the right end's on the entry line moves where it ends (the stop's and the target's time, kept equal).
+    const b = positionBox(d, pr);
+    return [{ x: b.x0, y: b.entry, t: [0], p: [0] }, { x: b.x0, y: b.stop, t: [], p: [1] }, { x: b.x0, y: b.target, t: [], p: [2] }, { x: b.x1, y: b.entry, t: [1, 2], p: [] }];
+  }
   const own: Handle[] = d.points.map((q, i) => ({ x: pr.x(q.t), y: d.kind === 'vline' ? pr.h / 2 : pr.y(q.p), t: [i], p: d.kind === 'vline' ? [] : [i] }));
   if (d.kind !== 'zone') return own;
   const [a, b] = own as [Handle, Handle];
@@ -169,8 +188,11 @@ export function hitDrawing(q: Pt, drawings: readonly Drawing[], pr: Projection, 
   }
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i]!;
-    if (d.hidden || (d.kind !== 'zone' && d.kind !== 'channel')) continue;
-    if (d.kind === 'zone') {
+    if (d.hidden || (d.kind !== 'zone' && d.kind !== 'channel' && d.kind !== 'position')) continue;
+    if (d.kind === 'position') {
+      const b = positionBox(d, pr);
+      if (q.x >= Math.min(b.x0, b.x1) && q.x <= Math.max(b.x0, b.x1) && q.y >= Math.min(b.stop, b.target) && q.y <= Math.max(b.stop, b.target)) return { id: d.id, part: 'inside' };
+    } else if (d.kind === 'zone') {
       const x0 = Math.min(pr.x(d.points[0]!.t), pr.x(d.points[1]!.t)), x1 = d.extendRight ? Infinity : Math.max(pr.x(d.points[0]!.t), pr.x(d.points[1]!.t));
       const y0 = Math.min(pr.y(d.points[0]!.p), pr.y(d.points[1]!.p)), y1 = Math.max(pr.y(d.points[0]!.p), pr.y(d.points[1]!.p));
       if (q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1) return { id: d.id, part: 'inside' };

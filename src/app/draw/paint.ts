@@ -2,8 +2,8 @@ import { t } from '../i18n.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import type { Palette } from '../theme.ts';
 import type { KeyTag } from '../keylevels/paint.ts';
-import { ANCHORS, newDrawing, type DrawColor, type Drawing } from './model.ts';
-import { channelLines, extendSegment, fibLevels, handlesOf, noteBox, strokesOf, type Projection, type Segment } from './geometry.ts';
+import { ANCHORS, newDrawing, positionFigures, positionFromClicks, type DrawColor, type Drawing } from './model.ts';
+import { channelLines, extendSegment, fibLevels, handlesOf, noteBox, positionBox, strokesOf, type Projection, type Segment } from './geometry.ts';
 import type { DrawController } from './controller.ts';
 import type { SnapField } from './magnet.ts';
 
@@ -162,6 +162,35 @@ export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, pr: Proj
       if (d.text && base) label(ctx, d.text, (base.a.x + base.b.x) / 2, (base.a.y + base.b.y) / 2 - 12, color, p, 'center', alpha);
       return;
     }
+    case 'position': {
+      // The target's side in the rising colour and the stop's in the falling one (what is won and what is lost, whichever way it trades),
+      // the entry across them in the text's; each edge says its price and how far it is, the entry the side and the risk/reward.
+      const b = positionBox(d, pr), f = positionFigures(d), x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), win = p.candleUp, loss = p.candleDown;
+      // Stronger than a zone's fill (0.13): its two sides must read apart over the heat map's own colours.
+      ctx.save(); ctx.globalAlpha = 0.22 * alpha;
+      ctx.fillStyle = win; ctx.fillRect(x0, Math.min(b.entry, b.target), x1 - x0, Math.abs(b.target - b.entry));
+      ctx.fillStyle = loss; ctx.fillRect(x0, Math.min(b.entry, b.stop), x1 - x0, Math.abs(b.stop - b.entry));
+      ctx.restore();
+      const across = (y: number): Segment[] => [{ a: { x: x0, y }, b: { x: x1, y } }];
+      strokeSegments(ctx, [...across(b.target), { a: { x: x0, y: b.entry }, b: { x: x0, y: b.target } }, { a: { x: x1, y: b.entry }, b: { x: x1, y: b.target } }], win, 1, false, p, alpha * 0.9);
+      strokeSegments(ctx, [...across(b.stop), { a: { x: x0, y: b.entry }, b: { x: x0, y: b.stop } }, { a: { x: x1, y: b.entry }, b: { x: x1, y: b.stop } }], loss, 1, false, p, alpha * 0.9);
+      strokeSegments(ctx, across(b.entry), p.text, 1.5, false, p, alpha);
+      // Centred on the part in view when there is room, else to the right of the box; inside an edge when its side is tall enough, else outside.
+      const vx0 = Math.max(x0, 0), vx1 = Math.min(x1, pr.w), wide = vx1 - vx0 >= 170, lx = wide ? (vx0 + vx1) / 2 : x1 + 6, align: CanvasTextAlign = wide ? 'center' : 'left';
+      const edgeLabel = (y: number, toward: number, text: string, color: string): void => {
+        const inside = Math.abs(toward - y) >= 22, dir = Math.sign(toward - y) || 1;
+        label(ctx, text, lx, y + dir * (inside ? 10 : -10), color, p, align, alpha);
+      };
+      const pctOf = (x: number): string => `${x < 1 ? x.toFixed(2) : x.toFixed(1)}%`;
+      edgeLabel(b.target, b.entry, t('Target {price} ({pct})', { price: fmtPrice(f.target), pct: pctOf(f.rewardPct) }), win);
+      edgeLabel(b.stop, b.entry, t('Stop {price} ({pct})', { price: fmtPrice(f.stop), pct: pctOf(f.riskPct) }), loss);
+      const ratio = Number.isFinite(f.ratio) ? f.ratio.toFixed(2) : '–';
+      label(ctx, f.side === 'long' ? t('Long · risk/reward {ratio}', { ratio }) : t('Short · risk/reward {ratio}', { ratio }), lx, b.entry, p.text, p, align, alpha);
+      // Its own label above the box, over the top edge's when that one stands outside.
+      const top = Math.min(b.stop, b.target);
+      if (d.text) label(ctx, d.text, vx0 + 4, top - (Math.abs(top - b.entry) >= 22 ? 10 : 30), p.text, p, 'left', alpha);
+      return;
+    }
     case 'note': {
       const x = pr.x(d.points[0]!.t), y = pr.y(d.points[0]!.p), layout = noteLayout(ctx, d.text), box = noteBox(d, pr, layout.size);
       if (d.leader) strokeSegments(ctx, strokesOf(d, pr), color, 1, false, p, alpha);
@@ -231,8 +260,12 @@ export function paintEditing(ctx: CanvasRenderingContext2D, draw: DrawController
   const draft = draw.draft, cursor = draw.cursor;
   if (draw.tool) {
     const kind = draw.tool, points = [...(draft?.points ?? []), ...(cursor ? [cursor.at] : [])];
+    // A position as it would be with the next point where the pointer is (a target twice as far as the stop while only that is placed);
+    // none while the pointer is on the wrong side of the entry.
+    const shaped = kind === 'position' && points.length > 1 ? positionFromClicks(points, draw.positionSpan()) : null;
+    if (shaped) paintDrawing(ctx, newDrawing(kind, shaped, 0), pr, p, 0.75);
     // The drawing as it would be with the next point where the pointer is: the missing points sit on the pointer too.
-    if (points.length && (points.length > 1 || ANCHORS[kind] === 1)) {
+    else if (kind !== 'position' && points.length && (points.length > 1 || ANCHORS[kind] === 1)) {
       while (points.length < ANCHORS[kind]) points.push(points[points.length - 1]!);
       paintDrawing(ctx, newDrawing(kind, points, 0), pr, p, 0.75);
     }

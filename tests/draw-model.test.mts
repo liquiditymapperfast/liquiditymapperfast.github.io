@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHORS, DRAW_FILE_FORMAT, MAX_PER_COIN, MAX_TEXT, MAX_UNDO, capReached, duplicate, exportText, importInto, moved, newDrawing, newId, readDoc, readDrawing, totalOf, type DrawDoc } from '../src/app/draw/model.ts';
+import { ANCHORS, DRAW_FILE_FORMAT, MAX_PER_COIN, MAX_TEXT, MAX_UNDO, capReached, duplicate, exportText, fits, flipped, importInto, moved, newDrawing, newId, positionFigures, positionFromClicks, positionSide, readDoc, readDrawing, totalOf, type DrawDoc } from '../src/app/draw/model.ts';
 import { History } from '../src/app/draw/history.ts';
 
 const T = Date.UTC(2026, 9, 28, 12);
@@ -38,7 +38,7 @@ test('a document keeps each coin\'s valid drawings once, at most a coin\'s cap, 
   const doc = readDoc({ version: 1, coins: { BTC: [b, a, a, { junk: true }], 'bad coin!': [a], ETH: 'no' } })!;
   assert.deepEqual(doc.coins.BTC!.map(d => d.id), [a.id, b.id], 'oldest first, each once, junk dropped');
   assert.deepEqual(Object.keys(doc.coins), ['BTC']);
-  assert.equal(readDoc({ version: 2, coins: {} }), null, 'a newer page wrote it: left alone');
+  assert.equal(readDoc({ version: 3, coins: {} }), null, 'a newer page wrote it: left alone');
   assert.deepEqual(readDoc(null), { version: 1, coins: {} });
   const many = Array.from({ length: MAX_PER_COIN + 5 }, (_, i) => newDrawing('level', [at(i, 1)], T + i));
   assert.equal(readDoc({ version: 1, coins: { BTC: many } })!.coins.BTC!.length, MAX_PER_COIN, 'the newest kept');
@@ -78,4 +78,41 @@ test('moving and copying keep the shape; Undo goes back a step at a time and a n
   for (let i = 0; i < MAX_UNDO + 20; i++) h.push([], [d]);
   let n = 0; while (h.undo()) n++;
   assert.equal(n, MAX_UNDO, 'at most a hundred steps back');
+});
+
+test('a position is an entry, its stop and its target: on opposite sides, ending at one time after it starts, or it is not one', () => {
+  const H = 3_600_000, p = newDrawing('position', positionFromClicks([at(0, 100), at(2, 95), at(3, 110)], H)!, T);
+  assert.deepEqual(p.points, [at(0, 100), at(3, 95), at(3, 110)], 'it ends at the later of the two clicks after the entry');
+  assert.equal(positionSide(p), 'long', 'the stop below the entry');
+  assert.deepEqual(positionFigures(p), { side: 'long', entry: 100, stop: 95, target: 110, risk: 5, reward: 10, riskPct: 5, rewardPct: 10, ratio: 2 });
+  assert.deepEqual(positionFromClicks([at(0, 100), at(1, 104)], H), [at(0, 100), at(1, 104), at(1, 92)], 'while only the stop is placed: a target twice as far on the other side');
+  assert.deepEqual(positionFromClicks([at(2, 100), at(1, 95), at(0, 110)], H)!.map(q => q.t), [at(2, 0).t, at(3, 0).t, at(3, 0).t], 'clicked at or before the entry: it lasts the span given');
+  assert.equal(positionFromClicks([at(0, 100), at(1, 100)], H), null, 'a stop at the entry risks nothing');
+  assert.equal(positionFromClicks([at(0, 100), at(1, 95), at(2, 98)], H), null, 'the target on the stop\'s side');
+  assert.deepEqual(readDrawing(JSON.parse(JSON.stringify(p))), p, 'read back as it was written');
+  for (const [points, why] of [[[at(0, 100), at(3, 95), at(4, 110)], 'stop and target at two times'], [[at(0, 100), at(3, 95), at(3, 98)], 'both on one side'],
+    [[at(3, 100), at(3, 95), at(3, 110)], 'ending where it starts'], [[at(0, 100), at(3, 95)], 'two points']] as const) {
+    assert.equal(readDrawing({ ...p, points }), null, why);
+    assert.equal(fits({ ...p, points: [...points] }), false, why);
+  }
+  const short = flipped(p);
+  assert.deepEqual(short.points, [at(0, 100), at(3, 105), at(3, 90)], 'flipped: as far on the other side');
+  assert.equal(positionSide(short), 'short');
+  assert.equal(fits(flipped({ ...p, points: [at(0, 100), at(3, 95), at(3, 250)] })), false, 'a target 150 above flips to a price below zero');
+});
+
+test('a document holding a position is version 2, which pages from before positions leave alone; without one it stays version 1', () => {
+  const level = newDrawing('level', [at(0, 81_000)], T), pos = newDrawing('position', [at(0, 100), at(3, 95), at(3, 110)], T + 1);
+  assert.equal(readDoc({ version: 1, coins: { BTC: [level] } })!.version, 1);
+  const doc = readDoc({ version: 2, coins: { BTC: [level, pos] } })!;
+  assert.equal(doc.version, 2); assert.equal(doc.coins.BTC!.length, 2);
+  assert.equal(JSON.parse(exportText(doc)).version, 2, 'its file too');
+  assert.equal(JSON.parse(exportText({ version: 2, coins: { BTC: [level] } })).version, 1, 'written as what it holds');
+  // The guard of every page before positions (model.ts until 2026-11-12): a document whose version is above 1 is a newer page's, not read.
+  const olderPageReads = (raw: { version?: unknown }): boolean => !(typeof raw.version === 'number' && raw.version > 1);
+  assert.equal(olderPageReads(JSON.parse(exportText(doc))), false);
+  assert.equal(olderPageReads(JSON.parse(exportText({ version: 1, coins: { BTC: [level] } }))), true);
+  assert.equal(readDoc({ version: 3, coins: {} }), null, 'a version above this page\'s still is not read');
+  const read = importInto({ version: 1, coins: {} }, exportText(doc), T + 5);
+  assert.equal(read.error, null); assert.equal(read.added, 2); assert.equal(read.doc.version, 2);
 });

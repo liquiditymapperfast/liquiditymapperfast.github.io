@@ -168,3 +168,15 @@ test('a finger needs its handles further apart: an edge has a middle only where 
   assert.deepEqual(hitDrawing({ x: 120, y: 100 }, [zone], pr, 12, zone.id, size), { id: zone.id, part: 'stroke' }, 'the finger: no middle there, and a corner 20 px away is out of reach: the edge itself');
   assert.deepEqual(hitDrawing({ x: 132, y: 104 }, [zone], pr, 12, zone.id, size), { id: zone.id, part: 'handle', index: 3, axis: 'both' }, 'and the corner 8 px from the press, which the middle would have been too near to tell from');
 });
+
+test('a position has its entry\'s handle and its stop\'s and target\'s on its left side, its end\'s on the entry line; its box is its inside', () => {
+  const pos = newDrawing('position', [at(1, 150), at(5, 140), at(5, 170)], T);
+  const hs = handlesOf(pos, pr);
+  assert.deepEqual(hs.map(h => [h.x, h.y, axisOf(h)]), [[100, 250, 'both'], [100, 300, 'p'], [100, 150, 'p'], [500, 250, 't']]);
+  assert.deepEqual(withHandleAt(pos, hs[3]!, at(7, 999)).points, [at(1, 150), at(7, 140), at(7, 170)], 'the end moves the stop\'s and the target\'s time together');
+  assert.deepEqual(withHandleAt(pos, hs[1]!, at(9, 135)).points, [at(1, 150), at(5, 135), at(5, 170)], 'the stop\'s handle moves its price alone');
+  assert.equal(strokesOf(pos, pr).length, 5, 'the entry, the two edges and the two sides');
+  assert.deepEqual(hitDrawing({ x: 300, y: 250 }, [pos], pr, 6, null, size), { id: pos.id, part: 'stroke' }, 'on the entry line');
+  assert.deepEqual(hitDrawing({ x: 300, y: 200 }, [pos], pr, 6, null, size), { id: pos.id, part: 'inside' }, 'in the target\'s side');
+  assert.equal(hitDrawing({ x: 300, y: 320 }, [pos], pr, 6, null, size), null, 'below the stop');
+});

@@ -3,7 +3,7 @@ import { el } from '../dom.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { compactBar, isCoarse } from '../device.ts';
 import { togglePanel, switchRow, segmented, heading, note, button, type Panel } from '../ui.ts';
-import { DRAW_COLORS, DRAW_WIDTHS, MAX_IMPORT_CHARS, type DrawColor, type DrawKind, type Drawing } from './model.ts';
+import { DRAW_COLORS, DRAW_WIDTHS, MAX_IMPORT_CHARS, positionFigures, type DrawColor, type DrawKind, type Drawing } from './model.ts';
 import { MAGNET_MODES, type MagnetMode } from './magnet.ts';
 import { handlesOf, noteBox, type Projection, type Pt } from './geometry.ts';
 import type { DrawController } from './controller.ts';
@@ -32,6 +32,8 @@ const GLYPHS = {
   note: '<path d="M4 5h16v10h-9l-4 4v-4H4z"/>',
   fib: '<path d="M4 6h16M4 10.5h16M4 15h16M4 19h16"/><path d="M5 19L19 6" stroke-dasharray="2 2"/>',
   channel: '<path d="M3 15L16 5M8 20L21 10"/>',
+  position: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12.5h16"/><path d="M9 9.5l3-3 3 3"/>',
+  flip: '<path d="M7 20V4M4 7l3-3 3 3"/><path d="M17 4v16M14 17l3 3 3-3"/>',
   magnet: '<path d="M6 4v8a6 6 0 0 0 12 0V4"/><path d="M6 8h3M15 8h3"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>',
@@ -66,8 +68,8 @@ const iconButton = (name: GlyphName, label: string, tip: string, cls = 'draw-ico
 };
 
 /** The tools in the order the rail offers them: levels and zones first, the map's own question (Karl, 2026-10-28). */
-const TOOL_ORDER: readonly DrawKind[] = ['level', 'zone', 'trend', 'vline', 'note', 'fib', 'channel'];
-export const toolName = (k: DrawKind): string => ({ level: t('Level'), trend: t('Trend line'), zone: t('Zone'), vline: t('Vertical line'), note: t('Note'), fib: t('Fib retracement'), channel: t('Parallel channel') })[k];
+const TOOL_ORDER: readonly DrawKind[] = ['level', 'zone', 'trend', 'vline', 'note', 'fib', 'channel', 'position'];
+export const toolName = (k: DrawKind): string => ({ level: t('Level'), trend: t('Trend line'), zone: t('Zone'), vline: t('Vertical line'), note: t('Note'), fib: t('Fib retracement'), channel: t('Parallel channel'), position: t('Long / short position') })[k];
 const toolTip = (k: DrawKind): string => ({
   level: t('Level: a line across the map at one price. Its tag on the price axis says the price; selected, it says how far the price is and what rests there in the book now.'),
   trend: t('Trend line: a line between two points, or run on past either end.'),
@@ -76,6 +78,7 @@ const toolTip = (k: DrawKind): string => ({
   note: t('Note: a few words pinned to a point, to remember why.'),
   fib: t('Fib retracement: the levels between two swings, at 23.6, 38.2, 50, 61.8 and 78.6 percent of the move.'),
   channel: t('Parallel channel: a line between two points and its parallel through a third.'),
+  position: t('Long / short position: an entry, a stop and a target over a stretch of time, with how far each is and the risk/reward. A stop below the entry makes it a long, above it a short.'),
 })[k];
 const magnetWord = (m: MagnetMode): string => ({ off: t('Off'), weak: t('Weak'), strong: t('Strong') })[m];
 /** How often a selected level's figures are taken again as the price and the book move (ms). */
@@ -89,6 +92,7 @@ export function describe(d: Drawing): string {
   switch (d.kind) {
     case 'level': return `${toolName(d.kind)} ${fmtPrice(a!.p)}`;
     case 'zone': return `${toolName(d.kind)} ${fmtPrice(Math.min(a!.p, b!.p))} – ${fmtPrice(Math.max(a!.p, b!.p))}`;
+    case 'position': { const f = positionFigures(d); return f.side === 'long' ? t('Long {entry} to {target}', { entry: fmtPrice(f.entry), target: fmtPrice(f.target) }) : t('Short {entry} to {target}', { entry: fmtPrice(f.entry), target: fmtPrice(f.target) }); }
     default: return `${toolName(d.kind)} ${clock(a!.t, true)}`;
   }
 }
@@ -126,6 +130,13 @@ export function readout(d: Drawing, mark: number, resting: { bid: number; ask: n
     }
     case 'vline': return clock(a!.t, true);
     case 'note': return '';
+    case 'position': {
+      // The prices, how far the target and the stop are (in percent and in price), the risk/reward and how long it runs.
+      const f = positionFigures(d), away = (x: number, pctOf: number): string => `${pct(pctOf).slice(1)}, ${fmtPrice(x)}`;
+      return [f.side === 'long' ? t('Long from {price}', { price: fmtPrice(f.entry) }) : t('Short from {price}', { price: fmtPrice(f.entry) }),
+        t('target {price} ({away})', { price: fmtPrice(f.target), away: away(f.reward, f.rewardPct) }), t('stop {price} ({away})', { price: fmtPrice(f.stop), away: away(f.risk, f.riskPct) }),
+        t('risk/reward {ratio}', { ratio: Number.isFinite(f.ratio) ? f.ratio.toFixed(2) : '–' }), span(b!.t - a!.t)].join(' · ');
+    }
   }
 }
 
@@ -352,7 +363,11 @@ export class DrawBar {
       this.#syncEdit.push(x => { b.classList.toggle('on', read(x)); b.setAttribute('aria-pressed', String(read(x))); b.disabled = (lockable && x.locked) || d.readOnly; });
       return b;
     };
-    const controls: HTMLElement[] = [swatches, widths, toggle('dashed', t('Dashed'), t('A dashed line'), x => x.style.dashed, (x, on) => ({ style: { ...x.style, dashed: on } }))];
+    // A position is drawn in the theme's rising and falling colours, so it has no look to choose: Flip turns a long into a short instead.
+    const flip = iconButton('flip', t('Flip'), t('Turn it the other way: a long becomes a short, its stop and target as far from the entry on the other side'));
+    flip.onclick = () => d.flip(id);
+    this.#syncEdit.push(x => { flip.disabled = x.locked || d.readOnly; });
+    const controls: HTMLElement[] = first.kind === 'position' ? [flip] : [swatches, widths, toggle('dashed', t('Dashed'), t('A dashed line'), x => x.style.dashed, (x, on) => ({ style: { ...x.style, dashed: on } }))];
     if (first.kind === 'level') controls.push(toggle('ray', t('Ray'), t('From its point to the right only, rather than across the whole map'), x => !x.extendLeft, (_x, on) => ({ extendLeft: !on })));
     if (first.kind === 'trend' || first.kind === 'channel') controls.push(
       toggle('left', t('Extend left'), t('Run the line on to the left edge of the map'), x => x.extendLeft, (_x, on) => ({ extendLeft: on })),

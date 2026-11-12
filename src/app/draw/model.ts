@@ -9,12 +9,17 @@
 /**
  * The kinds: a level across the map at one price (or a ray to the right from its anchor), a trend line between two points (a segment, or run
  * on past either end), a zone between two corners, a vertical line at a moment, a note pinned to a point, a Fibonacci retracement between two
- * swings and a parallel channel (a line between two points and its parallel through a third).
+ * swings, a parallel channel (a line between two points and its parallel through a third) and a position (an entry, its stop and its
+ * target over a stretch of time: a long when the stop is below the entry, a short when it is above; an X request of 2026-11-12, which
+ * reverses the round of 2026-10-28 that had left positions out as a trading platform's tool).
  */
-export type DrawKind = 'level' | 'trend' | 'zone' | 'vline' | 'note' | 'fib' | 'channel';
-export const DRAW_KINDS: readonly DrawKind[] = ['level', 'trend', 'zone', 'vline', 'note', 'fib', 'channel'];
-/** How many points each kind is placed with, one click or tap each. */
-export const ANCHORS: Readonly<Record<DrawKind, number>> = { level: 1, trend: 2, zone: 2, vline: 1, note: 1, fib: 2, channel: 3 };
+export type DrawKind = 'level' | 'trend' | 'zone' | 'vline' | 'note' | 'fib' | 'channel' | 'position';
+export const DRAW_KINDS: readonly DrawKind[] = ['level', 'trend', 'zone', 'vline', 'note', 'fib', 'channel', 'position'];
+/**
+ * How many points each kind is placed with, one click or tap each, and keeps. A position is placed by its entry, its stop and its target
+ * and kept as [entry at its start, stop at its end, target at its end] (`positionFromClicks`).
+ */
+export const ANCHORS: Readonly<Record<DrawKind, number>> = { level: 1, trend: 2, zone: 2, vline: 1, note: 1, fib: 2, channel: 3, position: 3 };
 
 export interface Anchor { t: number; p: number }
 
@@ -65,7 +70,49 @@ const DEFAULTS: Readonly<Record<DrawKind, Pick<Drawing, 'extendLeft' | 'extendRi
   note: { extendLeft: false, extendRight: false, leader: true, style: { color: 'amber', width: 1, dashed: false } },
   fib: { extendLeft: false, extendRight: false, leader: false, style: { color: 'purple', width: 1, dashed: false } },
   channel: { extendLeft: false, extendRight: false, leader: false, style: { color: 'blue', width: 1, dashed: false } },
+  // Drawn in the theme's rising and falling colours whatever its own; the style is kept for the list's swatch and a future choice.
+  position: { extendLeft: false, extendRight: false, leader: false, style: { color: 'ink', width: 1, dashed: false } },
 };
+
+/**
+ * Whether a position's points make one: its stop and its target at one time after its entry's, and on opposite sides of the entry, neither
+ * at it (a risk of nothing has no ratio). The one rule placing, every change and reading a saved one go by (`fits`).
+ */
+export function positionOk(points: readonly Anchor[]): boolean {
+  const [e, s, g] = points;
+  if (!e || !s || !g || points.length !== 3) return false;
+  return s.t === g.t && s.t > e.t && s.p !== e.p && g.p !== e.p && (s.p < e.p) === (g.p > e.p);
+}
+
+/** A long (the stop below the entry) or a short (above it). */
+export const positionSide = (d: Pick<Drawing, 'points'>): 'long' | 'short' => d.points[1]!.p < d.points[0]!.p ? 'long' : 'short';
+
+/**
+ * A position from the points clicked: the entry (its time is where the position starts), the stop, and the target (or, while only the stop
+ * is placed, a target twice as far as the stop on the other side, to show the shape). It ends at the later of the other two clicks, or
+ * `span` after the entry when both are at or before it. Null when the stop is at the entry or the target on the stop's side.
+ */
+export function positionFromClicks(clicks: readonly Anchor[], span: number): Anchor[] | null {
+  const [e, s, g] = clicks;
+  if (!e || !s || !(span > 0)) return null;
+  const target = g ? g.p : e.p + 2 * (e.p - s.p), late = Math.max(s.t, g?.t ?? -Infinity), end = late > e.t ? late : e.t + span;
+  const points = [{ t: e.t, p: e.p }, { t: end, p: s.p }, { t: end, p: target }];
+  return positionOk(points) ? points : null;
+}
+
+/** What a position says: its side, prices, how far its stop (the risk) and its target (the reward) are from the entry, and their ratio. */
+export interface PositionFigures { side: 'long' | 'short'; entry: number; stop: number; target: number; risk: number; reward: number; riskPct: number; rewardPct: number; ratio: number }
+export function positionFigures(d: Pick<Drawing, 'points'>): PositionFigures {
+  const [e, s, g] = d.points as [Anchor, Anchor, Anchor];
+  const risk = Math.abs(e.p - s.p), reward = Math.abs(g.p - e.p);
+  return { side: positionSide(d), entry: e.p, stop: s.p, target: g.p, risk, reward, riskPct: risk / e.p * 100, rewardPct: reward / e.p * 100, ratio: risk > 0 ? reward / risk : NaN };
+}
+
+/** A position turned the other way: its stop and its target as far from the entry on the other side (a long becomes a short). */
+export function flipped(d: Drawing): Drawing {
+  const [e, s, g] = d.points as [Anchor, Anchor, Anchor];
+  return { ...d, points: [{ ...e }, { t: s.t, p: 2 * e.p - s.p }, { t: g.t, p: 2 * e.p - g.p }] };
+}
 
 /** The retracement's levels, as shares of the move from its second point back toward its first (0 at the second, 1 at the first). */
 export const FIB_RATIOS: readonly number[] = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -115,6 +162,7 @@ export function readDrawing(raw: unknown): Drawing | null {
   if (!Array.isArray(s.points) || s.points.length !== ANCHORS[kind]) return null;
   const points: Anchor[] = [];
   for (const q of s.points) { const a = readAnchor(q); if (!a) return null; points.push(a); }
+  if (kind === 'position' && !positionOk(points)) return null;
   const d = DEFAULTS[kind], style = (s.style && typeof s.style === 'object' ? s.style : {}) as Record<string, unknown>;
   return {
     id: s.id, kind, points,
@@ -132,12 +180,21 @@ export function readDrawing(raw: unknown): Drawing | null {
   };
 }
 
-/** Whether a drawing can be kept as it is: every point a time on the chart and a price above zero (what `readDrawing` will read back). */
-export const fits = (d: Pick<Drawing, 'points'>): boolean => d.points.every(q => readAnchor(q) !== null);
+/**
+ * Whether a drawing can be kept as it is: every point a time on the chart and a price above zero, and a position one (`positionOk`): what
+ * `readDrawing` will read back.
+ */
+export const fits = (d: Pick<Drawing, 'points' | 'kind'>): boolean => d.points.every(q => readAnchor(q) !== null) && (d.kind !== 'position' || positionOk(d.points));
 
-/** The drawings kept, by coin. */
-export interface DrawDoc { version: 1; coins: Record<string, Drawing[]> }
-export const DRAW_DOC_VERSION = 1;
+/**
+ * The drawings kept, by coin. Version 2 is a document that holds a position: a page from before positions reads a document of a version
+ * above 1 as a newer page's, shows none of it and writes nothing over it, where it would have dropped the positions it does not know at its
+ * next save. Without one the document stays version 1, which every page reads.
+ */
+export interface DrawDoc { version: 1 | 2; coins: Record<string, Drawing[]> }
+export const DRAW_DOC_VERSION = 2;
+/** The version a document is written as: 2 when it holds a position, else 1. */
+export const versionOf = (coins: Readonly<Record<string, readonly Drawing[]>>): 1 | 2 => Object.values(coins).some(list => list.some(d => d.kind === 'position')) ? 2 : 1;
 const COIN = /^[A-Za-z0-9._-]{1,24}$/;
 
 /**
@@ -157,7 +214,7 @@ export function readDoc(raw: unknown): DrawDoc | null {
       if (kept.length) coins[coin] = kept.sort((a, b) => a.created - b.created).slice(-MAX_PER_COIN);
     }
   }
-  return { version: 1, coins };
+  return { version: versionOf(coins), coins };
 }
 
 /** How many drawings a document holds in all. */
@@ -198,10 +255,10 @@ export function importInto(doc: DrawDoc, text: string, now: number = Date.now())
     }
     if (!into.length) delete coins[coin];
   }
-  return { doc: { version: 1, coins }, added, skipped, error: null };
+  return { doc: { version: versionOf(coins), coins }, added, skipped, error: null };
 }
 
 /** A document as a file to keep: its format, version and the drawings. */
 export function exportText(doc: DrawDoc): string {
-  return JSON.stringify({ format: DRAW_FILE_FORMAT, version: DRAW_DOC_VERSION, coins: doc.coins });
+  return JSON.stringify({ format: DRAW_FILE_FORMAT, version: versionOf(doc.coins), coins: doc.coins });
 }

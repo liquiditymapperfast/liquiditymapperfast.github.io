@@ -455,3 +455,36 @@ test('a finger finds its handles with the wider rule: a box 40 px wide has no to
   assert.equal(s.draw.dragAxis, 'p', 'the mouse has the middle of the bottom');
   s.draw.up();
 });
+
+test('a position is placed by its entry, its stop and its target; a target on the stop\'s side is refused; it saves as version 2', () => {
+  const s = setup({ settings: { magnet: 'off' } });
+  s.draw.list(); // as the page does on its first frame: the controller learns the coin (a coin change drops a half-placed drawing)
+  s.draw.arm('position');
+  assert.match(s.draw.hint(false)!, /entry/);
+  s.draw.click({ x: x(1), y: y(150) }, false, false);
+  s.draw.click({ x: x(3), y: y(140) }, false, false);
+  assert.equal(s.draw.draft?.points.length, 2, 'the entry and the stop');
+  assert.match(s.draw.hint(false)!, /target/);
+  s.draw.click({ x: x(4), y: y(145) }, false, false);
+  assert.equal(s.draw.list().length, 0, 'a target below the entry, as the stop is, is not one');
+  assert.match(s.draw.message!.text, /other side/); assert.equal(s.draw.draft?.points.length, 2, 'the stop stays placed');
+  s.draw.click({ x: x(5), y: y(170) }, false, false);
+  const d = s.draw.list()[0]!;
+  assert.equal(d.kind, 'position'); assert.equal(s.draw.message, null, 'the warning goes with the click that is taken');
+  assert.deepEqual(d.points.map(q => [(q.t - T) / H, Math.round(q.p)]), [[1, 150], [5, 140], [5, 170]], 'it ends where the target was clicked');
+  assert.equal(s.saved!.version, 2, 'saved as a document older pages leave alone');
+  // The stop's handle moves its price; dragged across the entry it stays where it last made a position.
+  assert.equal(s.draw.down({ x: x(1), y: y(140) }, false), true);
+  s.draw.move({ x: x(2), y: y(135) }, false, false); s.draw.move({ x: x(2), y: y(160) }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(d.id)!.points.map(q => Math.round(q.p)), [150, 135, 170]);
+  assert.equal(s.draw.get(d.id)!.points[1]!.t, T + 5 * H, 'its time is the end\'s');
+  // The end's handle on the entry line moves the stop's and the target's time together.
+  assert.equal(s.draw.down({ x: x(5), y: y(150) }, false), true);
+  s.draw.move({ x: x(7), y: y(150) }, false, false); s.draw.up();
+  assert.deepEqual(s.draw.get(d.id)!.points.map(q => (q.t - T) / H), [1, 7, 7]);
+  s.draw.flip(d.id);
+  assert.deepEqual(s.draw.get(d.id)!.points.map(q => Math.round(q.p)), [150, 165, 130], 'flipped into a short');
+  assert.equal(s.draw.undo(), true); assert.deepEqual(s.draw.get(d.id)!.points.map(q => Math.round(q.p)), [150, 135, 170], 'one step back');
+  s.draw.remove(d.id);
+  assert.equal(s.saved!.version, 1, 'without a position the document is version 1 again');
+});
