@@ -58,7 +58,6 @@
  "Liquidity Tracker": "Liquidity Tracker",
  "Show or hide the Liquidity Tracker pane: one line for bid liquidity and one for ask liquidity near the price, so you can see which side is thickening.": "显示或隐藏 Liquidity Tracker 面板：一条线表示价格附近的买盘流动性，一条线表示卖盘流动性，让你看出哪一方在变厚。",
  "Mirror": "镜像",
- "Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover; that is how it works.": "悬停对比。开启后，指向分布列或订单簿时，会把价格与你的指针之间的流动性，与另一侧相同长度的区间相比，并告诉你哪一侧更多。悬停之前不会有任何变化；它就是这样工作的。",
  "Volume": "成交量",
  "Volume bars along the bottom, split into bought and sold at market: where the recording reaches, every exchange on in the Spot / Perp filter; before it, the chart's own candle, outlined (Binance's quote volume and trades as reported, others at the typical price, ≈). Hover a bar for its shares and delta, a recorded one for its market orders and their average size. Unusually large ones are stronger (Highlights).": "底部的成交量柱，分为市价买入和市价卖出：记录覆盖处为现货 / 永续筛选中开启的所有交易所；此前为图表自身的 K 线，带描边（Binance 的计价货币成交额和成交笔数按其报告，其他按典型价格换算，≈）。悬停可看占比和差值，已记录的柱还有市价单及其平均大小。异常大的柱更醒目（高亮）。",
  "Trades": "成交",
@@ -1581,7 +1580,6 @@
  "Average fill in the chart market's own candle: its quote volume divided by its trades (USDT for a USDT market). A fill, not an order: on one market an order is often several fills, so a fill averages less than an order there; avg order may count other markets too.": "图表市场自身 K 线的平均成交：计价货币成交额除以成交笔数（USDT 市场为 USDT）。是成交而非订单：在同一市场一笔订单往往是多次成交，所以在那里成交平均小于订单；平均订单可能还计入其他市场。",
  "No market order began in this candle.": "这根 K 线中没有开始的市价单。",
  "Cues": "提示",
- "What lights in the book when a venue's displayed depth changes, and the heat strip under each cell. Hover a cell, or the mark beside a row, to see what changed.": "交易所显示的深度发生变化时订单簿里亮起的内容，以及每个单元格下方的热度条。把鼠标移到单元格或行旁的标记上，可以看到什么发生了变化。",
  "Order book cues": "订单簿提示",
  "Flash": "闪光",
  "Wash": "着色",
@@ -2424,5 +2422,8 @@
  "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "价格已隐藏，热力图和成交气泡上面不遮挡任何东西。点击可重新以 K 线、空心 K 线、OHLC 美国线或线条显示价格。",
  "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "地图如何显示价格：在时间周期之后的“图表类型”按钮中选择 K 线、空心 K 线、OHLC 美国线或线条，显示价格时按钮会亮起。“隐藏”把价格从地图上移除，热力图和成交气泡上面便不遮挡任何东西。",
  "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "指向“图表类型”菜单中的一行，选择之前地图上就会显示它的样子；“隐藏”会保留类型，等价格回来时再用。菜单的最后一行“K 线颜色”可为上涨和下跌 K 线的实体、边框和影线设定自己的颜色；保留主题颜色的部分会跟随主题。",
- "The price is hidden: choose a chart type to see these colours on the map.": "价格已隐藏：选择一种图表类型，即可在地图上看到这些颜色。"
+ "The price is hidden: choose a chart type to see these colours on the map.": "价格已隐藏：选择一种图表类型，即可在地图上看到这些颜色。",
+ "Pointing at the order book or the profile column outlines the band between the price and the pointer and the equal band on the other side, and says which holds more.": "指向订单簿或分布列时，会框出价格与指针之间的区间以及另一侧等宽的区间，并说明哪一侧更多。",
+ "What lights in the book when a venue's displayed depth changes, the heat strip under each cell, and Mirror, which compares both sides of the price as you hover. Hover a cell, or the mark beside a row, to see what changed.": "交易所显示的深度发生变化时订单簿里亮起的内容、每个单元格下方的热度条，以及悬停时对比价格两侧的镜像。把鼠标移到单元格或行旁的标记上，可以看到什么发生了变化。",
+ "Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover. Its switch is in the order book's Cues panel.": "悬停对比。开启后，指向分布列或订单簿时，会把价格与你的指针之间的流动性，与另一侧相同长度的区间相比，并告诉你哪一侧更多。悬停之前不会有任何变化。它的开关在订单簿的“提示”面板里。"
 }

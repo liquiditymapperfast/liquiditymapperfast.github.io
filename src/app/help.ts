@@ -154,7 +154,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   mirror: {
     title: t('Mirror'), guide: 'mirror',
-    tip: t('Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover; that is how it works.'),
+    tip: t('Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover. Its switch is in the order book\'s Cues panel.'),
     body: [],
   },
   volume: {

@@ -87,9 +87,11 @@ const CANDLE_COLOURS_ITEM = 'candle-colours';
 
 /**
  * The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. The
- * candles have no switch here since 2026-11-12: the Chart type button takes them off the map (Hidden) and is lit while they are drawn.
+ * candles have no switch here since 2026-11-12: the Chart type button takes them off the map (Hidden) and is lit while they are drawn. Nor
+ * has Mirror (the same day, Karl: each button a precious resource): it is no pane but what hovering the profile column or the book shows, and
+ * its switch is in the order book's Cues panel.
  */
-const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['funding', t('Funding')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['stats', t('Stats')]];
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['funding', t('Funding')], ['lt', 'LT'], ['volume', t('Volume')], ['stats', t('Stats')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }

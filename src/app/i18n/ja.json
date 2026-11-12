@@ -58,7 +58,6 @@
  "Liquidity Tracker": "Liquidity Tracker",
  "Show or hide the Liquidity Tracker pane: one line for bid liquidity and one for ask liquidity near the price, so you can see which side is thickening.": "Liquidity Tracker パネルを表示または非表示にします。価格付近の買いの流動性と売りの流動性を 1 本ずつの線で示し、どちら側が厚くなっているか分かります。",
  "Mirror": "ミラー",
- "Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover; that is how it works.": "ホバー比較。オンのとき、プロファイル列やオーダーブックにカーソルを合わせると、価格とカーソルの間の流動性を反対側の同じ幅の区間と比べ、どちら側が多いかを表示します。ホバーするまで何も変わりません。そういう仕組みです。",
  "Volume": "出来高",
  "Volume bars along the bottom, split into bought and sold at market: where the recording reaches, every exchange on in the Spot / Perp filter; before it, the chart's own candle, outlined (Binance's quote volume and trades as reported, others at the typical price, ≈). Hover a bar for its shares and delta, a recorded one for its market orders and their average size. Unusually large ones are stronger (Highlights).": "下部の出来高バーで、成行買いと成行売りに分かれます。記録が届く範囲ではスポット / パーペチュアルのフィルターでオンの全取引所、それ以前はチャート自身のローソク足を枠で示します（Binance のクォート出来高と取引数は報告どおり、他は典型価格で換算し ≈）。ホバーで比率とデルタ、記録されたバーでは成行注文とその平均サイズ。異常に大きいものは濃く描かれます（ハイライト）。",
  "Trades": "約定",
@@ -1581,7 +1580,6 @@
  "Average fill in the chart market's own candle: its quote volume divided by its trades (USDT for a USDT market). A fill, not an order: on one market an order is often several fills, so a fill averages less than an order there; avg order may count other markets too.": "チャート市場自身のローソク足の平均約定：クォート出来高を取引数で割った値（USDT 市場では USDT）。注文ではなく約定です。同じ市場では注文は多くの場合複数の約定になるため、そこでは約定の平均は注文より小さくなります。平均注文は他の市場も含むことがあります。",
  "No market order began in this candle.": "このローソク足で始まった成行注文はありません。",
  "Cues": "ハイライト",
- "What lights in the book when a venue's displayed depth changes, and the heat strip under each cell. Hover a cell, or the mark beside a row, to see what changed.": "取引所の表示している板の厚みが変わったときにブックで光るもの、と各セルの下の熱ストリップ。セルや行の横のマークにカーソルを重ねると、何が変わったか分かります。",
  "Order book cues": "オーダーブックのハイライト",
  "Flash": "点滅",
  "Wash": "ウォッシュ",
@@ -2424,5 +2422,8 @@
  "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "価格は非表示です。ヒートマップと約定バブルが何にも覆われずに見えます。クリックすると、ローソク足、中空ローソク足、OHLC バー、線のいずれかで再び描画します。",
  "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "マップが価格をどう描くか：時間足の後にある「チャートの種類」ボタンで、ローソク足、中空ローソク足、OHLC バー、線のいずれかを選びます。価格を描いている間はボタンが点灯します。「非表示」は価格をマップから消すので、ヒートマップと約定バブルが何にも覆われずに見えます。",
  "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "「チャートの種類」メニューの行を指すと、選ぶ前にマップに表示されます。「非表示」は価格が戻るときのために種類を保ちます。メニューの最後の行「ローソク足の色」で、陽線と陰線の実体・枠線・ヒゲに自分の色を付けられます。テーマの色のままの部分はテーマに従います。",
- "The price is hidden: choose a chart type to see these colours on the map.": "価格は非表示です。チャートの種類を選ぶと、これらの色がマップに表示されます。"
+ "The price is hidden: choose a chart type to see these colours on the map.": "価格は非表示です。チャートの種類を選ぶと、これらの色がマップに表示されます。",
+ "Pointing at the order book or the profile column outlines the band between the price and the pointer and the equal band on the other side, and says which holds more.": "オーダーブックやプロファイル列を指すと、価格とポインターの間の帯と反対側の同じ幅の帯を囲み、どちらが多いかを示します。",
+ "What lights in the book when a venue's displayed depth changes, the heat strip under each cell, and Mirror, which compares both sides of the price as you hover. Hover a cell, or the mark beside a row, to see what changed.": "取引所の表示している板の厚みが変わったときにブックで光るもの、各セルの下の熱ストリップ、そしてホバー中に価格の両側を比べるミラー。セルや行の横のマークにカーソルを重ねると、何が変わったか分かります。",
+ "Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover. Its switch is in the order book's Cues panel.": "ホバー比較。オンのとき、プロファイル列やオーダーブックにカーソルを合わせると、価格とカーソルの間の流動性を反対側の同じ幅の区間と比べ、どちら側が多いかを表示します。ホバーするまで何も変わりません。スイッチはオーダーブックの「ハイライト」パネルにあります。"
 }

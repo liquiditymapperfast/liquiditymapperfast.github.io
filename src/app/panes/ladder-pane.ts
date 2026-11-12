@@ -415,7 +415,7 @@ export class LadderPane {
     const curves = this.#curvesControl = this.#select(t('Venue lines'), LADDER_CURVES.map(n => [String(n), n === 0 ? t('off') : t('top {n}', { n })] as [string, string]), () => String(s().ladderCurves), v => this.store.set({ ladderCurves: Number(v) as AppState['ladderCurves'] }));
     setTip(curves, t('Compact: a running-total line for each of the largest venues, ranked by traded volume over the flow column\'s ranking window. Hover a line to see it alone.'));
     this.#cuesButton.className = 'cues-btn head-key'; this.#cuesButton.dataset.fit = 'key'; this.#cuesButton.textContent = t('Cues');
-    setTip(this.#cuesButton, t('What lights in the book when a venue\'s displayed depth changes, and the heat strip under each cell. Hover a cell, or the mark beside a row, to see what changed.'));
+    setTip(this.#cuesButton, t('What lights in the book when a venue\'s displayed depth changes, the heat strip under each cell, and Mirror, which compares both sides of the price as you hover. Hover a cell, or the mark beside a row, to see what changed.'));
     this.#cuesButton.onclick = () => { this.#cuesPanel = togglePanel(this.#cuesButton, { title: t('Order book cues'), width: 340, align: 'right', onClose: () => { this.#cuesPanel = null; } }, (_tools, body) => this.#buildCues(body)); };
     const show = this.#select(t('Show'), [['both', t('Levels + cum')], ['levels', t('Levels')], ['cumulative', t('Cumulative')]], () => s().ladderShow, v => this.store.set({ ladderShow: v as AppState['ladderShow'] }));
     // The choices are one fit grid (ui/fit-grid.ts): on the title's line when they all fit there, otherwise the mode there (when it fits) and
@@ -444,6 +444,9 @@ export class LadderPane {
       note(t('A ripple says an order met the depth at that price. It does not say the depth changed: a change has its own light.')),
       selectRow(t('Heat'), t('A strip under each venue\'s part of a level.'), heat, cues.heat, v => this.#setCues({ heat: v as HeatKind })),
       note(t('Recent adds: the share of the cell that is estimated recent net increase, fading over 45 seconds. Activity: how much it changed lately, additions and removals, against its size. Neither is the age of an order: the exchanges do not send one.')),
+      // Mirror's switch (`show.mirror`, its stored name since it was a toolbar switch; Karl, 2026-11-12: out of the Panels deck, where clicking
+      // it showed nothing). It works on this book, the map's profile column and the liquidation column alike.
+      switchRow(t('Mirror'), t('Pointing at the order book or the profile column outlines the band between the price and the pointer and the equal band on the other side, and says which holds more.'), this.store.state.show.mirror, on => this.store.set({ show: { ...this.store.state.show, mirror: on } })),
     );
   }
 

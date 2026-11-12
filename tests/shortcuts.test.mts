@@ -45,7 +45,7 @@ test('no two shortcuts share a key, and every switch has one', () => {
   // Liquidation levels only where its file has an address (liq-url.ts).
   const features: Feature[] = ['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels' as const] : []), 'absorption', 'traded', 'tpo', 'keyLevels', 'vwap', 'highlights'];
   assert.deepEqual(SHORTCUTS.flatMap(s => s.action.kind === 'toggle' ? [s.action.feature] : []).sort(), [...features].sort());
-  assert.ok(!seen.has('key:m'), 'M is the Mirror toggle on the toolbar: not taken');
+  assert.ok(!seen.has('key:m'), "M stays free: it is Mirror's letter (its switch is in the order book's Cues panel)");
 });
 
 test('a switch flips its own feature and nothing else', () => {

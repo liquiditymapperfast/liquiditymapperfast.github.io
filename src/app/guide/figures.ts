@@ -175,7 +175,7 @@ const anatomy: Scene = {
     g.fillStyle = th.bg; g.fillRect(0, 0, w, h);
     // toolbar strip
     g.fillStyle = th.panel; g.fillRect(by.toolbar!.x, by.toolbar!.y, by.toolbar!.w, by.toolbar!.h); g.strokeStyle = th.line; g.strokeRect(by.toolbar!.x + 0.5, by.toolbar!.y + 0.5, by.toolbar!.w - 1, by.toolbar!.h - 1);
-    let x = by.toolbar!.x + 8; for (const label of ['BTC', '1h', 'Profile', 'Depth', 'OI', 'Footprint', 'Mirror', 'Trades']) { const shown = t(label); font(g, 10, 600); const tw = g.measureText(shown).width + 10; g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.text : th.line; g.beginPath(); g.roundRect(x, by.toolbar!.y + 4, tw, 12, 3); g.fill(); g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.bg : th.muted; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(shown, x + 5, by.toolbar!.y + 10.5); x += tw + 5; }
+    let x = by.toolbar!.x + 8; for (const label of ['BTC', '1h', 'Profile', 'Depth', 'OI', 'Footprint', 'Volume', 'Trades']) { const shown = t(label); font(g, 10, 600); const tw = g.measureText(shown).width + 10; g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.text : th.line; g.beginPath(); g.roundRect(x, by.toolbar!.y + 4, tw, 12, 3); g.fill(); g.fillStyle = label === 'Profile' || label === 'Depth' || label === 'OI' ? th.bg : th.muted; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(shown, x + 5, by.toolbar!.y + 10.5); x += tw + 5; }
     const live = 0.84 + 0.05 * Math.sin(u * Math.PI * 2);
     const d: Dom = { t0: 0, t1: 1, p0: MARK - 1250, p1: MARK + 1250 };
     miniFlow(g, by.flow!, th);

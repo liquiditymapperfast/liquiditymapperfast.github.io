@@ -140,7 +140,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'Mirror answers one question: *is there more on this side of the price, or the other?* Point at a price in the profile or the order book. The band between the price and your pointer is outlined, and so is the equal band on the other side. A box adds up both and says which is bigger. Move outward and watch the balance change with distance.' },
       { t: 'fig', id: 'mirror', caption: 'The pointer moves away from the price. The box compares the two bands as they grow.' },
-      { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, so the **Mirror** button in the toolbar changes nothing you can see until you point at the profile or the order book. If hovering stops showing the box, check that button: its state is saved between visits. On a touch screen, tap the profile or the order book to pin the box there, and tap again to let go.' },
+      { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, and it is on unless you switch it off. Its switch is **Mirror** in the order book\'s **Cues** panel (the Cues key in the book\'s title bar): if hovering stops showing the box, check it there, as its state is saved between visits. On a touch screen, tap the profile or the order book to pin the box there, and tap again to let go.' },
     ],
   },
   {
@@ -449,7 +449,7 @@ export const SECTIONS: readonly Section[] = [
         '**A fresh page is shallow far from the price.** The far side fills in over some minutes.',
         '**A phone only records while the page is open and awake.** A sleeping screen leaves a gap in the map; **Keep screen on** in Settings holds it awake. With all eleven markets the page reads about 200 to 300 MB an hour: on a mobile connection, switch some off in **Venues**.',
         '**Nothing you do leaves your machine.** The page talks to the exchanges and, only to read, to this site\'s history and levels services. Recordings live in your browser; clearing the site\'s data erases them.',
-        '**If something looks wrong**: check the connection status (the dot at the left of the bottom bar, at the top right on a phone), try Recenter, and if hovering shows nothing, check the Mirror button.',
+        '**If something looks wrong**: check the connection status (the dot at the left of the bottom bar, at the top right on a phone), try Recenter, and if hovering shows nothing, check Mirror in the order book\'s Cues panel.',
       ] },
     ],
   },
