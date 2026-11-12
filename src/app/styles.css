@@ -61,7 +61,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar .deck.deck-flush > .deck-row > :is(button, select, .seg, .split, .scale):not(.coin-btn) { flex: 1 1 auto; }
 .toolbar .deck.deck-flush .split > button:first-child { flex: 1 1 auto; }
 .toolbar .deck.deck-flush .seg:not(.toggles) > button { flex: 1 1 0; }
-/* The heatmap's three menus (with a layer to choose, when the deck is flush) of one width once its deck has grown with its row (their own cap is for the bar at its own size); its colour scale the widest of the row under them. With two menus (no Layer menu) the deck is a grid instead: Source in one column, Colours spanning two. */
+/* The heatmap's menus (Source, Colours, and Layer once there is a layer to choose) of one width once its deck has grown with its row and is flush (their own cap is for the bar at its own size); its colour scale, with the Heatmap key at its end, the row under them. */
 .toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .deck-row:first-of-type > select { flex: 1 1 0; min-width: 0; max-width: none; }
 .toolbar.cockpit.wrapped:not(.fitting) .deck-heat.deck-flush .scale { flex: 2 1 120px; }
 .toolbar.cockpit.fitting { zoom: var(--fit-zoom, 1); flex-wrap: nowrap; }
@@ -981,6 +981,11 @@ button.open { border-color: var(--ui); }
 .toolbar.cockpit .split > .led-btn { padding-left: 17px; padding-right: 4px; }
 .toolbar.cockpit .split > .led-btn::before { left: 5px; }
 html[data-frame="textmode"] .toolbar.cockpit .split > .split-cfg { width: 14px; }
+/* The Heatmap key at the end of the colour scale (toolbar.ts `#heatSplit`; Karl, 2026-11-12: the colour range's Auto and the smoothing went
+   behind it): the scale takes the room, the key keeps its own width and is a key of its own, not the joined half of a button. */
+.toolbar .heat-split { align-items: center; gap: 4px; }
+.toolbar .heat-split > .scale { flex: 1 1 auto; width: auto; min-width: 120px; }
+.toolbar .heat-split > .split-cfg { margin-left: 0; border-top-left-radius: var(--radius); border-bottom-left-radius: var(--radius); }
 .led-btn { position: relative; padding-left: 22px; }
 .led-btn::before { content: ""; position: absolute; left: 8px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--edge); opacity: 1; transition: background .2s, box-shadow .2s; }
 .led-btn[data-state="on"]::before { background: var(--bid); opacity: 1; }
