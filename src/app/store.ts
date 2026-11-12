@@ -317,7 +317,8 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     scope: saved.scope === 'spot' || saved.scope === 'perp' ? saved.scope : 'all',
     heat: { ...heat, style: HEAT_STYLES.some(style => style.id === heat.style) ? heat.style : 'size', smooth: heat.smooth === 'off' ? 'off' : 'auto', contrast: clampContrast(heat.contrast) },
     lt: { ...sameShape(LT_DEFAULTS, saved.lt), view: lt?.view === 'imbalance' ? 'imbalance' : 'lines' },
-    barStats: Array.isArray(saved.barStats) ? saved.barStats.filter((id): id is string => typeof id === 'string').slice(0, 24) : [...DEFAULT_BAR_STATS],
+    // Bounded against a broken save, not below the statistics there are (38 since 2026-10-20: a cap of 24 lost the All preset's last 14 on reload).
+    barStats: Array.isArray(saved.barStats) ? saved.barStats.filter((id): id is string => typeof id === 'string').slice(0, 64) : [...DEFAULT_BAR_STATS],
     barStatOptions: readStatOptions(saved.barStatOptions),
     grouping: saved.grouping === 'auto' || (typeof saved.grouping === 'number' && Number.isFinite(saved.grouping) && saved.grouping > 0) ? saved.grouping : 'auto',
     // Compact is the default since 2026-10-12 (Aggregated before): a page that saved Aggregated keeps it, since a choice and the old default look the same.

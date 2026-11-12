@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TIMEFRAMES } from '../src/app/hub.ts';
 import { LAYOUT_KEYS, TIMEFRAME_IDS, readSettings, type AppState } from '../src/app/store.ts';
+import { PRESETS } from '../src/app/panes/bar-stats.ts';
 import { MAX_FILE_CHARS, MAX_LAYOUTS, MAX_NAME, PANE_SWITCHES, arrangeOrder, carriedSettings, changedSettings, cleanName, completeSettings, copyName, fitHeights, exportFile, importFile, mergeLayouts, mergeOrder, paneSettings, readArrangement, readLayouts, samePanes, settingsOf, settingsToApply, undoPatch, upsert, type SavedLayout } from '../src/app/layouts/layouts.ts';
 /** A fixed VWAP anchor at `at` (its id from the time, as an old save's is read). */
 const A = (at: number, slot = 0): { id: string; at: number; slot: number } => ({ id: `t${at}`, at, slot });
@@ -64,6 +65,10 @@ test('a file can come from anywhere: every field is checked, anything else gets 
   assert.equal(junk.lt.view, 'lines');
   assert.equal(junk.lt.halfLifeBp, defaults.lt.halfLifeBp);
   assert.deepEqual(junk.barStats, ['vol']);
+  // Every statistic chosen (the All preset) is read back whole: a cap of 24 dropped the last 14 of 38.
+  const all = PRESETS.all;
+  assert.ok(all.length > 24);
+  assert.deepEqual(readSettings({ barStats: [...all] }).barStats, [...all]);
   assert.equal(junk.barStatOptions.imbRatio, defaults.barStatOptions.imbRatio);
   assert.ok(!('extra' in junk.barStatOptions));
 });
