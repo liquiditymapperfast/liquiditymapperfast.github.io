@@ -53,7 +53,6 @@
  "Open interest": "建玉",
  "Show or hide the Open Interest pane: how many contracts are open, and how that number changes with each candle.": "建玉パネルを表示または非表示にします。未決済の契約数と、その数がローソク足ごとにどう変わるかを表示します。",
  "Candles": "ローソク足",
- "Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.": "価格のローソク足を描画します。オフにすると、ヒートマップと約定バブルが何にも覆われずに見えます。",
  "Footprint": "フットプリント",
  "Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.": "ローソク足を拡大して、その裏にある約定を見ます。各価格で、どれだけ売られ（左の数字）、買われたか（右の数字）。バーは、片側が明らかに優勢だった価格を示します。",
  "Liquidity Tracker": "Liquidity Tracker",
@@ -1912,7 +1911,6 @@
  "Price reached your level at {price}": "価格が水平線 {price} に到達しました",
  "Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)": "描画ツール：水平線、ゾーン、線、メモ（Delete で選択中のものを削除、Ctrl+Z で元に戻す）",
  "Chart type": "チャートの種類",
- "Click for the other ways to draw the price.": "クリックすると、価格のほかの表示方法を選べます。",
  "Show it on the map": "マップに表示",
  "Hide it from the map": "マップから隠す",
  "Hidden: show it on the map again": "非表示：マップに再表示する",
@@ -2418,8 +2416,13 @@
  "Outline candles are drawn in the border colour, or in the body colour where the border has none of its own.": "中空ローソク足は枠線の色で描かれます。枠線に自分の色がなければ実体の色で描かれます。",
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "マップにライブ約定を表示している間、ローソク足は枠線で描かれ、枠線に自分の色があればその色になります。",
  "Every candle colour back to the theme's.": "ローソク足のすべての色をテーマの色に戻します。",
- "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "時間足の後にある「チャートの種類」メニューは、価格をローソク足、中空ローソク足、OHLC バー、終値の線のいずれかで描きます。最後の行「ローソク足の色」で、陽線と陰線の実体・枠線・ヒゲに自分の色を付けられます。テーマの色のままの部分はテーマに従います。",
  "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "各線の最新値に付くラベルは、振り返り期間（20 本）の動きと、それが上昇・下降・横ばいのどれかを示します。動きが線のローソク足ごとの道のりの 4 分の 1 未満なら横ばいです。",
  "zoomed out: {timeframe} candles": "ズームアウト中: {timeframe} 足",
- "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "ローソク足が2ピクセルより細くなるほどズームアウトすると、チャートは同じローソク足と取引所の履歴をまとめた長いローソク足（4h、1d、最長1週間）を描き、凡例にその長さが表示されます。アンカーを置くためにクリックするローソク足は描かれているものです。ラインチャートは線のままです。"
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "ローソク足が2ピクセルより細くなるほどズームアウトすると、チャートは同じローソク足と取引所の履歴をまとめた長いローソク足（4h、1d、最長1週間）を描き、凡例にその長さが表示されます。アンカーを置くためにクリックするローソク足は描かれているものです。ラインチャートは線のままです。",
+ "Hidden": "非表示",
+ "Click for the other ways to draw the price, or Hidden to take it off the map.": "クリックすると、価格のほかの表示方法を選べます。「非表示」でマップから価格を消せます。",
+ "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "価格は非表示です。ヒートマップと約定バブルが何にも覆われずに見えます。クリックすると、ローソク足、中空ローソク足、OHLC バー、線のいずれかで再び描画します。",
+ "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "マップが価格をどう描くか：時間足の後にある「チャートの種類」ボタンで、ローソク足、中空ローソク足、OHLC バー、線のいずれかを選びます。価格を描いている間はボタンが点灯します。「非表示」は価格をマップから消すので、ヒートマップと約定バブルが何にも覆われずに見えます。",
+ "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "「チャートの種類」メニューの行を指すと、選ぶ前にマップに表示されます。「非表示」は価格が戻るときのために種類を保ちます。メニューの最後の行「ローソク足の色」で、陽線と陰線の実体・枠線・ヒゲに自分の色を付けられます。テーマの色のままの部分はテーマに従います。",
+ "The price is hidden: choose a chart type to see these colours on the map.": "価格は非表示です。チャートの種類を選ぶと、これらの色がマップに表示されます。"
 }

@@ -22,6 +22,24 @@ export const chartTypeTip = (c: ChartType): string => ({
 
 export const readChartType = (saved: unknown): ChartType => CHART_TYPES.includes(saved as ChartType) ? saved as ChartType : 'candles';
 
+/**
+ * The Chart type menu also takes the price off the map (Karl, 2026-11-12: the Panels deck's Candles switch did nothing but show and hide the
+ * candles, and the Chart type button never said whether they were drawn). Hidden leaves the heatmap and the trade bubbles with nothing on top
+ * and keeps the type for when the price comes back; choosing a type draws the price that way. The button is lit while the price is drawn.
+ * Hidden is `show.candles` off, as the switch was, so saved pages and layouts mean what they meant.
+ */
+export const CHART_HIDDEN = 'hidden';
+export type ChartChoice = ChartType | typeof CHART_HIDDEN;
+/** The menu's ticked row: the type while the price is drawn, Hidden while it is not. */
+export const chartChoiceOf = (chartType: ChartType, shown: boolean): ChartChoice => shown ? chartType : CHART_HIDDEN;
+/** A menu row as a choice, or null for any other row (Candle colours) or none. */
+export const readChartChoice = (id: string | null): ChartChoice | null => id === CHART_HIDDEN || CHART_TYPES.includes(id as ChartType) ? id as ChartChoice : null;
+/** What a choice sets: a type draws the price that way, Hidden takes it away and leaves the type as it was. */
+export function chartChoicePatch<S extends { candles: boolean }>(choice: ChartChoice, show: S): { chartType?: ChartType; show: S } {
+  return choice === CHART_HIDDEN ? { show: { ...show, candles: false } } : { chartType: choice, show: { ...show, candles: true } };
+}
+export const chartChoiceName = (c: ChartChoice): string => c === CHART_HIDDEN ? t('Hidden') : chartTypeName(c);
+
 /** Each type's small drawing for its button (24 x 24, in the stroke of the text around it). */
 const GLYPHS: Record<ChartType, string> = {
   candles: '<path d="M8 3v18M16 5v14"/><rect x="5.5" y="7" width="5" height="9" fill="currentColor"/><rect x="13.5" y="9" width="5" height="6" fill="currentColor"/>',

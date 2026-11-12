@@ -49,7 +49,7 @@ import type { Alerts } from './sound/alerts.ts';
 import type { Panel } from './ui.ts';
 import { HEAT_STYLES, legendBackground, type HeatStyleId } from './heatmap/lut.ts';
 import { CONTRAST } from './heatmap/window.ts';
-import { CHART_TYPES, chartTypeGlyph, chartTypeName, chartTypeTip, type ChartType } from './chart-type.ts';
+import { CHART_HIDDEN, CHART_TYPES, chartChoiceName, chartChoiceOf, chartChoicePatch, chartTypeGlyph, chartTypeName, chartTypeTip, readChartChoice, type ChartChoice } from './chart-type.ts';
 import { compactBar, isCoarse, isPhone, onLayoutMode } from './device.ts';
 import { effectiveChoice, isHandheldPhone, savesData, type PhoneHistory } from './history-window.ts';
 import { closeSheet, openSheet, type Sheet } from './sheet.ts';
@@ -82,11 +82,14 @@ const IDLE_GRACE_MS = 20_000;
 /** What the dropdown says next to a layer that cannot be chosen yet. */
 const UPCOMING = 'upcoming';
 
-/** The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. */
 /** The Chart type menu's row that opens the Candle colours panel (not a chart type). */
 const CANDLE_COLOURS_ITEM = 'candle-colours';
 
-const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['funding', t('Funding')], ['candles', t('Candles')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['stats', t('Stats')]];
+/**
+ * The pane switches in the top bar, in order: the two side columns first (they vanish and return at once), then what the map shows. The
+ * candles have no switch here since 2026-11-12: the Chart type button takes them off the map (Hidden) and is lit while they are drawn.
+ */
+const PANE_TOGGLES: readonly (readonly [keyof AppState['show'], string])[] = [['cvd', t('Flow')], ['book', t('Book')], ['profile', t('Profile')], ['depth', t('Depth')], ['oi', 'OI'], ['delta', t('Delta')], ['ls', t('L/S')], ['funding', t('Funding')], ['lt', 'LT'], ['mirror', t('Mirror')], ['volume', t('Volume')], ['stats', t('Stats')]];
 
 /** Assign a form control's value only when it differs: assigning to an open select closes its popup. */
 function setValue(control: HTMLSelectElement | HTMLInputElement, value: string): void { if (control.value !== value) control.value = value; }
@@ -338,9 +341,12 @@ export class Toolbar {
   onRecenter: () => void = () => {};
   /** Preview a theme without keeping it (`null` puts the saved one back). */
   onPreviewTheme: (id: string | null) => void = () => {};
-  /** Hovering a chart type in its menu draws the map with it without keeping it; leaving the menu puts the kept one back (null). */
-  onPreviewChartType: (id: ChartType | null) => void = () => {};
-  /** How the map draws its price (chart-type.ts): a cell of the Time deck, beside the timeframes, as a chart's type usually sits. */
+  /** Hovering a row of the Chart type menu draws the map with it without keeping it (Hidden: without the price); leaving the menu puts the kept one back (null). */
+  onPreviewChartType: (id: ChartChoice | null) => void = () => {};
+  /**
+   * How the map draws its price (chart-type.ts): a cell of the Time deck, beside the timeframes, as a chart's type usually sits. Its menu also
+   * takes the price off the map (Hidden), and the button is lit while the price is drawn, as the timeframe in use is.
+   */
   #chartType = el('button', { type: 'button', class: 'chart-type', ariaLabel: t('Chart type') });
   #candlePanel: Panel | null = null;
   /** The drawing tools' button (draw/bar.ts, set by the page), in the map's corner beside Select. */
@@ -378,13 +384,14 @@ export class Toolbar {
     }
     this.#market.onchange = () => this.onSelectMarket(this.#market.value);
     this.#chartType.onclick = () => {
-      // The four types, previewed on the map while the pointer or the keys are on one, and after a line the candles' colours (a panel).
-      const items: MenuItem[] = [...CHART_TYPES.map(id => ({ id, label: chartTypeName(id) })), { id: CANDLE_COLOURS_ITEM, label: t('Candle colours…'), action: true }];
-      const type = (id: string | null): ChartType | null => id !== null && (CHART_TYPES as readonly string[]).includes(id) ? id as ChartType : null;
-      openMenu(this.#chartType, items, this.store.state.chartType, { onPreview: id => this.onPreviewChartType(type(id)), onSelect: id => {
+      // The four types and Hidden (no price), each previewed on the map while the pointer or the keys are on it, and after a line the candles'
+      // colours (a panel). A type draws the price that way, Hidden takes it away and keeps the type (chartChoicePatch).
+      const items: MenuItem[] = [...CHART_TYPES.map(id => ({ id, label: chartTypeName(id) })), { id: CHART_HIDDEN, label: chartChoiceName(CHART_HIDDEN) }, { id: CANDLE_COLOURS_ITEM, label: t('Candle colours…'), action: true }];
+      const state = this.store.state;
+      openMenu(this.#chartType, items, chartChoiceOf(state.chartType, state.show.candles), { onPreview: id => this.onPreviewChartType(readChartChoice(id)), onSelect: id => {
         this.onPreviewChartType(null);
-        const chosen = type(id);
-        if (chosen) this.store.set({ chartType: chosen }); else if (id === CANDLE_COLOURS_ITEM) this.#openCandleColours();
+        const chosen = readChartChoice(id);
+        if (chosen) this.store.set(chartChoicePatch(chosen, this.store.state.show)); else if (id === CANDLE_COLOURS_ITEM) this.#openCandleColours();
       } }, 'left', { title: t('Chart type') });
     };
     for (const tf of Object.keys(TIMEFRAMES)) this.#timeframes.append(el('button', { textContent: tf, tip: t('{timeframe} candles. The footprint, the bar stats and the open-interest bars follow this too.', { timeframe: TIMEFRAME_NAMES[tf] ?? tf }), onclick: () => this.store.set({ timeframe: tf }) }));
@@ -937,10 +944,15 @@ export class Toolbar {
     }
     setValue(this.#market, state.marketId);
     [...this.#timeframes.children].forEach(b => { if (b !== this.#chartType) b.classList.toggle('on', b.textContent === state.timeframe); });
-    if (this.#chartType.dataset.type !== state.chartType) {
-      this.#chartType.dataset.type = state.chartType;
-      this.#chartType.replaceChildren(chartTypeGlyph(state.chartType));
-      setTip(this.#chartType, `${chartTypeTip(state.chartType)} ${t('Click for the other ways to draw the price.')}`);
+    // Lit while the price is drawn, as the timeframe in use is; its drawing is the type's, kept while the price is hidden.
+    const priceShown = state.show.candles, look = `${state.chartType}|${priceShown}`;
+    if (this.#chartType.dataset.look !== look) {
+      this.#chartType.dataset.look = look;
+      if (this.#chartType.dataset.type !== state.chartType) { this.#chartType.dataset.type = state.chartType; this.#chartType.replaceChildren(chartTypeGlyph(state.chartType)); }
+      this.#chartType.classList.toggle('on', priceShown);
+      this.#chartType.setAttribute('aria-label', `${t('Chart type')}: ${chartChoiceName(chartChoiceOf(state.chartType, priceShown))}`);
+      setTip(this.#chartType, priceShown ? `${chartTypeTip(state.chartType)} ${t('Click for the other ways to draw the price, or Hidden to take it off the map.')}`
+        : t('The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.'));
     }
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));

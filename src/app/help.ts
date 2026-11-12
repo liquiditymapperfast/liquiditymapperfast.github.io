@@ -134,9 +134,9 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [],
   },
   candles: {
-    title: t('Candles'), guide: 'chart',
-    tip: t('Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.'),
-    body: [t('The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme\'s colour follows the theme.'),
+    title: t('Chart type'), guide: 'chart',
+    tip: t('How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.'),
+    body: [t('Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu\'s last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme\'s colour follows the theme.'),
       t('Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange\'s history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.')],
   },
   footprint: {

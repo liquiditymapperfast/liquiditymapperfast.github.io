@@ -53,7 +53,6 @@
  "Open interest": "Открытый интерес",
  "Show or hide the Open Interest pane: how many contracts are open, and how that number changes with each candle.": "Показать или скрыть панель «Открытый интерес»: сколько контрактов открыто и как это число меняется с каждой свечой.",
  "Candles": "Свечи",
- "Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.": "Рисовать ценовые свечи. Выключите их, чтобы видеть тепловую карту и пузыри сделок без ничего поверх.",
  "Footprint": "Футпринт",
  "Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.": "Приблизьте свечи, чтобы увидеть сделки за ними: по каждой цене сколько было продано (левое число) и куплено (правое число). Полосы отмечают цены, где одна сторона явно преобладала.",
  "Liquidity Tracker": "Liquidity Tracker",
@@ -2035,7 +2034,6 @@
  "Price reached your level at {price}": "Цена достигла вашего уровня {price}",
  "Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)": "Инструменты рисования: уровни, зоны, линии и заметки (Delete удаляет выбранный, Ctrl+Z отменяет)",
  "Chart type": "Тип графика",
- "Click for the other ways to draw the price.": "Нажмите, чтобы выбрать другой способ показа цены.",
  "Show it on the map": "Показать на карте",
  "Hide it from the map": "Скрыть с карты",
  "Hidden: show it on the map again": "Скрыт: снова показать на карте",
@@ -2556,8 +2554,13 @@
  "Outline candles are drawn in the border colour, or in the body colour where the border has none of its own.": "Полые свечи рисуются цветом контура, а если у контура нет своего цвета — цветом тела.",
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "Пока на карте показаны сделки в реальном времени, свечи рисуются контуром — цветом контура, если у него есть свой.",
  "Every candle colour back to the theme's.": "Все цвета свечей вернутся к цветам темы.",
- "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Меню «Тип графика» после таймфреймов рисует цену свечами, полыми свечами, барами OHLC или линией закрытий. Его последняя строка, «Цвета свечей», задаёт растущим и падающим свечам свои цвета тела, контура и тени; часть, оставленная в цвете темы, следует теме.",
  "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "Метка у последнего значения каждой линии показывает её движение за период оглядки (20 свечей) и называет его ростом, падением или боковиком: боковик, если движение меньше четверти пути линии, свеча за свечой.",
  "zoomed out: {timeframe} candles": "отдалено: свечи {timeframe}",
- "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "При таком отдалении, что свечи стали бы тоньше двух пикселей, график рисует более длинные свечи (4h, 1d, до недели), собранные из тех же свечей и истории биржи, а легенда называет их длину; свеча, по которой вы щёлкаете, чтобы поставить привязку, — та, что нарисована. Линейный график остаётся линией."
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "При таком отдалении, что свечи стали бы тоньше двух пикселей, график рисует более длинные свечи (4h, 1d, до недели), собранные из тех же свечей и истории биржи, а легенда называет их длину; свеча, по которой вы щёлкаете, чтобы поставить привязку, — та, что нарисована. Линейный график остаётся линией.",
+ "Hidden": "Скрыто",
+ "Click for the other ways to draw the price, or Hidden to take it off the map.": "Нажмите, чтобы выбрать другой способ показа цены, или «Скрыто», чтобы убрать её с карты.",
+ "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "Цена скрыта, поэтому тепловая карта и пузыри сделок видны без ничего поверх. Нажмите, чтобы снова нарисовать её свечами, полыми свечами, барами OHLC или линией.",
+ "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "Как карта рисует цену: свечами, полыми свечами, барами OHLC или линией, через кнопку «Тип графика» после таймфреймов, которая светится, пока цена нарисована. «Скрыто» убирает цену с карты, чтобы тепловая карта и пузыри сделок были видны без ничего поверх.",
+ "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Наведите на строку меню «Тип графика» — она появится на карте ещё до выбора, а «Скрыто» сохраняет тип до возвращения цены. Последняя строка меню, «Цвета свечей», задаёт растущим и падающим свечам свои цвета тела, контура и тени; часть, оставленная в цвете темы, следует теме.",
+ "The price is hidden: choose a chart type to see these colours on the map.": "Цена скрыта: выберите тип графика, чтобы увидеть эти цвета на карте."
 }

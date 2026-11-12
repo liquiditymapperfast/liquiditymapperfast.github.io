@@ -53,7 +53,6 @@
  "Open interest": "Açık pozisyon",
  "Show or hide the Open Interest pane: how many contracts are open, and how that number changes with each candle.": "Açık Pozisyon panelini göster veya gizle: kaç sözleşmenin açık olduğu ve bu sayının her mumla nasıl değiştiği.",
  "Candles": "Mumlar",
- "Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.": "Fiyat mumlarını çiz. Isı haritasını ve işlem balonlarını üstlerinde hiçbir şey olmadan görmek için kapatın.",
  "Footprint": "Footprint",
  "Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.": "Mumların arkasındaki işlemleri görmek için yakınlaştırın: her fiyatta ne kadar satıldığı (soldaki sayı) ve alındığı (sağdaki sayı). Çubuklar bir tarafın açıkça baskın olduğu fiyatları işaretler.",
  "Liquidity Tracker": "Liquidity Tracker",
@@ -1985,7 +1984,6 @@
  "Price reached your level at {price}": "Fiyat {price} seviyenize ulaştı",
  "Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)": "Çizim araçları: seviyeler, bölgeler, çizgiler ve notlar (Delete seçili olanı siler, Ctrl+Z geri alır)",
  "Chart type": "Grafik türü",
- "Click for the other ways to draw the price.": "Fiyatı göstermenin diğer yolları için tıklayın.",
  "Show it on the map": "Haritada göster",
  "Hide it from the map": "Haritadan gizle",
  "Hidden: show it on the map again": "Gizli: haritada yeniden göster",
@@ -2500,8 +2498,13 @@
  "Outline candles are drawn in the border colour, or in the body colour where the border has none of its own.": "İçi boş mumlar kenarlık rengiyle çizilir; kenarlığın kendi rengi yoksa gövde rengiyle.",
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "Haritada canlı işlemler gösterilirken mumlar çerçeve olarak çizilir; kenarlığın kendi rengi varsa o renkle.",
  "Every candle colour back to the theme's.": "Her mum rengi temanınkine döner.",
- "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Zaman dilimlerinden sonraki Grafik türü menüsü fiyatı mum, içi boş mum, OHLC çubuğu veya kapanış çizgisi olarak çizer. Son satırı Mum renkleri, yükselen ve düşen mumlara gövde, kenarlık ve fitil için kendi renklerinizi verir; temanın renginde bırakılan bir parça temayı izler.",
  "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "Her çizginin en yeni değerindeki etiket, geriye bakış süresindeki (20 mum) hareketini verir ve onu yükselen, düşen ya da yatay diye adlandırır: hareket, çizginin mum mum katettiği yolun dörtte birinden azsa yataydır.",
  "zoomed out: {timeframe} candles": "uzaklaştırıldı: {timeframe} mumlar",
- "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "Mumlar iki pikselden ince kalacak kadar uzaklaştırıldığında grafik aynı mumlardan ve borsanın geçmişinden oluşan daha uzun mumlar (4h, 1d, bir haftaya kadar) çizer ve açıklama bunların uzunluğunu söyler; bir sabitleme noktası koymak için tıkladığınız mum, çizilmiş olandır. Çizgi grafiği çizgi olarak kalır."
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "Mumlar iki pikselden ince kalacak kadar uzaklaştırıldığında grafik aynı mumlardan ve borsanın geçmişinden oluşan daha uzun mumlar (4h, 1d, bir haftaya kadar) çizer ve açıklama bunların uzunluğunu söyler; bir sabitleme noktası koymak için tıkladığınız mum, çizilmiş olandır. Çizgi grafiği çizgi olarak kalır.",
+ "Hidden": "Gizli",
+ "Click for the other ways to draw the price, or Hidden to take it off the map.": "Fiyatı göstermenin diğer yolları için tıklayın; “Gizli” fiyatı haritadan kaldırır.",
+ "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "Fiyat gizli; ısı haritası ve işlem balonları üstlerinde hiçbir şey olmadan görünür. Yeniden mum, içi boş mum, OHLC çubuğu veya çizgi olarak çizmek için tıklayın.",
+ "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "Haritanın fiyatı nasıl çizdiği: zaman dilimlerinden sonraki Grafik türü düğmesinden mum, içi boş mum, OHLC çubuğu veya çizgi; fiyat çizildiği sürece düğme yanar. “Gizli” fiyatı haritadan kaldırır; böylece ısı haritası ve işlem balonları üstlerinde hiçbir şey olmadan görünür.",
+ "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Grafik türü menüsünde bir satırın üzerine gelmek onu seçilmeden önce haritada gösterir; “Gizli” ise fiyat geri geldiğinde kullanılmak üzere türü saklar. Menünün son satırı Mum renkleri, yükselen ve düşen mumlara gövde, kenarlık ve fitil için kendi renklerinizi verir; temanın renginde bırakılan bir parça temayı izler.",
+ "The price is hidden: choose a chart type to see these colours on the map.": "Fiyat gizli: bu renkleri haritada görmek için bir grafik türü seçin."
 }

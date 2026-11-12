@@ -53,7 +53,6 @@
  "Open interest": "Open interest",
  "Show or hide the Open Interest pane: how many contracts are open, and how that number changes with each candle.": "Mostrar ou ocultar o painel de Open Interest: quantos contratos estão abertos e como esse número muda a cada vela.",
  "Candles": "Velas",
- "Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.": "Desenhar as velas de preço. Desligue-as para ver o mapa de calor e as bolhas de operações sem nada por cima.",
  "Footprint": "Footprint",
  "Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.": "Aproxime as velas para ver as operações por trás delas: em cada preço, quanto foi vendido (número da esquerda) e comprado (número da direita). As barras marcam preços em que um lado dominou claramente.",
  "Liquidity Tracker": "Liquidity Tracker",
@@ -2010,7 +2009,6 @@
  "Price reached your level at {price}": "O preço atingiu o seu nível em {price}",
  "Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)": "Ferramentas de desenho: níveis, zonas, linhas e notas (Delete apaga o selecionado, Ctrl+Z desfaz)",
  "Chart type": "Tipo de gráfico",
- "Click for the other ways to draw the price.": "Clique para ver as outras formas de desenhar o preço.",
  "Show it on the map": "Mostrar no mapa",
  "Hide it from the map": "Ocultar do mapa",
  "Hidden: show it on the map again": "Oculto: mostrar de novo no mapa",
@@ -2536,8 +2534,13 @@
  "Outline candles are drawn in the border colour, or in the body colour where the border has none of its own.": "As velas ocas são desenhadas na cor da borda, ou na do corpo quando a borda não tem cor própria.",
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "Enquanto os negócios ao vivo são mostrados no mapa, as velas são desenhadas como contorno, na cor da borda quando esta tem cor própria.",
  "Every candle colour back to the theme's.": "Todas as cores das velas voltam às do tema.",
- "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "O menu Tipo de gráfico, depois dos intervalos, desenha o preço como velas, velas ocas, barras OHLC ou uma linha de fechos. A sua última linha, Cores das velas, dá às velas de alta e de baixa cores suas para o corpo, a borda e o pavio; uma parte deixada na cor do tema segue o tema.",
  "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "Uma etiqueta no valor mais recente de cada linha dá o seu movimento no período de recuo (20 velas) e chama-lhe subida, descida ou lateral: lateral quando o movimento é menos de um quarto do percurso da linha, vela a vela.",
  "zoomed out: {timeframe} candles": "zoom afastado: velas de {timeframe}",
- "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "Com o zoom tão afastado que as velas ficariam mais finas que dois pixels, o gráfico desenha velas mais longas (4h, 1d, até uma semana) feitas das mesmas velas e do histórico da exchange, e a legenda diz a duração delas; a vela em que você clica para colocar uma âncora é a desenhada. Um gráfico de linha continua sendo uma linha."
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "Com o zoom tão afastado que as velas ficariam mais finas que dois pixels, o gráfico desenha velas mais longas (4h, 1d, até uma semana) feitas das mesmas velas e do histórico da exchange, e a legenda diz a duração delas; a vela em que você clica para colocar uma âncora é a desenhada. Um gráfico de linha continua sendo uma linha.",
+ "Hidden": "Oculto",
+ "Click for the other ways to draw the price, or Hidden to take it off the map.": "Clique para ver as outras formas de desenhar o preço, ou em “Oculto” para o tirar do mapa.",
+ "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "O preço está oculto, por isso o mapa de calor e as bolhas de operações veem-se sem nada por cima. Clique para o voltar a desenhar como velas, velas ocas, barras OHLC ou uma linha.",
+ "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "Como o mapa desenha o preço: velas, velas ocas, barras OHLC ou uma linha, a partir do botão Tipo de gráfico depois dos intervalos, aceso enquanto o preço é desenhado. “Oculto” tira o preço do mapa, para o mapa de calor e as bolhas de operações se verem sem nada por cima.",
+ "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Apontar para uma linha do menu Tipo de gráfico mostra-a no mapa antes de ser escolhida, e “Oculto” guarda o tipo para quando o preço voltar. A última linha do menu, Cores das velas, dá às velas de alta e de baixa cores suas para o corpo, a borda e o pavio; uma parte deixada na cor do tema segue o tema.",
+ "The price is hidden: choose a chart type to see these colours on the map.": "O preço está oculto: escolha um tipo de gráfico para ver estas cores no mapa."
 }

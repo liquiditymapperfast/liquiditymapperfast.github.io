@@ -53,7 +53,6 @@
  "Open interest": "持仓量",
  "Show or hide the Open Interest pane: how many contracts are open, and how that number changes with each candle.": "显示或隐藏持仓量面板：有多少合约未平仓，以及这个数字随每根 K 线的变化。",
  "Candles": "K 线",
- "Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.": "绘制价格 K 线。关闭后可以只看热力图和成交气泡，上面不遮挡任何东西。",
  "Footprint": "Footprint",
  "Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.": "放大 K 线，查看其背后的成交：在每个价位上卖出了多少（左侧数字）和买入了多少（右侧数字）。长条标出某一方明显占优的价位。",
  "Liquidity Tracker": "Liquidity Tracker",
@@ -1912,7 +1911,6 @@
  "Price reached your level at {price}": "价格到达你的水平线 {price}",
  "Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)": "绘图工具：水平线、区域、线条和备注（Delete 删除选中的，Ctrl+Z 撤销）",
  "Chart type": "图表类型",
- "Click for the other ways to draw the price.": "点击查看显示价格的其他方式。",
  "Show it on the map": "在地图上显示",
  "Hide it from the map": "从地图上隐藏",
  "Hidden: show it on the map again": "已隐藏：重新在地图上显示",
@@ -2418,8 +2416,13 @@
  "Outline candles are drawn in the border colour, or in the body colour where the border has none of its own.": "空心 K 线用边框颜色绘制；边框没有自己的颜色时用实体颜色。",
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "地图上显示实时成交时，K 线改画成轮廓；若边框有自己的颜色，则用该颜色。",
  "Every candle colour back to the theme's.": "所有 K 线颜色恢复为主题颜色。",
- "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "时间周期之后的“图表类型”菜单把价格画成 K 线、空心 K 线、OHLC 美国线或收盘价连线。它的最后一行“K 线颜色”可为上涨和下跌 K 线的实体、边框和影线设定自己的颜色；保留主题颜色的部分会跟随主题。",
  "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "每条线最新值处的标签给出它在回看期（20 根 K 线）内的变动，并说明是上升、下降还是持平：若变动不到该线逐根 K 线所走路程的四分之一，即为持平。",
  "zoomed out: {timeframe} candles": "已缩小：{timeframe} K 线",
- "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "缩小到 K 线会细于两个像素时，图表会画出由同样的 K 线和交易所历史合成的更长 K 线（4h、1d，最长一周），图例会写出它们的长度；为放置锚点而点击的 K 线就是画出来的那根。折线图仍保持为线。"
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "缩小到 K 线会细于两个像素时，图表会画出由同样的 K 线和交易所历史合成的更长 K 线（4h、1d，最长一周），图例会写出它们的长度；为放置锚点而点击的 K 线就是画出来的那根。折线图仍保持为线。",
+ "Hidden": "隐藏",
+ "Click for the other ways to draw the price, or Hidden to take it off the map.": "点击查看显示价格的其他方式，或选“隐藏”把价格从地图上移除。",
+ "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "价格已隐藏，热力图和成交气泡上面不遮挡任何东西。点击可重新以 K 线、空心 K 线、OHLC 美国线或线条显示价格。",
+ "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "地图如何显示价格：在时间周期之后的“图表类型”按钮中选择 K 线、空心 K 线、OHLC 美国线或线条，显示价格时按钮会亮起。“隐藏”把价格从地图上移除，热力图和成交气泡上面便不遮挡任何东西。",
+ "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "指向“图表类型”菜单中的一行，选择之前地图上就会显示它的样子；“隐藏”会保留类型，等价格回来时再用。菜单的最后一行“K 线颜色”可为上涨和下跌 K 线的实体、边框和影线设定自己的颜色；保留主题颜色的部分会跟随主题。",
+ "The price is hidden: choose a chart type to see these colours on the map.": "价格已隐藏：选择一种图表类型，即可在地图上看到这些颜色。"
 }

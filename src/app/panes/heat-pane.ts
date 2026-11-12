@@ -90,7 +90,7 @@ import type { DrawController } from '../draw/controller.ts';
 import { paintDrawings, paintEditing } from '../draw/paint.ts';
 import type { Projection } from '../draw/geometry.ts';
 import { wallRows, type CandleUnder } from '../draw/magnet.ts';
-import type { ChartType } from '../chart-type.ts';
+import { CHART_HIDDEN, type ChartChoice, type ChartType } from '../chart-type.ts';
 import { candleCoverage, candlePriceRange, isCovered, priceBounds, priceOverviewNeeded, pricePointAt, pricePoints, priceWindow, uncoveredRuns, type Covered, type PricePoint, type PriceWindow } from '../price-history.ts';
 import { liveCanvas } from '../live-canvas.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
@@ -359,8 +359,16 @@ export class HeatPane {
   draw: DrawController | null = null;
   /** Each frame, where the drawing tools' controls go: the plot's left edge in the pane, its projection and the legend's foot (set by the page). */
   onDrawFrame: ((f: { left: number; pr: Projection; legendBottom: number }) => void) | null = null;
-  /** A chart type pointed at in its menu, drawn without being kept (null: the one kept, `state.chartType`). */
-  previewChartType: ChartType | null = null;
+  /**
+   * A row of the Chart type menu pointed at, drawn without being kept: a type (the price drawn that way, even while it is hidden) or Hidden
+   * (the map without the price); null: as kept, `state.chartType` and `state.show.candles`. Only the painting follows it: the price history,
+   * the magnet and the pointer's readout go by what is kept.
+   */
+  previewChartType: ChartChoice | null = null;
+  /** The type the candles are drawn in this frame (the one pointed at in the menu, else the one kept). */
+  #drawnType(state: AppState): ChartType { const p = this.previewChartType; return p !== null && p !== CHART_HIDDEN ? p : state.chartType; }
+  /** Whether the price is painted this frame: as kept (`show.candles`) unless a row of the Chart type menu is pointed at. */
+  #pricePainted(state: AppState): boolean { const p = this.previewChartType; return p === null ? state.show.candles : p !== CHART_HIDDEN; }
   readonly #drawEdit = document.createElement('canvas');
   #drawEditCtx: CanvasRenderingContext2D;
   /** The levels' tags on the price axis this frame, placed with the key levels'. */
@@ -1257,9 +1265,10 @@ export class HeatPane {
       this.#tpo.paint(ctx, this.#tpoFrame(state), p, this.#labels, key => !!lined?.has(key) && this.#tpo.plain(key)); // under the candles, as the period profiles
     }
     this.#paintPastProfiles(ctx, state, pw, ph); // under the candles: the shape of each past window behind its own bars
-    if (state.show.candles) this.#paintOverview(ctx, state, pw, ph);
-    if (state.show.candles) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
-    if (state.show.candles) this.#paintDivergences(ctx, state, pw, ph); // joined swings need the candles they join
+    const pricePainted = this.#pricePainted(state);
+    if (pricePainted) this.#paintOverview(ctx, state, pw, ph);
+    if (pricePainted) this.#paintCandles(ctx, state, pw, ph, this.#lodFrame.narrowing);
+    if (pricePainted) this.#paintDivergences(ctx, state, pw, ph); // joined swings need the candles they join
     this.#paintTrace(ctx, state, pw, ph); // over the candles (hollow while the dust shows), under the bubbles
     this.#paintBubbles(ctx, state, pw, ph); // above the candles, so a large trade is never hidden behind one
     this.#paintLiquidations(ctx, state, pw, ph); // above the bubbles: a forced order is one of the market orders, marked as forced
@@ -1296,7 +1305,7 @@ export class HeatPane {
     ctx.fillStyle = p.muted; ctx.textAlign = 'left';
     // The countdown to the candle's close sits under the price tag (above it at the foot of the axis), inside the band kept clear of other tags.
     const markY = Math.min(ph - 8, Math.max(8, v.yOf(mark, ph))), tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    const clockText = mark > 0 && state.show.candles && !isPhone() ? countdown(pageNow(), tf) : null, clockBelow = markY + 9 + COUNTDOWN_H <= ph;
+    const clockText = mark > 0 && this.#pricePainted(state) && !isPhone() ? countdown(pageNow(), tf) : null, clockBelow = markY + 9 + COUNTDOWN_H <= ph;
     const band = { y0: markY - 9 - (clockText && !clockBelow ? COUNTDOWN_H : 0), y1: markY + 9 + (clockText && clockBelow ? COUNTDOWN_H : 0) };
     const keyTags = placeKeyTags([...this.#drawTags, ...this.#valueTags, ...this.#keyTags, ...this.#vwapTags], mark > 0 ? [band] : [], ph);
     for (let q = Math.ceil(v.p0 / pStep) * pStep; q <= v.p1; q += pStep) { const y = v.yOf(q, ph); if (y > 6 && y < ph - 6 && !underTag(keyTags, y) && !(mark > 0 && y > band.y0 && y < band.y1)) ctx.fillText(fmtPrice(q, pStep), axisX + 6, y); }
@@ -1709,7 +1718,7 @@ export class HeatPane {
    */
   drawnTf(state: AppState = this.store.state): number {
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
-    if ((this.previewChartType ?? state.chartType) === 'line' || !(this.plotW > 0)) return tf;
+    if (this.#drawnType(state) === 'line' || !(this.plotW > 0)) return tf;
     const v = this.view, wide = stripTimeframe(tf, v.t1 - v.t0, this.plotW).ms;
     return wide > tf ? Math.max(wide, this.#coarseAnswer(state)?.tfMs ?? 0) : tf;
   }
@@ -2326,7 +2335,7 @@ export class HeatPane {
     const halo = p.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)', outline = 1 - 0.85 * narrowing;
     // While the trade dust shows, a candle is its outline and a thin wick: a filled body (and its halo) would hide the orders inside it. Outline
     // candles are outlines always; OHLC bars and the line are drawn their own way (chart-type.ts).
-    const type = this.previewChartType ?? state.chartType, hollow = type === 'outline' || (this.#dustOn(state) && !this.#dustFailed);
+    const type = this.#drawnType(state), hollow = type === 'outline' || (this.#dustOn(state) && !this.#dustFailed);
     // Narrower than CANDLE_LINE_PX a candle is a few overlapping marks per pixel (a 45-day view of hourly ones drew 1,100 of them, six to
     // eight drawing calls and a blurred ring each, on every pointer move: 14 frames a second, 2026-10-30): the candles drawn are then longer
     // ones made of them (`drawnTf`, `zoomedRows`; a user, 2026-11-11: "need to be able to see candles on higher zoom outs"), a few drawing

@@ -41,6 +41,8 @@ export function buildCandleColorsPanel(store: Store, tools: HTMLElement, body: H
   const state = store.state, p = PALETTES[resolveThemeId(state.theme)] ?? PALETTES.dark!, type = state.chartType, filled = filledOf(type);
   tools.append(helpButton('candles'));
   body.append(note(t('Colours of your own for the candles, in place of the theme\'s. A part left at the theme\'s colour follows the theme.')));
+  // Hidden in the Chart type menu: the colours are kept, and nothing on the map shows them until a type draws the price again.
+  if (!state.show.candles) body.append(note(t('The price is hidden: choose a chart type to see these colours on the map.')));
   const preview = candlePreview(p);
   body.append(preview.root);
   preview.paint(state.candleColors, type);

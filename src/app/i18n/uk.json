@@ -135,7 +135,6 @@
  "Show or hide the Depth pane under the chart: total bid and ask liquidity within a chosen distance of the price, over time.": "Показати або сховати панель глибини під графіком: загальна ліквідність бідів і асків у межах обраної відстані від ціни з плином часу.",
  "Show or hide the Open Interest pane: how many contracts are open, and how that number changes with each candle.": "Показати або сховати панель відкритого інтересу: скільки контрактів відкрито і як ця кількість змінюється з кожною свічкою.",
  "Candles": "Свічки",
- "Draw the price candles. Turn them off to see the heatmap and the trade bubbles without anything on top.": "Малювати цінові свічки. Вимкніть їх, щоб бачити теплову карту та бульбашки угод без нічого зверху.",
  "Footprint": "Футпринт",
  "Zoom in on the candles to see the trades behind them: at each price, how much was sold (left number) and bought (right number). Bars mark prices where one side clearly dominated.": "Наблизьте свічки, щоб побачити угоди за ними: на кожній ціні — скільки продано (ліве число) і куплено (праве число). Смуги позначають ціни, на яких одна сторона явно домінувала.",
  "Liquidity Tracker": "Liquidity Tracker",
@@ -2040,7 +2039,6 @@
  "Price reached your level at {price}": "Ціна досягла вашого рівня {price}",
  "Drawing tools: levels, zones, lines and notes (Delete removes the one selected, Ctrl+Z undoes)": "Інструменти малювання: рівні, зони, лінії та нотатки (Delete видаляє вибраний, Ctrl+Z скасовує)",
  "Chart type": "Тип графіка",
- "Click for the other ways to draw the price.": "Клацніть, щоб вибрати інший спосіб показу ціни.",
  "Show it on the map": "Показати на карті",
  "Hide it from the map": "Сховати з карти",
  "Hidden: show it on the map again": "Сховано: знову показати на карті",
@@ -2561,8 +2559,13 @@
  "Outline candles are drawn in the border colour, or in the body colour where the border has none of its own.": "Порожнисті свічки малюються кольором контуру, а якщо в контуру немає власного кольору — кольором тіла.",
  "While live trades show on the map, candles are drawn as outlines, in the border colour where it has one of its own.": "Поки на мапі показано угоди в реальному часі, свічки малюються контуром — кольором контуру, якщо він має власний.",
  "Every candle colour back to the theme's.": "Усі кольори свічок повернуться до кольорів теми.",
- "The Chart type menu, after the timeframes, draws the price as candles, outline candles, OHLC bars or a line of closes. Its last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Меню «Тип графіка» після таймфреймів малює ціну свічками, порожнистими свічками, барами OHLC або лінією закриттів. Його останній рядок, «Кольори свічок», задає зростаючим і спадним свічкам власні кольори тіла, контуру й тіні; частина, залишена в кольорі теми, слідує темі.",
  "A label at each line's newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line's path, candle by candle.": "Мітка біля останнього значення кожної лінії показує її рух за період огляду (20 свічок) і називає його зростанням, спадом чи боковиком: боковик, якщо рух менший за чверть шляху лінії, свічка за свічкою.",
  "zoomed out: {timeframe} candles": "віддалено: свічки {timeframe}",
- "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "За такого віддалення, що свічки стали б тоншими за два пікселі, графік малює довші свічки (4h, 1d, до тижня), зібрані з тих самих свічок та історії біржі, а легенда називає їхню довжину; свічка, на яку ви клацаєте, щоб поставити прив’язку, — та, що намальована. Лінійний графік лишається лінією."
+ "Zoomed out until the candles would be thinner than two pixels, the chart draws longer ones (4h, 1d, up to a week) made of the same candles and the exchange's history, and the legend names their length; a candle clicked to place an anchor is the one drawn. A line chart stays a line.": "За такого віддалення, що свічки стали б тоншими за два пікселі, графік малює довші свічки (4h, 1d, до тижня), зібрані з тих самих свічок та історії біржі, а легенда називає їхню довжину; свічка, на яку ви клацаєте, щоб поставити прив’язку, — та, що намальована. Лінійний графік лишається лінією.",
+ "Hidden": "Приховано",
+ "Click for the other ways to draw the price, or Hidden to take it off the map.": "Клацніть, щоб вибрати інший спосіб показу ціни, або «Приховано», щоб прибрати її з карти.",
+ "The price is hidden, so the heatmap and the trade bubbles show with nothing on top. Click to draw it again as candles, outline candles, OHLC bars or a line.": "Ціну приховано, тож теплову карту й бульбашки угод видно без нічого зверху. Клацніть, щоб знову намалювати її свічками, порожнистими свічками, барами OHLC або лінією.",
+ "How the map draws the price: candles, outline candles, OHLC bars or a line, from the Chart type button after the timeframes, lit while the price is drawn. Hidden takes the price off the map, so the heatmap and the trade bubbles show with nothing on top.": "Як карта малює ціну: свічками, порожнистими свічками, барами OHLC або лінією, через кнопку «Тип графіка» після таймфреймів, що світиться, поки ціну намальовано. «Приховано» прибирає ціну з карти, щоб теплову карту й бульбашки угод було видно без нічого зверху.",
+ "Pointing at a row of the Chart type menu shows it on the map before it is chosen, and Hidden keeps the type for when the price comes back. The menu's last row, Candle colours, gives rising and falling candles a body, border and wick colour of your own; a part left at the theme's colour follows the theme.": "Наведіть на рядок меню «Тип графіка» — його буде видно на карті ще до вибору, а «Приховано» зберігає тип до повернення ціни. Останній рядок меню, «Кольори свічок», задає зростаючим і спадним свічкам власні кольори тіла, контуру й тіні; частина, залишена в кольорі теми, слідує темі.",
+ "The price is hidden: choose a chart type to see these colours on the map.": "Ціну приховано: виберіть тип графіка, щоб побачити ці кольори на карті."
 }
