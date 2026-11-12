@@ -194,7 +194,7 @@ async function main(): Promise<void> {
     { id: 'script', root: script.root, height: 220, min: 60, head: script.header, closable: false },
   ];
   const arrange = new Layout(main, chart, { left: flowCol, right: side }, strip, [
-    { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow') },
+    { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow'), views: [{ id: 'flow', title: t('Flow') }, { id: 'tns', title: t('Time & sales') }] },
     { id: 'book', root: ladder.root, head: ladder.controls, title: t('Order Book') },
   ]);
   // What the person does to the layout (layouts/actions.ts): the layouts panel, a pane's close button and the edge tab of a closed side pane (the Panels row in the top bar flips the same switches).
@@ -203,6 +203,10 @@ async function main(): Promise<void> {
     env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200), held: scriptRows(store.state) ? ['script' as const] : [] }),
   });
   arrange.onClose = id => layouts.hide(id, arrange.title(id)); arrange.onOpen = id => layouts.setPane(id, true);
+  arrange.onView = (id, view) => { if (id === 'cvd' && (view === 'flow' || view === 'tns') && store.state.flowView !== view) store.set({ flowView: view }); };
+  // Time & sales takes every order the live stream sends (it asks for nothing); a click on a row takes the map to the order.
+  hub.onLivePrints = live => cvd.tns.take(live);
+  cvd.tns.onGoTo = (at, price) => heat.focusOn({ t0: at, t1: at, p0: price, p1: price });
   // A desktop folds its side columns to their edge tabs when the map would be left too little plot (layouts/dock-model.ts `chooseFold`).
   arrange.plotAt = paneW => paneW - gutterAt(paneW, store.state);
   toolbar.layouts = layouts;
@@ -492,6 +496,11 @@ async function main(): Promise<void> {
     // The page's glass draws its next frame with the new strength; the Tape's reads it with each frame it draws.
     if (changed.has('waveStrength')) { glass.setStrength(state.waveStrength); candle.invalidate(); }
     if (changed.has('cvd')) cvd.settingsChanged();
+    if (changed.has('flowView')) cvd.viewChanged();
+    // A venue switched on or off filters the list as its own settings do: drawn again from the top.
+    if (changed.has('tns') || changed.has('disabledVenues')) cvd.tns.refresh();
+    else if (changed.has('sounds') || changed.has('replay') || changed.has('timeZone')) cvd.tns.redraw();
+    if (changed.has('connected') && !state.connected) cvd.tns.streamBroke();
     if (changed.has('status') || changed.has('connected') || changed.has('mark')) showStatus();
     if (changed.has('show') || changed.has('liqLevels')) layout(); else if (changed.has('traded')) { gutters(); arrange.refit(); }
     // The map's own columns change with the market too (the liquidation column is BTC's, the price axis as wide as its prices).

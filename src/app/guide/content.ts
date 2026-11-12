@@ -171,6 +171,20 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
+    id: 'tns', title: 'Time & sales',
+    blocks: [
+      { t: 'p', text: '**Time & sales**, the second tab in the flow column\'s title, lists the large market orders as they arrive, newest on top: the time, the exchange, the side (▲ bought, ▼ sold, in the buy and sell colours), the price and the size. They are the orders the trade bubbles draw, so the list and the map tell the same story, one in numbers and one in place.' },
+      { t: 'list', items: [
+        'The list starts when the page opens and fetches nothing. The menu above the rows sets the smallest order: $100,000 at first, any size from $25,000 in the settings key. A busy minute of BTC orders from $25,000 is more rows than anyone can read.',
+        'A burst of orders on one exchange and side, each within half a second of the last and three seconds of the first, is one row: ×16 says how many, the size is their total and the price their average weighted by size. The settings key turns that off.',
+        'Bold rows are whale size, as the bubbles\' glow (the Whale size in Sounds). The bar behind a size grows on a log scale, from the smallest order listed to a hundred times it.',
+        'Point at the list to hold it still: a button counts the new rows and brings them in. The order you point at is marked on the map and the panes at its moment, and a click takes the map there.',
+        'A line between rows says where orders may be missing: the stream dropped, or the page was in the background.',
+      ] },
+      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view, Flow and Time & sales. A phone\'s Flow tab shows the flow lines.' },
+    ],
+  },
+  {
     id: 'chart', title: 'Candles and volume',
     blocks: [
       { t: 'p', text: 'Each candle is one period of price: the thin line is the full range, the body runs from open to close, green when price rose and red when it fell. The buttons at the top (1m to 1d) set the length of a candle, and the footprint, bar stats and open-interest bars follow it. **Volume** bars sit along the bottom, split into what was bought and sold at market; hover one for its shares, its market orders and their average size. Unusually large ones are drawn stronger.' },

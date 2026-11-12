@@ -232,8 +232,20 @@ How it is built:
 | Grouping, ranking with a held order, row heights, hit tests, bursts, the words | `src/app/cvd/` (pure; `tests/app-cvd*.test.mts`) |
 | The dot rows: bands, rows, the coverage rule, the dots, the words | `src/app/cvd/strip.ts` (pure; `tests/app-cvd-strip.test.mts`) |
 | The canvas, pointer and controls; the dot rows' canvas, questions and blink | `src/app/panes/cvd-pane.ts`, `src/app/panes/cvd-strip.ts` |
+| Time & sales: the orders held, the gaps, the filter and the merge; the list | `src/app/tns/model.ts` (pure; `tests/app-tns.test.mts`), `src/app/panes/tns-view.ts` |
 
 Trades reach the recorder from every connector (the browser source runs the exchanges itself, so every venue it runs counts) and, on the server, from the feed manager (Hyperliquid, Binance) and the extra venues (`ExtraVenues.onTrade`). The manager has no trade feed for Bybit, OKX, Bitget, Deribit or Coinbase, so a page served by the server shows those as depth only: open it with `?source=browser` to count every venue. Why the scan is JavaScript and not WebAssembly: `Research_Findings.md` (measured).
+
+### Time & sales
+
+The flow column's name is a tab for each of its views: **Flow** (the lines above) and **Time & sales**, the large market orders as a list, newest on top: the time, the exchange's mark (with the spot notch), ▲/▼ in the side's colour, the price and the size. A narrow column writes T&S. With the column closed (or folded to leave the map room) its edge strip has a tab for each view, which opens it on that view; the Panels deck's **Flow** button shows and hides the column whatever it shows. A phone's Flow tab is the flow lines alone.
+
+- **Forward only, no request.** The rows are made of the orders the live stream sends the page anyway (the trade bubbles' orders, $25K and up, the fills of one order added together), every one the stream sends, also those the page's own book already held from a history answer (`Hub.onLivePrints`). The list begins when the page opens (a coin change reloads the page) and keeps the last 5,000 orders in memory; nothing is written or fetched.
+- **What is listed.** The exchanges whose bubbles are drawn (`instrumentShown`), the side chosen, and orders of at least the smallest order: $100K by default (scaled per coin), the menu above the rows or the settings key. A week of BTC on the eleven default venues made 13 rows a minute at the median, 47 at the 90th percentile and 141 at the 99th at $100K with bursts merged; at $25K unmerged, 71 / 248 / 906 (Research_Findings.md).
+- **A burst is one row.** An order on the row's exchange and side within 500 ms of its time span (before its first order or after its last, by exchange time: arrival order is not time order) joins it while the row spans at most 3 s: ×16 says how many, the size is their total, the price their average weighted by size. A switch in the settings turns it off.
+- **Emphasis.** Whale-size rows (the Sounds' Whale tier, the size the bubbles glow at: $400K for BTC) are bold; a bar from the row's right edge grows with the size on a log scale, from the smallest order listed to a hundred times it.
+- **Pointing at the list holds it** (and so does scrolling down): the rows drawn stay, and a button counts the new ones and brings them in. The row pointed at sets the shared time cursor, so the map and the panes draw its moment; a click centres the map on its time and price (Live brings it back).
+- **Gaps.** A line between rows says where orders may be missing: the stream reconnected, or the page was hidden through more than 30 s without an order (a tablet suspends it; a desktop window keeps receiving, so being hidden alone is no gap). During a replay the list goes on with live orders and says so; pointing at a row and clicking it do nothing then (the map shows another moment).
 
 ## Layouts and the places of the panes
 

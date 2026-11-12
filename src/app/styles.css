@@ -379,7 +379,40 @@ html[data-layout="desktop"] .pane.heat .map-tools.compact :is(.map-select, .map-
 .cvd-notice-btn { flex: 0 0 auto; white-space: nowrap; }
 .cvd-wrap canvas { position: absolute; left: 0; top: 0; display: block; }
 .cvd-wrap canvas.cvd-flash, .cvd-wrap canvas.cvd-line { pointer-events: none; }
-.pane.cvd .cvd-span-select { display: none; }
+.pane.cvd .cvd-span-select, .pane.cvd .cvd-seg[hidden] { display: none; }
+/* The flow column's views (panes/cvd-pane.ts): the name is a tab for each, lit like the chosen timeframe; a narrow column writes T&S. */
+.pane-head strong.cvd-views { display: inline-flex; font-size: 11.5px; }
+.cvd-views .cvd-view { padding: 1px 7px; font-weight: 650; white-space: nowrap; }
+.cvd-views .cvd-view .short, .pane.cvd.narrow .cvd-views .cvd-view[data-view="tns"] .long { display: none; }
+.pane.cvd.narrow .cvd-views .cvd-view[data-view="tns"] .short { display: inline; }
+html[data-layout="desktop"] .side-head > strong.cvd-views { max-width: none; overflow: visible; flex: 0 0 auto; }
+/* Time & sales (panes/tns-view.ts): a bar with the smallest order and since when, the rows, and the button that brings in what came while held. */
+.tns { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.tns[hidden] { display: none; }
+.tns-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.tns-floor { padding: 1px 4px; font-size: 11px; }
+.tns-since { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.tns-empty { padding: 10px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.tns-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.tns-row { --c: var(--candle-up); position: relative; display: grid; grid-template-columns: 8ch 16px 1.2ch minmax(0, 1fr) auto; align-items: center; gap: 5px; height: 20px; padding: 0 8px; cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); background: linear-gradient(90deg, color-mix(in srgb, var(--c) 9%, transparent), transparent 75%); }
+.tns-row.sell { --c: var(--candle-down); }
+.tns.replaying .tns-row { cursor: default; }
+.tns-row:hover { background: color-mix(in srgb, var(--c) 18%, var(--panel)); }
+.tns-t { color: var(--muted); }
+.tns-sd { color: var(--c); font-size: 10px; }
+.tns-p { position: relative; text-align: right; overflow: hidden; color: var(--text); }
+.tns-t, .tns-sd, .tns-row > .venue-mark { position: relative; }
+/* Up to half the row from its right edge: $100K a sliver, ten times it half the bar, a hundred times it all of it (log). */
+.tns-size { position: absolute; right: 6px; top: 3px; bottom: 3px; width: calc((100% - 12px) * var(--w) * 0.5); background: color-mix(in srgb, var(--c) 22%, transparent); border-radius: 2px; }
+.tns-u { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 9.5ch; color: var(--c); }
+.tns-u > em, .tns-u > b { font-style: normal; font-weight: 500; }
+.tns-u > em { color: var(--muted); font-size: 11px; }
+.tns-row.whale .tns-u > b { font-weight: 750; color: var(--text); }
+.tns.narrow .tns-row { grid-template-columns: 16px 1.2ch minmax(0, 1fr) auto; }
+.tns.narrow .tns-t { display: none; }
+.tns-gap { padding: 4px 8px; border-bottom: 1px dashed var(--line); color: var(--muted); font: italic 11px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.tns-pill { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 2px 12px; border-radius: 999px; font-size: 11px; box-shadow: 0 2px 6px rgb(0 0 0 / .25); z-index: 2; }
 /* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop the choices are tiles of one width under
    the first line, their captions above them, as many to a row as fit and filling it; or on the first line itself when all of them fit there (the header's
    fit-inline class), or the line's own ones there (data-fit="lead") and the others under it. Keys (data-fit="key") sit at the first line's right end, beside

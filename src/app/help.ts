@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'tns' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
 
 export interface HelpTopic {
   title: string;
@@ -255,6 +255,13 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('Passive liquidity (the heatmap and the book) is what traders have placed and may pull; flow is what they have actually done. A line rising means buyers are lifting offers faster than sellers are hitting bids.'),
       t('Rows are ranked by volume over the window you choose and re-ranked now and then. Every line has its own scale, so compare shapes, not heights. The labels are on the left so that the ends of the lines stay clear. Hover a row for its numbers; the gear sets how many exchanges, how tall each row is and when the order changes.'),
       t('A small triangle on a line marks a burst: in ten seconds that exchange bought (up) or sold (down) far more at market than it usually does, judged against its last half hour, and at least the smallest burst. Only bursts seen while the page is open are marked, so a reload clears them. The marks are off until switched on in the gear, which also sets how big and how unusual a burst must be.')],
+  },
+  tns: {
+    title: t('Time & sales'), guide: 'tns',
+    tip: t('The flow column\'s second view: every large market order as it arrives, newest on top, with its time, exchange, side, price and size. Nothing is fetched, so the list starts when the page opens.'),
+    body: [t('The tabs in the column\'s title switch between the flow lines and this list; with the column closed, the strip along the edge has a tab for each. The orders are the ones the trade bubbles draw, from the exchanges switched on, so a row on the list is a bubble on the map.'),
+      t('From $100,000 by default (the menu above the list, or the settings key): a busy minute of BTC orders from $25,000 is too many rows to read. A burst of orders on one exchange and side is one row, ×16 saying how many, its size added up and its price their average weighted by size. Bold rows are whale size, as the bubbles\' glow; the bar behind a size grows with it on a log scale.'),
+      t('Pointing at the list holds it still: new rows are counted on a button that brings them in. The order pointed at is marked on the map and the panes at its moment, and a click takes the map there. A line says where orders may be missing: the stream dropped, or the page was in the background.')],
   },
   book: {
     title: t('Order book'), guide: 'order-book',

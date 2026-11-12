@@ -71,6 +71,7 @@ test('the deck aligner counts its ways before making them: long rows fall back a
 
 test('nothing to place is an empty grid; two layouts are the same when their columns and spans are', () => {
   assert.equal(chooseFit([], 300, 8).rows, 0);
+  assert.equal(chooseFit([], 300, 8).inline, true, 'a header with every cell hidden is its identity line alone');
   assert.equal(sameFit(chooseFit(cells(80, 80), 400, 8), chooseFit(cells(81, 79), 400, 8)), true);
   assert.equal(sameFit(chooseFit(cells(80, 80), 400, 8), chooseFit(cells(80, 80), 100, 8)), false);
 });

@@ -35,8 +35,11 @@ export interface LayoutPane {
   /** False for a pane whose switch is more than the pane's (the Scripts pane: its switch is the Scripts feature, which draws on the map too): it has no close button. */
   closable?: boolean;
 }
-/** A pane that stands beside the map: its header (the controls it has), and the name its edge tab and its buttons give it. */
-export interface SidePane { id: SidePaneId; root: HTMLElement; head: HTMLElement; title: string }
+/**
+ * A pane that stands beside the map: its header (the controls it has), and the name its edge tab and its buttons give it. A pane with `views`
+ * (the flow column: its flow lines, Time & sales) gets an edge tab for each, which opens it on that view.
+ */
+export interface SidePane { id: SidePaneId; root: HTMLElement; head: HTMLElement; title: string; views?: readonly { id: string; title: string }[] }
 
 /** A pane that can be moved by its header: a side pane or a pane under the map. */
 interface Mover { id: string; kind: 'side' | 'strip'; root: HTMLElement; head: HTMLElement; title: () => string; closable: boolean }
@@ -76,6 +79,8 @@ export class Layout {
   /** What the close button of a pane, and the edge tab of a closed one, do (the page's switches are the page's). */
   onClose: (id: string) => void = () => {};
   onOpen: (id: string) => void = () => {};
+  /** An edge tab of one of a pane's views was pressed: the page shows that view (before the pane opens, so it opens on it). */
+  onView: (id: SidePaneId, view: string) => void = () => {};
 
   constructor(private main: HTMLElement, private chart: HTMLElement, regions: Record<Side, HTMLElement>, panes: LayoutPane[], sidePanes: SidePane[]) {
     this.#panes = panes;
@@ -268,13 +273,19 @@ export class Layout {
     const key = `${closed.join()}|${folded.join()}`;
     if (this.#railKeys[side] === key) return;
     this.#railKeys[side] = key;
-    this.#rails[side].replaceChildren(...closed.map(id => {
-      const title = this.#sidePanes.get(id)?.title ?? id;
-      const fold = folded.includes(id), words = fold ? t('{name} is folded to leave the map room. Show it anyway', { name: title }) : t('Show {name}', { name: title });
-      const open = (): void => { if (fold) { this.#foldOff = true; this.#renderSides(); } else this.onOpen(id); };
-      const tab = el('button', { type: 'button', class: fold ? 'edge-tab folded' : 'edge-tab', tip: words, ariaLabel: words, onclick: open }, el('i', { class: 'edge-chev', ariaHidden: 'true' }), el('span', { textContent: title }));
-      tab.dataset.pane = id;
-      return tab;
+    this.#rails[side].replaceChildren(...closed.flatMap(id => {
+      const pane = this.#sidePanes.get(id), fold = folded.includes(id);
+      // A pane of several views has a tab for each (Karl, 2026-11-12: "similar buttons for the other things" on the collapsed column's strip).
+      const views: readonly ({ id: string; title: string } | null)[] = pane?.views?.length ? pane.views : [null];
+      return views.map(view => {
+        const title = view?.title ?? pane?.title ?? id;
+        const words = fold ? t('{name} is folded to leave the map room. Show it anyway', { name: title }) : t('Show {name}', { name: title });
+        const open = (): void => { if (view) this.onView(id, view.id); if (fold) { this.#foldOff = true; this.#renderSides(); } else this.onOpen(id); };
+        const tab = el('button', { type: 'button', class: fold ? 'edge-tab folded' : 'edge-tab', tip: words, ariaLabel: words, onclick: open }, el('i', { class: 'edge-chev', ariaHidden: 'true' }), el('span', { textContent: title }));
+        tab.dataset.pane = id;
+        if (view) tab.dataset.view = view.id;
+        return tab;
+      });
     }));
   }
 

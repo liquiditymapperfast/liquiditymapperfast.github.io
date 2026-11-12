@@ -72,6 +72,8 @@ export interface StripSnapshot { hidden: boolean; width: number; height: number;
  */
 export class CvdStrip {
   readonly root = el('div', { class: 'cvd-strip', hidden: true });
+  /** The column shows another view (Time & sales): the rows are part of the flow view and hide with it. */
+  covered = false;
   #canvas = document.createElement('canvas');
   #ctx = this.#canvas.getContext('2d')!;
   #card = new HoverCard();
@@ -132,7 +134,7 @@ export class CvdStrip {
     const s = this.store.state, c = s.cvd;
     // A phone's flow pane is half the map's height and has no room for 130 px of dots above its rows: the strip is for the desktop arrangement (a tablet held sideways has it).
     // Replay: the sizes are counted on the server's clock, the flow rows end now: neither is the replay's moment.
-    this.root.hidden = !c.strip || isPhone() || replaying();
+    this.root.hidden = this.covered || !c.strip || isPhone() || replaying();
     if (this.root.hidden) { this.#card.hide(); return; }
     const windows = askedWindows(rankMinutes(c)), cuts = bandCuts(sizeBands(c)), key = this.#key(windows, cuts);
     this.#ask(windows, cuts, key);

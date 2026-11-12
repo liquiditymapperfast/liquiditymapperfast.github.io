@@ -57,7 +57,8 @@ function gridOf(cells: readonly FitCell[], avail: number, gap: number): Omit<Fit
  */
 export function chooseFit(cells: readonly FitCell[], avail: number, gap: number, inlineAvail: number | null = null, lineGap = gap): FitChoice {
   const n = cells.length;
-  if (!n) return { lead: 0, inline: false, cols: 1, rows: 0, spans: [] };
+  // Nothing to place (every cell hidden: the flow column's Time & sales view) is the identity line alone, with no empty grid line under it.
+  if (!n) return { lead: 0, inline: true, cols: 1, rows: 0, spans: [] };
   const own = cells.findIndex(c => !c.lead), leads = own < 0 ? n : own;
   // Every cell on the line, then the line's own cells, then none: the first that fits.
   const options = inlineAvail === null ? [0] : [...new Set([n, leads, 0])];

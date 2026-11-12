@@ -40,6 +40,8 @@ import { pageNow, replaying } from '../replay/clock.ts';
 import { flowEndChange, type FlowEnd } from '../cvd/flash.ts';
 import { FitGrid } from '../ui/fit-grid.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
+import { TnsView } from './tns-view.ts';
+import type { FlowView } from '../tns/model.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const PAD = 6, LINE_H = 12;
@@ -148,6 +150,14 @@ export class CvdPane {
   #spanButtons = new Map<CvdSpan, HTMLButtonElement>();
   #spanSelect = el('select', { class: 'cvd-span-select', ariaLabel: t('Time span') });
   #gear = el('button', { type: 'button', class: 'icon-btn cvd-gear', ariaLabel: t('Settings'), tip: t('How the column ranks and draws the exchanges.') });
+  /** The column's views, a tab each in the header's name (the flow lines, Time & sales); a phone shows the flow alone. */
+  #viewTabs = new Map<FlowView, HTMLButtonElement>();
+  #helpFlow = helpButton('cvd'); #helpTns = helpButton('tns');
+  /** The span buttons' cell, which only the flow view has. */
+  #cells: HTMLElement | null = null;
+  #shownView: FlowView | null = null;
+  /** Time & sales, the column's second view (set up in the constructor). */
+  readonly tns: TnsView;
   /** Bursts the alert engine has seen, drawn as markers on their rows (set from outside; newest last). */
   events: readonly BurstEvent[] = [];
   #timer = 0;
@@ -160,22 +170,67 @@ export class CvdPane {
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private view: View) {
     this.#strip = new CvdStrip(store, hub); this.#rankingKey = rankingKey(store.state.cvd);
-    this.root.append(this.controls, this.#strip.root, this.#notice, this.#wrap);
+    this.tns = new TnsView(store);
+    this.root.append(this.controls, this.#strip.root, this.#notice, this.#wrap, this.tns.root);
     this.#lineCanvas.className = 'cvd-line';
     this.#wrap.append(this.#canvas, this.#lineCanvas, this.#flashCanvas);
     host.append(this.root);
     this.#ctx = this.#canvas.getContext('2d')!; this.#lineCtx = this.#lineCanvas.getContext('2d')!; this.#flashCtx = this.#flashCanvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.#wrap);
-    sharpens({ resize: () => this.#sizeCanvases(), paint: () => { if (!this.root.hidden) { this.#render(); this.#flashNow(); } } });
+    sharpens({ resize: () => this.#sizeCanvases(), paint: () => { if (this.#flowOn()) { this.#render(); this.#flashNow(); } } });
     this.#buildControls();
+    // The layout shows and hides the column (its switch, a fold, the phone's tabs): the view shown follows, so a list out of sight draws nothing.
+    const shown = new MutationObserver(() => this.viewChanged()), sized = new ResizeObserver(() => this.#fitName());
+    shown.observe(this.root, { attributes: true, attributeFilter: ['hidden'] }); sized.observe(this.root);
+    this.#off.push(() => shown.disconnect(), () => sized.disconnect(), () => this.tns.dispose());
+    // The name's width changes with the font once it has loaded.
+    void document.fonts?.ready.then(() => this.#fitName());
+    this.viewChanged();
     this.#bindInput();
     // The price's marks are kept while the column is out of sight too (a phone shows it only on its own tab): minutes spent on another tab
     // would otherwise be a straight line between two candle closes when the price comes to be drawn.
     this.#off.push(this.store.subscribe((state, changed) => { if (changed.has('mark') && state.mark.price > 0 && !replaying()) this.#price.add(Date.now(), state.mark.price); }));
     // A tablet turned over changes arrangement, and the span the chips mark with it (a phone's map span reads as an hour).
-    this.#off.push(onLayoutMode(() => { this.#syncControls(); this.invalidate(); }));
+    this.#off.push(onLayoutMode(() => { this.viewChanged(); this.#syncControls(); this.invalidate(); }));
     // The window moves on by itself (and a venue can go quiet without sending anything), so the column redraws once a second while it is on screen.
-    this.#timer = window.setInterval(() => { if (!this.root.hidden && !document.hidden) { this.invalidate(); this.#strip.refresh(); } }, 1000);
+    this.#timer = window.setInterval(() => { if (this.#flowOn() && !document.hidden) { this.invalidate(); this.#strip.refresh(); } }, 1000);
+  }
+
+  /**
+   * The name's tabs in full ("Time & sales") while the pane's tools still fit on the name's line beside them, else short ("T&S"): measured,
+   * since the line's other keys and the language set what fits. Only the header changes, so the pane's width (what calls this) does not.
+   */
+  #fitName(): void {
+    if (this.root.hidden || isPhone()) return;
+    const name = this.controls.querySelector<HTMLElement>(':scope > .cvd-views'), tools = this.controls.querySelector<HTMLElement>(':scope > .pane-tools');
+    if (!name || !tools) return;
+    this.root.classList.remove('narrow');
+    if (tools.offsetTop > name.offsetTop + name.offsetHeight / 2) this.root.classList.add('narrow');
+  }
+  /** The view the column shows: the setting, except on a phone, whose Flow tab is the flow lines alone. */
+  #view(): FlowView { return isPhone() ? 'flow' : this.store.state.flowView; }
+  /** Whether the flow lines are on screen: the column shown, in the flow view. Every drawing of the lines and the dot rows waits on it. */
+  #flowOn(): boolean { return !this.root.hidden && this.#view() === 'flow'; }
+  /**
+   * The view changed (the tabs, a layout, a phone turned into a desktop) or the column was shown or hidden: the lines, the notice and the dot
+   * rows show in the flow view, the list in Time & sales; the header's span buttons, settings and help follow the view.
+   */
+  viewChanged(): void {
+    const view = this.#view(), flow = view === 'flow';
+    for (const [id, tab] of this.#viewTabs) { const on = id === view; tab.classList.toggle('on', on); tab.setAttribute('aria-pressed', String(on)); }
+    this.tns.setShown(!this.root.hidden && !flow);
+    if (view === this.#shownView) { this.#fitName(); if (flow && !this.root.hidden) this.invalidate(); return; }
+    this.#shownView = view;
+    this.#panel?.close(); this.#panel = null;
+    this.#wrap.hidden = !flow; this.#helpFlow.hidden = !flow; this.#helpTns.hidden = flow;
+    if (this.#cells) this.#cells.hidden = !flow;
+    this.#gear.dataset.tip = flow ? t('How the column ranks and draws the exchanges.') : t('Time & sales settings: the smallest order, the side and bursts as one row.');
+    // The notice is the flow's: hidden with it, and said again when the flow comes back (its words may have changed meanwhile).
+    if (!flow) this.#notice.hidden = true;
+    this.#noticeKey = '';
+    this.#strip.covered = !flow; this.#strip.refresh();
+    if (flow) { this.#sharedX = null; this.#paintSharedLine(); this.invalidate(); }
+    this.#fitName();
   }
 
   get header(): HTMLElement { return this.controls; }
@@ -183,6 +238,8 @@ export class CvdPane {
   #span(): CvdSpan { const span = this.store.state.cvd.span; return isPhone() ? spanOnPhone(span) : span; }
   setPalette(name: string): void {
     this.#palette = PALETTES[name] ?? PALETTES.light!; this.#strip.setPalette(this.#palette);
+    // A theme's frame changes the buttons' padding and borders, and so what fits beside the name.
+    this.#fitName();
     // The readout and the chips under the header speak in the lines' colours.
     const colors = laneColors(this.#palette); this.root.style.setProperty('--cvd-spot', colors.spot); this.root.style.setProperty('--cvd-perp', colors.perp);
     this.invalidate();
@@ -193,7 +250,7 @@ export class CvdPane {
    * follows it, but only redraws when the window has moved by a pixel of its own plot, so a hover on the map costs the column nothing.
    */
   followMap(): void {
-    if (this.#span() !== 'map' || this.root.hidden) return;
+    if (this.#span() !== 'map' || !this.#flowOn()) return;
     const drawn = this.#drawn, pixel = (this.view.t1 - this.view.t0) / Math.max(1, this.#model?.columns ?? 200);
     if (drawn && Math.abs(this.view.t0 - drawn.t0) < pixel && Math.abs(this.view.t1 - drawn.t1) < pixel) return;
     this.invalidate();
@@ -227,7 +284,7 @@ export class CvdPane {
   #paintSharedLine(): void {
     const ctx = this.#lineCtx, x = this.#sharedX;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, this.#lineCanvas.width, this.#lineCanvas.height);
-    if (x === null || this.root.hidden || this.#w < 60 || this.#h < 60) return;
+    if (x === null || !this.#flowOn() || this.#w < 60 || this.#h < 60) return;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.strokeStyle = this.#palette.muted; ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
     ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, this.#h); ctx.stroke(); ctx.globalAlpha = 1;
@@ -248,12 +305,12 @@ export class CvdPane {
   }
 
   /** The settings changed (or the person asked for a fresh ranking). */
-  refresh(): void { this.#ranker.reset(); this.#syncControls(); this.#modelKey = ''; this.invalidate(); if (!this.root.hidden) this.#strip.refresh(); }
+  refresh(): void { this.#ranker.reset(); this.#syncControls(); this.#modelKey = ''; this.invalidate(); if (this.#flowOn()) this.#strip.refresh(); this.tns.redraw(); }
   /** The column's settings changed: the ranking starts afresh unless only the dot rows' own were touched, which do not move the exchanges. */
   settingsChanged(): void {
     const key = rankingKey(this.store.state.cvd);
     if (key !== this.#rankingKey) { this.#rankingKey = key; this.refresh(); return; }
-    this.#syncControls(); this.invalidate(); if (!this.root.hidden) this.#strip.refresh();
+    this.#syncControls(); this.invalidate(); if (this.#flowOn()) this.#strip.refresh();
   }
   /** Trades that printed just now, for the blink of the dot rows. */
   flash(prints: readonly Print[]): void { this.#strip.flash(prints); }
@@ -286,11 +343,27 @@ export class CvdPane {
     }
     this.#spanSelect.onchange = () => this.#set({ span: this.#spanSelect.value as CvdSpan });
     this.#gear.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
-    this.#gear.onclick = () => { this.#panel = togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#buildSettings(body)); };
+    this.#gear.onclick = () => {
+      if (this.#view() === 'tns') { this.tns.openSettings(this.#gear); return; }
+      this.#panel = togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#buildSettings(body));
+    };
     // The span buttons are the header's one cell (ui/fit-grid.ts): on the title's line when they fit there, a whole row under it when not.
     seg.dataset.fit = 'row';
     const cells = el('div', {}, seg);
-    this.controls.append(el('strong', { textContent: t('Flow'), tip: t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.') }), cells, this.#spanSelect, this.#gear, helpButton('cvd'), this.#readout);
+    this.#cells = seg;
+    // The pane's name is its views' tabs (Karl, 2026-11-12: the flow column holds what traded, a view at a time); the strong keeps the name's
+    // place in the header (the layout puts the pane's tools after it).
+    const views: [FlowView, string, string, string][] = [
+      ['flow', t('Flow'), t('Flow'), t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.')],
+      ['tns', t('Time & sales'), t('T&S'), t('Time & sales: every large market order as it arrives, newest on top, with its exchange, side, price and size. Nothing is fetched: the list starts when the page opens.')],
+    ];
+    const name = el('strong', { class: 'seg cvd-views', role: 'group', ariaLabel: t('Flow column view') }, ...views.map(([id, long, short, tip]) => {
+      const tab = el('button', { type: 'button', class: 'cvd-view', tip, ariaLabel: long, onclick: () => { if (this.store.state.flowView !== id) this.store.set({ flowView: id }); } },
+        el('span', { class: 'long', textContent: long }), el('span', { class: 'short', textContent: short, ariaHidden: 'true' }));
+      tab.dataset.view = id; this.#viewTabs.set(id, tab);
+      return tab;
+    }));
+    this.controls.append(name, cells, this.#spanSelect, this.#gear, this.#helpFlow, this.#helpTns, this.#readout);
     this.#fit = new FitGrid(this.controls, cells, this.root);
     this.#syncControls();
   }
@@ -539,7 +612,7 @@ export class CvdPane {
   // ---- drawing --------------------------------------------------------------------------------------------------------------------
 
   #render(): void {
-    if (this.root.hidden || this.#w < 60 || this.#h < 60) return;
+    if (!this.#flowOn() || this.#w < 60 || this.#h < 60) return;
     const s = this.store.state, cfg = s.cvd, now = pageNow(), p = this.#palette, ctx = this.#ctx;
     this.#ranker.refreshMs = cfg.refreshMin * 60_000; this.#ranker.auto = cfg.auto;
     const span = this.#span(), phone = isPhone();
