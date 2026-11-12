@@ -471,6 +471,8 @@ test('a position is placed by its entry, its stop and its target; a target on th
   s.draw.cancel(); assert.equal(s.draw.message, null, 'Esc drops the half-placed position and its warning');
   s.draw.arm('position'); s.draw.click({ x: x(1), y: y(150) }, false, false); s.draw.click({ x: x(3), y: y(140) }, false, false); s.draw.click({ x: x(4), y: y(145) }, false, false);
   s.settings = { shown: false }; s.draw.settingsChanged(); assert.equal(s.draw.message, null, 'so does switching the drawings off');
+  s.settings = { shown: true }; s.draw.arm('position'); s.draw.click({ x: x(1), y: y(150) }, false, false); s.draw.click({ x: x(3), y: y(140) }, false, false); s.draw.click({ x: x(4), y: y(145) }, false, false);
+  s.otherTab(s.saved!); assert.equal(s.draw.message, null, 'and another tab saving its drawings');
   s.settings = { shown: true }; s.draw.arm('position');
   s.draw.click({ x: x(1), y: y(150) }, false, false); s.draw.click({ x: x(3), y: y(140) }, false, false);
   s.draw.click({ x: x(5), y: y(170) }, false, false);

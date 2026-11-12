@@ -130,8 +130,9 @@ export function handlesOf(d: Drawing, pr: Projection, minEdge: number = EDGE_MIN
   if (d.kind === 'position') {
     // The entry's at the box's left end moves its price and where the position starts; the stop's and the target's on the left side move
     // their price alone; the right end's on the entry line moves where it ends (the stop's and the target's time, kept equal). A box that
-    // starts left of the plot keeps its stop's and target's handles on its part in view, as a zone's middles are (they move a price only).
-    const b = positionBox(d, pr), side = b.x0 < 0 && b.x1 > 0 ? 0 : b.x0;
+    // starts left of the plot keeps its stop's and target's handles in the middle of its part in view, as a zone's middles are (they move a
+    // price only; at the plot's edge they would sit under the drawing tools' rail, or in a phone's edge swipe).
+    const b = positionBox(d, pr), side = b.x0 < 0 && b.x1 > 0 ? Math.min(b.x1, pr.w) / 2 : b.x0;
     return [{ x: b.x0, y: b.entry, t: [0], p: [0] }, { x: side, y: b.stop, t: [], p: [1] }, { x: side, y: b.target, t: [], p: [2] }, { x: b.x1, y: b.entry, t: [1, 2], p: [] }];
   }
   const own: Handle[] = d.points.map((q, i) => ({ x: pr.x(q.t), y: d.kind === 'vline' ? pr.h / 2 : pr.y(q.p), t: [i], p: d.kind === 'vline' ? [] : [i] }));

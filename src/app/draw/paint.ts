@@ -217,6 +217,8 @@ export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, pr: Proj
 function inView(d: Drawing, pr: Projection): boolean {
   if (d.kind === 'level') return pr.y(d.points[0]!.p) >= -2 && pr.y(d.points[0]!.p) <= pr.h + 2 && (d.extendLeft || pr.x(d.points[0]!.t) <= pr.w);
   if (d.kind === 'vline') { const x = pr.x(d.points[0]!.t); return x >= -2 && x <= pr.w + 2; }
+  // A position wholly left or right of the plot is not drawn: its labels, placed beside it, would stand alone at the plot's edge.
+  if (d.kind === 'position') { const x0 = pr.x(d.points[0]!.t), x1 = pr.x(d.points[1]!.t); return x1 >= 0 && x0 <= pr.w; }
   return true;
 }
 

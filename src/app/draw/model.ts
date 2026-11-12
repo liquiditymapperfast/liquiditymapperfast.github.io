@@ -97,7 +97,8 @@ export const positionSide = (d: Pick<Drawing, 'points'>): 'long' | 'short' => d.
 export function positionFromClicks(clicks: readonly Anchor[], span: number, min = 0): Anchor[] | null {
   const [e, s, g] = clicks;
   if (!e || !s || !(span > 0)) return null;
-  const target = g ? g.p : e.p + 2 * (e.p - s.p), last = (g ?? s).t, end = last - e.t >= Math.max(min, Number.MIN_VALUE) ? last : e.t + Math.max(span, min);
+  // The shape's target, twice as far as the stop, stays above zero for a short with a stop far above its entry (half the entry at most).
+  const target = g ? g.p : s.p < e.p ? e.p + 2 * (e.p - s.p) : Math.max(e.p - 2 * (s.p - e.p), e.p / 2), last = (g ?? s).t, end = last - e.t >= Math.max(min, Number.MIN_VALUE) ? last : e.t + Math.max(span, min);
   const points = [{ t: e.t, p: e.p }, { t: end, p: s.p }, { t: end, p: target }];
   return positionOk(points) ? points : null;
 }
