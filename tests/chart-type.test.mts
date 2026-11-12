@@ -68,6 +68,6 @@ test('a lit button stays lit while its menu or panel is open: the open tint is f
   // The Chart type button is lit and open at once while its menu or its Candle colours panel is open; with the tint over it, its light glyph
   // read at 1.1-1.4 : 1 in ten themes (review, 2026-11-12).
   const chrome = fs.readFileSync('src/app/chrome.css', 'utf8');
-  assert.ok(chrome.includes(':where(:root:not([data-frame="bevel"])) button.open:not(.on) {'), 'the open tint skips a lit button');
+  assert.ok(chrome.includes(':where(:root:not([data-frame="bevel"])) button.open:where(:not(.on)) {'), 'the open tint skips a lit button, at no more weight than before');
   assert.ok(!chrome.includes(':where(:root:not([data-frame="bevel"])) button.open {'), 'no open tint over every button');
 });
