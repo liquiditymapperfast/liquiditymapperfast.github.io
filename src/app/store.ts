@@ -40,7 +40,8 @@ import { isFundingVenue, type FundingVenue } from './funding.ts';
 
 export type Layer = 'liquidity' | 'liquidation' | 'stopLoss' | 'takeProfit';
 /**
- * Layers that can be chosen today. The others are announced in the dropdown as upcoming and need a data source that is not connected yet.
+ * Layers that can be chosen today. The others need a data source that is not connected yet; while only one can be chosen, the Layer menu stays
+ * out of the bar and Settings (toolbar.ts `LAYER_CHOICE`, 2026-11-12).
  * Liquidation levels are not a layer: they are drawn over the heatmap from the Chart deck (`liqLevels`).
  */
 export const AVAILABLE_LAYERS: readonly Layer[] = ['liquidity'];

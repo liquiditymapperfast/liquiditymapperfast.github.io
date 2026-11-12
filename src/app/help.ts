@@ -28,7 +28,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     title: t('Profile'), guide: 'profile',
     tip: t('The column at the right edge of the chart: how much liquidity is resting at each price right now, added up over the enabled venues. Pink are asks (sellers waiting above), green are bids (buyers waiting below).'),
     body: [t('The profile is the heatmap collapsed into one moment: for every price, the total size of the orders waiting there right now, summed over the enabled venues. Long bars are walls.'),
-      t('Hover it and the Mirror comparison appears (switch that off with the Mirror button).')],
+      t('Hover it and the Mirror comparison appears (switch that off with Mirror in the order book\'s Cues panel).')],
   },
   traded: {
     title: t('Volume profile'), guide: 'volume-profile',
@@ -154,7 +154,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   mirror: {
     title: t('Mirror'), guide: 'mirror',
-    tip: t('Hover comparison. With it on, pointing at the profile column or the order book compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover. Its switch is in the order book\'s Cues panel.'),
+    tip: t('Hover comparison: pointing at the order book, the profile column or the liquidation column compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover.'),
     body: [],
   },
   volume: {

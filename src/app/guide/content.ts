@@ -130,7 +130,7 @@ export const SECTIONS: readonly Section[] = [
         '**Venue lines**, in Compact (off, or the top 3, 5 or 8; 5 at first), draw the running total of each of the largest exchanges on a scale of their own, so you can see which one carries the depth at each distance. Where an exchange\'s book ends (most publish only part of it) its line stops with a short bar and goes on dashed.',
         '**Pull/stack** (off at first) adds a column of how much resting size each row gained or lost over 15 seconds, a minute or five minutes. A row the price traded through is grey: a fill removes size just as a pull does, and the two cannot be told apart.',
         '**Cues**, in the book\'s header, light an exchange\'s cell when the size it shows at a price changes: outward for added depth, back inward for removed. Point at a cell for what changed and what traded meanwhile; it says what was *shown*, never an order.',
-        'In the cues\' settings, **Flash** chooses the look of the light and **Sensitivity** how large a change must be to light a cell. **Heat** adds a strip under each cell for how much of it is recent, and **Trade contact** ripples a cell when a large market order reaches it.',
+        'In the cues\' settings, **Flash** chooses the look of the light and **Sensitivity** how large a change must be to light a cell. **Heat** adds a strip under each cell for how much of it is recent, and **Trade contact** ripples a cell when a large market order reaches it. **Mirror**, which compares both sides of the price as you hover, is switched there too.',
         'Point at a row and its price is drawn across the map and the flow column, so you can see where on the chart that level stands.',
       ] },
     ],
@@ -140,7 +140,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'Mirror answers one question: *is there more on this side of the price, or the other?* Point at a price in the profile or the order book. The band between the price and your pointer is outlined, and so is the equal band on the other side. A box adds up both and says which is bigger. Move outward and watch the balance change with distance.' },
       { t: 'fig', id: 'mirror', caption: 'The pointer moves away from the price. The box compares the two bands as they grow.' },
-      { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, and it is on unless you switch it off. Its switch is **Mirror** in the order book\'s **Cues** panel (the Cues key in the book\'s title bar): if hovering stops showing the box, check it there, as its state is saved between visits. On a touch screen, tap the profile or the order book to pin the box there, and tap again to let go.' },
+      { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, and it is on unless you switch it off. Its switch is **Mirror** in the order book\'s **Cues** panel (the Cues key in the book\'s title bar; on a phone, behind the book\'s settings key): if hovering stops showing the box, check it there, as its state is saved between visits. On a touch screen, tap the profile or the order book to pin the box there, and tap again to let go.' },
     ],
   },
   {

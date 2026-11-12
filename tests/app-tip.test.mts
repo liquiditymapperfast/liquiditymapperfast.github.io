@@ -28,5 +28,5 @@ test('every help topic says what it is and points at a guide section', () => {
     assert.ok(topic.tip.length < 420, `${id} tooltip stays short`);
     assert.ok(/^[a-z-]+$/.test(topic.guide), `${id} names a guide section`);
   }
-  assert.match(HELP.mirror.tip, /Nothing changes until you hover/, 'Mirror says why clicking it shows nothing');
+  assert.match(HELP.mirror.tip, /Nothing changes until you hover/, "Mirror's help says the box only shows while you hover");
 });

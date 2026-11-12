@@ -2,7 +2,7 @@ import { venueLabel } from '../venues.ts';
 import { activeIds, emptyScopeMessage, kindOf } from '../scope.ts';
 import { el } from '../dom.ts';
 import { setTip } from '../tip.ts';
-import { helpButton } from '../help.ts';
+import { HELP, helpButton } from '../help.ts';
 import { addTune } from '../pane-tune.ts';
 import { button, checkRow, note, selectRow, switchRow, togglePanel, type Panel } from '../ui.ts';
 import type { Kernels } from '../kernels.ts';
@@ -445,8 +445,8 @@ export class LadderPane {
       selectRow(t('Heat'), t('A strip under each venue\'s part of a level.'), heat, cues.heat, v => this.#setCues({ heat: v as HeatKind })),
       note(t('Recent adds: the share of the cell that is estimated recent net increase, fading over 45 seconds. Activity: how much it changed lately, additions and removals, against its size. Neither is the age of an order: the exchanges do not send one.')),
       // Mirror's switch (`show.mirror`, its stored name since it was a toolbar switch; Karl, 2026-11-12: out of the Panels deck, where clicking
-      // it showed nothing). It works on this book, the map's profile column and the liquidation column alike.
-      switchRow(t('Mirror'), t('Pointing at the order book or the profile column outlines the band between the price and the pointer and the equal band on the other side, and says which holds more.'), this.store.state.show.mirror, on => this.store.set({ show: { ...this.store.state.show, mirror: on } })),
+      // it showed nothing). It works on this book, the map's profile column and the liquidation column alike, as its help says.
+      switchRow(t('Mirror'), HELP.mirror.tip, this.store.state.show.mirror, on => this.store.set({ show: { ...this.store.state.show, mirror: on } })),
     );
   }
 

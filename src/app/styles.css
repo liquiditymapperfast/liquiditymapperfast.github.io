@@ -112,7 +112,7 @@ html[data-frame="textmode"] .toolbar.cockpit :is(button, select) { padding: 2px 
 html[data-frame="textmode"] .toolbar.cockpit .led-btn { padding-left: 17px; }
 html[data-frame="textmode"] .toolbar.cockpit .led-btn::before { left: 5px; }
 .toolbar .deck .chips:empty { display: none; }
-/* Twelve pane switches in two rows of six (the candles left them for the Chart type button, 2026-11-12); the overlap of their outlines kept across the rows too. */
+/* Eleven pane switches in rows of six and five (2026-11-12: the candles left them for the Chart type button, Mirror for the order book's Cues panel); the overlap of their outlines kept across the rows too. */
 .toolbar .deck-panels .seg.toggles { display: grid; grid-template-columns: repeat(6, auto); }
 .toolbar .deck-panels .seg.toggles button { margin-left: -1px; margin-top: -1px; border-radius: 0; }
 .toolbar.cockpit .deck-panels .seg.toggles button { padding-left: 4px; padding-right: 4px; }

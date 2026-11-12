@@ -50,13 +50,14 @@ test('Hidden is kept where the Candles switch kept it: show.candles, drawn on a 
   assert.ok(LAYOUT_KEYS.includes('show') && LAYOUT_KEYS.includes('chartType'));
 });
 
-test('the Panels deck holds twelve switches, none for the candles, in a grid of two rows of six', () => {
+test('the Panels deck holds eleven switches, none for the candles or Mirror, in a grid of six columns', () => {
   const toolbar = fs.readFileSync('src/app/toolbar.ts', 'utf8'), css = fs.readFileSync('src/app/styles.css', 'utf8');
   const line = toolbar.split('\n').find(l => l.startsWith('const PANE_TOGGLES'));
   assert.ok(line, 'PANE_TOGGLES is one line of toolbar.ts');
   const keys = [...line.matchAll(/\['(\w+)', /g)].map(m => m[1]);
-  assert.equal(keys.length, 12);
+  assert.equal(keys.length, 11);
   assert.ok(!keys.includes('candles'), 'the Chart type menu shows and hides the price');
+  assert.ok(!keys.includes('mirror'), "Mirror's switch is in the order book's Cues panel");
   // A switch more or fewer changes the grid: its columns and the outlines' overlap are written for six.
   assert.match(css, /\.toolbar \.deck-panels \.seg\.toggles \{ display: grid; grid-template-columns: repeat\(6, auto\); \}/);
   assert.match(css, /\.deck-panels \.seg\.toggles \{ grid-template-columns: repeat\(6, minmax\(max-content, 1fr\)\); \}/);
