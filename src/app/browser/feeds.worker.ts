@@ -134,7 +134,7 @@ async function readRecordings(database: string, lock: string, history: string, h
   // The recorded history (app/history-url.ts): the minutes of the day before this visit, read into the recordings before the engine is given
   // them; a phone reads its last few hours only, from the start of the oldest one (app/history-window.ts). The recordings keep their day either way.
   if (history && historyHours > 0) {
-    const kept = recordings, now = Date.now(), since = importSince(now, historyHours, BROWSER_RETENTION_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours()), epoch = kept.writeEpoch();
+    const kept = recordings, now = Date.now(), since = importSince(now, historyHours, BROWSER_RETENTION_MS), held = heldOf(kept.columns.load(since), kept.coverage.load(since), kept.importedHours(), kept.staleHours()), epoch = kept.writeEpoch();
     const done = await importHistory({ url: history, held, add: columns => kept.importColumns(columns), addRows: rows => kept.importRows(rows), since, now, ...(latest ? { latest } : {}) });
     if (done.error || done.failed) console.warn('recorded history:', done.error ?? `${done.failed} hours could not be read`);
     if (done.read?.length) void kept.markImported(done.read, epoch);

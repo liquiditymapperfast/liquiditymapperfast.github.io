@@ -230,3 +230,12 @@ test('a footprint minute short of the stored copy by f32 rounding alone still re
   assert.equal(fullerFootprintMinute(kept, row(50_000_001.5 - 50, 11)), null, 'a $50 trade is 1e-6 of it, past what rounding allows');
   assert.ok(SAME_VOLUME < 1e-6 && SAME_VOLUME > 6e-8);
 });
+
+test('two copies of a footprint minute apart by f32 rounding: the one with at least as many orders counted is stored, the other is not', () => {
+  const row = (usd: number, orders: number, counted: number | null) => ({ inst: 'a', t: 0, step: 0.5, bins: [[1, usd, 0, orders, 0]] as [number, number, number, number, number][], stats: counted === null ? null : { buyN: counted, sellN: 0, buy: [usd, 0, 0, 0, 0, 0, 0, 0], sell: [0, 0, 0, 0, 0, 0, 0, 0], v: 2 } });
+  const kept = row(50_000_001.5, 10, 10), rounded = Math.fround(50_000_001.5);
+  assert.equal(fullerFootprintMinute(kept, row(rounded, 10, 9)), null, 'fewer counted: kept');
+  assert.ok(fullerFootprintMinute(kept, row(rounded, 10, 11)), 'more counted: stored');
+  assert.ok(fullerFootprintMinute(kept, row(50_000_001.5, 10, 10)), 'the same copy again is written as before');
+  assert.ok(fullerFootprintMinute(row(rounded, 10, null), kept), 'statistics beat none');
+});

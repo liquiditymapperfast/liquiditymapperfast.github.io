@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { clipCoverage, decodeHour, footprintVolume, fullerFootprint, ownsMinute, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, within } from '../src/app/browser/history-import.ts';
+import { clipCoverage, decodeHour, footprintVolume, fullerFootprint, heldOf, hoursToRead, ownsMinute, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, within } from '../src/app/browser/history-import.ts';
 import { statsText, type FootprintMinuteRow } from '../src/shared/footprint.ts';
-import { importedMark } from '../src/app/browser/idb.ts';
+import { importedMark, staleMark } from '../src/app/browser/idb.ts';
 import type { AbsorptionGroup, AbsorptionMinute } from '../src/shared/absorption.ts';
 import type { CoverageRow } from '../src/shared/coverage.ts';
 import { HOUR_MS } from '../src/app/browser/history-import.ts';
@@ -290,4 +290,26 @@ test('the hour of the service\'s restart onto kind 11: a minute written once as 
   const chosen = planFootprint(tradeImport([], []), rows.footprint, () => undefined);
   assert.equal(chosen.length, 1);
   assert.deepEqual(chosen[0]!.stats!.big, [30_000], 'the kind-7 copy before the restart is the fuller');
+});
+
+test('a run that wrote two copies of a minute after a restart: each copy gets the orders of its own run, found after the copy before the run', () => {
+  const m = HOUR;
+  const rows = decodeHour(copiesFile(HOUR, [
+    { print: { t: m + 1_000, usd: 30_000 } }, { minute: { t: m, buy1: 30_000, usd: 30_500, orders: 2 } },
+    { print: { t: m + 30_000, usd: 40_000 } }, { minute: { t: m, buy1: 40_000, usd: 40_100, orders: 1 } },
+    { print: { t: m + 59_000, usd: 26_000 } }, { minute: { t: m, buy1: 66_000, usd: 66_100, orders: 2 } },
+  ]))!.rows.footprint;
+  assert.deepEqual(rows.map(r => r.stats!.big), [[30_000], [40_000], [40_000, 26_000]]);
+});
+
+test('an hour a page from before kind 11 read from the hour this page was built in is read again whatever the page holds; once read here it is not', () => {
+  const built = 1_794_520_800_000, now = built + 3 * HOUR_MS + 30 * 60_000;
+  const latest = { v: 1 as const, coin: 'BTC', first: built - 5 * HOUR_MS, last: built + 2 * HOUR_MS, open: built + 3 * HOUR_MS, steps: { 'a:BTC': 20 } };
+  // The page holds every minute of every hour.
+  const rows = Array.from({ length: 9 * 60 }, (_, i) => ({ instrumentId: 'a:BTC', step: 20, column: { t: built - 5 * HOUR_MS + i * 60_000, n: 12 } }));
+  assert.deepEqual(hoursToRead(latest, heldOf(rows), built - 5 * HOUR_MS, now), []);
+  const marks = [{ inst: 'v2', from: built - HOUR_MS }, { inst: 'v2', from: built }, { inst: 'v2', from: built + HOUR_MS }, { inst: 'v3', from: built + HOUR_MS }];
+  const imported = marks.filter(importedMark).map(r => r.from), again = marks.filter(staleMark).map(r => r.from);
+  assert.deepEqual(again, [built, built + HOUR_MS]);
+  assert.deepEqual(hoursToRead(latest, heldOf(rows, [], imported, again), built - 5 * HOUR_MS, now), [built], 'the restart hour is read again; the hour this page already read is not');
 });

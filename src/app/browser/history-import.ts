@@ -247,7 +247,8 @@ function footprintMinute(view: DataView, from: number, end: number, inst: string
  *
  * A file can hold two copies of a minute: one written while an order was still open and one once it was counted, or one from before a
  * restart and a thinner one after it. The service writes a flush's large trades before its footprint minutes (tape.rs `flush`), so each copy
- * is tried first with the minute's trades written before it, then with those since the previous copy, then with all of them.
+ * is tried first with the minute's trades written before it, then with those after each earlier copy of the minute (the nearest first),
+ * then with all of them; a fitting run is the copy's list (two runs that both fit are the same list: an order is at least the floor).
  */
 function fillListsFromPrints(rows: HistoryRows, printAt: readonly number[], footprintAt: readonly number[]): void {
   if (!rows.footprint.some(row => row.stats && row.stats.big === undefined)) return;
@@ -256,14 +257,17 @@ function fillListsFromPrints(rows: HistoryRows, printAt: readonly number[], foot
     const key = `${print.id}|${Math.floor(print.t / COLUMN_MS) * COLUMN_MS}`, entry = { value: print.side === 'buy' ? print.usd : -print.usd, at: printAt[i]! }, list = found.get(key);
     if (list) list.push(entry); else found.set(key, [entry]);
   });
-  const previous = new Map<string, number>();
+  // Offsets that do not line up with the rows (never, while `other` adds one row a record) leave each copy all of its trades.
+  const placed = printAt.length === rows.prints.length && footprintAt.length === rows.footprint.length;
+  const earlier = new Map<string, number[]>();
   rows.footprint.forEach((row, i) => {
-    const key = `${row.inst}|${row.t}`, at = footprintAt[i]!, since = previous.get(key) ?? -1, stats = row.stats;
-    previous.set(key, at);
+    const key = `${row.inst}|${row.t}`, at = placed ? footprintAt[i]! : Infinity, copies = earlier.get(key) ?? [], stats = row.stats;
+    earlier.set(key, [...copies, at]);
     if (!stats || stats.big !== undefined) return;
-    const trades = found.get(key) ?? [];
-    const before = trades.filter(p => p.at < at), between = before.filter(p => p.at > since);
-    for (const pick of [before, between, trades]) {
+    const trades = found.get(key) ?? [], before = placed ? trades.filter(p => p.at < at) : trades;
+    // Its trades before it, then those after each earlier copy, the nearest first (a run may have written copies of its own), then all.
+    const picks = [before, ...copies.slice().reverse().map(since => before.filter(p => p.at > since)), trades];
+    for (const pick of picks) {
       const list = pick.map(p => p.value);
       if (listFits(list, stats)) { stats.big = list; return; }
     }
@@ -299,8 +303,12 @@ function record(view: DataView, buffer: ArrayBuffer, text: TextDecoder, from: nu
  * `trades`: the stretches over which this page recorded each instrument's trades itself (its own trade coverage); `imported`: the hours of
  * the service it has read whole already.
  */
-export interface Held { steps: Map<string, number>; samples: Map<string, number>; trades: Map<string, { from: number; to: number }[]>; imported: Set<number> }
-export function heldOf(rows: Iterable<{ instrumentId: string; step: number; column: { t: number; n: number } }>, coverage: Iterable<Pick<CoverageRow, 'inst' | 'metric' | 'from' | 'to'>> = [], imported: Iterable<number> = []): Held {
+/**
+ * What the page holds before an import: each book's step and samples a minute, its own trade coverage, the hours read whole before
+ * (`imported`), and hours read again whatever it holds (`again`: hours a page from before kind 11 read, app/browser/idb.ts `staleHours`).
+ */
+export interface Held { steps: Map<string, number>; samples: Map<string, number>; trades: Map<string, { from: number; to: number }[]>; imported: Set<number>; again: Set<number> }
+export function heldOf(rows: Iterable<{ instrumentId: string; step: number; column: { t: number; n: number } }>, coverage: Iterable<Pick<CoverageRow, 'inst' | 'metric' | 'from' | 'to'>> = [], imported: Iterable<number> = [], again: Iterable<number> = []): Held {
   const steps = new Map<string, number>(), oldest = new Map<string, number>(), samples = new Map<string, number>(), trades = new Map<string, { from: number; to: number }[]>();
   for (const { instrumentId, step, column } of rows) {
     samples.set(`${instrumentId}|${column.t}`, column.n);
@@ -311,7 +319,7 @@ export function heldOf(rows: Iterable<{ instrumentId: string; step: number; colu
     let list = trades.get(inst); if (!list) trades.set(inst, list = []);
     list.push({ from, to });
   }
-  return { steps, samples, trades, imported: new Set(imported) };
+  return { steps, samples, trades, imported: new Set(imported), again: new Set(again) };
 }
 
 /**
@@ -360,7 +368,7 @@ export function hoursToRead(latest: HistoryLatest, held: Held, since: number, no
       return have < COVERED * minutes;
     }) || trades.some(inst => coveredMs(union(held.trades.get(inst) ?? [], start, end), start, end) < COVERED * (end - start));
   };
-  if (Number.isFinite(from) && Number.isFinite(to)) for (let h = from; h <= to && out.length <= 25; h += HOUR_MS) if (!held.imported.has(h) && wanted(h)) out.push(h);
+  if (Number.isFinite(from) && Number.isFinite(to)) for (let h = from; h <= to && out.length <= 25; h += HOUR_MS) if (!held.imported.has(h) && (held.again.has(h) || wanted(h))) out.push(h);
   return out;
 }
 

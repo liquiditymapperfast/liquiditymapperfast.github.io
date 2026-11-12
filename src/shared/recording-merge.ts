@@ -35,15 +35,21 @@ export function fullerFlowMinute(kept: FlowMinuteRow | undefined, next: FlowMinu
 export const SAME_VOLUME = 2e-7;
 
 /**
- * A footprint minute is one set of rows and the statistics that go with them, so the copy with more volume replaces the other whole; one
- * whose volume is short by f32 rounding alone (`SAME_VOLUME`) replaces it too, as the import has judged it fuller by its orders counted
- * (app/browser/history-import.ts `fullerFootprint`).
+ * A footprint minute is one set of rows and the statistics that go with them, so the copy with more volume replaces the other whole. Copies
+ * whose volumes differ by f32 rounding alone (`SAME_VOLUME`) hold the same trades, and then the one with at least as many of its market
+ * orders counted replaces the other (as the import judges, app/browser/history-import.ts `fullerFootprint`; an equal copy is written again).
  */
 export function fullerFootprintMinute(kept: FootprintMinuteRow | undefined, next: FootprintMinuteRow): FootprintMinuteRow | null {
   if (!kept) return next;
   const volume = (row: FootprintMinuteRow): number => { let sum = 0; for (const bin of row.bins) sum += bin[1] + bin[2]; return sum; };
   const a = volume(kept), b = volume(next);
-  return b >= a - SAME_VOLUME * Math.max(a, b) ? next : null;
+  if (Math.abs(b - a) > SAME_VOLUME * Math.max(a, b)) return b > a ? next : null;
+  const orders = (row: FootprintMinuteRow): [number, number] => {
+    let onRows = 0; for (const bin of row.bins) onRows += (bin[3] ?? 0) + (bin[4] ?? 0);
+    return [row.stats ? row.stats.buyN + row.stats.sellN : -1, onRows];
+  };
+  const [x0, x1] = orders(kept), [y0, y1] = orders(next);
+  return (y0 !== x0 ? y0 > x0 : y1 >= x1) ? next : null;
 }
 
 /** A depth column is the mean of its samples, so the copy built from more samples is the better one. */
