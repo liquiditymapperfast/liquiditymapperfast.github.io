@@ -2424,5 +2424,5 @@
  "The price is hidden: choose a chart type to see these colours on the map.": "価格は非表示です。チャートの種類を選ぶと、これらの色がマップに表示されます。",
  "What lights in the book when a venue's displayed depth changes, the heat strip under each cell, and Mirror, which compares both sides of the price as you hover. Hover a cell, or the mark beside a row, to see what changed.": "取引所の表示している板の厚みが変わったときにブックで光るもの、各セルの下の熱ストリップ、そしてホバー中に価格の両側を比べるミラー。セルや行の横のマークにカーソルを重ねると、何が変わったか分かります。",
  "Hover it and the Mirror comparison appears (switch that off with Mirror in the order book's Cues panel).": "カーソルを重ねるとミラー比較が表示されます（オーダーブックの「ハイライト」パネルの「ミラー」でオフにできます）。",
- "Hover comparison: pointing at the order book, the profile column or the liquidation column compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover.": "ホバー比較：オーダーブック、プロファイル列、清算レベル列にカーソルを合わせると、価格とカーソルの間の流動性を反対側の同じ幅の区間と比べ、どちら側が多いかを表示します。ホバーするまで何も変わりません。"
+ "Hover comparison: pointing at the order book, the profile column or the liquidation column compares what stands between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover.": "ホバー比較：オーダーブック、プロファイル列、清算レベル列にカーソルを合わせると、価格とカーソルの間にあるものを反対側の同じ幅の区間と比べ、どちら側が多いかを表示します。ホバーするまで何も変わりません。"
 }

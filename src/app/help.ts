@@ -154,7 +154,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   mirror: {
     title: t('Mirror'), guide: 'mirror',
-    tip: t('Hover comparison: pointing at the order book, the profile column or the liquidation column compares the liquidity between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover.'),
+    tip: t('Hover comparison: pointing at the order book, the profile column or the liquidation column compares what stands between the price and your pointer with the equal stretch on the other side, and says which side has more. Nothing changes until you hover.'),
     body: [],
   },
   volume: {
