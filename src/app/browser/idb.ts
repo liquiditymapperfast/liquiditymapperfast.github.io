@@ -37,9 +37,14 @@ type OiRow = OiReading;
 interface CoverRow extends Omit<CoverageRow, 'metric'> { metric: CoverageRow['metric'] | 'history'; t: number }
 /**
  * The mark of an hour of the recorded history read whole is a coverage row of metric `history` whose instrument names the reader's version:
- * `v2` reads the footprint and absorption too. An hour an older page read (instrument '') is read again once, for what that page passed over.
+ * `v2` reads the footprint and absorption too, `v3` also the footprint minutes of kind 11 (f32 USD, no list). An hour an older page read
+ * (instrument '') is read again once, for what that page passed over; so is an hour from `V3_FROM` on that a `v2` page read (it passed kind 11
+ * over), while a `v2` mark before it stands: the service wrote kind 11 only after this page was published.
  */
-const IMPORTED = 'history', IMPORTED_INST = 'v2', HOUR = 3_600_000, MINUTE = 60_000;
+const IMPORTED = 'history', IMPORTED_INST = 'v3', HOUR = 3_600_000, MINUTE = 60_000;
+/** The hour this page was built in (2026-11-12 22:00Z): the service's hours before it hold no footprint minute of kind 11. */
+const V3_FROM = 1_794_520_800_000;
+export const importedMark = (row: { inst: string; from: number }): boolean => row.inst === IMPORTED_INST || (row.inst === 'v2' && row.from < V3_FROM);
 
 /** `name` is the coin's database (app/coin.ts recordingsName): each coin's recordings are kept and read apart. */
 function openDatabase(name: string): Promise<IDBDatabase> {
@@ -518,7 +523,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
     if (newCover.length) { enqueue(tx => { const store = tx.objectStore('coverage'); for (const row of newCover) store.put(row); }); taken += newCover.length; }
     return taken;
   };
-  const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED && row.inst === IMPORTED_INST).map(row => row.from);
+  const importedHours = (): number[] => coverRows.filter(row => row.metric === IMPORTED && importedMark(row)).map(row => row.from);
   // Written once what the import queued has been written (or let go), and only when nothing was let go since `since` (`writeEpoch()`
   // before the import): a mark without its rows would keep the hour from being read again.
   const markImported = async (hours: readonly number[], since: number): Promise<void> => {

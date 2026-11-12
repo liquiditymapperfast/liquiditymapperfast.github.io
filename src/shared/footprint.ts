@@ -43,6 +43,18 @@ export const sizeBucket = (usd: number): number => { let bucket = 0; for (let i 
 export interface TradeStats { buyN: number; sellN: number; buy: number[]; sell: number[]; v?: number; big?: number[] }
 /** The version of the statistics this recorder writes: 2 counts market orders (the list of large ones is an optional addition, read by older code as nothing). */
 export const STATS_VERSION = 2;
+/**
+ * Whether `list` (signed USD, a buy positive) can be a minute's list of large orders: its buys and its sells each add up to the minute's USD
+ * from the second size bucket up, to $1 or a millionth. A list rebuilt from the prints is kept only then (`fillLists`, and the recorded
+ * history's import, app/browser/history-import.ts).
+ */
+export function listFits(list: readonly number[], stats: Pick<TradeStats, 'buy' | 'sell'>): boolean {
+  const sum = (values: readonly number[]): number => { let s = 0; for (let i = 1; i < values.length; i++) s += values[i]!; return s; };
+  const agrees = (listed: number, boxes: number): boolean => Math.abs(listed - boxes) <= Math.max(1, 1e-6 * boxes);
+  let buys = 0, sells = 0;
+  for (const v of list) if (v > 0) buys += v; else sells -= v;
+  return agrees(buys, sum(stats.buy)) && agrees(sells, sum(stats.sell));
+}
 /** The list of a minute with no large order yet: one shared empty list, replaced at the first order (a week holds about 300,000 instrument-minutes). */
 const NO_BIG = Object.freeze([]) as unknown as number[];
 const emptyStats = (): TradeStats => ({ buyN: 0, sellN: 0, buy: new Array<number>(SIZE_EDGES.length).fill(0), sell: new Array<number>(SIZE_EDGES.length).fill(0), v: STATS_VERSION });
@@ -658,15 +670,11 @@ export class FootprintRecorder {
       const minute = Math.floor(p.t / MINUTE) * MINUTE, list = minutes.get(minute);
       if (list) list.push(p.side === 'buy' ? p.usd : -p.usd); else minutes.set(minute, [p.side === 'buy' ? p.usd : -p.usd]);
     }
-    const sum = (values: readonly number[]): number => { let s = 0; for (let i = 1; i < values.length; i++) s += values[i]!; return s; };
-    const agrees = (listed: number, boxes: number): boolean => Math.abs(listed - boxes) <= Math.max(1, 1e-6 * boxes);
     let filled = 0, mismatched = 0;
     for (const [id, minutes] of this.#stats) for (const [t, stats] of minutes) {
       if (stats.big !== undefined || t < from || t >= to) continue;
       const list = found.get(id)?.get(t) ?? NO_BIG;
-      let buys = 0, sells = 0;
-      for (const v of list) if (v > 0) buys += v; else sells -= v;
-      if (!agrees(buys, sum(stats.buy)) || !agrees(sells, sum(stats.sell))) { mismatched++; continue; }
+      if (!listFits(list, stats)) { mismatched++; continue; }
       stats.big = list; filled++;
     }
     return { filled, mismatched };

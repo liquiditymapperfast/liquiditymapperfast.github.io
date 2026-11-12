@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { clipCoverage, decodeHour, footprintVolume, fullerFootprint, ownsMinute, ownsTime, planAbsorption, planCoverage, planFootprint, tradeImport, within } from '../src/app/browser/history-import.ts';
-import type { FootprintMinuteRow } from '../src/shared/footprint.ts';
+import { statsText, type FootprintMinuteRow } from '../src/shared/footprint.ts';
+import { importedMark } from '../src/app/browser/idb.ts';
 import type { AbsorptionGroup, AbsorptionMinute } from '../src/shared/absorption.ts';
 import type { CoverageRow } from '../src/shared/coverage.ts';
 import { HOUR_MS } from '../src/app/browser/history-import.ts';
@@ -154,4 +157,74 @@ test('a restart onto the footprint build: the old run\'s stretch is claimed only
   const parts = clipCoverage([old, fresh], h => footprintHours.has(h), () => firstMinute + 60_000);
   // Nothing of the old run's stretch (it ends before the new run's second minute), and the new one from its second minute on.
   assert.deepEqual(parts.map(r => [r.from - HOUR, r.to - HOUR]), [[2 * H + 660_000, 3 * H]]);
+});
+
+/** The hour hlm-history's own encoder writes for this test (rows.rs `page_fixture_hour_with_both_footprint_layouts`, bytes pinned there). */
+const f32Fixture = (): ArrayBuffer => { const b = fs.readFileSync(path.join(process.cwd(), 'tests', 'fixtures', 'history-hour-footprint-f32.bin')); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; };
+const F32_HOUR = 1_794_492_000_000;
+const sizes = (first: number, second: number): number[] => [first, second, 0, 0, 0, 0, 0, 0];
+
+test('kind 11 (f32 USD, no list) reads back from the recorder\'s own bytes, each list rebuilt from the same file\'s large trades where it adds up; kind 7 keeps its own', () => {
+  const rows = decodeHour(f32Fixture())!.rows;
+  assert.equal(rows.hour, F32_HOUR);
+  assert.equal(rows.prints.length, 4);
+  const [a, b, c, d] = rows.footprint;
+  assert.equal(rows.footprint.length, 4);
+  // USD to 7 significant digits (55,618.1234567 is kept as 55,618.125); the sums by size whole.
+  assert.deepEqual(a, {
+    inst: 'binance:BTCUSDT', t: F32_HOUR, step: 0.25, bins: [[400_123, 55_618.125, 0, 1, 0], [400_131, 1_234.5, 60_000.25, 2, 1]],
+    stats: { buyN: 3, sellN: 1, buy: sizes(1_234.5, 55_618.123_456_7), sell: [0, 0, 60_000.25, 0, 0, 0, 0, 0], v: 2, big: [55_618.123_456_7, -60_000.25] },
+  });
+  assert.equal(Math.fround(55_618.123_456_7), 55_618.125);
+  // Its large buy is in no large trade of this file (the next hour's has it): no list, for the engine to fill from every print it holds.
+  assert.equal(b!.inst, 'binance:BTCUSDT');
+  assert.equal(b!.t, F32_HOUR + 60_000);
+  assert.ok(b!.stats && b!.stats.big === undefined && !('big' in b!.stats));
+  // No large order: an empty list, known (the large trade of another market in its minute is not its own).
+  assert.equal(c!.inst, 'okx:BTC-USDT-SWAP');
+  assert.deepEqual(c!.stats!.big, []);
+  // Kind 7 as written before: f64 to the last bit, its own list.
+  assert.deepEqual(d, {
+    inst: 'binance:BTCUSDT', t: F32_HOUR + 120_000, step: 0.25, bins: [[400_200, 40_000.123_456_7, 0, 1, 0]],
+    stats: { buyN: 1, sellN: 0, buy: sizes(0, 40_000.123_456_7), sell: sizes(0, 0), v: 2, big: [40_000.123_456_7] },
+  });
+  // The list is the minute's own (not shared with the prints' grouping), and stored as the page stores any list.
+  assert.equal(statsText(a!.stats!), JSON.stringify([3, 1, sizes(1_234.5, 55_618.123_456_7), [0, 0, 60_000.25, 0, 0, 0, 0, 0], 2, [55_618.123_456_7, -60_000.25]]));
+  // A record cut short or claiming rows it does not hold is left out, as for kind 7.
+  const bytes = new Uint8Array(f32Fixture()), view = new DataView(bytes.buffer);
+  const firstFootprint = (): number => { for (let at = 16; at + 4 <= bytes.length; at += 4 + view.getUint32(at, true)) if (bytes[at + 4] === 11) return at; return -1; };
+  const at = firstFootprint(), rowsAt = at + 4 + 2 + 'binance:BTCUSDT'.length + 16;
+  view.setUint32(rowsAt, 3, true);
+  assert.equal(decodeHour(bytes.buffer)!.rows.footprint.length, 3, 'the minute with a wrong row count is left out, the rest kept');
+});
+
+test('a minute the page holds part of (the tab opened inside it): the service\'s copy is taken with the list rebuilt from its own file', () => {
+  const rows = decodeHour(f32Fixture())!.rows;
+  const own: CoverageRow = { inst: 'binance:BTCUSDT', metric: 'trades', from: F32_HOUR + 30_000, to: F32_HOUR + 3_600_000, kind: 'live' };
+  const pageCopy: FootprintMinuteRow = { inst: 'binance:BTCUSDT', t: F32_HOUR, step: 0.25, bins: [[400_131, 1_234.5, 60_000.25, 2, 1]], stats: { buyN: 2, sellN: 1, buy: sizes(1_234.5, 0), sell: [0, 0, 60_000.25, 0, 0, 0, 0, 0], v: 2, big: [-60_000.25] } };
+  const state = tradeImport([own], [pageCopy]);
+  const chosen = planFootprint(state, rows.footprint, key => key === `binance:BTCUSDT|${F32_HOUR}` ? pageCopy : undefined);
+  const seam = chosen.find(r => r.t === F32_HOUR && r.inst === 'binance:BTCUSDT')!;
+  assert.deepEqual(seam.stats!.big, [55_618.123_456_7, -60_000.25], 'the whole minute\'s list, not the page\'s half');
+  assert.ok(!chosen.some(r => r.t === F32_HOUR + 60_000 && r.inst === 'binance:BTCUSDT'), 'a minute the page recorded whole stays its own');
+});
+
+test('copies of a minute that differ only by f32 rounding hold the same volume: the orders counted decide, and a tie keeps the copy held', () => {
+  const stats = (n: number) => ({ buyN: n, sellN: 0, buy: sizes(0, 55_618.123_456_7), sell: sizes(0, 0), v: 2 });
+  const page: FootprintMinuteRow = { inst: 'a', t: HOUR, step: 0.25, bins: [[1, 55_618.123_456_7, 0, 1, 0], [2, 0.1, 1_234.567_891, 0, 0]], stats: stats(1) };
+  const service: FootprintMinuteRow = { ...page, bins: page.bins.map(([bin, buy, sell, b, s]) => [bin, Math.fround(buy), Math.fround(sell!), b, s] as FootprintMinuteRow['bins'][number]) };
+  assert.notEqual(footprintVolume(service), footprintVolume(page), 'rounding moved the sum');
+  assert.ok(!fullerFootprint(page, service) && !fullerFootprint(service, page), 'neither is fuller');
+  assert.ok(fullerFootprint(page, { ...service, stats: stats(2) }), 'more of its orders counted');
+  assert.ok(fullerFootprint(page, { ...service, bins: [...service.bins, [3, 1, 0, 0, 0]] }), 'a dollar more is a trade more');
+  assert.deepEqual(planFootprint(tradeImport([], []), [service], () => page), [], 'the page keeps its own copy');
+});
+
+test('an hour a page from before kind 11 marked as read is read again from the hour this page was built in; before it the mark stands', () => {
+  const built = 1_794_520_800_000;
+  assert.ok(importedMark({ inst: 'v3', from: built + 5 * HOUR_MS }));
+  assert.ok(importedMark({ inst: 'v3', from: built - 5 * HOUR_MS }));
+  assert.ok(importedMark({ inst: 'v2', from: built - HOUR_MS }));
+  assert.ok(!importedMark({ inst: 'v2', from: built }));
+  assert.ok(!importedMark({ inst: '', from: built - HOUR_MS }));
 });
