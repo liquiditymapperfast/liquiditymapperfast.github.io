@@ -9,7 +9,8 @@ import { activeIds, kindOf } from '../scope.ts';
 import { flowIds } from '../cvd/ids.ts';
 import { gridStepFor } from '../../shared/grid.ts';
 import { t } from '../i18n.ts';
-import { draftOf, follow, refreshMs, rowStep, snap, type RangeSelection } from './selection.ts';
+import { MINUTE, draftOf, follow, inReplay, refreshMs, rowStep, snap, type RangePane, type RangeSelection } from './selection.ts';
+import type { RangeProvider } from './provider.ts';
 import { priceOf, pricePieces, rangeLines, type RangeInput, type RangeLine } from './stats.ts';
 import { venueMark } from '../venue-marks.ts';
 import { scaledUsd } from '../coin.ts';
@@ -26,7 +27,7 @@ export class LineList {
   update(lines: readonly RangeLine[]): void {
     const next: HTMLElement[] = [], keep = new Set<string>();
     for (const line of lines) {
-      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark, line.profile, line.stack]);
+      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark, line.profile, line.stack, line.parts, line.signed]);
       let held = this.#nodes.get(line.key);
       if (!held || held.sig !== sig) { held = { node: lineNode(line), sig }; this.#nodes.set(line.key, held); }
       keep.add(line.key); next.push(held.node);
@@ -57,6 +58,26 @@ function lineNode(line: RangeLine): HTMLElement {
         (cells[2] as HTMLElement).classList.add('bar', 'sell'); (cells[2] as HTMLElement).style.setProperty('--w', `${(sell * 100).toFixed(1)}%`);
       }
       return row;
+    }
+    case 'stack': {
+      // A label, the parts end to end on the section's scale, the total; each part says itself in its tip.
+      const bar = el('span', { class: 'bars' });
+      for (const part of line.parts ?? []) {
+        if (!(part.size > 0)) continue;
+        const piece = el('i', { class: `${part.tone}${part.closed ? ' closed' : ''}`, tip: part.tip });
+        piece.style.setProperty('--w', `${(Math.max(0, part.size) * 100).toFixed(2)}%`);
+        bar.append(piece);
+      }
+      return el('div', { class: `range-stack${tone}` }, el('span', { class: 'label', textContent: line.cells[0] ?? '' }), bar, el('span', { class: 'total', textContent: line.cells[1] ?? '' }));
+    }
+    case 'signed': {
+      // Out of the zero line in the middle: right for more, left for less, as long as its share of the longest.
+      const v = Math.max(-1, Math.min(1, line.signed ?? 0)), bar = el('span', { class: 'bars' }, el('i', { class: v >= 0 ? 'up' : 'down' }));
+      bar.style.setProperty('--v', `${(Math.abs(v) * 50).toFixed(2)}%`);
+      const label = line.mark ? el('span', { class: 'label' }, venueMark(line.mark, 13), line.cells[0] ?? '') : el('span', { class: 'label', textContent: line.cells[0] ?? '' });
+      const total = el('span', { class: 'total', textContent: line.cells[1] ?? '' });
+      if (line.cells[2]) total.append(el('small', { textContent: line.cells[2] }));
+      return el('div', { class: `range-signed${tone}${v < 0 ? ' less' : ''}` }, label, bar, total);
     }
     case 'profile': {
       const box = el('div', { class: 'range-profile' });
@@ -101,6 +122,13 @@ export class RangeTool {
   #lastMs = 0;
   #timer = 0;
   #stopping = false;
+  /** The panes that sum up a stretch in their own terms (provider.ts), and which summary the panel shows: the map's, or a pane's. */
+  readonly #providers = new Map<RangePane, RangeProvider>();
+  #context: 'map' | RangePane = 'map';
+  readonly #show = el('select', { class: 'range-show' });
+  /** A pane's summary drawn again at most once a second as its data changes, and each second while it is live (its end follows the clock). */
+  #paneTimer = 0;
+  #paneDrawn = 0;
   /** The toolbar's button: the panel opens beside it. */
   anchor: HTMLElement | null = null;
   /** The map's time window (set by the page): the absorption marks and the large orders are loaded for it, and for no other. */
@@ -108,7 +136,44 @@ export class RangeTool {
 
   constructor(private store: Store, private hub: Hub) {
     window.addEventListener('keydown', e => { if (e.key === 'Escape' && this.#start) { e.preventDefault(); this.cancel(); } });
-    document.addEventListener('visibilitychange', () => this.#schedule());
+    document.addEventListener('visibilitychange', () => { this.#schedule(); this.#paneSoon(); });
+    this.#show.onchange = () => this.#choose(this.#show.value === 'map' ? 'map' : this.#show.value as RangePane);
+  }
+
+  /** A pane that sums up a stretch in its own terms: a drag in it opens its summary, and the Show menu offers it. */
+  useProvider(provider: RangeProvider): void { this.#providers.set(provider.pane, provider); }
+
+  /** The pane's data changed (it drew new bars): its summary is drawn again soon, if it is the one shown. */
+  paneChanged(pane: RangePane): void { if (this.#context === pane && this.#panel) this.#paneSoon(); }
+
+  /** Show the map's summary or a pane's, for the selection as it is: the map's is gathered when it is first shown for this selection. */
+  #choose(context: 'map' | RangePane): void {
+    if (context !== 'map' && !this.#providers.has(context)) context = 'map';
+    if (context === this.#context) return;
+    this.#context = context;
+    const sel = this.store.state.range;
+    if (!sel || sel.draft) { this.#render(); return; }
+    // Back on the map's summary of the same selection: what the map holds is read again (it was left alone meanwhile), and a live one goes on.
+    if (context === 'map') { if (this.#input?.sel !== sel) void this.#gather(sel, true); else { this.#input = { ...this.#input, ...this.#held(sel), oiPane: this.#providers.get('oi')?.shown() ?? false }; this.#render(); this.#schedule(); } }
+    else { window.clearTimeout(this.#timer); this.#timer = 0; this.#render(); this.#paneSoon(); }
+  }
+
+  /**
+   * Draw the pane's summary again: at once when the last drawing was a second ago or more, else when that second is up; and while the
+   * selection is live, again every second (its end moves on with the clock). Nothing while the panel is closed or the page is hidden.
+   */
+  #paneSoon(): void {
+    if (this.#paneTimer || this.#context === 'map' || !this.#panel || document.hidden) return;
+    const wait = Math.max(0, 1000 - (performance.now() - this.#paneDrawn));
+    this.#paneTimer = window.setTimeout(() => {
+      this.#paneTimer = 0;
+      const sel = this.store.state.range;
+      if (!sel || sel.draft || !this.#panel || this.#context === 'map') return;
+      const moved = replaying() ? sel : follow(sel, pageNow());
+      if (moved !== sel) this.store.set({ range: moved });
+      this.#paneDrawn = performance.now(); this.#render();
+      if (moved.live) this.#paneSoon();
+    }, wait);
   }
 
   get armed(): boolean { return this.store.state.rangeTool; }
@@ -121,7 +186,7 @@ export class RangeTool {
   toggle(): void {
     const sel = this.store.state.range;
     if (this.#panel) this.stop();
-    else if (sel && !sel.draft) { this.#open(); void this.#gather(sel, false); }
+    else if (sel && !sel.draft) { this.#open(); if (this.#context === 'map') void this.#gather(sel, false); else { this.#render(); this.#paneSoon(); } }
     else if (this.store.state.rangeTool) this.stop();
     else this.arm();
   }
@@ -136,42 +201,56 @@ export class RangeTool {
   stop(): void {
     if (this.#stopping) return;
     this.#stopping = true;
-    window.clearTimeout(this.#timer); this.#timer = 0; this.#asked++; this.#oiFor++; this.#priceFor++;
-    this.#start = null; this.#before = null; this.#input = null;
+    window.clearTimeout(this.#timer); this.#timer = 0; window.clearTimeout(this.#paneTimer); this.#paneTimer = 0; this.#asked++; this.#oiFor++; this.#priceFor++;
+    this.#start = null; this.#before = null; this.#input = null; this.#context = 'map';
     this.store.set({ rangeTool: false, range: null });
     this.#panel?.close(); this.#panel = null;
     this.#stopping = false;
   }
 
-  begin(at: RangePoint): void {
-    this.#start = at; this.#before = this.store.state.range?.draft === false ? this.store.state.range : null;
-    this.store.set({ range: draftOf(at, at) });
+  /** A drag begins at `at`, in the pane under the map `pane` (none: the map or the flow column). */
+  begin(at: RangePoint, pane?: RangePane): void {
+    this.#start = at; this.#pane = pane; this.#before = this.store.state.range?.draft === false ? this.store.state.range : null;
+    this.store.set({ range: draftOf(at, at, pane, this.#step()) });
   }
+  /** The pane the drag in progress began in. */
+  #pane: RangePane | undefined;
+  /** The bars a drag in progress holds whole: those of the pane it began in, where that pane sums up its own; else none (minutes, at the end). */
+  #step(): number | undefined { const provider = this.#pane ? this.#providers.get(this.#pane) : undefined, ms = provider?.barMs() ?? 0; return ms > 0 ? ms : undefined; }
   /** The drag is at `at`; `from` moves where it began too (a drag on the traded column holds whole rows, so both ends snap). */
-  move(at: RangePoint, from?: RangePoint): void { if (!this.#start) return; if (from) this.#start = from; this.store.set({ range: draftOf(this.#start, at) }); }
+  move(at: RangePoint, from?: RangePoint): void { if (!this.#start) return; if (from) this.#start = from; this.store.set({ range: draftOf(this.#start, at, this.#pane, this.#step()) }); }
   /** The drag ended at `at` (and began at `from`, when given). `small`: it covered too few pixels to be a selection (a click), and what was selected before stays. */
   end(at: RangePoint, small: boolean, from?: RangePoint): void {
     if (from && this.#start) this.#start = from;
     const start = this.#start; if (!start) return;
     if (small) { this.cancel(); return; }
     this.#start = null; this.#before = null;
+    // A drag in a pane that sums up its own bars holds whole bars of it and opens its summary; elsewhere whole minutes and the map's.
+    const provider = this.#pane ? this.#providers.get(this.#pane) : undefined, step = this.#step() ?? MINUTE;
     // Replay: snapped on its clock, up to its moment, and never live (the live refresh would move it with the real now).
-    const snapped = snap(draftOf(start, at), pageNow()), sel = replaying() ? { ...snapped, t1: Math.min(snapped.t1, Math.ceil(pageNow() / 60_000) * 60_000), live: false } : snapped;
+    const snapped = snap(draftOf(start, at, this.#pane), pageNow(), step), sel = replaying() ? inReplay(snapped, pageNow(), provider !== undefined) : snapped;
     this.store.set({ range: sel, rangeTool: false });
+    this.#context = provider ? provider.pane : 'map';
+    this.#input = null; this.#asked++; window.clearTimeout(this.#timer); this.#timer = 0;
     this.#open();
-    void this.#gather(sel, true);
+    if (this.#context === 'map') void this.#gather(sel, true);
+    else { this.#render(); this.#paneSoon(); }
   }
   cancel(): void {
     if (!this.#start) return;
     this.#start = null;
     this.store.set({ range: this.#before }); this.#before = null;
+    // The selection put back goes on as it was: live, its figures are taken (or drawn) again; a refresh already due is left as it is.
+    if (!this.#timer) this.#schedule();
+    this.#paneSoon();
   }
 
   #open(): void {
     if (this.#panel || !this.anchor) return;
     const again = el('button', { type: 'button', textContent: t('New selection'), tip: t('Select another part of the map or of a pane: drag across it.'), onclick: () => { this.store.set({ rangeTool: true }); this.#render(); } });
-    this.#panel = openPanel(this.anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; window.clearTimeout(this.#timer); this.#timer = 0; queueMicrotask(() => { if (!openedPanel()) this.stop(); }); } }, (tools, body) => {
-      tools.append(again, el('span', { class: 'spacer' }), helpButton('range'));
+    const show = el('label', { class: 'ctl range-show-ctl', tip: t('What the panel sums up for the selection: the map (market orders, absorption, resting orders), or a pane under it in its own terms. A drag in a pane opens its own.') }, t('Show'), this.#show);
+    this.#panel = openPanel(this.anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; window.clearTimeout(this.#timer); this.#timer = 0; window.clearTimeout(this.#paneTimer); this.#paneTimer = 0; queueMicrotask(() => { if (!openedPanel()) this.stop(); }); } }, (tools, body) => {
+      tools.append(again, el('span', { class: 'spacer' }), show, helpButton('range'));
       body.append(this.#lines.root);
     });
   }
@@ -203,12 +282,14 @@ export class RangeTool {
    * or their settings changed), without asking the recording again; at most once a frame.
    */
   refreshHeld(): void {
+    // A pane's summary reads its own snapshot (and the liquidations and panes shown): it is drawn again, not gathered.
+    if (this.#context !== 'map') { this.#paneSoon(); return; }
     if (this.#heldFrame || !this.#panel || !this.#input) return;
     this.#heldFrame = requestAnimationFrame(() => {
       this.#heldFrame = 0;
       const sel = this.store.state.range, input = this.#input;
       if (!sel || sel.draft || !input || !this.#panel || input.sel !== sel) return;
-      this.#input = { ...input, ...this.#held(sel) };
+      this.#input = { ...input, ...this.#held(sel), oiPane: this.#providers.get('oi')?.shown() ?? false };
       this.#render();
     });
   }
@@ -222,7 +303,7 @@ export class RangeTool {
     const state = this.store.state, ids = flowIds(state, this.hub.flow.ids);
     const band = sel.p0 !== null && sel.p1 !== null ? { p0: sel.p0, p1: sel.p1 } : null;
     const kept = !fresh && this.#input ? this.#input : null;
-    this.#input = { sel, answer: kept?.answer ?? null, error: null, resting: kept?.resting ?? null, oi: kept && kept.oi !== undefined ? kept.oi : 'asking', price: kept && kept.price !== undefined ? kept.price : 'asking', ...this.#held(sel) };
+    this.#input = { sel, answer: kept?.answer ?? null, error: null, resting: kept?.resting ?? null, oi: kept && kept.oi !== undefined ? kept.oi : 'asking', price: kept && kept.price !== undefined ? kept.price : 'asking', oiPane: this.#providers.get('oi')?.shown() ?? false, ...this.#held(sel) };
     this.#render();
     // The chart market's price across the selection, from its finest candles that fit in one question; it fills in when it comes.
     const priceInst = state.seriesInstrument || state.marketId;
@@ -269,11 +350,11 @@ export class RangeTool {
     this.#schedule();
   }
 
-  /** Take a live selection's figures again after a while, while its panel is open and the page is shown. */
+  /** Take a live selection's figures again after a while, while its panel is open and the page is shown (the map's: a pane's draws itself). */
   #schedule(): void {
     window.clearTimeout(this.#timer); this.#timer = 0;
     const sel = this.store.state.range;
-    if (!sel || sel.draft || !sel.live || !this.#panel || document.hidden) return;
+    if (!sel || sel.draft || !sel.live || !this.#panel || document.hidden || this.#context !== 'map') return;
     this.#timer = window.setTimeout(() => {
       const now = this.store.state.range; if (!now || now.draft || !this.#panel) return;
       const moved = follow(now, Date.now());
@@ -282,9 +363,21 @@ export class RangeTool {
     }, refreshMs(this.#lastMs, sel.t1 - sel.t0));
   }
 
+  /** The Show menu: the map, each pane shown that sums up its own bars, and the summary shown now (its pane may have been hidden since). */
+  #syncShow(): void {
+    const options: [string, string][] = [['map', t('Map')]];
+    for (const p of this.#providers.values()) { const shown = p.shown(); if (shown || p.pane === this.#context) options.push([p.pane, shown ? p.title() : `${p.title()} (${t('hidden')})`]); }
+    const key = options.map(o => o.join(':')).join('|');
+    if (this.#show.dataset.key !== key) { this.#show.dataset.key = key; this.#show.replaceChildren(...options.map(([value, text]) => new Option(text, value))); }
+    if (this.#show.value !== this.#context) this.#show.value = this.#context;
+    const label = this.#show.parentElement; if (label) label.hidden = options.length < 2;
+  }
+
   #render(): void {
-    const input = this.#input, sel = this.store.state.range;
-    const lines: RangeLine[] = input && sel && !sel.draft ? rangeLines(input)
+    const input = this.#input, sel = this.store.state.range, provider = this.#context !== 'map' ? this.#providers.get(this.#context) : undefined;
+    this.#syncShow();
+    const lines: RangeLine[] = sel && !sel.draft && provider ? provider.lines(sel, provider.shown())
+      : input && sel && !sel.draft ? rangeLines(input)
       : [{ key: 'intro', kind: 'note', cells: [t('Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.')] }];
     const before = this.#lines.root.childElementCount;
     this.#lines.update(lines);

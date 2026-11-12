@@ -9,6 +9,7 @@ import { clock, price as fmtPrice, usd } from '../format.ts';
 import { t, tn } from '../i18n.ts';
 import { MINUTE, type RangeSelection } from './selection.ts';
 import type { CandleRow, OiBar } from '../store.ts';
+import { TIMEFRAMES } from '../../shared/series.ts';
 
 /**
  * What the Range panel says about a selection, worked out from what was gathered for it: every number and word here, the panel only lays the
@@ -56,6 +57,8 @@ export interface RangeInput {
    * answer they say which markets each section counts. Undefined when not known.
    */
   books?: readonly { id: string; on: boolean }[];
+  /** The OI pane is shown, with its own summary of a stretch (Show → Open interest): the open-interest section says where to find it. */
+  oiPane?: boolean;
   /** The chart market's price across the selection, from its finest candles that fit (`tf`); 'asking' while asked for, null when it has none. */
   price?: { market: string; tf: string; open: number; close: number; high: number; low: number } | null | 'asking';
 }
@@ -63,11 +66,26 @@ export interface RangeInput {
 /** One bar of a volume profile: the price it starts at, buys and sells as 0..1 of the busiest bar, its total, and whether it is the busiest. */
 export interface ProfileBar { label: string; buy: number; sell: number; total: string; top: boolean }
 
+/**
+ * One part of a stacked bar: its length as a share of the bar's scale (0..1), whose side it is (`up` the buyers', the candle-up colour;
+ * `down` the sellers'; `none` neither), whether it is closing (drawn lighter, as the OI pane draws what closed), and its words for a tip.
+ */
+export interface StackPart { size: number; tone: 'up' | 'down' | 'none'; closed?: boolean; tip: string }
+
 /** One line of the panel. `cells` are its texts; a split's `share` is the buy side's part, 0..1, a row's the length of its bar. */
 export interface RangeLine {
   key: string;
-  kind: 'title' | 'heading' | 'stat' | 'split' | 'row' | 'note' | 'profile';
+  /**
+   * `stack`: a label, a bar of parts laid end to end on a scale shared with the other stacks of its section, and its total (`cells` label,
+   * total). `signed`: a label, a bar out of a zero line shared with the others of its section, right for more and left for less (`signed`,
+   * -1..1 of the longest), and its value, with an optional note under it (`cells` label, value, note).
+   */
+  kind: 'title' | 'heading' | 'stat' | 'split' | 'row' | 'note' | 'profile' | 'stack' | 'signed';
   cells: string[];
+  /** A stack's parts. */
+  parts?: StackPart[];
+  /** A signed bar's length and side, -1..1. */
+  signed?: number;
   share?: number;
   /** A row's bars, buys then sells, each 0..1 of the longest. */
   bars?: [number, number];
@@ -231,6 +249,7 @@ function oiLines(input: RangeInput, box: boolean): RangeLine[] {
   out.push({ key: 'oi-change', kind: 'stat', cells: [t('Change'), `${sign}${amount(Math.abs(d))} · ${sign}${(Math.abs(rel) * 100).toFixed(2)}%${price > 0 ? ` · ${signed(d * price)}` : ''}`] });
   if (change.high > Math.max(change.start, change.end) || change.low < Math.min(change.start, change.end)) out.push({ key: 'oi-range', kind: 'stat', tone: 'muted', cells: [t('Lowest and highest'), `${amount(change.low)} / ${amount(change.high)}`] });
   const of = input.oi.of ?? 1;
+  if (input.oiPane) out.push({ key: 'oi-pointer', kind: 'note', tone: 'muted', cells: [t("All the OI pane's venues, and who added and who reduced: Show → Open interest.")] });
   out.push({ key: 'oi-note', kind: 'note', tone: 'muted', cells: [of > 1
     ? (box ? t('One market, the largest of the {n} the OI pane adds together, and all of it, not only the box\'s prices. Rising: positions opened; falling: closed. Not who opened or closed them.', { n: of }) : t('One market, the largest of the {n} the OI pane adds together. Rising: positions opened; falling: closed. Not who opened or closed them.', { n: of }))
     : (box ? t('One market, the one the OI pane shows, and all of it, not only the box\'s prices. Rising: positions opened; falling: closed. Not who opened or closed them.') : t('One market, the one the OI pane shows. Rising: positions opened; falling: closed. Not who opened or closed them.'))] });
@@ -468,6 +487,11 @@ function restingLines(resting: readonly CellShare[] | null, books: RangeInput['b
 
 /** The size of a selection while it is dragged, for the tag beside it: its minutes, and a box's height as a share of its price. */
 export function draftLabel(sel: RangeSelection): string {
+  // A drag in a pane that holds whole bars: how many, and of what.
+  if (sel.step && sel.step > MINUTE) {
+    const n = Math.max(1, Math.round((sel.t1 - sel.t0) / sel.step)), tf = Object.entries(TIMEFRAMES).find(([, ms]) => ms === sel.step)?.[0] ?? '';
+    return tn(n, '{n} candle of {tf}', '{n} candles of {tf}', { tf });
+  }
   const span = durationText(Math.max(MINUTE, sel.t1 - sel.t0));
   return sel.p0 !== null && sel.p1 !== null && sel.p0 > 0 ? `${span} · ${((sel.p1 - sel.p0) / sel.p0 * 100).toFixed(2)}%` : span;
 }

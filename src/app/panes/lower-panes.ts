@@ -4,7 +4,7 @@ import { helpButton } from '../help.ts';
 import { TIMEFRAMES, type DepthAnswer, type Hub } from '../hub.ts';
 import { DEPTH_PRESETS, bandEditText, bandText, bandsOf, parseBands, type DepthPreset, type DepthSettings } from '../depth-settings.ts';
 import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar, type CandleRow } from '../store.ts';
-import { chainedOi, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, oiVenuesAt, type OiPart, type OiVenue } from '../oi-change.ts';
+import { chainedOi, heldOiAt, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, oiVenuesAt, type OiPart, type OiVenue } from '../oi-change.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { venueLabel } from '../venues.ts';
 import { activeIds, emptyScopeMessage, kindOf, marketIds } from '../scope.ts';
@@ -47,6 +47,8 @@ import { pageNow, replaying } from '../replay/clock.ts';
 import { coinText, nlnsWhoLines, whoParts, type NlnsCandle } from '../delta/nlns.ts';
 import type { NlnsSource } from '../delta/nlns-source.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
+import { candleSplitStyles, emphasisFloor, medianRow } from '../traded/emphasis.ts';
+import type { OiPaneHeld } from '../range/oi-lines.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -97,7 +99,7 @@ export abstract class TimePane {
       if (e.pointerType === 'touch' || !this.#range) return;
       const x = e.clientX - this.canvas.getBoundingClientRect().left - this.#left;
       if (!selects(this.#range.armed, e) || x < 0 || x > this.plotW) return;
-      this.rangeGesture = true; this.#selecting = { x }; this.#range.begin({ t: this.#timeAt(x), p: null }); this.canvas.setPointerCapture(e.pointerId);
+      this.rangeGesture = true; this.#selecting = { x }; this.#range.begin({ t: this.#timeAt(x), p: null }, source); this.canvas.setPointerCapture(e.pointerId);
     });
     this.canvas.addEventListener('pointerup', e => {
       const sel = this.#selecting; if (!sel || !this.#range) return;
@@ -125,6 +127,8 @@ export abstract class TimePane {
   useTimeGestures(time: ReturnType<HeatPane['timeGestures']>): void { this.#time = time; }
   /** Let a drag across the pane select a stretch of time for the Range tool. */
   useRange(range: RangeTool): void { this.#range = range; }
+  /** Tell the Range tool this pane drew again (its summary of a selection made in it is worked out again, at most once a second). */
+  protected rangeChanged(): void { this.#range?.paneChanged(this.#source); }
   /** The time at `x`, held inside the plot. */
   #timeAt(x: number): number { return this.view.tOf(Math.max(0, Math.min(this.plotW, x)), this.plotW); }
 
@@ -146,7 +150,7 @@ export abstract class TimePane {
       hold: pin, holdMove: pin,
       panStart: p => {
         this.#unpin();
-        if (this.#range?.armed && p.x <= this.plotW) { this.#touchSelect = { start: p, at: p }; this.#range.begin({ t: this.#timeAt(p.x), p: null }); return; }
+        if (this.#range?.armed && p.x <= this.plotW) { this.#touchSelect = { start: p, at: p }; this.#range.begin({ t: this.#timeAt(p.x), p: null }, this.#source); return; }
         this.#time?.panStart?.(p);
       },
       pan: (d, p, v) => { if (this.#touchSelect) { this.#touchSelect.at = p; this.#range?.move({ t: this.#timeAt(p.x), p: null }); return; } this.#time?.pan?.(d, p, v); },
@@ -615,6 +619,19 @@ export class DepthPane extends TimePane {
   }
 }
 
+/**
+ * Which markets each bar's change is made of (venues added together), as `sumOi` counts them (read at both ends of the bar, a reading held
+ * as it holds there): the Range summary compares a stretch only with windows made of the same markets, not merely as many.
+ */
+export function oiCohorts(oi: readonly OiBar[], parts: readonly OiPart[], tf: number): string[] {
+  const carry = Math.max(2 * tf, 10 * 60_000), sorted = parts.map(part => ({ id: part.id, bars: [...part.bars].sort((a, b) => a[0] - b[0]) })).sort((a, b) => a.id < b.id ? -1 : 1);
+  return oi.map(bar => sorted.filter(part => heldOiAt(part.bars, bar[0], carry) && heldOiAt(part.bars, bar[0] - tf, carry)).map(part => part.id).join(','));
+}
+
+/** What the OI pane's open interest is of: the coin, the timeframe and whose (the Range summary's snapshot must be of the same). */
+export const oiHeldKey = (state: Pick<AppState, 'marketId' | 'timeframe' | 'oiMarkets' | 'oiParts' | 'oiInstrument'>): string =>
+  `${state.marketId}|${state.timeframe}|${state.oiMarkets}|${state.oiParts.length > 1 ? state.oiParts.map(part => part.id).join(',') : state.oiInstrument}`;
+
 /** The chart market's coin ("BTC"), for amounts of it. */
 const coinOf = (state: Pick<AppState, 'markets' | 'marketId'>): string => state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '';
 
@@ -632,6 +649,9 @@ function whoText(c: NlnsCandle | undefined, d: number): string {
 export function oiTableRows(venues: readonly OiVenue[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
   return venues.map(v => [{ text: venueLabel(v.id) }, { text: tableText(v.oi) }, { text: v.change === null ? '–' : tableSigned(v.change), color: v.change ? tableInk(v.change > 0 ? p.bid : p.ask, p) : undefined }, { text: `${Math.round(v.share * 100)}%`, color: p.muted }]);
 }
+
+/** The OI change bars' alpha with Highlights off (on: 1 for a bar that stands out, 0.38 for the rest), and the faintest an NL/NS bar's weaker side is drawn. */
+const OI_BAR_ALPHA = 0.75, OI_WEAK_ALPHA = 0.14;
 
 /**
  * Open interest is a level, so it is drawn as one: a step line that holds each sample until the next, a dimmer continuation to the
@@ -692,6 +712,20 @@ export class OiPane extends TimePane {
     if (this.#who?.model !== model) this.#who = { model, byStart: new Map(model.map(c => [c.t, c] as const)) };
     return this.#who.byStart;
   }
+  /**
+   * The median of what opened (on a rise) or closed (on a fall) in the change bars in view, the scale the bars' lean is judged on, kept while
+   * the model and the bars in view are the same: a pointer move draws the pane again and must not sort them again.
+   */
+  #lean: { who: ReadonlyMap<number, NlnsCandle>; delta: Float64Array; from: number; to: number; median: number } | null = null;
+  #leanMedian(who: ReadonlyMap<number, NlnsCandle>, oi: readonly OiBar[], delta: Float64Array, visible: readonly number[]): number {
+    const from = visible[0] ?? -1, to = visible[visible.length - 1] ?? -1, held = this.#lean;
+    if (held && held.who === who && held.delta === delta && held.from === from && held.to === to) return held.median;
+    const sizes: number[] = [];
+    for (const i of visible) { const d = i > 0 ? delta[i]! : 0, c = d !== 0 ? who.get(oi[i]![0]) : undefined; if (!c) continue; const q = whoParts(c, d > 0); sizes.push(q.buy + q.sell + q.none); }
+    const median = medianRow(sizes);
+    this.#lean = { who, delta, from, to, median };
+    return median;
+  }
   /** Each bar's change (oi-change.ts: venues added together count their own changes) and the ones that stand out. */
   #analysis(oi: readonly OiBar[], highlight: HighlightOptions, parts: readonly OiPart[], tfMs: number) {
     const key = `${highlight.mult}|${highlight.length}|${tfMs}`;
@@ -705,12 +739,36 @@ export class OiPane extends TimePane {
   protected draw(): void {
     this.#lines = null;
     this.#table.clear();
+    const held = this.#held;
     this.#paint();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
+    // The Range summary is worked out again only for new data (a pointer move draws the pane with the same snapshot).
+    if (this.#held !== held) this.rangeChanged();
   }
   protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
+  /** What the pane drew last, for the Range summary of a selection made in it (range/oi-lines.ts); null before it drew any bar. */
+  get rangeHeld(): OiPaneHeld | null { return this.#held; }
+  #held: OiPaneHeld | null = null;
+  /**
+   * Keep what this drawing is made of: the same series, venues, cut and model the bars are drawn from. The same object while none of it
+   * changed (a pointer move draws the pane again), so the summary is worked out again only for new data.
+   */
+  #keep(state: AppState, oi: readonly OiBar[], parts: readonly OiPart[], tf: number, flag: Uint8Array | null, seam: number | null, who: ReadonlyMap<number, NlnsCandle> | null): void {
+    const key = oiHeldKey(state), replayAt = replaying() ? Math.floor(pageNow() / tf) * tf : null, held = this.#held;
+    const whoOn = state.oiChange === 'who';
+    if (held && held.key === key && held.oi === oi && held.parts === (parts.length > 1 ? parts : held.parts) && held.who === who && held.whoOn === whoOn && held.flag === flag && held.candles === state.candles && held.seam === seam && held.replayAt === replayAt && held.tfMs === tf && held.usdAt === (parts.length > 1 ? 0 : state.oiPrice)) return;
+    const aggregated = parts.length > 1, inst = state.oiInstrument, chart = state.seriesInstrument || state.marketId;
+    const own = aggregated ? state.seriesInstrument === state.marketId : inst === chart;
+    const name = (id: string): string => `${venueLabel(id)} ${id.split(':').slice(1).join(':')}`;
+    const sum = aggregated ? oiSumOf(parts, tf) : null;
+    this.#held = {
+      key, oi, tfMs: tf, tf: state.timeframe, venues: sum ? sum.venues : null, counted: sum ? oi.map(bar => sum.counted.get(bar[0]) ?? 0) : null, cohorts: aggregated ? oiCohorts(oi, parts, tf) : null, parts: aggregated ? parts : [], who, whoOn, flag,
+      candles: state.candles, ownPrice: own, priceMarket: chart ? name(chart) : '', coin: coinOf(state),
+      market: aggregated ? null : inst ? name(inst) : null, ids: aggregated ? parts.map(part => part.id) : inst ? [inst] : [], usdAt: aggregated ? 0 : state.oiPrice, seam, replayAt,
+    };
+  }
   /** Replay: the bars that ended by its moment, kept until the next candle (the analysis is cached on the array); live, all of them. */
   #oiCut: { src: readonly OiBar[]; slot: number; out: OiBar[] } | null = null;
   #oiAt(bars: OiBar[], tf: number): OiBar[] {
@@ -761,7 +819,7 @@ export class OiPane extends TimePane {
     const oi = parts.length > 1 ? chainedOi(oiSumOf(parts, tf)) : this.#oiAt(state.oi, tf), highlight = state.highlight;
     const readout = this.head.querySelector('.readout');
     const say = (html: string): void => setHtml(readout, html);
-    if (!oi.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(state.oiReading ? t('Reading open interest…') : t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
+    if (!oi.length) { this.#held = null; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(state.oiReading ? t('Reading open interest…') : t('No open-interest history for this market yet.'), 12, ph / 2); say(''); return; }
     const analysis = this.#analysis(oi, highlight, parts, tf);
     // Further back than the readings held, Bybit's history goes on from the seam (oi-long.ts): the bars before it, Bybit's readings alone, give
     // way to it. It is drawn as the level only, dashed: an estimate, and its readings a day or four hours apart beside the candles' changes.
@@ -772,7 +830,8 @@ export class OiPane extends TimePane {
     for (let j = 0; j < early.length; j++) if (early[j]![0] + ep >= v.t0 && early[j]![0] <= v.t1) shownEarly.push(j);
     // A view starting between the last reading's period and the seam: the last reading's level is what the line holds there.
     if (!shownEarly.length && early.length && early[early.length - 1]![0] < v.t0 && v.t0 < oi[seamI]![0]) shownEarly.push(early.length - 1);
-    if (!visible.length && !shownEarly.length) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(ext && this.#long.loading ? t('Reading Bybit\'s open-interest history…') : t('No open-interest samples in view.'), 12, ph / 2); say(''); return; }
+    const seam = early.length ? oi[seamI]![0] : null;
+    if (!visible.length && !shownEarly.length) { this.#keep(state, oi, parts, tf, highlight.on ? analysis.flag : null, seam, null); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(ext && this.#long.loading ? t('Reading Bybit\'s open-interest history…') : t('No open-interest samples in view.'), 12, ph / 2); say(''); return; }
     // Geometry: the level on top, the change below (when the pane is tall enough to hold both).
     const split = ph >= 84, lineBottom = split ? Math.round(ph * 0.6) : ph - 6, bandTop = lineBottom + 12, bandBottom = ph - 5, mid = (bandTop + bandBottom) / 2, half = (bandBottom - bandTop) / 2;
     let lo = Infinity, hi = -Infinity;
@@ -797,29 +856,44 @@ export class OiPane extends TimePane {
     // Who made each change (NL/NS), by candle start, while the bars are split by who: the view's candles from its left edge (the pane shows no
     // running sums, so the Delta pane's restart is not needed here).
     const who = state.oiChange === 'who' ? this.#whoByStart(this.nlns.forView(state, v.t0, v.t1, pageNow(), 'none')) : null;
+    this.#keep(state, oi, parts, tf, highlight.on ? analysis.flag : null, seam, who);
     // Change histogram.
     if (split) {
       const emphasise = highlight.on;
+      // Who made the change, by side: the buyers' part or the sellers' drawn stronger the more it outweighed the other, as the volume bars draw
+      // their bigger side (traded/emphasis.ts), always: the two sides are stacked in one bar, so which made it does not show by length. The scale
+      // is the parts' own, in coins: τ from the median of what opened (a rise) or closed (a fall) in the bars in view, and a floor of the
+      // profiles' $25k (scaled to the coin) at the chart's price; without a price, the bars are drawn even.
+      const mark = state.mark.price > 0 ? state.mark.price : state.candles[state.candles.length - 1]?.[4] ?? 0;
+      const lean = who && mark > 0 ? { median: this.#leanMedian(who, oi, analysis.delta, visible), floor: emphasisFloor() / mark } : null;
       ctx.globalAlpha = 0.5; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, Math.round(mid) + 0.5); ctx.lineTo(pw, Math.round(mid) + 0.5); ctx.stroke(); ctx.globalAlpha = 1;
       for (const i of visible) {
         if (i === 0) continue;
         const d = analysis.delta[i]!; if (d === 0) continue;
         const cut = Math.abs(d) > scaleDelta;
         const x0 = v.xOf(oi[i - 1]![0] + tf, pw), x1 = v.xOf(oi[i]![0] + tf, pw), h = Math.max(1, Math.min(1, Math.abs(d) / (scaleDelta || 1)) * half), w = Math.max(1, x1 - x0 - 1);
-        const alpha = !emphasise ? 0.75 : analysis.flag[i] ? 1 : 0.38;
+        const alpha = !emphasise ? OI_BAR_ALPHA : analysis.flag[i] ? 1 : 0.38;
         let cap = d > 0 ? p.bid : p.ask;
         if (who) {
           // Outward from the zero line: the buyers' part, the sellers', then what went to no side, each its share of what opened (a rise) or
           // closed (a fall). A fall's parts are lighter, outlined where the bar is wide enough: closed, as the Delta pane's Four parts draws them.
           const c = who.get(oi[i]![0]), parts = c ? whoParts(c, d > 0) : null, total = parts ? parts.buy + parts.sell + parts.none : 0;
-          const segments: [number, string][] = parts && total > 0 ? [[parts.buy, p.candleUp], [parts.sell, p.candleDown], [parts.none, p.muted]] : [[1, p.muted]];
+          // Each side's alpha as the volume strip sets it: worked out on the plain bar's weight (a fall's lighter: 0.55 of it, its stronger side at
+          // most 0.8), then scaled by the bar's Highlights weight, so a bar that does not stand out stays fainter than one that does, its stronger
+          // side too; the weaker side never fainter than OI_WEAK_ALPHA (or the bar).
+          const plain = d > 0 ? OI_BAR_ALPHA : OI_BAR_ALPHA * 0.55, k = alpha / OI_BAR_ALPHA, fill = plain * k;
+          const weighed = (a: number): number => Math.max(Math.min(fill, OI_WEAK_ALPHA), Math.min(1, a * k));
+          const [buyStyle, sellStyle] = parts && lean ? candleSplitStyles(parts.buy, parts.sell, parts.none, lean.median, lean.floor, p, plain, d > 0 ? 1 : 0.8 * OI_BAR_ALPHA)
+            : [{ color: p.candleUp, alpha: plain }, { color: p.candleDown, alpha: plain }];
+          const segments: [number, string, number][] = parts && total > 0 ? [[parts.buy, buyStyle.color, weighed(buyStyle.alpha)], [parts.sell, sellStyle.color, weighed(sellStyle.alpha)], [parts.none, p.muted, fill]] : [[1, p.muted, fill]];
           const sum = total > 0 ? total : 1;
           let at = 0;
-          for (const [size, color] of segments) {
+          for (const [size, color, a] of segments) {
             if (!(size > 0)) continue;
             const len = size / sum * h, y0 = d > 0 ? mid - at - len : mid + at;
-            ctx.globalAlpha = d > 0 ? alpha : alpha * 0.55; ctx.fillStyle = color; ctx.fillRect(x0 + 0.5, y0, w, len);
-            if (d < 0 && w >= 6 && len >= 3) { ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0) + 1, Math.round(y0) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(len) - 1)); }
+            ctx.globalAlpha = a; ctx.fillStyle = color; ctx.fillRect(x0 + 0.5, y0, w, len);
+            // A fall's outline: at the bar's weight, or the side's own where it is the weaker (an outline at full weight undid the dimming).
+            if (d < 0 && w >= 6 && len >= 3) { ctx.globalAlpha = Math.min(alpha, a / 0.55); ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0) + 1, Math.round(y0) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(len) - 1)); }
             at += len;
           }
           if (parts && total > 0) cap = parts.buy >= parts.sell && parts.buy >= parts.none ? p.candleUp : parts.sell >= parts.none ? p.candleDown : p.muted;

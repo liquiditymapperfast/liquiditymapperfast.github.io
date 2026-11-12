@@ -27,7 +27,7 @@ import { ScreenWake } from './wake.ts';
 import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
-import { BarStatsPane, DepthPane, LtPane, OiPane } from './panes/lower-panes.ts';
+import { BarStatsPane, DepthPane, LtPane, OiPane, oiHeldKey } from './panes/lower-panes.ts';
 import { LiqPane } from './panes/liq-pane.ts';
 import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
@@ -54,6 +54,7 @@ import { LayoutActions } from './layouts/actions.ts';
 import { PANE_SHOW_KEY } from './layouts/dock-model.ts';
 import { Dock, axisOf, fillsArea } from './dock.ts';
 import { RangeTool } from './range/tool.ts';
+import { OiRangeSummary } from './range/oi-lines.ts';
 import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode, compactBar } from './device.ts';
 import './styles.css';
 import './mobile.css';
@@ -225,6 +226,12 @@ async function main(): Promise<void> {
   const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton; range.mapWindow = () => ({ t0: heat.view.t0, t1: heat.view.t1 });
   heat.range = range; cvd.range = range; for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useRange(range);
   toolbar.onRange = () => range.toggle();
+  // A drag in the OI pane sums up its own bars (range/oi-lines.ts): what it drew, and the liquidations the map holds on its markets.
+  const oiSummary = new OiRangeSummary();
+  range.useProvider({
+    pane: 'oi', title: () => t('Open interest'), shown: () => store.state.show.oi, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
+    lines: (sel, shown) => oiSummary.lines(sel, oi.rangeHeld, shown, store.state.liquidations.on ? { items: hub.liquidations.items, version: hub.liquidations.version, min: scaledUsd(store.state.liquidations.minUsd), held: hub.liquidationsHeld } : null, oiHeldKey(store.state), pageNow(), store.state.timeZone),
+  });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.
   window.setInterval(() => heat.tick(), 1_000);
@@ -517,7 +524,7 @@ async function main(): Promise<void> {
     if (changed.has('chartType')) heat.invalidate();
     // The candles' own colours: the map, the book's price row and the Tape view's mark are drawn in them (Sol: nothing else asked for a frame).
     if (changed.has('candleColors')) { heat.invalidate(); ladder.invalidate(); candle.invalidate(); }
-    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show')) range.refreshHeld();
+    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show') || changed.has('timeZone')) range.refreshHeld();
     if (changed.has('tradeBubbles') || changed.has('show')) hub.setTape(tapeWanted());
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('mark') && state.show.book) ladder.markMoved();

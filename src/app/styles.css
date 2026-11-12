@@ -832,6 +832,34 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .range-prof-row .bars { display: flex; height: 8px; }
 .range-prof-row .bars .buy { flex: 0 0 var(--b); background: var(--bid); }
 .range-prof-row .bars .sell { flex: 0 0 var(--s); background: var(--ask); }
+/* Estimated added and reduced: a label, the parts end to end on the section's scale, the total (opened solid, closed lighter and outlined). */
+/* Fixed label and total tracks, so the two rows' bars start at the same place and share one scale in pixels. */
+.range-stack { display: grid; grid-template-columns: 6.5em minmax(0, 1fr) 7.5em; gap: 6px; align-items: center; font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.range-stack .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.range-stack .label { color: var(--muted); }
+.range-stack .total { text-align: right; font-weight: 600; white-space: nowrap; }
+.range-stack .bars { display: flex; height: 10px; }
+.range-stack .bars i { flex: 0 0 var(--w); box-sizing: border-box; }
+.range-stack .bars i.up { background: var(--candle-up); }
+.range-stack .bars i.down { background: var(--candle-down); }
+.range-stack .bars i.none { background: var(--muted); opacity: .45; }
+.range-stack .bars i.closed.up { background: color-mix(in srgb, var(--candle-up) 45%, transparent); box-shadow: inset 0 0 0 1px var(--candle-up); }
+.range-stack .bars i.closed.down { background: color-mix(in srgb, var(--candle-down) 45%, transparent); box-shadow: inset 0 0 0 1px var(--candle-down); }
+/* Each venue's part: out of a zero line in the middle, right for more, left for less. */
+/* The same three columns in every row (no track grows with its text), so every bar's zero line is the section's. */
+.range-signed { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: 6px; align-items: center; font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.range-signed .label { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.range-signed .label .venue-mark { margin-right: 5px; }
+.range-signed .total { text-align: right; min-width: 0; }
+.range-signed .total small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.3; }
+.range-signed .bars { position: relative; height: 9px; }
+.range-signed .bars::before { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line); }
+.range-signed .bars i { position: absolute; top: 0; bottom: 0; width: var(--v); }
+.range-signed .bars i.up { left: 50%; background: var(--candle-up); }
+.range-signed .bars i.down { right: 50%; background: var(--candle-down); }
+.range-signed.muted { color: var(--muted); }
+.range-signed.muted .bars i { opacity: .5; }
+.range-show-ctl { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .panel .name { font-weight: 600; color: var(--text); }
 .panel .desc { display: block; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .panel .opt { display: grid; grid-template-columns: 18px 1fr; column-gap: 9px; align-items: start; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius); cursor: pointer; }

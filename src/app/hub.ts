@@ -459,6 +459,8 @@ export class Hub {
   /** 'unavailable': the source has no liquidations (a server from before them); asked again a minute later. */
   liquidationsState: 'ready' | 'unavailable' = 'ready';
   #liquidationsWindow: { t0: number; t1: number; min: number; cut: boolean; live: boolean } | null = null;
+  /** The window the liquidation book was read for (from, to, from what size, cut at the answer's limit, open on the live stream); null before one. */
+  get liquidationsHeld(): { t0: number; t1: number; min: number; cut: boolean; live: boolean } | null { return this.#liquidationsWindow; }
   #liquidationsLoading = false; #liquidationsRetryAt = 0;
   /** Taker flow per second for every instrument that has traded: the CVD column reads it, and sounds read what it just got. */
   readonly flow = new FlowBook();

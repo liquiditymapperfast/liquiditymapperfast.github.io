@@ -34,10 +34,11 @@ export const emphasisFloor = (): number => scaledUsd(EMPHASIS_FLOOR_USD);
  * empty; its size is E, 0 to 1. `median` is the median row of the whole answer (`answerMedian`, `bucketsMedian`), `floorUsd` the floor of τ
  * (`emphasisFloor`).
  */
-export function dominance(b: number, s: number, median: number, floorUsd: number): number {
+export function dominance(b: number, s: number, median: number, floorUsd: number, rest = 0): number {
   const total = b + s;
   if (!(total > 0)) return 0;
-  const tau = Math.max(floorUsd, MEDIAN_SHARE * Math.max(0, median)), q = (b - s) / (total + tau);
+  // `rest`: a part of the bar that went to neither side (the OI pane's unsided change) counts in its size, so a bar mostly unsided leans little.
+  const tau = Math.max(floorUsd, MEDIAN_SHARE * Math.max(0, median)), q = (b - s) / (total + Math.max(0, rest) + tau);
   const u = Math.min(1, Math.abs(q) / FULL_AT), e = u * u * (3 - 2 * u);
   return q > 0 ? e : q < 0 ? -e : 0;
 }
@@ -116,19 +117,32 @@ export function hexOfOklch(L: number, C: number, h: number): string {
 /** The stronger side's colours, by one-sidedness from 0 to 1 in `STEPS` steps: the side's colour, its lightness moved toward the text's. */
 export interface EmphasisRamps { bid: readonly string[]; ask: readonly string[] }
 
+/**
+ * One colour's ramp on a theme: away from the background (lighter on a dark theme, darker on a light one), toward the text colour and never
+ * past its lightness: a side already past it (Amber's buy colour) keeps its lightness and is stronger by its alpha alone.
+ */
+function rampOf(p: Palette, hex: string): string[] {
+  const sign = p.dark ? 1 : -1, text = oklch(p.text)[0], [L, C, h] = oklch(hex), room = Math.max(0, sign * (text - L));
+  return Array.from({ length: STEPS }, (_, i) => i === 0 ? hex : hexOfOklch(Math.min(1, Math.max(0, L + sign * Math.min(room, LIGHTNESS_LIFT * i / (STEPS - 1)))), C, h));
+}
+
 const ramps = new WeakMap<Palette, EmphasisRamps>();
 /** The ramps of a theme, built once and kept: painting only looks a colour up. */
 export function emphasisRamps(p: Palette): EmphasisRamps {
   let held = ramps.get(p);
   if (held) return held;
-  // Away from the background (lighter on a dark theme, darker on a light one), toward the text colour and never past its lightness: a side
-  // already past it (Amber's buy colour) keeps its lightness and is stronger by its alpha alone.
-  const sign = p.dark ? 1 : -1, text = oklch(p.text)[0], ramp = (hex: string): string[] => {
-    const [L, C, h] = oklch(hex), room = Math.max(0, sign * (text - L));
-    return Array.from({ length: STEPS }, (_, i) => i === 0 ? hex : hexOfOklch(Math.min(1, Math.max(0, L + sign * Math.min(room, LIGHTNESS_LIFT * i / (STEPS - 1)))), C, h));
-  };
-  held = { bid: ramp(p.bid), ask: ramp(p.ask) };
+  held = { bid: rampOf(p, p.bid), ask: rampOf(p, p.ask) };
   ramps.set(p, held);
+  return held;
+}
+
+const candleRampsHeld = new WeakMap<Palette, EmphasisRamps>();
+/** The same ramps of the theme's candle colours (the NL/NS bars are drawn in them), built once per theme and kept. */
+export function candleRamps(p: Palette): EmphasisRamps {
+  let held = candleRampsHeld.get(p);
+  if (held) return held;
+  held = { bid: rampOf(p, p.candleUp), ask: rampOf(p, p.candleDown) };
+  candleRampsHeld.set(p, held);
   return held;
 }
 
@@ -144,6 +158,20 @@ export function splitStyles(b: number, s: number, median: number, floorUsd: numb
   if (d === 0) return [{ color: p.bid, alpha: base }, { color: p.ask, alpha: base }];
   const e = Math.abs(d), r = emphasisRamps(p), i = Math.round(e * (STEPS - 1)), strong = strongAlpha(e, base), weak = weakAlpha(e, base);
   return d > 0 ? [{ color: r.bid[i]!, alpha: strong }, { color: p.ask, alpha: weak }] : [{ color: p.bid, alpha: weak }, { color: r.ask[i]!, alpha: strong }];
+}
+
+/**
+ * Both sides' styles for a bar drawn in the candle colours, buyers (`b`) then sellers (`s`): the OI pane's NL/NS bars, whose two sides are
+ * stacked in one bar, so which one made the change does not show by length alone. As `splitStyles`, with `rest` the part of the bar that went
+ * to neither side: it counts in the bar's size (`dominance`), and the lean is never more than the share of the bar that has a side, so a bar
+ * mostly unsided is drawn nearly even (80 % unsided leans a fifth at most, however one-sided the rest). `top`: the most the stronger side
+ * rises to (a fall's bar stays lighter than a rise's, its stronger side too).
+ */
+export function candleSplitStyles(b: number, s: number, rest: number, median: number, floor: number, p: Palette, base: number, top = 1): [SideStyle, SideStyle] {
+  const d = dominance(b, s, median, floor, rest), sided = b + s > 0 ? (b + s) / (b + s + Math.max(0, rest)) : 0;
+  if (d === 0) return [{ color: p.candleUp, alpha: base }, { color: p.candleDown, alpha: base }];
+  const e = Math.min(Math.abs(d), sided), r = candleRamps(p), i = Math.round(e * (STEPS - 1)), strong = base + Math.max(0, top - base) * e, weak = weakAlpha(e, base);
+  return d > 0 ? [{ color: r.bid[i]!, alpha: strong }, { color: p.candleDown, alpha: weak }] : [{ color: p.candleUp, alpha: weak }, { color: r.ask[i]!, alpha: strong }];
 }
 
 /** Whether the setting applies with these bars, and why not: Delta bars draw only the difference, which already says which side won. */

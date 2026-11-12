@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BAR_ALPHA, FULL_AT, WEAK_ALPHA, answerMedian, bucketsMedian, dominance, emphasisApplies, emphasisRamps, hexOfOklch, medianRow, oklch, splitStyles, strongAlpha, weakAlpha } from '../src/app/traded/emphasis.ts';
+import { BAR_ALPHA, FULL_AT, WEAK_ALPHA, answerMedian, bucketsMedian, candleRamps, candleSplitStyles, dominance, emphasisApplies, emphasisRamps, hexOfOklch, medianRow, oklch, splitStyles, strongAlpha, weakAlpha } from '../src/app/traded/emphasis.ts';
 import { readTraded, TRADED_DEFAULTS } from '../src/app/traded/settings.ts';
 import { tradedRows } from '../src/app/traded.ts';
 import { PALETTES } from '../src/app/theme.ts';
@@ -88,4 +88,29 @@ test('OKLCH round-trips, and a colour pushed out of sRGB is brought back in by i
       assert.ok(moved >= -0.01 && moved <= Math.min(room, 0.12) + 0.01, `${id} ${side}: moved ${moved.toFixed(3)}, room ${room.toFixed(3)}`);
     }
   }
+});
+
+test("the OI pane's NL/NS bars: the bigger side in its candle colour's ramp and stronger, the smaller fainter, an unsided part damping it", () => {
+  const p = PALETTES.light!, dark = PALETTES.dark!;
+  // Buyers 90, sellers 10, nothing unsided: fully one-sided at this scale (median 100, no floor).
+  const [buy, sell] = candleSplitStyles(90, 10, 0, 100, 0, p, 0.75);
+  assert.equal(buy.color, candleRamps(p).bid[255], "the buyers' side at the end of its ramp");
+  assert.notEqual(buy.color, p.candleUp, 'darker than the plain colour on a light theme');
+  assert.equal(sell.color, p.candleDown, 'the smaller side keeps its plain colour');
+  assert.equal(buy.alpha, 1); assert.ok(Math.abs(sell.alpha - weakAlpha(1, 0.75)) < 1e-12);
+  // The sellers' side when it is the bigger, and the ramps of a dark theme lighten.
+  const [b2, s2] = candleSplitStyles(10, 90, 0, 100, 0, dark, 0.75);
+  assert.equal(b2.color, dark.candleUp); assert.equal(s2.color, candleRamps(dark).ask[255]);
+  assert.ok(oklch(s2.color)[0] > oklch(dark.candleDown)[0], 'lighter on a dark theme');
+  // `top`: a fall's stronger side rises to 0.6 at most from its 0.41.
+  assert.ok(Math.abs(candleSplitStyles(90, 10, 0, 100, 0, p, 0.41, 0.6)[0].alpha - 0.6) < 1e-12);
+  // Even, or empty: both sides as they are.
+  assert.deepEqual(candleSplitStyles(50, 50, 0, 100, 0, p, 0.75), [{ color: p.candleUp, alpha: 0.75 }, { color: p.candleDown, alpha: 0.75 }]);
+  assert.deepEqual(candleSplitStyles(0, 0, 40, 100, 0, p, 0.75), [{ color: p.candleUp, alpha: 0.75 }, { color: p.candleDown, alpha: 0.75 }]);
+  // 80 % unsided: the lean is a fifth at most, however one-sided the rest (it was 0.74 before the cap).
+  const [b3] = candleSplitStyles(20, 0, 80, 100, 0, p, 0.75);
+  assert.ok(b3.alpha <= 0.75 + 0.25 * 0.2 + 1e-12, `alpha ${b3.alpha}`);
+  assert.equal(b3.color, candleRamps(p).bid[Math.round(0.2 * 255)]);
+  // A thin bar against a large median leans little (τ).
+  assert.ok(candleSplitStyles(9, 1, 0, 10_000, 0, p, 0.75)[0].alpha < 0.77, "tau 200: about 0.04 of the way");
 });
