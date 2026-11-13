@@ -6,6 +6,7 @@ import { SecondTally, LATE_MS, type TallyFilter } from '../src/app/trades/tally.
 import { BlockReader, FROM, OrderScan, barLength, coincidences, emptyBlock, fullScale, repeats, type FlowLike, type NoteOrder } from '../src/app/trades/blocks.ts';
 import { RUN_MAX, RowWalker } from '../src/app/trades/rows.ts';
 import { focusWindow } from '../src/app/panes/heat-zoom.ts';
+import { RECORDED_AGAIN_MS, recordedDue, recordedSeam } from '../src/app/trades/asks.ts';
 import { TRADES_DEFAULTS, readTrades, readUnit } from '../src/app/trades/settings.ts';
 
 /** A batch of orders: [market, exchange time, price, signed usd]. */
@@ -370,4 +371,55 @@ test('rows: a run of empty blocks of one kind is one row, cut every RUN_MAX bloc
   r.gaps = [[(startSec + 100) * 1000, (startSec + 200) * 1000]];
   const g = w.rowFrom(startSec + 150, 1, now, oldest)!;
   assert.equal(g.kind, 'missing', 'empty blocks a reconnect falls in: orders may be missing there');
+});
+
+// ---- review round 2 ------------------------------------------------------------------------------------------------------------
+
+test('the recording is asked again only when the seam moved five minutes, a smaller size is wanted, or a wait is over: never at once after an answer', () => {
+  const now = T0;
+  assert.equal(recordedSeam({ blocks: true, ringFrom: null, covered: T0, filling: false }), null, 'no ring yet: not asked');
+  assert.equal(recordedSeam({ blocks: true, ringFrom: T0, covered: T0 + 3_600_000, filling: true }), null, 'the tally reading back: its start moves');
+  assert.equal(recordedSeam({ blocks: true, ringFrom: T0, covered: T0 + 3_600_000, filling: false }), T0 + 3_600_000, 'the blocks: from where the tally starts');
+  assert.equal(recordedSeam({ blocks: false, ringFrom: T0, covered: T0 + 3_600_000, filling: false }), T0, 'each order: from the ring\'s oldest order');
+  // The loop round 2 found: the tally's window an hour shorter than the ring. Answered at that seam, nothing is due again.
+  const seam = T0 + 3_600_000, done = { state: 'done' as const, askedAt: seam, min: 25_000, retryAt: 0 };
+  assert.equal(recordedDue(done, seam, 25_000, now), false);
+  assert.equal(recordedDue(done, seam + RECORDED_AGAIN_MS - 1, 25_000, now), false);
+  assert.equal(recordedDue(done, seam + RECORDED_AGAIN_MS + 1, 25_000, now), true, 'the seam moved on');
+  assert.equal(recordedDue(done, seam, 10_000, now), true, 'a smaller size');
+  assert.equal(recordedDue({ ...done, state: 'asking' }, seam + 10 * RECORDED_AGAIN_MS, 1, now), false, 'one question at a time');
+  assert.equal(recordedDue({ state: 'no', askedAt: 0, min: Infinity, retryAt: now + 1 }, seam, 25_000, now), false, 'a failure waits');
+  assert.equal(recordedDue({ state: 'no', askedAt: 0, min: Infinity, retryAt: 0 }, seam, 25_000, now), true);
+});
+
+test('quiet is per market: one known from before the block counts whole, one whose flow begins later makes it partial, a stray second claims nothing', () => {
+  const { r } = reader(steady(10), all, [B, O]);
+  const at = T0 / 1000 - 10 * 3600, flowFrom = T0 / 1000 - 2 * 3600;
+  const known = new Map([[B, T0 - 24 * 3_600_000]]);
+  r.knownFrom = id => known.get(id) ?? Infinity; r.knownKey = 'a';
+  r.flowOf = id => id === O ? { buy: (a, z) => (z - a + 1) * 100, sell: () => 0, ownPrice: () => 69_000, span: { first: flowFrom, last: T0 / 1000 + 10 } } : undefined;
+  const out = emptyBlock(2);
+  r.read(at, 60, out, T0 + 3_600_000);
+  assert.equal(out.unknown, false, 'Binance was recorded and loaded from 24 h back: its quiet minute is known');
+  assert.equal(out.partial, true, 'OKX\'s flow begins at 2 h: its part of the block is missing');
+  // A thin market's one stray second 23 h back, nothing known: no quiet hours claimed from it.
+  known.clear(); r.knownKey = 'b';
+  const stray = T0 / 1000 - 23 * 3600;
+  r.flowOf = id => id === B ? { buy: (a, z) => (a <= stray && stray <= z ? 50 : 0), sell: () => 0, ownPrice: () => 69_000, span: { first: stray, last: stray } }
+    : id === O ? { buy: (a, z) => (z - a + 1) * 100, sell: () => 0, ownPrice: () => 69_000, span: { first: flowFrom, last: T0 / 1000 + 10 } } : undefined;
+  r.read(at, 60, out, T0 + 3_600_000);
+  assert.equal(out.unknown, true, 'between the stray second and the loaded flow nothing is known');
+});
+
+test('under a size floor the inspector\'s market rows add up to the block that holds the recording\'s end', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 3_600_000, 70_000, 30_000]]), 1, 0);
+  const { r } = reader(ring, { minUsd: 25_000, side: 'both', shown: () => true });
+  const to = T0 + 30_000;
+  r.recorded = { prints: [{ t: T0 + 10_000, id: B, side: 'buy', price: 69_000, usd: 40_000 }, { t: T0 + 33_000, id: O, side: 'sell', price: 69_000, usd: 90_000 }], from: T0, to, holes: [], minUsd: 25_000 };
+  const out = emptyBlock(2);
+  r.read(T0 / 1000, 60, out, T0 + 3_700_000);
+  const rows = r.marketRows(T0 / 1000, 60), buy = rows.reduce((a, x) => a + x.buy, 0), sell = rows.reduce((a, x) => a + x.sell, 0);
+  assert.equal(out.partial, true);
+  assert.deepEqual([buy, sell], [out.buy, out.sell]);
 });

@@ -116,10 +116,14 @@ export class BlockReader {
   /** Before the tape: stretches (ms) the recording listened to no market, where the flow's zeros are seconds nobody recorded. */
   holes: readonly (readonly [number, number])[] = [];
   /**
-   * Where the recording's coverage record begins (ms; Infinity: not known). From there on, outside the holes, a second the flow holds
-   * nothing for was recorded quiet: a market that did not trade for hours does not end the list (only where some market's flow begins).
+   * From when (ms; Infinity: not known) each market's per-second flow holds every second: the recording listened to it (its coverage
+   * record) and the page loaded its history from then (the flow book). From there on, outside the holes, a second its flow holds nothing
+   * for was quiet: a market that did not trade for hours is not a gap, and the list does not end at it. A market not known so far back
+   * makes a block partial where its flow does not reach, as before (review round 2: one market's record is not another's).
    */
-  recordedSince = Infinity;
+  knownFrom: (id: string) => number = () => Infinity;
+  /** A key for what `knownFrom` answers (the view sets it when the coverage record changes; the flow's loads are keyed apart). */
+  knownKey = '';
   /** The size filter's dollars (the coin's), 0 any size. */
   minUsd = 0;
   side: 'both' | 'buy' | 'sell' = 'both';
@@ -146,7 +150,7 @@ export class BlockReader {
   /** Bumped whenever a source the blocks read may have changed (`forget`, `setVenues`): what is worked out from blocks keys on it. */
   version = 0;
   /** What every block is read from and under, as a key (the tally's start, the size, the side, the reference, the markets, the flow's loads, the gaps, the recording's start). */
-  dataKey(): string { return `${this.tally?.resets ?? 0}|${this.minUsd}|${this.side}|${this.ref}|${this.markets.length}|${this.flowVersion()}|${this.#gapsKey}|${this.recordedSince}`; }
+  dataKey(): string { return `${this.tally?.resets ?? 0}|${this.minUsd}|${this.side}|${this.ref}|${this.markets.length}|${this.flowVersion()}|${this.#gapsKey}|${this.knownKey}`; }
   /** Forget every kept block (a source changed). */
   forget(): void { this.#kept.clear(); this.version++; }
 
@@ -159,13 +163,6 @@ export class BlockReader {
     if (this.minUsd > 0) return Math.min(oldest, Math.ceil(this.recorded!.from / 1000));
     for (const id of this.markets) { const span = this.flowOf?.(id)?.span; if (span) oldest = Math.min(oldest, span.first); }
     return oldest;
-  }
-  /** The first second from which a second the flow holds nothing for counts as recorded quiet (the coverage record's start, no earlier than the flow's). */
-  #quietFrom(): number {
-    if (!Number.isFinite(this.recordedSince)) return Infinity;
-    let first = Infinity;
-    for (const id of this.markets) { const span = this.flowOf?.(id)?.span; if (span && span.first < first) first = span.first; }
-    return Number.isFinite(first) ? Math.max(first, Math.ceil(this.recordedSince / 1000)) : Infinity;
   }
 
   /**
@@ -257,14 +254,15 @@ export class BlockReader {
       if (inHole && out.buy === 0 && out.sell === 0) out.unrecorded = true;
       return;
     }
-    // Any size: the flow's totals (the side chosen), the recording's largest orders. From the recording's coverage start on, a second no
-    // market's flow holds was recorded quiet.
-    let flowed = false;
-    const quiet = s >= this.#quietFrom(), side = this.side;
+    // Any size: the flow's totals (the side chosen), the recording's largest orders. A market known from before the block (`knownFrom`)
+    // counts whole, quiet seconds included; one whose flow begins inside or after the block leaves that part out (partial).
+    let flowed = false, known = false;
+    const side = this.side;
     for (const id of this.markets) {
-      const f = this.flowOf?.(id);
+      const f = this.flowOf?.(id), whole = s * 1000 >= this.knownFrom(id);
+      if (whole) known = true;
       if (!f?.span) continue;
-      if (f.span.first > s && !quiet) out.partial = true;
+      if (f.span.first > s && !whole) out.partial = true;
       const a = Math.max(s, f.span.first), z = Math.min(end - 1, f.span.last);
       if (z < a) continue;
       flowed = true;
@@ -273,7 +271,7 @@ export class BlockReader {
       if (slot >= 0) { out.vBuy[slot]! += b; out.vSell[slot]! += v; }
       if (id === this.ref) for (let sec = z; sec >= a; sec--) { const p = f.ownPrice(sec); if (p > 0) { out.refPx = p; break; } }
     }
-    if (!flowed && !quiet) return;
+    if (!flowed && !known) return;
     out.from |= FROM.flow; out.n = -1;
     const t0 = s * 1000, t1 = end * 1000, recFrom = rec ? rec.from : Infinity;
     for (const [a, b] of this.holes) if (a < t1 && b > t0) { out.partial = true; break; }
@@ -323,7 +321,7 @@ export class BlockReader {
     // Under a size floor the part before the tape is the recording's orders, counted per market as the block's own totals count them.
     const recorded = new Map<string, [number, number]>(), rec = this.recorded;
     if (this.minUsd > 0 && rec && this.minUsd >= rec.minUsd && split > s) {
-      const p = rec.prints, t0 = s * 1000, t1 = Math.min(split * 1000, rec.to);
+      const p = rec.prints, t0 = s * 1000, t1 = split * 1000;
       let lo = 0, hi = p.length;
       while (lo < hi) { const mid = (lo + hi) >> 1; if (p[mid]!.t < t0) lo = mid + 1; else hi = mid; }
       for (let i = lo; i < p.length && p[i]!.t < t1; i++) {

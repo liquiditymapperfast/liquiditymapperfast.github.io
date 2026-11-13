@@ -49,6 +49,8 @@ export class FlowBook {
     series.set(sec, buy, sell, px ?? 0);
   }
 
+  /** From when (ms) the instrument's history was loaded (asked and answered while the stream held), Infinity when it was not. */
+  heldFrom(id: string): number { return this.#from.get(id) ?? Infinity; }
   /** Which of `ids` still need history reaching back to `from` (never asked, or asked from later). */
   missing(ids: readonly string[], from: number): string[] { return ids.filter(id => !((this.#from.get(id) ?? Infinity) <= from)); }
 

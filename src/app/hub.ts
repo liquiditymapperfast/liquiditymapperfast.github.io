@@ -1276,16 +1276,19 @@ export class Hub {
    * The stretches of [from, to) in which the recording listened to none of `ids` (from the source's shortest hole, `TNS_HOLE_MS`), on the
    * page's clock: the per-second flow holds zeros there for seconds nobody recorded (the history's end and the page's own start leave one
    * at every opening), and Trades marks the blocks over them. Time before the coverage record's first stretch is not called a hole (the
-   * record may begin later than what was recorded); `since` is where it begins (from there on, outside the holes, a quiet second was
-   * recorded quiet). Null when the source keeps no coverage record. One question, at most a day and its edges.
+   * record may begin later than what was recorded); `since` is where it begins, and `sinceOf` where each instrument's own does (from
+   * there on, outside the holes, a quiet second of that instrument was recorded quiet). Null when the source keeps no coverage record.
+   * One question, at most a day and its edges.
    */
-  async recordingHoles(ids: readonly string[], from: number, to: number): Promise<{ since: number; holes: [number, number][] } | null> {
+  async recordingHoles(ids: readonly string[], from: number, to: number): Promise<{ since: number; holes: [number, number][]; sinceOf: Record<string, number> } | null> {
     if (!this.source.coverage || !ids.length) return null;
     if (this.mapFirst()) await this.#afterMap();
     const skew = this.#sourceSkew, end = to - skew, start = Math.max(from - skew, end - MAX_COVERAGE_SPAN_MS);
     const answer = await this.source.coverage(ids.slice(0, MAX_COVERAGE_INSTRUMENTS), 'trades', start, end);
+    const sinceOf: Record<string, number> = {};
+    for (const i of answer.instruments) { let first = Infinity; for (const [a, z] of i.spans) if (z > start && a < first) first = a; if (Number.isFinite(first)) sinceOf[i.id] = Math.max(first, start) + skew; }
     const stretch = recordedStretch(answer.instruments.map(i => i.spans), start, end, TNS_HOLE_MS[this.source.kind]);
-    return stretch ? { since: stretch.since + skew, holes: stretch.holes.map(([a, z]) => [a + skew, z + skew] as [number, number]) } : { since: Infinity, holes: [] };
+    return stretch ? { since: stretch.since + skew, holes: stretch.holes.map(([a, z]) => [a + skew, z + skew] as [number, number]), sinceOf } : { since: Infinity, holes: [], sinceOf };
   }
 
   /**

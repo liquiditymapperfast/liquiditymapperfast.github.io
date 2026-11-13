@@ -27,12 +27,14 @@ export class RowWalker {
   /** Settled runs: top -> bottom and bottom -> top (block starts, seconds), under `#key`. */
   readonly #down = new Map<number, number>();
   readonly #up = new Map<number, number>();
+  /** The settled part of a run whose top is still young: from its newest settled block down (a walk from a newer top jumps it). */
+  readonly #skip = new Map<number, { kind: RowKind; bottom: number }>();
   #key = '';
   #b: Block = emptyBlock(0);
   constructor(readonly reader: BlockReader) {}
 
   /** What the remembered runs were read under (the sources, the size, the side, the unit): they are dropped when it changes. */
-  sync(key: string): void { if (key !== this.#key) { this.#key = key; this.#down.clear(); this.#up.clear(); } }
+  sync(key: string): void { if (key !== this.#key) { this.#key = key; this.#down.clear(); this.#up.clear(); this.#skip.clear(); } }
   #read(s: number, B: number, now: number): Block {
     if (this.#b.vBuy.length !== this.reader.venues) this.#b = emptyBlock(this.reader.venues);
     return this.reader.read(s, B, this.#b, now);
@@ -56,13 +58,20 @@ export class RowWalker {
     const held = this.#down.get(s);
     if (held !== undefined) return { kind, top: s, bottom: held };
     const span = RUN_MAX * B, cut = Math.floor(s / span) * span;
-    let e = s;
+    let e = s, settledAt = NaN;
     while (e - B >= cut && e - B >= oldest) {
+      const jump = this.#skip.get(e - B);
+      if (jump && jump.kind === kind && jump.bottom >= Math.max(cut, oldest)) { e = jump.bottom; break; }
       const q = this.#read(e - B, B, now);
       if (q.unknown || rowKind(q) !== kind) break;
       e -= B;
+      if (Number.isNaN(settledAt) && (e + B) * 1000 + SETTLED_MS < now) settledAt = e;
     }
     this.#keep(s, e, B, now);
+    if (!Number.isNaN(settledAt) && settledAt !== s && !this.reader.tally?.filling) {
+      if (this.#skip.size > 20_000) this.#skip.clear();
+      this.#skip.set(settledAt, { kind, bottom: e });
+    }
     return { kind, top: s, bottom: e };
   }
   /** The row under `row` (null where the list ends). */

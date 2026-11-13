@@ -155,7 +155,7 @@ test('the page in the background is a gap only when no order came for a while (a
 test('Trades reaches the recording only through the page\'s callback (the source\'s own recording, never an exchange)', () => {
   const view = fs.readFileSync('src/app/panes/trades-view.ts', 'utf8');
   assert.doesNotMatch(view, /source\.|fetch\(|\.prints\(|recentPrints/, 'the view asks no source itself (its history goes through `recorded`, set by the page)');
-  assert.match(view, /void this\.recorded\(until, want\)/);
+  assert.match(view, /void this\.recorded\(seam, want\)/);
   const main = fs.readFileSync('src/app/main.ts', 'utf8');
   assert.match(main, /cvd\.trades\.recorded = \(until, minUsd\) => hub\.recentPrints\(/);
 });
@@ -277,6 +277,7 @@ test('the recording is asked through the source it asks anyway, once, and again 
   assert.match(hub, /this\.source\.coverage\(/);
   assert.match(hub, /TNS_HOLE_MS\[this\.source\.kind\]/);
   assert.match(hub, /rows\.length < PRINTS_PER_ANSWER/, 'an answer cut at its largest orders is never used as a full list');
-  const view = fs.readFileSync('src/app/panes/trades-view.ts', 'utf8');
-  assert.match(view, /this\.#recordedState === 'done' && want >= this\.#recordedMin/);
+  const view = fs.readFileSync('src/app/panes/trades-view.ts', 'utf8'), asks = fs.readFileSync('src/app/trades/asks.ts', 'utf8');
+  assert.match(view, /recordedDue\(ask, seam, want, Date\.now\(\)\)/);
+  assert.match(asks, /want < a\.min \|\| Math\.abs\(seam - a\.askedAt\) > RECORDED_AGAIN_MS/, 'asked again for a smaller size, or once the seam moved on');
 });

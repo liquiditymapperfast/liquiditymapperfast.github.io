@@ -15,7 +15,8 @@ import { STRIDE, BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { SecondTally, tallySeconds, FILL_STEP } from '../trades/tally.ts';
 import { OrderScan, coincidences, emptyBlock, fullScale, olderFor, type Block, type FlowLike, type OlderPrints, type PrintLike, type RecordedPrints } from '../trades/blocks.ts';
 import { TRADES_MINIMUMS, TRADE_UNITS, UNIT_MAX_S, readUnit, type TradesSettings } from '../trades/settings.ts';
-import { TNS_FLOOR_USD, TnsBook } from '../tns/model.ts';
+import { SEAM_SLACK_MS, TNS_FLOOR_USD, TnsBook } from '../tns/model.ts';
+import { recordedDue, recordedSeam } from '../trades/asks.ts';
 import { BlockList, LIST_W, wideEnough } from './trades-blocks.ts';
 import { OrderList } from './trades-orders.ts';
 import { inspectorModel, renderInspector } from './trades-inspector.ts';
@@ -33,7 +34,7 @@ const NOTE_ORDERS_MAX = 400_000;
 /** Older stretches of the recording kept for the blocks on screen, and the least margin asked either side of what is on screen. */
 const OLDER_KEPT = 8, OLDER_MARGIN_MS = 5 * 60_000;
 /** How far the tape's start may move past what the recording's holes and its orders were asked up to before they are asked again. */
-const HOLES_AGAIN_MS = 10 * 60_000, RECORDED_AGAIN_MS = 5 * 60_000;
+const HOLES_AGAIN_MS = 10 * 60_000;
 
 /** A unit as the menu says it. */
 export function unitLabel(unit: number): string {
@@ -72,7 +73,9 @@ export class TradesView {
   #older: OlderPrints[] = [];
   #olderAsking = false; #olderRetryAt = 0;
   #holesState: 'no' | 'asking' | 'done' = 'no'; #holesRetryAt = 0; #holesTo = 0; #holesKey = '';
-  #recordedRetryAt = 0;
+  #recordedRetryAt = 0; #recordedAt = 0;
+  /** Each market's coverage start in the recording (ms), from the last answer about its holes. */
+  #sinceOf = new Map<string, number>();
   /** The stretch the block list last drew (seconds), asked of the recording again when an answer comes or a retry is due. */
   #olderWant: [number, number] | null = null;
   #venueIds: string[] = [];
@@ -94,7 +97,9 @@ export class TradesView {
   /** The recording's largest orders in [from, to) from `minUsd`, and the size from which it holds every order (set by the page: the hub's). */
   printsIn: ((from: number, to: number, minUsd: number) => Promise<{ prints: Print[]; floor: number }>) | null = null;
   /** The stretches of [from, to) the recording listened to none of `ids` (set by the page: the hub's, from the source's coverage record). */
-  holes: ((ids: readonly string[], from: number, to: number) => Promise<{ since: number; holes: [number, number][] } | null>) | null = null;
+  holes: ((ids: readonly string[], from: number, to: number) => Promise<{ since: number; holes: [number, number][]; sinceOf: Record<string, number> } | null>) | null = null;
+  /** From when the page's per-second flow holds a market's history (set by the page: the flow book's). */
+  flowHeldFrom: (id: string) => number = () => Infinity;
   /** How many times the page's per-second flow was loaded (set by the page: the flow book's loads): the blocks before the tape read it. */
   flowLoads: () => number = () => 0;
 
@@ -123,6 +128,7 @@ export class TradesView {
     this.blocks.endNote = at => this.#endNote(at);
     this.blocks.reader.tally = this.#tally;
     this.blocks.reader.flowOf = id => this.flowOf(id);
+    this.blocks.reader.knownFrom = id => Math.max(this.#sinceOf.get(id) ?? Infinity, this.flowHeldFrom(id));
     this.blocks.reader.flowVersion = () => this.flowLoads();
     new ResizeObserver(() => this.#layout()).observe(this.root);
     this.#syncMenus();
@@ -247,7 +253,8 @@ export class TradesView {
   #syncSources(restart: boolean): void {
     const ring = this.ring(), s = this.store.state.trades, reader = this.blocks.reader, key = this.#filterKeyNow();
     const markets = this.#markets(ring);
-    if (restart || this.#tally.ring !== ring || key !== this.#filterKey) {
+    // A backlog larger than a read-back step (the view hidden a while) is read back in steps too, not in one call.
+    if (restart || this.#tally.ring !== ring || key !== this.#filterKey || this.#tally.behind > FILL_STEP) {
       this.#filterKey = key; this.#ringGroupsFor = null;
       this.#tally.reset(ring, { minUsd: s.minUsd === 0 ? 0 : scaledUsd(s.minUsd), side: s.side, shown: instrumentShown(this.store.state) });
       // A held list stays held over the start-over, counting what comes from now.
@@ -291,12 +298,13 @@ export class TradesView {
     this.#holesTo = to;
     this.holes(markets, to - FLOW_REACH_MS, to).then(answer => {
       this.#holesState = 'done';
-      const holes = answer?.holes ?? [], since = answer ? answer.since : Infinity, key = `${since}|${holes.map(h => h.join('-')).join(',')}`;
+      const holes = answer?.holes ?? [], sinceOf = answer?.sinceOf ?? {};
+      const key = `${holes.map(h => h.join('-')).join(',')}|${Object.entries(sinceOf).sort().map(([id, t]) => `${id}=${t}`).join(',')}`;
       // The kept blocks are read again only when what the recording says changed.
       if (key === this.#holesKey) return;
-      this.#holesKey = key;
+      this.#holesKey = key; this.#sinceOf = new Map(Object.entries(sinceOf));
       const reader = this.blocks.reader;
-      reader.holes = holes; reader.recordedSince = since; reader.forget(); this.blocks.invalidate(); this.#inspect();
+      reader.holes = holes; reader.knownKey = key; reader.forget(); this.blocks.invalidate(); this.#inspect();
     }, () => { this.#holesState = 'no'; this.#holesRetryAt = Date.now() + 30_000; });
   }
   /** Read the tape back a step at a time until the tally holds all of it (never a whole ring in one frame). */
@@ -324,24 +332,28 @@ export class TradesView {
     if (names.join() !== this.blocks.late.join()) { this.blocks.late = names; this.blocks.invalidate(); }
   }
   /** The recording's orders for the hour before the tape (from $25K, or the size chosen when larger): asked when the view first needs them, and again when the size is lowered below what was asked. */
+  /** The smallest size the recording is wanted from: $25K, or the size chosen when larger. */
+  #recordedWant(): number { const s = this.store.state.trades; return Math.max(scaledUsd(TNS_FLOOR_USD), s.minUsd === 0 ? 0 : scaledUsd(s.minUsd)); }
   #askRecorded(): void {
-    const s = this.store.state.trades, want = Math.max(scaledUsd(TNS_FLOOR_USD), s.minUsd === 0 ? 0 : scaledUsd(s.minUsd));
-    // Asked again once the tape's start has moved well past where the recording was asked up to (a ring that wrapped): what lies between
-    // is the recording's, and an answer from the old seam would leave it unrecorded under a size floor.
-    const cov = this.#tally.coveredFrom(), rec = this.#recorded;
-    if (this.#recordedState === 'done' && rec && Number.isFinite(cov) && cov - rec.to > RECORDED_AGAIN_MS) this.#recordedState = 'no';
-    if (!this.recorded || this.#recordedState === 'asking' || Date.now() < this.#recordedRetryAt || (this.#recordedState === 'done' && want >= this.#recordedMin)) return;
-    const ring = this.ring(), until = ring && ring.written ? ring.heldFrom : Date.now();
-    this.#recordedState = 'asking';
-    void this.recorded(until, want).then(answer => {
+    if (!this.recorded || !this.#shown) return;
+    const ring = this.ring(), want = this.#recordedWant();
+    // Up to the seam where the tape takes over for this view (`trades/asks.ts`), asked again only when the seam moved five minutes past
+    // where it was asked (a wrapping ring, a sliding tally window), a smaller size is wanted, or a failure's wait is over.
+    const seam = recordedSeam({ blocks: this.#unitNow() > 0, ringFrom: ring && ring.written ? ring.heldFrom : null, covered: this.#tally.coveredFrom(), filling: this.#tally.filling });
+    if (seam === null) return;
+    const ask = { state: this.#recordedState, askedAt: this.#recordedAt, min: this.#recordedMin, retryAt: this.#recordedRetryAt };
+    if (!recordedDue(ask, seam, want, Date.now())) return;
+    this.#recordedState = 'asking'; this.#recordedAt = seam;
+    void this.recorded(seam, want).then(answer => {
       this.#recordedState = 'done'; this.#recordedMin = want;
       const prints = answer ? [...answer.prints].sort((a, b) => a.t - b.t) : [];
-      this.#recorded = answer ? { prints, from: answer.from, to: until, holes: answer.holes, minUsd: want } : null;
-      this.#recordedRaw = answer ? { prints, seam: until, minHole: answer.minHole } : null;
+      // The answer holds the recording's orders a few seconds past the seam (SEAM_SLACK_MS): that is where it ends.
+      this.#recorded = answer ? { prints, from: answer.from, to: seam + SEAM_SLACK_MS, holes: answer.holes, minUsd: want } : null;
+      this.#recordedRaw = answer ? { prints, seam, minHole: answer.minHole } : null;
       this.blocks.reader.recorded = this.#recorded; this.blocks.reader.forget(); this.blocks.invalidate(); this.#inspect();
       this.#syncHistory();
-      // The size may have been lowered while the question was out.
-      this.#askRecorded();
+      // The size was lowered while the question was out: asked again for it (nothing else makes it due at once).
+      if (this.#recordedWant() < want) this.#askRecorded();
     }, () => { this.#recordedState = 'no'; this.#recordedRetryAt = Date.now() + 30_000; });
   }
   #recordedRaw: { prints: Print[]; seam: number; minHole: number } | null = null;

@@ -222,6 +222,7 @@ async function main(): Promise<void> {
   cvd.trades.recorded = (until, minUsd) => hub.recentPrints(store.state.markets.flatMap(m => { const id = m.instrumentId ?? m.id; return id ? [id] : []; }), TNS_LOOKBACK_MS, until, minUsd);
   cvd.trades.printsIn = (from, to, minUsd) => hub.printsIn(from, to, minUsd);
   cvd.trades.holes = (ids, from, to) => hub.recordingHoles(ids, from, to);
+  cvd.trades.flowHeldFrom = id => hub.flow.heldFrom(id);
   cvd.trades.flowLoads = () => hub.flow.loads;
   // A desktop folds its side columns to their edge tabs when the map would be left too little plot (layouts/dock-model.ts `chooseFold`).
   arrange.plotAt = paneW => paneW - gutterAt(paneW, store.state);
