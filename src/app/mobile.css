@@ -122,9 +122,12 @@ html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::
 }
 /* A settings panel's row keeps 8 px of room after its control (`.panel .field`): the mark is 22 px in from the select's own edge there too. */
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::after { right: 21px; }
-/* A stacked row (the Market) holds its select under its name: the mark sits on the select's middle (12 px of padding under a 44 px box).
-   `.sheet` keeps this as heavy as the rule above, whose :is() weighs as its heaviest argument, so it wins by coming later. */
-html:not([data-frame="bevel"]) .sheet .sheet-field.stack:has(> select)::after { top: auto; bottom: 25px; transform: none; }
+/* A stacked row (the Market) holds its select under its name. The row is a grid and the mark is placed in the select's cell, which then is
+   the box the rule above centres it in: no offsets to outweigh (a `bottom` override here lost to that rule once its :is() grew heavier, and
+   the arrow sat at the row's middle, against the select's top edge; Karl, 2026-11-13). */
+.sheet .sheet-field.stack:has(> select) { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; }
+/* Every line named: an absolutely placed item's `auto` line is the container's padding edge, which would take in the 12 px under the select. */
+html:not([data-frame="bevel"]) .sheet .sheet-field.stack:has(> select)::after { grid-area: 2 / 1 / 3 / 2; }
 /* A size field's menu of common sizes is a list of its own: the same arrow, in the middle of its own box (44 px in Settings, 40 in a panel). */
 html:not([data-frame="bevel"]) .sheet .size-ctl .size-menu,
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl .size-menu { -webkit-appearance: none; appearance: none; }
