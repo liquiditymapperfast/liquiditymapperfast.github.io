@@ -2733,5 +2733,9 @@
  "{n} closed hourly estimates": "{n} 个已收盘的每小时估算",
  "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "资金费率为正：多头付给空头。资金费率为负：空头付给多头。",
  "After the newest hourly record held": "已保留的最新每小时记录之后",
- "No hourly record held": "没有已保留的每小时记录"
+ "No hourly record held": "没有已保留的每小时记录",
+ "The table reads each market at the candle under the pointer, else the newest: what it bought and sold at market, their difference and its share of the candle's volume, beside the chart where there is room, else over its left end while you point at the pane. The most traded markets over the candles in view get a row each; the rest are added up in the last row. With NL/NS shown there is no table: its markets are the OI pane's, whose table has each venue.": "表格读取指针所在 K 线（否则为最新）的每个市场：以市价买入和卖出了多少、两者之差，以及占该 K 线成交量的比例。有空间时显示在图表旁边，否则在你指向面板时叠在图表左端。可见 K 线上成交最多的市场各占一行，其余的相加后放在最后一行。显示 NL/NS 时没有表格：它的市场就是 OI 面板的市场，OI 面板的表格里有每个交易所。",
+ "The table reads each venue at the pointer's time, else the newest: its weighted bids and asks, their imbalance and its share of the two lines, beside the chart where there is room, else over its left end while you point at the pane. The largest venues by their newest reading get a row each; the rest are added up in the last row. With Per level each row is that venue's own average, with no share.": "表格读取指针所在时刻（否则为最新）的每个交易所：它的加权买盘和卖盘、两者的失衡，以及占两条线的比例。有空间时显示在图表旁边，否则在你指向面板时叠在图表左端。按最新读数最大的交易所各占一行，其余的相加后放在最后一行。选择“按价位”时，每一行是该交易所自己的平均值，不给出占比。",
+ "Each market's buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.": "在面板的表格中显示每个市场以市价买入和卖出的量、它的 delta 以及占成交量的比例，取指针所在 K 线或最新。成交最多的市场各占一行，其余的相加后放在最后一行。",
+ "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "在面板的表格中显示每个交易所的加权买盘和卖盘、两者的失衡以及占总量的比例，取指针所在时刻或最新。最大的交易所各占一行，其余的相加后放在最后一行。"
 }
