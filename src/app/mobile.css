@@ -429,6 +429,15 @@ html[data-layout^="phone"] .pane.cvd .cvd-seg button { flex: 1 1 0; min-width: 0
 html[data-layout^="phone"] .pane.cvd .pane-head .cvd-gear { order: 1; margin-left: 0; width: var(--ph-key-w); min-height: var(--ph-ctl-h); padding: 0; display: inline-grid; place-items: center; }
 html[data-layout^="phone"] .pane.cvd .pane-head button.help { order: 2; }
 html[data-layout^="phone"] .pane.cvd .pane-head .readout { display: block; order: 9; flex: 1 0 100%; font-size: 13px; padding: 2px 2px 5px; font-variant-numeric: tabular-nums; }
+/* The column's views on a phone (2026-11-12): the tabs a row of their own above the spans, each a third of the width, at touch size; the
+   readout is the flow lines' and goes with them. */
+html[data-layout^="phone"] .pane.cvd .pane-head strong.cvd-views { display: flex; order: -1; flex: 1 0 100%; min-width: 0; }
+html[data-layout^="phone"] .pane.cvd .cvd-views .cvd-view { flex: 1 1 0; min-width: 0; min-height: var(--ph-ctl-h); padding: 0 4px; font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+html[data-layout^="phone"] .pane.cvd .pane-head .readout[hidden], html[data-layout^="phone"] .pane.cvd .cvd-seg[hidden] { display: none; }
+/* The lists' controls at touch size: the smallest-order menu at 16 px (iOS zooms the page into a smaller one) and a pill a thumb can hit. */
+html[data-layout^="phone"] .tns-bar { padding: 6px var(--ph-edge); font-size: 13px; }
+html[data-layout^="phone"] .tns-floor { font-size: 16px; min-height: var(--ph-ctl-h); padding: 0 8px; }
+html[data-layout^="phone"] .tns-pill { padding: 8px 18px; font-size: 14px; bottom: 14px; }
 html[data-layout^="phone"] .pane.cvd .readout b { color: var(--text); font-weight: 650; }
 html[data-layout^="phone"] .pane.cvd .readout .sp b { color: var(--cvd-spot); }
 html[data-layout^="phone"] .pane.cvd .readout .pp b { color: var(--cvd-perp); }

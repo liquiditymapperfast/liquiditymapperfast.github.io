@@ -25,6 +25,8 @@ import { ABSORPTION_RETENTION_MS, MAX_ABSORPTION_INSTRUMENTS } from '../shared/a
 import { measureDef, type MetricFlags, type ProfileMetric } from './measures/registry.ts';
 import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
+import { MAX_COVERAGE_INSTRUMENTS } from '../shared/coverage.ts';
+import { SEAM_SLACK_MS, TNS_HOLE_MS, recordedStretch } from './tns/model.ts';
 import { readCandles, webGet } from '../shared/history.ts';
 import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
 import { TPO_DAYS_REACH_MS, TPO_MAX_BARS, TPO_REACH_MS } from './tpo/settings.ts';
@@ -284,7 +286,7 @@ export class Hub {
   readonly prints = new PrintBook();
   /** Called with each batch of new large trades from the live stream (for sounds). */
   onPrints: (fresh: Print[]) => void = () => {};
-  /** Called with every large trade the live stream sent, new to the book or not (Time & sales: it lists what arrives, and asks for nothing). */
+  /** Called with every large trade the live stream sent, new to the book or not (Time & sales lists what arrives). */
   onLivePrints: (live: Print[]) => void = () => {};
   /** Called when the print book changed, so the chart can redraw its bubbles. */
   onPrintsChanged: () => void = () => {};
@@ -1222,6 +1224,35 @@ export class Hub {
     // An answer may add its prints whenever it comes, but it covers the window only for the connection it was asked on: one asked before the stream broke says nothing about the time the stream was down.
     // The book keeps a live window open-ended, so the orders the stream adds after it are kept like the window's own.
     this.source.prints(from, to, minUsd).then(rows => { this.prints.add(rows, { from, to: live ? Infinity : to }); if (connection === this.#connection) this.#printsWindow = { t0: from, t1: to, min: minUsd, cut: rows.length >= PRINTS_PER_ANSWER, live }; this.onPrintsChanged(); }, () => { /* the next frame retries */ }).finally(() => { this.#printsLoading = false; });
+  }
+
+  /**
+   * The orders from `minUsd` (the coin's dollars: the list's own smallest order) the recording holds from at most `lookbackMs` before `until`
+   * (when the stream opened, the page's clock) up to it, with the holes in its coverage: Time & sales fills its list with them when it first
+   * shows. Both questions go to the source's own recording (in the browser the engine's memory, which holds the history service's hour files
+   * the page reads at opening for the heatmap anyway; else the local server), never to an exchange: one coverage question, then one to six
+   * for orders. An answer cut at its largest orders is no complete list, so the window is halved (on the same coverage) until one is not. On
+   * the server's page it waits for the map's first columns, as every history read does. Times are the source's clock (`#sourceSkew`).
+   * Null when the source keeps no coverage record, recorded nothing of the window, or every window was cut.
+   */
+  async recentPrints(ids: readonly string[], lookbackMs: number, until: number, minUsd: number): Promise<{ prints: Print[]; from: number; holes: [number, number][] } | null> {
+    if (!this.source.coverage || !ids.length) return null;
+    if (this.mapFirst()) await this.#afterMap();
+    const end = until - this.#sourceSkew, minHole = TNS_HOLE_MS[this.source.kind];
+    let start = end - lookbackMs;
+    const answer = await this.source.coverage(ids.slice(0, MAX_COVERAGE_INSTRUMENTS), 'trades', start, end);
+    const spans = answer.instruments.map(i => i.spans);
+    for (let tries = 0; tries < 6; tries++) {
+      const stretch = recordedStretch(spans, start, end, minHole);
+      if (!stretch) return null;
+      // A few seconds past the seam: an order stamped after it that the stream had not sent yet is the recording's (each order is kept once).
+      const rows = await this.source.prints(stretch.since, end + SEAM_SLACK_MS, minUsd);
+      // Back on the page's clock, as the list's seam is (the orders keep their exchange times either way).
+      const skew = this.#sourceSkew;
+      if (rows.length < PRINTS_PER_ANSWER) return { prints: rows, from: stretch.since + skew, holes: stretch.holes.map(([a, b]) => [a + skew, b + skew] as [number, number]) };
+      start = Math.round((stretch.since + end) / 2);
+    }
+    return null;
   }
 
   /**

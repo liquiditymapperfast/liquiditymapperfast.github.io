@@ -6,6 +6,7 @@ import { ScriptData } from '../src/app/script/data.ts';
 import { Store, initialState } from '../src/app/store.ts';
 import type { BootstrapState, DataSource, LiveHandlers } from '../src/app/source.ts';
 import type { ColumnsFrame } from '../src/app/wire.ts';
+import { PRINTS_PER_ANSWER } from '../src/shared/prints.ts';
 
 /**
  * The page's hub paces its reads (`paced`, Research_Findings.md): a column step is asked for once the view has rested on it; on the server's
@@ -203,4 +204,33 @@ test('a script that reads neither liquidations nor flow asks for neither; one th
   assert.ok(asked.liquidations > 0, 'liquidations, for a script that reads them');
   data.inputs(state, filters, false, true, candles as never, false);
   assert.ok(asked.flow > 0, 'the flow, for a script that reads it');
+});
+
+test('Time & sales fills from the recording at the list\'s own smallest order, after the map\'s first columns, halving a cut answer on one coverage', async () => {
+  const h = await harness(true);
+  try {
+    let coverageAsked = 0, cut = 1;
+    const asked: { from: number; to: number; minUsd: number | undefined }[] = [];
+    const src = h.source as unknown as Record<string, unknown>;
+    src.coverage = async (ids: string[], _metric: string, from: number, to: number) => {
+      coverageAsked++;
+      return { metric: 'trades', from, to, asOf: to, instruments: ids.map(id => ({ id, spans: [[from, to]], recovered: [], seconds: [], held: [] })) };
+    };
+    src.prints = async (from: number, to: number, minUsd?: number) => {
+      asked.push({ from, to, minUsd });
+      // The first answer is cut at its largest orders; the narrower one is whole.
+      return cut-- > 0 ? Array.from({ length: PRINTS_PER_ANSWER }, (_, i) => ({ t: from + i, id: 'a:BTC', side: 'buy', price: 100, usd: 1e6 })) : [{ t: to - 10_000, id: 'a:BTC', side: 'buy', price: 100, usd: 2e5 }];
+    };
+    h.source.handlers!.onOpen();
+    const fill = h.hub.recentPrints(['a:BTC'], HOUR, h.clock.now, 100_000);
+    await turn();
+    assert.equal(coverageAsked, 0, 'nothing before the map\'s first columns (the server\'s page)');
+    await h.hub.loadColumns(h.live(6), 180);
+    const got = await fill;
+    assert.equal(coverageAsked, 1, 'one coverage question for every window tried');
+    assert.deepEqual(asked.map(a => a.minUsd), [100_000, 100_000], 'at the list\'s own smallest order, never the recording\'s BTC floor');
+    assert.ok(asked[1]!.from > asked[0]!.from, 'a cut answer halves the window');
+    assert.equal(got?.prints.length, 1);
+    assert.equal(got?.from, asked[1]!.from);
+  } finally { h.restore(); }
 });

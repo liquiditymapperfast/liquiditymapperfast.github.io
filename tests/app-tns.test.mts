@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { HiddenGaps, MERGE_GAP_MS, MERGE_SPAN_MS, TNS_DEFAULTS, TNS_GAP_MS, TnsBook, readFlowView, readTns, type TnsLine, type TnsRow } from '../src/app/tns/model.ts';
+import { HiddenGaps, MERGE_GAP_MS, MERGE_SPAN_MS, TNS_DEFAULTS, TNS_GAP_MS, SEAM_SLACK_MS, TNS_HOLE_MS, TnsBook, recordedStretch, readFlowView, readTns, type TnsLine, type TnsRow } from '../src/app/tns/model.ts';
 import type { Print } from '../src/app/prints.ts';
 import { LAYOUT_KEYS, readSettings } from '../src/app/store.ts';
 
@@ -156,10 +156,90 @@ test('the page in the background is a gap only when no order came for a while (a
   assert.equal(busy.arrived(40_100), 0, 'orders kept coming: no stretch without orders past the limit');
 });
 
-test('the list is wired to every order the stream sends, and asks for nothing', () => {
+test('the list takes every order the stream sends, and reaches the recording only through the page\'s callback', () => {
   const hub = fs.readFileSync('src/app/hub.ts', 'utf8');
   // Every live order goes to the list, the ones the book already held included, and after the book's own work (an error there skips nothing).
   assert.match(hub, /const fresh = this\.prints\.add\(live\);\r?\n\s*if \(fresh\.length\) \{[^\n]*\}\r?\n\s*\/\/[^\n]*\r?\n\s*if \(live\.length\) this\.onLivePrints\(live\);/);
   const view = fs.readFileSync('src/app/panes/tns-view.ts', 'utf8');
-  assert.doesNotMatch(view, /source\.|fetch\(|\.prints\(/, 'Time & sales never asks a source');
+  assert.doesNotMatch(view, /source\.|fetch\(|\.prints\(/, 'Time & sales asks no source itself (its fill goes through `prefill`, set by the page)');
+});
+
+test('the recording covered from its first moment, with holes where no market was recorded; one venue reconnecting is no hole', () => {
+  const M = 60_000, until = 10 * M;
+  // One market reconnected for a minute while another kept recording: no hole.
+  assert.deepEqual(recordedStretch([[[2 * M, 5 * M], [6 * M, until]], [[2 * M, until]]], 0, until, 5_000), { since: 2 * M, holes: [] });
+  // No market recorded between 5 and 8 min (no page open): a hole, and the list starts at the first recorded moment.
+  assert.deepEqual(recordedStretch([[[2 * M, 5 * M], [8 * M, until]], [[1 * M, 4 * M], [8 * M, until]]], 0, until, 5_000), { since: M, holes: [[5 * M, 8 * M]] });
+  // The server passes over holes under its limit (its loop pausing); the browser does not.
+  const stall = [[[M, 5 * M], [5 * M + 20_000, until]]] as const;
+  assert.deepEqual(recordedStretch(stall, 0, until, TNS_HOLE_MS.server)?.holes, []);
+  assert.deepEqual(recordedStretch(stall, 0, until, TNS_HOLE_MS.browser)?.holes, [[5 * M, 5 * M + 20_000]]);
+  // A recording that stops before the page opened ends with a hole up to it; nothing recorded is null.
+  assert.deepEqual(recordedStretch([[[M, 7 * M]]], 0, until, 5_000)?.holes, [[7 * M, until]]);
+  assert.equal(recordedStretch([[[3 * M, until]]], 4 * M, until, 5_000)?.since, 4 * M, 'never before the window');
+  assert.equal(recordedStretch([], 0, until, 5_000), null);
+});
+
+test('the orders the recording held go before the live ones, in time order with its holes, each once; a fill replaces the one before', () => {
+  const id = 'binance:BTCUSDT', book = new TnsBook(100_000);
+  const live = order(100_500, id, 'buy', 71_000, 150_000);
+  book.add([live]);
+  const first = [order(90_000, id, 'sell', 70_900, 200_000), order(80_000, id, 'buy', 70_800, 300_000), order(70_000, id, 'buy', 70_700, 400_000), { ...live }];
+  assert.equal(book.prefill(first, 75_000, [[85_000, 88_000]]), 2, 'one from before Since is left out, and the live one is the stream\'s');
+  assert.equal(book.since, 75_000);
+  const kinds = (b: TnsBook): string => rowsOf(b, { merge: false }).map(l => l.k === 'gap' ? `gap:${l.why}` : String(l.t)).join(',');
+  assert.equal(kinds(book), '100500,90000,gap:unrecorded,80000', 'newest first; the hole between the recorded orders where it fell');
+  assert.equal(book.orders, 3);
+  // An order past the seam and its slack is the stream's to send, never the recording's.
+  assert.equal(book.prefill([order(100_000 + SEAM_SLACK_MS, id, 'buy', 71_000, 500_000)], 75_000), 0);
+  assert.equal(book.orders, 1, 'a fill replaces the one before it (each answer is the whole of its window)');
+  // The next fill (the smallest order lowered): its own orders and holes, the live orders untouched.
+  assert.equal(book.prefill([...first, order(86_000, id, 'sell', 70_850, 30_000)], 75_000, [[95_000, 100_000]]), 3);
+  assert.equal(kinds(book), '100500,gap:unrecorded,90000,80000', 'its holes replace the first\'s; $30K is under the rows\' $100K');
+  assert.equal(book.orders, 4);
+  const gap = rowsOf(book).find(l => l.k === 'gap');
+  assert.ok(gap?.k === 'gap' && gap.ms === 5_000 && gap.at === 100_000);
+});
+
+test('the seam is when the stream opened, with a few seconds of slack: what the stream had not sent yet is the recording\'s', () => {
+  const id = 'okx:BTC-USDT-SWAP', book = new TnsBook(100_000);
+  book.open(103_000);
+  assert.equal(book.since, 103_000, 'before any fill the list holds every order from the stream\'s opening');
+  book.add([order(103_200, id, 'buy', 71_000, 150_000)]);
+  assert.equal(book.prefill([order(101_500, id, 'buy', 71_000, 150_000), order(103_200, id, 'buy', 71_000, 150_000), order(104_000, id, 'sell', 71_000, 150_000)], 95_000), 2);
+  assert.deepEqual(onlyRows(rowsOf(book, { merge: false })).map(r => r.t), [103_200, 104_000, 101_500], 'the stream\'s own order once; the recording\'s after it in the list');
+  assert.equal(book.since, 95_000);
+});
+
+test('a list whose live orders were let go to the hold never claims the recording\'s start; a reconnect before any live order is kept', () => {
+  const id = 'binance:BTCUSDT', book = new TnsBook(100_000, 3);
+  book.add([101_000, 102_000, 103_000, 104_000].map(t => order(t, id, 'buy', 70_000, 200_000)));
+  assert.equal(book.since, 102_000, 'the oldest kept once the hold let one go');
+  book.prefill([], 40_000);
+  assert.equal(book.since, 102_000, 'an empty fill does not move Since back over what was dropped');
+  const fresh = new TnsBook(100_000);
+  fresh.gap('reconnect', 100_200);
+  fresh.prefill([order(90_000, id, 'buy', 70_000, 200_000)], 80_000);
+  fresh.add([order(101_000, id, 'sell', 70_000, 200_000)]);
+  assert.deepEqual(rowsOf(fresh).map(l => l.k === 'gap' ? l.why : 'row'), ['row', 'reconnect', 'row'], 'the line sits between the recording and the live orders');
+});
+
+test('two holes with no row between them are two lines, and a gap before the first live order follows the recording', () => {
+  const id = 'binance:BTCUSDT', book = new TnsBook(100_000);
+  book.prefill([order(80_000, id, 'buy', 70_000, 200_000), order(86_000, id, 'buy', 70_000, 30_000), order(92_000, id, 'buy', 70_000, 200_000)], 75_000, [[84_000, 85_000], [88_000, 90_000]]);
+  assert.deepEqual(rowsOf(book).map(l => l.k), ['row', 'gap', 'gap', 'row'], 'the $30K order between them is filtered out, both holes still shown');
+  book.gap('reconnect', 100_500);
+  book.add([order(101_000, id, 'sell', 70_000, 200_000)]);
+  assert.deepEqual(rowsOf(book).map(l => l.k === 'gap' ? l.why : 'row'), ['row', 'reconnect', 'row', 'unrecorded', 'unrecorded', 'row']);
+});
+
+test('the list is filled from the recording only through the source it asks anyway, and only when it first shows', () => {
+  const hub = fs.readFileSync('src/app/hub.ts', 'utf8');
+  assert.match(hub, /async recentPrints\(/);
+  assert.match(hub, /this\.source\.coverage\(/);
+  assert.match(hub, /TNS_HOLE_MS\[this\.source\.kind\]/);
+  assert.match(hub, /rows\.length < PRINTS_PER_ANSWER/, 'an answer cut at its largest orders is never used as a full list');
+  const view = fs.readFileSync('src/app/panes/tns-view.ts', 'utf8');
+  assert.match(view, /if \(shown && this\.#filled === 'no'\) this\.#fill\(\);/);
+  assert.match(view, /!this\.#sourceReady/, 'not before the stream has opened (the markets are known)');
 });

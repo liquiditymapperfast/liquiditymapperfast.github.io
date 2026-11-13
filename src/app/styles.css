@@ -413,6 +413,14 @@ html[data-layout="desktop"] .side-head > strong.cvd-views { max-width: none; ove
 .tns.narrow .tns-t { display: none; }
 .tns-gap { padding: 4px 8px; border-bottom: 1px dashed var(--line); color: var(--muted); font: italic 11px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 .tns-pill { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 2px 12px; border-radius: 999px; font-size: 11px; box-shadow: 0 2px 6px rgb(0 0 0 / .25); z-index: 2; }
+/* All trades (panes/trades-view.ts): the same bar as Time & sales, then one canvas filling the rest; a narrow column writes All. */
+.trades { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.trades[hidden] { display: none; }
+.trades-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+.trades-canvas { position: absolute; left: 0; top: 0; display: block; cursor: pointer; }
+.trades.replaying .trades-canvas { cursor: default; }
+.pane.cvd.narrower .cvd-views .cvd-view[data-view="all"] .long { display: none; }
+.pane.cvd.narrower .cvd-views .cvd-view[data-view="all"] .short { display: inline; }
 /* The fit grid (ui/fit-grid.ts): a header's controls, laid out by one rule rather than by breakpoints. On the desktop the choices are tiles of one width under
    the first line, their captions above them, as many to a row as fit and filling it; or on the first line itself when all of them fit there (the header's
    fit-inline class), or the line's own ones there (data-fit="lead") and the others under it. Keys (data-fit="key") sit at the first line's right end, beside

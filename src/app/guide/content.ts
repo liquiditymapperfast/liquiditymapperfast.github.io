@@ -175,13 +175,25 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: '**Time & sales**, the second tab in the flow column\'s title, lists the large market orders as they arrive, newest on top: the time, the exchange, the side (▲ bought, ▼ sold, in the buy and sell colours), the price and the size. They are the orders the trade bubbles draw, so the list and the map tell the same story, one in numbers and one in place.' },
       { t: 'list', items: [
-        'The list starts when the page opens and fetches nothing. The menu above the rows sets the smallest order: $100,000 at first, any size from $25,000 in the settings key. A busy minute of BTC orders from $25,000 is more rows than anyone can read.',
+        'The list starts with the orders this page already recorded, up to the last hour (on this site that includes the recorded history it reads for the heatmap), and asks the exchanges for nothing. The menu above the rows sets the smallest order: $100,000 at first, any size from $25,000 in the settings key. A busy minute of BTC orders from $25,000 is more rows than anyone can read.',
         'A burst of orders on one exchange and side, each within half a second of the last and three seconds of the first, is one row: ×16 says how many, the size is their total and the price their average weighted by size. The settings key turns that off.',
         'Bold rows are whale size, as the bubbles\' glow (the Whale size in Sounds). The bar behind a size grows on a log scale, from the smallest order listed to a hundred times it.',
         'Point at the list to hold it still: a button counts the new rows and brings them in. The order you point at is marked on the map and the panes at its moment, and a click takes the map there.',
-        'A line between rows says where orders may be missing: the stream dropped, or the page was in the background.',
+        'A line between rows says where orders may be missing: the stream dropped, the page was in the background, or nothing was recorded then.',
       ] },
-      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view, Flow and Time & sales. A phone\'s Flow tab shows the flow lines.' },
+      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow, Time & sales and All trades. On a phone the Flow tab has the same three tabs.' },
+    ],
+  },
+  {
+    id: 'all-trades', title: 'All trades',
+    blocks: [
+      { t: 'p', text: '**All trades**, the third tab in the flow column\'s title, lists every market order this page receives, of any size, as it arrives: the newest on top, each with its time, exchange, side (▲ bought, ▼ sold), price and size. Where Time & sales picks out the large orders, this is the whole stream, the small ones included: the rhythm of the market.' },
+      { t: 'list', items: [
+        'Size is told three ways at once on a fixed scale: taller rows and heavier type in steps at $10,000, $100,000 and the whale size of Sounds, and a tint of the side\'s colour that deepens with the size. The same order looks the same whatever is filtered, and a rare large one stands out from a screen of small ones.',
+        'A busy market sends dozens of orders a second. The menu above the list sets the smallest order (any size at first); point at the list to hold it, or scroll back with the wheel, and a button counts what came meanwhile. The settings key also chooses the side and can show a burst on one market as one row (×5: five orders).',
+        'The orders are kept in the page\'s memory from when it started listening, the last hours of them. Nothing is fetched or recorded, so a reload starts it empty. A line says where orders may be missing: the stream reconnected, or the source left some out.',
+        'The order you point at is marked on the map and the panes at its moment, with its whole story in a box; a click takes the map there. On a phone a finger scrolls the list and a tap on a row shows its box.',
+      ] },
     ],
   },
   {

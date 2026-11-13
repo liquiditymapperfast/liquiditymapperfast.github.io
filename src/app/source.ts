@@ -116,7 +116,7 @@ export interface DataSource {
    */
   longShort(inst: string, metric: LsMetric, tf: string, from: number, to: number, signal?: AbortSignal, budgetMs?: number): Promise<LsSeries>;
   /** Large trades in [from, to), oldest first. */
-  /** Large market orders in [from, to) from `minUsd` (the recording's floor when absent), the newest few thousand of them. */
+  /** Large market orders in [from, to) from `minUsd` (the recording's floor when absent), the largest few thousand of them. */
   prints(from: number, to: number, minUsd?: number): Promise<Print[]>;
   /** Liquidations in a window, from the smallest kept or `minUsd` (a server from before them has none). */
   liquidations?(from: number, to: number, minUsd?: number): Promise<Liquidation[]>;

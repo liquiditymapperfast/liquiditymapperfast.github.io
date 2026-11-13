@@ -41,6 +41,7 @@ import { flowEndChange, type FlowEnd } from '../cvd/flash.ts';
 import { FitGrid } from '../ui/fit-grid.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { TnsView } from './tns-view.ts';
+import { TradesView } from './trades-view.ts';
 import type { FlowView } from '../tns/model.ts';
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif', MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -150,14 +151,19 @@ export class CvdPane {
   #spanButtons = new Map<CvdSpan, HTMLButtonElement>();
   #spanSelect = el('select', { class: 'cvd-span-select', ariaLabel: t('Time span') });
   #gear = el('button', { type: 'button', class: 'icon-btn cvd-gear', ariaLabel: t('Settings'), tip: t('How the column ranks and draws the exchanges.') });
-  /** The column's views, a tab each in the header's name (the flow lines, Time & sales); a phone shows the flow alone. */
+  /** The column's views, a tab each in the header's name (the flow lines, Time & sales, All trades); a phone's are a row of their own. */
   #viewTabs = new Map<FlowView, HTMLButtonElement>();
-  #helpFlow = helpButton('cvd'); #helpTns = helpButton('tns');
+  #helpFlow = helpButton('cvd'); #helpTns = helpButton('tns'); #helpTrades = helpButton('trades');
   /** The span buttons' cell, which only the flow view has. */
   #cells: HTMLElement | null = null;
   #shownView: FlowView | null = null;
-  /** Time & sales, the column's second view (set up in the constructor). */
+  /** Time & sales, the column's second view, and All trades, its third (set up in the constructor). */
   readonly tns: TnsView;
+  readonly trades: TradesView;
+  /** Whether the column is covered by another tab (a phone shows one tab at a time by its stylesheet, never by `hidden`; set by the page). */
+  covered: () => boolean = () => false;
+  /** The column was shown or hidden, or its view changed: what wants the tape (All trades) is weighed again (set by the page). */
+  onVisibility: () => void = () => {};
   /** Bursts the alert engine has seen, drawn as markers on their rows (set from outside; newest last). */
   events: readonly BurstEvent[] = [];
   #timer = 0;
@@ -170,8 +176,8 @@ export class CvdPane {
 
   constructor(host: HTMLElement, private store: Store, private hub: Hub, private view: View) {
     this.#strip = new CvdStrip(store, hub); this.#rankingKey = rankingKey(store.state.cvd);
-    this.tns = new TnsView(store);
-    this.root.append(this.controls, this.#strip.root, this.#notice, this.#wrap, this.tns.root);
+    this.tns = new TnsView(store); this.trades = new TradesView(store);
+    this.root.append(this.controls, this.#strip.root, this.#notice, this.#wrap, this.tns.root, this.trades.root);
     this.#lineCanvas.className = 'cvd-line';
     this.#wrap.append(this.#canvas, this.#lineCanvas, this.#flashCanvas);
     host.append(this.root);
@@ -182,7 +188,7 @@ export class CvdPane {
     // The layout shows and hides the column (its switch, a fold, the phone's tabs): the view shown follows, so a list out of sight draws nothing.
     const shown = new MutationObserver(() => this.viewChanged()), sized = new ResizeObserver(() => this.#fitName());
     shown.observe(this.root, { attributes: true, attributeFilter: ['hidden'] }); sized.observe(this.root);
-    this.#off.push(() => shown.disconnect(), () => sized.disconnect(), () => this.tns.dispose());
+    this.#off.push(() => shown.disconnect(), () => sized.disconnect(), () => this.tns.dispose(), () => this.trades.dispose());
     // The name's width changes with the font once it has loaded.
     void document.fonts?.ready.then(() => this.#fitName());
     this.viewChanged();
@@ -201,14 +207,30 @@ export class CvdPane {
    * since the line's other keys and the language set what fits. Only the header changes, so the pane's width (what calls this) does not.
    */
   #fitName(): void {
-    if (this.root.hidden || isPhone()) return;
+    if (this.root.hidden) return;
     const name = this.controls.querySelector<HTMLElement>(':scope > .cvd-views'), tools = this.controls.querySelector<HTMLElement>(':scope > .pane-tools');
-    if (!name || !tools) return;
-    this.root.classList.remove('narrow');
-    if (tools.offsetTop > name.offsetTop + name.offsetHeight / 2) this.root.classList.add('narrow');
+    if (!name) return;
+    // A phone gives the tabs a row of their own, each a third of it: a label that overflows its tab steps down instead.
+    if (isPhone()) {
+      const fitsTabs = (): boolean => [...name.children].every(b => (b as HTMLElement).scrollWidth <= (b as HTMLElement).clientWidth + 1);
+      this.root.classList.remove('narrow', 'narrower');
+      if (fitsTabs()) return;
+      this.root.classList.add('narrow');
+      if (!fitsTabs()) this.root.classList.add('narrower');
+      return;
+    }
+    if (!tools) return;
+    // The ladder (Sol, 2026-11-12): every label in full; Time & sales as T&S; All trades as All too; then the header may wrap. Each step is
+    // taken only while the pane's tools still fall to a second line or the header runs out of its width.
+    const fits = (): boolean => tools.offsetTop <= name.offsetTop + name.offsetHeight / 2 && this.controls.scrollWidth <= this.controls.clientWidth + 1;
+    this.root.classList.remove('narrow', 'narrower');
+    if (fits()) return;
+    this.root.classList.add('narrow');
+    if (fits()) return;
+    this.root.classList.add('narrower');
   }
-  /** The view the column shows: the setting, except on a phone, whose Flow tab is the flow lines alone. */
-  #view(): FlowView { return isPhone() ? 'flow' : this.store.state.flowView; }
+  /** The view the column shows (a phone's Flow tab has the same three, 2026-11-12). */
+  #view(): FlowView { return this.store.state.flowView; }
   /** Whether the flow lines are on screen: the column shown, in the flow view. Every drawing of the lines and the dot rows waits on it. */
   #flowOn(): boolean { return !this.root.hidden && this.#view() === 'flow'; }
   /**
@@ -216,15 +238,17 @@ export class CvdPane {
    * rows show in the flow view, the list in Time & sales; the header's span buttons, settings and help follow the view.
    */
   viewChanged(): void {
-    const view = this.#view(), flow = view === 'flow';
+    const view = this.#view(), flow = view === 'flow', visible = !this.root.hidden && !this.covered();
     for (const [id, tab] of this.#viewTabs) { const on = id === view; tab.classList.toggle('on', on); tab.setAttribute('aria-pressed', String(on)); }
-    this.tns.setShown(!this.root.hidden && !flow);
-    if (view === this.#shownView) { this.#fitName(); if (flow && !this.root.hidden) this.invalidate(); return; }
+    // Each list shown only while it is the view and the column is on screen (a folded or closed column draws nothing and wants no tape).
+    this.tns.setShown(visible && view === 'tns'); this.trades.setShown(visible && view === 'all');
+    this.onVisibility();
+    if (view === this.#shownView) { this.#fitName(); if (flow && visible) this.invalidate(); return; }
     this.#shownView = view;
     this.#panel?.close(); this.#panel = null;
-    this.#wrap.hidden = !flow; this.#helpFlow.hidden = !flow; this.#helpTns.hidden = flow;
+    this.#wrap.hidden = !flow; this.#readout.hidden = !flow; this.#helpFlow.hidden = !flow; this.#helpTns.hidden = view !== 'tns'; this.#helpTrades.hidden = view !== 'all';
     if (this.#cells) this.#cells.hidden = !flow;
-    this.#gear.dataset.tip = flow ? t('How the column ranks and draws the exchanges.') : t('Time & sales settings: the smallest order, the side and bursts as one row.');
+    this.#gear.dataset.tip = flow ? t('How the column ranks and draws the exchanges.') : view === 'tns' ? t('Time & sales settings: the smallest order, the side and bursts as one row.') : t('All trades settings: the smallest order, the side and bursts as one row.');
     // The notice is the flow's: hidden with it, and said again when the flow comes back (its words may have changed meanwhile).
     if (!flow) this.#notice.hidden = true;
     this.#noticeKey = '';
@@ -237,7 +261,7 @@ export class CvdPane {
   /** The span the column draws: the setting, except that a phone's Flow view fills the area with no map to follow, so the map's span reads as an hour there. */
   #span(): CvdSpan { const span = this.store.state.cvd.span; return isPhone() ? spanOnPhone(span) : span; }
   setPalette(name: string): void {
-    this.#palette = PALETTES[name] ?? PALETTES.light!; this.#strip.setPalette(this.#palette);
+    this.#palette = PALETTES[name] ?? PALETTES.light!; this.#strip.setPalette(this.#palette); this.trades.setPalette(this.#palette);
     // A theme's frame changes the buttons' padding and borders, and so what fits beside the name.
     this.#fitName();
     // The readout and the chips under the header speak in the lines' colours.
@@ -345,6 +369,7 @@ export class CvdPane {
     this.#gear.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
     this.#gear.onclick = () => {
       if (this.#view() === 'tns') { this.tns.openSettings(this.#gear); return; }
+      if (this.#view() === 'all') { this.trades.openSettings(this.#gear); return; }
       this.#panel = togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#buildSettings(body));
     };
     // The span buttons are the header's one cell (ui/fit-grid.ts): on the title's line when they fit there, a whole row under it when not.
@@ -355,7 +380,8 @@ export class CvdPane {
     // place in the header (the layout puts the pane's tools after it).
     const views: [FlowView, string, string, string][] = [
       ['flow', t('Flow'), t('Flow'), t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.')],
-      ['tns', t('Time & sales'), t('T&S'), t('Time & sales: every large market order as it arrives, newest on top, with its exchange, side, price and size. Nothing is fetched: the list starts when the page opens.')],
+      ['tns', t('Time & sales'), t('T&S'), t('Time & sales: every large market order, newest on top, with its exchange, side, price and size. It starts with the orders this page already recorded, up to the last hour, and asks the exchanges for nothing.')],
+      ['all', t('All trades'), t('All'), t('All trades: every market order this page receives, of any size, as it arrives, newest on top. Nothing is fetched or recorded: it holds what came since the page started listening.')],
     ];
     const name = el('strong', { class: 'seg cvd-views', role: 'group', ariaLabel: t('Flow column view') }, ...views.map(([id, long, short, tip]) => {
       const tab = el('button', { type: 'button', class: 'cvd-view', tip, ariaLabel: long, onclick: () => { if (this.store.state.flowView !== id) this.store.set({ flowView: id }); } },
@@ -363,7 +389,7 @@ export class CvdPane {
       tab.dataset.view = id; this.#viewTabs.set(id, tab);
       return tab;
     }));
-    this.controls.append(name, cells, this.#spanSelect, this.#gear, this.#helpFlow, this.#helpTns, this.#readout);
+    this.controls.append(name, cells, this.#spanSelect, this.#gear, this.#helpFlow, this.#helpTns, this.#helpTrades, this.#readout);
     this.#fit = new FitGrid(this.controls, cells, this.root);
     this.#syncControls();
   }
