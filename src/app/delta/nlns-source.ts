@@ -14,6 +14,8 @@ const FINE_CACHE_MS = 6 * 3_600_000;
 
 /** One hour of one market's opening (`NlnsSource.hourly`): the coins its buyers and its sellers opened at market. */
 export interface HourOpens { t: number; longOpened: number; shortOpened: number }
+/** The one empty answer of `hourly`: the Funding pane keeps its snapshot by identity. */
+const NO_HOURS: HourOpens[] = Object.freeze([]) as unknown as HourOpens[];
 
 /**
  * NL/NS for every pane that shows it (the Delta pane's NL/NS, the OI pane's bars by who opened, the Funding pane's share of new positions opened
@@ -86,7 +88,7 @@ export class NlnsSource {
    */
   hourly(state: AppState, id: string, from: number, now: number): HourOpens[] {
     const part = (replaying() ? oiPartsUntil(state.oiFine, MINUTE, now) : state.oiFine).find(p => p.id === id), track = this.hub.flow.track(id);
-    if (!part || !track) return [];
+    if (!part || !track) return NO_HOURS;
     const first = Math.floor(Math.max(from, now - this.fineReach) / HOUR) * HOUR, hours: number[] = [];
     for (let t = first; t <= now; t += HOUR) hours.push(t);
     // Its flow is asked for here too: with the Delta pane, the OI pane and the flow column all closed, nothing else would ask.

@@ -319,6 +319,8 @@ export async function readFundingNow(venue: FundingVenue, listing: Listing, get:
  */
 export interface FundingView { venue: FundingVenue; rows: readonly FundingRow[]; premium: readonly PremiumRow[]; premiumMs: number; now: FundingNow | null; loading: boolean; failed: boolean; /** How far back the settlements were read (time before it was not read), or null before any read answered. */ from?: number | null }
 
+/** One empty list for every view that holds none: a new `[]` each call made a snapshot taken by identity new on every frame. */
+const NONE: readonly never[] = Object.freeze([]);
 /** How often the newest funding, the premium and the funding now are read again. */
 const ROWS_FRESH_MS = 10 * 60_000, PREMIUM_FRESH_MS = 60_000, NOW_FRESH_MS = 30_000, RETRY_MS = 60_000;
 /** After a settlement is due, its record is looked for this long after it, then again this often until it comes (for at most ROWS_FRESH_MS). */
@@ -381,7 +383,7 @@ export class FundingSource {
       }
     }
     // Premium per candle where the venue publishes it (Hyperliquid's comes hourly with its funding).
-    let premium: readonly PremiumRow[] = venue === 'hyperliquid' ? held?.premium ?? [] : [], premiumMs = HOUR;
+    let premium: readonly PremiumRow[] = venue === 'hyperliquid' ? held?.premium ?? NONE : NONE, premiumMs = HOUR;
     if (withPremium && (venue === 'binance' || venue === 'bybit')) {
       premiumMs = tfMs;
       // One unbroken stretch held per timeframe, from `from` through `to` (`heldPremium`). The view's own candles count first (at most PREMIUM_CANDLES back
@@ -414,13 +416,13 @@ export class FundingSource {
         else if (right) read(p.to - 2 * tfMs, Math.max(edge, Math.min(edge + ahead, now + tfMs, p.to - 2 * tfMs + budget)), true);
         else if (live && (now - p.at > PREMIUM_FRESH_MS || edge > p.to + tfMs)) read(Math.max(viewLo - padLeft, p.to - 2 * tfMs), now + tfMs, false);
       }
-      premium = p?.rows ?? [];
+      premium = p?.rows ?? NONE;
     }
     // The rate under way, every NOW_FRESH_MS, and again a few seconds after it settles (the one after it is under way then), for at most
     // ROWS_FRESH_MS: a venue whose next settlement stays in the past (a paused symbol) is not asked every few seconds for ever.
     const n = this.#now.get(key), settled = !!n?.now && n.now.next !== null && n.now.next <= now && now - n.now.next < ROWS_FRESH_MS;
     if (!n || now - n.at > NOW_FRESH_MS || (settled && now - n.at > 3_000)) this.#read(`now|${key}`, () => readFundingNow(venue, listing, this.get, now).then(value => { this.#now.set(key, { now: value, at: Date.now() }); }), settled ? 5_000 : RETRY_MS);
-    return { venue, rows: held?.rows ?? [], premium, premiumMs, now: n?.now ?? null, loading: !held && !this.#failed.has(rowsKind), failed: !held && this.#failed.has(rowsKind), from: held?.from ?? null };
+    return { venue, rows: held?.rows ?? NONE, premium, premiumMs, now: n?.now ?? null, loading: !held && !this.#failed.has(rowsKind), failed: !held && this.#failed.has(rowsKind), from: held?.from ?? null };
   }
 
   /** One read of a kind at a time; a failed one is asked again `retryMs` later. */
@@ -482,6 +484,15 @@ export function fundingAt(rows: readonly FundingRow[], now: FundingNow | null, a
   if (now && at >= end - now.hours * HOUR && at <= end && !(settled && settled.t >= end)) return { row: { t: end, rate: now.rate, per8h: now.per8h, hours: now.hours }, forming: true };
   const newest = rows[rows.length - 1];
   return { row: settled ?? (!now && newest && at >= newest.t ? newest : null), forming: false };
+}
+
+/**
+ * Where the interval settlement `i` paid for starts: `hours` before it, but never before the settlement ahead of it (a first row's interval,
+ * taken from the gap after it or the venue's interval now, can reach back over one held before it). The steps and the Range summary share it.
+ */
+export function rowStart(rows: readonly FundingRow[], i: number): number {
+  const r = rows[i]!, before = i > 0 ? rows[i - 1]!.t : -Infinity;
+  return Math.max(r.t - r.hours * HOUR, before);
 }
 
 /** The settled row whose interval holds `t` (it settles at its `t`, over the `hours` before), or null. */

@@ -37,6 +37,7 @@ import { DeltaPane, deltaHeldKey } from './panes/delta-pane.ts';
 import { NlnsSource } from './delta/nlns-source.ts';
 import { LsPane, lsIds } from './panes/ls-pane.ts';
 import { LsRangeSummary, lsHeldKey } from './range/ls-lines.ts';
+import { FundingRangeSummary } from './range/funding-lines.ts';
 import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
 import { ScriptPane } from './panes/script-pane.ts';
@@ -264,6 +265,13 @@ async function main(): Promise<void> {
   range.useProvider({
     pane: 'ls', title: () => t('Long/Short'), shown: () => store.state.show.ls, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
     lines: (sel, shown) => { const ids = lsIds(store.state, hub); return lsSummary.lines(sel, ls.rangeHeld, shown, lsHeldKey(store.state, ids), pageNow(), store.state.timeZone, !ids.length); },
+  });
+  // A drag in the Funding pane sums up the venue it shows over the stretch (range/funding-lines.ts): settled funding by the time each
+  // settlement paid for, the funding accruing now apart, the premium's closed readings and on Hyperliquid who opened.
+  const fundingSummary = new FundingRangeSummary();
+  range.useProvider({
+    pane: 'funding', title: () => t('Funding'), shown: () => store.state.show.funding, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
+    lines: (sel, shown) => { const key = funding.rangeKey(store.state); return fundingSummary.lines(sel, funding.rangeHeld, shown, key ?? '', pageNow(), store.state.timeZone, key === null); },
   });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.

@@ -16,11 +16,12 @@ import type { Pt } from '../touch.ts';
 import { currentCoin } from '../coin.ts';
 import { venueLabel } from '../venues.ts';
 import { instrumentIdFor } from '../../shared/coins.ts';
-import { FUNDING_VENUES, FundingSource, buyerShare, continuousFunding, cutAt, fundingAt, fundingBase, fundingVenueOf, hasPremium, type FundingNow, type FundingRow, type FundingVenue, type FundingView, type PremiumRow } from '../funding.ts';
+import { FUNDING_VENUES, FundingSource, buyerShare, continuousFunding, cutAt, fundingAt, fundingBase, fundingVenueOf, hasPremium, rowStart, type FundingNow, type FundingRow, type FundingVenue, type FundingView, type PremiumRow } from '../funding.ts';
 import type { HourOpens, NlnsSource } from '../delta/nlns-source.ts';
 import { coinText } from '../delta/nlns.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
 import { fitText } from '../text-fit.ts';
+import { fundingHeldKey, type FundingPaneHeld } from '../range/funding-lines.ts';
 
 const HOUR = 3_600_000;
 /** Settlements a year at one every eight hours: the APR of a rate per eight hours. */
@@ -132,10 +133,34 @@ export class FundingPane extends TimePane {
   /** Reflect the settings in the header's controls and draw again. */
   settingsChanged(): void { this.#syncVenues(); this.#tableBox.checked = this.store.state.fundingTable; this.invalidate(); }
 
+  /** What the pane drew last, for the Range summary of a selection made in it (range/funding-lines.ts); null with no venue for the coin. */
+  get rangeHeld(): FundingPaneHeld | null { return this.#rangeHeld; }
+  #rangeHeld: FundingPaneHeld | null = null;
+  /** What `#rangeHeld` was made from: the source's arrays (replaced whenever a read lands), the replay's cut of them, the reading now, the hours of who opened. */
+  #rangeOf: { key: string; rows: readonly FundingRow[]; nRows: number; premium: readonly PremiumRow[]; nPremium: number; premiumMs: number; now: FundingNow | null; opens: readonly HourOpens[] | null; flags: string; replayAt: number | null } | null = null;
+  /** The context the pane shows now (the venue resolved as the paint resolves it), or null where no venue lists the coin. */
+  rangeKey(state: AppState): string | null {
+    const coin = currentCoin(), venue = fundingVenueOf(state.fundingVenue, x => !!coin.markets[x]);
+    return venue ? fundingHeldKey(state, venue, coin.markets[venue]!.symbol) : null;
+  }
+  /** Keep what this drawing is made of: the same object while none of it changes (a pointer move draws the pane again with it). */
+  #keep(state: AppState, venue: FundingVenue, symbol: string, coin: string, data: FundingView, rows: readonly FundingRow[], premium: readonly PremiumRow[], forming: FundingNow | null, opens: readonly HourOpens[] | null, now: number): void {
+    const replayAt = replaying() ? Math.floor(now / 60_000) * 60_000 : null, key = fundingHeldKey(state, venue, symbol), flags = `${data.loading}|${data.failed}|${data.from}`;
+    // The source replaces its arrays whenever a read lands (a correction inside them included); a replay cuts them, so their lengths count too.
+    const of = this.#rangeOf;
+    if (of && this.#rangeHeld && of.key === key && of.rows === data.rows && of.nRows === rows.length && of.premium === data.premium && of.nPremium === premium.length
+      && of.premiumMs === data.premiumMs && of.now === forming && of.opens === opens && of.flags === flags && of.replayAt === replayAt) return;
+    this.#rangeOf = { key, rows: data.rows, nRows: rows.length, premium: data.premium, nPremium: premium.length, premiumMs: data.premiumMs, now: forming, opens, flags, replayAt };
+    this.#rangeHeld = { key, venue, coin, tf: state.timeframe, rows, readFrom: data.from ?? null, premium, premiumMs: data.premiumMs, forming, opens, loading: data.loading, failed: data.failed, replayAt };
+  }
+
   protected draw(): void {
     this.#lines = null;
     this.#table.clear();
+    const rangeHeld = this.#rangeHeld;
     this.#paint();
+    // The Range summary is worked out again only for new readings (a pointer move draws the pane from the same snapshot).
+    if (this.#rangeHeld !== rangeHeld) this.rangeChanged();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
@@ -166,7 +191,7 @@ export class FundingPane extends TimePane {
     this.#syncVenues();
     const venue = fundingVenueOf(state.fundingVenue, x => !!coin.markets[x]);
     const say = (text: string): void => { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(text, 12, ph / 2); setHtml(readout, ''); };
-    if (!venue) { say(t('No venue here lists a perpetual of this coin.')); return; }
+    if (!venue) { say(t('No venue here lists a perpetual of this coin.')); this.#rangeHeld = null; this.#rangeOf = null; return; }
     const name = venueLabel(venue), data = this.#funding.view(venue, coin.markets[venue]!, tf, v.t0, v.t1, Date.now());
     // Replay: only what had settled by the moment shown, and no funding accruing "now".
     const { rows, premium, forming } = fundingShownAt(data, now, replaying());
@@ -177,7 +202,10 @@ export class FundingPane extends TimePane {
     const hl = venue === 'hyperliquid' ? instrumentIdFor('hyperliquid', coin) : null;
     const opens = hl ? this.nlns.hourly(state, hl, v.t0, now) : [];
     const band = venue === 'hyperliquid' && ph >= 90;
-    const visRows = rows.filter(r => r.t >= v.t0 && r.t - r.hours * HOUR <= v.t1), visPremium = premium.slice(cutAt(premium, v.t0 - data.premiumMs, false), cutAt(premium, v.t1));
+    // The Range summary's snapshot, before any early return below (an empty or failed view publishes that, not the last venue's).
+    this.#keep(state, venue, coin.markets[venue]!.symbol, coin.coin, data, rows, premium, forming, hl ? opens : null, now);
+    const visIdx: number[] = []; rows.forEach((r, i) => { if (r.t >= v.t0 && rowStart(rows, i) <= v.t1) visIdx.push(i); });
+    const visRows = visIdx.map(i => rows[i]!), visPremium = premium.slice(cutAt(premium, v.t0 - data.premiumMs, false), cutAt(premium, v.t1));
     const hover = state.hover, at = hover ? Math.min(hover.t, now) : now;
     if (!visRows.length && !visPremium.length && !formShown) {
       // The other venues stay in reach: a click on a row that does not answer is no way to lose the table. On a plate the table stands where the words would.
@@ -212,9 +240,9 @@ export class FundingPane extends TimePane {
     // Funding as steps: each settlement over the interval it paid for, joined where one follows the other; the one accruing now dashed.
     ctx.strokeStyle = p.text; ctx.lineWidth = 2; ctx.beginPath();
     let last: FundingRow | null = null;
-    for (const r of visRows) {
-      const x0 = v.xOf(r.t - r.hours * HOUR, pw), x1 = v.xOf(r.t, pw), yy = y(r.per8h);
-      if (last && last.t === r.t - r.hours * HOUR) ctx.lineTo(x0, yy); else ctx.moveTo(x0, yy);
+    for (const i of visIdx) {
+      const r = rows[i]!, start = rowStart(rows, i), x0 = v.xOf(start, pw), x1 = v.xOf(r.t, pw), yy = y(r.per8h);
+      if (last && last.t === start) ctx.lineTo(x0, yy); else ctx.moveTo(x0, yy);
       ctx.lineTo(x1, yy); last = r;
     }
     ctx.stroke();
