@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LT_DEFAULTS, imbalanceAxis, ltPartAt, ltSeries, ltWeight, type LtParams, type LtStore } from '../src/app/lt.ts';
+import { LT_DEFAULTS, imbalanceAxis, ltPartAt, ltSeries, ltWeight, shownBy, type LtParams, type LtStore } from '../src/app/lt.ts';
 import { LT_LENGTH, ltIndex } from '../src/shared/lt-sample.ts';
 
 const MIN = 60_000;
@@ -125,4 +125,13 @@ test('in the Per level mode a market\'s part is its own average, and the lines a
   assert.ok(parts.wBid && parts.wAsk, 'the weights come with them');
   const [x, y] = [ltPartAt(parts, 1, 0, 0)!, ltPartAt(parts, 1, 1, 0)!];
   near([x.bid, x.ask, y.bid, y.ask], [200, 50, 600, 10]);
+});
+
+test('a replay shows only the windows that had ended by its moment, never one it falls inside', () => {
+  const M = 60_000, times = [0, 15 * M, 30 * M, 45 * M];
+  // At 40 min the window from 30 holds samples to 45: it is not shown, though it began before the moment.
+  assert.equal(shownBy(times, 15 * M, 40 * M), 2);
+  assert.equal(shownBy(times, 15 * M, 45 * M), 3, 'a window ending at the moment is shown');
+  assert.equal(shownBy(times, 15 * M, 5 * M), 0);
+  assert.equal(shownBy(times, 15 * M, Infinity), 4);
 });

@@ -70,6 +70,16 @@ export interface LtParts { bid: Float32Array; ask: Float32Array; wBid?: Float32A
 export interface LtSeries { times: Float64Array; bid: Float32Array; ask: Float32Array; estimated: boolean; parts?: LtParts }
 
 /**
+ * How many of a series' windows (`times`, their starts, oldest first, each `stepMs` long) a replay at `cut` may show: those that had ended by
+ * then. A window is the mean of its minutes' samples, so one that the replay's moment falls inside holds the book after that moment.
+ */
+export function shownBy(times: ArrayLike<number>, stepMs: number, cut: number): number {
+  let n = times.length;
+  while (n > 0 && times[n - 1]! + stepMs > cut) n--;
+  return n;
+}
+
+/**
  * The half-height of the imbalance view's axis (a share, 0..1): the largest |imbalance| in view, up to the next of 2, 5, 10, 20, 50 and 100 %.
  * The axis used to be fixed at +-100 %, where the few percent a book is out of balance by is a hair; now the bars fill the pane, and the
  * axis says what it is. A view with no imbalance at all (nothing in view) takes the smallest.

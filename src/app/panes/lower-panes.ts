@@ -29,7 +29,7 @@ import { isPhone } from '../device.ts';
 import { niceTicks } from '../cvd/hero.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sizeControl, sizeRow, sortableList, switchRow, togglePanel, type Panel } from '../ui.ts';
 import { COMMON_SIZES, SIZE_FLOOR_USD, SIZE_MAX_USD, sizeText } from '../sizes.ts';
-import { imbalanceAxis, ltPartAt, type LtParts, type LtSeries } from '../lt.ts';
+import { imbalanceAxis, ltPartAt, shownBy, type LtParts, type LtSeries } from '../lt.ts';
 import { LT_HALF_LIVES } from '../../shared/lt-sample.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { panelSwitchRow, panelSwitchOn, panelSwitchTip, setPanelSwitch } from '../sound/panel.ts';
@@ -1134,7 +1134,8 @@ export class LtPane extends TimePane {
     const s = this.#series, readout = this.head.querySelector('.readout')!;
     if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); setText(readout, ''); return; }
     let n = s.times.length;
-    if (replaying()) { const cut = pageNow(); while (n > 0 && s.times[n - 1]! > cut) n--; }
+    // In a replay only the windows that had ended by its moment: one under way then is the mean of samples taken after it.
+    if (replaying()) n = shownBy(s.times, s.stepMs, pageNow());
     if (!n) { setText(readout, ''); return; }
     const step = s.stepMs, xOf = (t: number) => v.xOf(t + step / 2, pw), gap = step * 2.5;
     let max = 0;
