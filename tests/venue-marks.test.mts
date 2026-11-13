@@ -64,7 +64,15 @@ test('marks paint the same pixels when they land on the same whole pixels, at th
   assert.notEqual(marksKey([{ ...mark, size: 11 }]), key);
   assert.notEqual(marksKey([{ ...mark, id: 'okx:BTC-USDT-SWAP' }]), key);
   assert.notEqual(marksKey([mark, mark]), key, 'one more');
-  assert.equal(marksKey([{ ...mark, a: 1.2 }]), marksKey([{ ...mark, a: 1 }]), 'a canvas takes no more than full opacity');
+  assert.equal(marksKey([{ ...mark, a: 1.2 }]), marksKey([{ ...mark, a: 1 }]), 'the pane lays no more than full opacity, as the key reads it');
+  // An 11 px mark (the rail's flashes) starts half a pixel off a 10 px one's: 100.2 and 100.6 both land on 95, 101 on 96.
+  const flash: PaintedMark = { ...mark, size: 11 };
+  assert.equal(marksKey([{ ...flash, x: 100.6 }]), marksKey([flash]));
+  assert.notEqual(marksKey([{ ...flash, x: 101 }]), marksKey([flash]));
+  // A market the list calls spot is drawn from the notched bitmap.
+  const id = 'okx:BTC-USDT', plain = marksKey([{ ...mark, id }]), spotList = [{ instrumentId: id, marketType: 'spot' }];
+  useMarkets(() => spotList);
+  try { assert.notEqual(marksKey([{ ...mark, id }]), plain, 'the spot mark is another bitmap'); } finally { useMarkets(() => []); }
   paintAt(3);
   try { assert.notEqual(marksKey([mark]), key, 'another pixel ratio paints another bitmap'); } finally { paintAt(null); }
   assert.equal(marksKey([mark]), key);

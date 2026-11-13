@@ -596,7 +596,7 @@ export class CandlePane {
     // went), not every frame.
     const ctx = this.#marksCtx;
     const painted = this.#markLayer.paint(marks, clear => { ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0); if (clear) ctx.clearRect(0, 0, this.#w, this.#h); },
-      m => { ctx.globalAlpha = m.a; drawVenueMark(ctx, m.id, m.x, m.y, m.size); });
+      m => { ctx.globalAlpha = Math.min(1, Math.max(0, m.a)); drawVenueMark(ctx, m.id, m.x, m.y, m.size); });
     if (painted) ctx.globalAlpha = 1;
   }
   /** The marks canvas as last painted (sizing it resets it). */

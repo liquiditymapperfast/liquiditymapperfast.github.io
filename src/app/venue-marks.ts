@@ -42,6 +42,10 @@ type MarketLike = { instrumentId?: string | undefined; id?: string | undefined; 
 /** Where the page's market list is read from (`useMarkets`), and the spot instruments of each list as it was read. */
 let marketsOf: () => readonly MarketLike[] = () => [];
 const spotSets = new WeakMap<readonly MarketLike[], ReadonlySet<string>>();
+/**
+ * The source should hand back the same list while it holds (the page's store does): `marksKey` asks `markOf` for every mark a frame, and
+ * a list made afresh each time would have its spot set worked out again each time.
+ */
 export function useMarkets(source: () => readonly MarketLike[]): void { marketsOf = source; }
 /**
  * The instruments the market list says are spot, and the venues all of whose markets are (Coinbase, Kraken): most spot markets carry no

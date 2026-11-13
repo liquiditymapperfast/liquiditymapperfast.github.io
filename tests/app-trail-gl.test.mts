@@ -37,14 +37,15 @@ function frame(glass: boolean, now: number): TrailFrame {
   };
 }
 
-function trail(): { renderer: TrailGL; log: string[] } {
+function trail(): { renderer: TrailGL; log: string[]; attributes: () => WebGLContextAttributes | undefined } {
   const { gl, log } = recordingGl();
-  const canvas = { width: 300, height: 600, style: {}, getContext: () => gl } as unknown as HTMLCanvasElement;
+  let asked: WebGLContextAttributes | undefined;
+  const canvas = { width: 300, height: 600, style: {}, getContext: (_type: string, attributes?: WebGLContextAttributes) => { asked = attributes; return gl; } } as unknown as HTMLCanvasElement;
   const ring = new TapeRing(4096);
   ring.add(packTape(Array.from({ length: 50 }, (_, i) => ({ instrumentId: 'binance:BTCUSDT', tradeId: `t${i}`, side: i % 2 ? 'sell' as const : 'buy' as const, t: T0 + i * 100, price: 80_000 + i, lo: 80_000 + i, hi: 80_000 + i, usd: 5_000 + i, fills: 1 })), 1), 1, 0, T0);
   const renderer = new TrailGL(canvas, ring);
   renderer.resize(300, 600, 1);
-  return { renderer, log };
+  return { renderer, log, attributes: () => asked };
 }
 
 /** The log cut into what was done on each framebuffer between binds. */
@@ -65,6 +66,12 @@ test('with glass the screen is cleared once, just before the composite draws all
   const drawn = passes(log).filter(p => p.ops.includes('draw'));
   assert.ok(drawn.length >= 6, `the waves' substeps, the trail, the small copy, the blur's two halves and the composite (${drawn.length} passes)`);
   for (const p of drawn) assert.ok(p.ops[0] === 'clear' || p.ops[0] === 'invalidate', `a pass on ${p.fb} begins ${p.ops.join(',')}`);
+});
+
+test('the trail asks its canvas for no depth buffer (nothing it draws tests depth)', () => {
+  const { attributes } = trail();
+  assert.equal(attributes()?.depth, false);
+  assert.equal(attributes()?.premultipliedAlpha, true);
 });
 
 test('without glass the trail is drawn straight onto the screen, cleared first', () => {
