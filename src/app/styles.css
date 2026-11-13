@@ -497,6 +497,7 @@ html[data-layout="desktop"] .pane-head.tune-measuring > .readout { display: none
 .panel .tune-panel > .ctl:first-child { border-top: 0; }
 .panel .tune-panel > .ctl:has(> input[type=checkbox]) { justify-content: flex-start; gap: 8px; }
 .panel .tune-panel > .ctl-group { justify-content: flex-start; }
+.panel .tune-panel > [hidden] { display: none; }
 .ctl { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
 .ctl[hidden] { display: none; }
 .ctl select, .pane-head button { padding: 1px 6px; font-size: 11px; }

@@ -170,7 +170,7 @@ export class DeltaPane extends TimePane {
     if (same) return;
     this.#held = { ...next, candles: new Map(next.candles.map(c => [c.t, c] as const)) };
   }
-  protected override undrawn(): void { this.#lines = null; this.#card.hide(); this.#setDivergences([]); }
+  protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); this.#setDivergences([]); }
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
 
   #setDivergences(list: readonly Divergence[]): void {
