@@ -5,8 +5,10 @@
  * number of device pixels (a scroll, a new second on top), what is on the canvas is copied onto itself shifted, and only the rows that are
  * new, changed, showing a part not drawn before (a row cut by an edge that moves in) or under something drawn over them are drawn again.
  * Anything else draws the whole frame: a row edge off the device-pixel grid too (a row drawn again there would lay a second anti-aliased
- * edge over the first, and the frame would no longer be the one a whole paint makes). A row must paint its whole rectangle (its background
- * first): it is drawn over what was there. A `fixed` row (a banner at the top) does not move with the list: it does not decide the shift,
+ * edge over the first, and the frame would no longer be the one a whole paint makes). A row cut by an edge of the canvas is drawn again
+ * whenever it moves: a browser draws the text of a row that crosses an edge otherwise than the same row drawn inside and moved there (at
+ * 2.625 a glyph's top scanline on the last device row of a row drawn whole, none on the row drawn cut). A row must paint its whole rectangle
+ * (its background first): it is drawn over what was there. A `fixed` row (a banner at the top) does not move with the list: it does not decide the shift,
  * is drawn again after one, and the rows that scrolled under it are drawn again the frame after (their pixels carry it).
  */
 export interface RowItem { readonly sig: string; readonly y: number; readonly h: number; readonly fixed?: boolean }
@@ -50,10 +52,11 @@ export class RetainedRows {
       for (let i = 0; i < items.length; i++) {
         const it = items[i]!, was = this.#at.get(it.sig);
         // Kept: drawn last frame where this frame's shift took it (a fixed row: unshifted), its part on the canvas now all among what was
-        // on the canvas then (a row cut by the bottom edge stays kept while it holds still or moves down), nothing drawn over it there.
+        // on the canvas then, nothing drawn over it there, and inside the canvas unless it holds still (a row cut by the bottom edge of a
+        // live list stays kept; one a shift moves into or along an edge is drawn there, as a whole frame draws it).
         const moved = it.fixed ? (whole === 0 ? 0 : NaN) : dy;
-        const v0 = Math.max(0, it.y), v1 = Math.min(cssH, it.y + it.h);
-        if (was === undefined || !(Math.abs(was.y + moved - it.y) < 1e-6) || v0 < was.v0 + moved - 1e-6 || v1 > was.v1 + moved + 1e-6 || damaged(was.v0, was.v1)) { drawn++; continue; }
+        const v0 = Math.max(0, it.y), v1 = Math.min(cssH, it.y + it.h), cut = it.y < 0 || it.y + it.h > cssH;
+        if (was === undefined || !(Math.abs(was.y + moved - it.y) < 1e-6) || v0 < was.v0 + moved - 1e-6 || v1 > was.v1 + moved + 1e-6 || damaged(was.v0, was.v1) || (cut && moved !== 0)) { drawn++; continue; }
         draw[i] = false; this.rowsKept++;
       }
       // Below the rows (the shift may have moved old rows there, a shorter list leaves them) and the strip a shift uncovered at the top.

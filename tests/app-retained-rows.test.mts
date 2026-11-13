@@ -26,23 +26,26 @@ test('kept rows: the first frame draws everything; the same rows again draw noth
   assert.equal(r.lastShift, 0); assert.ok(!log.some(l => l.startsWith('shift')));
 });
 
-test('kept rows: a new row on top shifts the canvas by its height and draws only it (a row pushed partly past the bottom is kept)', () => {
+test('kept rows: a new row on top shifts the canvas by its height and draws it and the row the shift pushed across the bottom edge', () => {
   const r = new RetainedRows(), { ctx, log } = fakeCtx(100, 90);
   r.plan(ctx, 'L', rows(['a', 0, 30], ['b', 30, 30], ['c', 60, 30]), 1, 90, '#000', 90);
   log.length = 0;
   const b = rows(['n', 0, 24], ['a', 24, 30], ['b', 54, 30], ['c', 84, 30]);
-  assert.deepEqual(drawn(b, r.plan(ctx, 'L', b, 1, 90, '#000', 90)), ['n']);
+  // `c` now crosses the bottom edge: a browser draws a row crossing an edge otherwise than the same row moved there, so it is drawn.
+  assert.deepEqual(drawn(b, r.plan(ctx, 'L', b, 1, 90, '#000', 90)), ['n', 'c']);
   assert.equal(r.lastShift, 24); assert.ok(log.includes('shift 24'));
   // The strip the shift uncovered at the top is cleared before the new row is drawn over it.
   assert.ok(log.includes('fill 0,0,100,24'));
+  // Holding still, the cut row is kept.
+  assert.deepEqual(drawn(b, r.plan(ctx, 'L', b, 1, 90, '#000', 90)), []);
 });
 
-test('kept rows: a scroll reveals more of the row cut by the bottom edge, which is drawn again; a row cut by the top is not remembered', () => {
+test('kept rows: a scroll draws the rows it moves into or along an edge; a row cut by the top is drawn every frame', () => {
   const r = new RetainedRows(), { ctx } = fakeCtx(100, 90);
   r.plan(ctx, 'L', rows(['a', 0, 30], ['b', 30, 30], ['c', 60, 40]), 1, 90, '#000', 100);
   const up = rows(['a', -10, 30], ['b', 20, 30], ['c', 50, 40]);
-  // The shift carries what was on the canvas: `a`'s part still showing was there; `c` shows 10 px it never drew.
-  assert.deepEqual(drawn(up, r.plan(ctx, 'L', up, 1, 90, '#000', 90)), ['c']);
+  // `a` moved across the top edge, `c` along the bottom one (and shows 10 px it never drew): both drawn; `b` is kept.
+  assert.deepEqual(drawn(up, r.plan(ctx, 'L', up, 1, 90, '#000', 90)), ['a', 'c']);
   // `a` is cut by the top now: drawn each frame while it stays there (it is not remembered).
   assert.deepEqual(drawn(up, r.plan(ctx, 'L', up, 1, 90, '#000', 90)), ['a']);
 });
@@ -61,7 +64,7 @@ test('kept rows: a changed signature, a stretch drawn over (damage) and a fixed 
   const noted = rows(['a', 0, 30], ['b|o', 30, 30], ['c', 60, 30], ['x', 0, 22, true]);
   assert.deepEqual(drawn(noted, r.plan(ctx, 'L', noted, 1, 90, '#000', 90)), ['x']);
   const shifted = rows(['n', 0, 24], ['a', 24, 30], ['b|o', 54, 30], ['c', 84, 30], ['x', 0, 22, true]);
-  assert.deepEqual(drawn(shifted, r.plan(ctx, 'L', shifted, 1, 90, '#000', 90)), ['n', 'a', 'x']);
+  assert.deepEqual(drawn(shifted, r.plan(ctx, 'L', shifted, 1, 90, '#000', 90)), ['n', 'a', 'c', 'x']);
 });
 
 test('kept rows: a new look, an edge off the device-pixel grid or a reset draws the whole frame', () => {

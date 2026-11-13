@@ -389,13 +389,14 @@ export class OrderList {
     }
     // Past the tape's oldest order: the recording's (from $25K), under a line that says where the live orders begin (drawn whole).
     const history = pos < 0 && !this.#index.moreBehind && yd < H && this.history.length > 0;
-    // The row under the pointer (or the one a finger pinned): outlined as part of the row, its whole story in a box beside it after.
-    const pinned = this.#pinned !== null ? drawn.find((d): d is Extract<Drawn, { kind: 'row' }> => d.kind === 'row' && d.k === this.#pinned) ?? null : null;
-    const hover = pinned ?? (this.#pointer ? this.#rowAt(this.#pointer.y) : null);
-    if (hover && hover.kind === 'row') for (const it of this.#items) if (it.kind === 'row' && it.rec?.k === hover.k) { it.outlined = true; it.sig += '|o'; break; }
+    // The row under the pointer (or the one a finger pinned): outlined as part of the row, its whole story in a box beside it after. With
+    // the recording's rows on screen it is found once they are laid out too (one of them may be the row), and outlined over the frame.
+    let hover = history ? null : this.#hovered();
+    if (hover) for (const it of this.#items) if (it.kind === 'row' && it.rec?.k === hover.row.k) { it.outlined = true; it.sig += '|o'; break; }
     if (expired) { const words = t('Older orders have left memory'), it = this.#item(`x|${words}`, 0, Math.round(DIVIDER_ROW * dpr), 'note', true); it.words = words; }
-    // What the rows' pixels depend on beyond their own signatures: any change draws the whole frame.
-    const look = `${w}|${h}|${dpr}|${this.#epoch}|${marksEpoch()}|${whale}|${leviathan}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}`;
+    // What the rows' pixels depend on beyond their own signatures (a cleared ring numbers its writes from 0 again): any change draws the
+    // whole frame.
+    const look = `${w}|${h}|${dpr}|${ring.generation}|${this.#epoch}|${marksEpoch()}|${whale}|${leviathan}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}`;
     if (history) this.rows.reset();
     const items = this.#items, draw = this.rows.plan(ctx, look, items, 1, H, p.panel, Math.min(H, yd));
     const fw = this.#canvas.width / dpr, xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
@@ -409,11 +410,17 @@ export class OrderList {
       else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p); }
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (history) this.#paintHistory(ctx, yd / dpr, w, h, p, drawn);
+    if (history) {
+      this.#paintHistory(ctx, yd / dpr, w, h, p, drawn);
+      hover = this.#hovered();
+      if (hover) { const r = hover.row; ctx.strokeStyle = p.text; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.strokeRect(0.5, r.y + 0.5, w - 1, r.h - 1); ctx.globalAlpha = 1; }
+      // Drawn over rows past what their signatures say: the next frame is drawn whole.
+      this.rows.reset();
+    }
     if (hover) {
       // Down from the pointer in the upper half, up from it in the lower, so the box stays inside the list (a pinned row: from its middle).
-      const pt = pinned ? { x: w / 2, y: hover.y + hover.h / 2 } : this.#pointer!;
-      const box = paintInfoBox(ctx, this.#lines(hover), pt.x, pt.y, { x0: 0, y0: 0, x1: w, y1: h }, p, { placement: pt.y < h / 2 ? 'down' : 'up', edge: hover.usd > 0 ? p.candleUp : p.candleDown });
+      const row = hover.row, pt = hover.pinned ? { x: w / 2, y: row.y + row.h / 2 } : this.#pointer!;
+      const box = paintInfoBox(ctx, this.#lines(row), pt.x, pt.y, { x0: 0, y0: 0, x1: w, y1: h }, p, { placement: pt.y < h / 2 ? 'down' : 'up', edge: row.usd > 0 ? p.candleUp : p.candleDown });
       // The rows under the box are drawn again next frame (their pixels carry it), with a margin for its edge.
       if (box) this.rows.damage(Math.floor((box.y - 2) * dpr), Math.ceil((box.y + box.h + 2) * dpr));
     }
@@ -424,6 +431,14 @@ export class OrderList {
       if (this.#slide) this.invalidate();
       if (pos < OVERSCAN && this.#index.moreBehind) this.#fillBack();
     }
+  }
+
+  /** The row a finger pinned, if it is drawn, else the one under the pointer (among the rows this frame has laid out so far). */
+  #hovered(): { row: Extract<Drawn, { kind: 'row' }>; pinned: boolean } | null {
+    const pinned = this.#pinned !== null ? this.#drawn.find((d): d is Extract<Drawn, { kind: 'row' }> => d.kind === 'row' && d.k === this.#pinned) ?? null : null;
+    if (pinned) return { row: pinned, pinned: true };
+    const row = this.#pointer ? this.#rowAt(this.#pointer.y) : null;
+    return row ? { row, pinned: false } : null;
   }
 
   /** One order's row in its own coordinates (its top at 0), `fh` CSS px tall (its device height): the tint, the time, the mark, the side, the price, the size. */
