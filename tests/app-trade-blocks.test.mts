@@ -412,14 +412,17 @@ test('quiet is per market: one known from before the block counts whole, one who
   assert.equal(out.unknown, true, 'between the stray second and the loaded flow nothing is known');
 });
 
-test('the flow book holds an instrument from what its answer held, keeps that through a broken stream, and nothing for an empty answer', () => {
+test('the flow book holds what an answer reached, for every instrument asked (a quiet one too), through a broken stream; nothing for an empty answer', () => {
   const book = new FlowBook(), from = T0 - 24 * 3_600_000, t0 = T0 - 6 * 3_600_000;
   book.begin([B, O]);
-  book.load({ from, to: T0, instruments: [{ id: B, t0, buy: new Float32Array([1, 2]), sell: new Float32Array([0, 0]) }] }, [B, O], from);
-  assert.equal(book.heldFrom(B), t0, 'asked from 24 h back, answered from 6 h: held from 6 h');
-  assert.equal(book.heldFrom(O), Infinity, 'nothing of it in the answer');
+  book.load({ from, to: T0, instruments: [{ id: B, t0, buy: new Float32Array([1, 2]), sell: new Float32Array([0, 0]) }, { id: O, t0: T0 - 3_600_000, buy: new Float32Array([1]), sell: new Float32Array([0]) }] }, [B, O], from);
+  assert.equal(book.heldFrom(B), t0, 'asked from 24 h back, the answer reached 6 h: held from 6 h');
+  assert.equal(book.heldFrom(O), t0, 'OKX first traded an hour back: quiet before, held as far as the answer reached');
   book.invalidate();
   assert.equal(book.heldFrom(B), t0, 'a broken stream asks again, but what was answered stays held meanwhile');
+  book.begin([BS]);
+  book.load({ from, to: T0, instruments: [] }, [BS], from);
+  assert.equal(book.heldFrom(BS), Infinity, 'an answer that held nothing');
 });
 
 test('under a size floor the inspector\'s market rows add up to the block that holds the recording\'s end', () => {

@@ -15,8 +15,9 @@ export class FlowBook {
   /** inst -> the earliest millisecond its history was asked from (answered or not: an instrument with nothing recorded is not asked again). */
   readonly #from = new Map<string, number>();
   /**
-   * inst -> from when (ms) the last answer held its flow: the later of where it was asked from and its first second in the answer (none
-   * when the answer had nothing of it). Not cleared when the stream breaks: what was answered stays answered until the next answer.
+   * inst -> from when (ms) the last answer held its flow: the later of where it was asked from and where the answer reached (its earliest
+   * second of any instrument: a market quiet for hours was recorded quiet, not missing; each market's own record is the coverage record's
+   * business). None when the answer held nothing. Not cleared when the stream breaks: what was answered stays answered until the next.
    */
   readonly #answered = new Map<string, number>();
   /** Counts the times what was loaded stopped being trustworthy (the live stream broke), and the count each held instrument's request began under. */
@@ -70,17 +71,16 @@ export class FlowBook {
   invalidate(): void { this.#epoch++; this.#from.clear(); this.loads++; }
   /** The answer: replace each instrument's series with its history, then put the held live seconds on top. */
   load(frame: FlowFrame, ids: readonly string[], from: number): void {
-    const first = new Map<string, number>();
+    let reach = Infinity;
     for (const s of frame.instruments) {
       let series = this.#series.get(s.id); if (!series) { series = new FlowSeries(); this.#series.set(s.id, series); }
       series.load(Math.floor(s.t0 / 1000), s.buy, s.sell, s.px);
-      if (s.buy.length) first.set(s.id, s.t0);
+      if (s.buy.length && s.t0 < reach) reach = s.t0;
     }
     for (const id of ids) {
       if (this.#began.get(id) === this.#epoch) {
         this.#from.set(id, from);
-        const t0 = first.get(id);
-        if (t0 === undefined) this.#answered.delete(id); else this.#answered.set(id, Math.max(from, t0));
+        if (Number.isFinite(reach)) this.#answered.set(id, Math.max(from, reach)); else this.#answered.delete(id);
       }
       this.#began.delete(id);
       for (const item of this.#held.get(id) ?? []) this.#put(item);
