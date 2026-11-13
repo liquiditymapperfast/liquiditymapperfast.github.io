@@ -146,9 +146,10 @@ export interface Recordings {
   /**
    * The same for the other recordings: a flow minute joins second by second where it is the fuller copy, a liquidation or an open-interest
    * reading the page does not hold is added, a large trade only outside the stretches this page recorded itself (where its own are the ones
-   * to keep: an order rebuilt from the same fills elsewhere may differ in its price), a footprint minute or an absorption minute (with its
-   * groups) only where this page did not record the whole minute itself (a footprint minute: and holds a copy of it); the service's
-   * stretches of trade coverage join the page's own for the instruments whose footprint minutes were taken (see `importRows`).
+   * to keep: an order rebuilt from the same fills elsewhere may differ in its price), an absorption minute (with its groups) only where this
+   * page did not record the whole minute itself, a footprint minute except where the page recorded the whole minute and already held it when
+   * it opened; the service's stretches of trade coverage join the page's own for the instruments whose footprint minutes were taken (see
+   * `importRows`).
    */
   importRows(rows: HistoryRows): number;
   /** The hours of the recorded history read whole (kept as the coverage record is, so they go with it), and marking more. */
@@ -468,7 +469,7 @@ export async function openRecordings(name: string, since: number, canWrite: () =
       printRows.sort((a, b) => a.t - b.t);
       prints.save(newPrints, since); taken += newPrints.length;
     }
-    // Footprint minutes where this page did not record the whole minute and hold a copy of it since it opened, on its step, the fuller copy
+    // Footprint minutes on its step, the fuller copy, except a minute this page recorded whole and already held when it opened
     // (`planFootprint`).
     const newFootprint = planFootprint(trade, incoming.footprint, key => { const i = footprintAt.get(key); return i === undefined ? undefined : footprintRows[i]; }, key => footprintAtOpen.has(key));
     for (const row of newFootprint) {
