@@ -40,7 +40,7 @@ import { LsRangeSummary, lsHeldKey } from './range/ls-lines.ts';
 import { FundingRangeSummary } from './range/funding-lines.ts';
 import { LtRangeSummary } from './range/lt-lines.ts';
 import { DepthRangeSummary } from './range/depth-lines.ts';
-import { activeIds, emptyScopeMessage } from './scope.ts';
+import { bookEmptyMessage } from './book-markets.ts';
 import { ScriptRangeSummary } from './range/script-lines.ts';
 import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
@@ -284,8 +284,9 @@ async function main(): Promise<void> {
     pane: 'script', title: () => t('Scripts'), shown: () => scriptRows(store.state), barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
     lines: (sel, shown) => scriptSummary.lines(sel, script.rangeHeld, shown, script.rangeKey(store.state), pageNow(), replaying(), store.state.timeZone, !script.hasRows),
   });
-  // Why the order-book panes have no venue to read, or '': the Spot / Perp filter leaves none, or every venue's chip is off.
-  const noVenue = (s: typeof store.state): string => emptyScopeMessage(s) ?? (s.levels?.books.length && !activeIds(s).length ? t('No venue is on: switch one on to sum up the order books.') : '');
+  // Why the order-book panes have no book to read, or '': the Spot / Perp filter leaves none, every venue's chip is off, or their Venues
+  // choice counts none (book-markets.ts).
+  const noVenue = (s: typeof store.state): string => bookEmptyMessage(s);
   // A drag in the Depth pane sums up its bands over the columns drawn (range/depth-lines.ts): the order book's columns holding every venue, or
   // the liquidation levels' snapshots in force.
   const depthSummary = new DepthRangeSummary();
@@ -298,7 +299,7 @@ async function main(): Promise<void> {
   const ltSummary = new LtRangeSummary();
   range.useProvider({
     pane: 'lt', title: () => t('Liquidity Tracker'), shown: () => store.state.show.lt, barMs: () => lt.rangeHeld?.stepMs ?? 60_000,
-    lines: (sel, shown) => ltSummary.lines(sel, lt.rangeHeld, shown, lt.rangeKey(store.state), pageNow(), store.state.timeZone, noVenue(store.state) !== '', replaying()),
+    lines: (sel, shown) => ltSummary.lines(sel, lt.rangeHeld, shown, lt.rangeKey(store.state), pageNow(), store.state.timeZone, noVenue(store.state), replaying()),
   });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.
@@ -577,6 +578,8 @@ async function main(): Promise<void> {
       void hub.loadSeries(true, () => { framed = true; heat.fit(); lower(); }).then(() => { if (!framed) heat.fit(); lower(); });
     }
     if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.refresh(); }
+    // The two order-book panes' Venues (book-markets.ts): another choice, other picks, or another chart market while they count its book.
+    else if (changed.has('bookMarkets') || changed.has('bookPicks') || (changed.has('marketId') && state.bookMarkets === 'chart')) { depth.refresh(); lt.refresh(); }
     if (changed.has('markets')) cvd.invalidate();
     // Open interest added up over the venues switched on: another choice of them is another series. Not the Spot / Perp filter, which
     // open interest does not follow (`oiFlowIds`).
@@ -613,7 +616,7 @@ async function main(): Promise<void> {
     // A pane's summary is read again when what it stands for changes (a hidden pane draws nothing to say so; its old snapshot is then stale).
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show') || changed.has('timeZone')
       || changed.has('timeframe') || changed.has('marketId') || changed.has('seriesInstrument') || changed.has('replay')
-      || changed.has('lt') || changed.has('disabledVenues') || changed.has('scope') || changed.has('depthSource') || changed.has('depthBands') || changed.has('liqBands')) range.refreshHeld();
+      || changed.has('lt') || changed.has('disabledVenues') || changed.has('scope') || changed.has('bookMarkets') || changed.has('bookPicks') || changed.has('depthSource') || changed.has('depthBands') || changed.has('liqBands')) range.refreshHeld();
     if (changed.has('tradeBubbles') || changed.has('show')) hub.setTape(tapeWanted());
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('mark') && state.show.book) ladder.markMoved();

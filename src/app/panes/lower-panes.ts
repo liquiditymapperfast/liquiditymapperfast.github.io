@@ -7,7 +7,9 @@ import { DEFAULT_BAR_STATS, type Store, type AppState, type OiBar, type CandleRo
 import { chainedOi, heldOiAt, oiChangeByTime, oiDeltas, oiPartsUntil, oiSumOf, oiUsdChangeByTime, oiVenuesAt, type OiPart, type OiVenue } from '../oi-change.ts';
 import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { venueLabel } from '../venues.ts';
-import { activeIds, emptyScopeMessage, kindOf, marketIds } from '../scope.ts';
+import { kindOf } from '../scope.ts';
+import { bookEmptyMessage, bookIds, bookMarketIds } from '../book-markets.ts';
+import { BookVenues } from './book-venues.ts';
 import { ASKS, BIDS, DepthBars, fitsBars, neededBars, pixelFlags, sideFlags } from '../depth-bars.ts';
 import type { View } from '../view.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
@@ -302,9 +304,9 @@ export class DepthPane extends TimePane {
   /** What the pane drew last, for its Range summary (range/depth-lines.ts): the same object while that does not change. */
   #held: DepthPaneHeld | null = null;
   get rangeHeld(): DepthPaneHeld | null { return this.#held; }
-  /** What a snapshot of the pane is for, now: the source, the venues on (the order book's) and the bands. */
+  /** What a snapshot of the pane is for, now: the source, the books counted (the order book's: Venues) and the bands. */
   rangeKey(state: AppState): string {
-    if (state.depthSource !== 'liq') return depthHeldKey('book', activeIds(state), bandsOf(state.depthBands));
+    if (state.depthSource !== 'liq') return depthHeldKey('book', bookIds(state), bandsOf(state.depthBands));
     // Liquidation levels: the bands the pane draws, those within the history's reach once it is known (`#liqSeries`).
     const reach = this.#liqReach, bands = bandsOf(state.liqBands);
     return depthHeldKey('liq', [], reach === null ? bands : bands.filter(r => r <= reach * (1 + 1e-9)));
@@ -340,6 +342,8 @@ export class DepthPane extends TimePane {
   readonly #tableBox = document.createElement('input');
   readonly #source = document.createElement('select');
   #bellLabel: HTMLElement | null = null;
+  /** Whose books the bands add up (book-markets.ts), one choice with the Liquidity Tracker's. */
+  readonly #venues: BookVenues;
   #panel: Panel | null = null;
   /** The liquidation levels' history (liq-history.ts), read a UTC day at a time while the pane shows Liquidation levels. */
   readonly #history = new LiqHistory();
@@ -355,6 +359,8 @@ export class DepthPane extends TimePane {
     this.#source.append(new Option(t('Order book'), 'book'), new Option(t('Liquidation levels'), 'liq'));
     this.#source.onchange = () => this.store.set({ depthSource: this.#source.value === 'liq' ? 'liq' : 'book' });
     source.append(this.#source);
+    // Whose books: the venues switched on, the chart market's, or the markets chosen (shared with the Liquidity Tracker).
+    this.#venues = new BookVenues(store);
     // The bands: a preset, or the person's own (Edit… opens them in a panel).
     const bands = el('label', { class: 'ctl', tip: t('The distances from the price the pane adds up, each band holding the ones inside it: Near ±0.13 % to ±2 %, Balanced ±0.31 % to ±5 %, Wide ±1.25 % to ±20 %, or your own.') }, t('Bands'));
     for (const [value, label] of [['near', t('Near ±2 %')], ['balanced', t('Balanced ±5 %')], ['wide', t('Wide ±20 %')], ['custom', t('Custom')]] as const) this.#preset.append(new Option(label, value));
@@ -385,10 +391,10 @@ export class DepthPane extends TimePane {
     bell.append(this.#bell, t('Sound')); setTip(bell, panelSwitchTip('depthPane'));
     this.#bellLabel = bell;
     // The switches last, the table's at the right end (as on every pane).
-    this.head.append(source, group, scale, units, bell, table);
+    this.head.append(source, this.#venues.root, group, scale, units, bell, table);
     this.syncSound(); this.#sync();
-    // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts).
-    addTune(this.head, [group, scale, units, bell, table], t('Depth'), { fold: true });
+    // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts); on a desktop the venues fold last.
+    addTune(this.head, [this.#venues.root, group, scale, units, bell, table], t('Depth'), { fold: true });
   }
   /** The venues or the source changed: the bands are asked again. */
   refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); this.rangeStale(); }
@@ -401,8 +407,9 @@ export class DepthPane extends TimePane {
   #sync(): void {
     const liq = this.store.state.depthSource === 'liq', s = this.#settings();
     this.#source.value = liq ? 'liq' : 'book';
-    // The depth sound is the order book's: it has nothing to say about liquidation levels.
+    // The depth sound and the venues are the order book's: they have nothing to say about liquidation levels.
     if (this.#bellLabel) this.#bellLabel.hidden = liq;
+    this.#venues.root.hidden = liq; this.#venues.sync();
     this.#preset.value = s.preset; this.#edit.hidden = s.preset !== 'custom';
     this.#scale.value = s.scale; this.#units.value = s.units; this.#tableBox.checked = s.table;
   }
@@ -505,8 +512,8 @@ export class DepthPane extends TimePane {
       if (typeof built === 'string') { say(built); return; }
       liqHeld = built; s = built.series;
     } else {
-      const ids = activeIds(state);
-      const emptyScope = emptyScopeMessage(state);
+      const ids = bookIds(state);
+      const emptyScope = bookEmptyMessage(state);
       if (emptyScope) { say(emptyScope); return; }
       const key = depthKey(ids, v.t0, v.t1, pw, radii.join(','), this.hub.columnsVersion);
       // What is live changes without the view moving: asked again every second and a half, or less often when an answer takes long.
@@ -666,7 +673,7 @@ export class DepthPane extends TimePane {
     // Up to the replay's moment, or live to the end of the forming candle (the real clock: what is recorded).
     const need = neededBars(s.t0, s.t1, tf, h.length, replaying() ? pageNow() : (Math.floor(Date.now() / tf) + 1) * tf);
     if (fitsBars(need, tf)) {
-      this.#bars.ensure(marketIds(state), radius, tf, need, Date.now(), () => this.invalidate());
+      this.#bars.ensure(bookMarketIds(state), radius, tf, need, Date.now(), () => this.invalidate());
       const key = `bars|${this.#bars.version}|${need.from}|${need.to}|${tf}|${h.length}|${h.mult}|${radius}`;
       if (this.#marks?.series !== s || this.#marks.key !== key) this.#marks = { series: s, key, marks: pixelFlags(this.#bars.flags(need, tf, h), need.from, tf, s.t0, s.t1, s.w) };
     } else {
@@ -1087,14 +1094,16 @@ export class LtPane extends TimePane {
   /** What the pane drew last, for its Range summary (range/lt-lines.ts): the same object while that does not change. */
   #held: LtPaneHeld | null = null;
   get rangeHeld(): LtPaneHeld | null { return this.#held; }
-  /** What a snapshot of the pane is for, now: the venues on, the half-life, the size filters and the mode. */
-  rangeKey(state: AppState): string { return ltHeldKey(activeIds(state), state.lt); }
+  /** What a snapshot of the pane is for, now: the books counted (Venues), the half-life, the size filters and the mode. */
+  rangeKey(state: AppState): string { return ltHeldKey(bookIds(state), state.lt); }
   #publish(held: LtPaneHeld | null): void { if (held !== this.#held) { this.#held = held; this.rangeChanged(); } }
   #key = ''; #busy = false; #lastAt = 0;
   #sync: (() => void)[] = [];
   #card = new HoverCard();
   #lines: InfoLine[] | null = null;
   readonly #tableBox = document.createElement('input');
+  /** Whose books the lines add up (book-markets.ts), one choice with the Depth pane's. */
+  readonly #venues: BookVenues;
   /** Each market's figures at the window read, on the pane (pane-table.ts): who holds the liquidity the lines add up, and which way each leans. */
   readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() });
   /** The markets in the table's order (`ltRank`: the most liquidity on average over the windows each holds first), worked out once per series. */
@@ -1104,12 +1113,15 @@ export class LtPane extends TimePane {
     this.hub.onLtLane = () => this.invalidate();
     this.head.innerHTML = `<strong>${t('Liquidity Tracker')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('ltPane'));
-    setTip(this.head.querySelector('strong')!, t("Weighted USD liquidity near the touch: each enabled venue measured from its own best bid and best ask, then added up. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders."));
+    setTip(this.head.querySelector('strong')!, t("Weighted USD liquidity near the touch: each venue counted (Venues) measured from its own best bid and best ask, then added up. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders."));
     const lt = () => this.store.state.lt;
     const patch = (change: Partial<AppState['lt']>) => this.store.set({ lt: { ...lt(), ...change } });
     // One group, so the header's rule that puts its last control at the right edge moves them all together (each went on its own, so only the last
     // one stood at the right).
     const group = el('span', { class: 'ctl ctl-group' }); this.head.append(group);
+    // Whose books, first (shared with the Depth pane): the venues switched on, the chart market's, or the markets chosen.
+    this.#venues = new BookVenues(store); group.append(this.#venues.root);
+    this.#sync.push(() => this.#venues.sync());
     const select = (label: string, title: string, options: [string, string][], get: () => string, set: (value: string) => void): HTMLLabelElement => {
       const wrap = document.createElement('label'); wrap.className = 'ctl'; setTip(wrap, title); wrap.append(label);
       const control = document.createElement('select');
@@ -1159,7 +1171,7 @@ export class LtPane extends TimePane {
     }
     chips.append(seg); this.head.append(chips);
     this.#sync.push(() => { for (const chip of seg.children) { const on = Number((chip as HTMLElement).dataset.bp) === lt().halfLifeBp; chip.classList.toggle('on', on); chip.setAttribute('aria-pressed', String(on)); } });
-    addTune(this.head, [half, min, max, viewChoice, avg, bell, table], t('Liquidity Tracker'), { fold: true });
+    addTune(this.head, [this.#venues.root, half, min, max, viewChoice, avg, bell, table], t('Liquidity Tracker'), { fold: true });
   }
   /** Recompute on the next draw and reflect persisted settings in the controls. */
   refresh(): void { this.#key = ''; for (const sync of this.#sync) sync(); this.invalidate(); this.rangeStale(); }
@@ -1175,9 +1187,10 @@ export class LtPane extends TimePane {
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, lt = state.lt;
-    const ids = activeIds(state);
-    const emptyScope = emptyScopeMessage(state);
-    if (emptyScope) { this.#publish(null); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
+    const ids = bookIds(state);
+    const emptyScope = bookEmptyMessage(state);
+    // Nothing to add up: the reason on the pane, and no figures in the header from the books counted before.
+    if (emptyScope) { this.#publish(null); setText(this.head.querySelector('.readout'), ''); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
     const t0 = Math.floor(v.t0 / MINUTE) * MINUTE, t1 = Math.ceil(v.t1 / MINUTE) * MINUTE;
     // Where the trackers come from: the lane (the tracker alone, asked for by this pane: lt-lane.ts) where the source has one and no size filter is
     // set; the recorded columns (the books the map is drawn from, which a size filter needs, and which the browser engine has at hand) otherwise.

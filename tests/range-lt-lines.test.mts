@@ -86,14 +86,14 @@ test('another key is stale; a settled result is kept while the pane holds less o
   assert.equal(tile(kept, 'bid')?.value, '$100');
   // In a replay at an earlier moment, the live result is not kept.
   const replay = held({ from: 300, bid: Array(10).fill(7), ask: Array(10).fill(7), replayAt: T + 400 * M, shown: 10 });
-  assert.ok(!text(summary.lines(sel(0, 5), replay, true, KEY, T + 400 * M, '', false, true), 'lt-kept'));
+  assert.ok(!text(summary.lines(sel(0, 5), replay, true, KEY, T + 400 * M, '', '', true), 'lt-kept'));
   // Nothing held in a replay: the live result is not kept either (the mode is the page's, not the snapshot's).
-  assert.ok(!text(summary.lines(sel(0, 5), null, true, KEY, T + 400 * M, '', false, true), 'lt-kept'));
+  assert.ok(!text(summary.lines(sel(0, 5), null, true, KEY, T + 400 * M, '', '', true), 'lt-kept'));
 });
 
 test('no venue, nothing drawn, a hidden pane and a selection not begun say so; tiles carry first, last and range', () => {
   const summary = new LtRangeSummary(), h = held({ bid: [100, 120, 90], ask: [50, 60, 70] });
-  assert.ok(text(summary.lines(sel(0, 3), null, true, KEY, NOW, '', true), 'lt-none'));
+  assert.equal(text(summary.lines(sel(0, 3), null, true, KEY, NOW, '', 'No market is chosen: tick some under Choose….'), 'lt-none'), 'No market is chosen: tick some under Choose….', 'the reason the pane gives, whatever it is');
   assert.equal(text(summary.lines(sel(0, 3), null, true, KEY, NOW), 'lt-none'), 'Liquidity tracker is collecting…');
   assert.ok(text(summary.lines(sel(0, 3), h, false, KEY, NOW), 'lt-hidden'));
   assert.equal(text(summary.lines(sel(700, 710), h, true, KEY, NOW), 'lt-none'), 'This selection has not begun yet.');

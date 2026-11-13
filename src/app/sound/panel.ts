@@ -112,16 +112,20 @@ function panelSounds(store: Store, p: PanelSounds, alerts: Alerts, set: (change:
     tests('wall-appeared'));
 
   const depth = p.depthPane, state = alerts.depthState;
+  // Both order-book sounds count the books the two panes add up (book-markets.ts): said where that is not the venues switched on.
+  const venues = (): HTMLElement[] => store.state.bookMarkets === 'all' ? [] : [note(t('It counts the books chosen under Venues in the Depth and Liquidity Tracker panes, whatever the venue chips say.'))];
   body.append(heading(t('Depth pane')),
     panelSwitchRow(store, 'depthPane', () => rerender()),
     selectRow(t('Range'), t("Bids and asks within this distance of the price are added up, as the Depth pane's Range does."), DEPTH_RANGES.map(r => [String(r), `${Math.round(r * 1_000) / 10}%`] as [string, string]), String(depth.range), v => change('depthPane', { range: Number(v) })),
     numberRow(t('Percentile'), t('How rare the balance must be: at 99, only one recorded minute in a hundred of the hours before went further.'), { min: 90, max: 99.9, step: 0.5, value: depth.pct }, pct => change('depthPane', { pct })),
     numberRow(t('Compared with (hours)'), t('The hours the percentile is taken over. They are loaded when the sound starts, about 3 MB an hour from a server.'), { min: 2, max: DEPTH_MAX_HOURS, step: 1, value: depth.hours }, hours => change('depthPane', { hours })),
+    ...venues(),
     ...(state ? [note(state.loading || state.minutes < DEPTH_MIN_BASELINE ? t('Loading the recording: {n} min so far', { n: String(state.minutes) }) : t('Judging each minute against {n} min of recording', { n: String(state.minutes) }))] : []),
     tests('depth-extreme'));
 
   body.append(heading(t('Liquidity Tracker')),
     panelSwitchRow(store, 'depth', () => rerender()),
+    ...venues(),
     numberRow(t('Tips at (%)'), t('(bids - asks) / (bids + asks), in percent.'), { min: 30, max: 95, step: 5, value: p.depth.pct }, pct => change('depth', { pct })),
     tests('imbalance'));
 

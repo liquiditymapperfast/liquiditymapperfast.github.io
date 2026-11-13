@@ -6,7 +6,8 @@ import { Cooldowns, RateCap, WallWatch, ImbalanceWatch, bookBins, imbalanceOf } 
 import { burst } from '../cvd/burst.ts';
 import { flowIds } from '../cvd/ids.ts';
 import { familyKey, venueOfInstrument } from '../cvd/families.ts';
-import { activeIds, kindOf, marketIds } from '../scope.ts';
+import { activeIds, kindOf } from '../scope.ts';
+import { bookIds, bookMarketIds } from '../book-markets.ts';
 import { anomalies } from '../anomaly.ts';
 import { oiChangeByTime } from '../oi-change.ts';
 import { signedUsd } from '../cvd/text.ts';
@@ -71,7 +72,15 @@ export class Alerts {
   readonly #cap = new RateCap(4, 10_000);
   readonly #walls = new WallWatch();
   readonly #balance = new ImbalanceWatch();
-  #balanceStarts = -1;
+  /** What the balance's watch was last started over for (`#book`): the walls' warm-up while it counts their books, its own otherwise. */
+  #balanceKey = '';
+  /**
+   * The balance's own warm-up while it counts other books than the walls (the two book panes' Venues: book-markets.ts): what its books are,
+   * when it started (ten seconds of only watching, as the walls'), the last look (one more than ten seconds later starts it over) and how many
+   * times it has started.
+   */
+  #own: { context: string; start: number; last: number } | null = null;
+  #ownStarts = 0;
   #lastBook = 0; #lastBar = 0; #lastOi = 0;
   /** Which market and timeframe the candles (and the open-interest bars) being watched belong to: another one starts from scratch. */
   #barKey = ''; #oiKey = '';
@@ -138,9 +147,12 @@ export class Alerts {
     if (now - this.#lastBook < BOOK_EVERY_MS) return;
     this.#lastBook = now;
     const s = this.#s, panels = s.sounds.panels, mark = s.mark.price;
-    if (!panels.book.wall && !panels.depth.imbalance) { this.#walls.reset(); return; }
+    if (!panels.book.wall && !panels.depth.imbalance) { this.#walls.reset(); this.#own = null; return; }
     if (!s.levels || !(mark > 0) || now - s.levels.asOf > FRESH_MS) return;
     const active = new Set(activeIds(s)), bins = bookBins(s.levels, active, mark, 0.01);
+    // The balance counts the books the Depth pane and the Liquidity Tracker add up (their Venues), which are the walls' (the venues switched on)
+    // unless another choice is made there.
+    const counted = bookIds(s), same = counted.length === active.size && counted.every(id => active.has(id));
     // The books the bins are made of, what each covers, and the market whose price centres them: when any changes (a venue chip, a venue that
     // dropped out of the feed, a book seeded again or whose coverage grew, another chart market) the walls start over, and the balance only
     // watches until they have warmed up again.
@@ -150,9 +162,19 @@ export class Alerts {
       const word = signal.kind === 'appeared' ? t('wall appeared') : t('wall pulled');
       this.#fire(now, 'book', signal.kind === 'appeared' ? 'wall-appeared' : 'wall-pulled', signal.side, `${signal.side === 'buy' ? t('Bid') : t('Ask')} ${word}: $${usd(signal.usd)}`, `wall:${signal.side}:${signal.kind}`, WALL_COOLDOWN_MS);
     }
-    // The balance starts over with the walls (another set of books or market, a gap), so a book found lopsided before says nothing now.
-    if (this.#walls.starts !== this.#balanceStarts) { this.#balance.reset(); this.#balanceStarts = this.#walls.starts; }
-    const tip = this.#balance.update(imbalanceOf(bins), panels.depth.pct, !this.#walls.warming(now));
+    // The balance starts over with the walls (another set of books or market, a gap), so a book found lopsided before says nothing now. Over
+    // other books it has a warm-up of its own, by the walls' rules: another set of them or market, or a look more than ten seconds after the last.
+    let key: string, warm: boolean, judged = bins;
+    if (same) { this.#own = null; key = `walls:${this.#walls.starts}`; warm = !this.#walls.warming(now); }
+    else {
+      const own = new Set(counted), held = this.#own;
+      const context = `${s.levels.books.filter(book => own.has(book.id)).map(book => book.epoch ? `${book.id}#${book.epoch}` : book.id).sort().join(',')}|${s.marketId}|${s.seriesInstrument}`;
+      if (!held || held.context !== context || now - held.last > 10_000) { this.#own = { context, start: now, last: now }; this.#ownStarts++; }
+      else held.last = now;
+      key = `own:${this.#ownStarts}`; warm = now - this.#own!.start >= 10_000; judged = bookBins(s.levels, own, mark, 0.01);
+    }
+    if (key !== this.#balanceKey) { this.#balance.reset(); this.#balanceKey = key; }
+    const tip = this.#balance.update(imbalanceOf(judged), panels.depth.pct, warm);
     if (tip && panels.depth.imbalance) this.#fire(now, 'depth', 'imbalance', tip, tip === 'buy' ? t('Bids outweigh asks within 1% of the price') : t('Asks outweigh bids within 1% of the price'), 'imbalance', IMBALANCE_COOLDOWN_MS);
   }
 
@@ -215,8 +237,9 @@ export class Alerts {
       if (this.#depthKey) { this.#depth.reset(); this.#depthKey = ''; this.depthState = null; }
       return;
     }
-    // The markets from the market list, so a book that drops out is a gap (`DepthWatch` leaves such minutes out), not a reload of the hours.
-    const ids = marketIds(s), key = `${ids.join(',')}|${rule.range}|${rule.hours}`;
+    // The markets from the market list, so a book that drops out is a gap (`DepthWatch` leaves such minutes out), not a reload of the hours: those
+    // of the Depth pane's Venues (book-markets.ts), so the sound and the pane count the same books.
+    const ids = bookMarketIds(s), key = `${ids.join(',')}|${rule.range}|${rule.hours}`;
     if (key !== this.#depthKey) { this.#depth.reset(); this.#depthKey = key; this.#depthTo = 0; this.#depthWait = 0; this.depthState = { minutes: 0, loading: true }; }
     if (this.#depthBusy || now < this.#depthWait || !ids.length) return;
     // Every minute before `settled` has been committed; the first question goes back the whole baseline, an hour at a time.

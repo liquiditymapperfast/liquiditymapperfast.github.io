@@ -24,7 +24,8 @@ import { isCoarse, isPhone } from './device.ts';
 import { isHandheldPhone, readPhoneHistory, type PhoneHistory } from './history-window.ts';
 import { readScriptBars } from './script/bars.ts';
 import { LS_METRICS, type LsMetric } from '../shared/long-short.ts';
-import { readCustomMarkets, type CustomMarkets } from './market-choice.ts';
+import { readCustomMarkets, readPicks, type CustomMarkets } from './market-choice.ts';
+import { readBookMarkets, type BookMarkets } from './book-markets.ts';
 import { readPullWindow, type PullWindow } from './panes/pull-stack.ts';
 import { readLadderCues, type LadderCues } from './panes/ladder-cue-settings.ts';
 import { LIQ_DEFAULT, readDepthSettings, type DepthSettings, type DepthSource } from './depth-settings.ts';
@@ -109,6 +110,10 @@ export interface AppState {
   oiMarkets: 'all' | 'chart' | 'custom';
   /** The markets picked for the footprint and for the open interest when their choice is 'custom' (market-choice.ts: exchanges and kinds, never ids). */
   customMarkets: CustomMarkets;
+  /** Whose order books the Depth pane, the Liquidity Tracker and their sounds add up (book-markets.ts): the venues switched on, the chart market's, or `bookPicks`. */
+  bookMarkets: BookMarkets;
+  /** The books picked for `bookMarkets` 'custom': exchanges and kinds (`binance/perp`), as `customMarkets` keeps its picks, apart from them so a pick here never reloads open interest. */
+  bookPicks: string[];
   /** Each venue's bars while they are added together (`oi` is then their sum, oi-change.ts `sumOi`); empty for one market. */
   oiParts: OiPart[];
   /** One market's `oi` from an inverse market: the one price its coins are put at (its USD over it, `Hub.oiSeries`); 0 for a linear market. */
@@ -263,7 +268,7 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'flowView', 'tns', 'trades', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'draw', 'chartType', 'candleColors'];
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'flowView', 'tns', 'trades', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'bookMarkets', 'bookPicks', 'draw', 'chartType', 'candleColors'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -274,7 +279,7 @@ export type LadderCurves = (typeof LADDER_CURVES)[number];
 
 /** The settings a saved layout holds: what the chart shows and how, never the coin, the venues, the theme, the time zone or the sounds. */
 export const LAYOUT_KEYS = ['timeframe', 'layer', 'show', 'cvd', 'flowView', 'tns', 'trades', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta',
-  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'chartType', 'candleColors'] as const satisfies readonly (keyof AppState)[];
+  'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'bookMarkets', 'bookPicks', 'chartType', 'candleColors'] as const satisfies readonly (keyof AppState)[];
 export type Settings = Pick<AppState, (typeof LAYOUT_KEYS)[number]>;
 
 /** The timeframes (hub.ts TIMEFRAMES; a test keeps the two the same). */
@@ -342,6 +347,9 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     ltTable: saved.ltTable !== false,
     deltaTable: saved.deltaTable !== false,
     customMarkets: readCustomMarkets(saved.customMarkets),
+    // New on 2026-11-13: no save holds a choice, so every save counts the venues switched on, as before.
+    bookMarkets: readBookMarkets(saved.bookMarkets),
+    bookPicks: readPicks(saved.bookPicks, false),
     chartType: readChartType(saved.chartType),
     candleColors: readCandleColors(saved.candleColors),
   };
