@@ -2523,18 +2523,12 @@
  "Open interest uses all prices.": "Open Interest nutzt alle Preise.",
  "Known change": "Bekannte Änderung",
  "unavailable: no candle with a reading before it": "nicht verfügbar: keine Kerze mit einer Ablesung davor",
- "Line level (chained)": "Linienniveau (verkettet)",
  "In USD, at bar prices": "In USD, zu Balkenpreisen",
  "Price, {market}": "Preis, {market}",
  "Previous {n} candles ({span})": {
   "one": "Vorherige {n} Kerze ({span})",
   "other": "Vorherige {n} Kerzen ({span})"
  },
- "Comparable {n}-candle windows held": {
-  "one": "Vergleichbare {n}-Kerzen-Fenster vorhanden",
-  "other": "Vergleichbare {n}-Kerzen-Fenster vorhanden"
- },
- "{k} of {m} had a larger net change (closed, overlapping, this one included)": "{k} von {m} hatten eine größere Nettoänderung (abgeschlossen, überlappend, dieses mitgezählt)",
  "{k} of {n} candles": "{k} von {n} Kerzen",
  "so far": "bisher",
  "Against what is held": "Gegenüber dem Vorhandenen",
@@ -2542,7 +2536,6 @@
  "Largest sampled fall": "Größter abgetasteter Rückgang",
  "Marked by Highlights": "Von den Hervorhebungen markiert",
  "Details": "Details",
- "Levels: {levels} of {n} venues · changes: {changes} of {n}": "Niveaus: {levels} von {n} Börsen · Änderungen: {changes} von {n}",
  "{n} candles' changes unknown": {
   "one": "Änderung von {n} Kerze unbekannt",
   "other": "Änderungen von {n} Kerzen unbekannt"
@@ -2568,7 +2561,6 @@
  "Estimated from sampled OI changes and taker direction; price direction is used where stated. Opening and closing within a sampling interval can cancel.": "Geschätzt aus abgetasteten OI-Änderungen und der Taker-Richtung; wo angegeben, wird die Preisrichtung verwendet. Eröffnen und Schließen innerhalb eines Abtastintervalls können sich aufheben.",
  "By venue": "Nach Börse",
  "unavailable": "nicht verfügbar",
- "against the sum": "gegen die Summe",
  "Liquidations reported": "Gemeldete Liquidationen",
  "All the OI pane's venues, and who added and who reduced: Show → Open interest.": "Alle Börsen des OI-Bereichs und wer aufgebaut und wer abgebaut hat: Anzeige → Open interest.",
  "What the panel sums up for the selection: the map (market orders, absorption, resting orders), or a pane under it in its own terms. A drag in a pane opens its own.": "Was das Bereich-Panel für die Auswahl zusammenfasst: die Karte (Market-Orders, Absorption, ruhende Orders) oder einen Bereich unter ihr in seinen eigenen Kennzahlen. Ein Ziehen in einem Bereich öffnet dessen eigene Zusammenfassung.",
@@ -2611,8 +2603,6 @@
  "Longs net · shorts net": "Longs netto · Shorts netto",
  "Recorded taker volume": "Aufgezeichnetes Taker-Volumen",
  "Recorded CVD, before → after selection": "Aufgezeichnetes CVD, vor → nach der Auswahl",
- "Cancellation between candle deltas": "Aufhebung zwischen den Kerzen-Deltas",
- "Of the candle deltas added up by size, {share} remained in the net.": "Von den nach Größe addierten Kerzen-Deltas sind {share} im Netto übrig geblieben.",
  "Candle delta signs": "Vorzeichen der Kerzen-Deltas",
  "Largest absolute candle delta": "Größtes absolutes Kerzen-Delta",
  "NL/NS for {k} of the {n} candles: the others have no change of open interest held.": "NL/NS für {k} der {n} Kerzen: Für die übrigen ist keine Änderung des Open Interest vorhanden.",
@@ -2786,7 +2776,7 @@
  "The source left out its smallest orders here.": "Die Quelle hat hier ihre kleinsten Orders weggelassen.",
  "The menu above the list sets the smallest order: any size at first. A busy market sends dozens of orders a second, too many to read as they pass: point at the list to hold it, or scroll back with the wheel (on a phone, with a finger; a tap on a row shows its details); a button counts what came meanwhile. The settings key also chooses the side and can show a burst of orders on one market as one row.": "Das Menü über der Liste legt die kleinste Order fest: zuerst jede Größe. Ein reger Markt sendet Dutzende Orders pro Sekunde, zu viele, um sie im Vorbeiziehen zu lesen: Zeige auf die Liste, um sie anzuhalten, oder scrolle mit dem Rad zurück (auf dem Handy mit dem Finger; ein Tippen auf eine Zeile zeigt ihre Einzelheiten); eine Schaltfläche zählt, was inzwischen kam. Die Einstellungsschaltfläche wählt außerdem die Seite und kann einen Schub von Orders an einem Markt als eine Zeile zeigen.",
  "Orders of one market and side in the same tenth of a second are one row, their sizes added up and their price weighted by size; ×5 says how many orders.": "Orders eines Marktes und einer Seite in derselben Zehntelsekunde sind eine Zeile, ihre Größen addiert und ihr Preis nach Größe gewichtet; ×5 sagt, wie viele Orders.",
- "A drag across the Funding pane sums up the venue it shows: each settlement counts for the interval it paid for, giving the first and last rate per 8 hours and the change in basis points, the lowest and highest, the rate over time, and how long longs or shorts paid; time no settlement covers is said apart (before the read reaches, after the newest settlement held, or none held). The funding accruing now is shown apart and not counted, the premium by its completed readings and how many sat in the band where funding holds its base rate, and on Hyperliquid who opened, from the closed hours added up. It gives no amount paid.": "Ein Ziehen über den Funding-Bereich fasst die Börse zusammen, die er zeigt: Jede Abrechnung zählt für das Intervall, für das sie gezahlt hat, und ergibt den ersten und letzten Satz pro acht Stunden und die Änderung in Basispunkten, den niedrigsten und höchsten, den Satz über die Zeit und wie lange Longs oder Shorts gezahlt haben; Zeit, die keine Abrechnung abdeckt, wird gesondert genannt (vor dem Beginn der gelesenen Daten, nach der neuesten vorhandenen Abrechnung, oder keine vorhanden). Das gerade auflaufende Funding wird gesondert gezeigt und nicht mitgezählt, die Prämie nach ihren abgeschlossenen Ablesungen und wie viele davon im Band lagen, in dem das Funding auf seinem Basissatz bleibt, und bei Hyperliquid, wer eröffnet hat, aus den addierten abgeschlossenen Stunden. Einen gezahlten Betrag gibt es nicht an.",
+ "A drag across the Funding pane sums up the venue it shows: each settlement counts for the interval it paid for, giving the first and last rate per 8 hours and the change in basis points, the lowest and highest, the rate over time, and how long longs or shorts paid; time no settlement covers is said apart (before the loaded history starts, after the newest settlement held, or none held). The funding accruing now is shown apart and not counted, the premium by its completed readings and how many sat in the band where funding holds its base rate, and on Hyperliquid who opened, from the closed hours added up. It gives no amount paid.": "Ein Ziehen über den Funding-Bereich fasst die Börse zusammen, die er zeigt: Jede Abrechnung zählt für das Intervall, für das sie gezahlt hat, und ergibt den ersten und letzten Satz pro acht Stunden und die Änderung in Basispunkten, den niedrigsten und höchsten, den Satz über die Zeit und wie lange Longs oder Shorts gezahlt haben; Zeit, die keine Abrechnung abdeckt, wird gesondert genannt (vor dem Beginn der geladenen Daten, nach der neuesten vorhandenen Abrechnung, oder keine vorhanden). Das gerade auflaufende Funding wird gesondert gezeigt und nicht mitgezählt, die Prämie nach ihren abgeschlossenen Ablesungen und wie viele davon im Band lagen, in dem das Funding auf seinem Basissatz bleibt, und bei Hyperliquid, wer eröffnet hat, aus den addierten abgeschlossenen Stunden. Einen gezahlten Betrag gibt es nicht an.",
  "unchanged": "unverändert",
  "increase under 0.001 bp": "Anstieg unter 0.001 bp",
  "decrease under 0.001 bp": "Rückgang unter 0.001 bp",
@@ -2799,17 +2789,14 @@
  "Funding and who opened are for the whole market, at all prices.": "Funding und „Wer eröffnet hat“ gelten für den ganzen Markt, bei allen Preisen.",
  "Completed hourly funding": "Abgeschlossenes stündliches Funding",
  "Settled funding": "Abgerechnetes Funding",
- "Before the read reaches": "Vor dem Beginn der gelesenen Daten",
  "After the newest settlement held": "Nach der neuesten vorhandenen Abrechnung",
  "No settlement held": "Keine Abrechnung vorhanden",
  "No settlement held represents this selection.": "Keine vorhandene Abrechnung steht für diese Auswahl.",
  "Hourly net rate": "Stündlicher Nettosatz",
  "Settled rate": "Abgerechneter Satz",
- "{rate} throughout the represented time": "{rate} durchgehend in der repräsentierten Zeit",
  "First → last hourly net rate": "Erster → letzter stündlicher Nettosatz",
  "First → last settled rate": "Erster → letzter abgerechneter Satz",
  "Settled at {end} for the interval from {start}.": "Abgerechnet um {end} für das Intervall ab {start}.",
- "{time} · {share} of the represented time": "{time} · {share} der repräsentierten Zeit",
  "Positive hourly net rate": "Positiver stündlicher Nettosatz",
  "Positive settled rate": "Positiver abgerechneter Satz",
  "Negative hourly net rate": "Negativer stündlicher Nettosatz",
@@ -2821,8 +2808,6 @@
  "Each settlement counts for the interval it paid for, as the steps draw it; the share of time is of the time the settlements represent.": "Jede Abrechnung zählt für das Intervall, für das sie gezahlt hat, so wie die Stufen es zeichnen; der Zeitanteil bezieht sich auf die Zeit, die die Abrechnungen repräsentieren.",
  "Lowest – highest rate": "Niedrigster – höchster Satz",
  "Time-weighted mean rate": "Zeitgewichteter mittlerer Satz",
- "Time represented by hourly records": "Von stündlichen Einträgen repräsentierte Zeit",
- "Time represented by settlements": "Von Abrechnungen repräsentierte Zeit",
  "{n} completed hourly records": {
   "one": "{n} abgeschlossener stündlicher Eintrag",
   "other": "{n} abgeschlossene stündliche Einträge"
@@ -3012,5 +2997,20 @@
  "Pick the markets whose order books are added up.": "Wähle die Märkte, deren Orderbücher addiert werden.",
  "Order book markets": "Orderbuch-Märkte",
  "It counts the books chosen under Venues in the Depth and Liquidity Tracker panes, whatever the venue chips say.": "Er zählt die unter Börsen im Tiefe- und im Liquidity-Tracker-Bereich gewählten Orderbücher, was auch immer die Börsen-Chips sagen.",
- "Venues chooses whose order books the pane adds up: every venue switched on inside the Spot / Perp filter (the default), the chart market's own book, or Chosen markets, ticked in its panel (Choose…) whatever the venue chips and the filter say. The Depth pane and the Liquidity Tracker share the choice, and their sounds count the same books.": "Börsen wählt, wessen Orderbücher der Bereich zusammenzählt: jede aktivierte Börse innerhalb des Spot/Perp-Filters (Standard), das eigene Orderbuch des Chart-Markts oder Gewählte Märkte, in seinem Fenster angehakt (Wählen …), was auch immer die Börsen-Chips und der Filter sagen. Der Tiefe-Bereich und der Liquidity Tracker teilen die Wahl, und ihre Töne zählen dieselben Orderbücher."
+ "Venues chooses whose order books the pane adds up: every venue switched on inside the Spot / Perp filter (the default), the chart market's own book, or Chosen markets, ticked in its panel (Choose…) whatever the venue chips and the filter say. The Depth pane and the Liquidity Tracker share the choice, and their sounds count the same books.": "Börsen wählt, wessen Orderbücher der Bereich zusammenzählt: jede aktivierte Börse innerhalb des Spot/Perp-Filters (Standard), das eigene Orderbuch des Chart-Markts oder Gewählte Märkte, in seinem Fenster angehakt (Wählen …), was auch immer die Börsen-Chips und der Filter sagen. Der Tiefe-Bereich und der Liquidity Tracker teilen die Wahl, und ihre Töne zählen dieselben Orderbücher.",
+ "Net left after candles offset each other": "Netto nach gegenseitigem Ausgleich der Kerzen",
+ "{share} of their combined size": "{share} ihrer Gesamtgröße",
+ "Before the loaded history starts": "Vor dem Beginn der geladenen Daten",
+ "{rate} throughout the covered time": "{rate} während der gesamten abgedeckten Zeit",
+ "{time} · {share} of the covered time": "{time} · {share} der abgedeckten Zeit",
+ "Covered by hourly records": "Von stündlichen Einträgen abgedeckt",
+ "Covered by settlements": "Von Abrechnungen abgedeckt",
+ "Combined level": "Gesamtniveau",
+ "Rank among the {n}-candle windows held": {
+  "one": "Rang unter den vorhandenen {n}-Kerzen-Fenstern",
+  "other": "Rang unter den vorhandenen {n}-Kerzen-Fenstern"
+ },
+ "#{r} of {m} by size of change (closed, overlapping windows)": "Nr. {r} von {m} nach Größe der Änderung (geschlossene, überlappende Fenster)",
+ "OI from {levels} of {n} venues (changes from {changes})": "OI von {levels} von {n} Börsen (Änderungen von {changes})",
+ "opposite to the total": "entgegen der Summe"
 }
