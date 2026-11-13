@@ -329,3 +329,17 @@ test('the hour of the service restart, read by a page from before kind 11 that c
   const taken = planFootprint(state, rows.footprint, key => key === `binance:BTCUSDT|${m0}` ? kept : undefined);
   assert.deepEqual(taken.map(r => [r.t - m0, r.stats!.big]), [[60_000, [40_000]], [120_000, []]]);
 });
+
+test('a minute the coverage holds but the page did not as it opened: a thin copy taken from a newer hour gives way to a fuller one in an older hour', () => {
+  const t0 = HOUR;
+  const state = tradeImport([{ inst: 'bybit:BTCUSDT', metric: 'trades', from: t0, to: t0 + HOUR_MS }], []);
+  const taken = new Map<string, FootprintMinuteRow>(), atOpen = new Set<string>();
+  const plan = (rows: FootprintMinuteRow[]): void => { for (const row of planFootprint(state, rows, key => taken.get(key), key => atOpen.has(key))) taken.set(`${row.inst}|${row.t}`, row); };
+  plan([fpRow('bybit:BTCUSDT', t0 + HOUR_MS - 60_000, 400)]); // the newer hour's file, read first
+  plan([fpRow('bybit:BTCUSDT', t0 + HOUR_MS - 60_000, 900)]); // the older hour's
+  assert.equal(footprintVolume(taken.get(`bybit:BTCUSDT|${t0 + HOUR_MS - 60_000}`)!), 900);
+  // A minute the page held as it opened stays its own.
+  atOpen.add(`bybit:BTCUSDT|${t0}`); taken.set(`bybit:BTCUSDT|${t0}`, fpRow('bybit:BTCUSDT', t0, 100));
+  plan([fpRow('bybit:BTCUSDT', t0, 900)]);
+  assert.equal(footprintVolume(taken.get(`bybit:BTCUSDT|${t0}`)!), 100);
+});

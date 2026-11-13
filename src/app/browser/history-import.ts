@@ -238,6 +238,9 @@ function footprintMinute(view: DataView, from: number, end: number, inst: string
   return p === end ? { inst, t, step, bins, stats } : null;
 }
 
+/** Earlier copies of a minute each copy's runs start after (a file holds one copy a flush, two a minute, more only after restarts). */
+const EARLIER_COPIES = 8;
+
 /**
  * The lists of large orders a footprint minute of kind 11 leaves out, rebuilt from the large trades (kind 5) of the same file: the list holds
  * every order from the second size bucket's edge up, which is the coin's floor for a large trade too, and the service writes both from the
@@ -250,8 +253,6 @@ function footprintMinute(view: DataView, from: number, end: number, inst: string
  * is tried first with the minute's trades written before it, then with those after each earlier copy of the minute (the nearest first),
  * then with all of them; a fitting run is the copy's list (two runs that both fit are the same list: an order is at least the floor).
  */
-/** Earlier copies of a minute each copy's runs start after (a file holds one copy a flush, two a minute, more only after restarts). */
-const EARLIER_COPIES = 8;
 function fillListsFromPrints(rows: HistoryRows, printAt: readonly number[], footprintAt: readonly number[]): void {
   if (!rows.footprint.some(row => row.stats && row.stats.big === undefined)) return;
   const found = new Map<string, { value: number; at: number }[]>();
@@ -421,13 +422,15 @@ export function fullerFootprint(kept: Pick<FootprintMinuteRow, 'bins' | 'stats'>
  * of two copies the service wrote of a minute. Taking one fixes the market's step (`state.steps`). A minute the page's coverage holds whole
  * but whose copy it does not hold is taken too: the page saw no trade there, or the coverage came from the service (a page from before kind
  * 11 read the hour of the service's restart onto it, took its kind-7 minutes alone and joined the service's coverage over the whole hour).
+ * Whether the page holds a copy is judged as it opened (`heldAtOpen`, as `state` is): a copy taken earlier in this import, from a newer
+ * hour's file, is weighed against a fuller one in an older file like any other (`held` answers with it).
  */
-export function planFootprint(state: TradeImport, rows: readonly FootprintMinuteRow[], held: (key: string) => FootprintMinuteRow | undefined): FootprintMinuteRow[] {
+export function planFootprint(state: TradeImport, rows: readonly FootprintMinuteRow[], held: (key: string) => FootprintMinuteRow | undefined, heldAtOpen: (key: string) => boolean = key => held(key) !== undefined): FootprintMinuteRow[] {
   const chosen = new Map<string, FootprintMinuteRow>();
   for (const row of rows) {
-    const step = state.steps.get(row.inst) ?? row.step, key = `${row.inst}|${row.t}`, mine = held(key);
-    if (row.step !== step || (mine && ownsMinute(state, row.inst, row.t))) continue;
-    const have = chosen.get(key) ?? mine;
+    const step = state.steps.get(row.inst) ?? row.step, key = `${row.inst}|${row.t}`;
+    if (row.step !== step || (heldAtOpen(key) && ownsMinute(state, row.inst, row.t))) continue;
+    const have = chosen.get(key) ?? held(key);
     if (have && !fullerFootprint(have, row)) continue;
     state.steps.set(row.inst, step);
     chosen.set(key, row);
