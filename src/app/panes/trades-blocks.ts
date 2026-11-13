@@ -2,7 +2,7 @@ import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { clock, clockSeconds } from '../format.ts';
 import { money } from './trades-inspector.ts';
-import { drawVenueMark } from '../venue-marks.ts';
+import { drawVenueMark, marksEpoch } from '../venue-marks.ts';
 import { replaying } from '../replay/clock.ts';
 import { isPhone } from '../device.ts';
 import { contrastRatio, type Palette, PALETTES } from '../theme.ts';
@@ -110,6 +110,8 @@ export class BlockList {
     new ResizeObserver(() => this.#resize()).observe(this.root);
     sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) this.#paint(); } });
     const c = this.#canvas;
+    // A canvas given back by the browser (its graphics memory was taken back, as phones do) comes back empty: nothing kept on it holds.
+    c.addEventListener('contextrestored', () => { this.rows.reset(); this.invalidate(); });
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       this.#lastTouch = false;
@@ -317,7 +319,7 @@ export class BlockList {
     }
     [this.#shownSig, this.#nextSig] = [this.#nextSig, this.#shownSig]; this.#nextSig.clear();
     // What the rows' pixels depend on beyond their own signatures: any change draws the whole frame.
-    const look = `${w}|${h}|${dpr}|${phone}|${B}|${this.venueIds.join(',')}|${this.whale}|${this.reader.version}|${this.reader.flowVersion()}|${this.#epoch}|${document.documentElement.lang}`;
+    const look = `${w}|${h}|${dpr}|${phone}|${B}|${this.venueIds.join(',')}|${this.whale}|${this.reader.version}|${this.reader.flowVersion()}|${this.#epoch}|${marksEpoch()}|${document.documentElement.lang}`;
     const items = this.#items, draw = this.rows.plan(ctx, look, items, dpr, h, p.panel, Math.min(h, Math.max(y, this.late.length ? NOTE : 0)));
     // Rows fill to the canvas's own width in device pixels (a width like 366 px at 1.25 is 457.5 of them: a fill to 366 would leave the
     // last column half covered, blended with whatever was under it, which a kept frame and a whole one differ in).

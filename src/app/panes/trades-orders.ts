@@ -1,7 +1,7 @@
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { clockSeconds, price as fmtPrice } from '../format.ts';
-import { drawVenueMark } from '../venue-marks.ts';
+import { drawVenueMark, marksEpoch } from '../venue-marks.ts';
 import { venueLabel } from '../venues.ts';
 import { instrumentShown, mapVenues } from '../cvd/ids.ts';
 import { setText } from './lower-panes.ts';
@@ -13,6 +13,7 @@ import { PALETTES, contrastRatio, type Palette } from '../theme.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { TradeIndex, readRecord, type TradeRecord } from '../trades/index.ts';
+import { RetainedRows } from './retained-rows.ts';
 import { DIVIDER_ROW, InkCache, TIERS, amountText, clockForm, tierOf, tintOf, tintStops } from '../trades/style.ts';
 import { GROUP_MS } from '../trades/settings.ts';
 import type { TnsLine } from '../tns/model.ts';
@@ -33,6 +34,8 @@ const CATCH_UP_MAX = 50_000;
 export const TINT_TOP_DARK = 0.42, TINT_TOP_LIGHT = 0.34;
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** A row of a frame (device pixels), laid out before anything is drawn: its signature and what draws it. */
+interface Item { sig: string; y: number; h: number; fixed: boolean; kind: 'row' | 'divider' | 'note'; rec: TradeRecord | null; shown: TradeRecord | null; tier: (typeof TIERS)[number]; orders: number; usd: number; showTime: boolean; outlined: boolean; reasons: number; words: string }
 /** A line the last frame drew: an order (or a burst of them when grouping is on), or a divider where orders may be missing. */
 type Drawn =
   | { kind: 'row'; k: number; y: number; h: number; rec: TradeRecord; orders: number; usd: number }
@@ -65,6 +68,10 @@ export class OrderList {
   #scrolled = false;
   #slide: { px: number; start: number } | null = null;
   #drawn: Drawn[] = [];
+  /** The rows kept on the canvas between frames, this frame's rows, and a count bumped by any change the look key cannot see. */
+  readonly rows = new RetainedRows();
+  #items: Item[] = []; #itemPool: Item[] = [];
+  #epoch = 0;
   #scanTimer = 0;
   /** What the index was found for: the list's settings and the venues the map shows (a venue's book joining the map lets its orders in). */
   #filterKey = '';
@@ -89,6 +96,8 @@ export class OrderList {
     this.#resizeObserver = new ResizeObserver(() => this.#resize()); this.#resizeObserver.observe(this.root);
     sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) this.#paint(); } });
     const c = this.#canvas;
+    // A canvas given back by the browser (its graphics memory was taken back, as phones do) comes back empty: nothing kept on it holds.
+    c.addEventListener('contextrestored', () => { this.rows.reset(); this.invalidate(); });
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       // A mouse is in use again (a hybrid device): its box offers the click once more.
@@ -138,11 +147,11 @@ export class OrderList {
     this.#sync();
     this.#resize();
   }
-  setPalette(p: Palette): void { this.#palette = p; this.invalidate(); }
+  setPalette(p: Palette): void { this.#palette = p; this.#epoch++; this.invalidate(); }
   /** The list's settings, the venues or the sizes changed: found again from the newest order, from the top. */
   refresh(): void { this.#release(false); this.#drawn = []; this.#index.reset(null); this.#filterKey = ''; if (this.#shown) this.#sync(); }
   /** Something the rows are drawn with changed (the whale size, the time zone, a replay): drawn again as they stand. */
-  redraw(): void { this.invalidate(); }
+  redraw(): void { this.#epoch++; this.invalidate(); }
 
   /** A batch reached the ring: the list takes it (a slide for a row or two at the top, else a plain update), and a held one counts it. */
   tapeArrived(): void {
@@ -294,11 +303,24 @@ export class OrderList {
 
   // ---- drawing --------------------------------------------------------------------------------------------------------------------
 
+  /** A row of this frame, laid out before anything is drawn: device-pixel top and height, and what draws it. */
+  #item(sig: string, y: number, h: number, kind: Item['kind'], fixed = false): Item {
+    const it = this.#itemPool[this.#items.length] ??= { sig: '', y: 0, h: 0, fixed: false, kind: 'row', rec: null, orders: 1, usd: 0, shown: null, tier: TIERS[0]!, showTime: false, outlined: false, reasons: 0, words: '' };
+    it.sig = sig; it.y = y; it.h = h; it.kind = kind; it.fixed = fixed; it.rec = null; it.shown = null; it.showTime = false; it.outlined = false; it.reasons = 0; it.words = '';
+    this.#items.push(it);
+    return it;
+  }
+
+  /**
+   * A frame in two passes, as the block list's (`RetainedRows`): rows laid out first, each on a whole device pixel and a whole number of
+   * them tall (its nominal height rounded at this pixel ratio), and drawn in its own coordinates from that top, so a row moved by the list
+   * (a new order on top, a scroll) is shifted with the canvas and comes out as it would be drawn there; only new rows, the row the pointer
+   * is on and the rows the box beside it covered are drawn. Where the recording's rows show below the tape's oldest order, the frame is
+   * drawn whole, as before.
+   */
   #paint(): void {
     const ctx = this.#ctx, w = this.#w, h = this.#h, p = this.#palette, dpr = this.#dpr;
     if (!this.#shown || w < 40 || h < 20) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = p.panel; ctx.fillRect(0, 0, w, h);
     const ring = this.#index.ring, replay = replaying();
     const heldFrom = ring && ring.written ? readRecord(ring, ring.first).t : null;
     const since = heldFrom === null ? '' : replay ? t('Not the replay: live orders since {time}', { time: clockSeconds(heldFrom) }) : t('Since {time}', { time: clockSeconds(heldFrom) });
@@ -308,6 +330,8 @@ export class OrderList {
     this.#drawn = drawn;
     if (!ring || !this.#index.length) {
       // No live order yet: the recording's (Time & sales' hour, from $25K) stand under a line saying so; else the list waits.
+      this.rows.reset();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = p.panel; ctx.fillRect(0, 0, this.#canvas.width / dpr, this.#canvas.height / dpr);
       if (this.history.length) { this.#paintHistory(ctx, 0, w, h, p, drawn); return; }
       ctx.fillStyle = p.muted; ctx.font = `12px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(t('Waiting for live orders'), w / 2, Math.min(h / 2, 60));
@@ -317,19 +341,21 @@ export class OrderList {
     let pos = this.#unitTop(this.#index.length - 1), y = 0, expired = false;
     if (this.#anchor) {
       if (!this.#index.valid(this.#anchor.k)) { expired = true; this.#anchor = { k: this.#index.at(0), offset: 0 }; }
-      pos = this.#unitTop(this.#index.position(this.#anchor.k)); y = -Math.round(this.#anchor.offset);
+      pos = this.#unitTop(this.#index.position(this.#anchor.k)); y = -this.#anchor.offset;
     } else if (this.#slide) {
       const left = this.#remainingSlide();
       if (left <= 0.5) this.#slide = null; else y = -left;
     }
     const { whale, leviathan } = this.#whale(), s = this.store.state.trades;
     const top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, stops = tintStops(scaledUsd, whale, leviathan, top), form = clockForm(w);
-    ctx.textBaseline = 'middle';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.font = `11px ${MONO}`;
     const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width;
-    const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
-    let lastSecond = '', above = -1;
-    while (pos >= 0 && y < h) {
+    const H = this.#canvas.height;
+    this.#items.length = 0;
+    // Device pixels from here: each row's top on a whole one, its height its nominal height rounded at this ratio.
+    let yd = Math.round(y * dpr), lastSecond = '', above = -1, first = true;
+    while (pos >= 0 && yd < H) {
       const k = this.#index.at(pos);
       if (!this.#index.valid(k)) break;
       const rec = readRecord(ring, k);
@@ -345,48 +371,51 @@ export class OrderList {
       // A boundary between this row and the one above: orders may be missing there.
       if (above >= 0) {
         const reasons = this.#index.boundariesBetween(k, above);
-        if (reasons) { this.#paintDivider(ctx, y, w, reasons, p); drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons }); y += DIVIDER_ROW; if (y >= h) break; }
+        if (reasons) {
+          const dh = Math.round(DIVIDER_ROW * dpr), d = this.#item(`d|${k}|${reasons}`, yd, dh, 'divider'); d.reasons = reasons;
+          drawn.push({ kind: 'divider', y: yd / dpr, h: dh / dpr, reasons }); yd += dh;
+          if (yd >= H) break;
+        }
       }
-      const buy = rec.usd > 0, signed = buy ? usd : -usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, rowH = tier.row;
+      const buy = rec.usd > 0, signed = buy ? usd : -usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, hd = Math.round(tier.row * dpr);
       const shown = orders > 1 ? { ...rec, usd: signed, price: usd / qty, lo, hi } : rec;
-      const ink = this.#inks.get(p, buy, tintOf(signed, stops), top);
-      ctx.fillStyle = ink.bg; ctx.fillRect(0, y, w, rowH);
-      const mid = y + rowH / 2;
       // The time once per second-run, and always on the first row drawn.
-      const second = clockSeconds(rec.t);
-      if (clockW && (second !== lastSecond || drawn.every(d => d.kind !== 'row'))) {
-        ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left';
-        ctx.fillText(form === 'hms' ? second : second.slice(3), PAD, mid);
-      }
-      lastSecond = second;
-      drawVenueMark(ctx, rec.id, xMark, mid, MARK);
-      // The side's glyph in its colour where that reads on the row; on a strong tint of its own colour, in the row's text colour.
-      const sideInk = buy ? p.candleUp : p.candleDown;
-      ctx.font = `10px ${MONO}`; ctx.fillStyle = contrastRatio(sideInk, ink.bg) >= 3 ? sideInk : ink.text; ctx.textAlign = 'left';
-      ctx.fillText(buy ? '▲' : '▼', xSide, mid);
-      ctx.font = `13px ${MONO}`; ctx.fillStyle = ink.text;
-      ctx.fillText(fmtPrice(shown.price), xPrice, mid);
-      ctx.textAlign = 'right';
-      ctx.font = `${tier.weight} ${tier.amountPx}px ${MONO}`;
-      const amount = amountText(usd);
-      ctx.fillText(amount, xRight, mid);
-      if (orders > 1) { const aw = ctx.measureText(amount).width; ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.fillText(`×${orders}`, xRight - aw - GAP, mid); }
-      drawn.push({ kind: 'row', k, y, h: rowH, rec: shown, orders, usd: signed });
-      above = lowest; y += rowH; pos = next;
+      const second = clockSeconds(rec.t), showTime = clockW > 0 && (second !== lastSecond || first);
+      const it = this.#item(`r|${k}|${orders}|${usd}|${showTime ? 1 : 0}`, yd, hd, 'row');
+      it.rec = rec; it.shown = shown; it.tier = tier; it.orders = orders; it.usd = signed; it.showTime = showTime;
+      drawn.push({ kind: 'row', k, y: yd / dpr, h: hd / dpr, rec: shown, orders, usd: signed });
+      lastSecond = second; first = false;
+      above = lowest; yd += hd; pos = next;
     }
-    // Past the tape's oldest order: the recording's (from $25K), under a line that says where the live orders begin.
-    if (pos < 0 && !this.#index.moreBehind && y < h && this.history.length) this.#paintHistory(ctx, y, w, h, p, drawn);
-    // The row under the pointer (or the one a finger pinned), and its whole story in a box beside it.
+    // Past the tape's oldest order: the recording's (from $25K), under a line that says where the live orders begin (drawn whole).
+    const history = pos < 0 && !this.#index.moreBehind && yd < H && this.history.length > 0;
+    // The row under the pointer (or the one a finger pinned): outlined as part of the row, its whole story in a box beside it after.
     const pinned = this.#pinned !== null ? drawn.find((d): d is Extract<Drawn, { kind: 'row' }> => d.kind === 'row' && d.k === this.#pinned) ?? null : null;
     const hover = pinned ?? (this.#pointer ? this.#rowAt(this.#pointer.y) : null);
+    if (hover && hover.kind === 'row') for (const it of this.#items) if (it.kind === 'row' && it.rec?.k === hover.k) { it.outlined = true; it.sig += '|o'; break; }
+    if (expired) { const words = t('Older orders have left memory'), it = this.#item(`x|${words}`, 0, Math.round(DIVIDER_ROW * dpr), 'note', true); it.words = words; }
+    // What the rows' pixels depend on beyond their own signatures: any change draws the whole frame.
+    const look = `${w}|${h}|${dpr}|${this.#epoch}|${marksEpoch()}|${whale}|${leviathan}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}`;
+    if (history) this.rows.reset();
+    const items = this.#items, draw = this.rows.plan(ctx, look, items, 1, H, p.panel, Math.min(H, yd));
+    const fw = this.#canvas.width / dpr, xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
+    for (let i = 0; i < items.length; i++) {
+      if (!draw[i]) continue;
+      const it = items[i]!;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, it.y);
+      const fh = it.h / dpr;
+      if (it.kind === 'row') this.#paintRow(ctx, it, fw, fh, stops, top, form, xMark, xSide, xPrice, xRight, p);
+      else if (it.kind === 'divider') this.#paintDivider(ctx, 0, w, it.reasons, p, fh, fw);
+      else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p); }
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (history) this.#paintHistory(ctx, yd / dpr, w, h, p, drawn);
     if (hover) {
-      ctx.strokeStyle = p.text; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.strokeRect(0.5, hover.y + 0.5, w - 1, hover.h - 1); ctx.globalAlpha = 1;
       // Down from the pointer in the upper half, up from it in the lower, so the box stays inside the list (a pinned row: from its middle).
       const pt = pinned ? { x: w / 2, y: hover.y + hover.h / 2 } : this.#pointer!;
-      paintInfoBox(ctx, this.#lines(hover), pt.x, pt.y, { x0: 0, y0: 0, x1: w, y1: h }, p, { placement: pt.y < h / 2 ? 'down' : 'up', edge: hover.usd > 0 ? p.candleUp : p.candleDown });
-    }
-    if (expired) {
-      ctx.fillStyle = p.panel; ctx.fillRect(0, 0, w, DIVIDER_ROW); this.#paintNote(ctx, 0, w, t('Older orders have left memory'), p);
+      const box = paintInfoBox(ctx, this.#lines(hover), pt.x, pt.y, { x0: 0, y0: 0, x1: w, y1: h }, p, { placement: pt.y < h / 2 ? 'down' : 'up', edge: hover.usd > 0 ? p.candleUp : p.candleDown });
+      // The rows under the box are drawn again next frame (their pixels carry it), with a margin for its edge.
+      if (box) this.rows.damage(Math.floor((box.y - 2) * dpr), Math.ceil((box.y + box.h + 2) * dpr));
     }
     // A pointer resting on the list when its first rows were drawn holds them now; the shared time cursor follows the row it is on now.
     if (this.#pointerIn && !this.#anchor) this.#hold();
@@ -395,6 +424,32 @@ export class OrderList {
       if (this.#slide) this.invalidate();
       if (pos < OVERSCAN && this.#index.moreBehind) this.#fillBack();
     }
+  }
+
+  /** One order's row in its own coordinates (its top at 0), `fh` CSS px tall (its device height): the tint, the time, the mark, the side, the price, the size. */
+  #paintRow(ctx: CanvasRenderingContext2D, it: Item, fw: number, fh: number, stops: ReturnType<typeof tintStops>, top: number, form: ReturnType<typeof clockForm>, xMark: number, xSide: number, xPrice: number, xRight: number, p: Palette): void {
+    const rec = it.rec!, shown = it.shown!, buy = rec.usd > 0, signed = it.usd, usd = Math.abs(signed), tier = it.tier;
+    const ink = this.#inks.get(p, buy, tintOf(signed, stops), top), mid = tier.row / 2;
+    ctx.fillStyle = ink.bg; ctx.fillRect(0, 0, fw, fh);
+    ctx.textBaseline = 'middle';
+    if (it.showTime) {
+      const second = clockSeconds(rec.t);
+      ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left';
+      ctx.fillText(form === 'hms' ? second : second.slice(3), PAD, mid);
+    }
+    drawVenueMark(ctx, rec.id, xMark, mid, MARK, this.#dpr);
+    // The side's glyph in its colour where that reads on the row; on a strong tint of its own colour, in the row's text colour.
+    const sideInk = buy ? p.candleUp : p.candleDown;
+    ctx.font = `10px ${MONO}`; ctx.fillStyle = contrastRatio(sideInk, ink.bg) >= 3 ? sideInk : ink.text; ctx.textAlign = 'left';
+    ctx.fillText(buy ? '▲' : '▼', xSide, mid);
+    ctx.font = `13px ${MONO}`; ctx.fillStyle = ink.text;
+    ctx.fillText(fmtPrice(shown.price), xPrice, mid);
+    ctx.textAlign = 'right';
+    ctx.font = `${tier.weight} ${tier.amountPx}px ${MONO}`;
+    const amount = amountText(usd);
+    ctx.fillText(amount, xRight, mid);
+    if (it.orders > 1) { const aw = ctx.measureText(amount).width; ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.fillText(`×${it.orders}`, xRight - aw - GAP, mid); }
+    if (it.outlined) { ctx.strokeStyle = p.text; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, this.#w - 1, fh - 1); ctx.globalAlpha = 1; }
   }
 
   #lines(row: Extract<Drawn, { kind: 'row' }>): InfoLine[] {
@@ -458,12 +513,12 @@ export class OrderList {
     }
   }
 
-  #paintDivider(ctx: CanvasRenderingContext2D, y: number, w: number, reasons: number, p: Palette): void {
+  #paintDivider(ctx: CanvasRenderingContext2D, y: number, w: number, reasons: number, p: Palette, fh = DIVIDER_ROW, fw = w): void {
     // A start is never between two rows (it is before the first write): only a reconnect, a skip or a trim draws a line.
     const words = reasons & (BOUNDARY.reconnect | BOUNDARY.cleared) ? t('The stream reconnected here: orders may be missing.')
       : reasons & BOUNDARY.skipped ? t('The source skipped orders here: some may be missing.')
       : t('The source left out its smallest orders here.');
-    ctx.fillStyle = p.panel; ctx.fillRect(0, y, w, DIVIDER_ROW);
+    ctx.fillStyle = p.panel; ctx.fillRect(0, y, fw, fh);
     this.#paintNote(ctx, y, w, words, p);
   }
   #paintNote(ctx: CanvasRenderingContext2D, y: number, w: number, words: string, p: Palette): void {

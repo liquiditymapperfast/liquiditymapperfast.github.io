@@ -67,6 +67,13 @@ function spotIds(): ReadonlySet<string> {
   spotSets.set(markets, set = ids);
   return set;
 }
+let lastSpots: ReadonlySet<string> | null = null, spotEpoch = 0;
+/** A count that moves whenever the marks may look different (the market list's spot set changed): a canvas keeping marks draws them again. */
+export function marksEpoch(): number {
+  const spots = spotIds();
+  if (spots !== lastSpots) { lastSpots = spots; spotEpoch++; }
+  return spotEpoch;
+}
 
 /** The mark of an instrument or a venue (`binance:BTCUSDT`, `binancespot`, `binance`): its exchange's style, and whether it is a spot market. */
 export function markOf(id: string): MarkStyle & { spot: boolean; family: string } {
