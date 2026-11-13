@@ -152,9 +152,9 @@ export class Alerts {
     if (!panels.book.wall && !panels.depth.imbalance) { this.#walls.reset(); this.#own = null; return; }
     if (!s.levels || !(mark > 0) || now - s.levels.asOf > FRESH_MS) return;
     const active = new Set(activeIds(s)), bins = bookBins(s.levels, active, mark, 0.01);
-    // The balance counts the books the Depth pane and the Liquidity Tracker add up (their Venues), which are the walls' (the venues switched on)
-    // unless another choice is made there.
-    const counted = bookIds(s), same = counted.length === active.size && counted.every(id => active.has(id));
+    // The balance counts the books the Depth pane and the Liquidity Tracker add up (their Venues): the walls' (the venues switched on), or under
+    // another choice its own, whatever the chips say (so a chip changing never starts it over).
+    const same = s.bookMarkets === 'all', counted = same ? [] : bookIds(s);
     // The books the bins are made of, what each covers, and the market whose price centres them: when any changes (a venue chip, a venue that
     // dropped out of the feed, a book seeded again or whose coverage grew, another chart market) the walls start over, and the balance only
     // watches until they have warmed up again.

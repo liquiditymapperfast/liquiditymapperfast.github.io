@@ -16,10 +16,12 @@ export class BookVenues {
   readonly #choose = document.createElement('button');
   #panel: Panel | null = null;
   /**
-   * What the open panel shows (the choice, the picks, the books listed): it is built again when that changes elsewhere (the other pane, a
-   * layout, another coin), not for a box ticked in it, which says so before the store changes (a rebuild would lose the list's scroll).
+   * What the open panel shows (the choice, the picks, whether books are listed yet, and the market list they were listed from): it is built
+   * again when that changes elsewhere (the other pane, a layout, another coin), not for a box ticked in it, which says so before the store
+   * changes (a rebuild would lose the list's scroll), nor for a book leaving the feed for a moment.
    */
   #built = '';
+  #builtMarkets: unknown = null;
   readonly #build: (tools: HTMLElement, body: HTMLElement) => void;
 
   constructor(private readonly store: Store) {
@@ -34,7 +36,7 @@ export class BookVenues {
     this.#choose.type = 'button'; this.#choose.textContent = t('Choose…'); setTip(this.#choose, t('Pick the markets whose order books are added up.'));
     this.#choose.onclick = () => this.#open();
     this.#build = (_tools, body) => {
-      this.#built = this.#shown();
+      this.#built = this.#shown(); this.#builtMarkets = store.state.markets;
       buildBookMarketsPanel(store, body, () => this.#panel?.render(this.#build), picks => { this.#built = this.#shown(picks); });
     };
     this.root = el('span', { class: 'ctl ctl-group book-venues' }, wrap, this.#choose);
@@ -50,11 +52,11 @@ export class BookVenues {
   }
 
   /** An open panel built for another choice, other picks or other books (another coin) is built again; safe at every draw. */
-  follow(): void { if (this.#panel && this.#shown() !== this.#built) this.#panel.render(this.#build); }
+  follow(): void { if (this.#panel && (this.#shown() !== this.#built || (this.store.state.bookMarkets === 'custom' && this.store.state.markets !== this.#builtMarkets))) this.#panel.render(this.#build); }
 
   #shown(picks: readonly string[] = this.store.state.bookPicks): string {
     const s = this.store.state;
-    return `${s.bookMarkets}|${s.bookMarkets === 'custom' ? `${picks.join(',')}|${(s.levels?.books ?? []).map(b => b.id).join(',')}` : ''}`;
+    return s.bookMarkets === 'custom' ? `custom|${picks.join(',')}|${s.levels?.books.length ? 'listed' : 'none'}` : s.bookMarkets;
   }
 
   /**
@@ -63,6 +65,8 @@ export class BookVenues {
    */
   #open(): void {
     this.#choose.hidden = this.store.state.bookMarkets !== 'custom';
-    this.#panel = togglePanel(this.root, { title: t('Order book markets'), width: 380, align: 'right', onClose: () => { this.#panel = null; } }, this.#build);
+    this.#panel = togglePanel(this.root, { title: t('Order book markets'), width: 380, align: 'right', onClose: () => { this.#panel = null; this.#choose.classList.remove('open'); } }, this.#build);
+    // Choose… lit while its picker is open, as a button that opens a panel is (the panel is placed by the whole control).
+    this.#choose.classList.toggle('open', this.#panel !== null);
   }
 }

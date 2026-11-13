@@ -1,7 +1,7 @@
 import type { AppState } from './store.ts';
 import { activeIds, emptyScopeMessage, kindOf, marketIds } from './scope.ts';
 import { familyKey, venueOfInstrument } from './cvd/families.ts';
-import { BOOK_HOLD_MS } from './cvd/ids.ts';
+import { BOOK_HOLD_MS, flowFeedSpotId } from './cvd/ids.ts';
 import { parsePick, pickOf, type MarketKind, type PickOption } from './market-choice.ts';
 import { t } from './i18n.ts';
 
@@ -35,13 +35,34 @@ function countedPicks(state: BookState): Set<string> {
 }
 
 /**
- * The books in the feed the two panes add up and the balance sound counts, in the feed's order: `activeIds` itself for `all` (the same array,
- * so every key built from it and the order the tracker's parts come in are what they were), else the books of the picks counted.
+ * The books the two panes add up and the balance sound counts: `activeIds` itself for `all` (the same array, so every key built from it and the
+ * order the tracker's parts come in are what they were); else the books of the picks counted in the feed's order, then those of them away from
+ * the feed for a moment (`heldBookIds`), so a feed that reconnects leaves a gap at the end of the same series rather than an empty choice.
  */
 export function bookIds(state: BookState): string[] {
   if (state.bookMarkets === 'all') return activeIds(state);
-  const picks = countedPicks(state);
-  return (state.levels?.books ?? []).map(book => book.id).filter(id => picks.has(bookPickOf(state.markets, id)));
+  const picks = countedPicks(state), feed = (state.levels?.books ?? []).map(book => book.id).filter(id => picks.has(bookPickOf(state.markets, id)));
+  const held = heldBookIds(state, picks, new Set(feed));
+  return held.length ? [...feed, ...held] : feed;
+}
+
+/**
+ * The listed markets of the picks counted whose venue's book left the feed less than `BOOK_HOLD_MS` ago (`bookGone`, as the flow views hold
+ * it: a feed that reconnects drops its book for a minute or more), sorted: the recording still holds their columns, so they are still asked
+ * for. A spot market listed under its perpetual venue's name (`binance:…:spot`, whose book is `binancespot:…`: `flowFeedSpotId`) is a market
+ * of trades, never a book, so the perpetual's feed reconnecting never stands for it.
+ */
+function heldBookIds(state: BookState, picks: ReadonlySet<string>, inFeed: ReadonlySet<string>): string[] {
+  const gone = state.bookGone, asOf = state.levels?.asOf;
+  if (!gone || asOf === undefined) return [];
+  const out = new Set<string>();
+  for (const m of state.markets) {
+    const id = m.instrumentId ?? m.id;
+    if (!id || inFeed.has(id) || flowFeedSpotId(id) !== null) continue;
+    const at = gone[venueOfInstrument(id)];
+    if (at !== undefined && asOf - at <= BOOK_HOLD_MS && picks.has(bookPickOf(state.markets, id))) out.add(id);
+  }
+  return [...out].sort();
 }
 
 /**
@@ -58,25 +79,25 @@ export function bookMarketIds(state: BookState): string[] {
 
 /**
  * Why the two panes have no book to add up, or '': for `all` the Spot / Perp filter leaving none, or every chip off; for the others no pick,
- * or no book of them on this coin. Nothing is said before the first books and the market list come (the panes say they are collecting), nor
- * while a counted book is only away for a moment: a feed that reconnects drops its book for a minute or more (`BOOK_HOLD_MS`, held as the
- * flow views hold it), and the panes then keep the series they drew rather than say the chart market or the picks have no book.
+ * or no book of them on this coin (one away from the feed for a moment still counts: `bookIds`). Nothing is said before the first books and the
+ * market list come (the panes say they are collecting).
  */
 export function bookEmptyMessage(state: BookState): string {
   if (state.bookMarkets === 'all') return emptyScopeMessage(state) ?? (state.levels?.books.length && !activeIds(state).length ? t('No venue is on: switch one on to sum up the order books.') : '');
-  if (!state.levels?.books.length || !state.markets.length || bookIds(state).length || heldAway(state)) return '';
+  if (!state.levels?.books.length || !state.markets.length || bookIds(state).length) return '';
   if (state.bookMarkets === 'chart') return t('The chart market has no order book here.');
   return state.bookPicks.length ? t('None of the chosen markets has an order book on this coin.') : t('No market is chosen: tick some under Choose….');
 }
 
-/** Whether a market counted (by its exchange and kind) is of a venue whose book left the feed less than `BOOK_HOLD_MS` ago. */
-function heldAway(state: BookState): boolean {
-  const gone = state.bookGone ?? {}, asOf = state.levels?.asOf ?? 0, picks = countedPicks(state);
-  for (const m of state.markets) {
-    const id = m.instrumentId ?? m.id, at = id ? gone[venueOfInstrument(id)] : undefined;
-    if (id && at !== undefined && asOf - at <= BOOK_HOLD_MS && picks.has(bookPickOf(state.markets, id))) return true;
-  }
-  return false;
+/**
+ * Whether a change of the state (its keys) may change what the two panes count, so they ask again and their Venues controls show it: the chips
+ * and the filter (and the heat map's source, as before) only while they count the venues switched on; the choice and the picks always; the
+ * market list (another coin, which decides each book's kind) and, for the chart market's book, the chart market while they count picks.
+ */
+export function booksAskedAgain(state: Pick<AppState, 'bookMarkets'>, changed: ReadonlySet<string>): boolean {
+  if (changed.has('bookMarkets') || changed.has('bookPicks')) return true;
+  if (state.bookMarkets === 'all') return changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope');
+  return changed.has('markets') || (state.bookMarkets === 'chart' && changed.has('marketId'));
 }
 
 /**

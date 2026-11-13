@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bookEmptyMessage, bookIds, bookMarketIds, bookPickOf, bookPickOptions, readBookMarkets } from '../src/app/book-markets.ts';
+import { bookEmptyMessage, bookIds, bookMarketIds, bookPickOf, bookPickOptions, booksAskedAgain, readBookMarkets } from '../src/app/book-markets.ts';
 import { activeIds, marketIds } from '../src/app/scope.ts';
 import { LAYOUT_KEYS, initialState, readSettings, type AppState } from '../src/app/store.ts';
 import { Alerts, type Player } from '../src/app/sound/alerts.ts';
@@ -74,15 +74,34 @@ test('the panes say why they have no book to add up', () => {
   assert.equal(bookEmptyMessage(state({ bookMarkets: 'custom', bookPicks: ['okx/perp'], scope: 'spot', disabledVenues: ['binancespot', 'coinbase'] })), '');
 });
 
-test('a counted book away from the feed for a moment keeps the panes drawing, not saying it has none', () => {
+test('a counted book away from the feed for a moment is still asked for, so the series is the same one with a gap', () => {
   // Binance spot's feed reconnects: its book leaves the frame and `bookGone` holds the venue (cvd/ids.ts) for BOOK_HOLD_MS.
   const levels = { asOf: 1_000_000, books: FEED.filter(id => !id.startsWith('binancespot')).map(id => book(id)) };
   const away = state({ bookMarkets: 'chart', marketId: 'binance:BTCUSDT:spot', levels, bookGone: { binancespot: 1_000_000 - 60_000 } });
-  assert.deepEqual(bookIds(away), [], 'nothing to ask for meanwhile');
-  assert.equal(bookEmptyMessage(away), '', 'the series drawn stays');
-  assert.equal(bookEmptyMessage({ ...away, bookGone: { binancespot: 1_000_000 - 11 * 60_000 } }), 'The chart market has no order book here.', 'gone longer than the hold: said');
-  assert.equal(bookEmptyMessage({ ...away, bookMarkets: 'custom', bookPicks: ['binance/spot'] }), '', 'a pick away for a moment too');
+  assert.deepEqual(bookIds(away), ['binancespot:BTCUSDT'], 'the book, by its listed market, never the market of the trades');
+  assert.equal(bookEmptyMessage(away), '');
+  const later = { ...away, bookGone: { binancespot: 1_000_000 - 11 * 60_000 } };
+  assert.deepEqual(bookIds(later), []);
+  assert.equal(bookEmptyMessage(later), 'The chart market has no order book here.', 'gone longer than the hold: said');
+  const picked = { ...away, bookMarkets: 'custom' as const, bookPicks: ['okx/perp', 'binance/spot'] };
+  assert.deepEqual(bookIds(picked), ['okx:BTC-USDT-SWAP', 'binancespot:BTCUSDT'], 'the feed\'s books first, then the held ones');
   assert.equal(bookEmptyMessage({ ...away, bookMarkets: 'custom', bookPicks: ['kraken/spot'] }), 'None of the chosen markets has an order book on this coin.', 'another venue held says nothing for the picks');
+  // A spot chart whose book never streams (no `binancespot` venue on): the Binance perpetual's feed reconnecting does not stand for it.
+  const noSpotBook = { asOf: 1_000_000, books: FEED.filter(id => !id.startsWith('binance')).map(id => book(id)) };
+  const perpAway = state({ bookMarkets: 'chart', marketId: 'binance:BTCUSDT:spot', levels: noSpotBook, bookGone: { binance: 1_000_000 - 60_000 } });
+  assert.deepEqual(bookIds(perpAway), []);
+  assert.equal(bookEmptyMessage(perpAway), 'The chart market has no order book here.');
+});
+
+test('the panes ask again when what they count may have changed, and only then', () => {
+  const ask = (bookMarkets: AppState['bookMarkets'], ...keys: string[]) => booksAskedAgain({ bookMarkets }, new Set(keys));
+  for (const mode of ['all', 'chart', 'custom'] as const) { assert.ok(ask(mode, 'bookMarkets'), mode); assert.ok(ask(mode, 'bookPicks'), mode); }
+  assert.ok(ask('all', 'disabledVenues') && ask('all', 'scope') && ask('all', 'heatmapSource'), 'the chips and the filter are what All counts');
+  assert.ok(!ask('custom', 'disabledVenues') && !ask('chart', 'scope') && !ask('custom', 'heatmapSource'), 'not what the others count');
+  assert.ok(ask('custom', 'scope', 'bookMarkets'), 'a layout changing the choice and the filter together');
+  assert.ok(ask('chart', 'marketId') && !ask('custom', 'marketId') && !ask('all', 'marketId'), 'the chart market only for its own book');
+  assert.ok(ask('custom', 'markets') && ask('chart', 'markets') && !ask('all', 'markets'), 'the market list decides the picks\' books');
+  assert.ok(!ask('all', 'levels') && !ask('custom', 'levels'), 'never every frame');
 });
 
 test('the picker lists one row per exchange and kind with a book, perpetual before spot, then the picks kept with none here', () => {
@@ -159,6 +178,9 @@ test('a change of the books the balance counts is a warm-up of its own, both way
   assert.deepEqual(later.kinds, ['imbalance']); assert.equal(later.at[0], 34_000);
   // The chart market's book is its own set too: a's, as the pick of a.
   assert.deepEqual(balanceRun({ bookMarkets: 'chart' }, 14_000, 30_000, 80).kinds, ['imbalance']);
+  // Chosen a, with b's chip switched off just before a crosses the line: the chips are not what it counts, so nothing starts over.
+  const chip = balanceRun({ bookMarkets: 'custom', bookPicks: ['a/perp'] }, 20_000, 30_000, 80, 18_000, { disabledVenues: ['b'] });
+  assert.deepEqual(chip.kinds, ['imbalance']); assert.equal(chip.at[0], 20_000);
 });
 
 test('the depth sound with no market to read loads nothing and says nothing', () => {

@@ -40,7 +40,7 @@ import { LsRangeSummary, lsHeldKey } from './range/ls-lines.ts';
 import { FundingRangeSummary } from './range/funding-lines.ts';
 import { LtRangeSummary } from './range/lt-lines.ts';
 import { DepthRangeSummary } from './range/depth-lines.ts';
-import { bookEmptyMessage } from './book-markets.ts';
+import { bookEmptyMessage, booksAskedAgain } from './book-markets.ts';
 import { ScriptRangeSummary } from './range/script-lines.ts';
 import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
@@ -581,8 +581,7 @@ async function main(): Promise<void> {
     if (venuesChanged) { heat.dataChanged(); cvd.refresh(); }
     // The two order-book panes count the venues switched on (the chips and the filter), the chart market's book or the picks (book-markets.ts):
     // asked again when what they count may have changed, and their Venues controls (an open picker too) show it.
-    if ((venuesChanged && state.bookMarkets === 'all') || changed.has('bookMarkets') || changed.has('bookPicks')
-      || (state.bookMarkets !== 'all' && (changed.has('markets') || (changed.has('marketId') && state.bookMarkets === 'chart')))) { depth.refresh(); lt.refresh(); }
+    if (booksAskedAgain(state, changed as ReadonlySet<string>)) { depth.refresh(); lt.refresh(); }
     if (changed.has('markets')) cvd.invalidate();
     // Open interest added up over the venues switched on: another choice of them is another series. Not the Spot / Perp filter, which
     // open interest does not follow (`oiFlowIds`).
