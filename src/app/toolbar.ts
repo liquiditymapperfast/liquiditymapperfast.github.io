@@ -772,6 +772,8 @@ export class Toolbar {
 
   #arrange(): void {
     this.#recenter.classList.toggle('map-recenter', !compactBar() && this.#mapHost !== null);
+    // In the bar the Tour wears the lit look of the bar's chosen buttons, in the theme's own way (Karl, 2026-11-13); in a phone's Settings it is a filled tile.
+    this.#tour.classList.toggle('on', !compactBar());
     if (!compactBar()) {
       this.#sheet?.close();
       this.#fillHeatControls();

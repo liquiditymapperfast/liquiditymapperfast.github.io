@@ -80,3 +80,15 @@ test('the arrows that fold and unfold the bar keep a label that reads while they
   const css = read('styles.css');
   assert.ok(css.includes('.toolbar .bar-collapse:active, .toolbar .bar-expand:active { color: var(--text); }'), 'a held arrow is in the text colour');
 });
+
+test('the top bar fills nothing with the accent: Both / Spot / Perp and the Tour light as its other chosen buttons do, in the theme\'s own way', () => {
+  // Karl, 2026-11-13: Both and Tour stayed the same blue in every theme beside the timeframes and the panels' buttons. Only the phone's Settings keeps filled ones.
+  const filling = (read('styles.css') + '\n' + read('mobile.css')).split('\n').filter(line => /background:\s*var\(--ui\)/.test(line) && /\.(scope|tour-btn)\b/.test(line));
+  assert.ok(filling.length >= 2, 'the phone Settings rules that fill them are still found');
+  for (const line of filling) {
+    const selectors = line.slice(0, line.indexOf('{')).split(',').map(s => s.trim()).filter(s => /\.(scope|tour-btn)\b/.test(s));
+    for (const s of selectors) assert.ok(/^\.sheet\b|^\.sheet-tiles\b/.test(s), `${s} fills with the accent outside a phone's Settings`);
+  }
+  const toolbar = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'toolbar.ts'), 'utf8');
+  assert.ok(toolbar.includes("this.#tour.classList.toggle('on', !compactBar());"), 'the Tour is lit while it is in the bar, and a filled tile in the Settings sheet');
+});
