@@ -13,7 +13,7 @@ import { venueLabel } from '../venues.ts';
 import { PALETTES, type Palette } from '../theme.ts';
 import { STRIDE, BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { SecondTally, tallySeconds, FILL_STEP } from '../trades/tally.ts';
-import { OrderScan, coincidences, emptyBlock, fullScale, olderFor, type Block, type FlowLike, type OlderPrints, type PrintLike, type RecordedPrints } from '../trades/blocks.ts';
+import { OrderScan, coincidences, copyBlock, emptyBlock, fullScale, olderFor, type Block, type FlowLike, type OlderPrints, type PrintLike, type RecordedPrints } from '../trades/blocks.ts';
 import { TRADES_MINIMUMS, TRADE_UNITS, UNIT_MAX_S, readUnit, type TradesSettings } from '../trades/settings.ts';
 import { SEAM_SLACK_MS, TNS_FLOOR_USD, TnsBook } from '../tns/model.ts';
 import { recordedDue, recordedSeam } from '../trades/asks.ts';
@@ -31,6 +31,10 @@ const REF_ORDER = ['binance', 'bybit', 'okx', 'hyperliquid', 'bitget', 'binances
 const FLOW_REACH_MS = 24 * 3_600_000;
 /** Orders read at most for one inspected block's notes and largest orders (a long block on a busy coin is cut at its newest). */
 const NOTE_ORDERS_MAX = 400_000;
+/** The inspector's pass over a block's orders: a slice of idle time, and how many orders between two looks at the clock. */
+const SLICE_MS = 4, SLICE_ORDERS = 2048;
+/** A block's inspector being worked out (`TradesView.#plan`). */
+interface Plan { block: Block; state: 'held' | 'newest'; unit: number; t0: number; t1: number; floor: number; big: number; steps: Generator<void, void, void> }
 /** Older stretches of the recording kept for the blocks on screen, and the least margin asked either side of what is on screen. */
 const OLDER_KEPT = 8, OLDER_MARGIN_MS = 5 * 60_000;
 /** How far the tape's start may move past what the recording's holes and its orders were asked up to before they are asked again. */
@@ -136,7 +140,7 @@ export class TradesView {
     this.#syncMenus();
   }
 
-  dispose(): void { window.clearTimeout(this.#fillTimer); window.clearInterval(this.#tick); this.orders.dispose(); }
+  dispose(): void { window.clearTimeout(this.#jobTimer); window.clearTimeout(this.#fillTimer); window.clearInterval(this.#tick); this.orders.dispose(); }
   #unitNow(): number { return this.store.state.trades.unit; }
   #set(change: Partial<TradesSettings>): void { this.store.set({ trades: { ...this.store.state.trades, ...change } }); }
 
@@ -174,7 +178,7 @@ export class TradesView {
     this.#layout(); this.#syncStatus(); this.invalidate();
   }
   /** Something the rows are drawn with changed (the whale size, the time zone, a replay): drawn again as they stand. */
-  redraw(): void { this.#syncMenus(); this.blocks.whale = this.#whale(); this.orders.redraw(); this.blocks.invalidate(); this.#inspected = ''; this.#inspect(); }
+  redraw(): void { this.#syncMenus(); this.blocks.whale = this.#whale(); this.orders.redraw(); this.blocks.redrawAll(); this.#inspected = ''; this.#inspect(); }
 
   /** A batch reached the ring: the tally takes it (the blocks), or the order list does. */
   tapeArrived(): void {
@@ -406,8 +410,10 @@ export class TradesView {
 
   // ---- layout, status, hover, inspector ---------------------------------------------------------------------------------------------
 
+  #barW = 0;
   #layout(): void {
     const w = this.#body.getBoundingClientRect().width, wide = !isPhone() && this.#unitNow() > 0 && wideEnough(w);
+    this.#barW = this.#bar.getBoundingClientRect().width;
     this.root.classList.toggle('wide', wide);
     this.#inspector.hidden = !wide;
     this.blocks.root.style.flexBasis = wide ? `${LIST_W}px` : '';
@@ -419,8 +425,10 @@ export class TradesView {
     if (this.blocks.held) { setText(this.#status, t('Held · {n} new', { n: this.#tally.newSinceHold.toLocaleString() })); this.#status.classList.add('held'); return; }
     this.#status.classList.remove('held');
     const full = fmtUsd(scaledUsd(fullScale(unit)));
-    setText(this.#status, this.#bar.getBoundingClientRect().width < 320 ? `√ $${full}` : t('√ size, full ${usd}', { usd: full }));
-    this.#status.dataset.tip = t('Each bar\'s length is the square root of its dollars, full at ${usd} a side: a side ten times larger draws about three times longer. The pieces in a bar are the exchanges\' shares of that side.', { usd: full });
+    // The bar's width from the last layout (the resize observer's), not measured here: this runs every second, and a measure forces a layout.
+    setText(this.#status, this.#barW < 320 ? `√ $${full}` : t('√ size, full ${usd}', { usd: full }));
+    const tip = t('Each bar\'s length is the square root of its dollars, full at ${usd} a side: a side ten times larger draws about three times longer. The pieces in a bar are the exchanges\' shares of that side.', { usd: full });
+    if (this.#status.dataset.tip !== tip) this.#status.dataset.tip = tip;
   }
   #hover(b: Block | null): void {
     const hover = this.store.state.hover;
@@ -445,8 +453,22 @@ export class TradesView {
    */
   #inspect(): void {
     if (this.#inspector.hidden || this.#unitNow() === 0 || !this.#shown) return;
-    const model = this.#model(null, true);
-    if (model) renderInspector(this.#inspector, model);
+    const plan = this.#plan(null, true);
+    if (!plan) return;
+    // The pass over the block's orders runs in slices of a few milliseconds (a settled minute holds 30,000 orders and more; in one task
+    // it took a frame or two every minute): the inspector shows the last block until it ends, and a newer block or change starts over.
+    window.clearTimeout(this.#jobTimer); this.#job = plan;
+    this.#slice();
+  }
+  #job: Plan | null = null; #jobTimer = 0;
+  #slice(): void {
+    const job = this.#job;
+    if (!job || !this.#shown) return;
+    const end = performance.now() + SLICE_MS;
+    while (performance.now() < end) {
+      if (job.steps.next().done) { this.#job = null; renderInspector(this.#inspector, this.#finish(job)); return; }
+    }
+    this.#jobTimer = window.setTimeout(() => this.#slice(), 0);
   }
   /** The tally's revisions of a block's seconds added up: it grows with every order counted into them (a key, not a figure). */
   #revs(s: number, B: number): number {
@@ -455,24 +477,39 @@ export class TradesView {
     for (let sec = s; sec < s + B; sec++) { const sl = tally.slot(sec); if (sl >= 0) r += tally.rev(sl) + 1; }
     return r;
   }
-  /** The inspector's model of block `sec` (null: the chosen one, else the newest settled); `keyed`: null too when nothing changed since the last. */
-  #model(sec: number | null, keyed = false): ReturnType<typeof inspectorModel> | null {
+  /** The inspector's model of block `sec` (null: the chosen one, else the newest settled), at once (a tap's sheet). */
+  #model(sec: number | null): ReturnType<typeof inspectorModel> | null {
+    const plan = this.#plan(sec, false);
+    if (!plan) return null;
+    while (!plan.steps.next().done) { /* the whole pass */ }
+    return this.#finish(plan);
+  }
+  /**
+   * A block's inspector, ready to be worked out: the block (a copy: other reads use the scratch block meanwhile), its time, and the pass
+   * over its orders as steps. `keyed`: null when nothing it shows changed since the last.
+   */
+  #plan(sec: number | null, keyed: boolean): Plan | null {
     const blocks = this.blocks, reader = blocks.reader;
     if (reader.venues !== this.#scratch.vBuy.length) this.#scratch = emptyBlock(reader.venues);
     const saved = blocks.selected;
     if (sec !== null) blocks.selected = sec;
-    const { block, state } = blocks.inspected(this.#scratch);
+    const { block: read, state } = blocks.inspected(this.#scratch);
     blocks.selected = saved;
-    if (block.unknown) { if (keyed) this.#inspected = ''; return null; }
-    const unit = block.B, t0 = block.s * 1000, t1 = (block.s + unit) * 1000;
+    if (read.unknown) { if (keyed) this.#inspected = ''; return null; }
+    const unit = read.B, t0 = read.s * 1000, t1 = (read.s + unit) * 1000;
     if (keyed) {
-      const key = `${state}|${block.s}|${unit}|${this.#tally.resets}|${this.#revs(block.s, unit)}|${reader.version}|${this.flowLoads()}|${reader.minUsd}|${reader.side}|${isPhone()}|${document.documentElement.lang}|${block.partial}`;
+      const key = `${state}|${read.s}|${unit}|${this.#tally.resets}|${this.#revs(read.s, unit)}|${reader.version}|${this.flowLoads()}|${reader.minUsd}|${reader.side}|${isPhone()}|${document.documentElement.lang}|${read.partial}`;
       if (key === this.#inspected) return null;
       this.#inspected = key;
     }
-    const floor = reader.minUsd, big = Math.max(scaledUsd(100_000), floor), scan = this.#scan;
-    scan.reset(isPhone() ? 4 : 9, floor, big);
-    this.#scanOrders(t0, t1);
+    const block = emptyBlock(reader.venues); copyBlock(read, block);
+    const floor = reader.minUsd, big = Math.max(scaledUsd(100_000), floor);
+    this.#scan.reset(isPhone() ? 4 : 9, floor, big);
+    return { block, state, unit, t0, t1, floor, big, steps: this.#scanSteps(t0, t1) };
+  }
+  /** The model once the pass is over. */
+  #finish(plan: Plan): ReturnType<typeof inspectorModel> {
+    const { block, state, unit, t0, t1, floor, big } = plan, reader = this.blocks.reader, scan = this.#scan;
     const largest = scan.largest;
     const time = unit >= 60 ? `${clock(t0)}–${clock(t1)}` : unit === 1 ? clockSeconds(t0) : `${clockSeconds(t0)}–${clockSeconds(t1)}`;
     // The stretches of the block before the tape that nobody recorded (any size: the flow's zeros there are not quiet seconds).
@@ -486,9 +523,9 @@ export class TradesView {
   #group(id: string): number { let g = this.#groupOf.get(id); if (g === undefined) { g = this.#groupOf.size; this.#groupOf.set(id, g); } return g; }
   /**
    * The orders of a stretch into the scan, for the notes and the largest orders: the tape's where it covers (read straight from the ring's
-   * arrays, at most NOTE_ORDERS_MAX, the newest), else the recording's.
+   * arrays, at most NOTE_ORDERS_MAX, the newest), else the recording's. A step every SLICE_ORDERS orders (the caller decides when to go on).
    */
-  #scanOrders(t0: number, t1: number): void {
+  *#scanSteps(t0: number, t1: number): Generator<void, void, void> {
     const scan = this.#scan, ring = this.ring(), shown = instrumentShown(this.store.state), cov = this.#tally.coveredFrom();
     // The block's own filter: its side and its smallest order (the notes and the largest orders describe what the block counts).
     const reader = this.blocks.reader, side = reader.side, floor = reader.minUsd;
@@ -506,7 +543,7 @@ export class TradesView {
           const m = d[at + 3]!, g = groups[m] ?? -1;
           if (g < 0 || !passes(d[at + 2]!)) continue;
           scan.add(g, ring.ids[m]!, tt, d[at + 2]!, p0 + d[at + 1]!, p0 + d[at + 4]!, p0 + d[at + 5]!);
-          read++;
+          if (++read % SLICE_ORDERS === 0) yield;
         }
       }
     }

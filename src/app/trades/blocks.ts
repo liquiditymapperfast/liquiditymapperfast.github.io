@@ -133,12 +133,14 @@ export class BlockReader {
   venues = 0;
   #kept = new Map<string, Block>();
   #keptKey = '';
+  /** Blocks read lately that are not kept yet (settling, young): reused while their seconds' tally revisions and the sources stand. */
+  #recent = new Map<number, { block: Block; revs: number; cov: number }>();
   /** The markets counted as a set (the recording holds every market's orders; only those counted are added or named). */
   #marketSet = new Set<string>(); #marketsFor: readonly string[] = [];
 
   /** Fix the venue slots: `slotOf(id)` for every market (ids of one venue share a slot). Drops every kept block. */
   setVenues(count: number, slotOf: (id: string) => number): void {
-    this.venues = count; this.#slotOfId.clear(); this.#slotOfIndex = []; this.#ringIds = 0; this.#kept.clear(); this.version++;
+    this.venues = count; this.#slotOfId.clear(); this.#slotOfIndex = []; this.#ringIds = 0; this.#kept.clear(); this.#recent.clear(); this.version++;
     this.#slotFn = slotOf;
   }
   #slotFn: (id: string) => number = () => 0;
@@ -152,7 +154,14 @@ export class BlockReader {
   /** What every block is read from and under, as a key (the tally's start, the size, the side, the reference, the markets, the flow's loads, the gaps, the recording's start). */
   dataKey(): string { return `${this.tally?.resets ?? 0}|${this.minUsd}|${this.side}|${this.ref}|${this.markets.length}|${this.flowVersion()}|${this.#gapsKey}|${this.knownKey}`; }
   /** Forget every kept block (a source changed). */
-  forget(): void { this.#kept.clear(); this.version++; }
+  forget(): void { this.#kept.clear(); this.#recent.clear(); this.version++; }
+  /** The tally's revisions of seconds [from, to) added up (each held second one more): any order counted into them changes it. */
+  #revsOf(from: number, to: number): number {
+    const t = this.tally!;
+    let r = 0;
+    for (let sec = from; sec < to; sec++) { const sl = t.slot(sec); if (sl >= 0) r += t.rev(sl) + 1; }
+    return r;
+  }
 
   /** The first whole second the tally covers (Infinity: none). */
   coveredSec(): number { const c = this.tally?.coveredFrom() ?? Infinity; return Number.isFinite(c) ? Math.ceil(c / 1000) : Infinity; }
@@ -174,12 +183,27 @@ export class BlockReader {
     const end = s + B, endMs = end * 1000;
     out.forming = endMs > now; out.settling = !out.forming && endMs + SETTLE_MS > now;
     const key = this.dataKey();
-    if (key !== this.#keptKey) { this.#keptKey = key; this.#kept.clear(); }
+    if (key !== this.#keptKey) { this.#keptKey = key; this.#kept.clear(); this.#recent.clear(); }
     const cov = this.coveredSec();
     const keep = B >= 60 && !out.forming && endMs + 120_000 < now && !this.tally?.filling && (end <= cov || s >= cov);
     if (keep) { const k = this.#kept.get(`${s}|${B}`); if (k) { copyBlock(k, out); return out; } }
+    // A block read lately (every frame reads the twenty on screen) and unchanged since: the tally's revisions of its seconds and of those
+    // its price change looks back over, the covered start and the sources all as they were. Wholly after the covered start only (before
+    // it the flow and the recording are keyed by the sources alone, and those blocks settle into the kept ones).
+    const slot = s * 1024 + B, forming = out.forming, settling = out.settling;
+    const revs = !keep && s >= cov && this.tally ? this.#revsOf(s - Math.max(2, B), end) : -1;
+    if (revs >= 0) {
+      const r = this.#recent.get(slot);
+      if (r && r.revs === revs && r.cov === cov && r.block.vBuy.length === this.venues) { copyBlock(r.block, out); out.forming = forming; out.settling = settling; return out; }
+    }
     this.#compute(s, B, out);
     if (keep) { const copy = emptyBlock(this.venues); copyBlock(out, copy); this.#kept.set(`${s}|${B}`, copy); if (this.#kept.size > 4096) this.#kept.clear(); }
+    else if (revs >= 0) {
+      if (this.#recent.size > 4096) this.#recent.clear();
+      let r = this.#recent.get(slot);
+      if (!r || r.block.vBuy.length !== this.venues) this.#recent.set(slot, r = { block: emptyBlock(this.venues), revs, cov });
+      copyBlock(out, r.block); r.revs = revs; r.cov = cov;
+    }
     return out;
   }
 

@@ -84,11 +84,21 @@ export const monogramPx = (size: number, text: string): number => size * (text.l
 const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 const bitmaps = new Map<string, HTMLCanvasElement>();
 
+/** Each id's bitmap by size, for the spot list it was made under: a mark asked for again is one lookup, no id parsing or key string. */
+const byId = new Map<number, Map<string, HTMLCanvasElement>>();
+let byIdFor: ReadonlySet<string> | null = null;
+
 /** A mark drawn once at `px` device pixels a side (kept for the next frame: a canvas of bubbles draws hundreds a frame). */
 function bitmap(id: string, px: number): HTMLCanvasElement {
+  const spots = spotIds();
+  if (spots !== byIdFor) { byId.clear(); byIdFor = spots; }
+  let sized = byId.get(px);
+  if (!sized) byId.set(px, sized = new Map());
+  const held = sized.get(id);
+  if (held) return held;
   const m = markOf(id), key = `${m.family}|${m.spot}|${px}`;
   let canvas = bitmaps.get(key);
-  if (canvas) return canvas;
+  if (canvas) { sized.set(id, canvas); return canvas; }
   canvas = document.createElement('canvas'); canvas.width = canvas.height = px;
   const ctx = canvas.getContext('2d')!, r = Math.max(1, px * 0.16);
   ctx.fillStyle = m.bg; ctx.beginPath(); ctx.roundRect(0, 0, px, px, r); ctx.fill();
@@ -98,17 +108,18 @@ function bitmap(id: string, px: number): HTMLCanvasElement {
   ctx.font = `700 ${monogramPx(px, m.text)}px ${FONT}`;
   ctx.fillText(m.text, px / 2, px / 2 + px * 0.04);
   if (m.spot) { const s = px * 0.32; ctx.beginPath(); ctx.moveTo(px, px - s); ctx.lineTo(px, px); ctx.lineTo(px - s, px); ctx.closePath(); ctx.fill(); }
-  if (bitmaps.size > 400) bitmaps.clear();
+  if (bitmaps.size > 400) { bitmaps.clear(); byId.clear(); }
   bitmaps.set(key, canvas);
+  (byId.get(px) ?? byId.set(px, new Map()).get(px)!).set(id, canvas);
   return canvas;
 }
 
 /** Where a mark `size` CSS px a side centred on `c` starts: on a whole CSS pixel, which is where `drawVenueMark` puts it. */
 export const markCorner = (c: number, size: number): number => Math.round(c - size / 2);
 
-/** Paint the mark of `id`, `size` CSS px a side, centred on (`cx`, `cy`). */
-export function drawVenueMark(ctx: CanvasRenderingContext2D, id: string, cx: number, cy: number, size: number): void {
-  const dpr = pixelRatio(), px = Math.max(8, Math.round(size * dpr));
+/** Paint the mark of `id`, `size` CSS px a side, centred on (`cx`, `cy`); a painter that knows its pixel ratio passes it (`dpr`). */
+export function drawVenueMark(ctx: CanvasRenderingContext2D, id: string, cx: number, cy: number, size: number, dpr = pixelRatio()): void {
+  const px = Math.max(8, Math.round(size * dpr));
   ctx.drawImage(bitmap(id, px), markCorner(cx, size), markCorner(cy, size), size, size);
 }
 

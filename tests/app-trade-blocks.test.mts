@@ -437,3 +437,26 @@ test('under a size floor the inspector\'s market rows add up to the block that h
   assert.equal(out.partial, true);
   assert.deepEqual([buy, sell], [out.buy, out.sell]);
 });
+
+test('a block read again is read from what it was while nothing it reads changed, and anew after any order counted into it', () => {
+  const ring = new TapeRing(BLOCK), tally = new SecondTally(3600);
+  ring.add(batch(1, [[B, T0, 70_000, 1_000]]), 1, 0);
+  tally.reset(ring, all); while (tally.filling) tally.fill();
+  const r = new BlockReader(); r.tally = tally; r.markets = [B, BS, O]; r.ref = B; r.setVenues(2, venueSlot);
+  let seed = 3;
+  const rand = (): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const out = emptyBlock(2), fresh = emptyBlock(2), now = T0 + 25_000;
+  const sum = (b: typeof out): (number | boolean)[] => [b.buy, b.sell, b.n, b.topBuy.has ? b.topBuy.usd : 0, b.topSell.has ? b.topSell.usd : 0, b.refPx, b.refPrev, b.partial, b.vBuy[0]!, b.vSell[1]!];
+  for (let step = 0; step < 400; step++) {
+    // An order into the first 20 seconds (late ones too), then a few reads, some of a block that did not change.
+    if (rand() < 0.6) {
+      ring.add(batch(step + 2, [[rand() < 0.5 ? B : O, T0 + Math.floor(rand() * 20_000), 70_000 + Math.round(rand() * 10), (rand() < 0.5 ? 1 : -1) * Math.round(1 + rand() * 50_000)]]), 1, 0);
+      tally.update();
+    }
+    const s = T0 / 1000 + Math.floor(rand() * 20), B2 = rand() < 0.8 ? 1 : 5;
+    r.read(s, B2, out, now);
+    const f = new BlockReader(); f.tally = tally; f.markets = r.markets; f.ref = B; f.setVenues(2, venueSlot);
+    f.read(s, B2, fresh, now);
+    assert.deepEqual(sum(out), sum(fresh), `step ${step}`);
+  }
+});

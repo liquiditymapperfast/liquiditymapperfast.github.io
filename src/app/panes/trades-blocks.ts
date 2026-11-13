@@ -1,7 +1,7 @@
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { clock, clockSeconds } from '../format.ts';
-import { fmtUsd } from './trades-inspector.ts';
+import { money } from './trades-inspector.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { replaying } from '../replay/clock.ts';
 import { isPhone } from '../device.ts';
@@ -10,18 +10,32 @@ import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { scaledUsd } from '../coin.ts';
 import { BlockReader, barLength, emptyBlock, fullScale, type Block } from '../trades/blocks.ts';
 import { RowWalker, type Row, type RowKind } from '../trades/rows.ts';
+import { RetainedRows } from './retained-rows.ts';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 const PAD = 8;
 /** A block's row, a folded run of empty blocks, a line where a source ends or a venue is late. */
-const ROW = 48, ROW_PHONE = 56, QUIET = 24, NOTE = 22;
+const ROW = 48, ROW_PHONE = 56, QUIET = 24, NOTE = 24;
+/**
+ * A settled block that is still growing (a slow venue's orders landing after its second) is drawn again at most this often: the forming
+ * block keeps every batch, and the one before it, which grows with nearly every batch for a second or so, at four frames a second.
+ */
+const LATE_REDRAW_MS = 250;
 /** The list's width beside the inspector, and the narrowest inspector worth opening (Sol and Astra, round 2: 367 + 16 + inspector). */
 export const LIST_W = 367, INSPECTOR_MIN = 240;
 export const wideEnough = (w: number): boolean => w >= LIST_W + 16 + INSPECTOR_MIN;
 
 /** What one frame drew, for the pointer and the checks. */
 type Drawn = { kind: 'block'; s: number; y: number; h: number } | { kind: 'quiet'; s: number; e: number; y: number; h: number } | { kind: 'note'; y: number; h: number };
+/**
+ * A row of a frame, laid out before anything is drawn: its signature (everything its pixels depend on) and what draws it. Every height is a
+ * multiple of 8 CSS px, so at the usual pixel ratios (1, 1.25, 1.5, 1.75, 2, 2.625, 3) a row's edges sit on whole device pixels and a frame
+ * can keep its rows (`RetainedRows`).
+ */
+interface Item { sig: string; y: number; h: number; fixed: boolean; kind: 'block' | RowKind | 'end' | 'late'; b: Block | null; from: number; to: number; words: string }
+/** The fonts a block's row uses (made once per device kind) and one digit's width in the time's font. */
+interface RowFonts { phone: boolean; made: boolean; time: string; ref: string; amount: string; over: string; top: string; topWhale: string; dash: string; digit: number }
 
 /** Where a block's columns sit at a list width (CSS px). */
 export function blockColumns(lw: number, phone: boolean): { t: number; amt: number; bars: number; big: number } {
@@ -57,6 +71,16 @@ export class BlockList {
   readonly reader = new BlockReader();
   /** The rows over the blocks (a run of empty ones is one row), shared by the paint and the wheel. */
   readonly #walker = new RowWalker(this.reader);
+  /** The rows kept on the canvas between frames, this frame's rows, and a count bumped by any change the look key cannot see. */
+  readonly rows = new RetainedRows();
+  #items: Item[] = []; #itemPool: Item[] = [];
+  #epoch = 0; #inspectTimer = 0;
+  /** Each block row's signature as drawn last frame (by its start), when it was last drawn anew, and the next frame's; a timer for a late redraw. */
+  #shownSig = new Map<number, { sig: string; at: number; forming: boolean; chosen: boolean }>();
+  #nextSig = new Map<number, { sig: string; at: number; forming: boolean; chosen: boolean }>();
+  #catchUpTimer = 0;
+  /** The time labels of the blocks drawn (a row drawn again keeps its label), under the unit and the epoch they were made for. */
+  #labels = new Map<number, string>(); #labelsKey = '';
   /** The block length in seconds, the venue marks (one id per venue slot), the late venues' names, and the time now (exchange ms). */
   unit = 1;
   venueIds: string[] = [];
@@ -138,8 +162,12 @@ export class BlockList {
     if (!shown) { this.#pointerIn = false; this.#pointer = null; this.onHover(null); this.release(false); return; }
     this.#resize();
   }
-  setPalette(p: Palette): void { this.#palette = p; this.invalidate(); }
+  setPalette(p: Palette): void { this.#palette = p; this.#epoch++; this.invalidate(); }
   invalidate(): void { if (!this.#frame && this.#shown) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#paint(); }); }
+  /** Draw every row again at the next frame (the time zone, the language or a replay changed what a row says). */
+  redrawAll(): void { this.#epoch++; this.invalidate(); }
+  /** The inspector follows the newest settled block after this frame (its page is rebuilt then, not inside the frame that saw the block settle). */
+  #inspectSoon(): void { if (this.#inspectTimer) return; this.#inspectTimer = window.setTimeout(() => { this.#inspectTimer = 0; if (this.#shown) this.onInspect(); }, 0); }
   /** What the last frame drew, for the checks. */
   get snapshot(): { blocks: number; quiet: number; notes: number; held: boolean; top: number | null } {
     return { blocks: this.#drawn.filter(d => d.kind === 'block').length, quiet: this.#drawn.filter(d => d.kind === 'quiet').length, notes: this.#drawn.filter(d => d.kind === 'note').length, held: this.held, top: this.#anchor?.s ?? null };
@@ -219,30 +247,40 @@ export class BlockList {
 
   // ---- drawing --------------------------------------------------------------------------------------------------------------------
 
+  /** A row of this frame (from a pool: a frame allocates nothing once the pool has grown). */
+  #item(kind: Item['kind'], sig: string, y: number, h: number, b: Block | null = null, from = 0, to = 0, words = '', fixed = false): void {
+    const it = this.#itemPool[this.#items.length] ??= { sig: '', y: 0, h: 0, fixed: false, kind: 'block', b: null, from: 0, to: 0, words: '' };
+    it.kind = kind; it.sig = sig; it.y = y; it.h = h; it.b = b; it.from = from; it.to = to; it.words = words; it.fixed = fixed;
+    this.#items.push(it);
+  }
+
+  /**
+   * A frame in two passes: the rows are laid out from the walker (each block read, each row's signature made), then `RetainedRows` says
+   * which to draw: a row already on the canvas, unchanged and moved by whole device pixels, is shifted with the canvas instead (a settled
+   * block does not change, so a frame at a new batch draws the forming block and the one before it; a new second shifts the list a row).
+   */
   #paint(): void {
     const ctx = this.#ctx, w = this.#w, h = this.#h, p = this.#palette, dpr = this.#dpr;
     if (!this.#shown || w < 40 || h < 20) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = p.panel; ctx.fillRect(0, 0, w, h);
     const drawn: Drawn[] = []; this.#drawn = drawn;
+    this.#items.length = 0;
     const phone = isPhone(), rowH = this.#rowH(), c = blockColumns(w, phone), B = this.unit;
     const full = scaledUsd(fullScale(B)), barW = c.bars - 10;
     const newest = this.newestStart(), oldest = this.reader.oldestSec();
-    // The newest settled block moved on: the inspector follows it (once a block, not every frame).
+    // The newest settled block moved on: the inspector follows it (once a block, not every frame), after this frame.
     const settled = newest - B;
-    if (settled !== this.#lastNewest) { this.#lastNewest = settled; if (this.selected === null) this.onInspect(); }
-    let y = 0;
-    if (this.late.length) {
-      ctx.fillStyle = mixLate(p); ctx.fillRect(0, 0, w, NOTE); ctx.fillStyle = p.line; ctx.fillRect(0, NOTE - 1, w, 1);
-      ctx.font = `11px ${SANS}`; ctx.fillStyle = p.text; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      fitText(ctx, w < 300 ? t('{venues} delayed', { venues: this.late.join(', ') }) : t('{venues} delayed: the last minute may still grow', { venues: this.late.join(', ') }), PAD, NOTE / 2, w - 2 * PAD);
-      drawn.push({ kind: 'note', y: 0, h: NOTE }); y = NOTE;
-    }
+    if (settled !== this.#lastNewest) { this.#lastNewest = settled; if (this.selected === null) this.#inspectSoon(); }
+    let y = this.late.length ? NOTE : 0;
     const top = this.#anchor ? this.#anchor.s : newest;
+    // Held: the offset in whole CSS pixels (a row's lines and marks are placed on whole CSS pixels from its top, so a row moved by a whole
+    // number of them draws as it was); a scroll shifts the kept rows where that is also whole device pixels, else draws the frame whole.
     y -= this.#anchor ? Math.round(this.#anchor.offset) : 0;
     let poolAt = 0;
     const take = (): Block => { while (this.#pool.length <= poolAt) this.#pool.push(emptyBlock(this.reader.venues)); const b = this.#pool[poolAt++]!; if (b.vBuy.length !== this.reader.venues) { b.vBuy = new Float64Array(this.reader.venues); b.vSell = new Float64Array(this.reader.venues); } return b; };
     if (!Number.isFinite(oldest) && !this.#anchor) {
+      this.rows.reset();
+      ctx.fillStyle = p.panel; ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = p.muted; ctx.font = `12px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(t('Waiting for live orders'), w / 2, Math.min(h / 2, 60));
       return;
@@ -250,15 +288,15 @@ export class BlockList {
     // The rows from the top one down (`trades/rows.ts`): a block, or a run of empty blocks of one kind as one line saying why. The list ends
     // at the oldest second a source knows or at the first block nothing is known of (a market's stray older second, a feed's last trade
     // sent on connecting, does not make the stretch between known).
-    const rows = this.#rows(), now = this.now();
+    const rows = this.#rows(), now = this.now(), nowMs = performance.now();
     let b = take(), row = rows.rowFrom(top, B, now, oldest, b), bottom = top, ended = !row;
     // Held beyond where the list now ends (the sources moved its end up): the list lets go and is drawn from the newest. A block that is
     // unknown only for a moment (a flow reload) keeps the place (the list ends there meanwhile).
     if (!row && this.#anchor && this.#anchor.s + B <= oldest) { this.release(false); this.#paint(); return; }
     let lo = Infinity, hi = -Infinity;
     while (row && y < h) {
-      if (row.kind === 'block') { this.#paintBlock(ctx, b, y, rowH, w, c, full, barW, p); drawn.push({ kind: 'block', s: row.top, y, h: rowH }); y += rowH; b = take(); lo = Math.min(lo, row.top); hi = Math.max(hi, row.top); }
-      else { this.#paintQuiet(ctx, y, w, row.bottom, row.top + B, p, row.kind); drawn.push({ kind: 'quiet', s: row.top, e: row.bottom, y, h: QUIET }); y += QUIET; }
+      if (row.kind === 'block') { const chosen = this.selected === b.s; this.#item('block', this.#settleSig(row.top, blockSig(b, chosen), b.forming, chosen, nowMs), y, rowH, b); drawn.push({ kind: 'block', s: row.top, y, h: rowH }); y += rowH; b = take(); lo = Math.min(lo, row.top); hi = Math.max(hi, row.top); }
+      else { this.#item(row.kind, `${row.kind}|${row.bottom}|${row.top + B}`, y, QUIET, null, row.bottom, row.top + B); drawn.push({ kind: 'quiet', s: row.top, e: row.bottom, y, h: QUIET }); y += QUIET; }
       bottom = row.bottom;
       const next = rows.below(row, B, now, oldest, b);
       if (!next) { ended = true; break; }
@@ -269,8 +307,52 @@ export class BlockList {
     // Where the list ends: at the oldest second a source knows, or where nothing is known below the last row (the size's history starts there).
     if (y < h && ended) {
       const words = this.endNote(Math.max(bottom, oldest));
-      if (words) { this.#paintEnd(ctx, y, w, words, p); drawn.push({ kind: 'note', y, h: NOTE }); }
+      if (words) { this.#item('end', `e|${words}`, y, NOTE, null, 0, 0, words); drawn.push({ kind: 'note', y, h: NOTE }); y += NOTE; }
     }
+    // The late venues' banner over the top of the list, drawn last (a row scrolled under it stays under it).
+    if (this.late.length) {
+      const words = w < 300 ? t('{venues} delayed', { venues: this.late.join(', ') }) : t('{venues} delayed: the last minute may still grow', { venues: this.late.join(', ') });
+      this.#item('late', `l|${words}`, 0, NOTE, null, 0, 0, words, true);
+      drawn.push({ kind: 'note', y: 0, h: NOTE });
+    }
+    [this.#shownSig, this.#nextSig] = [this.#nextSig, this.#shownSig]; this.#nextSig.clear();
+    // What the rows' pixels depend on beyond their own signatures: any change draws the whole frame.
+    const look = `${w}|${h}|${dpr}|${phone}|${B}|${this.venueIds.join(',')}|${this.whale}|${this.reader.version}|${this.reader.flowVersion()}|${this.#epoch}|${document.documentElement.lang}`;
+    const items = this.#items, draw = this.rows.plan(ctx, look, items, dpr, h, p.panel, Math.min(h, Math.max(y, this.late.length ? NOTE : 0)));
+    // Rows fill to the canvas's own width in device pixels (a width like 366 px at 1.25 is 457.5 of them: a fill to 366 would leave the
+    // last column half covered, blended with whatever was under it, which a kept frame and a whole one differ in).
+    const fw = this.#canvas.width / dpr;
+    for (let i = 0; i < items.length; i++) {
+      if (!draw[i]) continue;
+      const it = items[i]!;
+      if (it.kind === 'block') this.#paintBlock(ctx, it.b!, it.y, it.h, fw, c, full, barW, p);
+      else if (it.kind === 'end') this.#paintEnd(ctx, it.y, fw, it.words, p);
+      else if (it.kind === 'late') this.#paintLate(ctx, fw, it.words, p);
+      else this.#paintQuiet(ctx, it.y, fw, it.from, it.to, p, it.kind);
+    }
+  }
+  /**
+   * The signature a block row is drawn under this frame: its own, unless it is a settled block that changed within `LATE_REDRAW_MS` of
+   * its last drawing (a late order), when the last one is kept a little longer and a redraw is due when the wait ends. A block that
+   * stopped forming or was chosen or let go is drawn at once.
+   */
+  #settleSig(s: number, sig: string, forming: boolean, chosen: boolean, at: number): string {
+    const prev = this.#shownSig.get(s);
+    let use = sig, drawnAt = at;
+    if (prev) {
+      if (prev.sig === sig) drawnAt = prev.at;
+      else if (!forming && !prev.forming && prev.chosen === chosen && at - prev.at < LATE_REDRAW_MS) {
+        use = prev.sig; drawnAt = prev.at;
+        if (!this.#catchUpTimer) this.#catchUpTimer = window.setTimeout(() => { this.#catchUpTimer = 0; this.invalidate(); }, LATE_REDRAW_MS - (at - prev.at) + 5);
+      }
+    }
+    this.#nextSig.set(s, { sig: use, at: drawnAt, forming, chosen });
+    return use;
+  }
+  #paintLate(ctx: CanvasRenderingContext2D, w: number, words: string, p: Palette): void {
+    ctx.fillStyle = mixLate(p); ctx.fillRect(0, 0, w, NOTE); ctx.fillStyle = p.line; ctx.fillRect(0, NOTE - 1, w, 1);
+    ctx.font = `11px ${SANS}`; ctx.fillStyle = p.text; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    fitText(ctx, words, PAD, NOTE / 2, w - 2 * PAD);
   }
 
   /** A folded run of empty blocks: no orders, nobody recorded it, or orders may be missing there (a reconnect). */
@@ -283,72 +365,119 @@ export class BlockList {
     fitText(ctx, kind === 'unrecorded' ? t('Not recorded {from}–{to}', at) : kind === 'missing' ? t('Orders may be missing {from}–{to}', at) : t('No orders {from}–{to}', at), PAD, y + QUIET / 2, w - 2 * PAD);
   }
   #paintEnd(ctx: CanvasRenderingContext2D, y: number, w: number, words: string, p: Palette): void {
-    ctx.strokeStyle = p.line; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(PAD, y + 0.5); ctx.lineTo(w - PAD, y + 0.5); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = p.panel; ctx.fillRect(0, y, w, NOTE);
+    ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(PAD, y + 0.5); ctx.lineTo(w - PAD, y + 0.5); ctx.stroke(); ctx.setLineDash([]);
     ctx.font = `italic 11px ${SANS}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     fitText(ctx, words, PAD, y + NOTE / 2 + 1, w - 2 * PAD);
   }
 
+  /** The fonts a block's row is drawn with, made once (the same string objects every row: a canvas given the font it has skips it). */
+  #fonts: RowFonts = { phone: false, made: false, time: '', ref: '', amount: '', over: '', top: '', topWhale: '', dash: '', digit: 0 };
+  #rowFonts(ctx: CanvasRenderingContext2D, phone: boolean): RowFonts {
+    const f = this.#fonts;
+    if (!f.made || f.phone !== phone) {
+      f.made = true; f.phone = phone;
+      f.time = `${phone ? 12 : 11}px ${MONO}`; f.ref = `600 ${phone ? 12.5 : 11.5}px ${MONO}`; f.amount = `600 ${phone ? 14 : 13}px ${MONO}`;
+      f.over = `700 12px ${MONO}`; f.top = `600 ${phone ? 13 : 12}px ${MONO}`; f.topWhale = `700 ${phone ? 13 : 12}px ${MONO}`; f.dash = `11px ${MONO}`;
+      // A monospace time: its width is its length times one digit's (the forming block's dot sits after it).
+      ctx.font = f.time; f.digit = ctx.measureText('0').width;
+    }
+    return f;
+  }
+
   #paintBlock(ctx: CanvasRenderingContext2D, b: Block, y: number, h: number, w: number, c: ReturnType<typeof blockColumns>, full: number, barW: number, p: Palette): void {
-    const chosen = this.selected === b.s, phone = h === ROW_PHONE;
+    const chosen = this.selected === b.s, phone = h === ROW_PHONE, f = this.#rowFonts(ctx, phone);
     ctx.fillStyle = chosen ? mixHex(p.panel, p.ui ?? p.text, 0.12) : p.panel; ctx.fillRect(0, y, w, h);
     ctx.fillStyle = p.line; ctx.fillRect(0, y + h - 1, w, 1);
     if (chosen) { ctx.strokeStyle = p.ui ?? p.text; ctx.lineWidth = 1.5; ctx.strokeRect(1, y + 1, w - 2, h - 2); }
     const l1 = Math.round(y + h * 0.31), l2 = Math.round(y + h * 0.71);
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     // The time (the forming block in full ink, with a dot), and under it the reference market's VWAP change.
-    ctx.font = `${phone ? 12 : 11}px ${MONO}`; ctx.fillStyle = b.forming ? p.text : p.muted;
+    ctx.font = f.time; ctx.fillStyle = b.forming ? p.text : p.muted;
     const time = this.#timeLabel(b.s, c.t < 60);
     ctx.fillText(time, PAD, l1);
-    if (b.forming) { ctx.fillStyle = p.ui ?? p.text; ctx.beginPath(); ctx.arc(PAD + ctx.measureText(time).width + 5, l1, 2.5, 0, Math.PI * 2); ctx.fill(); }
+    if (b.forming) { ctx.fillStyle = p.ui ?? p.text; ctx.beginPath(); ctx.arc(PAD + time.length * f.digit + 5, l1, 2.5, 0, Math.PI * 2); ctx.fill(); }
     const d = Number.isFinite(b.refPx) && Number.isFinite(b.refPrev) ? b.refPx - b.refPrev : NaN, dp = this.unit >= 60 ? 0 : 1;
-    ctx.font = `600 ${phone ? 12.5 : 11.5}px ${MONO}`;
+    ctx.font = f.ref;
     if (Number.isFinite(d)) { const r = Number(Math.abs(d).toFixed(dp)); ctx.fillStyle = r === 0 ? p.muted : d > 0 ? p.candleUp : p.candleDown; ctx.fillText(r === 0 ? (0).toFixed(dp) : `${d > 0 ? '+' : '−'}${r.toFixed(dp)}`, PAD, l2); }
     else { ctx.fillStyle = p.muted; ctx.fillText('–', PAD, l2); }
     const xAmt = PAD + c.t, xBars = xAmt + c.amt, xBig = xBars + c.bars + 6;
-    for (const [line, side] of [[l1, 0], [l2, 1]] as const) {
-      const buy = side === 0, v = buy ? b.buy : b.sell, col = buy ? p.candleUp : p.candleDown;
-      ctx.font = `600 ${phone ? 14 : 13}px ${MONO}`; ctx.fillStyle = col; ctx.textAlign = 'right';
-      ctx.fillText(`${buy ? '▲' : '▼'} $${fmtUsd(v)}`, xBars - 7, line);
-      ctx.fillStyle = p.line; ctx.fillRect(xBars, line - 7, 1, 14);
-      const len = barLength(v, full, barW);
-      if (len > 0) this.#pieces(ctx, xBars + 1, line - 6, 12, len, buy ? b.vBuy : b.vSell, v, col);
-      if (v > full) { ctx.fillStyle = col; ctx.font = `700 12px ${MONO}`; ctx.textAlign = 'left'; ctx.fillText('›', xBars + barW + 3, line); }
-      if (c.big) {
-        const o = buy ? b.topBuy : b.topSell;
+    // Both sides' amounts in one font, then their bars, then both largest orders.
+    ctx.font = f.amount; ctx.textAlign = 'right';
+    ctx.fillStyle = p.candleUp; ctx.fillText(`▲ ${money(b.buy)}`, xBars - 7, l1);
+    ctx.fillStyle = p.candleDown; ctx.fillText(`▼ ${money(b.sell)}`, xBars - 7, l2);
+    ctx.fillStyle = p.line; ctx.fillRect(xBars, l1 - 7, 1, 14); ctx.fillRect(xBars, l2 - 7, 1, 14);
+    let over = false;
+    for (let side = 0; side < 2; side++) {
+      const buy = side === 0, v = buy ? b.buy : b.sell, line = buy ? l1 : l2, len = barLength(v, full, barW);
+      if (len > 0) this.#pieces(ctx, xBars + 1, line - 6, 12, len, buy ? b.vBuy : b.vSell, v, buy ? p.candleUp : p.candleDown);
+      if (v > full) over = true;
+    }
+    if (over) {
+      ctx.font = f.over; ctx.textAlign = 'left';
+      if (b.buy > full) { ctx.fillStyle = p.candleUp; ctx.fillText('›', xBars + barW + 3, l1); }
+      if (b.sell > full) { ctx.fillStyle = p.candleDown; ctx.fillText('›', xBars + barW + 3, l2); }
+    }
+    if (c.big) {
+      ctx.textAlign = 'left';
+      for (let side = 0; side < 2; side++) {
+        const o = side === 0 ? b.topBuy : b.topSell, line = side === 0 ? l1 : l2;
         if (o.has) {
-          drawVenueMark(ctx, o.id, xBig + 7, line, phone ? 14 : 13);
-          ctx.font = `${o.usd >= this.whale ? 700 : 600} ${phone ? 13 : 12}px ${MONO}`; ctx.fillStyle = p.text; ctx.textAlign = 'left';
-          ctx.fillText(`$${fmtUsd(o.usd)}`, xBig + 18, line);
-        } else { ctx.font = `11px ${MONO}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText('–', xBig + 4, line); }
+          drawVenueMark(ctx, o.id, xBig + 7, line, phone ? 14 : 13, this.#dpr);
+          ctx.font = o.usd >= this.whale ? f.topWhale : f.top; ctx.fillStyle = p.text;
+          ctx.fillText(money(o.usd), xBig + 18, line);
+        } else { ctx.font = f.dash; ctx.fillStyle = p.muted; ctx.fillText('–', xBig + 4, line); }
       }
     }
-    if (b.partial) { ctx.strokeStyle = p.muted; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, y + h - 0.5); ctx.lineTo(w, y + h - 0.5); ctx.stroke(); ctx.setLineDash([]); }
+    // The dashed foot in its own width (a chosen row before it in the frame left 1.5).
+    if (b.partial) { ctx.strokeStyle = p.muted; ctx.lineWidth = 1; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, y + h - 0.5); ctx.lineTo(w, y + h - 0.5); ctx.stroke(); ctx.setLineDash([]); }
   }
 
   /** A side's bar: the venues' pieces in slot order, each in proportion to its share of the side, a venue's mark inside its piece where it fits. */
   #pieces(ctx: CanvasRenderingContext2D, x: number, y: number, hgt: number, len: number, parts: Float64Array, total: number, col: string): void {
+    if (!(total > 0)) return;
     ctx.fillStyle = col; ctx.globalAlpha = 0.85;
-    let at = 0;
-    const marks: [number, number][] = [];
+    let at = 0, marked = false;
     for (let i = 0; i < parts.length; i++) {
       const v = parts[i]!;
-      if (!(v > 0) || !(total > 0)) continue;
+      if (!(v > 0)) continue;
       const seg = len * v / total;
       if (seg >= 0.6) ctx.fillRect(x + at, y, Math.max(0.6, seg - (seg > 3 ? 1 : 0)), hgt);
-      if (seg >= 17) marks.push([i, x + at + seg / 2 - 0.5]);
+      if (seg >= 17) marked = true;
       at += seg;
     }
     if (len >= 1 && at < 0.6) ctx.fillRect(x, y, 1, hgt);
     ctx.globalAlpha = 1;
-    for (const [i, cx] of marks) { const id = this.venueIds[i]; if (id) drawVenueMark(ctx, id, cx, y + hgt / 2, Math.min(11, hgt - 2)); }
+    if (!marked) return;
+    // The marks over the pieces, after them (the same walk again: no list made per bar).
+    at = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const v = parts[i]!;
+      if (!(v > 0)) continue;
+      const seg = len * v / total;
+      if (seg >= 17) { const id = this.venueIds[i]; if (id) drawVenueMark(ctx, id, x + at + seg / 2 - 0.5, y + hgt / 2, Math.min(11, hgt - 2), this.#dpr); }
+      at += seg;
+    }
   }
 
   #timeLabel(s: number, short: boolean): string {
-    const text = this.unit >= 60 ? clock(s * 1000) : clockSeconds(s * 1000);
-    return short && this.unit < 60 ? text.slice(-5) : text;
+    const key = `${this.unit}|${short}|${this.#epoch}`;
+    if (key !== this.#labelsKey || this.#labels.size > 512) { this.#labelsKey = key; this.#labels.clear(); }
+    let label = this.#labels.get(s);
+    if (label === undefined) {
+      const text = this.unit >= 60 ? clock(s * 1000) : clockSeconds(s * 1000);
+      label = short && this.unit < 60 ? text.slice(-5) : text;
+      this.#labels.set(s, label);
+    }
+    return label;
   }
 }
 
+/** Everything a block's row shows, as a key: a settled block keeps it, so its row is shifted with the canvas instead of drawn again. */
+function blockSig(b: Block, chosen: boolean): string {
+  const tb = b.topBuy, ts = b.topSell;
+  return `b|${b.s}|${b.B}|${b.forming ? 1 : 0}${chosen ? 1 : 0}${b.partial ? 1 : 0}|${b.buy}|${b.sell}|${b.refPx}|${b.refPrev}|${tb.has ? `${tb.usd}|${tb.id}` : '-'}|${ts.has ? `${ts.usd}|${ts.id}` : '-'}`;
+}
 /** Text cut with an ellipsis to fit `max` px (one measure per cut step: only short notes go through it). */
 function fitText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, max: number): void {
   let s = text;

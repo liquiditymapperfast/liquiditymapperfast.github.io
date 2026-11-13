@@ -45,6 +45,8 @@ export interface InspectorInput {
 
 /** Dollars as Trades writes them: the page's way, with cents under a dollar (a thin coin's orders are $0.30, not $0; under a cent, <0.01). */
 export const fmtUsd = (v: number): string => v === 0 || Math.abs(v) >= 1 ? pageUsd(v) : Math.abs(v) < 0.005 ? '<0.01' : v.toFixed(2);
+/** A positive amount with its dollar sign, under half a cent as "<$0.01" (not "$<0.01"). */
+export const money = (v: number): string => v > 0 && v < 0.005 ? '<$0.01' : `$${fmtUsd(v)}`;
 /** A market's name as the inspector writes it: the exchange, and "spot" for a spot market. */
 export const marketName = (id: string): string => markOf(id).spot ? t('{venue} spot', { venue: venueLabel(markOf(id).family) }) : venueLabel(id);
 /** The reference market's name: its kind said either way ("Binance perpetual", "Coinbase spot"), since its price is the block's price. */
@@ -84,10 +86,10 @@ export function inspectorModel(i: InspectorInput): InspectorModel {
   return {
     title, sub: parts.join(' · '), ref, moves: movesText,
     // The markets that bought or sold within the block's filter (one that traded only under a size floor moves the median, not the table).
-    markets: i.rows.filter(r => r.buy > 0 || r.sell > 0).map(r => ({ id: r.id, name: marketName(r.id), buy: `$${fmtUsd(r.buy)}`, sell: `$${fmtUsd(r.sell)}` })),
+    markets: i.rows.filter(r => r.buy > 0 || r.sell > 0).map(r => ({ id: r.id, name: marketName(r.id), buy: money(r.buy), sell: money(r.sell) })),
     notes,
     largestTitle: recorded ? t('Largest recorded orders (from ${usd})', { usd: fmtUsd(i.recordedFloor) }) : t('Largest orders'),
-    largest: i.largest.map(o => ({ id: o.id, side: o.usd > 0 ? 'buy' as const : 'sell' as const, usd: `${o.usd > 0 ? '▲' : '▼'} $${fmtUsd(Math.abs(o.usd))}`, detail: `${clockSeconds(o.t)}.${String(Math.round(((o.t % 1000) + 1000) % 1000)).padStart(3, '0')}  ${fmtPrice(o.price)}  ${t('{bp} bp', { bp: reachBp(o).toFixed(1) })}` })),
+    largest: i.largest.map(o => ({ id: o.id, side: o.usd > 0 ? 'buy' as const : 'sell' as const, usd: `${o.usd > 0 ? '▲' : '▼'} ${money(Math.abs(o.usd))}`, detail: `${clockSeconds(o.t)}.${String(Math.round(((o.t % 1000) + 1000) % 1000)).padStart(3, '0')}  ${fmtPrice(o.price)}  ${t('{bp} bp', { bp: reachBp(o).toFixed(1) })}` })),
   };
 }
 

@@ -1,6 +1,27 @@
 import { language, t } from './i18n.ts';
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
-export const usd = (value: number): string => !Number.isFinite(value) ? '–' : value === 0 ? '0' : Math.abs(value) < 1000 ? value.toFixed(0) : compact.format(value);
+const UNITS = ['K', 'M', 'B', 'T'] as const;
+/**
+ * `compact.format` for |value| >= 1000 without Intl (a list paints hundreds of amounts a second, and Intl's compact form costs several
+ * microseconds each): the value in thousands, millions, billions or trillions to one decimal, rounded half away from zero, "1.0" written
+ * "1", and a value that rounds up to 1,000 of a unit written in the next. Where the tenths sit within a hair of a tie, the division by a
+ * power of ten can round where Intl's exact decimal would not: those few go to Intl. Checked against Intl in tests/app-format-fast.test.mts.
+ */
+export function compactUsd(value: number): string {
+  const a = Math.abs(value);
+  let u = a >= 1e12 ? 3 : a >= 1e9 ? 2 : a >= 1e6 ? 1 : 0;
+  let tenths = a / 10 ** (3 * u + 2);
+  if (Math.abs(tenths - Math.floor(tenths) - 0.5) < 1e-7) return compact.format(value);
+  let r = Math.round(tenths);
+  if (r >= 10_000 && u < 3) {
+    u++; tenths = a / 10 ** (3 * u + 2);
+    if (Math.abs(tenths - Math.floor(tenths) - 0.5) < 1e-7) return compact.format(value);
+    r = Math.round(tenths);
+  }
+  const whole = Math.floor(r / 10), d = r - whole * 10;
+  return `${value < 0 ? '-' : ''}${whole}${d ? `.${d}` : ''}${UNITS[u]}`;
+}
+export const usd = (value: number): string => !Number.isFinite(value) ? '–' : value === 0 ? '0' : Math.abs(value) < 1000 ? value.toFixed(0) : compactUsd(value);
 
 /** One formatter per number of decimals: `toLocaleString` builds a new Intl object on every call, which is slow enough to show when a frame prints hundreds of prices. */
 const fixed: Intl.NumberFormat[] = [];
