@@ -1034,7 +1034,7 @@ export class LtPane extends TimePane {
   readonly #tableBox = document.createElement('input');
   /** Each market's figures at the window read, on the pane (pane-table.ts): who holds the liquidity the lines add up, and which way each leans. */
   readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() });
-  /** The markets in the table's order (`ltRank`: the most liquidity over the windows held first), worked out once per series. */
+  /** The markets in the table's order (`ltRank`: the most liquidity on average over the windows each holds first), worked out once per series. */
   #rank: { series: object; n: number; order: number[] } | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'lt');
@@ -1227,7 +1227,7 @@ export class LtPane extends TimePane {
       const rows = ltRowsAt(s, bookNames(s.ids, state.markets), this.#rank.order, at, tableRowCap(ph));
       const foot = `${s.estimated ? '≈ ' : ''}${state.hover ? clock(s.times[at]!, true) : `${t('newest')} ${clock(s.times[at]!)}`}`;
       // Per level is what the series was worked out with (its parts carry the weights), not the setting, which a new series may still be on its way for.
-      const heads = parts.wBid ? ['', t('Bid'), t('Ask'), t('imb')] : ['', t('Bid'), t('Ask'), t('imb'), t('Share')];
+      const heads = ltHeads(parts);
       if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads, minCols: 3, focus: -1, foot, rows: ltTableRows(rows, p) })?.plate) this.#lines = null;
     }
   }
@@ -1237,21 +1237,27 @@ export class LtPane extends TimePane {
 export interface LtRow { name: string; bid: number; ask: number; share: number | null }
 
 /**
- * The markets of a series' parts in the table's order: the most liquidity over the windows held first (`n` of them: a replay cuts the rest), so
- * the order barely moves as the series is read again every second or two (the newest window alone swapped markets of about the same size);
- * a market with nothing in any of them is left out.
+ * The markets of a series' parts in the table's order: the most liquidity on average over the windows each holds of the `n` read (a replay cuts
+ * the rest) first, so the order barely moves as the series is read again every second or two (the newest window alone swapped markets of about
+ * the same size), and a market recorded over part of the view is judged by its size there, not put below the rest for the windows it lacks; a
+ * market with nothing in any of them is left out.
  */
 export function ltRank(parts: LtParts, windows: number, owners: number, n: number): number[] {
-  const held = new Float64Array(owners).fill(-1);
+  const mean = new Float64Array(owners).fill(-1);
   for (let m = 0; m < owners; m++) {
+    let sum = 0, count = 0;
     for (let j = 0; j < n; j++) {
       const b = parts.bid[m * windows + j]!, a = parts.ask[m * windows + j]!;
       if (Number.isNaN(b) || Number.isNaN(a)) continue;
-      held[m] = Math.max(held[m]!, 0) + b + a;
+      sum += b + a; count++;
     }
+    if (count) mean[m] = sum / count;
   }
-  return Array.from({ length: owners }, (_, m) => m).filter(m => held[m]! >= 0).sort((a, b) => held[b]! - held[a]! || a - b);
+  return Array.from({ length: owners }, (_, m) => m).filter(m => mean[m]! >= 0).sort((a, b) => mean[b]! - mean[a]! || a - b);
 }
+
+/** The Liquidity Tracker table's heads: no share in the Per level mode, which is the series' own (its parts carry the weights), as in `ltRowsAt`. */
+export const ltHeads = (parts: LtParts): string[] => (parts.wBid ? ['', t('Bid'), t('Ask'), t('imb')] : ['', t('Bid'), t('Ask'), t('imb'), t('Share')]);
 
 /**
  * The table's rows at window `k`: the markets in `order` that have something in it, as many as `cap`, the rest added up in the last row (a

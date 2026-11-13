@@ -4,7 +4,7 @@ import { PaneTable, paintTable, placeTable, type TableCell, type TableRoom, type
 import { fundingAt, type FundingNow, type FundingRow } from '../src/app/funding.ts';
 import { fundingTableRows } from '../src/app/panes/funding-pane.ts';
 import { lsTableRows } from '../src/app/panes/ls-pane.ts';
-import { bookNames, ltRank, ltRowsAt, ltTableRows, oiTableRows } from '../src/app/panes/lower-panes.ts';
+import { bookNames, ltHeads, ltRank, ltRowsAt, ltTableRows, oiTableRows } from '../src/app/panes/lower-panes.ts';
 import type { LtParts } from '../src/app/lt.ts';
 import { deltaTableRows } from '../src/app/panes/delta-pane.ts';
 import { tableRowCap } from '../src/app/panes/pane-table.ts';
@@ -228,10 +228,13 @@ function ltSeriesOf(rows: number[][][], weights?: number[][][]): { times: Float6
   return { times: Float64Array.from({ length: windows }, (_, k) => k * MIN), bid, ask, parts };
 }
 
-test('the Liquidity Tracker table\'s order: the most liquidity over the windows held, the newest window alone changing nothing much, a market with none left out', () => {
+test('the Liquidity Tracker table\'s order: the most liquidity on average over the windows each holds, the newest window alone changing nothing much, a market with none left out', () => {
   // Market 1 is a little larger in the newest window, market 0 over the three: market 0 first. Market 2 has nothing at all.
   const s = ltSeriesOf([[[50, 50], [50, 50], [40, 40]], [[30, 30], [30, 30], [45, 45]], [[NaN, NaN], [NaN, NaN], [NaN, NaN]]]);
   assert.deepEqual(ltRank(s.parts, 3, 3, 3), [0, 1]);
+  // Market 1 recorded over the last window only, twice market 0's size there: it is not put below for the windows it lacks.
+  const late = ltSeriesOf([[[10, 10], [10, 10], [10, 10]], [[NaN, NaN], [NaN, NaN], [20, 20]]]);
+  assert.deepEqual(ltRank(late.parts, 3, 2, 3), [1, 0]);
   assert.deepEqual(ltRank(s.parts, 3, 3, 1), [0, 1], 'a replay cut to the first window ranks on that window alone');
   const tie = ltSeriesOf([[[10, 10]], [[10, 10]]]);
   assert.deepEqual(ltRank(tie.parts, 1, 2, 1), [0, 1], 'equal ones keep the markets\' order');
@@ -251,7 +254,8 @@ test('a Liquidity Tracker window that reads nothing (a size filter no bin passes
   const s = ltSeriesOf([[[0, 0]], [[0, 0]], [[0, 0]]]);
   const rows = ltRowsAt(s, ['A', 'B', 'C'], ltRank(s.parts, 1, 3, 1), 0, 2);
   assert.deepEqual(rows.map(r => r.share), [0, 0], 'a share of the empty lines is 0, not missing');
-  const heads = ['', 'Bid', 'Ask', 'imb', 'Share'], cells = ltTableRows(rows, PALETTE);
+  const heads = ltHeads(s.parts), cells = ltTableRows(rows, PALETTE);
+  assert.equal(heads.length, 5);
   assert.ok(cells.every(r => r.length === heads.length), 'every row has the heads\' columns');
   const ctx = { measureText: (t: string) => ({ width: measure(t) }), fillText: () => undefined, fillRect: () => undefined, strokeRect: () => undefined } as unknown as CanvasRenderingContext2D;
   const spec = { heads, rows: cells, minCols: 3, foot: 'newest 00:00', focus: -1 };
@@ -264,7 +268,7 @@ test('the Per level mode is the series\' own: each market\'s average, the rest p
   const s = ltSeriesOf([[[400, 50]], [[600, 10]], [[90, 30]]], [[[2, 1]], [[1, 1]], [[3, 2]]]);
   const rows = ltRowsAt(s, ['A', 'B', 'C'], [0, 1, 2], 0, 2);
   assert.deepEqual(rows.map(r => [r.name, r.bid, r.ask, r.share]), [['A', 200, 50, null], ['2 others', 690 / 4, 40 / 3, null]]);
-  assert.ok(ltTableRows(rows, PALETTE).every(r => r.length === 4), 'four columns, as its heads have');
+  assert.ok(ltTableRows(rows, PALETTE).every(r => r.length === ltHeads(s.parts).length && r.length === 4), 'four columns, as its heads have');
   const plain = ltSeriesOf([[[400, 50]], [[600, 10]]]);
   assert.ok(ltRowsAt(plain, ['A', 'B'], [0, 1], 0, 2).every(r => r.share !== null), 'without weights: a share on every row, whatever the setting says meanwhile');
 });

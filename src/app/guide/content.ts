@@ -385,7 +385,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: '**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.' },
       { t: 'p', text: 'A level counts fully at the touch and half as much for every half-life further away, in basis points, so thin and distant orders barely move the line. Switch the view to imbalance for one line between −100% and +100%. The options set the half-life, the smallest and largest bin that counts, and whether to average per level.' },
-      { t: 'p', text: 'Its **table** reads each exchange at the pointer\'s time, or the newest: its weighted bids and asks, which way it leans (imbalance) and its share of the two lines, so you can see where the liquidity sits. The largest by their newest reading come first.' },
+      { t: 'p', text: 'Its **table** reads each exchange at the pointer\'s time, or the newest: its weighted bids and asks, which way it leans (imbalance) and its share of the two lines, so you can see where the liquidity sits. Those with the most liquidity on average over the chart in view come first.' },
     ],
   },
   {

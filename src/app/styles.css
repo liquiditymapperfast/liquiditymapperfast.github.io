@@ -493,8 +493,8 @@ html[data-layout="desktop"] .pane-head.folding > .tune-btn { display: inline-gri
 html[data-layout="desktop"] .pane-head.folding > .tune-btn > svg { width: 15px; height: 15px; }
 html[data-layout="desktop"] .pane-head.tune-measuring { width: max-content !important; flex-wrap: nowrap !important; }
 html[data-layout="desktop"] .pane-head.tune-measuring > .readout { display: none !important; }
-.panel .tune-panel > .ctl { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin: 0; border-top: 1px solid var(--line); color: var(--text); }
-.panel .tune-panel > .ctl:first-child { border-top: 0; }
+.panel .tune-panel > .ctl { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin: 0; color: var(--text); }
+.panel .tune-panel > .ctl:not([hidden]) ~ .ctl:not([hidden]) { border-top: 1px solid var(--line); }
 .panel .tune-panel > .ctl:has(> input[type=checkbox]) { justify-content: flex-start; gap: 8px; }
 .panel .tune-panel > .ctl-group { justify-content: flex-start; }
 .panel .tune-panel > [hidden] { display: none; }
