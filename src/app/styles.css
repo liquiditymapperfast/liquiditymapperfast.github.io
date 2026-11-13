@@ -228,7 +228,7 @@ button.on { background: var(--text); color: var(--bg); border-color: var(--text)
 .statusbar .update-notice button.notice-close { width: 18px; height: 16px; --cross: 8px; }
 .venue-list .blocked { color: var(--ask); }
 .seg.scope.inert { opacity: .6; }
-.sheet .seg:is(.scope, .zone-seg) button.on { background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
+:where(.sheet) .seg:is(.scope, .zone-seg) button.on { background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
 /* In the top bar, Both / Spot / Perp lights as every chosen button of the bar does, in the theme's own way (Karl, 2026-11-13: it stayed the same blue in every
    theme beside the timeframes and the panels' buttons, which follow it); the phone's Settings keeps its segments filled, as a panel's are. */
 
@@ -734,15 +734,17 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
 /* A field of 16 px or more is not zoomed in on by an iPhone. */
 @media (max-width: 860px), (pointer: coarse) { .guide-q { height: 36px; font-size: 16px; } .guide-q-x { top: 17px; } }
 @media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } .guide-article .flash { animation: none; background: color-mix(in srgb, var(--ui) 20%, transparent); } }
-/* The tour's button: the one filled button of the page, wider than its neighbours and with a play mark (the invitation's Take the tour is the same). */
-/* The bar's Tour wears the lit look of the bar's chosen buttons (`on`, set while it is in the bar: Toolbar #arrange), in the theme's own way, not a fill of
-   the accent that stayed the same blue in every theme (Karl, 2026-11-13); the phone's Settings tile stays filled. */
+/* The tour's button, with a play mark (the invitation's Take the tour is the same). The bar's Tour wears the lit look of the bar's chosen buttons (`on`, set
+   while it is in the bar: Toolbar #arrange), in the theme's own way, not a fill of the accent that stayed the same blue in every theme (Karl, 2026-11-13); a
+   phone's Settings tile stays filled and bold, the one such tile there. */
 .sheet-tiles > button.tour-btn { font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
 :is(button.tour-btn, button.guide-tour, .tour-invite-go) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 :is(button.tour-btn, button.guide-tour, .tour-invite-go)::before { content: ""; flex: none; width: 8px; height: 10px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
-/* In the top bar the button has no mark: the bar is fitted to the pixel, and the mark was 14 px of width that took Russian and Japanese past the bar's smallest zoom at 1,500 px (it is filled and bold, the one such button there). */
+/* In the top bar the button has no mark: the bar is fitted to the pixel, and the mark was 14 px of width that took Russian and Japanese past the bar's smallest zoom at 1,500 px (it is lit, the one button of the bar that is lit and acts). */
 .toolbar.cockpit .deck-tools button.tour-btn::before { display: none; }
 .sheet-tiles > button.tour-btn:hover { background: color-mix(in srgb, var(--ui) 86%, var(--text)); border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+/* A lit button does not change under the pointer or while held, and the Tour is lit always: held, it fades a little, so that a press answers in every frame. */
+.toolbar .tour-btn.on:active:not(:disabled) { opacity: .75; }
 /* The invitation to the tour (tour/invite.ts), a notice: its text takes the room, the buttons wrap under it on a narrow screen. */
 .toolbar .tour-invite { flex-wrap: wrap; row-gap: 6px; }
 .tour-invite-text { flex: 1 1 220px; min-width: 0; }

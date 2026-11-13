@@ -105,7 +105,7 @@ dialog:focus-visible { outline: none; }
 :where([data-frame="editor"], [data-frame="paper"]) button:active:not(:disabled):not(.on) { background: color-mix(in srgb, var(--text) 12%, var(--face)); }
 /* Except a button that is filled with the accent (the tour's four): held, it is the same step darker as under the pointer. The Editor and Paper frames hold a
    button in a grey and Text mode inverts it, and the accent's label (white, or near-black) cannot be read on either: "Next" lost its label for as long as
-   the mouse was down (1.3:1 at the worst; the bar's Tour button only stood because its selector is the stronger). */
+   the mouse was down (1.3:1 at the worst). The bar's Tour is lit (`on`), not filled, since 2026-11-13: it is held as the lit buttons are. */
 :is(.sheet-tiles > button.tour-btn, .toolbar .tour-invite button.tour-invite-go, button.guide-tour, .tour-card button.tour-next):active:not(:disabled) { background: color-mix(in srgb, var(--ui) 86%, var(--text)); color: var(--on-ui, #fff); }
 /* A control that cannot be used is dimmed, of whatever kind (the bevel embosses its labels instead). */
 :where(:root:not([data-frame="bevel"])) :where(button, select, input):disabled { opacity: .45; cursor: default; }
