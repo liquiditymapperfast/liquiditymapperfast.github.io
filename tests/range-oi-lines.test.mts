@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OiRangeSummary, type OiPaneHeld } from '../src/app/range/oi-lines.ts';
+import { OiRangeSummary, durationPair, type OiPaneHeld } from '../src/app/range/oi-lines.ts';
 import { chainedOi, oiSumOf, type OiPart } from '../src/app/oi-change.ts';
 import { oiCohorts } from '../src/app/panes/lower-panes.ts';
 import type { OiBar } from '../src/app/store.ts';
@@ -44,8 +44,8 @@ test('venues added together: the percentage only while the same venues make ever
   const summary = new OiRangeSummary();
   const early = summary.lines(sel(T + H, T + 3 * H), held, true, null, KEY, NOW);
   assert.equal(text(early, 'oi-known'), 'Known change | +1.0 BTC', 'made of Binance alone while the newest bar holds both: no percentage');
-  assert.equal(text(early, 'oi-level'), 'Line level (chained) | 150 → 151 BTC');
-  assert.match(text(early, 'oi-status')!, /^Levels: 1–2 of 2 venues · changes: 1 of 2/);
+  assert.equal(text(early, 'oi-level'), 'Combined level | 150 → 151 BTC');
+  assert.match(text(early, 'oi-status')!, /^OI from 1–2 of 2 venues \(changes from 1\)/);
   const late = summary.lines(sel(T + 3 * H, T + 5 * H), held, true, null, KEY, NOW);
   assert.match(text(late, 'oi-known')!, /^Known change \| \+10 BTC · \+6\.\d\d%$/, 'both venues throughout, as at the newest bar: Binance +4 +2, Bybit +3 +1');
   assert.equal(text(late, 'oi-status'), '2 venues added together');
@@ -102,7 +102,7 @@ test('a live stretch is forming and not compared; the half of the movement says 
   assert.equal(text(lines, 'oi-half'), 'Half the movement came in | 1 of 3 candles so far');
   const closed = new OiRangeSummary().lines(sel(T + 3 * H, T + 5 * H), one(oi), true, null, KEY, now);
   assert.equal(text(closed, 'oi-before'), 'Previous 2 candles (2 h) | +3.0 BTC');
-  assert.equal(text(closed, 'oi-rank'), 'Comparable 2-candle windows held | 1 of 4 had a larger net change (closed, overlapping, this one included)', 'the forming candle is in no window: (1,2) +3, (2,3) +3, this +7, (4,5) +8');
+  assert.equal(text(closed, 'oi-rank'), 'Rank among the 2-candle windows held | #2 of 4 by size of change (closed, overlapping windows)', 'the forming candle is in no window: (1,2) +3, (2,3) +3, this +7, (4,5) +8');
 });
 
 test('review r3: comparable windows are made of the same markets, not merely as many; liquidations only where they were read', () => {
@@ -111,7 +111,7 @@ test('review r3: comparable windows are made of the same markets, not merely as 
   const sum = oiSumOf(parts, H), oi = chainedOi(sum);
   const held: OiPaneHeld = { ...one(oi), venues: sum.venues, counted: oi.map(b => sum.counted.get(b[0]) ?? 0), cohorts: oiCohorts(oi, parts, H), parts, market: null, ids: parts.map(p => p.id) };
   const late = new OiRangeSummary().lines(sel(T + 8 * H, T + 9 * H), held, true, null, KEY, NOW);
-  assert.equal(text(late, 'oi-rank'), 'Comparable 1-candle windows held | 0 of 3 had a larger net change (closed, overlapping, this one included)', "only market B's three one-candle windows (+2, this +3, +1), none of A's (counting venues alone took six)");
+  assert.equal(text(late, 'oi-rank'), 'Rank among the 1-candle windows held | #1 of 3 by size of change (closed, overlapping windows)', "only market B's three one-candle windows (+2, this +3, +1), none of A's (counting venues alone took six)");
   // Liquidations: read for a window that does not reach the stretch, nothing is said of them but that.
   const liq = { items: [], version: 0, min: 1000, held: { t0: T + 7 * H, t1: T + 20 * H, min: 1000, cut: false, live: false } };
   assert.equal(text(new OiRangeSummary().lines(sel(T + 6 * H, T + 9 * H), held, true, liq, KEY, NOW), 'oi-liq'), 'Liquidations reported | not held for this stretch');
@@ -131,4 +131,14 @@ test('review cr2: the percentage needs the same markets throughout, not as many;
   assert.equal(at(1), 'Liquidations reported | none reported from $1K');
   items.push({ t: T + 2 * H, id: 'a:X', side: 'long', price: 100, usd: 5_000_000, reported: 100, kind: 'fill' } as Liquidation);
   assert.equal(at(2), 'Liquidations reported | $5M longs · $0 shorts (from $1K)');
+});
+
+test('a covered part and its span in one unit: hours with hours, days with days, a sliver under a minute', () => {
+  const H = 3_600_000;
+  assert.deepEqual(durationPair(21 * H, 51 * H), { k: '0.9 days', n: '2.1 days' }, 'never 21 h of 2.1 days');
+  assert.deepEqual(durationPair(23 * H, 40 * H), { k: '23 h', n: '40 h' });
+  assert.deepEqual(durationPair(30 * 60_000, 90 * 60_000), { k: '30 min', n: '90 min' });
+  assert.deepEqual(durationPair(20_000, 40 * H), { k: 'under 1 min', n: '40 h' });
+  assert.deepEqual(durationPair(2 * 60_000, 40 * H), { k: '2 min', n: '40 h' }, 'a part too small for the unit says its own size, never 0 h');
+  assert.deepEqual(durationPair(70 * 60_000, 51 * H), { k: '70 min', n: '2.1 days' }, 'never 0.0 days');
 });

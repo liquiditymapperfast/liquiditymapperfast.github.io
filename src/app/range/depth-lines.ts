@@ -1,7 +1,7 @@
 import { clock } from '../format.ts';
 import { t, tn } from '../i18n.ts';
 import { bandText } from '../depth-settings.ts';
-import { durationText, spanText } from './oi-lines.ts';
+import { durationPair, durationText, spanText } from './oi-lines.ts';
 import { valueFormat } from './script-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
@@ -223,8 +223,9 @@ export class DepthRangeSummary {
         ...(s.none > 0 ? [t('no book: {time}', { time: shortDuration(s.none) })] : []),
         ...(s.outside > 0 ? [t('outside the columns drawn: {time}', { time: shortDuration(s.outside) })] : []),
       ];
-      const head = held.ids.length > 1 ? t('All {n} venues represented: {k} of {span}', { n: held.ids.length, k: shortDuration(s.covered), span: durationText(s.span) })
-        : t('Columns cover {k} of {span}', { k: shortDuration(s.covered), span: durationText(s.span) });
+      const pair = durationPair(s.covered, s.span);
+      const head = held.ids.length > 1 ? t('All {n} venues represented: {k} of {span}', { n: held.ids.length, k: pair.k, span: pair.n })
+        : t('Columns cover {k} of {span}', { k: pair.k, span: pair.n });
       lines.push(note('dp-cover', [head, ...parts].join(' · ')));
     }
     lines.push(note('dp-how', t('Based on the columns drawn at this zoom. Each column is weighted by its overlap with the selection; results can change with zoom, and a column across the selection\'s edge takes in the minute beyond it. Bands overlap and are never added together.')));
@@ -264,7 +265,7 @@ export class DepthRangeSummary {
       ...(s.none > 0 ? [t('no snapshot in force: {time}', { time: shortDuration(s.none) })] : []),
       ...(s.outside > 0 ? [t('outside the columns drawn: {time}', { time: shortDuration(s.outside) })] : []),
     ];
-    if (s.span > 0) lines.push(note('dp-cover', [t('Snapshots in force for {k} of {span}', { k: shortDuration(s.inForce), span: durationText(s.span) }), ...parts].join(' · ')));
+    if (s.span > 0) lines.push(note('dp-cover', [t('Snapshots in force for {k} of {span}', (({ k, n }) => ({ k, span: n }))(durationPair(s.inForce, s.span))), ...parts].join(' · ')));
     lines.push(note('dp-how', t('Potential liquidation levels of tracked positions, not liquidations that happened. Snapshots expire after 90 minutes.')));
     return lines;
   }

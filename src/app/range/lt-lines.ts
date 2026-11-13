@@ -2,7 +2,7 @@ import { clock, usd } from '../format.ts';
 import type { LtParts } from '../lt.ts';
 import { sizeText } from '../sizes.ts';
 import { t, tn } from '../i18n.ts';
-import { durationText, spanText } from './oi-lines.ts';
+import { durationPair, durationText, spanText } from './oi-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
 
@@ -236,9 +236,10 @@ export class LtRangeSummary {
         ...(s.forming > 0 ? [t('open window excluded: {time}', { time: shortDuration(s.forming) })] : []),
         ...(s.none > 0 ? [t('no window held: {time}', { time: shortDuration(s.none) })] : []),
       ];
-      const head = s.unverified ? t('Windows cover {k} of {span}', { k: shortDuration(s.covered), span: durationText(s.span) })
-        : many ? t('Windows holding all {n} venues cover {k} of {span}', { n: h.ids.length, k: shortDuration(s.covered), span: durationText(s.span) })
-        : t('Windows cover {k} of {span}', { k: shortDuration(s.covered), span: durationText(s.span) });
+      const pair = durationPair(s.covered, s.span);
+      const head = s.unverified ? t('Windows cover {k} of {span}', { k: pair.k, span: pair.n })
+        : many ? t('Windows holding all {n} venues cover {k} of {span}', { n: h.ids.length, k: pair.k, span: pair.n })
+        : t('Windows cover {k} of {span}', { k: pair.k, span: pair.n });
       lines.push(note('lt-cover', [head, ...(s.windows > 0 && !s.unverified ? [tn(s.windows, '{n} included window', '{n} included windows')] : []), ...parts].join(' · ')));
     }
     lines.push(note('lt-how', many ? t('Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.')

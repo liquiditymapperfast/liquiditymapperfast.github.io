@@ -30,7 +30,7 @@ test('the flow of the candles that start in the selection: delta and volume adde
   const lines = new DeltaRangeSummary().lines(sel(T + H, T + 4 * H), h, true, KEY, NOW);
   assert.equal(text(lines, 'dl-delta'), 'Delta | +$26 · +7.6% of the volume');
   assert.equal(text(lines, 'dl-split'), 'Bought $183 | Sold $157');
-  assert.equal(text(lines, 'dl-offset'), 'Cancellation between candle deltas | 24%', '1 − 26/34');
+  assert.equal(text(lines, 'dl-offset'), 'Net left after candles offset each other | 76% of their combined size', '1 − 26/34');
   assert.equal(text(lines, 'dl-count'), 'Candle delta signs | 2 buying · 1 selling · 0 flat');
   assert.equal(text(lines, 'dl-status'), 'Recorded taker flow of 2 markets of the flow column');
 });

@@ -247,8 +247,8 @@ export class DeltaRangeSummary {
     const spread: RangeLine[] = [];
     if (s.held >= 3 && s.movement > 0) spread.push({ key: 'dl-half', kind: 'stat', cells: [t('Half the movement came in'), `${t('{k} of {n} candles', { k: s.half, n: s.held })}${forming ? ` ${t('so far')}` : ''}`] });
     if (s.held >= 2 && s.movement > 0) {
-      spread.push({ key: 'dl-offset', kind: 'stat', cells: [t('Cancellation between candle deltas'), pct(1 - Math.abs(s.delta) / s.movement)] });
-      spread.push({ key: 'dl-offset-note', kind: 'note', tone: 'muted', cells: [t('Of the candle deltas added up by size, {share} remained in the net.', { share: pct(Math.abs(s.delta) / s.movement) })] });
+      // How much of the candles' deltas, added up by size, the net kept: the rest cancelled between buying and selling candles.
+      spread.push({ key: 'dl-offset', kind: 'stat', cells: [t('Net left after candles offset each other'), t('{share} of their combined size', { share: pct(Math.abs(s.delta) / s.movement) })] });
     }
     if (s.held >= 2) spread.push({ key: 'dl-count', kind: 'stat', cells: [t('Candle delta signs'), t('{b} buying · {s} selling · {f} flat', { b: s.buying, s: s.selling, f: s.flat })] });
     if (s.before !== null && !forming && whole) spread.push({ key: 'dl-before', kind: 'stat', cells: [tn(n, 'Previous {n} candle ({span})', 'Previous {n} candles ({span})', { span: durationText(s.t1 - s.t0) }), signedUsd(s.before)] });

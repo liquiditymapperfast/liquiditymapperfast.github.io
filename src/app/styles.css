@@ -949,6 +949,9 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .range-signed .bars i { position: absolute; top: 0; bottom: 0; width: var(--v); }
 .range-signed .bars i.up { left: 50%; background: var(--candle-up); }
 .range-signed .bars i.down { right: 50%; background: var(--candle-down); }
+.range-signed .bars.none::before { content: none; }
+/* No bar and words for a value: they run from the bar's column to the right edge. */
+.range-signed.wide .total { grid-column: 2 / -1; }
 .range-signed.muted { color: var(--muted); }
 .range-signed.muted .bars i { opacity: .5; }
 /* Bar stats' chosen statistics: tiles two to a row, one where the panel is narrow; a category's tile lists its kinds with their counts. */

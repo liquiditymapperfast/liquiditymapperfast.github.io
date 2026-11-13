@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clock, dayOfMonth, setTimeZone, startOfDay, tickLabel, timeZone, zoneName, zoneOffsetMs, type TimeZone } from '../src/app/format.ts';
+import { clock, dayOfMonth, setTimeZone, spanClock, startOfDay, tickLabel, timeZone, zoneName, zoneOffsetMs, type TimeZone } from '../src/app/format.ts';
 import { timeTicks } from '../src/app/panes/heat-pane.ts';
 import { fileName } from '../src/app/screenshot/shapes.ts';
 
@@ -72,5 +72,17 @@ test('a time-axis tick on a midnight is its date alone; elsewhere the time, with
   on('local', () => {
     const local = startOfDay(LATE);
     assert.equal(tickLabel(local, false), clock(local, true).replace(/ 00:00$/, ''), 'the computer\'s own midnight, likewise');
+  });
+});
+
+test("a Range span names its zone, its dates where the day changes and its year where it is not this year's", () => {
+  on('utc', () => {
+    const now = Date.UTC(2026, 10, 13, 12);
+    assert.equal(spanClock(Date.UTC(2026, 10, 12, 16), Date.UTC(2026, 10, 13, 14), now), 'Nov 12 16:00 – Nov 13 14:00 UTC', 'across midnight: both dates');
+    assert.equal(spanClock(Date.UTC(2026, 10, 13, 5), Date.UTC(2026, 10, 13, 12), now), 'Nov 13 05:00 – 12:00 UTC', 'one day: the date once');
+    assert.equal(spanClock(Date.UTC(2026, 10, 12, 22), Date.UTC(2026, 10, 13, 0), now), 'Nov 12 22:00 – 00:00 UTC', 'ending at midnight: the day it ends is the day before');
+    assert.equal(spanClock(Date.UTC(2025, 10, 1), Date.UTC(2025, 10, 3), now), 'Nov 1, 2025 00:00 – Nov 3 00:00 UTC', 'last year: the year once');
+    assert.equal(spanClock(Date.UTC(2025, 11, 30), Date.UTC(2026, 0, 2), now), 'Dec 30, 2025 00:00 – Jan 2, 2026 00:00 UTC', 'across new year: both years');
+    assert.equal(spanClock(Date.UTC(2025, 11, 29), Date.UTC(2026, 0, 1), now), 'Dec 29, 2025 00:00 – Jan 1, 2026 00:00 UTC', 'ending at New Year midnight: the end is written in the new year, with it');
   });
 });

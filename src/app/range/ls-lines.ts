@@ -2,7 +2,7 @@ import { HOLD_PERIODS, populationText, stepEnd } from '../panes/ls-window.ts';
 import { venueLabel } from '../venues.ts';
 import { clock } from '../format.ts';
 import { t, tn } from '../i18n.ts';
-import { durationText, spanText } from './oi-lines.ts';
+import { durationPair, durationText, spanText } from './oi-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
 import type { LsPopulation, LsSeries, LsStatus } from '../../shared/long-short.ts';
@@ -259,12 +259,12 @@ export class LsRangeSummary {
       for (const v of group) {
         const name = venueLabel(v.id), staleNote = v.status === 'stale' ? t('earlier readings: the last update could not be read') : '';
         if (!v.covered || !v.first || !v.last) {
-          lines.push({ key: `ls-${v.id}`, kind: 'signed', tone: 'muted', mark: v.id, signed: 0, cells: [name, noFigure(v), staleNote] });
+          lines.push({ key: `ls-${v.id}`, kind: 'signed', tone: 'muted', mark: v.id, signed: null, wide: true, cells: [name, noFigure(v), staleNote] });
           continue;
         }
-        const one = v.readings < 2, move = moveText(v.first.long, v.last.long), part = v.covered < v.span ? t('{covered} of {span} covered', { covered: durationText(v.covered), span: durationText(v.span) }) : '';
-        lines.push({ key: `ls-${v.id}`, kind: 'signed', mark: v.id, signed: one ? 0 : (v.last.long - v.first.long) / maxChange, ...(one ? { tone: 'muted' as const } : {}),
-          cells: [name, one ? t('one reading') : move.change, [one ? pct(v.first.long) : move.shares, part, staleNote].filter(Boolean).join(' · ')] });
+        const one = v.readings < 2, move = moveText(v.first.long, v.last.long), part = v.covered < v.span ? t('{covered} of {span} covered', (({ k, n }) => ({ covered: k, span: n }))(durationPair(v.covered, v.span))) : '';
+        lines.push({ key: `ls-${v.id}`, kind: 'signed', mark: v.id, signed: one ? null : (v.last.long - v.first.long) / maxChange, ...(one ? { tone: 'muted' as const } : {}),
+          cells: [name, one ? pct(v.first.long) : move.change, [one ? t('one reading') : move.shares, part, staleNote].filter(Boolean).join(' · ')] });
       }
       // A tile a venue: its drawn range and how wide it was, its time mean and the last share against it, how long it leaned which way, and
       // what its readings cover.
@@ -286,7 +286,7 @@ export class LsRangeSummary {
             { label: t('Time mean over covered time'), value: pct(v.mean!, 2) },
             { label: t('Last held share against the time mean'), value: ppChange(v.last!.long - v.mean!) },
             ...sides,
-            { label: t('Covered by readings'), value: t('{k} of {n}', { k: durationText(v.covered), n: durationText(v.span) }) },
+            { label: t('Covered by readings'), value: t('{k} of {n}', durationPair(v.covered, v.span)) },
           ],
           note: `${tn(v.readings, '{n} reading · nominal period {period}', '{n} readings · nominal period {period}', { period: periodText(v.periodMs) })}${v.even > 0 ? ` · ${t('at 50 %: {time}', { time: durationText(v.even) })}` : ''}`,
         };
@@ -306,7 +306,7 @@ export class LsRangeSummary {
         lines.push(sharedNote(spread));
         const most = Math.max(1e-9, ...spread.changes.filter((_, i) => !spread.one[i]).map(Math.abs));
         spread.ids.forEach((id, i) => lines.push(spread.one[i]
-          ? { key: `ls-shared-${population}-${id}`, kind: 'signed', tone: 'muted', mark: id, signed: 0, cells: [venueLabel(id), t('one reading')] }
+          ? { key: `ls-shared-${population}-${id}`, kind: 'signed', tone: 'muted', mark: id, signed: null, cells: [venueLabel(id), t('one reading')] }
           : { key: `ls-shared-${population}-${id}`, kind: 'signed', mark: id, signed: spread.changes[i]! / most, cells: [venueLabel(id), ppChange(spread.changes[i]!)] }));
         const d = gapDigits(spread.start, spread.end);
         lines.push({ key: `ls-spread-${population}`, kind: 'stat', cells: [t('Highest minus lowest long share at those moments'), `${gapText(spread.start, d)} → ${gapText(spread.end, d)}`] });

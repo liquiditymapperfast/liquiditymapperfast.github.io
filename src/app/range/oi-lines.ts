@@ -4,7 +4,7 @@ import type { OiPart } from '../oi-change.ts';
 import type { Liquidation } from '../../shared/liquidations.ts';
 import { oiChangeByTime, oiUsdChangeByTime } from '../oi-change.ts';
 import { venueLabel } from '../venues.ts';
-import { clock, price as fmtPrice, usd } from '../format.ts';
+import { clock, price as fmtPrice, spanClock, usd } from '../format.ts';
 import { t, tn } from '../i18n.ts';
 import { oiStretch, type OiStretch, type OiWho } from './oi-summary.ts';
 import type { RangeSelection } from './selection.ts';
@@ -69,14 +69,28 @@ export const signedUsd = (v: number): string => `${v > 0 ? '+' : v < 0 ? '−' :
 const share = (x: number, of: number): string => of > 0 ? ` (${Math.round(x / of * 100)}%)` : '';
 /** The day of a moment as the clock writes it ("Nov 12"), to say a time with its date only where the day changes. */
 export const dayOf = (at: number): string => clock(at, true).slice(0, -6);
-/** A span's two ends: the first with its date, the second with its date too when it falls on another day (a minute before the end decides). */
-export const spanText = (t0: number, t1: number): string => `${clock(t0, true)} – ${clock(t1, dayOf(t1 - 1) !== dayOf(t0))}`;
+/** A span's two ends with their dates where needed, the year where not this year's, and the zone (format.ts `spanClock`). */
+export const spanText = (t0: number, t1: number): string => spanClock(t0, t1);
 const tone = (v: number): 'buy' | 'sell' | undefined => v > 0 ? 'buy' : v < 0 ? 'sell' : undefined;
 export const durationText = (ms: number): string => {
   const minutes = Math.round(ms / 60_000);
   if (minutes < 120) return tn(minutes, '{n} min', '{n} min');
   const hours = minutes / 60;
   return hours < 48 ? t('{n} h', { n: Number.isInteger(hours) ? hours : hours.toFixed(1) }) : t('{n} days', { n: (hours / 24).toFixed(1) });
+};
+/**
+ * A part of a span and the span, both in the span's unit ("23 h of 51 h", "0.9 days of 2.1 days"): in each its own unit, "23 h of 2.1 days"
+ * could not be compared at a glance. A part under a minute says so.
+ */
+export const durationPair = (part: number, whole: number): { k: string; n: string } => {
+  const n = durationText(whole), minutes = Math.round(whole / 60_000);
+  if (part > 0 && part < 60_000) return { k: t('under 1 min'), n };
+  if (minutes < 120) return { k: tn(Math.round(part / 60_000), '{n} min', '{n} min'), n };
+  const hours = whole / 3_600_000, partHours = part / 3_600_000;
+  // A part too small to show in the span's unit ("0 h", "0.0 days") says its own size instead: it is not nothing.
+  if (Math.round(hours * 60) / 60 < 48) { const h = Math.round(partHours * 10) / 10; return { k: part > 0 && h === 0 ? durationText(part) : t('{n} h', { n: Number.isInteger(h) ? h : h.toFixed(1) }), n }; }
+  const d = (partHours / 24).toFixed(1);
+  return { k: part > 0 && Number(d) === 0 ? durationText(part) : t('{n} days', { n: d }), n };
 };
 const rangeText = (lo: number | null, hi: number | null): string => lo === hi ? String(lo ?? 0) : `${lo ?? 0}–${hi ?? 0}`;
 
@@ -134,7 +148,7 @@ export class OiRangeSummary {
       const cohort = s.known === n && (!held.cohorts || sameMarkets(held, i0, i1));
       const rel = cohort && s.start > 0 ? ` · ${s.change >= 0 ? '+' : '−'}${(Math.abs(s.change) / s.start * 100).toFixed(2)}%` : '';
       lines.push({ key: 'oi-known', kind: 'stat', ...(tone(s.change) ? { tone: tone(s.change)! } : {}), cells: [t('Known change'), `${signedCoins(s.change, held.coin)}${rel}`] });
-      lines.push({ key: 'oi-level', kind: 'stat', cells: [held.market ? t('Level') : t('Line level (chained)'), `${amount(s.start)} → ${amount(s.end)}${held.coin ? ` ${held.coin}` : ''}`] });
+      lines.push({ key: 'oi-level', kind: 'stat', cells: [held.market ? t('Level') : t('Combined level'), `${amount(s.start)} → ${amount(s.end)}${held.coin ? ` ${held.coin}` : ''}`] });
       if (s.usd !== null && (s.usd !== 0 || s.change !== 0)) lines.push({ key: 'oi-usd', kind: 'stat', cells: [t('In USD, at bar prices'), `≈ ${signedUsd(s.usd)}`] });
     }
     if (s.price) {
@@ -148,7 +162,7 @@ export class OiRangeSummary {
     // Against what is held (closed stretches only): the candles just before, the comparable windows, and how few candles made half the movement.
     const context: RangeLine[] = [];
     if (s.before !== null) context.push({ key: 'oi-before', kind: 'stat', cells: [tn(n, 'Previous {n} candle ({span})', 'Previous {n} candles ({span})', { span: durationText(s.t1 - s.t0) }), signedCoins(s.before, held.coin)] });
-    if (s.rank) context.push({ key: 'oi-rank', kind: 'stat', stack: true, cells: [tn(n, 'Comparable {n}-candle windows held', 'Comparable {n}-candle windows held'), t('{k} of {m} had a larger net change (closed, overlapping, this one included)', { k: s.rank.larger.toLocaleString('en-US'), m: s.rank.of.toLocaleString('en-US') })] });
+    if (s.rank) context.push({ key: 'oi-rank', kind: 'stat', stack: true, cells: [tn(n, 'Rank among the {n}-candle windows held', 'Rank among the {n}-candle windows held'), t('#{r} of {m} by size of change (closed, overlapping windows)', { r: (s.rank.larger + 1).toLocaleString('en-US'), m: s.rank.of.toLocaleString('en-US') })] });
     if (s.half && n >= 3 && s.known === n) context.push({ key: 'oi-half', kind: 'stat', cells: [t('Half the movement came in'), `${t('{k} of {n} candles', { k: s.half.bars, n })}${forming ? ` ${t('so far')}` : ''}`] });
     if (context.length) lines.push({ key: 'h-oi-context', kind: 'heading', cells: [t('Against what is held')] }, ...context);
 
@@ -183,7 +197,7 @@ function statusText(s: OiStretch, held: OiPaneHeld, sel: RangeSelection): string
   const total = held.parts.length;
   if (held.market) out.push(held.market);
   else if (s.venuesLow === total && s.venuesHigh === total && s.countedLow === total && s.countedHigh === total) out.push(t('{n} venues added together', { n: total }));
-  else out.push(t('Levels: {levels} of {n} venues · changes: {changes} of {n}', { levels: rangeText(s.venuesLow, s.venuesHigh), changes: rangeText(s.countedLow, s.countedHigh), n: total }));
+  else out.push(t('OI from {levels} of {n} venues (changes from {changes})', { levels: rangeText(s.venuesLow, s.venuesHigh), changes: rangeText(s.countedLow, s.countedHigh), n: total }));
   if (s.known < s.bars) out.push(tn(s.bars - s.known, "{n} candle's change unknown", "{n} candles' changes unknown"));
   if (s.spans > 0) out.push(t('some changes span more than one candle'));
   if (sel.t0 % held.tfMs !== 0 || sel.t1 % held.tfMs !== 0) out.push(t('the {tf} candles that start in the selection', { tf: held.tf }));
@@ -252,11 +266,11 @@ function venueLines(s: OiStretch, coin: string): RangeLine[] {
   const moved = largest > 0 && Math.abs(s.change) >= 0.05 * largest;
   const out: RangeLine[] = [{ key: 'h-oi-venues', kind: 'heading', cells: [coin ? `${t('By venue')} · ${coin}` : t('By venue')] }];
   for (const v of rows) {
-    if (v.bars === 0) { out.push({ key: `oi-v-${v.id}`, kind: 'signed', signed: 0, mark: v.id, tone: 'muted', cells: [venueLabel(v.id), t('unavailable')] }); continue; }
+    if (v.bars === 0) { out.push({ key: `oi-v-${v.id}`, kind: 'signed', signed: null, mark: v.id, tone: 'muted', cells: [venueLabel(v.id), t('unavailable')] }); continue; }
     const against = moved && v.change !== 0 && Math.sign(v.change) !== Math.sign(s.change) && Math.abs(v.change) >= 0.05 * largest;
     const partial = v.bars < s.known;
     // The notes go under the value (`cells[2]`), so every row keeps the same columns and its bar the zero line the others share.
-    const notes = [against ? t('against the sum') : '', partial ? t('{k} of {n} candles', { k: v.bars, n: s.known }) : ''].filter(Boolean).join(' · ');
+    const notes = [against ? t('opposite to the total') : '', partial ? t('{k} of {n} candles', { k: v.bars, n: s.known }) : ''].filter(Boolean).join(' · ');
     out.push({ key: `oi-v-${v.id}`, kind: 'signed', signed: largest > 0 ? v.change / largest : 0, mark: v.id, ...(partial ? { tone: 'muted' as const } : {}), cells: [venueLabel(v.id), signedCoins(v.change, ''), ...(notes ? [notes] : [])] });
   }
   return out;

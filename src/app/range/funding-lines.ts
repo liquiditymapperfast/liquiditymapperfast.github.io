@@ -1,7 +1,7 @@
 import { venueLabel } from '../venues.ts';
 import { clock } from '../format.ts';
 import { t, tn } from '../i18n.ts';
-import { durationText, signedCoins, spanText } from './oi-lines.ts';
+import { durationPair, durationText, signedCoins, spanText } from './oi-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
 import { cutAt, fundingBase, rowStart, type FundingNow, type FundingRow, type FundingVenue, type PremiumRow } from '../funding.ts';
@@ -173,7 +173,7 @@ export class FundingRangeSummary {
     // Settled funding: each settlement over the interval it paid for (Deribit: each hour's net record; its funding is paid all the time).
     lines.push({ key: 'h-fd-rows', kind: 'heading', cells: [continuous ? t('Completed hourly funding') : t('Settled funding')] });
     const uncovered = [
-      ...(s.unread >= 60_000 ? [{ label: t('Before the read reaches'), value: durationText(s.unread) }] : []),
+      ...(s.unread >= 60_000 ? [{ label: t('Before the loaded history starts'), value: durationText(s.unread) }] : []),
       ...(s.afterNewest >= 60_000 ? [{ label: continuous ? t('After the newest hourly record held') : t('After the newest settlement held'), value: durationText(s.afterNewest) }] : []),
       ...(s.gaps >= 60_000 ? [{ label: continuous ? t('No hourly record held') : t('No settlement held'), value: durationText(s.gaps) }] : []),
     ];
@@ -182,12 +182,12 @@ export class FundingRangeSummary {
       if (uncovered.length) lines.push({ key: 'fd-grid', kind: 'grid', cells: [], grid: [{ key: 'fd-rows', label: venueLabel(venue), value: '', rows: uncovered }] });
     } else {
       const flat = s.low === s.high, tone = (x: number) => x > 0 ? { tone: 'buy' as const } : x < 0 ? { tone: 'sell' as const } : {};
-      if (flat) lines.push({ key: 'fd-rate', kind: 'stat', ...tone(s.first.per8h), cells: [continuous ? t('Hourly net rate') : t('Settled rate'), t('{rate} throughout the represented time', { rate: rate(s.first.per8h) })] });
+      if (flat) lines.push({ key: 'fd-rate', kind: 'stat', ...tone(s.first.per8h), cells: [continuous ? t('Hourly net rate') : t('Settled rate'), t('{rate} throughout the covered time', { rate: rate(s.first.per8h) })] });
       else lines.push({ key: 'fd-rate', kind: 'stat', ...(s.last.per8h > s.first.per8h ? { tone: 'buy' as const } : s.last.per8h < s.first.per8h ? { tone: 'sell' as const } : {}),
         cells: [continuous ? t('First → last hourly net rate') : t('First → last settled rate'), `${rate(s.first.per8h)} → ${rate(s.last.per8h)} · ${bp(s.last.per8h - s.first.per8h)}`] });
       if (s.rows === 1 && !continuous) lines.push(note('fd-one', t('Settled at {end} for the interval from {start}.', { start: clock(s.first.start, true), end: clock(s.first.t, true) })));
       const sides: { label: string; value: string; tone?: 'buy' | 'sell' }[] = [];
-      const of = (ms: number): string => t('{time} · {share} of the represented time', { time: durationText(ms), share: share(ms, s.covered) });
+      const of = (ms: number): string => t('{time} · {share} of the covered time', { time: durationText(ms), share: share(ms, s.covered) });
       if (s.positive > 0) sides.push({ label: continuous ? t('Positive hourly net rate') : t('Positive settled rate'), value: of(s.positive), tone: 'buy' });
       if (s.negative > 0) sides.push({ label: continuous ? t('Negative hourly net rate') : t('Negative settled rate'), value: of(s.negative), tone: 'sell' });
       if (s.zero > 0) sides.push({ label: continuous ? t('Zero hourly net rate') : t('Zero rate'), value: of(s.zero) });
@@ -197,7 +197,7 @@ export class FundingRangeSummary {
         rows: [
           ...(flat ? [] : [{ label: t('Lowest – highest rate'), value: `${rate(s.low!)} – ${rate(s.high!)}` }, { label: t('Time-weighted mean rate'), value: rate(s.mean!), ...tone(s.mean!) }]),
           ...sides,
-          { label: continuous ? t('Time represented by hourly records') : t('Time represented by settlements'), value: t('{k} of {n}', { k: durationText(s.covered), n: durationText(s.span) }) },
+          { label: continuous ? t('Covered by hourly records') : t('Covered by settlements'), value: t('{k} of {n}', durationPair(s.covered, s.span)) },
           ...uncovered,
         ],
         note: continuous ? tn(s.rows, '{n} completed hourly record', '{n} completed hourly records')

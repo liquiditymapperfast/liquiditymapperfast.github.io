@@ -69,7 +69,7 @@ test('a venue with no reading for the stretch says why, never 0 % or 50 %; one r
     series('gateio:BTC_USDT', pts([100, 0.5])),
   ];
   const lines = new LsRangeSummary().lines(sel(0, 10), held(list), true, KEY, NOW);
-  assert.equal(text(lines, 'ls-binance:BTCUSDT'), 'Binance | one reading | 60.0% · 5 min of 10 min covered');
+  assert.equal(text(lines, 'ls-binance:BTCUSDT'), 'Binance | 60.0% | one reading · 5 min of 10 min covered');
   assert.equal(text(lines, 'ls-bybit:BTCUSDT'), 'Bybit | could not be read | ');
   assert.equal(text(lines, 'ls-okx:BTC-USDT-SWAP'), 'OKX | not readable by a web page | ');
   assert.equal(text(lines, 'ls-gateio:BTC_USDT'), 'Gate.io | no reading held for this time | ');
@@ -140,7 +140,7 @@ test('review: a replay before the selection says it has not begun; a fuller resu
   later.lines(s2, held([series('binance:BTCUSDT', pts([0, 0.6]))]), true, KEY, noon);
   const back = later.lines(s2, held([series('binance:BTCUSDT', pts([0, 0.6], [10, 0.62]))]), true, KEY, noon + M);
   assert.equal(back.find(l => l.key === 'ls-kept'), undefined);
-  assert.match(text(back, 'ls-binance:BTCUSDT')!, /one reading \| 62\.0% · 5 min of 10 min covered/);
+  assert.match(text(back, 'ls-binance:BTCUSDT')!, /62\.0% \| one reading · 5 min of 10 min covered/);
 });
 
 test('review: one-reading venues claim no change at the shared moments; no market with a ratio, unread venues and the Bitget note', () => {

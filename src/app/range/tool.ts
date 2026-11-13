@@ -28,7 +28,7 @@ export class LineList {
   update(lines: readonly RangeLine[]): void {
     const next: HTMLElement[] = [], keep = new Set<string>();
     for (const line of lines) {
-      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark, line.profile, line.stack, line.parts, line.signed, line.grid]);
+      const sig = JSON.stringify([line.kind, line.cells, line.share, line.bars, line.tone, line.mark, line.profile, line.stack, line.parts, line.signed, line.wide, line.grid]);
       let held = this.#nodes.get(line.key);
       if (!held || held.sig !== sig) { held = { node: lineNode(line), sig }; this.#nodes.set(line.key, held); }
       keep.add(line.key); next.push(held.node);
@@ -73,12 +73,14 @@ function lineNode(line: RangeLine): HTMLElement {
     }
     case 'signed': {
       // Out of the zero line in the middle: right for more, left for less, as long as its share of the longest.
-      const v = Math.max(-1, Math.min(1, line.signed ?? 0)), bar = el('span', { class: 'bars' }, el('i', { class: v >= 0 ? 'up' : 'down' }));
-      bar.style.setProperty('--v', `${(Math.abs(v) * 50).toFixed(2)}%`);
+      // No change to draw (`null`): no bar and no zero line, which read as "no change"; words for a value take the bar's room too.
+      const none = line.signed === null, v = Math.max(-1, Math.min(1, line.signed ?? 0));
+      const bar = none ? el('span', { class: 'bars none' }) : el('span', { class: 'bars' }, el('i', { class: v >= 0 ? 'up' : 'down' }));
+      if (!none) bar.style.setProperty('--v', `${(Math.abs(v) * 50).toFixed(2)}%`);
       const label = line.mark ? el('span', { class: 'label' }, venueMark(line.mark, 13), line.cells[0] ?? '') : el('span', { class: 'label', textContent: line.cells[0] ?? '' });
       const total = el('span', { class: 'total', textContent: line.cells[1] ?? '' });
       if (line.cells[2]) total.append(el('small', { textContent: line.cells[2] }));
-      return el('div', { class: `range-signed${tone}${v < 0 ? ' less' : ''}` }, label, bar, total);
+      return el('div', { class: `range-signed${tone}${v < 0 ? ' less' : ''}${none && line.wide ? ' wide' : ''}` }, label, ...(none && line.wide ? [] : [bar]), total);
     }
     case 'grid': {
       // Tiles two to a row: a label, the figure (or lines of counts) and a note; the tip says what the statistic is.

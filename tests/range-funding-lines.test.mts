@@ -29,12 +29,12 @@ test('settled funding counts each settlement for the time it paid for, inside th
   assert.deepEqual(mixed.hours, [1, 4]);
 });
 
-test('the selection splits into represented time, before the read, after the newest settlement and gaps, adding up to it', () => {
+test('the selection splits into covered time, before the read, after the newest settlement and gaps, adding up to it', () => {
   const rows = [row(3, 0.0001, 1), row(4, 0.0001, 1), row(6, 0.0001, 1)];
   const s = stretch(held(rows, { readFrom: T + 2 * H }), 0, 10, T + 10 * H);
   assert.deepEqual([s.covered / H, s.unread / H, s.afterNewest / H, s.gaps / H], [3, 2, 4, 1]);
   assert.ok(partitioned(s));
-  assert.equal(s.positive, s.covered, 'percentages of represented time only');
+  assert.equal(s.positive, s.covered, 'percentages of covered time only');
   assert.equal(s.settled, false, 'the newest settlement does not reach the end');
   // Sol r7: a settlement known from before the read's start represents that time; it is not also "not read".
   const known = stretch(held([row(8, 0.0001)], { readFrom: T + 4 * H }), 0, 10, T + 10 * H);
@@ -77,18 +77,18 @@ test('the lines: rates first to last with the change in basis points or "unchang
   assert.equal(text(lines, 'fd-rate'), 'First → last settled rate | +0.0100% → −0.0100% · −2.0 bp');
   const tile = lines.find(l => l.key === 'fd-grid')!.grid![0]!.rows!;
   assert.deepEqual(tile.filter(r => /rate|run/.test(r.label) && !/mean|highest/.test(r.label)).map(r => [r.label, r.value]), [
-    ['Positive settled rate', '2 h · 40% of the represented time'], ['Negative settled rate', '3 h · 60% of the represented time'], ['Longest run of negative settled rates', '2 h'],
+    ['Positive settled rate', '2 h · 40% of the covered time'], ['Negative settled rate', '3 h · 60% of the covered time'], ['Longest run of negative settled rates', '2 h'],
   ]);
   const same = new FundingRangeSummary().lines(sel(0, 3), held([row(1, 0.0001, 1), row(2, 0.0002, 1), row(3, 0.0001, 1)]), true, KEY, NOW);
   assert.match(text(same, 'fd-rate')!, /· unchanged$/);
   const flat = new FundingRangeSummary().lines(sel(0, 3), held([row(1, 0.0001, 1), row(2, 0.0001, 1), row(3, 0.0001, 1)]), true, KEY, NOW);
-  assert.equal(text(flat, 'fd-rate'), 'Settled rate | +0.0100% throughout the represented time');
+  assert.equal(text(flat, 'fd-rate'), 'Settled rate | +0.0100% throughout the covered time');
   const deribit = new FundingRangeSummary().lines(sel(0, 3), held([row(1, 0.0001, 1), row(2, 0.0002, 1), row(3, 0.0003, 1)], { venue: 'deribit', key: 'd' }), true, 'd', NOW);
   assert.equal(text(deribit, 'h-fd-rows'), 'Completed hourly funding');
   assert.match(text(deribit, 'fd-rate')!, /^First → last hourly net rate/);
   const none = new FundingRangeSummary().lines(sel(0, 3), held([], { readFrom: T + H }), true, KEY, T + 10 * H);
   assert.equal(text(none, 'fd-rows-none'), 'No settlement held represents this selection.');
-  assert.ok(none.find(l => l.key === 'fd-grid')!.grid![0]!.rows!.some(r => r.label === 'Before the read reaches'));
+  assert.ok(none.find(l => l.key === 'fd-grid')!.grid![0]!.rows!.some(r => r.label === 'Before the loaded history starts'));
 });
 
 test('a kept result: kept while the pane lacks some of its settlements or readings, with its venue; never in a replay that has not reached it', () => {
@@ -112,7 +112,7 @@ test('a kept result: kept while the pane lacks some of its settlements or readin
   assert.equal(text(new FundingRangeSummary().lines(s, null, true, KEY, NOW, '', true), 'fd-none'), 'No venue here lists a perpetual of this coin.');
 });
 
-test('review: a corrected interval replaces a kept result; reading funding; shares of represented time; a reading now outside the selection', () => {
+test('review: a corrected interval replaces a kept result; reading funding; shares of covered time; a reading now outside the selection', () => {
   // Every four hours with 04:00 skipped: the 08:00 row first reads 8 hours (0-8); a selection 1-3 lies inside it. Corrected to four hours
   // (4-8), the pane still holds the 08:00 settlement: no loss, and the corrected answer (nothing represents 1-3) stands.
   const summary = new FundingRangeSummary(), s = sel(1, 3);
@@ -122,10 +122,10 @@ test('review: a corrected interval replaces a kept result; reading funding; shar
   assert.equal(text(corrected, 'fd-rows-none'), 'No settlement held represents this selection.');
   // Still reading: said.
   assert.ok(new FundingRangeSummary().lines(s, held([], { loading: true, readFrom: null }), true, KEY, NOW).some(l => l.key === 'fd-reading'));
-  // A gap: the shares are of the represented time (2 h), not of the selection (3 h).
+  // A gap: the shares are of the covered time (2 h), not of the selection (3 h).
   const gap = new FundingRangeSummary().lines(sel(0, 3), held([row(1, 0.0001, 1), row(3, -0.0001, 1)]), true, KEY, NOW);
   const rows = gap.find(l => l.key === 'fd-grid')!.grid![0]!.rows!;
-  assert.equal(rows.find(r => r.label === 'Positive settled rate')?.value, '60 min · 50% of the represented time');
+  assert.equal(rows.find(r => r.label === 'Positive settled rate')?.value, '60 min · 50% of the covered time');
   // An unexpired reading now whose interval is after the selection: not shown.
   const forming = { rate: 0.0003, per8h: 0.0003, hours: 8, next: T + 16 * H, premium: null };
   assert.equal(stretch(held([row(8, 0.0001)], { forming }), 1, 3, T + 10 * H).forming, null);
@@ -134,7 +134,7 @@ test('review: a corrected interval replaces a kept result; reading funding; shar
 test('Deribit: a tiny hourly rate keeps its digits; the time after its newest record is said in its own words', () => {
   // A record of 1.8e-7 per eight hours (an APR of 0.02 %), the hour after it not recorded yet.
   const lines = new FundingRangeSummary().lines(sel(0, 1.5), held([row(1, 0.00000018, 1)], { venue: 'deribit', key: 'd' }), true, 'd', T + 1.5 * H);
-  assert.equal(text(lines, 'fd-rate'), 'Hourly net rate | +0.00002% throughout the represented time');
+  assert.equal(text(lines, 'fd-rate'), 'Hourly net rate | +0.00002% throughout the covered time');
   assert.ok(lines.find(l => l.key === 'fd-grid')!.grid![0]!.rows!.some(r => r.label === 'After the newest hourly record held'));
 });
 
