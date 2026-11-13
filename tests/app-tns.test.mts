@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { HiddenGaps, MERGE_GAP_MS, MERGE_SPAN_MS, TNS_DEFAULTS, TNS_GAP_MS, SEAM_SLACK_MS, TNS_HOLE_MS, TnsBook, recordedStretch, readFlowView, readTns, type TnsLine, type TnsRow } from '../src/app/tns/model.ts';
+import { HiddenGaps, MERGE_GAP_MS, MERGE_SPAN_MS, TNS_GAP_MS, SEAM_SLACK_MS, TNS_HOLE_MS, TnsBook, recordedStretch, readFlowView, type TnsLine, type TnsRow } from '../src/app/tns/model.ts';
 import type { Print } from '../src/app/prints.ts';
 import { LAYOUT_KEYS, readSettings } from '../src/app/store.ts';
 
@@ -10,26 +10,22 @@ const all = () => true;
 const rowsOf = (book: TnsBook, o: Partial<Parameters<TnsBook['rows']>[0]> = {}): TnsLine[] => book.rows({ minUsd: 100_000, side: 'both', merge: true, shown: all, ...o });
 const onlyRows = (lines: TnsLine[]): TnsRow[] => lines.filter((l): l is TnsRow => l.k === 'row');
 
-test('the settings read back field by field; the view is the flow unless a save says Time & sales', () => {
-  assert.deepEqual(readTns(undefined), TNS_DEFAULTS);
-  assert.deepEqual(readTns({ minUsd: 250_000, side: 'sell', merge: false }), { minUsd: 250_000, side: 'sell', merge: false });
-  // Under the recording's floor, not a number, or a side that does not exist: the default.
-  assert.deepEqual(readTns({ minUsd: 10_000, side: 'up', merge: 'yes' }), TNS_DEFAULTS);
-  assert.deepEqual(readTns({ minUsd: Number.NaN }), TNS_DEFAULTS);
-  assert.equal(readFlowView('tns'), 'tns');
+test('the view is the flow unless a save says Trades; a save that named Time & sales or All trades opens on Trades', () => {
+  assert.equal(readFlowView('trades'), 'trades');
+  assert.equal(readFlowView('tns'), 'trades');
+  assert.equal(readFlowView('all'), 'trades');
   assert.equal(readFlowView('tape'), 'flow');
   assert.equal(readFlowView(undefined), 'flow');
 });
 
-test('a saved page and a layout carry the view and the list settings', () => {
-  assert.ok((LAYOUT_KEYS as readonly string[]).includes('flowView') && (LAYOUT_KEYS as readonly string[]).includes('tns'));
-  const s = readSettings({ flowView: 'tns', tns: { minUsd: 50_000, side: 'buy', merge: true } });
-  assert.equal(s.flowView, 'tns');
-  assert.deepEqual(s.tns, { minUsd: 50_000, side: 'buy', merge: true });
-  // A layout saved before the views existed opens on the flow, at the defaults.
-  const old = readSettings({});
-  assert.equal(old.flowView, 'flow');
-  assert.deepEqual(old.tns, TNS_DEFAULTS);
+test('a saved page and a layout carry the view and Trades\' settings, and no longer Time & sales\'', () => {
+  assert.ok((LAYOUT_KEYS as readonly string[]).includes('flowView') && (LAYOUT_KEYS as readonly string[]).includes('trades'));
+  assert.ok(!(LAYOUT_KEYS as readonly string[]).includes('tns'));
+  const s = readSettings({ flowView: 'tns', tns: { minUsd: 50_000, side: 'buy', merge: true } } as Parameters<typeof readSettings>[0]);
+  assert.equal(s.flowView, 'trades');
+  assert.ok(!('tns' in s));
+  // A layout saved before the views existed opens on the flow.
+  assert.equal(readSettings({}).flowView, 'flow');
 });
 
 test('newest on top, filtered by size, side and the exchanges shown', () => {
@@ -156,13 +152,12 @@ test('the page in the background is a gap only when no order came for a while (a
   assert.equal(busy.arrived(40_100), 0, 'orders kept coming: no stretch without orders past the limit');
 });
 
-test('the list takes every order the stream sends, and reaches the recording only through the page\'s callback', () => {
-  const hub = fs.readFileSync('src/app/hub.ts', 'utf8');
-  // Every live order goes to the list, the ones the book already held included, and after the book's own work (an error there skips nothing).
-  assert.match(hub, /const fresh = this\.prints\.add\(live\);\r?\n\s*if \(fresh\.length\) \{[^\n]*\}\r?\n\s*\/\/[^\n]*\r?\n\s*if \(live\.length\) this\.onLivePrints\(live\);/);
-  const view = fs.readFileSync('src/app/panes/tns-view.ts', 'utf8');
-  assert.doesNotMatch(view, /source\.|fetch\(|\.prints\(/, 'Time & sales asks no source itself (its fill goes through `prefill`, set by the page)');
-  assert.match(view, /this\.#book\.prefill\(got\.prints, got\.from, got\.holes, got\.minHole\)/, 'the source\'s shortest hole reaches the list (left out, every short line would be drawn)');
+test('Trades reaches the recording only through the page\'s callback (the source\'s own recording, never an exchange)', () => {
+  const view = fs.readFileSync('src/app/panes/trades-view.ts', 'utf8');
+  assert.doesNotMatch(view, /source\.|fetch\(|\.prints\(|recentPrints/, 'the view asks no source itself (its history goes through `recorded`, set by the page)');
+  assert.match(view, /void this\.recorded\(until, want\)/);
+  const main = fs.readFileSync('src/app/main.ts', 'utf8');
+  assert.match(main, /cvd\.trades\.recorded = \(until, minUsd\) => hub\.recentPrints\(/);
 });
 
 test('the recording covered from its first moment, with holes where no market was recorded; one venue reconnecting is no hole', () => {
@@ -276,13 +271,12 @@ test('two holes with no row between them are two lines, and a gap before the fir
   assert.deepEqual(rowsOf(book).map(l => l.k === 'gap' ? l.why : 'row'), ['row', 'reconnect', 'row', 'unrecorded', 'unrecorded', 'row']);
 });
 
-test('the list is filled from the recording only through the source it asks anyway, and only when it first shows', () => {
+test('the recording is asked through the source it asks anyway, once, and again only for a smaller size than was asked', () => {
   const hub = fs.readFileSync('src/app/hub.ts', 'utf8');
   assert.match(hub, /async recentPrints\(/);
   assert.match(hub, /this\.source\.coverage\(/);
   assert.match(hub, /TNS_HOLE_MS\[this\.source\.kind\]/);
   assert.match(hub, /rows\.length < PRINTS_PER_ANSWER/, 'an answer cut at its largest orders is never used as a full list');
-  const view = fs.readFileSync('src/app/panes/tns-view.ts', 'utf8');
-  assert.match(view, /if \(shown && this\.#filled === 'no'\) this\.#fill\(\);/);
-  assert.match(view, /!this\.#sourceReady/, 'not before the stream has opened (the markets are known)');
+  const view = fs.readFileSync('src/app/panes/trades-view.ts', 'utf8');
+  assert.match(view, /this\.#recordedState === 'done' && want >= this\.#recordedMin/);
 });

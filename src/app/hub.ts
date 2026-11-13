@@ -26,7 +26,7 @@ import { ABSORPTION_RETENTION_MS, MAX_ABSORPTION_INSTRUMENTS } from '../shared/a
 import { measureDef, type MetricFlags, type ProfileMetric } from './measures/registry.ts';
 import { NO_FLAGS, type Thresholds } from './measures/measure.ts';
 import { PRINTS_PER_ANSWER } from '../shared/prints.ts';
-import { MAX_COVERAGE_INSTRUMENTS } from '../shared/coverage.ts';
+import { MAX_COVERAGE_INSTRUMENTS, MAX_COVERAGE_SPAN_MS } from '../shared/coverage.ts';
 import { SEAM_SLACK_MS, TNS_HOLE_MS, recordedStretch } from './tns/model.ts';
 import { readCandles, webGet } from '../shared/history.ts';
 import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
@@ -287,7 +287,7 @@ export class Hub {
   readonly prints = new PrintBook();
   /** Called with each batch of new large trades from the live stream (for sounds). */
   onPrints: (fresh: Print[]) => void = () => {};
-  /** Called with every large trade the live stream sent, new to the book or not (Time & sales lists what arrives). */
+  /** Called with every large trade the live stream sent, new to the book or not (a list of what arrives would take them here). */
   onLivePrints: (live: Print[]) => void = () => {};
   /** Called when the print book changed, so the chart can redraw its bubbles. */
   onPrintsChanged: () => void = () => {};
@@ -683,7 +683,7 @@ export class Hub {
         const live = items.flatMap(row => { const p = fromWire(row); return p ? [p] : []; });
         const fresh = this.prints.add(live);
         if (fresh.length) { this.#whaleTake(fresh); this.onPrints(fresh); this.onPrintsChanged(); }
-        // Every order the stream sent, also those the book dropped because a history answer brought them first (Time & sales lists what arrives).
+        // Every order the stream sent, also those the book dropped because a history answer brought them first (a list of what arrives takes them all).
         if (live.length) this.onLivePrints(live);
       },
       onLiquidations: items => {
@@ -1229,7 +1229,7 @@ export class Hub {
 
   /**
    * The orders from `minUsd` (the coin's dollars: the list's own smallest order) the recording holds from at most `lookbackMs` before `until`
-   * (when the stream opened, the page's clock) up to it, with the holes in its coverage: Time & sales fills its list with them when it first
+   * (when the stream opened, the page's clock) up to it, with the holes in its coverage: Trades counts them before the tape when it first
    * shows. Both questions go to the source's own recording (in the browser the engine's memory, which holds the history service's hour files
    * the page reads at opening for the heatmap anyway; else the local server), never to an exchange: one coverage question, then one to six
    * for orders. An answer cut at its largest orders is no complete list, so the window is halved (on the same coverage) until one is not. On
@@ -1256,6 +1256,35 @@ export class Hub {
       start = Math.round((stretch.since + end) / 2);
     }
     return null;
+  }
+
+  /**
+   * The recording's largest orders in [from, to) from `minUsd` (the page's clock; the orders keep their exchange times), oldest first, and the
+   * size from which every order of the stretch is among them: an answer carries the largest `PRINTS_PER_ANSWER` of a busier stretch, so that
+   * size is then its smallest order. Trades names the largest orders of blocks older than its first hour with it. The source's own
+   * recording, never an exchange; on the server's page it waits for the map's first columns, as every history read does.
+   */
+  async printsIn(from: number, to: number, minUsd: number): Promise<{ prints: Print[]; floor: number }> {
+    if (this.mapFirst()) await this.#afterMap();
+    const skew = this.#sourceSkew, rows = await this.source.prints(from - skew, to - skew, minUsd);
+    let floor = minUsd;
+    if (rows.length >= PRINTS_PER_ANSWER) { floor = Infinity; for (const r of rows) if (r.usd < floor) floor = r.usd; }
+    return { prints: rows, floor };
+  }
+
+  /**
+   * The stretches of [from, to) in which the recording listened to none of `ids` (from the source's shortest hole, `TNS_HOLE_MS`), on the
+   * page's clock: the per-second flow holds zeros there for seconds nobody recorded (the history's end and the page's own start leave one
+   * at every opening), and Trades marks the blocks over them. Time before the coverage record's first stretch is not called a hole (the
+   * record may begin later than what was recorded). Null when the source keeps no coverage record. One question, at most a day and its edges.
+   */
+  async recordingHoles(ids: readonly string[], from: number, to: number): Promise<[number, number][] | null> {
+    if (!this.source.coverage || !ids.length) return null;
+    if (this.mapFirst()) await this.#afterMap();
+    const skew = this.#sourceSkew, end = to - skew, start = Math.max(from - skew, end - MAX_COVERAGE_SPAN_MS);
+    const answer = await this.source.coverage(ids.slice(0, MAX_COVERAGE_INSTRUMENTS), 'trades', start, end);
+    const stretch = recordedStretch(answer.instruments.map(i => i.spans), start, end, TNS_HOLE_MS[this.source.kind]);
+    return stretch ? stretch.holes.map(([a, z]) => [a + skew, z + skew] as [number, number]) : [];
   }
 
   /**

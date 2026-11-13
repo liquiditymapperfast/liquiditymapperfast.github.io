@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'tns' | 'trades' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'trades' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
 
 export interface HelpTopic {
   title: string;
@@ -267,19 +267,13 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
       t('Rows are ranked by volume over the window you choose and re-ranked now and then. Every line has its own scale, so compare shapes, not heights. The labels are on the left so that the ends of the lines stay clear. Hover a row for its numbers; the gear sets how many exchanges, how tall each row is and when the order changes.'),
       t('A small triangle on a line marks a burst: in ten seconds that exchange bought (up) or sold (down) far more at market than it usually does, judged against its last half hour, and at least the smallest burst. Only bursts seen while the page is open are marked, so a reload clears them. The marks are off until switched on in the gear, which also sets how big and how unusual a burst must be.')],
   },
-  tns: {
-    title: t('Time & sales'), guide: 'tns',
-    tip: t('The flow column\'s second view: every large market order, newest on top, with its time, exchange, side, price and size. It starts with the orders this page already recorded, up to the last hour, and asks the exchanges for nothing.'),
-    body: [t('The tabs in the column\'s title switch between the flow lines and this list; with the column closed, the strip along the edge has a tab for each. The orders are the ones the trade bubbles draw, from the exchanges switched on, so a row on the list is a bubble on the map.'),
-      t('From $100,000 by default (the menu above the list, or the settings key): a busy minute of BTC orders from $25,000 is too many rows to read. A burst of orders on one exchange and side is one row, ×16 saying how many, its size added up and its price their average weighted by size. Bold rows are whale size, as the bubbles\' glow; the bar behind a size grows with it on a log scale.'),
-      t('Pointing at the list holds it still: new rows are counted on a button that brings them in. The order pointed at is marked on the map and the panes at its moment, and a click takes the map there. A line says where orders may be missing: the stream dropped, the page was in the background, or nothing was recorded then.')],
-  },
   trades: {
-    title: t('All trades'), guide: 'all-trades',
-    tip: t('The flow column\'s third view: every market order this page receives, of any size, as it arrives, newest on top. Nothing is fetched or recorded: it holds what came since the page started listening.'),
-    body: [t('Each row is one order: its time, exchange, side (▲ bought, ▼ sold), price and size. Bigger orders get taller rows, heavier type and a stronger tint of their side\'s colour, on a fixed scale (under $10K, to $100K, to the whale size of Sounds, and above), so the same order looks the same whatever is filtered.'),
-      t('The menu above the list sets the smallest order: any size at first. A busy market sends dozens of orders a second, too many to read as they pass: point at the list to hold it, or scroll back with the wheel (on a phone, with a finger; a tap on a row shows its details); a button counts what came meanwhile. The settings key also chooses the side and can show a burst of orders on one market as one row.'),
-      t('The orders are held in this page\'s memory from when it started listening, the last hours of them; nothing is fetched to fill it. A line says where orders may be missing: the stream reconnected, or the source left some out.')],
+    title: t('Trades'), guide: 'flow-trades',
+    tip: t('The flow column\'s second view: what was bought and sold at market, a block of time per row (a second at first) or each order, newest on top. It holds what this page received and the history it already read, and asks the exchanges for nothing.'),
+    body: [t('Each block shows its time and, under it, how far the reference market\'s price moved. Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell.'),
+      t('A bar grows with the square root of its dollars, full at about the busiest one percent of blocks in a week: a side ten times larger draws about three times longer, and › marks one past full.'),
+      t('Group by sets what a row is: each order, a second, a minute, five or fifteen minutes, or a length of your own. The size menu leaves out smaller orders before they are added up. Older blocks come from what the page already holds: any size from its per-second record, from $25,000 from its recording, smaller sizes only from when it began listening.'),
+      t('Point at the list to hold it still; the status counts what came meanwhile. The block you point at is marked on the map and the panes, and a click chooses it for the details beside a wide list and takes the map to its time. On a phone a tap opens its details.')],
   },
   book: {
     title: t('Order book'), guide: 'order-book',

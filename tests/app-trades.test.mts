@@ -140,30 +140,32 @@ test('sizes, clocks and settings as the list writes and reads them', () => {
   assert.deepEqual([240, 280, 320].map(clockForm), ['none', 'ms', 'hms']);
   assert.deepEqual(readTrades(undefined), TRADES_DEFAULTS);
   assert.equal(TRADES_DEFAULTS.minUsd, 0, 'any size at first: every trade');
-  assert.deepEqual(readTrades({ minUsd: 5_000, side: 'buy', group: true }), { minUsd: 5_000, side: 'buy', group: true });
+  assert.equal(TRADES_DEFAULTS.unit, 1, 'a second a row at first (Karl, 2026-11-13)');
+  assert.deepEqual(readTrades({ minUsd: 5_000, side: 'buy', group: true }), { unit: 1, minUsd: 5_000, side: 'buy', group: true });
   assert.deepEqual(readTrades({ minUsd: -1, side: 'x', group: 1 }), TRADES_DEFAULTS);
   assert.ok((LAYOUT_KEYS as readonly string[]).includes('trades'));
-  assert.equal(readSettings({ flowView: 'all' }).flowView, 'all');
+  assert.equal(readSettings({ flowView: 'all' }).flowView, 'trades');
 });
 
 test('the view takes the tape only while it shows, and asks no source', () => {
   const main = fs.readFileSync('src/app/main.ts', 'utf8');
-  // Each list's refresh and redraw stay a pair (review r1: an else-if between them made Time & sales' redraw unreachable).
-  assert.match(main, /cvd\.tns\.refresh\(\);\n\s*else if \(changed\.has\('sounds'\) \|\| changed\.has\('replay'\) \|\| changed\.has\('timeZone'\)\) cvd\.tns\.redraw\(\);/);
+  // The refresh and the redraw stay a pair (review r1, 2026-11-12: an else-if between two lists made one's redraw unreachable).
   assert.match(main, /cvd\.trades\.refresh\(\);\n\s*else if \(changed\.has\('sounds'\) \|\| changed\.has\('replay'\) \|\| changed\.has\('timeZone'\)\) cvd\.trades\.redraw\(\);/);
   // On screen: the column shown and not folded, and on a phone its Flow tab open (a phone hides tabs by its stylesheet, not by `hidden`).
-  assert.match(main, /const allTradesShown = \(\): boolean => !cvd\.root\.hidden && !cvd\.covered\(\) && store\.state\.flowView === 'all';/);
+  assert.match(main, /const tradesShown = \(\): boolean => !cvd\.root\.hidden && !cvd\.covered\(\) && store\.state\.flowView === 'trades';/);
   assert.match(main, /cvd\.covered = \(\) => isPhone\(\) && dock\.tab !== 'flow';/);
-  assert.match(main, /\|\| allTradesShown\(\);/);
+  assert.match(main, /\|\| tradesShown\(\);/);
   assert.match(main, /cvd\.trades\.tapeArrived\(\)/);
-  const view = fs.readFileSync('src/app/panes/trades-view.ts', 'utf8');
-  assert.doesNotMatch(view, /source\.|fetch\(|recentPrints|\.prints\(/, 'All trades never asks a source');
-  // A venue joining the map lets its orders in: the index is found again when the venues it was found for change (review r1).
-  assert.match(view, /this\.#filterKeyNow\(\) !== this\.#filterKey/);
+  for (const f of ['src/app/panes/trades-view.ts', 'src/app/panes/trades-orders.ts', 'src/app/panes/trades-blocks.ts']) {
+    assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /source\.|fetch\(|recentPrints|\.prints\(/, `${f} never asks a source`);
+  }
+  // A venue joining the map lets its orders in: the index and the tally start over when the venues they were made for change (review r1).
+  assert.match(fs.readFileSync('src/app/panes/trades-orders.ts', 'utf8'), /this\.#filterKeyNow\(\) !== this\.#filterKey/);
+  assert.match(fs.readFileSync('src/app/panes/trades-view.ts', 'utf8'), /this\.#filterKeyNow\(\) !== this\.#filterKey/);
 });
 
 test('nothing in the code or the docs names another product used for reference (AGENTS.md)', () => {
-  for (const f of ['README.md', 'src/app/panes/trades-view.ts', 'src/app/trades/style.ts', 'src/app/trades/index.ts', 'src/app/trades/settings.ts', 'src/app/tape/ring.ts', 'src/app/guide/content.ts', 'src/app/help.ts']) {
+  for (const f of ['README.md', 'src/app/panes/trades-view.ts', 'src/app/panes/trades-orders.ts', 'src/app/panes/trades-blocks.ts', 'src/app/panes/trades-inspector.ts', 'src/app/trades/style.ts', 'src/app/trades/index.ts', 'src/app/trades/settings.ts', 'src/app/trades/tally.ts', 'src/app/trades/blocks.ts', 'src/app/tape/ring.ts', 'src/app/guide/content.ts', 'src/app/help.ts']) {
     assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\baggr(\.trade)?\b/i, f);
   }
 });

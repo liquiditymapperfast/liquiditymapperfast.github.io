@@ -37,7 +37,7 @@ export interface LayoutPane {
 }
 /**
  * A pane that stands beside the map: its header (the controls it has), and the name its edge tab and its buttons give it. A pane with `views`
- * (the flow column: its flow lines, Time & sales) gets an edge tab for each, which opens it on that view.
+ * (the flow column: its flow lines, Trades) gets an edge tab for each, which opens it on that view.
  */
 export interface SidePane { id: SidePaneId; root: HTMLElement; head: HTMLElement; title: string; views?: readonly { id: string; title: string }[] }
 

@@ -1,18 +1,21 @@
 import type { Print } from '../prints.ts';
-import { SIZE_MAX_USD } from '../sizes.ts';
 
 /**
- * Time & sales: the large market orders as a list, newest on top, made of the orders the page is sent live anyway (the trade bubbles'
+ * The recording's large orders as rows (Time & sales until 2026-11-13; now Trades' "Each order" from $25K, below the tape's oldest order, and
+ * the history its blocks count before the tape): the large market orders, newest on top, made of the orders the page is sent live anyway (the trade bubbles'
  * orders), and, when it first shows, of those the recording already holds for the stretch it covered without a hole up to now (read from
  * the page's own recording or the local server, never from an exchange: Karl, 2026-11-12, "forward only, except if it's free"). This
  * file is the arithmetic (no page): the orders kept, the gaps where some may be missing, the stretch the recording covered, and the rows
- * a filter and the merge make of them. `panes/tns-view.ts` puts the rows on the screen.
+ * a filter and the merge make of them. `panes/trades-orders.ts` puts the rows on the screen.
  */
 
-/** The views the flow column can show: the taker flow lines, Time & sales (large orders), or All trades (every order, `panes/trades-view.ts`). */
-export type FlowView = 'flow' | 'tns' | 'all';
-export const FLOW_VIEWS: readonly FlowView[] = ['flow', 'tns', 'all'];
-export const readFlowView = (saved: unknown): FlowView => FLOW_VIEWS.includes(saved as FlowView) ? saved as FlowView : 'flow';
+/**
+ * The views the flow column can show: the taker flow lines, or Trades (`panes/trades-view.ts`: blocks of time or each order). Time & sales
+ * and All trades were views of their own until 2026-11-13; a save naming either opens on Trades.
+ */
+export type FlowView = 'flow' | 'trades';
+export const FLOW_VIEWS: readonly FlowView[] = ['flow', 'trades'];
+export const readFlowView = (saved: unknown): FlowView => saved === 'trades' || saved === 'tns' || saved === 'all' ? 'trades' : 'flow';
 
 export interface TnsSettings {
   /** The smallest order listed (BTC's dollars; scaled for a coin that trades less, as every size setting is). */
@@ -21,20 +24,8 @@ export interface TnsSettings {
   /** A burst of orders on one exchange and side is one row (`MERGE_GAP_MS`, `MERGE_SPAN_MS`). */
   merge: boolean;
 }
-/** The orders recorded start here: the list cannot go lower. */
+/** The orders recorded start here (BTC's dollars): the recording holds nothing smaller. */
 export const TNS_FLOOR_USD = 25_000;
-/** The sizes offered in the menu (BTC's; any size from the floor can be typed). */
-export const TNS_MINIMUMS: readonly number[] = [25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000];
-/**
- * $100K: a week of BTC orders on the eleven default venues made 13 rows a minute at the median, 47 at the 90th percentile and 141 at the
- * 99th with the merge on; at $25K it was 54 / 156 / 354 merged and 71 / 248 / 906 not (Research_Findings.md, time-and-sales-2026-11-12).
- */
-export const TNS_DEFAULTS: Readonly<TnsSettings> = { minUsd: 100_000, side: 'both', merge: true };
-export function readTns(saved: unknown): TnsSettings {
-  const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>, d = TNS_DEFAULTS;
-  const min = typeof s.minUsd === 'number' && Number.isFinite(s.minUsd) && s.minUsd >= TNS_FLOOR_USD && s.minUsd <= SIZE_MAX_USD ? s.minUsd : d.minUsd;
-  return { minUsd: min, side: s.side === 'buy' || s.side === 'sell' ? s.side : 'both', merge: typeof s.merge === 'boolean' ? s.merge : d.merge };
-}
 
 /** An order joins the open row of its exchange and side when it comes this soon after that row's last order (exchange time)... */
 export const MERGE_GAP_MS = 500;

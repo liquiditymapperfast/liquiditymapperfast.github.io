@@ -1,0 +1,244 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { BLOCK, TapeRing } from '../src/app/tape/ring.ts';
+import type { TapeBatch } from '../src/shared/tape.ts';
+import { SecondTally, LATE_MS, type TallyFilter } from '../src/app/trades/tally.ts';
+import { BlockReader, FROM, barLength, coincidences, emptyBlock, fullScale, repeats, type FlowLike } from '../src/app/trades/blocks.ts';
+import { TRADES_DEFAULTS, readTrades, readUnit } from '../src/app/trades/settings.ts';
+
+/** A batch of orders: [market, exchange time, price, signed usd]. */
+function batch(seq: number, rows: [string, number, number, number][]): TapeBatch {
+  const ids = [...new Set(rows.map(r => r[0]))], n = rows.length;
+  const b: TapeBatch = { seq, dropped: 0, ids, inst: new Int32Array(n), t: new Float64Array(n), price: new Float64Array(n), usd: new Float32Array(n), lo: new Float64Array(n), hi: new Float64Array(n) };
+  rows.forEach(([id, t, price, usd], i) => { b.inst[i] = ids.indexOf(id); b.t[i] = t; b.price[i] = price; b.usd[i] = usd; b.lo[i] = price - 1; b.hi[i] = price + 1; });
+  return b;
+}
+const B = 'binance:BTCUSDT', O = 'okx:BTC-USDT-SWAP', BS = 'binancespot:BTCUSDT';
+const T0 = 1_800_000_000_000;
+const all = { minUsd: 0, side: 'both' as const, shown: () => true };
+const venueSlot = (id: string): number => id.startsWith('binance') ? 0 : 1;
+
+/** A reader on a tally over `ring` with the two venues' slots. */
+function reader(ring: TapeRing, filter: TallyFilter = all, markets = [B, BS, O]): { tally: SecondTally; r: BlockReader } {
+  const tally = new SecondTally(3600); tally.reset(ring, filter); while (tally.filling) tally.fill();
+  const r = new BlockReader(); r.tally = tally; r.markets = markets; r.ref = B; r.minUsd = filter.minUsd; r.side = filter.side;
+  r.setVenues(2, venueSlot);
+  return { tally, r };
+}
+
+test('the unit and the settings read back: one second by default, each order is 0, a custom length up to fifteen minutes', () => {
+  assert.equal(TRADES_DEFAULTS.unit, 1);
+  assert.deepEqual(readTrades(undefined), { unit: 1, minUsd: 0, side: 'both', group: false });
+  assert.equal(readTrades({ minUsd: 5_000, side: 'sell', group: true }).unit, 1, 'a save from before the unit opens on a second');
+  assert.equal(readTrades({ unit: 0 }).unit, 0);
+  assert.equal(readTrades({ unit: 300 }).unit, 300);
+  assert.equal(readUnit(901, 1), 1); assert.equal(readUnit(2.5, 1), 1); assert.equal(readUnit(-1, 60), 60); assert.equal(readUnit(7, 1), 7);
+});
+
+test('the tally adds each second up per market: bought, sold, the count, the largest buy and sell, and every order\'s VWAP', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 100, 70_000, 10_000], [O, T0 + 200, 70_010, -4_000], [B, T0 + 900, 70_020, 30_000], [BS, T0 + 950, 70_030, -500]]), 1, 0);
+  ring.add(batch(2, [[B, T0 + 1_100, 70_040, -2_000]]), 1, 0);
+  const { tally } = reader(ring);
+  const s = tally.slot(T0 / 1000), m = (id: string): number => ring.ids.indexOf(id);
+  assert.equal(tally.count(s), 4);
+  assert.equal(tally.buy(m(B), s), 40_000); assert.equal(tally.sell(m(O), s), 4_000); assert.equal(tally.sell(m(BS), s), 500);
+  assert.equal(tally.topBuy(s), 30_000); assert.equal(ring.at(tally.topBuyK(s)).t, T0 + 900);
+  assert.equal(tally.topSell(s), 4_000);
+  assert.equal(Math.round(tally.vwap(m(B), s) * 100) / 100, Math.round((70_000 * 10_000 + 70_020 * 30_000) / 40_000 * 100) / 100);
+  assert.equal(tally.count(tally.slot(T0 / 1000 + 1)), 1);
+  assert.equal(tally.slot(T0 / 1000 + 2), -1, 'a second with no order has no slot');
+});
+
+test('a size floor and a side count only what passes, but a second\'s VWAP is every order\'s (the price change ignores the filter)', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 100, 70_000, 500], [B, T0 + 200, 70_100, 20_000], [B, T0 + 300, 70_200, -15_000]]), 1, 0);
+  const { tally } = reader(ring, { minUsd: 10_000, side: 'buy', shown: () => true });
+  const s = tally.slot(T0 / 1000), m = ring.ids.indexOf(B);
+  assert.equal(tally.count(s), 1); assert.equal(tally.buy(m, s), 20_000); assert.equal(tally.sell(m, s), 0);
+  const all3 = (70_000 * 500 + 70_100 * 20_000 + 70_200 * 15_000) / 35_500;
+  assert.ok(Math.abs(tally.vwap(m, s) - all3) < 1e-6);
+});
+
+test('a late order lands in its own second; one later than the window marks its market late for half a minute', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 10_000, 70_000, 1_000]]), 1, 0);
+  const { tally } = reader(ring);
+  ring.add(batch(2, [[O, T0 + 10_000 - LATE_MS - 500, 70_000, 2_000], [B, T0 + 10_200, 70_000, 1_000]]), 1, 0);
+  tally.update();
+  assert.equal(tally.sell(ring.ids.indexOf(O), tally.slot(T0 / 1000 + 6)), 0);
+  assert.equal(tally.buy(ring.ids.indexOf(O), tally.slot(T0 / 1000 + 6)), 2_000, 'the late order went to its own second');
+  assert.deepEqual(tally.late(), [ring.ids.indexOf(O)]);
+  ring.add(batch(3, [[B, T0 + 50_000, 70_000, 1_000]]), 1, 0);
+  tally.update();
+  assert.deepEqual(tally.late(), [], 'forgotten half a minute later');
+});
+
+test('starting over reads the ring back in steps, and the covered start follows how far it has read', () => {
+  const ring = new TapeRing(BLOCK);
+  let seq = 1;
+  for (let i = 0; i < 300; i++) ring.add(batch(seq++, [[B, T0 + i * 100, 70_000, 1_000]]), 1, 0);
+  const tally = new SecondTally(3600); tally.reset(ring, all);
+  assert.equal(tally.update(), 0, 'nothing new since the start over');
+  assert.equal(tally.coveredFrom(), Infinity, 'nothing held yet');
+  assert.equal(tally.fill(100), 100);
+  assert.ok(tally.filling);
+  assert.equal(tally.coveredFrom(0), T0 + 200 * 100, 'covered from the oldest write read');
+  while (tally.filling) tally.fill(64);
+  assert.equal(tally.coveredFrom(), T0, 'all read: from the ring\'s own start');
+  let total = 0;
+  for (let sec = T0 / 1000; sec < T0 / 1000 + 30; sec++) { const s = tally.slot(sec); if (s >= 0) total += tally.count(s); }
+  assert.equal(total, 300);
+});
+
+test('the hold counts the orders that pass as they come; a cleared ring starts over', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0, 70_000, 1_000]]), 1, 0);
+  const { tally } = reader(ring, { minUsd: 500, side: 'both', shown: () => true });
+  tally.hold();
+  ring.add(batch(2, [[B, T0 + 10, 70_000, 2_000], [B, T0 + 20, 70_000, 100]]), 1, 0);
+  tally.update();
+  assert.equal(tally.newSinceHold, 1);
+  tally.release(); assert.equal(tally.newSinceHold, 0);
+  const resets = tally.resets;
+  ring.clear(); ring.add(batch(1, [[B, T0 + 99_000, 70_000, 1_000]]), 2, 0);
+  tally.update();
+  assert.equal(tally.resets, resets + 1);
+});
+
+test('a block adds its seconds up; venues keep their slots; spot and perpetual of one venue share one', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0, 70_000, 10_000], [BS, T0 + 1_100, 70_030, 5_000], [O, T0 + 2_200, 70_010, -4_000], [B, T0 + 61_000, 70_000, 9_000]]), 1, 0);
+  const { r } = reader(ring);
+  const out = emptyBlock(2);
+  r.read(T0 / 1000, 60, out, T0 + 200_000);
+  assert.equal(out.buy, 15_000); assert.equal(out.sell, 4_000); assert.equal(out.n, 3);
+  assert.equal(out.vBuy[0], 15_000, 'binance and binance spot in one slot'); assert.equal(out.vSell[1], 4_000);
+  assert.equal(out.topBuy.usd, 10_000); assert.equal(out.topBuy.id, B); assert.equal(out.topSell.usd, 4_000);
+  // The tape's first second, begun part-way, is not counted as covered: a block starting there would be partial.
+  assert.equal(out.from, FROM.tape); assert.equal(out.partial, false); assert.equal(out.forming, false);
+  r.read(T0 / 1000 + 60, 60, out, T0 + 61_500);
+  assert.equal(out.forming, true, 'the minute under way');
+  assert.equal(out.n, 1);
+});
+
+test('the reference market\'s VWAP: the block\'s last second that traded, and the last second before it within reach', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 100, 70_000, 1_000], [B, T0 + 2_100, 70_050, 1_000], [O, T0 + 3_100, 70_900, 1_000]]), 1, 0);
+  const { r } = reader(ring);
+  const out = emptyBlock(2);
+  r.read(T0 / 1000 + 3, 1, out, T0 + 10_000);
+  assert.ok(Number.isNaN(out.refPx), 'the reference market did not trade in it');
+  assert.equal(out.refPrev, 70_050, 'its last second before it, one second back');
+  r.read(T0 / 1000 + 5, 1, out, T0 + 10_000);
+  assert.ok(Number.isNaN(out.refPrev), 'nothing within two seconds before');
+});
+
+test('before the tape: any size reads the flow (no count), a size floor the recording (from its floor), under $25K nothing', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 3_600_000, 70_000, 1_000]]), 1, 0);
+  const startSec = T0 / 1000;
+  const flow = (buyPerSec: number): FlowLike => ({ buy: (a, z) => (z - a + 1) * buyPerSec, sell: (a, z) => (z - a + 1) * 10, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } });
+  const flows = new Map([[B, flow(100)], [O, flow(50)]]);
+  const { r } = reader(ring);
+  r.flowOf = id => flows.get(id);
+  r.recorded = { prints: [{ t: T0 + 30_000, id: O, side: 'sell', price: 69_100, usd: 400_000 }, { t: T0 + 31_000, id: B, side: 'buy', price: 69_000, usd: 30_000 }], from: T0, holes: [], minUsd: 25_000 };
+  const out = emptyBlock(2);
+  r.read(startSec, 60, out, T0 + 3_700_000);
+  assert.equal(out.from, FROM.flow); assert.equal(out.n, -1);
+  assert.equal(out.buy, 60 * 150); assert.equal(out.vBuy[0], 6_000); assert.equal(out.vBuy[1], 3_000);
+  assert.equal(out.topSell.usd, 400_000); assert.equal(out.topSell.recorded, true, 'named from the recording');
+  assert.equal(out.refPx, 69_000);
+  r.minUsd = 25_000;
+  r.read(startSec, 60, out, T0 + 3_700_000);
+  assert.equal(out.from, FROM.prints); assert.equal(out.buy, 30_000); assert.equal(out.sell, 400_000);
+  r.minUsd = 5_000;
+  r.read(startSec, 60, out, T0 + 3_700_000);
+  assert.equal(out.unknown, true, 'no source counts orders from $5K before the tape');
+  assert.equal(r.oldestSec(), Math.ceil((T0 + 3_600_000) / 1000), 'the list ends where the tape starts');
+});
+
+test('before the recording\'s hour, any size names a block\'s largest orders from an older stretch that holds the whole block, never counts them', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 3_600_000, 70_000, 1_000]]), 1, 0);
+  const startSec = T0 / 1000;
+  const flow: FlowLike = { buy: (a, z) => (z - a + 1) * 100, sell: (a, z) => (z - a + 1) * 10, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } };
+  const { r } = reader(ring);
+  r.flowOf = id => id === B ? flow : undefined;
+  r.recorded = { prints: [], from: T0 + 1_800_000, holes: [], minUsd: 25_000 };
+  const out = emptyBlock(2);
+  r.read(startSec, 60, out, T0 + 3_700_000);
+  assert.equal(out.topBuy.has, false, 'no older stretch yet');
+  r.older = [{ from: T0, to: T0 + 600_000, floor: 25_000, prints: [
+    { t: T0 + 10_000, id: B, side: 'buy', price: 69_000, usd: 900_000 },
+    { t: T0 + 20_000, id: 'kraken:XBTUSD', side: 'buy', price: 69_000, usd: 5_000_000 },
+    { t: T0 + 70_000, id: O, side: 'sell', price: 69_000, usd: 300_000 },
+  ] }];
+  r.forget();
+  r.read(startSec, 60, out, T0 + 3_700_000);
+  assert.equal(out.topBuy.usd, 900_000, 'the largest of the markets counted (one not counted is left out)');
+  assert.equal(out.topBuy.recorded, true);
+  assert.equal(out.topSell.has, false, 'an order after the block is not its own');
+  assert.equal(out.buy, 6_000, 'the totals stay the flow\'s');
+  r.read(startSec + 540, 120, out, T0 + 3_700_000);
+  assert.equal(out.topBuy.has, false, 'a block the stretch does not hold whole is not named from it');
+});
+
+test('before the tape, a block over a stretch the recording did not listen to is partial: its flow zeros are not quiet seconds', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 3_600_000, 70_000, 1_000]]), 1, 0);
+  const startSec = T0 / 1000;
+  const flow: FlowLike = { buy: (a, z) => (z - a + 1) * 100, sell: (a, z) => (z - a + 1) * 10, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } };
+  const { r } = reader(ring);
+  r.flowOf = id => id === B ? flow : undefined;
+  r.holes = [[T0 + 20_000, T0 + 40_000]];
+  const out = emptyBlock(2);
+  r.read(startSec, 60, out, T0 + 3_700_000);
+  assert.equal(out.partial, true, 'the hole falls in it');
+  assert.equal(out.unrecorded, false, 'the rest of the minute was recorded');
+  r.read(startSec + 60, 60, out, T0 + 3_700_000);
+  assert.equal(out.partial, false, 'the next minute was recorded');
+  // A block wholly in the hole with nothing in it is unrecorded (the list folds a run of them into one line); one with dollars is not.
+  const quiet: FlowLike = { buy: (a, z) => (a >= startSec + 20 && z < startSec + 40 ? 0 : (z - a + 1) * 100), sell: () => 0, ownPrice: () => 69_000, span: flow.span };
+  r.flowOf = id => id === B ? quiet : undefined; r.forget();
+  r.read(startSec + 25, 5, out, T0 + 3_700_000);
+  assert.equal(out.unrecorded, true);
+  r.flowOf = id => id === B ? flow : undefined; r.forget();
+  r.read(startSec + 25, 5, out, T0 + 3_700_000);
+  assert.equal(out.unrecorded, false, 'dollars in it: partial, drawn as a block');
+});
+
+test('a block across the tape\'s start mixes sources: partial and no count; a reconnect inside one makes it partial', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 30_500, 70_000, 1_000]]), 1, 0);
+  const { r } = reader(ring);
+  r.flowOf = () => ({ buy: (a, z) => (z - a + 1) * 100, sell: () => 0, ownPrice: () => 0, span: { first: T0 / 1000, last: T0 / 1000 + 100 } });
+  const out = emptyBlock(2);
+  r.read(T0 / 1000, 60, out, T0 + 200_000);
+  assert.equal(out.from, FROM.flow | FROM.tape); assert.equal(out.partial, true); assert.equal(out.n, -1);
+  r.flowOf = null; r.gaps = [[T0 + 40_000, T0 + 41_000]];
+  r.read(T0 / 1000 + 30, 30, out, T0 + 200_000);
+  assert.equal(out.partial, true);
+});
+
+test('the bar scale: square root, full at about a week\'s 99th percentile, interpolated in logs between the units', () => {
+  const near = (a: number, b: number): boolean => Math.abs(a / b - 1) < 1e-9;
+  assert.equal(fullScale(1), 2.5e6); assert.ok(near(fullScale(60), 100e6)); assert.ok(near(fullScale(300), 500e6)); assert.ok(near(fullScale(900), 1.2e9));
+  assert.ok(fullScale(10) > fullScale(1) && fullScale(10) < fullScale(60));
+  assert.ok(Math.abs(Math.log(fullScale(30)) - (Math.log(2.5e6) + (Math.log(100e6) - Math.log(2.5e6)) * Math.log(30) / Math.log(60))) < 1e-9);
+  assert.equal(barLength(2.5e6, 2.5e6, 109), 109); assert.equal(barLength(5e6, 2.5e6, 109), 109, 'capped');
+  assert.ok(Math.abs(barLength(25e4, 2.5e6, 109) / barLength(25e3, 2.5e6, 109) - Math.sqrt(10)) < 1e-9, 'ten times larger: 3.16 times longer');
+  assert.equal(barLength(1, 2.5e6, 109), 1, 'a positive side is never under a pixel'); assert.equal(barLength(0, 2.5e6, 109), 0);
+});
+
+test('notes: orders on two or more venues within 5 ms (never chained past it), and runs of nearly equal sizes', () => {
+  const o = (t: number, venue: string, usd: number, id = `${venue}:X`): { t: number; id: string; venue: string; usd: number } => ({ t, id, venue, usd });
+  const found = coincidences([o(0, 'okx', 3e6), o(2, 'bybit', 5.8e5), o(4, 'bitget', 3.2e5), o(8, 'binance', 2e5), o(100, 'binance', 2e5), o(101, 'binance', 2e5)], 1e5);
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0]!.venues, ['okx', 'bybit', 'bitget']);
+  assert.equal(found[0]!.usd, 3e6 + 5.8e5 + 3.2e5);
+  assert.equal(coincidences([o(0, 'okx', 3e6), o(3, 'bybit', -5e5)], 1e5).length, 0, 'one side only');
+  const runs = repeats([o(0, 'bybit', 800), o(1, 'bybit', 801), o(2, 'bybit', 799), o(3, 'bybit', 800), o(4, 'bybit', 800), o(5, 'bybit', 2_000), o(6, 'okx', 800)]);
+  assert.equal(runs.length, 1); assert.equal(runs[0]!.n, 5); assert.equal(runs[0]!.lo, 799); assert.equal(runs[0]!.hi, 801);
+  assert.equal(repeats([o(0, 'bybit', 800), o(20_000, 'bybit', 800), o(20_001, 'bybit', 800), o(20_002, 'bybit', 800), o(20_003, 'bybit', 800)]).length, 0, 'a gap over ten seconds breaks the run');
+});

@@ -171,29 +171,17 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
-    id: 'tns', title: 'Time & sales',
+    id: 'flow-trades', title: 'Trades in the flow column',
     blocks: [
-      { t: 'p', text: '**Time & sales**, the second tab in the flow column\'s title, lists the large market orders as they arrive, newest on top: the time, the exchange, the side (▲ bought, ▼ sold, in the buy and sell colours), the price and the size. They are the orders the trade bubbles draw, so the list and the map tell the same story, one in numbers and one in place.' },
+      { t: 'p', text: '**Trades**, the second tab in the flow column\'s title, shows what was bought and sold at market, newest on top. At first each row is one second of every exchange on the map: when the market sends hundreds of orders a second, a second at a time is what a person can read as it happens.' },
       { t: 'list', items: [
-        'The list starts with the orders this page already recorded, up to the last hour (on this site that includes the recorded history it reads for the heatmap), and asks the exchanges for nothing. The menu above the rows sets the smallest order: $100,000 at first, any size from $25,000 in the settings key. A busy minute of BTC orders from $25,000 is more rows than anyone can read.',
-        'A burst of orders on one exchange and side, each within half a second of the last and three seconds of the first, is one row: ×16 says how many, the size is their total and the price their average weighted by size. The settings key turns that off.',
-        'Bold rows are whale size, as the bubbles\' glow (the Whale size in Sounds). The bar behind a size grows on a log scale, from the smallest order listed to a hundred times it.',
-        'Point at the list to hold it still: a button counts the new rows and brings them in. The order you point at is marked on the map and the panes at its moment, and a click takes the map there.',
-        'A line between rows says where orders may be missing: the stream dropped, the page was in the background, or nothing was recorded then.',
+        'Each block has its time and, under it, how far the price moved: the reference market\'s volume-weighted price in the block\'s last second against the second before (Binance\'s perpetual for BTC, else the most traded market the coin has).',
+        'Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell. A bar grows with the square root of its dollars: ten times more draws about three times longer.',
+        '**Group by** sets what a row is: each order, a second, one, five or fifteen minutes, or a length of your own. A run of seconds with no order is one line. **Smallest order** leaves out smaller orders before they are added up.',
+        'Older blocks come from what the page already holds, and nothing is fetched: any size from its per-second record of every exchange, from $25,000 from its recording of large orders, smaller sizes only from when the page began listening.',
+        'Point at the list to hold it still. Beside a wide list, the details of the newest second (or the block you click) show each market\'s dollars and price move, the largest orders, and notes such as large orders on several exchanges within 5 ms.',
       ] },
-      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow, Time & sales and All trades. On a phone the Flow tab has the same three tabs.' },
-    ],
-  },
-  {
-    id: 'all-trades', title: 'All trades',
-    blocks: [
-      { t: 'p', text: '**All trades**, the third tab in the flow column\'s title, lists every market order this page receives, of any size, as it arrives: the newest on top, each with its time, exchange, side (▲ bought, ▼ sold), price and size. Where Time & sales picks out the large orders, this is the whole stream, the small ones included: the rhythm of the market.' },
-      { t: 'list', items: [
-        'Size is told three ways at once on a fixed scale: taller rows and heavier type in steps at $10,000, $100,000 and the whale size of Sounds, and a tint of the side\'s colour that deepens with the size. The same order looks the same whatever is filtered, and a rare large one stands out from a screen of small ones.',
-        'A busy market sends dozens of orders a second. The menu above the list sets the smallest order (any size at first); point at the list to hold it, or scroll back with the wheel, and a button counts what came meanwhile. The settings key also chooses the side and can show a burst on one market as one row (×5: five orders).',
-        'The orders are kept in the page\'s memory from when it started listening, the last hours of them. Nothing is fetched or recorded, so a reload starts it empty. A line says where orders may be missing: the stream reconnected, or the source left some out.',
-        'The order you point at is marked on the map and the panes at its moment, with its whole story in a box; a click takes the map there. On a phone a finger scrolls the list and a tap on a row shows its box.',
-      ] },
+      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow and Trades. On a phone the Flow tab has the same two, and a tap on a block opens its details.' },
     ],
   },
   {

@@ -72,7 +72,7 @@ export interface StripSnapshot { hidden: boolean; width: number; height: number;
  */
 export class CvdStrip {
   readonly root = el('div', { class: 'cvd-strip', hidden: true });
-  /** The column shows another view (Time & sales): the rows are part of the flow view and hide with it. */
+  /** The column shows another view (Trades): the rows are part of the flow view and hide with it. */
   covered = false;
   #canvas = document.createElement('canvas');
   #ctx = this.#canvas.getContext('2d')!;

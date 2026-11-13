@@ -1,7 +1,7 @@
 import { STRIDE, type TapeBoundary } from '../tape/ring.ts';
 
 /**
- * All trades, the flow column's third view: every market order the page receives, newest on top (`panes/trades-view.ts` draws it). This
+ * Trades' "Each order" unit (the flow column's second view): every market order the page receives, newest on top (`panes/trades-orders.ts` draws it). This
  * file is its arithmetic, with no page: which of the tape ring's orders the list shows (a filter over the ring's write numbers, never a copy
  * of the orders), kept current batch by batch, found backwards in bounded steps when the list opens or scrolls back, held still while the
  * pointer reads it, and the boundaries in write order between two rows. The orders are the ring's (`tape/ring.ts`): forward only, from when
