@@ -2913,5 +2913,7 @@
   "many": "{n} estimativas horárias fechadas",
   "other": "{n} estimativas horárias fechadas"
  },
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Financiamento positivo: os longs pagam aos shorts. Financiamento negativo: os shorts pagam aos longs."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Financiamento positivo: os longs pagam aos shorts. Financiamento negativo: os shorts pagam aos longs.",
+ "After the newest hourly record held": "Depois do registro horário mais recente mantido",
+ "No hourly record held": "Nenhum registro horário mantido"
 }

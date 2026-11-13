@@ -2861,5 +2861,7 @@
   "one": "{n} kapanmış saatlik tahmin",
   "other": "{n} kapanmış saatlik tahmin"
  },
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Pozitif fonlama: long'lar short'lara öder. Negatif fonlama: short'lar long'lara öder."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Pozitif fonlama: long'lar short'lara öder. Negatif fonlama: short'lar long'lara öder.",
+ "After the newest hourly record held": "Eldeki en yeni saatlik kayıttan sonra",
+ "No hourly record held": "Eldeki saatlik kayıt yok"
 }

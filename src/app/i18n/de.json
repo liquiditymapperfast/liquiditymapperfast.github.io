@@ -2867,5 +2867,7 @@
   "one": "{n} abgeschlossene stündliche Schätzung",
   "other": "{n} abgeschlossene stündliche Schätzungen"
  },
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Positives Funding: Longs zahlen Shorts. Negatives Funding: Shorts zahlen Longs."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Positives Funding: Longs zahlen Shorts. Negatives Funding: Shorts zahlen Longs.",
+ "After the newest hourly record held": "Nach dem neuesten vorhandenen stündlichen Eintrag",
+ "No hourly record held": "Kein stündlicher Eintrag vorhanden"
 }

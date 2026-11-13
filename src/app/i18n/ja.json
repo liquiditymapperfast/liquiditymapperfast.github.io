@@ -2731,5 +2731,7 @@
  "No closed hour of who opened lies wholly inside this selection.": "誰が建てたかの確定した時間で、この選択に完全に含まれるものはありません。",
  "{hours} held. Share of sided positive OI additions, estimated from minute open interest and taker flow; not counted openings.": "{hours} を保持。分ごとの建玉とテイカーフローから推定した、買い手か売り手に割り当てられたプラスの OI 増加分の割合で、実際に数えた新規建てではありません。",
  "{n} closed hourly estimates": "確定した 1 時間ごとの推定 {n} 件",
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "資金調達率がプラス：ロングがショートに支払います。マイナス：ショートがロングに支払います。"
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "資金調達率がプラス：ロングがショートに支払います。マイナス：ショートがロングに支払います。",
+ "After the newest hourly record held": "保持している最新の 1 時間ごとの記録より後",
+ "No hourly record held": "保持している 1 時間ごとの記録なし"
 }

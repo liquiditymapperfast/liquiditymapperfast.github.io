@@ -2731,5 +2731,7 @@
  "No closed hour of who opened lies wholly inside this selection.": "没有任何一个已收盘的“谁在开仓”小时完全落在此选择之内。",
  "{hours} held. Share of sided positive OI additions, estimated from minute open interest and taker flow; not counted openings.": "已保留 {hours}。由分钟持仓量和吃单流估算的、归属买方或卖方的正 OI 增加量的占比，不是实际计数的开仓。",
  "{n} closed hourly estimates": "{n} 个已收盘的每小时估算",
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "资金费率为正：多头付给空头。资金费率为负：空头付给多头。"
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "资金费率为正：多头付给空头。资金费率为负：空头付给多头。",
+ "After the newest hourly record held": "已保留的最新每小时记录之后",
+ "No hourly record held": "没有已保留的每小时记录"
 }

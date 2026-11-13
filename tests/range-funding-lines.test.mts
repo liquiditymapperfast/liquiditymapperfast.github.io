@@ -131,6 +131,13 @@ test('review: a corrected interval replaces a kept result; reading funding; shar
   assert.equal(stretch(held([row(8, 0.0001)], { forming }), 1, 3, T + 10 * H).forming, null);
 });
 
+test('Deribit: a tiny hourly rate keeps its digits; the time after its newest record is said in its own words', () => {
+  // A record of 1.8e-7 per eight hours (an APR of 0.02 %), the hour after it not recorded yet.
+  const lines = new FundingRangeSummary().lines(sel(0, 1.5), held([row(1, 0.00000018, 1)], { venue: 'deribit', key: 'd' }), true, 'd', T + 1.5 * H);
+  assert.equal(text(lines, 'fd-rate'), 'Hourly net rate | +0.00002% throughout the represented time');
+  assert.ok(lines.find(l => l.key === 'fd-grid')!.grid![0]!.rows!.some(r => r.label === 'After the newest hourly record held'));
+});
+
 test('the key names the market, timeframe, venue and listing', () => {
   assert.equal(fundingHeldKey({ marketId: 'binance:BTCUSDT', timeframe: '1h' }, 'binance', 'BTCUSDT'), KEY);
 });

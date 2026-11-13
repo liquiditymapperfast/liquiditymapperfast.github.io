@@ -2949,5 +2949,7 @@
   "many": "{n} закрытых почасовых оценок",
   "other": "{n} закрытой почасовой оценки"
  },
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Положительное финансирование: лонги платят шортам. Отрицательное финансирование: шорты платят лонгам."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Положительное финансирование: лонги платят шортам. Отрицательное финансирование: шорты платят лонгам.",
+ "After the newest hourly record held": "После последней имеющейся часовой записи",
+ "No hourly record held": "Нет имеющихся часовых записей"
 }

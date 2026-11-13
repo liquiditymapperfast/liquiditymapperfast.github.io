@@ -2913,5 +2913,7 @@
   "other": "{n} stime orarie chiuse",
   "many": "{n} stime orarie chiuse"
  },
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Funding positivo: i long pagano gli short. Funding negativo: gli short pagano i long."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Funding positivo: i long pagano gli short. Funding negativo: gli short pagano i long.",
+ "After the newest hourly record held": "Dopo il record orario più recente conservato",
+ "No hourly record held": "Nessun record orario conservato"
 }

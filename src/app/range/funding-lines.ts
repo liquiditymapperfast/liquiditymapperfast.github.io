@@ -109,8 +109,8 @@ export function fundingStretch(held: FundingPaneHeld, sel: Pick<RangeSelection, 
     premium, opens, forming, settled };
 }
 
-/** A rate (or premium) as a signed percent. */
-const rate = (x: number, d = 4): string => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(d)}%`;
+/** A rate (or premium) as a signed percent: four decimals, more (up to seven) where four would show a rate that is not none as 0 (Deribit's hourly records). */
+const rate = (x: number): string => { let d = 4; while (d < 7 && x !== 0 && Number(Math.abs(x * 100).toFixed(d)) === 0) d++; return `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(d)}%`; };
 /** A change of rate in basis points per eight hours: "unchanged" for none, the digits that show it otherwise, under 0.001 bp in words. */
 function bp(x: number): string {
   if (x === 0) return t('unchanged');
@@ -174,8 +174,8 @@ export class FundingRangeSummary {
     lines.push({ key: 'h-fd-rows', kind: 'heading', cells: [continuous ? t('Completed hourly funding') : t('Settled funding')] });
     const uncovered = [
       ...(s.unread >= 60_000 ? [{ label: t('Before the read reaches'), value: durationText(s.unread) }] : []),
-      ...(s.afterNewest >= 60_000 ? [{ label: t('After the newest settlement held'), value: durationText(s.afterNewest) }] : []),
-      ...(s.gaps >= 60_000 ? [{ label: t('No settlement held'), value: durationText(s.gaps) }] : []),
+      ...(s.afterNewest >= 60_000 ? [{ label: continuous ? t('After the newest hourly record held') : t('After the newest settlement held'), value: durationText(s.afterNewest) }] : []),
+      ...(s.gaps >= 60_000 ? [{ label: continuous ? t('No hourly record held') : t('No settlement held'), value: durationText(s.gaps) }] : []),
     ];
     if (!s.first || !s.last) {
       lines.push(note('fd-rows-none', t('No settlement held represents this selection.')));

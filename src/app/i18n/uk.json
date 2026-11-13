@@ -2954,5 +2954,7 @@
   "many": "{n} закритих погодинних оцінок",
   "other": "{n} закритої погодинної оцінки"
  },
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Додатне фінансування: лонги платять шортам. Від'ємне фінансування: шорти платять лонгам."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "Додатне фінансування: лонги платять шортам. Від'ємне фінансування: шорти платять лонгам.",
+ "After the newest hourly record held": "Після останнього наявного годинного запису",
+ "No hourly record held": "Немає наявних годинних записів"
 }

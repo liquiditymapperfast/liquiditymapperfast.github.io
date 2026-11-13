@@ -2731,5 +2731,7 @@
  "No closed hour of who opened lies wholly inside this selection.": "누가 열었는지의 마감된 시간 중 이 선택에 완전히 들어가는 것이 없습니다.",
  "{hours} held. Share of sided positive OI additions, estimated from minute open interest and taker flow; not counted openings.": "{hours} 보유. 분 단위 미결제약정과 테이커 플로우로 추정한, 매수자나 매도자에게 배정된 양(+)의 OI 증가분의 비중이며, 세어 낸 신규 진입은 아닙니다.",
  "{n} closed hourly estimates": "마감된 시간 단위 추정 {n}개",
- "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "펀딩비가 양수: 롱이 숏에게 지급합니다. 펀딩비가 음수: 숏이 롱에게 지급합니다."
+ "Positive funding: longs pay shorts. Negative funding: shorts pay longs.": "펀딩비가 양수: 롱이 숏에게 지급합니다. 펀딩비가 음수: 숏이 롱에게 지급합니다.",
+ "After the newest hourly record held": "보유한 가장 최근 시간 단위 기록 이후",
+ "No hourly record held": "보유한 시간 단위 기록 없음"
 }
