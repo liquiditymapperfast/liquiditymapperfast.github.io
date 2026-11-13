@@ -513,25 +513,31 @@ export class OrderList {
    * each order as the tape's are. A row's write number is negative (it is not the ring's), so it is pointed at and clicked like any other.
    */
   #paintHistory(ctx: CanvasRenderingContext2D, y: number, w: number, h: number, p: Palette, drawn: Drawn[]): void {
-    this.#paintNote(ctx, y, w, this.historyNote, p);
-    drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons: 0 }); y += DIVIDER_ROW;
+    // Rows and lines wholly above the top are passed, not drawn: scrolled deep into the recording, hundreds of them lie above the list, and
+    // drawing them all every frame (each batch while held) took a phone's frame and more.
+    if (y + DIVIDER_ROW > 0) { this.#paintNote(ctx, y, w, this.historyNote, p); drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons: 0 }); }
+    y += DIVIDER_ROW;
     const { whale, leviathan } = this.#whale(), top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, stops = tintStops(scaledUsd, whale, leviathan, top), form = clockForm(w);
     ctx.font = `11px ${MONO}`;
     const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width;
     const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
-    let lastSecond = '';
+    // The time once per second-run (whole seconds compare as the written clock does: zones differ from UTC by whole minutes).
+    let lastSec = NaN;
     for (let i = 0; i < this.history.length && y < h; i++) {
       const l = this.history[i]!;
       if (l.k === 'gap') {
-        const words = l.why === 'unrecorded' ? t('Nothing was recorded from {from} to {to}', { from: clockSeconds(l.at - l.ms), to: clockSeconds(l.at) }) : t('Orders may be missing here: the stream reconnected.');
-        this.#paintNote(ctx, y, w, words, p); drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons: 0 }); y += DIVIDER_ROW; lastSecond = ''; continue;
+        if (y + DIVIDER_ROW > 0) {
+          const words = l.why === 'unrecorded' ? t('Nothing was recorded from {from} to {to}', { from: clockSeconds(l.at - l.ms), to: clockSeconds(l.at) }) : t('Orders may be missing here: the stream reconnected.');
+          this.#paintNote(ctx, y, w, words, p); drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons: 0 });
+        }
+        y += DIVIDER_ROW; lastSec = NaN; continue;
       }
-      const buy = l.side === 'buy', signed = buy ? l.usd : -l.usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, rowH = tier.row;
+      const buy = l.side === 'buy', signed = buy ? l.usd : -l.usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, rowH = tier.row, sec = Math.floor(l.t / 1000);
+      if (y + rowH <= 0) { lastSec = sec; y += rowH; continue; }
       const ink = this.#inks.get(p, buy, tintOf(signed, stops), top), mid = y + rowH / 2;
       ctx.fillStyle = ink.bg; ctx.fillRect(0, y, w, rowH);
-      const second = clockSeconds(l.t);
-      if (clockW && second !== lastSecond) { ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left'; ctx.fillText(form === 'hms' ? second : second.slice(3), PAD, mid); }
-      lastSecond = second;
+      if (clockW && sec !== lastSec) { const second = clockSeconds(l.t); ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left'; ctx.fillText(form === 'hms' ? second : second.slice(3), PAD, mid); }
+      lastSec = sec;
       drawVenueMark(ctx, l.id, xMark, mid, MARK);
       const sideInk = buy ? p.candleUp : p.candleDown;
       ctx.font = `10px ${MONO}`; ctx.fillStyle = contrastRatio(sideInk, ink.bg) >= 3 ? sideInk : ink.text; ctx.textAlign = 'left';
