@@ -14,7 +14,7 @@
 export interface RowItem { readonly sig: string; readonly y: number; readonly h: number; readonly fixed?: boolean }
 
 const onGrid = (v: number): boolean => Math.abs(v - Math.round(v)) < 1e-4;
-/** Where a row was last drawn (its top) and the part of it on the canvas then (CSS px). */
+/** Where a row was last drawn (its top) and the part of it on the canvas then (the caller's units). */
 interface Placed { y: number; v0: number; v1: number }
 
 export class RetainedRows {
@@ -26,12 +26,13 @@ export class RetainedRows {
 
   /** The next frame draws everything (a change the look key does not carry). */
   reset(): void { this.#look = ''; this.#at.clear(); }
-  /** A stretch of the canvas (CSS px) that something other than a row was drawn over: the rows under it are drawn again next frame. */
+  /** A stretch of the canvas (the caller's units) that something other than a row was drawn over: the rows under it are drawn again next frame. */
   damage(y0: number, y1: number): void { if (y1 > y0) this.#damage.push([y0, y1]); }
 
   /**
-   * Which of `items` (top to bottom, contiguous) to draw this frame, after shifting or clearing the canvas as needed. `ctx` is left at the
-   * CSS-pixel transform `dpr`. `bottom` is where the rows end (CSS px): the canvas below it is cleared to `panel`.
+   * Which of `items` (top to bottom, contiguous) to draw this frame, after shifting or clearing the canvas as needed. Units are the caller's:
+   * CSS px at pixel ratio `dpr`, or device px with `dpr` 1 (both Trades lists lay their rows out in device pixels). `ctx` is left at the
+   * transform `dpr`. `bottom` is where the rows end: the canvas below it is cleared to `panel`.
    */
   plan(ctx: CanvasRenderingContext2D, look: string, items: readonly RowItem[], dpr: number, cssH: number, panel: string, bottom: number): boolean[] {
     const canvas = ctx.canvas, draw = new Array<boolean>(items.length).fill(true);

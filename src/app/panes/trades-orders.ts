@@ -249,6 +249,12 @@ export class OrderList {
     while (pos - count >= 0) { const o = readRecord(ring, this.#index.at(pos - count)); if (!this.#together(head, o)) break; usd += Math.abs(o.usd); count++; }
     return { count, h: this.#heightOf({ ...head, usd: head.usd > 0 ? usd : -usd }) };
   }
+  /** The height of the line drawn under the row at `pos` (`count` orders) where orders may be missing before the next older row; 0 when none. */
+  #lineUnder(pos: number, count: number): number {
+    if (pos - count < 0 || !this.#index.boundariesBetween(this.#index.at(pos - count), this.#index.at(pos - count + 1))) return 0;
+    const d = this.#dpr || 1;
+    return Math.round(DIVIDER_ROW * d) / d;
+  }
   /** The newest position of the row holding `pos` (grouping gathers newer orders of the same slice above it). */
   #unitTop(pos: number): number {
     if (!this.store.state.trades.group) return pos;
@@ -282,10 +288,11 @@ export class OrderList {
   #scroll(dy: number): void {
     if (!this.#index.length) return;
     if (!this.#anchor) { this.#hold(); if (!this.#anchor) return; }
-    // Row by row (a grouped row is one step); the offset keeps its fractions (a trackpad's small steps add up) and is rounded where it is drawn.
+    // Row by row (a grouped row is one step, with the line under it where orders may be missing, as the list draws it: the anchor's row draws
+    // no line above it); the offset keeps its fractions (a trackpad's small steps add up) and is rounded where it is drawn.
     let pos = this.#unitTop(this.#index.position(this.#anchor.k)), offset = this.#anchor.offset + dy;
-    for (let u = this.#unit(pos); offset >= u.h && pos - u.count >= 0; u = this.#unit(pos)) { offset -= u.h; pos -= u.count; }
-    while (offset < 0 && pos < this.#index.length - 1) { pos = this.#unitTop(pos + 1); offset += this.#unit(pos).h; }
+    for (let u = this.#unit(pos), step = u.h + this.#lineUnder(pos, u.count); offset >= step && pos - u.count >= 0; u = this.#unit(pos), step = u.h + this.#lineUnder(pos, u.count)) { offset -= step; pos -= u.count; }
+    while (offset < 0 && pos < this.#index.length - 1) { pos = this.#unitTop(pos + 1); const u = this.#unit(pos); offset += u.h + this.#lineUnder(pos, u.count); }
     // The oldest row found, with nothing older to find: it stays at the top rather than scrolling off into nothing.
     // Nothing older on the tape: the list scrolls on through the recording's rows below it (from $25K), then stops.
     if (!this.#index.moreBehind && pos - this.#unit(pos).count < 0) offset = Math.min(offset, this.#historyHeight());
@@ -418,7 +425,7 @@ export class OrderList {
       const fh = it.h / dpr;
       if (it.kind === 'row') this.#paintRow(ctx, it, fw, fh, stops, top, form, xMark, xSide, xPrice, xRight, p);
       else if (it.kind === 'divider') this.#paintDivider(ctx, 0, w, it.reasons, p, fh, fw);
-      else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p); }
+      else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p, fh); }
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (history) {
@@ -545,10 +552,11 @@ export class OrderList {
       : reasons & BOUNDARY.skipped ? t('The source skipped orders here: some may be missing.')
       : t('The source left out its smallest orders here.');
     ctx.fillStyle = p.panel; ctx.fillRect(0, y, fw, fh);
-    this.#paintNote(ctx, y, w, words, p);
+    this.#paintNote(ctx, y, w, words, p, fh);
   }
-  #paintNote(ctx: CanvasRenderingContext2D, y: number, w: number, words: string, p: Palette): void {
-    ctx.strokeStyle = p.line; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(PAD, y + DIVIDER_ROW - 0.5); ctx.lineTo(w - PAD, y + DIVIDER_ROW - 0.5); ctx.stroke(); ctx.setLineDash([]);
+  /** A line's words over a dashed rule along its foot, `rowH` its drawn height (the rule stays inside it whatever the pixel ratio rounds it to). */
+  #paintNote(ctx: CanvasRenderingContext2D, y: number, w: number, words: string, p: Palette, rowH = DIVIDER_ROW): void {
+    ctx.strokeStyle = p.line; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(PAD, y + rowH - 0.5); ctx.lineTo(w - PAD, y + rowH - 0.5); ctx.stroke(); ctx.setLineDash([]);
     ctx.font = `italic 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     let text = words;
     while (text.length > 4 && ctx.measureText(text).width > w - 2 * PAD) text = `${text.slice(0, -2)}…`;
