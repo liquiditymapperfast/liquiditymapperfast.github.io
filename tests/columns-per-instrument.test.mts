@@ -451,3 +451,21 @@ test('the worker holds each step apart, reads one, and forgets by instrument or 
   assert.equal(rec.stepMs, 16 * MIN);
   assert.deepEqual(toStore(col('z', 0, 4)).times, rec.current.get('z')!.times);
 });
+
+test('a book the order-book panes count while it is away from the feed is still loaded, at a step not held before too', async () => {
+  // The Depth pane and the Liquidity Tracker count Chosen markets, b's perpetual (book-markets.ts); b's feed reconnects and its book leaves the
+  // frame, held in `bookGone` for BOOK_HOLD_MS: the panes still ask for b, so a zoom to another step loads b with the feed's books.
+  const h = await harness(T0, ['a:BTC', 'b:BTC']);
+  try {
+    h.store.set({ markets: [{ instrumentId: 'a:BTC', venue: 'a', marketType: 'perpetual' }, { instrumentId: 'b:BTC', venue: 'b', marketType: 'perpetual' }] as never, bookMarkets: 'custom', bookPicks: ['b/perp'] });
+    await h.hub.loadColumns(h.live(SIX), 180);
+    h.books(['a:BTC']); h.store.set({ bookGone: { b: h.clock.now - 30_000 } });
+    h.source.asked.length = 0;
+    await h.hub.loadColumns(h.live(24), 180);
+    assert.deepEqual(h.source.asked.map(a => a.ids.join('+')), ['a:BTC+b:BTC'], 'the held book with the feed\'s at the new step');
+    // Under All switched on the panes count the feed's books alone, as before.
+    h.store.set({ bookMarkets: 'all' }); h.source.asked.length = 0;
+    await h.hub.loadColumns(h.live(48), 180);
+    assert.deepEqual(h.source.asked.map(a => a.ids.join('+')), ['a:BTC']);
+  } finally { h.restore(); }
+});

@@ -18,6 +18,7 @@ import { atOnePrice, inverseOi, oiSumOf, oiTail, type OiPart } from './oi-change
 import { OI_FINE_TAIL_MS, fineKept, fineKey, fineSpanMs, fineTargets, fineWant } from './oi-fine.ts';
 import { oiMarketIds } from './market-choice.ts';
 import { nextBookGone } from './cvd/ids.ts';
+import { bookIds } from './book-markets.ts';
 import { t } from './i18n.ts';
 import { MAX_PROFILE_SPAN_MS, MAX_VALUE_AREA_WINDOWS, type ProfileAnswer, type ValueAreaWindow } from '../shared/footprint.ts';
 import { AbsorptionBook } from './absorption.ts';
@@ -1526,8 +1527,11 @@ export class Hub {
    * days (Research_Findings.md).
    */
   async loadColumns(view: Bounds, widthPx: number): Promise<void> {
-    const ids = this.store.state.levels?.books.map(book => book.id) ?? [];
-    if (!ids.length) return;
+    const books = this.store.state.levels?.books.map(book => book.id) ?? [];
+    if (!books.length) return;
+    // With them the books the order-book panes still count while they are away from the feed for a moment (their Venues: book-markets.ts), so a
+    // pan or a zoom during a reconnect loads those too, and the sweep keeps what is held for them.
+    const ids = [...new Set([...books, ...bookIds(this.store.state)])];
     // About two pixels a column, in minutes that double from one level to the next: zooming moves between a few steps the server has merged
     // before; at least the long history's finest level (two minutes for BTC, eight for ETH and SOL) where the view reaches before the page's
     // own day (`columnStepFor`).

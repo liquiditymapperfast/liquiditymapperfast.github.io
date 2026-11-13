@@ -153,7 +153,8 @@ export class Alerts {
     if (!s.levels || !(mark > 0) || now - s.levels.asOf > FRESH_MS) return;
     const active = new Set(activeIds(s)), bins = bookBins(s.levels, active, mark, 0.01);
     // The balance counts the books the Depth pane and the Liquidity Tracker add up (their Venues): the walls' (the venues switched on), or under
-    // another choice its own, whatever the chips say (so a chip changing never starts it over).
+    // another choice its own, whatever the chips say (so a chip changing never starts it over). Its own starts over for another set of books,
+    // another market or a gap, not for another grid step as the walls do: its totals do not depend on the bins' width.
     const same = s.bookMarkets === 'all', counted = same ? [] : bookIds(s);
     // The books the bins are made of, what each covers, and the market whose price centres them: when any changes (a venue chip, a venue that
     // dropped out of the feed, a book seeded again or whose coverage grew, another chart market) the walls start over, and the balance only

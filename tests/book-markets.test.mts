@@ -54,9 +54,9 @@ test('the chart market is its own book, whatever the chips and the filter say; a
   assert.deepEqual(bookIds(state({ bookMarkets: 'chart', marketId: '' })), []);
 });
 
-test('chosen markets are the picks\' books in the feed\'s order, whatever the chips and the filter say', () => {
+test('chosen markets are the picks\' books, sorted, whatever the chips and the filter say', () => {
   const s = state({ bookMarkets: 'custom', bookPicks: ['coinbase/spot', 'okx/perp', 'binance/spot', 'kraken/spot'], disabledVenues: ['okx', 'coinbase'], scope: 'perp' });
-  assert.deepEqual(bookIds(s), ['okx:BTC-USDT-SWAP', 'binancespot:BTCUSDT', 'coinbase:BTC-USD']);
+  assert.deepEqual(bookIds(s), ['binancespot:BTCUSDT', 'coinbase:BTC-USD', 'okx:BTC-USDT-SWAP']);
   assert.deepEqual(bookMarketIds(s), ['binance:BTCUSDT:spot', 'binancespot:BTCUSDT', 'coinbase:BTC-USD', 'okx:BTC-USDT-SWAP']);
   assert.deepEqual(bookIds(state({ bookMarkets: 'custom', bookPicks: [] })), [], 'none ticked counts none, never every book');
 });
@@ -84,7 +84,8 @@ test('a counted book away from the feed for a moment is still asked for, so the 
   assert.deepEqual(bookIds(later), []);
   assert.equal(bookEmptyMessage(later), 'The chart market has no order book here.', 'gone longer than the hold: said');
   const picked = { ...away, bookMarkets: 'custom' as const, bookPicks: ['okx/perp', 'binance/spot'] };
-  assert.deepEqual(bookIds(picked), ['okx:BTC-USDT-SWAP', 'binancespot:BTCUSDT'], 'the feed\'s books first, then the held ones');
+  assert.deepEqual(bookIds(picked), ['binancespot:BTCUSDT', 'okx:BTC-USDT-SWAP'], 'in the order they had in the feed: the same key, not asked again');
+  assert.deepEqual(bookIds({ ...picked, levels: { asOf: 1_000_000, books: FEED.map(id => book(id)) }, bookGone: {} }), bookIds(picked));
   assert.equal(bookEmptyMessage({ ...away, bookMarkets: 'custom', bookPicks: ['kraken/spot'] }), 'None of the chosen markets has an order book on this coin.', 'another venue held says nothing for the picks');
   // A spot chart whose book never streams (no `binancespot` venue on): the Binance perpetual's feed reconnecting does not stand for it.
   const noSpotBook = { asOf: 1_000_000, books: FEED.filter(id => !id.startsWith('binance')).map(id => book(id)) };
@@ -132,26 +133,32 @@ const T = Date.UTC(2026, 10, 13, 12, 0, 0), MARK = 100_000;
  * Walls and the balance over two perpetual books: `a` lopsided to the bids from `lopsidedAt` on, `b` even. The balance tips at `pct` (60:
  * a and b together, 73 %, tip; 80: only a alone, 85 %, does). `change` is set on the state at `changeAt`.
  */
-function balanceRun(over: Partial<AppState>, lopsidedAt: number, until = 30_000, pct = 60, changeAt = Infinity, change: Partial<AppState> = {}): { kinds: string[]; at: number[] } {
+function balanceRun(over: Partial<AppState>, lopsidedAt: number, until = 30_000, pct = 60, changeAt = Infinity, change: Partial<AppState> = {}, price = MARK): { kinds: string[]; at: number[] } {
   const s = initialState(false, false);
   s.markets = [{ instrumentId: 'a:BTC', venue: 'a', marketType: 'perpetual' }, { instrumentId: 'b:BTC', venue: 'b', marketType: 'perpetual' }] as AppState['markets'];
-  s.marketId = 'a:BTC'; s.mark = { price: MARK, asOf: T };
+  s.marketId = 'a:BTC'; s.mark = { price, asOf: T };
   s.sounds = readSounds({ on: true, volume: 1, panels: { ...DEFAULT_PANEL_SOUNDS, book: { wall: true, usd: 50_000_000 }, depth: { imbalance: true, pct } } });
   Object.assign(s, over);
   const alerts = new Alerts({ state: s }, new FlowBook(), new FakePlayer(), () => T);
   for (let t = 0; t <= until; t += 2_000) {
     if (t === changeAt) Object.assign(s, change);
     const heavy = t >= lopsidedAt ? 12_000_000 : 1_000_000;
-    s.levels = { asOf: T + t, books: [book('a:BTC', [[99_900, heavy]], [[100_100, 1_000_000]], T + t), book('b:BTC', [[99_900, 1_000_000]], [[100_100, 1_000_000]], T + t)] } as LevelsFrame;
+    s.levels = { asOf: T + t, books: [book('a:BTC', [[price - 100, heavy]], [[price + 100, 1_000_000]], T + t), book('b:BTC', [[price - 100, 1_000_000]], [[price + 100, 1_000_000]], T + t)] } as LevelsFrame;
     alerts.tick(T + t);
   }
   return { kinds: alerts.log.map(e => e.kind), at: alerts.log.map(e => e.at - T) };
 }
 
-test('picks that are exactly the venues switched on sound exactly when All switched on does', () => {
+test('picks that are exactly the venues switched on sound as All switched on does, but for a grid step', () => {
   const all = balanceRun({}, 14_000), picked = balanceRun({ bookMarkets: 'custom', bookPicks: ['a/perp', 'b/perp'] }, 14_000);
   assert.deepEqual(picked, all);
   assert.deepEqual(all.kinds, ['imbalance'], 'a + b: 13M of bids against 2M of asks is 73 %, past 60 %, after the warm-up');
+  // The mark crosses a step of the 1-2-5 grid (75,000: bins of 20 below 10): the walls start over and, under All, the balance with them; the
+  // balance's own sums do not depend on the bins, so under another choice it goes on.
+  const step = { mark: { price: 74_990, asOf: T } };
+  assert.deepEqual(balanceRun({}, 24_000, 40_000, 60, 20_000, step, 75_010).kinds, []);
+  const own = balanceRun({ bookMarkets: 'custom', bookPicks: ['a/perp', 'b/perp'] }, 24_000, 40_000, 60, 20_000, step, 75_010);
+  assert.deepEqual(own.kinds, ['imbalance']); assert.equal(own.at[0], 24_000);
 });
 
 test('over other books the balance has its own warm-up, and tips on them alone', () => {

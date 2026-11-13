@@ -36,20 +36,20 @@ function countedPicks(state: BookState): Set<string> {
 
 /**
  * The books the two panes add up and the balance sound counts: `activeIds` itself for `all` (the same array, so every key built from it and the
- * order the tracker's parts come in are what they were); else the books of the picks counted in the feed's order, then those of them away from
- * the feed for a moment (`heldBookIds`), so a feed that reconnects leaves a gap at the end of the same series rather than an empty choice.
+ * order the tracker's parts come in are what they were); else the books of the picks counted in the feed and those of them away from it for a
+ * moment (`heldBookIds`), sorted, so a feed that reconnects leaves a gap in the same series, asked for by the same key, rather than an empty
+ * choice or another order of the same books (which would ask again and change the Range summary's key).
  */
 export function bookIds(state: BookState): string[] {
   if (state.bookMarkets === 'all') return activeIds(state);
   const picks = countedPicks(state), feed = (state.levels?.books ?? []).map(book => book.id).filter(id => picks.has(bookPickOf(state.markets, id)));
-  const held = heldBookIds(state, picks, new Set(feed));
-  return held.length ? [...feed, ...held] : feed;
+  return [...feed, ...heldBookIds(state, picks, new Set(feed))].sort();
 }
 
 /**
  * The listed markets of the picks counted whose venue's book left the feed less than `BOOK_HOLD_MS` ago (`bookGone`, as the flow views hold
- * it: a feed that reconnects drops its book for a minute or more), sorted: the recording still holds their columns, so they are still asked
- * for. A spot market listed under its perpetual venue's name (`binance:…:spot`, whose book is `binancespot:…`: `flowFeedSpotId`) is a market
+ * it: a feed that reconnects drops its book for a minute or more), sorted: the recording holds their columns (`Hub.loadColumns` loads them with
+ * the feed's books), so they are still asked for. A spot market listed under its perpetual venue's name (`binance:…:spot`, whose book is `binancespot:…`: `flowFeedSpotId`) is a market
  * of trades, never a book, so the perpetual's feed reconnecting never stands for it.
  */
 function heldBookIds(state: BookState, picks: ReadonlySet<string>, inFeed: ReadonlySet<string>): string[] {
