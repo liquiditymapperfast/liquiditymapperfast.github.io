@@ -184,8 +184,9 @@ export class BlockList {
     if (!this.#anchor) { this.#hold(); if (!this.#anchor) return; }
     const B = this.unit, newest = this.newestStart(), oldest = this.reader.oldestSec(), now = this.now(), rows = this.#rows();
     let row = rows.rowFrom(this.#anchor.s, B, now, oldest), offset = this.#anchor.offset + dy;
-    // Held beyond where the list now ends (the sources moved its end up): the list lets go and follows the newest again.
-    if (!row) { this.release(); return; }
+    // Held beyond where the list now ends (the sources moved its end up): the list lets go and follows the newest again. A block that is
+    // unknown only for a moment (a flow reload) keeps the place.
+    if (!row) { if (this.#anchor.s + B <= oldest) this.release(); else this.invalidate(); return; }
     // Down (older): past every row the offset covers, while a row lies under it; up (newer): rows above come in.
     for (let next = rows.below(row, B, now, oldest); next && offset >= this.#rowHeight(row); next = rows.below(row, B, now, oldest)) { offset -= this.#rowHeight(row); row = next; }
     for (let up = offset < 0 ? rows.above(row, B, now, newest) : null; up; up = offset < 0 ? rows.above(row, B, now, newest) : null) { row = up; offset += this.#rowHeight(up); }
@@ -251,8 +252,9 @@ export class BlockList {
     // sent on connecting, does not make the stretch between known).
     const rows = this.#rows(), now = this.now();
     let b = take(), row = rows.rowFrom(top, B, now, oldest, b), bottom = top, ended = !row;
-    // Held beyond where the list now ends (the sources moved its end up): the list lets go and is drawn from the newest.
-    if (!row && this.#anchor) { this.release(false); this.#paint(); return; }
+    // Held beyond where the list now ends (the sources moved its end up): the list lets go and is drawn from the newest. A block that is
+    // unknown only for a moment (a flow reload) keeps the place (the list ends there meanwhile).
+    if (!row && this.#anchor && this.#anchor.s + B <= oldest) { this.release(false); this.#paint(); return; }
     let lo = Infinity, hi = -Infinity;
     while (row && y < h) {
       if (row.kind === 'block') { this.#paintBlock(ctx, b, y, rowH, w, c, full, barW, p); drawn.push({ kind: 'block', s: row.top, y, h: rowH }); y += rowH; b = take(); lo = Math.min(lo, row.top); hi = Math.max(hi, row.top); }
@@ -277,7 +279,7 @@ export class BlockList {
     ctx.fillStyle = p.line; ctx.fillRect(0, y + QUIET - 1, w, 1);
     ctx.font = `11px ${MONO}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     // A run longer than half a day says its dates (a run of minutes reaches 60 hours).
-    const dated = to - from > 12 * 3600, fmt = (sec: number): string => this.unit >= 60 ? clock(sec * 1000, dated) : clockSeconds(sec * 1000), at = { from: fmt(from), to: fmt(to) };
+    const dated = to - from > 12 * 3600, fmt = (sec: number): string => dated ? clock(sec * 1000, true) : this.unit >= 60 ? clock(sec * 1000) : clockSeconds(sec * 1000), at = { from: fmt(from), to: fmt(to) };
     fitText(ctx, kind === 'unrecorded' ? t('Not recorded {from}–{to}', at) : kind === 'missing' ? t('Orders may be missing {from}–{to}', at) : t('No orders {from}–{to}', at), PAD, y + QUIET / 2, w - 2 * PAD);
   }
   #paintEnd(ctx: CanvasRenderingContext2D, y: number, w: number, words: string, p: Palette): void {

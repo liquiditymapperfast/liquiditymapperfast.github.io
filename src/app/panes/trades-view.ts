@@ -73,6 +73,8 @@ export class TradesView {
   #older: OlderPrints[] = [];
   #olderAsking = false; #olderRetryAt = 0;
   #holesState: 'no' | 'asking' | 'done' = 'no'; #holesRetryAt = 0; #holesTo = 0; #holesKey = '';
+  /** What the holes were asked under (the flow's loads, the markets) and when: either changing asks again, at most once a minute. */
+  #holesLoads = -1; #holesMarkets = ''; #holesAskedAt = 0;
   #recordedRetryAt = 0; #recordedAt = 0;
   /** Each market's coverage start in the recording (ms), from the last answer about its holes. */
   #sinceOf = new Map<string, number>();
@@ -146,8 +148,11 @@ export class TradesView {
     // The held block's figures can still change (a late order): its inspector is read again once a second while the view shows. The markets
     // come in after the view opens (the source's list, a venue's first book): they and the per-second history they need are checked too.
     this.#tick = window.setInterval(() => {
-      if (document.hidden || this.#unitNow() === 0) return;
-      this.#syncMarkets(); this.#askRecorded(); if (this.#olderWant) this.#askOlder(this.#olderWant[0], this.#olderWant[1]);
+      if (document.hidden) return;
+      // Each order too: its recorded hour waits for the ring's first order, and follows the ring's start as it wraps.
+      this.#askRecorded();
+      if (this.#unitNow() === 0) return;
+      this.#syncMarkets(); if (this.#olderWant) this.#askOlder(this.#olderWant[0], this.#olderWant[1]);
       this.#inspect(); this.#syncStatus();
     }, 1000);
     this.refresh();
@@ -292,10 +297,12 @@ export class TradesView {
     const cov = this.#tally.coveredFrom(), markets = this.blocks.reader.markets;
     // Asked again once the tape's start has moved well past what was asked up to (a ring that wraps moves it by the second): ten minutes.
     if (this.#holesState === 'done' && cov - this.#holesTo > HOLES_AGAIN_MS) this.#holesState = 'no';
+    // The flow loaded again (the history landed, a reconnect) or a market came: the record may say more now (a minute apart at most).
+    if (this.#holesState === 'done' && (this.flowLoads() !== this.#holesLoads || markets.join() !== this.#holesMarkets) && Date.now() - this.#holesAskedAt > 60_000) this.#holesState = 'no';
     if (!this.holes || this.#holesState !== 'no' || !markets.length || !Number.isFinite(cov) || Date.now() < this.#holesRetryAt) return;
     this.#holesState = 'asking';
     const to = Math.min(Date.now(), cov);
-    this.#holesTo = to;
+    this.#holesTo = to; this.#holesLoads = this.flowLoads(); this.#holesMarkets = markets.join(); this.#holesAskedAt = Date.now();
     this.holes(markets, to - FLOW_REACH_MS, to).then(answer => {
       this.#holesState = 'done';
       const holes = answer?.holes ?? [], sinceOf = answer?.sinceOf ?? {};

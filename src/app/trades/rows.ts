@@ -25,8 +25,8 @@ export function rowKind(b: Block): RowKind {
 
 export class RowWalker {
   /** Settled runs: top -> bottom and bottom -> top (block starts, seconds), under `#key`. */
-  readonly #down = new Map<number, number>();
-  readonly #up = new Map<number, number>();
+  readonly #down = new Map<number, { bottom: number; kind: RowKind }>();
+  readonly #up = new Map<number, { top: number; kind: RowKind }>();
   /** The settled part of a run whose top is still young: from its newest settled block down (a walk from a newer top jumps it). */
   readonly #skip = new Map<number, { kind: RowKind; bottom: number }>();
   #key = '';
@@ -39,10 +39,10 @@ export class RowWalker {
     if (this.#b.vBuy.length !== this.reader.venues) this.#b = emptyBlock(this.reader.venues);
     return this.reader.read(s, B, this.#b, now);
   }
-  #keep(top: number, bottom: number, B: number, now: number): void {
+  #keep(top: number, bottom: number, kind: RowKind, B: number, now: number): void {
     if ((top + B) * 1000 + SETTLED_MS >= now || this.reader.tally?.filling) return;
     if (this.#down.size > 20_000) { this.#down.clear(); this.#up.clear(); }
-    this.#down.set(top, bottom); this.#up.set(bottom, top);
+    this.#down.set(top, { bottom, kind }); this.#up.set(bottom, { top, kind });
   }
 
   /**
@@ -56,7 +56,7 @@ export class RowWalker {
     const kind = rowKind(b);
     if (kind === 'block') return { kind, top: s, bottom: s };
     const held = this.#down.get(s);
-    if (held !== undefined) return { kind, top: s, bottom: held };
+    if (held !== undefined && held.kind === kind) return { kind, top: s, bottom: held.bottom };
     const span = RUN_MAX * B, cut = Math.floor(s / span) * span;
     let e = s, settledAt = NaN;
     while (e - B >= cut && e - B >= oldest) {
@@ -67,7 +67,7 @@ export class RowWalker {
       e -= B;
       if (Number.isNaN(settledAt) && (e + B) * 1000 + SETTLED_MS < now) settledAt = e;
     }
-    this.#keep(s, e, B, now);
+    this.#keep(s, e, kind, B, now);
     if (!Number.isNaN(settledAt) && settledAt !== s && !this.reader.tally?.filling) {
       if (this.#skip.size > 20_000) this.#skip.clear();
       this.#skip.set(settledAt, { kind, bottom: e });
@@ -85,7 +85,7 @@ export class RowWalker {
     const kind = rowKind(b);
     if (kind === 'block') return { kind, top: s, bottom: s };
     const held = this.#up.get(s);
-    if (held !== undefined) return { kind, top: held, bottom: s };
+    if (held !== undefined && held.kind === kind) return { kind, top: held.top, bottom: s };
     const span = RUN_MAX * B, next = (Math.floor(s / span) + 1) * span;
     let t = s;
     while (t + B < next && t + B <= newest) {
@@ -93,7 +93,7 @@ export class RowWalker {
       if (q.unknown || rowKind(q) !== kind) break;
       t += B;
     }
-    this.#keep(t, s, B, now);
+    this.#keep(t, s, kind, B, now);
     return { kind, top: t, bottom: s };
   }
 }
