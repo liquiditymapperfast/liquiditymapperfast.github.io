@@ -50,7 +50,11 @@ const HOUR = 3_600_000;
 const PAGES = 8;
 /** Binance's funding page read back from an `endTime`: it answers at most this many, whatever `limit` asks. */
 const BINANCE_FUNDING_PAGE = 500;
-const num = (value: unknown): number => Number(value);
+/**
+ * A venue's figure: a number, or a string that holds one; NaN for anything else. `Number(null)`, `Number('')` and `Number(false)` are 0, so
+ * a venue's null funding or premium was read as a rate of zero, and drawn and counted as one.
+ */
+const num = (value: unknown): number => typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
 const at = (value: unknown, ...path: (string | number)[]): unknown => path.reduce<unknown>((v, key) => (v !== null && typeof v === 'object' ? (v as Record<string | number, unknown>)[key] : undefined), value);
 const POST = (body: unknown) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 /**
@@ -62,7 +66,7 @@ function listOf(answer: unknown, ok: boolean, venue: string, ...path: (string | 
   if (!ok || !Array.isArray(got)) throw new Error(`${venue}-no-funding`);
   return got;
 }
-const bybitOk = (a: unknown): boolean => at(a, 'retCode') === undefined || num(at(a, 'retCode')) === 0;
+const bybitOk = (a: unknown): boolean => { const code = at(a, 'retCode'); return code === undefined || code === null || code === '' || num(code) === 0; };
 const okxOk = (a: unknown): boolean => at(a, 'code') === undefined || String(at(a, 'code')) === '0';
 const bitgetOk = (a: unknown): boolean => at(a, 'code') === undefined || String(at(a, 'code')) === '00000';
 /** A settlement stamped a few milliseconds past its time (Hyperliquid's, Binance's) is put on the minute. */
@@ -73,12 +77,22 @@ const INTERVALS: readonly number[] = [1, 2, 4, 8];
 /**
  * Settlements with each its own interval: the gap to the one before (or, for the first, to the one after) where that is 1, 2, 4 or 8 hours,
  * else `fallback`, the venue's interval now. A symbol's interval changes over time (Bybit's LPTUSDT settled every hour before March 2026 and
- * every four after), and its old settlements put per eight hours at today's interval read four times too low.
+ * every four after), and its old settlements put per eight hours at today's interval read four times too low. A gap that is a whole multiple
+ * of the steady cadence on both sides of it (the gap before the one before, and the gap after it) is a settlement missing from the venue's
+ * answer, not a longer interval: the hourly record after a missing hour kept its hour, where read as a two-hour interval its rate per eight
+ * hours was halved and its step drawn over the hour nothing was recorded for. The newest settlement has no gap after it, and the venue's
+ * interval now cannot stand for one (a real change to a longer interval at the newest end would read as the old cadence): its gap stands until
+ * the next settlement lands.
  */
 function withIntervals(raw: readonly { t: number; rate: number }[], fallback: number): FundingRow[] {
-  const sorted = [...raw].filter(r => Number.isFinite(r.t)).sort((a, b) => a.t - b.t);
+  const sorted = [...raw].filter(r => Number.isFinite(r.t)).sort((a, b) => a.t - b.t).filter((r, i, all) => i === 0 || r.t !== all[i - 1]!.t);
   const gap = (j: number): number => { const g = j > 0 && j < sorted.length ? Math.round((sorted[j]!.t - sorted[j - 1]!.t) / HOUR) : 0; return INTERVALS.includes(g) ? g : 0; };
-  return sorted.flatMap((r, i) => { const one = row(r.t, r.rate, gap(i) || gap(i + 1) || fallback); return one ? [one] : []; });
+  const hours = (i: number): number => {
+    const before = gap(i), cadence = gap(i + 1);
+    if (before && cadence && before > cadence && before % cadence === 0 && gap(i - 1) === cadence) return cadence;
+    return before || gap(i + 1) || fallback;
+  };
+  return sorted.flatMap((r, i) => { const one = row(r.t, r.rate, hours(i)); return one ? [one] : []; });
 }
 
 /**
@@ -128,7 +142,7 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
       let newest = -Infinity;
       for (const r of got) {
         const t = num(at(r, 'time')), one = row(t, num(at(r, 'fundingRate')), 1), p = num(at(r, 'premium'));
-        take(one); if (one && Number.isFinite(p)) premium.push({ t: one.t - HOUR, p }); if (t > newest) newest = t;
+        take(one); if (Number.isFinite(t) && t > 0 && Number.isFinite(p)) premium.push({ t: onMinute(t) - HOUR, p }); if (t > newest) newest = t;
       }
       if (got.length < 500 || !Number.isFinite(newest)) break;
       start = newest + 1;
@@ -166,7 +180,7 @@ export async function readFunding(venue: FundingVenue, listing: Listing, from: n
       const a = await get(`https://www.okx.com/api/v5/public/funding-rate-history?instId=${s}&limit=100&after=${Math.floor(after)}`);
       const got = listOf(a, okxOk(a), venue, 'data');
       let oldest = Infinity;
-      for (const r of got) { const t = num(at(r, 'fundingTime')), rate = num(at(r, 'realizedRate') ?? at(r, 'fundingRate')); if (Number.isFinite(t)) { raw.push({ t, rate }); if (t < oldest) oldest = t; } }
+      for (const r of got) { const t = num(at(r, 'fundingTime')), realized = num(at(r, 'realizedRate')), rate = Number.isFinite(realized) ? realized : num(at(r, 'fundingRate')); if (Number.isFinite(t)) { raw.push({ t, rate }); if (t < oldest) oldest = t; } }
       if (got.length < 100 || !Number.isFinite(oldest) || oldest <= from) { after = from; break; }
       after = oldest;
     }
@@ -303,7 +317,7 @@ export async function readFundingNow(venue: FundingVenue, listing: Listing, get:
  * What the pane draws of one venue: its settled funding and premium (oldest first), the premium's candle length, the funding now, and whether
  * it is still being read for the first time or its read failed with nothing held (asked again a minute later).
  */
-export interface FundingView { venue: FundingVenue; rows: readonly FundingRow[]; premium: readonly PremiumRow[]; premiumMs: number; now: FundingNow | null; loading: boolean; failed: boolean }
+export interface FundingView { venue: FundingVenue; rows: readonly FundingRow[]; premium: readonly PremiumRow[]; premiumMs: number; now: FundingNow | null; loading: boolean; failed: boolean; /** How far back the settlements were read (time before it was not read), or null before any read answered. */ from?: number | null }
 
 /** How often the newest funding, the premium and the funding now are read again. */
 const ROWS_FRESH_MS = 10 * 60_000, PREMIUM_FRESH_MS = 60_000, NOW_FRESH_MS = 30_000, RETRY_MS = 60_000;
@@ -347,10 +361,19 @@ export class FundingSource {
     else if (back(0) < held.from - HOUR) {
       // Further back: a read reaching what is held, its newest left as they are.
       const reach = held.from;
-      this.#read(rowsKind, () => readFunding(venue, listing, want, reach, this.get).then(r => { const h = this.#rows.get(key) ?? held; this.#rows.set(key, { rows: mergeRows(h.rows, r.rows), premium: mergeRows(h.premium, r.premium), from: Math.min(h.from, r.from), at: h.at }); }));
+      // Where both hold a settlement the held one stands: the older read's newest row has no gap after it, so its interval is read from the gap
+      // before alone (an hourly-four record after a missing settlement read as eight, its rate halved, review 2026-11-13 on Binance's 2026-06-24 04:00Z).
+      // The trade-off: the held oldest row keeps the guess it was given from the gap after it, where a read further back could have told better (OKX
+      // only, when a first read stopped at its page limit right at a change of interval).
+      this.#read(rowsKind, () => readFunding(venue, listing, want, reach, this.get).then(r => { const h = this.#rows.get(key) ?? held; this.#rows.set(key, { rows: mergeRows(r.rows, h.rows), premium: mergeRows(h.premium, r.premium), from: Math.min(h.from, r.from), at: h.at }); }));
     } else {
       // The newest: every ROWS_FRESH_MS, and from SETTLED_AFTER_MS after the next settlement is due, every SETTLED_AFTER_MS until it is in.
-      const last = held.rows[held.rows.length - 1], due = last ? last.t + last.hours * HOUR + SETTLED_AFTER_MS : Infinity;
+      // Due by the newest row's interval, capped by the venue's interval now: a newest row read over a skipped settlement has a doubled
+      // interval until the one after it lands, which was then looked for only with the ten-minute refresh (the venue's next settlement time
+      // cannot stand in: it moves on within seconds of the settlement, review 2026-11-13). A real shortening at the newest end is looked for
+      // after the shorter interval too.
+      const last = held.rows[held.rows.length - 1], venueHours = this.#now.get(key)?.now?.hours ?? Infinity;
+      const due = last ? last.t + Math.min(last.hours, venueHours) * HOUR + SETTLED_AFTER_MS : Infinity;
       const settling = now >= due && now - due < ROWS_FRESH_MS && now - held.at >= SETTLED_AFTER_MS;
       if (now - held.at > ROWS_FRESH_MS || settling) {
         const from = (last?.t ?? held.from) - 2 * HOUR;
@@ -397,7 +420,7 @@ export class FundingSource {
     // ROWS_FRESH_MS: a venue whose next settlement stays in the past (a paused symbol) is not asked every few seconds for ever.
     const n = this.#now.get(key), settled = !!n?.now && n.now.next !== null && n.now.next <= now && now - n.now.next < ROWS_FRESH_MS;
     if (!n || now - n.at > NOW_FRESH_MS || (settled && now - n.at > 3_000)) this.#read(`now|${key}`, () => readFundingNow(venue, listing, this.get, now).then(value => { this.#now.set(key, { now: value, at: Date.now() }); }), settled ? 5_000 : RETRY_MS);
-    return { venue, rows: held?.rows ?? [], premium, premiumMs, now: n?.now ?? null, loading: !held && !this.#failed.has(rowsKind), failed: !held && this.#failed.has(rowsKind) };
+    return { venue, rows: held?.rows ?? [], premium, premiumMs, now: n?.now ?? null, loading: !held && !this.#failed.has(rowsKind), failed: !held && this.#failed.has(rowsKind), from: held?.from ?? null };
   }
 
   /** One read of a kind at a time; a failed one is asked again `retryMs` later. */

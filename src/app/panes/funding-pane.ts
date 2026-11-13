@@ -19,7 +19,7 @@ import { instrumentIdFor } from '../../shared/coins.ts';
 import { FUNDING_VENUES, FundingSource, buyerShare, continuousFunding, cutAt, fundingAt, fundingBase, fundingVenueOf, hasPremium, type FundingNow, type FundingRow, type FundingVenue, type FundingView, type PremiumRow } from '../funding.ts';
 import type { HourOpens, NlnsSource } from '../delta/nlns-source.ts';
 import { coinText } from '../delta/nlns.ts';
-import { pageNow } from '../replay/clock.ts';
+import { pageNow, replaying } from '../replay/clock.ts';
 import { fitText } from '../text-fit.ts';
 
 const HOUR = 3_600_000;
@@ -149,12 +149,12 @@ export class FundingPane extends TimePane {
    */
   #drawTable(venue: FundingVenue, shown: FundingView, tf: number, at: number, now: number, pointed: boolean): ReturnType<PaneTable['draw']> {
     const { ctx, palette: p, view: v } = this, coin = currentCoin(), room: TableRoom = { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing: this.pointer !== null };
-    const listed = FUNDING_VENUES.filter(x => coin.markets[x]), live = now >= Date.now() - 60_000, heads = ['', t('Funding'), 'APR', t('Premium')], minCols = 2;
+    const listed = FUNDING_VENUES.filter(x => coin.markets[x]), heads = ['', t('Funding'), 'APR', t('Premium')], minCols = 2;
     if (!placeTable(text => ctx.measureText(text).width, room, { heads, minCols, rows: fundingTableRows(listed.map(x => ({ name: venueLabel(x), per8h: 0.0001, premium: -0.0004 })), p) })) return null;
     const readings = listed.map((x): FundingReading => {
-      const data = x === venue ? shown : this.#funding.view(x, coin.markets[x]!, tf, v.t0, v.t1, Date.now(), false), reading = live ? data.now : null;
-      const { row, forming } = fundingAt(upTo(data.rows, now), reading, at, now);
-      return { name: venueLabel(x), per8h: row?.per8h ?? null, premium: premiumRead(reading, forming, upTo(data.premium, now), data.premiumMs, at) };
+      const data = x === venue ? shown : this.#funding.view(x, coin.markets[x]!, tf, v.t0, v.t1, Date.now(), false), held = fundingShownAt(data, now, replaying());
+      const { row, forming } = fundingAt(held.rows, held.forming, at, now);
+      return { name: venueLabel(x), per8h: row?.per8h ?? null, premium: premiumRead(held.forming, forming, held.premium, data.premiumMs, at) };
     });
     this.#tableVenues = listed;
     return this.#table.draw(ctx, p, room, { heads, minCols, focus: listed.indexOf(venue), foot: pointed ? clock(at, true) : `${t('newest')} ${clock(at)}`, rows: fundingTableRows(readings, p) });
@@ -169,7 +169,7 @@ export class FundingPane extends TimePane {
     if (!venue) { say(t('No venue here lists a perpetual of this coin.')); return; }
     const name = venueLabel(venue), data = this.#funding.view(venue, coin.markets[venue]!, tf, v.t0, v.t1, Date.now());
     // Replay: only what had settled by the moment shown, and no funding accruing "now".
-    const rows = upTo(data.rows, now), premium = upTo(data.premium, now), forming = now >= Date.now() - 60_000 ? data.now : null;
+    const { rows, premium, forming } = fundingShownAt(data, now, replaying());
     // The funding accruing now pays for the interval that ends at its settlement, whatever has come in of the settlements before it.
     const formEnd = forming ? forming.next ?? now : 0, formStart = forming ? formEnd - forming.hours * HOUR : 0;
     const formShown = !!forming && formEnd >= v.t0 && formStart <= v.t1;
@@ -277,6 +277,16 @@ export class FundingPane extends TimePane {
 
 /** What had been published by `now`: cut where it falls, not filtered, as up to 24,000 premium candles are held and the pane paints with every frame that moves. */
 function upTo<T extends { t: number }>(list: readonly T[], now: number): readonly T[] { const n = cutAt(list, now); return n < list.length ? list.slice(0, n) : list; }
+
+/**
+ * What the pane shows of a venue's funding at `now` (its paint and its table alike): the settlements made by then; the premium readings, in a
+ * replay only those whose candle (or hour) had closed by its moment (a candle is stamped at its start, its close its last value: cut at its start,
+ * a replay showed the value the candle ended on before it had); and the funding accruing now, live only (a replay a few seconds behind real
+ * time showed today's reading at its moment).
+ */
+export function fundingShownAt(data: Pick<FundingView, 'rows' | 'premium' | 'premiumMs' | 'now'>, now: number, replay: boolean): { rows: readonly FundingRow[]; premium: readonly PremiumRow[]; forming: FundingNow | null } {
+  return { rows: upTo(data.rows, now), premium: upTo(data.premium, replay ? now - data.premiumMs : now), forming: replay ? null : data.now };
+}
 
 /** The premium of the candle holding `t` (published per candle of `ms`), else the last before it within one candle; null where none is held. */
 function premiumNear(rows: readonly PremiumRow[], ms: number, t: number): number | null {

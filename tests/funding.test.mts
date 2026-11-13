@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FundingSource, buyerShare, continuousFunding, cutAt, fundingBase, fundingVenueOf, hasPremium, heldPremium, isFundingVenue, readFunding, readFundingNow, readPremium, rowAt } from '../src/app/funding.ts';
-import { fundingCardLines } from '../src/app/panes/funding-pane.ts';
+import { fundingCardLines, fundingShownAt } from '../src/app/panes/funding-pane.ts';
 import type { Fetcher } from '../src/shared/history.ts';
 
 const H = 3_600_000, T = Date.UTC(2026, 10, 6, 0);
@@ -101,6 +101,59 @@ test('a past view that alone fills a read, dragged either way, reads only what i
     const held = live.view(v, BTC, M, clock + 1_000 * M, clock + 11_000 * M, clock).premium;
     assert.ok(pages[v] - before <= 6 && held.some(q => q.t >= clock), `${v}: a view after now reads its newest once (${pages[v] - before} pages, 5 measured) and holds it`);
   }
+});
+
+test('a replay shows the settlements made and the premium candles closed by its moment, and no funding accruing now however near real time', () => {
+  const data = {
+    rows: [{ t: T + H, rate: 0.00001, per8h: 0.00008, hours: 1 }, { t: T + 2 * H, rate: 0.00002, per8h: 0.00016, hours: 1 }],
+    premium: [{ t: T, p: 0.0001 }, { t: T + H, p: 0.0002 }], premiumMs: H,
+    now: { rate: 0.00003, per8h: 0.00024, hours: 1, next: T + 3 * H, premium: 0.0003 },
+  };
+  // At 1:30 in a replay: the settlement at 1:00 is made; the premium candle of 1:00 has not closed (its value is its end); nothing accrues "now".
+  const replay = fundingShownAt(data, T + 1.5 * H, true);
+  assert.deepEqual([replay.rows.map(r => r.t), replay.premium.map(q => q.t), replay.forming], [[T + H], [T], null]);
+  // At 2:00 the 1:00 candle has closed.
+  assert.deepEqual(fundingShownAt(data, T + 2 * H, true).premium.map(q => q.t), [T, T + H]);
+  // Live: the candle under way is drawn as it stands, and the funding accruing now is shown.
+  const live = fundingShownAt(data, T + 1.5 * H, false);
+  assert.deepEqual([live.premium.map(q => q.t), live.forming?.per8h], [[T, T + H], 0.00024]);
+});
+
+test('a null or blank figure is no figure: no funding row, no premium, no reading now; a real zero stays', async () => {
+  const hl = venue((_url, body) => (body as { type: string }).type === 'fundingHistory'
+    ? [{ coin: 'BTC', fundingRate: null, premium: null, time: T + H }, { coin: 'BTC', fundingRate: '0', premium: '', time: T + 2 * H }, { coin: 'BTC', fundingRate: '0.00001', premium: '0.0002', time: T + 3 * H }]
+    : [{ universe: [{ name: 'BTC' }] }, [{ funding: null, premium: null }]]);
+  const { rows, premium } = await readFunding('hyperliquid', { symbol: 'BTC', unit: 1 }, T, T + 4 * H, hl);
+  assert.deepEqual(rows.map(r => [r.t, r.rate]), [[T + 2 * H, 0], [T + 3 * H, 0.00001]], 'null funding is no settlement; "0" is a settlement of zero');
+  assert.deepEqual(premium.map(q => [q.t, q.p]), [[T + 2 * H, 0.0002]], 'a null or blank premium is none');
+  assert.equal(await readFundingNow('hyperliquid', { symbol: 'BTC', unit: 1 }, hl, T + 30 * 60_000), null, 'null funding now is no reading');
+  const binance = venue(() => [[T, '0', '0', '0', null, '0', T + H - 1], [T + H, '0', '0', '0', '-0.0005', '0', T + 2 * H - 1]]);
+  assert.deepEqual((await readPremium('binance', BTC, H, T, T + 2 * H, binance)).rows, [{ t: T + H, p: -0.0005 }], 'a null candle close is no premium');
+});
+
+test('an hourly settlement missing from the answer is not a two-hour interval; a real change of interval still is one', async () => {
+  // Hourly records ending at 1, 2, 4 and 5 (the one at 3 missing): the record at 4 is one hour's, its rate per eight hours not halved.
+  const hourly = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 60 }] } }
+    : { retCode: 0, result: { list: [5, 4, 2, 1].map(h => ({ fundingRate: '0.0000125', fundingRateTimestamp: String(T + h * H) })) } });
+  const { rows } = await readFunding('bybit', { symbol: 'GAP1USDT', unit: 1 }, T, T + 6 * H, hourly);
+  assert.deepEqual(rows.map(r => [r.t, r.hours, r.per8h.toFixed(6)]), [1, 2, 4, 5].map(h => [T + h * H, 1, '0.000100']));
+  // At the newest end a gap is read as it is until the next settlement lands: a real change from one hour to four there keeps its four
+  // (the venue's interval now cannot stand for the gap after it). Each case its own symbol: intervals are cached.
+  const newest = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 60 }] } }
+    : { retCode: 0, result: { list: [16, 12, 11].map(h => ({ fundingRate: '0.0001', fundingRateTimestamp: String(T + h * H) })) } });
+  assert.deepEqual((await readFunding('bybit', { symbol: 'GAP2USDT', unit: 1 }, T, T + 17 * H, newest)).rows.map(r => r.hours), [1, 1, 4]);
+  // Every four hours with one settlement missing: still four hours, not eight.
+  const four = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 240 }] } }
+    : { retCode: 0, result: { list: [16, 12, 4, 0].map(h => ({ fundingRate: '0.0001', fundingRateTimestamp: String(T + 8 * H + h * H) })) } });
+  assert.deepEqual((await readFunding('bybit', { symbol: 'GAP3USDT', unit: 1 }, T, T + 30 * H, four)).rows.map(r => r.hours), [4, 4, 4, 4]);
+  // A real change from four hours to one: the record that ends the last four-hour interval keeps its four.
+  const change = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 60 }] } }
+    : { retCode: 0, result: { list: [10, 9, 8, 4, 0].map(h => ({ fundingRate: '0.0001', fundingRateTimestamp: String(T + 8 * H + h * H) })) } });
+  assert.deepEqual((await readFunding('bybit', { symbol: 'GAP4USDT', unit: 1 }, T, T + 30 * H, change)).rows.map(r => r.hours), [4, 4, 4, 1, 1]);
+  // The same settlement twice in one answer counts once (counted twice, the gaps around it read 0 and the next gap 2 h); a null retCode is no failure.
+  const twice = venue(url => url.includes('instruments-info') ? { result: { list: [{ fundingInterval: 60 }] } }
+    : { retCode: null, result: { list: [6, 5, 3, 3, 2, 1].map(h => ({ fundingRate: '0.0000125', fundingRateTimestamp: String(T + h * H) })) } });
+  assert.deepEqual((await readFunding('bybit', { symbol: 'GAP5USDT', unit: 1 }, T, T + 7 * H, twice)).rows.map(r => r.hours), [1, 1, 1, 1, 1]);
 });
 
 test('each settlement at its own interval: a symbol that settled every hour before every four is not read four times too low', async () => {
@@ -461,6 +514,56 @@ test('a settlement that is due is looked for soon after, again until it is in; a
   await new Promise(r => setTimeout(r, 10));
   const view = down.view('binance', BTC, H, T, T + H, T + H);
   assert.deepEqual([view.loading, view.failed], [false, true]);
+});
+
+test('review: a read further back keeps the held row after a skipped settlement; OKX\'s blank realized rate; a premium beside a null funding', async () => {
+  // Every four hours with the settlement at 04:00 of day D missing (as Binance skipped 2026-06-24 04:00Z): the 08:00 record is four hours'.
+  const D = Date.UTC(2026, 5, 24), times = [-16, -12, -8, -4, 0, 8, 12, 16, 20, 24, 28].map(h => D + h * H);
+  const binance = venue(url => {
+    if (url.includes('fundingInfo')) return [{ symbol: 'SKIPUSDT', fundingIntervalHours: 4 }];
+    const end = Number(/endTime=(\d+)/.exec(url)![1]);
+    return times.filter(t => t <= end).slice(-500).map(t => ({ symbol: 'SKIPUSDT', fundingTime: t, fundingRate: '0.00005' }));
+  });
+  const source = new FundingSource(() => {}, binance), listing = { symbol: 'SKIPUSDT', unit: 1 }, now = D + 40 * H;
+  // A first view whose read starts at the 08:00 record (a day and eight hours back from now), then one further back, ending there.
+  source.view('binance', listing, H, D + 38 * H, D + 39 * H, now);
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(source.view('binance', listing, H, D + 38 * H, D + 39 * H, now).from, D + 8 * H, 'the first read starts at 08:00');
+  source.view('binance', listing, H, D - 40 * H, D + 28 * H, now);
+  await new Promise(r => setTimeout(r, 10));
+  const rows = source.view('binance', listing, H, D - 40 * H, D + 28 * H, now).rows;
+  assert.equal(rows.find(r => r.t === D + 8 * H)?.hours, 4, 'the 08:00 record keeps its four hours across the join');
+  // OKX: a blank realized rate gives way to the rate.
+  const okx = venue(() => ({ data: [{ fundingTime: String(T + 8 * H), realizedRate: '', fundingRate: '0.0001' }, { fundingTime: String(T), realizedRate: '0.00008', fundingRate: '0.0001' }] }));
+  assert.deepEqual((await readFunding('okx', { symbol: 'BTC-USDT-SWAP', unit: 1 }, T - H, T + 9 * H, okx)).rows.map(r => r.rate), [0.00008, 0.0001]);
+  // Hyperliquid: a record with null funding still gives its hour's premium.
+  const hl = venue(() => [{ coin: 'BTC', fundingRate: null, premium: '0.0003', time: T + H }]);
+  const read = await readFunding('hyperliquid', { symbol: 'BTC', unit: 1 }, T, T + 2 * H, hl);
+  assert.deepEqual([read.rows.length, read.premium.map(q => [q.t, q.p])], [0, [[T, 0.0003]]]);
+});
+
+test('review: after a skipped settlement the next is looked for when the venue\'s interval now says it is due, not ten minutes later', async () => {
+  // Every four hours, 04:00 skipped: the newest row (08:00) reads 8 hours; the venue says four. At 12:00:20 the 12:00 record is looked for.
+  // (Bybit: its intervals are cached per symbol, Binance's list once for the whole module.)
+  const D = Date.UTC(2026, 5, 24), held = [-8, -4, 0, 8].map(h => D + h * H);
+  let times = held;
+  const bybit = venue(url => {
+    if (url.includes('instruments-info')) return { result: { list: [{ fundingInterval: 240 }] } };
+    if (url.includes('tickers')) return { retCode: 0, result: { list: [{ fundingRate: '0.00005', nextFundingTime: String(D + 16 * H) }] } };
+    const end = Number(/endTime=(\d+)/.exec(url)![1]);
+    return { retCode: 0, result: { list: times.filter(t => t <= end).reverse().map(t => ({ fundingRate: '0.00005', fundingRateTimestamp: String(t) })) } };
+  });
+  const source = new FundingSource(() => {}, bybit), listing = { symbol: 'DUEUSDT', unit: 1 }, first = D + 11 * H + 56 * 60_000;
+  source.view('bybit', listing, H, first - 2 * H, first, first);
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(source.view('bybit', listing, H, first - 2 * H, first, first).rows.at(-1)?.hours, 8, 'the newest row reads its gap as it is');
+  times = [...held, D + 12 * H];
+  const reads = (): number => bybit.asked.filter(u => u.includes('funding/history')).length, before = reads(), at = D + 12 * H + 20_000;
+  source.view('bybit', listing, H, at - 2 * H, at, at);
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(reads(), before + 1, 'looked for 15 s after it was due by the venue\'s four hours');
+  const rows = source.view('bybit', listing, H, at - 2 * H, at, at).rows;
+  assert.deepEqual(rows.slice(-2).map(r => r.hours), [4, 4], 'and the 08:00 row heals to four hours');
 });
 
 test('the source reads what a view needs once, says when it lands, and reads the newest again only when it is old', async () => {
