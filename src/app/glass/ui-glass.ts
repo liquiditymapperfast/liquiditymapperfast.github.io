@@ -379,7 +379,8 @@ export class UiGlass {
   #ensureGl(): boolean {
     if (this.#broken) return false;
     if (this.#gl) return true;
-    const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
+    // No depth buffer: nothing here tests depth, and the card would keep one the page's size for nothing.
+    const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false, depth: false });
     if (!gl) { console.info('Glass: WebGL2 is not available here, so the page stays solid.'); return false; }
     // A context lost before its loss was announced throws here: the glass stays off until it is given back (`webglcontextrestored`
     // turns it on then, as `#wanted` says).

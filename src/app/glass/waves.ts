@@ -399,6 +399,7 @@ export class WaveField {
       r.set([q.x / CELL, (this.#cssH - q.y - q.h) / CELL, q.w / CELL, q.h / CELL], i * 4); k[i] = q.kind === 'wall' ? 1 : 0;
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.#mediumFbo); gl.viewport(0, 0, this.#cols, this.#rows);
+    gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0]);
     gl.disable(gl.BLEND); gl.disable(gl.SCISSOR_TEST);
     gl.useProgram(this.#medium);
     gl.uniform4fv(l.get('region')!, r); gl.uniform1fv(l.get('kind')!, k); gl.uniform1i(l.get('n')!, n);
@@ -526,6 +527,9 @@ export class WaveField {
     // A frame that steps none keeps its moving touches for the next one, as it keeps its pulses.
     const paths = steps > 0 ? this.#paths.splice(0) : [];
     const src = this.#src, seg = this.#seg, side = this.#side;
+    // The pulses' arrays are sent only for a substep that has any: the shader reads none past `n`, so a substep without leaves them as
+    // they were (most substeps have none, and each array sent is a call the page waits on).
+    let sentNone = false;
     for (let k = 0; k < steps; k++) {
       const prev = this.#i, cur = (this.#i + 1) % 3, next = (this.#i + 2) % 3;
       let n = 0;
@@ -540,10 +544,13 @@ export class WaveField {
         const f0 = k / steps, f1 = (k + 1) / steps;
         put(w.x0 + (w.x1 - w.x0) * f0, w.y0 + (w.y1 - w.y0) * f0, w.x0 + (w.x1 - w.x0) * f1, w.y0 + (w.y1 - w.y0) * f1, w.amp, w.width, 2);
       }
-      gl.uniform1i(l.get('n')!, n); gl.uniform4fv(l.get('src')!, src); gl.uniform2fv(l.get('seg')!, seg); gl.uniform1fv(l.get('side')!, side);
+      if (n > 0) { gl.uniform1i(l.get('n')!, n); gl.uniform4fv(l.get('src')!, src); gl.uniform2fv(l.get('seg')!, seg); gl.uniform1fv(l.get('side')!, side); sentNone = false; }
+      else if (!sentNone) { gl.uniform1i(l.get('n')!, 0); sentNone = true; }
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.#tex[cur]!);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.#tex[prev]!);
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.#fbo[next]!);
+      // Every cell is written: a tiled card (a phone's) need not read the old heights back in first.
+      gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0]);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       this.#i = cur;
     }

@@ -99,10 +99,48 @@ function bitmap(id: string, px: number): HTMLCanvasElement {
   return canvas;
 }
 
+/** Where a mark `size` CSS px a side centred on `c` starts: on a whole CSS pixel, which is where `drawVenueMark` puts it. */
+export const markCorner = (c: number, size: number): number => Math.round(c - size / 2);
+
 /** Paint the mark of `id`, `size` CSS px a side, centred on (`cx`, `cy`). */
 export function drawVenueMark(ctx: CanvasRenderingContext2D, id: string, cx: number, cy: number, size: number): void {
   const dpr = pixelRatio(), px = Math.max(8, Math.round(size * dpr));
-  ctx.drawImage(bitmap(id, px), Math.round(cx - size / 2), Math.round(cy - size / 2), size, size);
+  ctx.drawImage(bitmap(id, px), markCorner(cx, size), markCorner(cy, size), size, size);
+}
+
+/** A mark as `drawVenueMark` paints it: centred on (`x`, `y`) CSS px, `size` a side, at opacity `a` (0 to 1). */
+export interface PaintedMark { id: string; x: number; y: number; size: number; a: number }
+
+/**
+ * What `marks` put on a canvas: each one's corner on whole pixels (`markCorner`), its size, its bitmap (its exchange, spot or not, at the
+ * pixel ratio) and its opacity in 255ths, the steps a canvas lays it in. Two lists with the same key paint the same pixels.
+ */
+export function marksKey(marks: readonly PaintedMark[]): string {
+  let key = String(pixelRatio());
+  for (const m of marks) key += `;${m.id}|${markOf(m.id).spot ? 's' : ''}|${m.size}|${markCorner(m.x, m.size)}|${markCorner(m.y, m.size)}|${Math.round(Math.min(1, Math.max(0, m.a)) * 255)}`;
+  return key;
+}
+
+/**
+ * Marks on a canvas of their own, painted again only when what lands on it changes (`marksKey`). The Tape's trail marks move a few pixels a
+ * second and a canvas painted again every frame is one the browser sends to the card and composes every frame (Karl, 2026-11-12, the
+ * phone's Tape). `begin` gets the canvas ready (cleared when something is on it), `draw` paints one mark.
+ */
+export class MarkLayer {
+  #key: string | null = null; #drawn = false;
+  /** The canvas was cleared (sized): the next `paint` paints what it is given. */
+  reset(): void { this.#key = null; this.#drawn = false; }
+  /** Paint `marks` unless the canvas shows them already; true when it painted (or cleared). */
+  paint(marks: readonly PaintedMark[], begin: (clear: boolean) => void, draw: (mark: PaintedMark) => void): boolean {
+    const key = marksKey(marks);
+    if (key === this.#key) return false;
+    this.#key = key;
+    if (!marks.length && !this.#drawn) return false;
+    begin(this.#drawn);
+    for (const m of marks) draw(m);
+    this.#drawn = marks.length > 0;
+    return true;
+  }
 }
 
 /**

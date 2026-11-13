@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VENUE_MARKS, markOf, monogramPx, useMarkets } from '../src/app/venue-marks.ts';
+import { MarkLayer, VENUE_MARKS, markCorner, marksKey, markOf, monogramPx, useMarkets, type PaintedMark } from '../src/app/venue-marks.ts';
+import { paintAt } from '../src/app/pixel-ratio.ts';
 import { MARK, layoutInfo } from '../src/app/infobox.ts';
 
 const luminance = (hex: string): number => {
@@ -50,4 +51,35 @@ test('a market the market list calls spot has the notch, whatever its venue is c
     markets = [{ instrumentId: 'coinbase:BTC-USD', marketType: 'perpetual' }];
     assert.equal(markOf('coinbase:BTC-USD').spot, false, 'a new list is read as it is');
   } finally { useMarkets(() => []); }
+});
+
+test('marks paint the same pixels when they land on the same whole pixels, at the same opacity step, with the same bitmaps', () => {
+  const mark: PaintedMark = { id: 'binance:BTCUSDT', x: 100.2, y: 40.4, size: 10, a: 0.8 };
+  assert.equal(markCorner(100.2, 10), 95, 'drawVenueMark\'s corner');
+  const key = marksKey([mark]);
+  assert.equal(marksKey([{ ...mark, x: 100.4, y: 40.2 }]), key, 'a fifth of a pixel either way lands on the same pixel');
+  assert.equal(marksKey([{ ...mark, a: 0.8 + 0.4 / 255 }]), key, 'less than a 255th of opacity is the same ink');
+  assert.notEqual(marksKey([{ ...mark, x: 100.6 }]), key, 'a pixel to the right');
+  assert.notEqual(marksKey([{ ...mark, a: 0.8 + 1 / 255 }]), key, 'a step fainter');
+  assert.notEqual(marksKey([{ ...mark, size: 11 }]), key);
+  assert.notEqual(marksKey([{ ...mark, id: 'okx:BTC-USDT-SWAP' }]), key);
+  assert.notEqual(marksKey([mark, mark]), key, 'one more');
+  assert.equal(marksKey([{ ...mark, a: 1.2 }]), marksKey([{ ...mark, a: 1 }]), 'a canvas takes no more than full opacity');
+  paintAt(3);
+  try { assert.notEqual(marksKey([mark]), key, 'another pixel ratio paints another bitmap'); } finally { paintAt(null); }
+  assert.equal(marksKey([mark]), key);
+});
+
+test('a mark layer paints again only when its marks would change the canvas, clearing first only what it painted', () => {
+  const layer = new MarkLayer(), log: string[] = [];
+  const paint = (marks: PaintedMark[]): boolean => layer.paint(marks, clear => log.push(clear ? 'clear' : 'begin'), m => log.push(`draw ${Math.round(m.x)}`));
+  const mark: PaintedMark = { id: 'binance:BTCUSDT', x: 100.2, y: 40, size: 10, a: 0.8 };
+  assert.equal(paint([]), false, 'nothing on a clear canvas: nothing to do');
+  assert.equal(paint([mark]), true); assert.deepEqual(log.splice(0), ['begin', 'draw 100']);
+  assert.equal(paint([{ ...mark, x: 100.4 }]), false, 'the same pixels'); assert.deepEqual(log, []);
+  assert.equal(paint([{ ...mark, x: 101.2 }]), true); assert.deepEqual(log.splice(0), ['clear', 'draw 101']);
+  layer.reset();
+  assert.equal(paint([{ ...mark, x: 101.2 }]), true, 'a canvas sized afresh is painted though its marks did not move'); assert.deepEqual(log.splice(0), ['begin', 'draw 101']);
+  assert.equal(paint([]), true, 'the last mark gone: cleared once'); assert.deepEqual(log.splice(0), ['clear']);
+  assert.equal(paint([]), false); assert.deepEqual(log, []);
 });

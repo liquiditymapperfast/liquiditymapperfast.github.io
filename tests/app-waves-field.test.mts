@@ -58,3 +58,28 @@ test('a long pause steps as a short one, not the whole pause at once, and no fra
   // Frames of 50 ms, a card that cannot keep up: each steps sixteen, never the 24 its time would hold.
   for (let t = 1_150; t < 1_600; t += 50) { field.add(pulse, t); const was = draws(); field.step(t); assert.ok(draws() - was <= 17, `${draws() - was} substeps in a 50 ms frame`); }
 });
+
+test('a substep with no pulse sends no pulse arrays, and every substep tells a tiled card the old heights need not be read back', () => {
+  const log: string[] = [];
+  const consts = new Map<string, number>(), constant = (name: string): number => { if (!consts.has(name)) consts.set(name, consts.size + 1); return consts.get(name)!; };
+  const calls: Record<string, (...a: unknown[]) => unknown> = {
+    getExtension: () => ({}), getShaderParameter: () => true, getProgramParameter: () => true,
+    checkFramebufferStatus: () => constant('FRAMEBUFFER_COMPLETE'), getUniformLocation: (_p, name) => name,
+    drawArrays: () => { log.push('draw'); }, invalidateFramebuffer: () => { log.push('invalidate'); },
+    uniform1i: (loc, v) => { if (loc === 'n') log.push(`n=${v as number}`); },
+    uniform4fv: (loc) => { if (loc === 'src') log.push('src'); },
+  };
+  const gl = new Proxy({}, { get: (_t, name) => typeof name !== 'string' ? undefined : /^[A-Z0-9_]+$/.test(name) ? constant(name) : calls[name] ?? (() => ({})) }) as unknown as WebGL2RenderingContext;
+  const field = WaveField.create(gl)!;
+  field.resize(400, 300);
+  field.add(pulse, 1_000); field.step(1_000);
+  log.length = 0;
+  field.add(pulse, 1_016.7); field.step(1_016.7);
+  // The frame's first substep takes the pulse; the seven after it take none: `n` goes to 0 once, and no arrays follow.
+  assert.deepEqual(log.filter(c => c !== 'invalidate' && c !== 'draw'), ['n=1', 'src', 'n=0']);
+  assert.equal(log.filter(c => c === 'draw').length, 8);
+  log.forEach((c, i) => { if (c === 'draw') assert.equal(log[i - 1], 'invalidate', `substep ${i} is told its target is all new`); });
+  log.length = 0;
+  field.step(1_033.4);
+  assert.deepEqual(log.filter(c => c !== 'invalidate' && c !== 'draw'), ['n=0'], 'a frame without pulses sets n once, whatever the last substep held');
+});

@@ -13,7 +13,7 @@ import { GestureRecognizer, bindTouch } from '../touch.ts';
 import { replaying } from '../replay/clock.ts';
 import { price as fmtPrice } from '../format.ts';
 import { scaledUsd } from '../coin.ts';
-import { drawVenueMark } from '../venue-marks.ts';
+import { MarkLayer, drawVenueMark, type PaintedMark } from '../venue-marks.ts';
 import { niceStep } from '../view.ts';
 import { STRIDE, type TapeRing } from '../tape/ring.ts';
 import { ROW_TEXELS, TrailGL, type FlashSprite } from '../candle/trail-gl.ts';
@@ -78,7 +78,7 @@ export class CandlePane {
   #tape = new M.TapeTally(Date.now()); #tapeSeen = 0; #gaps = new M.TapeGaps(Date.now(), document.hidden);
   #palette: Palette = PALETTES.dark!;
   #w = 0; #h = 0; #dpr = 1;
-  #shown = false; #frame = 0; #paintTimer = 0; #lastPaint = 0; #trailRaf = 0; #trailTimer = 0; #trailChain = 0; #trailDrawn = 0; #trailDirty = false; #marksDrawn = false;
+  #shown = false; #frame = 0; #paintTimer = 0; #lastPaint = 0; #trailRaf = 0; #trailTimer = 0; #trailChain = 0; #trailDrawn = 0; #trailDirty = false;
   #zoom = 1; #zoom0 = 1; #pan = 0;
   #layout: M.CandleLayout | null = null; #scale: M.PriceScale | null = null; #step = 0;
   /** The book's venues in a held order (most liquidity in view first), kept for a minute so a venue's piece keeps its place. */
@@ -230,6 +230,8 @@ export class CandlePane {
     this.#canvas.width = Math.max(1, Math.round(this.#w * this.#dpr)); this.#canvas.height = Math.max(1, Math.round(this.#h * this.#dpr));
     this.#canvas.style.width = `${this.#w}px`; this.#canvas.style.height = `${this.#h}px`;
     this.#marks.width = this.#canvas.width; this.#marks.height = this.#canvas.height; this.#marks.style.width = this.#canvas.style.width; this.#marks.style.height = this.#canvas.style.height;
+    // Sizing cleared the marks: drawn again whole on the next frame.
+    this.#markLayer.reset();
     this.#trail?.resize(this.#w, this.#h, Math.min(this.#dpr, 1.5));
     this.invalidate(); this.#scheduleTrail(0);
   }
@@ -503,14 +505,17 @@ export class CandlePane {
     });
   }
 
-  /** The orders of the ring that arrived at or after `since` (the page's clock), inside the view's markets. */
-  #arrivals(ring: TapeRing, since: number, hidden: ReadonlySet<number>): M.Arrival[] {
+  /**
+   * The orders of the ring that arrived at or after `since` (the page's clock), inside the view's markets, from `minUsd` up (checked before an
+   * order is made into an object: the flashes and their marks want the large ones of the last second only).
+   */
+  #arrivals(ring: TapeRing, since: number, hidden: ReadonlySet<number>, minUsd = 0): M.Arrival[] {
     const out: M.Arrival[] = [];
     for (const a of ring.arrivals) {
       if (a.at < since) continue;
       for (let k = Math.max(a.from, ring.first); k < a.to; k++) {
         const at = (k % ring.capacity) * STRIDE, d = ring.data;
-        if (hidden.has(d[at + 3]!)) continue;
+        if (hidden.has(d[at + 3]!) || Math.abs(d[at + 2]!) < minUsd) continue;
         const off = d[at + 1]!;
         out.push({ price: ring.p0 + off, usd: d[at + 2]!, at: a.at, inst: d[at + 3]!, slack: M.ringSlack(off) });
       }
@@ -528,7 +533,7 @@ export class CandlePane {
   #paintRail(ctx: CanvasRenderingContext2D, l: M.CandleLayout, s: M.PriceScale, step: number, p: Palette): void {
     ctx.fillStyle = p.line; ctx.fillRect(l.railX0, s.y0, 1, s.y1 - s.y0);
     const ring = this.hub.tape; if (!ring || !(step > 0)) return;
-    const now = performance.now(), cells = M.railCells(this.#arrivals(ring, now - RAIL_MS, this.#hidden(ring)), step, now - RAIL_MS, now);
+    const now = performance.now(), cells = M.railCells(this.#arrivals(ring, now - RAIL_MS, this.#hiddenOf(ring)), step, now - RAIL_MS, now);
     const x0 = l.railX0 + 19, w = l.railX1 - l.railX0 - 21;
     for (const c of cells) {
       const y = M.yOf(s, (c.bin + 0.5) * step); if (y < s.y0 || y > s.y1) continue;
@@ -564,33 +569,38 @@ export class CandlePane {
    * left of the rail's largest flashes while they last and a moment after (FLASH_MARK_MS).
    */
   #drawMarks(ring: TapeRing, l: M.CandleLayout, s: M.PriceScale, now: number, page: number, hidden: ReadonlySet<number>, reduced: boolean): void {
-    const ctx = this.#marksCtx, step = this.#step;
-    ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
-    if (this.#marksDrawn) ctx.clearRect(0, 0, this.#w, this.#h);
-    let drawn = false;
+    const step = this.#step, marks: PaintedMark[] = [];
     const whale = scaledUsd(this.store.state.barStatOptions.whaleUsd), win = this.#settings.trailMs;
     const big: { x: number; y: number; id: string; a: number }[] = [];
     for (const o of this.#whalesOf(ring, whale, now, win)) {
       if (hidden.has(o.inst)) continue;
       const age = now - o.t; if (age > win || age < -1_500) continue;
-      big.push({ x: M.trailX(l, age, win), y: M.yOf(s, o.price), id: ring.ids[o.inst] ?? '', a: Math.max(0.25, (1 - age / win) ** 1.2) });
+      // An order stamped a moment ahead of now (age below 0) is drawn whole: a canvas ignores an opacity above 1 (it kept the mark before's).
+      big.push({ x: M.trailX(l, age, win), y: M.yOf(s, o.price), id: ring.ids[o.inst] ?? '', a: Math.min(1, Math.max(0.25, (1 - age / win) ** 1.2)) });
     }
     for (const m of big.slice(-MAX_TRAIL_MARKS)) {
       if (m.y < s.y0 || m.y > s.y1 || !m.id) continue;
-      ctx.globalAlpha = m.a; drawVenueMark(ctx, m.id, m.x - 9, m.y - 9, 10); drawn = true;
+      marks.push({ id: m.id, x: m.x - 9, y: m.y - 9, size: 10, a: m.a });
     }
     if (!reduced && step > 0) {
       // The marks of the largest flashes, from the large arrivals alone (a later small order must not keep one up or move it).
       const markUsd = scaledUsd(100_000);
-      const cells = M.railCells(this.#arrivals(ring, page - M.FLASH_MARK_MS, hidden).filter(o => Math.abs(o.usd) >= markUsd), step, page - M.FLASH_MARK_MS, page)
+      const cells = M.railCells(this.#arrivals(ring, page - M.FLASH_MARK_MS, hidden, markUsd), step, page - M.FLASH_MARK_MS, page)
         .sort((a, b) => b.largest - a.largest).slice(0, 3);
       for (const c of cells) {
         const y = M.yOf(s, (c.bin + 0.5) * step), id = ring.ids[c.largestInst]; if (!id || y < s.y0 || y > s.y1) continue;
-        ctx.globalAlpha = Math.max(0, 1 - (page - c.at) / M.FLASH_MARK_MS); drawVenueMark(ctx, id, l.railX0 - 8, y, 11); drawn = true;
+        marks.push({ id, x: l.railX0 - 8, y, size: 11, a: Math.max(0, 1 - (page - c.at) / M.FLASH_MARK_MS) });
       }
     }
-    ctx.globalAlpha = 1; this.#marksDrawn = drawn;
+    // Painted again only when the canvas would change (venue-marks.ts `MarkLayer`: a mark moved to another pixel, faded a step, came or
+    // went), not every frame.
+    const ctx = this.#marksCtx;
+    const painted = this.#markLayer.paint(marks, clear => { ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0); if (clear) ctx.clearRect(0, 0, this.#w, this.#h); },
+      m => { ctx.globalAlpha = m.a; drawVenueMark(ctx, m.id, m.x, m.y, m.size); });
+    if (painted) ctx.globalAlpha = 1;
   }
+  /** The marks canvas as last painted (sizing it resets it). */
+  #markLayer = new MarkLayer();
 
   /**
    * The ring's orders from `whale` USD up, held as they arrive (each order is looked at once, not every frame), with their absolute time and
@@ -692,7 +702,7 @@ export class CandlePane {
     const sourceNow = this.hub.sourceNow(), newest = ring.written > 0 ? ring.t0 + ring.data[((ring.written - 1) % ring.capacity) * STRIDE]! : 0;
     const now = Math.max(sourceNow, Math.min(newest, sourceNow + 2_000));
     const lo = scaledUsd(25_000), hiUsd = scaledUsd(2_000_000), railX = l.railX0 + 10.5;
-    const lit = reduced || !(step > 0) ? [] : M.flashes(this.#arrivals(ring, page - M.FLASH_MS, hidden), step, lo, page);
+    const lit = reduced || !(step > 0) ? [] : M.flashes(this.#arrivals(ring, page - M.FLASH_MS, hidden, lo), step, lo, page);
     const flashes: FlashSprite[] = lit.map(c => ({ x: railX, y: M.yOf(s, (c.bin + 0.5) * step), r: M.flashRadius(c.largest, lo, hiUsd), share: c.buy / (c.buy + c.sell), k: c.k }));
     trail.draw({
       style: this.#settings.style, dark: p.dark, bid: tones.bid, ask: tones.ask, mid: tones.mid,
@@ -730,14 +740,15 @@ export class CandlePane {
   #maskSet: Set<number> | null = null;
 
   /** `#hidden` for a frame: worked out again only when the ring's markets or the view's change (the map's footprint markets come back as the same list while they hold). */
-  #hiddenMemo: { markets: readonly string[]; ids: number; set: Set<number> } | null = null;
+  #hiddenMemo: { markets: readonly string[]; ring: TapeRing; epoch: number; ids: number; set: Set<number> } | null = null;
   /** The view's markets as the last drawing of the book and the candle found them: a frame of the trail reads these, not the map's rule again. */
   #marketsNow: readonly string[] | null = null;
   #hiddenOf(ring: TapeRing): Set<number> {
     const markets = this.#marketsNow ?? this.markets(this.store.state), m = this.#hiddenMemo;
-    if (m && m.markets === markets && m.ids === ring.ids.length) return m.set;
+    // Another ring, or this one cleared (its epoch moves on), numbers its markets afresh.
+    if (m && m.markets === markets && m.ring === ring && m.epoch === ring.epoch && m.ids === ring.ids.length) return m.set;
     const set = this.#hidden(ring);
-    this.#hiddenMemo = { markets, ids: ring.ids.length, set };
+    this.#hiddenMemo = { markets, ring, epoch: ring.epoch, ids: ring.ids.length, set };
     return set;
   }
 }
