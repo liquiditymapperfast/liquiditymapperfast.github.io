@@ -45,7 +45,7 @@ import { FOOTPRINT_SETTLE_MS, FootprintData, FootprintLod, VENUE_LINES, candleBo
 import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
-import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
+import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, focusWindow, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
 import { t, tn } from '../i18n.ts';
 import { el } from '../dom.ts';
 import { openMenu, type MenuItem } from '../menu.ts';
@@ -1541,9 +1541,8 @@ export class HeatPane {
   /** Centre the map on a stretch of time and prices (a drawing found in its list), widening the view where it does not fit. */
   focusOn(box: { t0: number; t1: number; p0: number; p1: number }): void {
     this.#demo = null; this.#stopFling();
-    const v = this.view, span = Math.max(v.t1 - v.t0, (box.t1 - box.t0) * 1.4), pSpan = Math.max(v.p1 - v.p0, (box.p1 - box.p0) * 1.4);
-    const tm = (box.t0 + box.t1) / 2, pm = (box.p0 + box.p1) / 2;
-    v.set({ t0: tm - span / 2, t1: tm + span / 2, p0: pm - pSpan / 2, p1: pm + pSpan / 2 });
+    const v = this.view;
+    v.set(focusWindow(v, box));
     this.store.set({ followLive: false }); this.#priceHeld = false; this.#liveMargin = v.t1 - pageNow(); this.#rasteredKey = ''; this.onView(); this.invalidate();
   }
 

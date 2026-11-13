@@ -2888,5 +2888,6 @@
  "Recorded orders start at {time}": "記録された注文は {time} から始まります",
  "The page's per-second record starts at {time}": "ページの秒ごとの記録は {time} から始まります",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} は記録なし：合計に含まれていません",
- "Not recorded {from}–{to}": "{from}–{to} は記録なし"
+ "Not recorded {from}–{to}": "{from}–{to} は記録なし",
+ "Orders may be missing {from}–{to}": "{from}–{to} は注文が欠けている可能性"
 }

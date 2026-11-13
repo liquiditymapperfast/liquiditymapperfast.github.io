@@ -9,6 +9,7 @@ import { contrastRatio, type Palette, PALETTES } from '../theme.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { scaledUsd } from '../coin.ts';
 import { BlockReader, barLength, emptyBlock, fullScale, type Block } from '../trades/blocks.ts';
+import { RowWalker, type Row, type RowKind } from '../trades/rows.ts';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -54,6 +55,8 @@ export class BlockList {
   /** The block chosen for the inspector (its start second), or null (the inspector follows the newest settled block). */
   selected: number | null = null;
   readonly reader = new BlockReader();
+  /** The rows over the blocks (a run of empty ones is one row), shared by the paint and the wheel. */
+  readonly #walker = new RowWalker(this.reader);
   /** The block length in seconds, the venue marks (one id per venue slot), the late venues' names, and the time now (exchange ms). */
   unit = 1;
   venueIds: string[] = [];
@@ -101,7 +104,8 @@ export class BlockList {
       // A click chooses the block (the inspector shows it, the list holds) and, on a desktop, takes the map to its time; a second click lets it go.
       if (this.selected === row.s) { this.selected = null; this.onInspect(); this.invalidate(); return; }
       this.selected = row.s; this.#hold(); this.onInspect(); this.invalidate();
-      if (!replaying() && !isPhone()) { const b = this.#read(row.s, this.#pool[0] ??= emptyBlock(this.reader.venues)); const p = Number.isFinite(b.refPx) ? b.refPx : NaN; this.onGoTo(row.s * 1000, (row.s + this.unit) * 1000, p, p); }
+      // A block whose reference market did not trade sends no price: the map keeps its price window (`focusWindow`).
+      if (!replaying() && !isPhone()) { const b = this.#read(row.s, this.#scratch()); const p = Number.isFinite(b.refPx) ? b.refPx : NaN; this.onGoTo(row.s * 1000, (row.s + this.unit) * 1000, p, p); }
     });
     c.addEventListener('pointerdown', e => {
       this.#lastTouch = e.pointerType === 'touch';
@@ -145,6 +149,19 @@ export class BlockList {
   /** The newest block's start (seconds). */
   newestStart(): number { const now = this.now(); return Math.floor(Math.floor(now / 1000) / this.unit) * this.unit; }
   #read(s: number, out: Block): Block { return this.reader.read(s, this.unit, out, this.now()); }
+  /** A block to read one into outside a frame (the pointer, a click), with as many venue slots as the reader has now. */
+  #scratch(): Block {
+    let b = this.#pool[0];
+    if (!b || b.vBuy.length !== this.reader.venues) this.#pool[0] = b = emptyBlock(this.reader.venues);
+    return b;
+  }
+  /** The walker's rows read under what the blocks are read from now (a change drops the runs it remembers). */
+  #rows(): RowWalker {
+    const r = this.reader;
+    this.#walker.sync(`${this.unit}|${r.version}|${r.dataKey()}`);
+    return this.#walker;
+  }
+  #rowHeight(row: Row): number { return row.kind === 'block' ? this.#rowH() : QUIET; }
   /** The block chosen, else the newest settled one, read into `out`. */
   inspected(out: Block): { block: Block; state: 'held' | 'newest' } {
     if (this.selected !== null) return { block: this.#read(this.selected, out), state: 'held' };
@@ -159,29 +176,33 @@ export class BlockList {
     this.#anchor = null; this.#scrolled = false; this.selected = null; this.reader.tally?.release(); this.onHold(); this.onInspect();
     if (draw) this.invalidate();
   }
-  /** The wheel moves the list by `dy` px (down: older blocks); back at the newest with no mouse on it, the list follows again. */
+  /**
+   * The wheel moves the list by `dy` px (down: older); back at the newest with no mouse on it, the list follows again. It moves row by row
+   * as the list draws them (`trades/rows.ts`): a folded hour of quiet seconds is one short row, passed in one step, not 3,600 blocks.
+   */
   #scroll(dy: number): void {
     if (!this.#anchor) { this.#hold(); if (!this.#anchor) return; }
-    const h = this.#rowH(), newest = this.newestStart(), oldest = this.reader.oldestSec();
-    // The list ends at the oldest second a source knows or at the first block nothing is known of, whichever comes first (`#paint`).
-    const known = (sec: number): boolean => sec >= oldest && !this.#read(sec, this.#pool[0] ??= emptyBlock(this.reader.venues)).unknown;
-    let s = this.#anchor.s, offset = this.#anchor.offset + dy;
-    while (offset >= h && known(s - this.unit)) { offset -= h; s -= this.unit; }
-    while (offset < 0 && s + this.unit <= newest) { s += this.unit; offset += h; }
-    if (!known(s - this.unit)) offset = Math.min(offset, 0);
-    if (s >= newest && Math.round(offset) <= 0) {
+    const B = this.unit, newest = this.newestStart(), oldest = this.reader.oldestSec(), now = this.now(), rows = this.#rows();
+    let row = rows.rowFrom(this.#anchor.s, B, now, oldest), offset = this.#anchor.offset + dy;
+    if (!row) { this.invalidate(); return; }
+    // Down (older): past every row the offset covers, while a row lies under it; up (newer): rows above come in.
+    for (let next = rows.below(row, B, now, oldest); next && offset >= this.#rowHeight(row); next = rows.below(row, B, now, oldest)) { offset -= this.#rowHeight(row); row = next; }
+    for (let up = offset < 0 ? rows.above(row, B, now, newest) : null; up; up = offset < 0 ? rows.above(row, B, now, newest) : null) { row = up; offset += this.#rowHeight(up); }
+    // The last row stays at the top at most (the list's end note under it stays in view).
+    if (!rows.below(row, B, now, oldest)) offset = Math.min(offset, 0);
+    if (row.top >= newest && Math.round(offset) <= 0) {
       if (!this.#pointerIn && this.selected === null) { this.release(); return; }
       offset = 0;
     }
-    this.#anchor = { s, offset: Math.max(0, offset) };
-    this.#scrolled = s < newest || Math.round(offset) > 0;
+    this.#anchor = { s: row.top, offset: Math.max(0, offset) };
+    this.#scrolled = row.top < newest || Math.round(offset) > 0;
     this.invalidate();
   }
   #rowAt(y: number): Drawn | null { for (const d of this.#drawn) if (y >= d.y && y < d.y + d.h) return d; return null; }
   #hover(): void {
     const row = this.#pointer && !replaying() ? this.#rowAt(this.#pointer.y) : null;
     if (!row || row.kind !== 'block') { this.onHover(null); return; }
-    this.onHover(this.#read(row.s, this.#pool[0] ??= emptyBlock(this.reader.venues)));
+    this.onHover(this.#read(row.s, this.#scratch()));
   }
 
   #resize(): void {
@@ -215,8 +236,7 @@ export class BlockList {
       fitText(ctx, w < 300 ? t('{venues} delayed', { venues: this.late.join(', ') }) : t('{venues} delayed: the last minute may still grow', { venues: this.late.join(', ') }), PAD, NOTE / 2, w - 2 * PAD);
       drawn.push({ kind: 'note', y: 0, h: NOTE }); y = NOTE;
     }
-    let s = this.#anchor ? this.#anchor.s : newest;
-    const top = s;
+    const top = this.#anchor ? this.#anchor.s : newest;
     y -= this.#anchor ? Math.round(this.#anchor.offset) : 0;
     let poolAt = 0;
     const take = (): Block => { while (this.#pool.length <= poolAt) this.#pool.push(emptyBlock(this.reader.venues)); const b = this.#pool[poolAt++]!; if (b.vBuy.length !== this.reader.venues) { b.vBuy = new Float64Array(this.reader.venues); b.vSell = new Float64Array(this.reader.venues); } return b; };
@@ -225,44 +245,34 @@ export class BlockList {
       ctx.fillText(t('Waiting for live orders'), w / 2, Math.min(h / 2, 60));
       return;
     }
-    // Every block that ends after the oldest second a source knows (the oldest of them partly before it, said by its dashed foot), up to
-    // the first block nothing is known of: a market's stray older second (a feed's last trade, sent on connecting) does not make the
-    // stretch between known, and the list ends there.
-    let end = NaN;
-    while (y < h && s + B > oldest) {
-      const b = this.#read(s, take());
-      if (b.unknown) { end = s + B; break; }
-      // A run of blocks nobody recorded (the stretch between the history's end and the page's own start, at every opening) is one line.
-      if (b.unrecorded) {
-        let e = s;
-        while (e - B >= oldest) { const q = this.#read(e - B, take()); poolAt--; if (!q.unrecorded) break; e -= B; }
-        this.#paintQuiet(ctx, y, w, e, s + B, p, true);
-        drawn.push({ kind: 'quiet', s, e, y, h: QUIET }); y += QUIET; s = e - B; continue;
-      }
-      // An empty block, or a run of them, is one short line (a quiet coin at a second would otherwise be a column of zeros).
-      if (b.buy === 0 && b.sell === 0 && !b.forming && !b.partial) {
-        let e = s, count = 1;
-        while (e - B >= oldest && count < 3600) { const q = this.#read(e - B, take()); poolAt--; if (q.unknown || q.buy !== 0 || q.sell !== 0 || q.partial) break; e -= B; count++; }
-        this.#paintQuiet(ctx, y, w, e, s + B, p);
-        drawn.push({ kind: 'quiet', s, e, y, h: QUIET }); y += QUIET; s = e - B; continue;
-      }
-      this.#paintBlock(ctx, b, y, rowH, w, c, full, barW, p);
-      drawn.push({ kind: 'block', s, y, h: rowH }); y += rowH; s -= B;
+    // The rows from the top one down (`trades/rows.ts`): a block, or a run of empty blocks of one kind as one line saying why. The list ends
+    // at the oldest second a source knows or at the first block nothing is known of (a market's stray older second, a feed's last trade
+    // sent on connecting, does not make the stretch between known).
+    const rows = this.#rows(), now = this.now();
+    let b = take(), row = rows.rowFrom(top, B, now, oldest, b), bottom = top, ended = !row;
+    while (row && y < h) {
+      if (row.kind === 'block') { this.#paintBlock(ctx, b, y, rowH, w, c, full, barW, p); drawn.push({ kind: 'block', s: row.top, y, h: rowH }); y += rowH; b = take(); }
+      else { this.#paintQuiet(ctx, y, w, row.bottom, row.top + B, p, row.kind); drawn.push({ kind: 'quiet', s: row.top, e: row.bottom, y, h: QUIET }); y += QUIET; }
+      bottom = row.bottom;
+      const next = rows.below(row, B, now, oldest, b);
+      if (!next) { ended = true; break; }
+      row = next;
     }
-    if (s < top) { const key = `${s + B}|${top + B}`; if (key !== this.#drawnKey) { this.#drawnKey = key; this.onDrawn(s + B, top + B); } }
-    // Where the list ends: the size's history starts there (or the sources do).
-    if (y < h && (s + B <= oldest || Number.isFinite(end))) {
-      const words = this.endNote(Number.isFinite(end) ? end : oldest);
+    if (drawn.some(d => d.kind !== 'note')) { const key = `${bottom}|${top + B}`; if (key !== this.#drawnKey) { this.#drawnKey = key; this.onDrawn(bottom, top + B); } }
+    // Where the list ends: at the oldest second a source knows, or where nothing is known below the last row (the size's history starts there).
+    if (y < h && ended) {
+      const words = this.endNote(Math.max(bottom, oldest));
       if (words) { this.#paintEnd(ctx, y, w, words, p); drawn.push({ kind: 'note', y, h: NOTE }); }
     }
   }
 
-  #paintQuiet(ctx: CanvasRenderingContext2D, y: number, w: number, from: number, to: number, p: Palette, unrecorded = false): void {
+  /** A folded run of empty blocks: no orders, nobody recorded it, or orders may be missing there (a reconnect). */
+  #paintQuiet(ctx: CanvasRenderingContext2D, y: number, w: number, from: number, to: number, p: Palette, kind: RowKind): void {
     ctx.fillStyle = p.panel; ctx.fillRect(0, y, w, QUIET);
     ctx.fillStyle = p.line; ctx.fillRect(0, y + QUIET - 1, w, 1);
     ctx.font = `11px ${MONO}`; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    const fmt = (sec: number): string => this.unit >= 60 ? clock(sec * 1000) : clockSeconds(sec * 1000);
-    fitText(ctx, unrecorded ? t('Not recorded {from}–{to}', { from: fmt(from), to: fmt(to) }) : t('No orders {from}–{to}', { from: fmt(from), to: fmt(to) }), PAD, y + QUIET / 2, w - 2 * PAD);
+    const fmt = (sec: number): string => this.unit >= 60 ? clock(sec * 1000) : clockSeconds(sec * 1000), at = { from: fmt(from), to: fmt(to) };
+    fitText(ctx, kind === 'unrecorded' ? t('Not recorded {from}–{to}', at) : kind === 'missing' ? t('Orders may be missing {from}–{to}', at) : t('No orders {from}–{to}', at), PAD, y + QUIET / 2, w - 2 * PAD);
   }
   #paintEnd(ctx: CanvasRenderingContext2D, y: number, w: number, words: string, p: Palette): void {
     ctx.strokeStyle = p.line; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(PAD, y + 0.5); ctx.lineTo(w - PAD, y + 0.5); ctx.stroke(); ctx.setLineDash([]);

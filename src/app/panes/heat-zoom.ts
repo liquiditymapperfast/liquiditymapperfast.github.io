@@ -104,6 +104,16 @@ export function followPrice(o: { p0: number; p1: number; mark: number; held: boo
 
 /** The shortest and longest time span the map zooms to, and the price span as a share of the current price. */
 export const TIME_SPAN_MS = { min: 30_000, max: 400 * 86_400_000 } as const;
+/**
+ * The view that shows `box` (a stretch of time, a band of prices): centred on it, at least as wide and tall as the view now and 1.4 times the
+ * box. A box without a finite price (a Trades block whose reference market did not trade) moves the time alone and keeps the price window.
+ */
+export function focusWindow(view: { t0: number; t1: number; p0: number; p1: number }, box: { t0: number; t1: number; p0: number; p1: number }): { t0: number; t1: number; p0: number; p1: number } {
+  const span = Math.max(view.t1 - view.t0, (box.t1 - box.t0) * 1.4), tm = (box.t0 + box.t1) / 2;
+  if (!Number.isFinite(box.p0) || !Number.isFinite(box.p1)) return { t0: tm - span / 2, t1: tm + span / 2, p0: view.p0, p1: view.p1 };
+  const pSpan = Math.max(view.p1 - view.p0, (box.p1 - box.p0) * 1.4), pm = (box.p0 + box.p1) / 2;
+  return { t0: tm - span / 2, t1: tm + span / 2, p0: pm - pSpan / 2, p1: pm + pSpan / 2 };
+}
 export const PRICE_SPAN_SHARE = { min: 1e-4, max: 2 } as const;
 
 /**

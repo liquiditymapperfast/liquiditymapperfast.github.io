@@ -3036,5 +3036,6 @@
  "Recorded orders start at {time}": "Kaydedilen emirler {time} itibarıyla başlar",
  "The page's per-second record starts at {time}": "Sayfanın saniyelik kaydı {time} itibarıyla başlar",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} kaydedilmedi: toplamlarda yok",
- "Not recorded {from}–{to}": "{from}–{to} kaydedilmedi"
+ "Not recorded {from}–{to}": "{from}–{to} kaydedilmedi",
+ "Orders may be missing {from}–{to}": "{from}–{to} emirler eksik olabilir"
 }

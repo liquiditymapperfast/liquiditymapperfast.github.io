@@ -2888,5 +2888,6 @@
  "Recorded orders start at {time}": "录制的订单从 {time} 开始",
  "The page's per-second record starts at {time}": "页面的逐秒记录从 {time} 开始",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} 未录制：合计中不含这段",
- "Not recorded {from}–{to}": "{from}–{to} 未录制"
+ "Not recorded {from}–{to}": "{from}–{to} 未录制",
+ "Orders may be missing {from}–{to}": "{from}–{to} 可能缺少订单"
 }

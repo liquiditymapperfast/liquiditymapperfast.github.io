@@ -83,7 +83,8 @@ export function inspectorModel(i: InspectorInput): InspectorModel {
   const recorded = b.from !== 0 && !(b.from & 1);
   return {
     title, sub: parts.join(' · '), ref, moves: movesText,
-    markets: i.rows.map(r => ({ id: r.id, name: marketName(r.id), buy: `$${fmtUsd(r.buy)}`, sell: `$${fmtUsd(r.sell)}` })),
+    // The markets that bought or sold within the block's filter (one that traded only under a size floor moves the median, not the table).
+    markets: i.rows.filter(r => r.buy > 0 || r.sell > 0).map(r => ({ id: r.id, name: marketName(r.id), buy: `$${fmtUsd(r.buy)}`, sell: `$${fmtUsd(r.sell)}` })),
     notes,
     largestTitle: recorded ? t('Largest recorded orders (from ${usd})', { usd: fmtUsd(i.recordedFloor) }) : t('Largest orders'),
     largest: i.largest.map(o => ({ id: o.id, side: o.usd > 0 ? 'buy' as const : 'sell' as const, usd: `${o.usd > 0 ? '▲' : '▼'} $${fmtUsd(Math.abs(o.usd))}`, detail: `${clockSeconds(o.t)}.${String(Math.round(((o.t % 1000) + 1000) % 1000)).padStart(3, '0')}  ${fmtPrice(o.price)}  ${t('{bp} bp', { bp: reachBp(o).toFixed(1) })}` })),

@@ -13,12 +13,12 @@ import { venueLabel } from '../venues.ts';
 import { PALETTES, type Palette } from '../theme.ts';
 import { STRIDE, BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { SecondTally, tallySeconds, FILL_STEP } from '../trades/tally.ts';
-import { coincidences, emptyBlock, fullScale, olderFor, repeats, type Block, type FlowLike, type NoteOrder, type OlderPrints, type PrintLike, type RecordedPrints } from '../trades/blocks.ts';
+import { OrderScan, coincidences, emptyBlock, fullScale, olderFor, type Block, type FlowLike, type OlderPrints, type PrintLike, type RecordedPrints } from '../trades/blocks.ts';
 import { TRADES_MINIMUMS, TRADE_UNITS, UNIT_MAX_S, readUnit, type TradesSettings } from '../trades/settings.ts';
 import { TNS_FLOOR_USD, TnsBook } from '../tns/model.ts';
 import { BlockList, LIST_W, wideEnough } from './trades-blocks.ts';
 import { OrderList } from './trades-orders.ts';
-import { inspectorModel, renderInspector, type ListedOrder } from './trades-inspector.ts';
+import { inspectorModel, renderInspector } from './trades-inspector.ts';
 import type { Print } from '../prints.ts';
 import type { Store } from '../store.ts';
 
@@ -32,6 +32,8 @@ const FLOW_REACH_MS = 24 * 3_600_000;
 const NOTE_ORDERS_MAX = 400_000;
 /** Older stretches of the recording kept for the blocks on screen, and the least margin asked either side of what is on screen. */
 const OLDER_KEPT = 8, OLDER_MARGIN_MS = 5 * 60_000;
+/** How far the tape's start may move past what the recording's holes and its orders were asked up to before they are asked again. */
+const HOLES_AGAIN_MS = 10 * 60_000, RECORDED_AGAIN_MS = 5 * 60_000;
 
 /** A unit as the menu says it. */
 export function unitLabel(unit: number): string {
@@ -69,9 +71,16 @@ export class TradesView {
   #recordedState: 'no' | 'asking' | 'done' = 'no'; #recordedMin = Infinity;
   #older: OlderPrints[] = [];
   #olderAsking = false; #olderRetryAt = 0;
-  #holesState: 'no' | 'asking' | 'done' = 'no'; #holesRetryAt = 0; #holesTo = 0;
+  #holesState: 'no' | 'asking' | 'done' = 'no'; #holesRetryAt = 0; #holesTo = 0; #holesKey = '';
+  #recordedRetryAt = 0;
+  /** The stretch the block list last drew (seconds), asked of the recording again when an answer comes or a retry is due. */
+  #olderWant: [number, number] | null = null;
   #venueIds: string[] = [];
   #scratch = emptyBlock(0);
+  /** What the inspector drew last (its key), and the one pass that reads a block's orders for it. */
+  #inspected = '';
+  #scan = new OrderScan(id => markOf(id).family);
+  #groupOf = new Map<string, number>(); #ringGroups: number[] = []; #ringGroupsFor: TapeRing | null = null;
   /** The tape ring (set by the page: it exists once a view has asked for the tape). */
   ring: () => TapeRing | null = () => null;
   /** Take the map to a moment or a stretch (set by the page). */
@@ -85,7 +94,9 @@ export class TradesView {
   /** The recording's largest orders in [from, to) from `minUsd`, and the size from which it holds every order (set by the page: the hub's). */
   printsIn: ((from: number, to: number, minUsd: number) => Promise<{ prints: Print[]; floor: number }>) | null = null;
   /** The stretches of [from, to) the recording listened to none of `ids` (set by the page: the hub's, from the source's coverage record). */
-  holes: ((ids: readonly string[], from: number, to: number) => Promise<[number, number][] | null>) | null = null;
+  holes: ((ids: readonly string[], from: number, to: number) => Promise<{ since: number; holes: [number, number][] } | null>) | null = null;
+  /** How many times the page's per-second flow was loaded (set by the page: the flow book's loads): the blocks before the tape read it. */
+  flowLoads: () => number = () => 0;
 
   constructor(private store: Store) {
     this.orders = new OrderList(store);
@@ -112,6 +123,7 @@ export class TradesView {
     this.blocks.endNote = at => this.#endNote(at);
     this.blocks.reader.tally = this.#tally;
     this.blocks.reader.flowOf = id => this.flowOf(id);
+    this.blocks.reader.flowVersion = () => this.flowLoads();
     new ResizeObserver(() => this.#layout()).observe(this.root);
     this.#syncMenus();
   }
@@ -127,7 +139,11 @@ export class TradesView {
     if (!shown) { this.#panel?.close(); this.blocks.setShown(false); this.orders.setShown(false); window.clearTimeout(this.#fillTimer); return; }
     // The held block's figures can still change (a late order): its inspector is read again once a second while the view shows. The markets
     // come in after the view opens (the source's list, a venue's first book): they and the per-second history they need are checked too.
-    this.#tick = window.setInterval(() => { if (!document.hidden && this.#unitNow() > 0) { this.#syncMarkets(); this.#inspect(); this.#syncStatus(); } }, 1000);
+    this.#tick = window.setInterval(() => {
+      if (document.hidden || this.#unitNow() === 0) return;
+      this.#syncMarkets(); this.#askRecorded(); if (this.#olderWant) this.#askOlder(this.#olderWant[0], this.#olderWant[1]);
+      this.#inspect(); this.#syncStatus();
+    }, 1000);
     this.refresh();
   }
   setPalette(p: Palette): void { this.#palette = p; this.blocks.setPalette(p); this.orders.setPalette(p); }
@@ -140,13 +156,14 @@ export class TradesView {
     this.blocks.root.hidden = !blocksOn; this.orders.root.hidden = blocksOn;
     this.blocks.setShown(this.#shown && blocksOn); this.orders.setShown(this.#shown && !blocksOn);
     if (!this.#shown) return;
-    if (blocksOn) { this.blocks.unit = unit; this.blocks.release(false); this.#syncSources(true); }
+    // The tally does not depend on the unit: it starts over only when what it counts changed (`#syncSources` checks).
+    if (blocksOn) { this.blocks.unit = unit; this.blocks.release(false); this.#syncSources(false); }
     else { this.orders.refresh(); this.#syncHistory(); }
     this.#askRecorded();
     this.#layout(); this.#syncStatus(); this.invalidate();
   }
   /** Something the rows are drawn with changed (the whale size, the time zone, a replay): drawn again as they stand. */
-  redraw(): void { this.#syncMenus(); this.blocks.whale = this.#whale(); this.orders.redraw(); this.blocks.invalidate(); this.#inspect(); }
+  redraw(): void { this.#syncMenus(); this.blocks.whale = this.#whale(); this.orders.redraw(); this.blocks.invalidate(); this.#inspected = ''; this.#inspect(); }
 
   /** A batch reached the ring: the tally takes it (the blocks), or the order list does. */
   tapeArrived(): void {
@@ -231,8 +248,10 @@ export class TradesView {
     const ring = this.ring(), s = this.store.state.trades, reader = this.blocks.reader, key = this.#filterKeyNow();
     const markets = this.#markets(ring);
     if (restart || this.#tally.ring !== ring || key !== this.#filterKey) {
-      this.#filterKey = key;
+      this.#filterKey = key; this.#ringGroupsFor = null;
       this.#tally.reset(ring, { minUsd: s.minUsd === 0 ? 0 : scaledUsd(s.minUsd), side: s.side, shown: instrumentShown(this.store.state) });
+      // A held list stays held over the start-over, counting what comes from now.
+      if (this.blocks.held) this.#tally.hold();
       this.#fill();
     }
     this.#tally.update();
@@ -264,14 +283,20 @@ export class TradesView {
    */
   #askHoles(): void {
     const cov = this.#tally.coveredFrom(), markets = this.blocks.reader.markets;
-    if (this.#holesState === 'done' && cov - this.#holesTo > 60_000) this.#holesState = 'no';
+    // Asked again once the tape's start has moved well past what was asked up to (a ring that wraps moves it by the second): ten minutes.
+    if (this.#holesState === 'done' && cov - this.#holesTo > HOLES_AGAIN_MS) this.#holesState = 'no';
     if (!this.holes || this.#holesState !== 'no' || !markets.length || !Number.isFinite(cov) || Date.now() < this.#holesRetryAt) return;
     this.#holesState = 'asking';
     const to = Math.min(Date.now(), cov);
     this.#holesTo = to;
-    this.holes(markets, to - FLOW_REACH_MS, to).then(holes => {
+    this.holes(markets, to - FLOW_REACH_MS, to).then(answer => {
       this.#holesState = 'done';
-      this.blocks.reader.holes = holes ?? []; this.blocks.reader.forget(); this.blocks.invalidate(); this.#inspect();
+      const holes = answer?.holes ?? [], since = answer ? answer.since : Infinity, key = `${since}|${holes.map(h => h.join('-')).join(',')}`;
+      // The kept blocks are read again only when what the recording says changed.
+      if (key === this.#holesKey) return;
+      this.#holesKey = key;
+      const reader = this.blocks.reader;
+      reader.holes = holes; reader.recordedSince = since; reader.forget(); this.blocks.invalidate(); this.#inspect();
     }, () => { this.#holesState = 'no'; this.#holesRetryAt = Date.now() + 30_000; });
   }
   /** Read the tape back a step at a time until the tally holds all of it (never a whole ring in one frame). */
@@ -280,7 +305,9 @@ export class TradesView {
     if (!this.#tally.filling) return;
     this.#tally.fill(FILL_STEP);
     this.blocks.invalidate();
-    if (this.#tally.filling) this.#fillTimer = window.setTimeout(() => this.#fill(), 0);
+    if (this.#tally.filling) { this.#fillTimer = window.setTimeout(() => this.#fill(), 0); return; }
+    // Done: the covered start has moved back to the ring's start, and what was read across it meanwhile is read again.
+    this.blocks.reader.forget();
   }
   /** Where orders may be missing (exchange ms): around each reconnect, skipped or trimmed batch the ring holds. */
   #gaps(ring: TapeRing): [number, number][] {
@@ -299,17 +326,23 @@ export class TradesView {
   /** The recording's orders for the hour before the tape (from $25K, or the size chosen when larger): asked when the view first needs them, and again when the size is lowered below what was asked. */
   #askRecorded(): void {
     const s = this.store.state.trades, want = Math.max(scaledUsd(TNS_FLOOR_USD), s.minUsd === 0 ? 0 : scaledUsd(s.minUsd));
-    if (!this.recorded || this.#recordedState === 'asking' || (this.#recordedState === 'done' && want >= this.#recordedMin)) return;
+    // Asked again once the tape's start has moved well past where the recording was asked up to (a ring that wrapped): what lies between
+    // is the recording's, and an answer from the old seam would leave it unrecorded under a size floor.
+    const cov = this.#tally.coveredFrom(), rec = this.#recorded;
+    if (this.#recordedState === 'done' && rec && Number.isFinite(cov) && cov - rec.to > RECORDED_AGAIN_MS) this.#recordedState = 'no';
+    if (!this.recorded || this.#recordedState === 'asking' || Date.now() < this.#recordedRetryAt || (this.#recordedState === 'done' && want >= this.#recordedMin)) return;
     const ring = this.ring(), until = ring && ring.written ? ring.heldFrom : Date.now();
     this.#recordedState = 'asking';
     void this.recorded(until, want).then(answer => {
       this.#recordedState = 'done'; this.#recordedMin = want;
       const prints = answer ? [...answer.prints].sort((a, b) => a.t - b.t) : [];
-      this.#recorded = answer ? { prints, from: answer.from, holes: answer.holes, minUsd: want } : null;
+      this.#recorded = answer ? { prints, from: answer.from, to: until, holes: answer.holes, minUsd: want } : null;
       this.#recordedRaw = answer ? { prints, seam: until, minHole: answer.minHole } : null;
       this.blocks.reader.recorded = this.#recorded; this.blocks.reader.forget(); this.blocks.invalidate(); this.#inspect();
       this.#syncHistory();
-    }, () => { this.#recordedState = 'no'; });
+      // The size may have been lowered while the question was out.
+      this.#askRecorded();
+    }, () => { this.#recordedState = 'no'; this.#recordedRetryAt = Date.now() + 30_000; });
   }
   #recordedRaw: { prints: Print[]; seam: number; minHole: number } | null = null;
   /**
@@ -319,6 +352,7 @@ export class TradesView {
    * few stretches are kept (scrolling back over them asks nothing).
    */
   #askOlder(s0: number, s1: number): void {
+    this.#olderWant = [s0, s1];
     if (!this.printsIn || this.#olderAsking || this.store.state.trades.minUsd !== 0 || this.#unitNow() === 0 || Date.now() < this.#olderRetryAt) return;
     const rec = this.#recorded, before = Math.min(rec ? rec.from : Infinity, this.#tally.coveredFrom(), Date.now());
     const a = s0 * 1000, b = Math.min(s1 * 1000, before);
@@ -330,7 +364,12 @@ export class TradesView {
       const prints = [...answer.prints].sort((x, y) => x.t - y.t);
       this.#older = [...this.#older.slice(1 - OLDER_KEPT), { from, to, prints, floor: Math.max(floor, answer.floor) }];
       this.blocks.reader.older = this.#older; this.blocks.reader.forget(); this.blocks.invalidate(); this.#inspect();
-    }, () => { this.#olderRetryAt = Date.now() + 10_000; }).finally(() => { this.#olderAsking = false; });
+    }, () => { this.#olderRetryAt = Date.now() + 10_000; }).finally(() => {
+      // What was drawn meanwhile (a list scrolled on) is asked next, at once (the one-second tick asks again after a failure).
+      this.#olderAsking = false;
+      const want = this.#olderWant;
+      if (want) this.#askOlder(want[0], want[1]);
+    });
   }
   /**
    * Each order from the recording's floor up: the recording's orders before the tape (Time & sales' hour, with its holes as lines, `TnsBook`)
@@ -380,53 +419,83 @@ export class TradesView {
     if (s.minUsd > 0) return t('Recorded orders start at {time}', { time: at });
     return t('The page\'s per-second record starts at {time}', { time: at });
   }
-  /** Draw the inspector for the chosen block, else the newest settled one (beside a wide list). */
+  /**
+   * Draw the inspector for the chosen block, else the newest settled one (beside a wide list). It is asked once a second; the block's orders
+   * are read again only when something it shows can have changed (its seconds' revisions in the tally, the reader's sources, the flow's
+   * loads, the size, the side, the language), so a settled block costs a key a second, not a pass over its orders and a page rebuild.
+   */
   #inspect(): void {
     if (this.#inspector.hidden || this.#unitNow() === 0 || !this.#shown) return;
-    const model = this.#model(null);
+    const model = this.#model(null, true);
     if (model) renderInspector(this.#inspector, model);
   }
-  #model(sec: number | null): ReturnType<typeof inspectorModel> | null {
+  /** The tally's revisions of a block's seconds added up: it grows with every order counted into them (a key, not a figure). */
+  #revs(s: number, B: number): number {
+    const tally = this.#tally;
+    let r = 0;
+    for (let sec = s; sec < s + B; sec++) { const sl = tally.slot(sec); if (sl >= 0) r += tally.rev(sl) + 1; }
+    return r;
+  }
+  /** The inspector's model of block `sec` (null: the chosen one, else the newest settled); `keyed`: null too when nothing changed since the last. */
+  #model(sec: number | null, keyed = false): ReturnType<typeof inspectorModel> | null {
     const blocks = this.blocks, reader = blocks.reader;
     if (reader.venues !== this.#scratch.vBuy.length) this.#scratch = emptyBlock(reader.venues);
     const saved = blocks.selected;
     if (sec !== null) blocks.selected = sec;
     const { block, state } = blocks.inspected(this.#scratch);
     blocks.selected = saved;
-    if (block.unknown) return null;
+    if (block.unknown) { if (keyed) this.#inspected = ''; return null; }
     const unit = block.B, t0 = block.s * 1000, t1 = (block.s + unit) * 1000;
-    const orders = this.#ordersIn(t0, t1), floor = reader.minUsd;
-    const big = Math.max(scaledUsd(100_000), floor);
-    const largest = [...orders].filter(o => Math.abs(o.usd) >= floor).sort((a, b) => Math.abs(b.usd) - Math.abs(a.usd)).slice(0, isPhone() ? 4 : 9);
+    if (keyed) {
+      const key = `${state}|${block.s}|${unit}|${this.#tally.resets}|${this.#revs(block.s, unit)}|${reader.version}|${this.flowLoads()}|${reader.minUsd}|${reader.side}|${isPhone()}|${document.documentElement.lang}|${block.partial}`;
+      if (key === this.#inspected) return null;
+      this.#inspected = key;
+    }
+    const floor = reader.minUsd, big = Math.max(scaledUsd(100_000), floor), scan = this.#scan;
+    scan.reset(isPhone() ? 4 : 9, floor, big);
+    this.#scanOrders(t0, t1);
+    const largest = scan.largest;
     const time = unit >= 60 ? `${clock(t0)}–${clock(t1)}` : unit === 1 ? clockSeconds(t0) : `${clockSeconds(t0)}–${clockSeconds(t1)}`;
     // The stretches of the block before the tape that nobody recorded (any size: the flow's zeros there are not quiet seconds).
     const cut = Math.min(t1, this.#tally.coveredFrom()), unrecorded = floor === 0 ? reader.holes.filter(([a, b]) => a < cut && b > t0).map(([a, b]) => [Math.max(a, t0), Math.min(b, cut)] as [number, number]) : [];
     return inspectorModel({
       block, state, time, marketCount: reader.markets.length, ref: reader.ref, minUsd: floor, recordedFloor: scaledUsd(TNS_FLOOR_USD),
-      rows: reader.marketRows(block.s, unit), coincidences: coincidences(orders, big), repeats: repeats(orders), largest, unrecorded,
+      rows: reader.marketRows(block.s, unit), coincidences: coincidences(scan.big, big), repeats: scan.repeats(), largest, unrecorded,
     });
   }
-  /** The orders of a stretch for the notes and the largest orders: the tape's where it covers, else the recording's. */
-  #ordersIn(t0: number, t1: number): (NoteOrder & ListedOrder)[] {
-    const out: (NoteOrder & ListedOrder)[] = [], ring = this.ring(), shown = instrumentShown(this.store.state), cov = this.#tally.coveredFrom();
+  /** A market's group for the scan (one per id, whatever source names it). */
+  #group(id: string): number { let g = this.#groupOf.get(id); if (g === undefined) { g = this.#groupOf.size; this.#groupOf.set(id, g); } return g; }
+  /**
+   * The orders of a stretch into the scan, for the notes and the largest orders: the tape's where it covers (read straight from the ring's
+   * arrays, at most NOTE_ORDERS_MAX, the newest), else the recording's.
+   */
+  #scanOrders(t0: number, t1: number): void {
+    const scan = this.#scan, ring = this.ring(), shown = instrumentShown(this.store.state), cov = this.#tally.coveredFrom();
+    // The block's own filter: its side and its smallest order (the notes and the largest orders describe what the block counts).
+    const reader = this.blocks.reader, side = reader.side, floor = reader.minUsd;
+    const passes = (usd: number): boolean => !((side === 'buy' && usd < 0) || (side === 'sell' && usd > 0) || (floor > 0 && Math.abs(usd) < floor));
     if (ring && ring === this.#tally.ring && t1 > cov) {
+      if (this.#ringGroupsFor !== ring) { this.#ringGroupsFor = ring; this.#ringGroups = []; }
+      const groups = this.#ringGroups, d = ring.data, cap = ring.capacity, rt0 = ring.t0, p0 = ring.p0;
+      // Each market's group, or -1 when it is not shown, once per ring index (the venues shown can change: the list is made again then).
+      while (groups.length < ring.ids.length) { const id = ring.ids[groups.length]!; groups.push(shown(id) ? this.#group(id) : -1); }
+      let read = 0;
       for (const [a, b] of ring.runs(Math.max(t0, cov), t1 - 1)) {
-        for (let k = Math.max(a, b - NOTE_ORDERS_MAX); k < b; k++) {
-          const at = (k % ring.capacity) * STRIDE, d = ring.data, tt = ring.t0 + d[at]!;
+        for (let k = Math.max(a, b - NOTE_ORDERS_MAX); k < b && read < NOTE_ORDERS_MAX; k++) {
+          const at = (k % cap) * STRIDE, tt = rt0 + d[at]!;
           if (tt < t0 || tt >= t1) continue;
-          const id = ring.ids[d[at + 3]!] ?? '';
-          if (!shown(id)) continue;
-          out.push({ t: tt, id, venue: markOf(id).family, usd: d[at + 2]!, price: ring.p0 + d[at + 1]!, lo: ring.p0 + d[at + 4]!, hi: ring.p0 + d[at + 5]! });
-          if (out.length >= NOTE_ORDERS_MAX) return out;
+          const m = d[at + 3]!, g = groups[m] ?? -1;
+          if (g < 0 || !passes(d[at + 2]!)) continue;
+          scan.add(g, ring.ids[m]!, tt, d[at + 2]!, p0 + d[at + 1]!, p0 + d[at + 4]!, p0 + d[at + 5]!);
+          read++;
         }
       }
     }
-    const rec = this.#recorded, push = (p: PrintLike): void => { out.push({ t: p.t, id: p.id, venue: markOf(p.id).family, usd: p.side === 'buy' ? p.usd : -p.usd, price: p.price, lo: p.lo ?? p.price, hi: p.hi ?? p.price }); };
-    if (rec && t0 < cov) for (const p of rec.prints) if (p.t >= t0 && p.t < Math.min(t1, cov) && shown(p.id)) push(p);
+    const rec = this.#recorded, put = (p: PrintLike): void => { const usd = p.side === 'buy' ? p.usd : -p.usd; if (passes(usd)) scan.add(this.#group(p.id), p.id, p.t, usd, p.price, p.lo ?? p.price, p.hi ?? p.price); };
+    if (rec && t0 < cov) for (const p of rec.prints) if (p.t >= t0 && p.t < Math.min(t1, cov) && shown(p.id)) put(p);
     // Before the recording's hour (any size): the older stretch asked for the blocks on screen.
     const cut = Math.min(t1, cov, rec ? rec.from : Infinity), w = t0 < cut && this.store.state.trades.minUsd === 0 ? olderFor(this.#older, t0, cut) : undefined;
-    if (w) for (const p of w.prints) if (p.t >= t0 && p.t < cut && shown(p.id)) push(p);
-    return out;
+    if (w) for (const p of w.prints) if (p.t >= t0 && p.t < cut && shown(p.id)) put(p);
   }
   #sheet(s: number): void {
     const model = this.#model(s);

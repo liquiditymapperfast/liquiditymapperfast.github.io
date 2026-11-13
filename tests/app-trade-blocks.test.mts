@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { BLOCK, TapeRing } from '../src/app/tape/ring.ts';
 import type { TapeBatch } from '../src/shared/tape.ts';
 import { SecondTally, LATE_MS, type TallyFilter } from '../src/app/trades/tally.ts';
-import { BlockReader, FROM, barLength, coincidences, emptyBlock, fullScale, repeats, type FlowLike } from '../src/app/trades/blocks.ts';
+import { BlockReader, FROM, OrderScan, barLength, coincidences, emptyBlock, fullScale, repeats, type FlowLike, type NoteOrder } from '../src/app/trades/blocks.ts';
+import { RUN_MAX, RowWalker } from '../src/app/trades/rows.ts';
+import { focusWindow } from '../src/app/panes/heat-zoom.ts';
 import { TRADES_DEFAULTS, readTrades, readUnit } from '../src/app/trades/settings.ts';
 
 /** A batch of orders: [market, exchange time, price, signed usd]. */
@@ -142,7 +144,7 @@ test('before the tape: any size reads the flow (no count), a size floor the reco
   const flows = new Map([[B, flow(100)], [O, flow(50)]]);
   const { r } = reader(ring);
   r.flowOf = id => flows.get(id);
-  r.recorded = { prints: [{ t: T0 + 30_000, id: O, side: 'sell', price: 69_100, usd: 400_000 }, { t: T0 + 31_000, id: B, side: 'buy', price: 69_000, usd: 30_000 }], from: T0, holes: [], minUsd: 25_000 };
+  r.recorded = { prints: [{ t: T0 + 30_000, id: O, side: 'sell', price: 69_100, usd: 400_000 }, { t: T0 + 31_000, id: B, side: 'buy', price: 69_000, usd: 30_000 }], from: T0, to: T0 + 3_600_000, holes: [], minUsd: 25_000 };
   const out = emptyBlock(2);
   r.read(startSec, 60, out, T0 + 3_700_000);
   assert.equal(out.from, FROM.flow); assert.equal(out.n, -1);
@@ -165,7 +167,7 @@ test('before the recording\'s hour, any size names a block\'s largest orders fro
   const flow: FlowLike = { buy: (a, z) => (z - a + 1) * 100, sell: (a, z) => (z - a + 1) * 10, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } };
   const { r } = reader(ring);
   r.flowOf = id => id === B ? flow : undefined;
-  r.recorded = { prints: [], from: T0 + 1_800_000, holes: [], minUsd: 25_000 };
+  r.recorded = { prints: [], from: T0 + 1_800_000, to: T0 + 3_600_000, holes: [], minUsd: 25_000 };
   const out = emptyBlock(2);
   r.read(startSec, 60, out, T0 + 3_700_000);
   assert.equal(out.topBuy.has, false, 'no older stretch yet');
@@ -241,4 +243,131 @@ test('notes: orders on two or more venues within 5 ms (never chained past it), a
   const runs = repeats([o(0, 'bybit', 800), o(1, 'bybit', 801), o(2, 'bybit', 799), o(3, 'bybit', 800), o(4, 'bybit', 800), o(5, 'bybit', 2_000), o(6, 'okx', 800)]);
   assert.equal(runs.length, 1); assert.equal(runs[0]!.n, 5); assert.equal(runs[0]!.lo, 799); assert.equal(runs[0]!.hi, 801);
   assert.equal(repeats([o(0, 'bybit', 800), o(20_000, 'bybit', 800), o(20_001, 'bybit', 800), o(20_002, 'bybit', 800), o(20_003, 'bybit', 800)]).length, 0, 'a gap over ten seconds breaks the run');
+});
+
+// ---- review round 1 (2026-11-13): each claim as a test ------------------------------------------------------------------------------
+
+test('a stretch with no price keeps the map\'s price window: a block whose reference market did not trade sends none', () => {
+  const view = { t0: 0, t1: 600_000, p0: 100, p1: 200 };
+  const w = focusWindow(view, { t0: 100_000, t1: 160_000, p0: NaN, p1: NaN });
+  assert.deepEqual([w.p0, w.p1], [100, 200]);
+  assert.ok(w.t0 < 100_000 && w.t1 > 160_000 && w.t1 - w.t0 === 600_000);
+  const z = focusWindow(view, { t0: 100_000, t1: 160_000, p0: 150, p1: 150 });
+  assert.deepEqual([z.p0, z.p1], [100, 200]);
+});
+
+/** A ring of one $5K buy a second on Binance from T0 for `seconds`. */
+function steady(seconds: number): TapeRing {
+  const ring = new TapeRing(BLOCK), rows: [string, number, number, number][] = [];
+  for (let i = 0; i < seconds; i++) rows.push([B, T0 + i * 1000, 70_000, 5_000]);
+  ring.add(batch(1, rows), 1, 0);
+  return ring;
+}
+
+test('a block read while the tally reads back is not kept: once the tally holds every write, it reads whole', () => {
+  const ring = steady(240), tally = new SecondTally(3600);
+  tally.reset(ring, all); tally.fill(90);
+  const r = new BlockReader(); r.tally = tally; r.markets = [B, BS, O]; r.ref = B; r.setVenues(2, venueSlot);
+  const out = emptyBlock(2), s = T0 / 1000 + 120, now = T0 + 3_600_000;
+  r.read(s, 60, out, now);
+  assert.equal(out.partial, true, 'the covered start falls inside it while reading back');
+  while (tally.filling) tally.fill();
+  r.read(s, 60, out, now);
+  assert.equal(out.partial, false); assert.equal(out.buy, 60 * 5_000); assert.equal(out.n, 60);
+});
+
+test('a kept block is read again when the flow is loaded again or a reconnect falls in it', () => {
+  const { r } = reader(steady(240));
+  let per = 100, version = 0;
+  const startSec = T0 / 1000 - 600;
+  r.flowOf = id => id === B ? { buy: (a, z) => (z - a + 1) * per, sell: () => 0, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } } : undefined;
+  r.flowVersion = () => version;
+  const out = emptyBlock(2), now = T0 + 3_600_000;
+  r.read(startSec, 60, out, now);
+  assert.equal(out.buy, 6_000);
+  per = 200; version++;
+  r.read(startSec, 60, out, now);
+  assert.equal(out.buy, 12_000, 'the flow was loaded again');
+  const t = T0 / 1000 + 60;
+  r.read(t, 60, out, now);
+  assert.equal(out.partial, false);
+  r.gaps = [[(t + 10) * 1000, (t + 20) * 1000]];
+  r.read(t, 60, out, now);
+  assert.equal(out.partial, true, 'a reconnect inside it, met after it was kept');
+});
+
+test('with a size floor, time between the recording\'s end and the tape\'s start is not recorded, not quiet', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 3_600_000, 70_000, 30_000]]), 1, 0);
+  const { r } = reader(ring, { minUsd: 25_000, side: 'both', shown: () => true });
+  r.recorded = { prints: [{ t: T0 + 30_000, id: B, side: 'buy', price: 69_000, usd: 40_000 }], from: T0, to: T0 + 600_000, holes: [], minUsd: 25_000 };
+  const out = emptyBlock(2), now = T0 + 3_700_000;
+  r.read(T0 / 1000 + 1_800, 60, out, now);
+  assert.equal(out.unknown, false); assert.equal(out.unrecorded, true, 'past the recording\'s end');
+  r.read(T0 / 1000 + 570, 60, out, now);
+  assert.equal(out.partial, true, 'across the recording\'s end');
+  r.read(T0 / 1000, 60, out, now);
+  assert.equal(out.buy, 40_000); assert.equal(out.unrecorded, false);
+});
+
+test('Side holds for the flow before the tape: buys only reads no sells there, in the blocks and their market rows', () => {
+  const { r } = reader(steady(10));
+  const startSec = T0 / 1000 - 600;
+  r.flowOf = id => id === B ? { buy: (a, z) => (z - a + 1) * 100, sell: (a, z) => (z - a + 1) * 40, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } } : undefined;
+  r.side = 'buy';
+  const out = emptyBlock(2);
+  r.read(startSec, 60, out, T0 + 3_600_000);
+  assert.equal(out.buy, 6_000); assert.equal(out.sell, 0);
+  assert.equal(r.marketRows(startSec, 60).find(m => m.id === B)!.sell, 0);
+});
+
+test('a mixed block keeps the larger of the recording\'s and the tape\'s largest orders', () => {
+  const ring = new TapeRing(BLOCK);
+  ring.add(batch(1, [[B, T0 + 40_000, 70_000, 40_000]]), 1, 0);
+  const { r } = reader(ring, { minUsd: 25_000, side: 'both', shown: () => true });
+  r.recorded = { prints: [{ t: T0 + 10_000, id: O, side: 'buy', price: 69_000, usd: 3_000_000 }], from: T0 - 600_000, to: T0 + 40_000, holes: [], minUsd: 25_000 };
+  const out = emptyBlock(2);
+  r.read(T0 / 1000, 60, out, T0 + 3_600_000);
+  assert.equal(out.topBuy.usd, 3_000_000); assert.equal(out.topBuy.id, O);
+});
+
+test('the one-pass scan finds what the old pipeline found: the largest (ties in order), the big ones, the repeated sizes', () => {
+  let seed = 11;
+  const rand = (): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const ids = [B, O, BS, 'bybit:BTCUSDT'];
+  for (let round = 0; round < 60; round++) {
+    const orders: (NoteOrder & { price: number; lo: number; hi: number })[] = [];
+    let t = 0;
+    for (let i = 0; i < 400; i++) {
+      t += Math.floor(rand() * 400);
+      const id = ids[Math.floor(rand() * ids.length)]!, base = [800, 25_000, 120_000, 5][Math.floor(rand() * 4)]!;
+      const usd = (rand() < 0.5 ? 1 : -1) * (rand() < 0.3 ? base : Math.round(base * (0.5 + rand())));
+      orders.push({ t, id, venue: id.split(':')[0]!, usd, price: 70_000, lo: 70_000, hi: 70_000 });
+    }
+    if (round % 3 === 0) orders.reverse();
+    const scan = new OrderScan(id => id.split(':')[0]!), floor = round % 2 ? 0 : 1_000, k = 9;
+    scan.reset(k, floor, 100_000);
+    for (const o of orders) scan.add(ids.indexOf(o.id), o.id, o.t, o.usd, o.price, o.lo, o.hi);
+    const largest = [...orders].filter(o => Math.abs(o.usd) >= floor).sort((a, b) => Math.abs(b.usd) - Math.abs(a.usd)).slice(0, k);
+    assert.deepEqual(scan.largest.map(o => [o.t, o.id, o.usd]), largest.map(o => [o.t, o.id, o.usd]), `round ${round}: largest`);
+    assert.deepEqual(coincidences(scan.big, 100_000), coincidences(orders, 100_000), `round ${round}: coincidences`);
+    assert.deepEqual(scan.repeats(), repeats(orders), `round ${round}: repeats`);
+  }
+});
+
+test('rows: a run of empty blocks of one kind is one row, cut every RUN_MAX blocks on the clock, the same walked down or up', () => {
+  const ring = steady(10), { r } = reader(ring);
+  const startSec = T0 / 1000 - 3 * RUN_MAX - 50;
+  const quietUntil = T0 / 1000 - 30;
+  r.flowOf = id => id === B ? { buy: (a, z) => { let n = 0; for (let s = a; s <= z; s++) if (s >= quietUntil || s < startSec + 5) n += 100; return n; }, sell: () => 0, ownPrice: () => 69_000, span: { first: startSec, last: T0 / 1000 + 10 } } : undefined;
+  const w = new RowWalker(r), now = T0 + 3_600_000, oldest = r.oldestSec();
+  const down = [];
+  for (let row = w.rowFrom(quietUntil - 1, 1, now, oldest); row && down.length < 10; row = w.below(row, 1, now, oldest)) down.push(row);
+  const folds = down.filter(x => x.kind === 'empty');
+  assert.ok(folds.length >= 3, 'cut into rows of at most RUN_MAX');
+  for (const f of folds) { assert.ok(f.top - f.bottom + 1 <= RUN_MAX); assert.equal(Math.floor(f.top / RUN_MAX), Math.floor(f.bottom / RUN_MAX), 'within one clock-aligned stretch'); }
+  for (let i = 1; i < down.length; i++) assert.deepEqual(w.above(down[i]!, 1, now, quietUntil + 100), down[i - 1], `row ${i} walked up`);
+  r.gaps = [[(startSec + 100) * 1000, (startSec + 200) * 1000]];
+  const g = w.rowFrom(startSec + 150, 1, now, oldest)!;
+  assert.equal(g.kind, 'missing', 'empty blocks a reconnect falls in: orders may be missing there');
 });

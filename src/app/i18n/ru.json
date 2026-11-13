@@ -3136,5 +3136,6 @@
  "Recorded orders start at {time}": "Записанные ордера начинаются в {time}",
  "The page's per-second record starts at {time}": "Посекундная запись страницы начинается в {time}",
  "Not recorded {from}–{to}: the totals miss it": "Не записано {from}–{to}: в итогах этого нет",
- "Not recorded {from}–{to}": "Не записано {from}–{to}"
+ "Not recorded {from}–{to}": "Не записано {from}–{to}",
+ "Orders may be missing {from}–{to}": "Возможно, не хватает ордеров {from}–{to}"
 }

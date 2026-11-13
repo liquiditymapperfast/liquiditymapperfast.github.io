@@ -2888,5 +2888,6 @@
  "Recorded orders start at {time}": "기록된 주문은 {time}부터입니다",
  "The page's per-second record starts at {time}": "페이지의 초 단위 기록은 {time}부터입니다",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} 기록 없음: 합계에 빠져 있음",
- "Not recorded {from}–{to}": "{from}–{to} 기록 없음"
+ "Not recorded {from}–{to}": "{from}–{to} 기록 없음",
+ "Orders may be missing {from}–{to}": "{from}–{to} 주문이 빠졌을 수 있음"
 }

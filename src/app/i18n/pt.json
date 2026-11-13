@@ -3094,5 +3094,6 @@
  "Recorded orders start at {time}": "As ordens gravadas começam às {time}",
  "The page's per-second record starts at {time}": "O registo por segundo da página começa às {time}",
  "Not recorded {from}–{to}: the totals miss it": "Não gravado {from}–{to}: os totais não o incluem",
- "Not recorded {from}–{to}": "Não gravado {from}–{to}"
+ "Not recorded {from}–{to}": "Não gravado {from}–{to}",
+ "Orders may be missing {from}–{to}": "Podem faltar ordens {from}–{to}"
 }
