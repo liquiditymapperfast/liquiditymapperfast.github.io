@@ -76,6 +76,23 @@ export function recordedStretch(spans: readonly (readonly (readonly [number, num
 }
 
 /**
+ * The longest stretch of [from, to) in which none of `held` (orders in ascending time) falls, as [start, end]: the whole of it when none does.
+ * The earliest wins a tie.
+ */
+function longestFree(from: number, to: number, held: readonly Print[]): [number, number] {
+  let lo = 0, hi = held.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (held[mid]!.t < from) lo = mid + 1; else hi = mid; }
+  let best: [number, number] = [from, from], start = from;
+  for (let i = lo; i < held.length && held[i]!.t < to; i++) {
+    const t = held[i]!.t;
+    if (t - start > best[1] - best[0]) best = [start, t];
+    start = t;
+  }
+  if (to - start > best[1] - best[0]) best = [start, to];
+  return best;
+}
+
+/**
  * A page hidden this long with no order arriving says some may be missing (a tablet suspends a page in the background). Longer than the phone
  * Tape's 5 s: these are orders from $25K, which can be seconds apart in a quiet market, and a desktop window keeps receiving while hidden.
  */
@@ -155,10 +172,14 @@ export class TnsBook {
   /**
    * The orders the recording held from `since` to a little past the seam (when the stream opened), before everything that arrived live, in
    * exchange-time order, each once (those the stream sent too are its own), and the recording's `holes` among them as gaps (each a line where
-   * it fell; one running up to the seam sits between the recording and the live orders). A fill replaces the one before it: each answer is the
-   * whole of its window at its own smallest order (the list fills again when its smallest order is lowered). Returns how many orders it holds.
+   * it fell; one running up to the seam sits between the recording and the live orders). A hole's line says nothing was recorded, so it is the
+   * longest stretch of the hole in which none of the orders placed from the recording falls, and none when that is shorter than `minHole` (the
+   * source's, `TNS_HOLE_MS`): coverage is stored for whole minutes only (`shared/coverage.ts`) while the history service's open hour holds
+   * orders up to when its piece was written, the next stretch's first orders can be stamped a moment before it starts, and the server's loop
+   * pauses are full of orders. A fill replaces the one before it: each answer is the whole of its window at its own smallest order (the list
+   * fills again when its smallest order is lowered). Returns how many orders it holds.
    */
-  prefill(prints: readonly Print[], since: number, holes: readonly (readonly [number, number])[] = []): number {
+  prefill(prints: readonly Print[], since: number, holes: readonly (readonly [number, number])[] = [], minHole = 0): number {
     for (const e of this.#history) if (e.k === 'order') { this.#keys.delete(keyOf(e.p)); this.#orders--; }
     this.#history = [];
     // Since: from the seam (or the oldest live order kept, if earlier), unless live orders were already let go to the hold: then from the
@@ -173,7 +194,9 @@ export class TnsBook {
       this.#keys.add(key); held.push(p); added++;
     }
     held.sort((a, b) => a.t - b.t);
-    const gaps = holes.filter(h => h[1] > since && h[0] < this.seam).map(h => [h[0], Math.min(h[1], this.seam)] as const).sort((a, b) => a[0] - b[0]);
+    const gaps = holes.filter(h => h[1] > since && h[0] < this.seam)
+      .flatMap(h => { const free = longestFree(Math.max(h[0], since), Math.min(h[1], this.seam), held); return free[1] > free[0] && free[1] - free[0] >= minHole ? [free] : []; })
+      .sort((a, b) => a[0] - b[0]);
     const block: Entry[] = [];
     let g = 0;
     const gapAt = (h: readonly [number, number]): Entry => ({ k: 'gap', why: 'unrecorded', at: h[1], ms: h[1] - h[0] });

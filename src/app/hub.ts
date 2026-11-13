@@ -1233,9 +1233,11 @@ export class Hub {
    * the page reads at opening for the heatmap anyway; else the local server), never to an exchange: one coverage question, then one to six
    * for orders. An answer cut at its largest orders is no complete list, so the window is halved (on the same coverage) until one is not. On
    * the server's page it waits for the map's first columns, as every history read does. Times are the source's clock (`#sourceSkew`).
-   * Null when the source keeps no coverage record, recorded nothing of the window, or every window was cut.
+   * `minHole` is the source's shortest hole (`TNS_HOLE_MS`), which the list also applies to what is left of a hole once the orders the
+   * recording holds inside it are counted (`TnsBook.prefill`). Null when the source keeps no coverage record, recorded nothing of the window,
+   * or every window was cut.
    */
-  async recentPrints(ids: readonly string[], lookbackMs: number, until: number, minUsd: number): Promise<{ prints: Print[]; from: number; holes: [number, number][] } | null> {
+  async recentPrints(ids: readonly string[], lookbackMs: number, until: number, minUsd: number): Promise<{ prints: Print[]; from: number; holes: [number, number][]; minHole: number } | null> {
     if (!this.source.coverage || !ids.length) return null;
     if (this.mapFirst()) await this.#afterMap();
     const end = until - this.#sourceSkew, minHole = TNS_HOLE_MS[this.source.kind];
@@ -1249,7 +1251,7 @@ export class Hub {
       const rows = await this.source.prints(stretch.since, end + SEAM_SLACK_MS, minUsd);
       // Back on the page's clock, as the list's seam is (the orders keep their exchange times either way).
       const skew = this.#sourceSkew;
-      if (rows.length < PRINTS_PER_ANSWER) return { prints: rows, from: stretch.since + skew, holes: stretch.holes.map(([a, b]) => [a + skew, b + skew] as [number, number]) };
+      if (rows.length < PRINTS_PER_ANSWER) return { prints: rows, from: stretch.since + skew, holes: stretch.holes.map(([a, b]) => [a + skew, b + skew] as [number, number]), minHole };
       start = Math.round((stretch.since + end) / 2);
     }
     return null;

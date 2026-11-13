@@ -224,6 +224,36 @@ test('a list whose live orders were let go to the hold never claims the recordin
   assert.deepEqual(rowsOf(fresh).map(l => l.k === 'gap' ? l.why : 'row'), ['row', 'reconnect', 'row'], 'the line sits between the recording and the live orders');
 });
 
+test('a hole\'s line covers only where the recording holds no order: the open minute\'s orders, the next stretch\'s early stamps, a pause full of orders', () => {
+  const id = 'binance:BTCUSDT', S = 1_000, M = 60 * S;
+  const seam = 30 * M;
+  const at = (b: TnsBook): { at: number; ms: number }[] => rowsOf(b).flatMap(l => l.k === 'gap' ? [{ at: l.at, ms: l.ms }] : []);
+  // The history service's hour ends at a minute (its coverage) but holds orders into the next one, up to when its piece was written.
+  const open = new TnsBook(seam);
+  open.prefill([order(27 * M + 50 * S, id, 'buy', 70_000, 200_000), order(28 * M + 10 * S, id, 'sell', 70_000, 200_000), order(28 * M + 55 * S, id, 'buy', 70_000, 200_000)],
+    20 * M, [[28 * M, seam]], TNS_HOLE_MS.browser);
+  assert.deepEqual(at(open), [{ at: seam, ms: seam - (28 * M + 55 * S) }], 'from the open minute\'s last order up to the seam');
+  const lines = rowsOf(open).map(l => l.k === 'gap' ? 'gap' : String((l as TnsRow).t));
+  assert.deepEqual(lines, ['gap', String(28 * M + 55 * S), String(28 * M + 10 * S), String(27 * M + 50 * S)], 'every order below the line is older than its start');
+  // Between two visits: the first visit's open minute, and the second's first order stamped a moment before its coverage starts.
+  const between = new TnsBook(seam);
+  between.prefill([order(10 * M + 20 * S, id, 'buy', 70_000, 200_000), order(15 * M - 300, id, 'buy', 70_000, 200_000), order(16 * M, id, 'sell', 70_000, 200_000)],
+    5 * M, [[10 * M, 15 * M]], TNS_HOLE_MS.browser);
+  assert.deepEqual(at(between), [{ at: 15 * M - 300, ms: 15 * M - 300 - (10 * M + 20 * S) }], 'the longest stretch with no order, not cut to nothing by the early stamp');
+  // The server's loop paused for three minutes but its feeds lost nothing: no stretch of the pause without an order is long enough.
+  const pause = new TnsBook(seam);
+  pause.prefill(Array.from({ length: 12 }, (_, i) => order(10 * M + i * 15 * S, id, 'buy', 70_000, 200_000)), 5 * M, [[10 * M, 13 * M]], TNS_HOLE_MS.server);
+  assert.deepEqual(at(pause), [], 'a pause full of orders is no hole');
+  // A hole holding no order is the hole, whatever the shortest one.
+  const empty = new TnsBook(seam);
+  empty.prefill([order(9 * M, id, 'buy', 70_000, 200_000), order(14 * M, id, 'buy', 70_000, 200_000)], 5 * M, [[10 * M, 13 * M]], TNS_HOLE_MS.server);
+  assert.deepEqual(at(empty), [{ at: 13 * M, ms: 3 * M }]);
+  // Too short once the orders are counted: no line (here the browser's 5 s).
+  const short = new TnsBook(seam);
+  short.prefill([order(10 * M + 2 * S, id, 'buy', 70_000, 200_000), order(10 * M + 6 * S, id, 'buy', 70_000, 200_000)], 5 * M, [[10 * M, 10 * M + 9 * S]], TNS_HOLE_MS.browser);
+  assert.deepEqual(at(short), []);
+});
+
 test('two holes with no row between them are two lines, and a gap before the first live order follows the recording', () => {
   const id = 'binance:BTCUSDT', book = new TnsBook(100_000);
   book.prefill([order(80_000, id, 'buy', 70_000, 200_000), order(86_000, id, 'buy', 70_000, 30_000), order(92_000, id, 'buy', 70_000, 200_000)], 75_000, [[84_000, 85_000], [88_000, 90_000]]);

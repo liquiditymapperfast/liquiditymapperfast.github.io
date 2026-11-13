@@ -54,7 +54,7 @@ export class TnsView {
   /** Take the map to an order (set by the page). */
   onGoTo: (at: number, price: number) => void = () => {};
   /** The orders the recording holds for its unbroken stretch up to now (set by the page: `Hub.recentPrints`, a local read). */
-  prefill: ((until: number, minUsd: number) => Promise<{ prints: Print[]; from: number; holes: [number, number][] } | null>) | null = null;
+  prefill: ((until: number, minUsd: number) => Promise<{ prints: Print[]; from: number; holes: [number, number][]; minHole: number } | null>) | null = null;
   /** The smallest order the last fill asked for (the coin's dollars): a lower one asks again, as the recording holds smaller orders too. */
   #filledMin = Infinity;
   /** Whether the list was filled from the recording: not yet, being asked, or done (asked again when its smallest order is lowered). */
@@ -109,7 +109,7 @@ export class TnsView {
     const min = scaledUsd(this.store.state.tns.minUsd);
     this.prefill(this.#book.seam, min).then(got => {
       if (!got) return;
-      this.#filledMin = min; this.#book.prefill(got.prints, got.from, got.holes); this.#drawn = ''; this.invalidate();
+      this.#filledMin = min; this.#book.prefill(got.prints, got.from, got.holes, got.minHole); this.#drawn = ''; this.invalidate();
     }, () => undefined).finally(() => {
       this.#filled = 'done';
       // The smallest order was lowered while this was being asked: ask again at it (compared with what was asked, not `#filledMin`,

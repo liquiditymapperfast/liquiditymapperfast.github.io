@@ -232,5 +232,6 @@ test('Time & sales fills from the recording at the list\'s own smallest order, a
     assert.ok(asked[1]!.from > asked[0]!.from, 'a cut answer halves the window');
     assert.equal(got?.prints.length, 1);
     assert.equal(got?.from, asked[1]!.from);
+    assert.equal(got?.minHole, 2 * 60_000, 'the server\'s shortest hole goes with the answer, for the list to apply after counting the orders in each');
   } finally { h.restore(); }
 });
