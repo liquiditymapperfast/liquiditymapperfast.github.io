@@ -308,14 +308,14 @@ export class CandlePane {
 
   /** The age ruler under the trail: now at the rail, then every quarter of the window. */
   #paintRuler(ctx: CanvasRenderingContext2D, l: M.CandleLayout, p: Palette): void {
-    const y = l.plotY1 + 4;
+    const y = l.plotY1 + 4, textY = l.plotY1 + M.RULER_TEXT_Y;
     ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(l.trailX0, y + 0.5); ctx.lineTo(l.trailX1, y + 0.5); ctx.stroke();
-    ctx.font = SMALL_FONT; ctx.fillStyle = p.muted; ctx.textBaseline = 'top';
+    ctx.font = SMALL_FONT; ctx.fillStyle = p.muted; ctx.textBaseline = 'middle';
     for (const tick of M.ageTicks(this.#settings.trailMs)) {
       const x = M.trailX(l, tick.ms, this.#settings.trailMs);
       ctx.fillRect(Math.round(x) - 0.5, y, 1, 4);
       ctx.textAlign = tick.ms === 0 ? 'right' : tick.ms >= this.#settings.trailMs ? 'left' : 'center';
-      ctx.fillText(tick.seconds === 0 ? t('now') : t('{n} s', { n: tick.seconds }), Math.max(2, Math.min(l.trailX1, x)), y + 5);
+      ctx.fillText(tick.seconds === 0 ? t('now') : t('{n} s', { n: tick.seconds }), Math.max(2, Math.min(l.trailX1, x)), textY);
     }
   }
 

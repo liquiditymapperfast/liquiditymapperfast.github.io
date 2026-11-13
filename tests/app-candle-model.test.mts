@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AXIS_W, CANDLE_DEFAULTS, COVER_SLACK_MS, FLASH_MS, MAX_FLASHES, MIN_SPAN, RAIL_W, ageTicks, candleLayout, countdownText, coveredMarkets, flashRadius, flashStrength,
+  AXIS_W, CANDLE_DEFAULTS, RULER_TEXT_Y, COVER_SLACK_MS, FLASH_MS, MAX_FLASHES, MIN_SPAN, RAIL_W, ageTicks, candleLayout, countdownText, coveredMarkets, flashRadius, flashStrength,
   flashes, pocIndex, priceAt, priceSpan, railCells, readCandleSettings, rowEmphasis, rowLean, rowStepFor, splitRow, trailX, yOf, type Arrival,
   PULSE_LIFE_MS, PulseTracker, pulseEnvelope, TapeTally, TAPE_BINS, TapeGaps, ringSlack,
 } from '../src/app/candle/model.ts';
@@ -38,6 +38,7 @@ test('the columns run left to right without overlap and the trail ends at the ra
     assert.ok(l.candleX1 - l.candleX0 >= 96, 'room for two footprint numbers a row');
     assert.equal(l.trailX1, l.railX0, 'now is the rail');
     assert.ok(l.plotY1 < h, 'the age ruler has its strip below the plot');
+    assert.ok(l.plotY1 + 4 + 4 < l.plotY1 + RULER_TEXT_Y - 5 && l.plotY1 + RULER_TEXT_Y + 5 + 2 <= h, `the ruler's words sit under its marks, clear of the bottom edge, at ${w}`);
   }
 });
 

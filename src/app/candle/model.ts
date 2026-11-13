@@ -67,7 +67,9 @@ export interface CandleLayout {
   trailX0: number; trailX1: number;
 }
 
-export const AXIS_W = 46, RAIL_W = 30, MARGIN = 6, GAP = 4, RULER_H = 18;
+/** `RULER_H`: the age ruler's strip, its line and 4 px marks, then a line of 10 px text with room under it (18 px ran the words into the
+ * canvas's bottom edge, against the phone's tab bar; Karl, 2026-11-13). */
+export const AXIS_W = 46, RAIL_W = 30, MARGIN = 6, GAP = 4, RULER_H = 24, RULER_TEXT_Y = 15;
 
 /**
  * Split a `w` x `h` view. The candle takes about three tenths of the width (96 to 140 px: two footprint numbers a row and their bars), the
