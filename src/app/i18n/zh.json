@@ -88,7 +88,7 @@
  "Distances from the price in percent, smallest first, up to six, from 0.05 to 50, with a point for decimals: for example 0.25, 0.5, 1, 2, 5.": "以百分比表示到价格的距离，从小到大，最多六个，在 0.05 到 50 之间，小数用点：例如 0.25, 0.5, 1, 2, 5。",
  "Your bands": "你的通道",
  "newest": "最新",
- "Bids · asks resting within each distance of the price, added up over the enabled venues; each band holds the ones inside it.": "在到价格的每个距离内挂着的买盘 · 卖盘，在已启用的交易所上加总；每个通道包含其内侧的通道。",
+ "Bids · asks resting within each distance of the price, added up over the books counted (Venues); each band holds the ones inside it.": "在到价格的每个距离内挂着的买盘 · 卖盘，在计入的订单簿（交易所）上加总；每个通道包含其内侧的通道。",
  "Source Liquidation levels adds up the same bands for the liquidation levels of Hyperliquid's BTC positions instead: longs that would be liquidated below the price, shorts above, from HyperTracker's snapshot about every 30 minutes (the positions are some 35 minutes older), each snapshot standing until the next. Its bands are its own, Wide by default, since these levels sit further from the price than resting orders. It shows where that money sits, not what will be liquidated or where the price will go.": "来源“强平价位”改为用同样的通道加总 Hyperliquid 上 BTC 仓位的清算价位：价格下方会被清算的多头，上方的空头，来自 HyperTracker 大约每 30 分钟一次的快照（仓位约早 35 分钟），每个快照一直有效到下一个。它的通道是独立的，默认为宽，因为这些价位比挂单离价格更远。它显示这些钱在哪里，而不是什么会被清算或价格会去哪里。",
  "What the bands add up: the order book's resting bids and asks, or the liquidation levels of Hyperliquid's BTC positions (longs below the price, shorts above), from HyperTracker about every 30 minutes.": "通道加总的内容：订单簿中挂着的买盘和卖盘，或 Hyperliquid 上 BTC 仓位的清算价位（价格下方为多头，上方为空头），来自 HyperTracker，大约每 30 分钟一次。",
  "The liquidation levels' history is loading…": "正在加载清算价位的历史…",

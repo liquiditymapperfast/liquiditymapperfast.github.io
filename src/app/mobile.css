@@ -109,12 +109,13 @@ html[data-bar="compact"] button.help::after { content: ""; position: absolute; i
 .sheet select { text-overflow: ellipsis; font-size: 16px; }
 /* A list's arrow is drawn, in the column of the split buttons' settings keys (its centre 22 px in from the edge, the same 18 px box and
    stroke as their sliders; Karl, 2026-11-01: the browser's own arrow sat against the border and looked off). The select gives up its own
-   arrow and its row carries the mark, a select having no pseudo-elements. The Classic frame keeps its drawn select. */
+   arrow and its row carries the mark, a select having no pseudo-elements; a select in a group of a pane's sheet (Depth's Bands, the order-book
+   panes' Venues) is marked by its own label. The Classic frame keeps its drawn select. */
 html:not([data-frame="bevel"]) .sheet select,
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field > select { -webkit-appearance: none; appearance: none; padding-right: 44px; }
-html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select),
+html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl, .sheet .tune-body > .ctl-group > .ctl):has(> select),
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select) { position: relative; }
-html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select)::after,
+html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl, .sheet .tune-body > .ctl-group > .ctl):has(> select)::after,
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::after {
   content: ""; position: absolute; right: 13px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); pointer-events: none;
   background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat;
@@ -135,7 +136,7 @@ html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl:has(> .size-
   background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat;
 }
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl:has(> .size-menu)::after { right: 11px; }
-html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl):has(> select:disabled)::after { opacity: .4; }
+html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl, .sheet .tune-body > .ctl-group > .ctl):has(> select:disabled)::after { opacity: .4; }
 .sheet-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 8px; }
 .sheet-tiles > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 /* A split button fills its tile: the switch takes the room, the settings key a finger's width. Its tiles are wider than a plain button's

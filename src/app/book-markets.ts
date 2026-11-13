@@ -54,7 +54,8 @@ export function bookIds(state: BookState): string[] {
  */
 function heldBookIds(state: BookState, picks: ReadonlySet<string>, inFeed: ReadonlySet<string>): string[] {
   const gone = state.bookGone, asOf = state.levels?.asOf;
-  if (!gone || asOf === undefined) return [];
+  // None held (the usual case): nothing to look up in the market list.
+  if (!gone || asOf === undefined || !Object.keys(gone).length) return [];
   const out = new Set<string>();
   for (const m of state.markets) {
     const id = m.instrumentId ?? m.id;

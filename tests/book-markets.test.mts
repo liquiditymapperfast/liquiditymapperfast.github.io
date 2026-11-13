@@ -84,7 +84,7 @@ test('a counted book away from the feed for a moment is still asked for, so the 
   assert.deepEqual(bookIds(later), []);
   assert.equal(bookEmptyMessage(later), 'The chart market has no order book here.', 'gone longer than the hold: said');
   const picked = { ...away, bookMarkets: 'custom' as const, bookPicks: ['okx/perp', 'binance/spot'] };
-  assert.deepEqual(bookIds(picked), ['binancespot:BTCUSDT', 'okx:BTC-USDT-SWAP'], 'in the order they had in the feed: the same key, not asked again');
+  assert.deepEqual(bookIds(picked), ['binancespot:BTCUSDT', 'okx:BTC-USDT-SWAP'], 'sorted, and the same once the book is back: the same key, not asked again');
   assert.deepEqual(bookIds({ ...picked, levels: { asOf: 1_000_000, books: FEED.map(id => book(id)) }, bookGone: {} }), bookIds(picked));
   assert.equal(bookEmptyMessage({ ...away, bookMarkets: 'custom', bookPicks: ['kraken/spot'] }), 'None of the chosen markets has an order book on this coin.', 'another venue held says nothing for the picks');
   // A spot chart whose book never streams (no `binancespot` venue on): the Binance perpetual's feed reconnecting does not stand for it.

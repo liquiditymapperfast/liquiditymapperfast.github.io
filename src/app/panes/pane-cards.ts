@@ -105,7 +105,7 @@ export function depthCardLines(h: { time: number; bands: readonly { r: number; b
     const imbalance = imbalanceLine(w.bid, w.ask); if (imbalance) lines.push(imbalance);
   }
   if (h.rank !== null && h.of > 1) lines.push({ label: t('Rank in view'), text: t('{rank} of {total}', { rank: h.rank, total: h.of }) });
-  lines.push({ text: t('Bids · asks resting within each distance of the price, added up over the enabled venues; each band holds the ones inside it.'), color: 'muted', wrap: true, rule: true });
+  lines.push({ text: t('Bids · asks resting within each distance of the price, added up over the books counted (Venues); each band holds the ones inside it.'), color: 'muted', wrap: true, rule: true });
   return lines;
 }
 
