@@ -30,14 +30,16 @@ import type { BarInputs, SourceFilter } from '../script/inputs.ts';
 import { PALETTES } from '../theme.ts';
 import { NEW_SCRIPT, unsaved, type ScriptsPanelState } from '../script/panel-state.ts';
 import { buildScriptsPanel, panelClosed, refreshStatuses } from '../script/panel.ts';
+import { scriptHeldKey, scriptPaneHeld, type ScriptPaneHeld, type ScriptRowInput } from '../range/script-lines.ts';
 import type { ScriptBarsState } from '../script/bars.ts';
 import { aboutScript, builtinOf } from '../script/about.ts';
 
 /**
- * A script's last answer, the candles it was worked out over (their starts, timeframe and market) and the moment it was worked out at: the
- * replay's moment then, Infinity live, -Infinity for an answer made on the page (a script that does not read).
+ * A script's last answer, the candles it was worked out over (their starts, timeframe and market), how many of them had closed when it ran
+ * (all but the one under way, whose value was worked out mid-candle), and the moment it was worked out at: the replay's moment then,
+ * Infinity live, -Infinity for an answer made on the page (a script that does not read).
  */
-interface Held { result: ScriptResult; time: Float64Array; tf: number; inst: string; at: number }
+interface Held { result: ScriptResult; time: Float64Array; tf: number; inst: string; at: number; closed: number }
 
 /**
  * A script the Scripts panel's list shows on the map while its row is pointed at (`ScriptPane.preview`): one of the person's (`rec:` and its
@@ -168,6 +170,28 @@ export class ScriptPane extends TimePane {
 
   /** The scripts, in their order. */
   get records(): readonly ScriptRecord[] { return this.#records; }
+  /** What the pane drew last, for its Range summary (range/script-lines.ts): the same object while that does not change. */
+  #rangeHeld: ScriptPaneHeld | null = null;
+  get rangeHeld(): ScriptPaneHeld | null { return this.#rangeHeld; }
+  /** What a snapshot of the pane is for, now: the chart's instrument and timeframe, and the scripts as they are (any edit or switch). */
+  rangeKey(state: Pick<AppState, 'seriesInstrument' | 'timeframe'>): string { return scriptHeldKey(state, this.#version); }
+  /**
+   * Publish the rows as drawn (only the scripts on and in the pane: never a preview, never one on the map), with paint's own rules: hidden,
+   * waiting for an answer for the chart as it is (`#fresh`), an error, or drawn over the candles closed when it ran and shown in a replay.
+   */
+  #publishRange(on: readonly ScriptRecord[], tf: number): void {
+    const state = this.store.state;
+    const rows = on.map((r): ScriptRowInput => {
+      const kept = this.#held.get(r.id), held = kept && this.#fresh(kept) ? kept : undefined, res = held?.result;
+      return {
+        id: r.id, name: r.name, hidden: !!r.hidden, warnings: res?.ok ? this.warningsOf(r.id).length + res.warnings.length : 0,
+        held: !held || !res ? null : !res.ok ? { ok: false, error: errorText(res.error), at: held.at }
+          : { ok: true, time: held.time, tf: held.tf, closed: Math.min(held.closed, shownCount(held.time, tf)), at: held.at, plots: res.plots },
+      };
+    });
+    const next = scriptPaneHeld(this.#rangeHeld, this.#heldGen, this.rangeKey(state), state.timeframe, tf, rows);
+    if (next !== this.#rangeHeld) { this.#rangeHeld = next; this.rangeChanged(); }
+  }
   /** A script's last answer, its warnings, and what reading it found (or why it could not be read). */
   resultOf(id: string): ScriptResult | null { const held = this.#held.get(id); return held && this.#fresh(held) ? held.result : null; }
   warningsOf(id: string): readonly Warning[] { return this.#warnings.get(id) ?? []; }
@@ -359,6 +383,9 @@ export class ScriptPane extends TimePane {
     const kept = storeScripts(list);
     this.#lastRun = 0;
     this.refresh();
+    // A Range summary of the pane looks again (its key holds the scripts' version) after the pane's next drawing, or while the pane is not laid
+    // out and does not draw, as it is.
+    this.rangeStale();
     this.#reportStatus();
     if (this.hasRows !== hadRows) this.onRowsChanged();
     return kept;
@@ -546,6 +573,7 @@ export class ScriptPane extends TimePane {
     const markets = this.#data.markets(state, filters);
     for (const r of runnable) this.#warnings.set(r.id, this.#pageWarnings(this.#analyze(r.source) as Analysis, r.options, markets));
     const time = inputs.time.slice(), tf = inputs.tf, inst = state.seriesInstrument, at = replaying() ? pageNow() : Infinity, started = Date.now();
+    const closed = time.length - (inputs.forming ? 1 : 0);
     const token = ++this.#runToken;
     this.#running = true; this.#lastRun = started;
     const version = this.#version, theme = this.#theme;
@@ -571,7 +599,7 @@ export class ScriptPane extends TimePane {
       // The run's own time (a worker that waited to load, or never did, is not a slow script): a slow script runs less often, spaced
       // from when it started in its worker.
       this.#runMs = ms; this.#lastRun = Date.now() - ms;
-      for (const res of results) this.#held.set(res.id, { result: res, time, tf, inst, at });
+      for (const res of results) this.#held.set(res.id, { result: res, time, tf, inst, at, closed });
       this.#held = new Map(this.#held); this.#heldGen++;
       this.invalidate();
       this.onMapChanged();
@@ -594,7 +622,7 @@ export class ScriptPane extends TimePane {
   #pageError(id: string, error: ScriptError): void {
     const was = this.#held.get(id);
     if (was && was.tf === 0 && !was.result.ok && JSON.stringify(was.result.error) === JSON.stringify(error)) return;
-    this.#setHeld(id, { result: { id, ok: false, error }, time: new Float64Array(0), tf: 0, inst: '', at: -Infinity });
+    this.#setHeld(id, { result: { id, ok: false, error }, time: new Float64Array(0), tf: 0, inst: '', at: -Infinity, closed: 0 });
   }
 
   /** Whether an answer may be read now: one for the chart as it is (`#current`), or an error met on the page, which holds everywhere. */
@@ -642,6 +670,7 @@ export class ScriptPane extends TimePane {
     setText(this.head.querySelector('.readout'), this.#records.length ? tn(running.length, '{n} script on', '{n} scripts on') : '');
     ctx.textBaseline = 'middle';
     this.#reportStatus();
+    this.#publishRange(on, TIMEFRAMES[state.timeframe] ?? 3_600_000);
     // The pane is laid out only while a script that is on draws in it (`hasRows`): for a moment after one is switched off it has none.
     if (!on.length) { this.#placeRowTools([]); return; }
     const places: { id: string; x: number; y: number }[] = [];
@@ -917,7 +946,7 @@ export class ScriptPane extends TimePane {
     const depth = jobs.some(j => j.a.inputs.has('depth')) ? this.#data.depth.sync(state, inputs.time, inputs.tf) : null;
     if (depth) this.#data.depth.deliver(host);
     // Taken before the run, which hands the inputs' arrays over to the worker and leaves them empty here.
-    const ran: Omit<PreviewHeld, 'result' | 'ranAt' | 'took'> = { time: inputs.time.slice(), tf: inputs.tf, inst: state.seriesInstrument, at: replaying() ? pageNow() : Infinity, theme: this.#theme, ...this.#pvMarkets(), data: this.#data.version };
+    const ran: Omit<PreviewHeld, 'result' | 'ranAt' | 'took'> = { time: inputs.time.slice(), tf: inputs.tf, inst: state.seriesInstrument, at: replaying() ? pageNow() : Infinity, closed: inputs.time.length - (inputs.forming ? 1 : 0), theme: this.#theme, ...this.#pvMarkets(), data: this.#data.version };
     const gen = this.#pvGen;
     this.#pvBusy = true;
     void host.run(jobs.map(j => ({ id: j.id, source: j.target.source, options: j.target.options, api: j.target.api })), inputs, depth ?? undefined).then(({ results, ms, depthBehind }) => {

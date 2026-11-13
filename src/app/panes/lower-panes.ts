@@ -130,6 +130,8 @@ export abstract class TimePane {
   useRange(range: RangeTool): void { this.#range = range; }
   /** Tell the Range tool this pane drew again (its summary of a selection made in it is worked out again, at most once a second). */
   protected rangeChanged(): void { this.#range?.paneChanged(this.#source); }
+  /** What the pane stands for changed before it drew again: the Range tool reads its summary after its next drawing (`RangeTool.paneLater`). */
+  protected rangeStale(): void { this.#range?.paneLater(); }
   /** The time at `x`, held inside the plot. */
   #timeAt(x: number): number { return this.view.tOf(Math.max(0, Math.min(this.plotW, x)), this.plotW); }
 

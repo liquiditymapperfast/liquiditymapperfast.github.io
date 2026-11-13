@@ -4,7 +4,7 @@ export const usd = (value: number): string => !Number.isFinite(value) ? '–' : 
 
 /** One formatter per number of decimals: `toLocaleString` builds a new Intl object on every call, which is slow enough to show when a frame prints hundreds of prices. */
 const fixed: Intl.NumberFormat[] = [];
-const fixedFormat = (decimals: number): Intl.NumberFormat => fixed[decimals] ??= new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+export const fixedFormat = (decimals: number): Intl.NumberFormat => fixed[decimals] ??= new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
 /** The decimals a step is written with (0.25 has two, 2.5 one, 25 none), up to twelve. */
 export function stepDecimals(step: number): number {

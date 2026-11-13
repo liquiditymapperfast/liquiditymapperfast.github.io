@@ -157,6 +157,15 @@ export class RangeTool {
 
   /** The pane's data changed (it drew new bars): its summary is drawn again soon, if it is the one shown. */
   paneChanged(pane: RangePane): void { if (this.#context === pane && this.#panel) this.#paneSoon(); }
+  #paneLater = 0;
+  /**
+   * What a pane stands for may have changed before it drew again (its scripts edited, the timeframe changed): its summary is drawn again
+   * after its next drawing, two frames on (once however often it is asked meanwhile).
+   */
+  paneLater(): void {
+    if (this.#paneLater || this.#context === 'map') return;
+    this.#paneLater = requestAnimationFrame(() => { this.#paneLater = requestAnimationFrame(() => { this.#paneLater = 0; this.#paneSoon(); }); });
+  }
 
   /** Show the map's summary or a pane's, for the selection as it is: the map's is gathered when it is first shown for this selection. */
   #choose(context: 'map' | RangePane): void {
@@ -294,8 +303,11 @@ export class RangeTool {
    * or their settings changed), without asking the recording again; at most once a frame.
    */
   refreshHeld(): void {
-    // A pane's summary reads its own snapshot (and the liquidations and panes shown): it is drawn again, not gathered.
-    if (this.#context !== 'map') { this.#paneSoon(); return; }
+    // A pane's summary reads its own snapshot (and the liquidations and panes shown): it is drawn again, not gathered, after the pane's next
+    // drawing (two frames on). A pane on screen publishes its new snapshot first, so a change of what it stands for (another timeframe, say)
+    // is never read against its old one (a second of "show it" on a pane in view); a hidden pane draws nothing, and its old snapshot is said
+    // to be stale.
+    if (this.#context !== 'map') { this.paneLater(); return; }
     if (this.#heldFrame || !this.#panel || !this.#input) return;
     this.#heldFrame = requestAnimationFrame(() => {
       this.#heldFrame = 0;

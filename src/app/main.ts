@@ -38,6 +38,7 @@ import { NlnsSource } from './delta/nlns-source.ts';
 import { LsPane, lsIds } from './panes/ls-pane.ts';
 import { LsRangeSummary, lsHeldKey } from './range/ls-lines.ts';
 import { FundingRangeSummary } from './range/funding-lines.ts';
+import { ScriptRangeSummary } from './range/script-lines.ts';
 import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
 import { ScriptPane } from './panes/script-pane.ts';
@@ -272,6 +273,13 @@ async function main(): Promise<void> {
   range.useProvider({
     pane: 'funding', title: () => t('Funding'), shown: () => store.state.show.funding, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
     lines: (sel, shown) => { const key = funding.rangeKey(store.state); return fundingSummary.lines(sel, funding.rangeHeld, shown, key ?? '', pageNow(), store.state.timeZone, key === null); },
+  });
+  // A drag in the Scripts pane sums up each script drawn in it (range/script-lines.ts): its visible plots of one value a candle over the
+  // closed candles, in their own values. It reads only what the pane drew: it never starts a run.
+  const scriptSummary = new ScriptRangeSummary();
+  range.useProvider({
+    pane: 'script', title: () => t('Scripts'), shown: () => scriptRows(store.state), barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
+    lines: (sel, shown) => scriptSummary.lines(sel, script.rangeHeld, shown, script.rangeKey(store.state), pageNow(), replaying(), store.state.timeZone, !script.hasRows),
   });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.
@@ -583,7 +591,9 @@ async function main(): Promise<void> {
     if (changed.has('chartType')) heat.invalidate();
     // The candles' own colours: the map, the book's price row and the Tape view's mark are drawn in them (Sol: nothing else asked for a frame).
     if (changed.has('candleColors')) { heat.invalidate(); ladder.invalidate(); candle.invalidate(); }
-    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show') || changed.has('timeZone')) range.refreshHeld();
+    // A pane's summary is read again when what it stands for changes (a hidden pane draws nothing to say so; its old snapshot is then stale).
+    if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show') || changed.has('timeZone')
+      || changed.has('timeframe') || changed.has('marketId') || changed.has('seriesInstrument') || changed.has('replay')) range.refreshHeld();
     if (changed.has('tradeBubbles') || changed.has('show')) hub.setTape(tapeWanted());
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('mark') && state.show.book) ladder.markMoved();
