@@ -853,7 +853,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "Lo que reposó dentro del recuadro en promedio durante su tiempo, en los exchanges activados.",
  "New selection": "Nueva selección",
  "Select another part of the map or of a pane: drag across it.": "Selecciona otra parte del mapa o de un panel: arrastra sobre ella.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Arrastra sobre el mapa para seleccionar un recuadro, o sobre un panel debajo o la columna de flujo para un intervalo de tiempo a todos los precios. Ctrl+arrastrar (Cmd en un Mac) selecciona en cualquier momento; Esc cierra.",
  "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "El mapa muestra solo una parte de esta selección: sus marcas de absorción y su mayor orden se cuentan solo para esa parte.",
  "Only the largest marks of {venues} are held for these minutes, so their smaller ones are not counted.": "De {venues} solo se conservan las marcas más grandes de estos minutos, así que las más pequeñas no se cuentan.",
  "The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.": "El punto de control es el precio que más se negoció; el área de valor es la franja a su alrededor que reúne el 70% del volumen (la proporción es un ajuste), con su borde superior e inferior como máximo y mínimo del área de valor (VAH, VAL). Se leen de todos los precios negociados, en filas de tamaño fijo, así que hacer zoom en el eje de precios no los mueve.",
@@ -2571,7 +2570,6 @@
   "many": "Ventanas comparables de {n} velas disponibles"
  },
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "{k} de {m} tuvieron un cambio neto mayor (cerradas, solapadas, esta incluida)",
- "Half the absolute bar changes": "La mitad de los cambios absolutos de las barras",
  "{k} of {n} candles": "{k} de {n} velas",
  "so far": "hasta ahora",
  "Against what is held": "Frente a lo disponible",
@@ -2652,7 +2650,6 @@
  "Longs net · shorts net": "Largos netos · cortos netos",
  "Recorded taker volume": "Volumen de takers registrado",
  "Recorded CVD, before → after selection": "CVD registrado, antes → después de la selección",
- "Candles making half the absolute delta": "Velas que hacen la mitad del delta absoluto",
  "Cancellation between candle deltas": "Anulación entre los deltas de las velas",
  "Of the candle deltas added up by size, {share} remained in the net.": "De los deltas de las velas sumados por tamaño, quedó {share} en el neto.",
  "Candle delta signs": "Signos de los deltas de las velas",
@@ -3045,5 +3042,12 @@
   "other": "{n} ventanas incluidas"
  },
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "Cada ventana incluida se pondera por su solapamiento con la selección. Las ventanas a las que les falta una bolsa se dejan fuera, de modo que el conjunto de bolsas sigue siendo el mismo.",
- "No column of this selection has a price centre: one side of the book is empty.": "Ninguna columna de esta selección tiene centro de precio: un lado del libro de órdenes está vacío."
+ "No column of this selection has a price centre: one side of the book is empty.": "Ninguna columna de esta selección tiene centro de precio: un lado del libro de órdenes está vacío.",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "Cada panel bajo el mapa tiene su propio botón Rango en su cabecera, el recuadro de trazos antes de su menú: púlsalo y arrastra sobre ese panel para resumirlo en sus propios términos (se ilumina mientras espera el arrastre y mientras el panel de resumen muestra ese panel). El panel se abre junto a la selección y se queda donde lo arrastres.",
+ "Half the movement came in": "La mitad del movimiento llegó en",
+ "Estimated net change {value}: added minus reduced": "Cambio neto estimado {value}: añadido menos reducido",
+ "net {value}": "neto {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "Color de vela alcista: lado comprador (largos nuevos, cortos cerrados). Color de vela bajista: lado vendedor (cortos nuevos, largos cerrados). Más claro: cerrado. Rayado: el neto, añadido menos reducido.",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "Rango: resume un tramo de este panel. Pulsa y arrastra sobre él, o mantén Ctrl (Cmd en un Mac) y arrastra sin pulsar. Pulsa otra vez para quitarlo.",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "Arrastra sobre el mapa para seleccionar un recuadro, o sobre un panel debajo o la columna de flujo para un intervalo de tiempo a todos los precios. Mantén Ctrl (Cmd en un Mac) y arrastra para seleccionar sin pulsar Seleccionar ni el botón Rango de un panel; Esc cierra."
 }

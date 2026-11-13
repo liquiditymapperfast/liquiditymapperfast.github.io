@@ -829,7 +829,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "该时段内方框中平均挂着的订单，来自已开启的交易所。",
  "New selection": "新选择",
  "Select another part of the map or of a pane: drag across it.": "选择地图或面板的另一部分：在其上拖动。",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "在地图上拖动选择方框，在其下方的面板或资金流列上拖动则选择所有价格上的一段时间。Ctrl+拖动（Mac 上为 Cmd）随时可以选择；Esc 关闭。",
  "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "地图只显示了此选择的一部分：其吸收标记和最大订单只统计这一部分。",
  "Only the largest marks of {venues} are held for these minutes, so their smaller ones are not counted.": "这段时间只保留了 {venues} 的最大标记，因此较小的标记未计入。",
  "The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.": "控制点是成交最多的价格；价值区域是其周围包含 70% 成交量的价格带（比例可设置），其上下边为价值区域高点和低点（VAH、VAL）。它们按固定大小的行从所有成交价格中读取，所以缩放价格轴不会移动它们。",
@@ -2441,7 +2440,6 @@
  "Previous {n} candles ({span})": "之前的 {n} 根 K 线（{span}）",
  "Comparable {n}-candle windows held": "已保留的可比 {n} 根 K 线区间",
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "{m} 个中有 {k} 个的净变化更大（已收盘、有重叠、含本段）",
- "Half the absolute bar changes": "各柱变化绝对值的一半",
  "{k} of {n} candles": "{n} 根 K 线中的 {k} 根",
  "so far": "到目前为止",
  "Against what is held": "与已保留的相比",
@@ -2506,7 +2504,6 @@
  "Longs net · shorts net": "多头净值 · 空头净值",
  "Recorded taker volume": "已记录的吃单成交量",
  "Recorded CVD, before → after selection": "已记录的 CVD，选择前 → 选择后",
- "Candles making half the absolute delta": "占 delta 绝对值一半的 K 线",
  "Cancellation between candle deltas": "K 线 delta 之间的抵消",
  "Of the candle deltas added up by size, {share} remained in the net.": "把各 K 线 delta 按大小相加后，净值中保留了 {share}。",
  "Candle delta signs": "K 线 delta 的正负",
@@ -2843,5 +2840,12 @@
  "Windows holding all {n} venues cover {k} of {span}": "包含全部 {n} 个交易所的窗口覆盖了 {span} 中的 {k}",
  "{n} included windows": "{n} 个计入的窗口",
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "每个计入的窗口按它与所选范围的重叠程度加权。缺少某个交易所的窗口会被排除，因此交易所的集合保持不变。",
- "No column of this selection has a price centre: one side of the book is empty.": "此选择中没有任何一列有价格中心：订单簿的一侧为空。"
+ "No column of this selection has a price centre: one side of the book is empty.": "此选择中没有任何一列有价格中心：订单簿的一侧为空。",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "地图下方的每个面板在标题栏菜单前都有自己的范围按钮（虚线方框）：按下它，再在该面板上拖动，即按该面板自己的口径汇总（等待拖动时以及窗口显示该面板时按钮亮起）。窗口在选区旁打开，并停留在你拖到的位置。",
+ "Half the movement came in": "一半的变动来自",
+ "Estimated net change {value}: added minus reduced": "估算净变化 {value}：增加减去减少",
+ "net {value}": "净 {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "上涨 K 线颜色：买方一侧（新开多头、空头被平）。下跌 K 线颜色：卖方一侧（新开空头、多头被平）。较浅：平仓。斜线：净值，增加减去减少。",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "范围：汇总此面板的一段。按下后在其上拖动，或按住 Ctrl（Mac 上为 Cmd）不按按钮直接拖动。再按一次即收起。",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "在地图上拖动选择方框，在其下方的面板或资金流列上拖动则选择所有价格上的一段时间。按住 Ctrl（Mac 上为 Cmd）拖动，无需按“选择”或面板的范围按钮即可选择；Esc 关闭。"
 }

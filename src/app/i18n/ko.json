@@ -829,7 +829,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "그 기간 동안 사각형 안에 있던 대기 주문의 평균이며, 켜진 거래소의 것입니다.",
  "New selection": "새 선택",
  "Select another part of the map or of a pane: drag across it.": "지도나 패널의 다른 부분을 선택합니다. 그 위를 드래그하세요.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "지도를 드래그하면 사각형, 그 아래 패널이나 흐름 열을 드래그하면 모든 가격의 기간을 선택합니다. Ctrl+드래그(Mac에서는 Cmd)로 언제든 선택하고, Esc로 닫습니다.",
  "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "지도에 이 선택의 일부만 보입니다. 흡수 표시와 최대 주문은 그 부분만 셉니다.",
  "Only the largest marks of {venues} are held for these minutes, so their smaller ones are not counted.": "이 시간대의 {venues}는 가장 큰 표시만 보관하고 있어 더 작은 표시는 세지 않습니다.",
  "The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.": "포인트 오브 컨트롤은 가장 많이 거래된 가격이고, 밸류 에어리어는 그 주변에서 거래량의 70%(비율은 설정 가능)를 담는 구간이며, 그 위아래가 밸류 에어리어 하이와 로우(VAH, VAL)입니다. 거래된 모든 가격에서 고정 크기의 행으로 읽으므로 가격 축을 확대·축소해도 움직이지 않습니다.",
@@ -2441,7 +2440,6 @@
  "Previous {n} candles ({span})": "직전 캔들 {n}개({span})",
  "Comparable {n}-candle windows held": "보유한 비교 가능한 {n}개 캔들 구간",
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "{m}개 중 {k}개에서 순 변화가 더 컸음(마감됨, 겹침 있음, 이 구간 포함)",
- "Half the absolute bar changes": "막대별 변화 절댓값의 절반",
  "{k} of {n} candles": "캔들 {n}개 중 {k}개",
  "so far": "지금까지",
  "Against what is held": "보유한 것과 비교",
@@ -2506,7 +2504,6 @@
  "Longs net · shorts net": "롱 순증감 · 숏 순증감",
  "Recorded taker volume": "기록된 테이커 거래량",
  "Recorded CVD, before → after selection": "기록된 CVD, 선택 전 → 선택 후",
- "Candles making half the absolute delta": "델타 절댓값의 절반을 차지하는 캔들",
  "Cancellation between candle deltas": "캔들 델타 간 상쇄",
  "Of the candle deltas added up by size, {share} remained in the net.": "캔들 델타를 크기대로 모두 더한 값 가운데 순합계에 남은 몫은 {share}입니다.",
  "Candle delta signs": "캔들 델타 부호",
@@ -2843,5 +2840,12 @@
  "Windows holding all {n} venues cover {k} of {span}": "거래소 {n}곳을 모두 담은 시간 구간이 덮는 시간: {span} 중 {k}",
  "{n} included windows": "포함된 시간 구간 {n}개",
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "포함된 각 시간 구간은 선택과 겹치는 정도로 가중됩니다. 거래소가 빠진 시간 구간은 제외하므로 거래소 구성은 같게 유지됩니다.",
- "No column of this selection has a price centre: one side of the book is empty.": "이 선택에는 중심 가격이 있는 열이 없습니다. 호가창의 한쪽이 비어 있습니다."
+ "No column of this selection has a price centre: one side of the book is empty.": "이 선택에는 중심 가격이 있는 열이 없습니다. 호가창의 한쪽이 비어 있습니다.",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "지도 아래의 각 패널은 헤더의 메뉴 앞에 점선 사각형인 자체 범위 버튼이 있습니다. 누른 뒤 그 패널을 드래그하면 그 패널의 항목으로 요약합니다(드래그를 기다리는 동안과 창이 그 패널을 보여 주는 동안 켜집니다). 창은 선택 옆에 열리고, 드래그한 자리에 머뭅니다.",
+ "Half the movement came in": "움직임의 절반이 나온 캔들",
+ "Estimated net change {value}: added minus reduced": "추정 순변화 {value}: 증가분 − 감소분",
+ "net {value}": "순 {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "상승 캔들 색: 매수 측(신규 롱, 숏 청산). 하락 캔들 색: 매도 측(신규 숏, 롱 청산). 옅은 색: 청산. 빗금: 순변화(증가분 − 감소분).",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "범위: 이 패널의 구간을 요약합니다. 누른 뒤 드래그하거나, Ctrl(Mac에서는 Cmd)을 누른 채 버튼 없이 드래그하세요. 다시 누르면 치웁니다.",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "지도를 드래그하면 사각형, 그 아래 패널이나 흐름 열을 드래그하면 모든 가격의 기간을 선택합니다. Ctrl(Mac에서는 Cmd)을 누른 채 드래그하면 선택이나 패널의 범위 버튼을 누르지 않고 선택하며, Esc로 닫습니다."
 }

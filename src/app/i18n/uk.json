@@ -581,7 +581,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "Що в середньому стояло всередині прямокутника протягом його часу на ввімкнених біржах.",
  "New selection": "Нове виділення",
  "Select another part of the map or of a pane: drag across it.": "Виділіть іншу частину карти чи панелі: перетягніть по ній.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Перетягніть по карті, щоб виділити прямокутник, або по панелі під нею чи по колонці потоку, щоб виділити проміжок часу на всіх цінах. Ctrl+перетягування (Cmd на Mac) виділяє в будь-який момент; Esc закриває.",
  "Both": "Обидва",
  "No spot venues are enabled. Choose Both, or switch a spot venue on.": "Жодної спот-біржі не ввімкнено. Оберіть «Обидва» або увімкніть спот-біржу.",
  "No perpetual venues are enabled. Choose Both, or switch a perpetual venue on.": "Жодної перп-біржі не ввімкнено. Оберіть «Обидва» або увімкніть перп-біржу.",
@@ -2599,7 +2598,6 @@
   "other": "Наявні порівнянні вікна з {n} свічки"
  },
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "У {k} із {m} чиста зміна була більшою (закриті, з перекриттям, це вікно включено)",
- "Half the absolute bar changes": "Половина абсолютних змін смуг",
  "{k} of {n} candles": "{k} із {n} свічок",
  "so far": "поки",
  "Against what is held": "Порівняно з наявним",
@@ -2684,7 +2682,6 @@
  "Longs net · shorts net": "Лонги нетто · шорти нетто",
  "Recorded taker volume": "Записаний обсяг тейкерів",
  "Recorded CVD, before → after selection": "Записаний CVD, до → після виділення",
- "Candles making half the absolute delta": "Свічки, що дають половину абсолютної дельти",
  "Cancellation between candle deltas": "Взаємне погашення дельт свічок",
  "Of the candle deltas added up by size, {share} remained in the net.": "Із дельт свічок, складених за величиною, у нетто залишилося {share}.",
  "Candle delta signs": "Знаки дельт свічок",
@@ -3091,5 +3088,12 @@
   "other": "{n} врахованого вікна"
  },
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "Кожне враховане вікно зважується за його перетином із виділенням. Вікна, у яких бракує якоїсь біржі, не враховуються, щоб набір бірж лишався незмінним.",
- "No column of this selection has a price centre: one side of the book is empty.": "Жодна колонка цього виділення не має цінового центру: одна сторона стакана порожня."
+ "No column of this selection has a price centre: one side of the book is empty.": "Жодна колонка цього виділення не має цінового центру: одна сторона стакана порожня.",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "Кожна панель під картою має власну кнопку «Діапазон» у заголовку — пунктирну рамку перед її меню: натисніть її, потім перетягніть по цій панелі, щоб підсумувати її у власних показниках (кнопка світиться, поки чекає перетягування і поки вікно показує цю панель). Вікно відкривається поруч із виділенням і лишається там, куди ви його перетягнете.",
+ "Half the movement came in": "Половина руху припала на",
+ "Estimated net change {value}: added minus reduced": "Оцінка чистої зміни {value}: додано мінус скорочено",
+ "net {value}": "нетто {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "Колір зростаючих свічок: бік покупців (нові лонги, закриті шорти). Колір спадних свічок: бік продавців (нові шорти, закриті лонги). Світліше: закриті. Штрихування: нетто, додано мінус скорочено.",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "Діапазон: підсумок відрізка цієї панелі. Натисніть, потім перетягніть по ній, або утримуйте Ctrl (Cmd на Mac) і перетягуйте без натискання. Натисніть ще раз, щоб прибрати.",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "Перетягніть по карті, щоб виділити прямокутник, або по панелі під нею чи по колонці потоку, щоб виділити проміжок часу на всіх цінах. Утримуйте Ctrl (Cmd на Mac) і перетягуйте, щоб виділити без кнопки «Виділити» чи кнопки «Діапазон» панелі; Esc закриває."
 }

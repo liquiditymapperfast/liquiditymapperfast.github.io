@@ -829,7 +829,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "その期間に四角形の中にあった板の注文の平均で、オンになっている取引所のものです。",
  "New selection": "新しい選択",
  "Select another part of the map or of a pane: drag across it.": "マップやパネルの別の部分を選択します。その上をドラッグしてください。",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "マップをドラッグすると四角形、その下のパネルやフロー列をドラッグするとすべての価格での期間を選択します。Ctrl+ドラッグ（Mac では Cmd）でいつでも選択でき、Esc で閉じます。",
  "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "マップにはこの選択の一部しか表示されていません。吸収マークと最大の注文はその部分だけで数えています。",
  "Only the largest marks of {venues} are held for these minutes, so their smaller ones are not counted.": "この時間帯の {venues} は大きなマークだけを保持しているため、小さなマークは数えていません。",
  "The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.": "ポイント・オブ・コントロールは最も多く取引された価格で、バリューエリアはその周りで出来高の70%（割合は設定可能）を含む帯です。その上端と下端がバリューエリア・ハイとロー（VAH、VAL）です。取引されたすべての価格から固定サイズの行で読み取るため、価格軸をズームしても動きません。",
@@ -2441,7 +2440,6 @@
  "Previous {n} candles ({span})": "直前のローソク足 {n} 本（{span}）",
  "Comparable {n}-candle windows held": "保持している、比較できる {n} 本分の区間",
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "{m} 区間中 {k} 区間でネットの変化が大きかった（確定済み、重なりあり、この区間を含む）",
- "Half the absolute bar changes": "バーごとの変化の絶対値の半分",
  "{k} of {n} candles": "{n} 本中 {k} 本",
  "so far": "ここまで",
  "Against what is held": "保持分と比べて",
@@ -2506,7 +2504,6 @@
  "Longs net · shorts net": "ロングのネット · ショートのネット",
  "Recorded taker volume": "記録されたテイカー出来高",
  "Recorded CVD, before → after selection": "記録された CVD、選択前 → 選択後",
- "Candles making half the absolute delta": "デルタの絶対値の半分を占めるローソク足",
  "Cancellation between candle deltas": "ローソク足のデルタ同士の相殺",
  "Of the candle deltas added up by size, {share} remained in the net.": "ローソク足のデルタを大きさで足し合わせたうち、{share} がネットに残りました。",
  "Candle delta signs": "ローソク足のデルタの符号",
@@ -2843,5 +2840,12 @@
  "Windows holding all {n} venues cover {k} of {span}": "{n} 取引所すべてを含むウィンドウがカバーする時間：{span} 中 {k}",
  "{n} included windows": "含まれるウィンドウ {n} 件",
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "含まれる各ウィンドウは、選択との重なりで重み付けされます。取引所が欠けているウィンドウは除外するため、取引所の構成は変わりません。",
- "No column of this selection has a price centre: one side of the book is empty.": "この選択には中心価格のある列がありません。板の片側が空です。"
+ "No column of this selection has a price centre: one side of the book is empty.": "この選択には中心価格のある列がありません。板の片側が空です。",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "マップの下の各パネルには、ヘッダーのメニューの前に点線の四角の「範囲」ボタンがあります。押してからそのパネルをドラッグすると、そのパネル自身の項目でまとめます（ドラッグを待つ間と、ウィンドウがそのパネルを表示している間は点灯します）。ウィンドウは選択の横に開き、ドラッグした場所に留まります。",
+ "Half the movement came in": "動きの半分を占めたローソク足",
+ "Estimated net change {value}: added minus reduced": "推定純変化 {value}：増加分 − 減少分",
+ "net {value}": "純 {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "上昇ローソク足の色：買い手側（新規ロング、ショート決済）。下落ローソク足の色：売り手側（新規ショート、ロング決済）。薄い色：決済。斜線：純変化（増加分 − 減少分）。",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "範囲：このパネルの区間をまとめます。押してからドラッグするか、Ctrl（Mac では Cmd）を押しながら押さずにドラッグします。もう一度押すと片付けます。",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "マップをドラッグすると四角形、その下のパネルやフロー列をドラッグするとすべての価格での期間を選択します。Ctrl（Mac では Cmd）を押しながらドラッグすると、「選択」やパネルの「範囲」ボタンを押さずに選択でき、Esc で閉じます。"
 }

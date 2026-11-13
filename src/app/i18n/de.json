@@ -847,7 +847,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "Was im Durchschnitt über seine Zeit im Rechteck ruhte, an den eingeschalteten Börsen.",
  "New selection": "Neue Auswahl",
  "Select another part of the map or of a pane: drag across it.": "Wähle einen anderen Teil der Karte oder eines Bereichs: Ziehe darüber.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Ziehe über die Karte, um ein Rechteck zu wählen, oder über einen Bereich darunter oder die Flow-Spalte für eine Zeitspanne über alle Preise. Strg+Ziehen (Cmd auf dem Mac) wählt jederzeit aus; Esc schließt.",
  "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "Die Karte zeigt nur einen Teil dieser Auswahl: Ihre Absorptionsmarkierungen und ihre größte Order werden nur für diesen Teil gezählt.",
  "Only the largest marks of {venues} are held for these minutes, so their smaller ones are not counted.": "Für diese Minuten sind von {venues} nur die größten Marken vorhanden; kleinere werden deshalb nicht mitgezählt.",
  "The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.": "Der Point of Control ist der Preis, an dem am meisten gehandelt wurde; die Value Area ist das Band um ihn, das 70% des Volumens hält (der Anteil ist einstellbar), mit Ober- und Unterkante als Value Area High und Low (VAH, VAL). Sie werden aus jedem gehandelten Preis auf Zeilen fester Größe gelesen, sodass Zoomen der Preisachse sie nicht verschiebt.",
@@ -2538,7 +2537,6 @@
   "other": "Vergleichbare {n}-Kerzen-Fenster vorhanden"
  },
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "{k} von {m} hatten eine größere Nettoänderung (abgeschlossen, überlappend, dieses mitgezählt)",
- "Half the absolute bar changes": "Die Hälfte der absoluten Balkenänderungen",
  "{k} of {n} candles": "{k} von {n} Kerzen",
  "so far": "bisher",
  "Against what is held": "Gegenüber dem Vorhandenen",
@@ -2615,7 +2613,6 @@
  "Longs net · shorts net": "Longs netto · Shorts netto",
  "Recorded taker volume": "Aufgezeichnetes Taker-Volumen",
  "Recorded CVD, before → after selection": "Aufgezeichnetes CVD, vor → nach der Auswahl",
- "Candles making half the absolute delta": "Kerzen, die das halbe absolute Delta ausmachen",
  "Cancellation between candle deltas": "Aufhebung zwischen den Kerzen-Deltas",
  "Of the candle deltas added up by size, {share} remained in the net.": "Von den nach Größe addierten Kerzen-Deltas sind {share} im Netto übrig geblieben.",
  "Candle delta signs": "Vorzeichen der Kerzen-Deltas",
@@ -2994,5 +2991,12 @@
   "other": "{n} einbezogene Fenster"
  },
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "Jedes einbezogene Fenster wird nach seiner Überlappung mit der Auswahl gewichtet. Fenster, denen eine Börse fehlt, werden ausgelassen, sodass die Menge der Börsen gleich bleibt.",
- "No column of this selection has a price centre: one side of the book is empty.": "Keine Spalte dieser Auswahl hat ein Preiszentrum: Eine Seite des Orderbuchs ist leer."
+ "No column of this selection has a price centre: one side of the book is empty.": "Keine Spalte dieser Auswahl hat ein Preiszentrum: Eine Seite des Orderbuchs ist leer.",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "Jeder Bereich unter der Karte hat in seiner Kopfzeile eine eigene Bereich-Schaltfläche, das gestrichelte Kästchen vor seinem Menü: Drücke sie und ziehe dann über diesen Bereich, um ihn in seinen eigenen Begriffen zusammenzufassen (sie leuchtet, solange sie auf das Ziehen wartet und solange das Fenster diesen Bereich zeigt). Das Fenster öffnet sich neben der Auswahl und bleibt, wohin du es ziehst.",
+ "Half the movement came in": "Die Hälfte der Bewegung kam in",
+ "Estimated net change {value}: added minus reduced": "Geschätzte Nettoänderung {value}: aufgebaut minus abgebaut",
+ "net {value}": "netto {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "Farbe steigender Kerzen: Käuferseite (neue Longs, geschlossene Shorts). Farbe fallender Kerzen: Verkäuferseite (neue Shorts, geschlossene Longs). Heller: geschlossen. Schraffiert: das Netto, aufgebaut minus abgebaut.",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "Bereich: einen Abschnitt dieses Bereichs zusammenfassen. Drücken, dann darüber ziehen, oder Strg (Cmd auf dem Mac) halten und ohne Drücken ziehen. Erneut drücken zum Wegräumen.",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "Ziehe über die Karte, um ein Rechteck zu wählen, oder über einen Bereich darunter oder die Flow-Spalte für eine Zeitspanne über alle Preise. Halte Strg (Cmd auf dem Mac) und ziehe, um ohne Auswählen oder die Bereich-Schaltfläche eines Bereichs zu wählen; Esc schließt."
 }

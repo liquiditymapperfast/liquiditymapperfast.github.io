@@ -859,7 +859,6 @@
  "What rested inside the box on average over its time, on the exchanges switched on.": "Что в среднем стояло внутри прямоугольника за его время на включённых биржах.",
  "New selection": "Новое выделение",
  "Select another part of the map or of a pane: drag across it.": "Выделите другую часть карты или панели: проведите по ней.",
- "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.": "Проведите по карте, чтобы выделить прямоугольник, или по панели под ней либо колонке потока — для отрезка времени по всем ценам. Ctrl+перетаскивание (Cmd на Mac) выделяет в любой момент; Esc закрывает.",
  "The map shows only part of this selection: its absorption marks and its largest order are counted for that part alone.": "Карта показывает только часть этого выделения: его отметки поглощения и крупнейший ордер считаются только для этой части.",
  "Only the largest marks of {venues} are held for these minutes, so their smaller ones are not counted.": "За эти минуты хранятся только крупнейшие отметки {venues}, поэтому меньшие не учитываются.",
  "The point of control is the price that traded the most; the value area is the band around it that holds 70% of the volume (the share is a setting), with its top and bottom the value area high and low (VAH, VAL). They are read from every price that traded, on rows of a fixed size, so zooming the price axis does not move them.": "Точка контроля — цена, по которой торговали больше всего; зона стоимости — полоса вокруг неё, где 70% объёма (доля настраивается), её верх и низ — верх и низ зоны стоимости (VAH, VAL). Они читаются по всем ценам с торгами, строками постоянного размера, поэтому масштаб оси цен их не сдвигает.",
@@ -2594,7 +2593,6 @@
   "other": "Имеющиеся сопоставимые окна из {n} свечи"
  },
  "{k} of {m} had a larger net change (closed, overlapping, this one included)": "У {k} из {m} чистое изменение было больше (закрытые, пересекающиеся, это включено)",
- "Half the absolute bar changes": "Половина абсолютных изменений полос",
  "{k} of {n} candles": "{k} из {n} свечей",
  "so far": "пока",
  "Against what is held": "В сравнении с имеющимся",
@@ -2679,7 +2677,6 @@
  "Longs net · shorts net": "Лонги нетто · шорты нетто",
  "Recorded taker volume": "Записанный объём тейкеров",
  "Recorded CVD, before → after selection": "Записанный CVD, до → после выделения",
- "Candles making half the absolute delta": "Свечи, дающие половину абсолютной дельты",
  "Cancellation between candle deltas": "Взаимное погашение дельт свечей",
  "Of the candle deltas added up by size, {share} remained in the net.": "Из дельт свечей, сложенных по величине, в нетто осталось {share}.",
  "Candle delta signs": "Знаки дельт свечей",
@@ -3086,5 +3083,12 @@
   "other": "{n} учтённого окна"
  },
  "Each included window is weighted by its overlap with the selection. Windows missing a venue are left out, so the set of venues stays the same.": "Каждое учтённое окно взвешивается по его пересечению с выделением. Окна, в которых не хватает какой-либо биржи, не учитываются, чтобы набор бирж оставался прежним.",
- "No column of this selection has a price centre: one side of the book is empty.": "Ни у одной колонки этого выделения нет ценового центра: одна сторона стакана пуста."
+ "No column of this selection has a price centre: one side of the book is empty.": "Ни у одной колонки этого выделения нет ценового центра: одна сторона стакана пуста.",
+ "Each pane under the map has its own Range button in its header, the dashed box before its menu: press it, then drag across that pane to sum it up in its terms (it lights while it waits for the drag and while the panel shows that pane). The panel opens beside the selection, and stays where you drag it.": "У каждой панели под картой есть своя кнопка «Диапазон» в заголовке — пунктирная рамка перед её меню: нажмите её, затем проведите по этой панели, чтобы подвести итог в её собственных показателях (кнопка светится, пока ждёт перетаскивания и пока окно показывает эту панель). Окно открывается рядом с выделением и остаётся там, куда вы его перетащите.",
+ "Half the movement came in": "Половина движения пришлась на",
+ "Estimated net change {value}: added minus reduced": "Оценка чистого изменения {value}: добавлено минус сокращено",
+ "net {value}": "нетто {value}",
+ "Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.": "Цвет растущих свечей: сторона покупателей (новые лонги, закрытые шорты). Цвет падающих свечей: сторона продавцов (новые шорты, закрытые лонги). Светлее: закрытые. Штриховка: нетто, добавлено минус сокращено.",
+ "Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.": "Диапазон: итог по отрезку этой панели. Нажмите, затем проведите по ней, или удерживайте Ctrl (Cmd на Mac) и проводите без нажатия. Нажмите ещё раз, чтобы убрать.",
+ "Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane's Range button; Esc closes.": "Проведите по карте, чтобы выделить прямоугольник, или по панели под ней либо колонке потока — для отрезка времени по всем ценам. Удерживайте Ctrl (Cmd на Mac) и проводите, чтобы выделить без кнопки «Выделить» или кнопки «Диапазон» панели; Esc закрывает."
 }
