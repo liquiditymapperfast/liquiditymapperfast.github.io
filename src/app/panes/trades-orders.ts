@@ -232,7 +232,11 @@ export class OrderList {
     const tiers = this.store.state.sounds.tiers;
     return { whale: scaledUsd(tiers.find(x => x.id === 'whale')?.usd ?? 400_000), leviathan: scaledUsd(tiers.find(x => x.id === 'leviathan')?.usd ?? 1_500_000) };
   }
-  #heightOf(rec: TradeRecord): number { return TIERS[tierOf(rec.usd, scaledUsd, this.#whale().whale)]!.row; }
+  /**
+   * An order's row height as it is drawn (its tier's height rounded to device pixels): the scroll and the slide walk what is drawn, so a row
+   * passing the top moves nothing else (walked at nominal heights, every row passing it would jog the list up to a device pixel).
+   */
+  #heightOf(rec: TradeRecord): number { const d = this.#dpr || 1; return Math.round(TIERS[tierOf(rec.usd, scaledUsd, this.#whale().whale)]!.row * d) / d; }
   /** Whether the orders at index positions `a` and `b` are one row (grouping on: one market, one side, one slice of GROUP_MS). */
   #together(a: TradeRecord, b: TradeRecord): boolean {
     return a.id === b.id && Math.sign(a.usd) === Math.sign(b.usd) && Math.floor(a.t / GROUP_MS) === Math.floor(b.t / GROUP_MS);

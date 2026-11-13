@@ -195,7 +195,11 @@ export class BlockList {
     this.#walker.sync(`${this.unit}|${r.version}|${r.dataKey()}`);
     return this.#walker;
   }
-  #rowHeight(row: Row): number { return row.kind === 'block' ? this.#rowH() : QUIET; }
+  /**
+   * A row's height as it is drawn (its nominal height rounded to device pixels): the scroll walks what is drawn, so a row passing the top
+   * moves nothing else (walked at nominal heights, every row passing it would jog the list up to a device pixel, more as they add up).
+   */
+  #rowHeight(row: Row): number { const d = this.#dpr || 1; return Math.round((row.kind === 'block' ? this.#rowH() : QUIET) * d) / d; }
   /** The block chosen, else the newest settled one, read into `out`. */
   inspected(out: Block): { block: Block; state: 'held' | 'newest' } {
     if (this.selected !== null) return { block: this.#read(this.selected, out), state: 'held' };
