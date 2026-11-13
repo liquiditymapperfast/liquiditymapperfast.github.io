@@ -1,4 +1,19 @@
-import { lsWindowPeriod, type LsSeries } from '../../shared/long-short.ts';
+import { lsWindowPeriod, type LsPopulation, type LsSeries } from '../../shared/long-short.ts';
+import { t } from '../i18n.ts';
+
+/** A reading stands until the next one, or for this many of its periods after it when none follows (a gap past that breaks the line). */
+export const HOLD_PERIODS = 3;
+
+/** Where the step of a series' reading `i` ends: at the next reading where it comes within the hold, else a period after it. */
+export function stepEnd(s: Pick<LsSeries, 'points' | 'periodMs'>, i: number): number {
+  const q = s.points[i]!, next = s.points[i + 1];
+  return next && next.t - q.t <= HOLD_PERIODS * s.periodMs ? next.t : q.t + s.periodMs;
+}
+
+/** The words for who a series counts. */
+export function populationText(population: LsPopulation): string {
+  return population === 'accounts' ? t('all accounts') : population === 'topAccounts' ? t('top traders, by accounts') : population === 'topPositions' ? t('top traders, by positions') : t('active accounts');
+}
 
 /**
  * When the Long/Short pane asks for readings, over which window, and what a round leaves drawn (pure, tested in tests/app-ls-window.test.mts).

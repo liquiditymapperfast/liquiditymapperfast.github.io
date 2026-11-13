@@ -15,16 +15,15 @@ import { TimePane, setHtml } from './lower-panes.ts';
 import { PaneTable, tableInk, type TableCell, type TableRoom } from './pane-table.ts';
 import type { Palette } from '../theme.ts';
 import { addTune } from '../pane-tune.ts';
-import { LS_BUDGET_MS, LS_ROUND_MS, LS_SOON_MS, lsFollowDelay, lsLanded, lsMessage, lsReach, lsWindow, type LsHeld } from './ls-window.ts';
+import { HOLD_PERIODS, LS_BUDGET_MS, LS_ROUND_MS, LS_SOON_MS, lsFollowDelay, lsLanded, lsMessage, lsReach, lsWindow, populationText, stepEnd, type LsHeld } from './ls-window.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
 import { IdbLsShown } from '../browser/ls-store.ts';
 import { LS_CHOSEN_VENUES, LS_METRICS, LS_VENUES, lsPopulationOf, lsWindowPeriod, type LsMetric, type LsPoint, type LsPopulation, type LsSeries } from '../../shared/long-short.ts';
+import { lsHeldKey, type LsPaneHeld } from '../range/ls-lines.ts';
 
 const HOUR = 3_600_000;
 /** One colour per venue, apart from each other on either theme (the brands' own are black on two of them); the venue's mark ends its line. */
 const LINE_COLORS: Readonly<Record<string, string>> = { binance: '#d4a106', bybit: '#e8590c', okx: '#7a5af8', bitget: '#0ca5b8' };
-/** A reading stands until the next one, or for this many of its periods after it when none follows (a gap past that breaks the line). */
-const HOLD_PERIODS = 3;
 
 /** The markets the pane shows: the OI pane's markets (those it adds together, or its one market) on a venue that publishes a ratio. */
 export function lsIds(state: AppState, hub: Hub): string[] {
@@ -39,16 +38,7 @@ export function lsIds(state: AppState, hub: Hub): string[] {
   return [...new Set(ids)].filter(id => venue(id) >= 0).sort((a, b) => venue(a) - venue(b));
 }
 
-/** The words for who a series counts. */
-export function populationText(population: LsPopulation): string {
-  return population === 'accounts' ? t('all accounts') : population === 'topAccounts' ? t('top traders, by accounts') : population === 'topPositions' ? t('top traders, by positions') : t('active accounts');
-}
-
-/** Where the step of a series' reading `i` ends: at the next reading where it comes within the hold, else a period after it. */
-export function stepEnd(s: Pick<LsSeries, 'points' | 'periodMs'>, i: number): number {
-  const q = s.points[i]!, next = s.points[i + 1];
-  return next && next.t - q.t <= HOLD_PERIODS * s.periodMs ? next.t : q.t + s.periodMs;
-}
+export { populationText, stepEnd };
 
 /** The lowest and highest share over the steps drawn in [t0, t1] (a reading counts while it holds, as the lines are drawn); null when no step is in view. */
 export function lsRange(series: readonly Pick<LsSeries, 'points' | 'periodMs'>[], t0: number, t1: number): { lo: number; hi: number } | null {
@@ -300,10 +290,27 @@ export class LsPane extends TimePane {
     warming.signal.addEventListener('abort', () => { if (this.#warming === warming) this.#warming = null; }, { once: true });
   }
 
+  /** What the pane drew last, for the Range summary of a selection made in it (range/ls-lines.ts); null with no market shown. */
+  get rangeHeld(): LsPaneHeld | null { return this.#rangeHeld; }
+  #rangeHeld: LsPaneHeld | null = null;
+  /** What `#rangeHeld` was made from: the series held, the markets, the replay's cut, the window asked and whether a round was under way. */
+  #rangeOf: { series: readonly LsSeries[]; sig: string } | null = null;
+  /** Keep what this drawing is made of: the same object while none of it changes (a pointer move draws the pane again with it). */
+  #keep(state: AppState, ids: readonly string[], series: readonly LsSeries[], tfMs: number, now: number): void {
+    const ident = `${ids.join(',')}|${state.lsMetric}|${state.timeframe}`, held = this.#held?.ident === ident ? this.#held : null, replayAt = replaying() ? Math.floor(now / 60_000) * 60_000 : null;
+    const sig = `${lsHeldKey(state, ids)}|${series.map(s => `${s.id}:${s.points.length}:${s.status}:${s.pending ? 1 : 0}`).join(',')}|${held?.from}|${held?.to}|${this.#loading}|${replayAt}`;
+    if (this.#rangeOf?.series === this.#series && this.#rangeOf.sig === sig) return;
+    this.#rangeOf = { series: this.#series, sig };
+    this.#rangeHeld = { key: lsHeldKey(state, ids), tf: state.timeframe, tfMs, ids, series, asked: held ? { from: held.from, to: held.to } : null, loading: this.#loading, replayAt };
+  }
+
   protected draw(): void {
     this.#lines = null;
     this.#table.clear();
+    const rangeHeld = this.#rangeHeld;
     this.#paint();
+    // The Range summary is worked out again only for new readings (a pointer move draws the pane from the same snapshot).
+    if (this.#rangeHeld !== rangeHeld) this.rangeChanged();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
@@ -317,11 +324,12 @@ export class LsPane extends TimePane {
     if (!ids.length) {
       ctx.fillStyle = p.muted; ctx.textAlign = 'left';
       ctx.fillText(t('None of the open-interest markets is on an exchange that publishes a long/short ratio (Binance, Bybit, OKX, Bitget, Gate).'), 12, ph / 2);
-      setHtml(readout, ''); return;
+      setHtml(readout, ''); this.#rangeHeld = null; this.#rangeOf = null; return;
     }
     this.#load(state, ids, tf);
     // Replay: only what had been published by the moment shown.
     const series = this.#series.filter(s => ids.includes(s.id)).map(s => replaying() ? { ...s, points: s.points.filter(q => q.t + s.periodMs <= now) } : s);
+    this.#keep(state, ids, series, tf, now);
     const shown = series.filter(s => s.points.length);
     // No step in view (readings held for another time draw nothing here): the pane says why.
     const range = lsRange(shown, v.t0, v.t1), blank = !range;

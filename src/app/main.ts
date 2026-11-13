@@ -34,7 +34,8 @@ import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import { DeltaPane, deltaHeldKey } from './panes/delta-pane.ts';
 import { NlnsSource } from './delta/nlns-source.ts';
-import { LsPane } from './panes/ls-pane.ts';
+import { LsPane, lsIds } from './panes/ls-pane.ts';
+import { LsRangeSummary, lsHeldKey } from './range/ls-lines.ts';
 import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
 import { ScriptPane } from './panes/script-pane.ts';
@@ -251,6 +252,12 @@ async function main(): Promise<void> {
   range.useProvider({
     pane: 'bars', title: () => t('Bar stats'), shown: () => store.state.show.stats, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
     lines: (sel, shown) => barsSummary.lines(sel, bars.rangeHeld, shown, barStatsHeldKey(store.state, heat.footprintMarkets(store.state)), pageNow(), store.state.timeZone, !enabledStats(store.state.barStats).length),
+  });
+  // A drag in the Long/Short pane sums up each venue's readings over the stretch (range/ls-lines.ts), as the pane draws them.
+  const lsSummary = new LsRangeSummary();
+  range.useProvider({
+    pane: 'ls', title: () => t('Long/Short'), shown: () => store.state.show.ls, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
+    lines: (sel, shown) => { const ids = lsIds(store.state, hub); return lsSummary.lines(sel, ls.rangeHeld, shown, lsHeldKey(store.state, ids), pageNow(), store.state.timeZone, !ids.length); },
   });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.
