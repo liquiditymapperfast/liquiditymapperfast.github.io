@@ -53,7 +53,8 @@ export const TNS_LOOKBACK_MS = 60 * 60_000;
  * at a time and its record marks a pass more than 2.5 s after the one before as uncovered (holes of 8 to 25 s every few minutes, at the same
  * moments on every market, 2026-11-12), but the feeds' trades wait in their sockets meanwhile: its recording held 2.2 large orders a second
  * inside those holes against 2.9 outside them. In the browser a hole is a page closed or reloaded (the history service's hour files end a
- * minute or so before the visit, then nothing until the page's own recording starts): those orders are not anywhere.
+ * minute or so before the visit, then nothing until the page's own recording starts): those orders are not anywhere. It is also the shortest
+ * line the list draws, once the orders the recording holds inside a hole are counted (`TnsBook.prefill`).
  */
 export const TNS_HOLE_MS: Readonly<Record<'server' | 'browser', number>> = { server: 2 * 60_000, browser: 5_000 };
 
@@ -73,6 +74,16 @@ export function recordedStretch(spans: readonly (readonly (readonly [number, num
   const tail = merged[merged.length - 1]!;
   if (until - tail[1] >= minHole) holes.push([tail[1], until]);
   return { since: merged[0]![0], holes };
+}
+
+/** How long after a hole starts the recording can still hold orders: coverage is stored cut at the minute still open (`shared/coverage.ts`). */
+const OPEN_MINUTE_MS = 60_000;
+
+/** The time of the newest of `held` (orders in ascending time) in [from, to), or null. */
+function newestIn(from: number, to: number, held: readonly Print[]): number | null {
+  let lo = 0, hi = held.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (held[mid]!.t < to) lo = mid + 1; else hi = mid; }
+  return lo > 0 && held[lo - 1]!.t >= from ? held[lo - 1]!.t : null;
 }
 
 /**
@@ -126,9 +137,9 @@ const keyOf = (p: Print): string => `${p.t}|${p.id}|${p.side}|${p.price}|${p.usd
  */
 export class TnsBook {
   #entries: Entry[] = [];
-  /** The recording's orders from before the seam, oldest first, with its holes as gaps (`prefill`). */
   /** Live orders were let go to the hold: the list no longer holds every order since the seam, so a fill must not claim it does. */
   #liveCut = false;
+  /** The recording's orders from before the seam, oldest first, with its holes as gaps (`prefill`). */
   #history: Entry[] = [];
   #keys = new Set<string>();
   #orders = 0;
@@ -172,12 +183,13 @@ export class TnsBook {
   /**
    * The orders the recording held from `since` to a little past the seam (when the stream opened), before everything that arrived live, in
    * exchange-time order, each once (those the stream sent too are its own), and the recording's `holes` among them as gaps (each a line where
-   * it fell; one running up to the seam sits between the recording and the live orders). A hole's line says nothing was recorded, so it is the
-   * longest stretch of the hole in which none of the orders placed from the recording falls, and none when that is shorter than `minHole` (the
-   * source's, `TNS_HOLE_MS`): coverage is stored for whole minutes only (`shared/coverage.ts`) while the history service's open hour holds
-   * orders up to when its piece was written, the next stretch's first orders can be stamped a moment before it starts, and the server's loop
-   * pauses are full of orders. A fill replaces the one before it: each answer is the whole of its window at its own smallest order (the list
-   * fills again when its smallest order is lowered). Returns how many orders it holds.
+   * it fell; one running up to the seam sits between the recording and the live orders). A hole's line says nothing was recorded, so it starts
+   * after the last order placed from the recording in the hole's first minute (coverage is stored cut at the minute still open, while the
+   * orders stored with that minute run up to when its piece was written; orders within `SEAM_SLACK_MS` of the hole's end are left out of this,
+   * as the next stretch's first orders can be stamped a moment before it starts), and from there it is the longest stretch in which none of
+   * those orders falls, never a quiet patch of a minute that was recorded. None when that is shorter than `minHole` (the source's,
+   * `TNS_HOLE_MS`): the server's loop pauses are full of orders. A fill replaces the one before it: each answer is the whole of its window at
+   * its own smallest order (the list fills again when its smallest order is lowered). Returns how many orders it holds.
    */
   prefill(prints: readonly Print[], since: number, holes: readonly (readonly [number, number])[] = [], minHole = 0): number {
     for (const e of this.#history) if (e.k === 'order') { this.#keys.delete(keyOf(e.p)); this.#orders--; }
@@ -195,7 +207,12 @@ export class TnsBook {
     }
     held.sort((a, b) => a.t - b.t);
     const gaps = holes.filter(h => h[1] > since && h[0] < this.seam)
-      .flatMap(h => { const free = longestFree(Math.max(h[0], since), Math.min(h[1], this.seam), held); return free[1] > free[0] && free[1] - free[0] >= minHole ? [free] : []; })
+      .flatMap(h => {
+        const from = Math.max(h[0], since), to = Math.min(h[1], this.seam);
+        const open = newestIn(from, Math.min(h[0] + OPEN_MINUTE_MS, to - SEAM_SLACK_MS), held) ?? from;
+        const free = longestFree(open, to, held);
+        return free[1] > free[0] && free[1] - free[0] >= minHole ? [free] : [];
+      })
       .sort((a, b) => a[0] - b[0]);
     const block: Entry[] = [];
     let g = 0;

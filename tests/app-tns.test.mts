@@ -162,6 +162,7 @@ test('the list takes every order the stream sends, and reaches the recording onl
   assert.match(hub, /const fresh = this\.prints\.add\(live\);\r?\n\s*if \(fresh\.length\) \{[^\n]*\}\r?\n\s*\/\/[^\n]*\r?\n\s*if \(live\.length\) this\.onLivePrints\(live\);/);
   const view = fs.readFileSync('src/app/panes/tns-view.ts', 'utf8');
   assert.doesNotMatch(view, /source\.|fetch\(|\.prints\(/, 'Time & sales asks no source itself (its fill goes through `prefill`, set by the page)');
+  assert.match(view, /this\.#book\.prefill\(got\.prints, got\.from, got\.holes, got\.minHole\)/, 'the source\'s shortest hole reaches the list (left out, every short line would be drawn)');
 });
 
 test('the recording covered from its first moment, with holes where no market was recorded; one venue reconnecting is no hole', () => {
@@ -244,6 +245,18 @@ test('a hole\'s line covers only where the recording holds no order: the open mi
   const pause = new TnsBook(seam);
   pause.prefill(Array.from({ length: 12 }, (_, i) => order(10 * M + i * 15 * S, id, 'buy', 70_000, 200_000)), 5 * M, [[10 * M, 13 * M]], TNS_HOLE_MS.server);
   assert.deepEqual(at(pause), [], 'a pause full of orders is no hole');
+  // A quiet patch inside the minute the recording was cut in is no hole: the line is the part after that minute's last order, even when shorter.
+  const quiet = new TnsBook(28 * M + 61 * S);
+  const busy = [0, 4, 8, 12, 16, 20, 36, 40, 44, 48, 52].map(s => order(28 * M + s * S, id, s % 8 ? 'buy' : 'sell', 70_000, 200_000));
+  quiet.prefill(busy, 20 * M, [[28 * M, 28 * M + 61 * S]], TNS_HOLE_MS.browser);
+  assert.deepEqual(at(quiet), [{ at: 28 * M + 61 * S, ms: 9 * S }], 'from 28:52 to the seam, not the 16 s without an order from 28:20 to 28:36');
+  // A hole running past the seam ends at it, and an order exactly at a hole's end is listed above the line.
+  const past = new TnsBook(seam);
+  past.prefill([order(27 * M, id, 'buy', 70_000, 200_000)], 20 * M, [[28 * M, 40 * M]], TNS_HOLE_MS.browser);
+  assert.deepEqual(at(past), [{ at: seam, ms: 2 * M }]);
+  const edge = new TnsBook(seam);
+  edge.prefill([order(27 * M, id, 'buy', 70_000, 200_000), order(29 * M, id, 'sell', 70_000, 200_000)], 20 * M, [[28 * M, 29 * M]], TNS_HOLE_MS.browser);
+  assert.deepEqual(rowsOf(edge).map(l => l.k === 'gap' ? `gap ${l.at - l.ms}-${l.at}` : String((l as TnsRow).t)), [String(29 * M), `gap ${28 * M}-${29 * M}`, String(27 * M)]);
   // A hole holding no order is the hole, whatever the shortest one.
   const empty = new TnsBook(seam);
   empty.prefill([order(9 * M, id, 'buy', 70_000, 200_000), order(14 * M, id, 'buy', 70_000, 200_000)], 5 * M, [[10 * M, 13 * M]], TNS_HOLE_MS.server);
