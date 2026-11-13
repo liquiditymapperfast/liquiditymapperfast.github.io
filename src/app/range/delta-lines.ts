@@ -245,7 +245,7 @@ export class DeltaRangeSummary {
     // The CVD before and after the selection, both in one unit so their difference reads as the delta (-$763.8M -> -$1,390.0M, not -$1.4B).
     if (s.cvd) lines.push({ key: 'dl-cvd', kind: 'stat', cells: [t('Recorded CVD, before → after selection'), usdPair(s.cvd.open, s.cvd.close)] });
     const spread: RangeLine[] = [];
-    if (s.held >= 3 && s.movement > 0) spread.push({ key: 'dl-half', kind: 'stat', cells: [t('Candles making half the absolute delta'), `${t('{k} of {n} candles', { k: s.half, n: s.held })}${forming ? ` ${t('so far')}` : ''}`] });
+    if (s.held >= 3 && s.movement > 0) spread.push({ key: 'dl-half', kind: 'stat', cells: [t('Half the movement came in'), `${t('{k} of {n} candles', { k: s.half, n: s.held })}${forming ? ` ${t('so far')}` : ''}`] });
     if (s.held >= 2 && s.movement > 0) {
       spread.push({ key: 'dl-offset', kind: 'stat', cells: [t('Cancellation between candle deltas'), pct(1 - Math.abs(s.delta) / s.movement)] });
       spread.push({ key: 'dl-offset-note', kind: 'note', tone: 'muted', cells: [t('Of the candle deltas added up by size, {share} remained in the net.', { share: pct(Math.abs(s.delta) / s.movement) })] });

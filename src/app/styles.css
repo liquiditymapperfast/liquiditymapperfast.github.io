@@ -272,9 +272,15 @@ html[data-layout="desktop"] .side-head > .pane-tools { position: static; flex: n
 /* The break after the first line (zero high, so the two gaps around it set the first line off from the controls): what the first line does not take starts the next one. */
 html[data-layout="desktop"] .side-head > .side-break { display: block; order: 3; flex: 1 0 100%; height: 0; }
 html[data-layout="desktop"] .side-head > :not(.grip, strong, button.help, .pane-tools, .side-break) { order: 4; }
-html[data-layout] .pane-head :is(.pane-x, .pane-more) { position: relative; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; line-height: 0; color: var(--muted); }
+html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range) { position: relative; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; line-height: 0; color: var(--muted); }
 html[data-layout] .pane-head .pane-x { --cross: 9px; }
-html[data-layout] .pane-head :is(.pane-x, .pane-more):hover { color: var(--text); }
+html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range):hover { color: var(--text); }
+/* A pane's Range button (range/tool.ts paneButton) before its menu: the dashed box the map's Select wears; lit in the accent while armed from it or showing its summary. */
+html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-range) { padding-right: 76px; }
+.pane-range::before { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-dasharray='4 3'%3E%3Crect x='3' y='5' width='18' height='14'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-dasharray='4 3'%3E%3Crect x='3' y='5' width='18' height='14'/%3E%3C/svg%3E") center / contain no-repeat; }
+html[data-layout] .pane-head .pane-range[data-state="on"] { color: var(--ui); background: color-mix(in srgb, var(--ui) 16%, transparent); box-shadow: inset 0 0 0 1px var(--ui); }
 .pane-more::before { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px; background: currentColor; -webkit-mask: var(--mark-more) center / contain no-repeat; mask: var(--mark-more) center / contain no-repeat; }
 /* A pane being dragged by its grip: a label with the pointer, a mark where it would stand (a bar between two panes, or the strip along an edge where a column is not there), and the pane itself dimmed. */
 body.pane-dragging, body.pane-dragging * { cursor: grabbing !important; user-select: none !important; }
@@ -322,9 +328,10 @@ html[data-bar="compact"] .toast { bottom: 76px; }
 @media (pointer: coarse) {
   main { --rail-w: 30px; }
   html[data-layout="desktop"] .pane-head.has-tools { padding-right: 76px; }
-  html[data-layout] .pane-head :is(.pane-x, .pane-more) { width: 30px; height: 30px; }
+  html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-range) { padding-right: 108px; }
+  html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range) { width: 30px; height: 30px; }
   html[data-layout] .pane-head .pane-x { --cross: 12px; }
-  .pane-more::before { width: 18px; height: 18px; }
+  :is(.pane-more, .pane-range)::before { width: 18px; height: 18px; }
   .edge-tab { font-size: 12px; }
 }
 .pane { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
@@ -535,6 +542,10 @@ pre.fatal { position: fixed; inset: 20px; color: var(--ask); white-space: pre-wr
 /* ---- shared panel (stats, highlights, sounds) ---- */
 .panel { position: fixed; z-index: 60; display: flex; flex-direction: column; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
   box-shadow: 3px 3px 0 var(--shadow); font-size: 12px; }
+/* A panel placed beside what it is about (ui.ts placeNear) rings twice in the accent colour where it lands, so the eye finds it there. */
+.panel.arrive { animation: panel-arrive 1.1s ease-out 1; }
+@keyframes panel-arrive { 0%, 50% { outline: 2px solid var(--ui); outline-offset: 0; } 25%, 75% { outline: 2px solid transparent; outline-offset: 4px; } 100% { outline: 2px solid transparent; outline-offset: 0; } }
+@media (prefers-reduced-motion: reduce) { .panel.arrive { animation: none; } }
 .panel-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; cursor: grab; user-select: none; touch-action: none; }
 .panel-head button { cursor: pointer; }
 /* A panel sized by its lower corners (ui.ts): its body takes the height, and a field marked to fill (a script's text) the room left in it. */
@@ -880,13 +891,15 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .range-lines { display: flex; flex-direction: column; gap: 2px; }
 .range-title { font-weight: 650; font-size: 13px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .range-note { margin: 2px 0 4px; }
-.range-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; line-height: 1.5; }
-.range-stat .label { color: var(--muted); flex: 0 0 auto; }
-.range-stat .value { text-align: right; font-variant-numeric: tabular-nums; }
+/* The label gives way (wrapping, a long script plot name too) before the value does, so a figure is never broken across lines. */
+.range-stat { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 12px; font-size: 12px; line-height: 1.5; }
+.range-stat .label { color: var(--muted); flex: 0 1 auto; max-width: 100%; overflow-wrap: anywhere; }
+.range-stat .value { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
 .range-stat.buy .value { color: var(--bid); }
 .range-stat.sell .value { color: var(--ask); }
 .range-stat.stack { flex-direction: column; align-items: stretch; gap: 0; }
-.range-stat.stack .value { text-align: left; }
+/* Under its label, from the left (the auto margin that pushes a value right would also stop it stretching here). */
+.range-stat.stack .value { margin-left: 0; text-align: left; }
 .range-split { margin: 4px 0 2px; }
 .range-split-bar { display: flex; height: 8px; border: 1px solid var(--line); }
 .range-split-bar .buy { flex: 0 0 var(--share); background: var(--bid); }
@@ -912,13 +925,18 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .range-stack .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .range-stack .label { color: var(--muted); }
 .range-stack .total { text-align: right; font-weight: 600; white-space: nowrap; }
-.range-stack .bars { display: flex; height: 10px; }
+.range-stack .bars { display: flex; height: 12px; }
 .range-stack .bars i { flex: 0 0 var(--w); box-sizing: border-box; }
 .range-stack .bars i.up { background: var(--candle-up); }
 .range-stack .bars i.down { background: var(--candle-down); }
 .range-stack .bars i.none { background: var(--muted); opacity: .45; }
 .range-stack .bars i.closed.up { background: color-mix(in srgb, var(--candle-up) 45%, transparent); box-shadow: inset 0 0 0 1px var(--candle-up); }
 .range-stack .bars i.closed.down { background: color-mix(in srgb, var(--candle-down) 45%, transparent); box-shadow: inset 0 0 0 1px var(--candle-down); }
+/* The shorter bar's gap to the longer one's end: the net change, hatched and outlined, its figure inside where the gap is wide enough. */
+.range-stack .bars i.gap { position: relative; container-type: inline-size; overflow: hidden; outline: 1px dashed color-mix(in srgb, var(--muted) 80%, transparent); outline-offset: -1px;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 28%, transparent) 0 2px, transparent 2px 5px); }
+.range-stack .bars i.gap > span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 1px 3px; font-size: 9.5px; line-height: 1; font-weight: 600; color: var(--muted); white-space: nowrap; background: color-mix(in srgb, var(--panel) 70%, transparent); }
+@container (max-width: 84px) { .range-stack .bars i.gap > span { display: none; } }
 /* Each venue's part: out of a zero line in the middle, right for more, left for less. */
 /* The same three columns in every row (no track grows with its text), so every bar's zero line is the section's. */
 .range-signed { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: 6px; align-items: center; font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
@@ -935,6 +953,8 @@ ol.steps { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 8px; line
 .range-signed.muted .bars i { opacity: .5; }
 /* Bar stats' chosen statistics: tiles two to a row, one where the panel is narrow; a category's tile lists its kinds with their counts. */
 .range-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 6px 10px; margin: 2px 0 4px; }
+/* A tile listing counts or figures by line takes the panel's width: at half of it, each figure fell to a line under its label. */
+.range-tile.rows { grid-column: 1 / -1; }
 .range-tile { display: flex; flex-direction: column; min-width: 0; padding: 3px 6px; border-left: 2px solid var(--line); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; }
 .range-tile .label { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .range-tile .value { font-weight: 600; overflow-wrap: anywhere; }

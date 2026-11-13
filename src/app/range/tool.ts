@@ -15,6 +15,7 @@ import { priceOf, pricePieces, rangeLines, type RangeInput, type RangeLine } fro
 import { venueMark } from '../venue-marks.ts';
 import { scaledUsd } from '../coin.ts';
 import { pageNow, replaying } from '../replay/clock.ts';
+import type { Box } from '../placement.ts';
 
 /**
  * The panel's lines, kept as elements: a line is built again only when what it says changes, and the list is put in order only when the
@@ -64,7 +65,7 @@ function lineNode(line: RangeLine): HTMLElement {
       const bar = el('span', { class: 'bars' });
       for (const part of line.parts ?? []) {
         if (!(part.size > 0)) continue;
-        const piece = el('i', { class: `${part.tone}${part.closed ? ' closed' : ''}`, tip: part.tip });
+        const piece = el('i', { class: `${part.tone}${part.closed ? ' closed' : ''}`, tip: part.tip }, ...(part.text ? [el('span', { textContent: part.text })] : []));
         piece.style.setProperty('--w', `${(Math.max(0, part.size) * 100).toFixed(2)}%`);
         bar.append(piece);
       }
@@ -83,7 +84,7 @@ function lineNode(line: RangeLine): HTMLElement {
       // Tiles two to a row: a label, the figure (or lines of counts) and a note; the tip says what the statistic is.
       const grid = el('div', { class: 'range-grid' });
       for (const item of line.grid ?? []) {
-        const tile = el('div', { class: `range-tile${item.tone && item.tone !== 'text' ? ` ${item.tone}` : ''}`, ...(item.tip ? { tip: item.tip } : {}) }, el('span', { class: 'label', textContent: item.label }));
+        const tile = el('div', { class: `range-tile${item.tone && item.tone !== 'text' ? ` ${item.tone}` : ''}${item.rows?.length ? ' rows' : ''}`, ...(item.tip ? { tip: item.tip } : {}) }, el('span', { class: 'label', textContent: item.label }));
         if (item.value) tile.append(el('span', { class: 'value', textContent: item.value }));
         for (const row of item.rows ?? []) tile.append(el('span', { class: `count${row.tone && row.tone !== 'text' ? ` ${row.tone}` : ''}` }, el('span', { textContent: row.label }), el('b', { textContent: row.value })));
         if (item.note) tile.append(el('small', { textContent: item.note }));
@@ -141,15 +142,74 @@ export class RangeTool {
   /** A pane's summary drawn again at most once a second as its data changes, and each second while it is live (its end follows the clock). */
   #paneTimer = 0;
   #paneDrawn = 0;
-  /** The toolbar's button: the panel opens beside it. */
-  anchor: HTMLElement | null = null;
+  /**
+   * The button the Range tool is used from on the page as it is laid out (the map corner's Select on a desktop, the toolbar's Range in a phone's
+   * sheet): a panel with no selection to stand beside opens by it. A fixed element left the panel in the window's corner whenever that one was
+   * not on the page (the toolbar's Range button is not, on a desktop).
+   */
+  anchorOf: () => HTMLElement | null = () => null;
+  /** The pane whose Range button armed the tool: its button is lit while armed. */
+  #armedPane: RangePane | null = null;
+  /** The panes' Range buttons, lit while armed from them or while their summary is shown. */
+  readonly #buttons = new Map<RangePane, HTMLButtonElement>();
+  /** Where the pointer went down and came up last (window pixels, and when it came up): a selection's panel opens beside the drag. */
+  #down: { x: number; y: number } | null = null;
+  #up: { x: number; y: number; at: number } | null = null;
+  /** The pointer where the drag in progress began. */
+  #dragFrom: { x: number; y: number } | null = null;
+  /** The box the last selection was made in on the screen: its panel stands beside it, and comes back there when the panel is opened again. */
+  #near: Box | null = null;
   /** The map's time window (set by the page): the absorption marks and the large orders are loaded for it, and for no other. */
   mapWindow: () => { t0: number; t1: number } | null = () => null;
 
   constructor(private store: Store, private hub: Hub) {
-    window.addEventListener('keydown', e => { if (e.key === 'Escape' && this.#start) { e.preventDefault(); this.cancel(); } });
+    window.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (this.#start) { e.preventDefault(); this.cancel(); }
+      // Armed from a pane's button with no panel open (a panel takes its own Escape and puts everything away): disarmed, unless the Escape
+      // was another's (a dialog, a menu, a panel that took it first).
+      else if (!e.defaultPrevented && !document.querySelector('dialog[open], .menu') && this.store.state.rangeTool && this.#armedPane && !this.#panel) { e.preventDefault(); this.store.set({ rangeTool: false }); }
+    });
     document.addEventListener('visibilitychange', () => { this.#schedule(); this.#paneSoon(); });
     this.#show.onchange = () => this.#choose(this.#show.value === 'map' ? 'map' : this.#show.value as RangePane);
+    // Seen before the panes' own handlers (capture), so a drag's ends are known when the pane calls begin and end.
+    document.addEventListener('pointerdown', e => { this.#down = { x: e.clientX, y: e.clientY }; }, true);
+    document.addEventListener('pointerup', e => { this.#up = { x: e.clientX, y: e.clientY, at: performance.now() }; }, true);
+    store.subscribe((state, changed) => {
+      if (!changed.has('rangeTool') && !changed.has('range')) return;
+      if (!state.rangeTool) this.#armedPane = null;
+      this.#lamps();
+    });
+  }
+
+  /**
+   * The Range button of a pane's header: it arms the tool for a drag across that pane (Ctrl+drag needs no button), and lights while armed from
+   * there or while the panel shows that pane's summary. Pressed again while lit, it puts the selection away; while the panel shows another
+   * summary, it arms for a new selection and leaves that panel open until the drag ends (as New selection does).
+   */
+  paneButton(pane: RangePane): HTMLButtonElement {
+    const button = el('button', { type: 'button', class: 'pane-range', ariaLabel: t('Range'), tip: t('Range: sum up a stretch of this pane. Press, then drag across it, or hold Ctrl (Cmd on a Mac) and drag without pressing. Press again to put it away.') });
+    button.onclick = () => this.#paneClick(pane);
+    this.#buttons.set(pane, button); this.#lamps();
+    return button;
+  }
+  #paneClick(pane: RangePane): void {
+    const state = this.store.state, sel = state.range && !state.range.draft ? state.range : null;
+    if (state.rangeTool && this.#armedPane === pane) {
+      // Armed from here: disarmed; a selection on show stays with its panel.
+      if (sel && this.#panel) { this.store.set({ rangeTool: false }); this.#render(); } else this.stop();
+      return;
+    }
+    if (sel && this.#panel && this.#context === pane) { this.stop(); return; }
+    this.store.set({ rangeTool: true });
+    this.#armedPane = pane; this.#lamps();
+  }
+  #lamps(): void {
+    const state = this.store.state, shown = this.#panel !== null && state.range !== null && !state.range.draft ? this.#context : null;
+    for (const [pane, button] of this.#buttons) {
+      const on = (state.rangeTool && this.#armedPane === pane) || shown === pane, value = on ? 'on' : 'off';
+      if (button.dataset.state !== value) { button.dataset.state = value; button.setAttribute('aria-pressed', String(on)); }
+    }
   }
 
   /** A pane that sums up a stretch in its own terms: a drag in it opens its summary, and the Show menu offers it. */
@@ -207,13 +267,14 @@ export class RangeTool {
   toggle(): void {
     const sel = this.store.state.range;
     if (this.#panel) this.stop();
-    else if (sel && !sel.draft) { this.#open(); if (this.#context === 'map') void this.#gather(sel, false); else { this.#render(); this.#paneSoon(); } }
+    else if (sel && !sel.draft) { this.#open(); (this.#panel as Panel | null)?.placeNear(this.#near); if (this.#context === 'map') void this.#gather(sel, false); else { this.#render(); this.#paneSoon(); } }
     else if (this.store.state.rangeTool) this.stop();
     else this.arm();
   }
 
   /** Arm the tool: the next drag selects. On a desktop the panel says how; on a phone it would cover the map, so it waits for the selection. */
   arm(): void {
+    this.#armedPane = null;
     this.store.set({ rangeTool: true });
     if (!compactBar()) this.#open();
     if (!this.store.state.range) this.#render();
@@ -223,15 +284,16 @@ export class RangeTool {
     if (this.#stopping) return;
     this.#stopping = true;
     window.clearTimeout(this.#timer); this.#timer = 0; window.clearTimeout(this.#paneTimer); this.#paneTimer = 0; this.#asked++; this.#oiFor++; this.#priceFor++;
-    this.#start = null; this.#before = null; this.#input = null; this.#context = 'map';
+    this.#start = null; this.#before = null; this.#input = null; this.#context = 'map'; this.#armedPane = null; this.#near = null; this.#dragFrom = null;
     this.store.set({ rangeTool: false, range: null });
     this.#panel?.close(); this.#panel = null;
     this.#stopping = false;
+    this.#lamps();
   }
 
   /** A drag begins at `at`, in the pane under the map `pane` (none: the map or the flow column). */
   begin(at: RangePoint, pane?: RangePane): void {
-    this.#start = at; this.#pane = pane; this.#before = this.store.state.range?.draft === false ? this.store.state.range : null;
+    this.#start = at; this.#pane = pane; this.#before = this.store.state.range?.draft === false ? this.store.state.range : null; this.#dragFrom = this.#down;
     this.store.set({ range: draftOf(at, at, pane, this.#step()) });
   }
   /** The pane the drag in progress began in. */
@@ -246,6 +308,10 @@ export class RangeTool {
     const start = this.#start; if (!start) return;
     if (small) { this.cancel(); return; }
     this.#start = null; this.#before = null;
+    // The box the drag covered on the screen: from the press that began it to the release within the last second (a selection made from a
+    // drawing's Inspect button gets that button's click, a point, and opens beside it; one made from the keyboard long after any click has none).
+    const up = this.#up && performance.now() - this.#up.at < 1_000 ? this.#up : null, down = this.#dragFrom; this.#dragFrom = null;
+    const box = up && down ? { left: Math.min(down.x, up.x), right: Math.max(down.x, up.x), top: Math.min(down.y, up.y), bottom: Math.max(down.y, up.y) } : null;
     // A drag in a pane that sums up its own bars holds whole bars of it and opens its summary; elsewhere whole minutes and the map's.
     const provider = this.#pane ? this.#providers.get(this.#pane) : undefined, step = this.#step() ?? MINUTE;
     // Replay: snapped on its clock, up to its moment, and never live (the live refresh would move it with the real now).
@@ -253,13 +319,15 @@ export class RangeTool {
     this.store.set({ range: sel, rangeTool: false });
     this.#context = provider ? provider.pane : 'map';
     this.#input = null; this.#asked++; window.clearTimeout(this.#timer); this.#timer = 0;
-    this.#open();
+    this.#near = box; this.#open();
+    this.#panel?.placeNear(box);
+    this.#lamps();
     if (this.#context === 'map') void this.#gather(sel, true);
     else { this.#render(); this.#paneSoon(); }
   }
   cancel(): void {
     if (!this.#start) return;
-    this.#start = null;
+    this.#start = null; this.#dragFrom = null;
     this.store.set({ range: this.#before }); this.#before = null;
     // The selection put back goes on as it was: live, its figures are taken (or drawn) again; a refresh already due is left as it is.
     if (!this.#timer) this.#schedule();
@@ -267,13 +335,15 @@ export class RangeTool {
   }
 
   #open(): void {
-    if (this.#panel || !this.anchor) return;
+    const anchor = this.anchorOf();
+    if (this.#panel || !anchor) return;
     const again = el('button', { type: 'button', textContent: t('New selection'), tip: t('Select another part of the map or of a pane: drag across it.'), onclick: () => { this.store.set({ rangeTool: true }); this.#render(); } });
     const show = el('label', { class: 'ctl range-show-ctl', tip: t('What the panel sums up for the selection: the map (market orders, absorption, resting orders), or a pane under it in its own terms. A drag in a pane opens its own.') }, t('Show'), this.#show);
-    this.#panel = openPanel(this.anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; window.clearTimeout(this.#timer); this.#timer = 0; window.clearTimeout(this.#paneTimer); this.#paneTimer = 0; queueMicrotask(() => { if (!openedPanel()) this.stop(); }); } }, (tools, body) => {
+    this.#panel = openPanel(anchor, { title: t('Range'), width: 420, align: 'left', stays: true, onClose: () => { this.#panel = null; window.clearTimeout(this.#timer); this.#timer = 0; window.clearTimeout(this.#paneTimer); this.#paneTimer = 0; this.#lamps(); queueMicrotask(() => { if (!openedPanel()) this.stop(); }); } }, (tools, body) => {
       tools.append(again, el('span', { class: 'spacer' }), show, helpButton('range'));
       body.append(this.#lines.root);
     });
+    this.#lamps();
   }
 
   /**
@@ -401,10 +471,10 @@ export class RangeTool {
 
   #render(): void {
     const input = this.#input, sel = this.store.state.range, provider = this.#context !== 'map' ? this.#providers.get(this.#context) : undefined;
-    this.#syncShow();
+    this.#syncShow(); this.#lamps();
     const lines: RangeLine[] = sel && !sel.draft && provider ? provider.lines(sel, provider.shown())
       : input && sel && !sel.draft ? rangeLines(input)
-      : [{ key: 'intro', kind: 'note', cells: [t('Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Ctrl+drag (Cmd on a Mac) selects at any time; Esc closes.')] }];
+      : [{ key: 'intro', kind: 'note', cells: [t('Drag across the map to select a box, or across a pane under it or the flow column for a stretch of time at every price. Hold Ctrl (Cmd on a Mac) and drag to select without pressing Select or a pane\'s Range button; Esc closes.')] }];
     const before = this.#lines.root.childElementCount;
     this.#lines.update(lines);
     if (this.#lines.root.childElementCount !== before) this.#panel?.reposition();

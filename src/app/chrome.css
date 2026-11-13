@@ -122,9 +122,9 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x) { border: 1px solid var(--edge); border-radius: var(--radius); background: var(--face); color: var(--text); }
 :is(.panel-x, .guide-x, .notice-close, .panel .srow .x, .sheet-x):hover { background: var(--face); color: var(--text); border-color: var(--text); }
 /* The menu key beside a pane's close button is the same small square (the bevel frame draws its own, from its generic button). */
-:where(:root:not([data-frame="bevel"])) .pane-more { border: 1px solid var(--edge); border-radius: var(--radius); background: var(--face); }
-:where(:root:not([data-frame="bevel"])) .pane-more:hover { border-color: var(--text); }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head .pane-more { width: 16px; height: 14px; flex: none; }
+:where(:root:not([data-frame="bevel"])) :is(.pane-more, .pane-range) { border: 1px solid var(--edge); border-radius: var(--radius); background: var(--face); }
+:where(:root:not([data-frame="bevel"])) :is(.pane-more, .pane-range):hover { border-color: var(--text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(.pane-more, .pane-range) { width: 16px; height: 14px; flex: none; }
 /* A menu's lit row: a tint of the theme's blue, the text left as it is. */
 .menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--ui) 16%, var(--panel)); color: var(--text); }
 .menu-item:focus-visible { outline: 2px solid var(--ui); outline-offset: -2px; }
@@ -517,7 +517,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
    blurred their drawn edges and marks. Lists and buttons are 20 px (the desktop's were 21 to 23), the keys beside them as tall, the name, captions
    and figures on 14 px lines, the keys of the title bar 16 x 14. */
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane .pane-head { --head-key: 20px; }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(select, button:not(.help, .pane-x, .pane-more, [data-fit="key"])) { box-sizing: border-box; height: 20px; min-height: 0; padding-top: 0; padding-bottom: 0; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(select, button:not(.help, .pane-x, .pane-more, .pane-range, [data-fit="key"])) { box-sizing: border-box; height: 20px; min-height: 0; padding-top: 0; padding-bottom: 0; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head :is(.ctl, .readout) { line-height: 14px; }
 /* A pane's name in the desktop's title type: bold at the system size (8 pt, 11 px), as the bar's deck names and a window's title are, on a line
    as tall as the controls, so the first line is 20 px in every pane. The title-bar keys of a pane under the map stand outside the line (absolute):
@@ -525,7 +525,8 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-head > strong { font-size: 11px; line-height: 20px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]):not([data-layout^="phone"]) .pane-head:not(.side-head) > .pane-tools { top: 4px; height: 20px; align-items: center; }
 /* Its keys at the end are the title bar's: black drawings (a grey one was the desktop's look for a key that cannot be pressed), the menu's three dots drawn too. */
-:root[data-frame="bevel"] .pane-head :is(.pane-x, .pane-more), :root[data-frame="bevel"] .pane-head :is(.pane-x, .pane-more):hover { color: var(--text); }
+:root[data-frame="bevel"] .pane-head :is(.pane-x, .pane-more, .pane-range), :root[data-frame="bevel"] .pane-head :is(.pane-x, .pane-more, .pane-range):hover { color: var(--text); }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane-range::before { width: 10px; height: 9px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-more::before { width: 8px; height: 2px; -webkit-mask: var(--bv-more) 0 0 / 8px 2px no-repeat; mask: var(--bv-more) 0 0 / 8px 2px no-repeat; }
 /* The flow column's settings key is one of the header's keys, square, its sliders drawn (the split buttons' too). */
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear { position: relative; width: var(--head-key); height: var(--head-key); padding: 0; }

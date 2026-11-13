@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EDGE, FLOOR, GAP, anchorBox, chooseSide, dragTo, placeOn } from '../src/app/placement.ts';
+import { EDGE, FLOOR, GAP, anchorBox, besideBox, chooseSide, dragTo, placeOn } from '../src/app/placement.ts';
 
 // Where a panel opens and where it may be dragged, as numbers. The first case is measured: Karl's screen (3840 x 1970 at 150%, so 2560 x 1313
 // CSS pixels), the Stats button of the bar stats at 915-934, and the panel's contents about 1,990 px tall (the body alone was 1,922).
@@ -84,4 +84,23 @@ test(`a panel opened from a button of a top-bar deck is placed by the whole deck
   assert.equal(at.left, button.left, 'and keeps to its button sideways');
   assert.equal(placeOn('below', button, 400, 380, 'left', VIEW).top, button.bottom + GAP, "by the button alone it began at the first row's foot, over the second");
   assert.equal(anchorBox(button, null), button, 'a button outside any deck keeps its own box');
+});
+
+test('a Range panel opens beside its selection, right of it where it fits, else left of it, never in the window corner', () => {
+  // Karl's screen (2560 x 1313 CSS px): a drag across the OI pane from x 900 to 1460 at y 1000, the panel 420 wide and 1,100 tall.
+  const drag = { left: 900, top: 1000, right: 1460, bottom: 1000 };
+  const at = besideBox(drag, 1_100, 420, VIEW);
+  assert.equal(at.left, drag.right + GAP, 'right of the selection: 1,094 px of room for 420');
+  assert.equal(at.top, VIEW.height - EDGE - 1_100, 'raised just enough to be whole on the screen');
+  assert.ok(at.top + 1_100 <= VIEW.height - EDGE && at.maxHeight >= 1_100);
+  const live = { left: 1500, top: 300, right: 2300, bottom: 300 };                                       // reaches the live edge
+  const left = besideBox(live, 600, 420, VIEW);
+  assert.equal(left.left, live.left - GAP - 420, 'no room on the right (244 px): left of it');
+  assert.equal(left.top, 300, 'its top beside the place the drag was');
+  const wide = { left: 300, top: 200, right: 2300, bottom: 900 };                                         // nearly the whole width
+  assert.equal(besideBox(wide, 600, 420, VIEW).left, EDGE, 'no room either side: against the edge on the roomier side (300 left, 260 right)');
+  assert.equal(besideBox({ ...wide, left: 200, right: 2200 }, 600, 420, VIEW).left, VIEW.width - EDGE - 420, 'the right when it has more room');
+  const tall = besideBox(drag, 5_000, 420, { width: 2560, height: 700 });
+  assert.equal(tall.top, EDGE, 'taller than the window: from the top');
+  assert.equal(tall.maxHeight, 700 - 2 * EDGE, 'and as tall as the window allows');
 });

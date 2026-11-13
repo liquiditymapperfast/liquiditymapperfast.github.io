@@ -243,7 +243,7 @@ async function main(): Promise<void> {
   toolbar.profileAnchorBar = at => heat.profileAnchorBar(at);
   heat.onAnchoredWindow = () => toolbar.refreshTradedPanel();
   // The Range tool: a drag on the map, on a pane under it or across the flow column selects, and its panel adds up what happened there.
-  const range = new RangeTool(store, hub); range.anchor = toolbar.rangeButton; range.mapWindow = () => ({ t0: heat.view.t0, t1: heat.view.t1 });
+  const range = new RangeTool(store, hub); range.anchorOf = () => toolbar.rangeButton; range.mapWindow = () => ({ t0: heat.view.t0, t1: heat.view.t1 });
   heat.range = range; cvd.range = range; for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useRange(range);
   toolbar.onRange = () => range.toggle();
   // A drag in the Delta pane sums up its own candles (range/delta-lines.ts): what it drew, in its own terms.

@@ -68,7 +68,10 @@ test('NL/NS: added and reduced on one scale with their shares, the difference fr
   const lines = summary.lines(s, one(oi, { who }), true, null, KEY, NOW);
   assert.equal(text(lines, 'oi-added'), 'Added | +13');
   assert.equal(text(lines, 'oi-reduced'), 'Reduced | −8.0');
-  assert.deepEqual(lines.find(l => l.key === 'oi-reduced')!.parts!.map(p => [p.tone, p.closed, +p.size.toFixed(3)]), [['up', true, 0.231], ['down', true, 0.385], ['none', true, 0]], 'on the scale of the larger, Added');
+  assert.deepEqual(lines.find(l => l.key === 'oi-reduced')!.parts!.map(p => [p.tone, p.closed, +p.size.toFixed(3)]), [['up', true, 0.231], ['down', true, 0.385], ['none', true, 0], ['gap', undefined, 0.385]], 'on the scale of the larger, Added, and runs on to its end hatched: the net');
+  const gap = lines.find(l => l.key === 'oi-reduced')!.parts!.at(-1)!;
+  assert.equal(gap.text, 'net +5.0', 'its figure inside');
+  assert.equal(lines.find(l => l.key === 'oi-added')!.parts!.some(p => p.tone === 'gap'), false, 'the longer bar has none');
   assert.equal(text(lines, 'oi-opened'), 'New longs · new shorts | +10 BTC (77%) · +3.0 BTC (23%)');
   assert.equal(text(lines, 'oi-who-diff'), undefined, 'the estimate\'s net +5 is the known change');
   // The view moved on: the pane's model holds one of the two candles. The full result stays, said so.
@@ -96,7 +99,7 @@ test('a live stretch is forming and not compared; the half of the movement says 
   assert.match(text(lines, 'oi-title')!, / · forming$/);
   assert.equal(text(lines, 'oi-before'), undefined);
   assert.equal(text(lines, 'oi-rank'), undefined);
-  assert.equal(text(lines, 'oi-half'), 'Half the absolute bar changes | 1 of 3 candles so far');
+  assert.equal(text(lines, 'oi-half'), 'Half the movement came in | 1 of 3 candles so far');
   const closed = new OiRangeSummary().lines(sel(T + 3 * H, T + 5 * H), one(oi), true, null, KEY, now);
   assert.equal(text(closed, 'oi-before'), 'Previous 2 candles (2 h) | +3.0 BTC');
   assert.equal(text(closed, 'oi-rank'), 'Comparable 2-candle windows held | 1 of 4 had a larger net change (closed, overlapping, this one included)', 'the forming candle is in no window: (1,2) +3, (2,3) +3, this +7, (4,5) +8');

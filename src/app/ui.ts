@@ -1,7 +1,7 @@
 import { el } from './dom.ts';
 import { compactBar, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
-import { EDGE, anchorBox, chooseSide, placeOn, type Side } from './placement.ts';
+import { EDGE, anchorBox, besideBox, chooseSide, placeOn, type Box, type Side } from './placement.ts';
 import { makeDraggable } from './drag.ts';
 import { t } from './i18n.ts';
 import { sizeText, takeSize, type SizeRule, type SizeWhy } from './sizes.ts';
@@ -36,6 +36,12 @@ export interface Panel {
   /** Replace the contents while keeping the scroll position. */
   render(build: (tools: HTMLElement, body: HTMLElement) => void): void;
   reposition(): void;
+  /**
+   * Place it beside `box` (in window pixels: what it is about, such as a selection on the chart) rather than by its button, until it is given
+   * another box or none (`null`: by its button again). The box is taken once: the panel does not follow what it is about as that moves. A
+   * panel the person has moved stays where they put it. It briefly lights up where it lands, so the eye finds it.
+   */
+  placeNear(box: Box | null): void;
   close(): void;
 }
 
@@ -92,6 +98,8 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
   const natural = (): number => { const keep = root.style.maxHeight; root.style.maxHeight = 'none'; const height = root.offsetHeight; root.style.maxHeight = keep; return height; };
   /** The side of its button it opened on: chosen when it opens and when the window changes, not on every redraw, so ticking an option cannot make it jump across the button. */
   let side: Side | null = null;
+  /** The box it is placed beside instead of its button (`placeNear`), or none. */
+  let near: Box | null = null;
   const drag = makeDraggable(root, {
     grabs: target => head.contains(target) && !target.closest('button, a, input, select, textarea'),
     enabled: () => !compactBar(),
@@ -105,6 +113,11 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
     root.style.width = `${Math.min(sized?.width ?? width, window.innerWidth - 2 * EDGE)}px`;
     root.style.height = sized ? `${Math.min(sized.height, window.innerHeight - 2 * EDGE)}px` : '';
     if (drag.moved()) { drag.clamp(); return; }
+    if (near) {
+      const at = besideBox(near, natural(), root.offsetWidth, { width: window.innerWidth, height: window.innerHeight });
+      root.style.maxHeight = `${at.maxHeight}px`; root.style.top = `${at.top}px`; root.style.left = `${at.left}px`;
+      return;
+    }
     // A button of a top-bar deck places its panel by the whole deck: under the button alone the panel hid the deck's other row of buttons.
     const a = placedBy(anchor).getBoundingClientRect(), deck = anchor.closest('fieldset.deck')?.getBoundingClientRect();
     const box = anchorBox({ left: a.left, top: a.top, right: a.right, bottom: a.bottom }, deck ? { left: deck.left, top: deck.top, right: deck.right, bottom: deck.bottom } : null);
@@ -144,6 +157,12 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
       if (focus) [...body.querySelectorAll<HTMLElement>('[data-focus]')].find(x => x.dataset.focus === focus)?.focus({ preventScroll: true });
     },
     reposition: () => reposition(),
+    placeNear(box) {
+      near = box; reposition(true);
+      if (!box || compactBar() || drag.moved()) return;
+      // Started again on every new place (a class left on would not run its animation a second time).
+      root.classList.remove('arrive'); void root.offsetWidth; root.classList.add('arrive');
+    },
     close() {
       if (current !== panel) return;
       current = null; root.remove(); scrim.remove(); anchor.classList.remove('open');

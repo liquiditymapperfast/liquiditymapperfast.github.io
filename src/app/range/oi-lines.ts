@@ -149,12 +149,12 @@ export class OiRangeSummary {
     const context: RangeLine[] = [];
     if (s.before !== null) context.push({ key: 'oi-before', kind: 'stat', cells: [tn(n, 'Previous {n} candle ({span})', 'Previous {n} candles ({span})', { span: durationText(s.t1 - s.t0) }), signedCoins(s.before, held.coin)] });
     if (s.rank) context.push({ key: 'oi-rank', kind: 'stat', stack: true, cells: [tn(n, 'Comparable {n}-candle windows held', 'Comparable {n}-candle windows held'), t('{k} of {m} had a larger net change (closed, overlapping, this one included)', { k: s.rank.larger.toLocaleString('en-US'), m: s.rank.of.toLocaleString('en-US') })] });
-    if (s.half && n >= 3 && s.known === n) context.push({ key: 'oi-half', kind: 'stat', cells: [t('Half the absolute bar changes'), `${t('{k} of {n} candles', { k: s.half.bars, n })}${forming ? ` ${t('so far')}` : ''}`] });
+    if (s.half && n >= 3 && s.known === n) context.push({ key: 'oi-half', kind: 'stat', cells: [t('Half the movement came in'), `${t('{k} of {n} candles', { k: s.half.bars, n })}${forming ? ` ${t('so far')}` : ''}`] });
     if (context.length) lines.push({ key: 'h-oi-context', kind: 'heading', cells: [t('Against what is held')] }, ...context);
 
     const details: RangeLine[] = [];
     if (s.largest && n > 1) details.push({ key: 'oi-largest', kind: 'stat', cells: [t('Largest bar change'), `${clock(s.largest.t, true)} · ${signedCoins(s.largest.change, held.coin)}`] });
-    if (s.fall && s.fall.amount > 0 && n > 1) details.push({ key: 'oi-fall', kind: 'stat', cells: [t('Largest sampled fall'), `${signedCoins(-s.fall.amount, held.coin)} · ${s.t1 - s.t0 > 86_400_000 ? `${clock(s.fall.from, true)} → ${clock(s.fall.to, dayOf(s.fall.to - 1) !== dayOf(s.fall.from))}` : `${clock(s.fall.from)} → ${clock(s.fall.to)}`}`] });
+    if (s.fall && s.fall.amount > 0 && n > 1) details.push({ key: 'oi-fall', kind: 'stat', cells: [t('Largest sampled fall'), `${signedCoins(-s.fall.amount, held.coin)} · ${dayOf(s.t1 - 1) !== dayOf(s.t0) ? `${clock(s.fall.from, true)} → ${clock(s.fall.to, dayOf(s.fall.to - 1) !== dayOf(s.fall.from))}` : `${clock(s.fall.from)} → ${clock(s.fall.to)}`}`], ...(dayOf(s.t1 - 1) !== dayOf(s.t0) ? { stack: true } : {}) });
     if (held.flag) details.push({ key: 'oi-flagged', kind: 'stat', cells: [t('Marked by Highlights'), tn(s.flagged, '{n} bar', '{n} bars')] });
     const liq = liquidationLine(s, held, liquidations);
     if (liq) details.push(liq);
@@ -219,13 +219,17 @@ function whoLines(s: OiStretch, w: OiWho | null, kept: boolean, held: OiPaneHeld
 export function estimateStacks(w: OiWho, coin: string, prefix: string): RangeLine[] {
   const scale = Math.max(w.added, w.reduced) || 1;
   const part = (x: number, tone: StackPart['tone'], tip: string, closed = false): StackPart => ({ size: x / scale, tone, tip: `${tip} ${signedCoins(closed ? -x : x, coin)}`, ...(closed ? { closed } : {}) });
+  // The shorter bar runs on to the longer one's end, hatched: the difference is the estimate's net change. Without it the shorter bar read as
+  // cut short (Karl, 2026-11-13: "that row scale is shorter than the row below it").
+  const net = w.added - w.reduced, gap: StackPart[] = net !== 0 ? [{ size: Math.abs(net) / scale, tone: 'gap', tip: t('Estimated net change {value}: added minus reduced', { value: signedCoins(net, coin) }), text: t('net {value}', { value: signedCoins(net, '') }) }] : [];
   const out: RangeLine[] = [
     // The totals without the coin (it is in the heading), so a long ticker never overflows the total's column.
-    { key: `${prefix}-added`, kind: 'stack', cells: [t('Added'), signedCoins(w.added, '')], parts: [part(w.longOpened, 'up', t('New longs')), part(w.shortOpened, 'down', t('New shorts')), part(w.unsidedUp, 'none', t('No side'))] },
-    { key: `${prefix}-reduced`, kind: 'stack', cells: [t('Reduced'), signedCoins(-w.reduced, '')], parts: [part(w.shortClosed, 'up', t('Shorts closed'), true), part(w.longClosed, 'down', t('Longs closed'), true), part(w.unsidedDown, 'none', t('No side'), true)] },
+    { key: `${prefix}-added`, kind: 'stack', cells: [t('Added'), signedCoins(w.added, '')], parts: [part(w.longOpened, 'up', t('New longs')), part(w.shortOpened, 'down', t('New shorts')), part(w.unsidedUp, 'none', t('No side')), ...(net < 0 ? gap : [])] },
+    { key: `${prefix}-reduced`, kind: 'stack', cells: [t('Reduced'), signedCoins(-w.reduced, '')], parts: [part(w.shortClosed, 'up', t('Shorts closed'), true), part(w.longClosed, 'down', t('Longs closed'), true), part(w.unsidedDown, 'none', t('No side'), true), ...(net > 0 ? gap : [])] },
     { key: `${prefix}-opened`, kind: 'stat', cells: [t('New longs · new shorts'), `${signedCoins(w.longOpened, coin)}${share(w.longOpened, w.added)} · ${signedCoins(w.shortOpened, coin)}${share(w.shortOpened, w.added)}`] },
     { key: `${prefix}-closed`, kind: 'stat', cells: [t('Shorts closed · longs closed'), `${signedCoins(-w.shortClosed, coin)}${share(w.shortClosed, w.reduced)} · ${signedCoins(-w.longClosed, coin)}${share(w.longClosed, w.reduced)}`] },
   ];
+  out.push({ key: `${prefix}-key`, kind: 'note', tone: 'muted', cells: [t("Rising-candle colour: buyers' side (new longs, shorts closed). Falling-candle colour: sellers' side (new shorts, longs closed). Lighter: closed. Hatched: the net, added minus reduced.")] });
   if (w.unsidedUp + w.unsidedDown > 0) out.push({ key: `${prefix}-unsided`, kind: 'stat', tone: 'muted', cells: [t('No side (added · reduced)'), `${signedCoins(w.unsidedUp, coin)} · ${signedCoins(-w.unsidedDown, coin)}`] });
   return out;
 }

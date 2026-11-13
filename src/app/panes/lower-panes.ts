@@ -128,8 +128,15 @@ export abstract class TimePane {
 
   /** Let the panes' finger gestures move the map's time axis (called once the map exists). */
   useTimeGestures(time: ReturnType<HeatPane['timeGestures']>): void { this.#time = time; }
-  /** Let a drag across the pane select a stretch of time for the Range tool. */
-  useRange(range: RangeTool): void { this.#range = range; }
+  /**
+   * Let a drag across the pane select a stretch of time for the Range tool, and put the tool's button for this pane in its header, before its
+   * menu and close button (layout.ts `#mover`): a drag here sums up this pane without looking for the map's Select (Karl, 2026-11-13).
+   */
+  useRange(range: RangeTool): void {
+    this.#range = range;
+    const button = range.paneButton(this.#source), tools = this.head.querySelector(':scope > .pane-tools');
+    if (tools) tools.prepend(button); else this.head.append(button);
+  }
   /** Tell the Range tool this pane drew again (its summary of a selection made in it is worked out again, at most once a second). */
   protected rangeChanged(): void { this.#range?.paneChanged(this.#source); }
   /** What the pane stands for changed before it drew again: the Range tool reads its summary after its next drawing (`RangeTool.paneLater`). */

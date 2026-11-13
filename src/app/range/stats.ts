@@ -68,9 +68,11 @@ export interface ProfileBar { label: string; buy: number; sell: number; total: s
 
 /**
  * One part of a stacked bar: its length as a share of the bar's scale (0..1), whose side it is (`up` the buyers', the candle-up colour;
- * `down` the sellers'; `none` neither), whether it is closing (drawn lighter, as the OI pane draws what closed), and its words for a tip.
+ * `down` the sellers'; `none` neither; `gap` what the shorter stack of its section lacks of the longer one, their difference, drawn
+ * hatched with its figure inside where it fits: `text`), whether it is closing (drawn lighter, as the OI pane draws what closed), and its
+ * words for a tip.
  */
-export interface StackPart { size: number; tone: 'up' | 'down' | 'none'; closed?: boolean; tip: string }
+export interface StackPart { size: number; tone: 'up' | 'down' | 'none' | 'gap'; closed?: boolean; tip: string; text?: string }
 /** A tile of a grid: a label, its figure, its tip, a note under it, and lines of counts (a category's kinds) in place of one figure. */
 export interface GridItem { key: string; label: string; value: string; tone?: 'buy' | 'sell' | 'text' | 'muted'; tip?: string; note?: string; rows?: { label: string; value: string; tone?: 'buy' | 'sell' | 'text' }[] }
 

@@ -267,8 +267,11 @@ export class Toolbar {
   #goto = el('button', { type: 'button', class: 'map-goto', textContent: t('Go to'), tip: t('Go to a date and time (keyboard: G)'), onclick: () => this.openGoTo() });
   /** What Go to moves and reads (set by main). */
   goTo: { centre(): number; earliest(): { depth: number | null; candles: number | null }; go(t: number): void; live(): void; replay(t: number): void } | null = null;
-  /** The Range button, which its panel opens beside. */
-  get rangeButton(): HTMLElement { return this.#range; }
+  /**
+   * The Range button on the page as it is laid out, which a Range panel with no selection to stand beside opens by: the map corner's Select on
+   * a desktop (the toolbar's Range is then left out of the bar), else the toolbar's (a phone's sheet).
+   */
+  get rangeButton(): HTMLElement { return this.#rangeCorner.isConnected && this.#rangeCorner.getClientRects().length ? this.#rangeCorner : this.#range; }
   /** The show/hide buttons of the panes, in the order of `PANE_TOGGLES`. */
   #toggleButtons: HTMLButtonElement[] = [];
   #tradePanel: Panel | null = null;
