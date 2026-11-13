@@ -66,8 +66,11 @@ export interface LtStore {
  * up to it then.
  */
 export interface LtParts { bid: Float32Array; ask: Float32Array; wBid?: Float32Array; wAsk?: Float32Array }
-/** `estimated`: some recorded column was worked out from its average book (no kept tracker, or a size filter), not from its samples. */
-export interface LtSeries { times: Float64Array; bid: Float32Array; ask: Float32Array; estimated: boolean; parts?: LtParts }
+/**
+ * `estimated`: some recorded column was worked out from its average book (no kept tracker, or a size filter), not from its samples;
+ * `approx`: per window, 1 where one of its columns was (so a stretch of the series can say whether it holds any).
+ */
+export interface LtSeries { times: Float64Array; bid: Float32Array; ask: Float32Array; estimated: boolean; parts?: LtParts; approx?: Uint8Array }
 
 /**
  * How many of a series' windows (`times`, their starts, oldest first, each `stepMs` long) a replay at `cut` may show: those that had ended by
@@ -98,7 +101,7 @@ function counts(usd: number, p: LtParams): boolean { return usd > 0 && usd >= p.
  */
 export function ltSeries(stores: LtStore[], t0: number, t1: number, stepMs: number, params: LtParams, owners = 0): LtSeries {
   const slot = new Map<number, number>();
-  const sumB: number[] = [], sumA: number[] = [], wB: number[] = [], wA: number[] = [];
+  const sumB: number[] = [], sumA: number[] = [], wB: number[] = [], wA: number[] = [], apx: number[] = [];
   // Each market's sums and weights by slot, NaN until a column of it is counted there (at most a slot more each a new slot takes).
   const own = owners > 0 ? Array.from({ length: owners }, () => ({ b: [] as number[], a: [] as number[], wb: [] as number[], wa: [] as number[] })) : null;
   const kept = params.minUsd <= 0 && params.maxUsd <= 0 ? ltIndex(params.halfLifeBp) : -1;
@@ -106,7 +109,7 @@ export function ltSeries(stores: LtStore[], t0: number, t1: number, stepMs: numb
   const slotOf = (t: number): number => {
     let i = slot.get(t);
     if (i === undefined) {
-      i = slot.size; slot.set(t, i); sumB.push(0); sumA.push(0); wB.push(0); wA.push(0);
+      i = slot.size; slot.set(t, i); sumB.push(0); sumA.push(0); wB.push(0); wA.push(0); apx.push(0);
       if (own) for (const o of own) { o.b.push(NaN); o.a.push(NaN); o.wb.push(NaN); o.wa.push(NaN); }
     }
     return i;
@@ -141,7 +144,7 @@ export function ltSeries(stores: LtStore[], t0: number, t1: number, stepMs: numb
         add(i, o, lt[base]!, lt[base + 1]!, lt[base + 2]!, lt[base + 3]!);
         continue;
       }
-      if (!store.instant) estimated = true;
+      if (!store.instant) { estimated = true; apx[i] = 1; }
       // This column's own touch, before the size filter.
       let bestBid = -Infinity, bestAsk = Infinity;
       for (let e = from; e < from + n; e++) {
@@ -157,13 +160,13 @@ export function ltSeries(stores: LtStore[], t0: number, t1: number, stepMs: numb
     }
   }
   const order = [...slot.entries()].sort((x, y) => x[0] - y[0]);
-  const n = slot.size, times = new Float64Array(n), bid = new Float32Array(n), ask = new Float32Array(n);
+  const n = slot.size, times = new Float64Array(n), bid = new Float32Array(n), ask = new Float32Array(n), approx = new Uint8Array(n);
   order.forEach(([t, i], k) => {
-    times[k] = t;
+    times[k] = t; approx[k] = apx[i]!;
     bid[k] = params.average ? (wB[i]! > 0 ? sumB[i]! / wB[i]! : 0) : sumB[i]!;
     ask[k] = params.average ? (wA[i]! > 0 ? sumA[i]! / wA[i]! : 0) : sumA[i]!;
   });
-  if (!own) return { times, bid, ask, estimated };
+  if (!own) return { times, bid, ask, estimated, approx };
   const parts: LtParts = { bid: new Float32Array(owners * n), ask: new Float32Array(owners * n) };
   if (params.average) { parts.wBid = new Float32Array(owners * n); parts.wAsk = new Float32Array(owners * n); }
   own.forEach((o, m) => order.forEach(([, i], k) => {
@@ -171,7 +174,7 @@ export function ltSeries(stores: LtStore[], t0: number, t1: number, stepMs: numb
     parts.bid[at] = o.b[i]!; parts.ask[at] = o.a[i]!;
     if (parts.wBid && parts.wAsk) { parts.wBid[at] = o.wb[i]!; parts.wAsk[at] = o.wa[i]!; }
   }));
-  return { times, bid, ask, estimated, parts };
+  return { times, bid, ask, estimated, parts, approx };
 }
 
 /** One market's figures in one window of a series' parts: its bid and ask (its own average in the Per level mode), or null where it had nothing. */

@@ -84,3 +84,12 @@ test('no bands, no columns or no time: an empty answer, never an error', () => {
   assert.equal(depthBands([store([bookAt(0, 1_000)])], MIN, 0, MIN, 3, []).bid.length, 0);
   assert.equal(depthBands([store([bookAt(0, 1_000)])], MIN, MIN, MIN, 3, [0.01]).bid.every(v => v === 0), true);
 });
+
+test('each pixel column counts the books that had a column there: a book with nothing inside a band counts, no column does not', () => {
+  // Two books: a has minutes 0 and 1, b only minute 0 (its book far from the price, so nothing of it is inside the band).
+  const a = store([bookAt(0, 1_000), bookAt(MIN, 1_000)]);
+  const b = store([{ t: 0, bids: [[500, 100]], asks: [[1_500, 100]] }]);
+  const bands = depthBands([a, b], MIN, 0, 2 * MIN, 2, [0.01]);
+  assert.deepEqual([...bands.present], [2, 1]);
+  assert.equal(depthBands([], MIN, 0, MIN, 3, [0.01]).present.length, 3);
+});

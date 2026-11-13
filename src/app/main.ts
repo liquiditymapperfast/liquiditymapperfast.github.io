@@ -38,6 +38,9 @@ import { NlnsSource } from './delta/nlns-source.ts';
 import { LsPane, lsIds } from './panes/ls-pane.ts';
 import { LsRangeSummary, lsHeldKey } from './range/ls-lines.ts';
 import { FundingRangeSummary } from './range/funding-lines.ts';
+import { LtRangeSummary } from './range/lt-lines.ts';
+import { DepthRangeSummary } from './range/depth-lines.ts';
+import { activeIds, emptyScopeMessage } from './scope.ts';
 import { ScriptRangeSummary } from './range/script-lines.ts';
 import { FundingPane } from './panes/funding-pane.ts';
 import { TabTitle } from './tab-title.ts';
@@ -280,6 +283,22 @@ async function main(): Promise<void> {
   range.useProvider({
     pane: 'script', title: () => t('Scripts'), shown: () => scriptRows(store.state), barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
     lines: (sel, shown) => scriptSummary.lines(sel, script.rangeHeld, shown, script.rangeKey(store.state), pageNow(), replaying(), store.state.timeZone, !script.hasRows),
+  });
+  // Why the order-book panes have no venue to read, or '': the Spot / Perp filter leaves none, or every venue's chip is off.
+  const noVenue = (s: typeof store.state): string => emptyScopeMessage(s) ?? (s.levels?.books.length && !activeIds(s).length ? t('No venue is on: switch one on to sum up the order books.') : '');
+  // A drag in the Depth pane sums up its bands over the columns drawn (range/depth-lines.ts): the order book's columns holding every venue, or
+  // the liquidation levels' snapshots in force.
+  const depthSummary = new DepthRangeSummary();
+  range.useProvider({
+    pane: 'depth', title: () => t('Depth'), shown: () => store.state.show.depth, barMs: () => 60_000,
+    lines: (sel, shown) => depthSummary.lines(sel, depth.rangeHeld, shown, depth.rangeKey(store.state), pageNow(), store.state.timeZone,
+      store.state.depthSource === 'liq' ? depth.rangeEmpty(store.state, currentCoin().coin) : noVenue(store.state), replaying()),
+  });
+  // A drag in the Liquidity Tracker pane sums up its drawn bids and asks over the windows holding every venue asked for (range/lt-lines.ts).
+  const ltSummary = new LtRangeSummary();
+  range.useProvider({
+    pane: 'lt', title: () => t('Liquidity Tracker'), shown: () => store.state.show.lt, barMs: () => lt.rangeHeld?.stepMs ?? 60_000,
+    lines: (sel, shown) => ltSummary.lines(sel, lt.rangeHeld, shown, lt.rangeKey(store.state), pageNow(), store.state.timeZone, noVenue(store.state) !== '', replaying()),
   });
   toolbar.onRecenter = () => { heat.fit(); ladder.recenter(); };
   // The countdown under the price tag: a redraw a second when nothing else draws the map.
@@ -593,7 +612,8 @@ async function main(): Promise<void> {
     if (changed.has('candleColors')) { heat.invalidate(); ladder.invalidate(); candle.invalidate(); }
     // A pane's summary is read again when what it stands for changes (a hidden pane draws nothing to say so; its old snapshot is then stale).
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show') || changed.has('timeZone')
-      || changed.has('timeframe') || changed.has('marketId') || changed.has('seriesInstrument') || changed.has('replay')) range.refreshHeld();
+      || changed.has('timeframe') || changed.has('marketId') || changed.has('seriesInstrument') || changed.has('replay')
+      || changed.has('lt') || changed.has('disabledVenues') || changed.has('scope') || changed.has('depthSource') || changed.has('depthBands') || changed.has('liqBands')) range.refreshHeld();
     if (changed.has('tradeBubbles') || changed.has('show')) hub.setTape(tapeWanted());
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('mark') && state.show.book) ladder.markMoved();

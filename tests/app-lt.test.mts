@@ -135,3 +135,14 @@ test('a replay shows only the windows that had ended by its moment, never one it
   assert.equal(shownBy(times, 15 * M, 5 * M), 0);
   assert.equal(shownBy(times, 15 * M, Infinity), 4);
 });
+
+test('each window says whether a column of it was worked out from an average book', () => {
+  const k = ltIndex(10), kept = new Array(LT_LENGTH * 2).fill(NaN);
+  kept[LT_LENGTH + k] = 5; kept[LT_LENGTH + k + 1] = 6; kept[LT_LENGTH + k + 2] = 1; kept[LT_LENGTH + k + 3] = 1;
+  // Minute 0 has no kept tracker (worked out from its book), minute 1 has one; a live instant is exact.
+  const s = store([{ t: 0, rows: [[1000, 10, 0], [1001, 0, 10]] }, { t: MIN, rows: [] }], { lt: kept });
+  const live = store([{ t: 2 * MIN, rows: [[1000, 10, 0]] }], { instant: true });
+  const out = ltSeries([s, live], 0, 3 * MIN, MIN, { ...LT_DEFAULTS, halfLifeBp: 10 });
+  assert.deepEqual([...out.times], [0, MIN, 2 * MIN]);
+  assert.deepEqual([...out.approx!], [1, 0, 0]);
+});

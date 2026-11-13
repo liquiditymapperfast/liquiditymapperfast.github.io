@@ -5,7 +5,11 @@ export interface DepthSeries { bid: Float32Array; ask: Float32Array; /** The pri
  * Several nested bands at once (`depthBands`): for pixel column `x` and band `j` (the radii ascending), `bid[x * k + j]` is the bid USD within
  * ±radii[j] of the column's price, so each band holds every inner one; `bidCoin`/`askCoin` the same in coins, each bin's USD over its own price.
  */
-export interface DepthBands { k: number; bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; mid: Float64Array }
+export interface DepthBands {
+  k: number; bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; mid: Float64Array;
+  /** Per pixel column, how many of the stores had a column touching it (an empty book counts; no column does not), and 1 where a price centre was found. */
+  present: Uint16Array; centred: Uint8Array;
+}
 
 /**
  * The middle of one column's book: halfway between its highest bin with bids and its lowest bin with asks (`count` bins from `at`), or NaN
@@ -43,15 +47,20 @@ export function depthSeries(stores: readonly DepthStore[], stepMs: number, t0: n
  */
 export function depthBands(stores: readonly DepthStore[], stepMs: number, t0: number, t1: number, w: number, radii: readonly number[]): DepthBands {
   const k = radii.length, by = depthBandsByStore(stores, stepMs, t0, t1, w, radii, true);
-  const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k);
+  const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k), present = new Uint16Array(Math.max(0, w));
   for (let i = 0; i < stores.length; i++) for (let n = 0; n < w * k; n++) {
     bid[n]! += by.bid[i]![n]!; ask[n]! += by.ask[i]![n]!; bidCoin[n]! += by.bidCoin![i]![n]!; askCoin[n]! += by.askCoin![i]![n]!;
   }
-  return { k, bid, ask, bidCoin, askCoin, mid: by.mid };
+  for (let i = 0; i < stores.length; i++) for (let x = 0; x < w; x++) present[x]! += by.column[i]![x]!;
+  const centred = Uint8Array.from(by.mid, p => p > 0 ? 1 : 0);
+  return { k, bid, ask, bidCoin, askCoin, mid: by.mid, present, centred };
 }
 
-/** `depthSeries` before the instruments are added together: each store's bid and ask per pixel, and whether it had a column there. */
-export interface DepthByStore { mid: Float64Array; bid: Float32Array[]; ask: Float32Array[]; present: Uint8Array[] }
+/**
+ * `depthSeries` before the instruments are added together: each store's bid and ask per pixel, whether it was counted there (`present`: a
+ * column with bins and a price centre), and whether it had a column there at all (`column`: an empty book or one with no centre too).
+ */
+export interface DepthByStore { mid: Float64Array; bid: Float32Array[]; ask: Float32Array[]; present: Uint8Array[]; column: Uint8Array[] }
 export function depthByStore(stores: readonly DepthStore[], stepMs: number, t0: number, t1: number, w: number, range: number): DepthByStore {
   return depthBandsByStore(stores, stepMs, t0, t1, w, [range], false);
 }
@@ -60,16 +69,19 @@ export function depthByStore(stores: readonly DepthStore[], stepMs: number, t0: 
 export interface DepthBandsByStore extends DepthByStore { bidCoin?: Float32Array[]; askCoin?: Float32Array[] }
 export function depthBandsByStore(stores: readonly DepthStore[], stepMs: number, t0: number, t1: number, w: number, radii: readonly number[], coins: boolean): DepthBandsByStore {
   const k = radii.length, mid = new Float64Array(w).fill(NaN), size = w * k;
-  const out: DepthBandsByStore = { mid, bid: stores.map(() => new Float32Array(size)), ask: stores.map(() => new Float32Array(size)), present: stores.map(() => new Uint8Array(w)),
+  const out: DepthBandsByStore = { mid, bid: stores.map(() => new Float32Array(size)), ask: stores.map(() => new Float32Array(size)), present: stores.map(() => new Uint8Array(w)), column: stores.map(() => new Uint8Array(Math.max(0, w))),
     ...(coins ? { bidCoin: stores.map(() => new Float32Array(size)), askCoin: stores.map(() => new Float32Array(size)) } : {}) };
   if (!(w > 0) || !(t1 > t0) || k === 0) return out;
   const pxMs = (t1 - t0) / w, m = stores.length;
   const first = (t: number): number => Math.max(0, Math.floor((t - t0) / pxMs)), last = (t: number): number => Math.min(w - 1, Math.floor((t + stepMs - 1 - t0) / pxMs));
   const touch = new Float64Array(w * m), seen = new Uint32Array(w * m);
   stores.forEach((store, i) => {
+    const column = out.column[i]!;
     for (let c = 0, at = 0; c < store.times.length; at += store.counts[c]!, c++) {
       const count = store.counts[c]!, x0 = first(store.times[c]!), x1 = last(store.times[c]!);
-      if (x1 < 0 || x0 >= w || count <= 0) continue;
+      if (x1 < 0 || x0 >= w) continue;
+      for (let x = Math.max(0, x0); x <= x1; x++) column[x] = 1;
+      if (count <= 0) continue;
       const p = touchOf(store, at, count);
       if (p > 0) for (let x = x0; x <= x1; x++) { touch[x * m + i]! += p; seen[x * m + i]!++; }
     }

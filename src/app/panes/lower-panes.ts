@@ -50,6 +50,8 @@ import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { candleSplitStyles, emphasisFloor, medianRow } from '../traded/emphasis.ts';
 import type { OiPaneHeld } from '../range/oi-lines.ts';
 import type { BarsPaneHeld } from '../range/bars-lines.ts';
+import { ltHeldKey, type LtPaneHeld } from '../range/lt-lines.ts';
+import { depthHeldKey, type DepthPaneHeld } from '../range/depth-lines.ts';
 
 /**
  * Header readouts are rewritten on every pointer move by every pane. Assigning the text a node already has still re-parses it and
@@ -261,7 +263,7 @@ export function oiSourceText(state: Pick<AppState, 'oiParts' | 'oiInstrument' | 
 }
 
 /** The Depth pane's Liquidation levels series: the Depth series' shape, the rows it was built from and the row in force in each pixel column (-1: none), and what it was built for. */
-type LiqSeries = { key: string; series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer }; rowAt: Int32Array; rows: LiqRow[] };
+type LiqSeries = { key: string; series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer }; rowAt: Int32Array; rows: LiqRow[]; /** The history bucket each band reads (-1: none), and the bands asked beyond its reach. */ idx: number[]; omitted: number[] };
 /** How long a liquidation levels snapshot stands for in the Depth pane: about three of their periods (one comes every ~29 minutes); after that, a gap. */
 const LIQ_HOLD_MS = 90 * 60_000;
 /** A difference as the Depth pane writes it, with its sign (a minus sign, not a hyphen). */
@@ -285,7 +287,30 @@ function bandError(code: 'empty' | 'number' | 'range' | 'count' | 'repeat'): str
  * click on a row brings that band forward (drawn with the ones inside it, at its own scale, and judged by Highlights), and the header reads it.
  */
 export class DepthPane extends TimePane {
-  #series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer } | null = null;
+  #series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer; ids?: readonly string[]; answeredAt?: number } | null = null;
+  /** How far the liquidation history's buckets reach (a fraction of the price), once its index is read: bands past it are not drawn. */
+  #liqReach: number | null = null;
+  /** What the pane said last instead of drawing liquidation levels (none recorded yet, out of reach), or '' (drawn, or loading); the reach then. */
+  #liqSay = ''; #liqReachSaid: number | null = null;
+  /** What the pane drew last, for its Range summary (range/depth-lines.ts): the same object while that does not change. */
+  #held: DepthPaneHeld | null = null;
+  get rangeHeld(): DepthPaneHeld | null { return this.#held; }
+  /** What a snapshot of the pane is for, now: the source, the venues on (the order book's) and the bands. */
+  rangeKey(state: AppState): string {
+    if (state.depthSource !== 'liq') return depthHeldKey('book', activeIds(state), bandsOf(state.depthBands));
+    // Liquidation levels: the bands the pane draws, those within the history's reach once it is known (`#liqSeries`).
+    const reach = this.#liqReach, bands = bandsOf(state.liqBands);
+    return depthHeldKey('liq', [], reach === null ? bands : bands.filter(r => r <= reach * (1 + 1e-9)));
+  }
+  /** Why the liquidation levels have nothing to sum up, or '': another coin, or every band beyond the history's reach. */
+  rangeEmpty(state: AppState, coin: string): string {
+    if (state.depthSource !== 'liq') return '';
+    if (coin !== 'BTC') return t('Liquidation levels are for BTC only for now.');
+    const reach = this.#liqReach;
+    if (reach !== null && !bandsOf(state.liqBands).some(r => r <= reach * (1 + 1e-9))) return t('Liquidation levels reach ±{pct} % at most.', { pct: reach * 100 });
+    return this.#liqSay;
+  }
+  #publish(held: DepthPaneHeld | null): void { if (held !== this.#held) { this.#held = held; this.rangeChanged(); } }
   #key = ''; #busy = false;
   /** When the last request was made, and how long the worker took to answer it (the live edge is asked again on a clock that allows for it). */
   #askedAt = 0; #tookMs = 0;
@@ -359,9 +384,9 @@ export class DepthPane extends TimePane {
     addTune(this.head, [group, scale, units, bell, table], t('Depth'), { fold: true });
   }
   /** The venues or the source changed: the bands are asked again. */
-  refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); }
+  refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); this.rangeStale(); }
   /** The settings changed (here, a layout, another tab): the header shows them; only other bands are asked for (they are part of the request's key). */
-  settingsChanged(): void { this.#sync(); this.invalidate(); }
+  settingsChanged(): void { this.#sync(); this.invalidate(); this.rangeStale(); }
   /** Show the depth sound's switch as the settings have it (it is also in the Sounds panel). */
   syncSound(): void { this.#bell.checked = panelSwitchOn(this.store, 'depthPane'); }
   /** The bands of the source shown. */
@@ -429,7 +454,8 @@ export class DepthPane extends TimePane {
     if (!index) return t('The liquidation levels\' history is loading…');
     if (index.first === null) return t('No liquidation levels recorded yet.');
     // The history's buckets end at its last edge (±25 %): a wider band would leave out what lies past it, so it is not drawn.
-    const reach = index.edges[index.edges.length - 1]! / 100, inReach = radii.filter(r => r <= reach * (1 + 1e-9));
+    const reach = index.edges[index.edges.length - 1]! / 100, inReach = radii.filter(r => r <= reach * (1 + 1e-9)), omitted = radii.filter(r => r > reach * (1 + 1e-9));
+    this.#liqReach = reach;
     if (!inReach.length) return t('Liquidation levels reach ±{pct} % at most.', { pct: reach * 100 });
     radii = inReach;
     const w = depthColumns(pw), k = radii.length, t0 = v.t0, t1 = v.t1, until = replaying() ? pageNow() : now;
@@ -449,7 +475,7 @@ export class DepthPane extends TimePane {
         bid[x * k + j] = row.long[b]!; ask[x * k + j] = row.short[b]!; bidCoin[x * k + j] = row.longCoin[b]!; askCoin[x * k + j] = row.shortCoin[b]!;
       }
     }
-    this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid, ask, bidCoin, askCoin } }, rowAt, rows };
+    this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid, ask, bidCoin, askCoin } }, rowAt, rows, idx, omitted };
     return this.#liq;
   }
 
@@ -465,6 +491,10 @@ export class DepthPane extends TimePane {
     if (liq) {
       if (coin !== 'BTC') { say(t('Liquidation levels are for BTC only for now.')); return; }
       const built = this.#liqSeries(pw, radii);
+      // A message that is not "loading" is the summary's too (nothing recorded yet), until the series draws; a new one, or the reach becoming
+      // known, wakes the summary (this paint publishes nothing).
+      const said = typeof built === 'string' && built !== t('The liquidation levels\' history is loading…') ? built : '';
+      if (said !== this.#liqSay || this.#liqReach !== this.#liqReachSaid) { this.#liqSay = said; this.#liqReachSaid = this.#liqReach; this.rangeStale(); }
       if (typeof built === 'string') { say(built); return; }
       liqHeld = built; s = built.series;
     } else {
@@ -478,7 +508,8 @@ export class DepthPane extends TimePane {
         this.#key = key; this.#busy = true;
         const asked = this.#askedAt = performance.now();
         const w = depthColumns(pw), t0 = v.t0, t1 = v.t1, asking = radii;
-        void this.hub.depth(ids, t0, t1, w, asking).then(answer => { this.#tookMs = performance.now() - asked; this.#series = { t0, t1, w, radii: asking, answer }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
+        const venues = [...ids];
+        void this.hub.depth(ids, t0, t1, w, asking).then(answer => { this.#tookMs = performance.now() - asked; this.#series = { t0, t1, w, radii: asking, answer, ids: venues, answeredAt: Date.now() }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
       }
       s = this.#series;
       if (!s) { say(t('Depth history is collecting…')); return; }
@@ -489,6 +520,22 @@ export class DepthPane extends TimePane {
     const bid = coins ? s.answer.bidCoin : s.answer.bid, ask = coins ? s.answer.askCoin : s.answer.ask;
     const top = settings.focus !== null && settings.focus < k ? settings.focus : k - 1, focused = top < k - 1 || settings.focus !== null;
     const at = (x: number, j: number): number => x * k + j;
+    // The snapshot of what is drawn: a new one for a new answer (or liquidation series), units or watched band.
+    {
+      const was = this.#held, rows = liqHeld ? liqHeld.rows : null;
+      // Liquidation levels: a rebuild for a view that moved (following live, every frame) says the same until its snapshots, bands or whole minutes
+      // of its span change.
+      const sameLiq = (): boolean => !!was && !!rows && !!was.rows && was.source === 'liq' && was.rows.length === rows.length && rows.every((r, i) => r === was.rows![i])
+        && was.radii.join(',') === s.radii.join(',') && Math.floor(was.t0 / MINUTE) === Math.floor(s.t0 / MINUTE) && Math.floor(was.t1 / MINUTE) === Math.floor(s.t1 / MINUTE)
+        && was.t1 >= pageNow();
+      if (!was || (was.bid !== s.answer.bid && !sameLiq()) || was.coins !== coins || was.focus !== top || was.coin !== coin) {
+        const ids = liqHeld ? [] : (this.#series?.ids ?? []);
+        this.#publish({ key: depthHeldKey(liqHeld ? 'liq' : 'book', ids, s.radii), source: liqHeld ? 'liq' : 'book', ids, t0: s.t0, t1: s.t1, w: s.w, radii: s.radii,
+          bid: s.answer.bid, ask: s.answer.ask, bidCoin: s.answer.bidCoin, askCoin: s.answer.askCoin, present: liqHeld ? null : s.answer.present ?? null,
+          centred: liqHeld ? null : s.answer.centred ?? null, stepMs: liqHeld ? 0 : s.answer.stepMs ?? MINUTE, answeredAt: liqHeld ? Infinity : this.#series?.answeredAt ?? 0,
+          rows, buckets: liqHeld ? liqHeld.idx : null, omitted: liqHeld ? liqHeld.omitted : [], coins, coin, focus: top });
+      }
+    }
     // A column holds something where the book had depth, or (liquidation levels) where a snapshot is in force, money in its bands or not.
     const has = (x: number): boolean => x >= 0 && x < s.w && (liqHeld ? liqHeld.rowAt[x]! >= 0 : bid[at(x, k - 1)]! > 0 || ask[at(x, k - 1)]! > 0);
     // Replay: only the columns up to its moment speak (the rest is covered).
@@ -1028,7 +1075,14 @@ const MINUTE = 60_000;
 /** Liquidity Tracker row: distance-weighted bid and ask liquidity of the aggregated enabled venues over time (see lt.ts). */
 export class LtPane extends TimePane {
   /** The series drawn, with the markets it was asked for (its parts are theirs, in that order). */
-  #series: (LtSeries & { stepMs: number; ids: readonly string[] }) | null = null;
+  /** The last answer, its windows' length, and what it was asked for (the venues and settings then, not the controls' later values). */
+  #series: (LtSeries & { stepMs: number; ids: readonly string[]; asked: { halfLifeBp: number; minUsd: number; maxUsd: number; average: boolean }; answeredAt: number }) | null = null;
+  /** What the pane drew last, for its Range summary (range/lt-lines.ts): the same object while that does not change. */
+  #held: LtPaneHeld | null = null;
+  get rangeHeld(): LtPaneHeld | null { return this.#held; }
+  /** What a snapshot of the pane is for, now: the venues on, the half-life, the size filters and the mode. */
+  rangeKey(state: AppState): string { return ltHeldKey(activeIds(state), state.lt); }
+  #publish(held: LtPaneHeld | null): void { if (held !== this.#held) { this.#held = held; this.rangeChanged(); } }
   #key = ''; #busy = false; #lastAt = 0;
   #sync: (() => void)[] = [];
   #card = new HoverCard();
@@ -1101,7 +1155,7 @@ export class LtPane extends TimePane {
     addTune(this.head, [half, min, max, viewChoice, avg, bell, table], t('Liquidity Tracker'), { fold: true });
   }
   /** Recompute on the next draw and reflect persisted settings in the controls. */
-  refresh(): void { this.#key = ''; for (const sync of this.#sync) sync(); this.invalidate(); }
+  refresh(): void { this.#key = ''; for (const sync of this.#sync) sync(); this.invalidate(); this.rangeStale(); }
 
   protected draw(): void {
     this.#lines = null;
@@ -1116,13 +1170,14 @@ export class LtPane extends TimePane {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, lt = state.lt;
     const ids = activeIds(state);
     const emptyScope = emptyScopeMessage(state);
-    if (emptyScope) { ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
+    if (emptyScope) { this.#publish(null); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(emptyScope, 12, ph / 2); return; }
     const t0 = Math.floor(v.t0 / MINUTE) * MINUTE, t1 = Math.ceil(v.t1 / MINUTE) * MINUTE;
     // Where the trackers come from: the lane (the tracker alone, asked for by this pane: lt-lane.ts) where the source has one and no size filter is
     // set; the recorded columns (the books the map is drawn from, which a size filter needs, and which the browser engine has at hand) otherwise.
     const lane = this.hub.ltLane, useLane = lane.serve(ids, v, pw, lt.halfLifeBp, lt.minUsd > 0 || lt.maxUsd > 0);
-    // Each market's part is asked for only while the table is on (it is the table's alone) and more than one market is counted.
-    const parts = state.ltTable && ids.length > 1;
+    // Each market's part is asked for whenever more than one market is counted: the table lists them, and the Range summary measures only the
+    // windows that hold every one of them (a window lacking one reads lower for that alone).
+    const parts = ids.length > 1;
     const key = useLane ? `lane|${ids.join(',')}|${t0}|${t1}|${lane.version}|${lt.halfLifeBp}|${lt.average}|${parts}`
       : `${ids.join(',')}|${t0}|${t1}|${this.hub.columnsVersion}|${lt.halfLifeBp}|${lt.minUsd}|${lt.maxUsd}|${lt.average}|${parts}`;
     const liveTail = v.t1 > Date.now() - 2 * MINUTE;
@@ -1130,14 +1185,26 @@ export class LtPane extends TimePane {
       this.#key = key; this.#busy = true; this.#lastAt = performance.now();
       const params = { halfLifeBp: lt.halfLifeBp, minUsd: scaledUsd(lt.minUsd), maxUsd: scaledUsd(lt.maxUsd), average: lt.average };
       // While the lane holds nothing for the step or half-life just chosen, the series on screen stays (it carries its own step) rather than a blank.
-      const asked = [...ids];
-      void this.hub.lt(asked, t0, t1, params, useLane, parts).then(r => { if (!(useLane && !lane.holds && this.#series)) this.#series = { ...r, stepMs: r.stepMs ?? this.hub.columnStepMs, ids: asked }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
+      const asked = [...ids], settings = { halfLifeBp: lt.halfLifeBp, minUsd: lt.minUsd, maxUsd: lt.maxUsd, average: lt.average };
+      void this.hub.lt(asked, t0, t1, params, useLane, parts).then(r => { if (!(useLane && !lane.holds && this.#series)) this.#series = { ...r, stepMs: r.stepMs ?? this.hub.columnStepMs, ids: asked, asked: settings, answeredAt: Date.now() }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
     }
     const s = this.#series, readout = this.head.querySelector('.readout')!;
-    if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); setText(readout, ''); return; }
+    if (!s || !s.times.length) { this.#publish(null); ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); setText(readout, ''); return; }
     let n = s.times.length;
     // In a replay only the windows that had ended by its moment: one under way then is the mean of samples taken after it.
     if (replaying()) n = shownBy(s.times, s.stepMs, pageNow());
+    {
+      // The snapshot of what is drawn: a new one only for a new answer, a replay's cut moving, or its minute.
+      // No venue on: nothing is asked and the old series stays drawn, but it stands for no venue now.
+      const replayAt = replaying() ? Math.floor(pageNow() / MINUTE) * MINUTE : null, was = this.#held;
+      if (!ids.length) this.#publish(null);
+      else if (!was || was.times !== s.times || was.shown !== n || was.replayAt !== replayAt) {
+        const a = s.asked;
+        this.#publish({ key: ltHeldKey(s.ids, a), ids: s.ids, names: bookNames(s.ids, state.markets), halfLifeBp: a.halfLifeBp, minUsd: a.minUsd, maxUsd: a.maxUsd,
+          minApplied: scaledUsd(a.minUsd), maxApplied: scaledUsd(a.maxUsd), average: a.average,
+          times: s.times, bid: s.bid, ask: s.ask, parts: s.parts ?? null, approx: s.approx ?? null, stepMs: s.stepMs, shown: n, replayAt, answeredAt: s.answeredAt });
+      }
+    }
     if (!n) { setText(readout, ''); return; }
     const step = s.stepMs, xOf = (t: number) => v.xOf(t + step / 2, pw), gap = step * 2.5;
     let max = 0;
