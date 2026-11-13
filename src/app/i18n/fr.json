@@ -2919,5 +2919,44 @@
  "The table reads each market at the candle under the pointer, else the newest: what it bought and sold at market, their difference and its share of the candle's volume, beside the chart where there is room, else over its left end while you point at the pane. The most traded markets over the candles in view get a row each; the rest are added up in the last row. With NL/NS shown there is no table: its markets are the OI pane's, whose table has each venue.": "Le tableau lit chaque marché pour la bougie sous le pointeur, sinon la plus récente : ce qu’il a acheté et vendu au marché, leur différence et sa part du volume de la bougie, à côté du graphique là où il y a la place, sinon sur son extrémité gauche tant que vous pointez le panneau. Les marchés les plus échangés sur les bougies de la vue ont chacun une ligne ; le reste est additionné dans la dernière ligne. Avec NL/NS affiché, il n’y a pas de tableau : ses marchés sont ceux du panneau OI, dont le tableau contient chaque plateforme.",
  "The table reads each venue at the pointer's time, else the newest: its weighted bids and asks, their imbalance and its share of the two lines, beside the chart where there is room, else over its left end while you point at the pane. The venues with the most liquidity on average over the chart in view get a row each; the rest are added up in the last row. With Per level each row is that venue's own average, with no share.": "Le tableau lit chaque plateforme à l’heure du pointeur, sinon la plus récente : ses bids et asks pondérés, leur déséquilibre et sa part des deux lignes, à côté du graphique là où il y a la place, sinon sur son extrémité gauche tant que vous pointez le panneau. Les plateformes ayant le plus de liquidité en moyenne sur le graphique de la vue ont chacune une ligne ; le reste est additionné dans la dernière ligne. Avec Par niveau, chaque ligne est la moyenne propre de cette plateforme, sans part.",
  "Each market's buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.": "Les achats et les ventes au marché de chaque marché, son delta et sa part du volume, dans un tableau sur le panneau, pour la bougie sous le pointeur ou la plus récente. Les marchés les plus échangés ont chacun une ligne ; le reste est additionné dans la dernière ligne.",
- "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Les bids et asks pondérés de chaque plateforme, leur déséquilibre et sa part du total, dans un tableau sur le panneau, à l’heure du pointeur ou la plus récente. Les plus grandes plateformes ont chacune une ligne ; le reste est additionné dans la dernière ligne."
+ "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Les bids et asks pondérés de chaque plateforme, leur déséquilibre et sa part du total, dans un tableau sur le panneau, à l’heure du pointeur ou la plus récente. Les plus grandes plateformes ont chacune une ligne ; le reste est additionné dans la dernière ligne.",
+ "A drag across the Scripts pane sums up each script drawn there, each of its visible plots of one value a candle in its own values: the first and last value and the change, the lowest and highest, and how many candles had a value, over the closed candles of its last run. Nothing is added up and no unit is named, as a script declares neither; candles, bars and bands are named but not summed up yet, and marks are counted.": "Un glissement sur le panneau Scripts résume chaque script qui y est dessiné, chacun de ses tracés visibles à une valeur par bougie dans ses propres valeurs : la première et la dernière valeur et la variation, le plus bas et le plus haut, et combien de bougies avaient une valeur, sur les bougies clôturées de sa dernière exécution. Rien n’est additionné et aucune unité n’est nommée, car un script ne déclare ni l’un ni l’autre ; les bougies, barres et bandes sont nommées mais pas encore résumées, et les marques sont comptées.",
+ "{plot} ({n})": "{plot} ({n})",
+ "No script is both on and set to \"In its own row\". Open Scripts… to change this.": "Aucun script n’est à la fois activé et réglé sur « Sur sa propre rangée ». Ouvrez Scripts… pour changer cela.",
+ "The Scripts pane last drew another market, timeframe or set of scripts: show it to sum up this selection.": "Le panneau Scripts a dessiné en dernier un autre marché, une autre unité de temps ou d’autres scripts : affichez-le pour résumer cette sélection.",
+ "Waiting for a run for this chart.": "En attente d’une exécution pour ce graphique.",
+ "The Scripts pane has not drawn yet: show it to sum up this selection.": "Le panneau Scripts n’a pas encore dessiné : affichez-le pour résumer cette sélection.",
+ "The candle under way is left out.": "La bougie en cours est laissée de côté.",
+ "No {tf} candle of the Scripts pane starts in this range.": "Aucune bougie {tf} du panneau Scripts ne commence dans cette plage.",
+ "Visible plots over the closed {tf} candles held by each script's last run": "Tracés visibles sur les bougies {tf} clôturées que contient la dernière exécution de chaque script",
+ "The Scripts pane is hidden: these are the values it last drew.": "Le panneau Scripts est masqué : voici les valeurs qu’il a dessinées en dernier.",
+ "Script values are for all prices.": "Les valeurs des scripts valent pour tous les prix.",
+ "Hidden in the pane: left out.": "Masqué dans le panneau : laissé de côté.",
+ "the run begins at {time}": "l’exécution commence à {time}",
+ "{n} candles missing": {
+  "one": "{n} bougie manquante",
+  "other": "{n} bougies manquantes",
+  "many": "{n} bougies manquantes"
+ },
+ "newer closed candles are not in its last run": "les bougies clôturées plus récentes ne sont pas dans sa dernière exécution",
+ "Its last run holds {k} of the {n} closed candles in this selection": "Sa dernière exécution contient {k} des {n} bougies clôturées de cette sélection",
+ "No value in this selection": "Aucune valeur dans cette sélection",
+ "Candles with a value": "Bougies avec une valeur",
+ "First → last": "Première → dernière",
+ "Lowest – highest": "Plus bas – plus haut",
+ "First value {start} · last {end}": "Première valeur {start} · dernière {end}",
+ "{plot}: marks in the script output": "{plot} : marques dans la sortie du script",
+ "{plots}: plots of several fields; a range summary is not available for them yet.": "{plots} : tracés à plusieurs champs ; aucun résumé n’est encore disponible pour eux.",
+ "{n} plots set invisible are left out.": {
+  "one": "{n} tracé rendu invisible est laissé de côté.",
+  "other": "{n} tracés rendus invisibles sont laissés de côté.",
+  "many": "{n} tracés rendus invisibles sont laissés de côté."
+ },
+ "{n} warnings in its last run: see the Scripts panel.": {
+  "one": "{n} avertissement lors de sa dernière exécution : voir le panneau Scripts.",
+  "other": "{n} avertissements lors de sa dernière exécution : voir le panneau Scripts.",
+  "many": "{n} avertissements lors de sa dernière exécution : voir le panneau Scripts."
+ },
+ "Unit not declared by this script.": "Unité non déclarée par ce script.",
+ "Values are not added up. Shown values and changes are rounded on their own.": "Les valeurs ne sont pas additionnées. Les valeurs et variations affichées sont arrondies chacune de leur côté."
 }

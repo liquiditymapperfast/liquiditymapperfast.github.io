@@ -2955,5 +2955,47 @@
  "The table reads each market at the candle under the pointer, else the newest: what it bought and sold at market, their difference and its share of the candle's volume, beside the chart where there is room, else over its left end while you point at the pane. The most traded markets over the candles in view get a row each; the rest are added up in the last row. With NL/NS shown there is no table: its markets are the OI pane's, whose table has each venue.": "Таблица показывает каждый рынок на свече под указателем, иначе на последней: что он купил и продал по рынку, их разницу и её долю в объёме свечи, рядом с графиком, где есть место, иначе поверх его левого края, пока вы наводите на панель. Наиболее торгуемые рынки за видимые свечи получают по строке; остальные складываются в последней строке. При показе NL/NS таблицы нет: его рынки — это рынки панели OI, в таблице которой есть каждая биржа.",
  "The table reads each venue at the pointer's time, else the newest: its weighted bids and asks, their imbalance and its share of the two lines, beside the chart where there is room, else over its left end while you point at the pane. The venues with the most liquidity on average over the chart in view get a row each; the rest are added up in the last row. With Per level each row is that venue's own average, with no share.": "Таблица показывает каждую биржу на момент указателя, иначе последнюю: её взвешенные биды и аски, их дисбаланс и её долю в двух линиях, рядом с графиком, где есть место, иначе поверх его левого края, пока вы наводите на панель. Биржи с наибольшей ликвидностью в среднем по видимому графику получают по строке; остальные складываются в последней строке. При «На уровень» каждая строка — собственное среднее биржи, без доли.",
  "Each market's buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.": "Рыночные покупки и продажи каждого рынка, его дельта и доля объёма в таблице на панели, для свечи под указателем или последней. Наиболее торгуемые рынки получают по строке; остальные складываются в последней строке.",
- "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Взвешенные биды и аски каждой биржи, их дисбаланс и доля от общей суммы в таблице на панели, на момент указателя или последние. Крупнейшие биржи получают по строке; остальные складываются в последней строке."
+ "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Взвешенные биды и аски каждой биржи, их дисбаланс и доля от общей суммы в таблице на панели, на момент указателя или последние. Крупнейшие биржи получают по строке; остальные складываются в последней строке.",
+ "A drag across the Scripts pane sums up each script drawn there, each of its visible plots of one value a candle in its own values: the first and last value and the change, the lowest and highest, and how many candles had a value, over the closed candles of its last run. Nothing is added up and no unit is named, as a script declares neither; candles, bars and bands are named but not summed up yet, and marks are counted.": "Протягивание по панели «Скрипты» подводит итог по каждому нарисованному в ней скрипту, по каждому его видимому построению с одним значением на свечу, в его собственных значениях: первое и последнее значение и изменение, минимум и максимум, и сколько свечей имели значение, по закрытым свечам его последнего запуска. Ничего не складывается и единица не называется, так как скрипт не объявляет ни того, ни другого; свечи, бары и полосы называются, но пока не подытоживаются, а отметки считаются.",
+ "{plot} ({n})": "{plot} ({n})",
+ "No script is both on and set to \"In its own row\". Open Scripts… to change this.": "Ни один скрипт не включён и не стоит одновременно на «В отдельной строке». Откройте «Скрипты…», чтобы это изменить.",
+ "The Scripts pane last drew another market, timeframe or set of scripts: show it to sum up this selection.": "Панель «Скрипты» последний раз рисовала другой рынок, таймфрейм или другие скрипты: покажите её, чтобы подвести итог по этому выделению.",
+ "Waiting for a run for this chart.": "Ожидание запуска для этого графика.",
+ "The Scripts pane has not drawn yet: show it to sum up this selection.": "Панель «Скрипты» ещё ничего не нарисовала: покажите её, чтобы подвести итог по этому выделению.",
+ "The candle under way is left out.": "Текущая свеча не учитывается.",
+ "No {tf} candle of the Scripts pane starts in this range.": "В этом диапазоне не начинается ни одна свеча {tf} панели «Скрипты».",
+ "Visible plots over the closed {tf} candles held by each script's last run": "Видимые построения по закрытым свечам {tf}, которые есть в последнем запуске каждого скрипта",
+ "The Scripts pane is hidden: these are the values it last drew.": "Панель «Скрипты» скрыта: это значения, которые она нарисовала в последний раз.",
+ "Script values are for all prices.": "Значения скриптов относятся ко всем ценам.",
+ "Hidden in the pane: left out.": "Скрыт в панели: не учитывается.",
+ "the run begins at {time}": "запуск начинается в {time}",
+ "{n} candles missing": {
+  "one": "не хватает {n} свечи",
+  "few": "не хватает {n} свечей",
+  "many": "не хватает {n} свечей",
+  "other": "не хватает {n} свечи"
+ },
+ "newer closed candles are not in its last run": "более новых закрытых свечей нет в его последнем запуске",
+ "Its last run holds {k} of the {n} closed candles in this selection": "Его последний запуск содержит {k} из {n} закрытых свечей этого выделения",
+ "No value in this selection": "Нет значения в этом выделении",
+ "Candles with a value": "Свечи со значением",
+ "First → last": "Первое → последнее",
+ "Lowest – highest": "Минимум – максимум",
+ "First value {start} · last {end}": "Первое значение {start} · последнее {end}",
+ "{plot}: marks in the script output": "{plot}: отметки в выводе скрипта",
+ "{plots}: plots of several fields; a range summary is not available for them yet.": "{plots}: построения из нескольких полей; итог по ним пока недоступен.",
+ "{n} plots set invisible are left out.": {
+  "one": "{n} построение, сделанное невидимым, не учитывается.",
+  "few": "{n} построения, сделанные невидимыми, не учитываются.",
+  "many": "{n} построений, сделанных невидимыми, не учитываются.",
+  "other": "{n} построения, сделанные невидимыми, не учитываются."
+ },
+ "{n} warnings in its last run: see the Scripts panel.": {
+  "one": "{n} предупреждение в его последнем запуске: см. панель «Скрипты».",
+  "few": "{n} предупреждения в его последнем запуске: см. панель «Скрипты».",
+  "many": "{n} предупреждений в его последнем запуске: см. панель «Скрипты».",
+  "other": "{n} предупреждения в его последнем запуске: см. панель «Скрипты»."
+ },
+ "Unit not declared by this script.": "Единица не объявлена этим скриптом.",
+ "Values are not added up. Shown values and changes are rounded on their own.": "Значения не складываются. Показанные значения и изменения округлены каждое отдельно."
 }

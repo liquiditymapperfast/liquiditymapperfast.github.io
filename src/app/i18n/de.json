@@ -2873,5 +2873,41 @@
  "The table reads each market at the candle under the pointer, else the newest: what it bought and sold at market, their difference and its share of the candle's volume, beside the chart where there is room, else over its left end while you point at the pane. The most traded markets over the candles in view get a row each; the rest are added up in the last row. With NL/NS shown there is no table: its markets are the OI pane's, whose table has each venue.": "Die Tabelle liest jeden Markt bei der Kerze unter dem Zeiger, sonst bei der neuesten: was er am Markt gekauft und verkauft hat, ihre Differenz und sein Anteil am Volumen der Kerze, neben dem Chart, wo Platz ist, sonst über seinem linken Ende, solange du auf den Bereich zeigst. Die am meisten gehandelten Märkte über die Kerzen im Blick bekommen je eine Zeile; der Rest wird in der letzten Zeile zusammengezählt. Mit angezeigtem NL/NS gibt es keine Tabelle: Seine Märkte sind die des OI-Bereichs, dessen Tabelle jede Börse enthält.",
  "The table reads each venue at the pointer's time, else the newest: its weighted bids and asks, their imbalance and its share of the two lines, beside the chart where there is room, else over its left end while you point at the pane. The venues with the most liquidity on average over the chart in view get a row each; the rest are added up in the last row. With Per level each row is that venue's own average, with no share.": "Die Tabelle liest jede Börse zur Zeit des Zeigers, sonst den neuesten Stand: ihre gewichteten Bids und Asks, deren Ungleichgewicht und ihren Anteil an den beiden Linien, neben dem Chart, wo Platz ist, sonst über seinem linken Ende, solange du auf den Bereich zeigst. Die Börsen mit der meisten Liquidität im Durchschnitt über den Chart im Blick bekommen je eine Zeile; der Rest wird in der letzten Zeile zusammengezählt. Mit Pro Niveau ist jede Zeile der eigene Durchschnitt dieser Börse, ohne Anteil.",
  "Each market's buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.": "Was jeder Markt am Markt gekauft und verkauft hat, sein Delta und sein Anteil am Volumen, in einer Tabelle auf dem Bereich, für die Kerze unter dem Zeiger oder die neueste. Die am meisten gehandelten Märkte bekommen je eine Zeile; der Rest wird in der letzten Zeile zusammengezählt.",
- "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Die gewichteten Bids und Asks jeder Börse, ihr Ungleichgewicht und ihr Anteil an der Summe, in einer Tabelle auf dem Bereich, zur Zeit des Zeigers oder zum neuesten Stand. Die größten Börsen bekommen je eine Zeile; der Rest wird in der letzten Zeile zusammengezählt."
+ "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Die gewichteten Bids und Asks jeder Börse, ihr Ungleichgewicht und ihr Anteil an der Summe, in einer Tabelle auf dem Bereich, zur Zeit des Zeigers oder zum neuesten Stand. Die größten Börsen bekommen je eine Zeile; der Rest wird in der letzten Zeile zusammengezählt.",
+ "A drag across the Scripts pane sums up each script drawn there, each of its visible plots of one value a candle in its own values: the first and last value and the change, the lowest and highest, and how many candles had a value, over the closed candles of its last run. Nothing is added up and no unit is named, as a script declares neither; candles, bars and bands are named but not summed up yet, and marks are counted.": "Ein Ziehen über den Skripte-Bereich fasst jedes dort gezeichnete Skript zusammen, jeden seiner sichtbaren Plots mit einem Wert je Kerze in seinen eigenen Werten: erster und letzter Wert und die Änderung, Tiefst- und Höchstwert und wie viele Kerzen einen Wert hatten, über die geschlossenen Kerzen seines letzten Laufs. Nichts wird addiert und keine Einheit genannt, da ein Skript keins von beidem angibt; Kerzen, Balken und Bänder werden genannt, aber noch nicht zusammengefasst, und Markierungen werden gezählt.",
+ "{plot} ({n})": "{plot} ({n})",
+ "No script is both on and set to \"In its own row\". Open Scripts… to change this.": "Kein Skript ist zugleich an und auf „In eigener Zeile“ gestellt. Öffne Skripte…, um das zu ändern.",
+ "The Scripts pane last drew another market, timeframe or set of scripts: show it to sum up this selection.": "Der Skripte-Bereich hat zuletzt einen anderen Markt, Zeitrahmen oder andere Skripte gezeichnet: Zeige ihn, um diese Auswahl zusammenzufassen.",
+ "Waiting for a run for this chart.": "Wartet auf einen Lauf für dieses Chart.",
+ "The Scripts pane has not drawn yet: show it to sum up this selection.": "Der Skripte-Bereich hat noch nicht gezeichnet: Zeige ihn, um diese Auswahl zusammenzufassen.",
+ "The candle under way is left out.": "Die laufende Kerze ist nicht berücksichtigt.",
+ "No {tf} candle of the Scripts pane starts in this range.": "Keine {tf}-Kerze des Skripte-Bereichs beginnt in dieser Auswahl.",
+ "Visible plots over the closed {tf} candles held by each script's last run": "Sichtbare Plots über die geschlossenen {tf}-Kerzen, die der letzte Lauf jedes Skripts enthält",
+ "The Scripts pane is hidden: these are the values it last drew.": "Der Skripte-Bereich ist ausgeblendet: Das sind die Werte, die er zuletzt gezeichnet hat.",
+ "Script values are for all prices.": "Skriptwerte gelten für alle Preise.",
+ "Hidden in the pane: left out.": "Im Bereich ausgeblendet: nicht berücksichtigt.",
+ "the run begins at {time}": "der Lauf beginnt um {time}",
+ "{n} candles missing": {
+  "one": "{n} Kerze fehlt",
+  "other": "{n} Kerzen fehlen"
+ },
+ "newer closed candles are not in its last run": "neuere geschlossene Kerzen sind nicht in seinem letzten Lauf",
+ "Its last run holds {k} of the {n} closed candles in this selection": "Sein letzter Lauf enthält {k} der {n} geschlossenen Kerzen dieser Auswahl",
+ "No value in this selection": "Kein Wert in dieser Auswahl",
+ "Candles with a value": "Kerzen mit Wert",
+ "First → last": "Erster → letzter",
+ "Lowest – highest": "Tiefst – höchst",
+ "First value {start} · last {end}": "Erster Wert {start} · letzter {end}",
+ "{plot}: marks in the script output": "{plot}: Markierungen in der Skriptausgabe",
+ "{plots}: plots of several fields; a range summary is not available for them yet.": "{plots}: Plots mit mehreren Feldern; eine Zusammenfassung ist für sie noch nicht verfügbar.",
+ "{n} plots set invisible are left out.": {
+  "one": "{n} unsichtbar gestellter Plot ist nicht berücksichtigt.",
+  "other": "{n} unsichtbar gestellte Plots sind nicht berücksichtigt."
+ },
+ "{n} warnings in its last run: see the Scripts panel.": {
+  "one": "{n} Warnung in seinem letzten Lauf: siehe das Skripte-Panel.",
+  "other": "{n} Warnungen in seinem letzten Lauf: siehe das Skripte-Panel."
+ },
+ "Unit not declared by this script.": "Einheit von diesem Skript nicht angegeben.",
+ "Values are not added up. Shown values and changes are rounded on their own.": "Werte werden nicht addiert. Angezeigte Werte und Änderungen werden jeweils für sich gerundet."
 }

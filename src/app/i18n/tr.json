@@ -2867,5 +2867,41 @@
  "The table reads each market at the candle under the pointer, else the newest: what it bought and sold at market, their difference and its share of the candle's volume, beside the chart where there is room, else over its left end while you point at the pane. The most traded markets over the candles in view get a row each; the rest are added up in the last row. With NL/NS shown there is no table: its markets are the OI pane's, whose table has each venue.": "Tablo her piyasayı işaretçinin altındaki mumda, yoksa en yeni mumda okur: piyasa alımları ve satımları, farkları ve bu farkın mumun hacmindeki payı; yer varsa grafiğin yanında, yoksa panele işaret ettiğiniz sürece grafiğin sol ucunun üzerinde. Görünen mumlar boyunca en çok işlem gören piyasalar birer satır alır; gerisi son satırda toplanır. NL/NS gösterilirken tablo yoktur: piyasaları OI bölmesinin piyasalarıdır ve onun tablosunda her borsa vardır.",
  "The table reads each venue at the pointer's time, else the newest: its weighted bids and asks, their imbalance and its share of the two lines, beside the chart where there is room, else over its left end while you point at the pane. The venues with the most liquidity on average over the chart in view get a row each; the rest are added up in the last row. With Per level each row is that venue's own average, with no share.": "Tablo her borsayı işaretçinin zamanında, yoksa en sonda okur: ağırlıklı bid'lerini ve ask'larını, bunların dengesizliğini ve iki çizgideki payını; yer varsa grafiğin yanında, yoksa panele işaret ettiğiniz sürece grafiğin sol ucunun üzerinde. Görünen grafik boyunca ortalamada en çok likiditeye sahip borsalar birer satır alır; gerisi son satırda toplanır. Seviye başına seçiliyken her satır o borsanın kendi ortalamasıdır, pay yoktur.",
  "Each market's buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.": "Her piyasanın piyasa alımları ve satımları, deltası ve hacimdeki payı paneldeki bir tabloda, işaretçinin altındaki mum için ya da en yeni mum için. En çok işlem gören piyasalar birer satır alır; gerisi son satırda toplanır.",
- "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Her borsanın ağırlıklı bid'leri ve ask'ları, bunların dengesizliği ve toplamdaki payı paneldeki bir tabloda, işaretçinin zamanında ya da en sonda. En büyük borsalar birer satır alır; gerisi son satırda toplanır."
+ "Each venue's weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer's time or the newest. The largest venues get a row each; the rest are added up in the last row.": "Her borsanın ağırlıklı bid'leri ve ask'ları, bunların dengesizliği ve toplamdaki payı paneldeki bir tabloda, işaretçinin zamanında ya da en sonda. En büyük borsalar birer satır alır; gerisi son satırda toplanır.",
+ "A drag across the Scripts pane sums up each script drawn there, each of its visible plots of one value a candle in its own values: the first and last value and the change, the lowest and highest, and how many candles had a value, over the closed candles of its last run. Nothing is added up and no unit is named, as a script declares neither; candles, bars and bands are named but not summed up yet, and marks are counted.": "Betikler bölmesi üzerinde sürüklemek, orada çizilen her betiği özetler; tek mum başına bir değer veren her görünür çizimini kendi değerleriyle: ilk ve son değer ile değişim, en düşük ve en yüksek, ve kaç mumun değeri olduğu, son çalışmasının kapanmış mumları üzerinden. Hiçbir şey toplanmaz ve birim adı verilmez, çünkü bir betik ikisini de bildirmez; mumlar, çubuklar ve bantlar adlandırılır ama henüz özetlenmez, işaretler ise sayılır.",
+ "{plot} ({n})": "{plot} ({n})",
+ "No script is both on and set to \"In its own row\". Open Scripts… to change this.": "Hiçbir betik hem açık hem de \"Kendi satırında\" olarak ayarlı değil. Bunu değiştirmek için Betikler…'i açın.",
+ "The Scripts pane last drew another market, timeframe or set of scripts: show it to sum up this selection.": "Betikler bölmesi en son başka bir piyasa, zaman dilimi ya da başka betikler çizdi: bu seçimi özetlemek için onu gösterin.",
+ "Waiting for a run for this chart.": "Bu grafik için bir çalışma bekleniyor.",
+ "The Scripts pane has not drawn yet: show it to sum up this selection.": "Betikler bölmesi henüz çizmedi: bu seçimi özetlemek için onu gösterin.",
+ "The candle under way is left out.": "Süren mum dışarıda bırakıldı.",
+ "No {tf} candle of the Scripts pane starts in this range.": "Betikler bölmesinin {tf} mumlarından hiçbiri bu aralıkta başlamıyor.",
+ "Visible plots over the closed {tf} candles held by each script's last run": "Her betiğin son çalışmasındaki kapanmış {tf} mumları üzerinden görünür çizimler",
+ "The Scripts pane is hidden: these are the values it last drew.": "Betikler bölmesi gizli: bunlar onun en son çizdiği değerler.",
+ "Script values are for all prices.": "Betik değerleri tüm fiyatlar içindir.",
+ "Hidden in the pane: left out.": "Bölmede gizli: dışarıda bırakıldı.",
+ "the run begins at {time}": "çalışma {time} itibarıyla başlıyor",
+ "{n} candles missing": {
+  "one": "{n} mum eksik",
+  "other": "{n} mum eksik"
+ },
+ "newer closed candles are not in its last run": "daha yeni kapanmış mumlar son çalışmasında yok",
+ "Its last run holds {k} of the {n} closed candles in this selection": "Son çalışması bu seçimdeki {n} kapanmış mumun {k} tanesini içeriyor",
+ "No value in this selection": "Bu seçimde değer yok",
+ "Candles with a value": "Değeri olan mumlar",
+ "First → last": "İlk → son",
+ "Lowest – highest": "En düşük – en yüksek",
+ "First value {start} · last {end}": "İlk değer {start} · son {end}",
+ "{plot}: marks in the script output": "{plot}: betik çıktısındaki işaretler",
+ "{plots}: plots of several fields; a range summary is not available for them yet.": "{plots}: birden çok alanlı çizimler; bunlar için henüz özet yok.",
+ "{n} plots set invisible are left out.": {
+  "one": "Görünmez yapılmış {n} çizim dışarıda bırakıldı.",
+  "other": "Görünmez yapılmış {n} çizim dışarıda bırakıldı."
+ },
+ "{n} warnings in its last run: see the Scripts panel.": {
+  "one": "Son çalışmasında {n} uyarı: Betikler paneline bakın.",
+  "other": "Son çalışmasında {n} uyarı: Betikler paneline bakın."
+ },
+ "Unit not declared by this script.": "Birim bu betik tarafından bildirilmedi.",
+ "Values are not added up. Shown values and changes are rounded on their own.": "Değerler toplanmaz. Gösterilen değerler ve değişimler ayrı ayrı yuvarlanır."
 }
