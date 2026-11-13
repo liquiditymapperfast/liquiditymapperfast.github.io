@@ -349,6 +349,8 @@ export const SECTIONS: readonly Section[] = [
         '**Bar stats** and **Scripts**, described above, also stand here.',
       ] },
       { t: 'p', text: 'Where a pane has several things of one kind at one moment, such as every band or every exchange, it reads them in a **table** at the pointer\'s time, or the newest: beside the plot where there is room, otherwise over its left end while you point at the pane. The Table switch in its header hides it.' },
+      { t: 'p', text: 'Where there are more of them than the pane has rows for, as with the exchanges of the Liquidity Tracker and of Delta, the largest get a row each and the rest are added up in the last row.' },
+      { t: 'p', text: 'Each pane\'s header is **one line**: its name, its figures at the pointer (or the newest), and its settings, with the Table switch at the right end. Where the window is too narrow for all of them, the last settings fold behind the **sliders key** at the end of the line, which opens them, so the figures keep their room and the chart its height. On a phone the key holds every setting but the one changed most.' },
     ],
   },
   {
@@ -373,6 +375,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: '**Delta** is each candle\'s market buys minus market sells, in dollars, over the exchanges the flow column adds up. As **bars** it is each candle on its own; as **CVD candles** it adds up from the left edge of the chart, or starts again each day or week. A CVD candle opens and closes exactly where the running delta stood; its high and low are sampled sixteen times through the candle, so a wick can be a little short.' },
       { t: 'p', text: '**Divergences** (on at first) join two swing highs where price made the higher high and the CVD the lower one (in the sell colour), or two swing lows where price made the lower low and the CVD the higher one (in the buy colour), on the CVD candles and on the map. They show where buying or selling faded against the price.' },
       { t: 'p', text: '**NL/NS** (the third choice of *Show*) estimates who opened and closed positions. Each candle\'s change of open interest is given to the side that traded at market: up with buyers means new longs, up with sellers new shorts, down with sellers longs closed, down with buyers shorts closed. In *As* **Four parts** each candle\'s bar holds all four, buyers above the line and sellers below, solid where positions were opened and lighter where they were closed; the running net is in the pane\'s header. **Longs and shorts** draws the running sums of the longs and of the shorts as two lines instead. A bar much larger than the rest is cut at the edge with a gap across it, and its popup gives the numbers.' },
+      { t: 'p', text: 'Its **table** lists each exchange for the candle under the pointer, or the newest: what it bought and sold at market, their difference and its share of the candle\'s volume, so you can see who made the delta. The most traded over the candles in view come first. It is not drawn with NL/NS, whose exchanges are the Open Interest table\'s.' },
       { t: 'p', text: 'With **Select** armed, or [[Ctrl]] + drag (⌘ on a Mac), drag across the pane to sum up a stretch of its candles in the **Range** panel (see Range).' },
       { t: 'note', kind: 'warn', text: 'NL/NS is an estimate for one market, not a count, because every position has a long and a short holder. Where the minute readings reach (the last day) it is worked out minute by minute, so a long candle can show longs opened early on and shorts closed later. Neither it nor the divergences have been tested as a signal.' },
     ],
@@ -382,6 +385,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: '**Liquidity Tracker** (LT) draws bid and ask liquidity near the price as two lines, the closest counting most. Bid above ask means more support below the price than resistance above.' },
       { t: 'p', text: 'A level counts fully at the touch and half as much for every half-life further away, in basis points, so thin and distant orders barely move the line. Switch the view to imbalance for one line between −100% and +100%. The options set the half-life, the smallest and largest bin that counts, and whether to average per level.' },
+      { t: 'p', text: 'Its **table** reads each exchange at the pointer\'s time, or the newest: its weighted bids and asks, which way it leans (imbalance) and its share of the two lines, so you can see where the liquidity sits. The largest by their newest reading come first.' },
     ],
   },
   {

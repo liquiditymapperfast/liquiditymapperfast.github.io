@@ -139,7 +139,7 @@ export class LsPane extends TimePane {
     this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.lsTable; this.#tableBox.onchange = () => store.set({ lsTable: this.#tableBox.checked });
     table.append(this.#tableBox, t('Table'));
     wrap.append(control); group.append(wrap, table);
-    addTune(this.head, [table], t('Long/Short'));
+    addTune(this.head, [table], t('Long/Short'), { fold: true });
     this.#sync.push(() => { if (control.value !== this.store.state.lsMetric) control.value = this.store.state.lsMetric; });
   }
 

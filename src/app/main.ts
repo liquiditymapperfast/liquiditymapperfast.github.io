@@ -603,7 +603,7 @@ async function main(): Promise<void> {
     // A script that reads the change in open interest runs again once it lands, not at its next refresh.
     if (changed.has('oi') || changed.has('oiParts')) script.refresh();
     if (changed.has('show')) script.showChanged();
-    if (changed.has('lt') || changed.has('show') || changed.has('sounds')) lt.refresh();
+    if (changed.has('lt') || changed.has('ltTable') || changed.has('show') || changed.has('sounds')) lt.refresh();
     if (changed.has('sounds')) depth.syncSound();
     // The pane is sized again only when its rows change (which, or grouped and folded), not for every option: a height set by hand stays.
     const shape = `${state.barStats.join(',')}|${state.barStatOptions.grouped}|${state.barStatOptions.folded.join(',')}`;
@@ -616,7 +616,7 @@ async function main(): Promise<void> {
     if (['show', 'timeframe', 'oiFine', 'range', 'replay'].some(k => changed.has(k as never))) funding.invalidate();
     // The order book's row under the pointer: the map and the flow column's price strip draw its price.
     if (changed.has('bookHover')) { heat.invalidateHover(); cvd.syncBookHover(); }
-    if (changed.has('delta')) delta.settingsChanged();
+    if (changed.has('delta') || changed.has('deltaTable')) delta.settingsChanged();
     if ((changed.has('oi') || changed.has('oiParts')) && topShown(state)) heat.invalidate();
     if (changed.has('marketId')) candle.marketChanged();
     if (['levels', 'mark', 'disabledVenues', 'scope', 'markets', 'footprint', 'customMarkets', 'replay', 'bookGone', 'show'].some(k => changed.has(k as never))) candle.invalidate();

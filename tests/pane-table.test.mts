@@ -4,7 +4,11 @@ import { PaneTable, paintTable, placeTable, type TableCell, type TableRoom, type
 import { fundingAt, type FundingNow, type FundingRow } from '../src/app/funding.ts';
 import { fundingTableRows } from '../src/app/panes/funding-pane.ts';
 import { lsTableRows } from '../src/app/panes/ls-pane.ts';
-import { oiTableRows } from '../src/app/panes/lower-panes.ts';
+import { bookNames, ltTableRows, oiTableRows } from '../src/app/panes/lower-panes.ts';
+import { deltaTableRows } from '../src/app/panes/delta-pane.ts';
+import { tableRowCap } from '../src/app/panes/pane-table.ts';
+import { foldCount } from '../src/app/pane-tune.ts';
+import type { Market } from '../src/app/store.ts';
 import { oiVenuesAt, sumOi, type OiPart } from '../src/app/oi-change.ts';
 import type { OiBar } from '../src/app/store.ts';
 import type { LsSeries } from '../src/shared/long-short.ts';
@@ -104,9 +108,9 @@ test('the pointer over a table: a row lit and chosen by a click or a tap, the cl
 
 test('the tables are on by default, for a save or a layout from before them, and stay off once switched off', () => {
   const on = readSettings({});
-  assert.deepEqual([on.fundingTable, on.oiTable, on.lsTable], [true, true, true]);
-  const off = readSettings({ fundingTable: false, oiTable: false, lsTable: false });
-  assert.deepEqual([off.fundingTable, off.oiTable, off.lsTable], [false, false, false]);
+  assert.deepEqual([on.fundingTable, on.oiTable, on.lsTable, on.ltTable, on.deltaTable], [true, true, true, true, true]);
+  const off = readSettings({ fundingTable: false, oiTable: false, lsTable: false, ltTable: false, deltaTable: false });
+  assert.deepEqual([off.fundingTable, off.oiTable, off.lsTable, off.ltTable, off.deltaTable], [false, false, false, false, false]);
 });
 
 const H = 3_600_000, T = Date.UTC(2026, 10, 6, 0), MIN = 60_000;
@@ -164,4 +168,43 @@ test('the Long/Short table: long, short and their ratio at the moment read, dash
   assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '55.6%', '44.4%', '1.25'], ['Bybit', '–', '–', '–'], ['OKX', '–', '–', '–'], ['Bitget', '50.0%', '50.0%', '1.00']]);
   assert.deepEqual(rows[3]!.slice(1).map(c => c.color), [PALETTE.muted, PALETTE.muted, PALETTE.muted], 'an earlier reading after a failed update is muted');
   assert.notEqual(rows[0]![1]!.color, PALETTE.muted);
+});
+
+test('the Liquidity Tracker table: bids, asks, the imbalance signed, and the share only outside the Per level mode', () => {
+  const rows = ltTableRows([{ name: 'Binance', bid: 29_900_000, ask: 40_500_000, share: 0.21 }, { name: '7 others', bid: 44_800_000, ask: 45_900_000, share: 0.26 }, { name: 'Kraken', bid: 0, ask: 0, share: 0 }], PALETTE);
+  assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '29.9M', '40.5M', '−15%', '21%'], ['7 others', '44.8M', '45.9M', '−1%', '26%'], ['Kraken', '0', '0', '0%', '0%']]);
+  assert.equal(rows[2]![3]!.color, PALETTE.muted, 'no lean: muted');
+  assert.deepEqual(ltTableRows([{ name: 'OKX', bid: 300, ask: 100, share: null }], PALETTE).map(r => r.map(c => c.text)), [['OKX', '300', '100', '+50%']], 'Per level: no share column');
+});
+
+test('the Delta table: buys, sells, the delta signed and the share of the volume', () => {
+  const rows = deltaTableRows([{ name: 'Binance', buys: 3_000_000, sells: 1_000_000, delta: 2_000_000, share: 0.8 }, { name: '2 others', buys: 400_000, sells: 600_000, delta: -200_000, share: 0.2 }], PALETTE);
+  assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '3M', '1M', '+2M', '80%'], ['2 others', '400K', '600K', '−200K', '20%']]);
+  assert.notEqual(rows[0]![3]!.color, rows[1]![3]!.color, 'a buying delta and a selling one in their sides\' colours');
+});
+
+test('book names: the venue\'s, and the spot market says so only where two would read the same', () => {
+  const markets = [
+    { id: 'binance:BTCUSDT', instrumentId: 'binance:BTCUSDT', marketType: 'perpetual' },
+    { id: 'binance:BTCUSDT:spot', instrumentId: 'binance:BTCUSDT:spot', marketType: 'spot' },
+    { id: 'coinbase:BTC-USD', instrumentId: 'coinbase:BTC-USD', marketType: 'spot' },
+    { id: 'bybitspot:BTCUSDT', instrumentId: 'bybitspot:BTCUSDT', marketType: 'spot' },
+  ] as unknown as Market[];
+  assert.deepEqual(bookNames(['binance:BTCUSDT', 'binance:BTCUSDT:spot', 'coinbase:BTC-USD', 'bybitspot:BTCUSDT'], markets), ['Binance', 'Binance Spot', 'Coinbase', 'Bybit spot']);
+});
+
+test('a table of many markets keeps a row each for as many as fit at 13 px with its titles and foot, at most eight', () => {
+  assert.deepEqual([40, 56, 69, 82, 108, 134, 400].map(tableRowCap), [0, 2, 3, 4, 6, 8, 8]);
+  // Whatever the cap, the rows it allows (with the titles and the foot) fit the pane, so placeTable never leaves the table out for its rows.
+  for (let h = 30; h < 300; h++) { const k = tableRowCap(h); if (k) assert.ok(placeTable(measure, room({ h }), spec(k)), `h ${h}, ${k} rows`); }
+});
+
+test('a header folds as few of its last controls as leave the figures their room, and all of them where nothing does', () => {
+  const widths = [100, 90, 80], key = 22;
+  // The row's width with the last k folded: the fixed part, the controls left, the key where one folded.
+  const need = (k: number): number => 300 + widths.slice(0, widths.length - k).reduce((a, b) => a + b, 0) + (k ? key : 0);
+  assert.equal(foldCount(3, 600, need), 0, 'everything fits');
+  assert.equal(foldCount(3, 569, need), 1, 'the last one folds (and the key takes its place)');
+  assert.equal(foldCount(3, 450, need), 2);
+  assert.equal(foldCount(3, 300, need), 3, 'too narrow even folded: all of them, and the row wraps');
 });

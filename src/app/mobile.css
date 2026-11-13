@@ -486,6 +486,8 @@ html[data-layout^="phone"] .pane.ladder { container: ladder / inline-size; }
 /* The title, the choice made all the time and a key at the end of the row; the other controls wait in the sheet the key opens. */
 .tune-btn { display: none; }
 html[data-layout^="phone"] .pane-head.tuned .rest { display: none; }
+/* A group whose every control waits behind the key is no gap in the row. */
+html[data-layout^="phone"] .pane-head.tuned .ctl-group:not(:has(> :not(.rest))) { display: none; }
 html[data-layout^="phone"] .pane-head.tuned > .tune-btn { display: inline-grid; place-items: center; order: 5; flex: none; width: var(--ph-key-w); min-height: var(--ph-ctl-h); padding: 0; margin-left: auto; align-self: flex-end; }
 html[data-layout^="phone"] .pane-head.tuned > .tune-btn.open { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); }
 html[data-layout^="phone"] .pane-head.tuned > button.help { order: 6; align-self: flex-end; }

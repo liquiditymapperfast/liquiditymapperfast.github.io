@@ -486,8 +486,17 @@ html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button,
 .pane-head .readout b { color: var(--text); }
 .pane-head .readout b.bid { color: var(--bid); }
 .pane-head .readout b.ask { color: var(--ask); }
-/* Six controls fill this header: its figures (Bid, Ask, imbalance) take a line under them instead of the sliver that is left. */
-html[data-layout="desktop"] .pane.lt .pane-head .readout { flex: 1 0 100%; order: 9; padding-bottom: 2px; }
+/* A pane's header is one row on a desktop (Karl, 2026-11-13): where its figures would get less than their room beside the controls, the last
+   controls fold behind the settings key, which opens them in a panel (pane-tune.ts); the Liquidity Tracker's figures took a line of their own. */
+html[data-layout="desktop"] .pane-head .folded { display: none; }
+html[data-layout="desktop"] .pane-head.folding > .tune-btn { display: inline-grid; place-items: center; flex: none; box-sizing: border-box; width: var(--head-key, 22px); height: var(--head-key, 22px); min-height: 0; padding: 0; }
+html[data-layout="desktop"] .pane-head.folding > .tune-btn > svg { width: 15px; height: 15px; }
+html[data-layout="desktop"] .pane-head.tune-measuring { width: max-content !important; flex-wrap: nowrap !important; }
+html[data-layout="desktop"] .pane-head.tune-measuring > .readout { display: none !important; }
+.panel .tune-panel > .ctl { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin: 0; border-top: 1px solid var(--line); color: var(--text); }
+.panel .tune-panel > .ctl:first-child { border-top: 0; }
+.panel .tune-panel > .ctl:has(> input[type=checkbox]) { justify-content: flex-start; gap: 8px; }
+.panel .tune-panel > .ctl-group { justify-content: flex-start; }
 .ctl { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
 .ctl[hidden] { display: none; }
 .ctl select, .pane-head button { padding: 1px 6px; font-size: 11px; }

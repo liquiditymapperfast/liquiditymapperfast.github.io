@@ -62,6 +62,16 @@ function writeSize(name: string, size: PanelSize | null): void {
   try { window.localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(all)); } catch { /* storage unavailable: kept for this visit */ }
 }
 
+/**
+ * What a panel is placed by: its button, or where that button is folded away behind a pane header's settings key (pane-tune.ts: the Depth
+ * pane's Edit... opened from the key's panel) the key; a button with no box would put the panel in the window's corner.
+ */
+function placedBy(anchor: HTMLElement): HTMLElement {
+  if (anchor.getClientRects().length) return anchor;
+  const key = anchor.closest('.pane-head')?.querySelector<HTMLElement>(':scope > .tune-btn');
+  return key && key.getClientRects().length ? key : anchor;
+}
+
 export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (tools: HTMLElement, body: HTMLElement) => void): Panel {
   current?.close();
   const closeButton = el('button', { class: 'panel-x', tip: t('Close (Esc)'), ariaLabel: t('Close'), type: 'button' });
@@ -96,7 +106,7 @@ export function openPanel(anchor: HTMLElement, options: PanelOptions, build: (to
     root.style.height = sized ? `${Math.min(sized.height, window.innerHeight - 2 * EDGE)}px` : '';
     if (drag.moved()) { drag.clamp(); return; }
     // A button of a top-bar deck places its panel by the whole deck: under the button alone the panel hid the deck's other row of buttons.
-    const a = anchor.getBoundingClientRect(), deck = anchor.closest('fieldset.deck')?.getBoundingClientRect();
+    const a = placedBy(anchor).getBoundingClientRect(), deck = anchor.closest('fieldset.deck')?.getBoundingClientRect();
     const box = anchorBox({ left: a.left, top: a.top, right: a.right, bottom: a.bottom }, deck ? { left: deck.left, top: deck.top, right: deck.right, bottom: deck.bottom } : null);
     const need = natural(), view = { width: window.innerWidth, height: window.innerHeight };
     if (side === null || rechoose) side = chooseSide(box, need, view);

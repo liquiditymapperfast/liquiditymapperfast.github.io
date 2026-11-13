@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LT_DEFAULTS, imbalanceAxis, ltSeries, ltWeight, type LtParams, type LtStore } from '../src/app/lt.ts';
+import { LT_DEFAULTS, imbalanceAxis, ltPartAt, ltSeries, ltWeight, type LtParams, type LtStore } from '../src/app/lt.ts';
 import { LT_LENGTH, ltIndex } from '../src/shared/lt-sample.ts';
 
 const MIN = 60_000;
@@ -93,4 +93,36 @@ test('the imbalance axis is the largest imbalance in view, up to the next of 2, 
   assert.equal(imbalanceAxis(NaN), 0.02);
   assert.equal(imbalanceAxis(1.4), 1, 'never past the whole book');
   for (const largest of [0.004, 0.03, 0.2, 0.9]) assert.ok(imbalanceAxis(largest) >= largest, 'the largest bar fits');
+});
+
+test('each market\'s part: the very numbers the lines add up, its live column with its recorded ones, NaN where it has none', () => {
+  // Market 0: recorded at 0 and 1 min, its live column replacing the minute at 1 min. Market 1: recorded at 0 only. A store with no owner counts in the sums alone.
+  const a = store([{ t: 0, rows: [[1000, 100, 0], [1005, 0, 100]] }, { t: MIN, rows: [[1000, 999, 0]] }], { cutoff: MIN, owner: 0 });
+  const live = store([{ t: MIN, rows: [[1000, 40, 0], [1001, 0, 60]] }], { instant: true, owner: 0 });
+  const b = store([{ t: 0, rows: [[1001, 200, 0], [1004, 0, 300]] }], { owner: 1 });
+  const loose = store([{ t: 0, rows: [[1001, 7, 0]] }]);
+  const out = ltSeries([a, live, b, loose], 0, 2 * MIN, MIN, flat(), 2);
+  assert.deepEqual([...out.times], [0, MIN]);
+  near(out.bid, [307, 40]); near(out.ask, [400, 60]);
+  const parts = out.parts!;
+  assert.equal(parts.bid.length, 4, 'two markets of two windows each');
+  assert.deepEqual([ltPartAt(parts, 2, 0, 0), ltPartAt(parts, 2, 0, 1), ltPartAt(parts, 2, 1, 0), ltPartAt(parts, 2, 1, 1)],
+    [{ bid: 100, ask: 100 }, { bid: 40, ask: 60 }, { bid: 200, ask: 300 }, null], 'market 1 has nothing at 1 min: no figure, not a zero');
+  assert.equal(ltSeries([a, b], 0, 2 * MIN, MIN, flat()).parts, undefined, 'none asked: none made');
+  // A gap in the lane (NaN numbers) is nothing for that market; an empty column of a book is a zero, there.
+  const lane: LtStore = { step: 1, times: [0, MIN], counts: [0, 0], bins: [], bid: [], ask: [], lt: [5, 6, 1, 1, NaN, NaN, NaN, NaN], ltStride: 4, owner: 0 };
+  const empty = store([{ t: MIN, rows: [] }], { owner: 1 });
+  const mixed = ltSeries([lane, empty], 0, 2 * MIN, MIN, flat(), 2);
+  assert.deepEqual([ltPartAt(mixed.parts!, 2, 0, 0), ltPartAt(mixed.parts!, 2, 0, 1), ltPartAt(mixed.parts!, 2, 1, 1)], [{ bid: 5, ask: 6 }, null, { bid: 0, ask: 0 }]);
+});
+
+test('in the Per level mode a market\'s part is its own average, and the lines are pooled over every market\'s weights', () => {
+  const a = store([{ t: 0, rows: [[1000, 100, 0], [999, 300, 0], [1001, 0, 50]] }], { owner: 0 });
+  const b = store([{ t: 0, rows: [[1000, 600, 0], [1001, 0, 10]] }], { owner: 1 });
+  const out = ltSeries([a, b], 0, MIN, MIN, flat({ average: true }), 2);
+  near(out.bid, [1000 / 3]); near(out.ask, [30]);
+  const parts = out.parts!;
+  assert.ok(parts.wBid && parts.wAsk, 'the weights come with them');
+  const [x, y] = [ltPartAt(parts, 1, 0, 0)!, ltPartAt(parts, 1, 1, 0)!];
+  near([x.bid, x.ask, y.bid, y.ask], [200, 50, 600, 10]);
 });

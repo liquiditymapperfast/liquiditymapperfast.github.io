@@ -117,7 +117,7 @@ export class FundingPane extends TimePane {
     this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.fundingTable; this.#tableBox.onchange = () => store.set({ fundingTable: this.#tableBox.checked });
     table.append(this.#tableBox, t('Table'));
     const group = document.createElement('span'); group.className = 'ctl ctl-group'; group.append(wrap, table); this.head.append(group);
-    addTune(this.head, [wrap, table], t('Funding'));
+    addTune(this.head, [wrap, table], t('Funding'), { fold: true });
     this.#syncVenues();
   }
 

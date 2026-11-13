@@ -24,12 +24,12 @@ import { LiqHistory, bandIndex, type LiqRow } from '../liq-history.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { addTune } from '../pane-tune.ts';
-import { PaneTable, tableInk, type TableCell, type TableRoom } from './pane-table.ts';
+import { PaneTable, tableInk, tableRowCap, type TableCell, type TableRoom } from './pane-table.ts';
 import { isPhone } from '../device.ts';
 import { niceTicks } from '../cvd/hero.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sizeControl, sizeRow, sortableList, switchRow, togglePanel, type Panel } from '../ui.ts';
 import { COMMON_SIZES, SIZE_FLOOR_USD, SIZE_MAX_USD, sizeText } from '../sizes.ts';
-import { imbalanceAxis, type LtSeries } from '../lt.ts';
+import { imbalanceAxis, ltPartAt, type LtSeries } from '../lt.ts';
 import { LT_HALF_LIVES } from '../../shared/lt-sample.ts';
 import { GestureRecognizer, bindTouch, type GestureHandlers, type Pt } from '../touch.ts';
 import { panelSwitchRow, panelSwitchOn, panelSwitchTip, setPanelSwitch } from '../sound/panel.ts';
@@ -266,10 +266,10 @@ const LIQ_HOLD_MS = 90 * 60_000;
 const signedText = (value: number): string => `${value >= 0 ? '+' : '−'}${usd(Math.abs(value))}`;
 /** The Depth table's figures: three significant figures (263M, 1.38B), so its columns stay narrow enough to sit beside the plot. */
 const tableFigures = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 3 });
-const tableText = (value: number): string => Number.isFinite(value) ? tableFigures.format(value) : '–';
+export const tableText = (value: number): string => Number.isFinite(value) ? tableFigures.format(value) : '–';
 /** An amount in the Depth pane's units: dollars as the page writes them, coins to three significant figures (0.0125, 5.51K), never a fraction rounded to 0. */
 const amountText = (value: number, coins: boolean): string => coins ? tableText(value) : usd(value);
-const tableSigned = (value: number): string => Number.isFinite(value) ? `${value >= 0 ? '+' : '−'}${tableFigures.format(Math.abs(value))}` : '–';
+export const tableSigned = (value: number): string => Number.isFinite(value) ? `${value >= 0 ? '+' : '−'}${tableFigures.format(Math.abs(value))}` : '–';
 /** Why typed bands cannot be used, in words. */
 function bandError(code: 'empty' | 'number' | 'range' | 'count' | 'repeat'): string {
   return code === 'empty' ? t('Type at least one band.') : code === 'number' ? t('Use numbers only, for example 0.25, 0.5, 1.')
@@ -350,10 +350,11 @@ export class DepthPane extends TimePane {
     this.#bell.onchange = () => setPanelSwitch(this.store, 'depthPane', this.#bell.checked);
     bell.append(this.#bell, t('Sound')); setTip(bell, panelSwitchTip('depthPane'));
     this.#bellLabel = bell;
-    this.head.append(source, group, scale, units, table, bell);
+    // The switches last, the table's at the right end (as on every pane).
+    this.head.append(source, group, scale, units, bell, table);
     this.syncSound(); this.#sync();
     // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts).
-    addTune(this.head, [group, scale, units, table, bell], t('Depth'));
+    addTune(this.head, [group, scale, units, bell, table], t('Depth'), { fold: true });
   }
   /** The venues or the source changed: the bands are asked again. */
   refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); }
@@ -712,7 +713,7 @@ export class OiPane extends TimePane {
     table.append(this.#tableBox, t('Table'));
     wrap.append(this.#venues); group.append(bars, wrap, this.#choose, table); this.head.append(group);
     // On a phone the venues stay in the row; the bars' choice and the table wait behind the key (pane-tune.ts).
-    addTune(this.head, [bars, table], t('Open Interest'));
+    addTune(this.head, [bars, table], t('Open Interest'), { fold: true });
   }
 
   /** Reflect the settings in the header's controls and draw again. */
@@ -1024,11 +1025,17 @@ const MINUTE = 60_000;
 
 /** Liquidity Tracker row: distance-weighted bid and ask liquidity of the aggregated enabled venues over time (see lt.ts). */
 export class LtPane extends TimePane {
-  #series: (LtSeries & { stepMs: number }) | null = null;
+  /** The series drawn, with the markets it was asked for (its parts are theirs, in that order). */
+  #series: (LtSeries & { stepMs: number; ids: readonly string[] }) | null = null;
   #key = ''; #busy = false; #lastAt = 0;
   #sync: (() => void)[] = [];
   #card = new HoverCard();
   #lines: InfoLine[] | null = null;
+  readonly #tableBox = document.createElement('input');
+  /** Each market's figures at the window read, on the pane (pane-table.ts): who holds the liquidity the lines add up, and which way each leans. */
+  readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() });
+  /** The markets in the table's order (largest first by their newest reading), kept while the series is the same one: rows never move under the pointer. */
+  #rank: { series: object; n: number; order: number[] } | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'lt');
     this.hub.onLtLane = () => this.invalidate();
@@ -1037,12 +1044,15 @@ export class LtPane extends TimePane {
     setTip(this.head.querySelector('strong')!, t("Weighted USD liquidity near the touch: each enabled venue measured from its own best bid and best ask, then added up. A level weighs 1 at the touch and halves every half-life. The size filter applies to a venue's aggregated size at one price bin, not to individual orders."));
     const lt = () => this.store.state.lt;
     const patch = (change: Partial<AppState['lt']>) => this.store.set({ lt: { ...lt(), ...change } });
+    // One group, so the header's rule that puts its last control at the right edge moves them all together (each went on its own, so only the last
+    // one stood at the right).
+    const group = el('span', { class: 'ctl ctl-group' }); this.head.append(group);
     const select = (label: string, title: string, options: [string, string][], get: () => string, set: (value: string) => void): HTMLLabelElement => {
       const wrap = document.createElement('label'); wrap.className = 'ctl'; setTip(wrap, title); wrap.append(label);
       const control = document.createElement('select');
       for (const [value, text] of options) control.append(new Option(text, value));
       control.value = get(); control.onchange = () => set(control.value);
-      wrap.append(control); this.head.append(wrap);
+      wrap.append(control); group.append(wrap);
       this.#sync.push(() => { if (control.value !== get()) control.value = get(); });
       return wrap;
     };
@@ -1050,7 +1060,7 @@ export class LtPane extends TimePane {
     const size = (label: string, title: string, sign: '≥' | '≤', none: string, presets: readonly number[], get: () => number, put: (usd: number) => void): HTMLLabelElement => {
       const wrap = document.createElement('label'); wrap.className = 'ctl'; setTip(wrap, title); wrap.append(label);
       const control = sizeControl(label, { sign, value: scaledUsd(get()), presets: presets.map(scaledUsd), min: 1, max: scaledUsd(SIZE_MAX_USD), none }, v => put(v === 0 ? 0 : unscaledUsd(v)));
-      wrap.append(control.root); this.head.append(wrap);
+      wrap.append(control.root); group.append(wrap);
       this.#sync.push(() => control.set(scaledUsd(get())));
       return wrap;
     };
@@ -1060,14 +1070,19 @@ export class LtPane extends TimePane {
     const max = size(t('Max'), t('Ignore price bins larger than this'), '≤', t('no cap'), MAX_SIZES, () => lt().maxUsd, v => patch({ maxUsd: v }));
     const avg = document.createElement('label'); avg.className = 'ctl'; setTip(avg, t('Divide by the summed weights of the non-empty levels, as if each had size 1'));
     const box = document.createElement('input'); box.type = 'checkbox'; box.checked = lt().average; box.onchange = () => patch({ average: box.checked });
-    avg.append(box, t('Per level')); this.head.append(avg);
+    avg.append(box, t('Per level')); group.append(avg);
+    // What is drawn, before the switches: a pane's choices come first and its switches last, the table's at the right end (as on every pane).
+    const viewChoice = select(t('View'), t('Bid and ask lines, or the imbalance (bid - ask) / (bid + ask)'), [['lines', t('Bid & ask')], ['imbalance', t('Imbalance')]], () => lt().view, v => patch({ view: v as AppState['lt']['view'] }));
     // The balance tipping can sound (the threshold and the volume are in the Sounds panel).
     const bell = document.createElement('label'); bell.className = 'ctl'; const bellBox = document.createElement('input'); bellBox.type = 'checkbox';
     bellBox.onchange = () => setPanelSwitch(this.store, 'depth', bellBox.checked);
-    bell.append(bellBox, t('Sound')); setTip(bell, t('Within 1% of the price, the bids outweigh the asks (or the other way round) by more than this share. It sounds once and again only after the book has come back. Three steps.')); this.head.append(bell);
+    bell.append(bellBox, t('Sound')); setTip(bell, t('Within 1% of the price, the bids outweigh the asks (or the other way round) by more than this share. It sounds once and again only after the book has come back. Three steps.')); group.append(bell);
     this.#sync.push(() => { bellBox.checked = panelSwitchOn(this.store, 'depth'); });
     this.#sync.push(() => { if (box.checked !== lt().average) box.checked = lt().average; });
-    const viewChoice = select(t('View'), t('Bid and ask lines, or the imbalance (bid - ask) / (bid + ask)'), [['lines', t('Bid & ask')], ['imbalance', t('Imbalance')]], () => lt().view, v => patch({ view: v as AppState['lt']['view'] }));
+    const table = el('label', { class: 'ctl', tip: t('Each venue\'s weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer\'s time or the newest. The largest venues get a row each; the rest are added up in the last row.') });
+    this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.ltTable; this.#tableBox.onchange = () => store.set({ ltTable: this.#tableBox.checked });
+    table.append(this.#tableBox, t('Table')); group.append(table);
+    this.#sync.push(() => { this.#tableBox.checked = this.store.state.ltTable; });
     // On a phone the half-life is a row of chips, one tap to each (Karl, 2026-10-26: a menu is a long way to the one wanted), and the rest
     // of the controls wait behind the key at the row's end. The select stays, in the sheet, for the half-lives with no chip.
     const chips = el('div', { class: 'ctl lt-halves', role: 'group', ariaLabel: t('Half-life') }, el('span', { class: 'cap', textContent: `${t('Half-life')} · bp` }));
@@ -1081,18 +1096,20 @@ export class LtPane extends TimePane {
     }
     chips.append(seg); this.head.append(chips);
     this.#sync.push(() => { for (const chip of seg.children) { const on = Number((chip as HTMLElement).dataset.bp) === lt().halfLifeBp; chip.classList.toggle('on', on); chip.setAttribute('aria-pressed', String(on)); } });
-    addTune(this.head, [half, min, max, avg, bell, viewChoice], t('Liquidity Tracker'));
+    addTune(this.head, [half, min, max, avg, viewChoice, bell, table], t('Liquidity Tracker'), { fold: true });
   }
   /** Recompute on the next draw and reflect persisted settings in the controls. */
   refresh(): void { this.#key = ''; for (const sync of this.#sync) sync(); this.invalidate(); }
 
   protected draw(): void {
     this.#lines = null;
+    this.#table.clear();
     this.#paint();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
   protected override undrawn(): void { this.#lines = null; this.#card.hide(); }
+  protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, lt = state.lt;
     const ids = activeIds(state);
@@ -1102,14 +1119,17 @@ export class LtPane extends TimePane {
     // Where the trackers come from: the lane (the tracker alone, asked for by this pane: lt-lane.ts) where the source has one and no size filter is
     // set; the recorded columns (the books the map is drawn from, which a size filter needs, and which the browser engine has at hand) otherwise.
     const lane = this.hub.ltLane, useLane = lane.serve(ids, v, pw, lt.halfLifeBp, lt.minUsd > 0 || lt.maxUsd > 0);
-    const key = useLane ? `lane|${ids.join(',')}|${t0}|${t1}|${lane.version}|${lt.halfLifeBp}|${lt.average}`
-      : `${ids.join(',')}|${t0}|${t1}|${this.hub.columnsVersion}|${lt.halfLifeBp}|${lt.minUsd}|${lt.maxUsd}|${lt.average}`;
+    // Each market's part is asked for only while the table is on (it is the table's alone) and more than one market is counted.
+    const parts = state.ltTable && ids.length > 1;
+    const key = useLane ? `lane|${ids.join(',')}|${t0}|${t1}|${lane.version}|${lt.halfLifeBp}|${lt.average}|${parts}`
+      : `${ids.join(',')}|${t0}|${t1}|${this.hub.columnsVersion}|${lt.halfLifeBp}|${lt.minUsd}|${lt.maxUsd}|${lt.average}|${parts}`;
     const liveTail = v.t1 > Date.now() - 2 * MINUTE;
     if (ids.length && !this.#busy && (key !== this.#key || (liveTail && performance.now() - this.#lastAt > 1_500))) {
       this.#key = key; this.#busy = true; this.#lastAt = performance.now();
       const params = { halfLifeBp: lt.halfLifeBp, minUsd: scaledUsd(lt.minUsd), maxUsd: scaledUsd(lt.maxUsd), average: lt.average };
       // While the lane holds nothing for the step or half-life just chosen, the series on screen stays (it carries its own step) rather than a blank.
-      void this.hub.lt(ids, t0, t1, params, useLane).then(r => { if (!(useLane && !lane.holds && this.#series)) this.#series = { ...r, stepMs: r.stepMs ?? this.hub.columnStepMs }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
+      const asked = [...ids];
+      void this.hub.lt(asked, t0, t1, params, useLane, parts).then(r => { if (!(useLane && !lane.holds && this.#series)) this.#series = { ...r, stepMs: r.stepMs ?? this.hub.columnStepMs, ids: asked }; this.#busy = false; this.invalidate(); }, () => { this.#busy = false; });
     }
     const s = this.#series, readout = this.head.querySelector('.readout')!;
     if (!s || !s.times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Liquidity tracker is collecting…'), 12, ph / 2); setText(readout, ''); return; }
@@ -1199,7 +1219,65 @@ export class LtPane extends TimePane {
     const over = state.hover && this.pointer ? readAt(slotAt(s.times, step, state.hover.t), state.hover.t, n - 1, s.times[n - 1]) : -1;
     if (over >= 0 && state.hover && state.hover.t >= s.times[over]! + step) this.cursorT = s.times[over]! + step / 2;
     if (over >= 0) this.#lines = ltCardLines({ time: s.times[over]!, bid: s.bid[over]!, ask: s.ask[over]!, halfLifeBp: lt.halfLifeBp, venues: ids.length });
+    // Each market at the window read (the readout's): on a plate the table is the popup; beside the plot the popup stays (it says the settings).
+    if (state.ltTable && s.parts && s.ids.length > 1) {
+      const rows = this.#tableRows(s, n, at, ph, lt.average);
+      const foot = `${s.estimated ? '≈ ' : ''}${state.hover ? clock(s.times[at]!, true) : `${t('newest')} ${clock(s.times[at]!)}`}`;
+      const heads = lt.average ? ['', t('Bid'), t('Ask'), t('imb')] : ['', t('Bid'), t('Ask'), t('imb'), t('Share')];
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads, minCols: 3, focus: -1, foot, rows: ltTableRows(rows, p) })?.plate) this.#lines = null;
+    }
   }
+
+  /**
+   * The table's rows at window `k`: the markets largest first by their newest reading, as many as the pane holds (`tableRowCap`), the rest added
+   * up in the last row. A market with nothing in that window has no row (and is not among the rest). In the Per level mode a market's own
+   * average, the rest pooled over their weights, and no share (the pooled weights do not add up to the lines').
+   */
+  #tableRows(s: LtSeries & { ids: readonly string[] }, n: number, k: number, h: number, average: boolean): LtRow[] {
+    const parts = s.parts!, windows = s.times.length, owners = s.ids.length;
+    let rank = this.#rank;
+    if (!rank || rank.series !== s || rank.n !== n) {
+      const size = (m: number): number => { for (let j = n - 1; j >= 0; j--) { const b = parts.bid[m * windows + j]!, a = parts.ask[m * windows + j]!; if (!Number.isNaN(b) && !Number.isNaN(a)) return b + a; } return -1; };
+      const sizes = Array.from({ length: owners }, (_, m) => size(m));
+      rank = this.#rank = { series: s, n, order: Array.from({ length: owners }, (_, m) => m).filter(m => sizes[m]! >= 0).sort((a, b) => sizes[b]! - sizes[a]! || a - b) };
+    }
+    const here = rank.order.filter(m => ltPartAt(parts, windows, m, k) !== null), cap = tableRowCap(h);
+    if (!here.length || cap < 1) return [];
+    const total = average ? null : s.bid[k]! + s.ask[k]!, names = bookNames(s.ids, this.store.state.markets);
+    const shown = here.length <= cap ? here : here.slice(0, cap - 1), rest = here.slice(shown.length);
+    const rows: LtRow[] = shown.map(m => { const f = ltPartAt(parts, windows, m, k)!; return { name: names[m]!, bid: f.bid, ask: f.ask, share: total ? (f.bid + f.ask) / total : null }; });
+    if (rest.length) {
+      let b = 0, a = 0, wb = 0, wa = 0;
+      for (const m of rest) { const at = m * windows + k; b += parts.bid[at]!; a += parts.ask[at]!; wb += parts.wBid?.[at] ?? 0; wa += parts.wAsk?.[at] ?? 0; }
+      const bid = average ? (wb > 0 ? b / wb : 0) : b, ask = average ? (wa > 0 ? a / wa : 0) : a;
+      rows.push({ name: tn(rest.length, '{n} other', '{n} others'), bid, ask, share: total ? (b + a) / total : null });
+    }
+    return rows;
+  }
+}
+
+/** A row of the Liquidity Tracker's table: a market (or the rest added up), its weighted bids and asks at the window read, and its share of the lines' total (null in the Per level mode). */
+export interface LtRow { name: string; bid: number; ask: number; share: number | null }
+
+/** The Liquidity Tracker's table: a market a row, its bids and asks, its imbalance (bids less asks over both) and, where there is one, its share. */
+export function ltTableRows(rows: readonly LtRow[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
+  return rows.map(r => {
+    const both = r.bid + r.ask, imb = both > 0 ? Math.round((r.bid - r.ask) / both * 100) : 0;
+    const cells: TableCell[] = [{ text: r.name }, { text: tableText(r.bid), color: tableInk(p.bid, p) }, { text: tableText(r.ask), color: tableInk(p.ask, p) },
+      { text: imb === 0 ? '0%' : `${imb > 0 ? '+' : '−'}${Math.abs(imb)}%`, color: imb ? tableInk(imb > 0 ? p.bid : p.ask, p) : p.muted }];
+    if (r.share !== null) cells.push({ text: `${Math.round(r.share * 100)}%`, color: p.muted });
+    return cells;
+  });
+}
+
+/**
+ * The names of books in a table: the venue's ("Binance", "Binance spot"), and where two would read the same (a server's spot and perpetual
+ * markets of one exchange share its venue name), the spot one says so.
+ */
+export function bookNames(ids: readonly string[], markets: AppState['markets']): string[] {
+  const names = ids.map(id => venueLabel(id)), count = new Map<string, number>();
+  for (const name of names) count.set(name, (count.get(name) ?? 0) + 1);
+  return names.map((name, i) => (count.get(name)! > 1 && kindOf(markets, ids[i]!) === 'spot' && !/spot/i.test(name) ? `${name} ${t('Spot')}` : name));
 }
 
 /** Strip under the chart with the enabled per-candle statistics, aligned to the candle slots (footprint on); the Stats button chooses, orders and configures them. */

@@ -34,6 +34,13 @@ export interface TablePlace { rowH: number; titles: boolean; foot: boolean; cols
 const GAP = 7, PAD = 5;
 const ROW_HEIGHTS = [15, 14, 13, 12] as const;
 
+/**
+ * The most rows a table gives things of its own in a pane `h` px high, where there can be more of them than rows (the markets of the Liquidity
+ * Tracker and the Delta pane): those that fit at 13 px with the titles and the foot, at most eight. The pane gives the largest a row each and
+ * adds up the rest in the last one, so the table is never left out for having too many rows (`placeTable` draws none where a row each does not fit).
+ */
+export const tableRowCap = (h: number): number => Math.max(0, Math.min(8, Math.floor((h - 4) / 13) - 2));
+
 /** A figure of a table in a side's colour, a little towards the text colour so that it reads at this size. */
 export const tableInk = (side: string, p: Pick<Palette, 'text'>): string => mixHex(side, p.text, 0.2);
 

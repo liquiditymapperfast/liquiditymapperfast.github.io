@@ -10,9 +10,12 @@ import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { flowLoadIds } from '../cvd/ids.ts';
 import { resolveZone } from '../traded/settings.ts';
-import { AXIS_W } from './heat-pane.ts';
-import { TimePane, setHtml } from './lower-panes.ts';
-import { FlowCache, candleStarts, deltaCandles, resetKeys, type CandleFlow, type DeltaCandle } from '../delta/candles.ts';
+import { AXIS_W, leftGutter } from './heat-pane.ts';
+import { TimePane, bookNames, setHtml, tableSigned, tableText } from './lower-panes.ts';
+import { FlowCache, candleFlow, candleStarts, deltaCandles, resetKeys, type CandleFlow, type DeltaCandle, type DeltaTrack } from '../delta/candles.ts';
+import { PaneTable, tableInk, tableRowCap, type TableCell } from './pane-table.ts';
+import { el } from '../dom.ts';
+import type { Palette } from '../theme.ts';
 import { deltaFlows, deltaIds, ensureDeltaFlow } from '../delta/flows.ts';
 import { PIVOTS, type DeltaSettings } from '../delta/settings.ts';
 import { divergences, inView, paintDivergence, type Divergence } from '../delta/divergence.ts';
@@ -70,6 +73,11 @@ export class DeltaPane extends TimePane {
   #cache = new FlowCache();
   #sync: (() => void)[] = [];
   #marketsPanel: Panel | null = null;
+  readonly #tableBox = document.createElement('input');
+  /** Each market's part of the candle read, on the pane (pane-table.ts): who bought and who sold at market in the delta the candles add up. */
+  readonly #table = new PaneTable({ canvas: this.canvas, left: () => leftGutter(this.store.state), rangeGesture: () => this.rangeGesture, invalidate: () => this.invalidate() });
+  /** The markets in the table's order (most traded over the candles in view first), kept while the markets and the candles in view are the same: rows never move under the pointer. */
+  #rank: { key: string; order: number[] } | null = null;
   /** The candles drawn last. */
   candles: DeltaCandle[] = [];
   /** The price/CVD divergences in view, newest last (the map draws them too); none while the pane is not drawn. */
@@ -118,10 +126,16 @@ export class DeltaPane extends TimePane {
     const swing = select(t('Swing'), t('How many candles each side a high or low must stand beyond to count as a swing. A swing is drawn only once that many candles have closed after it.'), PIVOTS.map((n): [string, string] => [String(n), tn(n, '{n} candle', '{n} candles')]), () => String(d().pivot), v => patch({ pivot: (PIVOTS as readonly number[]).includes(Number(v)) ? Number(v) : d().pivot }));
     // Divergences are the CVD's: NL/NS draws none, so its header leaves their two controls out (they wrapped the header onto a third row and
     // took the plot's height for nothing).
-    const showCvd = (): void => { box.hidden = d().style === 'nlns'; swing.hidden = d().style === 'nlns'; };
+    // Each market's part of the candle, in a table on the pane: the switches last, the table's at the right end (as on every pane).
+    const table = el('label', { class: 'ctl', tip: t('Each market\'s buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.') });
+    this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.deltaTable; this.#tableBox.onchange = () => store.set({ deltaTable: this.#tableBox.checked });
+    table.append(this.#tableBox, t('Table')); group.append(table);
+    this.#sync.push(() => { this.#tableBox.checked = this.store.state.deltaTable; });
+    // NL/NS is the open interest's markets', each one's in the OI pane's table: the taker table is the CVD's and the bars'.
+    const showCvd = (): void => { box.hidden = d().style === 'nlns'; swing.hidden = d().style === 'nlns'; table.hidden = d().style === 'nlns'; };
     showCvd(); this.#sync.push(showCvd);
     // On a phone what is shown stays in the row; the rest waits behind the key (pane-tune.ts).
-    addTune(this.head, [split, markets, from, box, swing], t('Delta'));
+    addTune(this.head, [split, markets, from, box, swing, table], t('Delta'), { fold: true });
   }
 
   /** Reflect the settings in the header's controls and draw again. */
@@ -129,6 +143,7 @@ export class DeltaPane extends TimePane {
 
   protected draw(): void {
     this.#lines = null;
+    this.#table.clear();
     const held = this.#held;
     this.#paint();
     const at = this.pointer;
@@ -156,6 +171,7 @@ export class DeltaPane extends TimePane {
     this.#held = { ...next, candles: new Map(next.candles.map(c => [c.t, c] as const)) };
   }
   protected override undrawn(): void { this.#lines = null; this.#card.hide(); this.#setDivergences([]); }
+  protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
 
   #setDivergences(list: readonly Divergence[]): void {
     const key = list.map(d => `${d.kind}${d.from}-${d.to}`).join(',');
@@ -354,5 +370,55 @@ export class DeltaPane extends TimePane {
     if (hover && this.pointer) this.#lines = deltaCardLines(shown, state.timeframe);
     const since = earliest !== null && earliest > v.t0 ? ` <span class="muted">${t('flow recorded since {time}', { time: clock(earliest, true) })}</span>` : '';
     setHtml(readout, `Δ <b class="${shown.delta > 0 ? 'bid' : shown.delta < 0 ? 'ask' : ''}">${signed(shown.delta)}</b> ${t('CVD')} <b class="${shown.close > 0 ? 'bid' : shown.close < 0 ? 'ask' : ''}">${signed(shown.close)}</b>${since}`);
+    // Each market's part of the candle read (the readout's): on a plate the table is the popup; beside the plot the popup stays (it has the CVD).
+    if (state.deltaTable && ids.length > 1) {
+      const rows = this.#tableRows(state, ids, shown.t, tf, now, visible, ph);
+      const foot = `${hover ? clock(shown.t, true) : `${t('newest')} ${clock(shown.t)}`} USD`;
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share')], minCols: 4, focus: -1, foot, rows: deltaTableRows(rows, p) })?.plate) this.#lines = null;
+    }
   }
+
+  /**
+   * The table's rows for the candle from `start`: each market's own flow of it (`candleFlow`, the rule the candles are added up by: a market
+   * counts from the candle whose start its flow reaches back to), the most traded over the candles in view first, as many as the pane holds
+   * (`tableRowCap`), the rest added up in the last row. A market that does not count in that candle has no row (and is not among the rest).
+   */
+  #tableRows(state: AppState, ids: readonly string[], start: number, tf: number, now: number, visible: readonly DeltaCandle[], h: number): DeltaRow[] {
+    const flow = this.hub.flow, tracks = ids.map(id => flow.track(id));
+    const from = visible[0]!.t, to = Math.min(visible[visible.length - 1]!.t + tf, now), key = `${ids.join(',')}|${from}|${to - (to % tf)}|${tf}|${flow.loads}`;
+    let rank = this.#rank;
+    if (!rank || rank.key !== key) {
+      const traded = tracks.map(track => (track ? viewGross(track, from, to) : -1));
+      rank = this.#rank = { key, order: ids.map((_, m) => m).filter(m => traded[m]! >= 0).sort((a, b) => traded[b]! - traded[a]! || a - b) };
+    }
+    const cap = tableRowCap(h);
+    if (cap < 1) return [];
+    const flows = new Map<number, CandleFlow>();
+    for (const m of rank.order) { const f = candleFlow([tracks[m]!], start, tf, now, 1); if (f) flows.set(m, f); }
+    const here = rank.order.filter(m => flows.has(m));
+    if (!here.length) return [];
+    let total = 0;
+    for (const m of here) total += flows.get(m)!.gross;
+    const names = bookNames(ids, state.markets), shown = here.length <= cap ? here : here.slice(0, cap - 1), rest = here.slice(shown.length);
+    const row = (name: string, delta: number, gross: number): DeltaRow => ({ name, buys: (gross + delta) / 2, sells: (gross - delta) / 2, delta, share: total > 0 ? gross / total : 0 });
+    const rows = shown.map(m => { const f = flows.get(m)!; return row(names[m]!, f.delta, f.gross); });
+    if (rest.length) { let delta = 0, gross = 0; for (const m of rest) { const f = flows.get(m)!; delta += f.delta; gross += f.gross; } rows.push(row(tn(rest.length, '{n} other', '{n} others'), delta, gross)); }
+    return rows;
+  }
+}
+
+/** What a market traded over [from, to) (ms), from where its flow begins inside it; -1 where it holds none there. */
+function viewGross(track: DeltaTrack, from: number, to: number): number {
+  if (track.first === null) return -1;
+  const s = Math.max(Math.floor(from / 1000) - 1, track.first), e = Math.floor(to / 1000) - 1;
+  return e > s ? track.cumGross(e) - track.cumGross(s) : -1;
+}
+
+/** A row of the Delta pane's table: a market (or the rest added up), what it bought and sold at market in the candle read, their difference and its share of the volume. */
+export interface DeltaRow { name: string; buys: number; sells: number; delta: number; share: number }
+
+/** The Delta pane's table: a market a row, its buys and sells at market, its delta and its share of the candle's volume. */
+export function deltaTableRows(rows: readonly DeltaRow[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
+  return rows.map(r => [{ text: r.name }, { text: tableText(r.buys), color: tableInk(p.bid, p) }, { text: tableText(r.sells), color: tableInk(p.ask, p) },
+    { text: tableSigned(r.delta), color: r.delta ? tableInk(r.delta > 0 ? p.bid : p.ask, p) : undefined }, { text: `${Math.round(r.share * 100)}%`, color: p.muted }]);
 }
