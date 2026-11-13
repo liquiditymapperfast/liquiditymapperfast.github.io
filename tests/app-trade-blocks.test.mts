@@ -460,3 +460,20 @@ test('a block read again is read from what it was while nothing it reads changed
     assert.deepEqual(sum(out), sum(fresh), `step ${step}`);
   }
 });
+
+test('a block read again is read anew when the reference market\'s first order reaches the ring, outside the block\'s seconds (review r5)', () => {
+  // Before it, the reference's price before a block comes from the flow; after it, from the tally (none there: no price).
+  const ring = new TapeRing(BLOCK), tally = new SecondTally(3600);
+  ring.add(batch(1, [[O, T0, 70_000, 1_000]]), 1, 0);
+  tally.reset(ring, all); while (tally.filling) tally.fill();
+  const startSec = T0 / 1000 - 3600;
+  const flow: FlowLike = { buy: (a, z) => (z - a + 1) * 100, sell: (a, z) => (z - a + 1) * 10, ownPrice: () => 69_000, span: { first: startSec, last: startSec + 7200 } };
+  const make = (): BlockReader => { const r = new BlockReader(); r.tally = tally; r.markets = [B, BS, O]; r.ref = B; r.flowOf = id => id === B ? flow : undefined; r.setVenues(2, venueSlot); return r; };
+  const r = make(), out = emptyBlock(2), fresh = emptyBlock(2), now = T0 + 25_000, s = T0 / 1000 + 5;
+  r.read(s, 1, out, now);
+  assert.equal(out.refPrev, 69_000);
+  ring.add(batch(2, [[B, T0 + 15_000, 70_100, 2_000]]), 1, 0); tally.update();
+  r.read(s, 1, out, now); make().read(s, 1, fresh, now);
+  assert.ok(Number.isNaN(fresh.refPrev));
+  assert.ok(Number.isNaN(out.refPrev), 'the kept copy follows the reference into the ring');
+});

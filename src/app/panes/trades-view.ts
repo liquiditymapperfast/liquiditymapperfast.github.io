@@ -34,7 +34,7 @@ const NOTE_ORDERS_MAX = 400_000;
 /** The inspector's pass over a block's orders: a slice of idle time, and how many orders between two looks at the clock. */
 const SLICE_MS = 4, SLICE_ORDERS = 2048;
 /** A block's inspector being worked out (`TradesView.#plan`). */
-interface Plan { block: Block; state: 'held' | 'newest'; unit: number; t0: number; t1: number; floor: number; big: number; steps: Generator<void, void, void> }
+interface Plan { block: Block; state: 'held' | 'newest'; unit: number; t0: number; t1: number; floor: number; big: number; scan: OrderScan; epoch: number; steps: Generator<void, void, void> }
 /** Older stretches of the recording kept for the blocks on screen, and the least margin asked either side of what is on screen. */
 const OLDER_KEPT = 8, OLDER_MARGIN_MS = 5 * 60_000;
 /** How far the tape's start may move past what the recording's holes and its orders were asked up to before they are asked again. */
@@ -88,7 +88,8 @@ export class TradesView {
   #scratch = emptyBlock(0);
   /** What the inspector drew last (its key), and the one pass that reads a block's orders for it. */
   #inspected = '';
-  #scan = new OrderScan(id => markOf(id).family);
+  /** The scans the inspector's pass (in slices) and a tap's sheet (at once) add orders into: one each, so neither adds into the other's. */
+  #scan = new OrderScan(id => markOf(id).family); #sheetScan = new OrderScan(id => markOf(id).family);
   #groupOf = new Map<string, number>(); #ringGroups: number[] = []; #ringGroupsFor: TapeRing | null = null;
   /** The tape ring (set by the page: it exists once a view has asked for the tape). */
   ring: () => TapeRing | null = () => null;
@@ -148,7 +149,7 @@ export class TradesView {
     if (shown === this.#shown) return;
     this.#shown = shown; this.root.hidden = !shown;
     window.clearInterval(this.#tick); this.#tick = 0;
-    if (!shown) { this.#panel?.close(); this.blocks.setShown(false); this.orders.setShown(false); window.clearTimeout(this.#fillTimer); return; }
+    if (!shown) { this.#panel?.close(); this.blocks.setShown(false); this.orders.setShown(false); window.clearTimeout(this.#fillTimer); this.#dropJob(); return; }
     // The held block's figures can still change (a late order): its inspector is read again once a second while the view shows. The markets
     // come in after the view opens (the source's list, a venue's first book): they and the per-second history they need are checked too.
     this.#tick = window.setInterval(() => {
@@ -166,6 +167,9 @@ export class TradesView {
   invalidate(): void { this.blocks.invalidate(); this.orders.invalidate(); }
   /** The settings, the venues or the sizes changed: the unit's list is set up again, the tally started over when what it counts changed. */
   refresh(): void {
+    // Everything a redraw does as well: one store change can carry the clock, the whale size or a replay with a setting, and `main.ts`
+    // calls only this one then (the rows would keep the old zone's times, the old whale's sizes).
+    this.blocks.whale = this.#whale(); this.orders.redraw(); this.blocks.redrawAll(); this.#inspected = '';
     this.#syncMenus();
     const unit = this.#unitNow(), blocksOn = unit > 0;
     this.blocks.root.hidden = !blocksOn; this.orders.root.hidden = blocksOn;
@@ -461,9 +465,14 @@ export class TradesView {
     this.#slice();
   }
   #job: Plan | null = null; #jobTimer = 0;
+  /** A pass left unfinished (the view hidden): its key is forgotten, so the inspector works the block out again when it shows. */
+  #dropJob(): void { window.clearTimeout(this.#jobTimer); if (this.#job) { this.#job = null; this.#inspected = ''; } }
   #slice(): void {
     const job = this.#job;
-    if (!job || !this.#shown) return;
+    if (!job) return;
+    if (!this.#shown) { this.#dropJob(); return; }
+    // The ring rebased between two slices (its stored times moved): the pass starts over rather than read the rest hours off.
+    if ((this.ring()?.epoch ?? -1) !== job.epoch) { this.#dropJob(); this.#inspect(); return; }
     const end = performance.now() + SLICE_MS;
     while (performance.now() < end) {
       if (job.steps.next().done) { this.#job = null; renderInspector(this.#inspector, this.#finish(job)); return; }
@@ -503,13 +512,13 @@ export class TradesView {
       this.#inspected = key;
     }
     const block = emptyBlock(reader.venues); copyBlock(read, block);
-    const floor = reader.minUsd, big = Math.max(scaledUsd(100_000), floor);
-    this.#scan.reset(isPhone() ? 4 : 9, floor, big);
-    return { block, state, unit, t0, t1, floor, big, steps: this.#scanSteps(t0, t1) };
+    const floor = reader.minUsd, big = Math.max(scaledUsd(100_000), floor), scan = keyed ? this.#scan : this.#sheetScan;
+    scan.reset(isPhone() ? 4 : 9, floor, big);
+    return { block, state, unit, t0, t1, floor, big, scan, epoch: this.ring()?.epoch ?? -1, steps: this.#scanSteps(scan, t0, t1) };
   }
   /** The model once the pass is over. */
   #finish(plan: Plan): ReturnType<typeof inspectorModel> {
-    const { block, state, unit, t0, t1, floor, big } = plan, reader = this.blocks.reader, scan = this.#scan;
+    const { block, state, unit, t0, t1, floor, big, scan } = plan, reader = this.blocks.reader;
     const largest = scan.largest;
     const time = unit >= 60 ? `${clock(t0)}–${clock(t1)}` : unit === 1 ? clockSeconds(t0) : `${clockSeconds(t0)}–${clockSeconds(t1)}`;
     // The stretches of the block before the tape that nobody recorded (any size: the flow's zeros there are not quiet seconds).
@@ -523,10 +532,11 @@ export class TradesView {
   #group(id: string): number { let g = this.#groupOf.get(id); if (g === undefined) { g = this.#groupOf.size; this.#groupOf.set(id, g); } return g; }
   /**
    * The orders of a stretch into the scan, for the notes and the largest orders: the tape's where it covers (read straight from the ring's
-   * arrays, at most NOTE_ORDERS_MAX, the newest), else the recording's. A step every SLICE_ORDERS orders (the caller decides when to go on).
+   * arrays, at most NOTE_ORDERS_MAX, the newest), else the recording's. A step every SLICE_ORDERS orders looked at, counted or not (a high
+   * floor skips most of them; the caller decides when to go on).
    */
-  *#scanSteps(t0: number, t1: number): Generator<void, void, void> {
-    const scan = this.#scan, ring = this.ring(), shown = instrumentShown(this.store.state), cov = this.#tally.coveredFrom();
+  *#scanSteps(scan: OrderScan, t0: number, t1: number): Generator<void, void, void> {
+    const ring = this.ring(), shown = instrumentShown(this.store.state), cov = this.#tally.coveredFrom();
     // The block's own filter: its side and its smallest order (the notes and the largest orders describe what the block counts).
     const reader = this.blocks.reader, side = reader.side, floor = reader.minUsd;
     const passes = (usd: number): boolean => !((side === 'buy' && usd < 0) || (side === 'sell' && usd > 0) || (floor > 0 && Math.abs(usd) < floor));
@@ -535,15 +545,15 @@ export class TradesView {
       const groups = this.#ringGroups, d = ring.data, cap = ring.capacity, rt0 = ring.t0, p0 = ring.p0;
       // Each market's group, or -1 when it is not shown, once per ring index (the venues shown can change: the list is made again then).
       while (groups.length < ring.ids.length) { const id = ring.ids[groups.length]!; groups.push(shown(id) ? this.#group(id) : -1); }
-      let read = 0;
+      let read = 0, seen = 0;
       for (const [a, b] of ring.runs(Math.max(t0, cov), t1 - 1)) {
         for (let k = Math.max(a, b - NOTE_ORDERS_MAX); k < b && read < NOTE_ORDERS_MAX; k++) {
+          if (++seen % SLICE_ORDERS === 0) yield;
           const at = (k % cap) * STRIDE, tt = rt0 + d[at]!;
           if (tt < t0 || tt >= t1) continue;
           const m = d[at + 3]!, g = groups[m] ?? -1;
           if (g < 0 || !passes(d[at + 2]!)) continue;
-          scan.add(g, ring.ids[m]!, tt, d[at + 2]!, p0 + d[at + 1]!, p0 + d[at + 4]!, p0 + d[at + 5]!);
-          if (++read % SLICE_ORDERS === 0) yield;
+          scan.add(g, ring.ids[m]!, tt, d[at + 2]!, p0 + d[at + 1]!, p0 + d[at + 4]!, p0 + d[at + 5]!); read++;
         }
       }
     }

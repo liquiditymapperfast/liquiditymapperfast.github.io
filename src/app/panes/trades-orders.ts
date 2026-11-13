@@ -98,6 +98,7 @@ export class OrderList {
     const c = this.#canvas;
     // A canvas given back by the browser (its graphics memory was taken back, as phones do) comes back empty: nothing kept on it holds.
     c.addEventListener('contextrestored', () => { this.rows.reset(); this.invalidate(); });
+    document.addEventListener('visibilitychange', this.#onVisible);
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
       // A mouse is in use again (a hybrid device): its box offers the click once more.
@@ -138,12 +139,16 @@ export class OrderList {
     c.addEventListener('pointerup', lift); c.addEventListener('pointercancel', e => { if (this.#touch?.id === e.pointerId) this.#touch = null; });
   }
 
-  dispose(): void { window.clearTimeout(this.#scanTimer); this.#resizeObserver.disconnect(); if (this.#frame) cancelAnimationFrame(this.#frame); }
+  dispose(): void { window.clearTimeout(this.#scanTimer); this.#resizeObserver.disconnect(); document.removeEventListener('visibilitychange', this.#onVisible); if (this.#frame) cancelAnimationFrame(this.#frame); }
+  /** A page shown again draws the list whole (a browser may have let a hidden page's canvas go). */
+  #onVisible = (): void => { if (document.visibilityState === 'visible') { this.rows.reset(); this.invalidate(); } };
 
   setShown(shown: boolean): void {
     if (shown === this.#shown) return;
     this.#shown = shown;
     if (!shown) { window.clearTimeout(this.#scanTimer); this.#pointerIn = false; this.#pointer = null; this.#hoverChanged(); this.#release(false); this.#drawn = []; return; }
+    // Shown again: drawn whole (hidden, the canvas was made 1 px and back, which empties it while the look stays the same).
+    this.rows.reset();
     this.#sync();
     this.#resize();
   }
@@ -216,6 +221,8 @@ export class OrderList {
     if (w === this.#w && h === this.#h && dpr === this.#dpr) { this.invalidate(); return; }
     this.#w = w; this.#h = h; this.#dpr = dpr;
     this.#canvas.width = Math.max(1, Math.round(w * dpr)); this.#canvas.height = Math.max(1, Math.round(h * dpr));
+    // A canvas given a size is emptied: nothing kept on it holds, even at a size the look knows (hidden to 1 px and back).
+    this.rows.reset();
     this.#canvas.style.width = `${w}px`; this.#canvas.style.height = `${h}px`;
     if (this.#shown) this.#fillBack();
     this.invalidate();

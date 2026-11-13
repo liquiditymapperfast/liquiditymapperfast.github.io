@@ -134,7 +134,7 @@ export class BlockReader {
   #kept = new Map<string, Block>();
   #keptKey = '';
   /** Blocks read lately that are not kept yet (settling, young): reused while their seconds' tally revisions and the sources stand. */
-  #recent = new Map<number, { block: Block; revs: number; cov: number }>();
+  #recent = new Map<number, { block: Block; revs: number; cov: number; ref: number }>();
   /** The markets counted as a set (the recording holds every market's orders; only those counted are added or named). */
   #marketSet = new Set<string>(); #marketsFor: readonly string[] = [];
 
@@ -190,19 +190,21 @@ export class BlockReader {
     // A block read lately (every frame reads the twenty on screen) and unchanged since: the tally's revisions of its seconds and of those
     // its price change looks back over, the covered start and the sources all as they were. Wholly after the covered start only (before
     // it the flow and the recording are keyed by the sources alone, and those blocks settle into the kept ones).
+    // B < 1024 (a block is at most UNIT_MAX_S = 900 seconds), so the slot names one block.
     const slot = s * 1024 + B, forming = out.forming, settling = out.settling;
-    const revs = !keep && s >= cov && this.tally ? this.#revsOf(s - Math.max(2, B), end) : -1;
+    // The reference market's index in the ring too: its first order there moves its price before the block from the flow to the tally.
+    const revs = !keep && s >= cov && this.tally ? this.#revsOf(s - Math.max(2, B), end) : -1, tr = this.tally?.ring, refAt = tr ? this.#refIndex(tr) : -1;
     if (revs >= 0) {
       const r = this.#recent.get(slot);
-      if (r && r.revs === revs && r.cov === cov && r.block.vBuy.length === this.venues) { copyBlock(r.block, out); out.forming = forming; out.settling = settling; return out; }
+      if (r && r.revs === revs && r.cov === cov && r.ref === refAt && r.block.vBuy.length === this.venues) { copyBlock(r.block, out); out.forming = forming; out.settling = settling; return out; }
     }
     this.#compute(s, B, out);
     if (keep) { const copy = emptyBlock(this.venues); copyBlock(out, copy); this.#kept.set(`${s}|${B}`, copy); if (this.#kept.size > 4096) this.#kept.clear(); }
     else if (revs >= 0) {
       if (this.#recent.size > 4096) this.#recent.clear();
       let r = this.#recent.get(slot);
-      if (!r || r.block.vBuy.length !== this.venues) this.#recent.set(slot, r = { block: emptyBlock(this.venues), revs, cov });
-      copyBlock(out, r.block); r.revs = revs; r.cov = cov;
+      if (!r || r.block.vBuy.length !== this.venues) this.#recent.set(slot, r = { block: emptyBlock(this.venues), revs, cov, ref: refAt });
+      copyBlock(out, r.block); r.revs = revs; r.cov = cov; r.ref = refAt;
     }
     return out;
   }
