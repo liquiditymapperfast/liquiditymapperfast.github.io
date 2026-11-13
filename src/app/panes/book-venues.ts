@@ -15,8 +15,11 @@ export class BookVenues {
   readonly #select = document.createElement('select');
   readonly #choose = document.createElement('button');
   #panel: Panel | null = null;
-  /** The choice the open panel was built for: it is built again only for another one (a pick ticked in it must not rebuild it under the pointer). */
-  #built: string = '';
+  /**
+   * What the open panel shows (the choice, the picks, the books listed): it is built again when that changes elsewhere (the other pane, a
+   * layout, another coin), not for a box ticked in it, which says so before the store changes (a rebuild would lose the list's scroll).
+   */
+  #built = '';
   readonly #build: (tools: HTMLElement, body: HTMLElement) => void;
 
   constructor(private readonly store: Store) {
@@ -30,22 +33,36 @@ export class BookVenues {
     wrap.append(this.#select);
     this.#choose.type = 'button'; this.#choose.textContent = t('Choose…'); setTip(this.#choose, t('Pick the markets whose order books are added up.'));
     this.#choose.onclick = () => this.#open();
-    this.#build = (_tools, body) => { this.#built = store.state.bookMarkets; buildBookMarketsPanel(store, body, () => this.#panel?.render(this.#build)); };
+    this.#build = (_tools, body) => {
+      this.#built = this.#shown();
+      buildBookMarketsPanel(store, body, () => this.#panel?.render(this.#build), picks => { this.#built = this.#shown(picks); });
+    };
     this.root = el('span', { class: 'ctl ctl-group book-venues' }, wrap, this.#choose);
     this.sync();
   }
 
-  /** The choice as the settings have it (changed here, in the other pane, a layout or another tab); an open panel follows another choice. */
+  /** The choice as the settings have it (changed here, in the other pane, a layout or another tab); an open panel follows. */
   sync(): void {
     const mode = this.store.state.bookMarkets;
     if (this.#select.value !== mode) this.#select.value = mode;
     this.#choose.hidden = mode !== 'custom';
-    if (this.#panel && this.#built !== mode) this.#panel.render(this.#build);
+    this.follow();
   }
 
-  /** The picker in a panel by Choose… (or, folded away, by the header's key: `placedBy`). */
+  /** An open panel built for another choice, other picks or other books (another coin) is built again; safe at every draw. */
+  follow(): void { if (this.#panel && this.#shown() !== this.#built) this.#panel.render(this.#build); }
+
+  #shown(picks: readonly string[] = this.store.state.bookPicks): string {
+    const s = this.store.state;
+    return `${s.bookMarkets}|${s.bookMarkets === 'custom' ? `${picks.join(',')}|${(s.levels?.books ?? []).map(b => b.id).join(',')}` : ''}`;
+  }
+
+  /**
+   * The picker in a panel, placed by the whole control (the select stays in view whatever the choice: Choose… hides while it is not Chosen
+   * markets, and a panel placed by a button with no box would go to the window's corner), or folded away by the header's key (`placedBy`).
+   */
   #open(): void {
     this.#choose.hidden = this.store.state.bookMarkets !== 'custom';
-    this.#panel = togglePanel(this.#choose, { title: t('Order book markets'), width: 380, align: 'right', onClose: () => { this.#panel = null; } }, this.#build);
+    this.#panel = togglePanel(this.root, { title: t('Order book markets'), width: 380, align: 'right', onClose: () => { this.#panel = null; } }, this.#build);
   }
 }

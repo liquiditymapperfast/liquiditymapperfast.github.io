@@ -74,6 +74,8 @@ export class Alerts {
   readonly #balance = new ImbalanceWatch();
   /** What the balance's watch was last started over for (`#book`): the walls' warm-up while it counts their books, its own otherwise. */
   #balanceKey = '';
+  /** When the balance last started over (`#balanceKey` changed): it only watches for ten seconds after, whichever books it counts. */
+  #balanceSince = 0;
   /**
    * The balance's own warm-up while it counts other books than the walls (the two book panes' Venues: book-markets.ts): what its books are,
    * when it started (ten seconds of only watching, as the walls'), the last look (one more than ten seconds later starts it over) and how many
@@ -173,8 +175,10 @@ export class Alerts {
       else held.last = now;
       key = `own:${this.#ownStarts}`; warm = now - this.#own!.start >= 10_000; judged = bookBins(s.levels, own, mark, 0.01);
     }
-    if (key !== this.#balanceKey) { this.#balance.reset(); this.#balanceKey = key; }
-    const tip = this.#balance.update(imbalanceOf(judged), panels.depth.pct, warm);
+    // Any start over (another set of books: a Venues choice back to the walls' books too, whose warm-up may be long past) only watches for ten
+    // seconds: a book found past the line then is the book as it was found, not news.
+    if (key !== this.#balanceKey) { this.#balance.reset(); this.#balanceKey = key; this.#balanceSince = now; }
+    const tip = this.#balance.update(imbalanceOf(judged), panels.depth.pct, warm && now - this.#balanceSince >= 10_000);
     if (tip && panels.depth.imbalance) this.#fire(now, 'depth', 'imbalance', tip, tip === 'buy' ? t('Bids outweigh asks within 1% of the price') : t('Asks outweigh bids within 1% of the price'), 'imbalance', IMBALANCE_COOLDOWN_MS);
   }
 
@@ -240,6 +244,8 @@ export class Alerts {
     // The markets from the market list, so a book that drops out is a gap (`DepthWatch` leaves such minutes out), not a reload of the hours: those
     // of the Depth pane's Venues (book-markets.ts), so the sound and the pane count the same books.
     const ids = bookMarketIds(s), key = `${ids.join(',')}|${rule.range}|${rule.hours}`;
+    // No market to read (none chosen, or no chart market yet): nothing is loading, and the Sounds panel says nothing about it.
+    if (!ids.length) { if (this.#depthKey) { this.#depth.reset(); this.#depthKey = ''; } this.depthState = null; return; }
     if (key !== this.#depthKey) { this.#depth.reset(); this.#depthKey = key; this.#depthTo = 0; this.#depthWait = 0; this.depthState = { minutes: 0, loading: true }; }
     if (this.#depthBusy || now < this.#depthWait || !ids.length) return;
     // Every minute before `settled` has been committed; the first question goes back the whole baseline, an hour at a time.

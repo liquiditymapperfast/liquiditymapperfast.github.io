@@ -1,6 +1,7 @@
 import type { AppState } from './store.ts';
 import { activeIds, emptyScopeMessage, kindOf, marketIds } from './scope.ts';
 import { familyKey, venueOfInstrument } from './cvd/families.ts';
+import { BOOK_HOLD_MS } from './cvd/ids.ts';
 import { parsePick, pickOf, type MarketKind, type PickOption } from './market-choice.ts';
 import { t } from './i18n.ts';
 
@@ -22,7 +23,7 @@ import { t } from './i18n.ts';
 export type BookMarkets = 'all' | 'chart' | 'custom';
 export const readBookMarkets = (value: unknown): BookMarkets => value === 'chart' || value === 'custom' ? value : 'all';
 
-type BookState = Pick<AppState, 'levels' | 'markets' | 'disabledVenues' | 'scope' | 'marketId' | 'bookMarkets' | 'bookPicks'>;
+type BookState = Pick<AppState, 'levels' | 'markets' | 'disabledVenues' | 'scope' | 'marketId' | 'bookMarkets' | 'bookPicks'> & Partial<Pick<AppState, 'bookGone'>>;
 
 /** The pick a book or market stands for: its exchange and kind (a market the list does not type counts as a perpetual, as `buildFamilies` says). */
 export const bookPickOf = (markets: AppState['markets'], id: string): string => pickOf(familyKey(venueOfInstrument(id)), kindOf(markets, id) === 'spot' ? 'spot' : 'perp');
@@ -57,13 +58,25 @@ export function bookMarketIds(state: BookState): string[] {
 
 /**
  * Why the two panes have no book to add up, or '': for `all` the Spot / Perp filter leaving none, or every chip off; for the others no pick,
- * or no book of them on this coin. Nothing is said before the first books come (the panes say they are collecting).
+ * or no book of them on this coin. Nothing is said before the first books and the market list come (the panes say they are collecting), nor
+ * while a counted book is only away for a moment: a feed that reconnects drops its book for a minute or more (`BOOK_HOLD_MS`, held as the
+ * flow views hold it), and the panes then keep the series they drew rather than say the chart market or the picks have no book.
  */
 export function bookEmptyMessage(state: BookState): string {
   if (state.bookMarkets === 'all') return emptyScopeMessage(state) ?? (state.levels?.books.length && !activeIds(state).length ? t('No venue is on: switch one on to sum up the order books.') : '');
-  if (!state.levels?.books.length || bookIds(state).length) return '';
+  if (!state.levels?.books.length || !state.markets.length || bookIds(state).length || heldAway(state)) return '';
   if (state.bookMarkets === 'chart') return t('The chart market has no order book here.');
   return state.bookPicks.length ? t('None of the chosen markets has an order book on this coin.') : t('No market is chosen: tick some under Choose….');
+}
+
+/** Whether a market counted (by its exchange and kind) is of a venue whose book left the feed less than `BOOK_HOLD_MS` ago. */
+function heldAway(state: BookState): boolean {
+  const gone = state.bookGone ?? {}, asOf = state.levels?.asOf ?? 0, picks = countedPicks(state);
+  for (const m of state.markets) {
+    const id = m.instrumentId ?? m.id, at = id ? gone[venueOfInstrument(id)] : undefined;
+    if (id && at !== undefined && asOf - at <= BOOK_HOLD_MS && picks.has(bookPickOf(state.markets, id))) return true;
+  }
+  return false;
 }
 
 /**

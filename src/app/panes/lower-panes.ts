@@ -512,6 +512,7 @@ export class DepthPane extends TimePane {
       if (typeof built === 'string') { say(built); return; }
       liqHeld = built; s = built.series;
     } else {
+      this.#venues.follow();
       const ids = bookIds(state);
       const emptyScope = bookEmptyMessage(state);
       if (emptyScope) { say(emptyScope); return; }
@@ -1086,7 +1087,7 @@ const MAX_SIZES = [100_000, 250_000, 500_000, 1_000_000, 5_000_000];
 const LT_CHIPS: readonly number[] = [10, 25, 50, 100, 250];
 const MINUTE = 60_000;
 
-/** Liquidity Tracker row: distance-weighted bid and ask liquidity of the aggregated enabled venues over time (see lt.ts). */
+/** Liquidity Tracker row: distance-weighted bid and ask liquidity of the books counted (Venues: book-markets.ts) added up, over time (see lt.ts). */
 export class LtPane extends TimePane {
   /** The series drawn, with the markets it was asked for (its parts are theirs, in that order). */
   /** The last answer, its windows' length, and what it was asked for (the venues and settings then, not the controls' later values). */
@@ -1187,6 +1188,7 @@ export class LtPane extends TimePane {
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
   #paint(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state, lt = state.lt;
+    this.#venues.follow();
     const ids = bookIds(state);
     const emptyScope = bookEmptyMessage(state);
     // Nothing to add up: the reason on the pane, and no figures in the header from the books counted before.
@@ -1215,7 +1217,8 @@ export class LtPane extends TimePane {
     if (replaying()) n = shownBy(s.times, s.stepMs, pageNow());
     {
       // The snapshot of what is drawn: a new one only for a new answer, a replay's cut moving, or its minute.
-      // No venue on: nothing is asked and the old series stays drawn, but it stands for no venue now.
+      // No book to ask for (none yet, or the books counted away from the feed for a moment: book-markets.ts): nothing is asked and the old
+      // series stays drawn, but it stands for no book now.
       const replayAt = replaying() ? Math.floor(pageNow() / MINUTE) * MINUTE : null, was = this.#held;
       if (!ids.length) this.#publish(null);
       else if (!was || was.times !== s.times || was.shown !== n || was.replayAt !== replayAt) {

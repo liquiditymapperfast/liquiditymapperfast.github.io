@@ -20,8 +20,8 @@ export function marketPicker(store: Store, flow: FlowBook | null, list: keyof Cu
 }
 
 /** The same list for order books (book-markets.ts): a row for each exchange and kind with a book on this coin, whatever the venue chips say. */
-export function bookPicker(store: Store): HTMLElement {
-  return pickList(bookPickOptions(store.state, store.state.bookPicks), () => store.state.bookPicks, picks => store.set({ bookPicks: picks }), t('No order book is listed yet.'));
+export function bookPicker(store: Store, ticked?: (picks: readonly string[]) => void): HTMLElement {
+  return pickList(bookPickOptions(store.state, store.state.bookPicks), () => store.state.bookPicks, picks => { ticked?.(picks); store.set({ bookPicks: picks }); }, t('No order book is listed yet.'));
 }
 
 function pickList(options: readonly PickOption[], picked: () => readonly string[], put: (picks: string[]) => void, none: string): HTMLElement {
@@ -68,7 +68,7 @@ export function buildOiMarketsPanel(store: Store, flow: FlowBook, body: HTMLElem
  * The order books' panel (opened from the Depth pane and the Liquidity Tracker, which share the choice): whose books the two panes and their
  * sounds add up, and the picker when they are picked.
  */
-export function buildBookMarketsPanel(store: Store, body: HTMLElement, rebuild: () => void): void {
+export function buildBookMarketsPanel(store: Store, body: HTMLElement, rebuild: () => void, ticked?: (picks: readonly string[]) => void): void {
   const mode = store.state.bookMarkets;
   body.append(
     selectRow(t('Count'), t('Whose order books the Depth pane, the Liquidity Tracker and their sounds add up.'),
@@ -78,5 +78,5 @@ export function buildBookMarketsPanel(store: Store, body: HTMLElement, rebuild: 
       : mode === 'all' ? t('All switched on adds up the book of every venue whose chip is on, inside the Spot / Perp filter.')
       : t('The chart market\'s own book alone: the same exchange, spot or perpetual as the chart, whatever the venue chips and the Spot / Perp filter say.')),
   );
-  if (mode === 'custom') body.append(heading(t('Markets')), bookPicker(store));
+  if (mode === 'custom') body.append(heading(t('Markets')), bookPicker(store, ticked));
 }

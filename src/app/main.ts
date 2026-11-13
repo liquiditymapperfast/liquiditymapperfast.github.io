@@ -577,9 +577,12 @@ async function main(): Promise<void> {
       let framed = false;
       void hub.loadSeries(true, () => { framed = true; heat.fit(); lower(); }).then(() => { if (!framed) heat.fit(); lower(); });
     }
-    if (changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope')) { heat.dataChanged(); depth.refresh(); lt.refresh(); cvd.refresh(); }
-    // The two order-book panes' Venues (book-markets.ts): another choice, other picks, or another chart market while they count its book.
-    else if (changed.has('bookMarkets') || changed.has('bookPicks') || (changed.has('marketId') && state.bookMarkets === 'chart')) { depth.refresh(); lt.refresh(); }
+    const venuesChanged = changed.has('disabledVenues') || changed.has('heatmapSource') || changed.has('scope');
+    if (venuesChanged) { heat.dataChanged(); cvd.refresh(); }
+    // The two order-book panes count the venues switched on (the chips and the filter), the chart market's book or the picks (book-markets.ts):
+    // asked again when what they count may have changed, and their Venues controls (an open picker too) show it.
+    if ((venuesChanged && state.bookMarkets === 'all') || changed.has('bookMarkets') || changed.has('bookPicks')
+      || (state.bookMarkets !== 'all' && (changed.has('markets') || (changed.has('marketId') && state.bookMarkets === 'chart')))) { depth.refresh(); lt.refresh(); }
     if (changed.has('markets')) cvd.invalidate();
     // Open interest added up over the venues switched on: another choice of them is another series. Not the Spot / Perp filter, which
     // open interest does not follow (`oiFlowIds`).

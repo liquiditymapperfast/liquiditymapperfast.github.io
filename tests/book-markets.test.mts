@@ -69,8 +69,20 @@ test('the panes say why they have no book to add up', () => {
   assert.equal(bookEmptyMessage(state({ bookMarkets: 'custom', bookPicks: ['kraken/spot'] })), 'None of the chosen markets has an order book on this coin.');
   assert.equal(bookEmptyMessage(state({ bookMarkets: 'chart', marketId: 'kraken:BTC/USD' })), 'The chart market has no order book here.');
   assert.equal(bookEmptyMessage(state({ bookMarkets: 'custom', bookPicks: [], levels: null })), '', 'nothing is said before the first books come');
+  assert.equal(bookEmptyMessage(state({ bookMarkets: 'chart', markets: [] })), '', 'nor before the market list comes (a spot chart could not be told from a perpetual)');
   // Another choice than All switched on is not the filter's: Spot with no spot venue on says nothing while the chosen books are there.
   assert.equal(bookEmptyMessage(state({ bookMarkets: 'custom', bookPicks: ['okx/perp'], scope: 'spot', disabledVenues: ['binancespot', 'coinbase'] })), '');
+});
+
+test('a counted book away from the feed for a moment keeps the panes drawing, not saying it has none', () => {
+  // Binance spot's feed reconnects: its book leaves the frame and `bookGone` holds the venue (cvd/ids.ts) for BOOK_HOLD_MS.
+  const levels = { asOf: 1_000_000, books: FEED.filter(id => !id.startsWith('binancespot')).map(id => book(id)) };
+  const away = state({ bookMarkets: 'chart', marketId: 'binance:BTCUSDT:spot', levels, bookGone: { binancespot: 1_000_000 - 60_000 } });
+  assert.deepEqual(bookIds(away), [], 'nothing to ask for meanwhile');
+  assert.equal(bookEmptyMessage(away), '', 'the series drawn stays');
+  assert.equal(bookEmptyMessage({ ...away, bookGone: { binancespot: 1_000_000 - 11 * 60_000 } }), 'The chart market has no order book here.', 'gone longer than the hold: said');
+  assert.equal(bookEmptyMessage({ ...away, bookMarkets: 'custom', bookPicks: ['binance/spot'] }), '', 'a pick away for a moment too');
+  assert.equal(bookEmptyMessage({ ...away, bookMarkets: 'custom', bookPicks: ['kraken/spot'] }), 'None of the chosen markets has an order book on this coin.', 'another venue held says nothing for the picks');
 });
 
 test('the picker lists one row per exchange and kind with a book, perpetual before spot, then the picks kept with none here', () => {
@@ -97,15 +109,19 @@ test('the choice and the picks are saved, read back checked, and part of a layou
 class FakePlayer implements Player { played: Note[][] = []; running = true; play(notes: readonly Note[]): boolean { this.played.push([...notes]); return true; } async unlock(): Promise<void> {} }
 const T = Date.UTC(2026, 10, 13, 12, 0, 0), MARK = 100_000;
 
-/** Walls and the balance over two perpetual books: `a` lopsided to the bids from `lopsidedAt` on, `b` even. */
-function balanceRun(over: Partial<AppState>, lopsidedAt: number, until = 30_000): { kinds: string[]; at: number[] } {
+/**
+ * Walls and the balance over two perpetual books: `a` lopsided to the bids from `lopsidedAt` on, `b` even. The balance tips at `pct` (60:
+ * a and b together, 73 %, tip; 80: only a alone, 85 %, does). `change` is set on the state at `changeAt`.
+ */
+function balanceRun(over: Partial<AppState>, lopsidedAt: number, until = 30_000, pct = 60, changeAt = Infinity, change: Partial<AppState> = {}): { kinds: string[]; at: number[] } {
   const s = initialState(false, false);
   s.markets = [{ instrumentId: 'a:BTC', venue: 'a', marketType: 'perpetual' }, { instrumentId: 'b:BTC', venue: 'b', marketType: 'perpetual' }] as AppState['markets'];
   s.marketId = 'a:BTC'; s.mark = { price: MARK, asOf: T };
-  s.sounds = readSounds({ on: true, volume: 1, panels: { ...DEFAULT_PANEL_SOUNDS, book: { wall: true, usd: 50_000_000 }, depth: { imbalance: true, pct: 60 } } });
+  s.sounds = readSounds({ on: true, volume: 1, panels: { ...DEFAULT_PANEL_SOUNDS, book: { wall: true, usd: 50_000_000 }, depth: { imbalance: true, pct } } });
   Object.assign(s, over);
   const alerts = new Alerts({ state: s }, new FlowBook(), new FakePlayer(), () => T);
   for (let t = 0; t <= until; t += 2_000) {
+    if (t === changeAt) Object.assign(s, change);
     const heavy = t >= lopsidedAt ? 12_000_000 : 1_000_000;
     s.levels = { asOf: T + t, books: [book('a:BTC', [[99_900, heavy]], [[100_100, 1_000_000]], T + t), book('b:BTC', [[99_900, 1_000_000]], [[100_100, 1_000_000]], T + t)] } as LevelsFrame;
     alerts.tick(T + t);
@@ -128,6 +144,31 @@ test('over other books the balance has its own warm-up, and tips on them alone',
   // Lopsided from the first look: the book as it was found is not news, over the books picked as over the walls'.
   assert.ok(!balanceRun({ bookMarkets: 'custom', bookPicks: ['a/perp'] }, 0).kinds.includes('imbalance'), 'found lopsided during its own warm-up: only watched');
   assert.ok(!balanceRun({}, 0).kinds.includes('imbalance'));
+});
+
+test('a change of the books the balance counts is a warm-up of its own, both ways', () => {
+  // Chosen b (even) for 20 s, then back to every venue switched on while a and b together are already past the line (73 % > 60 %): the book as
+  // it was found, not news, though the walls' own warm-up is long over.
+  const back = balanceRun({ bookMarkets: 'custom', bookPicks: ['b/perp'] }, 0, 40_000, 60, 20_000, { bookMarkets: 'all' });
+  assert.deepEqual(back.kinds, [], 'no tip on the switch back');
+  // Every venue at 80 % (a and b together never reach it), then a alone, already past it (85 %): only watched for its warm-up.
+  const away = balanceRun({}, 0, 40_000, 80, 20_000, { bookMarkets: 'custom', bookPicks: ['a/perp'] });
+  assert.deepEqual(away.kinds, [], 'no tip on the switch away');
+  // The same switch with a turning lopsided after the warm-up: it tips then.
+  const later = balanceRun({}, 34_000, 40_000, 80, 20_000, { bookMarkets: 'custom', bookPicks: ['a/perp'] });
+  assert.deepEqual(later.kinds, ['imbalance']); assert.equal(later.at[0], 34_000);
+  // The chart market's book is its own set too: a's, as the pick of a.
+  assert.deepEqual(balanceRun({ bookMarkets: 'chart' }, 14_000, 30_000, 80).kinds, ['imbalance']);
+});
+
+test('the depth sound with no market to read loads nothing and says nothing', () => {
+  const s = initialState(false, false);
+  s.markets = MARKETS; s.marketId = 'binance:BTCUSDT';
+  s.sounds = readSounds({ on: true, volume: 1, panels: { ...DEFAULT_PANEL_SOUNDS, depthPane: { extreme: true, range: 0.2, pct: 99, hours: 2 } } });
+  const asked: string[] = [];
+  const alerts = new Alerts({ state: s }, new FlowBook(), new FakePlayer(), () => T, undefined, ids => { asked.push(ids.join(',')); return new Promise(() => {}); });
+  s.bookMarkets = 'custom'; s.bookPicks = []; alerts.tick(T);
+  assert.deepEqual(asked, []); assert.equal(alerts.depthState, null, 'the Sounds panel does not say it is loading');
 });
 
 test('the depth sound reads the recording of the markets the Depth pane counts', async () => {
