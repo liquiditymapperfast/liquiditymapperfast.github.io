@@ -51,6 +51,15 @@ export function instrumentShown(state: Pick<AppState, 'disabledVenues'> & MapSta
 }
 
 /**
+ * Everything `instrumentShown` reads, as a key: the venues with a book on the map (or one moments ago) and the chips switched off. A cache of
+ * what it let in is stale when this changes (the map's largest prints in view, `HeatPane.#printsInView`).
+ */
+export function shownKey(state: Pick<AppState, 'disabledVenues'> & MapState): string {
+  const drawn = mapVenues(state);
+  return `${drawn === null ? '*' : [...drawn].sort().join(',')}|${state.disabledVenues.join(',')}`;
+}
+
+/**
  * The instruments the flow views count: every market the page knows and everything that has flow, on a venue that has a book on the map
  * (or had one moments ago: `mapVenues`), with its chip left on, and inside the Spot / Perp / Both filter.
  */

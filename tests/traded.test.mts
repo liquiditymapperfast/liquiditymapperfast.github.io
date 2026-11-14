@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { FootprintRecorder, parseProfile, type ProfileAnswer } from '../src/shared/footprint.ts';
-import { periodRowLines, tradedFigures, tradedHeader, tradedLines, tradedNetLine, tradedRowAt, tradedRows } from '../src/app/traded.ts';
+import { periodRowLines, tradedFigures, tradedHeader, tradedLines, tradedNetLine, tradedRowAt, tradedRows, tradedRowsHeld } from '../src/app/traded.ts';
 import { createLocalServer } from '../src/server/http.mts';
 import { installV2 } from '../src/server/v2/api.mts';
 import { HistoryStore } from '../src/server/history.mts';
@@ -230,4 +230,17 @@ test('an estimate whose candles do not say who bought has one volume: its boxes 
   // A split estimate, or the recording, keeps its sides as before.
   assert.ok(labels(tradedLines(rows, 1, levels)).includes('Bought at market'));
   assert.ok(labels(tradedFigures(rows, levels, 85_011, 'Oct 19')).includes('Delta'));
+});
+
+test('the traded column keeps its rows for the same answer, step and window, and makes them again for any other (the map asks on every frame)', () => {
+  const T = 1_800_000_000_000, M = 60_000;
+  const answer: ProfileAnswer = { from: T, to: T + M, instruments: [{ id: 'a:BTC', step: 5, rows: [[85_000, 1, 2], [85_005, 3, 0], [85_100, 0, 4]], minutes: 1, first: T, earliest: T }] };
+  const rows = tradedRowsHeld(answer, 5, 84_990, 85_200);
+  assert.deepEqual(rows, tradedRows(answer, 5, 84_990, 85_200), 'what tradedRows makes');
+  assert.equal(tradedRowsHeld(answer, 5, 84_990, 85_200), rows, 'kept: the same object');
+  assert.notEqual(tradedRowsHeld(answer, 10, 84_990, 85_200), rows, 'another step');
+  const moved = tradedRowsHeld(answer, 5, 84_995, 85_200);
+  assert.deepEqual(moved, tradedRows(answer, 5, 84_995, 85_200), 'another window');
+  const next: ProfileAnswer = { ...answer, instruments: [{ ...answer.instruments[0]!, rows: [[85_000, 9, 9]] }] };
+  assert.equal(tradedRowsHeld(next, 5, 84_995, 85_200).total, 18, 'a new answer (new data) is read afresh');
 });

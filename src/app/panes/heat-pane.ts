@@ -29,11 +29,11 @@ import { fitText } from '../text-fit.ts';
 import { distanceText } from './ladder-info.ts';
 import { binsPerRow, dollarPriceOf, liqCurves, liqProfile, onTheWay, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, type CurvePoint, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
-import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRows, type TradedRows } from '../traded.ts';
+import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
 import { lineMetric, onPriceAxis, placedOn } from '../traded/profiles.ts';
 import { MAX_BANDS, arrangeProfiles, arrangeSides, columnHit, type Arranged, type ProfileRoom } from '../traded/arrange.ts';
-import { flowIds, flowLoadIds, instrumentShown, mapVenues, oiFlowIds } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds, instrumentShown, mapVenues, oiFlowIds, shownKey } from '../cvd/ids.ts';
 import { aggregateIds } from '../cvd/model.ts';
 import { resolvePicks } from '../market-choice.ts';
 import { iconsOf, markLines, markSize, sameMarks, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
@@ -2332,6 +2332,26 @@ export class HeatPane {
    * They fade under the footprint, whose rows say the same thing in more detail. A bubble large enough carries its exchange's mark, and
    * while the pointer is on one, the bubbles of the other venues step back and that venue's own are ringed: where else it traded.
    */
+  /** The largest prints and liquidations in view as last found (`#printsInView`), each with the key it was found for. */
+  #bubblesHeld: { key: string; list: Print[] } = { key: '', list: [] };
+  #liquidationsHeld: { key: string; list: Liquidation[] } = { key: '', list: [] };
+  /**
+   * `topPrints` for the view, kept while nothing it reads has changed: it scanned the window on every frame, half of the bubbles' drawing and
+   * two thirds of the liquidations' on Karl's 2560 px map (2026-11-14). The window is widened to whole pixels of the view's time, so what is
+   * kept depends on its key alone, whichever frame found it: the book's version (bumped on every change of its items), `filters` (the sizes,
+   * the side and the venues `instrumentShown` lets in, `shownKey`), the pixel grid (the span over the plot's width) and the pixels the view
+   * starts and ends on, its prices and the count. A print up to a pixel beyond either edge may be drawn, as far in as its bubble reaches. A
+   * replay moves its right edge every frame (the replay's moment): it asks afresh.
+   */
+  #printsInView<T extends { t: number; price: number; usd: number }>(held: { key: string; list: T[] }, book: { readonly items: T[]; readonly version: number }, filters: string, pw: number, limit: number, hidden: (p: T) => boolean): T[] {
+    const v = this.view;
+    if (replaying()) return topPrints(book.items, v.t0, Math.min(v.t1, pageNow()), v.p0, v.p1, limit, hidden);
+    const px = (v.t1 - v.t0) / pw, i0 = Math.floor(v.t0 / px), i1 = Math.ceil(v.t1 / px);
+    const key = `${book.version}|${filters}|${px}|${i0}|${i1}|${v.p0}|${v.p1}|${limit}`;
+    if (held.key !== key) { held.list = topPrints(book.items, i0 * px, i1 * px, v.p0, v.p1, limit, hidden); held.key = key; }
+    return held.list;
+  }
+
   #paintBubbles(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#bubbles = [];
     if (!state.show.bubbles) return;
@@ -2340,7 +2360,7 @@ export class HeatPane {
     const limit = Math.max(40, Math.min(400, Math.round(pw / 9)));
     const s = state.tradeBubbles, shown = instrumentShown(state);
     const hidden = (print: Print): boolean => bubbleHidden(print, s) || !shown(print.id);
-    const visible = topPrints(this.hub.prints.items, v.t0, replaying() ? Math.min(v.t1, pageNow()) : v.t1, v.p0, v.p1, limit, hidden);
+    const visible = this.#printsInView(this.#bubblesHeld, this.hub.prints, `${scaledUsd(s.minUsd)}|${s.side}|${shownKey(state)}`, pw, limit, hidden);
     if (!visible.length) return;
     const whale = scaledUsd(state.sounds.tiers[2]?.usd ?? 400_000);
     ctx.save();
@@ -3619,7 +3639,7 @@ export class HeatPane {
     const bar = (from: number, length: number): [number, number] => left ? [x0 + W - 1 - from - length, length] : [x0 + 1 + from, length];
     // The column's inside, off the edge line on the map's side.
     const inner = left ? x0 : x0 + 1;
-    const rows: TradedRows | null = answer ? tradedRows(answer, this.#tradedStep(), v.p0, v.p1) : null;
+    const rows: TradedRows | null = answer ? tradedRowsHeld(answer, this.#tradedStep(), v.p0, v.p1) : null;
     const s = state.traded, levels = this.#viewLevels(metric), loaded = this.#loadedColumn(metric), unsplit = !!loaded && !loaded.split;
     // The header: the total, the line under it, and the difference of the two sides (none for an estimate whose candles do not say who bought).
     const headH = 28 + (rows && rows.total > 0 && !unsplit ? 12 : 0);
@@ -4306,7 +4326,7 @@ export class HeatPane {
     const s = state.liquidations; if (!s.on) return;
     const v = this.view, p = this.#palette, shown = instrumentShown(state);
     const hidden = (l: Liquidation): boolean => liquidationHidden(l, s) || !shown(l.id);
-    const visible = topPrints(this.hub.liquidations.items, v.t0, replaying() ? Math.min(v.t1, pageNow()) : v.t1, v.p0, v.p1, Math.max(30, Math.min(300, Math.round(pw / 10))), hidden);
+    const visible = this.#printsInView(this.#liquidationsHeld, this.hub.liquidations, `${scaledUsd(s.minUsd)}|${s.side}|${shownKey(state)}`, pw, Math.max(30, Math.min(300, Math.round(pw / 10))), hidden);
     if (!visible.length) return;
     const ordered = [...visible].sort((a, b) => a.usd - b.usd), largest = ordered[ordered.length - 1]!.usd, edge = p.dark ? '#ffffff' : '#14171c';
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();

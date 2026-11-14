@@ -29,6 +29,20 @@ export interface TradedRows {
 }
 
 /** Each instrument's rows put on the display grid of `step` over [p0, p1]: a recorded row goes where its middle falls. */
+/**
+ * `tradedRows`, kept for the answer it was made from while the step and the window are the same: the map asks on every frame (it was half of
+ * each traded column's drawing on Karl's 2560 px map, 2026-11-14), and an answer is never changed in place (new data is a new answer: the
+ * pane's level and median memos rely on it too), so the same answer at the same step and window has the same rows. The rows are only read.
+ */
+export function tradedRowsHeld(answer: ProfileAnswer, step: number, p0: number, p1: number): TradedRows {
+  const held = heldRows.get(answer);
+  if (held && held.step === step && held.p0 === p0 && held.p1 === p1) return held.rows;
+  const rows = tradedRows(answer, step, p0, p1);
+  heldRows.set(answer, { step, p0, p1, rows });
+  return rows;
+}
+const heldRows = new WeakMap<ProfileAnswer, { step: number; p0: number; p1: number; rows: TradedRows }>();
+
 export function tradedRows(answer: ProfileAnswer, step: number, p0: number, p1: number): TradedRows {
   const bin0 = Math.floor(p0 / step), n = Math.max(0, Math.floor(p1 / step) - bin0 + 1);
   const buy = new Float64Array(n), sell = new Float64Array(n), counts = answer.instruments.some(i => i.counts !== undefined);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BOOK_HOLD_MS, flowIds, instrumentShown, mapVenues, nextBookGone, oiFlowIds, pinChoices } from '../src/app/cvd/ids.ts';
+import { BOOK_HOLD_MS, flowIds, instrumentShown, mapVenues, nextBookGone, oiFlowIds, pinChoices, shownKey } from '../src/app/cvd/ids.ts';
 import type { LevelsFrame } from '../src/app/wire.ts';
 
 const book = (id: string) => ({ id, venue: id.split(':')[0]!, timestamp: 0, coarse: false, bids: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() }, asks: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() } });
@@ -85,4 +85,16 @@ test("the map's marks of orders all go through instrumentShown: none is left fil
   const sounds = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'sound', 'sounds.ts'), 'utf8');
   assert.match(sounds, /shown = instrumentShown\(s\)/, 'the trade sounds too');
   assert.doesNotMatch(sounds, /disabledVenues\.includes\(/);
+});
+
+test('shownKey changes whenever instrumentShown can answer differently, and not otherwise (the map keeps its largest prints by it)', () => {
+  const at = (asOf: number, ...ids: string[]): LevelsFrame => ({ asOf, books: ids.map(book) });
+  const frame = at(10_000, 'a:BTC', 'aspot:BTC');
+  const base = shownKey({ disabledVenues: [], levels: frame });
+  assert.equal(shownKey({ disabledVenues: [], levels: at(20_000, 'aspot:BTC', 'a:BTC') }), base, 'the same books in another order and frame: the same key');
+  assert.notEqual(shownKey({ disabledVenues: ['aspot'], levels: frame }), base, 'a chip switched off');
+  assert.notEqual(shownKey({ disabledVenues: [], levels: at(10_000, 'a:BTC') }), base, 'a book gone from the map');
+  assert.notEqual(shownKey({ disabledVenues: [], levels: frame, bookGone: { b: 10_000 - BOOK_HOLD_MS } }), base, 'a book held moments after it left');
+  assert.equal(shownKey({ disabledVenues: [], levels: frame, bookGone: { b: 10_000 - BOOK_HOLD_MS - 1 } }), base, 'past the hold it adds nothing');
+  assert.notEqual(shownKey({ disabledVenues: [], levels: null }), base, 'before the first frame every venue is drawn');
 });
