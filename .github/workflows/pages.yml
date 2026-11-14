@@ -37,14 +37,22 @@ jobs:
       # The coin list (src/shared/coins.ts): a market whose list cannot be read from here (some exchanges refuse US addresses, where the
       # runners are) keeps its listings from the list the site has now; the copy in the repository stands in if that cannot be read.
       # A failure here never stops the deploy: the copy built into dist stays.
-      - run: npm run build:tools && node build/tools/scripts/coins.mjs --previous https://${{ github.repository_owner }}.github.io/coins.json --fallback src/app/public/coins.json --out dist/coins.json
+      # The list in use is read from liquiditymapper.com once it serves the site, and from the github.io address until then.
+      - run: |
+          npm run build:tools
+          previous=https://liquiditymapper.com/coins.json
+          curl -sf -o /dev/null "$previous" || previous=https://liquiditymapperfast.github.io/coins.json
+          node build/tools/scripts/coins.mjs --previous "$previous" --fallback src/app/public/coins.json --out dist/coins.json
         continue-on-error: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
+  # GitHub Pages serves the site only from the account it started on (liquiditymapperfast.github.io); a copy of the repository anywhere
+  # else publishes to Cloudflare alone.
   deploy:
     needs: build
+    if: github.repository_owner == 'liquiditymapperfast'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -52,3 +60,26 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # The same files on Cloudflare Pages (project liquiditymapper, served at liquiditymapper.com). It runs only where the repository has
+  # the CLOUDFLARE_API_TOKEN secret (a token allowed "Cloudflare Pages: Edit" on one account, which also tells wrangler the account).
+  # The first run creates the project with master as its production branch, so every deploy from here lands in production.
+  cloudflare:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - if: env.HAS_TOKEN == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+      - if: env.HAS_TOKEN == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          mkdir site && tar -xf artifact.tar -C site
+          if ! npx --yes wrangler@4.14.0 pages project list | grep -qw liquiditymapper; then
+            npx --yes wrangler@4.14.0 pages project create liquiditymapper --production-branch master
+          fi
+          npx --yes wrangler@4.14.0 pages deploy site --project-name liquiditymapper --branch master --commit-hash "$GITHUB_SHA" --commit-dirty=true

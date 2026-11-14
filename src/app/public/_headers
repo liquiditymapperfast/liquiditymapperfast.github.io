@@ -1,0 +1,4 @@
+# Cloudflare Pages reads this file (GitHub Pages serves it as a plain file and ignores it). Every file under assets/ carries a
+# hash of its contents in its name, so a browser may keep it for a year; index.html and the rest keep the default (revalidated).
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
