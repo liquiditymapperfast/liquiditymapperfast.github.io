@@ -192,12 +192,16 @@ async function main(): Promise<void> {
   const liq = new LiqPane(main, store, hub);
   // Every pane drawn in the page's palette: a theme picked, or previewed by hover, repaints them all (one list, so none is left in the old one).
   const themed = [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq];
-  // A phone's Settings has the Tape tab's own rows: what it shows first (the list, or the chart that the other rows set).
+  // A phone's Settings has the Tape tab's own rows: what it shows first (the list, or the chart), then the chart's rows, there only while the
+  // chart shows (review r15: on the list they changed nothing on screen). The sheet places the rows once this returns.
   toolbar.tapeFields = () => {
-    const shows = el('select', { ariaLabel: t('View'), onchange: () => store.set({ phoneTape: shows.value === 'chart' ? 'chart' : 'list' }) });
+    const chart = candle.settingsFields();
+    const sync = (): void => { for (const [, control] of chart) { const row = control.parentElement; if (row) row.hidden = store.state.phoneTape !== 'chart'; } };
+    const shows = el('select', { ariaLabel: t('View'), onchange: () => { store.set({ phoneTape: shows.value === 'chart' ? 'chart' : 'list' }); sync(); } });
     for (const [value, text] of [['list', t('List')], ['chart', t('Chart')]] as const) shows.append(el('option', { value, textContent: text }));
     shows.value = store.state.phoneTape;
-    return [[t('View'), shows], ...candle.settingsFields()];
+    queueMicrotask(sync);
+    return [[t('View'), shows], ...chart];
   };
   // The map and the panes under it, top down. Each pane but the map shows while its switch is on (`layout`, by `PANE_SHOW_KEY`), the Scripts
   // pane only for scripts drawn in rows.
@@ -385,7 +389,7 @@ async function main(): Promise<void> {
   };
   // On a phone the Tape keeps the market's orders from the page's opening, whichever tab shows, so the ring runs there always.
   // The book's cues read the tape for the contact ripples and for what traded beside a change (the hover), so they want it whether or not the ripples are on.
-  // Trades wants the tape while it is on screen (its column shown and not folded, or a phone's Flow tab open; its view chosen).
+  // The Tape list wants the tape while it is on screen: its column shown and not folded, in its view (a phone's Tape tab showing the list).
   const tradesShown = (): boolean => !cvd.root.hidden && !cvd.covered() && cvd.activeView === 'trades';
   const tapeWanted = (): boolean => (store.state.show.bubbles && store.state.tradeBubbles.live) || candleShown() || store.state.material === 'glass' || isPhone() || (store.state.show.book && store.state.ladderCues.look !== 'off') || tradesShown();
   // The map is covered while a view that fills the area shows, and the book while any tab but its own does (the Tape draws its own): they draw nothing then, and catch up when they show again.

@@ -150,7 +150,7 @@ export class CvdPane {
   #spanButtons = new Map<CvdSpan, HTMLButtonElement>();
   #spanSelect = el('select', { class: 'cvd-span-select', ariaLabel: t('Time span') });
   #gear = el('button', { type: 'button', class: 'icon-btn cvd-gear', ariaLabel: t('Settings'), tip: t('How the column ranks and draws the exchanges.') });
-  /** The column's views, a tab each in the header's name (the flow lines, Trades); a phone's are a row of their own. */
+  /** The column's views, a tab each in the header's name (the flow lines, the Tape); a phone shows none (one view to a tab: `phoneView`). */
   #viewTabs = new Map<FlowView, HTMLButtonElement>();
   #helpFlow = helpButton('cvd'); #helpTrades = helpButton('trades');
   /** The span buttons' cell, which only the flow view has. */
@@ -213,15 +213,8 @@ export class CvdPane {
     if (this.root.hidden) return;
     const name = this.controls.querySelector<HTMLElement>(':scope > .cvd-views'), tools = this.controls.querySelector<HTMLElement>(':scope > .pane-tools');
     if (!name) return;
-    // A phone gives the tabs a row of their own, each a third of it: a label that overflows its tab steps down instead.
-    if (isPhone()) {
-      const fitsTabs = (): boolean => [...name.children].every(b => (b as HTMLElement).scrollWidth <= (b as HTMLElement).clientWidth + 1);
-      this.root.classList.remove('narrow', 'narrower');
-      if (fitsTabs()) return;
-      this.root.classList.add('narrow');
-      if (!fitsTabs()) this.root.classList.add('narrower');
-      return;
-    }
+    // A phone shows no view tabs (one view to a tab, 2026-11-14): nothing to fit.
+    if (isPhone()) { this.root.classList.remove('narrow', 'narrower'); return; }
     if (!tools) return;
     // Every label in full, then short (Tape is short already; another language's may not be), then the header may wrap. Each step is
     // taken only while the pane's tools still fall to a second line or the header runs out of its width.
