@@ -1,6 +1,6 @@
 # LiquidityMapperFast script language (version 2)
 
-Scripts are the indicators people write for LiquidityMapperFast, a liquidity heat map that runs in the browser. This is the whole language, for people and for AI assistants. A machine-readable form is at https://liquiditymapperfast.github.io/scripts.json.
+Scripts are the indicators people write for LiquidityMapperFast, a liquidity heat map that runs in the browser. This is the whole language, for people and for AI assistants. A machine-readable form is at https://liquiditymapper.com/scripts.json.
 
 To write or fix a script with an assistant: open the script in the Scripts panel (the ≡ beside Scripts in the Chart deck), press Copy for AI, paste into the assistant, paste its answer back and press Check, then Save. The copied text carries the script, its errors with their codes, and what it last drew.
 

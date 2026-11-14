@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "author": "Karl",
-  "homepage": "https://liquiditymapperfast.github.io/",
+  "homepage": "https://liquiditymapper.com/",
   "repository": { "type": "git", "url": "git+https://github.com/liquiditymapperfast/liquiditymapperfast.github.io.git" },
   "type": "module",
   "engines": {

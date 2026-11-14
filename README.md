@@ -1,6 +1,6 @@
 # LiquidityMapperFast
 
-**Open it: https://liquiditymapperfast.github.io/** — free, no sign-up, MIT licence. The **Tour** button inside shows you around in a minute, and the **Guide** explains everything.
+**Open it: https://liquiditymapper.com/** — free, no sign-up, MIT licence. The **Tour** button inside shows you around in a minute, and the **Guide** explains everything.
 
 A market-map workbench for one coin at a time across many venues: BTC, or any of about 150 coins listed on most of them (see Coins below). It runs entirely in the browser: the page reads the exchanges' public feeds itself, in a Web Worker, so it works from any static host (GitHub Pages included) with no server. A local server remains as an optional source with a week of recorded history. The workbench draws a liquidity heatmap built from recorded order-book depth, a price profile, an aggregated order-book ladder, depth and open-interest panes, and a footprint of executed volume. The look follows the reference screenshots in `example_images/` (a local folder, not in git); a right-hand profile column and an OI row complete it.
 

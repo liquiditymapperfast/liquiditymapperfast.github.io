@@ -1,7 +1,7 @@
 // Builds the coin list the page offers (src/shared/coins.ts) from the eleven markets' public lists.
 //
 //   npm run coins -- --out src/app/public/coins.json
-//   node build/tools/scripts/coins.mjs --previous https://liquiditymapperfast.github.io/coins.json --fallback src/app/public/coins.json --out dist/coins.json
+//   node build/tools/scripts/coins.mjs --previous https://liquiditymapper.com/coins.json --fallback src/app/public/coins.json --out dist/coins.json
 //
 // --previous is the list in use (a file or an address): a market whose list cannot be read today keeps its listings from it. When it cannot
 // be read either, --fallback stands in (the list that ships with the code). With neither, a market that fails is simply left out.

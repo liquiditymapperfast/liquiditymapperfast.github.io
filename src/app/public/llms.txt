@@ -6,11 +6,11 @@ The page has no API and no server of its own: it reads the exchanges directly fr
 
 ## Scripts
 
-- [Script language reference](https://liquiditymapperfast.github.io/script-reference.md): the whole language, its inputs, functions, plots, limits and every error code with a script that meets it and the fix.
-- [Machine-readable reference](https://liquiditymapperfast.github.io/scripts.json): the same as JSON.
+- [Script language reference](https://liquiditymapper.com/script-reference.md): the whole language, its inputs, functions, plots, limits and every error code with a script that meets it and the fix.
+- [Machine-readable reference](https://liquiditymapper.com/scripts.json): the same as JSON.
 - To help someone with a script, ask them to open it in the Scripts panel and press Copy for AI: the copied text holds the script with line numbers, its errors with codes, and what it last drew. Answer with the whole script in one code block.
 
 ## The page
 
-- [LiquidityMapperFast](https://liquiditymapperfast.github.io/): the map. Address parameters: ?coin=ETH (the coin), ?lang=de (the language), ?source=browser (read the exchanges from the browser), ?persist=0 (keep nothing in the browser); #guide opens the guide.
+- [LiquidityMapperFast](https://liquiditymapper.com/): the map. Address parameters: ?coin=ETH (the coin), ?lang=de (the language), ?source=browser (read the exchanges from the browser), ?persist=0 (keep nothing in the browser); #guide opens the guide.
 - In a browser that offers page tools to agents (WebMCP, document.modelContext), the open page offers: get_page, get_script_language, list_scripts, get_script, read_script, try_script (runs a script once over the chart; saves nothing), propose_script (opens a draft the person saves or drops) and set_timeframe. No tool saves a script, switches one on or reaches anything beyond the page.

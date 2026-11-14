@@ -10,7 +10,7 @@ export const AUTHOR = Object.freeze({
   xHandle: '@karlbooklover',
   github: 'https://github.com/liquiditymapperfast/liquiditymapperfast.github.io',
   /** Where the page is published: what a screenshot carries in its corner. */
-  site: 'https://liquiditymapperfast.github.io/',
+  site: 'https://liquiditymapper.com/',
 });
 
 function link(href: string, label: string, detail: string): HTMLAnchorElement {

@@ -15,7 +15,7 @@ import type { ScriptError } from './lexer.ts';
 import { MAX_ARRAY, MAX_TEXT } from './values.ts';
 
 /** Where the site is, for the links in what is handed to an assistant (which cannot reach a page on the person's own machine). */
-export const SITE = 'https://liquiditymapperfast.github.io/';
+export const SITE = 'https://liquiditymapper.com/';
 export const REFERENCE_URL = `${SITE}script-reference.md`, DATA_URL = `${SITE}scripts.json`;
 
 /** What a script reads, by name. */

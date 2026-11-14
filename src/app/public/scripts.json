@@ -2,7 +2,7 @@
  "name": "LiquidityMapperFast scripts",
  "version": 2,
  "language": "JavaScript-shaped indicator scripts, run once per candle",
- "reference": "https://liquiditymapperfast.github.io/script-reference.md",
+ "reference": "https://liquiditymapper.com/script-reference.md",
  "rules": [
   "A script is JavaScript-shaped code run once for each candle of the chart, oldest first, drawing plots from what it reads.",
   "Statements: var, let, const, if / else, for (;;), while, do ... while, break, continue, function name(...) { ... }, return; expressions as in JavaScript, arrow functions and ternaries included. As in JavaScript, a line break ends a statement only where the next line cannot carry it on: x = 1 followed by a line + 2 is x = 3, and a line that starts with ( or [ carries on the line before it. Two statements on one line need a semicolon; end a statement with one when the next line starts with an operator or a bracket.",
