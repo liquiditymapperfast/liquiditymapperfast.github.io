@@ -89,6 +89,17 @@ export function iconsOf(marks: readonly AbsorptionMark[], xOf: (m: AbsorptionMar
   return icons;
 }
 
+/**
+ * Whether two lists of marks are the same marks in the same order (the map keeps its squares then, `HeatPane.#paintAbsorption`). A mark
+ * judged again is a new object (`AbsorptionBook.#markOf`) and a mark is never changed in place, so comparing the objects is enough.
+ */
+export function sameMarks(a: readonly AbsorptionMark[], b: readonly AbsorptionMark[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 const MINUTE = 60_000;
 const keyOf = (g: AbsorptionGroup): string => `${g.id}|${g.side}|${g.price}|${g.t0}`;
 /** The instrument and minute a group is kept under, as the recorder keeps it: the minute of its first fill. */

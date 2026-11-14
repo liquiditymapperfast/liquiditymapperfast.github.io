@@ -36,7 +36,7 @@ import { MAX_BANDS, arrangeProfiles, arrangeSides, columnHit, type Arranged, typ
 import { flowIds, flowLoadIds, instrumentShown, mapVenues, oiFlowIds } from '../cvd/ids.ts';
 import { aggregateIds } from '../cvd/model.ts';
 import { resolvePicks } from '../market-choice.ts';
-import { iconsOf, markLines, markSize, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
+import { iconsOf, markLines, markSize, sameMarks, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
 import { diamondRadius, liquidationHidden, liquidationLines, type Liquidation } from '../liquidations.ts';
 import { venueLabel } from '../venues.ts';
 import { describeSources } from '../cell-sources.ts';
@@ -657,7 +657,8 @@ export class HeatPane {
   /** Absorption icons drawn in the last frame (centre, size, the marks they stand for), for hover. */
   #absorptionIcons: { x: number; y: number; s: number; marks: AbsorptionMark[]; usd: number }[] = [];
   /** The squares last worked out, for the view they were worked out at (see #paintAbsorption). */
-  #absorptionLayout: { key: string; t0: number; shown: MarkIcon[] } | null = null;
+  /** The squares as last laid out: for the book's `version` and the view `view` (`key` both), from `marks` (the marks in view, largest first). */
+  #absorptionLayout: { key: string; view: string; marks: readonly AbsorptionMark[]; t0: number; shown: MarkIcon[] } | null = null;
   /** The thresholds of the last frame, kept while nothing they depend on changed (the book, the settings, the minute, the venues). */
   #absorptionKey = ''; #absorptionThresholds: Map<string, number | null> = new Map();
   /** Bubbles drawn in the last frame, for hover. */
@@ -4227,14 +4228,21 @@ export class HeatPane {
     const OFFSET = 20, span = v.t1 - v.t0, pixelMs = span / pw;
     // The squares are worked out again only when the marks, the scale or the plot change, or the map has moved by a whole pixel: a frame that
     // only moves the pointer, or follows the live edge by part of a pixel, draws the same squares moved by what the map moved (`dx`).
-    const key = `${this.hub.absorption.version}|${this.#absorptionKey}|${Math.round(span)}|${v.p0}|${v.p1}|${pw}|${ph}|${Math.floor(v.t0 / pixelMs)}`;
-    if (this.#absorptionLayout?.key !== key) {
+    const view = `${this.#absorptionKey}|${Math.round(span)}|${v.p0}|${v.p1}|${pw}|${ph}|${Math.floor(v.t0 / pixelMs)}`, key = `${this.hub.absorption.version}|${view}`;
+    let layout = this.#absorptionLayout;
+    if (layout?.key !== key) {
       // The largest first, as the squares take them (no sort of tens of thousands of marks for each new group).
       const marks = this.hub.absorption.marksByUsd(ids, thresholds, v.t0, v.t1, v.p0, v.p1);
-      const icons = iconsOf(marks, m => v.xOf((m.t0 + m.t1) / 2, pw), m => v.yOf(m.price, ph), pw, ph);
-      this.#absorptionLayout = { key, t0: v.t0, shown: icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12)))) };
+      // A new version of the book that left every mark in view as it was keeps the squares: 23 of 33 versions in a busy half minute
+      // (2026-11-14, Karl's 2560 px map), each of which clustered ~24,000 marks again in 6-10 ms. A mark judged again is a new object
+      // (`AbsorptionBook.#markOf`), so the same objects in the same order are the same marks.
+      if (layout && layout.view === view && sameMarks(layout.marks, marks)) layout.key = key;
+      else {
+        const icons = iconsOf(marks, m => v.xOf((m.t0 + m.t1) / 2, pw), m => v.yOf(m.price, ph), pw, ph);
+        layout = this.#absorptionLayout = { key, view, marks, t0: v.t0, shown: icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12)))) };
+      }
     }
-    const { shown } = this.#absorptionLayout, dx = (this.#absorptionLayout.t0 - v.t0) / pixelMs;
+    const { shown } = layout, dx = (layout.t0 - v.t0) / pixelMs;
     if (shown.length) {
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
       const edge = p.dark ? '#f2f2f2' : '#14171c', largest = shown[0]!.usd;

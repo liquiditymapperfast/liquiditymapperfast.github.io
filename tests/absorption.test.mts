@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { AbsorptionRecorder, markedPart, mergeMoments, parseAbsorptionAnswer, parseAbsorptionLive, parseGroup, parseMinute, peakOf, type AbsorptionAnswer, type AbsorptionGroup, type AbsorptionMinute, type AbsorptionStep } from '../src/shared/absorption.ts';
 import { AbsorptionRecorder as SqliteAbsorptionRecorder } from '../src/server/v2/absorption.mts';
-import { ABSORPTION_DEFAULTS, AbsorptionBook, MARK_MAX_PX, MARK_MIN_PX, NEAR_PX, iconsOf, markLines, markSize, passiveText, readAbsorption, type AbsorptionMark, type MarkIcon } from '../src/app/absorption.ts';
+import { ABSORPTION_DEFAULTS, AbsorptionBook, MARK_MAX_PX, MARK_MIN_PX, NEAR_PX, iconsOf, markLines, markSize, passiveText, readAbsorption, sameMarks, type AbsorptionMark, type MarkIcon } from '../src/app/absorption.ts';
 import { BookConnector, type TradeEvent } from '../src/shared/connector.ts';
 import { Engine } from '../src/shared/engine.ts';
 import type { BrowserVenue } from '../src/shared/venues.ts';
@@ -666,4 +666,29 @@ test('a question reaching back into a large store does not overflow the stack (t
   const answer = await recorder.query(['binance:BTCUSDT'], [0], T0 - 300_000 * MIN, T0, 50, T0 - 300_000 * MIN);
   assert.equal(answer.minutes.length, 300_000);
   assert.equal(answer.floors['binance:BTCUSDT'], 1_000);
+});
+
+test('a new version of the book that touched nothing in view gives the same marks, which keep the squares on the map; a change in view gives others', () => {
+  // The map lays its squares out again only when the marks in view changed (HeatPane.#paintAbsorption, 2026-11-14: 23 of 33 versions in a
+  // busy half minute changed none, each costing a clustering of ~24,000 marks). A mark judged again is a new object, so objects compare.
+  const g = (id: string, minute: number, peak: number, price: number): AbsorptionGroup => ({ id, side: 'buy', price, t0: T0 + minute * MIN, steps: [[peak, peak, 1, T0 + minute * MIN, T0 + minute * MIN]] });
+  const book = new AbsorptionBook(), ids = ['a:BTC'], thresholds = new Map<string, number | null>([['a:BTC', 10]]);
+  book.add([g('a:BTC', 0, 50, 100), g('a:BTC', 1, 80, 101), g('a:BTC', 2, 30, 102)]);
+  const inView = (): AbsorptionMark[] => book.marksByUsd(ids, thresholds, T0, T0 + 3 * MIN, 95, 105);
+  const first = inView(), version = book.version;
+  assert.equal(first.length, 3);
+  // Far outside the view's prices: the book moves on, the marks in view do not.
+  book.add([g('a:BTC', 1, 60, 500)]);
+  assert.ok(book.version > version, 'the book has a new version');
+  const second = inView();
+  assert.ok(second !== first && sameMarks(first, second), 'the same marks: the squares are kept');
+  // A group in view that grows is judged again: a new object, so the squares are laid out again.
+  book.add([g('a:BTC', 2, 90, 102)]);
+  const third = inView();
+  assert.ok(!sameMarks(second, third), 'a mark in view changed');
+  assert.equal(third.find(m => m.price === 102)!.usd, 90);
+  // A list of the same values in new objects, a shorter one, an empty one.
+  assert.ok(!sameMarks(third, third.map(m => ({ ...m }))), 'new objects are not taken for the same marks');
+  assert.ok(!sameMarks(third, third.slice(1)));
+  assert.ok(sameMarks([], []));
 });
