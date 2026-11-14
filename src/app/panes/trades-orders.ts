@@ -125,7 +125,7 @@ export class OrderList {
       this.#pointerIn = true; if (!this.#anchor) this.#hold();
       this.#hoverChanged(); this.invalidate();
     });
-    // A finger "leaves" as it lifts: the hold and the pinned row are the pill's to end, not the lift's.
+    // A finger "leaves" as it lifts: the hold and the pinned row end with the tap that lets the row go, or the pill, not with the lift.
     c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.#hoverChanged(); if (!this.#scrolled) this.#release(); this.invalidate(); });
     // Ctrl + wheel is the browser's zoom, not the list's.
     c.addEventListener('wheel', e => { if (e.ctrlKey) return; e.preventDefault(); this.#scroll(e.deltaY * (e.deltaMode === 1 ? 24 : e.deltaMode === 2 ? this.#h : 1)); this.#hoverChanged(); }, { passive: false });
@@ -150,7 +150,9 @@ export class OrderList {
       if (tch.moved > 6) return;
       const row = this.#rowAt(e.offsetY);
       this.#pinned = row && row.k !== this.#pinned ? row.k : null;
-      if (this.#pinned !== null && !this.#anchor) this.#hold();
+      if (this.#pinned !== null) { if (!this.#anchor) this.#hold(); }
+      // The row let go (a second tap on it, or elsewhere): the list follows the newest again, unless it is scrolled back.
+      else if (!this.#scrolled) { this.#release(); return; }
       this.invalidate();
     };
     c.addEventListener('pointerup', lift); c.addEventListener('pointercancel', e => { if (this.#touch?.id === e.pointerId) this.#touch = null; });

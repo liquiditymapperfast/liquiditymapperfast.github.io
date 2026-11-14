@@ -11,6 +11,7 @@ import { scaledUsd } from '../coin.ts';
 import { BlockReader, barLength, emptyBlock, fullScale, type Block } from '../trades/blocks.ts';
 import { RowWalker, type Row, type RowKind } from '../trades/rows.ts';
 import { RetainedRows } from './retained-rows.ts';
+import { setText } from './lower-panes.ts';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -48,7 +49,9 @@ export function blockColumns(lw: number, phone: boolean): { t: number; amt: numb
  * over the reference market's VWAP change in dollars; then bought over sold, each with a square-root bar split by venue in one fixed order
  * (full width at about the week's 99th percentile of a block's side, `fullScale`); then the largest buy and the largest sell. A run of empty
  * blocks (a quiet coin at a second) is one line. The list holds still under a mouse or scrolled back, a block pointed at sets the shared time
- * cursor, a click chooses it for the inspector and takes the map to its time; a finger drags it and a tap chooses a block.
+ * cursor, a click chooses it for the inspector and takes the map to its time; a finger drags it and a tap chooses a block. A mouse moving
+ * off the list and the details beside it lets the list and the chosen block go (Karl, 2026-11-14: a chosen block held the list until it was
+ * clicked again, with nothing on screen to say so); a list scrolled back stays, and its key ("Held · 12 new ↑") brings it back to now.
  */
 export class BlockList {
   readonly root = el('div', { class: 'trades-wrap trades-blocks' });
@@ -62,6 +65,10 @@ export class BlockList {
   /** null: the list follows the newest block; else the block starting at second `s` is drawn `offset` px above the top. */
   #anchor: { s: number; offset: number } | null = null;
   #pointer: { x: number; y: number } | null = null; #pointerIn = false; #scrolled = false;
+  /** A mouse is over the list or the details beside it (the shell says so: the details are its own element). */
+  #within = false;
+  /** The key that brings a held list back to the newest block, with the count of what came meanwhile (as Each order's). */
+  #pill = el('button', { type: 'button', class: 'trades-resume', hidden: true });
   #touch: { id: number; y: number; moved: number; owed: number } | null = null;
   #lastTouch = false;
   /** The block a finger's tap chose, whose details open on the click that follows the lift. */
@@ -105,7 +112,8 @@ export class BlockList {
   #lastNewest = NaN; #drawnKey = '';
 
   constructor() {
-    this.root.append(this.#canvas);
+    this.root.append(this.#canvas, this.#pill);
+    this.#pill.onclick = () => { this.#pointerIn = false; this.release(); };
     this.#ctx = this.#canvas.getContext('2d', { alpha: false })!;
     new ResizeObserver(() => this.#resize()).observe(this.root);
     sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) this.#paint(); } });
@@ -121,7 +129,8 @@ export class BlockList {
       this.#pointerIn = true; this.#hold();
       this.#hover(); this.invalidate();
     });
-    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.onHover(null); if (!this.#scrolled && this.selected === null) this.release(); this.invalidate(); });
+    // Off the list onto the details beside it, the hold and the chosen block stay (`pointerWithin` lets them go when the mouse leaves both).
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.onHover(null); if (!this.#within && !this.#scrolled) this.release(); this.invalidate(); });
     c.addEventListener('wheel', e => { if (e.ctrlKey) return; e.preventDefault(); this.#scroll(e.deltaY * (e.deltaMode === 1 ? 24 : e.deltaMode === 2 ? this.#h : 1)); this.#hover(); }, { passive: false });
     c.addEventListener('click', e => {
       // A finger's tap chose its block on lift; its details open now, on the click that follows, which would otherwise land on the sheet's
@@ -129,7 +138,8 @@ export class BlockList {
       if (this.#lastTouch) { const s = this.#tapped; this.#tapped = null; if (s !== null) this.onTap(s); return; }
       const row = this.#rowAt(e.offsetY);
       if (!row || row.kind !== 'block') return;
-      // A click chooses the block (the inspector shows it, the list holds) and, on a desktop, takes the map to its time; a second click lets it go.
+      // A click chooses the block (the inspector shows it, the list holds while the mouse is on it or the details) and, on a desktop, takes the
+      // map to its time; a second click lets the block go.
       if (this.selected === row.s) { this.selected = null; this.onInspect(); this.invalidate(); return; }
       this.selected = row.s; this.#hold(); this.onInspect(); this.invalidate();
       // A block whose reference market did not trade sends no price: the map keeps its price window (`focusWindow`).
@@ -153,12 +163,30 @@ export class BlockList {
       if (tch.moved > 6) return;
       const row = this.#rowAt(e.offsetY);
       if (!row || row.kind !== 'block') return;
+      // A second tap on the chosen block lets it go, as a second click does (a phone's sheet covers the list meanwhile, so this is a touch
+      // screen with the desktop's layout), and the list follows the newest again unless it is scrolled back.
+      if (this.selected === row.s) { this.#tapped = null; this.selected = null; if (this.#scrolled) { this.onInspect(); this.invalidate(); } else this.release(); return; }
       this.selected = row.s; this.#tapped = row.s; this.#hold(); this.onInspect(); this.invalidate();
     };
     c.addEventListener('pointerup', lift); c.addEventListener('pointercancel', e => { if (this.#touch?.id === e.pointerId) this.#touch = null; });
   }
 
   get held(): boolean { return this.#anchor !== null; }
+  /**
+   * A mouse came onto, or left, the list and the details beside it (the shell's): on either, the list holds (the details are read while it
+   * stands); leaving both lets it go, unless it is scrolled back.
+   */
+  pointerWithin(within: boolean): void {
+    this.#within = within;
+    if (within) { if (this.#shown) this.#hold(); }
+    else if (!this.#pointerIn && !this.#scrolled) this.release();
+  }
+  /** The held list's key: shown while it holds with `n` new orders counted (0: hidden). */
+  showHeld(n: number): void {
+    const show = this.held && n > 0;
+    this.#pill.hidden = !show;
+    if (show) setText(this.#pill, t('Held · {n} new ↑', { n: String(n) }));
+  }
   get width(): number { return this.#w; }
   setShown(shown: boolean): void {
     if (shown === this.#shown) return;
@@ -211,7 +239,7 @@ export class BlockList {
   #hold(): void { if (this.#anchor) return; this.#anchor = { s: this.newestStart(), offset: 0 }; this.reader.tally?.hold(); this.onHold(); }
   release(draw = true): void {
     if (!this.#anchor && this.selected === null) return;
-    this.#anchor = null; this.#scrolled = false; this.selected = null; this.reader.tally?.release(); this.onHold(); this.onInspect();
+    this.#anchor = null; this.#scrolled = false; this.selected = null; this.#pill.hidden = true; this.reader.tally?.release(); this.onHold(); this.onInspect();
     if (draw) this.invalidate();
   }
   /**
@@ -231,7 +259,7 @@ export class BlockList {
     // The last row stays at the top at most (the list's end note under it stays in view).
     if (!rows.below(row, B, now, oldest)) offset = Math.min(offset, 0);
     if (row.top >= newest && Math.round(offset) <= 0) {
-      if (!this.#pointerIn && this.selected === null) { this.release(); return; }
+      if (!this.#pointerIn && !this.#within) { this.release(); return; }
       offset = 0;
     }
     this.#anchor = { s: row.top, offset: Math.max(0, offset) };

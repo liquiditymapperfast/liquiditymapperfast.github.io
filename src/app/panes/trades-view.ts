@@ -115,6 +115,9 @@ export class TradesView {
     this.#bar.append(this.#unit, this.#floor, this.#status);
     this.#body.append(this.blocks.root, this.orders.root, this.#inspector);
     this.root.append(this.#bar, this.#body);
+    // A mouse over the list or the details beside it holds the blocks; leaving both lets them go (a finger's hold is the sheet's or the key's).
+    this.#body.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') this.blocks.pointerWithin(true); });
+    this.#body.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') this.blocks.pointerWithin(false); });
     this.#unit.onchange = () => {
       const v = this.#unit.value;
       if (v === 'custom') { this.#syncMenus(); this.openSettings(this.#unit); return; }
@@ -426,8 +429,8 @@ export class TradesView {
   #syncStatus(): void {
     const unit = this.#unitNow();
     if (unit === 0) { setText(this.#status, this.orders.since); return; }
-    if (this.blocks.held) { setText(this.#status, t('Held · {n} new', { n: this.#tally.newSinceHold.toLocaleString() })); this.#status.classList.add('held'); return; }
-    this.#status.classList.remove('held');
+    // Held, the count is on the list's key (which brings it back), as Each order's; the status keeps the scale.
+    this.blocks.showHeld(this.blocks.held ? this.#tally.newSinceHold : 0);
     const full = fmtUsd(scaledUsd(fullScale(unit)));
     // The bar's width from the last layout (the resize observer's), not measured here: this runs every second, and a measure forces a layout.
     setText(this.#status, this.#barW < 320 ? `√ $${full}` : t('√ size, full ${usd}', { usd: full }));
