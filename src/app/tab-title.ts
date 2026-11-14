@@ -97,7 +97,9 @@ export class TabTitle {
     if (key === this.#iconKey) return;
     this.#iconKey = key; this.#iconAt = now;
     const canvas = this.#canvas ??= Object.assign(document.createElement('canvas'), { width: ICON_PX, height: ICON_PX });
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    // Kept in memory, not on the graphics card: `toDataURL` reads it back, and reading a card's canvas waits for the card (38 ms of the main
+    // thread on a 2560 px desktop, every few seconds as the candle changed shape; 2026-11-14).
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
     // A dark rounded square under the candle, so it reads on a light tab strip and a dark one alike.
     ctx.clearRect(0, 0, ICON_PX, ICON_PX);
     ctx.fillStyle = '#16191d'; ctx.beginPath(); ctx.roundRect(0, 0, ICON_PX, ICON_PX, 7); ctx.fill();

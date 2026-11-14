@@ -527,7 +527,12 @@ test('the marks of a window are judged once until the groups or thresholds chang
   };
   const check = (label: string): void => {
     for (const [t0, t1, p0, p1] of [[T, T + 600_000, 0, 1e9], [T + 1_000, T + 2_000, 110, 130], [T + 999, T + 999, 0, 1e9], [T - 5_000, T + 50, 120, 120]] as const)
-      assert.deepEqual(book.marks(ids, thresholds, t0, t1, p0, p1), reference(t0, t1, p0, p1), `${label}: ${t0 - T}..${t1 - T}`);
+    {
+      const ref = reference(t0, t1, p0, p1);
+      assert.deepEqual(book.marks(ids, thresholds, t0, t1, p0, p1), ref, `${label}: ${t0 - T}..${t1 - T}`);
+      // The map's order: the largest first, equal ones in the order the groups came (a stable sort of the same marks).
+      assert.deepEqual(book.marksByUsd(ids, thresholds, t0, t1, p0, p1), [...ref].sort((a, b) => b.usd - a.usd), `${label} by size: ${t0 - T}..${t1 - T}`);
+    }
   };
   // Live groups in time order (with a repeat that updates a group in place), an older window loaded after them, a few the same instant.
   for (let i = 0; i < 200; i++) add([groupAt(T + 1_000 + i * 10)]);
@@ -548,6 +553,51 @@ test('the marks of a window are judged once until the groups or thresholds chang
   check('after the smallest were dropped');
 });
 
+test('a judged list caught up with the groups added since is what judging every group gives, through updates, a full minute and freed room', () => {
+  let s = 11; const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) & 0x7fffffff; return s / 0x7fffffff; };
+  const T = Math.floor(Date.now() / MIN) * MIN, ids = ['a:BTC', 'b:BTC'];
+  // Equal sizes on purpose (a few dollar values only): the order of equal marks must be the order the groups came.
+  const groupAt = (t0: number, price = 100 + Math.floor(rnd() * 8)): AbsorptionGroup => { const usd = [40_000, 60_000, 60_000, 90_000][Math.floor(rnd() * 4)]!; return { id: ids[Math.floor(rnd() * 2)]!, side: rnd() < 0.5 ? 'buy' : 'sell', price, t0, steps: [[usd, usd, 1 + Math.floor(rnd() * 5), t0, t0 + 3]] }; };
+  // A small book (some room freed) and three groups a minute per instrument (a busy minute lets its smallest go).
+  const book = new AbsorptionBook(400, 3), thresholds = new Map<string, number | null>([['a:BTC', 50_000], ['b:BTC', 30_000]]);
+  const held: AbsorptionGroup[] = [];
+  const same = (label: string): void => {
+    const kept = book.marks(ids, thresholds, 0, Number.MAX_SAFE_INTEGER, 0, 1e9), whole = book.marks(ids, new Map(thresholds), 0, Number.MAX_SAFE_INTEGER, 0, 1e9);
+    assert.deepEqual(kept, whole, `${label}: in the order the groups came`);
+    assert.deepEqual(book.marksByUsd(ids, thresholds, 0, Number.MAX_SAFE_INTEGER, 0, 1e9), [...whole].sort((a, b) => b.usd - a.usd), `${label}: the largest first`);
+  };
+  same('empty');
+  for (let step = 0; step < 300; step++) {
+    const r = rnd();
+    if (r < 0.55) { const g = groupAt(T + step * 20_000); held.push(g); book.add([g]); }
+    else if (r < 0.75 && held.length) { const g = held[Math.floor(rnd() * held.length)]!, usd = 30_000 + Math.floor(rnd() * 90_000); book.add([{ ...g, steps: [[usd, usd, 2, g.t0, g.t0 + 2]] }]); }
+    else if (r < 0.85) { const t0 = T + Math.floor(rnd() * 20) * MIN; book.add(Array.from({ length: 5 }, () => groupAt(t0 + Math.floor(rnd() * 50)))); }
+    else if (r < 0.9) book.addMinutes([{ id: 'a:BTC', t: T + step * MIN, n: 1, mean: 0, m2: 0, floor: 1_000 }]);
+    else if (r < 0.95) book.load({ groups: Array.from({ length: 30 }, (_, i) => groupAt(T - (i + 1) * MIN)), minutes: [], capped: [], floors: {} } as unknown as AbsorptionAnswer);
+    // Asked now and then, not after every change: catching up spans several versions.
+    if (rnd() < 0.4) same(`step ${step}`);
+  }
+  same('at the end');
+});
+
+test('a new group is judged into the marks the map holds, and a busy minute letting its smallest go too: the others are kept, not judged again', () => {
+  const T = Math.floor(Date.now() / MIN) * MIN, th = new Map<string, number | null>([['a:BTC', 10]]), all = (b: AbsorptionBook): AbsorptionMark[] => b.marks(['a:BTC'], th, 0, Number.MAX_SAFE_INTEGER, 0, 1e9);
+  const g = (t0: number, usd: number, price = 100): AbsorptionGroup => ({ id: 'a:BTC', side: 'sell', price, t0, steps: [[usd, usd, 1, t0, t0 + 1]] });
+  const book = new AbsorptionBook(1_000, 2);
+  book.add([g(T, 50), g(T + 2 * MIN, 60)]);
+  const first = all(book);
+  book.add([g(T + 4 * MIN, 70)]);
+  const next = all(book);
+  assert.equal(next.length, 3);
+  assert.ok(first.every(m => next.includes(m)), 'the marks held before are the same objects: caught up, not judged again');
+  // The minute of T holds two: a third larger one makes it let the smallest go.
+  book.add([g(T + 1_000, 80, 101), g(T + 2_000, 90, 102)]);
+  const after = all(book);
+  assert.ok(!after.some(m => m.usd === 50), 'the smallest of the busy minute went');
+  assert.ok(next.filter(m => m.usd !== 50).every(m => after.includes(m)), 'the rest are still the same objects');
+  assert.deepEqual(after, book.marks(['a:BTC'], new Map(th), 0, Number.MAX_SAFE_INTEGER, 0, 1e9), 'and what judging every group gives');
+});
+
 test('marks near each other become one square exactly as comparing each with every square did', () => {
   let s = 9; const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) & 0x7fffffff; return s / 0x7fffffff; };
   const marks: AbsorptionMark[] = Array.from({ length: 3_000 }, (_, i) => ({ id: `v${i % 4}:BTC`, side: rnd() < 0.5 ? 'buy' : 'sell', price: 100 + rnd() * 40, t0: i, t1: i, usd: 1 + Math.floor(rnd() * 40) * 1_000, fills: 1, peak: 1, threshold: 1 }));
@@ -562,6 +612,10 @@ test('marks near each other become one square exactly as comparing each with eve
   const icons = iconsOf(marks, xOf, yOf, 800, 560);
   assert.ok(icons.some(i => i.marks.length > 3), 'the made-up marks crowd together');
   assert.deepEqual(icons, reference);
+  // Given the largest first already (the book's `marksByUsd`, equal sizes in the order given), the same squares without sorting again.
+  assert.deepEqual(iconsOf([...marks].sort((a, b) => b.usd - a.usd), xOf, yOf, 800, 560), reference);
+  // Off the plot in every direction and a mark with no place: left out, as before.
+  assert.deepEqual(iconsOf([{ ...marks[0]!, price: 1e9 }, { ...marks[1]!, price: -1e9 }, { ...marks[2]!, price: Number.NaN }], xOf, yOf, 800, 560), []);
 });
 
 test('a question reaching back into a large store does not overflow the stack (the first answers after a restart)', async () => {

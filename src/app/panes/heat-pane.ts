@@ -4202,7 +4202,9 @@ export class HeatPane {
   #absorptionContext(state: AppState): { ids: string[]; thresholds: Map<string, number | null> } {
     const ids = flowLoadIds(state, this.hub.flow.ids).filter(instrumentShown(state));
     const s = state.absorption, minute = Math.floor(Date.now() / 60_000);
-    const key = `${this.hub.absorption.version}|${minute}|${s.mode}|${s.k}|${s.sdMinutes}|${s.fixedUsd}|${ids.join(',')}`;
+    // The minutes' version, not the book's: a new group leaves the thresholds as they were, and the same map lets the book's judged marks
+    // take the group in place of judging every group again.
+    const key = `${this.hub.absorption.minutesVersion}|${minute}|${s.mode}|${s.k}|${s.sdMinutes}|${s.fixedUsd}|${ids.join(',')}`;
     if (key !== this.#absorptionKey) { this.#absorptionKey = key; this.#absorptionThresholds = this.hub.absorption.thresholds(ids, s, Date.now()); }
     return { ids, thresholds: this.#absorptionThresholds };
   }
@@ -4220,9 +4222,10 @@ export class HeatPane {
     const OFFSET = 20, span = v.t1 - v.t0, pixelMs = span / pw;
     // The squares are worked out again only when the marks, the scale or the plot change, or the map has moved by a whole pixel: a frame that
     // only moves the pointer, or follows the live edge by part of a pixel, draws the same squares moved by what the map moved (`dx`).
-    const key = `${this.#absorptionKey}|${Math.round(span)}|${v.p0}|${v.p1}|${pw}|${ph}|${Math.floor(v.t0 / pixelMs)}`;
+    const key = `${this.hub.absorption.version}|${this.#absorptionKey}|${Math.round(span)}|${v.p0}|${v.p1}|${pw}|${ph}|${Math.floor(v.t0 / pixelMs)}`;
     if (this.#absorptionLayout?.key !== key) {
-      const marks = this.hub.absorption.marks(ids, thresholds, v.t0, v.t1, v.p0, v.p1);
+      // The largest first, as the squares take them (no sort of tens of thousands of marks for each new group).
+      const marks = this.hub.absorption.marksByUsd(ids, thresholds, v.t0, v.t1, v.p0, v.p1);
       const icons = iconsOf(marks, m => v.xOf((m.t0 + m.t1) / 2, pw), m => v.yOf(m.price, ph), pw, ph);
       this.#absorptionLayout = { key, t0: v.t0, shown: icons.sort((a, b) => b.usd - a.usd).slice(0, Math.max(30, Math.min(200, Math.round(pw / 12)))) };
     }
