@@ -133,7 +133,7 @@ test('every theme\'s text reads on every tint the list draws', () => {
 test('a price is counted as wide as it is written, without writing it', () => {
   // Across magnitudes, the rounding edges (9,999.96 is written 10,000.0; 9.995 is written 10.00), the decimals' own edges ($1, $1,000)
   // and what is not a price.
-  const values: number[] = [0, -1, NaN, Infinity];
+  const values: number[] = [0, -0, -1, NaN, Infinity, -Infinity, 1e21, 1e24, 1e25, Number.MAX_VALUE];
   for (let e = -9; e <= 7; e++) for (const m of [1, 1.5, 2, 5, 9, 9.5, 9.94, 9.949, 9.95, 9.951, 9.96, 9.994, 9.995, 9.996, 9.9995, 9.99995, 9.999995]) values.push(m * 10 ** e);
   values.push(999.995, 999.996, 999.9949, 9_999.95, 9_999.949, 99_999.95, 0.999995, 0.9999949, 68_277.4, 100_000, 99_999.94);
   let seed = 7; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

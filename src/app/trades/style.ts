@@ -71,7 +71,8 @@ export class InkCache {
  * as for anything that is not a price (negative, not finite), the price is written and counted.
  */
 export function priceWidth(value: number): number {
-  if (!(value >= 0) || !Number.isFinite(value)) return price(value).length;
+  // Not a price, or past what the digits are counted for (-0, NaN, infinities, 1e21 and over): written and counted.
+  if (!(value > 0) || !(value < 1e21)) return price(value).length;
   const d = priceDecimals(value), x = value * 10 ** d, lo = intDigits(Math.round(x * (1 - 1e-9)), d), hi = intDigits(Math.round(x * (1 + 1e-9)), d);
   return lo !== hi ? price(value).length : lo + Math.floor((lo - 1) / 3) + (d > 0 ? d + 1 : 0);
 }
