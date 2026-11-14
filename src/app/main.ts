@@ -406,6 +406,9 @@ async function main(): Promise<void> {
   hub.onTape = () => { heat.tapeArrived(); candle.tapeArrived(); glass.tapeArrived(); ladder.tapeArrived(); cvd.trades.tapeArrived(); };
   // The column shown or hidden, folded or its view changed: the tape is wanted again or not, and a list that now shows reads the ring.
   cvd.onVisibility = () => { hub.setTape(tapeWanted()); };
+  // The hooks are in: the column's lists follow the tab now. Its constructor asked before they were, so a phone that opens on the Map kept the
+  // Tape list on behind it until the page's series had loaded (r16, 2026-11-14), and for good if that load failed.
+  cvd.viewChanged();
   applyMaterial();
   // Trades recovered from a venue's history (the browser engine): no flow burst is sounded over them.
   hub.onRecovered = (id, _from, to) => { alerts.recovered.set(id, Math.max(alerts.recovered.get(id) ?? 0, to)); };
