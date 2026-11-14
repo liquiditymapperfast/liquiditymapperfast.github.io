@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import { BLOCK, BOUNDARY, TapeRing } from '../src/app/tape/ring.ts';
 import type { TapeBatch } from '../src/shared/tape.ts';
 import { TradeIndex, readRecord } from '../src/app/trades/index.ts';
-import { ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, rowInk, tierOf } from '../src/app/trades/style.ts';
+import { ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, priceWidthKey, rowInk, tierOf } from '../src/app/trades/style.ts';
 import { TRADES_DEFAULTS, readTrades } from '../src/app/trades/settings.ts';
 import { PALETTES, contrastRatio } from '../src/app/theme.ts';
+import { price } from '../src/app/format.ts';
 import { LAYOUT_KEYS, readSettings } from '../src/app/store.ts';
 
 /** A batch of orders: [market, exchange time, price, signed usd]. */
@@ -122,8 +123,25 @@ test('every theme\'s text reads on every tint the list draws', () => {
       const ink = rowInk(p, buy, tint);
       assert.ok(contrastRatio(ink.text, ink.bg) >= 4.5, `${name} ${buy ? 'buy' : 'sell'} ${tint}: text ${contrastRatio(ink.text, ink.bg).toFixed(2)}`);
       assert.ok(contrastRatio(ink.muted, ink.bg) >= 2.5, `${name} ${buy ? 'buy' : 'sell'} ${tint}: muted ${contrastRatio(ink.muted, ink.bg).toFixed(2)}`);
+      const side = buy ? p.candleUp : p.candleDown;
+      assert.ok(ink.glyph === (contrastRatio(side, ink.bg) >= 3 ? side : ink.text), `${name} ${buy ? 'buy' : 'sell'} ${tint}: the side glyph in its colour only where it reads`);
     }
   }
+});
+
+test('a price column is measured again whenever a price could need another width, and only then', () => {
+  // Every value with one key is written as wide as every other (the column is kept while the key holds), across magnitudes, the
+  // rounding edges (9,999.96 is written 10,000.0) and the decimals' own edges ($1 and $1,000).
+  const widths = new Map<string, Set<number>>(), values: number[] = [0];
+  for (let e = -9; e <= 7; e++) for (const m of [1, 1.5, 2, 5, 9, 9.5, 9.94, 9.949, 9.95, 9.951, 9.96, 9.994, 9.995, 9.996, 9.9995, 9.99995, 9.999995]) values.push(m * 10 ** e);
+  values.push(999.995, 999.996, 999.9949, 9_999.95, 9_999.949, 99_999.95, 0.999995, 0.9999949, 68_277.4, 100_000, 99_999.94);
+  let seed = 7; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 4000; i++) values.push(10 ** (rand() * 16 - 9));
+  for (const v of values) { const k = priceWidthKey(v); const set = widths.get(k) ?? new Set<number>(); set.add(price(v).length); widths.set(k, set); }
+  for (const [k, set] of widths) assert.equal(set.size, 1, `key ${k}: widths ${[...set].join(', ')}`);
+  // And a new price of the same width keeps the key (the common case: the column is not measured again).
+  assert.equal(priceWidthKey(68_277.4), priceWidthKey(68_301.9));
+  assert.notEqual(priceWidthKey(99_999.9), priceWidthKey(100_000.1));
 });
 
 test('sizes, clocks and settings as the list writes and reads them', () => {

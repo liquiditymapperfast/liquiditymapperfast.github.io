@@ -1,5 +1,5 @@
 import { contrastRatio, mixHex, textOn, type Palette } from '../theme.ts';
-import { usd as fmtUsd } from '../format.ts';
+import { priceDecimals, usd as fmtUsd } from '../format.ts';
 
 /**
  * How All trades draws an order, as numbers (no page): size carried by four fixed tiers of row height and type (coin-scaled, never relative
@@ -40,14 +40,15 @@ export function orderBarFull(minUsd: number): number {
 }
 
 /** The colours of a row: its background, its text, and its quiet text (time, counts), each reading on that background. */
-export interface RowInk { bg: string; text: string; muted: string }
+export interface RowInk { bg: string; text: string; muted: string; glyph: string }
 /** Steps of tint the inks are worked out for (cached per palette): finer than any eye tells apart. */
 export const TINT_STEPS = 64;
 export function rowInk(p: Palette, buy: boolean, tint: number): RowInk {
   const side = buy ? p.candleUp : p.candleDown, bg = mixHex(p.panel, side, tint);
   const text = contrastRatio(p.text, bg) >= 4.5 ? p.text : textOn(bg, 1, p);
   const muted = contrastRatio(p.muted, bg) >= 3 ? p.muted : mixHex(text, bg, 0.35);
-  return { bg, text, muted };
+  // The side's glyph (▲ ▼) in the side's colour where that reads on the row, else in the row's text colour.
+  return { bg, text, muted, glyph: contrastRatio(side, bg) >= 3 ? side : text };
 }
 
 /** A palette's inks for every tint step and side, worked out once. */
@@ -59,6 +60,23 @@ export class InkCache {
     const list = buy ? this.#buy : this.#sell;
     return list[step] ??= rowInk(p, buy, step / TINT_STEPS * top);
   }
+}
+
+/**
+ * A key that changes whenever the width of `price(value)` can (positive values; its digits are en-US: the decimals and the integer digits of
+ * the value rounded to them, so 9,999.96 keys as the 10,000.0 it is written as). A column sized for one price is measured again only when
+ * the key changes, not for every new price. Within a hair of a carry the formatter's rounding decides (it writes 9.995 as "10.00", though
+ * the double is 9.99499...): there the value itself is the key, so the column takes the width the price is written with.
+ */
+export function priceWidthKey(value: number): string {
+  const d = priceDecimals(value), x = value * 10 ** d, lo = intDigits(Math.round(x * (1 - 1e-9)), d), hi = intDigits(Math.round(x * (1 + 1e-9)), d);
+  return lo === hi ? `${d}|${lo}` : `${d}|${value}`;
+}
+/** The integer digits of `units` written with `d` decimals (units of 10^-d). */
+function intDigits(units: number, d: number): number {
+  let n = 1;
+  for (let at = 10 ** (d + 1); units >= at && n < 24; at *= 10) n++;
+  return n;
 }
 
 /** The clock written on a row for the width: hours, minutes and seconds; minutes and seconds under 300 px; none under 250 px (it is in the hover). */

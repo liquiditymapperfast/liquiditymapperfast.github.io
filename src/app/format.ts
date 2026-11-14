@@ -35,13 +35,16 @@ export function stepDecimals(step: number): number {
   return k;
 }
 
-export function price(value: number, step = 0): string {
-  if (!Number.isFinite(value)) return '–';
+/** The decimals `price` writes a value with. */
+export function priceDecimals(value: number, step = 0): number {
   // As many decimals as the step is written with, up to twelve: a coin priced in millionths of a dollar (PEPE) moves in billionths and
   // less, and a step of 0.25 needs two however coarse it is.
-  const decimals = step > 0 ? Math.min(12, Math.max(0, Math.ceil(-Math.log10(step) - 1e-9), stepDecimals(step)))
+  return step > 0 ? Math.min(12, Math.max(0, Math.ceil(-Math.log10(step) - 1e-9), stepDecimals(step)))
     : value >= 1000 ? 1 : value >= 1 ? 2 : value > 0 ? Math.min(10, Math.max(5, Math.ceil(-Math.log10(value)) + 3)) : 5;
-  return fixedFormat(decimals).format(value);
+}
+export function price(value: number, step = 0): string {
+  if (!Number.isFinite(value)) return '–';
+  return fixedFormat(priceDecimals(value, step)).format(value);
 }
 const two = (n: number) => String(n).padStart(2, '0');
 

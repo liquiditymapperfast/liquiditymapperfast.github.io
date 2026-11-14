@@ -9,12 +9,12 @@ import { scaledUsd } from '../coin.ts';
 import { replaying } from '../replay/clock.ts';
 import { isPhone } from '../device.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
-import { PALETTES, contrastRatio, type Palette } from '../theme.ts';
+import { PALETTES, type Palette } from '../theme.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { TradeIndex, readRecord, type TradeRecord } from '../trades/index.ts';
 import { RetainedRows } from './retained-rows.ts';
-import { DIVIDER_ROW, InkCache, ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, tierOf, type Tier } from '../trades/style.ts';
+import { DIVIDER_ROW, InkCache, ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, priceWidthKey, tierOf, type Tier } from '../trades/style.ts';
 import { GROUP_MS } from '../trades/settings.ts';
 import type { TnsLine } from '../tns/model.ts';
 import type { Store } from '../store.ts';
@@ -39,6 +39,8 @@ const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMe
  * after a column for the coin's widest price and stops before one for the widest amount and a count, so every row's bar is on one scale.
  */
 interface RowGeom { form: ReturnType<typeof clockForm>; clockW: number; xMark: number; xSide: number; xPrice: number; xBar: number; barRoom: number; xRight: number; full: number }
+/** The widths the rows are laid out by, at one pixel ratio: the clock in its two forms and a digit of the clock's, the price's and the largest amount's font. */
+interface FontWidths { dpr: number; hms: number; ms: number; digit11: number; digit13: number; digitBig: number }
 /** What an order row shows (one order, or the orders a row groups): its time, price, signed dollars, market and how many orders. */
 interface RowOrder { t: number; price: number; usd: number; id: string; orders: number }
 /** A row of a frame (device pixels), laid out before anything is drawn: its signature and what draws it. */
@@ -81,6 +83,13 @@ export class OrderList {
   #epoch = 0;
   /** The bar's full dollars as the last frame drew it (the box beside a row says it). */
   #barFull = 0;
+  /**
+   * The font widths, measured once per pixel ratio (the list's fonts are the system's monospace: no font loads later to change them), and
+   * the rows' parts with what they were worked out for: a frame measures and formats nothing for them until the width, the ratio, grouping,
+   * the size floor or the price's width changes (on a 4x-slowed phone that work was 0.24 ms of a frame).
+   */
+  #fontWidths: FontWidths | null = null;
+  #geomKey = ''; #geomLast: RowGeom | null = null;
   #scanTimer = 0;
   /** What the index was found for: the list's settings and the venues the map shows (a venue's book joining the map lets its orders in). */
   #filterKey = '';
@@ -375,8 +384,7 @@ export class OrderList {
     }
     const { whale, leviathan } = this.#whale(), s = this.store.state.trades, form = clockForm(w);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.font = `11px ${MONO}`;
-    const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width;
+    const widths = this.#widths(ctx), clockW = form === 'none' ? 0 : form === 'hms' ? widths.hms : widths.ms;
     const H = this.#canvas.height;
     this.#items.length = 0;
     // Device pixels from here: each row's top on a whole one, its height its nominal height rounded at this ratio.
@@ -476,17 +484,27 @@ export class OrderList {
    * order.
    */
   #geom(ctx: CanvasRenderingContext2D, w: number, refPrice: number): RowGeom {
-    const form = clockForm(w), big = TIERS[TIERS.length - 1]!;
+    const s = this.store.state.trades, ref = refPrice > 0 && Number.isFinite(refPrice) ? refPrice : 0;
+    const key = `${w}|${this.#dpr}|${s.group}|${s.minUsd}|${priceWidthKey(ref)}`;
+    if (key === this.#geomKey && this.#geomLast) return this.#geomLast;
+    const m = this.#widths(ctx), form = clockForm(w), clockW = form === 'none' ? 0 : form === 'hms' ? m.hms : m.ms;
+    const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
+    const counts = s.group ? 3 * m.digit11 + GAP : 0;
+    const xBar = Math.round(xPrice + fmtPrice(ref).length * m.digit13 + GAP), room = Math.floor(xRight - 7 * m.digitBig - counts - GAP - xBar);
+    const full = scaledUsd(orderBarFull(s.minUsd));
+    this.#barFull = full; this.#geomKey = key;
+    return this.#geomLast = { form, clockW, xMark, xSide, xPrice, xBar, barRoom: room >= 24 ? room : 0, xRight, full };
+  }
+  /** The font widths at this pixel ratio (see `#fontWidths`). */
+  #widths(ctx: CanvasRenderingContext2D): FontWidths {
+    const dpr = this.#dpr;
+    if (this.#fontWidths?.dpr === dpr) return this.#fontWidths;
+    const big = TIERS[TIERS.length - 1]!;
     ctx.font = `11px ${MONO}`;
-    const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width, digit11 = ctx.measureText('0').width;
+    const hms = ctx.measureText('00:00:00').width, ms = ctx.measureText('00:00').width, digit11 = ctx.measureText('0').width;
     ctx.font = `13px ${MONO}`; const digit13 = ctx.measureText('0').width;
     ctx.font = `${big.weight} ${big.amountPx}px ${MONO}`; const digitBig = ctx.measureText('0').width;
-    const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
-    const counts = this.store.state.trades.group ? 3 * digit11 + GAP : 0;
-    const xBar = Math.round(xPrice + fmtPrice(refPrice).length * digit13 + GAP), room = Math.floor(xRight - 7 * digitBig - counts - GAP - xBar);
-    const full = scaledUsd(orderBarFull(this.store.state.trades.minUsd));
-    this.#barFull = full;
-    return { form, clockW, xMark, xSide, xPrice, xBar, barRoom: room >= 24 ? room : 0, xRight, full };
+    return this.#fontWidths = { dpr, hms, ms, digit11, digit13, digitBig };
   }
   /**
    * One order row from `y0` (0 in a row's own coordinates; the recording's rows pass their place), its tier's height, filled `fh` tall (its
@@ -505,7 +523,7 @@ export class OrderList {
     }
     drawVenueMark(ctx, o.id, g.xMark, mid, MARK, this.#dpr);
     // The side's glyph in its colour where that reads on the row, else in the row's text colour.
-    ctx.font = `10px ${MONO}`; ctx.fillStyle = contrastRatio(sideInk, ink.bg) >= 3 ? sideInk : ink.text; ctx.textAlign = 'left';
+    ctx.font = `10px ${MONO}`; ctx.fillStyle = ink.glyph; ctx.textAlign = 'left';
     ctx.fillText(buy ? '▲' : '▼', g.xSide, mid);
     ctx.font = `13px ${MONO}`; ctx.fillStyle = ink.text;
     ctx.fillText(fmtPrice(o.price), g.xPrice, mid);
