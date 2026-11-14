@@ -38,7 +38,7 @@ interface FontWidths extends RowFontWidths { dpr: number }
 /** What an order row shows (one order, or the orders a row groups): its time, price, signed dollars, market and how many orders. */
 interface RowOrder { t: number; price: number; usd: number; id: string; orders: number }
 /** A row of a frame (device pixels), laid out before anything is drawn: its signature and what draws it. */
-interface Item { sig: string; y: number; h: number; fixed: boolean; kind: 'row' | 'divider' | 'note'; rec: TradeRecord | null; shown: TradeRecord | null; tier: (typeof TIERS)[number]; orders: number; usd: number; showTime: boolean; outlined: boolean; reasons: number; words: string }
+interface Item { sig: string; y: number; h: number; fixed: boolean; kind: 'row' | 'divider' | 'note'; rec: TradeRecord | null; shown: TradeRecord | null; tier: (typeof TIERS)[number]; orders: number; usd: number; timeY: number; outlined: boolean; reasons: number; words: string }
 /** A line the last frame drew: an order (or a burst of them when grouping is on), or a divider where orders may be missing. */
 type Drawn =
   | { kind: 'row'; k: number; y: number; h: number; rec: TradeRecord; orders: number; usd: number }
@@ -378,8 +378,8 @@ export class OrderList {
 
   /** A row of this frame, laid out before anything is drawn: device-pixel top and height, and what draws it. */
   #item(sig: string, y: number, h: number, kind: Item['kind'], fixed = false): Item {
-    const it = this.#itemPool[this.#items.length] ??= { sig: '', y: 0, h: 0, fixed: false, kind: 'row', rec: null, orders: 1, usd: 0, shown: null, tier: TIERS[0]!, showTime: false, outlined: false, reasons: 0, words: '' };
-    it.sig = sig; it.y = y; it.h = h; it.kind = kind; it.fixed = fixed; it.rec = null; it.shown = null; it.showTime = false; it.outlined = false; it.reasons = 0; it.words = '';
+    const it = this.#itemPool[this.#items.length] ??= { sig: '', y: 0, h: 0, fixed: false, kind: 'row', rec: null, orders: 1, usd: 0, shown: null, tier: TIERS[0]!, timeY: -1, outlined: false, reasons: 0, words: '' };
+    it.sig = sig; it.y = y; it.h = h; it.kind = kind; it.fixed = fixed; it.rec = null; it.shown = null; it.timeY = -1; it.outlined = false; it.reasons = 0; it.words = '';
     this.#items.push(it);
     return it;
   }
@@ -454,11 +454,12 @@ export class OrderList {
       if (yd + hd <= 0) { lastSecond = clockSeconds(rec.t); above = lowest; yd += hd; pos = next; continue; }
       const shown = orders > 1 ? { ...rec, usd: signed, price: usd / qty, lo, hi } : rec;
       priceChars = Math.max(priceChars, priceWidth(shown.price));
-      // The time once per second-run, on its newest row (in sight or still coming down: a row coming in at the top never takes it from the
-      // row under it, which would draw that row again on every frame the list moves); on a held list, also on the first row in sight.
-      const second = clockSeconds(rec.t), showTime = clockW > 0 && (second !== lastSecond || (first && this.#anchor !== null));
-      const it = this.#item(`r|${k}|${orders}|${usd}|${showTime ? 1 : 0}`, yd, hd, 'row');
-      it.rec = rec; it.shown = shown; it.tier = tier; it.orders = orders; it.usd = signed; it.showTime = showTime;
+      // The time once per second-run and on the first row in sight; on a row coming in at the top it slides down inside the row to stay in
+      // sight (the top of a moving list always says its time): its middle, CSS px down the row, or -1 for none.
+      const second = clockSeconds(rec.t), showTime = clockW > 0 && (second !== lastSecond || first);
+      const timeY = !showTime ? -1 : yd < 0 ? Math.min(tier.row - 6, Math.max(tier.row / 2, -yd / dpr + 7)) : tier.row / 2;
+      const it = this.#item(`r|${k}|${orders}|${usd}|${timeY}`, yd, hd, 'row');
+      it.rec = rec; it.shown = shown; it.tier = tier; it.orders = orders; it.usd = signed; it.timeY = timeY;
       drawn.push({ kind: 'row', k, y: yd / dpr, h: hd / dpr, rec: shown, orders, usd: signed });
       lastSecond = second; first = false;
       above = lowest; yd += hd; pos = next;
@@ -483,7 +484,7 @@ export class OrderList {
       const it = items[i]!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, it.y);
       const fh = it.h / dpr;
-      if (it.kind === 'row') this.#drawOrder(ctx, g, this.#fill(it.rec!.t, it.shown!.price, it.usd, it.rec!.id, it.orders), 0, it.tier, fh, fw, it.showTime, it.outlined, p);
+      if (it.kind === 'row') this.#drawOrder(ctx, g, this.#fill(it.rec!.t, it.shown!.price, it.usd, it.rec!.id, it.orders), 0, it.tier, fh, fw, it.timeY, it.outlined, p);
       else if (it.kind === 'divider') this.#paintDivider(ctx, 0, w, it.reasons, p, fh, fw);
       else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p, fh); }
     }
@@ -570,7 +571,7 @@ export class OrderList {
    * drawn height) and `fw` wide: the faint tint of its side, the time once per second-run, the mark, the side, the price, the bar (the
    * square root of its dollars over the full dollars, a mark past them) and the size. The tape's rows and the recording's are drawn alike.
    */
-  #drawOrder(ctx: CanvasRenderingContext2D, g: RowGeom, o: RowOrder, y0: number, tier: Tier, fh: number, fw: number, showTime: boolean, outlined: boolean, p: Palette): void {
+  #drawOrder(ctx: CanvasRenderingContext2D, g: RowGeom, o: RowOrder, y0: number, tier: Tier, fh: number, fw: number, timeY: number, outlined: boolean, p: Palette): void {
     const buy = o.usd > 0, usd = Math.abs(o.usd), top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, ink = this.#inks.get(p, buy, ORDER_TINT, top), mid = y0 + tier.row / 2;
     ctx.fillStyle = ink.bg; ctx.fillRect(0, y0, fw, fh);
     // The bar straight after the row's fill, before any text is set up (it touches no text): one colour and one rectangle a row.
@@ -579,10 +580,10 @@ export class OrderList {
       ctx.fillStyle = ink.bar; ctx.fillRect(g.xBar, mid - bh / 2, len, bh);
     }
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    if (showTime && g.clockW) {
+    if (timeY >= 0 && g.clockW) {
       const second = clockSeconds(o.t);
       ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted;
-      ctx.fillText(g.form === 'hms' ? second : second.slice(3), PAD, mid);
+      ctx.fillText(g.form === 'hms' ? second : second.slice(3), PAD, y0 + timeY);
     }
     drawVenueMark(ctx, o.id, g.xMark, mid, MARK, this.#dpr);
     // The side's glyph in its colour where that reads on the row, else in the row's text colour; past the bar's full dollars, a mark in the
@@ -647,7 +648,7 @@ export class OrderList {
       }
       const buy = l.side === 'buy', signed = buy ? l.usd : -l.usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, rowH = tier.row, sec = Math.floor(l.t / 1000);
       if (y + rowH <= 0) { lastSec = sec; y += rowH; continue; }
-      this.#drawOrder(ctx, g, this.#fill(l.t, l.price, signed, l.id, l.orders), y, tier, rowH, fw, sec !== lastSec, false, p);
+      this.#drawOrder(ctx, g, this.#fill(l.t, l.price, signed, l.id, l.orders), y, tier, rowH, fw, sec !== lastSec ? rowH / 2 : -1, false, p);
       lastSec = sec;
       drawn.push({ kind: 'row', k: -1 - i, y, h: rowH, rec: { k: -1 - i, t: l.t, price: l.price, usd: signed, id: l.id, lo: l.lo, hi: l.hi }, orders: l.orders, usd: signed });
       y += rowH;
