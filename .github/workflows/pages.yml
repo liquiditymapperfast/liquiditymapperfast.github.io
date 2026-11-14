@@ -38,19 +38,15 @@ jobs:
       # The coin list (src/shared/coins.ts): a market whose list cannot be read from here (some exchanges refuse US addresses, where the
       # runners are) keeps its listings from the list the site has now; the copy in the repository stands in if that cannot be read.
       # A failure here never stops the deploy: the copy built into dist stays.
-      # The list in use is read from liquiditymapper.com once it serves the site, and from the github.io address until then.
-      - run: |
-          npm run build:tools
-          previous=https://liquiditymapper.com/coins.json
-          curl -sf -m 20 "$previous" | node -e 'JSON.parse(require("fs").readFileSync(0, "utf8"))' || previous=https://liquiditymapperfast.github.io/coins.json
-          node build/tools/scripts/coins.mjs --previous "$previous" --fallback src/app/public/coins.json --out dist/coins.json
+      - run: npm run build:tools && node build/tools/scripts/coins.mjs --previous https://liquiditymapper.com/coins.json --fallback src/app/public/coins.json --out dist/coins.json
         continue-on-error: true
       # The site, for Cloudflare.
       - uses: actions/upload-pages-artifact@v3
         with:
           name: site
           path: dist
-      # The old address's page, for GitHub Pages (since 2026-11-14 the github.io address only sends visitors on: docs/deployment.md).
+      # The old address's page, for GitHub Pages (since 2026-11-14 the github.io address only sends visitors on: docs/moved-site.md).
+      # Removing moved-site/ means removing this step and the deploy job too, or the build fails and Cloudflare is not published.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: moved-site

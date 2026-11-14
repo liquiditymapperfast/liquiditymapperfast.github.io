@@ -1,4 +1,4 @@
-# The old address's page
+# The old address's page (`moved-site/`)
 
 What `https://liquiditymapperfast.github.io/` serves since the site moved to `https://liquiditymapper.com/` (2026-11-14). It is not part
 of the page's build: `.github/workflows/pages.yml` publishes this folder as it is to GitHub Pages from this same repository
