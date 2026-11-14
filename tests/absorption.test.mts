@@ -618,6 +618,26 @@ test('a new group, a busy minute letting its smallest go, a threshold that moved
   assert.deepEqual(all(book, moved), all(twin, moved), 'and what judging every group gives');
 });
 
+test('a change of more groups than the log keeps (a long history answer) has a judged list judged whole again, and right', () => {
+  const T = Math.floor(Date.now() / MIN) * MIN, ids = ['a:BTC', 'b:BTC'], th = new Map<string, number | null>([['a:BTC', 40_000], ['b:BTC', 60_000]]);
+  const answer = (n: number, from: number): AbsorptionAnswer => ({ groups: Array.from({ length: n }, (_, i) => { const usd = 20_000 + (i * 7_919) % 90_000, t0 = from + i * 1_000; return { id: ids[i % 2]!, side: i % 3 ? 'buy' : 'sell', price: 100 + (i % 50), t0, steps: [[usd, usd, 1, t0, t0 + 1]] } as AbsorptionGroup; }), minutes: [], capped: [], floors: {} } as unknown as AbsorptionAnswer);
+  // A book of 20,100 groups, so 5,000 changed are under a quarter of it: only the log's bound has them judged whole.
+  const first = answer(20_100, T), big = answer(5_000, T - 6_000_000);
+  const book = new AbsorptionBook(50_000, Infinity), twin = new AbsorptionBook(50_000, Infinity);
+  book.load(first);
+  const all = (b: AbsorptionBook, fn: 'marks' | 'marksByUsd'): AbsorptionMark[] => b[fn](ids, th, 0, Number.MAX_SAFE_INTEGER, 0, 1e9);
+  const early = all(book, 'marks');
+  book.load(big); twin.load(first); twin.load(big);
+  assert.deepEqual(all(book, 'marks'), all(twin, 'marks'));
+  assert.ok(!early.some(m => all(book, 'marks').includes(m)), 'judged whole: the log keeps no list of 5,000 keys');
+  assert.deepEqual(all(book, 'marksByUsd'), all(twin, 'marksByUsd'));
+  // Then live groups again: caught up one by one from there.
+  const g = { id: 'a:BTC', side: 'buy', price: 120, t0: T + 500_000, steps: [[95_000, 95_000, 1, T + 500_000, T + 500_001]] } as AbsorptionGroup;
+  const held = all(book, 'marks'); book.add([g]); twin.add([g]);
+  assert.deepEqual(all(book, 'marks'), all(twin, 'marks'));
+  assert.ok(held.every(m => all(book, 'marks').includes(m)), 'the marks held before are kept (caught up, not judged whole)');
+});
+
 test('marks near each other become one square exactly as comparing each with every square did', () => {
   let s = 9; const rnd = (): number => { s = (s * 1_103_515_245 + 12_345) & 0x7fffffff; return s / 0x7fffffff; };
   const marks: AbsorptionMark[] = Array.from({ length: 3_000 }, (_, i) => ({ id: `v${i % 4}:BTC`, side: rnd() < 0.5 ? 'buy' : 'sell', price: 100 + rnd() * 40, t0: i, t1: i, usd: 1 + Math.floor(rnd() * 40) * 1_000, fills: 1, peak: 1, threshold: 1 }));

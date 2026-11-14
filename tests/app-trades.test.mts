@@ -160,6 +160,24 @@ test('a burst taller than the list is jumped to the height of the list; any fram
   const back = new Conveyor(); back.from(300, 800); assert.equal(back.debt, 300); back.from(100, 800); assert.equal(back.debt, 300); back.from(2_000, 800); assert.equal(back.debt, 800);
 });
 
+test('a frame time that is not a number moves nothing and spoils nothing; a reset learns the rate again', () => {
+  const c = new Conveyor();
+  c.add(300, 1e9); c.step(0); c.step(16.7);
+  const before = c.debt;
+  for (const t of [Number.NaN, Infinity, -Infinity]) assert.equal(c.step(t), before, String(t));
+  c.add(Number.NaN, 1e9); c.add(100, Number.NaN); c.from(Number.NaN, 1e9);
+  assert.equal(c.debt, before, 'a batch or a hold of no number is left out');
+  for (let t = 33.3; c.moving && t < 5_000; t += 1000 / 60) c.step(t);
+  assert.ok(!c.moving && Number.isFinite(c.travelled), 'comes to rest as usual afterwards');
+  // A busy stream, a reset (a hold), then one batch: it comes down as on a fresh conveyor.
+  const busy = new Conveyor(), fresh = new Conveyor(); let t = 0;
+  for (let f = 0; f < 120; f++, t += 1000 / 60) { if (f % 15 === 0) busy.add(400, 1e9); busy.step(t); }
+  busy.reset(); busy.add(120, 1e9); fresh.add(120, 1e9);
+  const a: number[] = [], b: number[] = [];
+  for (let f = 0; f < 60; f++, t += 1000 / 60) { let x = busy.travelled; busy.step(t); a.push(busy.travelled - x); x = fresh.travelled; fresh.step(f * 1000 / 60); b.push(fresh.travelled - x); }
+  assert.ok(a.every((v, i) => Math.abs(v - b[i]!) < 1e-9), 'the same frames as a fresh conveyor');
+});
+
 test('a lull lowers the rate: a batch after a quiet spell comes down as the first one did', () => {
   const first = conveyorRun(1_500, 60, f => (f === 0 ? 120 : 0)).moved.filter(x => x > 0);
   // A busy stretch (200 px every 250 ms), five quiet seconds (frames go on while it comes to rest), then the same batch.

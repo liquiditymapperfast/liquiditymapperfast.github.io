@@ -66,8 +66,11 @@ export class OrderList {
   /** null: the list follows the newest order; else the row of write `k` is drawn `offset` px above the top (held, or scrolled back). */
   #anchor: { k: number; offset: number } | null = null;
   #pointerIn = false; #pointer: { x: number; y: number } | null = null;
-  /** A finger on the list: where it last was, whether it moved (a drag scrolls, a still tap pins a row), and the row a tap pinned. */
-  #touch: { id: number; y: number; moved: number; owed: number } | null = null;
+  /**
+   * A finger on the list: where it last was, whether it moved (a drag scrolls, a still tap pins a row), whether it took the hold as it touched
+   * (a cancelled touch gives it back), and the row a tap pinned.
+   */
+  #touch: { id: number; y: number; moved: number; owed: number; took: boolean } | null = null;
   #pinned: number | null = null;
   /** The wheel moved the list back from the newest order: it stays held when the pointer leaves. */
   #scrolled = false;
@@ -134,11 +137,14 @@ export class OrderList {
     // Ctrl + wheel is the browser's zoom, not the list's.
     c.addEventListener('wheel', e => { if (e.ctrlKey) return; e.preventDefault(); this.#scroll(e.deltaY * (e.deltaMode === 1 ? 24 : e.deltaMode === 2 ? this.#h : 1)); this.#hoverChanged(); }, { passive: false });
     c.addEventListener('click', e => { if (this.#lastTouch) return; const row = this.#rowAt(e.offsetY); if (row && !replaying() && !isPhone()) this.onGoTo(row.rec.t, row.rec.price); });
-    // A finger drags the list (holding it), and a tap without a drag pins a row's details (a second tap on it, or elsewhere, lets them go).
+    // A finger holds the list as it touches (rows come down on every frame: the row under it at the lift would be another), drags it, and a tap
+    // without a drag pins the row it touched (a second tap on it, or elsewhere, lets it go).
     c.addEventListener('pointerdown', e => {
       this.#lastTouch = e.pointerType === 'touch';
       if (e.pointerType !== 'touch') return;
-      this.#touch = { id: e.pointerId, y: e.clientY, moved: 0, owed: 0 }; c.setPointerCapture(e.pointerId);
+      let took = false;
+      if (!this.#anchor) { this.#hold(); took = !!this.#anchor; }
+      this.#touch = { id: e.pointerId, y: e.clientY, moved: 0, owed: 0, took }; c.setPointerCapture(e.pointerId);
     });
     c.addEventListener('pointermove', e => {
       const tch = this.#touch;
@@ -159,7 +165,14 @@ export class OrderList {
       else if (!this.#scrolled) { this.#release(); return; }
       this.invalidate();
     };
-    c.addEventListener('pointerup', lift); c.addEventListener('pointercancel', e => { if (this.#touch?.id === e.pointerId) this.#touch = null; });
+    c.addEventListener('pointerup', lift);
+    // A touch the browser took over (a scroll of the page, a gesture): the hold it took is given back, unless a row is pinned or the list scrolled.
+    c.addEventListener('pointercancel', e => {
+      const tch = this.#touch;
+      if (tch?.id !== e.pointerId) return;
+      this.#touch = null;
+      if (tch.took && this.#pinned === null && !this.#scrolled) this.#release();
+    });
   }
 
   dispose(): void { window.clearTimeout(this.#scanTimer); this.#resizeObserver.disconnect(); document.removeEventListener('visibilitychange', this.#onVisible); if (this.#frame) cancelAnimationFrame(this.#frame); }
@@ -212,10 +225,12 @@ export class OrderList {
   #showHeld(): void { this.#pill.hidden = this.#index.newSinceHold === 0; setText(this.#pill, t('Held · {n} new ↑', { n: String(this.#index.newSinceHold) })); }
 
   /** What the last frame drew, for the checks that look at the list without reading its pixels. */
-  get snapshot(): { rows: number; dividers: number; held: boolean; waiting: number; indexed: number; anchored: boolean; debt: number } {
-    return { rows: this.#drawn.filter(d => d.kind === 'row').length, dividers: this.#drawn.filter(d => d.kind === 'divider').length, held: this.#index.held, waiting: this.#index.newSinceHold, indexed: this.#index.length, anchored: !!this.#anchor, debt: this.#conveyor.debt };
+  get snapshot(): { rows: number; dividers: number; held: boolean; waiting: number; indexed: number; anchored: boolean; debt: number; pinned: number | null } {
+    return { rows: this.#drawn.filter(d => d.kind === 'row').length, dividers: this.#drawn.filter(d => d.kind === 'divider').length, held: this.#index.held, waiting: this.#index.newSinceHold, indexed: this.#index.length, anchored: !!this.#anchor, debt: this.#conveyor.debt, pinned: this.#pinned };
   }
-  /** How far the conveyor has moved the list in all (CSS px, jumps included): a trace for the checks that time its motion. */
+  /** The write number of the row the last frame drew at `y` (CSS px down the list), or null: for the checks that aim at a row. */
+  rowAt(y: number): number | null { return this.#rowAt(y)?.k ?? null; }
+  /** How far the conveyor has moved the list in all (CSS px; of a batch taller than the list, its height): a trace for the checks that time its motion. */
   get motionY(): number { return this.#conveyor.travelled; }
 
   /** The index on the current ring and filter, found back from the newest order enough to fill the list (more in steps, between frames). */
@@ -324,7 +339,9 @@ export class OrderList {
     const top = this.#drawn.find(d => d.kind === 'row');
     if (!top || top.kind !== 'row') return;
     this.#conveyor.reset();
-    this.#anchor = { k: top.k, offset: -top.y };
+    // A row under a line at the top (rows were coming down) is held at the top, the line dropped: a held list draws no line above the row it
+    // starts from, and the strip would stay blank for the whole hold (a nudge of a line's height at most, rare: a line is at the top for a frame or two).
+    this.#anchor = { k: top.k, offset: Math.max(0, -top.y) };
     this.#index.hold(top.k + 1);
     this.#showHeld();
   }

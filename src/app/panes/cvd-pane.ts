@@ -379,7 +379,7 @@ export class CvdPane {
     // place in the header (the layout puts the pane's tools after it).
     const views: [FlowView, string, string, string][] = [
       ['flow', t('Flow'), t('Flow'), t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.')],
-      ['trades', t('Trades'), t('Trades'), t('Trades: what was bought and sold at market, a block of time per row (a second by default) or each order, newest on top, with the markets it came from and its largest orders.')],
+      ['trades', t('Trades'), t('Trades'), t('Trades: what was bought and sold at market, each order (by default, a burst of them one row) or a block of time per row, newest on top, with the markets it came from and its largest orders.')],
     ];
     const name = el('strong', { class: 'seg cvd-views', role: 'group', ariaLabel: t('Flow column view') }, ...views.map(([id, long, short, tip]) => {
       const tab = el('button', { type: 'button', class: 'cvd-view', tip, ariaLabel: long, onclick: () => { if (this.store.state.flowView !== id) this.store.set({ flowView: id }); } },

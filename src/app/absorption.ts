@@ -117,8 +117,12 @@ function merged<T>(a: readonly T[], b: readonly T[], cmp: (x: T, y: T) => number
   while (j < b.length) out.push(b[j++]!);
   return out;
 }
-/** Versions of the book whose changes are remembered (for a judged list to catch up instead of judging every group again). */
-const LOG_MAX = 256;
+/**
+ * Versions of the book whose changes are remembered (for a judged list to catch up instead of judging every group again), and the most keys
+ * they keep: one change of more groups than LOG_KEYS is noted as too many (a list from before it is judged whole again), and the oldest
+ * versions go once the log holds LOG_TOTAL keys (twenty history answers of 30,000 groups each had kept 122 MB of keys).
+ */
+const LOG_MAX = 256, LOG_KEYS = 4_096, LOG_TOTAL = 16_384;
 /** Up to this many groups judged again are each put in their place (a part of two lists moved); more, both lists are merged in one pass. */
 const FEW_KEYS = 64;
 
@@ -179,8 +183,9 @@ export class AbsorptionBook {
   readonly #keysOf = new Map<string, Set<string>>();
   /** The groups the change under way added, changed or let go (by key), while `add` runs. */
   #touched: string[] | null = null;
-  /** What each version changed (the latest LOG_MAX): the keys of the groups added, changed or let go; none for minutes alone. */
-  #log: { version: number; keys: readonly string[] }[] = [];
+  /** What each version changed (see LOG_MAX): the keys of the groups added, changed or let go; none for minutes alone; null for too many. */
+  #log: { version: number; keys: readonly string[] | null }[] = [];
+  #logKeys = 0;
   /** Bumped whenever anything changes, so a painter can tell its cache is stale. */
   version = 0;
   /** Bumped when the minutes change (the automatic threshold reads them): groups alone leave it, so a painter keeps its thresholds. */
@@ -220,8 +225,9 @@ export class AbsorptionBook {
   }
   /** What this version changed, for the judged lists to catch up with (`#log`). */
   #note(keys: readonly string[]): void {
-    this.#log.push({ version: this.version, keys });
-    if (this.#log.length > LOG_MAX) this.#log.splice(0, this.#log.length - LOG_MAX);
+    const kept = keys.length > LOG_KEYS ? null : keys;
+    this.#log.push({ version: this.version, keys: kept }); this.#logKeys += kept?.length ?? 0;
+    while (this.#log.length > LOG_MAX || this.#logKeys > LOG_TOTAL) this.#logKeys -= this.#log.shift()!.keys?.length ?? 0;
   }
 
   #drop(key: string, g: AbsorptionGroup): void {
@@ -344,15 +350,15 @@ export class AbsorptionBook {
   /**
    * Bring `judged` up to the book's version and to `thresholds`: the groups added, changed or let go since it was judged (the log) and every
    * group of an instrument whose threshold moved are judged again (`#refresh`), which is what judging every group gives, the others being as
-   * they were; false, and nothing changed, where the log does not reach back or those are more than a quarter of the groups (judging every
-   * group from the start is cheaper then: 40,000 groups in about 25 ms, against keeping both orders in step one by one).
+   * they were; false, and nothing changed, where the log does not reach back, notes too many, or those are more than a quarter of the groups
+   * (judging every group from the start is cheaper then: 40,000 groups in about 25 ms, against keeping both orders in step one by one).
    */
   #bringUp(judged: Judged, thresholds: ReadonlyMap<string, number | null>): boolean {
     const keys = new Set<string>();
     if (judged.version !== this.version) {
       const log = this.#log, start = log.findIndex(e => e.version > judged.version);
       if (start < 0 || log[start]!.version !== judged.version + 1) return false;
-      for (let i = start; i < log.length; i++) for (const key of log[i]!.keys) keys.add(key);
+      for (let i = start; i < log.length; i++) { const changed = log[i]!.keys; if (changed === null) return false; for (const key of changed) keys.add(key); }
     }
     // The instruments whose threshold moved, counted before any of their groups is looked at.
     const moved: string[] = [];
