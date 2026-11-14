@@ -197,8 +197,9 @@ export class OrderList {
     const added = this.#index.update();
     if (this.#index.length === 0 && before === 0) { this.invalidate(); return; }
     if (this.#anchor) { this.#showHeld(); this.invalidate(); return; }
+    // The walk stops at the list's height past the old edge: more is jumped anyway (a burst of thousands of orders walks no further).
     if (!follows || !this.#index.valid(ref)) this.#conveyor.reset();
-    else if (added > 0) this.#conveyor.add(this.#edgeOf(ref, true) - edge, this.#cap());
+    else if (added > 0) { const cap = this.#cap(); this.#conveyor.add(this.#edgeOf(ref, true, edge + cap) - edge, cap); }
     this.invalidate();
   }
 
