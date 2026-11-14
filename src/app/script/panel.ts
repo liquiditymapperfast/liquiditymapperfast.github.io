@@ -1,4 +1,5 @@
 import { el } from '../dom.ts';
+import { copyText } from '../clipboard.ts';
 import { t, tn } from '../i18n.ts';
 import { button, heading, note, selectRow } from '../ui.ts';
 import { price } from '../format.ts';
@@ -296,18 +297,6 @@ function bundleOf(host: ScriptsHost, draft: NonNullable<ScriptsPanelState['draft
   const warnings = isError(a) ? [] : ran?.ok ? [...page, ...ran.warnings] : [...a.warnings, ...page];
   const plots = ran?.ok && on ? ran.plots.map(p => ({ title: p.title, kind: p.kind, last: newestOf(p, on.candles) })) : [];
   return { name: draft.name, source: draft.source, place: draft.place, options: draft.options, errors, warnings, plots, chart: on };
-}
-
-/**
- * Put `text` on the clipboard: the browser's clipboard, else a selected text box copied the older way, the keyboard given back to where it
- * was. Whether it worked.
- */
-async function copyText(text: string): Promise<boolean> {
-  try { await navigator.clipboard.writeText(text); return true; } catch { /* the older way below */ }
-  const was = document.activeElement, box = el('textarea', { value: text });
-  box.readOnly = true; box.style.position = 'fixed'; box.style.left = '-10000px'; box.style.top = '0'; box.style.opacity = '0';
-  document.body.append(box); box.select();
-  try { return document.execCommand('copy'); } catch { return false; } finally { box.remove(); if (was instanceof HTMLElement && was.isConnected) was.focus({ preventScroll: true }); }
 }
 
 /** What the Scripts panel says of the candles the scripts read: being read, fewer than asked, not read just now, the chart's own, or ready. */

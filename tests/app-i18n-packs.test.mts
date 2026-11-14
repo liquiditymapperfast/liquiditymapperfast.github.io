@@ -11,9 +11,10 @@ const packsDir = path.join(appRoot, 'i18n');
 /**
  * Files that carry the page's words: everything but the guide's long text, the language machinery, workers and brand tables, and the scripts'
  * language (`script/lang/`: its words are the language's own, `Math` or `Invalid Date`, which scripts read as code; what a person reads of it
- * goes through `script/messages.ts`), and the tools offered to agents in the browser (`agent/`: English for agents, like the published reference).
+ * goes through `script/messages.ts`), the tools offered to agents in the browser (`agent/`: English for agents, like the published reference),
+ * and the frame-rate panel's report for an AI assistant (`fps/report.ts`, English for the same reason).
  */
-const SKIPPED = /^(format\.ts|guide\/|venues\.ts|i18n|boot\.ts|worker\/|wire\.ts|watermark\.ts|theme\.ts$|browser\/feeds|script\/lang\/|agent\/)/;
+const SKIPPED = /^(format\.ts|guide\/|venues\.ts|i18n|boot\.ts|worker\/|wire\.ts|watermark\.ts|theme\.ts$|browser\/feeds|script\/lang\/|agent\/|fps\/report\.ts)/;
 
 /** Every English text the page asks to have translated (the calls to t() and tn() in the source, the guide's own chrome included). */
 const keysInPage = (): Set<string> => new Set(keysInSource().keys());

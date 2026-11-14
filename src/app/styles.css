@@ -164,9 +164,18 @@ html[data-layout="desktop"] .statusbar { display: flex; }
 .statusbar .status-item.status-mark, .statusbar .status-item.status-conn, .statusbar .status-controls { flex: none; }
 .statusbar .status-conn::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ask); margin-right: 6px; }
 .statusbar .status-conn[data-state="live"]::before { background: var(--bid); }
-/* No WebGL2 (statusbar.ts): a dot alone, in the warning colour, with room around it to point at; its tip says how to turn acceleration on. */
-.statusbar .status-gpu { flex: none; display: inline-flex; align-items: center; align-self: stretch; padding: 0 5px; cursor: help; }
-.statusbar .status-gpu::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+/* The frame-rate meter (fps/meter.ts): an LED window first in the bar, drawn on its own canvas, the same in every theme (a piece of
+   hardware set into the bar); a press opens its panel. Its size never changes, so nothing around it moves. */
+.statusbar .fps-meter { flex: none; display: block; width: 106px; height: 20px; margin-left: -6px; cursor: pointer; contain: strict; border-radius: 2px; }
+.statusbar .fps-meter canvas { display: block; width: 106px; height: 20px; }
+.statusbar .fps-meter:focus-visible { outline: 2px solid var(--ui); outline-offset: 2px; }
+/* Its panel: the rate in the tone the window shows, the late frames and the graphics under it, then what helps. */
+.panel .fps-rate { margin: 0 0 4px; font-weight: 650; }
+.panel .fps-rate[data-tone="amber"] { color: var(--caution, var(--warn)); }
+.panel .fps-rate[data-tone="red"] { color: var(--warn); }
+.panel .fps-late, .panel .fps-gpu { margin: 0 0 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.panel .fps-helps { margin: 10px 0 12px; padding-left: 18px; }
+.panel .fps-helps li { margin: 0 0 6px; line-height: 1.4; }
 .statusbar .status-venues[data-state="some"], .statusbar .status-mark[data-state="stale"] { color: var(--warn); }
 .statusbar .status-venues[data-state="none"] { color: var(--warn); font-weight: 600; }
 .statusbar .status-save[data-state="off"], .statusbar .status-save[data-state="failed"] { color: var(--warn); }

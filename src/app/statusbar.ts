@@ -75,25 +75,18 @@ export class StatusBar {
   #recording = el('span', { class: 'status-item status-rec' });
   #saving = el('span', { class: 'status-item status-save' });
   #source = el('span', { class: 'status-item status-src' });
-  /**
-   * A red dot alone at the bar's far end while the browser gives the page no WebGL2 and the map is drawn without it (heatmap/canvas.ts;
-   * 2026-11-14, Karl): its tip says what that costs and how to turn graphics acceleration on. Far from the connection dot, so it is not read
-   * as a lost connection. Focusable, so the keyboard shows the tip too.
-   */
-  #acceleration = el('span', { class: 'status-item status-gpu', hidden: true, tabIndex: 0, tip: t('No graphics acceleration: this browser gives the page no WebGL2, so the page draws more slowly, and Live trades and the Glass look are off. Turn on graphics acceleration in the browser settings (in Chrome: Settings › System › Use graphics acceleration when available) and restart the browser. If it is already on, update the graphics driver.') });
   #entries: readonly VenueEntry[] = [];
   #written = new Map<Element, string>();
 
   constructor(private kind: 'server' | 'browser') {
-    this.root.append(this.#connection, this.#venues, this.#mark, this.#recording, this.#saving, this.#source, this.notices, el('span', { class: 'spacer' }), this.#acceleration, this.controls);
-    this.#acceleration.setAttribute('role', 'img');
-    this.#acceleration.setAttribute('aria-label', t('No graphics acceleration'));
-    // Its tip is the explanation and the fix: a screen reader reads it as the dot's description.
-    this.#acceleration.setAttribute('aria-description', this.#acceleration.dataset.tip ?? '');
+    this.root.append(this.#connection, this.#venues, this.#mark, this.#recording, this.#saving, this.#source, this.notices, el('span', { class: 'spacer' }), this.controls);
   }
 
-  /** Whether the map has graphics acceleration (WebGL2): without it the red dot shows. Known once the map is made, and for the page's life. */
-  setAccelerated(accelerated: boolean): void { this.#acceleration.hidden = accelerated; }
+  /**
+   * Put the frame-rate meter at the bar's left end (fps/meter.ts): the page's own status first, where the bar's data begins (Karl, 2026-11-14).
+   * Its GPU lamp is what the red dot of a browser without WebGL2 was.
+   */
+  placeMeter(meter: HTMLElement): void { this.root.prepend(meter); }
 
   setVenues(entries: readonly VenueEntry[]): void { this.#entries = entries; }
 
