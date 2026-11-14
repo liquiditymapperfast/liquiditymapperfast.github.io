@@ -1,5 +1,6 @@
-# Publishes the page to GitHub Pages. The page needs no server: it reads the exchanges' public feeds from the visitor's browser.
-# Nothing here runs until the repository is pushed to GitHub and Pages is set to "GitHub Actions" in the repository settings.
+# Publishes the page to Cloudflare Pages (liquiditymapper.com) and the old address's page (moved-site/) to GitHub Pages
+# (liquiditymapperfast.github.io), which sends visitors on to the new address with what their browser saved there. The page needs no
+# server: it reads the exchanges' public feeds from the visitor's browser.
 name: Pages
 
 on:
@@ -44,12 +45,18 @@ jobs:
           curl -sf -m 20 "$previous" | node -e 'JSON.parse(require("fs").readFileSync(0, "utf8"))' || previous=https://liquiditymapperfast.github.io/coins.json
           node build/tools/scripts/coins.mjs --previous "$previous" --fallback src/app/public/coins.json --out dist/coins.json
         continue-on-error: true
+      # The site, for Cloudflare.
       - uses: actions/upload-pages-artifact@v3
         with:
+          name: site
           path: dist
+      # The old address's page, for GitHub Pages (since 2026-11-14 the github.io address only sends visitors on: docs/deployment.md).
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: moved-site
 
-  # GitHub Pages serves the site only from the account it started on (liquiditymapperfast.github.io); a copy of the repository anywhere
-  # else publishes to Cloudflare alone.
+  # GitHub Pages serves the old address's page only from the account it started on (liquiditymapperfast.github.io); a copy of the
+  # repository anywhere else publishes to Cloudflare alone.
   deploy:
     needs: build
     if: github.repository_owner == 'liquiditymapperfast'
@@ -76,7 +83,7 @@ jobs:
       - if: env.HAS_TOKEN == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: github-pages
+          name: site
       - if: env.HAS_TOKEN == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
