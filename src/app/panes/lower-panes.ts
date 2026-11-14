@@ -76,6 +76,8 @@ export abstract class TimePane {
    */
   protected w = 0; protected h = 0; protected dpr = 1;
   #canvasW = 0;
+  /** The canvas has no size (the pane is closed, or on a phone its tab is not the one shown): nothing it would draw could be seen. */
+  #hidden = false;
   get #left(): number { return leftGutter(this.store.state); }
   protected palette = PALETTES.light!;
   #frame = 0;
@@ -194,11 +196,20 @@ export abstract class TimePane {
   get header(): HTMLElement { return this.head; }
   get plotW(): number { return Math.max(1, this.w - gutter(this.store.state)); }
   setPalette(name: string): void { this.palette = PALETTES[name] ?? PALETTES.light!; this.invalidate(); }
-  invalidate(): void { if (!this.#frame) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#prepare(); }); }
+  /**
+   * Draw again at the next frame, unless the canvas has no size: a pane not on screen asks for nothing (on a phone the panes under the map
+   * sit in tabs, and the shown tab's data changes asked the hidden ones for frames several times a second, each only to find it had no
+   * room). Its canvas getting a size again (the resize) draws it.
+   */
+  invalidate(): void { if (!this.#frame && !this.#hidden) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#prepare(); }); }
   #resize(): void {
-    const r = this.canvas.getBoundingClientRect();
+    const r = this.canvas.getBoundingClientRect(), hidden = r.width < 1 || r.height < 1, was = this.#hidden;
     this.#canvasW = Math.max(1, Math.floor(r.width)); this.h = Math.max(1, Math.floor(r.height)); this.dpr = pixelRatio();
-    this.canvas.width = Math.round(this.#canvasW * this.dpr); this.canvas.height = Math.round(this.h * this.dpr); this.invalidate();
+    this.canvas.width = Math.round(this.#canvasW * this.dpr); this.canvas.height = Math.round(this.h * this.dpr);
+    this.#hidden = hidden;
+    // Hidden now: the pane draws nothing once, as it did each frame before (its table, card and marks are put away), then waits.
+    if (hidden) { if (!was) this.#prepare(); return; }
+    this.invalidate();
   }
   #prepare(): void {
     const left = this.#left;
