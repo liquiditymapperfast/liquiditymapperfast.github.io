@@ -128,6 +128,7 @@ html[data-bar="compact"]:not([data-frame="bevel"]) .panel .field:has(> select)::
 .sheet .sheet-field.stack:has(> select) { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; }
 /* Every line named: an absolutely placed item's `auto` line is the container's padding edge, which would take in the 12 px under the select. */
 html:not([data-frame="bevel"]) .sheet .sheet-field.stack:has(> select)::after { grid-area: 2 / 1 / 3 / 2; }
+.sheet .sheet-field.stack:has(> select) > .sheet-label { grid-row: 1; } .sheet .sheet-field.stack:has(> select) > select { grid-row: 2; }
 /* A size field's menu of common sizes is a list of its own: the same arrow, in the middle of its own box (44 px in Settings, 40 in a panel). */
 html:not([data-frame="bevel"]) .sheet .size-ctl .size-menu,
 html[data-bar="compact"]:not([data-frame="bevel"]) .panel .size-ctl .size-menu { -webkit-appearance: none; appearance: none; }
@@ -159,15 +160,16 @@ html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl, .shee
 .sheet-field.stack .sheet-label { flex: none; }
 /* Three to a row, each at least a third of it; a name that a third cannot hold on one line ("Финансирование", "Financiamento", over even at
    12 px on a 375 px phone, with its tick) takes the width it needs and its row holds two, both grown to the edge. The last row's buttons
-   stay a third wide: the trailing filler takes its spare room (its -8 px cancels its own gap, so it never wraps alone). */
-.sheet .seg.toggles { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
-.sheet .seg.toggles::after { content: ""; flex: 999 1 0; margin-left: -8px; }
+   stay a third wide: the trailing filler takes its spare room (its negative margin cancels its own gap, so it never wraps alone). The
+   gap is one property: the thirds and the filler are counted from it. */
+.sheet .seg.toggles { --toggle-gap: 8px; display: flex; flex-wrap: wrap; gap: var(--toggle-gap); width: 100%; }
+.sheet .seg.toggles::after { content: ""; flex: 999 1 0; margin-left: calc(-1 * var(--toggle-gap)); }
 /* A button is as wide on as off, or a tap would move the buttons under the finger: the tick sits in a margin both sides keep, and the
    name is made heavier by a shadow, which takes no room, rather than by a bolder face. */
-.sheet .seg.toggles button { position: relative; flex: 1 1 auto; min-width: calc((100% - 16px) / 3); white-space: nowrap; border-radius: var(--radius); margin: 0; padding: 0 22px; }
+.sheet .seg.toggles button { position: relative; flex: 1 1 auto; min-width: calc((100% - 2 * var(--toggle-gap)) / 3); white-space: nowrap; border-radius: var(--radius); margin: 0; padding: 0 20px; }
 /* A switched-on pane is tinted rather than filled black: these are settings, not the primary actions the desktop's inverted buttons suit. */
 .sheet .seg.toggles button.on { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); color: var(--text); text-shadow: .45px 0 0 currentColor; }
-.sheet .seg.toggles button.on::before { content: ""; position: absolute; left: 7px; top: 50%; width: 12px; height: 12px; margin-top: -6px; background: var(--ui); -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
+.sheet .seg.toggles button.on::before { content: ""; position: absolute; left: 6px; top: 50%; width: 12px; height: 12px; margin-top: -6px; background: var(--ui); -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
 .sheet .seg:is(.scope, .zone-seg) { display: flex; width: 100%; }
 .sheet .seg:is(.scope, .zone-seg) button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
 .sheet .seg:is(.scope, .zone-seg) button:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; } .sheet .seg:is(.scope, .zone-seg) button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }

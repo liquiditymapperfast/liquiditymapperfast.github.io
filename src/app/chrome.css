@@ -584,11 +584,10 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"] .sheet-sec-head + .sheet-field { box-shadow: none; }
 :root[data-frame="bevel"] .sheet .seg.toggles button.on::before { content: none; }
 :root[data-frame="bevel"] .sheet .seg.toggles button.on { font-weight: 400; text-shadow: none; }
-:root[data-frame="bevel"] .sheet .seg.toggles { gap: 6px; }
+:root[data-frame="bevel"] .sheet .seg.toggles { --toggle-gap: 6px; }
 /* The toggles are labelled in the size of the tiles beside them (15px), a long name taking a wider cell (mobile.css); pressed in rather than
    ticked, so they need no room for a tick. */
-:root[data-frame="bevel"] .sheet .seg.toggles button { padding: 0 8px; min-width: calc((100% - 12px) / 3); }
-:root[data-frame="bevel"] .sheet .seg.toggles::after { margin-left: -6px; }
+:root[data-frame="bevel"] .sheet .seg.toggles button { padding: 0 8px; }
 :root[data-frame="bevel"] .sheet .seg:is(.scope, .zone-seg) button { margin-left: 0; }
 :root[data-frame="bevel"] .sheet-tiles { gap: 6px; }
 :root[data-frame="bevel"] .sheet-chips, :root[data-frame="bevel"] .sheet-chips .chips { gap: 6px; }
