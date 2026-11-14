@@ -14,13 +14,13 @@ import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { TradeIndex, readRecord, type TradeRecord } from '../trades/index.ts';
 import { RetainedRows } from './retained-rows.ts';
-import { DIVIDER_ROW, InkCache, ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, priceWidthKey, tierOf, type Tier } from '../trades/style.ts';
+import { DIVIDER_ROW, InkCache, ORDER_TINT, ROW_GAP, ROW_MARK, ROW_PAD, TIERS, amountText, clockForm, orderBarFull, priceWidth, rowGeom, tierOf, type RowFontWidths, type RowGeom, type Tier } from '../trades/style.ts';
 import { GROUP_MS } from '../trades/settings.ts';
 import type { TnsLine } from '../tns/model.ts';
 import type { Store } from '../store.ts';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-const PAD = 8, GAP = 6, MARK = 14;
+const PAD = ROW_PAD, GAP = ROW_GAP, MARK = ROW_MARK;
 /** Rows found beyond the visible ones (so a wheel step or a held list has them ready). */
 const OVERSCAN = 40;
 /** A new row slides in only when the batch adds this little (Sol: a fast conveyor of repeated slides reads worse than a plain update). */
@@ -28,19 +28,14 @@ const SLIDE_ROWS = 2, SLIDE_PX = 48, SLIDE_MS = 120;
 /** A list out of sight longer than this (in writes) is found again from the newest rather than caught up order by order. */
 const CATCH_UP_MAX = 50_000;
 /**
- * The tint's top end, at the Leviathan size: chosen by eye on real orders in a dark and a light theme (2026-11-12), between Sol's quiet 22 %
- * and a near-solid fill: a rare order reads as an event, a screen of ordinary ones stays calm.
+ * The share of the side's colour the ink cache's steps run up to (TINT_STEPS of them, per kind of theme): the rows' one tint, ORDER_TINT, is
+ * drawn at the nearest step. (Until 2026-11-14 the top of a size tint, at the Leviathan size.)
  */
 export const TINT_TOP_DARK = 0.42, TINT_TOP_LIGHT = 0.34;
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/**
- * Where an order row's parts go at this width, worked out once a frame and shared by the tape's rows and the recording's: the bar starts
- * after a column for the coin's widest price and stops before one for the widest amount and a count, so every row's bar is on one scale.
- */
-interface RowGeom { form: ReturnType<typeof clockForm>; clockW: number; xMark: number; xSide: number; xPrice: number; xBar: number; barRoom: number; xRight: number; full: number }
-/** The widths the rows are laid out by, at one pixel ratio: the clock in its two forms and a digit of the clock's, the price's and the largest amount's font. */
-interface FontWidths { dpr: number; hms: number; ms: number; digit11: number; digit13: number; digitBig: number }
+/** The widths the rows are laid out by (`rowGeom`), at the pixel ratio they were measured at. */
+interface FontWidths extends RowFontWidths { dpr: number }
 /** What an order row shows (one order, or the orders a row groups): its time, price, signed dollars, market and how many orders. */
 interface RowOrder { t: number; price: number; usd: number; id: string; orders: number }
 /** A row of a frame (device pixels), laid out before anything is drawn: its signature and what draws it. */
@@ -52,8 +47,8 @@ type Drawn =
 
 /**
  * Trades' "Each order" unit (the flow column's second view; until 2026-11-13 the view All trades): every market order the page receives
- * (the tape ring's), newest on top, on one canvas. Size is carried by row height, type and a log-scaled tint of the side's colour
- * (`trades/style.ts`); every row says its side with ▲/▼ as well as its colour. The list holds still under a mouse or once scrolled back (a
+ * (the tape ring's), newest on top, on one canvas. Size is carried by row height, the amount's type and a bar after the price, the square
+ * root of its dollars (`trades/style.ts`); every row says its side with ▲/▼ and a faint tint of its colour. The list holds still under a mouse or once scrolled back (a
  * key counts what arrived meanwhile), a row pointed at sets the shared time cursor and a click takes the map there. Forward only: the
  * orders are the ring's, from when it started, never fetched. `panes/trades-view.ts` is the shell around it (the menus, the status).
  */
@@ -90,6 +85,10 @@ export class OrderList {
    */
   #fontWidths: FontWidths | null = null;
   #geomKey = ''; #geomLast: RowGeom | null = null;
+  /** The widest price of the recording's rows (characters) and the rows it was counted for (the shell sets a new list when they change). */
+  #historyCharsOf: TnsLine[] | null = null; #historyCharsN = 0;
+  /** The one row description the painter is handed, filled for each row (no object made for every row drawn). */
+  #order: RowOrder = { t: 0, price: 0, usd: 0, id: '', orders: 1 };
   #scanTimer = 0;
   /** What the index was found for: the list's settings and the venues the map shows (a venue's book joining the map lets its orders in). */
   #filterKey = '';
@@ -382,13 +381,14 @@ export class OrderList {
       const left = this.#remainingSlide();
       if (left <= 0.5) this.#slide = null; else y = -left;
     }
-    const { whale, leviathan } = this.#whale(), s = this.store.state.trades, form = clockForm(w);
+    const { whale } = this.#whale(), s = this.store.state.trades, form = clockForm(w);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const widths = this.#widths(ctx), clockW = form === 'none' ? 0 : form === 'hms' ? widths.hms : widths.ms;
     const H = this.#canvas.height;
     this.#items.length = 0;
     // Device pixels from here: each row's top on a whole one, its height its nominal height rounded at this ratio.
-    let yd = Math.round(y * dpr), lastSecond = '', above = -1, first = true;
+    // The price column is sized for the widest price among the rows laid out (`rowGeom`).
+    let yd = Math.round(y * dpr), lastSecond = '', above = -1, first = true, priceChars = 0;
     while (pos >= 0 && yd < H) {
       const k = this.#index.at(pos);
       if (!this.#index.valid(k)) break;
@@ -413,6 +413,7 @@ export class OrderList {
       }
       const buy = rec.usd > 0, signed = buy ? usd : -usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, hd = Math.round(tier.row * dpr);
       const shown = orders > 1 ? { ...rec, usd: signed, price: usd / qty, lo, hi } : rec;
+      priceChars = Math.max(priceChars, priceWidth(shown.price));
       // The time once per second-run, and always on the first row drawn.
       const second = clockSeconds(rec.t), showTime = clockW > 0 && (second !== lastSecond || first);
       const it = this.#item(`r|${k}|${orders}|${usd}|${showTime ? 1 : 0}`, yd, hd, 'row');
@@ -428,11 +429,11 @@ export class OrderList {
     let hover = history ? null : this.#hovered();
     if (hover) for (const it of this.#items) if (it.kind === 'row' && it.rec?.k === hover.row.k) { it.outlined = true; it.sig += '|o'; break; }
     if (expired) { const words = t('Older orders have left memory'), it = this.#item(`x|${words}`, 0, Math.round(DIVIDER_ROW * dpr), 'note', true); it.words = words; }
-    // The rows' parts, from the newest row's price (its digits size the price column; a coin crossing a digit draws the frame whole).
-    const firstRow = this.#items.find(x => x.kind === 'row'), g = this.#geom(ctx, w, firstRow?.shown?.price ?? this.#historyPrice());
+    // The rows' parts, for the widest price among the rows laid out (and the recording's, when its rows show too).
+    const g = this.#geom(ctx, w, history ? Math.max(priceChars, this.#historyChars()) : priceChars);
     // What the rows' pixels depend on beyond their own signatures (a cleared ring numbers its writes from 0 again): any change draws the
     // whole frame.
-    const look = `${w}|${h}|${dpr}|${ring.generation}|${this.#epoch}|${marksEpoch()}|${whale}|${leviathan}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}|${g.xBar}|${g.barRoom}|${g.full}`;
+    const look = `${w}|${h}|${dpr}|${ring.generation}|${this.#epoch}|${marksEpoch()}|${whale}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}|${g.xBar}|${g.barRoom}|${g.full}`;
     if (history) this.rows.reset();
     const items = this.#items, draw = this.rows.plan(ctx, look, items, 1, H, p.panel, Math.min(H, yd));
     const fw = this.#canvas.width / dpr;
@@ -441,7 +442,7 @@ export class OrderList {
       const it = items[i]!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, it.y);
       const fh = it.h / dpr;
-      if (it.kind === 'row') this.#drawOrder(ctx, g, { t: it.rec!.t, price: it.shown!.price, usd: it.usd, id: it.rec!.id, orders: it.orders }, 0, it.tier, fh, fw, it.showTime, it.outlined, p);
+      if (it.kind === 'row') this.#drawOrder(ctx, g, this.#fill(it.rec!.t, it.shown!.price, it.usd, it.rec!.id, it.orders), 0, it.tier, fh, fw, it.showTime, it.outlined, p);
       else if (it.kind === 'divider') this.#paintDivider(ctx, 0, w, it.reasons, p, fh, fw);
       else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p, fh); }
     }
@@ -483,17 +484,27 @@ export class OrderList {
    * largest tier) and, where rows group orders, a count ("×99"); no bar where that leaves under 24 px. Its full dollars follow the smallest
    * order.
    */
-  #geom(ctx: CanvasRenderingContext2D, w: number, refPrice: number): RowGeom {
-    const s = this.store.state.trades, ref = refPrice > 0 && Number.isFinite(refPrice) ? refPrice : 0;
-    const key = `${w}|${this.#dpr}|${s.group}|${s.minUsd}|${priceWidthKey(ref)}`;
+  #geom(ctx: CanvasRenderingContext2D, w: number, priceChars: number): RowGeom {
+    const s = this.store.state.trades, key = `${w}|${this.#dpr}|${s.group}|${s.minUsd}|${priceChars}`;
     if (key === this.#geomKey && this.#geomLast) return this.#geomLast;
-    const m = this.#widths(ctx), form = clockForm(w), clockW = form === 'none' ? 0 : form === 'hms' ? m.hms : m.ms;
-    const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
-    const counts = s.group ? 3 * m.digit11 + GAP : 0;
-    const xBar = Math.round(xPrice + fmtPrice(ref).length * m.digit13 + GAP), room = Math.floor(xRight - 7 * m.digitBig - counts - GAP - xBar);
-    const full = scaledUsd(orderBarFull(s.minUsd));
-    this.#barFull = full; this.#geomKey = key;
-    return this.#geomLast = { form, clockW, xMark, xSide, xPrice, xBar, barRoom: room >= 24 ? room : 0, xRight, full };
+    const g = rowGeom(w, this.#widths(ctx), s.group, priceChars, scaledUsd(orderBarFull(s.minUsd)));
+    // The box beside a row names the bar's scale only where a bar is drawn.
+    this.#barFull = g.barRoom ? g.full : 0; this.#geomKey = key;
+    return this.#geomLast = g;
+  }
+  /** The widest price of the recording's rows, in characters (counted once for each list of them). */
+  #historyChars(): number {
+    if (this.#historyCharsOf !== this.history) {
+      let n = 0;
+      for (const l of this.history) if (l.k !== 'gap') n = Math.max(n, priceWidth(l.price));
+      this.#historyCharsOf = this.history; this.#historyCharsN = n;
+    }
+    return this.#historyCharsN;
+  }
+  /** The scratch row description filled with one row's parts (see `#order`). */
+  #fill(t: number, price: number, usd: number, id: string, orders: number): RowOrder {
+    const o = this.#order; o.t = t; o.price = price; o.usd = usd; o.id = id; o.orders = orders;
+    return o;
   }
   /** The font widths at this pixel ratio (see `#fontWidths`). */
   #widths(ctx: CanvasRenderingContext2D): FontWidths {
@@ -504,7 +515,8 @@ export class OrderList {
     const hms = ctx.measureText('00:00:00').width, ms = ctx.measureText('00:00').width, digit11 = ctx.measureText('0').width;
     ctx.font = `13px ${MONO}`; const digit13 = ctx.measureText('0').width;
     ctx.font = `${big.weight} ${big.amountPx}px ${MONO}`; const digitBig = ctx.measureText('0').width;
-    return this.#fontWidths = { dpr, hms, ms, digit11, digit13, digitBig };
+    ctx.font = `700 12px ${MONO}`; const more = ctx.measureText('›').width;
+    return this.#fontWidths = { dpr, hms, ms, digit11, digit13, digitBig, more };
   }
   /**
    * One order row from `y0` (0 in a row's own coordinates; the recording's rows pass their place), its tier's height, filled `fh` tall (its
@@ -513,26 +525,27 @@ export class OrderList {
    */
   #drawOrder(ctx: CanvasRenderingContext2D, g: RowGeom, o: RowOrder, y0: number, tier: Tier, fh: number, fw: number, showTime: boolean, outlined: boolean, p: Palette): void {
     const buy = o.usd > 0, usd = Math.abs(o.usd), top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, ink = this.#inks.get(p, buy, ORDER_TINT, top), mid = y0 + tier.row / 2;
-    const sideInk = buy ? p.candleUp : p.candleDown;
     ctx.fillStyle = ink.bg; ctx.fillRect(0, y0, fw, fh);
-    ctx.textBaseline = 'middle';
+    // The bar straight after the row's fill, before any text is set up (it touches no text): one colour and one rectangle a row.
+    if (g.barRoom) {
+      const bh = tier.row >= 30 ? 12 : 10, len = Math.max(1, Math.round(g.barRoom * Math.min(1, Math.sqrt(usd / g.full))));
+      ctx.fillStyle = ink.bar; ctx.fillRect(g.xBar, mid - bh / 2, len, bh);
+    }
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     if (showTime && g.clockW) {
       const second = clockSeconds(o.t);
-      ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left';
+      ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted;
       ctx.fillText(g.form === 'hms' ? second : second.slice(3), PAD, mid);
     }
     drawVenueMark(ctx, o.id, g.xMark, mid, MARK, this.#dpr);
-    // The side's glyph in its colour where that reads on the row, else in the row's text colour.
-    ctx.font = `10px ${MONO}`; ctx.fillStyle = ink.glyph; ctx.textAlign = 'left';
+    // The side's glyph in its colour where that reads on the row, else in the row's text colour; past the bar's full dollars, a mark in the
+    // same ink after it.
+    ctx.font = `10px ${MONO}`; ctx.fillStyle = ink.glyph;
     ctx.fillText(buy ? '▲' : '▼', g.xSide, mid);
+    if (g.barRoom && usd > g.full) { ctx.font = `700 12px ${MONO}`; ctx.fillText('›', g.xMore, mid); }
     ctx.font = `13px ${MONO}`; ctx.fillStyle = ink.text;
     ctx.fillText(fmtPrice(o.price), g.xPrice, mid);
-    if (g.barRoom) {
-      const bh = tier.row >= 30 ? 12 : 10, len = Math.max(1, Math.round(g.barRoom * Math.min(1, Math.sqrt(usd / g.full))));
-      ctx.fillStyle = sideInk; ctx.globalAlpha = 0.85; ctx.fillRect(g.xBar, mid - bh / 2, len, bh); ctx.globalAlpha = 1;
-      if (usd > g.full) { ctx.font = `700 12px ${MONO}`; ctx.fillStyle = sideInk; ctx.fillText('›', g.xBar + g.barRoom + 2, mid); }
-    }
-    ctx.textAlign = 'right'; ctx.fillStyle = ink.text;
+    ctx.textAlign = 'right';
     ctx.font = `${tier.weight} ${tier.amountPx}px ${MONO}`;
     const amount = amountText(usd);
     ctx.fillText(amount, g.xRight, mid);
@@ -556,8 +569,6 @@ export class OrderList {
     return lines;
   }
 
-  /** The newest recorded order's price (0: none), for the price column's digits when no tape row gives them. */
-  #historyPrice(): number { for (const l of this.history) if (l.k !== 'gap') return l.price; return 0; }
   /** The height the recording's rows take below the tape's oldest order (the line before them included): how far the list scrolls past it. */
   #historyHeight(): number {
     if (!this.history.length) return 0;
@@ -575,7 +586,7 @@ export class OrderList {
     // drawing them all every frame (each batch while held) took a phone's frame and more.
     if (y + DIVIDER_ROW > 0) { this.#paintNote(ctx, y, w, this.historyNote, p); drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons: 0 }); }
     y += DIVIDER_ROW;
-    const whale = this.#whale().whale, g = geom ?? this.#geom(ctx, w, this.#historyPrice()), fw = this.#canvas.width / this.#dpr;
+    const whale = this.#whale().whale, g = geom ?? this.#geom(ctx, w, this.#historyChars()), fw = this.#canvas.width / this.#dpr;
     // The time once per second-run (whole seconds compare as the written clock does: zones differ from UTC by whole minutes).
     let lastSec = NaN;
     for (let i = 0; i < this.history.length && y < h; i++) {
@@ -589,7 +600,7 @@ export class OrderList {
       }
       const buy = l.side === 'buy', signed = buy ? l.usd : -l.usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, rowH = tier.row, sec = Math.floor(l.t / 1000);
       if (y + rowH <= 0) { lastSec = sec; y += rowH; continue; }
-      this.#drawOrder(ctx, g, { t: l.t, price: l.price, usd: signed, id: l.id, orders: l.orders }, y, tier, rowH, fw, sec !== lastSec, false, p);
+      this.#drawOrder(ctx, g, this.#fill(l.t, l.price, signed, l.id, l.orders), y, tier, rowH, fw, sec !== lastSec, false, p);
       lastSec = sec;
       drawn.push({ kind: 'row', k: -1 - i, y, h: rowH, rec: { k: -1 - i, t: l.t, price: l.price, usd: signed, id: l.id, lo: l.lo, hi: l.hi }, orders: l.orders, usd: signed });
       y += rowH;

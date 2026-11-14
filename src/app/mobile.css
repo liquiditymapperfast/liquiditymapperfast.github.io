@@ -449,6 +449,8 @@ html[data-layout^="phone"] .pane.cvd .pane-head .readout[hidden], html[data-layo
 /* Trades has no spans and no readout (Karl, 2026-11-14: three rows of buttons above the list were too many): its views share their row with
    the settings and the help, and Trades' menus are the row under it (one row does not fit at 360 px in Italian or Turkish). */
 html[data-layout^="phone"] .pane.cvd[data-view="trades"] .pane-head strong.cvd-views { flex: 1 1 0; }
+/* At 320 px the two views share their row with two keys, about 102 px each: the longest name ("Transactions") needs 13 px there. */
+@media (max-width: 340px) { html[data-layout^="phone"] .pane.cvd[data-view="trades"] .cvd-views .cvd-view { font-size: 13px; } }
 /* Trades' controls at touch size: its menus at 16 px (iOS zooms the page into a smaller one) and a resume key a thumb can hit. */
 html[data-layout^="phone"] .trades-bar { padding: 4px var(--ph-edge) 6px; font-size: 13px; }
 html[data-layout^="phone"] .trades-unit, html[data-layout^="phone"] .trades-floor { font-size: 16px; min-height: var(--ph-ctl-h); padding: 0 8px; }

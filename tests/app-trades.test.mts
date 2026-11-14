@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { BLOCK, BOUNDARY, TapeRing } from '../src/app/tape/ring.ts';
 import type { TapeBatch } from '../src/shared/tape.ts';
 import { TradeIndex, readRecord } from '../src/app/trades/index.ts';
-import { ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, priceWidthKey, rowInk, tierOf } from '../src/app/trades/style.ts';
+import { ORDER_TINT, ROW_GAP, ROW_MARK, ROW_PAD, TIERS, amountText, clockForm, orderBarFull, priceWidth, rowGeom, rowInk, tierOf } from '../src/app/trades/style.ts';
 import { TRADES_DEFAULTS, readTrades } from '../src/app/trades/settings.ts';
 import { PALETTES, contrastRatio } from '../src/app/theme.ts';
 import { price } from '../src/app/format.ts';
@@ -125,23 +125,41 @@ test('every theme\'s text reads on every tint the list draws', () => {
       assert.ok(contrastRatio(ink.muted, ink.bg) >= 2.5, `${name} ${buy ? 'buy' : 'sell'} ${tint}: muted ${contrastRatio(ink.muted, ink.bg).toFixed(2)}`);
       const side = buy ? p.candleUp : p.candleDown;
       assert.ok(ink.glyph === (contrastRatio(side, ink.bg) >= 3 ? side : ink.text), `${name} ${buy ? 'buy' : 'sell'} ${tint}: the side glyph in its colour only where it reads`);
+      assert.ok(contrastRatio(ink.bar, ink.bg) > 1 && ink.bar !== ink.bg, `${name} ${buy ? 'buy' : 'sell'} ${tint}: the bar stands off its row`);
     }
   }
 });
 
-test('a price column is measured again whenever a price could need another width, and only then', () => {
-  // Every value with one key is written as wide as every other (the column is kept while the key holds), across magnitudes, the
-  // rounding edges (9,999.96 is written 10,000.0) and the decimals' own edges ($1 and $1,000).
-  const widths = new Map<string, Set<number>>(), values: number[] = [0];
+test('a price is counted as wide as it is written, without writing it', () => {
+  // Across magnitudes, the rounding edges (9,999.96 is written 10,000.0; 9.995 is written 10.00), the decimals' own edges ($1, $1,000)
+  // and what is not a price.
+  const values: number[] = [0, -1, NaN, Infinity];
   for (let e = -9; e <= 7; e++) for (const m of [1, 1.5, 2, 5, 9, 9.5, 9.94, 9.949, 9.95, 9.951, 9.96, 9.994, 9.995, 9.996, 9.9995, 9.99995, 9.999995]) values.push(m * 10 ** e);
   values.push(999.995, 999.996, 999.9949, 9_999.95, 9_999.949, 99_999.95, 0.999995, 0.9999949, 68_277.4, 100_000, 99_999.94);
   let seed = 7; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   for (let i = 0; i < 4000; i++) values.push(10 ** (rand() * 16 - 9));
-  for (const v of values) { const k = priceWidthKey(v); const set = widths.get(k) ?? new Set<number>(); set.add(price(v).length); widths.set(k, set); }
-  for (const [k, set] of widths) assert.equal(set.size, 1, `key ${k}: widths ${[...set].join(', ')}`);
-  // And a new price of the same width keeps the key (the common case: the column is not measured again).
-  assert.equal(priceWidthKey(68_277.4), priceWidthKey(68_301.9));
-  assert.notEqual(priceWidthKey(99_999.9), priceWidthKey(100_000.1));
+  for (const v of values) assert.equal(priceWidth(v), price(v).length, `${v}: "${price(v)}"`);
+  // A coin that just crossed $1 upward still shows rows below it, three characters wider: the column is sized for them.
+  assert.equal(Math.max(priceWidth(1.0001), priceWidth(0.99991)), price(0.99991).length);
+});
+
+test('an order row\'s parts never meet: the widest price, the bar, the mark past full, a count and the widest amount', () => {
+  // Three monospace fonts' advances (Consolas 0.55 em; Courier New and Lucida Console about 0.6), every width a column can have, grouping
+  // off and on, price columns of 4 to 13 characters.
+  for (const [name, em] of [['consolas', 0.55], ['courier', 0.6], ['lucida', 0.6021]] as const) {
+    const m = { hms: 8 * 11 * em, ms: 5 * 11 * em, digit11: 11 * em, digit13: 13 * em, digitBig: TIERS[TIERS.length - 1]!.amountPx * em, more: 12 * em };
+    for (let w = 240; w <= 900; w += 7) for (const group of [false, true]) for (let chars = 4; chars <= 13; chars++) {
+      const g = rowGeom(w, m, group, chars, 50_000), tag = `${name} at ${w} px, grouping ${group}, ${chars}-character prices`;
+      if (g.clockW) assert.ok(ROW_PAD + g.clockW + ROW_GAP <= g.xMark - ROW_MARK / 2 + 1e-9, `${tag}: the clock clears the venue mark`);
+      assert.ok(g.xBar - (g.xPrice + chars * m.digit13) >= ROW_GAP - 0.5, `${tag}: the widest price clears the bar`);
+      assert.ok(g.barRoom === 0 || g.barRoom >= 24, `${tag}: a bar has its room, or none is drawn`);
+      if (!g.barRoom) continue;
+      // The count ("×999", grouping) is drawn a gap left of the amount; the mark past full ends a gap before whichever comes first.
+      const amountLeft = g.xRight - 7 * m.digitBig, next = group ? amountLeft - ROW_GAP - 4 * m.digit11 : amountLeft;
+      assert.ok(g.xMore + m.more <= next - ROW_GAP + 1e-9, `${tag}: the mark clears the count and the amount`);
+      assert.equal(g.xMore, g.xBar + g.barRoom + 2);
+    }
+  }
 });
 
 test('sizes, clocks and settings as the list writes and reads them', () => {
