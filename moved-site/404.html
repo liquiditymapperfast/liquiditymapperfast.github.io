@@ -27,15 +27,21 @@
     var Moved = (function () {
       var NEW_ORIGIN = 'https://liquiditymapper.com';
       var PREFIX = '#hlm-handover=';
-      var MAX_CHARS = 1500000;
+      var MAX_URL = 1000000;
       function handed(key) {
         if (!/^(?:hlm-[a-z0-9][a-z0-9:._-]{0,79}|lmf\.[a-z0-9][a-z0-9._-]{0,79})$/.test(key)) return false;
         return key !== 'lmf.coins' && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== 'hlm-handover-v1';
       }
-      function encode(text) {
-        var bytes = new TextEncoder().encode(text), binary = '';
+      function base64url(bytes) {
+        var binary = '';
         for (var i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
         return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      }
+      function encode(text) {
+        var bytes = new TextEncoder().encode(text);
+        if (typeof CompressionStream !== 'function') return Promise.resolve('j' + base64url(bytes));
+        var stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+        return new Response(stream).arrayBuffer().then(function (buffer) { return 'z' + base64url(new Uint8Array(buffer)); });
       }
       function saved(storage) {
         var items = {}, count = 0;
@@ -49,31 +55,36 @@
         } catch (e) { return null; }
         return count ? items : null;
       }
-      function target(loc, storage) {
-        var path = loc.pathname === '/index.html' || loc.pathname === '/404.html' ? '/' : loc.pathname;
-        var hash = /^#guide(?:\/[a-z-]+)?$/.test(loc.hash) ? loc.hash : '';
-        if (path === '/') {
-          var items = saved(storage);
-          if (items) {
-            var data = encode(JSON.stringify({ v: 1, items: items }));
-            if (data.length <= MAX_CHARS) hash = PREFIX + data;
-          }
-        }
-        return NEW_ORIGIN + path + loc.search + hash;
+      function plain(loc) {
+        var root = /^\/(?:index(?:\.html)?|404\.html)?$/.test(loc.pathname) || /^\/\//.test(loc.pathname);
+        var guide = /^#guide(?:\/[a-z-]+)?$/.test(loc.hash) ? loc.hash : '';
+        return { root: root, url: NEW_ORIGIN + (root ? '/' : loc.pathname) + loc.search, guide: guide };
       }
-      return { target: target, saved: saved, encode: encode, handed: handed };
+      function target(loc, storage) {
+        var p = plain(loc), items = p.root ? saved(storage) : null;
+        if (!items) return Promise.resolve(p.url + p.guide);
+        return encode(JSON.stringify(p.guide ? { v: 1, items: items, guide: p.guide } : { v: 1, items: items })).then(function (data) {
+          var full = p.url + PREFIX + data;
+          return full.length <= MAX_URL ? full : p.url + p.guide;
+        }, function () { return p.url + p.guide; });
+      }
+      return { target: target, plain: plain, saved: saved, encode: encode, handed: handed };
     })();
     if (typeof document !== 'undefined' && typeof location !== 'undefined') {
       var storage = null;
       try { storage = window.localStorage; } catch (e) { /* blocked storage: nothing to carry */ }
-      var to = Moved.target(location, storage || { length: 0, key: function () { return null; }, getItem: function () { return null; } });
       var installed = false;
       try { installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { /* no media queries: a browser tab */ }
-      document.addEventListener('DOMContentLoaded', function () {
-        document.getElementById('go').href = to;
-        if (installed) { document.getElementById('installed').hidden = false; document.getElementById('taking').hidden = true; }
+      var fallback = Moved.plain(location);
+      var ready = function (fn) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); };
+      Moved.target(location, storage || { length: 0, key: function () { return null; }, getItem: function () { return null; } }).then(function (to) {
+        ready(function () {
+          document.getElementById('go').href = to;
+          if (installed) { document.getElementById('installed').hidden = false; document.getElementById('taking').hidden = true; }
+        });
+        if (installed) return;
+        try { location.replace(to); } catch (e) { location.replace(fallback.url + fallback.guide); }
       });
-      if (!installed) location.replace(to);
     }
   </script>
 </head>
