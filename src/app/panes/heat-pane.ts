@@ -1,4 +1,5 @@
-import { HeatGL, type HeatStyle } from '../heatmap/gl.ts';
+import type { HeatRenderer, HeatStyle } from '../heatmap/gl.ts';
+import { heatRenderer } from '../heatmap/canvas.ts';
 import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow, nextBaseline, type Baseline } from '../heatmap/window.ts';
 import { isCoarse, isPhone } from '../device.ts';
@@ -335,7 +336,7 @@ interface StripState { bars: StripBar[]; rows: TimeRows | null; ids: string[]; t
 
 export class HeatPane {
   readonly root = document.createElement('section');
-  readonly gl: HeatGL;
+  readonly gl: HeatRenderer;
   readonly overlay = document.createElement('canvas');
   readonly view = new View({ t0: 0, t1: 0, p0: 0, p1: 0 });
   stats = { p15: 0, p50: 0, p96: 0, max: 0 };
@@ -704,7 +705,9 @@ export class HeatPane {
     // The pointer's layer right after the overlay: over it and under what is stacked over it, as when it was drawn into the overlay.
     this.root.append(this.#glCanvas, this.#dustCanvas, this.#pulse, this.#drawEdit, this.overlay, this.#hoverCanvas, this.#liveButton);
     host.append(this.root);
-    this.gl = new HeatGL(this.#glCanvas);
+    // WebGL2, or a 2D canvas where the browser gives none; the 2D picture may need a fresh element in the canvas's place, so the pane takes the renderer's.
+    this.gl = heatRenderer(this.#glCanvas);
+    this.#glCanvas = this.gl.canvas;
     this.#ctx = this.overlay.getContext('2d')!;
     this.#hoverCtx = this.#hoverCanvas.getContext('2d')!;
     this.#drawEditCtx = this.#drawEdit.getContext('2d')!;

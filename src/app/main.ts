@@ -145,6 +145,7 @@ async function main(): Promise<void> {
   window.setInterval(showStatus, 1000);
 
   const heat = new HeatPane(chart, store, hub, kernels);
+  statusbar.setAccelerated(heat.gl.kind === 'webgl2');
   toolbar.placeRecenter(heat.root);
   // The tour's moving picture of the right-button drag moves this chart (tour/demo.ts), and puts its view back when its step is left.
   setTourDemo({ plotRect: () => heat.plotRect(), zoom: (press, at) => heat.demoZoom(press, at), end: () => heat.endDemo() });

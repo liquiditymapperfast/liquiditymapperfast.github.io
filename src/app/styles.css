@@ -164,6 +164,9 @@ html[data-layout="desktop"] .statusbar { display: flex; }
 .statusbar .status-item.status-mark, .statusbar .status-item.status-conn, .statusbar .status-controls { flex: none; }
 .statusbar .status-conn::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ask); margin-right: 6px; }
 .statusbar .status-conn[data-state="live"]::before { background: var(--bid); }
+/* No WebGL2 (statusbar.ts): a dot alone, in the warning colour, with room around it to point at; its tip says how to turn acceleration on. */
+.statusbar .status-gpu { flex: none; display: inline-flex; align-items: center; align-self: stretch; padding: 0 5px; cursor: help; }
+.statusbar .status-gpu::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 .statusbar .status-venues[data-state="some"], .statusbar .status-mark[data-state="stale"] { color: var(--warn); }
 .statusbar .status-venues[data-state="none"] { color: var(--warn); font-weight: 600; }
 .statusbar .status-save[data-state="off"], .statusbar .status-save[data-state="failed"] { color: var(--warn); }

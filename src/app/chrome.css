@@ -617,7 +617,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"][data-bar="compact"] :is(.sheet, .panel) input[type="range"] { height: 32px; }
 :root[data-frame="bevel"][data-bar="compact"] :is(.sheet, .panel) input[type="range"]::-webkit-slider-thumb { width: 16px; height: 28px; margin-top: -12px; }
 /* The top bar of a phone: a square lamp for the connection, three square dots for Settings. */
-:root[data-frame="bevel"] :is(.toolbar .status, .statusbar .status-conn)::before { border-radius: 0; }
+:root[data-frame="bevel"] :is(.toolbar .status, .statusbar .status-conn, .statusbar .status-gpu)::before { border-radius: 0; }
 :root[data-frame="bevel"][data-bar="compact"] .more-btn svg { display: none; }
 :root[data-frame="bevel"][data-bar="compact"] .more-btn::before { content: ""; width: 4px; height: 4px; background: currentColor; box-shadow: -9px 0 currentColor, 9px 0 currentColor; }
 :root[data-frame="bevel"][data-bar="compact"] .more-btn.open::before { margin: 1px 0 0 1px; }
