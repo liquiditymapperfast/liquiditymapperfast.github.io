@@ -2916,5 +2916,6 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "開いているパネルは市場が動くたびに描画されます。使わないものは閉じてください。",
  "The page runs smoothly here.": "この環境ではページがなめらかに動いています。",
  "Copied. Paste it into your AI assistant.": "コピーしました。AI アシスタントに貼り付けてください。",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "このページの動作の報告（ブラウザーとグラフィックカードの名前、速くするための手順を含む）をコピーして、AI アシスタントに貼り付けられるようにします"
+ "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "このページの動作の報告（ブラウザーとグラフィックカードの名前、速くするための手順を含む）をコピーして、AI アシスタントに貼り付けられるようにします",
+ "Every step in full, for each browser and system, in the Guide": "ブラウザーとシステムごとのすべての手順をガイドで"
 }

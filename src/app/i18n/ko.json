@@ -2916,5 +2916,6 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "열린 패널은 시장이 움직일 때마다 그려집니다. 쓰지 않는 패널은 닫으세요.",
  "The page runs smoothly here.": "이곳에서는 페이지가 부드럽게 돌아갑니다.",
  "Copied. Paste it into your AI assistant.": "복사했습니다. AI 어시스턴트에 붙여 넣으세요.",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "이 페이지가 어떻게 돌아가는지에 대한 보고서(브라우저와 그래픽 카드 이름, 빠르게 하는 단계 포함)를 복사해 AI 어시스턴트에 붙여 넣을 수 있게 합니다"
+ "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "이 페이지가 어떻게 돌아가는지에 대한 보고서(브라우저와 그래픽 카드 이름, 빠르게 하는 단계 포함)를 복사해 AI 어시스턴트에 붙여 넣을 수 있게 합니다",
+ "Every step in full, for each browser and system, in the Guide": "브라우저와 시스템별 모든 단계를 가이드에서"
 }

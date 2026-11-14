@@ -14,6 +14,8 @@ import { t } from '../i18n.ts';
 import { togglePanel, button, type Panel } from '../ui.ts';
 import { toast } from '../toast.ts';
 import { copyText } from '../clipboard.ts';
+import { showGuide } from '../help.ts';
+import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { layoutMode, onLayoutMode } from '../device.ts';
 import type { Store } from '../store.ts';
 import { FrameWindow, hitchOf, nextLevel, toneOf, type FrameStats, type Tone } from './model.ts';
@@ -23,11 +25,16 @@ import { openPanels, speedReport, type Graphics, type SpeedInfo } from './report
 /** How often the window is drawn again and the tip rewritten (ms). */
 const DRAW_MS = 250;
 
+/** The screen the page is on, as far as the meter cares: its size and its pixel ratio. */
+const screenKey = (): string => `${window.screen.width}x${window.screen.height}@${pixelRatio()}`;
+
 export class FpsMeter {
   readonly root = el('div', { class: 'fps-meter', role: 'button', tabIndex: 0 });
   #canvas = el('canvas', { ariaHidden: 'true' });
   #ctx = this.#canvas.getContext('2d')!;
   #sprites: LedSprites | null = null;
+  /** Sprites by pixel ratio, two at most: the screen's, and a sharp picture's while one is taken. */
+  #spriteSets = new Map<number, LedSprites>();
   #frames = new FrameWindow();
   #graphics: Graphics = 'webgl2';
   #raf = 0; #last = 0; #lastDraw = 0; #level = 0;
@@ -47,6 +54,8 @@ export class FpsMeter {
     this.#size();
     this.#draw();
     this.#sync();
+    // A sharp picture of the page (screenshot/capture.ts) sizes and draws the window at its ratio, then at the screen's again.
+    sharpens({ resize: () => this.#size(), paint: () => this.#draw() });
   }
 
   /** How the map draws (`heatmap/canvas.ts`): the lamp is green with WebGL2, red without, amber where WebGL2 could not draw it. */
@@ -63,7 +72,7 @@ export class FpsMeter {
 
   /** Count afresh from `now` (a gap is not a frame). On another screen (its size or pixel ratio) its rate is learned again and the sprites made anew. */
   #restart(now: number): void {
-    const screen = `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio}`, moved = screen !== this.#screen;
+    const screen = screenKey(), moved = screen !== this.#screen;
     this.#frames.restart(now, moved);
     if (moved) { this.#screen = screen; this.#size(); }
     this.#last = 0; this.#level = 0; this.#stats = null;
@@ -75,7 +84,7 @@ export class FpsMeter {
     this.#last = now;
     if (now - this.#lastDraw >= DRAW_MS) {
       this.#lastDraw = now;
-      if (`${window.screen.width}x${window.screen.height}@${window.devicePixelRatio}` !== this.#screen) this.#restart(now);
+      if (screenKey() !== this.#screen) this.#restart(now);
       const stats = this.#frames.stats(now);
       this.#stats = stats;
       this.#level = nextLevel(this.#level, hitchOf(stats.worstQuarter, stats.hz));
@@ -85,9 +94,14 @@ export class FpsMeter {
   }
 
   #size(): void {
-    const ratio = Math.max(1, Math.min(4, window.devicePixelRatio || 1));
+    const ratio = Math.max(1, Math.min(4, pixelRatio()));
     this.#canvas.width = Math.round(LED_W * ratio); this.#canvas.height = Math.round(LED_H * ratio);
-    this.#sprites = ledSprites(ratio);
+    let sprites = this.#spriteSets.get(ratio);
+    if (!sprites) {
+      if (this.#spriteSets.size >= 2) this.#spriteSets.clear();
+      this.#spriteSets.set(ratio, sprites = ledSprites(ratio));
+    }
+    this.#sprites = sprites;
   }
 
   #tone(): LedTone { const s = this.#stats; return s && s.fps !== null ? toneOf(s.fps, s.hz) : 'idle'; }
@@ -125,7 +139,7 @@ export class FpsMeter {
     if (!this.#panel) this.#live = null;
   }
 
-  /** The panel: the rate now, the late frames, the graphics; what helps here (only what applies); the report to copy for an AI assistant. */
+  /** The panel: the rate now, the late frames, the graphics; what helps here (only what applies); the report to copy for an AI assistant; the Guide's section. */
   #build(body: HTMLElement): void {
     const s = this.#stats, rate = el('p', { class: 'fps-rate' }), late = el('p', { class: 'fps-late' });
     this.#live = { rate, late };
@@ -147,7 +161,8 @@ export class FpsMeter {
     const copy = button(t('Copy for AI'), () => {
       void copyText(speedReport(this.#info())).then(ok => toast(ok ? t('Copied. Paste it into your AI assistant.') : t('This browser did not let the page copy.')));
     }, t('Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant'));
-    body.append(el('div', { class: 'layout-tools' }, copy));
+    const guide = button(t('More in the guide →'), () => { showGuide('speed'); }, t('Every step in full, for each browser and system, in the Guide'));
+    body.append(el('div', { class: 'layout-tools' }, copy, guide));
     this.#draw();
   }
 
@@ -156,7 +171,7 @@ export class FpsMeter {
     const nav = navigator as Navigator & { deviceMemory?: number };
     return {
       stats: s, graphics: this.#graphics, gpu: gpuName(), userAgent: navigator.userAgent,
-      screen: { w: window.screen.width, h: window.screen.height, ratio: window.devicePixelRatio || 1 }, window: { w: window.innerWidth, h: window.innerHeight },
+      screen: { w: window.screen.width, h: window.screen.height, ratio: pixelRatio() }, window: { w: window.innerWidth, h: window.innerHeight },
       cores: navigator.hardwareConcurrency || null, memoryGb: typeof nav.deviceMemory === 'number' ? nav.deviceMemory : null,
       glass: state.material === 'glass', panels: openPanels(state.show), timeframe: state.timeframe,
       url: `${location.origin}${location.pathname}`,

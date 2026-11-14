@@ -2916,5 +2916,6 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "每个打开的面板都会随市场变动重绘：关掉不用的。",
  "The page runs smoothly here.": "页面在这里运行流畅。",
  "Copied. Paste it into your AI assistant.": "已复制。请粘贴到你的 AI 助手中。",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "复制一份本页运行情况的报告（含你的浏览器和显卡名称，以及让它更快的步骤），以便粘贴到 AI 助手中"
+ "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "复制一份本页运行情况的报告（含你的浏览器和显卡名称，以及让它更快的步骤），以便粘贴到 AI 助手中",
+ "Every step in full, for each browser and system, in the Guide": "指南里按浏览器和系统写出的每一步"
 }

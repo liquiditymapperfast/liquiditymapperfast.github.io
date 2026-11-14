@@ -468,6 +468,23 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
+    id: 'speed', title: 'Speed and the frame-rate meter',
+    blocks: [
+      { t: 'p', text: 'The LED window at the left end of the status bar is the page\'s frame-rate meter. Its digits are the frames the page drew in the last second: green while that is close to your screen\'s rate (from 90 % of it), amber from 60 %, red below. The bar beside them lights up when a frame came late, more cells the later it came, and falls back on its own. The **GPU** lamp is green while the graphics card draws the map (WebGL2) and red when the browser gives the page no WebGL2: the map is then drawn on the processor, more slowly, and Live trades and the Glass look are off.' },
+      { t: 'p', text: 'Point at the meter for a sentence on how the page runs; press it for the details, what helps on your computer and **Copy for AI**: a report of what the page measured and of the steps below, written for an AI assistant to walk you through them (it names your browser and your graphics card).' },
+      { t: 'list', items: [
+        '**Graphics acceleration.** Chrome: Settings › System › Use graphics acceleration when available, then Relaunch. Edge: Settings › System and performance, the same switch, then Restart. Firefox: Settings › General › Performance: untick Use recommended performance settings, then tick Use hardware acceleration when available. Safari always uses it.',
+        '**The browser\'s own report.** chrome://gpu (in Edge, edge://gpu) says under Graphics Feature Status whether WebGL2 is hardware accelerated, and under Problems Detected why not: an old or blocked driver, or a crash of the graphics process.',
+        '**The graphics driver.** Update it from the card\'s maker (NVIDIA, AMD, Intel) or through Windows Update; on a Mac, the macOS updates carry it. Restart the browser afterwards.',
+        '**Energy saving.** On battery, Chrome\'s Energy Saver (Settings › Performance) and the system\'s power mode can hold a page to 30 frames a second.',
+        '**Your screen\'s rate.** Windows: Settings › System › Display › Advanced display › Choose a refresh rate; macOS: System Settings › Displays. With several screens, keep the page on the fastest one.',
+        '**Other load.** Tabs and programs that draw (video, games, other charts) share the graphics card, and the browser\'s Task Manager (Shift+Esc) shows what uses it. Extensions that read every page can slow drawing too.',
+        '**The page itself.** Waves, the glass look, draws the panels on every frame; each open panel draws as the market moves; a larger window and a browser zoom over 100 % mean more pixels to draw.',
+      ] },
+      { t: 'note', kind: 'tip', text: 'A short amber or red blink when you change the theme or open several panels at once is the page building its pictures, not a slow computer: the meter judges the page by the last minute before it suggests anything.' },
+    ],
+  },
+  {
     id: 'tools', title: 'Tools, themes and keys',
     blocks: [
       { t: 'p', text: '**Tour** replays the one-minute tour of the page, and **Guide** opens this one; **Author** says who made the page and where the code is. They sit together at the top right of the toolbar, and in Settings on a phone.' },
