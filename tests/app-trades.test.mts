@@ -6,6 +6,7 @@ import type { TapeBatch } from '../src/shared/tape.ts';
 import { TradeIndex, readRecord } from '../src/app/trades/index.ts';
 import { ORDER_TINT, ROW_GAP, ROW_MARK, ROW_PAD, TIERS, amountText, clockForm, orderBarFull, priceWidth, rowGeom, rowInk, tierOf } from '../src/app/trades/style.ts';
 import { TRADES_DEFAULTS, readTrades } from '../src/app/trades/settings.ts';
+import { BUF_S, Conveyor, REST_PX } from '../src/app/trades/conveyor.ts';
 import { PALETTES, contrastRatio } from '../src/app/theme.ts';
 import { price } from '../src/app/format.ts';
 import { LAYOUT_KEYS, readSettings } from '../src/app/store.ts';
@@ -92,6 +93,85 @@ test('the hold counts what arrives as it comes, and a write the ring wrapped pas
   ring.clear(); add(2, 500);
   index.update();
   assert.equal(index.length, 0);
+});
+
+test('a hold from a write counts the orders found from it at once (rows not yet down), then what comes', () => {
+  const ring = new TapeRing(BLOCK);
+  let seq = 1;
+  const add = (n: number): void => { for (let i = 0; i < n; i++) ring.add(batch(seq++, [['bybit:BTCUSDT', seq, 71_000, 1_000]]), 1, 0); };
+  add(10);
+  const index = new TradeIndex(); index.reset(ring, all); index.scanBack(10);
+  // Held at the row of write 6: writes 7, 8 and 9 were found but had not come down.
+  index.hold(index.at(6) + 1);
+  assert.equal(index.newSinceHold, 3);
+  add(2); index.update();
+  assert.equal(index.newSinceHold, 5, 'then counted as they come, never twice');
+  index.release(); index.hold(); assert.equal(index.newSinceHold, 0, 'without a write: from the next to arrive');
+});
+
+/** Frames of the conveyor at `hz` for `ms`, a batch of `batches(frame)` px before each frame (none for 0): the debt drawn and the px moved. */
+function conveyorRun(ms: number, hz: number, batches: (frame: number) => number, cap = 1e9): { debt: number[]; moved: number[]; c: Conveyor } {
+  const c = new Conveyor(), debt: number[] = [], moved: number[] = [];
+  let last = c.travelled;
+  for (let f = 0, t = 0; t <= ms; f++, t = f * 1000 / hz) {
+    const px = batches(f);
+    if (px > 0) c.add(px, cap);
+    if (c.moving) c.step(t);
+    debt.push(c.debt); moved.push(c.travelled - last); last = c.travelled;
+  }
+  return { debt, moved, c };
+}
+
+test('the conveyor brings a batch down over frames and comes to rest gently, never above the newest row', () => {
+  const { debt, moved } = conveyorRun(2_000, 60, f => (f === 0 ? 168 : 0));
+  assert.ok(debt.every(x => x >= 0), 'never drawn above its resting place');
+  assert.equal(debt.at(-1), 0, 'at rest within two seconds');
+  const steps = moved.filter(x => x > 0);
+  assert.ok(steps.length >= 15, `over many frames, not at once (${steps.length})`);
+  assert.ok(Math.max(...steps) < 168 / 4, 'no frame takes a large part of the batch');
+  // Easing in and out: the first and the last frames move less than the fastest one, and the very last is a fraction of a pixel's worth.
+  const top = Math.max(...steps);
+  assert.ok(steps[0]! < top / 2 && steps.at(-1)! <= Math.max(REST_PX * 2, top / 4), 'eases in and comes to rest');
+});
+
+test('in a steady stream the conveyor moves on every frame at an even speed and keeps a short lead', () => {
+  // 150 px every 250 ms (600 px a second), as the live tape's median batch on BTC.
+  const { debt, moved } = conveyorRun(10_000, 60, f => (f % 15 === 0 ? 150 : 0));
+  const late = moved.slice(240), lateDebt = debt.slice(240);
+  assert.ok(late.every(x => x > 0), 'moves on every frame once the stream is steady');
+  const mean = late.reduce((a, b) => a + b, 0) / late.length, sd = Math.sqrt(late.reduce((a, b) => a + (b - mean) ** 2, 0) / late.length);
+  assert.ok(Math.abs(mean - 600 / 60) < 0.5, `as fast as the rows come (${mean.toFixed(2)} px a frame)`);
+  assert.ok(sd / mean < 0.3, `an even speed (spread ${(sd / mean).toFixed(2)})`);
+  assert.ok(Math.max(...lateDebt) < 150 + 600 * BUF_S + 60, `a short lead, about a batch (${Math.max(...lateDebt).toFixed(0)} px)`);
+});
+
+test('a burst taller than the list is jumped to the height of the list; any frame length is safe; a reset stands still', () => {
+  const c = new Conveyor();
+  c.add(5_000, 800);
+  assert.equal(c.debt, 800); assert.equal(c.travelled, 4_200, 'the rest jumped');
+  for (const t of [0, 0, 1, 250, 250.5, 5_000, 5_016]) { const d = c.step(t); assert.ok(Number.isFinite(d) && d >= 0, `finite at ${t}`); }
+  // A late frame moves as far as the time it covered (to 100 ms): one 50 ms frame about as far as three of 16.7 ms.
+  const one = new Conveyor(), three = new Conveyor();
+  for (const k of [one, three]) { k.add(400, 1e9); k.step(0); k.step(16.7); k.step(33.3); }
+  one.step(83.3); for (const t of [50, 66.7, 83.3]) three.step(t);
+  assert.ok(Math.abs(one.debt - three.debt) < 0.2 * (400 - three.debt), `${one.debt.toFixed(1)} vs ${three.debt.toFixed(1)}`);
+  one.reset(); assert.equal(one.debt, 0); assert.equal(one.moving, false);
+  // A hold let go comes down from where it stood: the debt set (never lowered), past the cap jumped.
+  const back = new Conveyor(); back.from(300, 800); assert.equal(back.debt, 300); back.from(100, 800); assert.equal(back.debt, 300); back.from(2_000, 800); assert.equal(back.debt, 800);
+});
+
+test('a lull lowers the rate: a batch after a quiet spell comes down as the first one did', () => {
+  const first = conveyorRun(1_500, 60, f => (f === 0 ? 120 : 0)).moved.filter(x => x > 0);
+  // A busy stretch (200 px every 250 ms), five quiet seconds (frames go on while it comes to rest), then the same batch.
+  const c = new Conveyor(); let f = 0;
+  for (; f < 180; f++) { if (f % 15 === 0) c.add(200, 1e9); if (c.moving) c.step(f * 1000 / 60); }
+  for (; f < 480; f++) if (c.moving) c.step(f * 1000 / 60);
+  assert.equal(c.moving, false, 'at rest in the lull');
+  c.add(120, 1e9); const after: number[] = []; let last = c.travelled;
+  for (const end = f + 90; f <= end; f++) { if (c.moving) c.step(f * 1000 / 60); after.push(c.travelled - last); last = c.travelled; }
+  const steps = after.filter(x => x > 0);
+  assert.ok(Math.abs(steps.length - first.length) <= 3, `about as many frames (${steps.length} vs ${first.length})`);
+  assert.ok(Math.max(...steps) < Math.max(...first) * 1.3, 'not faster for the busy stretch before the lull');
 });
 
 test('boundaries between two rows: a reconnect between their writes, even when the write at the boundary is filtered out', () => {

@@ -147,8 +147,15 @@ export class TradeIndex {
     return found;
   }
 
-  /** Hold the list: count the matching orders that arrive from now. */
-  hold(): void { if (this.#fence !== null) return; this.#fence = this.#ring?.written ?? 0; this.#newSince = 0; }
+  /**
+   * Hold the list: count the matching orders from write `from` on (by default the next one to arrive): those found already (rows the list had
+   * not brought down when it was held) at once, the rest as they come.
+   */
+  hold(from?: number): void {
+    if (this.#fence !== null) return;
+    this.#fence = from ?? this.#ring?.written ?? 0;
+    this.#newSince = from === undefined ? 0 : this.#len - this.position(from);
+  }
   release(): void { this.#fence = null; this.#newSince = 0; }
 
   /** The reasons of the boundaries between an older write `a` and a newer write `b` (a < before <= b): orders may be missing between the two rows. */
