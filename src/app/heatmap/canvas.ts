@@ -7,15 +7,17 @@ import { HeatGL, type HeatRenderer, type HeatStyle } from './gl.ts';
  * hardware acceleration is off, when the graphics card or its driver is blocked, or after the card has failed on the site, and Chrome is
  * withdrawing the software WebGL (SwiftShader) it used to give instead (deprecated since Chrome 130). A canvas that gave WebGL its context
  * before the renderer failed keeps that context and can give no other, so the 2D picture goes on a fresh copy of the element, put in its
- * place: the caller takes the renderer's `canvas`.
+ * place: the caller takes the renderer's `canvas`. That is also how the cause is told apart: a canvas that still gives a 2D context gave
+ * WebGL2 none ('no-webgl2'), one that does not had a WebGL2 context that could not draw the heatmap ('failed': a shader the driver refused).
  */
 export function heatRenderer(canvas: HTMLCanvasElement): HeatRenderer {
   try { return new HeatGL(canvas); } catch (error) {
     console.info(`The heatmap is drawn on a 2D canvas: ${error instanceof Error ? error.message : String(error)}`);
   }
-  let target = canvas;
-  if (!canvas.getContext('2d')) { target = canvas.cloneNode(false) as HTMLCanvasElement; canvas.replaceWith(target); }
-  return new HeatCanvas(target);
+  if (canvas.getContext('2d')) return new HeatCanvas(canvas, 'no-webgl2');
+  const target = canvas.cloneNode(false) as HTMLCanvasElement;
+  canvas.replaceWith(target);
+  return new HeatCanvas(target, 'failed');
 }
 
 /** How finely the colouring tables split the colour window: 4,096 steps, a step a small part of one 8-bit level of the picture. */
@@ -34,6 +36,9 @@ const STEPS = 4096;
  * `a`². The image holds colour times `b` at alpha `b`². Drawn at `globalAlpha` o² it gets alpha b²o² = a², and premultiplied colour c·b³·o².
  * Black at alpha 1 - `o`, painted over it with 'source-atop', scales that colour by `o` and leaves the alpha: c·b³·o³ = c·a·a², the
  * shader's pixel.
+ *
+ * A 2D canvas the browser had to discard (a graphics card that reset, 2026-11-14 review r14: blank until the next grid, about 1.3 s while
+ * live) is drawn and coloured again on the next draw, not skipped as unchanged.
  */
 export class HeatCanvas implements HeatRenderer {
   readonly kind = '2d' as const;
@@ -45,10 +50,17 @@ export class HeatCanvas implements HeatRenderer {
   /** What the canvas shows ('' not known, 'clear' nothing), so a draw that would change nothing is skipped. */
   #drawn = '';
 
-  constructor(readonly canvas: HTMLCanvasElement) {
+  /** `cause`: why there is no WebGL2 picture (`heatRenderer`); the page says how to turn acceleration on only for 'no-webgl2'. */
+  constructor(readonly canvas: HTMLCanvasElement, readonly cause: 'no-webgl2' | 'failed' = 'no-webgl2') {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('No 2D canvas for the heatmap');
     this.#ctx = ctx;
+    this.#forgetOnLoss(canvas);
+  }
+
+  /** A canvas whose pixels the browser discarded and gives back empty: nothing it showed or held is known any more. */
+  #forgetOnLoss(canvas: HTMLCanvasElement): void {
+    for (const type of ['contextlost', 'contextrestored']) canvas.addEventListener(type, () => { this.#drawn = ''; this.#key = ''; });
   }
 
   setLut(rgba: Uint8Array): void { this.#lut = rgba.slice(); this.#key = ''; }
@@ -100,7 +112,8 @@ export class HeatCanvas implements HeatRenderer {
 
   /** Colour the grid into the image; false where the browser gives no 2D context for it. */
   #colour(grid: Float32Array, w: number, h: number, style: HeatStyle): boolean {
-    const image = this.#image ?? document.createElement('canvas');
+    let image = this.#image;
+    if (!image) { image = document.createElement('canvas'); this.#forgetOnLoss(image); }
     if (image.width !== w || image.height !== h) { image.width = w; image.height = h; }
     const ictx = image.getContext('2d');
     if (!ictx) return false;
@@ -163,16 +176,18 @@ const highWord = (x: number): number => { SCRATCH[0] = x; return WORDS[HIGH]!; }
 
 /**
  * 'size' without a logarithm a cell: the cell's total names its bucket by its top bits as a double (`highWord` without its last `shift`
- * bits: at the least shift, 4,096 buckets an octave, each under a twentieth of a window step wide for a window of 10 octaves), and each
- * bucket from the window's low end up takes the step of its middle value. The buckets stop at the window's top: a total above it is the
- * last bucket, the ramp's top. `from` is the window's low end, where the shader starts to draw.
+ * bits: at the least shift, 4,096 buckets an octave; a window of n octaves has 4,096 steps, so a bucket is 1/n of a step, a tenth for the
+ * usual 7-10), and each bucket from the window's low end up takes the step of its middle value. The buckets stop at the window's top: a
+ * total above it is the last bucket, the ramp's top. `from` is the window's low end, where the shader starts to draw. A window whose top is
+ * not above that ($1 at the least) puts every cell drawn above its top: one bucket, the ramp's top (the shader's s is then above 1).
  */
 function sizeBuckets(style: HeatStyle, steps: Uint32Array): { table: Uint32Array; from: number; first: number; shift: number } {
   const lo = Math.log(Math.max(style.min, 1)), hi = Math.log(Math.max(style.max, style.min * 1.0001 + 1)), perLog = STEPS / Math.max(hi - lo, 1e-6);
-  const from = Math.exp(lo), top = highWord(Math.exp(hi)), bottom = highWord(from);
+  const from = Math.exp(lo), top = highWord(Math.exp(hi)), bottom = highWord(from), last = STEPS - 1;
+  if (!(Math.exp(hi) > from)) return { table: Uint32Array.of(steps[last]!), from, first: bottom >> 8, shift: 8 };
   let shift = 8;
   while ((top >> shift) - (bottom >> shift) > 1 << 18) shift++;
-  const first = bottom >> shift, n = (top >> shift) - first + 1, table = new Uint32Array(n), last = STEPS - 1;
+  const first = bottom >> shift, n = (top >> shift) - first + 1, table = new Uint32Array(n);
   for (let j = 0; j < n; j++) {
     // The bucket's middle: its top bits, then a 1 and zeros below them.
     WORDS[HIGH] = ((first + j) << shift) | (1 << (shift - 1)); WORDS[1 - HIGH] = 0;

@@ -88,6 +88,8 @@ export class StatusBar {
     this.root.append(this.#connection, this.#venues, this.#mark, this.#recording, this.#saving, this.#source, this.notices, el('span', { class: 'spacer' }), this.#acceleration, this.controls);
     this.#acceleration.setAttribute('role', 'img');
     this.#acceleration.setAttribute('aria-label', t('No graphics acceleration'));
+    // Its tip is the explanation and the fix: a screen reader reads it as the dot's description.
+    this.#acceleration.setAttribute('aria-description', this.#acceleration.dataset.tip ?? '');
   }
 
   /** Whether the map has graphics acceleration (WebGL2): without it the red dot shows. Known once the map is made, and for the page's life. */

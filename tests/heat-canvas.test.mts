@@ -125,6 +125,8 @@ function fakeCanvas(webgl: unknown) {
     },
     cloneNode() { return fakeCanvas(null); },
     replaceWith(other: unknown) { canvas.replaced = other; },
+    listening: [] as string[],
+    addEventListener(type: string) { canvas.listening.push(type); },
   };
   return canvas;
 }
@@ -135,6 +137,8 @@ test('a browser without WebGL2 gets the heatmap on a 2D canvas, not an error', t
   const canvas = fakeCanvas(null);
   const renderer = heatRenderer(canvas as unknown as HTMLCanvasElement);
   assert.ok(renderer instanceof HeatCanvas);
+  assert.equal(renderer.cause, 'no-webgl2', 'the page says how to turn acceleration on');
+  assert.deepEqual(canvas.listening.sort(), ['contextlost', 'contextrestored'], 'a canvas the browser discards is drawn again');
   assert.equal(renderer.canvas, canvas as unknown as HTMLCanvasElement, 'the same element: it gave WebGL no context');
   assert.equal(canvas.replaced, null);
   assert.equal(said.length, 1);
@@ -154,6 +158,23 @@ test('a WebGL2 context that cannot draw the heatmap is let go, and the 2D pictur
   const renderer = heatRenderer(canvas as unknown as HTMLCanvasElement);
   assert.ok(lost, 'the context is let go');
   assert.ok(renderer instanceof HeatCanvas);
+  assert.equal(renderer.cause, 'failed', 'WebGL2 was there: not a matter of turning acceleration on');
   assert.notEqual(renderer.canvas, canvas as unknown as HTMLCanvasElement);
   assert.equal(canvas.replaced, renderer.canvas, 'the fresh element takes the old one\'s place');
+});
+
+test('a window wholly below $1 colours every drawn cell at the ramp\'s top, as the shader does, and never throws (review r14)', () => {
+  const lut = buildLut(true), w = 31, h = 17, g = grid(w, h, 3);
+  for (const [min, max] of [[-5, 0.5], [-1, 1e-9], [-0.001, 0.001], [0, 0]]) {
+    const style = { ...STYLE, min, max }, px = new Uint8Array(cellColours(g, w, h, style, lut).buffer);
+    let drawn = 0;
+    for (let row = 0; row < h; row++) for (let col = 0; col < w; col++) {
+      const i = row * w + col, want = shaderPixel(style, lut, g[i * 2]!, g[i * 2 + 1]!), o = ((h - 1 - row) * w + col) * 4;
+      const got = [px[o]!, px[o + 1]!, px[o + 2]!, px[o + 3]!];
+      if (!want) { assert.deepEqual(got, [0, 0, 0, 0], `[${min}, ${max}] cell ${row},${col}`); continue; }
+      drawn++;
+      for (let ch = 0; ch < 4; ch++) assert.ok(Math.abs(got[ch]! - want[ch]!) <= 1, `[${min}, ${max}] cell ${row},${col}: ${got} against ${want}`);
+    }
+    assert.ok(drawn > 0, `[${min}, ${max}] draws its cells above $1`);
+  }
 });

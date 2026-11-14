@@ -19,7 +19,7 @@ export interface HeatRenderer {
   readonly maxSize: number;
   /** What the last grid covers. */
   readonly coverage: Bounds | null;
-  /** A grid of `w` x `h` cells, two floats each (bids, asks), row 0 the lowest price, covering `bounds`. */
+  /** A grid of `w` x `h` cells, two floats each (bids, asks), row 0 the lowest price, covering `bounds`. The renderer may keep `grid`: never change it after. */
   upload(grid: Float32Array, w: number, h: number, bounds: Bounds): void;
   resize(width: number, height: number, dpr: number): void;
   clear(): void;

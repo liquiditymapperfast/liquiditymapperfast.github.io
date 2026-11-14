@@ -19,6 +19,7 @@ import { Sounds } from './sound/sounds.ts';
 import { Alerts } from './sound/alerts.ts';
 import { Toolbar } from './toolbar.ts';
 import { StatusBar } from './statusbar.ts';
+import { HeatCanvas } from './heatmap/canvas.ts';
 import { anchorDate, clock, clockYear, setTimeZone, zoneName } from './format.ts';
 import { installTips } from './tip.ts';
 import { installClassicSelects, installTouchSelects } from './touch-select.ts';
@@ -145,7 +146,8 @@ async function main(): Promise<void> {
   window.setInterval(showStatus, 1000);
 
   const heat = new HeatPane(chart, store, hub, kernels);
-  statusbar.setAccelerated(heat.gl.kind === 'webgl2');
+  // The dot says the browser gives no WebGL2 and how to turn acceleration on: not where WebGL2 is there but could not draw the heatmap (review r14).
+  statusbar.setAccelerated(!(heat.gl instanceof HeatCanvas && heat.gl.cause === 'no-webgl2'));
   toolbar.placeRecenter(heat.root);
   // The tour's moving picture of the right-button drag moves this chart (tour/demo.ts), and puts its view back when its step is left.
   setTourDemo({ plotRect: () => heat.plotRect(), zoom: (press, at) => heat.demoZoom(press, at), end: () => heat.endDemo() });

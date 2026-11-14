@@ -708,6 +708,8 @@ export class HeatPane {
     // WebGL2, or a 2D canvas where the browser gives none; the 2D picture may need a fresh element in the canvas's place, so the pane takes the renderer's.
     this.gl = heatRenderer(this.#glCanvas);
     this.#glCanvas = this.gl.canvas;
+    // A 2D picture the browser discarded comes back empty: draw it again at once rather than at the next change (review r14).
+    this.#glCanvas.addEventListener('contextrestored', () => this.invalidate());
     this.#ctx = this.overlay.getContext('2d')!;
     this.#hoverCtx = this.#hoverCanvas.getContext('2d')!;
     this.#drawEditCtx = this.#drawEdit.getContext('2d')!;
