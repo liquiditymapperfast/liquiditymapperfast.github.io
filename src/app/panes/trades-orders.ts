@@ -102,6 +102,11 @@ export class OrderList {
   #resizeObserver: ResizeObserver;
   /** The last press was a finger (its click is the tap's, not a mouse click that takes the map to the order). */
   #lastTouch = false;
+  /**
+   * A press began on the key at the foot of a held list: only then does a click on it let the list go (a finger holds the list as it touches,
+   * so the key can appear under a tap begun on the rows, and the tap's click would land on it; a keyboard's click has no press and counts).
+   */
+  #pillPressed = false;
   /** The tape ring (set by the page: it exists once a view has asked for the tape). */
   ring: () => TapeRing | null = () => null;
   /** Take the map to an order (set by the shell). */
@@ -116,7 +121,12 @@ export class OrderList {
   constructor(private store: Store) {
     this.root.append(this.#canvas, this.#pill);
     this.#ctx = this.#canvas.getContext('2d', { alpha: false })!;
-    this.#pill.onclick = () => { this.#pointerIn = false; this.#release(); };
+    this.#pill.addEventListener('pointerdown', () => { this.#pillPressed = true; });
+    this.#pill.onclick = e => {
+      const pressed = this.#pillPressed; this.#pillPressed = false;
+      if (e.detail !== 0 && !pressed) return;
+      this.#pointerIn = false; this.#release();
+    };
     this.#resizeObserver = new ResizeObserver(() => this.#resize()); this.#resizeObserver.observe(this.root);
     sharpens({ resize: () => this.#resize(), paint: () => { if (this.#shown) this.#paint(); } });
     const c = this.#canvas;
@@ -141,8 +151,11 @@ export class OrderList {
     // without a drag pins the row it touched (a second tap on it, or elsewhere, lets it go).
     c.addEventListener('pointerdown', e => {
       this.#lastTouch = e.pointerType === 'touch';
+      // A press on the rows: a press on the key that never became a click (slid off it) no longer counts for its next click.
+      this.#pillPressed = false;
       if (e.pointerType !== 'touch') return;
-      let took = false;
+      // A second finger takes over the first one's record, and the hold the first one took with it (so a cancel still gives it back).
+      let took = this.#touch?.took ?? false;
       if (!this.#anchor) { this.#hold(); took = !!this.#anchor; }
       this.#touch = { id: e.pointerId, y: e.clientY, moved: 0, owed: 0, took }; c.setPointerCapture(e.pointerId);
     });

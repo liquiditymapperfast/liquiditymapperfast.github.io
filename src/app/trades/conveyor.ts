@@ -30,7 +30,7 @@ export class Conveyor {
 
   /** A batch added `px` above the newest row; past `cap` px of debt the rest is jumped (a burst taller than the list). */
   add(px: number, cap: number): void {
-    if (!(px > 0) || !(cap >= 0)) return;
+    if (!(px > 0) || !Number.isFinite(px) || !(cap >= 0)) return;
     this.#arrived += px;
     this.#take(this.debt + px, cap);
   }
@@ -62,6 +62,9 @@ export class Conveyor {
   }
   #rest(): void { this.debt = 0; this.#v = 0; this.#resting = true; }
 
-  /** Stand still where it is drawn now (a hold, a page hidden, a list found again): nothing left to play out, the rate learnt again. */
-  reset(): void { this.#rest(); this.#arrived = 0; this.#rate = 0; }
+  /**
+   * Stand still where it is drawn now (a hold, a page hidden, a list found again): nothing left to play out. The rate is kept, decaying with
+   * time as ever (a hold let go catches up at the pace rows were coming: learnt again from nothing, a short hold let go jumped a little more).
+   */
+  reset(): void { this.#rest(); this.#arrived = 0; if (!Number.isFinite(this.#rate)) this.#rate = 0; }
 }
