@@ -97,7 +97,7 @@ test('revision 4: a touch screen has the Flow pane on once; LT is left as saved'
 });
 
 test('revision 5: the Liquidity Tracker is at 10 bp on every screen (Karl, 2026-11-03), a revision-4 save holding its default 100 reads 10 once', () => {
-  assert.equal(DEFAULTS_REV, 5);
+  assert.ok(DEFAULTS_REV >= 5);
   const lt = (halfLifeBp: number) => ({ halfLifeBp, minUsd: 0, maxUsd: 0, average: false, view: 'lines' });
   const screens = (): AppState[] => [initialState(true, true), initialState(false, false), initialState(true, false), initialState(false, true)];
   // A first visit: 10 on a phone, a desktop, a narrow window and a tablet.
@@ -158,4 +158,19 @@ test('Scripts is on for a first visit and for a save from before it existed; a s
   const { script: _, ...older } = DEFAULT_SHOW;
   saved({ defaultsRev: 4, show: older }, () => assert.equal(initialState().show.script, true));
   saved({ defaultsRev: 4, show: { ...DEFAULT_SHOW, script: false } }, () => assert.equal(initialState().show.script, false));
+});
+test('revision 6: Trades opens on each order, any size, bursts one row (Karl, 2026-11-14); a save holding revision 5 defaults moves once, a choice stays', () => {
+  assert.equal(DEFAULTS_REV, 6);
+  const now = { unit: 0, minUsd: 0, side: 'both', group: true }, rev5 = { unit: 1, minUsd: 0, side: 'both', group: false };
+  const screens = (): AppState[] => [initialState(true, true), initialState(false, false)];
+  // A first visit, a phone and a desktop.
+  saved(null, () => { for (const s of screens()) assert.deepEqual(s.trades, now); });
+  // Revision 5's defaults, written down by every save of it; a save with no Trades settings; one from before the unit (All trades' grouping off).
+  for (const trades of [rev5, undefined, { minUsd: 0, side: 'both', group: false }]) saved({ defaultsRev: 5, ...(trades ? { trades } : {}) }, () => { for (const s of screens()) assert.deepEqual(s.trades, now, JSON.stringify(trades)); });
+  saved({ defaultsRev: 3, trades: rev5 }, () => assert.deepEqual(initialState(false, false).trades, now, 'an older revision too'));
+  // Any setting changed is a choice: kept as it is.
+  for (const trades of [{ ...rev5, minUsd: 25_000 }, { ...rev5, unit: 60 }, { ...rev5, side: 'buy' }, { unit: 0, minUsd: 0, side: 'both', group: false }, { ...rev5, group: true }])
+    saved({ defaultsRev: 5, trades }, () => assert.deepEqual(initialState(false, false).trades, trades, JSON.stringify(trades)));
+  // The same values saved under revision 6 were chosen there: kept.
+  saved({ defaultsRev: 6, trades: rev5 }, () => assert.deepEqual(initialState(false, false).trades, rev5));
 });

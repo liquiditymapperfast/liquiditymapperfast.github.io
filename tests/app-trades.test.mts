@@ -251,8 +251,10 @@ test('sizes, clocks and settings as the list writes and reads them', () => {
   assert.deepEqual([240, 280, 320].map(clockForm), ['none', 'ms', 'hms']);
   assert.deepEqual(readTrades(undefined), TRADES_DEFAULTS);
   assert.equal(TRADES_DEFAULTS.minUsd, 0, 'any size at first: every trade');
-  assert.equal(TRADES_DEFAULTS.unit, 1, 'a second a row at first (Karl, 2026-11-13)');
-  assert.deepEqual(readTrades({ minUsd: 5_000, side: 'buy', group: true }), { unit: 1, minUsd: 5_000, side: 'buy', group: true });
+  assert.equal(TRADES_DEFAULTS.unit, 0, 'each order at first (Karl, 2026-11-14)');
+  assert.equal(TRADES_DEFAULTS.group, true, 'a burst one row at first (Karl, 2026-11-14)');
+  assert.deepEqual(readTrades({ minUsd: 5_000, side: 'buy', group: true }), { unit: 0, minUsd: 5_000, side: 'buy', group: true });
+  assert.deepEqual(readTrades({ unit: 1, group: false }), { unit: 1, minUsd: 0, side: 'both', group: false }, 'a choice of a second, grouping off, is read as it is');
   assert.deepEqual(readTrades({ minUsd: -1, side: 'x', group: 1 }), TRADES_DEFAULTS);
   assert.ok((LAYOUT_KEYS as readonly string[]).includes('trades'));
   assert.equal(readSettings({ flowView: 'all' }).flowView, 'trades');

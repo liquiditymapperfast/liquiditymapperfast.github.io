@@ -173,7 +173,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'flow-trades', title: 'Trades in the flow column',
     blocks: [
-      { t: 'p', text: '**Trades**, the second tab in the flow column\'s title, shows what was bought and sold at market, newest on top. At first each row is one second of every exchange on the map: when the market sends hundreds of orders a second, a second at a time is what a person can read as it happens.' },
+      { t: 'p', text: '**Trades**, the second tab in the flow column\'s title, shows what was bought and sold at market, newest on top. At first each row is one order, or a burst of them (one exchange\'s orders on one side within a tenth of a second, added up: ×5 says how many), coming down from the top as they arrive. When the market sends hundreds of orders a second, **Group by** a second makes each row one second of every exchange on the map, which a person can read as it happens.' },
       { t: 'list', items: [
         'Each block has its time and, under it, how far the price moved: the reference market\'s volume-weighted price in the block\'s last second against the second before (Binance\'s perpetual for BTC, else the most traded market the coin has).',
         'Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell. A bar grows with the square root of its dollars: ten times more draws about three times longer.',

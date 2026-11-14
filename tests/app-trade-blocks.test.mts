@@ -30,10 +30,11 @@ function reader(ring: TapeRing, filter: TallyFilter = all, markets = [B, BS, O])
   return { tally, r };
 }
 
-test('the unit and the settings read back: one second by default, each order is 0, a custom length up to fifteen minutes', () => {
-  assert.equal(TRADES_DEFAULTS.unit, 1);
-  assert.deepEqual(readTrades(undefined), { unit: 1, minUsd: 0, side: 'both', group: false });
-  assert.equal(readTrades({ minUsd: 5_000, side: 'sell', group: true }).unit, 1, 'a save from before the unit opens on a second');
+test('the unit and the settings read back: each order by default, a second is 1, a custom length up to fifteen minutes', () => {
+  assert.equal(TRADES_DEFAULTS.unit, 0);
+  assert.deepEqual(readTrades(undefined), { unit: 0, minUsd: 0, side: 'both', group: true });
+  assert.equal(readTrades({ minUsd: 5_000, side: 'sell', group: true }).unit, 0, 'a save from before the unit opens on the default, each order');
+  assert.equal(readTrades({ unit: 1 }).unit, 1);
   assert.equal(readTrades({ unit: 0 }).unit, 0);
   assert.equal(readTrades({ unit: 300 }).unit, 300);
   assert.equal(readUnit(901, 1), 1); assert.equal(readUnit(2.5, 1), 1); assert.equal(readUnit(-1, 60), 60); assert.equal(readUnit(7, 1), 7);

@@ -2836,7 +2836,7 @@
  "#{r} of {m} by size of change (closed, overlapping windows)": "按变化大小在 {m} 个中排第 {r}（已收盘、相互重叠的区间）",
  "OI from {levels} of {n} venues (changes from {changes})": "来自 {n} 个交易所中 {levels} 个的 OI（变化来自 {changes} 个）",
  "opposite to the total": "与合计方向相反",
- "The flow column's second view: what was bought and sold at market, a block of time per row (a second at first) or each order, newest on top. It holds what this page received and the history it already read, and asks the exchanges for nothing.": "资金流列的第二个视图:以市价买入和卖出的成交,每行一个时间块(起初为一秒)或逐笔订单,最新的在上。只显示本页面收到的内容和已读取的历史,不向交易所请求任何数据。",
+ "The flow column's second view: what was bought and sold at market, newest on top: each order at first (a burst of them one row), or a block of time per row. It holds what this page received and the history it already read, and asks the exchanges for nothing.": "资金流列的第二个视图:以市价买入和卖出的成交,最新的在上:起初逐笔订单(连续订单合为一行),或每行一个时间块。只显示本页面收到的内容和已读取的历史,不向交易所请求任何数据。",
  "Each block shows its time and, under it, how far the reference market's price moved. Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell.": "每个块显示其时间,下方是参考市场价格变动了多少。然后是买入金额(▲)在卖出金额(▼)之上,各带一条按交易所分段的条,以及最大的买单和最大的卖单。",
  "A bar grows with the square root of its dollars, full at about the busiest one percent of blocks in a week: a side ten times larger draws about three times longer, and › marks one past full.": "条的长度随金额的平方根增长,在一周中最活跃的约百分之一的块处为满:大十倍的一方约长三倍,› 表示超出满格。",
  "Group by sets what a row is: each order, a second, a minute, five or fifteen minutes, or a length of your own. The size menu leaves out smaller orders before they are added up. Older blocks come from what the page already holds: any size from its per-second record, from $25,000 from its recording, smaller sizes only from when it began listening.": "分组方式决定一行是什么:逐笔订单、一秒、一分钟、五分钟或十五分钟,或自定义时长。大小菜单在相加之前去掉较小的订单。较早的块来自页面已有的数据:任意大小来自其逐秒记录,25,000 美元起来自其录制,更小的大小仅从页面开始接收时起。",
@@ -2889,5 +2889,5 @@
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} 未录制：合计中不含这段",
  "Not recorded {from}–{to}": "{from}–{to} 未录制",
  "Orders may be missing {from}–{to}": "{from}–{to} 可能缺少订单",
- "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "在逐笔订单中,价格后的条形按订单美元金额的平方根增长:在该大小下限下约每十笔中最大的一笔时满格(1,000 美元起为 50,000 美元),超过则加标记。行旁的信息框给出其刻度。"
+ "In Each order, new orders come down from the top as they arrive, and a burst (one exchange's orders on one side within a tenth of a second) is one row, ×5 saying how many (Group bursts, in the settings). A bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "在逐笔订单中,新订单一到就从顶部滑下来;一次连续订单(同一交易所同一方向、十分之一秒内的订单)合为一行,×5 表示笔数(设置中的「合并连续订单」)。价格后的条形按订单美元金额的平方根增长:在该大小下限下约每十笔中最大的一笔时满格(1,000 美元起为 50,000 美元),超过则加标记。行旁的信息框给出其刻度。"
 }

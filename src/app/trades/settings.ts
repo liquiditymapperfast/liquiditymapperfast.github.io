@@ -2,11 +2,22 @@ import { SIZE_MAX_USD } from '../sizes.ts';
 
 /**
  * Trades' settings (the flow column's second view, which replaced Time & sales and All trades on 2026-11-13): what one row is (`unit`: 0 is
- * each order, else a block of that many whole seconds, one by default: Karl's choice after two design rounds), the smallest order counted
- * (0: any size), the side, and whether a burst of orders is one row (each order only).
+ * each order, else a block of that many whole seconds), the smallest order counted (0: any size), the side, and whether a burst of orders is
+ * one row (each order only). By default each order, any size, a burst one row (Karl, 2026-11-14: "a good default setting for the tape ...
+ * the burst grouping and each order any size ... displays the performance of the tape very well"); until then a second a row, grouping off.
  */
 export interface TradesSettings { unit: number; minUsd: number; side: 'both' | 'buy' | 'sell'; group: boolean }
-export const TRADES_DEFAULTS: Readonly<TradesSettings> = { unit: 1, minUsd: 0, side: 'both', group: false };
+export const TRADES_DEFAULTS: Readonly<TradesSettings> = { unit: 0, minUsd: 0, side: 'both', group: true };
+/** The defaults until 2026-11-14 (revision 5 of the page's defaults): a second a row, any size, both sides, grouping off. */
+export const TRADES_REV5: Readonly<TradesSettings> = { unit: 1, minUsd: 0, side: 'both', group: false };
+/**
+ * Whether a save's Trades settings are revision 5's defaults as it wrote them down (every save wrote them, chosen or not): each field it
+ * holds is that default, a field it lacks (a save from before the field) counting as one.
+ */
+export function tradesRev5Default(saved: unknown): boolean {
+  const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>, d = TRADES_REV5;
+  return (s.unit ?? d.unit) === d.unit && (s.minUsd ?? d.minUsd) === d.minUsd && (s.side ?? d.side) === d.side && (s.group ?? d.group) === d.group;
+}
 /** The sizes offered after "Any size" (BTC's dollars; scaled for a coin that trades less; any size can be typed). */
 export const TRADES_MINIMUMS: readonly number[] = [1_000, 5_000, 10_000, 25_000, 100_000];
 /** The units the Group by menu offers (0: each order); any whole number of seconds up to `UNIT_MAX_S` can be chosen as Custom. */
@@ -21,6 +32,6 @@ export const readUnit = (v: unknown, fallback: number): number => typeof v === '
 export function readTrades(saved: unknown): TradesSettings {
   const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>, d = TRADES_DEFAULTS;
   const min = typeof s.minUsd === 'number' && Number.isFinite(s.minUsd) && s.minUsd >= 0 && s.minUsd <= SIZE_MAX_USD ? s.minUsd : d.minUsd;
-  // A save from before the unit existed was All trades' (each order) or Time & sales' (the large orders): both open on the default, a second.
+  // A save from before the unit existed was All trades' (each order) or Time & sales' (the large orders): both open on the default.
   return { unit: readUnit(s.unit, d.unit), minUsd: min, side: s.side === 'buy' || s.side === 'sell' ? s.side : 'both', group: typeof s.group === 'boolean' ? s.group : d.group };
 }

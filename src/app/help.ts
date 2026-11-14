@@ -269,11 +269,11 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   trades: {
     title: t('Trades'), guide: 'flow-trades',
-    tip: t('The flow column\'s second view: what was bought and sold at market, a block of time per row (a second at first) or each order, newest on top. It holds what this page received and the history it already read, and asks the exchanges for nothing.'),
+    tip: t('The flow column\'s second view: what was bought and sold at market, newest on top: each order at first (a burst of them one row), or a block of time per row. It holds what this page received and the history it already read, and asks the exchanges for nothing.'),
     body: [t('Each block shows its time and, under it, how far the reference market\'s price moved. Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell.'),
       t('A bar grows with the square root of its dollars, full at about the busiest one percent of blocks in a week: a side ten times larger draws about three times longer, and › marks one past full.'),
       t('Group by sets what a row is: each order, a second, a minute, five or fifteen minutes, or a length of your own. The size menu leaves out smaller orders before they are added up. Older blocks come from what the page already holds: any size from its per-second record, from $25,000 from its recording, smaller sizes only from when it began listening.'),
-      t('In Each order, a bar after the price grows with the square root of the order\'s dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.'),
+      t('In Each order, new orders come down from the top as they arrive, and a burst (one exchange\'s orders on one side within a tenth of a second) is one row, ×5 saying how many (Group bursts, in the settings). A bar after the price grows with the square root of the order\'s dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.'),
       t('Point at the list, or the details beside it, to hold it still, and move away to let it go (scrolled back, it stays); a key at its foot counts what came meanwhile and brings it back to now. The block you point at is marked on the map and the panes, and a click chooses it for the details beside a wide list and takes the map to its time. On a phone a tap opens its details.')],
   },
   book: {
