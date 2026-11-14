@@ -41,7 +41,7 @@ jobs:
       - run: |
           npm run build:tools
           previous=https://liquiditymapper.com/coins.json
-          curl -sf -o /dev/null "$previous" || previous=https://liquiditymapperfast.github.io/coins.json
+          curl -sf -m 20 "$previous" | node -e 'JSON.parse(require("fs").readFileSync(0, "utf8"))' || previous=https://liquiditymapperfast.github.io/coins.json
           node build/tools/scripts/coins.mjs --previous "$previous" --fallback src/app/public/coins.json --out dist/coins.json
         continue-on-error: true
       - uses: actions/upload-pages-artifact@v3
@@ -62,13 +62,14 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # The same files on Cloudflare Pages (project liquiditymapper, served at liquiditymapper.com). It runs only where the repository has
-  # the CLOUDFLARE_API_TOKEN secret (a token allowed "Cloudflare Pages: Edit" on one account, which also tells wrangler the account).
-  # The first run creates the project with master as its production branch, so every deploy from here lands in production.
+  # the CLOUDFLARE_API_TOKEN secret (a token allowed "Cloudflare Pages: Edit" on one account) and the CLOUDFLARE_ACCOUNT_ID secret: such a
+  # token cannot read the account memberships wrangler would otherwise ask for. The first run creates the project with master as its
+  # production branch, so every deploy from here lands in production.
   cloudflare:
     needs: build
     runs-on: ubuntu-latest
     env:
-      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
     steps:
       - if: env.HAS_TOKEN == 'true'
         uses: actions/download-artifact@v4
@@ -77,9 +78,11 @@ jobs:
       - if: env.HAS_TOKEN == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           mkdir site && tar -xf artifact.tar -C site
-          if ! npx --yes wrangler@4.14.0 pages project list | grep -qw liquiditymapper; then
+          projects=$(npx --yes wrangler@4.14.0 pages project list)
+          if ! grep -qE '(^|[^a-z0-9-])liquiditymapper([^a-z0-9-]|$)' <<<"$projects"; then
             npx --yes wrangler@4.14.0 pages project create liquiditymapper --production-branch master
           fi
           npx --yes wrangler@4.14.0 pages deploy site --project-name liquiditymapper --branch master --commit-hash "$GITHUB_SHA" --commit-dirty=true
