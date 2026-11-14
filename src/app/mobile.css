@@ -157,11 +157,17 @@ html:not([data-frame="bevel"]) :is(.sheet-field, .sheet .tune-body > .ctl, .shee
 .sheet-field.stack { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 10px 0 12px; }
 .sheet-field.stack > :not(.sheet-label) { flex: none; }
 .sheet-field.stack .sheet-label { flex: none; }
-.sheet .seg.toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
-.sheet .seg.toggles button { border-radius: var(--radius); margin: 0; padding: 0 6px; }
+/* Three to a row, each at least a third of it; a name that a third cannot hold on one line ("Финансирование", "Financiamento", over even at
+   12 px on a 375 px phone, with its tick) takes the width it needs and its row holds two, both grown to the edge. The last row's buttons
+   stay a third wide: the trailing filler takes its spare room (its -8 px cancels its own gap, so it never wraps alone). */
+.sheet .seg.toggles { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.sheet .seg.toggles::after { content: ""; flex: 999 1 0; margin-left: -8px; }
+/* A button is as wide on as off, or a tap would move the buttons under the finger: the tick sits in a margin both sides keep, and the
+   name is made heavier by a shadow, which takes no room, rather than by a bolder face. */
+.sheet .seg.toggles button { position: relative; flex: 1 1 auto; min-width: calc((100% - 16px) / 3); white-space: nowrap; border-radius: var(--radius); margin: 0; padding: 0 22px; }
 /* A switched-on pane is tinted rather than filled black: these are settings, not the primary actions the desktop's inverted buttons suit. */
-.sheet .seg.toggles button.on { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); color: var(--text); font-weight: 650; }
-.sheet .seg.toggles button.on::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; background: var(--ui); -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
+.sheet .seg.toggles button.on { background: color-mix(in srgb, var(--ui) 15%, var(--panel)); border-color: var(--ui); color: var(--text); text-shadow: .45px 0 0 currentColor; }
+.sheet .seg.toggles button.on::before { content: ""; position: absolute; left: 7px; top: 50%; width: 12px; height: 12px; margin-top: -6px; background: var(--ui); -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
 .sheet .seg:is(.scope, .zone-seg) { display: flex; width: 100%; }
 .sheet .seg:is(.scope, .zone-seg) button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
 .sheet .seg:is(.scope, .zone-seg) button:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; } .sheet .seg:is(.scope, .zone-seg) button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
