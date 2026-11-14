@@ -3037,5 +3037,6 @@
  "The page's per-second record starts at {time}": "Sayfanın saniyelik kaydı {time} itibarıyla başlar",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} kaydedilmedi: toplamlarda yok",
  "Not recorded {from}–{to}": "{from}–{to} kaydedilmedi",
- "Orders may be missing {from}–{to}": "{from}–{to} emirler eksik olabilir"
+ "Orders may be missing {from}–{to}": "{from}–{to} emirler eksik olabilir",
+ "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "Her emir görünümünde fiyattan sonraki çubuk emrin dolar tutarının kareköküyle uzar: o büyüklük eşiğinde yaklaşık her on emirden en büyüğünde dolu olur (1.000 $'dan itibaren 50.000 $), ötesinde bir işaret çıkar. Satırın yanındaki kutu ölçeğini söyler."
 }

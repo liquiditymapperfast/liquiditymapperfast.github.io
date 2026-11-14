@@ -273,6 +273,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [t('Each block shows its time and, under it, how far the reference market\'s price moved. Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell.'),
       t('A bar grows with the square root of its dollars, full at about the busiest one percent of blocks in a week: a side ten times larger draws about three times longer, and › marks one past full.'),
       t('Group by sets what a row is: each order, a second, a minute, five or fifteen minutes, or a length of your own. The size menu leaves out smaller orders before they are added up. Older blocks come from what the page already holds: any size from its per-second record, from $25,000 from its recording, smaller sizes only from when it began listening.'),
+      t('In Each order, a bar after the price grows with the square root of the order\'s dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.'),
       t('Point at the list to hold it still; the status counts what came meanwhile. The block you point at is marked on the map and the panes, and a click chooses it for the details beside a wide list and takes the map to its time. On a phone a tap opens its details.')],
   },
   book: {

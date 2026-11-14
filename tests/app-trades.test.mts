@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { BLOCK, BOUNDARY, TapeRing } from '../src/app/tape/ring.ts';
 import type { TapeBatch } from '../src/shared/tape.ts';
 import { TradeIndex, readRecord } from '../src/app/trades/index.ts';
-import { TIERS, amountText, clockForm, rowInk, tierOf, tintOf, tintStops } from '../src/app/trades/style.ts';
+import { ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, rowInk, tierOf } from '../src/app/trades/style.ts';
 import { TRADES_DEFAULTS, readTrades } from '../src/app/trades/settings.ts';
 import { PALETTES, contrastRatio } from '../src/app/theme.ts';
 import { LAYOUT_KEYS, readSettings } from '../src/app/store.ts';
@@ -104,26 +104,21 @@ test('boundaries between two rows: a reconnect between their writes, even when t
   assert.equal(index.boundariesBetween(2, 2), 0);
 });
 
-test('size is told on a fixed scale: four tiers and a log tint, the same whatever the floor', () => {
-  const same = (x: number): number => x, whale = 400_000, stops = tintStops(same, whale, 1_500_000, 0.42);
+test('size is told by four tiers and a bar whose full dollars follow the smallest order', () => {
+  const same = (x: number): number => x, whale = 400_000;
   assert.deepEqual([500, 15_000, 150_000, 450_000, -2_000_000].map(u => tierOf(u, same, whale)), [0, 1, 2, 3, 3]);
   assert.ok(TIERS.every((tier, i) => i === 0 || (tier.row > TIERS[i - 1]!.row && tier.amountPx > TIERS[i - 1]!.amountPx)));
-  assert.equal(tintOf(10, stops), 0.02);
-  assert.equal(tintOf(10_000, stops), 0.06);
-  assert.equal(tintOf(5_000_000, stops), 0.42);
-  let last = 0;
-  for (let u = 100; u < 3e6; u *= 1.3) { const k = tintOf(u, stops); assert.ok(k >= last - 1e-12, `rises with size at ${u}`); last = k; }
   // A coin that trades less: its edges scale with it.
   assert.equal(tierOf(15_000, x => x / 10, 40_000), 2);
-  // A Whale size set under $100K in Sounds: the stops stay in order and the tint never weakens for a larger order.
-  const low = tintStops(same, 30_000, 1_500_000, 0.42);
-  let prev = 0;
-  for (let u = 100; u < 3e6; u *= 1.2) { const k = tintOf(u, low); assert.ok(k >= prev - 1e-12, `rises at ${u}`); prev = k; }
+  // About the order one in ten is larger than at each floor of the menu, rounded; never under ten floors from $100K.
+  assert.deepEqual([0, 1_000, 5_000, 10_000, 25_000, 100_000, 250_000].map(orderBarFull), [20_000, 50_000, 100_000, 150_000, 250_000, 1_000_000, 2_500_000]);
+  let last = 0;
+  for (let f = 0; f < 2e6; f = f * 1.4 + 100) { const v = orderBarFull(f); assert.ok(v >= last && v > f, `full rises past the floor at ${f}`); last = v; }
 });
 
 test('every theme\'s text reads on every tint the list draws', () => {
   for (const [name, p] of Object.entries(PALETTES)) {
-    for (const tint of [0.02, 0.12, 0.18, 0.3, 0.42]) for (const buy of [true, false]) {
+    for (const tint of [0.02, ORDER_TINT, 0.12, 0.18, 0.3, 0.42]) for (const buy of [true, false]) {
       const ink = rowInk(p, buy, tint);
       assert.ok(contrastRatio(ink.text, ink.bg) >= 4.5, `${name} ${buy ? 'buy' : 'sell'} ${tint}: text ${contrastRatio(ink.text, ink.bg).toFixed(2)}`);
       assert.ok(contrastRatio(ink.muted, ink.bg) >= 2.5, `${name} ${buy ? 'buy' : 'sell'} ${tint}: muted ${contrastRatio(ink.muted, ink.bg).toFixed(2)}`);

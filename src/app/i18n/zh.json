@@ -2889,5 +2889,6 @@
  "The page's per-second record starts at {time}": "页面的逐秒记录从 {time} 开始",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} 未录制：合计中不含这段",
  "Not recorded {from}–{to}": "{from}–{to} 未录制",
- "Orders may be missing {from}–{to}": "{from}–{to} 可能缺少订单"
+ "Orders may be missing {from}–{to}": "{from}–{to} 可能缺少订单",
+ "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "在逐笔订单中,价格后的条形按订单美元金额的平方根增长:在该大小下限下约每十笔中最大的一笔时满格(1,000 美元起为 50,000 美元),超过则加标记。行旁的信息框给出其刻度。"
 }

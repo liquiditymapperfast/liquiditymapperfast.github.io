@@ -2889,5 +2889,6 @@
  "The page's per-second record starts at {time}": "ページの秒ごとの記録は {time} から始まります",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} は記録なし：合計に含まれていません",
  "Not recorded {from}–{to}": "{from}–{to} は記録なし",
- "Orders may be missing {from}–{to}": "{from}–{to} は注文が欠けている可能性"
+ "Orders may be missing {from}–{to}": "{from}–{to} は注文が欠けている可能性",
+ "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "注文ごとでは、価格の後のバーが注文のドル額の平方根で伸びます: そのサイズ下限で 10 件に 1 件の最大級の注文あたりで満杯 (1,000 ドル以上なら 50,000 ドル)、それを超えると印が付きます。行の横の枠に目盛りが表示されます。"
 }

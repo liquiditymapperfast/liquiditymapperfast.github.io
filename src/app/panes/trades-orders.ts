@@ -1,6 +1,6 @@
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
-import { clockSeconds, price as fmtPrice } from '../format.ts';
+import { clockSeconds, price as fmtPrice, usd as fmtUsd } from '../format.ts';
 import { drawVenueMark, marksEpoch } from '../venue-marks.ts';
 import { venueLabel } from '../venues.ts';
 import { instrumentShown, mapVenues } from '../cvd/ids.ts';
@@ -14,7 +14,7 @@ import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { TradeIndex, readRecord, type TradeRecord } from '../trades/index.ts';
 import { RetainedRows } from './retained-rows.ts';
-import { DIVIDER_ROW, InkCache, TIERS, amountText, clockForm, tierOf, tintOf, tintStops } from '../trades/style.ts';
+import { DIVIDER_ROW, InkCache, ORDER_TINT, TIERS, amountText, clockForm, orderBarFull, tierOf, type Tier } from '../trades/style.ts';
 import { GROUP_MS } from '../trades/settings.ts';
 import type { TnsLine } from '../tns/model.ts';
 import type { Store } from '../store.ts';
@@ -34,6 +34,13 @@ const CATCH_UP_MAX = 50_000;
 export const TINT_TOP_DARK = 0.42, TINT_TOP_LIGHT = 0.34;
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Where an order row's parts go at this width, worked out once a frame and shared by the tape's rows and the recording's: the bar starts
+ * after a column for the coin's widest price and stops before one for the widest amount and a count, so every row's bar is on one scale.
+ */
+interface RowGeom { form: ReturnType<typeof clockForm>; clockW: number; xMark: number; xSide: number; xPrice: number; xBar: number; barRoom: number; xRight: number; full: number }
+/** What an order row shows (one order, or the orders a row groups): its time, price, signed dollars, market and how many orders. */
+interface RowOrder { t: number; price: number; usd: number; id: string; orders: number }
 /** A row of a frame (device pixels), laid out before anything is drawn: its signature and what draws it. */
 interface Item { sig: string; y: number; h: number; fixed: boolean; kind: 'row' | 'divider' | 'note'; rec: TradeRecord | null; shown: TradeRecord | null; tier: (typeof TIERS)[number]; orders: number; usd: number; showTime: boolean; outlined: boolean; reasons: number; words: string }
 /** A line the last frame drew: an order (or a burst of them when grouping is on), or a divider where orders may be missing. */
@@ -72,6 +79,8 @@ export class OrderList {
   readonly rows = new RetainedRows();
   #items: Item[] = []; #itemPool: Item[] = [];
   #epoch = 0;
+  /** The bar's full dollars as the last frame drew it (the box beside a row says it). */
+  #barFull = 0;
   #scanTimer = 0;
   /** What the index was found for: the list's settings and the venues the map shows (a venue's book joining the map lets its orders in). */
   #filterKey = '';
@@ -364,8 +373,7 @@ export class OrderList {
       const left = this.#remainingSlide();
       if (left <= 0.5) this.#slide = null; else y = -left;
     }
-    const { whale, leviathan } = this.#whale(), s = this.store.state.trades;
-    const top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, stops = tintStops(scaledUsd, whale, leviathan, top), form = clockForm(w);
+    const { whale, leviathan } = this.#whale(), s = this.store.state.trades, form = clockForm(w);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.font = `11px ${MONO}`;
     const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width;
@@ -412,24 +420,26 @@ export class OrderList {
     let hover = history ? null : this.#hovered();
     if (hover) for (const it of this.#items) if (it.kind === 'row' && it.rec?.k === hover.row.k) { it.outlined = true; it.sig += '|o'; break; }
     if (expired) { const words = t('Older orders have left memory'), it = this.#item(`x|${words}`, 0, Math.round(DIVIDER_ROW * dpr), 'note', true); it.words = words; }
+    // The rows' parts, from the newest row's price (its digits size the price column; a coin crossing a digit draws the frame whole).
+    const firstRow = this.#items.find(x => x.kind === 'row'), g = this.#geom(ctx, w, firstRow?.shown?.price ?? this.#historyPrice());
     // What the rows' pixels depend on beyond their own signatures (a cleared ring numbers its writes from 0 again): any change draws the
     // whole frame.
-    const look = `${w}|${h}|${dpr}|${ring.generation}|${this.#epoch}|${marksEpoch()}|${whale}|${leviathan}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}`;
+    const look = `${w}|${h}|${dpr}|${ring.generation}|${this.#epoch}|${marksEpoch()}|${whale}|${leviathan}|${form}|${clockW}|${s.group}|${replay}|${document.documentElement.lang}|${g.xBar}|${g.barRoom}|${g.full}`;
     if (history) this.rows.reset();
     const items = this.#items, draw = this.rows.plan(ctx, look, items, 1, H, p.panel, Math.min(H, yd));
-    const fw = this.#canvas.width / dpr, xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
+    const fw = this.#canvas.width / dpr;
     for (let i = 0; i < items.length; i++) {
       if (!draw[i]) continue;
       const it = items[i]!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, it.y);
       const fh = it.h / dpr;
-      if (it.kind === 'row') this.#paintRow(ctx, it, fw, fh, stops, top, form, xMark, xSide, xPrice, xRight, p);
+      if (it.kind === 'row') this.#drawOrder(ctx, g, { t: it.rec!.t, price: it.shown!.price, usd: it.usd, id: it.rec!.id, orders: it.orders }, 0, it.tier, fh, fw, it.showTime, it.outlined, p);
       else if (it.kind === 'divider') this.#paintDivider(ctx, 0, w, it.reasons, p, fh, fw);
       else { ctx.fillStyle = p.panel; ctx.fillRect(0, 0, fw, fh); this.#paintNote(ctx, 0, w, it.words, p, fh); }
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (history) {
-      this.#paintHistory(ctx, yd / dpr, w, h, p, drawn);
+      this.#paintHistory(ctx, yd / dpr, w, h, p, drawn, g);
       hover = this.#hovered();
       if (hover) { const r = hover.row; ctx.strokeStyle = p.text; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.strokeRect(0.5, r.y + 0.5, w - 1, r.h - 1); ctx.globalAlpha = 1; }
       // Drawn over rows past what their signatures say: the next frame is drawn whole.
@@ -459,30 +469,57 @@ export class OrderList {
     return row ? { row, pinned: false } : null;
   }
 
-  /** One order's row in its own coordinates (its top at 0), `fh` CSS px tall (its device height): the tint, the time, the mark, the side, the price, the size. */
-  #paintRow(ctx: CanvasRenderingContext2D, it: Item, fw: number, fh: number, stops: ReturnType<typeof tintStops>, top: number, form: ReturnType<typeof clockForm>, xMark: number, xSide: number, xPrice: number, xRight: number, p: Palette): void {
-    const rec = it.rec!, shown = it.shown!, buy = rec.usd > 0, signed = it.usd, usd = Math.abs(signed), tier = it.tier;
-    const ink = this.#inks.get(p, buy, tintOf(signed, stops), top), mid = tier.row / 2;
-    ctx.fillStyle = ink.bg; ctx.fillRect(0, 0, fw, fh);
-    ctx.textBaseline = 'middle';
-    if (it.showTime) {
-      const second = clockSeconds(rec.t);
-      ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left';
-      ctx.fillText(form === 'hms' ? second : second.slice(3), PAD, mid);
-    }
-    drawVenueMark(ctx, rec.id, xMark, mid, MARK, this.#dpr);
-    // The side's glyph in its colour where that reads on the row; on a strong tint of its own colour, in the row's text colour.
+  /**
+   * The rows' parts at this width (`RowGeom`): the clock, the mark, the side, the price at their places as before; the bar from after a
+   * column for the coin's price (the font is monospaced, so a column is digits) to before one for the widest amount ("$999.9K" at the
+   * largest tier) and, where rows group orders, a count ("×99"); no bar where that leaves under 24 px. Its full dollars follow the smallest
+   * order.
+   */
+  #geom(ctx: CanvasRenderingContext2D, w: number, refPrice: number): RowGeom {
+    const form = clockForm(w), big = TIERS[TIERS.length - 1]!;
+    ctx.font = `11px ${MONO}`;
+    const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width, digit11 = ctx.measureText('0').width;
+    ctx.font = `13px ${MONO}`; const digit13 = ctx.measureText('0').width;
+    ctx.font = `${big.weight} ${big.amountPx}px ${MONO}`; const digitBig = ctx.measureText('0').width;
+    const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
+    const counts = this.store.state.trades.group ? 3 * digit11 + GAP : 0;
+    const xBar = Math.round(xPrice + fmtPrice(refPrice).length * digit13 + GAP), room = Math.floor(xRight - 7 * digitBig - counts - GAP - xBar);
+    const full = scaledUsd(orderBarFull(this.store.state.trades.minUsd));
+    this.#barFull = full;
+    return { form, clockW, xMark, xSide, xPrice, xBar, barRoom: room >= 24 ? room : 0, xRight, full };
+  }
+  /**
+   * One order row from `y0` (0 in a row's own coordinates; the recording's rows pass their place), its tier's height, filled `fh` tall (its
+   * drawn height) and `fw` wide: the faint tint of its side, the time once per second-run, the mark, the side, the price, the bar (the
+   * square root of its dollars over the full dollars, a mark past them) and the size. The tape's rows and the recording's are drawn alike.
+   */
+  #drawOrder(ctx: CanvasRenderingContext2D, g: RowGeom, o: RowOrder, y0: number, tier: Tier, fh: number, fw: number, showTime: boolean, outlined: boolean, p: Palette): void {
+    const buy = o.usd > 0, usd = Math.abs(o.usd), top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, ink = this.#inks.get(p, buy, ORDER_TINT, top), mid = y0 + tier.row / 2;
     const sideInk = buy ? p.candleUp : p.candleDown;
+    ctx.fillStyle = ink.bg; ctx.fillRect(0, y0, fw, fh);
+    ctx.textBaseline = 'middle';
+    if (showTime && g.clockW) {
+      const second = clockSeconds(o.t);
+      ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left';
+      ctx.fillText(g.form === 'hms' ? second : second.slice(3), PAD, mid);
+    }
+    drawVenueMark(ctx, o.id, g.xMark, mid, MARK, this.#dpr);
+    // The side's glyph in its colour where that reads on the row, else in the row's text colour.
     ctx.font = `10px ${MONO}`; ctx.fillStyle = contrastRatio(sideInk, ink.bg) >= 3 ? sideInk : ink.text; ctx.textAlign = 'left';
-    ctx.fillText(buy ? '▲' : '▼', xSide, mid);
+    ctx.fillText(buy ? '▲' : '▼', g.xSide, mid);
     ctx.font = `13px ${MONO}`; ctx.fillStyle = ink.text;
-    ctx.fillText(fmtPrice(shown.price), xPrice, mid);
-    ctx.textAlign = 'right';
+    ctx.fillText(fmtPrice(o.price), g.xPrice, mid);
+    if (g.barRoom) {
+      const bh = tier.row >= 30 ? 12 : 10, len = Math.max(1, Math.round(g.barRoom * Math.min(1, Math.sqrt(usd / g.full))));
+      ctx.fillStyle = sideInk; ctx.globalAlpha = 0.85; ctx.fillRect(g.xBar, mid - bh / 2, len, bh); ctx.globalAlpha = 1;
+      if (usd > g.full) { ctx.font = `700 12px ${MONO}`; ctx.fillStyle = sideInk; ctx.fillText('›', g.xBar + g.barRoom + 2, mid); }
+    }
+    ctx.textAlign = 'right'; ctx.fillStyle = ink.text;
     ctx.font = `${tier.weight} ${tier.amountPx}px ${MONO}`;
     const amount = amountText(usd);
-    ctx.fillText(amount, xRight, mid);
-    if (it.orders > 1) { const aw = ctx.measureText(amount).width; ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.fillText(`×${it.orders}`, xRight - aw - GAP, mid); }
-    if (it.outlined) { ctx.strokeStyle = p.text; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, this.#w - 1, fh - 1); ctx.globalAlpha = 1; }
+    ctx.fillText(amount, g.xRight, mid);
+    if (o.orders > 1) { const aw = ctx.measureText(amount).width; ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.fillText(`×${o.orders}`, g.xRight - aw - GAP, mid); }
+    if (outlined) { ctx.strokeStyle = p.text; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.strokeRect(0.5, y0 + 0.5, this.#w - 1, fh - 1); ctx.globalAlpha = 1; }
   }
 
   #lines(row: Extract<Drawn, { kind: 'row' }>): InfoLine[] {
@@ -495,11 +532,14 @@ export class OrderList {
     if (r.hi > r.lo) lines.push({ label: t('Range'), text: `${fmtPrice(r.lo)} – ${fmtPrice(r.hi)}` });
     if (row.orders > 1) lines.push({ label: t('Orders'), text: String(row.orders) });
     lines.push({ label: t('Time'), text: `${clockSeconds(r.t)}.${ms}` });
+    if (this.#barFull > 0) lines.push({ text: t('√ size, full ${usd}', { usd: fmtUsd(this.#barFull) }), color: 'muted' });
     // Only where a click does it: not on a phone (the map is another tab), not for a finger (a tap pins the row), not in a replay.
     if (!replaying() && !isPhone() && !this.#lastTouch) lines.push({ text: t('Click to show it on the map'), color: 'muted' });
     return lines;
   }
 
+  /** The newest recorded order's price (0: none), for the price column's digits when no tape row gives them. */
+  #historyPrice(): number { for (const l of this.history) if (l.k !== 'gap') return l.price; return 0; }
   /** The height the recording's rows take below the tape's oldest order (the line before them included): how far the list scrolls past it. */
   #historyHeight(): number {
     if (!this.history.length) return 0;
@@ -512,15 +552,12 @@ export class OrderList {
    * The recording's rows (Time & sales' hour, newest first, its holes as lines), drawn in the list's own look from `y`: a line first, then
    * each order as the tape's are. A row's write number is negative (it is not the ring's), so it is pointed at and clicked like any other.
    */
-  #paintHistory(ctx: CanvasRenderingContext2D, y: number, w: number, h: number, p: Palette, drawn: Drawn[]): void {
+  #paintHistory(ctx: CanvasRenderingContext2D, y: number, w: number, h: number, p: Palette, drawn: Drawn[], geom?: RowGeom): void {
     // Rows and lines wholly above the top are passed, not drawn: scrolled deep into the recording, hundreds of them lie above the list, and
     // drawing them all every frame (each batch while held) took a phone's frame and more.
     if (y + DIVIDER_ROW > 0) { this.#paintNote(ctx, y, w, this.historyNote, p); drawn.push({ kind: 'divider', y, h: DIVIDER_ROW, reasons: 0 }); }
     y += DIVIDER_ROW;
-    const { whale, leviathan } = this.#whale(), top = p.dark ? TINT_TOP_DARK : TINT_TOP_LIGHT, stops = tintStops(scaledUsd, whale, leviathan, top), form = clockForm(w);
-    ctx.font = `11px ${MONO}`;
-    const clockW = form === 'none' ? 0 : ctx.measureText(form === 'hms' ? '00:00:00' : '00:00').width;
-    const xMark = PAD + (clockW ? clockW + GAP : 0) + MARK / 2, xSide = xMark + MARK / 2 + GAP, xPrice = xSide + 10 + GAP, xRight = w - PAD;
+    const whale = this.#whale().whale, g = geom ?? this.#geom(ctx, w, this.#historyPrice()), fw = this.#canvas.width / this.#dpr;
     // The time once per second-run (whole seconds compare as the written clock does: zones differ from UTC by whole minutes).
     let lastSec = NaN;
     for (let i = 0; i < this.history.length && y < h; i++) {
@@ -534,19 +571,8 @@ export class OrderList {
       }
       const buy = l.side === 'buy', signed = buy ? l.usd : -l.usd, tier = TIERS[tierOf(signed, scaledUsd, whale)]!, rowH = tier.row, sec = Math.floor(l.t / 1000);
       if (y + rowH <= 0) { lastSec = sec; y += rowH; continue; }
-      const ink = this.#inks.get(p, buy, tintOf(signed, stops), top), mid = y + rowH / 2;
-      ctx.fillStyle = ink.bg; ctx.fillRect(0, y, w, rowH);
-      if (clockW && sec !== lastSec) { const second = clockSeconds(l.t); ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.textAlign = 'left'; ctx.fillText(form === 'hms' ? second : second.slice(3), PAD, mid); }
+      this.#drawOrder(ctx, g, { t: l.t, price: l.price, usd: signed, id: l.id, orders: l.orders }, y, tier, rowH, fw, sec !== lastSec, false, p);
       lastSec = sec;
-      drawVenueMark(ctx, l.id, xMark, mid, MARK);
-      const sideInk = buy ? p.candleUp : p.candleDown;
-      ctx.font = `10px ${MONO}`; ctx.fillStyle = contrastRatio(sideInk, ink.bg) >= 3 ? sideInk : ink.text; ctx.textAlign = 'left';
-      ctx.fillText(buy ? '▲' : '▼', xSide, mid);
-      ctx.font = `13px ${MONO}`; ctx.fillStyle = ink.text; ctx.fillText(fmtPrice(l.price), xPrice, mid);
-      ctx.textAlign = 'right'; ctx.font = `${tier.weight} ${tier.amountPx}px ${MONO}`;
-      const amount = amountText(l.usd);
-      ctx.fillText(amount, xRight, mid);
-      if (l.orders > 1) { const aw = ctx.measureText(amount).width; ctx.font = `11px ${MONO}`; ctx.fillStyle = ink.muted; ctx.fillText(`×${l.orders}`, xRight - aw - GAP, mid); }
       drawn.push({ kind: 'row', k: -1 - i, y, h: rowH, rec: { k: -1 - i, t: l.t, price: l.price, usd: signed, id: l.id, lo: l.lo, hi: l.hi }, orders: l.orders, usd: signed });
       y += rowH;
     }

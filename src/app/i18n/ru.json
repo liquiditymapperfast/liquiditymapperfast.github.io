@@ -3137,5 +3137,6 @@
  "The page's per-second record starts at {time}": "Посекундная запись страницы начинается в {time}",
  "Not recorded {from}–{to}: the totals miss it": "Не записано {from}–{to}: в итогах этого нет",
  "Not recorded {from}–{to}": "Не записано {from}–{to}",
- "Orders may be missing {from}–{to}": "Возможно, не хватает ордеров {from}–{to}"
+ "Orders may be missing {from}–{to}": "Возможно, не хватает ордеров {from}–{to}",
+ "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "В режиме «Каждый ордер» полоска после цены растёт как квадратный корень из долларов ордера: полная примерно на самом крупном ордере из десяти при этом минимальном размере (50 000 $ от 1 000 $), дальше — отметка. Окошко рядом со строкой называет масштаб."
 }

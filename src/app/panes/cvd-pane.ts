@@ -243,6 +243,8 @@ export class CvdPane {
     this.onVisibility();
     if (view === this.#shownView) { this.#fitName(); if (flow && visible) this.invalidate(); return; }
     this.#shownView = view;
+    // The view on the pane itself, for the stylesheet (a phone gives Trades' header one row of keys, the Flow view two).
+    this.root.dataset.view = view;
     this.#panel?.close(); this.#panel = null;
     this.#wrap.hidden = !flow; this.#readout.hidden = !flow; this.#helpFlow.hidden = !flow; this.#helpTrades.hidden = flow;
     if (this.#cells) this.#cells.hidden = !flow;

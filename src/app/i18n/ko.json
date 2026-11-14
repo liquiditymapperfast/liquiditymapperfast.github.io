@@ -2889,5 +2889,6 @@
  "The page's per-second record starts at {time}": "페이지의 초 단위 기록은 {time}부터입니다",
  "Not recorded {from}–{to}: the totals miss it": "{from}–{to} 기록 없음: 합계에 빠져 있음",
  "Not recorded {from}–{to}": "{from}–{to} 기록 없음",
- "Orders may be missing {from}–{to}": "{from}–{to} 주문이 빠졌을 수 있음"
+ "Orders may be missing {from}–{to}": "{from}–{to} 주문이 빠졌을 수 있음",
+ "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "주문마다에서는 가격 뒤의 막대가 주문 금액(달러)의 제곱근만큼 자랍니다: 그 크기 하한에서 열 건 중 가장 큰 주문쯤에서 가득 차며(1,000달러부터면 50,000달러), 넘으면 표시가 붙습니다. 행 옆의 상자가 눈금을 알려 줍니다."
 }

@@ -23,27 +23,20 @@ export function tierOf(usd: number, scale: (usd: number) => number, whale: numbe
 }
 
 /**
- * The tint's stops: (dollars, share of the side's colour mixed into the panel). Quiet at the low end so a screen of small orders stays calm
- * and every theme's text reads on it (Sol computed the theme text's contrast over the 23 palettes at 4.84:1 or more up to 22%); the top end
- * (the Leviathan size of Sounds, $1.5M for BTC) chosen by eye on real orders, so the rare order stands out as a near-solid fill.
+ * An order row's share of its side's colour, the same for every size: the row says buy or sell at a glance and its bar says how much
+ * (Karl, 2026-11-14: the empty room between the price and the size; the size tint it replaces told size a third way, after the row's height
+ * and the amount's weight, and a side-coloured bar on a strong tint of its own side faded on exactly the largest orders). Within the shares
+ * every theme's text was checked to read on (up to 22 %, Sol, over the 23 palettes).
  */
-export function tintStops(scale: (usd: number) => number, whale: number, leviathan: number, top: number): [number, number][] {
-  // In order of size whatever the tiers of Sounds are (its Whale size may be set under $100K), and never weaker for a larger order.
-  const stops: [number, number][] = [[scale(1_000), 0.02], [scale(10_000), 0.06], [scale(100_000), 0.12], [whale, 0.18], [Math.max(leviathan, whale * 1.5), top]];
-  stops.sort((a, b) => a[0] - b[0]);
-  for (let i = 1; i < stops.length; i++) stops[i]![1] = Math.max(stops[i]![1], stops[i - 1]![1]);
-  return stops;
-}
-/** The share of the side's colour for an order of `usd`, interpolated in log dollars between the stops (flat beyond the ends). */
-export function tintOf(usd: number, stops: readonly [number, number][]): number {
-  const a = Math.abs(usd);
-  if (!(a > stops[0]![0])) return stops[0]![1];
-  for (let i = 1; i < stops.length; i++) {
-    const [x1, y1] = stops[i]!, [x0, y0] = stops[i - 1]!;
-    if (x1 <= x0) continue; // two stops at one size (a Whale size of exactly $100K): no span to interpolate over
-    if (a <= x1) return y0 + (y1 - y0) * (Math.log(a / x0) / Math.log(x1 / x0));
-  }
-  return stops[stops.length - 1]![1];
+export const ORDER_TINT = 0.07;
+/**
+ * The dollars an order's bar is full at, for the list's smallest order (store dollars, before the coin's scale): about the order one in ten
+ * is larger than at that floor (fills of one market and side in a 100 ms slice merged), on BTC's busiest twenty minutes of 2026-11-13 across
+ * 11 markets, rounded: $19.7K with no floor, $60.9K from $1K, $116K from $5K, $168K from $10K, $297K from $25K, $824K from $100K. The bar is
+ * the square root of the dollars over this, so a median order from $1K ($6.4K) draws over a third of it; one row in ten passes it (a mark).
+ */
+export function orderBarFull(minUsd: number): number {
+  return minUsd < 1_000 ? 20_000 : minUsd < 5_000 ? 50_000 : minUsd < 10_000 ? 100_000 : minUsd < 25_000 ? 150_000 : minUsd < 100_000 ? 250_000 : Math.max(1_000_000, minUsd * 10);
 }
 
 /** The colours of a row: its background, its text, and its quiet text (time, counts), each reading on that background. */

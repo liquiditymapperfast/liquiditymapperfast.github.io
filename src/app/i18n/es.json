@@ -3095,5 +3095,6 @@
  "The page's per-second record starts at {time}": "El registro por segundo de la página empieza a las {time}",
  "Not recorded {from}–{to}: the totals miss it": "No grabado {from}–{to}: los totales no lo incluyen",
  "Not recorded {from}–{to}": "No grabado {from}–{to}",
- "Orders may be missing {from}–{to}": "Pueden faltar órdenes {from}–{to}"
+ "Orders may be missing {from}–{to}": "Pueden faltar órdenes {from}–{to}",
+ "In Each order, a bar after the price grows with the square root of the order's dollars: full at about the largest order in ten at that size floor ($50,000 from $1,000), a mark past it. The box beside a row gives its scale.": "En Cada orden, una barra tras el precio crece con la raíz cuadrada de los dólares de la orden: llena hacia la mayor de cada diez órdenes con ese tamaño mínimo (50.000 $ desde 1.000 $), con una marca más allá. El recuadro junto a una fila indica su escala."
 }

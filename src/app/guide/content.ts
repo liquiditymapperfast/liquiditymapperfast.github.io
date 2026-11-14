@@ -178,6 +178,7 @@ export const SECTIONS: readonly Section[] = [
         'Each block has its time and, under it, how far the price moved: the reference market\'s volume-weighted price in the block\'s last second against the second before (Binance\'s perpetual for BTC, else the most traded market the coin has).',
         'Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell. A bar grows with the square root of its dollars: ten times more draws about three times longer.',
         '**Group by** sets what a row is: each order, a second, one, five or fifteen minutes, or a length of your own. A run of seconds with no order is one line. **Smallest order** leaves out smaller orders before they are added up.',
+        'In **Each order**, a bar after the price grows with the square root of the order\'s dollars, full at about the largest order in ten at that size floor; past it, a mark. The box beside a row gives the scale.',
         'Older blocks come from what the page already holds, and nothing is fetched: any size from its per-second record of every exchange, from $25,000 from its recording of large orders, smaller sizes only from when the page began listening.',
         'Point at the list to hold it still. Beside a wide list, the details of the newest second (or the block you click) show each market\'s dollars and price move, the largest orders, and notes such as large orders on several exchanges within 5 ms.',
       ] },
