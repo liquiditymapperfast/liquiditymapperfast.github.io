@@ -8,7 +8,8 @@
  * navigation entry: a fragment another window sets later, which keeps the document and its referrer, is never read), only on a plain
  * navigation (not a reload or a step back), only once per browser, and only into a browser that has no layouts, drawings or scripts here
  * yet, so nothing made here is ever overwritten or mixed with older work: all of it or none. The fragment is always removed from the
- * address (a guide section it carried is put back). Remove this module once the old address stops handing over.
+ * address; a guide section the old address was opened on rides after the data (`~guide/ladder`) and is put back whatever happens to the
+ * data. Remove this module once the old address stops handing over.
  */
 
 export const OLD_ORIGIN = 'https://liquiditymapperfast.github.io';
@@ -19,6 +20,8 @@ export const DONE_KEY = 'hlm-handover-v1';
 export const OWN_WORK = ['hlm-layouts-v1', 'hlm-drawings-v1', 'hlm-scripts-v1'] as const;
 /** The longest hand-over read (characters after the prefix); the old page keeps the whole address under 1,000,000 (Firefox's limit is 2^20). */
 export const MAX_CHARS = 1_000_000;
+/** The most a hand-over unpacks to (bytes): more than a browser lets a site store, and a bound on what a small fragment may inflate to. */
+export const MAX_BYTES = 6_000_000;
 
 /** The keys a hand-over may write: the page's own (`hlm-…`, `lmf.…`), never the cached coin list, the stale-build marks or the marker. */
 export function handedKey(key: string): boolean {
@@ -40,8 +43,23 @@ const fromBase64Url = (data: string): Uint8Array | null => {
     return bytes;
   } catch { return null; }
 };
-const through = async (bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> =>
-  new Uint8Array(await new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream)).arrayBuffer());
+/** `bytes` through a (de)compression stream, or null past `MAX_BYTES`. */
+async function through(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array | null> {
+  const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(stream).getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > MAX_BYTES) { void reader.cancel(); return null; }
+    parts.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const part of parts) { out.set(part, at); at += part.length; }
+  return out;
+}
 
 /**
  * Text to the fragment's form: `z` and deflate-raw where the browser compresses (a settings object shrinks several times), else `j` and the
@@ -49,7 +67,10 @@ const through = async (bytes: Uint8Array, stream: CompressionStream | Decompress
  */
 export async function encode(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
-  if (typeof CompressionStream === 'function') return `z${toBase64Url(await through(bytes, new CompressionStream('deflate-raw')))}`;
+  try {
+    const packed = typeof CompressionStream === 'function' ? await through(bytes, new CompressionStream('deflate-raw')) : null;
+    if (packed) return `z${toBase64Url(packed)}`;
+  } catch { /* a browser that has the stream but not this format: the plain form */ }
   return `j${toBase64Url(bytes)}`;
 }
 
@@ -58,29 +79,32 @@ export async function decode(data: string): Promise<string | null> {
   const mode = data[0], bytes = fromBase64Url(data.slice(1));
   if (!bytes) return null;
   try {
-    if (mode === 'j') return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    if (mode === 'z' && typeof DecompressionStream === 'function') return new TextDecoder('utf-8', { fatal: true }).decode(await through(bytes, new DecompressionStream('deflate-raw')));
+    const raw = mode === 'j' ? bytes : mode === 'z' && typeof DecompressionStream === 'function' ? await through(bytes, new DecompressionStream('deflate-raw')) : null;
+    if (raw && raw.length <= MAX_BYTES) return new TextDecoder('utf-8', { fatal: true }).decode(raw);
   } catch { /* not UTF-8, or not a deflate stream */ }
   return null;
 }
 
-/** What a hand-over carries: the items (`{ v: 1, items: { key: value }, guide? }`) and the guide section the old address was opened on. */
-export interface Handed { items: Record<string, string>; guide: string }
-
-/** The hand-over in `text`, or null when it is malformed or carries a key it may not write. */
-export function itemsOf(text: string): Handed | null {
+/** The items a hand-over carries (`{ v: 1, items: { key: value } }`), or null when it is malformed or carries a key it may not write. */
+export function itemsOf(text: string): Record<string, string> | null {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { return null; }
   if (!parsed || typeof parsed !== 'object' || (parsed as { v?: unknown }).v !== 1) return null;
-  const { items, guide } = parsed as { items?: unknown; guide?: unknown };
+  const items = (parsed as { items?: unknown }).items;
   if (!items || typeof items !== 'object' || Array.isArray(items)) return null;
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(items)) {
     if (!handedKey(key) || typeof value !== 'string') return null;
     out[key] = value;
   }
-  if (!Object.keys(out).length) return null;
-  return { items: out, guide: typeof guide === 'string' && /^#guide(?:\/[a-z-]+)?$/.test(guide) ? guide : '' };
+  return Object.keys(out).length ? out : null;
+}
+
+/** The guide section a hand-over fragment names after its data (`…~guide/ladder` gives `#guide/ladder`), or ''. */
+export function guideOf(hash: string): string {
+  const at = hash.lastIndexOf('~');
+  const section = at < 0 ? '' : hash.slice(at + 1);
+  return /^guide(?:\/[a-z-]+)?$/.test(section) ? `#${section}` : '';
 }
 
 export type Gate = { data: string } | { skip: 'none' | 'not-navigate' | 'referrer' | 'done' | 'own-work' | 'too-long' };
@@ -96,7 +120,7 @@ export function gate(url: string, type: string, referrer: string, has: (key: str
   if (referrer !== OLD_ORIGIN && !referrer.startsWith(`${OLD_ORIGIN}/`)) return { skip: 'referrer' };
   if (has(DONE_KEY)) return { skip: 'done' };
   if (OWN_WORK.some(has)) return { skip: 'own-work' };
-  const data = url.slice(at + PREFIX.length);
+  const data = url.slice(at + PREFIX.length).split('~')[0]!;
   return data.length <= MAX_CHARS ? { data } : { skip: 'too-long' };
 }
 
@@ -125,15 +149,15 @@ export function withHash(href: string, hash: string): string {
 /** Takes a hand-over this document was loaded with, if there is one and this is not the old address. */
 export async function takeHandover(): Promise<void> {
   if (typeof location === 'undefined' || location.origin === OLD_ORIGIN || !location.hash.startsWith(PREFIX)) return;
-  let guide = '';
+  const guide = guideOf(location.hash);
   try {
     const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
     const storage = window.localStorage;
     const verdict: Gate = entry ? gate(entry.name, entry.type, document.referrer, key => storage.getItem(key) !== null) : { skip: 'none' };
     if ('data' in verdict) {
       const text = await decode(verdict.data);
-      const handed = text === null ? null : itemsOf(text);
-      if (handed) { guide = handed.guide; write(storage, handed.items, Date.now()); }
+      const items = text === null ? null : itemsOf(text);
+      if (items) write(storage, items, Date.now());
     }
   } catch { /* storage unavailable: the page starts as a new visitor's */ }
   try { history.replaceState(history.state, '', withHash(location.href, guide)); } catch { /* the fragment stays in the address; it is taken once */ }

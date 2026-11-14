@@ -39,9 +39,11 @@
       }
       function encode(text) {
         var bytes = new TextEncoder().encode(text);
-        if (typeof CompressionStream !== 'function') return Promise.resolve('j' + base64url(bytes));
-        var stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-        return new Response(stream).arrayBuffer().then(function (buffer) { return 'z' + base64url(new Uint8Array(buffer)); });
+        var plainForm = function () { return 'j' + base64url(bytes); };
+        if (typeof CompressionStream !== 'function') return Promise.resolve(plainForm());
+        return Promise.resolve().then(function () {
+          return new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+        }).then(function (buffer) { return 'z' + base64url(new Uint8Array(buffer)); }, plainForm);
       }
       function saved(storage) {
         var items = {}, count = 0;
@@ -63,8 +65,8 @@
       function target(loc, storage) {
         var p = plain(loc), items = p.root ? saved(storage) : null;
         if (!items) return Promise.resolve(p.url + p.guide);
-        return encode(JSON.stringify(p.guide ? { v: 1, items: items, guide: p.guide } : { v: 1, items: items })).then(function (data) {
-          var full = p.url + PREFIX + data;
+        return encode(JSON.stringify({ v: 1, items: items })).then(function (data) {
+          var full = p.url + PREFIX + data + (p.guide ? '~' + p.guide.slice(1) : '');
           return full.length <= MAX_URL ? full : p.url + p.guide;
         }, function () { return p.url + p.guide; });
       }
