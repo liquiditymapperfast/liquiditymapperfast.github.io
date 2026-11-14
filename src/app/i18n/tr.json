@@ -2064,8 +2064,8 @@
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "Fare tekerleği zamanı ve fiyatı birlikte yakınlaştırır; geçmişe bakmak için sürükleyin. Değerini okumak için herhangi bir şeyin üzerine gelin, şimdiye dönmek için R tuşuna basın.",
  "Right-drag to zoom": "Sağ sürükleyerek yakınlaştır",
  "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "Grafikte sağ tuşu basılı tutup sürükleyin: sağa veya sola zamanı, yukarı veya aşağı fiyatı yakınlaştırır. Tekerlek ikisini birden, sol sürükleme geçmişe bakar, R şimdiye döner.",
- "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "Piyasa emriyle kimin alıp sattığı, borsa borsa. Bu panel şu an kapalı; kenardaki sekme onu açar.",
- "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "Piyasa emriyle kimin alıp sattığı, borsa borsa ve ne zaman. Aynı an haritada da işaretlenir.",
+ "What traded at market: every order as it arrives, or each exchange's buying and selling over time. It is closed now: its tab at the edge opens it.": "Piyasada işlem gören: gelen her emir ya da her borsanın zaman içindeki alış ve satışı. Bu panel şu an kapalı; kenardaki sekme onu açar.",
+ "What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange's buying and selling over time, with the same moment marked on the map.": "Piyasada işlem gören. Şerit gelen her emri en yenisi üstte listeler; Akış sekmesi her borsanın alış ve satışını zaman içinde çizer, aynı an haritada da işaretlenir.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "Canlı emir defteri, fiyat merdiveni biçiminde. Şu an kapalı; kenardaki sekme onu açar.",
  "The live order book as a ladder of prices: what waits above and below the price right now.": "Canlı emir defteri, fiyat merdiveni biçiminde: fiyatın şu anda üstünde ve altında bekleyenler.",
  "Tap the coin to switch to another one. Every view follows it.": "Coin’e dokunarak başka birini seçin. Tüm görünümler onu takip eder.",
@@ -3044,5 +3044,6 @@
  "Tape as a list": "Şerit liste olarak",
  "The tape as a chart: every trade since the page opened, by price, with the book on both sides.": "Grafik olarak şerit: sayfa açıldığından beri her işlem, fiyata göre, iki yanda emir defteriyle.",
  "The tape as a list: every order as it arrives, newest on top.": "Liste olarak şerit: gelen her emir, en yenisi üstte.",
- "List": "Liste"
+ "List": "Liste",
+ "Flow and Tape": "Akış ve Şerit"
 }

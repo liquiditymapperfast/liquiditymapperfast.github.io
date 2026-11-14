@@ -1985,8 +1985,8 @@
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "滚轮可同时缩放时间和价格，拖动可回看过去。指向任意位置即可查看数值，按 R 回到当前。",
  "Right-drag to zoom": "右键拖动缩放",
  "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "在图表上按住鼠标右键拖动：左右缩放时间，上下缩放价格。滚轮同时缩放两者，左键拖动回看过去，按 R 回到当前。",
- "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "谁在以市价买入、卖出，按交易所分别显示。目前已关闭：点边缘的标签即可打开。",
- "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "谁在以市价买入、卖出，按交易所和时间分别显示。同一时刻会在地图上标出。",
+ "What traded at market: every order as it arrives, or each exchange's buying and selling over time. It is closed now: its tab at the edge opens it.": "以市价成交的内容：每一笔到达的订单，或各交易所随时间的买卖。目前已关闭：点边缘的标签即可打开。",
+ "What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange's buying and selling over time, with the same moment marked on the map.": "以市价成交的内容。逐笔按到达顺序列出每一笔订单，最新的在上；资金流标签画出各交易所随时间的买卖，同一时刻也会在地图上标出。",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "实时订单簿，按价格逐级排列。目前已关闭：点边缘的标签即可打开。",
  "The live order book as a ladder of prices: what waits above and below the price right now.": "实时订单簿，按价格逐级排列：此刻价格上方和下方有哪些挂单在等待。",
  "Tap the coin to switch to another one. Every view follows it.": "点按币种可切换到其他币种，所有视图都会随之变化。",
@@ -2896,5 +2896,6 @@
  "Tape as a list": "逐笔列表",
  "The tape as a chart: every trade since the page opened, by price, with the book on both sides.": "图表形式的逐笔：页面打开以来的每一笔成交，按价格排列，两侧是订单簿。",
  "The tape as a list: every order as it arrives, newest on top.": "列表形式的逐笔：每一笔订单一到即显示，最新的在上。",
- "List": "列表"
+ "List": "列表",
+ "Flow and Tape": "资金流和逐笔"
 }

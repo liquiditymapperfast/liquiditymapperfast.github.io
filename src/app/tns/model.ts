@@ -10,12 +10,14 @@ import type { Print } from '../prints.ts';
  */
 
 /**
- * The views the flow column can show: the taker flow lines, or Trades (`panes/trades-view.ts`: blocks of time or each order). Time & sales
- * and All trades were views of their own until 2026-11-13; a save naming either opens on Trades.
+ * The views the flow column can show: the taker flow lines, or the Tape (`panes/trades-view.ts`: blocks of time or each order). Time & sales
+ * and All trades were views of their own until 2026-11-13; a save naming either opens on the Tape. A first visit, and a save that never held
+ * a view, opens on the Tape too, at its defaults (each order, any size, bursts grouped): Karl, 2026-11-14, "a great default that showcases
+ * how fast the tape is". A save that holds 'flow' keeps it.
  */
 export type FlowView = 'flow' | 'trades';
 export const FLOW_VIEWS: readonly FlowView[] = ['flow', 'trades'];
-export const readFlowView = (saved: unknown): FlowView => saved === 'trades' || saved === 'tns' || saved === 'all' ? 'trades' : 'flow';
+export const readFlowView = (saved: unknown): FlowView => saved === 'flow' ? 'flow' : 'trades';
 
 export interface TnsSettings {
   /** The smallest order listed (BTC's dollars; scaled for a coin that trades less, as every size setting is). */

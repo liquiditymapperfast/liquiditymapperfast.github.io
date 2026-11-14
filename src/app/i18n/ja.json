@@ -1985,8 +1985,8 @@
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "ホイールで時間と価格をまとめて拡大・縮小し、ドラッグで過去をさかのぼれます。気になる所にポインタを合わせると内容が読め、Rキーで現在に戻れます。",
  "Right-drag to zoom": "右ドラッグで拡大・縮小",
  "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "チャート上で右ボタンを押したままドラッグ：左右で時間、上下で価格を拡大・縮小します。ホイールは両方、左ドラッグで過去をさかのぼり、Rキーで現在に戻ります。",
- "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "成行で買っている人と売っている人を、取引所ごとに表示します。今は閉じていて、端のタブから開けます。",
- "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "成行で買っている人と売っている人を、取引所ごと・時刻ごとに表示します。同じ時点がマップにも印で示されます。",
+ "What traded at market: every order as it arrives, or each exchange's buying and selling over time. It is closed now: its tab at the edge opens it.": "成行で約定したもの。届いた注文、または取引所ごとの時間に沿った売買です。今は閉じていて、端のタブから開けます。",
+ "What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange's buying and selling over time, with the same moment marked on the map.": "成行で約定したもの。歩み値は届いた注文を新しいものから上に並べます。フロータブは取引所ごとの売買を時間に沿って描き、同じ時点がマップにも示されます。",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "価格ごとに縦に並べた、リアルタイムのオーダーブックです。今は閉じていて、端のタブから開けます。",
  "The live order book as a ladder of prices: what waits above and below the price right now.": "価格ごとに縦に並べた、リアルタイムのオーダーブックです。今の価格の上と下で待っている注文が分かります。",
  "Tap the coin to switch to another one. Every view follows it.": "通貨をタップすると別の通貨に切り替わります。どのビューも選んだ通貨に合わせて変わります。",
@@ -2896,5 +2896,6 @@
  "Tape as a list": "歩み値をリストで",
  "The tape as a chart: every trade since the page opened, by price, with the book on both sides.": "チャートの歩み値: ページを開いてからのすべての約定を価格ごとに、両側にオーダーブックを添えて表示します。",
  "The tape as a list: every order as it arrives, newest on top.": "リストの歩み値: 届いた注文を新しいものから上に並べます。",
- "List": "リスト"
+ "List": "リスト",
+ "Flow and Tape": "フローと歩み値"
 }

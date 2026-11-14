@@ -2091,8 +2091,8 @@
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "A roda do mouse dá zoom no tempo e no preço juntos; arraste para ver o passado. Aponte para qualquer coisa para ler os valores e pressione R para voltar ao agora.",
  "Right-drag to zoom": "Arraste com o botão direito",
  "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "Segure o botão direito sobre o gráfico e arraste: para a direita ou esquerda dá zoom no tempo, para cima ou para baixo no preço. A roda faz os dois, arrastar com o esquerdo olha para trás, R volta ao agora.",
- "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "Quem está comprando e vendendo a mercado, exchange por exchange. Este painel está fechado agora; para abri-lo, use a aba na borda.",
- "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "Quem está comprando e vendendo a mercado, exchange por exchange, e quando. O mesmo momento aparece marcado no mapa.",
+ "What traded at market: every order as it arrives, or each exchange's buying and selling over time. It is closed now: its tab at the edge opens it.": "O que foi negociado a mercado: cada ordem assim que chega, ou as compras e vendas de cada corretora ao longo do tempo. Este painel está fechado agora; para abri-lo, use a aba na borda.",
+ "What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange's buying and selling over time, with the same moment marked on the map.": "O que foi negociado a mercado. A Fita lista cada ordem assim que chega, a mais nova no topo; a aba Fluxo desenha as compras e vendas de cada corretora ao longo do tempo, com o mesmo momento marcado no mapa.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "O livro de ofertas ao vivo, em forma de escada de preços. Ele está fechado agora; para abri-lo, use a aba na borda.",
  "The live order book as a ladder of prices: what waits above and below the price right now.": "O livro de ofertas ao vivo, em forma de escada de preços: o que está à espera acima e abaixo do preço neste momento.",
  "Tap the coin to switch to another one. Every view follows it.": "Toque na moeda para trocar por outra. Todas as visualizações a acompanham.",
@@ -3102,5 +3102,6 @@
  "Tape as a list": "A fita como lista",
  "The tape as a chart: every trade since the page opened, by price, with the book on both sides.": "A fita como gráfico: cada operação desde que a página abriu, por preço, com o livro dos dois lados.",
  "The tape as a list: every order as it arrives, newest on top.": "A fita como lista: cada ordem assim que chega, a mais nova no topo.",
- "List": "Lista"
+ "List": "Lista",
+ "Flow and Tape": "Fluxo e Fita"
 }

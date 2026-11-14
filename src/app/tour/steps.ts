@@ -41,8 +41,9 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
       : t('The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.'),
   };
   const flow: Step = {
-    id: 'flow', targets: ['flow'], side: 'auto', title: () => t('Flow'),
-    body: tab => tab ? t('Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.') : t('Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.'),
+    // The column's two views (a first visit opens it on the Tape since 2026-11-14), so the step names both.
+    id: 'flow', targets: ['flow'], side: 'auto', title: () => t('Flow and Tape'),
+    body: tab => tab ? t('What traded at market: every order as it arrives, or each exchange\'s buying and selling over time. It is closed now: its tab at the edge opens it.') : t('What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange\'s buying and selling over time, with the same moment marked on the map.'),
   };
   const book: Step = {
     id: 'book', targets: ['book'], side: 'auto', title: () => t('Order book'),

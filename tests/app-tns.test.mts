@@ -10,12 +10,15 @@ const all = () => true;
 const rowsOf = (book: TnsBook, o: Partial<Parameters<TnsBook['rows']>[0]> = {}): TnsLine[] => book.rows({ minUsd: 100_000, side: 'both', merge: true, shown: all, ...o });
 const onlyRows = (lines: TnsLine[]): TnsRow[] => lines.filter((l): l is TnsRow => l.k === 'row');
 
-test('the view is the flow unless a save says Trades; a save that named Time & sales or All trades opens on Trades', () => {
+test('the view is the Tape unless a save holds the flow; a save that named Time & sales or All trades opens on the Tape', () => {
   assert.equal(readFlowView('trades'), 'trades');
   assert.equal(readFlowView('tns'), 'trades');
   assert.equal(readFlowView('all'), 'trades');
-  assert.equal(readFlowView('tape'), 'flow');
-  assert.equal(readFlowView(undefined), 'flow');
+  assert.equal(readFlowView('tape'), 'trades');
+  // A first visit opens on the Tape (Karl, 2026-11-14); a save holding the flow keeps it.
+  assert.equal(readFlowView(undefined), 'trades');
+  assert.equal(readFlowView('flow'), 'flow');
+  assert.equal(readFlowView('nonsense'), 'trades');
 });
 
 test('a saved page and a layout carry the view and Trades\' settings, and no longer Time & sales\'', () => {
@@ -24,8 +27,10 @@ test('a saved page and a layout carry the view and Trades\' settings, and no lon
   const s = readSettings({ flowView: 'tns', tns: { minUsd: 50_000, side: 'buy', merge: true } } as Parameters<typeof readSettings>[0]);
   assert.equal(s.flowView, 'trades');
   assert.ok(!('tns' in s));
-  // A layout saved before the views existed opens on the flow.
-  assert.equal(readSettings({}).flowView, 'flow');
+  // A first visit, or a save from before the views existed, opens on the Tape (a layout that names no view leaves the view as it is:
+  // layouts/layouts.ts takes only the keys a layout names).
+  assert.equal(readSettings({}).flowView, 'trades');
+  assert.equal(readSettings({ flowView: 'flow' }).flowView, 'flow');
 });
 
 test('newest on top, filtered by size, side and the exchanges shown', () => {

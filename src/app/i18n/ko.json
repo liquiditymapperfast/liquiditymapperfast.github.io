@@ -1985,8 +1985,8 @@
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "휠로 시간과 가격을 함께 확대·축소하고, 드래그로 과거를 봅니다. 무엇이든 가리키면 값을 읽을 수 있고, R 키를 누르면 현재로 돌아옵니다.",
  "Right-drag to zoom": "오른쪽 드래그로 확대·축소",
  "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "차트에서 오른쪽 버튼을 누른 채 드래그하세요: 좌우는 시간, 위아래는 가격을 확대·축소합니다. 휠은 둘 다, 왼쪽 드래그는 과거를 보고, R 키는 현재로 돌아옵니다.",
- "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "누가 시장가로 사고파는지를 거래소별로 보여 줍니다. 지금은 닫혀 있으며, 가장자리의 탭으로 열 수 있습니다.",
- "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "누가 시장가로 사고파는지를 거래소별, 시간대별로 보여 줍니다. 같은 시점이 지도에도 표시됩니다.",
+ "What traded at market: every order as it arrives, or each exchange's buying and selling over time. It is closed now: its tab at the edge opens it.": "시장가로 체결된 것: 들어오는 모든 주문, 또는 거래소별 시간에 따른 매수와 매도입니다. 지금은 닫혀 있으며, 가장자리의 탭으로 열 수 있습니다.",
+ "What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange's buying and selling over time, with the same moment marked on the map.": "시장가로 체결된 것. 테이프는 들어오는 주문을 최신 항목부터 위에 나열하고, 플로우 탭은 거래소별 매수와 매도를 시간에 따라 그리며, 같은 순간이 지도에도 표시됩니다.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "가격 순으로 늘어놓은 실시간 호가창입니다. 지금은 닫혀 있으며, 가장자리의 탭으로 열 수 있습니다.",
  "The live order book as a ladder of prices: what waits above and below the price right now.": "가격 순으로 늘어놓은 실시간 호가창입니다. 지금 가격의 위와 아래에서 기다리는 주문을 보여 줍니다.",
  "Tap the coin to switch to another one. Every view follows it.": "코인을 탭하면 다른 코인으로 바꿀 수 있습니다. 모든 화면이 선택한 코인을 따릅니다.",
@@ -2896,5 +2896,6 @@
  "Tape as a list": "테이프를 목록으로",
  "The tape as a chart: every trade since the page opened, by price, with the book on both sides.": "차트로 본 테이프: 페이지를 연 이후의 모든 체결을 가격별로, 양쪽에 호가창과 함께 보여 줍니다.",
  "The tape as a list: every order as it arrives, newest on top.": "목록으로 본 테이프: 들어오는 주문을 최신 항목부터 위에 보여 줍니다.",
- "List": "목록"
+ "List": "목록",
+ "Flow and Tape": "플로우와 테이프"
 }

@@ -2118,8 +2118,8 @@
  "The wheel zooms time and price together; drag to look back in time. Point at anything to read it, and press R to come back to now.": "Колесо мыши меняет масштаб времени и цены вместе; тяните, чтобы заглянуть в прошлое. Наведите курсор на что угодно, чтобы прочитать, и нажмите R, чтобы вернуться в настоящее.",
  "Right-drag to zoom": "Масштаб правой кнопкой",
  "Hold the right mouse button on the chart and drag: right or left zooms time, up or down zooms price. The wheel zooms both, a left drag looks back, R returns to now.": "Зажмите правую кнопку мыши на графике и тяните: вправо или влево меняется масштаб времени, вверх или вниз — цены. Колесо меняет оба, левая кнопка листает назад, R возвращает в настоящее.",
- "Who is buying and selling at market, exchange by exchange. It is closed now: its tab at the edge opens it.": "Кто покупает и продаёт по рынку, биржа за биржей. Сейчас панель закрыта: её открывает вкладка у края.",
- "Who is buying and selling at market, exchange by exchange, and when. The same moment is marked on the map.": "Кто покупает и продаёт по рынку, биржа за биржей, и когда. Тот же момент отмечен на карте.",
+ "What traded at market: every order as it arrives, or each exchange's buying and selling over time. It is closed now: its tab at the edge opens it.": "Что прошло по рынку: каждый ордер, как только он приходит, или покупки и продажи каждой биржи во времени. Сейчас панель закрыта: её открывает вкладка у края.",
+ "What traded at market. The Tape lists every order as it arrives, newest on top; the Flow tab draws each exchange's buying and selling over time, with the same moment marked on the map.": "Что прошло по рынку. Лента перечисляет каждый ордер, как только он приходит, новые сверху; вкладка Поток рисует покупки и продажи каждой биржи во времени, и тот же момент отмечен на карте.",
  "The live order book as a ladder of prices. It is closed now: its tab at the edge opens it.": "Стакан заявок в реальном времени в виде лестницы цен. Сейчас он закрыт: его открывает вкладка у края.",
  "The live order book as a ladder of prices: what waits above and below the price right now.": "Стакан заявок в реальном времени в виде лестницы цен: что ждёт выше и ниже текущей цены.",
  "Tap the coin to switch to another one. Every view follows it.": "Коснитесь монеты, чтобы выбрать другую. Всё на экране подстроится под неё.",
@@ -3144,5 +3144,6 @@
  "Tape as a list": "Лента списком",
  "The tape as a chart: every trade since the page opened, by price, with the book on both sides.": "Лента графиком: каждая сделка с открытия страницы, по ценам, со стаканом по обе стороны.",
  "The tape as a list: every order as it arrives, newest on top.": "Лента списком: каждый ордер, как только он приходит, новые сверху.",
- "List": "Список"
+ "List": "Список",
+ "Flow and Tape": "Поток и Лента"
 }
