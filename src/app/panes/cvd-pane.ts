@@ -160,6 +160,11 @@ export class CvdPane {
   readonly trades: TradesView;
   /** Whether the column is covered by another tab (a phone shows one tab at a time by its stylesheet, never by `hidden`; set by the page). */
   covered: () => boolean = () => false;
+  /**
+   * On a phone, the view its tab asks for (the Flow tab the lines, the Tape tab the list), the saved view left alone for the desktop; null
+   * elsewhere (set by the page). A phone has one view to a tab, so its column shows no view tabs.
+   */
+  phoneView: () => FlowView | null = () => null;
   /** The column was shown or hidden, or its view changed: what wants the tape (Trades) is weighed again (set by the page). */
   onVisibility: () => void = () => {};
   /** Bursts the alert engine has seen, drawn as markers on their rows (set from outside; newest last). */
@@ -227,10 +232,14 @@ export class CvdPane {
     if (fits()) return;
     this.root.classList.add('narrower');
   }
-  /** The view the column shows (a phone's Flow tab has the same two). */
-  #view(): FlowView { return this.store.state.flowView; }
-  /** Whether the flow lines are on screen: the column shown, in the flow view. Every drawing of the lines and the dot rows waits on it. */
-  #flowOn(): boolean { return !this.root.hidden && this.#view() === 'flow'; }
+  /** The view the column shows: the saved one, or a phone's tab's (`phoneView`). */
+  #view(): FlowView { return this.phoneView() ?? this.store.state.flowView; }
+  get activeView(): FlowView { return this.#view(); }
+  /**
+   * Whether the flow lines are on screen: the column shown and not covered by another of a phone's tabs, in the flow view. Every drawing of
+   * the lines and the dot rows waits on it (a phone keeps the column in the page for its Tape tab even with the column switched off).
+   */
+  #flowOn(): boolean { return !this.root.hidden && !this.covered() && this.#view() === 'flow'; }
   /**
    * The view changed (the tabs, a layout, a phone turned into a desktop) or the column was shown or hidden: the lines, the notice and the dot
    * rows show in the flow view, Trades in its own; the header's span buttons, settings and help follow the view.
@@ -387,7 +396,9 @@ export class CvdPane {
       tab.dataset.view = id; this.#viewTabs.set(id, tab);
       return tab;
     }));
-    this.controls.append(name, cells, this.#spanSelect, this.#gear, this.#helpFlow, this.#helpTrades, this.#readout);
+    // A phone has one view to a tab and shows no view tabs: the Tape's row says its name instead (the stylesheet shows it there alone).
+    const phoneTitle = el('span', { class: 'cvd-phone-title', textContent: t('Tape'), ariaHidden: 'true' });
+    this.controls.append(name, phoneTitle, cells, this.#spanSelect, this.#gear, this.#helpFlow, this.#helpTrades, this.#readout);
     this.#fit = new FitGrid(this.controls, cells, this.root);
     this.#syncControls();
   }

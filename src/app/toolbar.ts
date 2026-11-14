@@ -1,6 +1,6 @@
 import { TIMEFRAMES } from './hub.ts';
 import { PALETTES, THEME_ORDER } from './theme.ts';
-import { AVAILABLE_LAYERS, autoTheme, flippedTheme, prefersDark, themeChange, type Store, type AppState, type Layer } from './store.ts';
+import { AVAILABLE_LAYERS, autoTheme, flippedTheme, prefersDark, themeChange, type Store, type AppState, type Layer, type PhoneTape } from './store.ts';
 import { VPN_HINT, VenueNotice, blockedVenues, idleText, idleVenues } from './venue-notice.ts';
 import type { VenueEntry } from './source.ts';
 import { clock, usd, zoneName } from './format.ts';
@@ -305,6 +305,12 @@ export class Toolbar {
   #historySeg = el('div', { class: 'seg zone-seg', role: 'group', ariaLabel: t('History'), tip: t('How much recorded history this device downloads when the page opens: the last 3 hours (a few MB), the whole day (tens of MB) or none. It applies the next time the page opens.') }, ...this.#historyChoices.values());
   /** The compact bar's light-or-dark key (Karl, 2026-11-01): one tap swaps the light theme and the dark one last shown (`flippedTheme`). */
   #flip = el('button', { type: 'button', class: 'flip-btn' });
+  /**
+   * A phone's Tape tab: the tape as a list or as a chart (Karl, 2026-11-14: "a direct button at the top bar ... a wave icon"). A wave while the
+   * list shows (press for the chart), lines while the chart does (press for the list); right after the spacer, so nothing else in the bar
+   * moves when it comes, and only on that tab (`setTapeView`).
+   */
+  #tapeView = el('button', { type: 'button', class: 'tape-view-btn', hidden: true, onclick: () => this.store.set({ phoneTape: this.store.state.phoneTape === 'chart' ? 'list' : 'chart' }) });
   /** The list of keyboard shortcuts (also the ? key); on the status bar, so a phone, which has no keyboard, does not show it. */
   #keys = el('button', { type: 'button', class: 'keys-btn', textContent: t('Keys'), tip: t('Keyboard shortcuts (?)'), onclick: () => this.openShortcuts() });
   /** The browser tab's switches (tab-title.ts): the price in its title, the candle under way as its icon. The status bar's key opens them; the Settings sheet holds them as rows. */
@@ -749,6 +755,17 @@ export class Toolbar {
   /** The notices that can lie under the bar, top first (the update notice is a line of the status bar on a computer). */
   #notices(): HTMLElement[] { return [this.#notice.root, this.#coinNotice, this.#invite.root, this.#update.root]; }
 
+  /** The Tape tab's switch: `shows` is what the tab shows now, null hides the switch (another tab, or not a phone). */
+  setTapeView(shows: PhoneTape | null): void {
+    const b = this.#tapeView;
+    b.hidden = shows === null;
+    if (shows === null || b.dataset.shows === shows) return;
+    b.dataset.shows = shows;
+    const toChart = shows === 'list';
+    b.setAttribute('aria-label', toChart ? t('Tape as a chart') : t('Tape as a list'));
+    setTip(b, toChart ? t('The tape as a chart: every trade since the page opened, by price, with the book on both sides.') : t('The tape as a list: every order as it arrives, newest on top.'));
+  }
+
   /** Fold the bar away or bring it back (`state.barCollapsed`): folded, only its strip (`#expand`) and its notices show. */
   setCollapsed(collapsed: boolean): void {
     const held = this.root.contains(document.activeElement);
@@ -826,7 +843,7 @@ export class Toolbar {
     this.root.replaceChildren(
       el('div', { class: 'tb-bar' },
         // The coin alone (Karl, 2026-10-17): the market is chosen in Settings, where the venues are.
-        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#spacer, this.#status, this.#flip, this.#more, this.#collapse),
+        el('div', { class: 'tb-row tb-main' }, this.#brand, this.#coin, this.#spacer, this.#tapeView, this.#status, this.#flip, this.#more, this.#collapse),
         el('div', { class: 'tb-row tb-time' }, this.#timeframes, this.#recenter)),
       this.#expand, this.#notice.root, this.#coinNotice, this.#invite.root, this.#update.root);
   }

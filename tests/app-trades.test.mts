@@ -283,9 +283,11 @@ test('the view takes the tape only while it shows, and asks no source', () => {
   const main = fs.readFileSync('src/app/main.ts', 'utf8');
   // The refresh and the redraw stay a pair (review r1, 2026-11-12: an else-if between two lists made one's redraw unreachable).
   assert.match(main, /cvd\.trades\.refresh\(\);\n\s*else if \(changed\.has\('sounds'\) \|\| changed\.has\('replay'\) \|\| changed\.has\('timeZone'\)\) cvd\.trades\.redraw\(\);/);
-  // On screen: the column shown and not folded, and on a phone its Flow tab open (a phone hides tabs by its stylesheet, not by `hidden`).
-  assert.match(main, /const tradesShown = \(\): boolean => !cvd\.root\.hidden && !cvd\.covered\(\) && store\.state\.flowView === 'trades';/);
-  assert.match(main, /cvd\.covered = \(\) => isPhone\(\) && dock\.tab !== 'flow';/);
+  // On screen: the column shown and not folded, and on a phone its Flow tab or its Tape tab showing the list (a phone hides tabs by its
+  // stylesheet, not by `hidden`); a phone's view is its tab's, never the saved one (2026-11-14).
+  assert.match(main, /const tradesShown = \(\): boolean => !cvd\.root\.hidden && !cvd\.covered\(\) && cvd\.activeView === 'trades';/);
+  assert.match(main, /cvd\.covered = \(\) => isPhone\(\) && !\(dock\.tab === 'flow' \|\| tapeList\(\)\);/);
+  assert.match(main, /cvd\.phoneView = \(\) => isPhone\(\) \? \(dock\.tab === 'candle' \? 'trades' : 'flow'\) : null;/);
   assert.match(main, /\|\| tradesShown\(\);/);
   assert.match(main, /cvd\.trades\.tapeArrived\(\)/);
   for (const f of ['src/app/panes/trades-view.ts', 'src/app/panes/trades-orders.ts', 'src/app/panes/trades-blocks.ts']) {

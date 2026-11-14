@@ -23,8 +23,9 @@ export type TabNeeds = AppState['show'] & { liq?: boolean };
 interface TabSpec { id: DockTab; label: string; tip: string; icon: string; /** The switch that must be on; absent when the pane is always available. */ needs?: keyof TabNeeds }
 const svg = (body: string): string => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 export const DOCK_TABS: readonly TabSpec[] = [
-  // The Tape view takes the whole area instead of sitting beside the map (panes/candle-pane.ts).
-  { id: 'candle', label: t('Tape'), tip: t('Every trade since the page opened, the trades coming in and the book around them, made for a phone.'),
+  // The Tape takes the whole area instead of sitting beside the map: the flow column's list of every order, or the chart of the tape
+  // (panes/candle-pane.ts), chosen by the top bar's switch (Karl, 2026-11-14: the list is the default).
+  { id: 'candle', label: t('Tape'), tip: t('Every order as it arrives, newest on top, made for a phone. The wave button in the top bar shows the tape as a chart.'),
     icon: svg('<path d="M12 3v4M12 17v4"/><rect x="8" y="7" width="8" height="10" rx="1"/><path d="M9.5 10h2M12.5 12.5h2M9.5 15h2" stroke-width="1.5"/>') },
   // The Flow view fills the area too: the price over the taker flow of every exchange, and a row for each (panes/cvd-pane.ts).
   { id: 'flow', label: t('Flow'), tip: t('Taker flow: what each exchange bought and sold at market, spot and perpetual, biggest first.'), needs: 'cvd',

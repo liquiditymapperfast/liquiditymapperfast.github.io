@@ -52,6 +52,16 @@ html[data-bar="compact"] .toolbar .bar-collapse { order: 7; flex: none; width: 4
 html[data-bar="compact"] .toolbar { position: relative; z-index: 30; }
 html[data-bar="compact"] .toolbar .notice { position: absolute; left: 8px; right: 8px; top: calc(100% + 4px); z-index: 45; margin: 0; box-shadow: 2px 2px 0 var(--shadow); }
 .more-btn { display: none; }
+/* A phone's Tape tab: the tape as a list or as a chart (toolbar.ts `setTapeView`; Karl, 2026-11-14), right after the spacer so nothing else in
+   the bar moves when it comes: a wave while the list shows (the chart's trail of trades), lines while the chart does. */
+.tape-view-btn { display: none; }
+html[data-bar="compact"] .tape-view-btn:not([hidden]) { order: 4; display: inline-grid; place-items: center; flex: none; width: 44px; padding: 0; }
+html[data-bar="compact"] .tape-view-btn::before { content: ""; width: 22px; height: 22px; background: currentColor; -webkit-mask: var(--icon-tape-wave) center / contain no-repeat; mask: var(--icon-tape-wave) center / contain no-repeat; }
+html[data-bar="compact"] .tape-view-btn[data-shows="chart"]::before { -webkit-mask-image: var(--icon-tape-list); mask-image: var(--icon-tape-list); }
+html {
+  --icon-tape-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12C3.5 7 5.5 7 7 12S10.5 17 12 12 15.5 7 17 12 20.5 17 22 12'/%3E%3C/svg%3E");
+  --icon-tape-list: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01'/%3E%3C/svg%3E");
+}
 /* Light or dark in one tap (Karl, 2026-11-01): a drawn sun or moon before Settings, which keeps the whole list of themes. */
 .flip-btn { display: none; }
 html[data-bar="compact"] .flip-btn { order: 6; display: inline-grid; place-items: center; flex: none; width: 44px; padding: 0; }
@@ -77,6 +87,13 @@ html[data-bar="compact"] .tb-time > button::before { content: ""; width: 20px; h
   html[data-layout="phone"][data-bar="compact"] .toolbar .market { flex: 0 1 auto; max-width: 100%; }
   html[data-layout="phone"][data-bar="compact"] .tb-time .seg { flex: 1 1 0; min-width: 0; }
   html[data-layout="phone"][data-bar="compact"] .toolbar .notice { left: 10px; right: 10px; }
+}
+/* The Tape tab's switch makes eight things on the top row (2026-11-14): 375 px of them at 44 px a key and 8 px between. Under 390 px the gaps
+   are 4 px, and under 360 px the keys are 36 px and the edges 8 px, on every tab alike, so nothing moves when the switch comes. */
+@media (max-width: 389px) { html[data-layout="phone"][data-bar="compact"] .tb-main { gap: 4px; } }
+@media (max-width: 359px) {
+  html[data-layout="phone"][data-bar="compact"] .tb-main { padding: 0 8px; }
+  html[data-layout="phone"][data-bar="compact"] :is(.flip-btn, .more-btn, .bar-collapse, .tape-view-btn:not([hidden])) { width: 36px; }
 }
 
 /* ---- the Settings sheet and every floating panel become bottom sheets ------------------------------------------------------------- */
@@ -373,7 +390,9 @@ html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) { dis
 html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) .pane.heat, html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) > .dock-grip { display: none; }
 /* Neither has a timeframe: the map's timeframes and recentre leave the top bar while one shows. */
 html[data-layout^="phone"]:has(main:is([data-tab="candle"], [data-tab="flow"])) .toolbar .tb-time { display: none; }
-html[data-layout^="phone"] main[data-tab="candle"] > .pane.candle, html[data-layout^="phone"] main[data-tab="flow"] .pane.cvd:not([hidden]) { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; order: 0; }
+/* The Tape tab: the flow column's list (`main[data-tape="list"]`, the default) or the chart of the tape (Karl, 2026-11-14). */
+html[data-layout^="phone"] main[data-tab="candle"]:not([data-tape="list"]) > .pane.candle, html[data-layout^="phone"] main[data-tab="flow"] .pane.cvd:not([hidden]),
+html[data-layout^="phone"] main[data-tab="candle"][data-tape="list"] .pane.cvd:not([hidden]) { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; order: 0; }
 /* The Book held upright fills the area as the Tape and the Flow do (it keeps its place beside the map held sideways): twice the price rows. */
 html[data-layout="phone"] main[data-tab="book"] { display: flex; flex-direction: column; }
 html[data-layout="phone"] main[data-tab="book"] .pane.heat, html[data-layout="phone"] main[data-tab="book"] > .dock-grip { display: none; }
@@ -441,16 +460,13 @@ html[data-layout^="phone"] .pane.cvd .cvd-seg button { flex: 1 1 0; min-width: 0
 html[data-layout^="phone"] .pane.cvd .pane-head .cvd-gear { order: 1; margin-left: 0; width: var(--ph-key-w); min-height: var(--ph-ctl-h); padding: 0; display: inline-grid; place-items: center; }
 html[data-layout^="phone"] .pane.cvd .pane-head button.help { order: 2; }
 html[data-layout^="phone"] .pane.cvd .pane-head .readout { display: block; order: 9; flex: 1 0 100%; font-size: 13px; padding: 2px 2px 5px; font-variant-numeric: tabular-nums; }
-/* The column's views on a phone (2026-11-12): the tabs a row of their own above the spans, each a third of the width, at touch size; the
-   readout is the flow lines' and goes with them. */
-html[data-layout^="phone"] .pane.cvd .pane-head strong.cvd-views { display: flex; order: -1; flex: 1 0 100%; min-width: 0; }
-html[data-layout^="phone"] .pane.cvd .cvd-views .cvd-view { flex: 1 1 0; min-width: 0; min-height: var(--ph-ctl-h); padding: 0 4px; font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+/* One view to a tab on a phone (2026-11-14): the Flow tab shows the lines and the Tape tab the list (`CvdPane.phoneView`), so the column's
+   view tabs go (the Flow tab gains their row). The Tape's first row keeps its name before the settings and the help; its menus are the row
+   under it (one row does not fit at 360 px in Italian or Turkish). The readout is the flow lines'. */
+html[data-layout^="phone"] .pane.cvd .pane-head strong.cvd-views { display: none; }
+.cvd-phone-title { display: none; }
+html[data-layout^="phone"] .pane.cvd[data-view="trades"] .pane-head .cvd-phone-title { display: block; order: 0; flex: 1 1 0; min-width: 0; align-self: center; padding-left: 2px; font-size: 16px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 html[data-layout^="phone"] .pane.cvd .pane-head .readout[hidden], html[data-layout^="phone"] .pane.cvd .cvd-seg[hidden] { display: none; }
-/* Trades has no spans and no readout (Karl, 2026-11-14: three rows of buttons above the list were too many): its views share their row with
-   the settings and the help, and Trades' menus are the row under it (one row does not fit at 360 px in Italian or Turkish). */
-html[data-layout^="phone"] .pane.cvd[data-view="trades"] .pane-head strong.cvd-views { flex: 1 1 0; }
-/* At 320 px the two views share their row with two keys, about 102 px each: the longest name ("Transactions") needs 13 px there. */
-@media (max-width: 340px) { html[data-layout^="phone"] .pane.cvd[data-view="trades"] .cvd-views .cvd-view { font-size: 13px; } }
 /* Trades' controls at touch size: its menus at 16 px (iOS zooms the page into a smaller one) and a resume key a thumb can hit. */
 html[data-layout^="phone"] .trades-bar { padding: 4px var(--ph-edge) 6px; font-size: 13px; }
 html[data-layout^="phone"] .trades-unit, html[data-layout^="phone"] .trades-floor { font-size: 16px; min-height: var(--ph-ctl-h); padding: 0 8px; }

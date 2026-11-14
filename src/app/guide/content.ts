@@ -182,7 +182,7 @@ export const SECTIONS: readonly Section[] = [
         'Older blocks come from what the page already holds, and nothing is fetched: any size from its per-second record of every exchange, from $25,000 from its recording of large orders, smaller sizes only from when the page began listening.',
         'Point at the list to hold it still. Beside a wide list, the details of the newest second (or the block you click) show each market\'s dollars and price move, the largest orders, and notes such as large orders on several exchanges within 5 ms.',
       ] },
-      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow and Tape. On a phone the Flow tab has the same two, and a tap on a block opens its details.' },
+      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow and Tape. On a phone the Flow tab shows the lines and the Tape tab the list, where a tap on a block opens its details.' },
     ],
   },
   {
@@ -458,7 +458,7 @@ export const SECTIONS: readonly Section[] = [
     blocks: [
       { t: 'p', text: 'The page is arranged for the screen it is on. On a phone held upright the top bar has two rows (the coin and Settings above; timeframes and Recenter below), the map fills the width, one pane shows under it, and a **bar of tabs** picks the pane: the **Tape**, the **Flow**, the **Map**, the **Book**, and the panes you switch on in Settings. **Map** gives the chart the whole screen. Held on its side, the pane stands beside the map and the tabs become a rail. A large tablet held sideways (over 1,100 pixels wide) gets the desktop arrangement, with Layouts under Settings; a smaller one gets the phone\'s.' },
       { t: 'list', items: [
-        'The **Tape** is every trade since the page opened, as one continuous tape: each row is a price, with what was sold at market on the left and bought on the right, the book resting either side, and the trail of the last seconds of market orders running left behind it. It opens at once, because it fetches nothing.',
+        'The **Tape** is every order as it arrives, newest on top: the flow column\'s Tape, made for a phone. The wave button in the top bar shows it as a chart instead: every trade since the page opened, each row a price, with what was sold at market on the left and bought on the right, the book resting either side, and the trail of the last seconds of market orders running left behind it. The lines button brings the list back.',
         'The **Flow** tab is the flow column made for a phone: the price drawn over the flow of all the exchanges (spot blue, perpetual amber), with a row for each exchange under it. A finger along the chart scrubs it, a tap pins the moment, and two fingers apart or together step to a longer or a shorter span.',
         '**Settings** (the ⋯ button) is a bottom sheet holding every control that does not fit the bar: the pane switches, the heatmap colours, the market and the venues, the alerts, the theme, **Keep screen on** (a sleeping screen stops the recording) and Guide, Screenshot, Author and Install.',
         'The small up-arrow at the right end of the top bar **folds** it away to give the chart the screen, and the strip\'s down-arrow brings it back. A desktop has the same arrow.',

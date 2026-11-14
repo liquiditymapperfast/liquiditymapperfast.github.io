@@ -282,7 +282,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
     body: [],
   },
   candlePane: {
-    title: t('Tape'), guide: 'phones',
+    title: t('Tape as a chart'), guide: 'phones',
     tip: t('Every trade since the page opened, filling a phone screen: what traded at each price, the order book on both sides, large orders flashing on the rail as they arrive, and the last seconds of trades flowing left behind them.'),
     body: [t('The tape starts when the page opens and runs for as long as it stays open: nothing is fetched first, so it opens at once, and no timeframe ever starts it again. Each row is a price: sold at market on the left, bought on the right, by every market counted, its winning side shown more strongly the more it won, and the row where the most traded is outlined. The header says since when the tape runs, how many markets it counts, and how long the page was hidden: a phone in the background gets no trades, so that time is missing from the tape. Bids rest left of the tape, asks right.'),
       t('The rail at the right lights each row where a large order just arrived, by when it arrived, with the mark of the exchange that sent the largest. The trail is every market order of the last seconds at the time it traded, now at the rail and older to the left: filled dots are buys, rings are sells, larger dots larger orders, and orders from the whale size up carry their exchange\'s mark. Glass lays the book and the tape over the trail as three pieces of glass welded together: the trail shows through the book clearly and through the tape frosted. Bricks makes each of the book\'s bars a block of glass. Drag to move the prices, pinch to zoom, double-tap to reset. Look, in Settings, changes how the trail is drawn, not what it shows.'),

@@ -174,3 +174,11 @@ test('revision 6: Trades opens on each order, any size, bursts one row (Karl, 20
   // The same values saved under revision 6 were chosen there: kept.
   saved({ defaultsRev: 6, trades: rev5 }, () => assert.deepEqual(initialState(false, false).trades, rev5));
 });
+
+test('a phone\'s Tape tab shows the list of every order by default; the chart is kept once chosen, and never travels in a layout', () => {
+  saved(null, () => assert.equal(initialState(true, true).phoneTape, 'list', 'a first visit'));
+  saved({ defaultsRev: DEFAULTS_REV }, () => assert.equal(initialState(true, true).phoneTape, 'list', 'a save from before the choice'));
+  saved({ defaultsRev: DEFAULTS_REV, phoneTape: 'chart' }, () => assert.equal(initialState(true, true).phoneTape, 'chart'));
+  saved({ defaultsRev: DEFAULTS_REV, phoneTape: 'waves' }, () => assert.equal(initialState(true, true).phoneTape, 'list', 'anything else'));
+  assert.ok(!(LAYOUT_KEYS as readonly string[]).includes('phoneTape'));
+});

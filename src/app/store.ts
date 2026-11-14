@@ -238,6 +238,8 @@ export interface AppState {
   tabPrice: boolean; tabIcon: boolean;
   /** How much recorded history a phone reads when the page opens (app/history-window.ts); read once, at the start. */
   phoneHistory: PhoneHistory;
+  /** What a phone's Tape tab shows: the list of every order (the default) or the tape as a chart (`PhoneTape`); kept in this browser, never in a layout. */
+  phoneTape: PhoneTape;
   /** How many of the chart's candles scripts read (`script/bars.ts`): the person's own, not a layout's. */
   scriptBars: number;
   /**
@@ -266,7 +268,15 @@ export interface AppState {
 
 type Listener = (state: AppState, changed: ReadonlySet<keyof AppState>) => void;
 
-const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'flowView', 'trades', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'bookMarkets', 'bookPicks', 'draw', 'chartType', 'candleColors'];
+/**
+ * A phone's Tape tab (Karl, 2026-11-14): 'list', every order as it arrives, newest on top (the flow column's Tape view), the default; or
+ * 'chart', the tape drawn by price with the book either side and the last seconds' trail (panes/candle-pane.ts), the tab's only view before.
+ * Switched by a button in the top bar while the tab is open, and in Settings.
+ */
+export type PhoneTape = 'list' | 'chart';
+export const readPhoneTape = (saved: unknown): PhoneTape => saved === 'chart' ? 'chart' : 'list';
+
+const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'phoneTape', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'flowView', 'trades', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'bookMarkets', 'bookPicks', 'draw', 'chartType', 'candleColors'];
 function readSaved(): Partial<AppState> {
   try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
 }
@@ -413,7 +423,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   const state: AppState = {
     connected: false, status: t('connecting'), markets: [], marketId: '', seriesInstrument: '', mark: { price: 0, asOf: 0 }, levels: null, bookGone: {},
     layers: {}, candles: [], oi: [], oiInstrument: '', oiParts: [], oiPrice: 0, oiReading: false, oiFine: [], sounds: { ...DEFAULT_SOUNDS }, soundState: 'locked', lastSound: 0, vwapAnchoring: false, anchorMove: null, anchorPreview: null, profileAnchoring: false, heatmapSource: 'aggregated', disabledVenues: [],
-    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', waveStrength: WAVE_STRENGTH_DEFAULT, followLive: true, keepAwake: false, tabPrice: true, tabIcon: true, phoneHistory: 'auto', scriptBars: readScriptBars(undefined, false), barCollapsed: false, timeZone: 'local', hover: null, bookHover: null, range: null, rangeTool: false,
+    ladderVenue: '', ladderVenues: [], replay: null, draw: readDrawSettings(undefined), theme: DEFAULT_THEME, themePicked: false, themeSlots: { light: DEFAULT_THEME, dark: PHONE_DARK_THEME }, defaultsRev: DEFAULTS_REV, material: 'solid', waveStrength: WAVE_STRENGTH_DEFAULT, followLive: true, keepAwake: false, tabPrice: true, tabIcon: true, phoneHistory: 'auto', phoneTape: 'list', scriptBars: readScriptBars(undefined, false), barCollapsed: false, timeZone: 'local', hover: null, bookHover: null, range: null, rangeTool: false,
     ...saved, ...readSettings(saved),
   };
   // A save's measure strip was read into the profile along the top (`readSettings`): it is no setting of its own any more.
@@ -466,6 +476,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   // New on 2026-11-07, both on: a save from before holds neither, so no revision of the defaults is needed.
   state.tabPrice = saved.tabPrice !== false; state.tabIcon = saved.tabIcon !== false;
   state.phoneHistory = readPhoneHistory(saved.phoneHistory);
+  state.phoneTape = readPhoneTape(saved.phoneTape);
   state.scriptBars = readScriptBars(saved.scriptBars, typeof window !== 'undefined' && isHandheldPhone());
   state.replay = null;
   return state;
