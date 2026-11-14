@@ -2,3 +2,8 @@
 # hash of its contents in its name, so a browser may keep it for a year; index.html and the rest keep the default (revalidated).
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Every page: a window that opened this site keeps no handle on it (and the reverse), so another site cannot reach into a tab of
+# this one (src/app/handover.ts reads only what the page was loaded with; this is the second guard).
+/*
+  Cross-Origin-Opener-Policy: same-origin
