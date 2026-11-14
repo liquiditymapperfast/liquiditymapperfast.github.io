@@ -71,6 +71,8 @@ jobs:
     env:
       HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
     steps:
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::Cloudflare Pages skipped (needs both secrets, CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID)"
       - if: env.HAS_TOKEN == 'true'
         uses: actions/download-artifact@v4
         with:
