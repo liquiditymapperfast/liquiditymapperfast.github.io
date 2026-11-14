@@ -218,7 +218,7 @@ export class CvdPane {
       return;
     }
     if (!tools) return;
-    // Every label in full, then short (Trades is short already; another language's may not be), then the header may wrap. Each step is
+    // Every label in full, then short (Tape is short already; another language's may not be), then the header may wrap. Each step is
     // taken only while the pane's tools still fall to a second line or the header runs out of its width.
     const fits = (): boolean => tools.offsetTop <= name.offsetTop + name.offsetHeight / 2 && this.controls.scrollWidth <= this.controls.clientWidth + 1;
     this.root.classList.remove('narrow', 'narrower');
@@ -248,7 +248,7 @@ export class CvdPane {
     this.#panel?.close(); this.#panel = null;
     this.#wrap.hidden = !flow; this.#readout.hidden = !flow; this.#helpFlow.hidden = !flow; this.#helpTrades.hidden = flow;
     if (this.#cells) this.#cells.hidden = !flow;
-    this.#gear.dataset.tip = flow ? t('How the column ranks and draws the exchanges.') : t('Trades settings: what a row is, the smallest order, the side.');
+    this.#gear.dataset.tip = flow ? t('How the column ranks and draws the exchanges.') : t('Tape settings: what a row is, the smallest order, the side.');
     // The notice is the flow's: hidden with it, and said again when the flow comes back (its words may have changed meanwhile).
     if (!flow) this.#notice.hidden = true;
     this.#noticeKey = '';
@@ -379,7 +379,7 @@ export class CvdPane {
     // place in the header (the layout puts the pane's tools after it).
     const views: [FlowView, string, string, string][] = [
       ['flow', t('Flow'), t('Flow'), t('Taker flow: cumulative volume delta (market buys minus market sells) per exchange, spot and perpetual. Biggest exchanges first; the top row adds them all.')],
-      ['trades', t('Trades'), t('Trades'), t('Trades: what was bought and sold at market, each order (by default, a burst of them one row) or a block of time per row, newest on top, with the markets it came from and its largest orders.')],
+      ['trades', t('Tape'), t('Tape'), t('Tape: what was bought and sold at market, each order (by default, a burst of them one row) or a block of time per row, newest on top, with the markets it came from and its largest orders.')],
     ];
     const name = el('strong', { class: 'seg cvd-views', role: 'group', ariaLabel: t('Flow column view') }, ...views.map(([id, long, short, tip]) => {
       const tab = el('button', { type: 'button', class: 'cvd-view', tip, ariaLabel: long, onclick: () => { if (this.store.state.flowView !== id) this.store.set({ flowView: id }); } },

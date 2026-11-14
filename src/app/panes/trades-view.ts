@@ -231,7 +231,7 @@ export class TradesView {
 
   /** The settings panel (the column's settings key opens it in this view, and Custom… in the Group by menu). */
   openSettings(anchor: HTMLElement): void {
-    this.#panel = togglePanel(anchor, { title: t('Trades'), width: 360, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#build(body));
+    this.#panel = togglePanel(anchor, { title: t('Tape'), width: 360, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#build(body));
   }
   #build(body: HTMLElement): void {
     const s = this.store.state.trades, scaled = (v: number): number => v === 0 ? 0 : scaledUsd(v);

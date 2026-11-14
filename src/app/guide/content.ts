@@ -171,9 +171,9 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
-    id: 'flow-trades', title: 'Trades in the flow column',
+    id: 'flow-trades', title: 'Tape in the flow column',
     blocks: [
-      { t: 'p', text: '**Trades**, the second tab in the flow column\'s title, shows what was bought and sold at market, newest on top. At first each row is one order, or a burst of them (one exchange\'s orders on one side within a tenth of a second, added up: ×5 says how many), coming down from the top as they arrive. When the market sends hundreds of orders a second, **Group by** a second makes each row one second of every exchange on the map, which a person can read as it happens.' },
+      { t: 'p', text: '**Tape**, the second tab in the flow column\'s title, shows what was bought and sold at market, newest on top. At first each row is one order, or a burst of them (one exchange\'s orders on one side within a tenth of a second, added up: ×5 says how many), coming down from the top as they arrive. When the market sends hundreds of orders a second, **Group by** a second makes each row one second of every exchange on the map, which a person can read as it happens.' },
       { t: 'list', items: [
         'Each block has its time and, under it, how far the price moved: the reference market\'s volume-weighted price in the block\'s last second against the second before (Binance\'s perpetual for BTC, else the most traded market the coin has).',
         'Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell. A bar grows with the square root of its dollars: ten times more draws about three times longer.',
@@ -182,7 +182,7 @@ export const SECTIONS: readonly Section[] = [
         'Older blocks come from what the page already holds, and nothing is fetched: any size from its per-second record of every exchange, from $25,000 from its recording of large orders, smaller sizes only from when the page began listening.',
         'Point at the list to hold it still. Beside a wide list, the details of the newest second (or the block you click) show each market\'s dollars and price move, the largest orders, and notes such as large orders on several exchanges within 5 ms.',
       ] },
-      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow and Trades. On a phone the Flow tab has the same two, and a tap on a block opens its details.' },
+      { t: 'note', text: 'With the column closed, the strip along the window\'s edge has a tab for each view: Flow and Tape. On a phone the Flow tab has the same two, and a tap on a block opens its details.' },
     ],
   },
   {

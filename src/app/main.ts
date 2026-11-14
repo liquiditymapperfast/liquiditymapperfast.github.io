@@ -204,7 +204,7 @@ async function main(): Promise<void> {
     { id: 'script', root: script.root, height: 220, min: 60, head: script.header, closable: false },
   ];
   const arrange = new Layout(main, chart, { left: flowCol, right: side }, strip, [
-    { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow'), views: [{ id: 'flow', title: t('Flow') }, { id: 'trades', title: t('Trades') }] },
+    { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow'), views: [{ id: 'flow', title: t('Flow') }, { id: 'trades', title: t('Tape') }] },
     { id: 'book', root: ladder.root, head: ladder.controls, title: t('Order Book') },
   ]);
   // What the person does to the layout (layouts/actions.ts): the layouts panel, a pane's close button and the edge tab of a closed side pane (the Panels row in the top bar flips the same switches).

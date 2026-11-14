@@ -55,7 +55,7 @@ export function blockColumns(lw: number, phone: boolean): { t: number; amt: numb
  */
 export class BlockList {
   readonly root = el('div', { class: 'trades-wrap trades-blocks' });
-  #canvas = el('canvas', { class: 'trades-canvas', ariaLabel: t('Trades') });
+  #canvas = el('canvas', { class: 'trades-canvas', ariaLabel: t('Tape') });
   #ctx: CanvasRenderingContext2D;
   #palette: Palette = PALETTES.light!;
   #shown = false; #frame = 0;

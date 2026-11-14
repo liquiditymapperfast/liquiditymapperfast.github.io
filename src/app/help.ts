@@ -268,7 +268,7 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
       t('A small triangle on a line marks a burst: in ten seconds that exchange bought (up) or sold (down) far more at market than it usually does, judged against its last half hour, and at least the smallest burst. Only bursts seen while the page is open are marked, so a reload clears them. The marks are off until switched on in the gear, which also sets how big and how unusual a burst must be.')],
   },
   trades: {
-    title: t('Trades'), guide: 'flow-trades',
+    title: t('Tape'), guide: 'flow-trades',
     tip: t('The flow column\'s second view: what was bought and sold at market, newest on top: each order at first (a burst of them one row), or a block of time per row. It holds what this page received and the history it already read, and asks the exchanges for nothing.'),
     body: [t('Each block shows its time and, under it, how far the reference market\'s price moved. Then the dollars bought (▲) over the dollars sold (▼), each with a bar split by exchange, and the largest buy and the largest sell.'),
       t('A bar grows with the square root of its dollars, full at about the busiest one percent of blocks in a week: a side ten times larger draws about three times longer, and › marks one past full.'),

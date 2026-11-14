@@ -55,7 +55,7 @@ type Drawn =
  */
 export class OrderList {
   readonly root = el('div', { class: 'trades-wrap trades-orders' });
-  #canvas = el('canvas', { class: 'trades-canvas', ariaLabel: t('Trades') });
+  #canvas = el('canvas', { class: 'trades-canvas', ariaLabel: t('Tape') });
   #ctx: CanvasRenderingContext2D;
   #pill = el('button', { type: 'button', class: 'trades-resume', hidden: true });
   #index = new TradeIndex();
