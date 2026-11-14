@@ -236,7 +236,14 @@ export class BlockList {
     return { block: out, state: 'newest' };
   }
 
-  #hold(): void { if (this.#anchor) return; this.#anchor = { s: this.newestStart(), offset: 0 }; this.reader.tally?.hold(); this.onHold(); }
+  #hold(): void {
+    if (this.#anchor) return;
+    // Held where it stands: at the top row as the last frame drew it, as Each order holds. Anchored at the second it is now, a second begun
+    // since that frame moved every row down one under a finger's tap, and a second tap on the same spot chose the next block.
+    const top = this.#drawn.find(d => d.kind !== 'note');
+    this.#anchor = { s: top ? top.s : this.newestStart(), offset: 0 };
+    this.reader.tally?.hold(); this.onHold();
+  }
   release(draw = true): void {
     if (!this.#anchor && this.selected === null) return;
     this.#anchor = null; this.#scrolled = false; this.selected = null; this.#pill.hidden = true; this.reader.tally?.release(); this.onHold(); this.onInspect();
