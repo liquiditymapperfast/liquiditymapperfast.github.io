@@ -14,6 +14,7 @@ import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { BOUNDARY, type TapeRing } from '../tape/ring.ts';
 import { TradeIndex, readRecord, type TradeRecord } from '../trades/index.ts';
 import { RetainedRows } from './retained-rows.ts';
+import { newestStep, scrolledBack } from '../trades/follow.ts';
 import { DIVIDER_ROW, InkCache, ORDER_TINT, ROW_GAP, ROW_MARK, ROW_PAD, TIERS, amountText, clockForm, orderBarFull, priceWidth, rowGeom, tierOf, type RowFontWidths, type RowGeom, type Tier } from '../trades/style.ts';
 import { GROUP_MS } from '../trades/settings.ts';
 import { Conveyor } from '../trades/conveyor.ts';
@@ -72,6 +73,8 @@ export class OrderList {
    */
   #touch: { id: number; y: number; moved: number; owed: number; took: boolean } | null = null;
   #pinned: number | null = null;
+  /** The order at the top when the hold began (scrolled back is older than it: `trades/follow.ts`), and the last mouse move's place. */
+  #holdK = -1; #lastMove: { x: number; y: number } | null = null;
   /** The wheel moved the list back from the newest order: it stays held when the pointer leaves. */
   #scrolled = false;
   /** What the batches added above the newest row drawn, played out a little on every frame while the list follows the newest. */
@@ -135,6 +138,10 @@ export class OrderList {
     document.addEventListener('visibilitychange', this.#onVisible);
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
+      // A move that did not move holds nothing (a browser may send one as the page changes under a resting mouse; WebKit does): the list holds
+      // when the mouse moves on it.
+      if (this.#lastMove && this.#lastMove.x === e.clientX && this.#lastMove.y === e.clientY) return;
+      this.#lastMove = { x: e.clientX, y: e.clientY };
       // A mouse is in use again (a hybrid device): its box offers the click once more.
       this.#lastTouch = false;
       this.#pointer = { x: e.offsetX, y: e.offsetY };
@@ -143,7 +150,7 @@ export class OrderList {
       this.#hoverChanged(); this.invalidate();
     });
     // A finger "leaves" as it lifts: the hold and the pinned row end with the tap that lets the row go, or the pill, not with the lift.
-    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.#hoverChanged(); if (!this.#scrolled) this.#release(); this.invalidate(); });
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.#lastMove = null; this.#hoverChanged(); if (!this.#scrolled) this.#release(); this.invalidate(); });
     // Ctrl + wheel is the browser's zoom, not the list's.
     c.addEventListener('wheel', e => { if (e.ctrlKey) return; e.preventDefault(); this.#scroll(e.deltaY * (e.deltaMode === 1 ? 24 : e.deltaMode === 2 ? this.#h : 1)); this.#hoverChanged(); }, { passive: false });
     c.addEventListener('click', e => { if (this.#lastTouch) return; const row = this.#rowAt(e.offsetY); if (row && !replaying() && !isPhone()) this.onGoTo(row.rec.t, row.rec.price); });
@@ -170,7 +177,9 @@ export class OrderList {
       const tch = this.#touch;
       if (!tch || e.pointerId !== tch.id) return;
       this.#touch = null;
-      if (tch.moved > 6) return;
+      // A drag that lifts with the list not scrolled back from where its hold began gives back the hold it took, as a mouse leaving does
+      // (review r19: up and back down left it held); scrolled back, or a row pinned, it stays held.
+      if (tch.moved > 6) { if (tch.took && this.#pinned === null && !this.#scrolled) this.#release(); return; }
       const row = this.#rowAt(e.offsetY);
       this.#pinned = row && row.k !== this.#pinned ? row.k : null;
       if (this.#pinned !== null) { if (!this.#anchor) this.#hold(); }
@@ -355,9 +364,12 @@ export class OrderList {
     // A row under a line at the top (rows were coming down) is held at the top, the line dropped: a held list draws no line above the row it
     // starts from, and the strip would stay blank for the whole hold (a nudge of a line's height at most, rare: a line is at the top for a frame or two).
     this.#anchor = { k: top.k, offset: Math.max(0, -top.y) };
+    this.#holdK = top.k;
     this.#index.hold(top.k + 1);
     this.#showHeld();
   }
+  /** Let go from a scroll back to the newest, the mouse on the list or not: nothing is pointed at until the mouse moves, and that move holds it again. */
+  #follow(): void { this.#pointerIn = false; this.#pointer = null; this.#hoverChanged(); this.#release(); }
   /**
    * Let go: the list follows the newest again, coming down to it from where it stands (as far as the list is tall; further is jumped).
    * `draw` false: the list is being found again or hidden, and stands at the newest at once.
@@ -373,7 +385,9 @@ export class OrderList {
   /** The wheel moves the held top row by `dy` px (down: older orders); back at the newest, the list follows again. */
   #scroll(dy: number): void {
     if (!this.#index.length) return;
-    // Following, the newest is at the top: up goes nowhere (a trackpad's momentum tail after the list came back takes no hold).
+    // A sideways swipe moves nothing. Following, the newest is at the top: up goes nowhere (a trackpad's momentum tail after the list came
+    // back takes no hold).
+    if (!dy) return;
     if (!this.#anchor) { if (!(dy > 0)) return; this.#hold(); if (!this.#anchor) return; }
     // Row by row (a grouped row is one step, with the line under it where orders may be missing, as the list draws it: the anchor's row draws
     // no line above it); the offset keeps its fractions (a trackpad's small steps add up) and is rounded where it is drawn.
@@ -383,14 +397,18 @@ export class OrderList {
     // The oldest row found, with nothing older to find: it stays at the top rather than scrolling off into nothing.
     // Nothing older on the tape: the list scrolls on through the recording's rows below it (from $25K), then stops.
     if (!this.#index.moreBehind && pos - this.#unit(pos).count < 0) offset = Math.min(offset, this.#historyHeight());
-    // At the newest row by what is drawn (a residue under half a pixel is no scroll back), or up into it: the list follows again, the mouse on
-    // it or not, and holds again when the mouse moves (as the 1-second list, 2026-11-15). A pinned row keeps it held there.
-    if (pos === this.#index.length - 1 && (Math.round(offset) <= 0 || dy < 0)) {
-      if (this.#pinned === null) { this.#pointerIn = false; this.#release(); return; }
-      offset = 0;
+    // At the newest row by what is drawn (a residue under half a pixel is no scroll back), or up into it (`trades/follow.ts`): the list follows
+    // again, the mouse on it or not, until the mouse moves (as the 1-second list, 2026-11-15); a pinned row keeps it held there.
+    if (pos === this.#index.length - 1) {
+      const step = newestStep(dy, offset, this.#pointerIn, this.#pinned !== null);
+      if (step === 'follow') { this.#follow(); return; }
+      if (step === 'top') offset = 0;
     }
-    this.#anchor = { k: this.#index.at(pos), offset: Math.max(0, offset) };
-    this.#scrolled = pos < this.#index.length - 1 || Math.round(offset) > 0;
+    const off = Math.max(0, offset);
+    this.#anchor = { k: this.#index.at(pos), offset: off };
+    // Scrolled back is older than where the hold began: up toward newer orders (they arrive above a held list) is not, and the mouse leaving
+    // lets the list go (review r19).
+    this.#scrolled = scrolledBack(pos, this.#unitTop(this.#index.position(this.#holdK)), off);
     if (pos < OVERSCAN) this.#fillBack();
     this.invalidate();
   }

@@ -10,6 +10,7 @@ import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 import { scaledUsd } from '../coin.ts';
 import { BlockReader, barLength, emptyBlock, fullScale, type Block } from '../trades/blocks.ts';
 import { RowWalker, type Row, type RowKind } from '../trades/rows.ts';
+import { newestStep, scrolledBack } from '../trades/follow.ts';
 import { RetainedRows } from './retained-rows.ts';
 import { setText } from './lower-panes.ts';
 
@@ -66,6 +67,8 @@ export class BlockList {
   /** null: the list follows the newest block; else the block starting at second `s` is drawn `offset` px above the top. */
   #anchor: { s: number; offset: number } | null = null;
   #pointer: { x: number; y: number } | null = null; #pointerIn = false; #scrolled = false;
+  /** The second at the top when the hold began (scrolled back is older than it: `trades/follow.ts`), and the last mouse move's place. */
+  #holdTop = Number.NaN; #lastMove: { x: number; y: number } | null = null;
   /** A mouse is over the list or the details beside it (the shell says so: the details are its own element). */
   #within = false;
   /** The key that brings a held list back to the newest block, with the count of what came meanwhile (as Each order's). */
@@ -125,13 +128,17 @@ export class BlockList {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { this.rows.reset(); this.invalidate(); } });
     c.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;
+      // A move that did not move holds nothing (a browser may send one as the page changes under a resting mouse; WebKit does): the list holds
+      // when the mouse moves on it.
+      if (this.#lastMove && this.#lastMove.x === e.clientX && this.#lastMove.y === e.clientY) return;
+      this.#lastMove = { x: e.clientX, y: e.clientY };
       this.#lastTouch = false;
       this.#pointer = { x: e.offsetX, y: e.offsetY };
       this.#pointerIn = true; this.#hold();
       this.#hover(); this.invalidate();
     });
     // Off the list onto the details beside it, the hold and the chosen block stay (`pointerWithin` lets them go when the mouse leaves both).
-    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.onHover(null); if (!this.#within && !this.#scrolled) this.release(); this.invalidate(); });
+    c.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; this.#pointerIn = false; this.#pointer = null; this.#lastMove = null; this.onHover(null); if (!this.#within && !this.#scrolled) this.release(); this.invalidate(); });
     c.addEventListener('wheel', e => { if (e.ctrlKey) return; e.preventDefault(); this.#scroll(e.deltaY * (e.deltaMode === 1 ? 24 : e.deltaMode === 2 ? this.#h : 1)); this.#hover(); }, { passive: false });
     c.addEventListener('click', e => {
       // A finger's tap chose its block on lift; its details open now, on the click that follows, which would otherwise land on the sheet's
@@ -161,7 +168,9 @@ export class BlockList {
       const tch = this.#touch;
       if (!tch || e.pointerId !== tch.id) return;
       this.#touch = null;
-      if (tch.moved > 6) return;
+      // A drag that lifts with the list not scrolled back from where its hold began lets it go, as a mouse leaving does (a finger has no other
+      // way out; review r19: up and back down left it held); scrolled back, or a block chosen, it stays held.
+      if (tch.moved > 6) { if (this.selected === null && !this.#scrolled && !this.#pointerIn && !this.#within) this.release(); return; }
       const row = this.#rowAt(e.offsetY);
       if (!row || row.kind !== 'block') return;
       // A second tap on the chosen block lets it go, as a second click does (a phone's sheet covers the list meanwhile, so this is a touch
@@ -243,6 +252,7 @@ export class BlockList {
     // since that frame moved every row down one under a finger's tap, and a second tap on the same spot chose the next block.
     const top = this.#drawn.find(d => d.kind !== 'note');
     this.#anchor = { s: top ? top.s : this.newestStart(), offset: 0 };
+    this.#holdTop = this.#anchor.s;
     this.reader.tally?.hold(); this.onHold();
   }
   release(draw = true): void {
@@ -255,7 +265,9 @@ export class BlockList {
    * them (`trades/rows.ts`): a folded hour of quiet seconds is one short row, passed in one step, not 3,600 blocks.
    */
   #scroll(dy: number): void {
-    // Following, the newest is at the top: up goes nowhere (a trackpad's momentum tail after the list came back takes no hold).
+    // A sideways swipe moves nothing. Following, the newest is at the top: up goes nowhere (a trackpad's momentum tail after the list came
+    // back takes no hold).
+    if (!dy) return;
     if (!this.#anchor) { if (!(dy > 0)) return; this.#hold(); if (!this.#anchor) return; }
     const B = this.unit, newest = this.newestStart(), oldest = this.reader.oldestSec(), now = this.now(), rows = this.#rows();
     let row = rows.rowFrom(this.#anchor.s, B, now, oldest), offset = this.#anchor.offset + dy;
@@ -267,18 +279,22 @@ export class BlockList {
     for (let up = offset < 0 ? rows.above(row, B, now, newest) : null; up; up = offset < 0 ? rows.above(row, B, now, newest) : null) { row = up; offset += this.#rowHeight(up); }
     // The last row stays at the top at most (the list's end note under it stays in view).
     if (!rows.below(row, B, now, oldest)) offset = Math.min(offset, 0);
-    // Back at the newest, or up into the newest row (each second begun while the list was held puts a row above it, and a trackpad's small
-    // step up into one left it part-hidden, held as if scrolled back): the top. The list follows again, the mouse on it or not, and holds
-    // again when the mouse moves (Karl, 2026-11-15, in Safari: "you always have to scroll manually to the latest row"). A chosen block keeps
-    // it held there.
-    if (row.top >= newest && (Math.round(offset) <= 0 || dy < 0)) {
-      if (this.selected === null) { this.#pointerIn = false; this.release(); return; }
-      offset = 0;
+    // Back at the newest (`trades/follow.ts`): up into the newest row is its top, and the list follows again, the mouse on it or not, until
+    // the mouse moves (Karl, 2026-11-15, in Safari: "you always have to scroll manually to the latest row"); a chosen block keeps it held there.
+    if (row.top >= newest) {
+      const step = newestStep(dy, offset, this.#pointerIn || this.#within, this.selected !== null);
+      if (step === 'follow') { this.#follow(); return; }
+      if (step === 'top') offset = 0;
     }
-    this.#anchor = { s: row.top, offset: Math.max(0, offset) };
-    this.#scrolled = row.top < newest || Math.round(offset) > 0;
+    const off = Math.max(0, offset);
+    this.#anchor = { s: row.top, offset: off };
+    // Scrolled back is older than where the hold began: up toward newer rows (each second puts one above a held list) is not, and the mouse
+    // leaving lets the list go (review r19).
+    this.#scrolled = scrolledBack(row.top, this.#holdTop, off);
     this.invalidate();
   }
+  /** Let go from a scroll back to the newest, the mouse on the list or not: nothing is pointed at until the mouse moves (a readout would ride the moving rows), and that move holds it again. */
+  #follow(): void { this.#pointerIn = false; this.#pointer = null; this.onHover(null); this.release(); }
   #rowAt(y: number): Drawn | null { for (const d of this.#drawn) if (y >= d.y && y < d.y + d.h) return d; return null; }
   #hover(): void {
     const row = this.#pointer && !replaying() ? this.#rowAt(this.#pointer.y) : null;

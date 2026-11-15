@@ -118,6 +118,14 @@ export class TradesView {
     // A mouse over the list or the details beside it holds the blocks; leaving both lets them go (a finger's hold is the sheet's or the key's).
     this.#body.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') this.blocks.pointerWithin(true); });
     this.#body.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') this.blocks.pointerWithin(false); });
+    // A move on the details holds the list too (the mouse can come there with the list following: a scroll back to the newest lets it go
+    // under a resting mouse). A move that did not move holds nothing.
+    let moved = '';
+    this.#inspector.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
+      const at = `${e.clientX},${e.clientY}`;
+      if (at !== moved) { moved = at; this.blocks.pointerWithin(true); }
+    });
     this.#unit.onchange = () => {
       const v = this.#unit.value;
       if (v === 'custom') { this.#syncMenus(); this.openSettings(this.#unit); return; }
