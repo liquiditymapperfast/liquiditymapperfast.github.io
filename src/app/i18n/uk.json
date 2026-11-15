@@ -3169,6 +3169,7 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "Кожна відкрита панель перемальовується, поки рухається ринок: закрийте ті, якими не користуєтеся.",
  "The page runs smoothly here.": "Тут сторінка працює плавно.",
  "Copied. Paste it into your AI assistant.": "Скопійовано. Вставте це у свого ШІ-помічника.",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "Скопіювати звіт про те, як працює ця сторінка, з назвами вашого браузера й відеокарти та кроками для пришвидшення, щоб вставити в ШІ-помічника",
- "Every step in full, for each browser and system, in the Guide": "Усі кроки докладно, для кожного браузера й системи, у посібнику"
+ "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Скопіювати звіт про те, як працює ця сторінка, щоб вставити його в ШІ-помічника: частота кадрів, ваш браузер, система й відеокарта, розміри екрана й вікна, потоки процесора й пам'ять, налаштування сторінки та кроки для пришвидшення",
+ "Every step in full, for each browser and system, in the Guide": "Усі кроки докладно, для кожного браузера й системи, у посібнику",
+ "Measuring: what would help follows after {n} seconds.": "Триває вимірювання: що допоможе, з'явиться за {n} секунд."
 }

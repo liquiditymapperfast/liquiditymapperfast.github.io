@@ -3164,6 +3164,7 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "Каждая открытая панель перерисовывается, пока движется рынок: закройте те, которыми не пользуетесь.",
  "The page runs smoothly here.": "Здесь страница работает плавно.",
  "Copied. Paste it into your AI assistant.": "Скопировано. Вставьте это в своего ИИ-помощника.",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "Скопировать отчёт о том, как работает эта страница, с названиями вашего браузера и видеокарты и шагами для ускорения, чтобы вставить в ИИ-помощника",
- "Every step in full, for each browser and system, in the Guide": "Все шаги подробно, для каждого браузера и системы, в руководстве"
+ "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Скопировать отчёт о том, как работает эта страница, чтобы вставить его в ИИ-помощника: частота кадров, ваш браузер, система и видеокарта, размеры экрана и окна, потоки процессора и память, настройки страницы и шаги для ускорения",
+ "Every step in full, for each browser and system, in the Guide": "Все шаги подробно, для каждого браузера и системы, в руководстве",
+ "Measuring: what would help follows after {n} seconds.": "Идёт измерение: что поможет, появится через {n} секунд."
 }

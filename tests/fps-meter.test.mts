@@ -1,23 +1,100 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FrameWindow, LATE_FACTOR, REFRESH_RATES, hitchOf, nextLevel, refreshOf, toneOf } from '../src/app/fps/model.ts';
+import { FrameWindow, JUDGE_AFTER_S, LATE_FACTOR, REFRESH_RATES, bandOf, hitchOf, nextLevel, refreshOf, toneOf, verdictOf, type FrameStats } from '../src/app/fps/model.ts';
 import { SEGMENTS, segmentShape, BAR_TONES } from '../src/app/fps/led.ts';
-import { speedReport, type SpeedInfo } from '../src/app/fps/report.ts';
+import { LOCAL_COPY, pageAddress, speedReport, type SpeedInfo } from '../src/app/fps/report.ts';
 
 // The status bar's frame-rate meter (2026-11-14): its arithmetic, its digits and its report for an AI assistant.
 
-test('the screen\'s rate is read from the fastest frames, snapped to a common rate, never under 60', () => {
-  assert.equal(refreshOf([]), 60, 'nothing seen yet');
-  assert.equal(refreshOf(Array(10).fill(16.7)), 60);
-  assert.equal(refreshOf([6.9, 6.95, 7, 6.94, 6.93, 7.01, 6.92, 6.96, 6.97, 6.99]), 144);
-  assert.equal(refreshOf(Array(10).fill(8.33)), 120);
-  assert.equal(refreshOf(Array(10).fill(4.17)), 240);
-  // A page held at 30 frames a second is not a 30 Hz screen: it reads as 60, so 30 frames show red, not green.
-  assert.equal(refreshOf(Array(10).fill(33.3)), 60);
-  assert.equal(toneOf(30, refreshOf(Array(10).fill(33.3))), 'red');
-  // A stray short interval (timer jitter) does not move the median of ten.
-  assert.equal(refreshOf([2.5, 16.6, 16.7, 16.7, 16.6, 16.7, 16.8, 16.7, 16.6, 16.7]), 60);
-  assert.deepEqual([...REFRESH_RATES].sort((a, b) => a - b), [...REFRESH_RATES], 'in order');
+/** Frame times of a screen at `hz` for `seconds` (from `t0`), with timestamp noise of `sd` ms from a fixed seed, rounded to `round` ms. */
+function beats(hz: number, seconds: number, { sd = 0, round = 0, t0 = 0, seed = 7 } = {}): number[] {
+  let x = seed; const rnd = (): number => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648; };
+  const out: number[] = [];
+  for (let i = 0, n = Math.floor(seconds * hz); i < n; i++) {
+    let t = t0 + (i * 1000) / hz;
+    if (sd) t += Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd()) * sd;
+    if (round) t = Math.round(t / round) * round;
+    out.push(t);
+  }
+  return out.sort((a, b) => a - b);
+}
+/** Feed frame times to a window (a new one unless given) and read it at the last. */
+function feed(times: readonly number[], w = new FrameWindow()): { w: FrameWindow; end: number } {
+  let prev: number | null = null;
+  for (const t of times) { if (prev !== null) w.push(t, t - prev); prev = t; }
+  return { w, end: prev ?? 0 };
+}
+const hzOf = (times: readonly number[]): number => { const { w, end } = feed(times); return w.stats(end).hz; };
+
+test('an interval counts for the nearest common rate within 8 %, and none when it is no screen\'s frame', () => {
+  const at = (hz: number): number => REFRESH_RATES.indexOf(hz);
+  assert.equal(bandOf(1000 / 60), at(60));
+  assert.equal(bandOf(1000 / 48), at(48), '48 and 50 Hz are closer than 8 %: the nearest wins');
+  assert.equal(bandOf(1000 / 50), at(50));
+  assert.equal(bandOf(1000 / 144), at(144));
+  assert.equal(bandOf(1000 / 480), at(480));
+  assert.equal(bandOf(1000 / 30), -1, 'no screen here runs at 30');
+  assert.equal(bandOf(1.2), -1, 'two callbacks of one frame');
+  assert.equal(bandOf(Number.NaN), -1);
+  assert.deepEqual([...REFRESH_RATES].sort((a, b) => a - b), [...REFRESH_RATES], 'slowest first');
+  // The fastest band holding a tenth wins; too few intervals, or none qualifying, keep the reading before.
+  const counts = new Array(REFRESH_RATES.length).fill(0) as number[];
+  counts[at(144)] = 12; counts[at(75)] = 88;
+  assert.equal(refreshOf(counts, 100), 144, 'one interval in eight at 144 Hz: a 144 Hz screen with a busy page');
+  counts[at(144)] = 9; counts[at(75)] = 91;
+  assert.equal(refreshOf(counts, 100), 75);
+  assert.equal(refreshOf(counts, 20, 120), 120, 'too few intervals yet');
+  assert.equal(refreshOf(new Array(REFRESH_RATES.length).fill(0), 100, 90), 90, 'none qualifying');
+});
+
+test('the screen\'s rate is read from the last minute\'s frames: every common rate, through jitter and rounding, and a page held at 30 still reads red', () => {
+  for (const hz of REFRESH_RATES) assert.equal(hzOf(beats(hz, 30)), hz, `${hz} Hz`);
+  // The reviewer's failures of the fastest-frames rule (r17): early frames and timestamp noise drifted a long session to a faster rate.
+  const early = beats(60, 600, { sd: 0.05 });
+  for (let k = 1; k <= 30; k++) { const i = k * 1150; early[i] = early[i - 1]! + 5 + (k % 9); }
+  assert.equal(hzOf(early.sort((a, b) => a - b)), 60, '60 Hz with three early frames a minute for ten minutes');
+  assert.equal(hzOf(beats(60, 600, { sd: 0.5 })), 60, '60 Hz with 0.5 ms of noise');
+  assert.equal(hzOf(beats(144, 300, { sd: 0.15 })), 144, '144 Hz with 0.15 ms of noise');
+  assert.equal(hzOf(beats(144, 60, { round: 1 })), 144, 'timestamps rounded to whole milliseconds');
+  assert.equal(hzOf(beats(120, 60, { round: 1 })), 120);
+  assert.equal(hzOf(beats(60, 60, { round: 1 })), 60);
+  // A page held at 30 frames a second on a 60 Hz screen: no screen runs at 30, so the reading stays 60 and 30 frames show red.
+  const { w, end } = feed(beats(30, 60));
+  const s = w.stats(end);
+  assert.equal(s.hz, 60); assert.equal(toneOf(s.fps!, s.hz), 'red');
+  // A busy page on a 144 Hz screen, one or two beats a frame: the one-beat frames, a fifth of them, say 144.
+  const busy: number[] = []; let t = 0;
+  for (let i = 0; i < 6000; i++) { busy.push(t); t += (1000 / 144) * (i % 5 === 0 ? 1 : 2); }
+  assert.equal(hzOf(busy), 144);
+});
+
+test('a slower rate on the same screen is learned within a minute; a faster one at once; a restart keeps the reading, another screen learns it again', () => {
+  const fast = beats(144, 180), slow = beats(60, 90, { t0: fast[fast.length - 1]! + 1000 / 60 });
+  const w = new FrameWindow(); let prev: number | null = null, learned: number | null = null;
+  for (const t of [...fast, ...slow]) {
+    if (prev !== null) w.push(t, t - prev);
+    prev = t;
+    if (learned === null && t > fast[fast.length - 1]! && w.stats(t).hz === 60) learned = (t - fast[fast.length - 1]!) / 1000;
+  }
+  assert.ok(learned !== null && learned <= 60, `144 to 60 Hz learned after ${learned} s (the fastest-frames rule never did)`);
+  const { w: w2, end } = feed([...beats(60, 60), ...beats(144, 5, { t0: 60_000 })]);
+  assert.equal(w2.stats(end).hz, 144, 'a faster rate within seconds');
+  w2.restart(end + 5000);
+  assert.equal(w2.stats(end + 5000).hz, 144, 'a hidden tab comes back: the screen is the same');
+  w2.restart(end + 6000, true);
+  assert.equal(w2.stats(end + 6000).hz, 60, 'another screen: 60 until its rate is seen');
+});
+
+test('the panel says nothing of the page until it has watched 20 s, then judges the minute, never one second', () => {
+  const s = (over: Partial<FrameStats>): FrameStats => ({ fps: 60, fpsMinute: 60, hz: 60, worstQuarter: 17, worstMinute: 40, lateMinute: 0, seenSeconds: 60, ...over });
+  assert.equal(verdictOf(null), 'measuring');
+  assert.equal(verdictOf(s({ fps: null, fpsMinute: null, seenSeconds: 0.5 })), 'measuring');
+  assert.equal(verdictOf(s({ seenSeconds: JUDGE_AFTER_S - 1 })), 'measuring', 'the first seconds load and build the pictures');
+  assert.equal(verdictOf(s({})), 'smooth');
+  assert.equal(verdictOf(s({ fps: 12 })), 'smooth', 'a red second in a smooth minute is a blink, not a slow page');
+  assert.equal(verdictOf(s({ fpsMinute: 40 })), 'struggling');
+  assert.equal(verdictOf(s({ fpsMinute: 130, hz: 144 })), 'smooth');
+  assert.equal(verdictOf(s({ fpsMinute: 100, hz: 144 })), 'struggling');
 });
 
 test('the colour is the frame rate against the screen: green from 90 %, amber from 60 %, red under', () => {
@@ -48,7 +125,7 @@ test('the window counts the last second\'s frames, the late ones of the last min
   for (let i = 0; i < 120; i++) { now += 1000 / 60; w.push(now, 1000 / 60); }
   let s = w.stats(now);
   assert.equal(s.hz, 60);
-  assert.ok(s.fps! >= 59 && s.fps! <= 61, `fps ${s.fps}`);
+  assert.equal(s.fps, 60, 'a second of a 60 Hz screen holds 60 frames (the window is open at its far end)');
   assert.ok(s.fpsMinute! >= 59 && s.fpsMinute! <= 61, `minute ${s.fpsMinute}`);
   assert.equal(s.lateMinute, 0);
   // One frame of 100 ms, then on time again: one late frame, the quarter's worst while it is in the last quarter second.
@@ -100,7 +177,7 @@ const info = (over: Partial<SpeedInfo> = {}): SpeedInfo => ({
 
 test('the report for an AI assistant says what the page measured and what to check, most likely first, for this browser\'s state', () => {
   const r = speedReport(info());
-  for (const want of ['41 frames a second in the last second, 44 on average over the last 60 s', 'about 144 Hz', 'Late frames in the last 60 s: 37', '233 ms', 'NVIDIA GeForce RTX 3080', 'Chrome/142', '3840 x 2160 at 1.5x', '16 processor threads', '8 GB', 'Waves) is on', 'flow column, order book', 'timeframe 1h', 'https://liquiditymapper.com/']) {
+  for (const want of ['41 frames a second in the last second, 44 on average over the last 60 s', 'about 144 Hz (read from the frames of the last minute)', 'Late frames in the last 60 s: 37', '233 ms', 'NVIDIA GeForce RTX 3080', 'Chrome/142', '3840 x 2160 CSS pixels at 1.5 device pixels each (about 5760 x 3240 device pixels)', 'inside is 2560 x 1313 CSS pixels', '16 processor threads', '8 GB', 'Waves) is on', 'flow column, order book', 'timeframe 1h', 'https://liquiditymapper.com/']) {
     assert.ok(r.includes(want), `says ${want}`);
   }
   // With WebGL2 drawing, the first thing to check is not graphics acceleration.
@@ -114,8 +191,24 @@ test('the report for an AI assistant says what the page measured and what to che
   assert.match(none.split('\n').find(l => l.startsWith('3. '))!, /graphics driver/);
   assert.match(none, /drawn on the processor/);
   assert.doesNotMatch(none, /switch Waves off/, 'no Glass advice where Glass is off');
+  // WebGL2 there but unable to draw: acceleration is on, so the driver comes first, then the browser's report; never the acceleration switch.
+  const failed = speedReport(info({ graphics: 'failed' }));
+  assert.match(failed.split('\n').find(l => l.startsWith('1. '))!, /graphics driver/);
+  assert.match(failed.split('\n').find(l => l.startsWith('2. '))!, /chrome:\/\/gpu.*about:support/);
+  assert.doesNotMatch(failed, /Hardware \(graphics\) acceleration/);
+  // Shift+Esc is Windows' and Linux's; the zoom is not advice (a zoom over 100 % draws fewer pixels, review r17).
+  assert.match(r, /Shift\+Esc on Windows and Linux/);
+  assert.doesNotMatch(r, /zoom/i);
   // Still measuring, no card named, nothing reported for cores or memory: the report says so plainly, with no empty parentheses.
   const bare = speedReport(info({ stats: { fps: null, fpsMinute: null, hz: 60, worstQuarter: 0, worstMinute: 0, lateMinute: 0, seenSeconds: 0.4 }, gpu: null, cores: null, memoryGb: null }));
   assert.match(bare, /still measuring/);
   assert.doesNotMatch(bare, /\(\)|undefined|null/);
+});
+
+test('the report names the page\'s address only where it is the public site: a file, a local or private server is a copy', () => {
+  assert.equal(pageAddress('liquiditymapper.com', 'https://liquiditymapper.com', '/'), 'https://liquiditymapper.com/');
+  assert.equal(pageAddress('www.liquiditymapper.com', 'https://www.liquiditymapper.com', '/'), 'https://www.liquiditymapper.com/');
+  assert.equal(pageAddress('liquiditymapperfast.github.io', 'https://liquiditymapperfast.github.io', '/'), 'https://liquiditymapperfast.github.io/');
+  for (const host of ['localhost', '127.0.0.1', '192.168.1.20', '', 'notliquiditymapper.com.evil.test']) assert.equal(pageAddress(host, `http://${host}`, '/x/'), LOCAL_COPY, host || 'a file');
+  assert.match(speedReport(info({ url: LOCAL_COPY })), /I use LiquidityMapperFast \(a copy of the page on this computer or network\)/);
 });

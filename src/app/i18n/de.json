@@ -3070,6 +3070,7 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "Jeder offene Bereich zeichnet, während sich der Markt bewegt: Schließe die, die du nicht nutzt.",
  "The page runs smoothly here.": "Die Seite läuft hier flüssig.",
  "Copied. Paste it into your AI assistant.": "Kopiert. Füge es in deinen KI-Assistenten ein.",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "Einen Bericht kopieren, wie diese Seite läuft, mit den Namen deines Browsers und deiner Grafikkarte und den Schritten, die sie schneller machen, zum Einfügen in einen KI-Assistenten",
- "Every step in full, for each browser and system, in the Guide": "Jeder Schritt ausführlich, für jeden Browser und jedes System, in der Anleitung"
+ "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Einen Bericht kopieren, wie diese Seite läuft, zum Einfügen in einen KI-Assistenten: die Bildrate, dein Browser, System und deine Grafikkarte, die Größe von Bildschirm und Fenster, Prozessor-Threads und Arbeitsspeicher, die Einstellungen der Seite und die Schritte, die sie schneller machen",
+ "Every step in full, for each browser and system, in the Guide": "Jeder Schritt ausführlich, für jeden Browser und jedes System, in der Anleitung",
+ "Measuring: what would help follows after {n} seconds.": "Messung läuft: Was helfen würde, folgt nach {n} Sekunden."
 }

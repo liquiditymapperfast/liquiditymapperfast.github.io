@@ -3064,6 +3064,7 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "Açık her panel piyasa hareket ettikçe çizilir: kullanmadıklarınızı kapatın.",
  "The page runs smoothly here.": "Sayfa burada akıcı çalışıyor.",
  "Copied. Paste it into your AI assistant.": "Kopyalandı. Yapay zekâ asistanınıza yapıştırın.",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "Bu sayfanın nasıl çalıştığına dair bir raporu, tarayıcınızın ve ekran kartınızın adları ve sayfayı hızlandırma adımlarıyla birlikte, bir yapay zekâ asistanına yapıştırmak için kopyalayın",
- "Every step in full, for each browser and system, in the Guide": "Her tarayıcı ve sistem için her adım, ayrıntısıyla kılavuzda"
+ "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Bu sayfanın nasıl çalıştığına dair bir raporu bir yapay zekâ asistanına yapıştırmak için kopyala: kare hızı, tarayıcınız, sisteminiz ve ekran kartınız, ekran ve pencere boyutları, işlemci iş parçacıkları ve bellek, sayfanın ayarları ve onu hızlandıracak adımlar",
+ "Every step in full, for each browser and system, in the Guide": "Her tarayıcı ve sistem için her adım, ayrıntısıyla kılavuzda",
+ "Measuring: what would help follows after {n} seconds.": "Ölçülüyor: neyin işe yarayacağı {n} saniye sonra gelir."
 }

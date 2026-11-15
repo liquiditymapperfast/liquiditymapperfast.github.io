@@ -57,9 +57,12 @@ function canvasOf(w: number, h: number, ratio: number): [HTMLCanvasElement, Canv
   const x = c.getContext('2d')!; x.scale(ratio, ratio); return [c, x];
 }
 
+/** The glow's blur (CSS px): 5 device pixels on a screen of 1.5, as first built, and the same size at every ratio (review r17: a shadow's blur is in device pixels, the transform does not scale it, so it was thinner on sharper screens). */
+const GLOW = 10 / 3;
+
 /** Light `draw`'s shape: a halo of the hue (the glow), the hue itself, then its hot centre a little smaller. */
 function lit(x: CanvasRenderingContext2D, tone: LedTone, draw: () => void, core = true): void {
-  x.save(); x.shadowColor = HUE[tone]; x.shadowBlur = tone === 'idle' ? 0 : 5; x.fillStyle = HUE[tone]; draw(); x.fill(); x.restore();
+  x.save(); x.shadowColor = HUE[tone]; x.shadowBlur = tone === 'idle' ? 0 : GLOW * x.getTransform().a; x.fillStyle = HUE[tone]; draw(); x.fill(); x.restore();
   if (core && tone !== 'idle') { x.save(); x.globalAlpha = 0.55; x.fillStyle = CORE[tone]; draw(); x.fill(); x.restore(); }
 }
 

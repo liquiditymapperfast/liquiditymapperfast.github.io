@@ -6,22 +6,41 @@
  * of its paints would read 48 on a perfect 60 Hz screen.
  */
 
-/** The rates screens run at (Hz): the screen's rate is the common one nearest what the fastest frames say. */
-export const REFRESH_RATES: readonly number[] = [60, 75, 90, 100, 120, 144, 165, 180, 240];
-/** How many of the fastest intervals the screen's rate is read from. */
-export const FASTEST_KEPT = 10;
+/** The rates screens run at (Hz), slowest first. */
+export const REFRESH_RATES: readonly number[] = [48, 50, 60, 75, 90, 100, 120, 144, 165, 180, 240, 300, 360, 480];
+/** A rate's band: the intervals within 8 % of its frame time count for it, each for the nearest rate only (48 and 50 Hz, 165 and 180 are closer than that). */
+export const RATE_BAND = 0.08;
+/** The share of the last minute's intervals that the band of the screen's rate holds at least. */
+export const RATE_SHARE = 0.1;
+/** Intervals this short (ms) are no screen's frames (two callbacks of one frame): the fastest screen listed beats every 2.08 ms. */
+export const MIN_INTERVAL = 1.5;
+/** Fewer counted intervals than this say nothing of the screen yet: the reading before is kept (60 before any). */
+export const MIN_COUNTED = 30;
+
+/** The rate an interval of `ms` counts for: the index in `REFRESH_RATES` of the nearest (by ratio) within its band, or -1 (none, or too short to be a frame). */
+export function bandOf(ms: number): number {
+  if (!(ms > MIN_INTERVAL) || !Number.isFinite(ms)) return -1;
+  let best = -1, off = Math.log(1 + RATE_BAND);
+  for (let i = 0; i < REFRESH_RATES.length; i++) { const d = Math.abs(Math.log((ms * REFRESH_RATES[i]!) / 1000)); if (d <= off) { best = i; off = d; } }
+  return best;
+}
 
 /**
- * The screen's rate from the fastest intervals seen (ms): the median of them, snapped to the nearest common rate, never under 60. A page held
- * at 30 frames a second must not be taken for a 30 Hz screen (it would read as smooth); the fastest frames since the page opened (idle
- * moments run at the screen's rate) say what the screen can do. None yet: 60.
+ * The screen's rate from the last minute's intervals: `counts[i]` of them fell in the band of `REFRESH_RATES[i]`, `total` were counted. It is
+ * the fastest rate whose band holds at least a tenth of them. A frame comes on a beat of the screen, or a whole number of beats later when
+ * the page was busy, so the screen's own band is the fastest that a good share of intervals fall in. A few early frames (timer jitter) are
+ * far fewer than a tenth, so a long session does not drift to a faster rate, and a rate that is gone (another screen of the same size, a
+ * laptop on battery) leaves the window within a minute (review r17: the fastest frames since the page opened did neither).
+ *
+ * No band holding a tenth, as for a page held at 30 frames a second on a 60 Hz screen (no screen here runs at 30): the reading before
+ * (`fallback`, 60 at first), so that page reads red, not smooth. Too few intervals yet: the reading before too. Not knowable from frame
+ * times alone: a page held at half a fast screen's rate for a whole minute reads as the slower screen it looks like (72 frames a second on
+ * a 144 Hz screen, all of them two beats long, read 75 Hz).
  */
-export function refreshOf(fastest: readonly number[]): number {
-  const ok = fastest.filter(ms => ms > 3 && Number.isFinite(ms)).sort((a, b) => a - b);
-  if (!ok.length) return 60;
-  const median = ok[Math.floor((ok.length - 1) / 2)]!, seen = 1000 / median;
-  const nearest = REFRESH_RATES.reduce((best, rate) => (Math.abs(rate - seen) < Math.abs(best - seen) ? rate : best), 60);
-  return Math.max(60, nearest);
+export function refreshOf(counts: ArrayLike<number>, total: number, fallback = 60): number {
+  if (total < MIN_COUNTED) return fallback;
+  for (let i = REFRESH_RATES.length - 1; i >= 0; i--) if (counts[i]! >= RATE_SHARE * total) return REFRESH_RATES[i]!;
+  return fallback;
 }
 
 /** How the frame rate reads against the screen's rate: green from 90 % of it, amber from 60 %, red below. */
@@ -53,56 +72,68 @@ export interface FrameStats {
   lateMinute: number; seenSeconds: number;
 }
 
+/** How long the page is watched before the panel says whether it runs smoothly (s): its first seconds load and build its pictures. */
+export const JUDGE_AFTER_S = 20;
+/** What the panel says of the page: nothing yet, smooth, or struggling. By the minute's average once `JUDGE_AFTER_S` are seen, never by one second's dip. */
+export type Verdict = 'measuring' | 'smooth' | 'struggling';
+export function verdictOf(s: FrameStats | null): Verdict {
+  if (!s || s.fps === null || s.fpsMinute === null || s.seenSeconds < JUDGE_AFTER_S) return 'measuring';
+  return toneOf(s.fpsMinute, s.hz) === 'green' ? 'smooth' : 'struggling';
+}
+
 /**
- * The frames the meter has seen: the intervals of the last minute (time, length), the fastest since the clock started, and whether a second
- * has been seen since it (re)started. Bounded: a minute at 240 Hz is 14,400 intervals.
+ * The frames the meter has seen: the intervals of the last minute (time, length) with how many fell in each rate's band, the screen's rate
+ * read from them, and whether a second has been seen since the clock (re)started. Bounded: a minute at 480 Hz is 28,800 intervals.
  */
 export class FrameWindow {
   #times: number[] = []; #lengths: number[] = []; #head = 0;
-  #fastest: number[] = [];
+  #counts = new Uint32Array(REFRESH_RATES.length); #counted = 0;
+  #hz = 60;
   #since = Number.NaN;
 
   /** The clock (re)starts at `now`: what came before is a gap, not a frame (a hidden tab, a stop). The screen's rate is kept unless `screen` changed. */
   restart(now: number, screen = false): void {
+    this.#hz = screen ? 60 : refreshOf(this.#counts, this.#counted, this.#hz);
     this.#times = []; this.#lengths = []; this.#head = 0; this.#since = now;
-    if (screen) this.#fastest = [];
+    this.#counts.fill(0); this.#counted = 0;
+  }
+
+  /** Count an interval into its band (`by` 1) or take it out again when it leaves the minute (-1). */
+  #count(ms: number, by: 1 | -1): void {
+    if (!(ms > MIN_INTERVAL)) return;
+    this.#counted += by;
+    const band = bandOf(ms);
+    if (band >= 0) this.#counts[band] = this.#counts[band]! + by;
   }
 
   /** A frame at `now`, `ms` after the one before. */
   push(now: number, ms: number): void {
     if (!(ms > 0) || !Number.isFinite(ms)) return;
     if (Number.isNaN(this.#since)) this.#since = now - ms;
-    this.#times.push(now); this.#lengths.push(ms);
-    // The fastest few since the start, smallest first (an insertion into a list of ten).
-    if (ms > 3) {
-      const f = this.#fastest;
-      if (f.length < FASTEST_KEPT || ms < f[f.length - 1]!) {
-        let i = f.length; while (i > 0 && f[i - 1]! > ms) i--;
-        f.splice(i, 0, ms); if (f.length > FASTEST_KEPT) f.pop();
-      }
-    }
+    this.#times.push(now); this.#lengths.push(ms); this.#count(ms, 1);
     // Forget what is over a minute old (the arrays are compacted now and then rather than shifted every frame).
-    while (this.#head < this.#times.length && this.#times[this.#head]! < now - 60_000) this.#head++;
+    while (this.#head < this.#times.length && this.#times[this.#head]! < now - 60_000) { this.#count(this.#lengths[this.#head]!, -1); this.#head++; }
     if (this.#head > 4096) { this.#times = this.#times.slice(this.#head); this.#lengths = this.#lengths.slice(this.#head); this.#head = 0; }
   }
 
-  get fastest(): readonly number[] { return this.#fastest; }
-
   stats(now: number): FrameStats {
-    const hz = refreshOf(this.#fastest), late = (1000 / hz) * LATE_FACTOR;
-    let frames = 0, framesMinute = 0, worstQuarter = 0, worstMinute = 0, lateMinute = 0;
+    const hz = this.#hz = refreshOf(this.#counts, this.#counted, this.#hz), late = (1000 / hz) * LATE_FACTOR;
+    let frames = 0, framesMs = 0, framesMinute = 0, worstQuarter = 0, worstMinute = 0, lateMinute = 0;
     for (let i = this.#head; i < this.#times.length; i++) {
       const at = this.#times[i]!, ms = this.#lengths[i]!;
       if (at < now - 60_000) continue;
       framesMinute++;
       if (ms > worstMinute) worstMinute = ms;
       if (ms > late) lateMinute++;
-      if (at >= now - 1000) frames++;
+      if (at > now - 1000) { frames++; framesMs += ms; }
       if (at >= now - 250 && ms > worstQuarter) worstQuarter = ms;
     }
     const seen = Number.isNaN(this.#since) ? 0 : (now - this.#since) / 1000;
     const span = Math.min(60, Math.max(0, seen));
-    return { fps: seen >= 1 ? frames : null, fpsMinute: seen >= 1 ? Math.round(framesMinute / span) : null, hz, worstQuarter, worstMinute, lateMinute, seenSeconds: span };
+    // The last second's rate is its frames over the time they took, not a count of the frames inside it: on a 60 Hz screen a frame falls on
+    // the second's far edge about half the time (jitter), and a count read 61 then (review r17); 60 frames of 16.7 ms read 60 either way.
+    const fps = seen >= 1 ? (frames && framesMs > 0 ? Math.round((frames * 1000) / framesMs) : 0) : null;
+    return { fps, fpsMinute: seen >= 1 ? Math.round(framesMinute / span) : null, hz, worstQuarter, worstMinute, lateMinute, seenSeconds: span };
   }
 }
 

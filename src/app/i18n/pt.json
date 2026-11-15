@@ -3122,6 +3122,7 @@
  "Each open panel draws as the market moves: close the ones you do not use.": "Cada painel aberto é desenhado enquanto o mercado se move: feche os que não usar.",
  "The page runs smoothly here.": "A página roda bem aqui.",
  "Copied. Paste it into your AI assistant.": "Copiado. Cole no seu assistente de IA.",
- "Copy a report of how this page runs, with your browser and graphics card names and the steps to make it faster, to paste into an AI assistant": "Copiar um relatório de como esta página roda, com os nomes do seu navegador e da sua placa de vídeo e os passos para deixá-la mais rápida, para colar em um assistente de IA",
- "Every step in full, for each browser and system, in the Guide": "Cada passo completo, para cada navegador e sistema, no guia"
+ "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Copiar um relatório de como esta página roda, para colar num assistente de IA: a taxa de quadros, seu navegador, sistema e placa de vídeo, os tamanhos da tela e da janela, as threads do processador e a memória, as configurações da página e os passos para deixá-la mais rápida",
+ "Every step in full, for each browser and system, in the Guide": "Cada passo completo, para cada navegador e sistema, no guia",
+ "Measuring: what would help follows after {n} seconds.": "Medindo: o que ajudaria aparece depois de {n} segundos."
 }
