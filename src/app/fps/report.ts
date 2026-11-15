@@ -47,7 +47,7 @@ export function pageAddress(hostname: string, origin: string, pathname: string):
 }
 
 export function speedReport(info: SpeedInfo): string {
-  const s = info.stats, fps = s.fps === null ? 'still measuring' : `${s.fps} frames a second in the last second, ${s.fpsMinute ?? s.fps} on average over the last ${round(s.seenSeconds)} s`;
+  const s = info.stats, fps = s.fps === null ? 'still measuring' : `${s.fps} frames a second in the last second, ${s.fpsMinute ?? s.fps} on average over the last ${round(s.seenSeconds)} s${s.fpsMost !== null ? `, at least ${s.fpsMost} in three seconds of four` : ''}`;
   const graphics = info.graphics === 'webgl2'
     ? `WebGL2 is on: the heatmap is drawn by the graphics card${info.gpu ? ` (${info.gpu})` : ''}`
     : info.graphics === 'no-webgl2'

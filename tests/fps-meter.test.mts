@@ -33,6 +33,9 @@ test('an interval counts for the nearest common rate within 8 %, and none when i
   assert.equal(bandOf(1000 / 50), at(50));
   assert.equal(bandOf(1000 / 144), at(144));
   assert.equal(bandOf(1000 / 480), at(480));
+  assert.equal(bandOf(1000 / 540), at(540));
+  assert.equal(bandOf(1000 / 170), at(165), 'a 170 Hz screen counts for 165');
+  assert.equal(bandOf(1000 / 200), at(200));
   assert.equal(bandOf(1000 / 30), -1, 'no screen here runs at 30');
   assert.equal(bandOf(1.2), -1, 'two callbacks of one frame');
   assert.equal(bandOf(Number.NaN), -1);
@@ -45,6 +48,17 @@ test('an interval counts for the nearest common rate within 8 %, and none when i
   assert.equal(refreshOf(counts, 100), 75);
   assert.equal(refreshOf(counts, 20, 120), 120, 'too few intervals yet');
   assert.equal(refreshOf(new Array(REFRESH_RATES.length).fill(0), 100, 90), 90, 'none qualifying');
+  // Noise spills some of a fast screen's intervals into the next faster band, never more than stay in its own (review r18).
+  const spill = new Array(REFRESH_RATES.length).fill(0) as number[];
+  spill[at(165)] = 15; spill[at(144)] = 85;
+  assert.equal(refreshOf(spill, 100), 144);
+  // The rate already read stays while its band holds 6 %: a page near the threshold does not flip between two readings.
+  const near = new Array(REFRESH_RATES.length).fill(0) as number[];
+  near[at(144)] = 8; near[at(75)] = 92;
+  assert.equal(refreshOf(near, 100, 144), 144, 'kept');
+  assert.equal(refreshOf(near, 100, 60), 75, 'not read before: a tenth is needed');
+  near[at(144)] = 5; near[at(75)] = 95;
+  assert.equal(refreshOf(near, 100, 144), 75, 'under 6 %: given up');
 });
 
 test('the screen\'s rate is read from the last minute\'s frames: every common rate, through jitter and rounding, and a page held at 30 still reads red', () => {
@@ -55,6 +69,9 @@ test('the screen\'s rate is read from the last minute\'s frames: every common ra
   assert.equal(hzOf(early.sort((a, b) => a - b)), 60, '60 Hz with three early frames a minute for ten minutes');
   assert.equal(hzOf(beats(60, 600, { sd: 0.5 })), 60, '60 Hz with 0.5 ms of noise');
   assert.equal(hzOf(beats(144, 300, { sd: 0.15 })), 144, '144 Hz with 0.15 ms of noise');
+  assert.equal(hzOf(beats(144, 300, { sd: 0.3 })), 144, '144 Hz with 0.3 ms of noise (read 165 before review r18)');
+  assert.equal(hzOf(beats(120, 300, { sd: 0.6 })), 120, '120 Hz with 0.6 ms of noise');
+  assert.equal(hzOf(beats(240, 300, { sd: 0.5 })), 240, '240 Hz with 0.5 ms of noise');
   assert.equal(hzOf(beats(144, 60, { round: 1 })), 144, 'timestamps rounded to whole milliseconds');
   assert.equal(hzOf(beats(120, 60, { round: 1 })), 120);
   assert.equal(hzOf(beats(60, 60, { round: 1 })), 60);
@@ -85,16 +102,25 @@ test('a slower rate on the same screen is learned within a minute; a faster one 
   assert.equal(w2.stats(end + 6000).hz, 60, 'another screen: 60 until its rate is seen');
 });
 
-test('the panel says nothing of the page until it has watched 20 s, then judges the minute, never one second', () => {
-  const s = (over: Partial<FrameStats>): FrameStats => ({ fps: 60, fpsMinute: 60, hz: 60, worstQuarter: 17, worstMinute: 40, lateMinute: 0, seenSeconds: 60, ...over });
+test('the panel says nothing of the page until it has watched 20 s, then judges by what three seconds in four reached, never one second', () => {
+  const s = (over: Partial<FrameStats>): FrameStats => ({ fps: 60, fpsMinute: 60, fpsMost: 60, hz: 60, worstQuarter: 17, worstMinute: 40, lateMinute: 0, seenSeconds: 60, ...over });
   assert.equal(verdictOf(null), 'measuring');
-  assert.equal(verdictOf(s({ fps: null, fpsMinute: null, seenSeconds: 0.5 })), 'measuring');
+  assert.equal(verdictOf(s({ fps: null, fpsMinute: null, fpsMost: null, seenSeconds: 0.5 })), 'measuring');
   assert.equal(verdictOf(s({ seenSeconds: JUDGE_AFTER_S - 1 })), 'measuring', 'the first seconds load and build the pictures');
   assert.equal(verdictOf(s({})), 'smooth');
   assert.equal(verdictOf(s({ fps: 12 })), 'smooth', 'a red second in a smooth minute is a blink, not a slow page');
-  assert.equal(verdictOf(s({ fpsMinute: 40 })), 'struggling');
-  assert.equal(verdictOf(s({ fpsMinute: 130, hz: 144 })), 'smooth');
-  assert.equal(verdictOf(s({ fpsMinute: 100, hz: 144 })), 'struggling');
+  assert.equal(verdictOf(s({ fpsMinute: 50 })), 'smooth', 'a stall drags the average down, not what three seconds in four reached');
+  assert.equal(verdictOf(s({ fpsMost: 40 })), 'struggling');
+  assert.equal(verdictOf(s({ fpsMost: 130, hz: 144 })), 'smooth');
+  assert.equal(verdictOf(s({ fpsMost: 100, hz: 144 })), 'struggling');
+  // On the window: an 8 s stall after 70 s of 60 Hz leaves three seconds in four at 60, smooth, though the minute's average is under 54 (amber).
+  const before = beats(60, 70), after = beats(60, 30, { t0: before[before.length - 1]! + 8000 });
+  const { w, end } = feed([...before, ...after]);
+  const st = w.stats(end);
+  assert.equal(st.fpsMost, 60); assert.ok(st.fpsMinute! < 54, `average ${st.fpsMinute}`); assert.equal(verdictOf(st), 'smooth');
+  // A page slow a third of the time is struggling.
+  const slow = feed([...beats(60, 40), ...beats(30, 20, { t0: 40_000 })]);
+  assert.equal(verdictOf(slow.w.stats(slow.end)), 'struggling');
 });
 
 test('the colour is the frame rate against the screen: green from 90 %, amber from 60 %, red under', () => {
@@ -169,7 +195,7 @@ test('every character the meter shows lights real segments, each a closed six-po
 });
 
 const info = (over: Partial<SpeedInfo> = {}): SpeedInfo => ({
-  stats: { fps: 41, fpsMinute: 44, hz: 144, worstQuarter: 30, worstMinute: 233, lateMinute: 37, seenSeconds: 60 },
+  stats: { fps: 41, fpsMinute: 44, fpsMost: 46, hz: 144, worstQuarter: 30, worstMinute: 233, lateMinute: 37, seenSeconds: 60 },
   graphics: 'webgl2', gpu: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11)', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/142',
   screen: { w: 3840, h: 2160, ratio: 1.5 }, window: { w: 2560, h: 1313 }, cores: 16, memoryGb: 8, glass: true, panels: ['flow column', 'order book'], timeframe: '1h',
   url: 'https://liquiditymapper.com/', ...over,
@@ -177,7 +203,7 @@ const info = (over: Partial<SpeedInfo> = {}): SpeedInfo => ({
 
 test('the report for an AI assistant says what the page measured and what to check, most likely first, for this browser\'s state', () => {
   const r = speedReport(info());
-  for (const want of ['41 frames a second in the last second, 44 on average over the last 60 s', 'about 144 Hz (read from the frames of the last minute)', 'Late frames in the last 60 s: 37', '233 ms', 'NVIDIA GeForce RTX 3080', 'Chrome/142', '3840 x 2160 CSS pixels at 1.5 device pixels each (about 5760 x 3240 device pixels)', 'inside is 2560 x 1313 CSS pixels', '16 processor threads', '8 GB', 'Waves) is on', 'flow column, order book', 'timeframe 1h', 'https://liquiditymapper.com/']) {
+  for (const want of ['41 frames a second in the last second, 44 on average over the last 60 s, at least 46 in three seconds of four', 'about 144 Hz (read from the frames of the last minute)', 'Late frames in the last 60 s: 37', '233 ms', 'NVIDIA GeForce RTX 3080', 'Chrome/142', '3840 x 2160 CSS pixels at 1.5 device pixels each (about 5760 x 3240 device pixels)', 'inside is 2560 x 1313 CSS pixels', '16 processor threads', '8 GB', 'Waves) is on', 'flow column, order book', 'timeframe 1h', 'https://liquiditymapper.com/']) {
     assert.ok(r.includes(want), `says ${want}`);
   }
   // With WebGL2 drawing, the first thing to check is not graphics acceleration.
@@ -200,7 +226,7 @@ test('the report for an AI assistant says what the page measured and what to che
   assert.match(r, /Shift\+Esc on Windows and Linux/);
   assert.doesNotMatch(r, /zoom/i);
   // Still measuring, no card named, nothing reported for cores or memory: the report says so plainly, with no empty parentheses.
-  const bare = speedReport(info({ stats: { fps: null, fpsMinute: null, hz: 60, worstQuarter: 0, worstMinute: 0, lateMinute: 0, seenSeconds: 0.4 }, gpu: null, cores: null, memoryGb: null }));
+  const bare = speedReport(info({ stats: { fps: null, fpsMinute: null, fpsMost: null, hz: 60, worstQuarter: 0, worstMinute: 0, lateMinute: 0, seenSeconds: 0.4 }, gpu: null, cores: null, memoryGb: null }));
   assert.match(bare, /still measuring/);
   assert.doesNotMatch(bare, /\(\)|undefined|null/);
 });

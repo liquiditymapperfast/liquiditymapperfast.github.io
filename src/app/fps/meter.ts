@@ -29,8 +29,13 @@ const DRAW_MS = 250;
 /** An interval this long with the tab shown is a gap, not a frame (a sleep, a screen switched off, a debugger's pause): the count starts afresh (ms). */
 const GAP_MS = 10_000;
 
-/** The screen the page is on, as far as the meter cares: its size and its pixel ratio. */
-const screenKey = (): string => `${window.screen.width}x${window.screen.height}@${pixelRatio()}`;
+/**
+ * The screen the page is on, for its rate: its size and, where the browser says it (Chromium), its place among several. A zoom changes the
+ * pixel ratio, not the screen: it makes the sprites again and keeps the rate (review r18: it read 60 again, and lost the rate it knew).
+ */
+const screenKey = (): string => { const s = window.screen as Screen & { availLeft?: number; availTop?: number }; return `${s.width}x${s.height}@${s.availLeft ?? 0},${s.availTop ?? 0}`; };
+/** The pixel ratio the window is drawn at (the sprites' cap is 4). */
+const ratioNow = (): number => Math.max(1, Math.min(4, pixelRatio()));
 
 export class FpsMeter {
   readonly root = el('div', { class: 'fps-meter', role: 'button', tabIndex: 0 });
@@ -43,7 +48,7 @@ export class FpsMeter {
   #graphics: Graphics = 'webgl2';
   #raf = 0; #last = 0; #lastDraw = 0; #level = 0;
   #stats: FrameStats | null = null;
-  #screen = '';
+  #screen = ''; #ratio = 0;
   #panel: Panel | null = null;
   /** The panel's parts that follow the meter while it is open: its lines, and what helps with the state it was written for. */
   #live: { rate: HTMLElement; late: HTMLElement; helps: HTMLElement; key: string } | null = null;
@@ -77,11 +82,12 @@ export class FpsMeter {
     } else if (!on && this.#raf) { cancelAnimationFrame(this.#raf); this.#raf = 0; }
   }
 
-  /** Count afresh from `now` (a gap is not a frame). On another screen (its size or pixel ratio) its rate is learned again and the sprites made anew. */
+  /** Count afresh from `now` (a gap is not a frame). On another screen its rate is learned again; at another pixel ratio the sprites are made anew. */
   #restart(now: number): void {
     const screen = screenKey(), moved = screen !== this.#screen;
     this.#frames.restart(now, moved);
-    if (moved) { this.#screen = screen; this.#size(); }
+    if (moved) this.#screen = screen;
+    if (ratioNow() !== this.#ratio) this.#size();
     this.#last = 0; this.#level = 0; this.#stats = null;
   }
 
@@ -93,6 +99,7 @@ export class FpsMeter {
     if (now - this.#lastDraw >= DRAW_MS) {
       this.#lastDraw = now;
       if (screenKey() !== this.#screen) this.#restart(now);
+      else if (ratioNow() !== this.#ratio) this.#size();
       const stats = this.#frames.stats(now);
       this.#stats = stats;
       this.#level = nextLevel(this.#level, hitchOf(stats.worstQuarter, stats.hz));
@@ -102,7 +109,7 @@ export class FpsMeter {
   }
 
   #size(): void {
-    const ratio = Math.max(1, Math.min(4, pixelRatio()));
+    const ratio = this.#ratio = ratioNow();
     this.#canvas.width = Math.round(LED_W * ratio); this.#canvas.height = Math.round(LED_H * ratio);
     let sprites = this.#spriteSets.get(ratio);
     if (!sprites) {
@@ -144,6 +151,7 @@ export class FpsMeter {
       helps.push(t('On battery, the browser\'s energy saver and the system\'s power mode can hold the page to 30 frames a second: turn them off for the page, or plug in.'));
       if (this.store.state.material === 'glass') helps.push(t('Waves turns the panels to glass and draws them on every frame: switching it off is the lightest look.'));
       helps.push(t('Other tabs and programs that draw (video, games, other charts) share the graphics card: close the ones you do not need.'));
+      helps.push(t('A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.'));
       helps.push(t('Each open panel draws as the market moves: close the ones you do not use.'));
     } else if (verdict === 'measuring') helps.push(t('Measuring: what would help follows after {n} seconds.', { n: JUDGE_AFTER_S }));
     else if (this.#graphics === 'webgl2') helps.push(t('The page runs smoothly here.'));

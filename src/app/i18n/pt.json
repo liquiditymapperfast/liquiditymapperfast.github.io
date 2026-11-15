@@ -3124,5 +3124,6 @@
  "Copied. Paste it into your AI assistant.": "Copiado. Cole no seu assistente de IA.",
  "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Copiar um relatório de como esta página roda, para colar num assistente de IA: a taxa de quadros, seu navegador, sistema e placa de vídeo, os tamanhos da tela e da janela, as threads do processador e a memória, as configurações da página e os passos para deixá-la mais rápida",
  "Every step in full, for each browser and system, in the Guide": "Cada passo completo, para cada navegador e sistema, no guia",
- "Measuring: what would help follows after {n} seconds.": "Medindo: o que ajudaria aparece depois de {n} segundos."
+ "Measuring: what would help follows after {n} seconds.": "Medindo: o que ajudaria aparece depois de {n} segundos.",
+ "A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.": "Uma tela com taxa de atualização baixa limita qualquer página a ela (30 Hz em algumas TVs e cabos antigos): a taxa fica em Configurações › Sistema › Tela › Configurações de tela avançadas no Windows, e em Ajustes do Sistema › Monitores no Mac."
 }

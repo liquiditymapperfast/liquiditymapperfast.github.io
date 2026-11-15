@@ -2918,5 +2918,6 @@
  "Copied. Paste it into your AI assistant.": "已复制。请粘贴到你的 AI 助手中。",
  "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "复制一份关于本页运行情况的报告，以便粘贴给 AI 助手：帧率、你的浏览器、系统和显卡、屏幕和窗口尺寸、处理器线程数和内存、页面设置，以及让它更快的步骤",
  "Every step in full, for each browser and system, in the Guide": "指南里按浏览器和系统写出的每一步",
- "Measuring: what would help follows after {n} seconds.": "正在测量：有用的建议会在 {n} 秒后出现。"
+ "Measuring: what would help follows after {n} seconds.": "正在测量：有用的建议会在 {n} 秒后出现。",
+ "A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.": "刷新率设得很低的屏幕会把所有页面限制在这个速度（部分电视和旧线缆只有 30 Hz）：在 Windows 的“设置 › 系统 › 屏幕 › 高级显示”或 Mac 的“系统设置 › 显示器”中可以更改。"
 }

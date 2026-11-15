@@ -3166,5 +3166,6 @@
  "Copied. Paste it into your AI assistant.": "Скопировано. Вставьте это в своего ИИ-помощника.",
  "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Скопировать отчёт о том, как работает эта страница, чтобы вставить его в ИИ-помощника: частота кадров, ваш браузер, система и видеокарта, размеры экрана и окна, потоки процессора и память, настройки страницы и шаги для ускорения",
  "Every step in full, for each browser and system, in the Guide": "Все шаги подробно, для каждого браузера и системы, в руководстве",
- "Measuring: what would help follows after {n} seconds.": "Идёт измерение: что поможет, появится через {n} секунд."
+ "Measuring: what would help follows after {n} seconds.": "Идёт измерение: что поможет, появится через {n} секунд.",
+ "A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.": "Экран с низкой частотой обновления ограничивает ею любую страницу (30 Гц у некоторых телевизоров и старых кабелей): частота задаётся в Параметры › Система › Дисплей › Расширенные параметры дисплея в Windows и в Системные настройки › Мониторы на Mac."
 }

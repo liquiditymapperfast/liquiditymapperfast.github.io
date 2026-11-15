@@ -3066,5 +3066,6 @@
  "Copied. Paste it into your AI assistant.": "Kopyalandı. Yapay zekâ asistanınıza yapıştırın.",
  "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "Bu sayfanın nasıl çalıştığına dair bir raporu bir yapay zekâ asistanına yapıştırmak için kopyala: kare hızı, tarayıcınız, sisteminiz ve ekran kartınız, ekran ve pencere boyutları, işlemci iş parçacıkları ve bellek, sayfanın ayarları ve onu hızlandıracak adımlar",
  "Every step in full, for each browser and system, in the Guide": "Her tarayıcı ve sistem için her adım, ayrıntısıyla kılavuzda",
- "Measuring: what would help follows after {n} seconds.": "Ölçülüyor: neyin işe yarayacağı {n} saniye sonra gelir."
+ "Measuring: what would help follows after {n} seconds.": "Ölçülüyor: neyin işe yarayacağı {n} saniye sonra gelir.",
+ "A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.": "Düşük yenileme hızına ayarlı bir ekran her sayfayı o hızda tutar (bazı televizyonlarda ve eski kablolarda 30 Hz): hız Windows’ta Ayarlar › Sistem › Ekran › Gelişmiş ekran’da, Mac’te Sistem Ayarları › Ekranlar’dadır."
 }

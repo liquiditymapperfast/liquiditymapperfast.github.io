@@ -2918,5 +2918,6 @@
  "Copied. Paste it into your AI assistant.": "복사했습니다. AI 어시스턴트에 붙여 넣으세요.",
  "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "이 페이지가 어떻게 돌아가는지에 대한 보고서를 복사해 AI 어시스턴트에 붙여 넣을 수 있게 합니다. 프레임 속도, 브라우저, 시스템, 그래픽 카드, 화면과 창 크기, 프로세서 스레드와 메모리, 페이지 설정, 그리고 더 빠르게 만드는 단계가 들어 있습니다",
  "Every step in full, for each browser and system, in the Guide": "브라우저와 시스템별 모든 단계를 가이드에서",
- "Measuring: what would help follows after {n} seconds.": "측정 중입니다. 도움이 될 내용은 {n}초 뒤에 나옵니다."
+ "Measuring: what would help follows after {n} seconds.": "측정 중입니다. 도움이 될 내용은 {n}초 뒤에 나옵니다.",
+ "A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.": "새로 고침 빈도가 낮게 설정된 화면은 모든 페이지를 그 빈도로 묶어 둡니다(일부 TV와 오래된 케이블에서는 30Hz). Windows에서는 설정 › 시스템 › 디스플레이 › 고급 디스플레이, Mac에서는 시스템 설정 › 디스플레이에서 바꿀 수 있습니다."
 }

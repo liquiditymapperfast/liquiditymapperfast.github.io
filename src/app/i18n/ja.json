@@ -2918,5 +2918,6 @@
  "Copied. Paste it into your AI assistant.": "コピーしました。AI アシスタントに貼り付けてください。",
  "Copy a report of how this page runs, to paste into an AI assistant: the frame rate, your browser, system and graphics card, your screen and window sizes, processor threads and memory, the page's settings, and the steps to make it faster": "このページの動作の報告をコピーして、AI アシスタントに貼り付けられるようにします。フレームレート、ブラウザー、システム、グラフィックカード、画面とウィンドウのサイズ、プロセッサーのスレッド数とメモリ、ページの設定、そして速くするための手順を含みます",
  "Every step in full, for each browser and system, in the Guide": "ブラウザーとシステムごとのすべての手順をガイドで",
- "Measuring: what would help follows after {n} seconds.": "計測中です。役立つことは {n} 秒後に表示されます。"
+ "Measuring: what would help follows after {n} seconds.": "計測中です。役立つことは {n} 秒後に表示されます。",
+ "A screen set to a low refresh rate holds every page to it (30 Hz on some TVs and older cables): the rate is under Settings › System › Display › Advanced display in Windows, and System Settings › Displays on a Mac.": "リフレッシュレートが低く設定された画面では、どのページもその速さに抑えられます（一部のテレビや古いケーブルでは 30 Hz）。Windows では 設定 › システム › ディスプレイ › ディスプレイの詳細設定、Mac では システム設定 › ディスプレイ で設定できます。"
 }
