@@ -370,10 +370,11 @@ export class OrderList {
     if (from > 0) this.#conveyor.from(from, cap); else this.#conveyor.reset();
     if (draw) this.invalidate();
   }
-  /** The wheel moves the held top row by `dy` px (down: older orders); back at the newest with no mouse on it, the list follows again. */
+  /** The wheel moves the held top row by `dy` px (down: older orders); back at the newest, the list follows again. */
   #scroll(dy: number): void {
     if (!this.#index.length) return;
-    if (!this.#anchor) { this.#hold(); if (!this.#anchor) return; }
+    // Following, the newest is at the top: up goes nowhere (a trackpad's momentum tail after the list came back takes no hold).
+    if (!this.#anchor) { if (!(dy > 0)) return; this.#hold(); if (!this.#anchor) return; }
     // Row by row (a grouped row is one step, with the line under it where orders may be missing, as the list draws it: the anchor's row draws
     // no line above it); the offset keeps its fractions (a trackpad's small steps add up) and is rounded where it is drawn.
     let pos = this.#unitTop(this.#index.position(this.#anchor.k)), offset = this.#anchor.offset + dy;
@@ -382,9 +383,10 @@ export class OrderList {
     // The oldest row found, with nothing older to find: it stays at the top rather than scrolling off into nothing.
     // Nothing older on the tape: the list scrolls on through the recording's rows below it (from $25K), then stops.
     if (!this.#index.moreBehind && pos - this.#unit(pos).count < 0) offset = Math.min(offset, this.#historyHeight());
-    // At the newest row by what is drawn (a residue under half a pixel is no scroll back).
-    if (pos === this.#index.length - 1 && Math.round(offset) <= 0) {
-      if (!this.#pointerIn) { this.#release(); return; }
+    // At the newest row by what is drawn (a residue under half a pixel is no scroll back), or up into it: the list follows again, the mouse on
+    // it or not, and holds again when the mouse moves (as the 1-second list, 2026-11-15). A pinned row keeps it held there.
+    if (pos === this.#index.length - 1 && (Math.round(offset) <= 0 || dy < 0)) {
+      if (this.#pinned === null) { this.#pointerIn = false; this.#release(); return; }
       offset = 0;
     }
     this.#anchor = { k: this.#index.at(pos), offset: Math.max(0, offset) };

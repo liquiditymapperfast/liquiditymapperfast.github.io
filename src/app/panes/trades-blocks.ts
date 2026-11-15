@@ -48,7 +48,8 @@ export function blockColumns(lw: number, phone: boolean): { t: number; amt: numb
  * Trades grouped by time, on one canvas: a row per block of `unit` seconds, newest on top (`trades/blocks.ts` adds them up). Left the time
  * over the reference market's VWAP change in dollars; then bought over sold, each with a square-root bar split by venue in one fixed order
  * (full width at about the week's 99th percentile of a block's side, `fullScale`); then the largest buy and the largest sell. A run of empty
- * blocks (a quiet coin at a second) is one line. The list holds still under a mouse or scrolled back, a block pointed at sets the shared time
+ * blocks (a quiet coin at a second) is one line. The list holds still under a mouse or scrolled back (scrolled up to the newest again, it
+ * follows, the mouse on it or not, until the mouse moves), a block pointed at sets the shared time
  * cursor, a click chooses it for the inspector and takes the map to its time; a finger drags it and a tap chooses a block. A mouse moving
  * off the list and the details beside it lets the list and the chosen block go (Karl, 2026-11-14: a chosen block held the list until it was
  * clicked again, with nothing on screen to say so); a list scrolled back stays, and its key ("Held · 12 new ↑") brings it back to now.
@@ -250,11 +251,12 @@ export class BlockList {
     if (draw) this.invalidate();
   }
   /**
-   * The wheel moves the list by `dy` px (down: older); back at the newest with no mouse on it, the list follows again. It moves row by row
-   * as the list draws them (`trades/rows.ts`): a folded hour of quiet seconds is one short row, passed in one step, not 3,600 blocks.
+   * The wheel moves the list by `dy` px (down: older); back at the newest, the list follows again. It moves row by row as the list draws
+   * them (`trades/rows.ts`): a folded hour of quiet seconds is one short row, passed in one step, not 3,600 blocks.
    */
   #scroll(dy: number): void {
-    if (!this.#anchor) { this.#hold(); if (!this.#anchor) return; }
+    // Following, the newest is at the top: up goes nowhere (a trackpad's momentum tail after the list came back takes no hold).
+    if (!this.#anchor) { if (!(dy > 0)) return; this.#hold(); if (!this.#anchor) return; }
     const B = this.unit, newest = this.newestStart(), oldest = this.reader.oldestSec(), now = this.now(), rows = this.#rows();
     let row = rows.rowFrom(this.#anchor.s, B, now, oldest), offset = this.#anchor.offset + dy;
     // Held beyond where the list now ends (the sources moved its end up): the list lets go and follows the newest again. A block that is
@@ -265,8 +267,12 @@ export class BlockList {
     for (let up = offset < 0 ? rows.above(row, B, now, newest) : null; up; up = offset < 0 ? rows.above(row, B, now, newest) : null) { row = up; offset += this.#rowHeight(up); }
     // The last row stays at the top at most (the list's end note under it stays in view).
     if (!rows.below(row, B, now, oldest)) offset = Math.min(offset, 0);
-    if (row.top >= newest && Math.round(offset) <= 0) {
-      if (!this.#pointerIn && !this.#within) { this.release(); return; }
+    // Back at the newest, or up into the newest row (each second begun while the list was held puts a row above it, and a trackpad's small
+    // step up into one left it part-hidden, held as if scrolled back): the top. The list follows again, the mouse on it or not, and holds
+    // again when the mouse moves (Karl, 2026-11-15, in Safari: "you always have to scroll manually to the latest row"). A chosen block keeps
+    // it held there.
+    if (row.top >= newest && (Math.round(offset) <= 0 || dy < 0)) {
+      if (this.selected === null) { this.#pointerIn = false; this.release(); return; }
       offset = 0;
     }
     this.#anchor = { s: row.top, offset: Math.max(0, offset) };
