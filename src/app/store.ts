@@ -294,6 +294,8 @@ export function savedFields(raw: unknown): Partial<AppState> {
     keepAwake: v => typeof v === 'boolean', heatmapSource: v => typeof v === 'string', ladderVenue: v => typeof v === 'string', disabledVenues: strings, ladderVenues: strings,
   };
   for (const key of PERSISTED) if (Object.hasOwn(r, key) && (typed[key]?.(r[key]) ?? true)) out[key] = r[key];
+  // Read from older saves to carry them forward (`readSettings`: the measure strip became the profile along the top).
+  if (Object.hasOwn(r, 'measureStrip')) out.measureStrip = r.measureStrip;
   return out as Partial<AppState>;
 }
 
