@@ -225,6 +225,8 @@ function nameOf(lv) {
   return prices ? name + " " + priceText(lv.price) : name
 }
 var plate = nameColors == "One colour" ? nameColor : ""
+// A tested level ends with a cross where Tested levels shows them.
+var cross = tested == "Hidden" ? "none" : "cross"
 // A level's colour: its kind's, faded into the background once tested where Tested levels is Faint.
 function colorOf(lv) {
   var c = lv.high ? (lv.strong ? strongHighColor : weakHighColor) : (lv.strong ? strongLowColor : weakLowColor)
@@ -233,49 +235,66 @@ function colorOf(lv) {
 // Draws a level in its kind's plot (a value of NaN takes it away): a call each, so each kind keeps its own line. A tested level
 // ends at the candle that tested it, without a name.
 function put(lv, value) {
-  var end = lv.testedAt, text = na(lv.testedAt) ? nameOf(lv) : ""
-  var point = { value: value, from: lv.start, to: end, text: text, color: colorOf(lv) }
-  if (lv.high && lv.strong) level(point, title="Strong highs", color=strongHighColor, lineWidth=strongHighWidth, lineStyle=dashes(strongHighStyle), textColor=plate)
-  else if (lv.high) level(point, title="Weak highs", color=weakHighColor, lineWidth=weakHighWidth, lineStyle=dashes(weakHighStyle), textColor=plate)
-  else if (lv.strong) level(point, title="Strong lows", color=strongLowColor, lineWidth=strongLowWidth, lineStyle=dashes(strongLowStyle), textColor=plate)
-  else level(point, title="Weak lows", color=weakLowColor, lineWidth=weakLowWidth, lineStyle=dashes(weakLowStyle), textColor=plate)
+  var point = { value: value, from: lv.start, to: lv.testedAt, text: na(lv.testedAt) ? nameOf(lv) : "", color: colorOf(lv) }
+  if (lv.high && lv.strong) level(point, title="Strong highs", color=strongHighColor, lineWidth=Number(strongHighWidth), lineStyle=dashes(strongHighStyle), textColor=plate, endShape=cross)
+  else if (lv.high) level(point, title="Weak highs", color=weakHighColor, lineWidth=Number(weakHighWidth), lineStyle=dashes(weakHighStyle), textColor=plate, endShape=cross)
+  else if (lv.strong) level(point, title="Strong lows", color=strongLowColor, lineWidth=Number(strongLowWidth), lineStyle=dashes(strongLowStyle), textColor=plate, endShape=cross)
+  else level(point, title="Weak lows", color=weakLowColor, lineWidth=Number(weakLowWidth), lineStyle=dashes(weakLowStyle), textColor=plate, endShape=cross)
 }
 function draw(lv) { put(lv, lv.price) }
 function erase(lv) { put(lv, NaN) }
+// What the levels drawn can still meet, so a candle that meets none of it skips them: the lowest high and the highest low not yet
+// tested, and the prices whose break would make a weak one strong.
+function reach() {
+  nearHigh = Infinity; nearLow = -Infinity; breakUp = Infinity; breakDown = -Infinity
+  for (var k = 0; k < levels.length; k++) {
+    var lv = levels[k]
+    if (lv.high) { nearHigh = Math.min(nearHigh, lv.price); if (!lv.strong && !na(lv.from)) breakDown = Math.max(breakDown, lv.from) }
+    else { nearLow = Math.max(nearLow, lv.price); if (!lv.strong && !na(lv.from)) breakUp = Math.min(breakUp, lv.from) }
+  }
+}
 
-// The candle's start, kept so the swing candle's can be read back (starts[swing]), and what a break is measured by.
+// The swing size as a whole number of candles, and the candle's start, kept so the swing candle's can be read back.
+var span = Math.max(2, Math.min(50, Math.round(nz(swing, 5))))
 starts = time
-var h = $price.high, l = $price.low
-var up = breakBy == "Wick" ? h : $price.close, down = breakBy == "Wick" ? l : $price.close
-// How far the price went beyond, either way, over the candles since the swing candle (a break may come before it is known).
-var rose = highest(up, swing), fell = lowest(down, swing)
-var ph = pivot_high(h, swing, swing), pl = pivot_low(l, swing, swing)
+var h = $price.high, l = $price.low, closed = !renderer.forming
+// What a break is measured by. A break by the close waits for the candle to close; one by the wick counts as soon as it trades.
+var up = breakBy == "Wick" ? h : $price.close, down = breakBy == "Wick" ? l : $price.close, breaks = breakBy == "Wick" || closed
+// How far the price went beyond, either way, over the candles since the swing candle (a break may come before the swing is known).
+var rose = highest(up, span), fell = lowest(down, span)
+var ph = pivot_high(h, span, span), pl = pivot_low(l, span, span)
 
-if (renderer.length == 1) { levels = []; lastHigh = NaN; lastLow = NaN }
+if (renderer.length == 1) { levels = []; lastHigh = NaN; lastLow = NaN; reach() }
 // The levels already drawn: a break of the swing they came from makes a weak one strong, and a trade at its price tests it.
-for (var k = levels.length - 1; k >= 0; k--) {
-  var lv = levels[k], was = lv.strong
-  if (!lv.strong && (lv.high ? down < lv.from : up > lv.from)) lv.strong = true
-  if (lv.high ? h >= lv.price : l <= lv.price) {
-    if (was != lv.strong) { lv.strong = was; erase(lv); lv.strong = true }
-    lv.testedAt = time
-    if (tested == "Hidden") erase(lv); else { draw(lv); mark({ value: lv.price, color: colorOf(lv) }, shape="cross", title="Tested", size=0.8) }
-    levels.splice(k, 1)
-  } else if (was != lv.strong) { lv.strong = was; erase(lv); lv.strong = true; draw(lv) }
+if (h >= nearHigh || l <= nearLow || (breaks && (up > breakUp || down < breakDown))) {
+  for (var k = levels.length - 1; k >= 0; k--) {
+    var lv = levels[k], was = lv.strong
+    if (!lv.strong && breaks && (lv.high ? down < lv.from : up > lv.from)) lv.strong = true
+    if (lv.high ? h >= lv.price : l <= lv.price) {
+      if (was != lv.strong) { lv.strong = was; erase(lv); lv.strong = true }
+      lv.testedAt = time
+      if (tested == "Hidden") erase(lv); else draw(lv)
+      levels.splice(k, 1)
+    } else if (was != lv.strong) { lv.strong = was; erase(lv); lv.strong = true; draw(lv) }
+  }
+  reach()
 }
-// A new swing, known now: its level from the swing candle, strong if the price has already broken the swing it came from.
-// A low came from the last swing high before it (and a high from the last low), never from the same candle's.
-var priorHigh = lastHigh, priorLow = lastLow
-if (!na(ph)) {
-  var hl = { high: true, price: ph, start: starts[swing], from: priorLow, strong: fell < priorLow, testedAt: NaN }
-  levels.push(hl); draw(hl); lastHigh = ph
+// A new swing, once the candle that shows it has closed: its level from the swing candle, strong if the price has already broken
+// the swing it came from. A low came from the last swing high before it (and a high from the last low), never from the same candle's.
+if (closed && (!na(ph) || !na(pl))) {
+  var priorHigh = lastHigh, priorLow = lastLow
+  if (!na(ph)) {
+    var hl = { high: true, price: ph, start: starts[span], from: priorLow, strong: fell < priorLow, testedAt: NaN }
+    levels.push(hl); draw(hl); lastHigh = ph
+  }
+  if (!na(pl)) {
+    var ll = { high: false, price: pl, start: starts[span], from: priorHigh, strong: rose > priorHigh, testedAt: NaN }
+    levels.push(ll); draw(ll); lastLow = pl
+  }
+  // The oldest untested levels go first past the most drawn.
+  while (levels.length > most) { erase(levels[0]); levels.splice(0, 1) }
+  reach()
 }
-if (!na(pl)) {
-  var ll = { high: false, price: pl, start: starts[swing], from: priorHigh, strong: rose > priorHigh, testedAt: NaN }
-  levels.push(ll); draw(ll); lastLow = pl
-}
-// The oldest untested levels go first past the most drawn.
-while (levels.length > most) { erase(levels[0]); levels.splice(0, 1) }
 `;
 
 /** The ids of the scripts a page starts with. */

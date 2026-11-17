@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRunner, runScript } from '../src/app/script/lang/engine.ts';
 import type { BarInputs } from '../src/app/script/inputs.ts';
 import { levelsAt, newestOf, type PlotOut, type ScriptResult } from '../src/app/script/protocol.ts';
-import { onPlot, plotExtent } from '../src/app/script/paint.ts';
+import { onPlot, paintPlot, plotExtent } from '../src/app/script/paint.ts';
 import { SWING_SOURCE } from '../src/app/script/starter.ts';
 import { SCRIPT_API } from '../src/app/script/records.ts';
 import { API_VERSION } from '../src/app/script/lang/analysis.ts';
@@ -30,7 +30,7 @@ const levels = (p: PlotOut): [number, number, number | null, string, string][] =
   return out;
 };
 
-test('levels are language version 3: a page older than that says so rather than run a script that draws them', () => {
+test('levels came with language version 3', () => {
   assert.deepEqual([SCRIPT_API, API_VERSION], [3, 3]);
 });
 
@@ -110,8 +110,11 @@ test('strong and weak highs and lows: a swing low turns strong when the rise fro
   assert.deepEqual(levels(all.get('Strong lows')!).filter(l => l[0] === 5), [], 'tested at candle 12 (low 89): hidden by default');
   const shown = swing(candles(highs, lows, { closes }), { tested: 'Full' });
   assert.deepEqual(levels(shown.get('Strong lows')!).filter(l => l[0] === 5), [[5, 90, 12, '', 'rgb(0, 179, 134)']], 'shown, it ends at the candle that tested it, without a name');
-  const cross = shown.get('Tested')!;
-  assert.equal(cross.fields.value![12], 90, 'a cross at the level, on the candle that tested it');
+  // A plot's style is read at its first call: the kinds that drew.
+  const drew = (r: Map<string, PlotOut>): PlotOut[] => [...r.values()].filter(p => p.kind === 'level' && p.ends !== null && p.ends !== undefined);
+  assert.ok(drew(shown).length >= 2 && drew(shown).every(p => p.style.endShape === 'cross'), 'a cross at each tested level\'s end');
+  assert.ok(drew(all).length >= 2 && drew(all).every(p => p.style.endShape === 'none'), 'none where tested levels are hidden');
+  assert.equal([...all.values()].filter(p => p.kind !== 'level').length, 0, 'levels alone: no other plot');
   const faint = swing(candles(highs, lows, { closes }), { tested: 'Faint' });
   assert.notEqual(levels(faint.get('Strong lows')!).find(l => l[0] === 5)![4], 'rgb(0, 179, 134)', 'faint: faded towards the background');
 });
@@ -164,7 +167,64 @@ test('the swing script, kept arrays and all, is put back between updates and dra
       assert.equal(runner.startedAt, n - 1, 'only the candle under way ran');
       const full = ok(runScript('s', SWING_SOURCE, opts, base(last)));
       assert.deepEqual(live.plots.map(q => [q.title, levels(q)]), full.plots.map(q => [q.title, levels(q)]), `${JSON.stringify(opts)} at ${last}`);
-      assert.deepEqual([...live.plots.find(q => q.title === 'Tested')!.fields.value!], [...full.plots.find(q => q.title === 'Tested')!.fields.value!]);
     }
   }
+});
+
+test('a new swing waits for the candle that shows it to close; a break by the close waits too, one by the wick does not', () => {
+  // Swing 2: the low at candle 5 (90) is shown by candle 7. Under way, candle 7 shows nothing yet; closed, it does.
+  const highs = [100, 105, 110, 104, 100, 95, 99, 104], lows = [96, 100, 104, 98, 94, 90, 94, 99];
+  const lowsOf = (r: Map<string, PlotOut>): number => levels(r.get('Weak lows')!).length + levels(r.get('Strong lows')!).length;
+  assert.equal(lowsOf(swing(candles(highs, lows, { forming: true }))), 0, 'under way: not yet');
+  assert.equal(lowsOf(swing(candles(highs, lows))), 1, 'closed: drawn from candle 5');
+  // Then a candle under way trades above 110 and stands there: a break by the wick at once, by the close only once it closes.
+  const more = { highs: [...highs, 112], lows: [...lows, 104], closes: [...highs.map((x, i) => (x + lows[i]!) / 2), 111] };
+  const live = (o: Record<string, string>, forming: boolean): string[] => [...swing(candles(more.highs, more.lows, { closes: more.closes, forming }), o).values()].flatMap(p => levels(p).filter(l => l[0] === 5).map(() => p.title));
+  assert.deepEqual(live({}, true), ['Weak lows']);
+  assert.deepEqual(live({}, false), ['Strong lows']);
+  assert.deepEqual(live({ breakBy: 'Wick' }, true), ['Strong lows']);
+});
+
+test('a swing setting that is not a whole number of candles is read as one, between 2 and 50', () => {
+  const highs = [100, 105, 110, 104, 100, 95, 99, 104, 108, 105, 103], lows = [96, 100, 104, 98, 94, 90, 94, 99, 104, 101, 100];
+  const at = (swingSetting: number): number[] => [...swing(candles(highs, lows), { swing: swingSetting }).values()].flatMap(p => levels(p).map(l => l[0]));
+  assert.deepEqual(at(2.2), at(2));
+  assert.deepEqual(at(0), at(2), 'below 2: 2');
+});
+
+test('a function of the script\'s own named level is the script\'s: no plot is made for it, and its calls run it', () => {
+  const r = ok(runScript('t', 'function level(x) { return x * 2 }\nline(level(vbuy))', {}, flat(3)));
+  assert.deepEqual(r.plots.map(p => p.kind), ['line']);
+  assert.deepEqual([...r.plots[0]!.fields.value!], [20, 20, 20]);
+  const none = ok(runScript('t', 'function level(x) { return x }\nvar y = level(1)', {}, flat(3)));
+  assert.deepEqual(none.warnings.map(w => w.code), ['no-plots']);
+});
+
+test('a kept array with holes is put back with its holes, and a chain nested deeper than the limit runs every candle without an error', () => {
+  const sparse = 'if (renderer.length == 1) hist = []\nhist[renderer.length * 2] = vbuy\nvar n = 0\nhist.forEach(x => n++)\nline(hist.reduce((s, x) => s + x, 0))\nhistogram(n)';
+  const runner = createRunner('t', sparse, {});
+  ok(runner.run(flat(5)));
+  const inp = { ...flat(5), forming: true };
+  const live = ok(runner.run(inp));
+  assert.equal(runner.startedAt, 4);
+  assert.deepEqual(live.plots.map(p => [...p.fields.value!]), ok(runScript('t', sparse, {}, inp)).plots.map(p => [...p.fields.value!]));
+  const deep = 'last = { price: $price.close, prev: last }\nline(last.price)';
+  const chain = createRunner('t', deep, {});
+  ok(chain.run(flat(300)));
+  const again = ok(chain.run({ ...flat(300), forming: true }));
+  assert.equal(chain.startedAt, 0, 'deeper than the limit: not put back, run again from the first candle');
+  assert.equal(again.plots[0]!.fields.value![299], flat(300).close[299]);
+});
+
+test('a level that ended draws its end shape at its end, one per level, and none by default', () => {
+  const p = (endShape?: string): PlotOut => ({ kind: 'level', title: '', style: endShape ? { endShape } : {}, fields: { value: Float64Array.from([50, 60, NaN, NaN]) }, colors: null, texts: null, ends: Float64Array.from([2, 2, NaN, NaN]) });
+  const draw = (plot: PlotOut): { lines: number; arcs: number } => {
+    let lines = 0, arcs = 0;
+    const ctx = { save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, setLineDash() {}, stroke() {}, fill() {}, moveTo() {}, lineTo() { lines++; }, arc() { arcs++; }, fillRect() {}, fillText() {}, measureText: (s: string) => ({ width: s.length * 6 }) } as unknown as CanvasRenderingContext2D;
+    paintPlot({ ctx, x: t => t / MIN * 10, barW: 10, tf: MIN, time: flat(4).time, from: 0, to: 3, top: 0, height: 100, w: 1_000, color: '#888', up: '#0a0', down: '#a00' }, plot, { min: 0, max: 100, margins: { top: 0, bottom: 0 } });
+    return { lines, arcs };
+  };
+  assert.deepEqual(draw(p()), { lines: 2, arcs: 0 }, 'two levels, no shapes');
+  assert.deepEqual(draw(p('cross')), { lines: 6, arcs: 0 }, 'two strokes of a cross at each of the two ends');
+  assert.deepEqual(draw(p('dot')), { lines: 2, arcs: 2 });
 });

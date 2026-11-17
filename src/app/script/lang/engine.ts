@@ -110,14 +110,20 @@ export function sameDepth(a: BarInputs, b: BarInputs, m: number): boolean {
   return true;
 }
 
-/** A copy of a script value deep enough that a later run cannot change it: the script's own arrays and objects copied, the rest shared (they do not change). */
-/** The most elements (arrays' and objects' members, counted with them) a script may keep from candle to candle and still be put back. */
-const KEPT_NODES = 20_000;
+/**
+ * The most elements (arrays' and objects' members, counted with them) a script may keep from candle to candle and still be put back, and the
+ * deepest it may nest them (a chain of objects each holding the one before is copied by recursion).
+ */
+const KEPT_NODES = 20_000, KEPT_DEPTH = 64;
 
+/**
+ * A copy of a script value deep enough that a later run cannot change it: the script's own arrays and objects copied, the rest shared (they
+ * do not change). An array keeps its holes (a hole is not an undefined to forEach, filter, reduce or Object.keys).
+ */
 function cloneValue(v: Value, seen = new Map<object, Value>()): Value {
   if (v === null || typeof v !== 'object') return v;
   const had = seen.get(v); if (had !== undefined) return had;
-  if (Array.isArray(v)) { const out: Value[] = []; seen.set(v, out); for (const x of v) out.push(cloneValue(x, seen)); return out; }
+  if (Array.isArray(v)) { const out = new Array<Value>(v.length); seen.set(v, out); for (let k = 0; k < v.length; k++) if (k in v) out[k] = cloneValue(v[k], seen); return out; }
   if (isPlain(v)) { const out = plain(); seen.set(v, out); for (const [k, x] of Object.entries(v)) out[k] = cloneValue(x, seen); return out; }
   return v;
 }
@@ -351,9 +357,11 @@ export function createRunner(id: string, source: string, optionValues: Record<st
   const styled = new Set<number>();
   const initialStyles = new Map<number, { title: string; style: Record<string, OptionValue> }>();
   const scriptNames = new Set([...declaredNames(a.program), ...a.persistent]);
+  const ownFunctions = new Set(a.program.flatMap(st => st.k === 'func' ? [st.name] : []));
   for (const [node, site] of sites) {
     if (node.k !== 'call' || node.callee.k !== 'id') continue;
-    const kind = own(PLOTS, node.callee.name);
+    // A function of the script's own of a plot's name (a function level(...) written before levels were a plot) is the script's, not a plot.
+    const kind = ownFunctions.has(node.callee.name) ? undefined : own(PLOTS, node.callee.name);
     if (!kind) continue;
     if (plots.size >= MAX_PLOTS) { const error = { code: 'too-many-plots', line: node.p.line, col: node.p.col }; return { run: () => ({ id, ok: false, error }), startedAt: 0 }; }
     const fields: Record<string, Float64Array> = {};
@@ -506,19 +514,20 @@ export function createRunner(id: string, source: string, optionValues: Record<st
     for (const v of Object.values(opt)) if (!simple(v)) return false;
     const seen = new Set<object>();
     let nodes = 0;
-    const data = (v: Value): boolean => {
+    const data = (v: Value, depth: number): boolean => {
       if (simple(v)) return true;
       if (typeof v !== 'object' || v === null) return false;
       if (seen.has(v)) return true;
-      if (!Array.isArray(v) && !isPlain(v)) return false;
+      if ((!Array.isArray(v) && !isPlain(v)) || depth > KEPT_DEPTH) return false;
       seen.add(v);
+      // An array's length, holes and all: a sparse one written far out is as costly to copy as a full one.
       const xs = Array.isArray(v) ? v : Object.values(v);
       nodes += 1 + xs.length;
       if (nodes > KEPT_NODES) return false;
-      for (const x of xs) if (!data(x)) return false;
+      for (let k = 0; k < xs.length; k++) if (!data(xs[k], depth + 1)) return false;
       return true;
     };
-    for (const k of kept.values()) { if (!data(k.v)) return false; for (const x of k.past) if (!data(x)) return false; }
+    for (const k of kept.values()) { if (!data(k.v, 0)) return false; for (const x of k.past) if (!data(x, 0)) return false; }
     return true;
   };
   /** The kept names and their past values copied as one: an array or object reached twice is copied once and shared again in the copy. */

@@ -294,35 +294,57 @@ function strokeLine(f: Frame, v: Float64Array, y: (v: number) => number, colorAt
 /** The dashes of a line style (0 solid, 1 dotted, 2 dashed, 3 long dashes, 4 sparse dots). */
 const dashes = (lineStyle: number): number[] => lineStyle === 1 ? [1, 2] : lineStyle === 2 ? [4, 3] : lineStyle === 3 ? [8, 4] : lineStyle === 4 ? [1, 5] : [];
 
+/** The shapes a level that ended can have at its end: none (the default), a cross or a dot. */
+export const levelEndShape = (v: OptionValue | undefined): 'none' | 'cross' | 'dot' => v === 'cross' || v === 'dot' ? v : 'none';
+
 /**
  * Levels: each from the middle of the candle it starts at to the middle of the one it ends at, or on to the plot's right edge, every level
- * that crosses the candles in view (wherever it starts). Each is named at its right end on a plate of its colour (or the plot's textColor);
- * a name that would cover one already placed is left out, those that run on placed first and the newer first among them.
+ * that crosses the candles in view (wherever it starts); one that ended has the plot's endShape there. Each is named at its right end on a
+ * plate of its colour (or the plot's textColor); a name that would cover one already placed is left out, those that run on placed first and
+ * the newer first among them.
  */
 function paintLevels(f: Frame, plot: PlotOut, y: (v: number) => number): void {
   const { ctx } = f, v = plot.fields.value!, n = v.length, texts = plot.texts ?? null, base = color(plot.style.color, f.color);
   const width = Math.max(1, Math.min(6, styleNum(plot.style.lineWidth, 1))), ownText = typeof plot.style.textColor === 'string' ? safeColor(plot.style.textColor, '') : '';
+  const endShape = levelEndShape(plot.style.endShape);
   const cx = (i: number): number => f.x(f.time[i]!) + f.barW / 2;
   const names: { text: string; x: number; y: number; color: string; on: boolean; s: number }[] = [];
+  const ends: { x: number; y: number; color: string }[] = [];
   ctx.lineWidth = width; ctx.setLineDash(dashes(styleNum(plot.style.lineStyle, 0)));
   for (let s = 0; s <= f.to && s < n; s++) {
     const val = v[s]!; if (!Number.isFinite(val)) continue;
     const e = levelEnd(plot, s, n), on = !Number.isFinite(plot.ends?.[s] ?? NaN);
     if (e < f.from && !on) continue;
     const x0 = cx(s), x1 = on ? f.w : cx(e), yy = Math.round(y(val)) + (width % 2 ? 0.5 : 0);
-    if (x1 < 0 || x0 > f.w || yy < f.top - width || yy > f.top + f.height + width) continue;
+    if (x1 < 0 || x0 > f.w || yy < f.top - width - 6 || yy > f.top + f.height + width + 6) continue;
     const c = pointColor(plot, s, base);
-    ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(Math.max(x0 + 1, x1), yy); ctx.stroke();
+    // Started far off to the left: from just outside the plot, so the dashes do not walk from thousands of pixels away.
+    const from = Math.max(x0, -2 * width - 8);
+    ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(from, yy); ctx.lineTo(Math.max(from + 1, x1), yy); ctx.stroke();
+    if (!on && endShape !== 'none') ends.push({ x: x1, y: yy, color: c });
     const label = texts?.[s] ?? '';
     if (label) names.push({ text: label, x: x1, y: yy, color: ownText || c, on, s });
   }
   ctx.setLineDash([]);
+  for (const e of ends) {
+    const r = 2 + width;
+    ctx.strokeStyle = e.color; ctx.fillStyle = e.color; ctx.lineWidth = Math.max(1.5, width * 0.75); ctx.beginPath();
+    if (endShape === 'dot') { ctx.arc(e.x, e.y, r * 0.75, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.moveTo(e.x - r, e.y - r); ctx.lineTo(e.x + r, e.y + r); ctx.moveTo(e.x + r, e.y - r); ctx.lineTo(e.x - r, e.y + r); ctx.stroke(); }
+  }
   if (!names.length) return;
-  ctx.font = markFont(1); ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const font = markFont(1);
+  ctx.font = font; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const wide = (s: string): number => {
+    const key = `${font}|${s}`;
+    let w = MARK_WIDTHS.get(key);
+    if (w === undefined) { if (MARK_WIDTHS.size >= 2_048) MARK_WIDTHS.clear(); w = ctx.measureText(s).width; MARK_WIDTHS.set(key, w); }
+    return w;
+  };
   const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
   names.sort((a, b) => Number(b.on) - Number(a.on) || b.s - a.s);
   for (const l of names) {
-    const w = ctx.measureText(l.text).width + 8, right = Math.min(f.w - 2, l.x - 2), box = { x0: right - w, x1: right, y0: l.y - 7, y1: l.y + 7 };
+    const w = wide(l.text) + 8, right = Math.min(f.w - 2, l.x - 2), box = { x0: right - w, x1: right, y0: l.y - 7, y1: l.y + 7 };
     if (box.x0 < 0 || box.y0 < f.top || box.y1 > f.top + f.height) continue;
     if (placed.some(b => b.x0 < box.x1 + 2 && box.x0 < b.x1 + 2 && b.y0 < box.y1 + 1 && box.y0 < b.y1 + 1)) continue;
     placed.push(box);

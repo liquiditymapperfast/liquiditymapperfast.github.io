@@ -64,8 +64,9 @@ const readsFlow = (a: Analysis): boolean => a.inputs.has('vbuy') || a.inputs.has
 const readsLiquidations = (a: Analysis): boolean => a.inputs.has('lbuy') || a.inputs.has('lsell') || a.inputs.has('bar');
 
 /**
- * How many of an answer's candles may be shown: all of them live; in a replay only those closed by its moment, whatever moment the answer
- * was worked out at (a script's value at a candle depends only on that candle and the ones before it, so those are what a replay run gives).
+ * How many of an answer's candles may be shown: all of them live; in a replay only those closed by its moment. A replay run reads only the
+ * candles closed by its moment, and an answer worked out for another moment is not taken (`#current`), so what is shown never holds what a
+ * later candle wrote: a level, which a later candle can write into an earlier one, included.
  */
 function shownCount(time: Float64Array, tf: number): number {
   if (!replaying()) return time.length;
