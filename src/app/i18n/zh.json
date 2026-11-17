@@ -447,7 +447,7 @@
  "Connection to the data source: live when frames are arriving.": "与数据源的连接：有数据帧到达时为实时。",
  "Settings": "设置",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "设置：面板、热力图着色、交易所、声音、主题和指南。",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "跳回实时边缘，并把价格范围调整到最近的 K 线（键盘：R、Home，或双击图表）。",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "跳回实时边缘，并把价格范围调整到最近的 K 线（键盘：R、Home，或双击价格刻度）。",
  "End": "End",
  "Back to live": "回到实时 K 线",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "以当前缩放回到实时 K 线（键盘：End）。实时 K 线在屏幕上时，图表会跟随它。",
@@ -3029,5 +3029,12 @@
  "Make your own…": "创建你自己的…",
  "Your own theme": "你自己的主题",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "立体外形保留了所复制主题的灰色按钮，没有任何文字能同时在它们和你的颜色上看清：请另选一种形状。",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "此页面的其他标签页也会重新加载：在那里正在编写、尚未保存的脚本会丢失。"
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "此页面的其他标签页也会重新加载：在那里正在编写、尚未保存的脚本会丢失。",
+ "Maximize this panel (or double-click it)": "最大化此窗格（或双击它）",
+ "Restore the panels (or double-click the pane)": "恢复各窗格（或双击该窗格）",
+ "Restore the panels": "恢复各窗格",
+ "Maximize this panel": "最大化此窗格",
+ "Restore the panels (or double-click the chart)": "恢复各窗格（或双击图表）",
+ "Maximize the chart over the panels under it (or double-click the chart)": "把图表最大化，盖住下方的窗格（或双击图表）",
+ "Maximize the panel under the pointer, or restore the panels": "最大化指针下方的窗格，或恢复各窗格"
 }

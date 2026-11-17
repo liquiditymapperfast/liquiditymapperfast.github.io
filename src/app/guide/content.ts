@@ -85,7 +85,8 @@ export const SECTIONS: readonly Section[] = [
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['[[+]], [[−]]', 'Zoom the time axis in or out'],
         ['[[1]] to [[7]]', 'The timeframe: 1m, 5m, 15m, 30m, 1h, 4h, 1d'],
-        ['Double-click, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
+        ['Double-click the price scale, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
+        ['Double-click the chart, [[Z]]', 'Maximize the chart over the panels under it, and again to bring them back (with no panel under the map, a double-click recentres it)'],
         ['**Live**, [[End]]', 'Back to the live candle at the zoom you have'],
       ] },
       { t: 'p', text: 'On a **phone or tablet** the same moves are made with fingers:' },
@@ -428,6 +429,20 @@ export const SECTIONS: readonly Section[] = [
       ] },
       { t: 'note', kind: 'tip', text: 'Layouts live in this browser. **Export** writes them to a file and **Import** reads it back, to use them in another browser. On a phone the panels are tabs, so there is nothing to arrange.' },
       { t: 'p', text: 'A layout never holds the coin, the venues, the theme, the time zone or the sounds. **Back up and restore** (the last button of the Layouts panel; in Settings on a phone or tablet) keeps all of it: **Save a backup** writes your settings, layouts, scripts, drawings and themes, the coin and the venues to one file, and **Restore a backup…** reads such a file in another browser or on another computer. It says what the file holds and asks before it replaces anything, then reloads the page.' },
+    ],
+  },
+  {
+    id: 'maximize', title: 'Maximize a chart',
+    blocks: [
+      { t: 'p', text: '**Maximize** gives one chart the whole of the map\'s column: the map itself, or one of the panels under it (Depth, Open interest, Delta, Long/Short, Funding, LT, Bar stats or Scripts). The other panels keep their places and sizes out of sight, and come back as they were.' },
+      { t: 'list', items: [
+        '**Double-click** the chart or the panel to maximize it, and again to bring the other panels back.',
+        '**The four-corner button** does the same: on the title bar of each panel under the map, beside its ⋯ menu, and last among the map\'s corner buttons while a panel under the map is open. It is lit while its chart is maximized, and the ⋯ menu offers the same.',
+        '[[Z]] maximizes the chart under the pointer, or brings the other panels back.',
+        'A maximized panel keeps the map\'s time labels along its bottom. The flow column and the order book stay where they are.',
+        'Opening or closing a panel brings the others back, so that you see what you asked for. Maximize is not saved: a reload shows every panel.',
+      ] },
+      { t: 'note', kind: 'tip', text: 'On the map, a double-click on the price scale still recentres it, as [[R]] does. On a phone the panels are tabs and already fill the screen.' },
     ],
   },
   {

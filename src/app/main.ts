@@ -30,7 +30,7 @@ import { installClassicSelects, installTouchSelects } from './touch-select.ts';
 import { lazy, preload } from './lazy.ts';
 import { watchBuild } from './update-check.ts';
 import { ScreenWake } from './wake.ts';
-import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
+import { HeatPane, TIME_H, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
 import { TNS_LOOKBACK_MS } from './tns/model.ts';
@@ -246,6 +246,14 @@ async function main(): Promise<void> {
   cvd.trades.flowLoads = () => hub.flow.loads;
   // A desktop folds its side columns to their edge tabs when the map would be left too little plot (layouts/dock-model.ts `chooseFold`).
   arrange.plotAt = paneW => paneW - gutterAt(paneW, store.state);
+  // A pane of the map's column maximized over it (TradingView's, Karl 2026-11-17): a double click on the pane, its button, the map's button in
+  // the corner or the Z key; again, or another pane opened or closed, gives the column back. Not while a tool that clicks on the panes is armed.
+  arrange.mapAxisH = TIME_H;
+  arrange.canMaximize = () => !store.state.rangeTool && !store.state.vwapAnchoring && !store.state.profileAnchoring && !heat.draw?.placing;
+  heat.onMaximize = () => arrange.toggleMax('heat');
+  toolbar.onMapMax = () => { arrange.toggleMax('heat'); };
+  const syncMapMax = (): void => toolbar.setMapMax(arrange.canMax('heat'), arrange.maximized === 'heat');
+  arrange.onMaximized = () => { syncMapMax(); heat.invalidate(); lower(); };
   toolbar.layouts = layouts;
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
@@ -569,6 +577,7 @@ async function main(): Promise<void> {
     else if (a.kind === 'range') range.toggle();
     else if (a.kind === 'draw') drawBar.toggle();
     else if (a.kind === 'goto') toolbar.openGoTo();
+    else if (a.kind === 'maximize') { const id = arrange.maximized ?? arrange.pointed; if (id) arrange.toggleMax(id); }
     else if (a.kind === 'screenshot') void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot());
     else toolbar.openShortcuts();
   });
@@ -591,6 +600,7 @@ async function main(): Promise<void> {
     // A phone's Tape tab shows the column's list with the column switched off too (its Flow tab goes with the switch): there it stays in the page.
     arrange.sides({ cvd: s.show.cvd || isPhone(), book: s.show.book });
     arrange.rebuild();
+    syncMapMax();
     if (s.show.cvd) cvd.invalidate(); if (s.show.book) ladder.invalidate();
     // The Scripts tab, like its pane, is there only for scripts drawn in rows: those on the map need neither.
     // The Liq tab is there while Liquidation levels are on and have an address to be read from.

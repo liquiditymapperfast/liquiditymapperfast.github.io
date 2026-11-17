@@ -6,6 +6,7 @@ import { t } from './i18n.ts';
 import { arrangeOrder, defaultColumns, fitHeights, stylesheetColumns, type PaneArrangement } from './layouts/layouts.ts';
 import { MAP_PLOT_FLOOR, SIDES, chooseFold, clonePlan, columnState, defaultPlan, laidOutWidths, leadOf, legacyPlan, maxColumnWidth, minWidthOf, moveSide, nudge, openIn, otherSide, readPlan, sideOf, splitWeights, swapSides, type DockPlan, type FoldSide, type Side, type SidePaneId } from './layouts/dock-model.ts';
 import { dropTarget, type Box, type DropScene, type DropTarget } from './layouts/dock-drop.ts';
+import { canMaximize, columnKey, savedHeight, staysMaximized } from './layouts/maximize.ts';
 
 /**
  * Resizable, reorderable layout, kept in localStorage. The map's column holds the map and the panes under it (splitters between them, a grip
@@ -76,6 +77,24 @@ export class Layout {
   #fitted = new Map<string, number>();
   /** The arrangement the page starts with when nothing is saved (the Default layout). */
   readonly #defaults: PaneArrangement;
+  /**
+   * The pane of the map's column shown alone over the whole column (TradingView's maximize, Karl 2026-11-17): the map, or a pane under it.
+   * Nothing of it is saved and nothing else changes: the other panes keep their sizes, laid out under it unseen, so that the map goes on
+   * drawing (the panes under it follow its frames and its time axis) and comes back as it was. Desktop only.
+   */
+  #max: string | null = null;
+  /** The panes the column showed when one was maximized: another pane opened or closed since gives the column back (`rebuild`). */
+  #maxKey = '';
+  /** The pane of the map's column the pointer is over (the Z key maximizes it). */
+  #pointed: string | null = null;
+  /** Each pane-under-the-map's maximize button, shown lit while it is maximized. */
+  readonly #maxButtons = new Map<string, HTMLButtonElement>();
+  /** Whether a double click may maximize a pane now: not while a tool that clicks on the panes is armed (set by the page). */
+  canMaximize: () => boolean = () => true;
+  /** A pane was maximized, or the column given back (null): the map's own button follows it (set by the page). */
+  onMaximized: (id: string | null) => void = () => {};
+  /** The height of the time axis along the map's bottom (heat-pane.ts `TIME_H`): it stays in sight under a maximized pane, which has none. */
+  mapAxisH = 22;
   /** What the close button of a pane, and the edge tab of a closed one, do (the page's switches are the page's). */
   onClose: (id: string) => void = () => {};
   onOpen: (id: string) => void = () => {};
@@ -95,6 +114,14 @@ export class Layout {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);
       if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id, closable: pane.closable !== false });
+      pane.root.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') this.#pointed = pane.id; });
+      pane.root.addEventListener('pointerleave', () => { if (this.#pointed === pane.id) this.#pointed = null; });
+      // A double click on a pane under the map maximizes it, or gives the column back: on its plot or its header, never on one of its controls.
+      // The map has its own (heat-pane.ts): its axes recentre it.
+      if (pane.height !== undefined) pane.root.addEventListener('dblclick', e => {
+        if (!(e.target instanceof Element) || e.target.closest('button, select, input, textarea, a, label') || !this.canMaximize()) return;
+        if (this.toggleMax(pane.id)) window.getSelection()?.removeAllRanges();
+      });
     }
     // The splitters between the map and each column; a drag sets that column's width, a double click gives it back to the window.
     for (const side of SIDES) {
@@ -111,7 +138,7 @@ export class Layout {
     // A window that becomes a phone (or stops being one) is laid out again: a phone arranges its panes by tab, and the weights of a stack are the desktop's.
     let phone = isPhone();
     // A window resized may fold a column, or open one again: the sides are laid out again then, the widths alone otherwise.
-    window.addEventListener('resize', () => { this.#fit(); if (isPhone() !== phone) { phone = !phone; this.#renderSides(); } else this.#relayout(); });
+    window.addEventListener('resize', () => { this.#fit(); if (isPhone() !== phone) { phone = !phone; this.#setMax(null); this.#renderSides(); } else this.#relayout(); });
   }
 
   /** What a column is now: its width as it is laid out; one that is not laid out has none, so the width it keeps or the window's. */
@@ -142,9 +169,9 @@ export class Layout {
     const heights: Record<string, number> = {};
     for (const p of this.#panes) {
       if (p.height === undefined || p.root.hidden) continue;
-      // A pane shrunk to fit the window keeps the height it was given; one resized by hand since gets its new one.
-      const shown = Math.round(this.#height(p)), fitted = this.#fitted.get(p.id), own = this.#saved.heights?.[p.id];
-      heights[p.id] = fitted !== undefined && own !== undefined && Math.abs(shown - fitted) <= 1 ? own : shown;
+      // A pane shrunk to fit the window keeps the height it was given; one resized by hand since gets its new one; a maximized one, the height
+      // it comes back at (it stands over the whole column).
+      heights[p.id] = savedHeight({ maxed: p.id === this.#max, shown: Math.round(this.#height(p)), fitted: this.#fitted.get(p.id), own: this.#saved.heights?.[p.id], initial: p.height });
     }
     write({ heights: { ...this.#saved.heights, ...heights }, order: this.#panes.map(p => p.id), dock: this.#plan });
     this.#saved = read();
@@ -315,6 +342,8 @@ export class Layout {
 
   /** Recreate the horizontal splitters between visible panes (call after panes are shown, hidden or reordered). */
   rebuild(): void {
+    // A pane opened or closed (the maximized one too) gives the column back, so that what was asked for is seen; a change of anything else does not.
+    if (this.#max !== null && !staysMaximized(this.#max, this.#maxKey, this.#visibleKey())) this.#setMax(null);
     for (const s of this.#splitters.splice(0)) s.remove();
     const visible = this.#panes.filter(p => !p.root.hidden);
     visible.forEach((below, i) => {
@@ -359,7 +388,7 @@ export class Layout {
     for (const p of this.#panes) {
       if (p.height === undefined) continue;
       const own = this.#saved.heights?.[p.id] ?? p.height;
-      heights[p.id] = Math.round(p.root.hidden || this.#fitted.has(p.id) ? own : this.#height(p));
+      heights[p.id] = Math.round(p.root.hidden || p.id === this.#max || this.#fitted.has(p.id) ? own : this.#height(p));
     }
     return { order: this.#panes.map(p => p.id), heights, sideW: this.#width(sideOf(this.#plan, 'book')), flowW: this.#width(sideOf(this.#plan, 'cvd')), dock: clonePlan(this.#plan) };
   }
@@ -372,6 +401,7 @@ export class Layout {
    */
   apply(a: PaneArrangement): void {
     if (isPhone()) return;
+    this.#setMax(null);
     const known = this.#defaults.order.map(id => ({ id, fixed: this.#defaults.heights[id] !== undefined }));
     const ids = arrangeOrder(a.order, known);
     this.#panes = ids.map(id => this.#panes.find(p => p.id === id)!);
@@ -424,7 +454,10 @@ export class Layout {
     const more = el('button', { type: 'button', class: 'pane-more', tip: t('Move, resize or hide this panel'), ariaLabel: t('Move, resize or hide this panel'), onclick: () => this.#menu(m, more) });
     const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: t('Hide this panel'), ariaLabel: t('Hide this panel'), onclick: () => this.onClose(m.id) });
     close.dataset.pane = m.id;
-    const tools = el('div', { class: 'pane-tools' }, more, ...(m.closable ? [close] : []));
+    // A pane under the map can be maximized over the map's column (TradingView's button; a double click on the pane does the same).
+    const max = m.kind === 'strip' ? el('button', { type: 'button', class: 'pane-max', onclick: () => this.toggleMax(m.id) }) : null;
+    if (max) { max.dataset.pane = m.id; this.#maxButtons.set(m.id, max); this.#paintMax(max, false); }
+    const tools = el('div', { class: 'pane-tools' }, ...(max ? [max] : []), more, ...(m.closable ? [close] : []));
     const handle = m.head;
     handle.prepend(el('span', { class: 'grip', tip: t('Drag to move this pane') }));
     if (m.kind === 'side') {
@@ -453,7 +486,9 @@ export class Layout {
       if (nudge(this.#plan, id, 1, this.#shown) !== this.#plan) items.push({ id: 'down', label: t('Move down') });
       items.push({ id: 'swap', label: t('Swap the two sides') });
     } else {
-      const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined), i = fixed.findIndex(p => p.id === m.id);
+      items.push({ id: 'max', label: this.#max === m.id ? t('Restore the panels') : t('Maximize this panel') });
+      // Not while one is maximized: the move would not be seen.
+      const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined), i = this.#max !== null ? -1 : fixed.findIndex(p => p.id === m.id);
       if (i > 0) items.push({ id: 'up', label: t('Move up') });
       if (i >= 0 && i < fixed.length - 1) items.push({ id: 'down', label: t('Move down') });
     }
@@ -472,6 +507,7 @@ export class Layout {
       else if (action === 'reset') { this.#plan[key] = null; for (const other of this.#plan[sideOf(this.#plan, id)]) delete this.#plan.weights[other]; this.#renderSides(); this.#persist(); }
       return;
     }
+    if (action === 'max') { this.toggleMax(m.id); return; }
     const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined), i = fixed.findIndex(p => p.id === m.id), pane = fixed[i];
     if (action === 'up' && i > 0) this.#moveStrip(m.id, fixed[i - 1]!.id);
     else if (action === 'down' && i >= 0 && i < fixed.length - 1) this.#moveStrip(m.id, fixed[i + 2]?.id ?? null);
@@ -520,7 +556,7 @@ export class Layout {
    * along the edge where a column is not there); letting go moves it there, Escape or a drop anywhere else leaves it.
    */
   #startDrag(m: Mover, down: PointerEvent): void {
-    if (down.button !== 0 || isPhone()) return;
+    if (down.button !== 0 || isPhone() || (m.kind === 'strip' && this.#max !== null)) return;
     down.preventDefault();
     const grip = down.currentTarget as HTMLElement;
     try { grip.setPointerCapture(down.pointerId); } catch { /* the drag does not need it */ }
@@ -556,4 +592,46 @@ export class Layout {
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel); window.addEventListener('keydown', key, true);
   }
   #reattach(): void { for (const p of this.#panes) this.chart.append(p.root); this.rebuild(); }
+
+  /** The pane of the map's column maximized now, or null. */
+  get maximized(): string | null { return this.#max; }
+  /** The pane of the map's column the pointer is over, or null. */
+  get pointed(): string | null { return this.#pointed; }
+  #column(): { id: string; open: boolean }[] { return this.#panes.map(p => ({ id: p.id, open: !p.root.hidden })); }
+  #visibleKey(): string { return columnKey(this.#column()); }
+  /** Whether maximizing `id` would change anything (`canMaximize`): a desktop, the pane open, and another pane open in the column for it to cover. */
+  canMax(id: string): boolean { return canMaximize(id, this.#column(), isPhone()); }
+  /** Maximize `id`, or give the column back when it is the one maximized: true when either happened. */
+  toggleMax(id: string): boolean {
+    if (this.#max === id) { this.#setMax(null); return true; }
+    if (!this.canMax(id)) return false;
+    this.#setMax(id);
+    return true;
+  }
+  /** Give the column back to all its panes (nothing when none is maximized). */
+  restore(): void { this.#setMax(null); }
+
+  /**
+   * Show `id` alone over the map's column (null: every pane again). The pane stands over the column and the others are hidden from sight, not
+   * from the layout: their sizes and the map's frames go on. A pane under the map leaves the map's time axis in sight under it (it has none of its
+   * own): the map, at the height it had, is put at the column's bottom, so its axis is the column's last strip.
+   */
+  #setMax(id: string | null): void {
+    if (id === this.#max) return;
+    const map = this.#panes.find(p => p.height === undefined), lower = id !== null && map !== undefined && map.id !== id;
+    if (lower) this.chart.style.setProperty('--max-map-h', `${Math.round(this.#height(map))}px`); else this.chart.style.removeProperty('--max-map-h');
+    this.chart.style.setProperty('--max-axis-h', `${this.mapAxisH}px`);
+    for (const p of this.#panes) p.root.classList.toggle('maxed', p.id === id);
+    this.chart.classList.toggle('has-max', id !== null);
+    this.chart.classList.toggle('max-lower', lower);
+    this.#max = id; this.#maxKey = id === null ? '' : this.#visibleKey();
+    for (const [pid, button] of this.#maxButtons) this.#paintMax(button, pid === id);
+    this.onMaximized(id);
+  }
+  /** A maximize button as its pane is: lit, saying it gives the column back, while the pane is maximized. */
+  #paintMax(button: HTMLButtonElement, on: boolean): void {
+    const words = on ? t('Restore the panels (or double-click the pane)') : t('Maximize this panel (or double-click it)');
+    setTip(button, words); button.setAttribute('aria-label', words); button.setAttribute('aria-pressed', String(on));
+    button.dataset.state = on ? 'on' : 'off';
+  }
 }

@@ -447,7 +447,7 @@
  "Connection to the data source: live when frames are arriving.": "データソースへの接続：フレームが届いている間はライブです。",
  "Settings": "設定",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "設定：パネル、ヒートマップの配色、取引所、サウンド、テーマ、ガイド。",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "ライブの端に戻り、価格範囲を直近のローソク足に合わせます（キーボード：R、Home、またはチャートをダブルクリック）。",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "ライブの端に戻り、価格範囲を直近のローソク足に合わせます（キーボード：R、Home、または価格スケールをダブルクリック）。",
  "End": "End",
  "Back to live": "ライブのローソク足に戻る",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "このズームのままライブのローソク足に戻ります（キーボード：End）。ライブのローソク足が画面にある間、チャートはそれを追います。",
@@ -3029,5 +3029,12 @@
  "Make your own…": "自分用を作る…",
  "Your own theme": "自分のテーマ",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "立体の形はコピー元のテーマの灰色のボタンを残すため、その上とあなたの色の上の両方で読める文字色がありません。別の形状を選んでください。",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "このページの他のタブも再読み込みされます。そこで書きかけで未保存のスクリプトは失われます。"
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "このページの他のタブも再読み込みされます。そこで書きかけで未保存のスクリプトは失われます。",
+ "Maximize this panel (or double-click it)": "このペインを最大化（ダブルクリックでも可）",
+ "Restore the panels (or double-click the pane)": "ペインを元に戻す（ペインをダブルクリックでも可）",
+ "Restore the panels": "ペインを元に戻す",
+ "Maximize this panel": "このペインを最大化",
+ "Restore the panels (or double-click the chart)": "ペインを元に戻す（チャートをダブルクリックでも可）",
+ "Maximize the chart over the panels under it (or double-click the chart)": "チャートを下のペインの上に最大化（チャートをダブルクリックでも可）",
+ "Maximize the panel under the pointer, or restore the panels": "ポインターの下のペインを最大化、またはペインを元に戻す"
 }

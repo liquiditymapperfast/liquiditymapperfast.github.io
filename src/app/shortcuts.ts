@@ -22,6 +22,7 @@ export type ShortcutAction =
   | { kind: 'range' }
   | { kind: 'draw' }
   | { kind: 'goto' }
+  | { kind: 'maximize' }
   | { kind: 'screenshot' }
   | { kind: 'list' };
 
@@ -49,6 +50,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { group: 'chart', caps: [t('End')], label: t('Back to live'), keys: ['end'], action: { kind: 'now' } },
   { group: 'chart', caps: ['+'], label: t('Zoom time in'), keys: ['+', '='], action: { kind: 'zoom', dir: 1 }, repeat: true },
   { group: 'chart', caps: ['−'], label: t('Zoom time out'), keys: ['-', '_'], action: { kind: 'zoom', dir: -1 }, repeat: true },
+  { group: 'chart', caps: ['Z'], label: t('Maximize the panel under the pointer, or restore the panels'), keys: ['z'], action: { kind: 'maximize' } },
   toggle('F', t('Footprint'), 'footprint'),
   toggle('T', t('Trades'), 'trades'),
   toggle('L', t('Liquidations'), 'liquidations'),

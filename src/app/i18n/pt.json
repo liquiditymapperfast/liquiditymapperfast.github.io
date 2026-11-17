@@ -459,7 +459,7 @@
  "Connection to the data source: live when frames are arriving.": "Conexão com a fonte de dados: ao vivo quando os quadros estão chegando.",
  "Settings": "Configurações",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "Configurações: painéis, coloração do mapa de calor, exchanges, som, tema e o guia.",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "Voltar à borda ao vivo e ajustar a faixa de preço às velas recentes (teclado: R, Home, ou clique duas vezes no gráfico).",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "Voltar à borda ao vivo e ajustar a faixa de preço às velas recentes (teclado: R, Home, ou clique duas vezes na escala de preço).",
  "End": "End",
  "Back to live": "Voltar à vela ao vivo",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "Volta à vela ao vivo com este zoom (teclado: End). Enquanto a vela ao vivo está na tela, o gráfico a acompanha.",
@@ -3255,5 +3255,12 @@
  "Make your own…": "Criar o seu…",
  "Your own theme": "O seu próprio tema",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "A forma em relevo mantém os botões cinzentos do tema de onde este foi copiado, e nenhum texto se lê bem neles e nas suas cores ao mesmo tempo: escolha outra forma.",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Os outros separadores da página também são recarregados: um script a ser escrito lá e ainda não guardado perde-se."
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Os outros separadores da página também são recarregados: um script a ser escrito lá e ainda não guardado perde-se.",
+ "Maximize this panel (or double-click it)": "Maximizar este painel (ou clique duas vezes nele)",
+ "Restore the panels (or double-click the pane)": "Restaurar os painéis (ou clique duas vezes no painel)",
+ "Restore the panels": "Restaurar os painéis",
+ "Maximize this panel": "Maximizar este painel",
+ "Restore the panels (or double-click the chart)": "Restaurar os painéis (ou clique duas vezes no gráfico)",
+ "Maximize the chart over the panels under it (or double-click the chart)": "Maximizar o gráfico sobre os painéis abaixo dele (ou clique duas vezes no gráfico)",
+ "Maximize the panel under the pointer, or restore the panels": "Maximizar o painel sob o ponteiro, ou restaurar os painéis"
 }

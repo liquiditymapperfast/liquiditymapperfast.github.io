@@ -459,7 +459,7 @@
  "Connection to the data source: live when frames are arriving.": "Connexion à la source de données : en direct quand des trames arrivent.",
  "Settings": "Réglages",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "Réglages : panneaux, coloration de la heatmap, plateformes, son, thème et le guide.",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "Revenir au bord en direct et ajuster la plage de prix aux bougies récentes (clavier : R, Début, ou double-clic sur le graphique).",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "Revenir au bord en direct et ajuster la plage de prix aux bougies récentes (clavier : R, Début, ou double-clic sur l’échelle de prix).",
  "End": "Fin",
  "Back to live": "Retour à la bougie en direct",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "Revenir à la bougie en direct à ce zoom (clavier : Fin). Tant que la bougie en direct est à l’écran, le graphique la suit.",
@@ -3255,5 +3255,12 @@
  "Make your own…": "Créer le vôtre…",
  "Your own theme": "Votre propre thème",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "La forme en relief garde les boutons gris du thème dont celui-ci est la copie, et aucun texte ne se lit à la fois sur eux et sur vos couleurs : choisissez une autre forme.",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Les autres onglets de la page se rechargent aussi : un script en cours d’écriture qui n’a pas encore été enregistré y est perdu."
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Les autres onglets de la page se rechargent aussi : un script en cours d’écriture qui n’a pas encore été enregistré y est perdu.",
+ "Maximize this panel (or double-click it)": "Agrandir ce volet (ou double-cliquer dessus)",
+ "Restore the panels (or double-click the pane)": "Rétablir les volets (ou double-cliquer sur le volet)",
+ "Restore the panels": "Rétablir les volets",
+ "Maximize this panel": "Agrandir ce volet",
+ "Restore the panels (or double-click the chart)": "Rétablir les volets (ou double-cliquer sur le graphique)",
+ "Maximize the chart over the panels under it (or double-click the chart)": "Agrandir le graphique par-dessus les volets du dessous (ou double-cliquer sur le graphique)",
+ "Maximize the panel under the pointer, or restore the panels": "Agrandir le volet sous le pointeur, ou rétablir les volets"
 }

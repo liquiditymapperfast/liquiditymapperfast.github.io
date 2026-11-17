@@ -374,8 +374,22 @@ export class Toolbar {
   #spanned: HTMLElement[] = [];
   /** Settings' "Keep screen on" switch (only where the browser can hold the screen awake). */
   #awake = el('input', { type: 'checkbox' });
-  #recenter = el('button', { textContent: t('Recenter'), tip: t('Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).') });
+  #recenter = el('button', { textContent: t('Recenter'), tip: t('Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).') });
   onRecenter: () => void = () => {};
+  /**
+   * The map's maximize button, the corner's last (TradingView's): the map over its whole column, the panes under it out of sight, or the
+   * column given back. There only while a pane under the map is open, or the map is maximized (`setMapMax`); the page does the rest.
+   */
+  #mapMax = el('button', { type: 'button', class: 'map-max', hidden: true, onclick: () => this.onMapMax() });
+  onMapMax: () => void = () => {};
+  /** Show the map's maximize button as the map is: `shown` while it would change something, `on` (lit) while the map is maximized. */
+  setMapMax(shown: boolean, on: boolean): void {
+    const words = on ? t('Restore the panels (or double-click the chart)') : t('Maximize the chart over the panels under it (or double-click the chart)');
+    this.#mapMax.hidden = !shown && !on;
+    this.#mapMax.dataset.state = on ? 'on' : 'off';
+    this.#mapMax.setAttribute('aria-pressed', String(on));
+    if (this.#mapMax.getAttribute('aria-label') !== words) { setTip(this.#mapMax, words); this.#mapMax.setAttribute('aria-label', words); }
+  }
   /** Preview a theme without keeping it (`null` puts the saved one back). */
   onPreviewTheme: (id: string | null) => void = () => {};
   /** Hovering a row of the Chart type menu draws the map with it without keeping it (Hidden: without the price); leaving the menu puts the kept one back (null). */
@@ -814,7 +828,7 @@ export class Toolbar {
       // The colour scale with the Heatmap key at its end (the scale may come back from a phone's Settings row).
       this.#heatSplit.replaceChildren(this.#heatScale, this.#heatKey);
       const inCorner = this.#mapHost !== null;
-      if (inCorner) { this.#mapTools.replaceChildren(this.#layoutCorner, this.#goto, this.#rangeCorner, ...(this.#drawCorner ? [this.#drawCorner] : []), this.#recenter); this.#mapHost!.prepend(this.#mapTools); }
+      if (inCorner) { this.#mapTools.replaceChildren(this.#layoutCorner, this.#goto, this.#rangeCorner, ...(this.#drawCorner ? [this.#drawCorner] : []), this.#recenter, this.#mapMax); this.#mapHost!.prepend(this.#mapTools); }
       const host = this.#statusHost;
       // With a status bar the connection state and the language and theme buttons live there.
       host?.replaceChildren(this.#keys, this.#tab, this.#zone, this.#language, this.#theme);

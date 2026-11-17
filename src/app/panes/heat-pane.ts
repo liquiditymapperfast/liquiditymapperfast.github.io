@@ -227,7 +227,7 @@ export function sideColumns(state: AppState): ReturnType<typeof arrangeSides> {
   if (sidesMemo?.set !== set || sidesMemo.fit !== fit) sidesMemo = { set, fit, sides: arrangeSides(set, fit) };
   return sidesMemo.sides;
 }
-const TIME_H = 22;
+export const TIME_H = 22;
 /**
  * How many candles before the view's left edge the scripts read, so a line that needs a window of candles is already worked out there: the
  * VWAP script's 48 and a 200-candle average both fit. A longer window shows its first candles on the screen, as on any chart.
@@ -626,6 +626,8 @@ export class HeatPane {
   onRollingReach: () => void = () => {};
   /** A click on the header of the profile along the top (set by the page): its settings, in the Volume profile panel. */
   onTopProfile: () => void = () => {};
+  /** A double click on the plot (set by the page): the map maximized over its column, or the column given back; false when that changes nothing (no pane under the map). */
+  onMaximize: () => boolean = () => false;
   /** What of the profiles has no room changed (a resize, a taller legend): the open panel says it again. */
   onArrangedChange: () => void = () => {};
   #hiddenKey = '';
@@ -4770,8 +4772,15 @@ export class HeatPane {
       if (this.#drag || this.#zoomDrag || this.#scaleDrag) { this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; this.invalidate(); }
     });
     el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.draw?.dragging) this.draw?.leave(); if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; this.#tradedHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidateHover(); } });
-    // A double click recentres the map, except while a tool is armed or when it selected a drawing (its first click was the drawing tools').
-    el.addEventListener('dblclick', () => { if (this.draw?.placing || this.store.state.vwapAnchoring || this.store.state.profileAnchoring || performance.now() - this.#drawClickAt < 600) return; this.fit(); });
+    // A double click on the plot maximizes the map over its column, or gives the column back, where panes under it are open (TradingView's,
+    // Karl 2026-11-17); on its axes and columns, or with nothing under it, it recentres the map. Neither while a tool is armed or when it
+    // selected a drawing (its first click was the drawing tools').
+    el.addEventListener('dblclick', e => {
+      if (this.draw?.placing || this.store.state.vwapAnchoring || this.store.state.profileAnchoring || performance.now() - this.#drawClickAt < 600) return;
+      const at = local(e);
+      if (!this.store.state.rangeTool && at.x >= 0 && at.x < this.plotW && at.y >= 0 && at.y < this.plotH && this.onMaximize()) return;
+      this.fit();
+    });
     bindTouch(el, new GestureRecognizer(this.#touchHandlers()), () => this.#left);
   }
 }

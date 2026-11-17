@@ -116,7 +116,8 @@ function openEditor(snap: Snapshot): { close(): void } {
   // later is never left out, as Delta and L/S were).
   const snapTargets: { rect: Rect; label: string }[] = [], named = new Set<Element>();
   const take = (node: HTMLElement, label: string): void => {
-    named.add(node); if (node.hidden) return;
+    // A pane covered by a maximized one (layout.ts #setMax) is not one that can be taken: what shows there is the maximized pane.
+    named.add(node); if (node.hidden || (node.closest('.has-max') !== null && !node.classList.contains('maxed'))) return;
     const r = node.getBoundingClientRect();
     if (r.width > 40 && r.height > 20) snapTargets.push({ rect: { x: r.left, y: r.top, w: r.width, h: r.height }, label });
   };

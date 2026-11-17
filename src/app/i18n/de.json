@@ -456,7 +456,7 @@
  "Connection to the data source: live when frames are arriving.": "Verbindung zur Datenquelle: live, wenn Frames ankommen.",
  "Settings": "Einstellungen",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "Einstellungen: Bereiche, Heatmap-Färbung, Börsen, Ton, Design und die Anleitung.",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "Zurück zum Live-Rand springen und den Preisbereich an die jüngsten Kerzen anpassen (Tastatur: R, Pos1 oder Doppelklick auf den Chart).",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "Zurück zum Live-Rand springen und den Preisbereich an die jüngsten Kerzen anpassen (Tastatur: R, Pos1 oder Doppelklick auf die Preisskala).",
  "End": "Ende",
  "Back to live": "Zurück zur Live-Kerze",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "Zurück zur Live-Kerze bei diesem Zoom (Tastatur: Ende). Solange die Live-Kerze zu sehen ist, folgt ihr der Chart.",
@@ -3198,5 +3198,12 @@
  "Make your own…": "Eigenes erstellen…",
  "Your own theme": "Dein eigenes Design",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Die erhabene Form behält die grauen Schaltflächen des Designs, von dem dieses kopiert wurde, und kein Text ist zugleich darauf und auf deinen Farben lesbar: Wähle eine andere Form.",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Andere Tabs der Seite werden ebenfalls neu geladen: Ein dort begonnenes, noch nicht gespeichertes Skript geht verloren."
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Andere Tabs der Seite werden ebenfalls neu geladen: Ein dort begonnenes, noch nicht gespeichertes Skript geht verloren.",
+ "Maximize this panel (or double-click it)": "Diesen Bereich maximieren (oder doppelklicken)",
+ "Restore the panels (or double-click the pane)": "Bereiche wiederherstellen (oder auf den Bereich doppelklicken)",
+ "Restore the panels": "Bereiche wiederherstellen",
+ "Maximize this panel": "Diesen Bereich maximieren",
+ "Restore the panels (or double-click the chart)": "Bereiche wiederherstellen (oder auf den Chart doppelklicken)",
+ "Maximize the chart over the panels under it (or double-click the chart)": "Den Chart über die Bereiche darunter maximieren (oder auf den Chart doppelklicken)",
+ "Maximize the panel under the pointer, or restore the panels": "Den Bereich unter dem Zeiger maximieren oder die Bereiche wiederherstellen"
 }

@@ -447,7 +447,7 @@
  "Connection to the data source: live when frames are arriving.": "데이터 소스 연결: 프레임이 도착하는 동안 실시간입니다.",
  "Settings": "설정",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "설정: 패널, 히트맵 색상, 거래소, 소리, 테마, 가이드.",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "실시간 가장자리로 돌아가 가격 범위를 최근 캔들에 맞춥니다(키보드: R, Home, 또는 차트 더블 클릭).",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "실시간 가장자리로 돌아가 가격 범위를 최근 캔들에 맞춥니다(키보드: R, Home, 또는 가격 눈금 더블 클릭).",
  "End": "End",
  "Back to live": "실시간 캔들로 돌아가기",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "이 확대 수준 그대로 실시간 캔들로 돌아갑니다(키보드: End). 실시간 캔들이 화면에 있는 동안 차트가 따라갑니다.",
@@ -3029,5 +3029,12 @@
  "Make your own…": "직접 만들기…",
  "Your own theme": "내 테마",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "입체 모양은 복사해 온 테마의 회색 버튼을 그대로 쓰므로, 그 위와 지정한 색 위 모두에서 읽히는 글자가 없습니다. 다른 형태를 고르세요.",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "이 페이지의 다른 탭도 새로 고쳐집니다. 그곳에서 작성 중이고 아직 저장하지 않은 스크립트는 사라집니다."
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "이 페이지의 다른 탭도 새로 고쳐집니다. 그곳에서 작성 중이고 아직 저장하지 않은 스크립트는 사라집니다.",
+ "Maximize this panel (or double-click it)": "이 창 최대화(더블 클릭해도 됨)",
+ "Restore the panels (or double-click the pane)": "창 복원(창을 더블 클릭해도 됨)",
+ "Restore the panels": "창 복원",
+ "Maximize this panel": "이 창 최대화",
+ "Restore the panels (or double-click the chart)": "창 복원(차트를 더블 클릭해도 됨)",
+ "Maximize the chart over the panels under it (or double-click the chart)": "차트를 아래 창 위로 최대화(차트를 더블 클릭해도 됨)",
+ "Maximize the panel under the pointer, or restore the panels": "포인터 아래의 창 최대화 또는 창 복원"
 }

@@ -459,7 +459,7 @@
  "Connection to the data source: live when frames are arriving.": "Connessione alla fonte dati: in diretta quando arrivano i fotogrammi.",
  "Settings": "Impostazioni",
  "Settings: panels, heatmap colouring, venues, sound, theme and the guide.": "Impostazioni: pannelli, colorazione della heatmap, exchange, suono, tema e la guida.",
- "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the chart).": "Torna al bordo in diretta e adatta l'intervallo di prezzo alle candele recenti (tastiera: R, Home, o doppio clic sul grafico).",
+ "Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).": "Torna al bordo in diretta e adatta l'intervallo di prezzo alle candele recenti (tastiera: R, Home, o doppio clic sulla scala dei prezzi).",
  "End": "End",
  "Back to live": "Torna alla candela live",
  "Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.": "Torna alla candela live con questo zoom (tastiera: End). Finché la candela live è sullo schermo, il grafico la segue.",
@@ -3255,5 +3255,12 @@
  "Make your own…": "Creane uno tuo…",
  "Your own theme": "Il tuo tema",
  "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "La forma in rilievo mantiene i pulsanti grigi del tema da cui questo è stato copiato, e nessun testo si legge bene sia su di essi sia sui tuoi colori: scegli un’altra forma.",
- "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Anche le altre schede della pagina si ricaricano: uno script in scrittura lì e non ancora salvato va perso."
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Anche le altre schede della pagina si ricaricano: uno script in scrittura lì e non ancora salvato va perso.",
+ "Maximize this panel (or double-click it)": "Ingrandisci questo pannello (o fai doppio clic)",
+ "Restore the panels (or double-click the pane)": "Ripristina i pannelli (o fai doppio clic sul pannello)",
+ "Restore the panels": "Ripristina i pannelli",
+ "Maximize this panel": "Ingrandisci questo pannello",
+ "Restore the panels (or double-click the chart)": "Ripristina i pannelli (o fai doppio clic sul grafico)",
+ "Maximize the chart over the panels under it (or double-click the chart)": "Ingrandisci il grafico sopra i pannelli sottostanti (o fai doppio clic sul grafico)",
+ "Maximize the panel under the pointer, or restore the panels": "Ingrandisci il pannello sotto il puntatore, o ripristina i pannelli"
 }
