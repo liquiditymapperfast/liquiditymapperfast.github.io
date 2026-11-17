@@ -972,16 +972,15 @@ export class Toolbar {
       el('section', { class: 'sheet-sec' }, el('div', { class: 'sheet-sec-head' }, el('h4', { textContent: title }), ...(action ? [action] : [])), ...children);
     // The sheet's own heading says "Venues", so the button beside it says what it does.
     this.#venuesLabel.textContent = t('Choose…'); this.#venuesCount.hidden = true;
+    // Back up and restore: a tool of its own on a phone, which has no Layouts panel; beside Layouts on a tablet.
+    const backup = button(t('Back up and restore'), () => { this.#sheet?.close(); this.#openBackup(this.#more); }, t('Everything the page keeps in this browser, to one file and back'));
     this.#sheet = openSheet(t('Settings'), body => {
       this.#heatctl.replaceChildren();
       body.append(
-        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
+        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root, ...(isPhone() ? [backup] : []))]),
         section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
-        // Back up and restore on every touch screen: a phone has no Layouts panel to reach it from.
-        section(isPhone() ? t('Back up and restore') : t('Layouts'), [el('div', { class: 'sheet-tiles' },
-          ...(isPhone() ? [] : [button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own'))]),
-          button(t('Back up and restore'), () => { this.#sheet?.close(); this.#openBackup(this.#more); }, t('Everything the page keeps in this browser, to one file and back')))]),
+        ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')), backup)])]),
         section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels'] as const : []), 'absorption', 'traded', 'tpo', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),
         // Only a phone has the Tape tab; a touch tablet keeps the desktop's panes and gets this sheet without it.
         ...(this.tapeFields && isPhone() ? [section(t('Tape'), this.tapeFields().map(([label, control]) => field(label, control)), helpButton('candlePane'))] : []),
