@@ -34,9 +34,9 @@ test('a save written under the old defaults (Depth and Open interest both on, no
   saved({ defaultsRev: DEFAULTS_REV, show: { ...DEFAULT_SHOW, depth: true, oi: true } }, () => assert.deepEqual([initialState().show.depth, initialState().show.oi], [true, true]));
 });
 
-test('the volume profile is on at a first visit with a mouse only: never on a phone or any touch screen (Karl, 2026-11-03)', () => {
+test('the volume profile is off at a first visit on every screen (Karl, 2026-11-17; touch screens since 2026-11-03)', () => {
   saved(null, () => {
-    assert.equal(initialState(false, false).show.traded, true, 'a desktop with a mouse');
+    assert.equal(initialState(false, false).show.traded, false, 'a desktop with a mouse');
     assert.equal(initialState(false, true).show.traded, false, 'a tablet on its side, in the desktop arrangement');
     assert.equal(initialState(true, true).show.traded, false, 'a phone');
     assert.equal(initialState(true, false).show.traded, false, 'a narrow window');
@@ -55,9 +55,9 @@ test('a save from before revision 2 shows what was new: days on the chart (their
   });
   // Periods chosen before are kept as they were.
   saved({ ...before, traded: { lines: ['week'], profiles: null } }, () => assert.deepEqual([initialState().traded.lines, initialState().traded.profiles], [['week'], null]));
-  // A first visit (a desktop): the Volume profile with its column and its days' lines, without their profiles and without the profile along
+  // A first visit (a desktop): the Volume profile switched off (2026-11-17), set up with its column and its days' lines, without their profiles and without the profile along
   // the top (off by default since 10-28), which a save of the days before keeps as it saved it.
-  saved(null, () => { const s = initialState(); assert.deepEqual([topOf(s.traded), s.show.traded, s.traded.lines, s.traded.profiles], [{ on: false, metric: 'volume' }, true, ['day'], null]); });
+  saved(null, () => { const s = initialState(); assert.deepEqual([topOf(s.traded), s.show.traded, s.traded.lines, s.traded.profiles], [{ on: false, metric: 'volume' }, false, ['day'], null]); });
   saved({ defaultsRev: DEFAULTS_REV, traded: { placements: { version: 1, instances: [{ id: 'volume:top', enabled: true, metric: 'volume', placement: 'top' }] } } }, () => assert.deepEqual(topOf(initialState().traded), { on: true, metric: 'volume' }));
   // A save holding the days' profiles keeps them: every save from 10-20 to 10-28 wrote them down, and a choice reads the same.
   saved({ defaultsRev: DEFAULTS_REV, traded: { lines: ['day'], profiles: 'day' } }, () => assert.equal(initialState().traded.profiles, 'day'));

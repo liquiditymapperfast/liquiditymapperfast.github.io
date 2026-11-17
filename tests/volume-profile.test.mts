@@ -243,12 +243,12 @@ test('a profile over whole hours, read from the hours added together, is the sam
   assert.ok(whole.counts!.some(c => c[0] + c[1] > 0), 'the orders were counted');
 });
 
-test('the volume profile is off unless chosen: a save from before it had settings reads as off, a later choice stays; a first visit on a desktop has it, for its column (the profile along the top is off by default since 10-28)', () => {
+test('the volume profile is off unless chosen: a save from before it had settings reads as off, a later choice stays; a first visit has it off since 2026-11-17 (the profile along the top since 10-28)', () => {
   const g = globalThis as { window?: unknown }, had = g.window;
   const saved = (value: unknown): void => { g.window = { innerWidth: 1920, localStorage: { getItem: () => JSON.stringify(value) } }; };
   try {
     // Defaults revision 3: the measure strip, on for every desktop since revision 2, is the profile along the top, which shows with the Volume profile.
-    saved({}); assert.equal(initialState().show.traded, true, 'a first visit on a desktop');
+    saved({}); assert.equal(initialState().show.traded, false, 'a first visit on a desktop (off since 2026-11-17)');
     saved({ defaultsRev: 3, show: { traded: true } }); assert.equal(initialState().show.traded, false, 'the old default of the column, saved before');
     saved({ defaultsRev: 3, show: { traded: true }, traded: {} }); assert.equal(initialState().show.traded, true, 'switched on since');
     saved({ defaultsRev: 3, show: { traded: false }, traded: {} }); assert.equal(initialState().show.traded, false);

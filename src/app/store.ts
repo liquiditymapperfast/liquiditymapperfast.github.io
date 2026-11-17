@@ -437,6 +437,8 @@ function slotTheme(v: unknown, dark: boolean): string | null {
  * No revision for 2026-10-28 (Karl: the daily profile off by default, and the profile along the top): a first visit draws the days' lines
  * without their profiles and the Volume profile's column without the band along the top, and a save from before revision 2 has no
  * profiles either; a save since holds both as it saved them, as Scripts switched on by default left a saved off.
+ * No revision for 2026-11-17 (Karl: the volume profile off at a first visit): a first visit on any screen has the Volume profile off; every
+ * save holds the switch as it was, chosen or not, so a person who had it keeps it.
  * Revision 5 (2026-11-03, Karl: "set the liquidity tracker to 10bp as default, it is currently 100bp"): the half-life is 10 bp again on every
  * screen. A save of revision 4 holding 100 bp, its default that every save wrote down, reads as 10 once; a revision-4 save whose owner chose
  * 100 cannot be told apart and reads 10 too, once. Any other half-life is kept, and so is a 100 in an older save (10 was the default then,
@@ -479,8 +481,9 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
     // profile with its column and no band (off by default since 2026-10-28); a save this old gets the band it was given then.
     if (!phone) {
       if (Object.keys(saved).length) state.traded = { ...state.traded, placements: withTopOn(state.traded.placements) };
-      // Not on a touch screen's first visit, as not on a phone's (Karl, 2026-11-03: the volume profile is not on by default on any mobile).
-      if (!touch || Object.keys(saved).length) state.show = { ...state.show, traded: true };
+      // Not on a first visit on any screen (Karl, 2026-11-17: "the volume profile should be disabled by default when someone loads the page for
+      // the first time"; on a touch screen it was off since 2026-11-03): a save this old gets it, as it was given then.
+      if (Object.keys(saved).length) state.show = { ...state.show, traded: true };
     }
   }
   // The panes: a touch screen only (a desktop browser window that was narrow once is not a phone, and its panes stay as it chose them).
