@@ -45,6 +45,8 @@
  "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer": "Zoomt auf dem Chart nur die **Zeit**achse (auf der Preisskala die Zeit statt des Preises). [[Alt]] + [[Mausrad]] zoomt um den Zeiger",
  "Drag": "Ziehen",
  "Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it": "Verschiebt in beide Richtungen. Mit [[Shift]] nur die Zeit. Nach oben oder unten verschoben, bleibt der Preis, wo du ihn hingesetzt hast",
+ "Drag or [[Wheel]] on a pane under the chart": "Ziehen oder [[Mausrad]] auf einem Panel unter dem Chart",
+ "Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too": "Verschiebt oder zoomt die **Zeit**achse, die jedes Panel mit dem Chart teilt. Auch auf einem maximierten Panel",
  "Right-drag": "Rechts ziehen",
  "Right or up zooms the time or price axis in; left or down zooms out": "Nach rechts oder oben zoomt die Zeit- oder Preisachse hinein; nach links oder unten heraus",
  "[[+]], [[−]]": "[[+]], [[−]]",

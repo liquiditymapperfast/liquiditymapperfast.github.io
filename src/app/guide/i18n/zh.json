@@ -45,6 +45,8 @@
  "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer": "在图表上只缩放**时间**轴（在价格刻度上则缩放时间而非价格）。[[Alt]] + [[滚轮]]围绕指针缩放",
  "Drag": "拖动",
  "Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it": "向两个方向平移。按住 [[Shift]] 时只平移时间。上下移动后，价格停在你放的位置",
+ "Drag or [[Wheel]] on a pane under the chart": "在图表下方的面板上拖动或用[[滚轮]]",
+ "Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too": "平移或缩放所有面板与图表共用的**时间**轴。最大化的面板也一样",
  "Right-drag": "右键拖动",
  "Right or up zooms the time or price axis in; left or down zooms out": "向右或向上放大时间轴或价格轴；向左或向下缩小",
  "[[+]], [[−]]": "[[+]], [[−]]",

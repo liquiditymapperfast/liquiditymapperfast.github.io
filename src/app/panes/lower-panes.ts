@@ -88,6 +88,7 @@ export abstract class TimePane {
     if (on === this.#covered) return;
     this.#covered = on;
     if (!on) { this.invalidate(); return; }
+    this.#endPan();
     if (this.#frame) { cancelAnimationFrame(this.#frame); this.#frame = 0; }
     if (this.#pinned) this.#unpin();
     this.undrawn();
@@ -99,6 +100,13 @@ export abstract class TimePane {
   #frame = 0;
   /** What the map does with a gesture on the time axis these panes share with it (set by `useTimeGestures`). */
   #time: ReturnType<HeatPane['timeGestures']> | null = null;
+  /** What the map does with a wheel turn over a pane: it zooms the time axis they share (set by `useTimeGestures`). */
+  #wheel: HeatPane['timeWheel'] | null = null;
+  /**
+   * A mouse press with the main button that may become a drag moving the time axis the panes share with the map (Karl, 2026-11-17: a pane, even
+   * maximized, could not be moved): the pointer, where it was pressed and last moved to, and whether it has gone far enough to be a drag.
+   */
+  #pan: { id: number; x0: number; x: number; moved: boolean } | null = null;
   #pinned: Pt | null = null;
   #source: 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
   /** Where the pointer (or the pinned finger) is, in the page, for a popup that is a page element rather than canvas drawing. */
@@ -116,14 +124,35 @@ export abstract class TimePane {
     // A pane that is not shown keeps its canvas of no size: drawing it would draw nothing.
     sharpens({ resize: () => this.#resize(), paint: () => { if (!this.#covered && this.canvas.getBoundingClientRect().width > 0) this.#prepare(); } });
     const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
-    // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held.
+    // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held. Otherwise a drag with
+    // the main button moves the time axis the panes share with the map, as a finger's does: not from what the pane answers itself (a table), and
+    // only once it has gone DRAG_MIN_PX, so a click (a table's row, a Bar stats candle) and a double click (maximize) stay what they were.
     this.canvas.addEventListener('pointerdown', e => {
       this.rangeGesture = false;
-      if (e.pointerType === 'touch' || !this.#range) return;
+      if (e.pointerType === 'touch') return;
+      this.#endPan();
       const x = e.clientX - this.canvas.getBoundingClientRect().left - this.#left;
-      if (!selects(this.#range.armed, e) || x < 0 || x > this.plotW) return;
-      this.rangeGesture = true; this.#selecting = { x }; this.#range.begin({ t: this.#timeAt(x), p: null }, source); this.canvas.setPointerCapture(e.pointerId);
+      if (this.#range && selects(this.#range.armed, e) && x >= 0 && x <= this.plotW) {
+        this.rangeGesture = true; this.#selecting = { x }; this.#range.begin({ t: this.#timeAt(x), p: null }, source); this.canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+      this.pointer = { x: e.clientX, y: e.clientY };
+      if (e.button !== 0 || !this.#time || x < 0 || this.ownsPoint(x)) return;
+      this.#pan = { id: e.pointerId, x0: x, x, moved: false };
+      this.canvas.setPointerCapture(e.pointerId);
     });
+    // A drag that moved the axis ends in no click: the table's row or the candle under where it was let go is not chosen.
+    this.canvas.addEventListener('pointerup', e => { const pan = this.#pan; if (!pan || e.pointerId !== pan.id) return; if (pan.moved) this.rangeGesture = true; this.#endPan(); });
+    // A drag the browser took away, or a capture lost, lets go of the map too: left held, the map would stop following the market.
+    this.canvas.addEventListener('pointercancel', e => { if (e.pointerId === this.#pan?.id) this.#endPan(); });
+    this.canvas.addEventListener('lostpointercapture', e => { if (e.pointerId === this.#pan?.id) this.#endPan(); });
+    // The wheel zooms the time axis the panes share with the map, as it does on the map's time strip.
+    this.canvas.addEventListener('wheel', e => {
+      if (!this.#wheel) return;
+      e.preventDefault();
+      const x = e.clientX - this.canvas.getBoundingClientRect().left - this.#left;
+      this.#wheel(Math.max(0, Math.min(this.plotW, x)), this.plotW, e);
+    }, { passive: false });
     this.canvas.addEventListener('pointerup', e => {
       const sel = this.#selecting; if (!sel || !this.#range) return;
       const x = e.clientX - this.canvas.getBoundingClientRect().left - this.#left; this.#selecting = null;
@@ -135,7 +164,12 @@ export abstract class TimePane {
       const r = this.canvas.getBoundingClientRect(), x = e.clientX - r.left - this.#left, y = e.clientY - r.top;
       this.pointer = { x: e.clientX, y: e.clientY };
       if (this.#selecting) this.#range?.move({ t: this.#timeAt(x), p: null });
-      this.canvas.style.cursor = this.#range?.armed && x <= this.plotW ? 'crosshair' : '';
+      const pan = this.#pan;
+      if (pan && e.pointerId === pan.id) {
+        if (!pan.moved && Math.abs(x - pan.x0) >= DRAG_MIN_PX) { pan.moved = true; this.#time?.down?.({ x: pan.x0, y }); this.#time?.panStart?.({ x: pan.x0, y }); }
+        if (pan.moved) { this.#time?.pan?.({ x: x - pan.x, y: 0 }, { x, y }, { x: 0, y: 0 }); pan.x = x; }
+      }
+      this.canvas.style.cursor = this.#pan?.moved ? 'grabbing' : this.#range?.armed && x <= this.plotW ? 'crosshair' : '';
       if (x < 0) { this.store.set({ hover: null }); return; }
       // Where the pane answers the pointer itself (Bar stats' View column), the time the panes share is left alone, and only it is drawn again.
       if (this.ownsPoint(x)) { if (this.store.state.hover) this.store.set({ hover: null }); this.invalidate(); return; }
@@ -146,8 +180,15 @@ export abstract class TimePane {
     bindTouch(this.canvas, new GestureRecognizer(this.#touchHandlers()), () => this.#left);
   }
 
-  /** Let the panes' finger gestures move the map's time axis (called once the map exists). */
-  useTimeGestures(time: ReturnType<HeatPane['timeGestures']>): void { this.#time = time; }
+  /** Let the panes' finger gestures, mouse drags and wheel turns move the map's time axis (called once the map exists). */
+  useTimeGestures(time: ReturnType<HeatPane['timeGestures']>, wheel: HeatPane['timeWheel']): void { this.#time = time; this.#wheel = wheel; }
+  /** Let go of a mouse drag on the axis, if one is held: the map decides whether it follows the market on (its `panEnd`). */
+  #endPan(): void {
+    const pan = this.#pan; if (!pan) return;
+    this.#pan = null;
+    if (this.canvas.hasPointerCapture(pan.id)) this.canvas.releasePointerCapture(pan.id);
+    if (pan.moved) { this.canvas.style.cursor = ''; this.#time?.panEnd?.(null); }
+  }
   /**
    * Let a drag across the pane select a stretch of time for the Range tool, and put the tool's button for this pane in its header, before its
    * menu and close button (layout.ts `#mover`): a drag here sums up this pane without looking for the map's Select (Karl, 2026-11-13).
@@ -225,7 +266,7 @@ export abstract class TimePane {
     this.canvas.width = Math.round(this.#canvasW * this.dpr); this.canvas.height = Math.round(this.h * this.dpr);
     this.#hidden = hidden;
     // Hidden now: the pane draws nothing once, as it did each frame before (its table, card and marks are put away), then waits.
-    if (hidden) { if (!was) this.#prepare(); return; }
+    if (hidden) { this.#endPan(); if (!was) this.#prepare(); return; }
     this.invalidate();
   }
   #prepare(): void {

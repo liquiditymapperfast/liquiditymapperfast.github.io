@@ -82,6 +82,7 @@ export const SECTIONS: readonly Section[] = [
         ['[[Wheel]] on the time labels along the bottom', 'Zoom the **time** axis'],
         ['[[Shift]] + [[Wheel]]', 'On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer'],
         ['Drag', 'Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it'],
+        ['Drag or [[Wheel]] on a pane under the chart', 'Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too'],
         ['Right-drag', 'Right or up zooms the time or price axis in; left or down zooms out'],
         ['[[+]], [[−]]', 'Zoom the time axis in or out'],
         ['[[1]] to [[7]]', 'The timeframe: 1m, 5m, 15m, 30m, 1h, 4h, 1d'],

@@ -45,6 +45,8 @@
  "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer": "チャート上では**時間**軸だけをズームします（価格スケール上では、価格の代わりに時間）。[[Alt]] + [[ホイール]]はポインターを中心にズームします",
  "Drag": "ドラッグ",
  "Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it": "両方向にパンします。[[Shift]]を押すと時間だけをパンします。上下に動かすと、価格は置いた位置にとどまります",
+ "Drag or [[Wheel]] on a pane under the chart": "チャートの下のパネル上でドラッグまたは[[ホイール]]",
+ "Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too": "どのパネルもチャートと共有する**時間**軸をパンまたはズームします。最大化したパネルでも同じです",
  "Right-drag": "右ドラッグ",
  "Right or up zooms the time or price axis in; left or down zooms out": "右または上で時間軸・価格軸を拡大、左または下で縮小します",
  "[[+]], [[−]]": "[[+]], [[−]]",

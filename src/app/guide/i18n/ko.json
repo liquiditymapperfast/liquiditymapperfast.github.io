@@ -45,6 +45,8 @@
  "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer": "차트에서는 **시간** 축만 확대/축소합니다(가격 스케일에서는 가격 대신 시간). [[Alt]] + [[휠]]은 포인터를 중심으로 확대/축소합니다",
  "Drag": "드래그",
  "Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it": "양쪽으로 이동합니다. [[Shift]]를 누르면 시간만 이동합니다. 위아래로 옮기면 가격은 둔 자리에 머뭅니다",
+ "Drag or [[Wheel]] on a pane under the chart": "차트 아래 패널에서 드래그 또는 [[휠]]",
+ "Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too": "모든 패널이 차트와 공유하는 **시간** 축을 이동하거나 확대/축소합니다. 최대화한 패널에서도 됩니다",
  "Right-drag": "오른쪽 드래그",
  "Right or up zooms the time or price axis in; left or down zooms out": "오른쪽 또는 위로 시간/가격 축을 확대하고, 왼쪽 또는 아래로 축소합니다",
  "[[+]], [[−]]": "[[+]], [[−]]",

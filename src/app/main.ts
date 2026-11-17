@@ -267,8 +267,8 @@ async function main(): Promise<void> {
   let stripLoads = hub.flow.loads;
   // The open-interest markets are worked out from the flow and the books on the map, which come after the candles: asked again as they do.
   hub.onFlowChanged = () => { cvd.invalidate(); delta.invalidate(); script.refresh(); const landed = stripLoads !== hub.flow.loads; stripLoads = hub.flow.loads; if (replaying() || (landed && topShown(store.state))) heat.invalidate(); hub.refreshOiMarkets(); };
-  // A finger on a pane under the map moves the time axis it shares with the map.
-  for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useTimeGestures(heat.timeGestures());
+  // A finger, a mouse drag or the wheel on a pane under the map moves the time axis it shares with the map.
+  for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useTimeGestures(heat.timeGestures(), (x, width, e) => heat.timeWheel(x, width, e));
   heat.onFrame = lower; heat.onView = lower;
   heat.onTopProfile = () => toolbar.openTradedPanel();
   heat.onArrangedChange = () => toolbar.refreshTradedPanel();

@@ -4492,6 +4492,20 @@ export class HeatPane {
   }
 
   /**
+   * A wheel turn over a pane under the map: it zooms the time axis they share, as the wheel on the map's time strip does (`region: 'time'`), held at
+   * the live edge while the map follows the market, else at the pointer (with Alt, the pointer always). Price is the map's alone and is left as it
+   * is. `x` is the pointer in the pane's plot and `width` that plot's width, so the pointer is taken as a share of it.
+   */
+  timeWheel(x: number, width: number, e: Pick<WheelEvent, 'deltaY' | 'deltaMode' | 'altKey'>): void {
+    const pw = this.plotW, ph = this.plotH, v = this.view, state = this.store.state, mark = state.mark.price;
+    const px = Math.max(0, Math.min(pw, x / Math.max(1, width) * pw));
+    const zoom = wheelZoom({ region: 'time', shift: false, alt: e.altKey, follow: state.followLive, deltaY: e.deltaY, deltaMode: e.deltaMode, x: px, y: 0, plotW: pw, plotH: ph, view: v, mark, markY: v.yOf(mark, ph), nowX: v.xOf(pageNow(), pw) });
+    if (!zoom.time) return;
+    v.zoomTime(zoom.time.factor, zoom.time.hold, pw);
+    this.#settleAfterZoom(); this.#rasteredKey = ''; this.onView(); this.invalidate();
+  }
+
+  /**
    * Which of the columns beside the map is at `x`: the seam between the liquidation column and the profile column (a few px either side of
    * it, while both show), the liquidation column (nearest the map), then the profile column; null for none.
    */
@@ -4677,7 +4691,9 @@ export class HeatPane {
         this.#scaleDrag = { y, view: v.clone(), hold: holdPixel({ axis: 'price', pointer: y, size: ph, alt: false, follow: false, mark, markPixel: v.yOf(mark, ph), nowPixel: 0 }), moved: false };
         el.setPointerCapture(e.pointerId); el.style.cursor = 'ns-resize'; return;
       }
-      this.#drag = { x, y, shift: e.shiftKey, panning: false }; el.setPointerCapture(e.pointerId);
+      // On the time strip under the plot a drag moves time alone, as with Shift: the price is not on show there (under a maximized pane the strip
+      // is all of the map that shows, and a drag on it moved the price out of sight).
+      this.#drag = { x, y, shift: e.shiftKey || y > this.plotH, panning: false }; el.setPointerCapture(e.pointerId);
     });
     el.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') return;

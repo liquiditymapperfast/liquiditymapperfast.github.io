@@ -45,6 +45,8 @@
  "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer": "Grafikte yalnızca **zaman** eksenini yakınlaştırır (fiyat ölçeğinde fiyat yerine zamanı). [[Alt]] + [[Tekerlek]] işaretçinin etrafında yakınlaştırır",
  "Drag": "Sürükle",
  "Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it": "Her iki yönde kaydırır. [[Shift]] ile yalnızca zamanı kaydırır. Yukarı veya aşağı kaydırılınca fiyat koyduğunuz yerde kalır",
+ "Drag or [[Wheel]] on a pane under the chart": "Grafiğin altındaki bir panelde sürükle veya [[Tekerlek]]",
+ "Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too": "Her panelin grafikle paylaştığı **zaman** eksenini kaydırır veya yakınlaştırır. Büyütülmüş bir panelde de",
  "Right-drag": "Sağ tuşla sürükle",
  "Right or up zooms the time or price axis in; left or down zooms out": "Sağa veya yukarı zaman ya da fiyat eksenini yaklaştırır; sola veya aşağı uzaklaştırır",
  "[[+]], [[−]]": "[[+]], [[−]]",

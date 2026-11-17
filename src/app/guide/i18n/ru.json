@@ -45,6 +45,8 @@
  "On the chart, zoom the **time** axis alone (on the price scale, time instead of price). [[Alt]] + [[Wheel]] zooms around the pointer": "На графике масштабирует только ось **времени** (на шкале цены — время вместо цены). [[Alt]] + [[Колесо]] масштабирует вокруг указателя",
  "Drag": "Перетаскивание",
  "Pan both ways. With [[Shift]], pan time only. Moved up or down, the price stays where you put it": "Сдвигает в обе стороны. С [[Shift]] — только время. Сдвинутая вверх или вниз, цена остаётся там, куда вы её поставили",
+ "Drag or [[Wheel]] on a pane under the chart": "Перетаскивание или [[Колесо]] на панели под графиком",
+ "Pan or zoom the **time** axis, which every pane shares with the chart. A maximized pane too": "Сдвигает или масштабирует ось **времени**, общую для всех панелей и графика. На развёрнутой панели тоже",
  "Right-drag": "Перетаскивание правой кнопкой",
  "Right or up zooms the time or price axis in; left or down zooms out": "Вправо или вверх приближает ось времени или цены; влево или вниз отдаляет",
  "[[+]], [[−]]": "[[+]], [[−]]",
