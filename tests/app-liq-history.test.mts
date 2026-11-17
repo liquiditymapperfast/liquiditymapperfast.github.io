@@ -159,12 +159,15 @@ test('Plus: the days before the free ones are asked for only with a pass, which 
   assert.deepEqual(asked.map(a => a.day), freeDays, 'today and the seven days before it, and none of the days before those');
   assert.ok(asked.every(a => a.pass == null), 'a free day carries no pass');
   assert.equal(h.closedBefore(now), free, 'the pane is told where the closed stretch ends');
-  // A pass comes (the Plus page stored one): the older days of the view are asked for, each with it; the free ones are not asked again.
+  // A pass comes (the Plus page stored one): the newest paid day first, alone; once it is answered the older days of the view, each with
+  // the pass; the free ones are not asked again.
   access.pass = 'v1.body.sig'; h.accessChanged();
   asked.length = 0;
   h.ensure(from, now, now, () => {}); await tick();
+  assert.deepEqual(asked.map(a => a.day), [dayText(free - DAY_MS)], 'one paid day first: the newest closed one');
+  h.ensure(from, now, now, () => {}); await tick();
   const paidDays = Array.from({ length: 6 }, (_, i) => dayText(from - DAY_MS + i * DAY_MS));
-  assert.deepEqual(asked.map(a => a.day), paidDays, 'from the evening before the view to the last day before the free ones');
+  assert.deepEqual([...asked.map(a => a.day)].sort(), paidDays, 'from the evening before the view to the last day before the free ones');
   assert.ok(asked.every(a => a.pass === 'v1.body.sig'));
   assert.equal(h.closedBefore(now), null, 'with a pass nothing is closed');
 });
@@ -227,4 +230,72 @@ test('Plus: only the gate\'s own refusal near the free boundary closes anything'
 test('Plus: a service with no paid part closes nothing', () => {
   const h = new LiqHistory(() => Promise.resolve({}));
   assert.equal(h.closedBefore(Date.UTC(2026, 10, 17)), null);
+});
+
+test('Plus not on sale with the gate live: every day is asked, a member\'s with the pass; the gate\'s refusal of any day before the boundary closes it, held ten minutes', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 12 * DAY_MS;
+  const index = { first: today - 20 * DAY_MS, last: now - 600_000 };
+  const access = { free, pass: null as string | null, refuse: (day: string, pass: string | null | undefined) => pass == null && day < dayText(free) };
+  const asked: { day: string; pass: string | null | undefined }[] = [];
+  const h = new LiqHistory((url, pass) => {
+    if (url.endsWith('liquidation-history.json')) return Promise.resolve({ edges: EDGES, ...index });
+    const day = url.slice(url.lastIndexOf('/') + 1, -'.json'.length);
+    asked.push({ day, pass });
+    return access.refuse(day, pass) ? Promise.reject(new Error(LIQ_REFUSED)) : Promise.resolve({ rows: [] });
+  }, { freeFrom: () => access.free, onSale: () => false, pass: () => access.pass, refused: () => {} });
+  h.ensure(from, now, now, () => {}); await tick();
+  assert.equal(h.closedBefore(now), null, 'nothing is closed by the page itself');
+  h.ensure(from, now, now, () => {}); await tick();
+  const paid = Array.from({ length: 6 }, (_, i) => dayText(from - DAY_MS + i * DAY_MS));
+  assert.deepEqual(asked.filter(a => a.day < dayText(free)).map(a => a.day).sort(), paid, 'the paid days are asked without a pass');
+  assert.equal(h.closedBefore(now), free, 'the gate refused them: closed up to the newest refused');
+  const count = (day: string): number => asked.filter(a => a.day === day).length;
+  for (let m = 1; m <= 9; m++) { h.ensure(from, now, now + m * 60_000, () => {}); await tick(); }
+  assert.ok(paid.every(day => count(day) === 1), 'none asked again within the ten minutes');
+  // The hold is over: only the newest refused day is asked again, and the closed stretch stays while it is on its way and after.
+  h.ensure(from, now, now + 11 * 60_000, () => {});
+  assert.equal(h.closedBefore(now + 11 * 60_000), free, 'no flicker while the day is asked again');
+  await tick();
+  assert.equal(count(dayText(free - DAY_MS)), 2);
+  assert.ok(paid.filter(day => day !== dayText(free - DAY_MS)).every(day => count(day) === 1), 'the older ones are not');
+  assert.equal(h.closedBefore(now + 11 * 60_000 + 1), free);
+  // A member (a key given as a gift, Plus not on sale): every day before the boundary goes with the pass.
+  access.pass = 'v1.gift.sig'; h.accessChanged(); asked.length = 0;
+  for (let i = 0; i < 3; i++) { h.ensure(from, now, now + 12 * 60_000, () => {}); await tick(); }
+  assert.deepEqual(asked.filter(a => a.day < dayText(free)).map(a => a.day).sort(), paid);
+  assert.ok(asked.filter(a => a.day < dayText(free)).every(a => a.pass === 'v1.gift.sig'), 'each with the pass');
+  assert.ok(asked.filter(a => a.day >= dayText(free)).every(a => a.pass == null), 'a free day without one');
+  assert.equal(h.closedBefore(now + 12 * 60_000), null);
+});
+
+test('Plus: a gate that refuses every pass is asked one day per new pass, not every paid day at once', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 60 * DAY_MS;
+  const access = { free, pass: 'v1.p0.sig' as string | null };
+  const { h, asked, refusals } = gated({ ...access, refuse: (_day, pass) => pass != null } as Parameters<typeof gated>[0], { first: today - 90 * DAY_MS, last: now - 600_000 });
+  const withPass = (): number => asked.filter(a => a.pass != null).length;
+  for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}); await tick(); }
+  assert.equal(withPass(), 1, 'one paid day, refused: no other is asked with that pass');
+  assert.equal(refusals(), 1);
+  // Each renewal brings a pass the gate refuses again: one request each.
+  for (let g = 1; g <= 5; g++) {
+    access.pass = `v1.p${g}.sig`; h.accessChanged();
+    for (let i = 0; i < 3; i++) { h.ensure(from, now, now + g * 60_000, () => {}); await tick(); }
+  }
+  assert.equal(withPass(), 6, `${withPass()} requests with a pass for six passes`);
+  assert.equal(asked.filter(a => a.pass != null).every(a => a.day === dayText(free - DAY_MS)), true, 'always the newest closed day');
+});
+
+test('Plus: a refusal not believed waits ten minutes like a believed one, not a minute', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 2 * DAY_MS;
+  // The page's clock is three days behind the server's: the server refuses a day the page calls three days inside the free week.
+  const { h, asked } = gated({ free, pass: null, refuse: day => day <= dayText(free + 4 * DAY_MS) }, { first: today - 20 * DAY_MS, last: now - 600_000 });
+  const count = (): number => asked.filter(a => a.day === dayText(from - DAY_MS)).length;
+  h.ensure(from, now, now, () => {}); await tick();
+  h.ensure(from, now, now, () => {}); await tick();
+  assert.equal(count(), 1);
+  assert.equal(h.closedBefore(now), free, 'not believed: nothing more is closed');
+  for (let m = 1; m <= 9; m++) { h.ensure(from, now, now + m * 60_000, () => {}); await tick(); }
+  assert.equal(count(), 1, 'not asked again each minute');
+  h.ensure(from, now, now + 10 * 60_000 + 1_000, () => {}); await tick();
+  assert.equal(count(), 2, 'asked again after ten minutes');
 });

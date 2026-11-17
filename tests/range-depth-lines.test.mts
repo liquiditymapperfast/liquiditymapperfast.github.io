@@ -82,6 +82,9 @@ test('tracked liquidation levels: the snapshots actually in force, their expiry,
   const part = depthLiqStretch(shut, sel(0, 10), NOW);
   assert.deepEqual([part.rows.length, part.closed / M, part.inForce / M, part.none / M, part.outside / M], [2, 6, 4, 0, 0]);
   assert.equal(text(new DepthRangeSummary().lines(sel(0, 10), shut, true, LKEY, NOW), 'dp-cover'), 'Snapshots in force for 4 min of 10 min · part of Plus: 6 min');
+  // The pane hatches the closed stretch from where the recording begins (`closedFrom`): before it there is nothing to close, only no snapshot.
+  const late = depthLiqStretch({ ...liq([row(8, 30, 10)]), closedFrom: T + 3 * M, closedTo: T + 6 * M }, sel(0, 10), NOW);
+  assert.deepEqual([late.closed / M, late.inForce / M, late.none / M, late.outside / M], [3, 2, 5, 0]);
   const whole = new DepthRangeSummary().lines(sel(0, 5), shut, true, LKEY, NOW);
   assert.equal(text(whole, 'dp-empty'), "This stretch of the liquidation levels' history is part of Plus.");
   assert.equal(text(whole, 'dp-cover'), 'Snapshots in force for 0 min of 5 min · part of Plus: 5 min');

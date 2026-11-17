@@ -5,6 +5,7 @@ import { durationPair, durationText, spanText } from './oi-lines.ts';
 import { valueFormat } from './script-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
+import { groupTitle, type LiqView } from '../liq-view.ts';
 
 /** One snapshot of the tracked liquidation levels as the Depth pane holds it: when its positions stood, when it was fetched, its buckets. */
 export interface DepthLiqRow { asOf: number; fetchedAt: number; long: ArrayLike<number>; short: ArrayLike<number>; longCoin: ArrayLike<number>; shortCoin: ArrayLike<number> }
@@ -35,14 +36,19 @@ export interface DepthPaneHeld {
   answeredAt: number;
   /** Liquidation levels: the snapshots (oldest first), the bucket each band reads (-1: none), and the bands asked beyond the history's reach. */
   rows: readonly DepthLiqRow[] | null; buckets: readonly number[] | null; omitted: readonly number[];
-  /** Liquidation levels: the history before this is part of Plus and closed to this visitor (the pane draws none of it); absent: all open. */
-  closedTo?: number;
+  /**
+   * Liquidation levels: the stretch [closedFrom, closedTo) is part of Plus and closed to this visitor (the pane draws none of it; it hatches it
+   * from where the recording begins, `closedFrom`, and before that there is nothing to close); absent: all open.
+   */
+  closedFrom?: number; closedTo?: number;
+  /** Liquidation levels: what the pane shows (liquidations, stops or both, whose, and whether take profits are drawn beside them), how long a row stands without a later one, and whether the rows are the four-hour rollups. Absent: the free view of day rows. */
+  view?: LiqView; holdMs?: number; wide?: boolean;
   /** The units the pane draws in (coins: the chart coin), and the band it watches (its index). */
   coins: boolean; coin: string; focus: number;
 }
 
-/** What a Depth snapshot stands for: its source, the venues (the order book's) and the bands. */
-export const depthHeldKey = (source: 'book' | 'liq', ids: readonly string[], radii: readonly number[]): string => `${source}|${source === 'book' ? ids.join(',') : ''}|${radii.join(',')}`;
+/** What a Depth snapshot stands for: its source, the venues (the order book's) or what the liquidation levels show (`viewKey`), and the bands. */
+export const depthHeldKey = (source: 'book' | 'liq', ids: readonly string[], radii: readonly number[], view = ''): string => `${source}|${source === 'book' ? ids.join(',') : view}|${radii.join(',')}`;
 
 /** One band over the selection: time-weighted means of bids and asks, first and last measured column, and the mean of the columns' imbalances. */
 export interface DepthBand { r: number; bid: number; ask: number; firstBid: number; firstAsk: number; lastBid: number; lastAsk: number; imbalance: number | null }
@@ -121,14 +127,17 @@ export interface DepthLiqStretch {
 }
 export function depthLiqStretch(held: DepthPaneHeld, sel: Pick<RangeSelection, 't0' | 't1'>, now: number): DepthLiqStretch {
   const end = Math.min(sel.t1, Math.max(sel.t0, now)), span = Math.max(0, end - sel.t0);
-  const drawn = Math.max(sel.t0, held.t0), b = Math.min(end, held.t1), all = held.rows ?? [];
-  // What is closed (Plus) is left out whole, the snapshots a lapsed membership may still hold included: the pane draws none of it.
-  const a = Math.max(drawn, held.closedTo ?? -Infinity), closed = Math.max(0, Math.min(a, b) - drawn), known = Math.max(0, b - a);
+  const drawn = Math.max(sel.t0, held.t0), b = Math.min(end, held.t1), all = held.rows ?? [], hold = held.holdMs ?? LIQ_HOLD;
+  // What is closed (Plus) is left out whole, the snapshots a lapsed membership may still hold included: the pane draws none of it. Only
+  // [closedFrom, closedTo) is: before the recording began there is nothing to close, and that time has no snapshot.
+  const cf = Math.max(drawn, held.closedFrom ?? -Infinity), ct = Math.min(b, held.closedTo ?? -Infinity), closed = Math.max(0, ct - cf);
+  const open: [number, number][] = closed > 0 ? [[drawn, cf], [ct, b]] : [[drawn, b]];
+  const known = open.reduce((sum, [x, y]) => sum + Math.max(0, y - x), 0);
   let inForce = 0;
   const rows: DepthLiqRow[] = [];
   all.forEach((row, i) => {
-    const from = row.fetchedAt, to = Math.min(all[i + 1]?.fetchedAt ?? Infinity, from + LIQ_HOLD, now);
-    const overlap = Math.min(to, b) - Math.max(from, a);
+    const from = row.fetchedAt, to = Math.min(all[i + 1]?.fetchedAt ?? Infinity, from + hold, now);
+    const overlap = open.reduce((sum, [x, y]) => sum + Math.max(0, Math.min(to, y) - Math.max(from, x)), 0);
     if (overlap > 0) { inForce += overlap; rows.push(row); }
   });
   const coins = held.coins, buckets = held.buckets ?? [], fst = rows[0], lst = rows[rows.length - 1];
@@ -239,10 +248,20 @@ export class DepthRangeSummary {
   }
 
   #liq(lines: RangeLine[], held: DepthPaneHeld, sel: RangeSelection, now: number, note: (key: string, text: string) => RangeLine): RangeLine[] {
-    const s = depthLiqStretch(held, sel, now), c = held.coins, coin = held.coin;
-    lines.push(note('dp-status', [t('Tracked liquidation levels'), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
-    if (held.omitted.length) lines.push(note('dp-omitted', t('Beyond the liquidation history\'s reach, left out: {bands}.', { bands: held.omitted.map(band).join(', ') })));
-    if (!s.rows.length) lines.push(note('dp-empty', s.closed > 0 && s.none <= 0 ? t('This stretch of the liquidation levels\' history is part of Plus.') : t('No liquidation levels snapshot was in force in this selection.')));
+    const s = depthLiqStretch(held, sel, now), c = held.coins, coin = held.coin, kind = held.view?.kind ?? 'liq', group = held.view?.group ?? 'all';
+    // Which levels are summed up, and whose: the pane shows what the page's one choice says (`liq-view.ts`).
+    const what = kind === 'stops' ? t('Tracked stop orders') : kind === 'both' ? t('Tracked liquidations and stops') : t('Tracked liquidation levels');
+    lines.push(note('dp-status', [what, ...(kind !== 'stops' && group !== 'all' ? [groupTitle(group)] : []), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
+    if (held.omitted.length) {
+      const bands = held.omitted.map(band).join(', ');
+      lines.push(note('dp-omitted', held.wide ? t('Not one of the 4-hour history\'s bands, left out: {bands}.', { bands }) : t('Beyond the liquidation history\'s reach, left out: {bands}.', { bands })));
+    }
+    if (held.view?.takes) lines.push(note('dp-takes', t('Take profits are drawn as a dashed line and not counted here.')));
+    if (!s.rows.length) {
+      lines.push(note('dp-empty', s.closed > 0 && s.none <= 0 ? t('This stretch of the liquidation levels\' history is part of Plus.')
+        : kind === 'stops' ? t('No stop levels snapshot was in force in this selection.') : kind === 'both' ? t('No snapshot with both liquidations and stops was in force in this selection.')
+          : t('No liquidation levels snapshot was in force in this selection.')));
+    }
     else {
       const first = s.rows[0]!, lastRow = s.rows[s.rows.length - 1]!;
       lines.push(note('dp-when', s.rows.length > 1
@@ -273,7 +292,13 @@ export class DepthRangeSummary {
       ...(s.outside > 0 ? [t('outside the columns drawn: {time}', { time: shortDuration(s.outside) })] : []),
     ];
     if (s.span > 0) lines.push(note('dp-cover', [t('Snapshots in force for {k} of {span}', (({ k, n }) => ({ k, span: n }))(durationPair(s.inForce, s.span))), ...parts].join(' · ')));
-    lines.push(note('dp-how', t('Potential liquidation levels of tracked positions, not liquidations that happened. Snapshots expire after 90 minutes.')));
+    if (kind === 'liq' && !held.wide) lines.push(note('dp-how', t('Potential liquidation levels of tracked positions, not liquidations that happened. Snapshots expire after 90 minutes.')));
+    else {
+      const of = kind === 'stops' ? t('Stop orders resting at each snapshot, not orders that triggered.') : kind === 'both' ? t('Potential liquidations and resting stop orders at each snapshot, not what happened.')
+        : t('Potential liquidation levels of tracked positions, not liquidations that happened.');
+      const hold = held.wide ? t('Each 4-hour row stands until the next, at most {time}.', { time: durationText(held.holdMs ?? LIQ_HOLD) }) : t('Snapshots expire after 90 minutes.');
+      lines.push(note('dp-how', `${of} ${hold}`));
+    }
     return lines;
   }
 }

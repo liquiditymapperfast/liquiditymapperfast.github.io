@@ -22,7 +22,14 @@ import { FREE_VIEW, groupApplies, viewKey, type LiqView } from './liq-view.ts';
  * pass, which the server checks. `refused` is told when the server would not take the pass it was sent. The Plus families (groups, orders,
  * rollups) are paid whatever the day: asked for only with a pass.
  */
-export interface LiqAccess { freeFrom(now: number): number; pass(now: number): string | null; refused(pass: string): void }
+export interface LiqAccess {
+  freeFrom(now: number): number; pass(now: number): string | null; refused(pass: string): void;
+  /**
+   * Whether Plus is on sale (absent: it is). While it is not, the page closes no day by itself and asks for every one (a member's with the
+   * pass all the same); only the gate's refusal closes a day, and the days before it.
+   */
+  onSale?(): boolean;
+}
 /** Everything open: a service with no paid part (and the tests of what does not depend on one). */
 const OPEN: LiqAccess = { freeFrom: () => -Infinity, pass: () => null, refused: () => {} };
 /**
@@ -248,10 +255,20 @@ export class LiqHistory {
   #cum = new Map<string, { deps: readonly unknown[]; rows: LiqRow[] }>();
   /** Whether the last `ensure` read the rollups (a view wider than `MAX_DAYS` days, with Plus). */
   #wide = false;
-  /** Days before this were refused without a pass although the page's clock called them free (a clock that is off): closed, like the rest. */
+  /**
+   * Days before this were refused without a pass by the gate: closed like the rest (on sale: where the page's clock called them free, a
+   * clock that is off; not on sale: the only days the page closes).
+   */
   #refusedBefore = -Infinity;
-  /** When that was last learned: it holds for a while (`REFUSAL_HOLDS_MS`), then the days are asked again. */
+  /** When that was last learned: it holds for a while (`REFUSAL_HOLDS_MS`), then the newest refused day is asked again, the days staying closed meanwhile. */
   #refusedAt = -Infinity;
+  /**
+   * Whether files with a pass may be asked for (the gate may refuse every pass, even fresh ones: each grant would then re-ask every paid day
+   * at once). After the pass changed, and at the start, one paid file goes first (`probe`), the newest; only when it is answered are the
+   * rest asked (`open`). `probing`: that one is on its way. A failed one waits `#probeWait`.
+   */
+  #paid: 'probe' | 'probing' | 'open' = 'probe';
+  #probeWait = -Infinity;
   /** The page's clock minus HyperTracker's, once a snapshot was seen appear (`placeSnapshot`). */
   #offset: number | null = null;
   /** Goes up whenever something new has come. */
@@ -259,29 +276,36 @@ export class LiqHistory {
   constructor(private get: LiqGet = webRead, private access: LiqAccess = OPEN) {}
   get index(): LiqIndex | null { return this.#index; }
 
+  /** Whether Plus is on sale: while it is not, the page closes nothing by itself, only what the gate refused. */
+  #onSale(): boolean { return this.access.onSale?.() ?? true; }
+  /** Whether the hold of the gate's last refusal is over (or the clock went back past it): the newest refused day is asked again. */
+  #holdOver(now: number): boolean { return this.#refusedBefore > -Infinity && (now - this.#refusedAt > REFUSAL_HOLDS_MS || now < this.#refusedAt); }
+
   /**
    * Up to when the history is closed to this visitor, or null when all of it is open (a pass is held, or the service has no paid part):
-   * the pane draws nothing before it and says why. Only the free family has a free part: a Plus view is drawn only with a pass.
+   * the pane draws nothing before it and says why. On sale that is the page's own rule, or later where the gate refused a day the page called
+   * free; not on sale only what the gate refused. Only the free family has a free part: a Plus view is drawn only with a pass.
    */
   closedBefore(now: number): number | null {
     if (this.access.pass(now) !== null) return null;
-    const free = this.#freeFrom(now);
-    return Number.isFinite(free) ? free : null;
-  }
-  /** The first moment open without a pass: the page's own rule, or later where the gate refused a day the page called free (for a while). */
-  #freeFrom(now: number): number {
-    if (this.#refusedBefore > -Infinity && (now - this.#refusedAt > REFUSAL_HOLDS_MS || now < this.#refusedAt)) { this.#refusedBefore = -Infinity; this.version++; }
-    return Math.max(this.access.freeFrom(now), this.#refusedBefore);
+    const at = this.#onSale() ? Math.max(this.access.freeFrom(now), this.#refusedBefore) : this.#refusedBefore;
+    return Number.isFinite(at) ? at : null;
   }
   /**
-   * Who may read what changed (a pass came or went): what is held stays, and the days now open are asked for as the view needs them, at
-   * once: a day that was refused a moment ago does not wait out a failed read's minute. What the gate refused although the page called it
-   * free stays known (it is about the two clocks, not about the pass): such a day is then asked for with the pass.
+   * Who may read what changed (a pass came or went): what is held stays, and the days now open are asked for as the view needs them, the
+   * newest paid one first (`#paid`): a day that was refused a moment ago does not wait out a failed read's minute. What the gate refused
+   * although the page called it free stays known (it is about the two clocks, not about the pass): such a day is then asked for with the pass.
    */
   accessChanged(): void {
     for (const entry of this.#days.values()) { entry.failed = -Infinity; entry.wait = -Infinity; }
     for (const entry of this.#rollups.values()) { entry.failed = -Infinity; entry.wait = -Infinity; }
+    this.#paid = 'probe'; this.#probeWait = -Infinity;
     this.version++;
+  }
+  /** The first file with a pass after the pass changed was answered (all of them may follow), or not (the next waits a minute). */
+  #probed(ok: boolean, now: number): void {
+    if (ok) { if (this.#paid !== 'open') { this.#paid = 'open'; this.version++; } return; }
+    this.#paid = 'probe'; this.#probeWait = now + RETRY_MS;
   }
 
   /**
@@ -297,7 +321,7 @@ export class LiqHistory {
     if (clockSetBack(this.#lastNow, now)) {
       // Every day is read once more: a day the old clock (ahead) counted as read after it ended may not have been, and no read times of the old
       // clock may bracket a snapshot.
-      this.#offset = null; this.#indexAt = -Infinity; this.#indexFailed = -Infinity; this.#steps++;
+      this.#offset = null; this.#indexAt = -Infinity; this.#indexFailed = -Infinity; this.#steps++; this.#probeWait = -Infinity;
       for (const entry of this.#days.values()) { entry.created = now; entry.lead = MAX_LEAD_MS; entry.due = now; entry.failed = -Infinity; entry.wait = -Infinity; entry.at = -Infinity; }
       for (const entry of this.#rollups.values()) { entry.at = -Infinity; entry.failed = -Infinity; entry.wait = -Infinity; }
     }
@@ -306,7 +330,13 @@ export class LiqHistory {
     // Nothing paid is asked for without a pass: a Plus view without one is not drawn (the page shows the free view then).
     const wide = pass !== null && !!plusAt && t1 - t0 > MAX_DAYS * DAY_MS;
     if (wide !== this.#wide) { this.#wide = wide; this.version++; }
-    if (wide) { for (const family of families) this.#ensureRollup(family, plusAt!.rollup[family === 'orders' ? 'triggers' : family], pass!, now, changed); return; }
+    // Files with a pass: every one once the first after a change was answered, else the newest alone (`#paid`).
+    const asks: { day: number; go: (probe: boolean) => void }[] = [];
+    if (wide) {
+      for (const family of families) if (this.#rollupDue(family, now)) asks.push({ day: Infinity, go: probe => this.#ensureRollup(family, plusAt!.rollup[family === 'orders' ? 'triggers' : family], pass!, now, changed, probe) });
+      this.#askPaid(asks, now);
+      return;
+    }
     if (!this.#indexBusy && now - this.#indexFailed > RETRY_MS && (!this.#index || now - this.#indexAt > INDEX_EVERY_MS)) {
       this.#indexBusy = true;
       const steps = this.#steps;
@@ -320,17 +350,27 @@ export class LiqHistory {
     const lastDay = Math.floor(Math.min(t1, Math.max(index.last, now)) / DAY_MS) * DAY_MS;
     // The day before the view as well: the row in force at its left edge may have come the evening before.
     const firstDay = Math.max(Math.floor(index.first / DAY_MS) * DAY_MS, Math.floor(t0 / DAY_MS) * DAY_MS - DAY_MS, lastDay - (MAX_DAYS - 1) * DAY_MS);
-    const free = this.#freeFrom(now);
+    // The server's rule as the page knows it (sale or no sale: it decides what is sent with a pass), and what the gate refused.
+    const real = this.access.freeFrom(now), onSale = this.#onSale();
+    if (onSale && this.#refusedBefore > -Infinity && this.#refusedBefore <= real) this.#refusedBefore = -Infinity;
+    const refused = this.#refusedBefore, recheck = this.#holdOver(now) ? refused - DAY_MS : NaN;
     for (const family of families) {
       if (family !== 'free' && (pass === null || !plusAt)) continue;
       const dayUrl = family === 'free' ? urls.day : family === 'groups' ? plusAt!.groupsDay : plusAt!.triggersDay;
       for (let day = firstDay; day <= lastDay; day += DAY_MS) {
-        // A Plus day (or any day of a Plus family) is asked for with a pass or not at all: the pane says it is closed (`closedBefore`).
-        const sent = family !== 'free' ? pass : day < free ? pass : null;
-        if (family === 'free' && day < free && sent === null) continue;
-        this.#ensureDay(family, day, dayUrl, sent, index.edges, now, changed);
+        if (!this.#dayDue(family, day, now)) continue;
+        // Any day of a Plus family, and a free family's day before the boundary, goes with a pass when there is one. Without one: a day the
+        // gate refused waits out its hold (then the newest of them is asked again, the rest staying closed); on sale a day before the
+        // boundary is not asked for at all (the pane says it is closed, `closedBefore`); not on sale it is asked, and only the gate's
+        // refusal closes it.
+        const paid = family !== 'free' || day < real || day < refused;
+        if (paid && pass !== null) { asks.push({ day, go: probe => this.#ensureDay(family, day, dayUrl, pass, index.edges, now, changed, probe) }); continue; }
+        if (day < refused && day !== recheck) continue;
+        if (day < real && onSale && day >= refused) continue;
+        this.#ensureDay(family, day, dayUrl, null, index.edges, now, changed, false);
       }
     }
+    this.#askPaid(asks, now);
     // Days outside the view are let go, the farthest first, so a long session does not hold the whole history; a day the view needs never is.
     if (this.#days.size > (MAX_DAYS + 4) * families.length) {
       const dayOf = (key: string): number => Number(key.slice(key.indexOf('|') + 1));
@@ -343,18 +383,36 @@ export class LiqHistory {
     if (this.#cum.size > 4 * (MAX_DAYS + 4)) this.#cum.clear();
   }
 
-  #ensureDay(family: LiqFamily, day: number, dayUrl: (day: string) => string, pass: string | null, edges: readonly number[], now: number, changed: () => void): void {
-    const key = `${family}|${day}`, held = this.#days.get(key);
+  /** The files with a pass that are due: all of them once the first after a change was answered, else only the newest (and not while it waits). */
+  #askPaid(asks: { day: number; go: (probe: boolean) => void }[], now: number): void {
+    if (!asks.length) return;
+    if (this.#paid === 'open') { for (const a of asks) a.go(false); return; }
+    if (this.#paid === 'probing' || now < this.#probeWait) return;
+    this.#paid = 'probing';
+    asks.reduce((best, a) => a.day > best.day ? a : best).go(true);
+  }
+
+  /** Whether a day is to be asked for now: not held, or still being written and due, and not on its way or waiting after a failure. */
+  #dayDue(family: LiqFamily, day: number, now: number): boolean {
+    const held = this.#days.get(`${family}|${day}`);
     // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again when its next
     // snapshot can be there (while it has none yet, when the day before's newest says so, else each minute).
     const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
-    if (held && (held.busy || now - held.failed < RETRY_MS || now < held.wait || settled || now < held.due)) return;
+    return !(held && (held.busy || now - held.failed < RETRY_MS || now < held.wait || settled || now < held.due));
+  }
+
+  #ensureDay(family: LiqFamily, day: number, dayUrl: (day: string) => string, pass: string | null, edges: readonly number[], now: number, changed: () => void, probe: boolean): void {
+    const key = `${family}|${day}`, held = this.#days.get(key);
     const entry: DayEntry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, wait: -Infinity, newest: -Infinity, created: 0, lead: 0, due: 0 };
     entry.busy = true; this.#days.set(key, entry);
     const steps = this.#steps, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS && !(entry.failed > entry.at);
     this.get(dayUrl(dayText(day)), pass).then(raw => {
+      if (probe) this.#probed(true, now);
       if (this.#index?.edges !== edges || steps !== this.#steps) return;
       entry.rows = readHistRows(raw, edges.length, family); entry.at = now; this.version++;
+      // A day the gate had refused is open now (its rule or the page's clock changed): the days from it on are, and the ones before it are
+      // asked again in turn.
+      if (pass === null && family === 'free' && day < this.#refusedBefore) this.#refusedBefore = this.#onSale() && day <= this.access.freeFrom(now) ? -Infinity : day;
       const top = entry.rows.reduce<HistRow | null>((best, row) => !best || row.createdAt > best.createdAt ? row : best, null);
       if (top && top.createdAt > entry.newest) {
         // Seen appear between this read and the one before: placed by when it was published, else by its age (`placeSnapshot`).
@@ -366,29 +424,36 @@ export class LiqHistory {
       changed();
     }, (error: unknown) => {
       entry.failed = now;
+      if (probe) this.#probed(false, now);
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
       if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
       if (!(error instanceof Error) || error.message !== LIQ_REFUSED) return;
       // Refused by the gate. With a pass: that pass is no good any more (it is asked for again, and the day with it). Without one: the
-      // server's clock calls the day a Plus one where the page's called it free, so it and the days before it are closed for a while;
-      // believed only near the page's own boundary.
+      // server calls the day a Plus one where the page called it free (a clock that is off, or Plus not on sale here), so it and the days
+      // before it are closed for a while; believed for any day before the boundary and near it, since a clock is off by hours or a day. A
+      // refusal not believed (a day far inside the free week: the server's fault) waits as long, so it is not asked each minute.
       if (pass !== null) this.access.refused(pass);
       else if (family === 'free' && day < this.access.freeFrom(now) + REFUSAL_REACH_MS) {
         this.#refusedBefore = Math.max(this.#refusedBefore, day + DAY_MS); this.#refusedAt = now;
         // A member's page asks again at once, now with the pass (the day counts as a Plus one from here on).
         if (this.access.pass(now) !== null) entry.failed = -Infinity;
-      } else return;
+      } else { entry.wait = Math.max(entry.wait, now + REFUSAL_HOLDS_MS); return; }
       this.version++; changed();
     }).finally(() => { entry.busy = false; });
   }
 
-  #ensureRollup(family: LiqFamily, url: string, pass: string, now: number, changed: () => void): void {
+  /** Whether a rollup is to be asked for now: not held or old enough, and not on its way or waiting after a failure. */
+  #rollupDue(family: LiqFamily, now: number): boolean {
     const held = this.#rollups.get(family);
-    if (held && (held.busy || now - held.failed < RETRY_MS || now < held.wait || now - held.at < ROLLUP_EVERY_MS)) return;
-    const entry: RollupEntry = held ?? { edges: [], hours: 4, rows: [], at: -Infinity, busy: false, failed: 0, wait: -Infinity };
+    return !(held && (held.busy || now - held.failed < RETRY_MS || now < held.wait || now - held.at < ROLLUP_EVERY_MS));
+  }
+
+  #ensureRollup(family: LiqFamily, url: string, pass: string, now: number, changed: () => void, probe: boolean): void {
+    const entry: RollupEntry = this.#rollups.get(family) ?? { edges: [], hours: 4, rows: [], at: -Infinity, busy: false, failed: 0, wait: -Infinity };
     entry.busy = true; this.#rollups.set(family, entry);
     const steps = this.#steps;
     this.get(url, pass).then(raw => {
+      if (probe) this.#probed(true, now);
       if (steps !== this.#steps) return;
       const read = readRollup(raw, family);
       if (!read) { entry.failed = now; return; }
@@ -396,6 +461,7 @@ export class LiqHistory {
       changed();
     }, (error: unknown) => {
       entry.failed = now;
+      if (probe) this.#probed(false, now);
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
       if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
       if (error instanceof Error && error.message === LIQ_REFUSED) { this.access.refused(pass); this.version++; changed(); }
@@ -437,6 +503,14 @@ export class LiqHistory {
       rows: main.map(({ row, part }) => cumulate(row, part, edges)),
       takes: view.takes ? orders.flatMap(row => row.parts[1] ? [cumulate(row, row.parts[1], edges, true)] : []) : [],
     };
+  }
+
+  /** The buckets the rows for `view` are in (null while not read), how long a row stands, and whether they come from the rollups: what `series` will say, without its rows. */
+  shape(view: LiqView = FREE_VIEW): Omit<HistSeries, 'rows' | 'takes'> {
+    if (!this.#wide) return { edges: this.#index?.edges ?? null, holdMs: LIQ_HOLD_MS, wide: false };
+    const held = familiesFor(view).map(f => this.#rollups.get(f)), first = held[0];
+    const ready = !!first && held.every(e => e && e.at > -Infinity && e.edges.length === first.edges.length);
+    return { edges: ready ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
   }
 
   /** The rows in force over [t0, t1] for `view`, with the take profits, the buckets, and how long a row stands (see `HistSeries`). */
