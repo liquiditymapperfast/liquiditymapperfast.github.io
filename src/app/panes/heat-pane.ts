@@ -2165,10 +2165,15 @@ export class HeatPane {
     }
     ctx.save();
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-    const label = fitText(words => ctx.measureText(words).width, note, Math.max(40, pw - 24)), w = ctx.measureText(label).width;
+    // On a narrow map what it says last (stops as of, the take profits) goes to a second line, never cut: the parts are whole phrases.
+    const measure = (words: string): number => ctx.measureText(words).width, room = Math.max(40, pw - 24), parts = note.split(' · ');
+    let first = parts[0] ?? '', i = 1;
+    while (i < parts.length && measure(`${first} · ${parts[i]}`) <= room) { first = `${first} · ${parts[i]}`; i++; }
+    const lines = [first, parts.slice(i).join(' · ')].filter(Boolean).map(line => fitText(measure, line, room)), w = measure(lines[0] ?? '');
     // Under the legend, a line lower where the "depth recorded from" note already stands there.
     const h = this.#historyNote, top = this.#legendBox.bottom + 6, below = h && Math.abs(h.top - top) < 12 && h.x0 < 8 + w + 6 && h.x1 > 2;
-    ctx.fillStyle = p.muted; ctx.globalAlpha = 0.9; ctx.fillText(label, 8, below ? top + 13 : top);
+    ctx.fillStyle = p.muted; ctx.globalAlpha = 0.9;
+    lines.forEach((line, n) => ctx.fillText(line, 8, (below ? top + 13 : top) + n * 13));
     ctx.restore();
   }
 

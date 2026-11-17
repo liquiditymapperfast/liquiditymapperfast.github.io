@@ -67,8 +67,9 @@ export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOf
   if (old && view.kind === 'both') parts.push(view.takes ? t('stops and take profits as of {time}', { time: clock(orders) }) : t('stops as of {time}', { time: clock(orders) }));
   if (view.takes) {
     const state = src.takesState;
-    parts.push(state === 'ready' ? (old && view.kind === 'liq' ? t('take profits as of {time}', { time: clock(orders) }) : t('with take profits'))
-      : state === 'unavailable' ? t('take profits could not be read') : state === 'missing' ? t('take profits are not ready yet') : t('take profits are loading'));
+    // Both with old orders has said when the take profits are from already ("stops and take profits as of").
+    if (state === 'ready') { if (!(old && view.kind === 'both')) parts.push(old && view.kind === 'liq' ? t('take profits as of {time}', { time: clock(orders) }) : t('with take profits')); }
+    else parts.push(state === 'unavailable' ? t('take profits could not be read') : state === 'missing' ? t('take profits are not ready yet') : t('take profits are loading'));
   }
   return parts.join(' · ');
 }

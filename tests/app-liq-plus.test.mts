@@ -6,6 +6,7 @@ import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, effectiveView, heldBack, isFreeChoice, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
 import { changeOf, isPlusChange, liqMenuItems } from '../src/app/liq-menu.ts';
+import { liqNote, liqWhy } from '../src/app/liq-words.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -331,4 +332,34 @@ test('the menu shows the saved choice, tags every Plus choice (locked without Pl
   assert.equal(changeOf('kind:rich', { takes: false }), null);
   assert.ok(isPlusChange({ kind: 'stops' }) && isPlusChange({ group: 'proven' }) && isPlusChange({ takes: true }));
   assert.ok(!isPlusChange({ kind: 'liq' }) && !isPlusChange({ group: 'all' }) && !isPlusChange({ takes: false }), 'back towards the free view is never Plus');
+});
+
+test('the note says when the orders are well behind the liquidations, and why a view draws nothing; both on two grids is not added up', async () => {
+  const pass = { value: 'v1.pass.sig' as string | null };
+  let orders: unknown = triggers(STOPS, TAKES, AS_OF - 3 * 3_600_000);
+  const s = service({ [U.groups]: { status: 200, body: groups([[7, 0, 50, 0, 0, 1, 0, 50, 0]], null) }, [U.triggers]: () => ({ status: 200, body: orders }) }, pass);
+  const both = view({ kind: 'both', takes: true });
+  s.src.ensure(BTC, () => {}, both); await tick(); s.src.ensure(BTC, () => {}, both); await tick();
+  assert.equal(s.src.state, 'ready');
+  const note = liqNote(s.src, both, s.src.levels!.asOf);
+  assert.match(note, /^Hyperliquid liquidations and stops at /);
+  assert.match(note, /stops and take profits as of /, note);
+  assert.doesNotMatch(note, /with take profits/, 'said once');
+  assert.match(liqNote(s.src, view({ kind: 'both' }), s.src.levels!.asOf), / · stops as of /);
+  // Orders of the same snapshot: nothing more to say than that take profits are drawn.
+  const fresh = service({ [U.triggers]: { status: 200, body: triggers(STOPS, TAKES) } }, pass);
+  fresh.src.ensure(BTC, () => {}, both); await tick(); fresh.src.ensure(BTC, () => {}, both); await tick();
+  assert.doesNotMatch(liqNote(fresh.src, both, fresh.src.levels!.asOf), /as of/);
+  assert.match(liqNote(fresh.src, both, fresh.src.levels!.asOf), / · with take profits$/);
+  // No proven list for the snapshot: said, in the column's words.
+  const proven = view({ group: 'proven' });
+  s.src.ensure(BTC, () => {}, proven); await tick();
+  assert.equal(liqWhy(s.src, s.src.asOfs().liq), 'No proven traders list for this snapshot.');
+  // The orders on another grid than the liquidations: not added up, said as orders that could not be read.
+  orders = { ...triggers(STOPS, TAKES), step: 5 };
+  const grid = service({ [U.triggers]: () => ({ status: 200, body: orders }) }, pass);
+  grid.src.ensure(BTC, () => {}, both); await tick(); grid.src.ensure(BTC, () => {}, both); await tick();
+  assert.equal(grid.src.levels, null);
+  assert.equal(grid.src.state, 'unavailable');
+  assert.equal(liqWhy(grid.src, grid.src.asOfs().liq), 'Stop levels could not be read.');
 });

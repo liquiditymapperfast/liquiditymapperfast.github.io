@@ -389,7 +389,8 @@ html[data-layout="phone-landscape"] main[data-tab="liq"] > .pane.liq { display: 
 .liq-pulse[hidden] { display: none; }
 @keyframes liq-pulse { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(3.4); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .liq-pulse::after { animation: none; opacity: 0; } }
-.liq-foot { padding: 5px 10px 6px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The foot wraps to a second line rather than cutting what it says last (stops as of, the take profits): at most two lines. */
+.liq-foot { padding: 5px 10px 6px; font-size: 11px; line-height: 1.35; color: var(--muted); border-top: 1px solid var(--line); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .liq-foot:empty { display: none; }
 html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) { display: flex; flex-direction: column; }
 html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) .pane.heat, html[data-layout^="phone"] main:is([data-tab="candle"], [data-tab="flow"]) > .dock-grip { display: none; }

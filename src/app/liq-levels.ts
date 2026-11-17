@@ -592,6 +592,8 @@ const plusPart = <T>(): PlusPart<T> => ({ held: null, pending: false, nextAt: 0,
 const PLUS_AGAIN_MS = 2 * MINUTE, PLUS_TRIES = 3;
 /** A 503's `Retry-After` is kept within these bounds (seconds as the server says them, turned into ms). */
 const WAIT_MIN_MS = 30_000, WAIT_MAX_MS = 15 * MINUTE;
+/** A 503 that says no `Retry-After` (or one the page may not read) waits this long. */
+const WAIT_UNSAID_MS = MINUTE;
 
 /** Where the levels for a view stand: drawn, loading, out of date, not read, or nothing for this view in the snapshot (`missing`). */
 export type LiqState = 'idle' | 'loading' | 'ready' | 'stale' | 'unavailable' | 'other-coin' | 'off' | 'missing';
@@ -653,6 +655,8 @@ export class LiqLevelsSource {
     if (v.kind === 'liq' || !liq) return v.kind === 'liq' ? liq : null;
     const stops = this.#triggers.held?.stops;
     if (!stops) return null;
+    // Added up only on one grid (both files bin on the coin's $10 today): another would put the stops in the wrong rows.
+    if (stops.levels.step !== liq.levels.step) return null;
     if (this.#both?.a !== liq || this.#both.b !== stops) this.#both = new SumLayer(liq, stops);
     return this.#both;
   }
@@ -788,7 +792,8 @@ export class LiqLevelsSource {
       } else if (answer.status === 503) {
         // Not there yet (no groups for this snapshot, no order file read yet): asked again when the server says.
         if (!part.held) part.status = 'waiting';
-        part.nextAt = at + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, (answer.retryAfter ?? 0) * 1_000));
+        // The gate may not let the page read the header (CORS): then a minute.
+        part.nextAt = at + (answer.retryAfter !== undefined ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, answer.retryAfter * 1_000)) : WAIT_UNSAID_MS);
       } else {
         if (!part.held) part.status = 'failed';
         part.nextAt = at + RETRY_MS;
@@ -850,11 +855,13 @@ export class LiqLevelsSource {
       return s === 'ready' && liq && this.now() - liq.levels.asOf > STALE_MS ? 'stale' : s;
     };
     const stops = (): LiqState => this.#triggers.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(this.#triggers);
+    // Both on two grids cannot be added up (`#main`): said as orders that could not be read.
+    const grids = (): boolean => { const liq = this.#liqLayer(), o = this.#triggers.held; return !liq || !o || liq.levels.step === o.stops.levels.step; };
     if (v.kind === 'liq') { this.state = fresh(liqState()); this.#blame = 'liq'; return; }
     if (v.kind === 'stops') { this.state = stops(); this.#blame = 'orders'; return; }
     // Both: the first part not ready says why nothing is drawn.
     const a = fresh(liqState()), b = stops();
-    this.state = a !== 'ready' ? a : b; this.#blame = a !== 'ready' ? 'liq' : 'orders';
+    this.state = a !== 'ready' ? a : b !== 'ready' ? b : grids() ? 'ready' : 'unavailable'; this.#blame = a !== 'ready' ? 'liq' : 'orders';
   }
 
   /**
