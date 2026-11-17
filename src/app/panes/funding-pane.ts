@@ -373,9 +373,14 @@ export class FundingPane extends TimePane {
     ctx.setLineDash([]); ctx.lineWidth = 1;
     ends.sort((a, b) => a.y - b.y);
     const near = (a: { x: number }, b: { x: number }): boolean => Math.abs(a.x - b.x) < 14;
-    for (let i = 1; i < ends.length; i++) for (let j = 0; j < i; j++) { const e = ends[i]!, o = ends[j]!; if (near(e, o) && Math.abs(e.y - o.y) < 14) e.y = o.y + 14; }
-    // Pushed past the bottom, a cluster is pulled back up from it, so the marks do not pile on one row there.
-    for (let i = ends.length - 1; i >= 0; i--) { const e = ends[i]!; e.y = Math.min(e.y, bottom - 6); for (let j = ends.length - 1; j > i; j--) { const o = ends[j]!; if (near(e, o) && Math.abs(o.y - e.y) < 14) e.y = o.y - 14; } }
+    // Down, then pushed past the bottom pulled back up from it, so the marks do not pile on one row there; again until nothing moves ("near" is
+    // not transitive: a dense cluster needs more than one sweep each way), a few times at most.
+    for (let round = 0; round < 6; round++) {
+      const before = ends.map(e => e.y).join();
+      for (let i = 1; i < ends.length; i++) for (let j = 0; j < i; j++) { const e = ends[i]!, o = ends[j]!; if (near(e, o) && Math.abs(e.y - o.y) < 14) e.y = o.y + 14; }
+      for (let i = ends.length - 1; i >= 0; i--) { const e = ends[i]!; e.y = Math.min(e.y, bottom - 6); for (let j = ends.length - 1; j > i; j--) { const o = ends[j]!; if (near(e, o) && Math.abs(o.y - e.y) < 14) e.y = o.y - 14; } }
+      if (ends.map(e => e.y).join() === before) break;
+    }
     for (const e of ends) drawVenueMark(ctx, e.id, e.x, Math.max(top + 6, Math.min(bottom - 6, e.y)), 12);
     // The median at the time read, from the venues there (not from the line drawn for the view, which ends where the view does).
     const medianNow = medianIn(venues, at, now, need);
@@ -396,7 +401,7 @@ export class FundingPane extends TimePane {
 
   /**
    * The median line, worked out for a window half a view wider than the view on each side and used again while the view stays inside it (and
-   * is not zoomed in below a quarter of it), the venues' readings, the count needed and the minute unchanged. A pointer move draws the pane again,
+   * is not zoomed in to under a quarter of the view it was worked out for), the venues' readings, the count needed and the minute unchanged. A pointer move draws the pane again,
    * and a map following the live edge (or a replay playing) moves the view a little every frame: keyed on the view itself it was worked out again
    * every frame, up to 14 ms on a view of months (review round 3). The clip leaves out what lies outside the view. Keyed on the source's arrays
    * and the lengths shown of them: a replay's cut is a new slice every frame (round 2).
