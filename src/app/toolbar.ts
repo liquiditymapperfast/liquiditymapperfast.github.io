@@ -410,7 +410,13 @@ export class Toolbar {
     for (const end of ['pointerup', 'pointercancel'] as const) window.addEventListener(end, () => { this.#pressing = false; }, true);
     // The Guide's link to the tour starts it as the Tour button does (the bar unfolded for it).
     setTourStarter(() => this.startTour());
-    const lit = (): void => { this.#plus.classList.toggle('on', plus().on); };
+    // Plus coming or going while the Liquidation levels panel is open redraws it: its Plus tags lock or unlock, and its note says what is drawn.
+    let wasOn = plus().on;
+    const lit = (): void => {
+      this.#plus.classList.toggle('on', plus().on);
+      const on = this.#plus.classList.contains('on');
+      if (on !== wasOn) { wasOn = on; if (this.#liqLevelPanel && this.#open?.panel === this.#liqLevelPanel) this.refreshOpenPanel(); }
+    };
     lit(); plus().subscribe(lit);
     // A notice that comes, goes, or wraps differently moves the ones under it.
     if (typeof ResizeObserver === 'function') {

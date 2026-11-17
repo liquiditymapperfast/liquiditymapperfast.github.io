@@ -354,6 +354,10 @@ export class LiqHistory {
     const real = this.access.freeFrom(now), onSale = this.#onSale();
     if (onSale && this.#refusedBefore > -Infinity && this.#refusedBefore <= real) this.#refusedBefore = -Infinity;
     const refused = this.#refusedBefore, recheck = this.#holdOver(now) ? refused - DAY_MS : NaN;
+    // Not on sale and without a pass, the days before the boundary that the gate has not refused are asked newest first, and the older ones
+    // only once it was served: a gate that refuses them meets one request, not a view's worth of them.
+    const lead = Math.min(lastDay, Math.floor((real - 1) / DAY_MS) * DAY_MS);
+    const waitLead = !onSale && pass === null && lead >= firstDay && lead >= refused && !((this.#days.get(`free|${lead}`)?.at ?? -Infinity) > -Infinity);
     for (const family of families) {
       if (family !== 'free' && (pass === null || !plusAt)) continue;
       const dayUrl = family === 'free' ? urls.day : family === 'groups' ? plusAt!.groupsDay : plusAt!.triggersDay;
@@ -367,6 +371,7 @@ export class LiqHistory {
         if (paid && pass !== null) { asks.push({ day, go: probe => this.#ensureDay(family, day, dayUrl, pass, index.edges, now, changed, probe) }); continue; }
         if (day < refused && day !== recheck) continue;
         if (day < real && onSale && day >= refused) continue;
+        if (waitLead && family === 'free' && day < lead) continue;
         this.#ensureDay(family, day, dayUrl, null, index.edges, now, changed, false);
       }
     }
