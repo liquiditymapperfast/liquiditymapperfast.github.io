@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FundingSource, buyerShare, continuousFunding, cutAt, fundingBase, fundingIn, fundingMedian, fundingTail, fundingVenueOf, hasPremium, heldPremium, isFundingPick, isFundingVenue, medianIn, medianNeeds, showsEvery, readFunding, readFundingNow, readPremium, rowAt, type FundingRow } from '../src/app/funding.ts';
-import { fundingAllCardLines, fundingCardLines, fundingShownAt, rateTicks, tickText } from '../src/app/panes/funding-pane.ts';
+import { fundingAllCardLines, fundingCardLines, fundingShownAt, rateTicks, tagText, tickText } from '../src/app/panes/funding-pane.ts';
 import type { Fetcher } from '../src/shared/history.ts';
 
 const H = 3_600_000, T = Date.UTC(2026, 10, 6, 0);
@@ -660,4 +660,18 @@ test('the every-venue popup: the median and who pays, then each venue with its m
   const lines = fundingAllCardLines({ time: T, need: 3, median: { per8h: 5e-5 }, venues: [{ id: 'binance', name: 'Binance', per8h: 5e-5, forming: false }, { id: 'okx', name: 'OKX', per8h: null, forming: false }, { id: 'hyperliquid', name: 'Hyperliquid', per8h: 1e-4, forming: true }] });
   assert.deepEqual(lines.filter(l => l.label).map(l => [l.label, l.text, l.mark]), [['Median', '+0.0050% / 8 h', undefined], ['APR', '+5.47%', undefined], ['Binance', '+0.0050%', 'binance'], ['OKX', '–', 'okx'], ['Hyperliquid', '+0.0100% (now)', 'hyperliquid']]);
   assert.ok(lines.some(l => l.text === 'Longs pay shorts'));
+});
+
+test('a reading now past its settlement stands until the record lands, within the grace; then the record is carried', () => {
+  const rows = eight([1e-4]), stale = { rate: 3e-4, per8h: 3e-4, hours: 8, next: T + 16 * H, premium: null };
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 3_000), { start: T + 8 * H, end: T + 16 * H, per8h: 3e-4 }, 'a few seconds past: still the reading now');
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 60_000), { start: T + 8 * H, end: T + 16 * H + 60_000, per8h: 3e-4 }, 'the next reading failed: its rate to the clock');
+  assert.deepEqual(fundingIn(rows, stale, T + 16 * H + 30_000, T + 16 * H + 60_000), { per8h: 3e-4, forming: true });
+  const landed = [...rows, { t: T + 16 * H, rate: 2e-4, per8h: 2e-4, hours: 8 }];
+  assert.deepEqual(fundingTail(landed, stale, T + 16 * H + 60_000), { start: T + 16 * H, end: T + 16 * H + 60_000, per8h: 2e-4 }, 'its record in: the record is carried');
+  assert.equal(fundingTail(rows, stale, T + 17 * H), null, 'past the grace with nothing landed: nothing');
+});
+
+test('the crosshair\'s value: three decimals, four on a tiny scale, and no sign on what rounds to zero', () => {
+  assert.deepEqual([tagText(0.00012345, 0.001), tagText(-0.0000001, 0.001), tagText(0.0000123, 0.00002), tagText(-0.0000004, 0.00002)], ['+0.012%', '0.000%', '+0.0012%', '0.0000%']);
 });

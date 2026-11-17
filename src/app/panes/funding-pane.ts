@@ -78,6 +78,11 @@ export function rateTicks(min: number, max: number, px: number, gapPx = 26): { v
   while (digits < 6 && Math.abs(Math.round(pct * 10 ** digits) - pct * 10 ** digits) > 1e-6) digits++;
   return { values, digits };
 }
+/** The crosshair's value at a height (pure): three decimals of a percentage, four on a scale under 0.01 % tall; no sign where it rounds to zero. */
+export function tagText(x: number, span: number): string {
+  const digits = span < 0.0001 ? 4 : 3;
+  return rateText(Number((x * 100).toFixed(digits)) === 0 ? 0 : x, digits);
+}
 /** A tick's text: zero as "0%", the rest signed. */
 export const tickText = (x: number, digits: number): string => x === 0 ? '0%' : rateText(x, digits);
 
@@ -312,7 +317,7 @@ export class FundingPane extends TimePane {
     const listed = FUNDING_VENUES.filter(x => coin.markets[x]), views = new Map<FundingVenue, FundingView>();
     // Each venue's settlements and the rate accruing now, without its premium candles (the costly read); a venue that fails costs its own line only.
     const shown = listed.map(x => { const data = this.#funding.view(x, coin.markets[x]!, tf, v.t0, v.t1, Date.now(), false); views.set(x, data); return { id: x, data, ...fundingShownAt(data, now, replaying()) }; });
-    const need = medianNeeds(listed.length), venues = shown.map(s => ({ rows: s.rows, forming: s.forming })), median = this.#medianOf(venues, v.t0, v.t1, now, need);
+    const need = medianNeeds(listed.length), venues = shown.map(s => ({ rows: s.rows, forming: s.forming })), median = this.#medianOf(venues, shown.map(x => x.data.rows), v.t0, v.t1, now, need);
     const hover = state.hover, at = hover ? Math.min(hover.t, now) : now;
     // Scale: zero, the base rate, and every venue's steps in view: its settlements, then its rate under way (`fundingTail`: the rate now, or in a replay the newest record carried to the clock), dashed.
     const top = 6, bottom = ph - 6;
@@ -326,16 +331,17 @@ export class FundingPane extends TimePane {
       return { id: s.id, steps };
     });
     if (!any) {
-      if (state.fundingTable && this.#drawTable(null, null, tf, at, now, !!hover, { views, venues, median: null })?.plate) { setHtml(readout, ''); return; }
+      if (state.fundingTable && this.#drawTable(null, null, tf, at, now, !!hover, { views, venues, median: medianIn(venues, at, now, need) })?.plate) { setHtml(readout, ''); return; }
       ctx.fillStyle = p.muted; ctx.textAlign = 'left';
       const failed = shown.filter(s => s.data.failed).map(s => venueLabel(s.id));
-      ctx.fillText(shown.some(s => s.data.loading) ? t('Reading funding…') : failed.length === shown.length ? t('{venue} did not answer: asked again in a minute.', { venue: failed.join(', ') }) : t('No funding in view.'), 12, ph / 2); setHtml(readout, '');
+      const said = shown.some(s => s.data.loading) ? t('Reading funding…') : failed.length === shown.length ? t('{venue} did not answer: asked again in a minute.', { venue: failed.join(', ') }) : t('No funding in view.');
+      ctx.fillText(fitText(text => ctx.measureText(text).width, said, pw - 24), 12, ph / 2); setHtml(readout, '');
       return;
     }
     // A floor under the scale's span: a view of tiny rates (Deribit's) would otherwise ask for more decimals than the ticks are given.
     const pad = Math.max((hi - lo) * 0.08, 0.00001), min = lo - pad, max = hi + pad;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (bottom - top);
-    this.scaleAt = yy => rateText(min + (1 - (yy - top) / (bottom - top)) * (max - min), 3);
+    this.scaleAt = yy => tagText(min + (1 - (yy - top) / (bottom - top)) * (max - min), max - min);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
     const labels = this.#scale(y, min, max, top, bottom, BASE);
     const medianSteps = median.map(s => ({ x0: v.xOf(s.t0, pw), x1: v.xOf(s.t1, pw), per8h: s.per8h, forming: s.forming }));
@@ -353,7 +359,8 @@ export class FundingPane extends TimePane {
       }
       ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineWidth = 1;
       const last = d.steps[d.steps.length - 1]!;
-      if (last.x1 > -8) ends.push({ id: d.id, x: Math.min(pw - 8, last.x1 + 8), y: y(last.per8h) });
+      // In a replay a carried line ends at the moment shown, and right of it the mask covers the plot: the mark stays left of it (review round 2).
+      if (last.x1 > -8) ends.push({ id: d.id, x: Math.min(pw - 8, last.x1 + 8, replaying() ? v.xOf(now, pw) - 8 : Infinity), y: y(last.per8h) });
     }
     // The median, thick in the text colour over them: joined where one step follows the next, dashed where a rate under way counts.
     ctx.strokeStyle = p.text; ctx.lineWidth = 2.5;
@@ -365,7 +372,10 @@ export class FundingPane extends TimePane {
     }
     ctx.setLineDash([]); ctx.lineWidth = 1;
     ends.sort((a, b) => a.y - b.y);
-    for (let i = 1; i < ends.length; i++) if (ends[i]!.y - ends[i - 1]!.y < 14 && Math.abs(ends[i]!.x - ends[i - 1]!.x) < 14) ends[i]!.y = ends[i - 1]!.y + 14;
+    const near = (a: { x: number }, b: { x: number }): boolean => Math.abs(a.x - b.x) < 14;
+    for (let i = 1; i < ends.length; i++) if (ends[i]!.y - ends[i - 1]!.y < 14 && near(ends[i]!, ends[i - 1]!)) ends[i]!.y = ends[i - 1]!.y + 14;
+    // Pushed past the bottom, a cluster is pulled back up from it, so the marks do not pile on one row there.
+    for (let i = ends.length - 1; i >= 0; i--) { const e = ends[i]!, below = ends[i + 1]; e.y = Math.min(e.y, bottom - 6); if (below && near(e, below) && below.y - e.y < 14) e.y = below.y - 14; }
     for (const e of ends) drawVenueMark(ctx, e.id, e.x, Math.max(top + 6, Math.min(bottom - 6, e.y)), 12);
     // The median at the time read, from the venues there (not from the line drawn for the view, which ends where the view does).
     const medianNow = medianIn(venues, at, now, need);
@@ -386,8 +396,9 @@ export class FundingPane extends TimePane {
 
   /** The median line for the view, worked out again only when a venue's readings, the view, the count needed or the minute change (a pointer move draws the pane again with it). */
   #medianMemo: { key: unknown[]; steps: MedianStep[] } | null = null;
-  #medianOf(venues: readonly VenueFunding[], t0: number, t1: number, now: number, need: number): MedianStep[] {
-    const key: unknown[] = [t0, t1, need, Math.floor(now / 60_000), ...venues.flatMap(x => [x.rows, x.rows.length, x.forming])];
+  #medianOf(venues: readonly VenueFunding[], sources: readonly (readonly FundingRow[])[], t0: number, t1: number, now: number, need: number): MedianStep[] {
+    // Keyed on the source's arrays and the lengths shown of them: a replay's cut is a new slice every frame (review round 2).
+    const key: unknown[] = [t0, t1, need, Math.floor(now / 60_000), ...venues.flatMap((x, i) => [sources[i], x.rows.length, x.forming])];
     const memo = this.#medianMemo;
     if (memo && memo.key.length === key.length && memo.key.every((k, i) => k === key[i])) return memo.steps;
     const steps = fundingMedian(venues, t0, t1, now, need);
@@ -434,7 +445,7 @@ export class FundingPane extends TimePane {
     // A floor under the scale's span, as with every venue: tiny rates (Deribit's) would ask for more decimals than the ticks are given.
     const pad = Math.max((hi - lo) * 0.08, 0.00001), min = lo - pad, max = hi + pad;
     const y = (value: number): number => top + (1 - (value - min) / (max - min)) * (lineBottom - top);
-    this.scaleAt = at => at <= lineBottom ? rateText(min + (1 - (at - top) / (lineBottom - top)) * (max - min), 3)
+    this.scaleAt = at => at <= lineBottom ? tagText(min + (1 - (at - top) / (lineBottom - top)) * (max - min), max - min)
       : band && at >= bandTop && at <= bandBottom ? `${Math.round(50 + (mid - at) / half * 50)}%` : null;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
     // The scale (round values, zero, the base rate dashed), then the funding's sign as a fill between it and zero.
