@@ -435,12 +435,15 @@ export class Layout {
   /** Move a side pane to `side`, before `beforeId` in that column (the end of it when null). */
   moveSidePane(id: SidePaneId, side: Side, beforeId: SidePaneId | null = null): void {
     if (isPhone()) return;
+    // A move is seen: a maximized chart gives the screen back first (review r4).
+    this.#setMax(null);
     this.#plan = moveSide(this.#plan, id, side, beforeId, this.#shown);
     this.#renderSides(); this.#persist();
   }
   /** The two columns exchanged: what stood on the left stands on the right. */
   swapSides(): void {
     if (isPhone()) return;
+    this.#setMax(null);
     this.#plan = swapSides(this.#plan);
     this.#renderSides(); this.#persist();
   }

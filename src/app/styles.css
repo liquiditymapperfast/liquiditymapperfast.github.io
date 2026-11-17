@@ -401,6 +401,8 @@ html[data-bar="compact"] .toast { bottom: 76px; }
    A pane under the map leaves the map's time axis in sight below it: the map, at the height it had, stands at the column's bottom. Desktop only. */
 html[data-layout="desktop"] .chart-col.has-max { position: relative; overflow: hidden; }
 html[data-layout="desktop"] .chart-col.has-max > :not(.maxed, .pane.heat) { visibility: hidden; }
+/* The splitters go altogether: hidden from sight they kept their boxes, which Glass measured as walls over the maximized chart (review r4). */
+html[data-layout="desktop"] .chart-col.has-max > .splitter { display: none; }
 html[data-layout="desktop"] .chart-col.has-max > .pane.maxed { position: absolute; inset: 0; z-index: 20; min-height: 0; }
 html[data-layout="desktop"] .chart-col.max-lower > .pane.heat { position: absolute; left: 0; right: 0; bottom: 0; height: var(--max-map-h); min-height: 0; z-index: 0; }
 html[data-layout="desktop"] .chart-col.max-lower > .pane.maxed { bottom: var(--max-axis-h, 22px); }
