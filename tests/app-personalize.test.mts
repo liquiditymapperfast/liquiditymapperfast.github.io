@@ -107,7 +107,12 @@ test('warnings say which colours will be hard to see, and when buy and sell look
   const w = themeWarnings(p);
   assert.ok(w.faint.includes('bid') && w.faint.includes('ask'));
   assert.equal(w.alike, true);
-  assert.deepEqual(themeWarnings(PALETTES.light!), { faint: [], alike: false });
+  assert.deepEqual(themeWarnings(PALETTES.light!), { faint: [], alike: false, clash: false });
+  // A dark background beside white panels: no text reads on both, and the page says so; the text is the tone that reads best on both, not black.
+  const split = customPalette({ ...base, colors: { ...base.colors, bg: '#0b1a2e', panel: '#ffffff', text: '#1b1d21' } }).palette;
+  assert.equal(themeWarnings(split).clash, true);
+  assert.ok(Math.min(contrastRatio(split.text, split.bg), contrastRatio(split.text, split.panel)) > 3.5, split.text);
+  for (const id of THEME_ORDER) assert.equal(themeWarnings(PALETTES[id]!).clash, false, id);
 });
 
 test('the page knows a person\'s themes once they are registered; a deleted one, or a name that is no theme, is Light', () => {

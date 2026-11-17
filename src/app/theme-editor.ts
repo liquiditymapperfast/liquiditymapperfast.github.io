@@ -136,7 +136,8 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
   }
 
   const { palette, adjusted } = customPalette(theme), warn = themeWarnings(palette);
-  if (adjusted.length) body.append(note(t('So that every word reads, the page draws {names} a little lighter or darker than chosen.', { names: adjusted.map(k => COLOR_NAME[k]()).join(', ') })));
+  if (warn.clash) body.append(note(t('The background and the panels are too far apart for any text to read well on both: bring one closer to the other.')));
+  else if (adjusted.length) body.append(note(t('So that every word reads, the page draws {names} a little lighter or darker than chosen.', { names: adjusted.map(k => COLOR_NAME[k]()).join(', ') })));
   if (warn.faint.length) body.append(note(t('Hard to see on this background: {names}.', { names: warn.faint.map(k => COLOR_NAME[k]()).join(', ') })));
   if (warn.alike) body.append(note(t('Buy and sell look alike: the book and the flow will be hard to read.')));
 

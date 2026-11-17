@@ -21,7 +21,7 @@ import type { VenueControl } from './source.ts';
 import { coverage } from './panes/levels-data.ts';
 import { SCOPE_OPTIONS, activeIds, chipClick, heatmapSourceOf, kindOf, scopeCounts, scopedOut } from './scope.ts';
 import { HIGHLIGHT_LIMITS } from './anomaly.ts';
-import { rangeRow, switchRow, note, togglePanel, checkRow, heading, selectRow, numberRow, openedPanel, button, sizeRow } from './ui.ts';
+import { rangeRow, switchRow, note, togglePanel, openPanel, checkRow, heading, selectRow, numberRow, openedPanel, button, sizeRow } from './ui.ts';
 import { SIZE_MAX_USD } from './sizes.ts';
 import { GROUP_TITLES, SHORTCUTS, togglePatch, type Feature, type ShortcutGroup } from './shortcuts.ts';
 import { buildGallery, newGalleryState } from './layouts/gallery.ts';
@@ -699,7 +699,8 @@ export class Toolbar {
   #openBackup(anchor: HTMLElement): void {
     const ui = newBackupState();
     const build = (_tools: HTMLElement, body: HTMLElement): void => buildBackup(body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui);
-    const panel = togglePanel(anchor, { title: t('Back up and restore'), width: 420, align: 'right' }, build);
+    // Opened from the Layouts panel, whose button is the same: a toggle would only close that one.
+    const panel = openPanel(anchor, { title: t('Back up and restore'), width: 420, align: 'right' }, build);
   }
 
   /** The list of keyboard shortcuts, made from the table itself so the two cannot disagree (the status bar's Keys button, and ?). */

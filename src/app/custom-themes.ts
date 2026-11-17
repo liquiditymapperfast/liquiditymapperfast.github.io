@@ -90,25 +90,30 @@ export function readCustomThemes(raw: unknown): CustomTheme[] {
   return out.slice(-MAX_THEMES);
 }
 
+/** The greys from black to white, the last resort of `readable`. */
+const GREYS = Array.from({ length: 65 }, (_, i) => mixHex('#000000', '#ffffff', i / 64));
+
 /**
- * `color` moved toward black or white, whichever reads better, until it stands at least `ratio` apart from every one of `surfaces` (or as far
- * as it can go). A colour that already reads comes back as it is.
+ * `color` changed as little as it takes to stand at least `ratio` apart from every one of `surfaces`: moved toward black or toward white
+ * (keeping its hue), else a grey; where nothing reaches the ratio (a dark background beside white panels), the tone that reads best on all of
+ * them. A colour that already reads comes back as it is.
  */
 export function readable(color: string, surfaces: readonly string[], ratio: number): string {
   const worst = (tone: string): number => Math.min(...surfaces.map(s => contrastRatio(tone, s)));
   if (worst(color) >= ratio) return color;
-  const target = worst('#000000') >= worst('#ffffff') ? '#000000' : '#ffffff';
   let best = color, bestScore = worst(color);
-  for (let amount = 0.04; amount <= 1.0001; amount += 0.04) {
-    const tone = mixHex(color, target, amount), score = worst(tone);
-    if (score > bestScore) { best = tone; bestScore = score; }
-    if (score >= ratio) return tone;
-  }
+  const consider = (tone: string): boolean => { const score = worst(tone); if (score > bestScore) { best = tone; bestScore = score; } return score >= ratio; };
+  for (let step = 1; step <= 25; step++) for (const target of ['#000000', '#ffffff']) { const tone = mixHex(color, target, step / 25); if (consider(tone)) return tone; }
+  for (const grey of GREYS) consider(grey);
   return best;
 }
 
-/** The text and muted text must read at least this well on the background and the panels (WCAG's body text and large text). */
-export const TEXT_RATIO = 4.5, MUTED_RATIO = 3;
+/** Whether no colour at all reads at `ratio` on every one of `surfaces`: they are too far apart (a dark background beside white panels). */
+export const surfacesClash = (surfaces: readonly string[], ratio = 4.5): boolean =>
+  ![...GREYS, '#000000', '#ffffff'].some(tone => Math.min(...surfaces.map(s => contrastRatio(tone, s))) >= ratio);
+
+/** The text and quiet text are held to what every built-in theme meets on its background and panels (tests/app-theme.test.mts): 7:1 and 4.5:1. */
+export const TEXT_RATIO = 7, MUTED_RATIO = 4.5;
 
 /** A theme as the page draws it: its colours, the text and muted text made readable where they were not (`adjusted` says which). */
 export function customPalette(theme: CustomTheme): { palette: Palette; adjusted: ColorKey[] } {
@@ -119,11 +124,14 @@ export function customPalette(theme: CustomTheme): { palette: Palette; adjusted:
   return { palette, adjusted };
 }
 
-/** The colours that will be hard to see on the background (under 3:1, as the built-in themes are held to), and whether buy and sell look alike. */
-export function themeWarnings(p: Palette): { faint: ColorKey[]; alike: boolean } {
+/**
+ * The colours that will be hard to see on the background (under 3:1, as the built-in themes are held to), whether buy and sell look alike, and
+ * whether the background and the panels are too far apart for any text to read on both.
+ */
+export function themeWarnings(p: Palette): { faint: ColorKey[]; alike: boolean; clash: boolean } {
   const faint = (['accent', 'ui', 'bid', 'ask', 'candleUp', 'candleDown', 'poc', 'level', 'vwap'] as const).filter(key => contrastRatio(p[key], p.bg) < 3);
   const [ar, ag, ab] = rgb(p.bid), [br, bg, bb] = rgb(p.ask);
-  return { faint, alike: Math.hypot(ar - br, ag - bg, ab - bb) < 0.2 };
+  return { faint, alike: Math.hypot(ar - br, ag - bg, ab - bb) < 0.2, clash: surfacesClash([p.bg, p.panel]) };
 }
 
 /** A new theme copied from the theme `fromId` (built-in or the person's own), under a name that is free. */
