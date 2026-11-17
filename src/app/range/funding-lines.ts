@@ -128,21 +128,22 @@ const share = (part: number, of: number): string => of > 0 ? `${Math.round(part 
  */
 export class FundingRangeSummary {
   #kept: { current: string; t0: number; t1: number; replayAt: number | null; at: number; s: FundingStretch } | null = null;
-  #last: { held: FundingPaneHeld | null; sel: RangeSelection; shown: boolean; current: string; minute: number; zone: string; noVenue: boolean; lines: RangeLine[] } | null = null;
+  #last: { held: FundingPaneHeld | null; sel: RangeSelection; shown: boolean; current: string; minute: number; zone: string; noVenue: boolean; allVenues: boolean; lines: RangeLine[] } | null = null;
 
-  /** `noVenue`: no venue lists a perpetual of the coin (the pane holds nothing). */
-  lines(sel: RangeSelection, held: FundingPaneHeld | null, shown: boolean, current: string, now: number, zone = '', noVenue = false): RangeLine[] {
+  /** `noVenue`: no venue lists a perpetual of the coin (the pane holds nothing); `allVenues`: the pane shows every venue, which this does not sum up. */
+  lines(sel: RangeSelection, held: FundingPaneHeld | null, shown: boolean, current: string, now: number, zone = '', noVenue = false, allVenues = false): RangeLine[] {
     const last = this.#last, minute = Math.floor(now / 60_000);
-    if (last && last.held === held && last.sel === sel && last.shown === shown && last.current === current && last.minute === minute && last.zone === zone && last.noVenue === noVenue) return last.lines;
-    const lines = this.#lines(sel, held, shown, current, now, noVenue);
-    this.#last = { held, sel, shown, current, minute, zone, noVenue, lines };
+    if (last && last.held === held && last.sel === sel && last.shown === shown && last.current === current && last.minute === minute && last.zone === zone && last.noVenue === noVenue && last.allVenues === allVenues) return last.lines;
+    const lines = this.#lines(sel, held, shown, current, now, noVenue, allVenues);
+    this.#last = { held, sel, shown, current, minute, zone, noVenue, allVenues, lines };
     return lines;
   }
 
-  #lines(sel: RangeSelection, held: FundingPaneHeld | null, shown: boolean, current: string, now: number, noVenue: boolean): RangeLine[] {
+  #lines(sel: RangeSelection, held: FundingPaneHeld | null, shown: boolean, current: string, now: number, noVenue: boolean, allVenues: boolean): RangeLine[] {
     const title = (text: string): RangeLine => ({ key: 'fd-title', kind: 'title', cells: [text] });
     const note = (key: string, text: string): RangeLine => ({ key, kind: 'note', tone: 'muted', cells: [text] });
     if (noVenue) return [title(spanText(sel.t0, sel.t1)), note('fd-none', t('No venue here lists a perpetual of this coin.'))];
+    if (allVenues) return [title(spanText(sel.t0, sel.t1)), note('fd-all', t('The Funding pane shows every venue: choose one under Venue to sum up its funding over this selection.'))];
     if (held && held.key !== current) return [title(spanText(sel.t0, sel.t1)), note('fd-stale', t('The Funding pane last drew another market, timeframe or venue: show it to sum up this selection.'))];
     const now0 = held ? fundingStretch(held, sel, now) : null;
     // Kept: a settled result of this selection and context, shown while what is held now lacks some of its settlements, premium readings or

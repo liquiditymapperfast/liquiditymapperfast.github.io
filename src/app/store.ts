@@ -37,7 +37,7 @@ import { t } from './i18n.ts';
 import { readLiqLevels, type LiqLevelSettings } from './liq-url.ts';
 import { WAVE_STRENGTH_DEFAULT, readWaveStrength } from './glass/waves.ts';
 import type { ReplayView } from './replay/clock.ts';
-import { isFundingVenue, type FundingVenue } from './funding.ts';
+import { isFundingPick, type FundingPick } from './funding.ts';
 import { readFlowView, type FlowView } from './tns/model.ts';
 import { TRADES_DEFAULTS, readTrades, tradesRev5Default, type TradesSettings } from './trades/settings.ts';
 
@@ -128,8 +128,8 @@ export interface AppState {
   oiFine: OiPart[];
   /** How the OI pane's change bars are coloured: by who opened and closed (NL/NS, worked out minute by minute where it can be), or rises and falls. */
   oiChange: 'who' | 'net';
-  /** The venue whose funding and premium the Funding pane shows (funding.ts); '' until one is picked: Hyperliquid where it lists the coin. */
-  fundingVenue: FundingVenue | '';
+  /** The venue whose funding and premium the Funding pane shows (funding.ts); '' until one is picked: Hyperliquid where it lists the coin; 'all': every venue's funding with their median. */
+  fundingVenue: FundingPick;
   /** Whether the Funding, Open Interest, Long/Short, Liquidity Tracker and Delta panes draw their tables (panes/pane-table.ts; the Depth pane's is in its own settings). */
   fundingTable: boolean;
   oiTable: boolean;
@@ -346,7 +346,7 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     oiMarkets: saved.oiMarkets === 'chart' || saved.oiMarkets === 'custom' ? saved.oiMarkets : 'all',
     // New on 2026-11-07: no save holds a choice, so the bars by who opened show for every save (it needs no revision of the defaults).
     oiChange: saved.oiChange === 'net' ? 'net' : 'who',
-    fundingVenue: isFundingVenue(saved.fundingVenue) ? saved.fundingVenue : '',
+    fundingVenue: isFundingPick(saved.fundingVenue) ? saved.fundingVenue : '',
     // New on 2026-11-08: no save holds a choice, so they show for every save, as the Depth pane's does (no revision of the defaults).
     fundingTable: saved.fundingTable !== false,
     oiTable: saved.oiTable !== false,

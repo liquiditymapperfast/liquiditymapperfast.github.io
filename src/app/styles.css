@@ -507,6 +507,9 @@ html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button,
 .pane-head .readout b { color: var(--text); }
 .pane-head .readout b.bid { color: var(--bid); }
 .pane-head .readout b.ask { color: var(--ask); }
+/* A line's key before its name in a readout (the Funding pane): a short stroke in the colour set on it. */
+.pane-head .readout .key { display: inline-block; width: 12px; height: 0; border-top: 2px solid currentColor; vertical-align: middle; margin-right: 4px; }
+.pane-head .readout .key.thin { border-top-width: 1px; }
 /* A pane's header is one row on a desktop (Karl, 2026-11-13): where its figures would get less than their room beside the controls, the last
    controls fold behind the settings key, which opens them in a panel (pane-tune.ts); the Liquidity Tracker's figures took a line of their own. */
 html[data-layout="desktop"] .pane-head .folded { display: none; }

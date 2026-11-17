@@ -8,7 +8,7 @@ import { t } from '../i18n.ts';
 import { clock } from '../format.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { venueLabel } from '../venues.ts';
+import { VENUE_LINE, venueLabel } from '../venues.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { AXIS_W, leftGutter } from './heat-pane.ts';
 import { TimePane, setHtml } from './lower-panes.ts';
@@ -22,8 +22,6 @@ import { LS_CHOSEN_VENUES, LS_METRICS, LS_VENUES, lsPopulationOf, lsWindowPeriod
 import { lsHeldKey, type LsPaneHeld } from '../range/ls-lines.ts';
 
 const HOUR = 3_600_000;
-/** One colour per venue, apart from each other on either theme (the brands' own are black on two of them); the venue's mark ends its line. */
-const LINE_COLORS: Readonly<Record<string, string>> = { binance: '#d4a106', bybit: '#e8590c', okx: '#7a5af8', bitget: '#0ca5b8' };
 
 /** The markets the pane shows: the OI pane's markets (those it adds together, or its one market) on a venue that publishes a ratio. */
 export function lsIds(state: AppState, hub: Hub): string[] {
@@ -344,7 +342,7 @@ export class LsPane extends TimePane {
     const ends: { id: string; x: number; y: number }[] = [];
     for (const s of shown) {
       // Steps: a reading holds until the next, and a gap longer than its hold breaks the line.
-      ctx.strokeStyle = LINE_COLORS[s.id.split(':')[0]!] ?? p.text; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.strokeStyle = VENUE_LINE[s.id.split(':')[0]!] ?? p.text; ctx.lineWidth = 1.5; ctx.beginPath();
       let last: { x: number; y: number } | null = null, prevEnd = -Infinity;
       for (let i = 0; i < s.points.length; i++) {
         const q = s.points[i]!, end = stepEnd(s, i);

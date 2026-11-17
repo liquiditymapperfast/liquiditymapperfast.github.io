@@ -73,7 +73,7 @@ export function paintTable(ctx: CanvasRenderingContext2D, p: Pick<Palette, 'pane
   for (let j = 0; j < k; j++) {
     const y = at.first + j * at.rowH, row = spec.rows[j]!, mid = y + at.rowH / 2;
     if (j === spec.focus || j === hover) { ctx.fillStyle = p.text; ctx.globalAlpha = j === spec.focus ? 0.1 : 0.05; ctx.fillRect(at.left + 2, y, at.width - 4, at.rowH); ctx.globalAlpha = 1; }
-    ctx.textAlign = 'left'; ctx.fillStyle = j === spec.focus ? p.text : p.muted; ctx.fillText(row[0]!.text, at.left + PAD, mid);
+    ctx.textAlign = 'left'; ctx.fillStyle = row[0]!.color ?? (j === spec.focus ? p.text : p.muted); ctx.fillText(row[0]!.text, at.left + PAD, mid);
     ctx.textAlign = 'right';
     for (let c = 1; c < at.cols; c++) { ctx.fillStyle = row[c]!.color ?? p.text; ctx.fillText(row[c]!.text, at.rights[c]!, mid); }
   }

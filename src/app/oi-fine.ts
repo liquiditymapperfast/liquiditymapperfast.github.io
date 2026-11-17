@@ -2,7 +2,7 @@ import type { AppState } from './store.ts';
 import type { OiPart } from './oi-change.ts';
 import { HISTORY_CAP_MS } from './delta/flows.ts';
 import { FLOW_STORE_MS } from '../shared/flow.ts';
-import { fundingVenueOf } from './funding.ts';
+import { FUNDING_VENUES, fundingVenueOf, showsEvery } from './funding.ts';
 import { currentCoin } from './coin.ts';
 import { instrumentIdFor } from '../shared/coins.ts';
 
@@ -25,6 +25,7 @@ export const fundingReachMs = (kind: 'server' | 'browser'): number => kind === '
 export function fundingFineId(state: Pick<AppState, 'show' | 'fundingVenue'>): string | null {
   if (!state.show.funding) return null;
   const coin = currentCoin();
+  if (showsEvery(state.fundingVenue, FUNDING_VENUES.filter(v => coin.markets[v]).length)) return null;
   return fundingVenueOf(state.fundingVenue, v => !!coin.markets[v]) === 'hyperliquid' ? instrumentIdFor('hyperliquid', coin) ?? null : null;
 }
 /** How far back one market's minute readings are read: `fundingReachMs` for the Funding pane's market, a day for every other. */
@@ -47,8 +48,10 @@ export function partsOnScreen(state: Pick<AppState, 'oi' | 'oiParts' | 'oiInstru
 export function fineWant(state: Pick<AppState, 'show' | 'oiChange' | 'delta' | 'fundingVenue'>, tfMs: number): 'all' | 'hyperliquid' | null {
   if (tfMs <= 60_000) return null;
   if ((state.show.oi && state.oiChange === 'who') || (state.show.delta && state.delta.style === 'nlns')) return 'all';
+  // Every venue at once draws no who-opened bars (Hyperliquid's alone stand under its own funding).
   if (!state.show.funding) return null;
   const coin = currentCoin();
+  if (showsEvery(state.fundingVenue, FUNDING_VENUES.filter(v => coin.markets[v]).length)) return null;
   return fundingVenueOf(state.fundingVenue, v => !!coin.markets[v]) === 'hyperliquid' ? 'hyperliquid' : null;
 }
 

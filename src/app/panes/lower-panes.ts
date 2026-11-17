@@ -218,7 +218,7 @@ export abstract class TimePane {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.#canvasW, this.h);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, this.dpr * left, 0);
     this.ctx.font = '11px ui-sans-serif, system-ui, sans-serif'; this.ctx.textBaseline = 'middle';
-    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.scaleAt = null; this.#grid(); this.draw(); this.#replayMask(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
+    if (this.view.t1 > this.view.t0 && this.w > 1) { this.cursorT = null; this.scaleAt = null; this.leftTag = false; this.#grid(); this.draw(); this.#replayMask(); this.#rangeBand(); this.#crosshair(); } else { if (this.#pinned) this.#unpin(); this.undrawn(); }
   }
   #grid(): void {
     const { ctx, palette: p, view: v } = this, pw = this.plotW;
@@ -258,10 +258,14 @@ export abstract class TimePane {
     const tagH = 16, top = Math.round(Math.max(0, Math.min(this.h - tagH, hv.y - tagH / 2))), left = this.w - AXIS_W;
     ctx.fillStyle = p.text; ctx.fillRect(left, top, AXIS_W, tagH);
     ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, left + AXIS_W / 2, top + tagH / 2 + 0.5);
+    // The same value at the plot's left end, where the pane asks for it (`leftTag`): the eye need not cross the pane to the scale.
+    if (this.leftTag) { const w = Math.ceil(ctx.measureText(text).width) + 10; ctx.fillStyle = p.text; ctx.fillRect(0, top, w, tagH); ctx.fillStyle = p.bg; ctx.fillText(text, w / 2, top + tagH / 2 + 0.5); }
     ctx.restore();
   }
   /** The value at a height of the pane, for the crosshair's tag on the scale: set by the pane as it draws (null: no tag, the line alone). */
   protected scaleAt: ((y: number) => string | null) | null = null;
+  /** Whether the crosshair's value tag shows at the plot's left end too: set by the pane as it draws (off unless it says so, as where its table stands over that end). */
+  protected leftTag = false;
   /** Whether the pointer's height means anything in this pane (a table's rows take no horizontal line). */
   protected crossY = true;
   /** Where the readout stands when it is not under the pointer (past the newest point it shows the newest): the cursor is drawn there. Set by `draw`. */

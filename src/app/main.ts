@@ -296,7 +296,7 @@ async function main(): Promise<void> {
   const fundingSummary = new FundingRangeSummary();
   range.useProvider({
     pane: 'funding', title: () => t('Funding'), shown: () => store.state.show.funding, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
-    lines: (sel, shown) => { const key = funding.rangeKey(store.state); return fundingSummary.lines(sel, funding.rangeHeld, shown, key ?? '', pageNow(), store.state.timeZone, key === null); },
+    lines: (sel, shown) => { const key = funding.rangeKey(store.state); return fundingSummary.lines(sel, funding.rangeHeld, shown, key ?? '', pageNow(), store.state.timeZone, key === null, funding.showsEvery(store.state)); },
   });
   // A drag in the Scripts pane sums up each script drawn in it (range/script-lines.ts): its visible plots of one value a candle over the
   // closed candles, in their own values. It reads only what the pane drew: it never starts a run.
