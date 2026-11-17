@@ -5,6 +5,7 @@ import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familie
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, effectiveView, heldBack, isFreeChoice, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
+import { changeOf, isPlusChange, liqMenuItems } from '../src/app/liq-menu.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -308,8 +309,7 @@ test('the history asks for each choice\'s files (with the pass for every Plus on
   assert.ok(freeWide.every(u => !u.includes('/plus/')));
 });
 
-test('the menu shows the saved choice, tags every Plus choice (locked without Plus), and greys the traders while stops alone are shown', async () => {
-  const { liqMenuItems, changeOf, isPlusChange } = await import('../src/app/liq-menu.ts');
+test('the menu shows the saved choice, tags every Plus choice (locked without Plus), and greys the traders while stops alone are shown', () => {
   const rows = (s: Parameters<typeof liqMenuItems>[0], member: boolean) => Object.fromEntries(liqMenuItems(s, member).map(i => [i.id, i]));
   const free = rows({ kind: 'both', takes: true, group: 'proven' }, false);
   assert.equal(free['kind:both']!.checked, true, 'the saved choice is ticked even without Plus');
