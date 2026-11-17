@@ -40,7 +40,7 @@ export function togglePlus(anchor: HTMLElement): Panel | null {
     if (stands === 'checking') {
       body.append(
         el('p', { class: 'lead', textContent: t('Checking Plus with the server…') }),
-        el('p', { class: 'fine', textContent: t('This browser holds a key, and the server has not answered yet. If this stays, check your connection.') }),
+        el('p', { class: 'fine', textContent: t('This browser holds a key that the server has not confirmed yet. If this stays, check your connection.') }),
         el('div', { class: 'author-links' }, guide, tile(t('Manage Plus'), t('your key, another device, ending it'), { href: plusPageUrl() })),
       );
       return;

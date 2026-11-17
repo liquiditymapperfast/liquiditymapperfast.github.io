@@ -41,7 +41,8 @@ const money = (usd: number): string => new Intl.NumberFormat(language(), { style
  */
 function wearTheme(): boolean {
   let name: string | null = null;
-  try { const saved = JSON.parse(localStorage.getItem('hlm-app-v2') ?? 'null') as { theme?: unknown } | null; if (saved && typeof saved.theme === 'string') name = saved.theme; } catch { /* no saved theme */ }
+  // A theme counts only where it was picked; the app works out its own choice afresh on every visit (store.ts), and so does this page.
+  try { const saved = JSON.parse(localStorage.getItem('hlm-app-v2') ?? 'null') as { theme?: unknown; themePicked?: unknown } | null; if (saved && saved.themePicked === true && typeof saved.theme === 'string') name = saved.theme; } catch { /* no saved theme */ }
   if (name === null) {
     let phoneDark = false;
     try { phoneDark = matchMedia('(prefers-color-scheme: dark)').matches && matchMedia('(pointer: coarse)').matches; } catch { /* the light theme */ }
@@ -64,6 +65,26 @@ async function post(path: string, body: unknown): Promise<Answer | null> {
   try { return await webPost(`${plusApi()}${path}`, body); } catch { return null; }
 }
 const errorOf = (answer: Answer): string => { const e = answer.body && typeof answer.body === 'object' ? (answer.body as { error?: unknown }).error : null; return typeof e === 'string' ? e : ''; };
+/** The server's own refusals (it looked, and found nothing it could open); any other refusal is not the server's word on the membership. */
+const LOOKED = new Set(['not_active', 'not_found', 'wrong_price']);
+
+/**
+ * A payment made in this browser whose Plus is not set up yet (`{ id, at }`: Paddle's transaction and when it was paid), kept until it is,
+ * so that a reload asks again and the prices stay away meanwhile: nobody pays twice because the first setting-up failed. Given up after a
+ * day (the receipt's email and invoice number still bring Plus back).
+ */
+const PAID_STORE = 'lmf.plus.paid', PAID_KEEP_MS = 86_400_000;
+function paidPending(): { id: string; at: number } | null {
+  try {
+    const o = JSON.parse(localStorage.getItem(PAID_STORE) ?? 'null') as { id?: unknown; at?: unknown } | null;
+    if (!o || typeof o.id !== 'string' || !/^txn_[a-z0-9]{8,64}$/.test(o.id) || typeof o.at !== 'number') return null;
+    if (Date.now() - o.at > PAID_KEEP_MS || o.at > Date.now() + 3_600_000) { localStorage.removeItem(PAID_STORE); return null; }
+    return { id: o.id, at: o.at };
+  } catch { return null; }
+}
+function setPaid(id: string | null): void {
+  try { if (id) localStorage.setItem(PAID_STORE, JSON.stringify({ id, at: Date.now() })); else localStorage.removeItem(PAID_STORE); } catch { /* kept for this tab only */ }
+}
 /**
  * What an answer that gave no membership means, in the visitor's words: the server not reached or in trouble, too many tries (with the
  * wait it asked for), too many keys in a day; `refusal` is said for the rest (the server looked and found nothing it could open).
@@ -72,10 +93,12 @@ function problem(answer: Answer | null, refusal: string): string {
   if (!answer || answer.status >= 500) return t('The server could not be reached. Try again in a moment.');
   if (answer.status === 429 && errorOf(answer) === 'too_many_keys') return t('This subscription was given {n} keys within a day. Use one of them, or try again tomorrow.', { n: PLUS_KEYS });
   if (answer.status === 429) return answer.retryAfter ? t('Too many tries. Try again in {n} min.', { n: Math.max(1, Math.ceil(answer.retryAfter / 60)) }) : t('Too many tries. Try again later.');
-  return refusal;
+  // A refusal that is not the server's own (a firewall's or a challenge page, a 400 or 404): it says nothing about the key or the payment.
+  return LOOKED.has(errorOf(answer)) ? refusal : t('The server turned the request down. Try again later, or without a VPN or blocker.');
 }
 /** A membership arrived: kept, and said when the browser would not keep it. */
 function take(key: string, grant: Grant): void {
+  setPaid(null);
   state.unkept = !member.accept({ key, pass: grant.pass, until: grant.until, ...(grant.renews !== undefined ? { renews: grant.renews } : {}), ...(grant.now !== undefined ? { now: grant.now } : {}) });
 }
 
@@ -84,11 +107,14 @@ let paddle: Promise<PaddleApi | null> | null = null;
 function loadPaddle(): Promise<PaddleApi | null> {
   paddle ??= new Promise(resolve => {
     const script = el('script', { src: PADDLE_SCRIPT, async: true });
-    // Whatever goes wrong (blocked, slow, the script throwing), the buttons come back and the next press tries afresh.
-    const fail = (): void => { paddle = null; script.remove(); resolve(null); };
+    // Whatever goes wrong (blocked, slow, the script throwing), the buttons come back and the next press tries afresh; a script that arrives
+    // after this load was given up is left alone.
+    let over = false;
+    const fail = (): void => { over = true; paddle = null; script.remove(); resolve(null); };
     const wait = window.setTimeout(fail, PADDLE_WAIT_MS);
     script.onload = () => {
       window.clearTimeout(wait);
+      if (over) return;
       try {
         const api = window.Paddle;
         if (!api) { fail(); return; }
@@ -97,7 +123,7 @@ function loadPaddle(): Promise<PaddleApi | null> {
         resolve(api);
       } catch { fail(); }
     };
-    script.onerror = () => { window.clearTimeout(wait); fail(); };
+    script.onerror = () => { window.clearTimeout(wait); if (!over) fail(); };
     document.head.append(script);
   });
   return paddle;
@@ -118,6 +144,7 @@ async function buy(price: PlusPrice): Promise<void> {
 /** The checkout is paid: the server is asked for the key and the pass until the subscription exists on Paddle's side. */
 async function completed(transactionId: string): Promise<void> {
   if (state.busy === 'pass') return;
+  if (paidPending()?.id !== transactionId) setPaid(transactionId);
   state.busy = 'pass'; state.said = { where: 'buy', text: t('Paid. Setting up Plus in this browser…'), good: true }; render();
   const started = Date.now();
   for (;;) {
@@ -135,7 +162,7 @@ async function completed(transactionId: string): Promise<void> {
     const waiting = !answer || answer.status === 409 || answer.status >= 500 || (answer.status === 429 && errorOf(answer) !== 'too_many_keys');
     if (!waiting) {
       state.busy = '';
-      state.said = { where: 'buy', text: answer.status === 429 ? problem(answer, '') : t('The payment went through, but the server would not set up Plus for it. Write to {email} with your receipt; nothing is lost.', { email: PLUS_CONTACT }) };
+      state.said = { where: 'buy', text: answer.status === 429 ? problem(answer, '') : LOOKED.has(errorOf(answer)) ? t('The payment went through, but the server would not set up Plus for it. Write to {email} with your receipt; nothing is lost.', { email: PLUS_CONTACT }) : problem(answer, '') };
       render(); return;
     }
     if (Date.now() - started > PASS_WAIT_MS) break;
@@ -180,12 +207,19 @@ function buySection(): HTMLElement {
     box.append(el('h2', { textContent: t('Not on sale yet') }), el('p', { textContent: t('Plus is being set up. This page will carry its price and the checkout when it opens.') }));
     return box;
   }
-  const price = (label: string, detail: string, p: PlusPrice, main: boolean): HTMLButtonElement => {
-    const button = el('button', { type: 'button', class: main ? 'price-main' : 'price-plain', disabled: state.busy !== '', onclick: () => { void buy(p); } }, el('b', { textContent: label }), el('span', { textContent: detail }));
+  const pending = paidPending();
+  if (pending) {
+    box.append(el('h2', { textContent: t('Get Plus') }), ...said('buy'),
+      el('p', { textContent: t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.') }),
+      el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '', textContent: t('Try again'), onclick: () => { void completed(pending.id); } })));
+    return box;
+  }
+  const price = (label: string, detail: string, p: PlusPrice, main: boolean, id: string): HTMLButtonElement => {
+    const button = el('button', { type: 'button', id, class: main ? 'price-main' : 'price-plain', disabled: state.busy !== '', onclick: () => { void buy(p); } }, el('b', { textContent: label }), el('span', { textContent: detail }));
     return button;
   };
-  const prices = el('div', { class: 'prices' }, price(t('{price} a month', { price: money(PADDLE.monthly.usd) }), t('renews each month'), PADDLE.monthly, true));
-  if (PADDLE.yearly.id) prices.append(price(t('{price} a year', { price: money(PADDLE.yearly.usd) }), t('renews each year'), PADDLE.yearly, false));
+  const prices = el('div', { class: 'prices' }, price(t('{price} a month', { price: money(PADDLE.monthly.usd) }), t('renews each month'), PADDLE.monthly, true, 'plus-monthly'));
+  if (PADDLE.yearly.id) prices.append(price(t('{price} a year', { price: money(PADDLE.yearly.usd) }), t('renews each year'), PADDLE.yearly, false, 'plus-yearly'));
   box.append(el('h2', { textContent: member.state === 'ended' ? t('Renew Plus') : t('Get Plus') }), prices, ...said('buy'),
     el('p', { class: 'fine', textContent: t('Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.') }),
     el('p', { class: 'fine', textContent: t('Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.') }));
@@ -197,27 +231,29 @@ function memberSection(): HTMLElement {
   const box = el('section', { class: 'member' }), until = member.until, key = member.key ?? '', stands = member.state, renews = member.renews;
   const keyText = el('code', { class: 'key', textContent: state.shown ? key : '•'.repeat(24) });
   const copied = el('span', { class: 'copied', role: 'status' });
-  const isArmed = (): boolean => Date.now() - state.armed < 6_000;
-  const remove = el('button', { type: 'button', class: 'quiet', id: 'plus-remove', textContent: isArmed() ? t('Press again to remove it') : t('Remove Plus from this browser') });
+  const isArmed = (): boolean => { const since = Date.now() - state.armed; return since >= 400 && since < 6_000; };
+  const remove = el('button', { type: 'button', class: 'quiet', id: 'plus-remove', textContent: Date.now() - state.armed < 6_000 ? t('Press again to remove it') : t('Remove Plus from this browser') });
   remove.onclick = () => {
     // Twice, so that a slip does not take it away: the key would have to be typed again.
+    // Twice, a moment apart: the two clicks of a double click are one press.
     if (isArmed()) { state.armed = 0; state.said = null; state.unkept = false; member.forget(); return; }
+    if (Date.now() - state.armed < 400) return;
     state.armed = Date.now(); remove.textContent = t('Press again to remove it');
-    window.setTimeout(() => { if (!isArmed() && remove.isConnected) remove.textContent = t('Remove Plus from this browser'); }, 6_100);
+    window.setTimeout(() => { const now = document.getElementById('plus-remove'); if (!isArmed() && now) now.textContent = t('Remove Plus from this browser'); }, 6_100);
   };
   // Only the server's refusal is an end: a pass that ran out, or a server not reached, is being checked (the key may be perfectly good).
   const heading = stands === 'on' ? t('Plus is on in this browser') : stands === 'ended' ? t('Plus has ended in this browser') : t('Checking Plus with the server…');
   const standing = stands === 'on' ? (until ? (renews === true ? t('Paid until {date}. It renews by itself until you end it.', { date: day(until) }) : t('Plus runs until {date}.', { date: day(until) })) : renews === true ? t('It renews by itself until you end it.') : '')
-    : stands === 'ended' ? t('This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.')
-      : t('This browser holds a key, and the server has not answered yet. If this stays, check your connection.');
+    : stands === 'ended' ? (member.why === 'replaced' ? t('This key was replaced by newer ones (a subscription holds five). The email and the invoice number from your receipt bring Plus back here.') : t('This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.'))
+      : t('This browser holds a key that the server has not confirmed yet. If this stays, check your connection.');
   box.append(
     el('h2', { textContent: heading }),
     ...(standing ? [el('p', { textContent: standing })] : []),
-    ...(stands === 'ended' && plusOnSale() ? [el('p', { textContent: t('Subscribing again below brings Plus back, with a new key.') })] : []),
+    ...(stands === 'ended' && member.why !== 'replaced' && plusOnSale() ? [el('p', { textContent: t('Subscribing again below brings Plus back, with a new key.') })] : []),
     ...(state.unkept && stands === 'on' ? [el('p', { class: 'said-bad', role: 'status', textContent: t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.') })] : []),
     el('div', { class: 'keyrow' }, el('span', { class: 'label', textContent: t('Your key') }), keyText,
-      el('button', { type: 'button', textContent: state.shown ? t('Hide') : t('Reveal'), onclick: () => { state.shown = !state.shown; render(); } }),
-      el('button', { type: 'button', textContent: t('Copy'), onclick: () => { void navigator.clipboard?.writeText(key).then(() => { copied.textContent = t('Copied'); }, () => { copied.textContent = t('Could not copy: show the key and copy it by hand.'); }); } }), copied),
+      el('button', { type: 'button', id: 'plus-reveal', textContent: state.shown ? t('Hide') : t('Reveal'), onclick: () => { state.shown = !state.shown; render(); } }),
+      el('button', { type: 'button', id: 'plus-copy', textContent: t('Copy'), onclick: () => { if (!navigator.clipboard) { copied.textContent = t('Could not copy: show the key and copy it by hand.'); return; } void navigator.clipboard.writeText(key).then(() => { copied.textContent = t('Copied'); }, () => { copied.textContent = t('Could not copy: show the key and copy it by hand.'); }); } }), copied),
     // A key the server has ended opens nothing anywhere; a membership that does not renew (a gift, one already ended at Paddle) has no
     // subscription to end.
     ...(stands !== 'ended' ? [el('p', { class: 'fine', textContent: t('The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.') })] : []),
@@ -235,9 +271,9 @@ function deviceSection(): HTMLElement {
   const invoice = el('input', { type: 'text', id: 'plus-invoice', autocomplete: 'off', spellcheck: false, placeholder: t('Invoice number'), value: state.typed.invoice, oninput: () => { state.typed.invoice = invoice.value; } });
   email.setAttribute('aria-label', t('Email you paid with')); invoice.setAttribute('aria-label', t('Invoice number'));
   const busy = state.busy !== '';
-  const keyForm = el('form', { class: 'row' }, key, el('button', { type: 'submit', disabled: busy, textContent: state.busy === 'key' ? t('Checking…') : t('Use this key') }));
+  const keyForm = el('form', { class: 'row' }, key, el('button', { type: 'submit', id: 'plus-key-go', disabled: busy, textContent: state.busy === 'key' ? t('Checking…') : t('Use this key') }));
   keyForm.onsubmit = event => { event.preventDefault(); void useKey(key.value); };
-  const restoreForm = el('form', { class: 'row' }, email, invoice, el('button', { type: 'submit', disabled: busy, textContent: state.busy === 'restore' ? t('Looking…') : t('Find my Plus') }));
+  const restoreForm = el('form', { class: 'row' }, email, invoice, el('button', { type: 'submit', id: 'plus-find-go', disabled: busy, textContent: state.busy === 'restore' ? t('Looking…') : t('Find my Plus') }));
   restoreForm.onsubmit = event => { event.preventDefault(); void restore(email.value, invoice.value); };
   // A key opens Plus whether or not it is on sale (a key given as a gift); finding one by the receipt needs a sale to have happened.
   return el('section', { class: 'device' },
@@ -270,8 +306,9 @@ function render(): void {
         el('p', { textContent: t('Everything the page does today: the map, the order book, the flow, every pane and tool, the live liquidation levels and the last {n} days of their history.', { n: FREE_DAYS }) }),
         el('p', { textContent: t('There is no account. After the checkout this browser holds a key, and the key is all it takes on another device.') }))),
     ...(stands !== 'none' ? [memberSection()] : []),
-    // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it.
-    ...(stands === 'none' || stands === 'ended' ? [buySection()] : []),
+    // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
+    // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
+    ...(stands === 'none' || (stands === 'ended' && member.why !== 'replaced') ? [buySection()] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
     el('footer', {},
       el('p', {}, link('../', t('Open the map')), ' · ', link(`../${LEGAL.terms}`, t('Terms')), ' · ', link(`../${LEGAL.privacy}`, t('Privacy')), ' · ', link(`../${LEGAL.refunds}`, t('Refunds'))),
@@ -288,6 +325,7 @@ function render(): void {
 
 member.subscribe(render);
 render();
+{ const pending = paidPending(); if (pending && member.state !== 'on') void completed(pending.id); else if (pending) setPaid(null); }
 // How far back the history goes, for the first line of what Plus adds (the public index says).
 const urls = historyUrls(LIQ_LEVELS_URL);
 if (urls) void fetch(urls.index).then(answer => answer.ok ? answer.json() : null).then((raw: unknown) => {

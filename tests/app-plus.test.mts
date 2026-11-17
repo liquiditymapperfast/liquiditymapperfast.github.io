@@ -43,15 +43,16 @@ test('a pass says whose it is and when it runs out; anything else is no pass', (
 
 test('what the browser keeps and what the server answers are checked before they are believed', () => {
   const pass = passFor('sub_1', 9);
-  const rest = { ended: false, renews: null, skew: 0, next: 0 };
+  const rest = { ended: false, why: '', renews: null, skew: 0, next: 0 };
   assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass, until: 77 })), { key: KEY, pass, until: 77, ...rest });
-  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass, until: 77, ended: true, renews: false, skew: -5, next: 9 })), { key: KEY, pass, until: 77, ended: true, renews: false, skew: -5, next: 9 });
+  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass, until: 77, ended: true, why: 'replaced', renews: false, skew: -5, next: 9 })), { key: KEY, pass, until: 77, ended: true, why: 'replaced', renews: false, skew: -5, next: 9 });
   assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass: 'junk' })), { key: KEY, pass: '', until: 0, ...rest }, 'a pass that is none reads as none');
   for (const bad of [null, '', 'x', '{}', JSON.stringify({ v: 2, key: KEY }), JSON.stringify({ v: 1, key: 'short' })]) assert.equal(readHeld(bad), null);
   assert.deepEqual(readGrant({ pass, until: 5, key: KEY }), { pass, until: 5, key: KEY });
   assert.deepEqual(readGrant({ pass, until: 5 }), { pass, until: 5 }, 'a renewal carries no key');
   assert.deepEqual(readGrant({ pass, until: 5, paidUntil: 900 }), { pass, until: 900 }, 'the end of the paid period, where the server says it, not the expiry of the pass');
-  assert.deepEqual(readGrant({ pass, until: 5, renews: false, now: 1234, gift: true }), { pass, until: 5, renews: false, now: 1234 }, 'whether it renews, and the clock of the server');
+  assert.deepEqual(readGrant({ pass, until: 5, renews: false, now: 1_800_000_000_000, gift: true }), { pass, until: 5, renews: false, now: 1_800_000_000_000 }, 'whether it renews, and the clock of the server');
+  assert.deepEqual(readGrant({ pass, until: 5, now: 1_800_000_000 }), { pass, until: 5 }, 'a time in seconds is not believed');
   assert.deepEqual(readGrant({ pass, until: 5, renews: 'yes', now: 'soon' }), { pass, until: 5 });
   for (const bad of [null, {}, { pass: 'junk', until: 5 }, { pass, until: 'soon' }]) assert.equal(readGrant(bad), null);
 });
@@ -67,7 +68,7 @@ test('a membership is in force while its pass has time to run, and is kept where
   plus.accept({ key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS });
   assert.equal(told, 1);
   assert.equal(plus.on, true); assert.equal(plus.key, KEY); assert.equal(plus.until, now + 20 * DAY_MS);
-  assert.deepEqual(JSON.parse(data.get(PLUS_STORE)!), { v: 1, key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS, ended: false, renews: null, skew: 0, next: 0 });
+  assert.deepEqual(JSON.parse(data.get(PLUS_STORE)!), { v: 1, key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS, ended: false, why: '', renews: null, skew: 0, next: 0 });
   assert.equal(calls.length, 0, 'a fresh pass is not renewed');
   // Another tab reads the same storage.
   const other = new Plus(store, post, () => now, () => 'https://plus.test/v1');
@@ -263,4 +264,111 @@ test('a browser that will not keep the membership says so, and a pass that runs 
   now += 25 * HOUR;
   plus.tick(); assert.equal(told, 1, 'the pass ran out');
   plus.tick(); assert.equal(told, 1);
+});
+
+test('only the server’s own refusal ends a membership; any other 403 or 4xx keeps the pass and asks again in an hour', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  const calls: number[] = [];
+  let answer: { status: number; body: unknown } = { status: 403, body: null };
+  const post: Post = () => { calls.push(now); return Promise.resolve(answer); };
+  const plus = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  plus.accept({ key: KEY, pass: passFor('sub_1', now + 5 * HOUR), until: now + 20 * DAY_MS });
+  // A firewall's page (403 without the server's body): the membership stands, the pass is kept.
+  plus.pass(); await settle();
+  assert.equal(plus.state, 'on'); assert.equal(calls.length, 1);
+  now += 30 * 60_000; plus.pass(); await settle();
+  assert.equal(calls.length, 1, 'not asked again within the hour');
+  for (const status of [400, 401, 404]) {
+    now += HOUR + 1; answer = { status, body: { error: 'x' } };
+    plus.pass(); await settle();
+    assert.equal(plus.state, 'on', `a ${status} says nothing about the membership`);
+  }
+  assert.equal(calls.length, 4);
+  // The server's refusal, with why.
+  now += HOUR + 1; answer = { status: 403, body: { error: 'not_active', status: 'replaced' } };
+  plus.pass(); await settle();
+  assert.equal(plus.state, 'ended'); assert.equal(plus.why, 'replaced');
+});
+
+test('a frozen tab that wakes does not write its old pass over a newer one another tab stored', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  let n = 0;
+  const post: Post = () => { n++; return Promise.resolve({ status: 200, body: { pass: passFor('sub_1', now + 24 * HOUR + n), until: now + DAY_MS } }); };
+  const a = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  a.accept({ key: KEY, pass: passFor('sub_1', now + 5 * HOUR), until: now + DAY_MS });
+  const b = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  // B renews; A is frozen and never saw the storage event.
+  b.pass(); await settle();
+  const fresh = b.pass();
+  assert.ok(fresh && parsePass(fresh)!.exp > now + 23 * HOUR);
+  // A wakes past the minute and asks first thing: it reads what B stored before it writes, and keeps it.
+  now += 2 * 60_000;
+  a.pass(); await settle();
+  assert.equal(JSON.parse(store.getItem(PLUS_STORE)!).pass, fresh, 'storage still holds the newer pass');
+  assert.equal(a.pass(), fresh); assert.equal(b.pass(), fresh);
+  assert.equal(n, 1, 'and nothing was asked again: the newer pass is a day long');
+});
+
+test('a late refusal of an older renewal does not end a membership another tab has just renewed', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  let release: (v: { status: number; body: unknown }) => void = () => {};
+  const slow: Post = () => new Promise(resolve => { release = resolve; });
+  const quick: Post = () => Promise.resolve({ status: 200, body: { pass: passFor('sub_1', now + 24 * HOUR), until: now + DAY_MS } });
+  const a = new Plus(store, slow, () => now, () => 'https://plus.test/v1');
+  a.accept({ key: KEY, pass: passFor('sub_1', now + 5 * HOUR), until: now + DAY_MS });
+  a.pass();
+  // Another tab, past the shared wait, renews at once.
+  now += 61_000;
+  const b = new Plus(store, quick, () => now, () => 'https://plus.test/v1');
+  b.pass(); await settle();
+  // The older request now comes back refused.
+  release({ status: 403, body: { error: 'not_active', status: 'canceled' } }); await settle();
+  assert.equal(a.state, 'on', 'the later answer stands');
+});
+
+test('a request that never answers for one key does not stop a key accepted afterwards from renewing', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  const asked: string[] = [];
+  const post: Post = (_url, body) => {
+    const key = (body as { key: string }).key; asked.push(key);
+    return key === KEY ? new Promise(() => {}) : Promise.resolve({ status: 200, body: { pass: passFor('sub_2', now + 24 * HOUR), until: now + DAY_MS } });
+  };
+  const plus = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  plus.accept({ key: KEY, pass: passFor('sub_1', now + 5 * HOUR), until: now + DAY_MS });
+  plus.pass(); await settle();
+  const other = 'o'.repeat(43);
+  plus.accept({ key: other, pass: passFor('sub_2', now + 5 * HOUR), until: now + DAY_MS });
+  plus.pass(); await settle();
+  assert.deepEqual(asked, [KEY, other]);
+  assert.equal(parsePass(plus.pass())!.exp, now + 24 * HOUR);
+});
+
+test('a storage that cannot be read for a moment does not drop the membership', () => {
+  const now = 1_000_000_000_000;
+  const { store, data } = memory();
+  const flaky = { ...store, fail: false, getItem(key: string) { if (this.fail) throw new Error('busy'); return store.getItem(key); } };
+  const plus = new Plus(flaky, () => Promise.resolve({ status: 500, body: null }), () => now, () => 'https://plus.test/v1');
+  plus.accept({ key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + DAY_MS });
+  flaky.fail = true; plus.reload();
+  assert.equal(plus.state, 'on');
+  flaky.fail = false; data.delete(PLUS_STORE); plus.reload();
+  assert.equal(plus.state, 'none', 'a real removal is still taken over');
+});
+
+test('a short pass near a membership’s end is asked again within the hour, sooner when it is very short', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  const times: number[] = [];
+  const end = now + 20 * 60_000;
+  const post: Post = () => { times.push(now); return Promise.resolve({ status: 200, body: { pass: passFor('sub_1', end), until: end, renews: false } }); };
+  const plus = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  plus.accept({ key: KEY, pass: passFor('sub_1', end), until: end });
+  plus.pass(); await settle();
+  for (let i = 0; i < 30; i++) { now += 60_000; plus.pass(); await settle(); }
+  // Twenty minutes left: the next ask is about ten minutes later, not an hour (when the pass is long gone) and not each minute.
+  assert.ok(times.length >= 2 && times.length <= 4, `asked ${times.length} times in 30 minutes`);
 });

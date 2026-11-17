@@ -29,7 +29,7 @@ test('the fragment form round-trips any text, compressed or not, in URL-safe cha
 
 test('a hand-over writes only the page\'s own keys, never the cached coin list, the stale marks or the marker', () => {
   for (const key of ['hlm-app-v2', 'hlm-drawings-v1', 'hlm-scripts-v1', 'lmf.coin', 'lmf.coin.saved', 'lmf.venues.known', `hlm-${'x'.repeat(80)}`]) assert.ok(handedKey(key), key);
-  for (const key of ['lmf.coins', 'hlm-stale', 'hlm-stale-reload', DONE_KEY, 'other', 'HLM-app', 'hlm-', 'lmf.', `hlm-${'x'.repeat(81)}`, '__proto__']) assert.equal(handedKey(key), false, key);
+  for (const key of ['lmf.coins', 'lmf.plus', 'lmf.plus.paid', 'hlm-stale', 'hlm-stale-reload', DONE_KEY, 'other', 'HLM-app', 'hlm-', 'lmf.', `hlm-${'x'.repeat(81)}`, '__proto__']) assert.equal(handedKey(key), false, key);
   assert.equal(itemsOf(JSON.stringify({ v: 1, items: { 'hlm-app-v2': '{}', 'lmf.coins': '[]' } })), null, 'one key it may not write refuses all');
   assert.equal(itemsOf('{"v":1,"items":{"__proto__":"x"}}'), null);
   assert.equal(itemsOf(JSON.stringify({ v: 1, items: { 'hlm-app-v2': 3 } })), null, 'values are strings');

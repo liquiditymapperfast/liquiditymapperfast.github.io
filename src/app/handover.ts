@@ -26,7 +26,7 @@ export const MAX_BYTES = 6_000_000;
 /** The keys a hand-over may write: the page's own (`hlm-…`, `lmf.…`), never the cached coin list, the stale-build marks or the marker. */
 export function handedKey(key: string): boolean {
   if (!/^(?:hlm-[a-z0-9][a-z0-9:._-]{0,79}|lmf\.[a-z0-9][a-z0-9._-]{0,79})$/.test(key)) return false;
-  return key !== 'lmf.coins' && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== DONE_KEY;
+  return key !== 'lmf.coins' && key !== 'lmf.plus' && key !== 'lmf.plus.paid' && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== DONE_KEY;
 }
 
 const toBase64Url = (bytes: Uint8Array): string => {
