@@ -42,8 +42,10 @@ export const LIQ_REFUSED = 'plus_required';
 export interface LiqAnswer { status: number; body: unknown; retryAfter?: number }
 /** A read that gives the answer whatever its status (a failure to reach the server rejects): the address, and the pass to send with it. */
 export type LiqFetch = (url: string, pass?: string | null) => Promise<LiqAnswer>;
+/** A read of the levels service or its gate is given up after this long (a rollup is the largest file, a few MB). */
+const READ_TIMEOUT_MS = 30_000;
 export const webFetch: LiqFetch = async (url, pass) => {
-  const answer = await fetch(url, { cache: 'no-cache', ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) });
+  const answer = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(READ_TIMEOUT_MS), ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) });
   let body: unknown = null;
   try { body = await answer.json(); } catch { /* a body that is not JSON (a 503's plain text) says nothing more than its status */ }
   const wait = Number(answer.headers.get('retry-after'));
@@ -52,6 +54,16 @@ export const webFetch: LiqFetch = async (url, pass) => {
 /** Whether an answer is the gate's refusal of a Plus file: a 403 whose body is `{"error":"plus_required"}`. */
 export const isRefusal = (answer: LiqAnswer): boolean =>
   answer.status === 403 && !!answer.body && typeof answer.body === 'object' && (answer.body as { error?: unknown }).error === LIQ_REFUSED;
+
+/**
+ * Whether a failed read was answered for that file by the server: a 4xx other than the gate's refusal and a rate limit (a day the service
+ * has no file for). The pass then got through, and the file is not asked again for a while. A 5xx, a 429 or no answer says nothing of the
+ * file.
+ */
+const answeredMissing = (error: unknown): boolean => {
+  const status = error instanceof Error && /^\d{3}$/.test(error.message) ? Number(error.message) : 0;
+  return status >= 400 && status < 500 && status !== 429;
+};
 
 /** A read: the address, and the pass to send with it when the file is a Plus one. It throws `LIQ_REFUSED` for the gate's refusal, else the status (with `retryAfter` where the server said one). */
 export type LiqGet = (url: string, pass?: string | null) => Promise<unknown>;
@@ -224,7 +236,7 @@ export function familiesFor(view: LiqView): LiqFamily[] {
  */
 export interface HistSeries { rows: LiqRow[]; takes: LiqRow[] | null; edges: readonly number[] | null; holdMs: number; wide: boolean }
 
-interface DayEntry { rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; newest: number; created: number; lead: number; due: number }
+interface DayEntry { rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; newest: number; created: number; lead: number; due: number; missing?: boolean }
 interface RollupEntry { edges: readonly number[]; hours: number; rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number }
 
 /** The rows in force over [t0, t1] of rows ordered by fetch time: every row fetched in it, and the last one before it. */
@@ -357,7 +369,8 @@ export class LiqHistory {
     // Not on sale and without a pass, the days before the boundary that the gate has not refused are asked newest first, and the older ones
     // only once it was served: a gate that refuses them meets one request, not a view's worth of them.
     const lead = Math.min(lastDay, Math.floor((real - 1) / DAY_MS) * DAY_MS);
-    const waitLead = !onSale && pass === null && lead >= firstDay && lead >= refused && !((this.#days.get(`free|${lead}`)?.at ?? -Infinity) > -Infinity);
+    const leadEntry = this.#days.get(`free|${lead}`);
+    const waitLead = !onSale && pass === null && lead >= firstDay && lead >= refused && !((leadEntry?.at ?? -Infinity) > -Infinity || leadEntry?.missing === true);
     for (const family of families) {
       if (family !== 'free' && (pass === null || !plusAt)) continue;
       const dayUrl = family === 'free' ? urls.day : family === 'groups' ? plusAt!.groupsDay : plusAt!.triggersDay;
@@ -414,7 +427,7 @@ export class LiqHistory {
     this.get(dayUrl(dayText(day)), pass).then(raw => {
       if (probe) this.#probed(true, now);
       if (this.#index?.edges !== edges || steps !== this.#steps) return;
-      entry.rows = readHistRows(raw, edges.length, family); entry.at = now; this.version++;
+      entry.rows = readHistRows(raw, edges.length, family); entry.at = now; entry.missing = false; this.version++;
       // A day the gate had refused is open now (its rule or the page's clock changed): the days from it on are, and the ones before it are
       // asked again in turn.
       if (pass === null && family === 'free' && day < this.#refusedBefore) this.#refusedBefore = this.#onSale() && day <= this.access.freeFrom(now) ? -Infinity : day;
@@ -429,9 +442,11 @@ export class LiqHistory {
       changed();
     }, (error: unknown) => {
       entry.failed = now;
-      if (probe) this.#probed(false, now);
+      const missing = answeredMissing(error);
+      if (probe) this.#probed(missing, now);
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
       if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
+      if (missing) { entry.missing = true; entry.wait = Math.max(entry.wait, now + REFUSAL_HOLDS_MS); this.version++; changed(); return; }
       if (!(error instanceof Error) || error.message !== LIQ_REFUSED) return;
       // Refused by the gate. With a pass: that pass is no good any more (it is asked for again, and the day with it). Without one: the
       // server calls the day a Plus one where the page called it free (a clock that is off, or Plus not on sale here), so it and the days
@@ -466,9 +481,11 @@ export class LiqHistory {
       changed();
     }, (error: unknown) => {
       entry.failed = now;
-      if (probe) this.#probed(false, now);
+      const missing = answeredMissing(error);
+      if (probe) this.#probed(missing, now);
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
       if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
+      if (missing) entry.wait = Math.max(entry.wait, now + REFUSAL_HOLDS_MS);
       if (error instanceof Error && error.message === LIQ_REFUSED) { this.access.refused(pass); this.version++; changed(); }
     }).finally(() => { entry.busy = false; });
   }

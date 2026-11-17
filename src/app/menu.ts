@@ -83,8 +83,17 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     const active = document.activeElement;
     if (!root.contains(active) && !anchor.contains(active)) return;
     const at = rows.indexOf(active as HTMLButtonElement);
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); rows[(Math.max(0, at) + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus(); }
-    else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); rows[event.key === 'Home' ? 0 : rows.length - 1]?.focus(); }
+    // A row that cannot be chosen (the traders while stops are shown) is stepped over: focus cannot rest on a disabled button.
+    const usable = (i: number): boolean => !rows[i]!.disabled;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      for (let k = 1, i = Math.max(0, at); k <= rows.length; k++) { const next = (i + k * step + rows.length * k) % rows.length; if (usable(next)) { rows[next]!.focus(); break; } }
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      const order = rows.map((_, i) => i); if (event.key === 'End') order.reverse();
+      const first = order.find(usable); if (first !== undefined) rows[first]!.focus();
+    }
     else if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       // A letter goes to the next row whose name begins with it, round to the first again, as the desktop's lists and the browser's own did.
       // The menu has the keyboard while it is open: a letter it has no row for is used up too, so it starts no shortcut of the page (Sol: G

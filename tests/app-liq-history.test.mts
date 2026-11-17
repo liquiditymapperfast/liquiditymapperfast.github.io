@@ -296,7 +296,8 @@ test('Plus not on sale and no gate in front: the newest day before the boundary 
 test('Plus: a gate that refuses every pass is asked one day per new pass, not every paid day at once', async () => {
   const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 60 * DAY_MS;
   const access = { free, pass: 'v1.p0.sig' as string | null };
-  const { h, asked, refusals } = gated({ ...access, refuse: (_day, pass) => pass != null } as Parameters<typeof gated>[0], { first: today - 90 * DAY_MS, last: now - 600_000 });
+  // The same object, so each new pass below is the one the history reads.
+  const { h, asked, refusals } = gated(Object.assign(access, { refuse: (_day: string, pass: string | null | undefined) => pass != null }), { first: today - 90 * DAY_MS, last: now - 600_000 });
   const withPass = (): number => asked.filter(a => a.pass != null).length;
   for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}); await tick(); }
   assert.equal(withPass(), 1, 'one paid day, refused: no other is asked with that pass');
@@ -308,6 +309,45 @@ test('Plus: a gate that refuses every pass is asked one day per new pass, not ev
   }
   assert.equal(withPass(), 6, `${withPass()} requests with a pass for six passes`);
   assert.equal(asked.filter(a => a.pass != null).every(a => a.day === dayText(free - DAY_MS)), true, 'always the newest closed day');
+});
+
+test('Plus: a paid day the service has no file for (a 404) counts as answered: the other paid days follow, and it waits ten minutes', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 12 * DAY_MS;
+  const newest = dayText(free - DAY_MS);
+  const { h, asked } = gated({ free, pass: 'v1.member.sig', why: '404', refuse: day => day === newest }, { first: today - 20 * DAY_MS, last: now - 600_000 });
+  const paid = (): string[] => asked.filter(a => a.pass != null).map(a => a.day);
+  for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}); await tick(); }
+  assert.equal(paid()[0], newest, 'the newest paid day goes first');
+  assert.deepEqual(paid().slice(1).sort(), Array.from({ length: 5 }, (_, i) => dayText(from - DAY_MS + i * DAY_MS)), 'its 404 opens the rest');
+  for (let m = 1; m <= 9; m++) { h.ensure(from, now, now + m * 60_000, () => {}); await tick(); }
+  assert.equal(paid().filter(day => day === newest).length, 1, 'the missing day is not asked again within ten minutes');
+  h.ensure(from, now, now + 10 * 60_000 + 1_000, () => {}); await tick();
+  assert.equal(paid().filter(day => day === newest).length, 2, 'then it is');
+});
+
+test('Plus: a 5xx or no answer for the first paid day keeps the others waiting, a minute at a time', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 12 * DAY_MS;
+  const newest = dayText(free - DAY_MS);
+  const { h, asked } = gated({ free, pass: 'v1.member.sig', why: '502', refuse: day => day === newest }, { first: today - 20 * DAY_MS, last: now - 600_000 });
+  for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}); await tick(); }
+  h.ensure(from, now, now + 61_000, () => {}); await tick();
+  assert.deepEqual(asked.filter(a => a.pass != null).map(a => a.day), [newest, newest], 'only the newest, once a minute');
+});
+
+test('Plus not on sale: a newest early day the service has no file for (a 404) lets the older days be asked', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 12 * DAY_MS;
+  const asked: string[] = [];
+  const h = new LiqHistory(url => {
+    if (url.endsWith('liquidation-history.json')) return Promise.resolve({ edges: EDGES, first: today - 20 * DAY_MS, last: now - 600_000 });
+    const day = url.slice(url.lastIndexOf('/') + 1, -'.json'.length);
+    asked.push(day);
+    return day === dayText(free - DAY_MS) ? Promise.reject(new Error('404')) : Promise.resolve({ rows: [] });
+  }, { freeFrom: () => free, onSale: () => false, pass: () => null, refused: () => {} });
+  for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}); await tick(); }
+  const early = asked.filter(day => day < dayText(free));
+  assert.equal(early[0], dayText(free - DAY_MS));
+  assert.deepEqual(early.slice(1).sort(), Array.from({ length: 5 }, (_, i) => dayText(from - DAY_MS + i * DAY_MS)));
+  assert.equal(h.closedBefore(now), null, 'a 404 closes nothing');
 });
 
 test('Plus: a refusal not believed waits ten minutes like a believed one, not a minute', async () => {

@@ -41,8 +41,8 @@ it (`liq-menu.ts`).
   it, is said under the legend ("stops as of 14:00").
 - **Live files** (`LiqLevelsSource`): the groups and orders files are asked for with the pass when the free file brings a snapshot they do
   not have yet; an answer of an older snapshot (no order file read yet) is asked again two minutes later, three times a snapshot at most.
-  The gate's refusal drops the pass (`Plus.refused`); a 503 waits its `Retry-After` (30 s to 15 min); anything else is a failed read
-  (30 s).
+  The gate's refusal drops the pass (`Plus.refused`); a 503 waits its `Retry-After` (30 s to 15 min), or a minute when the page cannot
+  read one; anything else is a failed read (30 s). Every read of the levels service or the gate is given up after 30 s.
 
 `FREE_DAYS` (7) is one constant in `src/app/plus/config.ts`, and one variable of the server's. A day file is free when its UTC day starts
 at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
@@ -73,7 +73,9 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   server exposes it to the page.
 - **One paid file first.** After the pass changes (and at the start) the history asks for one paid file, the newest closed day, and asks
   for the rest only once that one is answered: a gate that refuses every pass, even fresh ones, gets one request per new pass instead of
-  every paid day of the view at once.
+  every paid day of the view at once. A 4xx other than the refusal and a 429 (a day the service has no file for) counts as answered:
+  the rest follow, and that day waits ten minutes. A 5xx, a 429 or no answer keeps the rest waiting, the one file asked again each
+  minute.
 - **The server's clock.** A grant carries the server's time; where the device's clock is more than five minutes off, a pass's end is
   judged by the server's (`skew`).
 - **States** (`Plus.state`): `none`, `on`, `checking` (a key is held, no pass in force yet: the pass ran out or the server was not
@@ -87,8 +89,10 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   way (no flicker); answered, the days from it on open, and the ones before it are asked in turn. A refusal not believed (a day far inside
   the free week: the server's fault) waits ten minutes too.
 - **Not on sale.** While `config.ts` holds no token, the page closes no day by itself and hatches nothing until the gate refuses a day: it
-  asks for every day, a member's (a key given as a gift) with the pass on every day before the real boundary, as on sale. A refusal of
-  any day before the boundary is believed, closes it and the days before it, and is held the usual ten minutes. The Plus page still
+  asks for every day, a member's (a key given as a gift) with the pass on every day before the real boundary, as on sale. Without a pass
+  the days before the boundary go newest first, and the older ones only once it was served (or answered with a 404): a gate that refuses
+  them meets one request. A refusal of any day before the boundary is believed, closes it and the days before it, and is held the usual
+  ten minutes. The Plus page still
   takes a key.
 - **The Range summary** counts nothing of the closed stretch and calls it part of Plus, not a time without a snapshot.
 - **The Plus page's window rule.** `public/_headers` gives `plus/` `Cross-Origin-Opener-Policy: same-origin-allow-popups` (every other
