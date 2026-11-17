@@ -3035,6 +3035,6 @@
  "Restore the panels": "창 복원",
  "Maximize this panel": "이 창 최대화",
  "Restore the panels (or double-click the chart)": "창 복원(차트를 더블 클릭해도 됨)",
- "Maximize the chart over the panels under it (or double-click the chart)": "차트를 아래 창 위로 최대화(차트를 더블 클릭해도 됨)",
+ "Maximize the chart to the whole screen (or double-click it)": "차트를 화면 전체로 최대화(더블 클릭해도 됨)",
  "Maximize the panel under the pointer, or restore the panels": "포인터 아래의 창 최대화 또는 창 복원"
 }

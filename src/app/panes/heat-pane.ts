@@ -626,7 +626,7 @@ export class HeatPane {
   onRollingReach: () => void = () => {};
   /** A click on the header of the profile along the top (set by the page): its settings, in the Volume profile panel. */
   onTopProfile: () => void = () => {};
-  /** A double click on the plot (set by the page): the map maximized over its column, or the column given back; false when that changes nothing (no pane under the map). */
+  /** A double click on the plot (set by the page): the map maximized to the whole screen, or the panels given back; false when that changes nothing (nothing to fold away). */
   onMaximize: () => boolean = () => false;
   /** What last pressed on the map (a mouse, a pen, a finger): a finger's double tap does not maximize. */
   #lastPointer = '';
@@ -4775,8 +4775,8 @@ export class HeatPane {
       if (this.#drag || this.#zoomDrag || this.#scaleDrag) { this.#drag = null; this.#zoomDrag = null; this.#scaleDrag = null; this.invalidate(); }
     });
     el.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; if (!this.draw?.dragging) this.draw?.leave(); if (!this.#scaleDrag) el.style.cursor = ''; this.#profileHover = null; this.#tradedHover = null; if (!this.#drag && !this.#zoomDrag) { this.store.set({ hover: null }); this.invalidateHover(); } });
-    // A double click on the plot maximizes the map over its column, or gives the column back, where panes under it are open (TradingView's,
-    // Karl 2026-11-17); on its axes and columns, or with nothing under it, it recentres the map. Neither while a tool is armed or when it
+    // A double click on the plot maximizes the map to the whole screen, or gives the panels back, where there is something to fold away (a pane
+    // under it or a column beside it; TradingView's, Karl 2026-11-17); on its axes and columns, or with nothing to fold, it recentres the map. Neither while a tool is armed or when it
     // selected a drawing (its first click was the drawing tools').
     el.addEventListener('dblclick', e => {
       // A finger's double tap is the map's own gesture (it recentres, `doubleTap`).

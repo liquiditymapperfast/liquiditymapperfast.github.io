@@ -3313,6 +3313,6 @@
  "Restore the panels": "Відновити панелі",
  "Maximize this panel": "Розгорнути цю панель",
  "Restore the panels (or double-click the chart)": "Відновити панелі (або двічі клацнути по графіку)",
- "Maximize the chart over the panels under it (or double-click the chart)": "Розгорнути графік поверх панелей під ним (або двічі клацнути по графіку)",
+ "Maximize the chart to the whole screen (or double-click it)": "Розгорнути графік на весь екран (або двічі клацнути по ньому)",
  "Maximize the panel under the pointer, or restore the panels": "Розгорнути панель під вказівником або відновити панелі"
 }

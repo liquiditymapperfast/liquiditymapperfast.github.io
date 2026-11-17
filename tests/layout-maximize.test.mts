@@ -9,7 +9,10 @@ const column = (open: string[]) => ['heat', 'bars', 'oi', 'delta'].map(id => ({ 
 test('a pane is maximized only where it covers another: the map alone, a pane switched off and a phone change nothing (Karl, 2026-11-17)', () => {
   assert.equal(canMaximize('heat', column(['heat', 'oi']), false), true, 'the map over the OI pane');
   assert.equal(canMaximize('oi', column(['heat', 'oi']), false), true, 'the OI pane over the map');
-  assert.equal(canMaximize('heat', column(['heat']), false), false, 'the map alone: a double click recentres it instead');
+  assert.equal(canMaximize('heat', column(['heat']), false), false, 'the map alone, no side column: a double click recentres it instead');
+  assert.equal(canMaximize('heat', column(['heat']), false, true), true, 'the map alone with the flow column or the book open: it takes the whole screen (2026-11-17)');
+  assert.equal(canMaximize('delta', column(['heat']), false, true), false, 'a pane whose switch is off, side columns or not');
+  assert.equal(canMaximize('heat', column(['heat']), true, true), false, 'never on a phone');
   assert.equal(canMaximize('delta', column(['heat', 'oi']), false), false, 'a pane whose switch is off');
   assert.equal(canMaximize('oi', column(['heat', 'oi']), true), false, 'a phone shows one pane at a time');
   assert.equal(canMaximize('book', column(['heat', 'oi']), false), false, 'not a pane of the column');

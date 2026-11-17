@@ -86,7 +86,7 @@ export const SECTIONS: readonly Section[] = [
         ['[[+]], [[−]]', 'Zoom the time axis in or out'],
         ['[[1]] to [[7]]', 'The timeframe: 1m, 5m, 15m, 30m, 1h, 4h, 1d'],
         ['Double-click the price scale, [[R]], [[Home]], **Recenter**', 'Back to the live edge, price range fitted'],
-        ['Double-click the chart, [[Z]]', 'Maximize the chart over the panels under it, and again to bring them back (with no panel under the map, a double-click recentres it)'],
+        ['Double-click the chart, [[Z]]', 'Maximize the chart to the whole screen: the panels under it and the side columns fold away. Again brings them back'],
         ['**Live**, [[End]]', 'Back to the live candle at the zoom you have'],
       ] },
       { t: 'p', text: 'On a **phone or tablet** the same moves are made with fingers:' },
@@ -434,12 +434,12 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'maximize', title: 'Maximize a chart',
     blocks: [
-      { t: 'p', text: '**Maximize** gives one chart the whole of the map\'s column: the map itself, or one of the panels under it (Depth, Open interest, Delta, Long/Short, Funding, LT, Bar stats or Scripts). The other panels keep their places and sizes out of sight, and come back as they were.' },
+      { t: 'p', text: '**Maximize** gives one chart the whole screen between the top bar and the status bar: the map itself, or one of the panels under it (Depth, Open interest, Delta, Long/Short, Funding, LT, Bar stats or Scripts). The other panels, the flow column and the order book fold away, keep their places and sizes, and come back as they were.' },
       { t: 'list', items: [
         '**Double-click** the chart or the panel to maximize it, and again to bring the other panels back.',
-        '**The four-corner button** does the same: on the title bar of each panel under the map, beside its ⋯ menu, and last among the map\'s corner buttons while a panel under the map is open. It is lit while its chart is maximized, and the ⋯ menu offers the same.',
+        '**The four-corner button** does the same: on the title bar of each panel under the map, beside its ⋯ menu, and last among the map\'s corner buttons. It is lit while its chart is maximized, and the ⋯ menu offers the same.',
         '[[Z]] maximizes the chart under the pointer, or brings the other panels back.',
-        'A maximized panel keeps the map\'s time labels along its bottom. The flow column and the order book stay where they are.',
+        'A maximized panel keeps the map\'s time labels along its bottom.',
         'Opening or closing a panel brings the others back, so that you see what you asked for. Maximize is not saved: a reload shows every panel.',
       ] },
       { t: 'note', kind: 'tip', text: 'On the map, a double-click on the price scale still recentres it, as [[R]] does. On a phone the panels are tabs and already fill the screen.' },

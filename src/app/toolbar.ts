@@ -377,14 +377,14 @@ export class Toolbar {
   #recenter = el('button', { textContent: t('Recenter'), tip: t('Jump back to the live edge and fit the price range to the recent candles (keyboard: R, Home, or double-click the price scale).') });
   onRecenter: () => void = () => {};
   /**
-   * The map's maximize button, the corner's last (TradingView's): the map over its whole column, the panes under it out of sight, or the
-   * column given back. There only while a pane under the map is open, or the map is maximized (`setMapMax`); the page does the rest.
+   * The map's maximize button, the corner's last (TradingView's): the map over the whole screen, the panes under it and the columns beside
+   * it out of sight, or all given back. There while there is something to fold away, or the map is maximized (`setMapMax`); the page does the rest.
    */
   #mapMax = el('button', { type: 'button', class: 'map-max', hidden: true, onclick: () => this.onMapMax() });
   onMapMax: () => void = () => {};
   /** Show the map's maximize button as the map is: `shown` while it would change something, `on` (lit) while the map is maximized. */
   setMapMax(shown: boolean, on: boolean): void {
-    const words = on ? t('Restore the panels (or double-click the chart)') : t('Maximize the chart over the panels under it (or double-click the chart)');
+    const words = on ? t('Restore the panels (or double-click the chart)') : t('Maximize the chart to the whole screen (or double-click it)');
     this.#mapMax.hidden = !shown && !on;
     this.#mapMax.dataset.state = on ? 'on' : 'off';
     this.#mapMax.setAttribute('aria-pressed', String(on));

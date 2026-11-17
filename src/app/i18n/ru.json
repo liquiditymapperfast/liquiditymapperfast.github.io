@@ -3308,6 +3308,6 @@
  "Restore the panels": "Восстановить панели",
  "Maximize this panel": "Развернуть эту панель",
  "Restore the panels (or double-click the chart)": "Восстановить панели (или дважды щёлкнуть по графику)",
- "Maximize the chart over the panels under it (or double-click the chart)": "Развернуть график поверх панелей под ним (или дважды щёлкнуть по графику)",
+ "Maximize the chart to the whole screen (or double-click it)": "Развернуть график на весь экран (или дважды щёлкнуть по нему)",
  "Maximize the panel under the pointer, or restore the panels": "Развернуть панель под указателем или восстановить панели"
 }

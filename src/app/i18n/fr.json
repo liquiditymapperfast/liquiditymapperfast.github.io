@@ -3261,6 +3261,6 @@
  "Restore the panels": "Rétablir les volets",
  "Maximize this panel": "Agrandir ce volet",
  "Restore the panels (or double-click the chart)": "Rétablir les volets (ou double-cliquer sur le graphique)",
- "Maximize the chart over the panels under it (or double-click the chart)": "Agrandir le graphique par-dessus les volets du dessous (ou double-cliquer sur le graphique)",
+ "Maximize the chart to the whole screen (or double-click it)": "Agrandir le graphique à tout l’écran (ou double-cliquer dessus)",
  "Maximize the panel under the pointer, or restore the panels": "Agrandir le volet sous le pointeur, ou rétablir les volets"
 }

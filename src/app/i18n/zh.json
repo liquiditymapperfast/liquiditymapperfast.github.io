@@ -3035,6 +3035,6 @@
  "Restore the panels": "恢复各窗格",
  "Maximize this panel": "最大化此窗格",
  "Restore the panels (or double-click the chart)": "恢复各窗格（或双击图表）",
- "Maximize the chart over the panels under it (or double-click the chart)": "把图表最大化，盖住下方的窗格（或双击图表）",
+ "Maximize the chart to the whole screen (or double-click it)": "把图表最大化到整个屏幕（或双击它）",
  "Maximize the panel under the pointer, or restore the panels": "最大化指针下方的窗格，或恢复各窗格"
 }

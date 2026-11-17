@@ -3035,6 +3035,6 @@
  "Restore the panels": "ペインを元に戻す",
  "Maximize this panel": "このペインを最大化",
  "Restore the panels (or double-click the chart)": "ペインを元に戻す（チャートをダブルクリックでも可）",
- "Maximize the chart over the panels under it (or double-click the chart)": "チャートを下のペインの上に最大化（チャートをダブルクリックでも可）",
+ "Maximize the chart to the whole screen (or double-click it)": "チャートを画面全体に最大化（ダブルクリックでも可）",
  "Maximize the panel under the pointer, or restore the panels": "ポインターの下のペインを最大化、またはペインを元に戻す"
 }

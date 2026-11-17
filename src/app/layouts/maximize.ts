@@ -6,10 +6,14 @@
 /** A pane of the map's column as the rules see it: its id and whether its switch has it open. */
 export interface ColumnPane { id: string; open: boolean }
 
-/** Whether maximizing `id` changes anything: a desktop, the pane open, and another pane open in the column for it to cover. */
-export function canMaximize(id: string, panes: readonly ColumnPane[], phone: boolean): boolean {
+/**
+ * Whether maximizing `id` changes anything: a desktop, the pane open, and something for it to take the room of: another pane open in the
+ * column, or a column beside the map open (`sides`: a maximized chart takes the whole screen, the flow column and the book folded away too;
+ * Karl, 2026-11-17).
+ */
+export function canMaximize(id: string, panes: readonly ColumnPane[], phone: boolean, sides = false): boolean {
   const pane = panes.find(p => p.id === id);
-  return !phone && !!pane?.open && panes.some(p => p !== pane && p.open);
+  return !phone && !!pane?.open && (sides || panes.some(p => p !== pane && p.open));
 }
 
 /** What says which panes the column shows (in their order): one maximized stays so only while this is what it was maximized with. */

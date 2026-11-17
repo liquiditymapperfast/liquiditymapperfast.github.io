@@ -78,7 +78,8 @@ export class Layout {
   /** The arrangement the page starts with when nothing is saved (the Default layout). */
   readonly #defaults: PaneArrangement;
   /**
-   * The pane of the map's column shown alone over the whole column (TradingView's maximize, Karl 2026-11-17): the map, or a pane under it.
+   * The pane of the map's column shown alone over the whole screen (TradingView's maximize, Karl 2026-11-17): the map, or a pane under it,
+   * over the map's column, with the flow column and the book folded away (`#visible`, `#applyColumns`), the top bar and the status bar kept.
    * Nothing of it is saved and nothing else changes: the other panes keep their sizes, laid out under it unseen, and come back as they were.
    * The map goes on drawing (a maximized pane under it follows its view and shows its time axis); the covered panes under it draw nothing
    * meanwhile (the page's `onMaximized`, TimePane.cover). Desktop only.
@@ -202,6 +203,8 @@ export class Layout {
 
   /** The side panes laid out: open by the page's switches and not in a folded column. */
   #visible(): Record<SidePaneId, boolean> {
+    // A maximized chart takes the whole screen: the flow column and the book are folded away with it (Karl, 2026-11-17), not closed.
+    if (this.#max !== null) return { cvd: false, book: false };
     const folded = (id: SidePaneId): boolean => this.#folded.has(sideOf(this.#plan, id));
     return { cvd: this.#shown.cvd && !folded('cvd'), book: this.#shown.book && !folded('book') };
   }
@@ -245,6 +248,8 @@ export class Layout {
    * is not shown is simply not laid out.
    */
   sides(shown: Readonly<Record<SidePaneId, boolean>>): void {
+    // A side pane opened or closed (its switch, [ or ]) gives the screen back, so that what was asked for is seen.
+    if (this.#max !== null && (shown.cvd !== this.#shown.cvd || shown.book !== this.#shown.book)) this.#setMax(null);
     this.#shown = { cvd: shown.cvd, book: shown.book };
     this.#renderSides();
   }
@@ -322,7 +327,9 @@ export class Layout {
 
   /** Lay the columns out: which are there, how wide, and the grid of the page that holds them. */
   #applyColumns(): void {
-    const vis = this.#visible(), states = { left: columnState(this.#plan, 'left', vis), right: columnState(this.#plan, 'right', vis) };
+    // While a chart is maximized there is no column beside the map at all, not even its edge tabs: the chart has the whole width.
+    const vis = this.#visible(), maxed = this.#max !== null;
+    const states = { left: maxed ? 'none' as const : columnState(this.#plan, 'left', vis), right: maxed ? 'none' as const : columnState(this.#plan, 'right', vis) };
     for (const side of SIDES) {
       this.#regions[side].hidden = states[side] === 'none'; this.#regions[side].dataset.state = states[side]; this.#regions[side].dataset.side = side;
       this.#vsplit[side].hidden = states[side] !== 'open';
@@ -610,8 +617,8 @@ export class Layout {
   }
   #column(): { id: string; open: boolean }[] { return this.#panes.map(p => ({ id: p.id, open: !p.root.hidden })); }
   #visibleKey(): string { return columnKey(this.#column()); }
-  /** Whether maximizing `id` would change anything (`canMaximize`): a desktop, the pane open, and another pane open in the column for it to cover. */
-  canMax(id: string): boolean { return canMaximize(id, this.#column(), isPhone()); }
+  /** Whether maximizing `id` would change anything (`canMaximize`): a desktop, the pane open, and another pane open in the column or a side pane open. */
+  canMax(id: string): boolean { return canMaximize(id, this.#column(), isPhone(), this.#shown.cvd || this.#shown.book); }
   /** Maximize `id`, or give the column back when it is the one maximized: true when either happened. */
   toggleMax(id: string): boolean {
     if (this.#max === id) { this.#setMax(null); return true; }
@@ -620,7 +627,7 @@ export class Layout {
     return true;
   }
   /**
-   * Show `id` alone over the map's column (null: every pane again). The pane stands over the column and the others are hidden from sight, not
+   * Show `id` alone over the map's column, the columns beside it folded away (null: every pane again). The pane stands over the column and the others are hidden from sight, not
    * from the layout: their sizes and the map's frames go on. A pane under the map leaves the map's time axis in sight under it (it has none of its
    * own): the map, at the height it had, is put at the column's bottom, so its axis is the column's last strip.
    */
@@ -634,7 +641,9 @@ export class Layout {
     this.chart.classList.toggle('max-lower', lower);
     this.#max = id; this.#maxKey = id === null ? '' : this.#visibleKey();
     for (const [pid, button] of this.#maxButtons) this.#paintMax(button, pid === id);
-    // Given back: the panes fitted to the column again (a fit made meanwhile may have left them too tall for it).
+    // The columns beside the map folded away, or back (`#visible`, `#applyColumns`); given back, the panes fitted to the column again (a fit made
+    // meanwhile may have left them too tall for it).
+    this.#renderSides();
     if (id === null) this.#fit();
     this.onMaximized(id);
   }
