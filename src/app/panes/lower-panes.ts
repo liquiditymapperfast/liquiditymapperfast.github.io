@@ -92,6 +92,8 @@ export abstract class TimePane {
     if (this.#pinned) this.#unpin();
     this.undrawn();
   }
+  /** Let go of a finger's pin and of the pointer: the pane's card goes at its next drawing (a pane left drawn under a maximized map, review r3). */
+  dismiss(): void { if (this.#pinned) this.#unpin(); this.pointer = null; this.invalidate(); }
   get #left(): number { return leftGutter(this.store.state); }
   protected palette = PALETTES.light!;
   #frame = 0;
