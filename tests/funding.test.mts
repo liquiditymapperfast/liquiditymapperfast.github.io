@@ -664,7 +664,8 @@ test('the every-venue popup: the median and who pays, then each venue with its m
 
 test('a reading now past its settlement stands until the record lands, within the grace; then the record is carried', () => {
   const rows = eight([1e-4]), stale = { rate: 3e-4, per8h: 3e-4, hours: 8, next: T + 16 * H, premium: null };
-  assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 3_000), { start: T + 8 * H, end: T + 16 * H, per8h: 3e-4 }, 'a few seconds past: still the reading now');
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H), { start: T + 8 * H, end: T + 16 * H, per8h: 3e-4 }, 'up to its settlement: the reading now over its interval');
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 3_000), { start: T + 8 * H, end: T + 16 * H + 3_000, per8h: 3e-4 }, 'seconds past it: carried to the clock, no gap after the settlement');
   assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 60_000), { start: T + 8 * H, end: T + 16 * H + 60_000, per8h: 3e-4 }, 'the next reading failed: its rate to the clock');
   assert.deepEqual(fundingIn(rows, stale, T + 16 * H + 30_000, T + 16 * H + 60_000), { per8h: 3e-4, forming: true });
   const landed = [...rows, { t: T + 16 * H, rate: 2e-4, per8h: 2e-4, hours: 8 }];

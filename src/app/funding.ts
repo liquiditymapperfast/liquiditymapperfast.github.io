@@ -44,19 +44,18 @@ export const medianNeeds = (listed: number): number => Math.max(2, Math.ceil(lis
 
 /** How long after a settlement was due its record may still be on its way: the newest is carried that long past its next one. */
 const CARRY_GRACE_MS = 30 * 60_000;
-/** How long past its settlement a reading now still stands as such (a clock a few seconds fast, a venue a few seconds late to move on). */
-const NOW_STALE_MS = 5_000;
 /**
- * A venue's rate under way at `clock` (pure): its rate now over the interval it pays for; or, with no rate now (a replay, or a reading now that
- * failed), the newest record carried from its settlement to the clock, while the next settlement is not overdue (by more than `CARRY_GRACE_MS`):
- * a replay at 14:30 kept the exchanges' 08:00 rates, where without it the every-venue median stopped at 08:00 (review 2026-11-17). Null where
- * there is neither.
+ * A venue's rate under way at `clock` (pure): its rate now over the interval it pays for, while that settlement is ahead; once it has passed
+ * with no record of it yet (the next reading failed, or the venue still gives the old time), that rate to the clock; with no rate now (a
+ * replay) or once the record is in, the newest record carried from its settlement to the clock. Either carry lasts while the settlement is
+ * not overdue by more than `CARRY_GRACE_MS`: a replay at 14:30 kept the exchanges' 08:00 rates, where without it the every-venue median stopped
+ * at 08:00 (review 2026-11-17). Null where there is none of these.
  */
 export function fundingTail(rows: readonly FundingRow[], now: FundingNow | null, clock: number): { start: number; end: number; per8h: number } | null {
   const newest = rows[rows.length - 1];
   if (now) {
     const end = now.next ?? clock;
-    if (now.next === null || clock <= now.next + NOW_STALE_MS) return { start: end - now.hours * HOUR, end, per8h: now.per8h };
+    if (now.next === null || clock <= now.next) return { start: end - now.hours * HOUR, end, per8h: now.per8h };
     // A reading now whose settlement has passed (the next reading failed, or the venue still gives the old time): until that settlement's
     // record lands, its rate over the interval it paid for, to the clock, within the grace (at a boundary every venue read before it said
     // nothing for the seconds after, and the median was gone, review round 2). Once the record is in, the newest record is carried as below.

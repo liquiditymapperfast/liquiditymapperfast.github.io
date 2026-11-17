@@ -373,9 +373,9 @@ export class FundingPane extends TimePane {
     ctx.setLineDash([]); ctx.lineWidth = 1;
     ends.sort((a, b) => a.y - b.y);
     const near = (a: { x: number }, b: { x: number }): boolean => Math.abs(a.x - b.x) < 14;
-    for (let i = 1; i < ends.length; i++) if (ends[i]!.y - ends[i - 1]!.y < 14 && near(ends[i]!, ends[i - 1]!)) ends[i]!.y = ends[i - 1]!.y + 14;
+    for (let i = 1; i < ends.length; i++) for (let j = 0; j < i; j++) { const e = ends[i]!, o = ends[j]!; if (near(e, o) && Math.abs(e.y - o.y) < 14) e.y = o.y + 14; }
     // Pushed past the bottom, a cluster is pulled back up from it, so the marks do not pile on one row there.
-    for (let i = ends.length - 1; i >= 0; i--) { const e = ends[i]!, below = ends[i + 1]; e.y = Math.min(e.y, bottom - 6); if (below && near(e, below) && below.y - e.y < 14) e.y = below.y - 14; }
+    for (let i = ends.length - 1; i >= 0; i--) { const e = ends[i]!; e.y = Math.min(e.y, bottom - 6); for (let j = ends.length - 1; j > i; j--) { const o = ends[j]!; if (near(e, o) && Math.abs(o.y - e.y) < 14) e.y = o.y - 14; } }
     for (const e of ends) drawVenueMark(ctx, e.id, e.x, Math.max(top + 6, Math.min(bottom - 6, e.y)), 12);
     // The median at the time read, from the venues there (not from the line drawn for the view, which ends where the view does).
     const medianNow = medianIn(venues, at, now, need);
@@ -394,15 +394,20 @@ export class FundingPane extends TimePane {
       : `<span class="muted">${t('Too few venues for a median here.')}</span>`);
   }
 
-  /** The median line for the view, worked out again only when a venue's readings, the view, the count needed or the minute change (a pointer move draws the pane again with it). */
-  #medianMemo: { key: unknown[]; steps: MedianStep[] } | null = null;
+  /**
+   * The median line, worked out for a window half a view wider than the view on each side and used again while the view stays inside it (and
+   * is not zoomed in below a quarter of it), the venues' readings, the count needed and the minute unchanged. A pointer move draws the pane again,
+   * and a map following the live edge (or a replay playing) moves the view a little every frame: keyed on the view itself it was worked out again
+   * every frame, up to 14 ms on a view of months (review round 3). The clip leaves out what lies outside the view. Keyed on the source's arrays
+   * and the lengths shown of them: a replay's cut is a new slice every frame (round 2).
+   */
+  #medianMemo: { key: unknown[]; w0: number; w1: number; steps: MedianStep[] } | null = null;
   #medianOf(venues: readonly VenueFunding[], sources: readonly (readonly FundingRow[])[], t0: number, t1: number, now: number, need: number): MedianStep[] {
-    // Keyed on the source's arrays and the lengths shown of them: a replay's cut is a new slice every frame (review round 2).
-    const key: unknown[] = [t0, t1, need, Math.floor(now / 60_000), ...venues.flatMap((x, i) => [sources[i], x.rows.length, x.forming])];
-    const memo = this.#medianMemo;
-    if (memo && memo.key.length === key.length && memo.key.every((k, i) => k === key[i])) return memo.steps;
-    const steps = fundingMedian(venues, t0, t1, now, need);
-    this.#medianMemo = { key, steps };
+    const key: unknown[] = [need, Math.floor(now / 60_000), ...venues.flatMap((x, i) => [sources[i], x.rows.length, x.forming])];
+    const memo = this.#medianMemo, span = t1 - t0;
+    if (memo && t0 >= memo.w0 && t1 <= memo.w1 && span * 8 >= memo.w1 - memo.w0 && memo.key.length === key.length && memo.key.every((k, i) => k === key[i])) return memo.steps;
+    const w0 = t0 - span / 2, w1 = t1 + span / 2, steps = fundingMedian(venues, w0, w1, now, need);
+    this.#medianMemo = { key, w0, w1, steps };
     return steps;
   }
 
