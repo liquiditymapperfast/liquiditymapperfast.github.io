@@ -81,6 +81,8 @@ Good moments to save one: before trying many changes, before clearing your brows
 
 Restoring **replaces** what this browser holds for the page: layouts, scripts, drawings and themes that are only here and not in the file are gone afterwards. If you might want them, save a backup of this browser first.
 
+Other tabs of the page that are open in this browser reload too, so they show the restored setup and cannot write their old one back. A script you were writing in another tab and had not saved yet is lost, so save it first.
+
 If you pick a layouts, themes or scripts file by mistake, the panel tells you where that file is read instead.
 
 ---
