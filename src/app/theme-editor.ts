@@ -2,7 +2,7 @@ import { el } from './dom.ts';
 import { t, tn } from './i18n.ts';
 import { button, heading, note, selectRow } from './ui.ts';
 import { toast } from './toast.ts';
-import { DEFAULT_THEME, PHONE_DARK_THEME, themeChange, type Store } from './store.ts';
+import { DEFAULT_THEME, PHONE_DARK_THEME, slotsFor, themeChange, type Store } from './store.ts';
 import { paletteOf, type Frame } from './theme.ts';
 import { MAX_FILE_CHARS, MAX_THEMES, cleanThemeName, customPalette, exportThemes, importThemes, loadCustomThemes, mergeThemes, newTheme, putTheme, registerCustomThemes, storeCustomThemes, themeWarnings, type ColorKey, type CustomTheme } from './custom-themes.ts';
 
@@ -52,11 +52,7 @@ const fileName = (name: string): string => `liquiditymapperfast-theme-${name.toL
  * background moved from light to dark (or back) moves the theme to the other kind's slot of the light-or-dark key, and the slot it left goes
  * back to its default, or the key would bring the theme itself.
  */
-const repaint = (store: Store): void => {
-  const s = store.state, id = s.theme, kind = paletteOf(id).dark ? 'dark' : 'light', other = kind === 'dark' ? 'light' : 'dark';
-  const themeSlots = { ...s.themeSlots, [kind]: id, ...(s.themeSlots[other] === id ? { [other]: other === 'dark' ? PHONE_DARK_THEME : DEFAULT_THEME } : {}) };
-  store.set({ theme: id, themeSlots });
-};
+const repaint = (store: Store): void => { store.set({ theme: store.state.theme, themeSlots: slotsFor(store.state.themeSlots, store.state.theme) }); };
 
 export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => void, ui: ThemeEditorState): void {
   const say = (text: string, error = false): void => { ui.message = { text, error }; redraw(); };

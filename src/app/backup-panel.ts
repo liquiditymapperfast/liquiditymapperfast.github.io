@@ -44,6 +44,7 @@ export function buildBackup(body: HTMLElement, redraw: () => void, ui: BackupSta
     body.append(heading(t('Restore this backup?')),
       note(p.savedAt ? t('Saved on {time}. It holds {what}.', { time: clock(p.savedAt, true), what: describeItems(p.items) }) : t('It holds {what}.', { what: describeItems(p.items) })),
       note(t('Restoring replaces what this browser keeps for the page (settings, layouts, scripts, drawings and themes), then reloads the page. Save a backup first if you may want what is here now.')),
+      note(t('Other tabs of the page reload too: a script being written there and not yet saved is lost.')),
       el('div', { class: 'layout-tools' },
         button(t('Restore'), () => {
           // Left for the reload, so nothing of this page can write over it. A tab that will not hold it restores nothing: written while this page

@@ -3028,5 +3028,6 @@
  "Edit this theme…": "编辑此主题…",
  "Make your own…": "创建你自己的…",
  "Your own theme": "你自己的主题",
- "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "立体外形保留了所复制主题的灰色按钮，没有任何文字能同时在它们和你的颜色上看清：请另选一种形状。"
+ "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "立体外形保留了所复制主题的灰色按钮，没有任何文字能同时在它们和你的颜色上看清：请另选一种形状。",
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "此页面的其他标签页也会重新加载：在那里正在编写、尚未保存的脚本会丢失。"
 }

@@ -397,6 +397,18 @@ export const prefersDark = (): boolean => typeof matchMedia === 'function' && ma
 export function themeChange(state: Pick<AppState, 'themeSlots'>, id: string, picked: boolean): Pick<AppState, 'theme' | 'themePicked' | 'themeSlots'> {
   return { theme: id, themePicked: picked, themeSlots: { ...state.themeSlots, [paletteOf(id).dark ? 'dark' : 'light']: id } };
 }
+/**
+ * The light-or-dark key's slots once theme `id` is shown and its kind may have changed (a theme of one's own whose background was moved from light
+ * to dark): it takes its kind's slot, the other slot goes back to its default if it held it, and a slot holding a theme that is no longer there
+ * (deleted, in this tab or another) goes back to its default too.
+ */
+export function slotsFor(slots: AppState['themeSlots'], id: string): AppState['themeSlots'] {
+  const alive = (x: string): boolean => resolveThemeId(x) === x;
+  const out = { light: alive(slots.light) ? slots.light : DEFAULT_THEME, dark: alive(slots.dark) ? slots.dark : PHONE_DARK_THEME };
+  if (!alive(id)) return out;
+  const kind = paletteOf(id).dark ? 'dark' : 'light', other = kind === 'dark' ? 'light' : 'dark';
+  return { ...out, [kind]: id, ...(out[other] === id ? { [other]: other === 'dark' ? PHONE_DARK_THEME : DEFAULT_THEME } : {}) } as AppState['themeSlots'];
+}
 /** The theme the light-or-dark key brings: the one of the other kind last shown. */
 export function flippedTheme(state: Pick<AppState, 'theme' | 'themeSlots'>): string { return paletteOf(state.theme).dark ? state.themeSlots.light : state.themeSlots.dark; }
 /** A remembered theme of the given kind, or null for a name that is not one (or not of that kind). */

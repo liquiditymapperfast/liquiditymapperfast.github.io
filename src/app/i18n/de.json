@@ -3197,5 +3197,6 @@
  "Edit this theme…": "Dieses Design bearbeiten…",
  "Make your own…": "Eigenes erstellen…",
  "Your own theme": "Dein eigenes Design",
- "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Die erhabene Form behält die grauen Schaltflächen des Designs, von dem dieses kopiert wurde, und kein Text ist zugleich darauf und auf deinen Farben lesbar: Wähle eine andere Form."
+ "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Die erhabene Form behält die grauen Schaltflächen des Designs, von dem dieses kopiert wurde, und kein Text ist zugleich darauf und auf deinen Farben lesbar: Wähle eine andere Form.",
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Andere Tabs der Seite werden ebenfalls neu geladen: Ein dort begonnenes, noch nicht gespeichertes Skript geht verloren."
 }

@@ -3191,5 +3191,6 @@
  "Edit this theme…": "Bu temayı düzenle…",
  "Make your own…": "Kendi temanızı oluşturun…",
  "Your own theme": "Kendi temanız",
- "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Kabartmalı biçim, bu temanın kopyalandığı temanın gri düğmelerini korur ve hiçbir yazı hem onların hem de renklerinizin üzerinde okunmaz: başka bir biçim seçin."
+ "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Kabartmalı biçim, bu temanın kopyalandığı temanın gri düğmelerini korur ve hiçbir yazı hem onların hem de renklerinizin üzerinde okunmaz: başka bir biçim seçin.",
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Sayfanın diğer sekmeleri de yeniden yüklenir: orada yazılmakta olan ve henüz kaydedilmemiş bir betik kaybolur."
 }

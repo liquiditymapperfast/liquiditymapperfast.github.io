@@ -3306,5 +3306,6 @@
  "Edit this theme…": "Змінити цю тему…",
  "Make your own…": "Створити власну…",
  "Your own theme": "Ваша власна тема",
- "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Об’ємна форма зберігає сірі кнопки теми, з якої скопійовано цю, і жоден текст не читається водночас на них і на ваших кольорах: виберіть іншу форму."
+ "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "Об’ємна форма зберігає сірі кнопки теми, з якої скопійовано цю, і жоден текст не читається водночас на них і на ваших кольорах: виберіть іншу форму.",
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Інші вкладки сторінки теж перезавантажаться: скрипт, який там пишеться й ще не збережений, буде втрачено."
 }

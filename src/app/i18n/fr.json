@@ -3254,5 +3254,6 @@
  "Edit this theme…": "Modifier ce thème…",
  "Make your own…": "Créer le vôtre…",
  "Your own theme": "Votre propre thème",
- "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "La forme en relief garde les boutons gris du thème dont celui-ci est la copie, et aucun texte ne se lit à la fois sur eux et sur vos couleurs : choisissez une autre forme."
+ "The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.": "La forme en relief garde les boutons gris du thème dont celui-ci est la copie, et aucun texte ne se lit à la fois sur eux et sur vos couleurs : choisissez une autre forme.",
+ "Other tabs of the page reload too: a script being written there and not yet saved is lost.": "Les autres onglets de la page se rechargent aussi : un script en cours d’écriture qui n’a pas encore été enregistré y est perdu."
 }

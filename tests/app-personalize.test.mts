@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PALETTES, THEME_ORDER, chromeFor, contrastRatio, isThemeId, paletteOf, resolveThemeId, setCustomPalettes, themeKey, themeVars } from '../src/app/theme.ts';
 import { COLOR_KEYS, MAX_FILE_CHARS, MAX_THEMES, MUTED_RATIO, TEXT_RATIO, customPalette, exportThemes, importThemes, isDarkBackground, loadCustomThemes, mergeThemes, newTheme, putTheme, readCustomTheme, readCustomThemes, readable, registerCustomThemes, storeCustomThemes, themeWarnings, type CustomTheme } from '../src/app/custom-themes.ts';
 import { BACKUP_FORMAT, MAX_BACKUP_CHARS, PENDING_KEY, backupFile, collectItems, queueRestore, readBackup, replaceAll, restoreResult, takeRestore } from '../src/app/backup.ts';
-import { flippedTheme, initialState, themeChange } from '../src/app/store.ts';
+import { flippedTheme, initialState, slotsFor, themeChange } from '../src/app/store.ts';
 import { laneColors } from '../src/app/cvd/colors.ts';
 import { newGalleryState } from '../src/app/layouts/gallery.ts';
 import { keepsSettings } from '../src/app/layouts/layouts.ts';
@@ -300,4 +300,16 @@ test('saved settings of any shape open the page: only saved keys, from an object
   } finally {
     if (real === undefined) delete (globalThis as { window?: unknown }).window; else (globalThis as { window?: unknown }).window = real;
   }
+});
+
+test('the light-or-dark key follows a theme of one\'s own across kinds, and forgets one that is gone', () => {
+  const made = newTheme('light', [], copyWord, 1)!;
+  registerCustomThemes([made]);
+  assert.deepEqual(slotsFor({ light: made.id, dark: 'terminal' }, made.id), { light: made.id, dark: 'terminal' });
+  // Its background made dark: it moves to the dark slot, and the light slot goes back to Light.
+  registerCustomThemes([{ ...made, colors: { ...made.colors, bg: '#101418', panel: '#141a20' } }]);
+  assert.deepEqual(slotsFor({ light: made.id, dark: 'terminal' }, made.id), { light: 'light', dark: made.id });
+  // Deleted: both slots that held it go back to the defaults.
+  registerCustomThemes([]);
+  assert.deepEqual(slotsFor({ light: 'latte', dark: made.id }, 'latte'), { light: 'latte', dark: 'terminal' });
 });

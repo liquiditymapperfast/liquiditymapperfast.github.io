@@ -12,7 +12,7 @@ import { withProfileAnchor } from './traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/anchor.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
-import { DEFAULT_THEME, PHONE_DARK_THEME, Store, autoTheme, initialState, themeChange } from './store.ts';
+import { Store, autoTheme, initialState, slotsFor, themeChange } from './store.ts';
 import { applyTheme, paletteOf, resolveThemeId } from './theme.ts';
 import { CUSTOM_THEMES_KEY, loadCustomThemes, registerCustomThemes } from './custom-themes.ts';
 import { RESTORED_KEY, restoreResult } from './backup.ts';
@@ -513,9 +513,9 @@ async function main(): Promise<void> {
     // leaves the page, and the light-or-dark key, for the built-in themes (as Delete does in the tab it was deleted in).
     if (e.key === CUSTOM_THEMES_KEY && store.saving) {
       registerCustomThemes(loadCustomThemes());
-      const s = store.state, alive = (id: string): boolean => resolveThemeId(id) === id;
-      const themeSlots = { light: alive(s.themeSlots.light) ? s.themeSlots.light : DEFAULT_THEME, dark: alive(s.themeSlots.dark) ? s.themeSlots.dark : PHONE_DARK_THEME };
-      if (s.theme.startsWith('custom-') || themeSlots.light !== s.themeSlots.light || themeSlots.dark !== s.themeSlots.dark) store.set({ theme: alive(s.theme) ? s.theme : s.themeSlots.dark === s.theme ? themeSlots.dark : themeSlots.light, themeSlots });
+      const s = store.state, alive = resolveThemeId(s.theme) === s.theme, slots = slotsFor(s.themeSlots, s.theme);
+      const theme = alive ? s.theme : s.themeSlots.dark === s.theme ? slots.dark : slots.light;
+      if (s.theme.startsWith('custom-') || slots.light !== s.themeSlots.light || slots.dark !== s.themeSlots.dark) store.set({ theme, themeSlots: slotsFor(slots, theme) });
     }
   });
 
