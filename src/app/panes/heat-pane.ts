@@ -832,10 +832,10 @@ export class HeatPane {
 
   /**
    * Where an order at `price` that traded at `t` sits on the screen (window CSS px), for the glass's light (glass/ui-glass.ts); null when
-   * the map does not show that time or price, is hidden, or replays.
+   * the map does not show that time or price, is hidden or covered by a maximized pane (layout.ts #setMax), or replays.
    */
   liveSpot(price: number, t: number): { x: number; y: number } | null {
-    if (this.#suspended || replaying() || this.root.hidden) return null;
+    if (this.#suspended || replaying() || this.root.hidden || this.root.closest('.max-lower') !== null) return null;
     const pw = this.plotW, ph = this.plotH, x = this.view.xOf(t, pw), y = this.view.yOf(price, ph);
     if (!(x >= 0 && x <= pw + 2 && y >= 0 && y <= ph)) return null;
     const r = this.overlay.getBoundingClientRect();

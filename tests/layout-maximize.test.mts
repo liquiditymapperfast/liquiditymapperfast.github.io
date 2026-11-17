@@ -53,3 +53,14 @@ test('the map\'s double click maximizes on its plot only, and recentres on its a
   const main = fs.readFileSync('src/app/main.ts', 'utf8');
   assert.match(main, /heat\.onMaximize = \(\) => arrange\.toggleMax\('heat'\);/);
 });
+
+test('panes covered by a maximized one draw nothing and put their cards away, but Delta keeps drawing the map\'s divergences under a maximized map', () => {
+  // Read from the source: the cards are top-layer popovers, drawn they floated over the maximized chart (review r1); Delta's drawing works
+  // out the CVD divergences the map draws (review r2).
+  const lower = fs.readFileSync('src/app/panes/lower-panes.ts', 'utf8');
+  assert.match(lower, /invalidate\(\): void \{ if \(!this\.#frame && !this\.#hidden && !this\.#covered\)/);
+  assert.match(lower, /if \(this\.#pinned\) this\.#unpin\(\);\r?\n\s+this\.undrawn\(\);/);
+  const main = fs.readFileSync('src/app/main.ts', 'utf8');
+  assert.match(main, /const covers = \{ bars, depth, oi, delta, ls, funding, lt, script \} as const;/);
+  assert.match(main, /id !== null && id !== pid && !\(pid === 'delta' && id === 'heat'\)/);
+});

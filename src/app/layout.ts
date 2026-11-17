@@ -79,8 +79,9 @@ export class Layout {
   readonly #defaults: PaneArrangement;
   /**
    * The pane of the map's column shown alone over the whole column (TradingView's maximize, Karl 2026-11-17): the map, or a pane under it.
-   * Nothing of it is saved and nothing else changes: the other panes keep their sizes, laid out under it unseen, so that the map goes on
-   * drawing (the panes under it follow its frames and its time axis) and comes back as it was. Desktop only.
+   * Nothing of it is saved and nothing else changes: the other panes keep their sizes, laid out under it unseen, and come back as they were.
+   * The map goes on drawing (a maximized pane under it follows its view and shows its time axis); the covered panes under it draw nothing
+   * meanwhile (the page's `onMaximized`, TimePane.cover). Desktop only.
    */
   #max: string | null = null;
   /** The panes the column showed when one was maximized: another pane opened or closed since gives the column back (`rebuild`). */

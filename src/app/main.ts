@@ -253,9 +253,12 @@ async function main(): Promise<void> {
   heat.onMaximize = () => arrange.toggleMax('heat');
   toolbar.onMapMax = () => { arrange.toggleMax('heat'); };
   const syncMapMax = (): void => toolbar.setMapMax(arrange.canMax('heat'), arrange.maximized === 'heat');
-  // The panes under the map that a maximized pane covers draw nothing meanwhile and put their cards away (TimePane.cover).
+  // The panes under the map that a maximized pane covers draw nothing meanwhile and put their cards away (TimePane.cover). Delta stays
+  // drawn under a maximized map: its drawing works out the CVD divergences the map draws (review r2), and its cards cannot show (the pointer
+  // is on the map).
   const covers = { bars, depth, oi, delta, ls, funding, lt, script } as const;
-  arrange.onMaximized = id => { for (const [pid, pane] of Object.entries(covers)) pane.cover(id !== null && id !== pid); syncMapMax(); heat.invalidate(); lower(); };
+  const covered = (id: string | null, pid: string): boolean => id !== null && id !== pid && !(pid === 'delta' && id === 'heat');
+  arrange.onMaximized = id => { for (const [pid, pane] of Object.entries(covers)) pane.cover(covered(id, pid)); syncMapMax(); heat.invalidate(); lower(); };
   toolbar.layouts = layouts;
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
