@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NEW_SCRIPT, panelClosed, sameOptions, statusOf, unsaved, type ScriptsHost, type ScriptsPanelState } from '../src/app/script/panel-state.ts';
+import { NEW_SCRIPT, choiceIndex, choiceLabel, panelClosed, sameOptions, statusOf, unsaved, type ScriptsHost, type ScriptsPanelState } from '../src/app/script/panel-state.ts';
 import { ROW_DEFAULT, SCRIPT_API, type ScriptRecord } from '../src/app/script/records.ts';
 import type { ScriptResult } from '../src/app/script/protocol.ts';
 
@@ -61,4 +61,15 @@ test('a row says where its script draws and how its last run went', () => {
   assert.equal(statusOf(host([vwap], { [vwap.id]: failed }), vwap).error, true);
   assert.equal(statusOf(host([vwap], { [vwap.id]: failed }), { ...vwap, on: false }).error, false, 'a script switched off shows no error');
   assert.match(statusOf(host([vwap]), { ...vwap, place: 'pane' }).text, /row/i);
+});
+
+test('a list option\'s value is found among its choices by kind as well as value, and one that is none of them is said so', () => {
+  const widths = [1, 1.5, 2, 3, 4];
+  assert.equal(choiceIndex(widths, 3), 3);
+  assert.equal(choiceIndex(widths, '3'), -1, 'a text typed in an earlier page is not the number: shown as a row of its own');
+  assert.equal(choiceIndex(['Close', 'Wick'], 'Wick'), 1);
+  assert.equal(choiceIndex(['Close', 'Wick'], ''), -1, 'the empty text of a list with no default');
+  assert.equal(choiceIndex(['Close', 'Wick'], undefined), -1);
+  assert.equal(choiceIndex([[1, 2], [3]], [3]), 1, 'an array choice by its contents');
+  assert.deepEqual([choiceLabel(1, true), choiceLabel('1', true), choiceLabel('Close', false), choiceLabel(2, false)], ['1', '"1"', 'Close', '2']);
 });

@@ -10,6 +10,19 @@ import type { ScriptBarsState } from './bars.ts';
  * script being written has changes not saved, and where the panel opens again after it closed.
  */
 
+/**
+ * Where a list option's value stands among its choices: the index of the choice it is (a number and a text are different choices: 1 is not
+ * "1"), or -1 for a value that is none of them (one typed in an earlier page, or the empty text of a list declared without a default), which
+ * the panel shows as a row of its own so the script keeps reading what it reads.
+ */
+export function choiceIndex(choices: readonly OptionValue[], current: OptionValue | undefined): number {
+  const same = (a: OptionValue, b: OptionValue | undefined): boolean => a === b || (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null && JSON.stringify(a) === JSON.stringify(b));
+  return choices.findIndex(c => same(c, current));
+}
+
+/** A choice's text in a list option's box: a text as it is, anything else as written in the script (so 1 reads 1 and "1" reads "1"). */
+export const choiceLabel = (c: OptionValue, texts: boolean): string => typeof c === 'string' ? (texts ? JSON.stringify(c) : c) : JSON.stringify(c);
+
 /** What the panel needs of the pane that runs the scripts. */
 export interface ScriptsHost {
   readonly records: readonly ScriptRecord[];

@@ -12,7 +12,7 @@ import type { ScriptResult, Warning } from './protocol.ts';
 import { MAX_SCRIPTS, MAX_SOURCE_CHARS, ROW_DEFAULT, SCRIPT_API, cleanName, exportFile, importText, inferredOption, mergeScripts, newId, type OptionValue, type ScriptRecord } from './records.ts';
 import { errorText, warningText } from './messages.ts';
 import { exampleHeight, examples } from './examples.ts';
-import { NEW_SCRIPT, sameOptions, statusOf, type ScriptsHost, type ScriptsPanelState } from './panel-state.ts';
+import { NEW_SCRIPT, choiceIndex, choiceLabel, sameOptions, statusOf, type ScriptsHost, type ScriptsPanelState } from './panel-state.ts';
 import { aiBundle, type BundleInput } from './lang/reference.ts';
 import { newestOf } from './protocol.ts';
 import { aboutExample, aboutScript, exampleId, type ScriptAbout } from './about.ts';
@@ -233,12 +233,19 @@ function buildEditor(host: ScriptsHost, body: HTMLElement, redraw: () => void, u
       const choices = o.type === 'list' && o.choices?.length ? o.choices : null;
       if (choices) {
         const select = el('select', {});
-        choices.forEach((c, k) => select.append(new Option(typeof c === 'string' ? c : JSON.stringify(c), String(k))));
-        const at = choices.findIndex(c => c === current || JSON.stringify(c) === JSON.stringify(current));
-        // A value set before that is none of the choices (typed in an earlier page) shows as its own row, kept until another is picked.
-        if (at < 0 && current !== undefined && current !== null && current !== '') { select.append(new Option(typeof current === 'string' ? current : JSON.stringify(current), 'kept')); select.value = 'kept'; }
+        // Texts are quoted only where a text and a number would read alike ("1" beside 1).
+        const mixed = choices.some(c => typeof c === 'string') && choices.some(c => typeof c !== 'string');
+        choices.forEach((c, k) => select.append(new Option(choiceLabel(c, mixed), String(k))));
+        const at = choiceIndex(choices, current);
+        // A value that is none of the choices (typed in an earlier page, or the empty text of a list with no default) shows as a row of its
+        // own, which picked again gives that value back: the box says what the script reads.
+        const kept = at < 0 && current !== undefined && current !== null ? current : undefined;
+        if (kept !== undefined) { select.append(new Option(choiceLabel(kept, mixed), 'kept')); select.value = 'kept'; }
         else select.value = String(Math.max(0, at));
-        select.onchange = () => { const k = Number(select.value); if (Number.isInteger(k) && choices[k] !== undefined) draft.options[o.name] = choices[k]!; };
+        select.onchange = () => {
+          if (select.value === 'kept') { if (kept !== undefined) draft.options[o.name] = kept; return; }
+          const k = Number(select.value); if (Number.isInteger(k) && choices[k] !== undefined) draft.options[o.name] = choices[k]!;
+        };
         input = select;
       } else if (o.type === 'boolean') { const box = el('input', { type: 'checkbox', checked: current === true || current === 1 }); box.onchange = () => { draft.options[o.name] = box.checked; }; input = box; }
       else if (o.type === 'number' || o.type === 'range') {
