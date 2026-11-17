@@ -4,47 +4,76 @@
  * the Depth pane's Liquidations view. A snapshot comes about every 29 minutes and describes positions some 35 minutes older than it; a row
  * is placed at the moment the service fetched it (`fetchedAt`), when the page could first have shown it.
  *
- * What it says is where the money would be liquidated, as the positions stood: not what was liquidated, and not where price will go.
+ * Plus (2026-11-17) adds three families of files beside the free one, read the same way: the same days by trader group (profitable and
+ * proven traders), the stop and take-profit orders' days (only snapshots an order file was read with have a row, about one of two), and
+ * for views wider than `MAX_DAYS` days one file a family holding a row per four hours over the whole history (the rollups). A view of
+ * liquidations and stops ("both") joins a family's row to the orders' by the snapshot (`createdAt`), so it has a row only where the
+ * snapshot has both.
+ *
+ * What it says is where the money would be liquidated (or the orders would trigger), as the positions stood: not what happened, and not
+ * where price will go.
  */
 import { DUE_EVERY_MS, MAX_LEAD_MS, ON_TIME_MS, clockSetBack, nextAskAt, placeSnapshot } from './liq-schedule.ts';
-import { liqLevelsUrl } from './liq-url.ts';
+import { liqLevelsUrl, plusUrls } from './liq-url.ts';
+import { FREE_VIEW, groupApplies, viewKey, type LiqView } from './liq-view.ts';
 
 /**
  * Who may read which days (Plus, `plus/config.ts`): the days from `freeFrom` on are everyone's; an older one is asked for only with a
- * pass, which the server checks. `refused` is told when the server would not take the pass it was sent.
+ * pass, which the server checks. `refused` is told when the server would not take the pass it was sent. The Plus families (groups, orders,
+ * rollups) are paid whatever the day: asked for only with a pass.
  */
 export interface LiqAccess { freeFrom(now: number): number; pass(now: number): string | null; refused(pass: string): void }
 /** Everything open: a service with no paid part (and the tests of what does not depend on one). */
 const OPEN: LiqAccess = { freeFrom: () => -Infinity, pass: () => null, refused: () => {} };
 /**
- * What the gate says when it refuses a Plus day (HTTP 403 with `{"error":"plus_required"}`), as the reader throws it. Any other 403 (a
+ * What the gate says when it refuses a Plus file (HTTP 403 with `{"error":"plus_required"}`), as the reader throws it. Any other 403 (a
  * firewall's, a rate limit's) is a failed read like the rest: it says nothing about Plus.
  */
 export const LIQ_REFUSED = 'plus_required';
-/** A read: the address, and the pass to send with it when the day is a Plus one. */
+
+/** An answer of the levels service or its gate: its status, its body (JSON, or null), and how long it asked to wait (`Retry-After`, s). */
+export interface LiqAnswer { status: number; body: unknown; retryAfter?: number }
+/** A read that gives the answer whatever its status (a failure to reach the server rejects): the address, and the pass to send with it. */
+export type LiqFetch = (url: string, pass?: string | null) => Promise<LiqAnswer>;
+export const webFetch: LiqFetch = async (url, pass) => {
+  const answer = await fetch(url, { cache: 'no-cache', ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) });
+  let body: unknown = null;
+  try { body = await answer.json(); } catch { /* a body that is not JSON (a 503's plain text) says nothing more than its status */ }
+  const wait = Number(answer.headers.get('retry-after'));
+  return { status: answer.status, body, ...(Number.isFinite(wait) && wait > 0 ? { retryAfter: wait } : {}) };
+};
+/** Whether an answer is the gate's refusal of a Plus file: a 403 whose body is `{"error":"plus_required"}`. */
+export const isRefusal = (answer: LiqAnswer): boolean =>
+  answer.status === 403 && !!answer.body && typeof answer.body === 'object' && (answer.body as { error?: unknown }).error === LIQ_REFUSED;
+
+/** A read: the address, and the pass to send with it when the file is a Plus one. It throws `LIQ_REFUSED` for the gate's refusal, else the status (with `retryAfter` where the server said one). */
 export type LiqGet = (url: string, pass?: string | null) => Promise<unknown>;
 const webRead: LiqGet = async (url, pass) => {
-  const answer = await fetch(url, { cache: 'no-cache', ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) });
-  if (answer.ok) return answer.json() as Promise<unknown>;
-  let why = String(answer.status);
-  if (answer.status === 403) { try { if (((await answer.json()) as { error?: unknown } | null)?.error === LIQ_REFUSED) why = LIQ_REFUSED; } catch { /* not the gate's answer */ } }
-  throw new Error(why);
+  const answer = await webFetch(url, pass);
+  if (answer.status >= 200 && answer.status < 300) return answer.body;
+  throw Object.assign(new Error(isRefusal(answer) ? LIQ_REFUSED : String(answer.status)), answer.retryAfter !== undefined ? { retryAfter: answer.retryAfter } : {});
 };
 
 const DAY_MS_ = 86_400_000;
 export const DAY_MS = DAY_MS_;
 /** How often the index (what the service holds) is asked again; a day still being written is asked when its next snapshot can be there (`liq-schedule.ts`). */
 const INDEX_EVERY_MS = 5 * 60_000;
+/** How often a rollup (a row per four hours, one file for the whole history) is asked again. */
+const ROLLUP_EVERY_MS = 30 * 60_000;
 /** A failed read waits this long before it is asked again. */
 const RETRY_MS = 60_000;
+/** A 503's `Retry-After` is kept within these bounds. */
+const WAIT_MIN_MS = 30_000, WAIT_MAX_MS = 15 * 60_000;
 /**
  * A free day the gate refused (the page's clock and the server's disagree about which days are free) closes the days up to it for this
  * long, then is asked again; and only a day within this much of the page's own boundary is believed: a clock is off by hours or a day,
  * so a refusal of a day far inside the free week is the server's fault, not a boundary.
  */
 const REFUSAL_HOLDS_MS = 10 * 60_000, REFUSAL_REACH_MS = 2 * DAY_MS_;
-/** At most this many days are held: a view wider than that shows the newest of them. */
+/** At most this many days are held: a view wider than that shows the newest of them, or (with Plus) reads the rollups. */
 export const MAX_DAYS = 120;
+/** How long a snapshot stands for when no later one comes: about three of their periods (one comes every ~29 minutes); after that, a gap. */
+export const LIQ_HOLD_MS = 90 * 60_000;
 
 export interface LiqIndex { edges: readonly number[]; first: number | null; last: number | null }
 /**
@@ -52,6 +81,13 @@ export interface LiqIndex { edges: readonly number[]; first: number | null; last
  * `longCoin` / `shortCoin` the same in coins, each bucket's dollars over the price at its middle (below the mark for longs, above for shorts).
  */
 export interface LiqRow { asOf: number; createdAt: number; fetchedAt: number; mark: number; long: Float32Array; short: Float32Array; longCoin: Float32Array; shortCoin: Float32Array }
+
+/** One part of a history row as the service writes it: its dollars in each bucket (not added up), below the mark (long) and above (short). */
+export interface HistPart { long: Float64Array; short: Float64Array }
+/** A history row of any family: its snapshot's times and mark, and its parts (free: all positions; groups: profitable, proven; orders: stops, takes). */
+export interface HistRow { asOf: number; createdAt: number; fetchedAt: number; mark: number; parts: (HistPart | null)[] }
+/** The families of files: all positions (free days, paid before the free week), by group, and the stop and take-profit orders. */
+export type LiqFamily = 'free' | 'groups' | 'orders';
 
 /** The history's two addresses beside the levels file's (`…/liquidations.json`), or null when there is no levels service. */
 export function historyUrls(levelsUrl: string): { index: string; day: (day: string) => string } | null {
@@ -63,38 +99,94 @@ export function historyUrls(levelsUrl: string): { index: string; day: (day: stri
 /** A UTC day as the service names it (YYYY-MM-DD). */
 export const dayText = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
+/** Edges ascending positive percentages (1 to 1,000 of them), or null. */
+function readEdges(edges: unknown): number[] | null {
+  if (!Array.isArray(edges) || edges.length < 1 || edges.length > 1_000) return null;
+  for (let i = 0; i < edges.length; i++) if (typeof edges[i] !== 'number' || !(edges[i] > (i ? edges[i - 1] : 0))) return null;
+  return edges as number[];
+}
+
 /** The index, checked: edges ascending positive percentages (1 to 1,000 of them), first and last times or null. */
 export function readIndex(raw: unknown): LiqIndex | null {
   if (!raw || typeof raw !== 'object') return null;
-  const o = raw as Record<string, unknown>, edges = o.edges;
-  if (!Array.isArray(edges) || edges.length < 1 || edges.length > 1_000) return null;
-  for (let i = 0; i < edges.length; i++) if (typeof edges[i] !== 'number' || !(edges[i] > (i ? edges[i - 1] : 0))) return null;
+  const o = raw as Record<string, unknown>, edges = readEdges(o.edges);
+  if (!edges) return null;
   const time = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) ? v : null;
-  return { edges: edges as number[], first: time(o.first), last: time(o.last) };
+  return { edges, first: time(o.first), last: time(o.last) };
 }
 
-/** A day's rows, checked against the index's buckets: a row of the wrong shape is left out, never drawn. Ordered by fetch time. */
-export function readDay(raw: unknown, edges: readonly number[]): LiqRow[] {
+/** A part `[beyondLong, beyondShort, long[n], short[n]]` (or the free row's last two fields), checked: dollars finite and not negative. */
+function readPart(long: unknown, short: unknown, n: number): HistPart | null {
+  if (!Array.isArray(long) || !Array.isArray(short) || long.length !== n || short.length !== n) return null;
+  if (!long.every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) || !short.every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0)) return null;
+  return { long: Float64Array.from(long as number[]), short: Float64Array.from(short as number[]) };
+}
+
+/**
+ * A day's (or a rollup's) rows of a family, checked against the buckets (`n` of them): a row of the wrong shape is left out, never drawn.
+ * Free: `[asOf, createdAt, fetchedAt, mark, beyondLong, beyondShort, long[n], short[n]]`. Groups and orders: `[asOf, createdAt, fetchedAt,
+ * mark, a, b]`, a part `[beyondLong, beyondShort, long[n], short[n]]` or null (a group without a list in force). Ordered by fetch time.
+ */
+export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] {
   const rows = raw && typeof raw === 'object' ? (raw as { rows?: unknown }).rows : null;
   if (!Array.isArray(rows)) return [];
-  const n = edges.length, out: LiqRow[] = [];
+  const out: HistRow[] = [];
   for (const row of rows) {
-    if (!Array.isArray(row) || row.length < 8) continue;
-    const [asOf, createdAt, fetchedAt, mark, , , long, short] = row as unknown[];
+    if (!Array.isArray(row) || row.length < (family === 'free' ? 8 : 6)) continue;
+    const [asOf, createdAt, fetchedAt, mark] = row as unknown[];
     if (![asOf, createdAt, fetchedAt, mark].every(v => typeof v === 'number' && Number.isFinite(v)) || !((mark as number) > 0)) continue;
-    if (!Array.isArray(long) || !Array.isArray(short) || long.length !== n || short.length !== n) continue;
-    if (!long.every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) || !short.every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0)) continue;
-    const cumL = new Float32Array(n), cumS = new Float32Array(n), coinL = new Float32Array(n), coinS = new Float32Array(n);
-    let l = 0, s = 0, lc = 0, sc = 0;
-    for (let i = 0; i < n; i++) {
-      const mid = ((i ? edges[i - 1]! : 0) + edges[i]!) / 200;
-      l += long[i] as number; s += short[i] as number;
-      lc += (long[i] as number) / ((mark as number) * Math.max(0.01, 1 - mid)); sc += (short[i] as number) / ((mark as number) * (1 + mid));
-      cumL[i] = l; cumS[i] = s; coinL[i] = lc; coinS[i] = sc;
+    let parts: (HistPart | null)[] | null;
+    if (family === 'free') { const p = readPart(row[6], row[7], n); parts = p ? [p] : null; }
+    else {
+      parts = [];
+      for (const raw of [row[4], row[5]]) {
+        if (raw === null) { parts.push(null); continue; }
+        const p = Array.isArray(raw) && raw.length === 4 ? readPart(raw[2], raw[3], n) : null;
+        if (!p) { parts = null; break; }
+        parts.push(p);
+      }
     }
-    out.push({ asOf: asOf as number, createdAt: createdAt as number, fetchedAt: fetchedAt as number, mark: mark as number, long: cumL, short: cumS, longCoin: coinL, shortCoin: coinS });
+    if (parts) out.push({ asOf: asOf as number, createdAt: createdAt as number, fetchedAt: fetchedAt as number, mark: mark as number, parts });
   }
   return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
+}
+
+/**
+ * A row's part added up from the mark outward, in dollars and in coins (each bucket's dollars over the price at its middle). `swap` reads
+ * the part's sides the other way round, for take profits: the part's `long` (what closes longs: sells above the mark) becomes the row's
+ * short side, above the mark, before the coins are worked out.
+ */
+export function cumulate(row: Pick<HistRow, 'asOf' | 'createdAt' | 'fetchedAt' | 'mark'>, part: HistPart, edges: readonly number[], swap = false): LiqRow {
+  const n = edges.length, mark = row.mark, below = swap ? part.short : part.long, above = swap ? part.long : part.short;
+  const cumL = new Float32Array(n), cumS = new Float32Array(n), coinL = new Float32Array(n), coinS = new Float32Array(n);
+  let l = 0, s = 0, lc = 0, sc = 0;
+  for (let i = 0; i < n; i++) {
+    const mid = ((i ? edges[i - 1]! : 0) + edges[i]!) / 200;
+    l += below[i]!; s += above[i]!;
+    lc += below[i]! / (mark * Math.max(0.01, 1 - mid)); sc += above[i]! / (mark * (1 + mid));
+    cumL[i] = l; cumS[i] = s; coinL[i] = lc; coinS[i] = sc;
+  }
+  return { asOf: row.asOf, createdAt: row.createdAt, fetchedAt: row.fetchedAt, mark, long: cumL, short: cumS, longCoin: coinL, shortCoin: coinS };
+}
+
+/** Two parts added bucket by bucket (liquidations and stops: both lie below the mark for longs and above it for shorts). */
+export function addParts(a: HistPart, b: HistPart): HistPart {
+  const long = new Float64Array(a.long.length), short = new Float64Array(a.short.length);
+  for (let i = 0; i < long.length; i++) { long[i] = a.long[i]! + (b.long[i] ?? 0); short[i] = a.short[i]! + (b.short[i] ?? 0); }
+  return { long, short };
+}
+
+/** A day's rows of all positions, checked against the index's buckets: a row of the wrong shape is left out, never drawn. Ordered by fetch time. */
+export function readDay(raw: unknown, edges: readonly number[]): LiqRow[] {
+  return readHistRows(raw, edges.length, 'free').map(r => cumulate(r, r.parts[0]!, edges));
+}
+
+/** A rollup (`…-4h.json`): its 13 bucket edges, how many hours a row stands for, and its rows. Null when malformed. */
+export function readRollup(raw: unknown, family: LiqFamily): { edges: readonly number[]; hours: number; rows: HistRow[] } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>, edges = readEdges(o.edges), hours = o.hours;
+  if (!edges || typeof hours !== 'number' || !(hours > 0 && hours <= 24)) return null;
+  return { edges, hours, rows: readHistRows(raw, edges.length, family) };
 }
 
 /** The bucket a band of `radius` (a fraction of the price) ends on: the last edge within it, or -1 when the band is narrower than the first bucket. */
@@ -104,11 +196,43 @@ export function bandIndex(edges: readonly number[], radius: number): number {
   for (let i = 0; i < edges.length && edges[i]! <= pct; i++) at = i;
   return at;
 }
+/** The bucket a band ends on exactly, or -1: a rollup's buckets are wide, so a band between two edges would read a narrower one. */
+export function bandOnEdge(edges: readonly number[], radius: number): number {
+  const i = bandIndex(edges, radius);
+  return i >= 0 && Math.abs(edges[i]! - radius * 100) <= 1e-6 * Math.max(1, radius * 100) ? i : -1;
+}
+
+/** The families a view reads, the first being the one its levels come from: its liquidations' (all positions or groups), and the orders' for stops and take profits. */
+export function familiesFor(view: LiqView): LiqFamily[] {
+  const out: LiqFamily[] = [];
+  if (view.kind !== 'stops') out.push(groupApplies(view.kind) && view.group !== 'all' ? 'groups' : 'free');
+  if (view.kind !== 'liq' || view.takes) out.push('orders');
+  return out;
+}
+
+/**
+ * What the Depth pane draws for a view over a stretch of time: the rows of its levels in force over it (every row fetched in it, and the last
+ * one before it), the take profits' rows where the view shows them, the buckets they are in, how long a row stands without a later one, and
+ * whether they come from the rollups (`wide`).
+ */
+export interface HistSeries { rows: LiqRow[]; takes: LiqRow[] | null; edges: readonly number[] | null; holdMs: number; wide: boolean }
+
+interface DayEntry { rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; newest: number; created: number; lead: number; due: number }
+interface RollupEntry { edges: readonly number[]; hours: number; rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number }
+
+/** The rows in force over [t0, t1] of rows ordered by fetch time: every row fetched in it, and the last one before it. */
+function inForce<T extends { fetchedAt: number }>(all: readonly T[], t0: number, t1: number): T[] {
+  let from = 0;
+  while (from + 1 < all.length && all[from + 1]!.fetchedAt <= t0) from++;
+  let to = all.length;
+  while (to > 0 && all[to - 1]!.fetchedAt > t1) to--;
+  return all.slice(from, Math.max(from, to));
+}
 
 /**
  * The history as the page holds it: the index, and the days the view has asked for, each read once (the day still being written again when
- * its next snapshot can be there: `due`, from when its newest row was created, `created`, on the page's clock). Kept here so the pane
- * only says which stretch of time it shows and draws what has come.
+ * its next snapshot can be there: `due`, from when its newest row was created, `created`, on the page's clock), per family; and the rollups
+ * a wide view with Plus reads. Kept here so the pane only says which stretch of time it shows and what it shows, and draws what has come.
  */
 export class LiqHistory {
   #index: LiqIndex | null = null;
@@ -117,7 +241,13 @@ export class LiqHistory {
   #lastNow = -Infinity;
   /** Counts the clock's steps back: an answer to a read made before one carries the old clock's times and is dropped (it is read again). */
   #steps = 0;
-  #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; created: number; lead: number; due: number }>();
+  /** The days held, by family and day (`free|<ms>`). */
+  #days = new Map<string, DayEntry>();
+  #rollups = new Map<LiqFamily, RollupEntry>();
+  /** The rows of a view worked out from the parts held, kept while the parts they came from are the same (`#memo`). */
+  #cum = new Map<string, { deps: readonly unknown[]; rows: LiqRow[] }>();
+  /** Whether the last `ensure` read the rollups (a view wider than `MAX_DAYS` days, with Plus). */
+  #wide = false;
   /** Days before this were refused without a pass although the page's clock called them free (a clock that is off): closed, like the rest. */
   #refusedBefore = -Infinity;
   /** When that was last learned: it holds for a while (`REFUSAL_HOLDS_MS`), then the days are asked again. */
@@ -131,7 +261,7 @@ export class LiqHistory {
 
   /**
    * Up to when the history is closed to this visitor, or null when all of it is open (a pass is held, or the service has no paid part):
-   * the pane draws nothing before it and says why.
+   * the pane draws nothing before it and says why. Only the free family has a free part: a Plus view is drawn only with a pass.
    */
   closedBefore(now: number): number | null {
     if (this.access.pass(now) !== null) return null;
@@ -149,28 +279,40 @@ export class LiqHistory {
    * free stays known (it is about the two clocks, not about the pass): such a day is then asked for with the pass.
    */
   accessChanged(): void {
-    for (const entry of this.#days.values()) entry.failed = -Infinity;
+    for (const entry of this.#days.values()) { entry.failed = -Infinity; entry.wait = -Infinity; }
+    for (const entry of this.#rollups.values()) { entry.failed = -Infinity; entry.wait = -Infinity; }
     this.version++;
   }
 
-  /** Ask for what [t0, t1] needs that is not held (or is due again); `changed` is called when an answer lands. Times are kept as of `now`, when they were asked. */
-  ensure(t0: number, t1: number, now: number, changed: () => void): void {
-    const urls = historyUrls(liqLevelsUrl()); if (!urls) return;
+  /**
+   * Ask for what [t0, t1] needs for `view` (the effective one: the free view without Plus) that is not held (or is due again); `changed` is
+   * called when an answer lands. Times are kept as of `now`, when they were asked. With a pass, a view wider than `MAX_DAYS` days reads the
+   * rollups instead of the days.
+   */
+  ensure(t0: number, t1: number, now: number, changed: () => void, view: LiqView = FREE_VIEW): void {
+    const levelsUrl = liqLevelsUrl(), urls = historyUrls(levelsUrl); if (!urls) return;
+    const plusAt = plusUrls(levelsUrl);
     // The page's clock went back since it was last read: what the old clock placed and planned is no good (`clockSetBack`), the index's and
     // the failed reads' waits included.
     if (clockSetBack(this.#lastNow, now)) {
       // Every day is read once more: a day the old clock (ahead) counted as read after it ended may not have been, and no read times of the old
       // clock may bracket a snapshot.
       this.#offset = null; this.#indexAt = -Infinity; this.#indexFailed = -Infinity; this.#steps++;
-      for (const entry of this.#days.values()) { entry.created = now; entry.lead = MAX_LEAD_MS; entry.due = now; entry.failed = -Infinity; entry.at = -Infinity; }
+      for (const entry of this.#days.values()) { entry.created = now; entry.lead = MAX_LEAD_MS; entry.due = now; entry.failed = -Infinity; entry.wait = -Infinity; entry.at = -Infinity; }
+      for (const entry of this.#rollups.values()) { entry.at = -Infinity; entry.failed = -Infinity; entry.wait = -Infinity; }
     }
     this.#lastNow = now;
+    const families = familiesFor(view), pass = this.access.pass(now);
+    // Nothing paid is asked for without a pass: a Plus view without one is not drawn (the page shows the free view then).
+    const wide = pass !== null && !!plusAt && t1 - t0 > MAX_DAYS * DAY_MS;
+    if (wide !== this.#wide) { this.#wide = wide; this.version++; }
+    if (wide) { for (const family of families) this.#ensureRollup(family, plusAt!.rollup[family === 'orders' ? 'triggers' : family], pass!, now, changed); return; }
     if (!this.#indexBusy && now - this.#indexFailed > RETRY_MS && (!this.#index || now - this.#indexAt > INDEX_EVERY_MS)) {
       this.#indexBusy = true;
       const steps = this.#steps;
       this.get(urls.index).then(raw => {
         const index = readIndex(raw);
-        if (index) { if (this.#index && this.#index.edges.length !== index.edges.length) this.#days.clear(); this.#index = index; if (steps === this.#steps) this.#indexAt = now; this.version++; changed(); }
+        if (index) { if (this.#index && this.#index.edges.length !== index.edges.length) { this.#days.clear(); this.#cum.clear(); } this.#index = index; if (steps === this.#steps) this.#indexAt = now; this.version++; changed(); }
         else if (steps === this.#steps) this.#indexFailed = now;
       }, () => { if (steps === this.#steps) this.#indexFailed = now; }).finally(() => { this.#indexBusy = false; });
     }
@@ -179,64 +321,157 @@ export class LiqHistory {
     // The day before the view as well: the row in force at its left edge may have come the evening before.
     const firstDay = Math.max(Math.floor(index.first / DAY_MS) * DAY_MS, Math.floor(t0 / DAY_MS) * DAY_MS - DAY_MS, lastDay - (MAX_DAYS - 1) * DAY_MS);
     const free = this.#freeFrom(now);
-    for (let day = firstDay; day <= lastDay; day += DAY_MS) {
-      // A Plus day is asked for with a pass or not at all: the pane says it is closed (`closedBefore`).
-      const pass = day < free ? this.access.pass(now) : null;
-      if (day < free && pass === null) continue;
-      const held = this.#days.get(day);
-      // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again when its next
-      // snapshot can be there (while it has none yet, when the day before's newest says so, else each minute).
-      const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
-      if (held && (held.busy || now - held.failed < RETRY_MS || settled || now < held.due)) continue;
-      const entry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, newest: -Infinity, created: 0, lead: 0, due: 0 };
-      entry.busy = true; this.#days.set(day, entry);
-      const edges = index.edges, steps = this.#steps, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS && !(entry.failed > entry.at);
-      this.get(urls.day(dayText(day)), pass).then(raw => {
-        if (this.#index?.edges !== edges || steps !== this.#steps) return;
-        entry.rows = readDay(raw, edges); entry.at = now; this.version++;
-        const top = entry.rows.reduce<LiqRow | null>((best, row) => !best || row.createdAt > best.createdAt ? row : best, null);
-        if (top && top.createdAt > entry.newest) {
-          // Seen appear between this read and the one before: placed by when it was published, else by its age (`placeSnapshot`).
-          entry.newest = top.createdAt;
-          ({ created: entry.created, lead: entry.lead, offset: this.#offset } = placeSnapshot(top.createdAt, top.fetchedAt, before, now, entry.lead, this.#offset, onTime));
-        }
-        const prev = this.#days.get(day - DAY_MS);
-        entry.due = entry.rows.length ? nextAskAt(entry.created, now, entry.lead) : prev && prev.rows.length ? nextAskAt(prev.created, now, prev.lead) : now + DUE_EVERY_MS;
-        changed();
-      }, (error: unknown) => {
-        entry.failed = now;
-        if (!(error instanceof Error) || error.message !== LIQ_REFUSED) return;
-        // Refused by the gate. With a pass: that pass is no good any more (it is asked for again, and the day with it). Without one: the
-        // server's clock calls the day a Plus one where the page's called it free, so it and the days before it are closed for a while;
-        // believed only near the page's own boundary.
-        if (pass !== null) this.access.refused(pass);
-        else if (day < this.access.freeFrom(now) + REFUSAL_REACH_MS) {
-          this.#refusedBefore = Math.max(this.#refusedBefore, day + DAY_MS); this.#refusedAt = now;
-          // A member's page asks again at once, now with the pass (the day counts as a Plus one from here on).
-          if (this.access.pass(now) !== null) entry.failed = -Infinity;
-        } else return;
-        this.version++; changed();
-      }).finally(() => { entry.busy = false; });
-    }
-    // Days outside the view are let go, the farthest first, so a long session does not hold the whole history; a day the view needs never is.
-    if (this.#days.size > MAX_DAYS + 4) {
-      const away = (day: number): number => day < firstDay ? firstDay - day : day - lastDay;
-      for (const day of [...this.#days.keys()].filter(d => d < firstDay || d > lastDay).sort((a, b) => away(b) - away(a))) {
-        if (this.#days.size <= MAX_DAYS + 4) break;
-        this.#days.delete(day);
+    for (const family of families) {
+      if (family !== 'free' && (pass === null || !plusAt)) continue;
+      const dayUrl = family === 'free' ? urls.day : family === 'groups' ? plusAt!.groupsDay : plusAt!.triggersDay;
+      for (let day = firstDay; day <= lastDay; day += DAY_MS) {
+        // A Plus day (or any day of a Plus family) is asked for with a pass or not at all: the pane says it is closed (`closedBefore`).
+        const sent = family !== 'free' ? pass : day < free ? pass : null;
+        if (family === 'free' && day < free && sent === null) continue;
+        this.#ensureDay(family, day, dayUrl, sent, index.edges, now, changed);
       }
     }
+    // Days outside the view are let go, the farthest first, so a long session does not hold the whole history; a day the view needs never is.
+    if (this.#days.size > (MAX_DAYS + 4) * families.length) {
+      const dayOf = (key: string): number => Number(key.slice(key.indexOf('|') + 1));
+      const away = (day: number): number => day < firstDay ? firstDay - day : day - lastDay;
+      for (const key of [...this.#days.keys()].filter(k => dayOf(k) < firstDay || dayOf(k) > lastDay).sort((a, b) => away(dayOf(b)) - away(dayOf(a)))) {
+        if (this.#days.size <= (MAX_DAYS + 4) * families.length) break;
+        this.#days.delete(key);
+      }
+    }
+    if (this.#cum.size > 4 * (MAX_DAYS + 4)) this.#cum.clear();
   }
 
-  /** The rows held that are in force over [t0, t1]: every row fetched in it, and the last one before it. Ordered by fetch time. */
-  rows(t0: number, t1: number): LiqRow[] {
-    const all: LiqRow[] = [];
-    for (const [day, entry] of this.#days) if (day + DAY_MS > t0 - DAY_MS && day <= t1) all.push(...entry.rows);
-    all.sort((a, b) => a.fetchedAt - b.fetchedAt);
-    let from = 0;
-    while (from + 1 < all.length && all[from + 1]!.fetchedAt <= t0) from++;
-    let to = all.length;
-    while (to > 0 && all[to - 1]!.fetchedAt > t1) to--;
-    return all.slice(from, Math.max(from, to));
+  #ensureDay(family: LiqFamily, day: number, dayUrl: (day: string) => string, pass: string | null, edges: readonly number[], now: number, changed: () => void): void {
+    const key = `${family}|${day}`, held = this.#days.get(key);
+    // A day read after it ended (and the hour after, for a late fetch) does not change; one read before that is asked again when its next
+    // snapshot can be there (while it has none yet, when the day before's newest says so, else each minute).
+    const settled = held !== undefined && held.at >= day + DAY_MS + 3_600_000;
+    if (held && (held.busy || now - held.failed < RETRY_MS || now < held.wait || settled || now < held.due)) return;
+    const entry: DayEntry = held ?? { rows: [], at: -Infinity, busy: false, failed: 0, wait: -Infinity, newest: -Infinity, created: 0, lead: 0, due: 0 };
+    entry.busy = true; this.#days.set(key, entry);
+    const steps = this.#steps, before = entry.at, onTime = entry.due > 0 && now - entry.due <= ON_TIME_MS && !(entry.failed > entry.at);
+    this.get(dayUrl(dayText(day)), pass).then(raw => {
+      if (this.#index?.edges !== edges || steps !== this.#steps) return;
+      entry.rows = readHistRows(raw, edges.length, family); entry.at = now; this.version++;
+      const top = entry.rows.reduce<HistRow | null>((best, row) => !best || row.createdAt > best.createdAt ? row : best, null);
+      if (top && top.createdAt > entry.newest) {
+        // Seen appear between this read and the one before: placed by when it was published, else by its age (`placeSnapshot`).
+        entry.newest = top.createdAt;
+        ({ created: entry.created, lead: entry.lead, offset: this.#offset } = placeSnapshot(top.createdAt, top.fetchedAt, before, now, entry.lead, this.#offset, onTime));
+      }
+      const prev = this.#days.get(`${family}|${day - DAY_MS}`);
+      entry.due = entry.rows.length ? nextAskAt(entry.created, now, entry.lead) : prev && prev.rows.length ? nextAskAt(prev.created, now, prev.lead) : now + DUE_EVERY_MS;
+      changed();
+    }, (error: unknown) => {
+      entry.failed = now;
+      const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
+      if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
+      if (!(error instanceof Error) || error.message !== LIQ_REFUSED) return;
+      // Refused by the gate. With a pass: that pass is no good any more (it is asked for again, and the day with it). Without one: the
+      // server's clock calls the day a Plus one where the page's called it free, so it and the days before it are closed for a while;
+      // believed only near the page's own boundary.
+      if (pass !== null) this.access.refused(pass);
+      else if (family === 'free' && day < this.access.freeFrom(now) + REFUSAL_REACH_MS) {
+        this.#refusedBefore = Math.max(this.#refusedBefore, day + DAY_MS); this.#refusedAt = now;
+        // A member's page asks again at once, now with the pass (the day counts as a Plus one from here on).
+        if (this.access.pass(now) !== null) entry.failed = -Infinity;
+      } else return;
+      this.version++; changed();
+    }).finally(() => { entry.busy = false; });
   }
+
+  #ensureRollup(family: LiqFamily, url: string, pass: string, now: number, changed: () => void): void {
+    const held = this.#rollups.get(family);
+    if (held && (held.busy || now - held.failed < RETRY_MS || now < held.wait || now - held.at < ROLLUP_EVERY_MS)) return;
+    const entry: RollupEntry = held ?? { edges: [], hours: 4, rows: [], at: -Infinity, busy: false, failed: 0, wait: -Infinity };
+    entry.busy = true; this.#rollups.set(family, entry);
+    const steps = this.#steps;
+    this.get(url, pass).then(raw => {
+      if (steps !== this.#steps) return;
+      const read = readRollup(raw, family);
+      if (!read) { entry.failed = now; return; }
+      entry.edges = read.edges; entry.hours = read.hours; entry.rows = read.rows; entry.at = now; this.version++;
+      changed();
+    }, (error: unknown) => {
+      entry.failed = now;
+      const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
+      if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
+      if (error instanceof Error && error.message === LIQ_REFUSED) { this.access.refused(pass); this.version++; changed(); }
+    }).finally(() => { entry.busy = false; });
+  }
+
+  /** Rows worked out from parts held, kept while those parts are the same objects. */
+  #memo(key: string, deps: readonly unknown[], make: () => LiqRow[]): LiqRow[] {
+    const held = this.#cum.get(key);
+    if (held && held.deps.length === deps.length && held.deps.every((d, i) => d === deps[i])) return held.rows;
+    const rows = make();
+    this.#cum.set(key, { deps, rows });
+    return rows;
+  }
+
+  /**
+   * A view's rows from one set of history rows of each family it reads (a day's, or a rollup's): its liquidations (all positions or a
+   * group's; a group without a list in force has no row), its stops, or both added where the snapshot has both (joined by `createdAt`, or
+   * within a rollup by its four-hour block); and the take profits, sides swapped.
+   */
+  #viewRows(view: LiqView, by: Partial<Record<LiqFamily, HistRow[]>>, edges: readonly number[], block: number | null): { rows: LiqRow[]; takes: LiqRow[] } {
+    const liq: { row: HistRow; part: HistPart }[] = [];
+    if (view.kind !== 'stops') {
+      const fam = groupApplies(view.kind) && view.group !== 'all' ? 'groups' : 'free', at = fam === 'groups' && view.group === 'proven' ? 1 : 0;
+      for (const row of by[fam] ?? []) { const part = row.parts[at]; if (part) liq.push({ row, part }); }
+    }
+    const orders = by.orders ?? [];
+    let main: { row: HistRow; part: HistPart }[];
+    if (view.kind === 'liq') main = liq;
+    else if (view.kind === 'stops') main = orders.flatMap(row => row.parts[0] ? [{ row, part: row.parts[0] }] : []);
+    else {
+      // Both: a snapshot with both parts. A rollup's rows are each part's state at its block's end, which may be two snapshots of one block.
+      const join = (r: HistRow): number => block ? Math.floor(r.fetchedAt / block) : r.createdAt;
+      const stops = new Map<number, HistPart>();
+      for (const row of orders) if (row.parts[0]) stops.set(join(row), row.parts[0]);
+      main = liq.flatMap(({ row, part }) => { const s = stops.get(join(row)); return s ? [{ row, part: addParts(part, s) }] : []; });
+    }
+    return {
+      rows: main.map(({ row, part }) => cumulate(row, part, edges)),
+      takes: view.takes ? orders.flatMap(row => row.parts[1] ? [cumulate(row, row.parts[1], edges, true)] : []) : [],
+    };
+  }
+
+  /** The rows in force over [t0, t1] for `view`, with the take profits, the buckets, and how long a row stands (see `HistSeries`). */
+  series(t0: number, t1: number, view: LiqView = FREE_VIEW): HistSeries {
+    const families = familiesFor(view), vk = viewKey(view);
+    if (this.#wide) {
+      const held = families.map(f => this.#rollups.get(f));
+      const first = held[0];
+      if (!first || held.some(e => !e || e.at === -Infinity) || held.some(e => e!.edges.length !== first.edges.length)) return { rows: [], takes: view.takes ? [] : null, edges: first && first.at > -Infinity ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
+      const by: Partial<Record<LiqFamily, HistRow[]>> = {};
+      families.forEach((f, i) => { by[f] = held[i]!.rows; });
+      const block = first.hours * 3_600_000;
+      const deps = held.map(e => e!.rows);
+      const rows = this.#memo(`4h|${vk}`, deps, () => this.#viewRows(view, by, first.edges, block).rows);
+      const takes = view.takes ? this.#memo(`4h|takes`, [by.orders], () => this.#viewRows(view, by, first.edges, block).takes) : null;
+      return { rows: inForce(rows, t0, t1), takes: takes ? inForce(takes, t0, t1) : null, edges: first.edges, holdMs: block + LIQ_HOLD_MS, wide: true };
+    }
+    const index = this.#index;
+    if (!index) return { rows: [], takes: view.takes ? [] : null, edges: null, holdMs: LIQ_HOLD_MS, wide: false };
+    const days = new Set<number>();
+    for (const key of this.#days.keys()) {
+      const family = key.slice(0, key.indexOf('|')) as LiqFamily, day = Number(key.slice(key.indexOf('|') + 1));
+      if (families.includes(family) && day + DAY_MS > t0 - DAY_MS && day <= t1) days.add(day);
+    }
+    const rows: LiqRow[] = [], takes: LiqRow[] = [];
+    for (const day of days) {
+      const by: Partial<Record<LiqFamily, HistRow[]>> = {}, deps: unknown[] = [];
+      for (const f of families) { const e = this.#days.get(`${f}|${day}`); by[f] = e?.rows ?? []; deps.push(e?.rows); }
+      rows.push(...this.#memo(`${day}|${vk}`, deps, () => this.#viewRows(view, by, index.edges, null).rows));
+      if (view.takes) takes.push(...this.#memo(`${day}|takes`, [by.orders], () => this.#viewRows(view, by, index.edges, null).takes));
+    }
+    rows.sort((a, b) => a.fetchedAt - b.fetchedAt); takes.sort((a, b) => a.fetchedAt - b.fetchedAt);
+    return { rows: inForce(rows, t0, t1), takes: view.takes ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false };
+  }
+
+  /** The rows held that are in force over [t0, t1] for `view`: every row fetched in it, and the last one before it. Ordered by fetch time. */
+  rows(t0: number, t1: number, view: LiqView = FREE_VIEW): LiqRow[] { return this.series(t0, t1, view).rows; }
 }

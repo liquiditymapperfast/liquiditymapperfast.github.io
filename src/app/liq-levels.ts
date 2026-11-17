@@ -11,7 +11,10 @@ import { BTC, instrumentIdFor, type Coin } from '../shared/coins.ts';
 import { webGet, type Fetcher } from '../shared/history.ts';
 import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
 import { MAX_LEAD_MS, ON_TIME_MS, clockSetBack, nextAskAt, pageHidden, placeSnapshot } from './liq-schedule.ts';
-import { liqLevelsUrl } from './liq-url.ts';
+import { liqLevelsUrl, plusUrls } from './liq-url.ts';
+import { isRefusal, webFetch, type LiqFetch } from './liq-history.ts';
+import { FREE_VIEW, viewKey, type LiqView } from './liq-view.ts';
+import { plus } from './plus/pass.ts';
 import type { AppState, CandleRow } from './store.ts';
 import type { View } from './view.ts';
 
@@ -20,6 +23,8 @@ const MINUTE = 60_000, HOUR = 3_600_000, DAY = 24 * HOUR;
 const RETRY_MS = 30_000;
 /** Older than this, the levels are not drawn: too many positions have opened and closed since. */
 export const STALE_MS = 3 * HOUR;
+/** Stop and take-profit orders more than this older than the liquidations beside them are said to be so (`ordersOld`). */
+const ORDERS_BEHIND_MS = 2 * HOUR;
 /** Hyperliquid's candles are asked again this often; the chart's own price covers the time between. */
 const CANDLES_MS = 60_000;
 /** Candles last read longer ago than this no longer vouch for what price has traded through. */
@@ -28,9 +33,18 @@ const CANDLES_LATE_MS = 5 * MINUTE;
 const SEEN_MARGIN = 0.0005;
 const MAX_BINS = 40_000;
 
+/**
+ * What a set of levels holds: liquidation levels; stop orders; take-profit orders; or liquidations and stops added together (`sumLevels`).
+ * The long side always sits below the snapshot's mark and goes as the lows reach it, the short side above (`takenByCandles`), so take
+ * profits are held with their sides swapped (`takeProfits`): the long side holds the take profits of shorts (buys below the mark), the
+ * short side those of longs (sells above it).
+ */
+export type LevelsKind = 'liq' | 'stops' | 'takes' | 'both';
+
 /** One snapshot's levels, bins sorted by price: bin `k[i]` covers prices [k*step, (k+1)*step). */
 export interface LiqLevels {
   coin: string;
+  kind: LevelsKind;
   /** The time the positions describe: HyperTracker's snapshot time less its measured delay. */
   asOf: number;
   /** When HyperTracker stamped the snapshot, and when the service read it. */
@@ -39,30 +53,40 @@ export interface LiqLevels {
   /** The snapshot's own mark (value over size of every position). */
   mark: number;
   step: number;
+  /** Positions (liquidations), orders (stops, take profits), or both added (both). */
   positions: number;
   attribution: string;
   k: Int32Array;
+  /**
+   * Each side's dollars in two parts that add up to all of it: isolated and cross margin (liquidations); whole-position orders and orders
+   * with a size of their own (stops, take profits); liquidations and stops (both).
+   */
   longIso: Float64Array; longCross: Float64Array; shortIso: Float64Array; shortCross: Float64Array;
+  /** Positions (liquidations), orders (stops, take profits), or both added. */
   longWallets: Uint32Array; shortWallets: Uint32Array;
-  /** The largest single position of each side in the bin: a wallet holds one position of a coin, so it is one wallet's. */
+  /** The largest single position (or order) of each side in the bin: a wallet holds one position of a coin, so it is one wallet's. */
   longTop: Float64Array; shortTop: Float64Array;
 }
 
 const finite = (v: unknown, min = 0, max = Number.MAX_VALUE): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
-/**
- * The service's file, checked field by field; anything malformed is refused whole (null). Its times come from the service's clock and are
- * checked against each other, not against the visitor's, which can be off.
- */
-export function parseLiqLevels(raw: unknown, coin: string): LiqLevels | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const d = raw as Record<string, unknown>, snap = d.snapshot as Record<string, unknown> | undefined;
-  if (d.v !== 2 || d.coin !== coin || !snap || typeof snap !== 'object') return null;
-  const asOf = snap.asOf, createdAt = snap.createdAt, fetchedAt = snap.fetchedAt, mark = d.mark, step = d.step, positions = d.positions, bins = d.bins;
+/** A file's snapshot times, checked against each other (the service's clock, not the visitor's, which can be off). */
+interface Snap { asOf: number; createdAt: number; fetchedAt: number }
+function readSnap(snap: unknown): Snap | null {
+  if (!snap || typeof snap !== 'object') return null;
+  const s = snap as Record<string, unknown>, asOf = s.asOf, createdAt = s.createdAt, fetchedAt = s.fetchedAt;
   if (!finite(asOf, Date.UTC(2024, 0, 1), Date.UTC(2100, 0, 1)) || !finite(createdAt, asOf, asOf + DAY) || !finite(fetchedAt, asOf, asOf + 7 * DAY)) return null;
-  if (!finite(mark, 1e-9) || !finite(step, 1e-9, 1e6) || !finite(positions, 0, 1e8) || !Array.isArray(bins) || bins.length > MAX_BINS) return null;
-  const n = bins.length, out: LiqLevels = {
-    coin, asOf, createdAt, fetchedAt, mark, step, positions, attribution: typeof d.attribution === 'string' ? d.attribution.slice(0, 80) : '',
+  return { asOf, createdAt, fetchedAt };
+}
+
+/**
+ * Bins of one file part, checked field by field (`[k, a, b, c, d, longCount, shortCount, longTop, shortTop]`: the long side's two parts, the
+ * short side's, the positions or orders counted, the largest one); anything malformed refuses the whole (null).
+ */
+function readBins(bins: unknown, head: Omit<LiqLevels, 'k' | 'longIso' | 'longCross' | 'shortIso' | 'shortCross' | 'longWallets' | 'shortWallets' | 'longTop' | 'shortTop'>): LiqLevels | null {
+  if (!Array.isArray(bins) || bins.length > MAX_BINS) return null;
+  const n = bins.length, step = head.step, out: LiqLevels = {
+    ...head,
     k: new Int32Array(n), longIso: new Float64Array(n), longCross: new Float64Array(n), shortIso: new Float64Array(n), shortCross: new Float64Array(n),
     longWallets: new Uint32Array(n), shortWallets: new Uint32Array(n), longTop: new Float64Array(n), shortTop: new Float64Array(n),
   };
@@ -80,6 +104,121 @@ export function parseLiqLevels(raw: unknown, coin: string): LiqLevels | null {
     out.longWallets[i] = lw as number; out.shortWallets[i] = sw as number; out.longTop[i] = lt as number; out.shortTop[i] = st as number;
   }
   return out;
+}
+
+const attributionOf = (d: Record<string, unknown>): string => typeof d.attribution === 'string' ? d.attribution.slice(0, 80) : '';
+
+/**
+ * The service's file, checked field by field; anything malformed is refused whole (null). Its times come from the service's clock and are
+ * checked against each other, not against the visitor's, which can be off.
+ */
+export function parseLiqLevels(raw: unknown, coin: string): LiqLevels | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>, snap = readSnap(d.snapshot);
+  if (d.v !== 2 || d.coin !== coin || !snap) return null;
+  const mark = d.mark, step = d.step, positions = d.positions;
+  if (!finite(mark, 1e-9) || !finite(step, 1e-9, 1e6) || !finite(positions, 0, 1e8)) return null;
+  return readBins(d.bins, { coin, kind: 'liq', ...snap, mark, step, positions, attribution: attributionOf(d) });
+}
+
+/**
+ * The newest snapshot by trader group (Plus, `liquidations-groups.json` format 1): the profitable traders' liquidation levels and the
+ * proven traders' (null when no proven list was in force for the snapshot; `night` names the list used), each shaped as the levels file's,
+ * on its snapshot, mark and grid. Checked field by field; anything malformed is refused whole.
+ */
+export interface LiqGroups extends Snap { mark: number; step: number; profitable: LiqLevels; proven: LiqLevels | null; night: string | null }
+export function parseLiqGroups(raw: unknown, coin: string): LiqGroups | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>, snap = readSnap(d.snapshot), groups = d.groups as Record<string, unknown> | null | undefined;
+  if (d.v !== 1 || d.coin !== coin || !snap || !groups || typeof groups !== 'object') return null;
+  const mark = d.mark, step = d.step;
+  if (!finite(mark, 1e-9) || !finite(step, 1e-9, 1e6)) return null;
+  const group = (g: unknown): LiqLevels | null => {
+    if (!g || typeof g !== 'object') return null;
+    const o = g as Record<string, unknown>;
+    return finite(o.positions, 0, 1e8) ? readBins(o.bins, { coin, kind: 'liq', ...snap, mark, step, positions: o.positions, attribution: attributionOf(d) }) : null;
+  };
+  const profitable = group(groups.profitable);
+  if (!profitable) return null;
+  let proven: LiqLevels | null = null, night: string | null = null;
+  if (groups.proven !== null) {
+    proven = group(groups.proven);
+    if (!proven) return null;
+    const n = (groups.proven as Record<string, unknown>).night;
+    night = typeof n === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(n) ? n : null;
+  }
+  return { ...snap, mark, step, profitable, proven, night };
+}
+
+/**
+ * The take profits with their sides swapped, so they fit the drawing (`takenByCandles`): a take profit that closes a long is a sell above
+ * the mark, one that closes a short a buy below it. The long side then holds the take profits of shorts, the short side those of longs.
+ */
+function takeProfits(t: LiqLevels): LiqLevels {
+  return { ...t, kind: 'takes', longIso: t.shortIso, longCross: t.shortCross, shortIso: t.longIso, shortCross: t.longCross,
+    longWallets: t.shortWallets, shortWallets: t.longWallets, longTop: t.shortTop, shortTop: t.longTop };
+}
+
+/**
+ * The newest stop and take-profit levels (Plus, `triggers.json` format 1), on the snapshot the order file was read with (it can be older than
+ * the levels file's: not every snapshot gets an order file). A bin holds what closes longs (sell orders) and what closes shorts, each as
+ * whole-position orders and orders with their own size, the orders counted and the largest. Stops keep their sides (a stop that closes a
+ * long sits below the mark); take profits are swapped (`takeProfits`). Checked field by field; anything malformed is refused whole.
+ */
+export interface LiqTriggers extends Snap { mark: number; step: number; stops: LiqLevels; takes: LiqLevels }
+export function parseTriggers(raw: unknown, coin: string): LiqTriggers | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>, snap = readSnap(d.snapshot);
+  if (d.v !== 1 || d.coin !== coin || !snap) return null;
+  const mark = d.mark, step = d.step;
+  if (!finite(mark, 1e-9) || !finite(step, 1e-9, 1e6)) return null;
+  const part = (p: unknown, kind: 'stops' | 'takes'): LiqLevels | null => {
+    if (!p || typeof p !== 'object') return null;
+    const o = p as Record<string, unknown>;
+    return finite(o.orders, 0, 1e8) ? readBins(o.bins, { coin, kind, ...snap, mark, step, positions: o.orders, attribution: attributionOf(d) }) : null;
+  };
+  const stops = part(d.stops, 'stops'), takes = part(d.takes, 'takes');
+  if (!stops || !takes) return null;
+  return { ...snap, mark, step, stops, takes: takeProfits(takes) };
+}
+
+/**
+ * Liquidations and stops added bin by bin into one set of levels ("both"), on the liquidations' snapshot, mark and grid (the stops' grid is
+ * the same $10). Each side's first part is the liquidations' and its second the stops'; the positions and orders are counted together, the
+ * largest is the larger of the two. `ia` and `ib` give each bin's place in `a` and `b` (-1: none there), so what price has taken of each can
+ * be put together (`combineTaken`).
+ */
+export function sumLevels(a: LiqLevels, b: LiqLevels): { levels: LiqLevels; ia: Int32Array; ib: Int32Array } {
+  const ks: number[] = [];
+  for (let i = 0, j = 0; i < a.k.length || j < b.k.length;) {
+    const ka = i < a.k.length ? a.k[i]! : Infinity, kb = j < b.k.length ? b.k[j]! : Infinity;
+    ks.push(Math.min(ka, kb));
+    if (ka <= kb) i++;
+    if (kb <= ka) j++;
+  }
+  const n = ks.length, ia = new Int32Array(n).fill(-1), ib = new Int32Array(n).fill(-1);
+  const out: LiqLevels = {
+    coin: a.coin, kind: 'both', asOf: a.asOf, createdAt: a.createdAt, fetchedAt: a.fetchedAt, mark: a.mark, step: a.step, positions: a.positions + b.positions, attribution: a.attribution,
+    k: Int32Array.from(ks), longIso: new Float64Array(n), longCross: new Float64Array(n), shortIso: new Float64Array(n), shortCross: new Float64Array(n),
+    longWallets: new Uint32Array(n), shortWallets: new Uint32Array(n), longTop: new Float64Array(n), shortTop: new Float64Array(n),
+  };
+  for (let x = 0, i = 0, j = 0; x < n; x++) {
+    const k = ks[x]!;
+    if (i < a.k.length && a.k[i] === k) {
+      ia[x] = i;
+      out.longIso[x] = a.longIso[i]! + a.longCross[i]!; out.shortIso[x] = a.shortIso[i]! + a.shortCross[i]!;
+      out.longWallets[x] = a.longWallets[i]!; out.shortWallets[x] = a.shortWallets[i]!; out.longTop[x] = a.longTop[i]!; out.shortTop[x] = a.shortTop[i]!;
+      i++;
+    }
+    if (j < b.k.length && b.k[j] === k) {
+      ib[x] = j;
+      out.longCross[x] = b.longIso[j]! + b.longCross[j]!; out.shortCross[x] = b.shortIso[j]! + b.shortCross[j]!;
+      out.longWallets[x] = out.longWallets[x]! + b.longWallets[j]!; out.shortWallets[x] = out.shortWallets[x]! + b.shortWallets[j]!;
+      out.longTop[x] = Math.max(out.longTop[x]!, b.longTop[j]!); out.shortTop[x] = Math.max(out.shortTop[x]!, b.shortTop[j]!);
+      j++;
+    }
+  }
+  return { levels: out, ia, ib };
 }
 
 /** How far price has traded through each bin since the snapshot, for one side. NaN where it has not (yet). */
@@ -135,6 +274,31 @@ export function takenByCandles(levels: LiqLevels, candles: readonly CandleRow[],
       if (a < m) short.first[i] = times[a]!;
       if (b < m) short.gone[i] = times[b]!;
       short.frac[i] = Math.min(1, Math.max(0, (highs[m - 1]! - p0) / step));
+    }
+  }
+  return { long, short };
+}
+
+/**
+ * What price has taken of liquidations and stops added together (`sumLevels`), from what it took of each on its own: each part counts from
+ * its own snapshot (the stops' is often an earlier one), so a stop price reached between the two snapshots is gone while a liquidation
+ * level there, measured after it, still stands. A bin is first reached when either part is, gone when every part it holds is, and the
+ * share taken is each part's share weighted by its dollars.
+ */
+export function combineTaken(sum: { levels: LiqLevels; ia: Int32Array; ib: Int32Array }, ta: { long: Taken; short: Taken }, tb: { long: Taken; short: Taken }): { long: Taken; short: Taken } {
+  const s = sum.levels, n = s.k.length, make = (): Taken => ({ first: new Float64Array(n).fill(NaN), gone: new Float64Array(n).fill(NaN), frac: new Float64Array(n) });
+  const long = make(), short = make();
+  for (let x = 0; x < n; x++) {
+    const i = sum.ia[x]!, j = sum.ib[x]!;
+    for (const side of ['long', 'short'] as const) {
+      const out = side === 'long' ? long : short, a = side === 'long' ? s.longIso[x]! : s.shortIso[x]!, b = side === 'long' ? s.longCross[x]! : s.shortCross[x]!;
+      const pa = a > 0 && i >= 0 ? ta[side] : null, pb = b > 0 && j >= 0 ? tb[side] : null;
+      if (!pa && !pb) continue;
+      const firsts = [pa ? pa.first[i]! : NaN, pb ? pb.first[j]! : NaN].filter(Number.isFinite);
+      if (firsts.length) out.first[x] = Math.min(...firsts);
+      const gone = [pa ? pa.gone[i]! : null, pb ? pb.gone[j]! : null].filter((g): g is number => g !== null);
+      if (gone.every(Number.isFinite)) out.gone[x] = Math.max(...gone);
+      out.frac[x] = ((pa ? a * pa.frac[i]! : 0) + (pb ? b * pb.frac[j]! : 0)) / ((pa ? a : 0) + (pb ? b : 0));
     }
   }
   return { long, short };
@@ -356,13 +520,94 @@ export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: nu
   ctx.restore();
 }
 
-/** Loads the file and the candles that take levels away, and keeps both fresh while the levels are on. */
+/**
+ * One set of levels as the page draws it: the levels, the prices the page saw itself since they came (`Seen`), and what price has taken of
+ * them, worked out again only when the candles or the prices seen change.
+ */
+class Layer {
+  #seen: Seen | null = null;
+  #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
+  constructor(readonly levels: LiqLevels) {}
+  /** See `LiqLevelsSource.observe`. */
+  observe(price: number, now: number): void {
+    const levels = this.levels, margin = Math.max(levels.step, price * SEEN_MARGIN);
+    const low = Math.min(levels.mark, price + margin), high = Math.max(levels.mark, price - margin), seen = this.#seen;
+    if (!seen) { this.#seen = { low, high, lowAt: levels.asOf, highAt: levels.asOf }; return; }
+    if (low < seen.low) { seen.low = low; seen.lowAt = now; }
+    if (high > seen.high) { seen.high = high; seen.highAt = now; }
+  }
+  key(candles: KeyLevelHistory): string {
+    const l = this.levels, s = this.#seen;
+    return `${l.kind}|${l.asOf}|${l.fetchedAt}|${candles.version}|${candles.bars.length}|${s?.low}|${s?.high}`;
+  }
+  derive(candles: KeyLevelHistory): { taken: { long: Taken; short: Taken }; standing: LiqStanding } {
+    const key = this.key(candles);
+    if (this.#derived?.key !== key) {
+      const taken = takenByCandles(this.levels, candles.bars, this.#seen);
+      this.#derived = { key, taken, standing: liqStanding(this.levels, taken) };
+    }
+    return this.#derived;
+  }
+}
+
+/** Liquidations and stops added together ("both"): the sum, and what price has taken of it from what it took of each part. */
+class SumLayer {
+  readonly sum: { levels: LiqLevels; ia: Int32Array; ib: Int32Array };
+  #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
+  constructor(readonly a: Layer, readonly b: Layer) { this.sum = sumLevels(a.levels, b.levels); }
+  get levels(): LiqLevels { return this.sum.levels; }
+  key(candles: KeyLevelHistory): string { return `${this.a.key(candles)}+${this.b.key(candles)}`; }
+  derive(candles: KeyLevelHistory): { taken: { long: Taken; short: Taken }; standing: LiqStanding } {
+    const key = this.key(candles);
+    if (this.#derived?.key !== key) {
+      const taken = combineTaken(this.sum, this.a.derive(candles).taken, this.b.derive(candles).taken);
+      this.#derived = { key, taken, standing: liqStanding(this.sum.levels, taken) };
+    }
+    return this.#derived;
+  }
+}
+
+/**
+ * Who may read the Plus files: the pass to send (null: none, and then nothing paid is asked for), and whom to tell when the gate refuses
+ * the pass it was sent (`Plus.refused`).
+ */
+export interface LiqPlusAccess { pass(now: number): string | null; refused(pass: string): void }
+const MEMBER: LiqPlusAccess = { pass: now => plus().pass(now), refused: pass => plus().refused(pass) };
+
+/** A Plus file the levels need beyond the free one (the groups', the stop and take-profit orders'), as read so far. */
+interface PlusPart<T> {
+  held: T | null;
+  pending: boolean;
+  /** Nothing is asked before this (a failed read's wait, a busy server's `Retry-After`). */
+  nextAt: number;
+  /** The free file's snapshot (its `createdAt`) this part was settled for: asked again once the free file has a newer one. */
+  doneFor: number;
+  /** Answers holding an older snapshot than the free file's, for the snapshot asked for. */
+  tries: number;
+  /** How the last read went: not asked yet, being asked, answered, failed, or not there yet (a 503). */
+  status: 'idle' | 'loading' | 'ready' | 'failed' | 'waiting';
+}
+const plusPart = <T>(): PlusPart<T> => ({ held: null, pending: false, nextAt: 0, doneFor: -1, tries: 0, status: 'idle' });
+/** A Plus file holding an older snapshot than the free file's is asked again this soon, at most this many times a snapshot. */
+const PLUS_AGAIN_MS = 2 * MINUTE, PLUS_TRIES = 3;
+/** A 503's `Retry-After` is kept within these bounds (seconds as the server says them, turned into ms). */
+const WAIT_MIN_MS = 30_000, WAIT_MAX_MS = 15 * MINUTE;
+
+/** Where the levels for a view stand: drawn, loading, out of date, not read, or nothing for this view in the snapshot (`missing`). */
+export type LiqState = 'idle' | 'loading' | 'ready' | 'stale' | 'unavailable' | 'other-coin' | 'off' | 'missing';
+
+/**
+ * Loads the files and the candles that take levels away, and keeps them fresh while the levels are on. The free file (liquidation levels of
+ * every position) is asked for when the next snapshot can be there (`liq-schedule.ts`); a Plus file the view needs (the groups', the stops'
+ * and take profits') is asked for, with the pass, when the free file brings a snapshot it does not have yet. `levels` is what the view draws:
+ * the free file's levels, a group's, the stops, or liquidations and stops added together; `takes` the take profits, a layer of their own.
+ */
 export class LiqLevelsSource {
-  levels: LiqLevels | null = null;
-  state: 'idle' | 'loading' | 'ready' | 'stale' | 'unavailable' | 'other-coin' | 'off' = 'idle';
+  state: LiqState = 'idle';
   /** Bumped whenever new levels come. */
   version = 0;
   readonly candles: KeyLevelHistory;
+  #view: LiqView = FREE_VIEW;
   #url = '';
   #pending = false;
   #nextAt = 0;
@@ -377,23 +622,89 @@ export class LiqLevelsSource {
   #lastNow = -Infinity;
   /** Counts the clock's steps back: an answer to an ask made before one carries the old clock's times and is dropped (it is asked again). */
   #steps = 0;
-  #seen: Seen | null = null;
-  #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
+  #free: Layer | null = null;
+  #groups: PlusPart<{ data: LiqGroups; profitable: Layer; proven: Layer | null }> = plusPart();
+  #triggers: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
+  #both: SumLayer | null = null;
   #target: HistoryTarget | null = null;
 
-  constructor(private get: Fetcher = webGet, private now: () => number = Date.now, private url: () => string = () => liqLevelsUrl()) {
+  constructor(private get: Fetcher = webGet, private now: () => number = Date.now, private url: () => string = () => liqLevelsUrl(),
+    private read: LiqFetch = webFetch, private access: LiqPlusAccess = MEMBER) {
     this.candles = new KeyLevelHistory(get, now, CANDLES_MS, 12 * HOUR);
   }
 
-  /** Keep the levels of `coin` fresh; `onChange` runs when anything drawn changes. */
-  ensure(coin: Coin, onChange: () => void): void {
+  /** What is drawn (the effective view: the free view without Plus). */
+  get view(): LiqView { return this.#view; }
+
+  /** The liquidation levels of the view's traders (every position's, or a group's), or null while they are not held. */
+  #liqLayer(): Layer | null {
+    const v = this.#view;
+    if (v.group === 'all') return this.#free;
+    const g = this.#groups.held;
+    return g ? (v.group === 'proven' ? g.proven : g.profitable) : null;
+  }
+  /** What the view draws as its levels (the take profits apart). */
+  #main(): Layer | SumLayer | null {
+    const v = this.#view;
+    if (v.kind === 'stops') return this.#triggers.held?.stops ?? null;
+    const liq = this.#liqLayer();
+    if (v.kind === 'liq' || !liq) return v.kind === 'liq' ? liq : null;
+    const stops = this.#triggers.held?.stops;
+    if (!stops) return null;
+    if (this.#both?.a !== liq || this.#both.b !== stops) this.#both = new SumLayer(liq, stops);
+    return this.#both;
+  }
+
+  /** The levels the view draws, or null. */
+  get levels(): LiqLevels | null { return this.#main()?.levels ?? null; }
+  /** The take profits (sides swapped: see `LevelsKind`) while the view shows them and they are held, else null. */
+  get takes(): LiqLevels | null { return this.#view.takes ? this.#triggers.held?.takes.levels ?? null : null; }
+  /** Where the take profits stand: drawn, loading, not read, not there yet (`missing`), or off (the view has none). */
+  get takesState(): LiqState {
+    if (!this.#view.takes) return 'off';
+    return this.#triggers.held ? 'ready' : this.#partState(this.#triggers);
+  }
+  /** When the positions of the liquidations drawn stood, and the stop and take-profit orders (null: not part of the view or not held). */
+  asOfs(): { liq: number | null; orders: number | null } {
+    const v = this.#view, orders = v.kind !== 'liq' || v.takes ? this.#triggers.held?.data.asOf ?? null : null;
+    return { liq: v.kind === 'stops' ? null : this.#liqLayer()?.levels.asOf ?? null, orders };
+  }
+  /**
+   * Whether the stop and take-profit orders drawn are old enough to say so: older than the levels go stale, or more than about two hours
+   * older than the liquidations beside them (not every snapshot has an order file).
+   */
+  ordersOld(): boolean {
+    const { liq, orders } = this.asOfs();
+    return orders !== null && (this.now() - orders > STALE_MS || (liq !== null && liq - orders > ORDERS_BEHIND_MS));
+  }
+  /** Why nothing of the view is drawn where the state is `missing`: no proven list for the snapshot, no groups or stops there yet. */
+  missing(): 'proven' | 'groups' | 'orders' | null {
+    if (this.state !== 'missing') return null;
+    const v = this.#view;
+    if (v.kind !== 'stops' && v.group !== 'all') {
+      const g = this.#groups.held;
+      if (g && v.group === 'proven' && !g.proven) return 'proven';
+      if (!g) return 'groups';
+    }
+    return 'orders';
+  }
+
+  /** Keep the levels of `coin` fresh for `view` (the effective one: the free view without Plus); `onChange` runs when anything drawn changes. */
+  ensure(coin: Coin, onChange: () => void, view: LiqView = FREE_VIEW): void {
+    if (viewKey(view) !== viewKey(this.#view)) { this.#view = view; this.version++; }
     const url = this.url();
     if (!url) { this.state = 'off'; return; }
     if (coin.coin !== BTC.coin) { this.state = 'other-coin'; return; }
-    if (url !== this.#url) { this.#url = url; this.levels = null; this.#seen = null; this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#offset = null; this.#askedAt = -Infinity; this.#failed = false; this.version++; }
+    if (url !== this.#url) {
+      this.#url = url; this.#free = null; this.#both = null; this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#offset = null; this.#askedAt = -Infinity; this.#failed = false; this.version++;
+      this.#groups = plusPart(); this.#triggers = plusPart();
+    }
     const now = this.now();
     // The page's clock went back since it was last read: what the old clock placed and planned is no good (`clockSetBack`).
-    if (clockSetBack(this.#lastNow, now)) { this.#created = now; this.#lead = MAX_LEAD_MS; this.#offset = null; this.#nextAt = now; this.#askedAt = -Infinity; this.#steps++; }
+    if (clockSetBack(this.#lastNow, now)) {
+      this.#created = now; this.#lead = MAX_LEAD_MS; this.#offset = null; this.#nextAt = now; this.#askedAt = -Infinity; this.#steps++;
+      for (const part of [this.#groups, this.#triggers]) { part.nextAt = now; part.doneFor = -1; part.tries = 0; }
+    }
     this.#lastNow = now;
     // Asked when the next snapshot can be there (`liq-schedule.ts`), and not while the page is out of sight: it asks as it shows again.
     if (!this.#pending && now >= this.#nextAt && !pageHidden()) {
@@ -407,27 +718,101 @@ export class LiqLevelsSource {
         if (!levels) { this.#fail(onChange); return; }
         this.#failed = false;
         // Never back to an older snapshot: an edge can hold an older copy for a moment.
-        const held = this.levels;
+        const held = this.#free?.levels;
         if (!held || levels.asOf > held.asOf || (levels.asOf === held.asOf && levels.fetchedAt > held.fetchedAt)) {
-          this.levels = levels; this.#seen = null; this.version++;
+          this.#free = new Layer(levels); this.version++;
           // Seen appear between this ask and the one before: placed by when it was published, not by the page's clock against HyperTracker's.
           ({ created: this.#created, lead: this.#lead, offset: this.#offset } = placeSnapshot(levels.createdAt, levels.fetchedAt, this.#askedAt, askedAt, this.#lead, this.#offset, onTime));
         }
         this.#askedAt = askedAt;
         this.#nextAt = nextAskAt(this.#created, this.now(), this.#lead);
         this.#settle();
+        // A Plus file the view needs follows the snapshot the free file brought (it is asked for at once, not on the next frame).
+        this.#askPlus(onChange);
         onChange();
       }, () => { if (asked === this.#url) this.#fail(onChange); }).finally(() => { this.#pending = false; });
     }
+    this.#askPlus(onChange);
     this.#settle();
-    const levels = this.levels;
-    if (levels) {
+    // The candles from the earliest snapshot drawn (the stops' is often older than the liquidations').
+    const from = [this.#main(), this.#view.takes ? this.#triggers.held?.takes ?? null : null, this.#view.kind === 'both' ? this.#triggers.held?.stops ?? null : null]
+      .reduce((m, layer) => layer ? Math.min(m, layer instanceof SumLayer ? Math.min(layer.a.levels.asOf, layer.b.levels.asOf) : layer.levels.asOf) : m, Infinity);
+    if (Number.isFinite(from)) {
       const id = instrumentIdFor('hyperliquid', BTC), listing = BTC.markets.hyperliquid;
       if (id && listing) {
         this.#target ??= { id, listing, own: false };
-        this.candles.ensure(this.#target, levels.asOf - MINUTE, MINUTE, onChange);
+        this.candles.ensure(this.#target, from - MINUTE, MINUTE, onChange);
       }
     }
+  }
+
+  /**
+   * The Plus files the view needs, asked for with the pass when the free file holds a snapshot they do not have yet: the groups' for a group's
+   * liquidations, the orders' for stops and take profits. Nothing paid is asked for without a pass.
+   */
+  #askPlus(onChange: () => void): void {
+    const v = this.#view;
+    this.#askPart(this.#groups, v.kind !== 'stops' && v.group !== 'all', 'groups', onChange);
+    this.#askPart(this.#triggers, v.kind !== 'liq' || v.takes, 'triggers', onChange);
+  }
+
+  #askPart(part: PlusPart<unknown>, want: boolean, which: 'groups' | 'triggers', onChange: () => void): void {
+    const urls = plusUrls(this.#url), free = this.#free?.levels, now = this.now();
+    if (!want || !urls || !free || part.pending || now < part.nextAt || part.doneFor === free.createdAt || pageHidden()) return;
+    const pass = this.access.pass(now);
+    if (pass === null) return;
+    part.pending = true;
+    if (!part.held) part.status = 'loading';
+    const asked = this.#url, steps = this.#steps, target = free.createdAt;
+    const done = (): void => { this.#settle(); onChange(); };
+    void this.read(which === 'groups' ? urls.groups : urls.triggers, pass).then(answer => {
+      if (asked !== this.#url || steps !== this.#steps) return;
+      const at = this.now();
+      if (answer.status === 200) {
+        const took = which === 'groups' ? this.#takeGroups(parseLiqGroups(answer.body, BTC.coin)) : this.#takeTriggers(parseTriggers(answer.body, BTC.coin));
+        if (took === null) { part.status = 'failed'; part.nextAt = at + RETRY_MS; done(); return; }
+        part.status = 'ready';
+        // The snapshot asked for, or a newer one: settled until the free file brings another. An older one (the order file not read yet, an
+        // edge's copy): asked again a little later, a few times.
+        if (took >= target || ++part.tries >= PLUS_TRIES) { part.doneFor = target; part.tries = 0; } else part.nextAt = at + PLUS_AGAIN_MS;
+      } else if (isRefusal(answer)) {
+        // The gate would not take this pass: it is dropped and renewed (`Plus.refused`); the file is asked again with the next one.
+        this.access.refused(pass);
+        if (!part.held) part.status = 'failed';
+        part.nextAt = at + RETRY_MS;
+      } else if (answer.status === 503) {
+        // Not there yet (no groups for this snapshot, no order file read yet): asked again when the server says.
+        if (!part.held) part.status = 'waiting';
+        part.nextAt = at + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, (answer.retryAfter ?? 0) * 1_000));
+      } else {
+        if (!part.held) part.status = 'failed';
+        part.nextAt = at + RETRY_MS;
+      }
+      done();
+    }, () => {
+      if (asked !== this.#url || steps !== this.#steps) return;
+      if (!part.held) part.status = 'failed';
+      part.nextAt = this.now() + RETRY_MS; done();
+    }).finally(() => { part.pending = false; });
+  }
+
+  /** Keeps a groups file when it is newer than the one held; returns its snapshot's `createdAt`, or null for a malformed file. */
+  #takeGroups(g: LiqGroups | null): number | null {
+    if (!g) return null;
+    const held = this.#groups.held?.data;
+    if (!held || g.asOf > held.asOf || (g.asOf === held.asOf && g.fetchedAt > held.fetchedAt)) {
+      this.#groups.held = { data: g, profitable: new Layer(g.profitable), proven: g.proven ? new Layer(g.proven) : null }; this.version++;
+    }
+    return g.createdAt;
+  }
+  /** Keeps an orders file when it is newer than the one held; returns its snapshot's `createdAt`, or null for a malformed file. */
+  #takeTriggers(o: LiqTriggers | null): number | null {
+    if (!o) return null;
+    const held = this.#triggers.held?.data;
+    if (!held || o.asOf > held.asOf || (o.asOf === held.asOf && o.fetchedAt > held.fetchedAt)) {
+      this.#triggers.held = { data: o, stops: new Layer(o.stops), takes: new Layer(o.takes) }; this.version++;
+    }
+    return o.createdAt;
   }
 
   #fail(onChange: () => void): void {
@@ -436,10 +821,35 @@ export class LiqLevelsSource {
     onChange();
   }
 
-  /** The state from what is held: levels too old to draw are stale; none yet is loading, or unavailable once a read failed. */
+  /** Where a Plus part not held stands. */
+  #partState(part: PlusPart<unknown>): LiqState {
+    return part.status === 'failed' ? 'unavailable' : part.status === 'waiting' ? 'missing' : 'loading';
+  }
+
+  /**
+   * The state from what is held, for the view: levels too old to draw are stale; none yet is loading, or unavailable once a read failed; a
+   * Plus part that holds nothing for the view (no proven list for the snapshot, a 503) is missing. Stops are never stale: an old order file is
+   * said (`ordersOld`), not hidden.
+   */
   #settle(): void {
-    const levels = this.levels;
-    this.state = !levels ? (this.#failed ? 'unavailable' : 'loading') : this.now() - levels.asOf > STALE_MS ? 'stale' : 'ready';
+    const v = this.#view, free = this.#free;
+    const freeState: LiqState = !free ? (this.#failed ? 'unavailable' : 'loading') : 'ready';
+    const liqState = (): LiqState => {
+      if (v.group === 'all') return freeState;
+      const g = this.#groups.held;
+      if (!g) return freeState !== 'ready' ? freeState : this.#partState(this.#groups);
+      return v.group === 'proven' && !g.proven ? 'missing' : 'ready';
+    };
+    const fresh = (s: LiqState): LiqState => {
+      const liq = this.#liqLayer();
+      return s === 'ready' && liq && this.now() - liq.levels.asOf > STALE_MS ? 'stale' : s;
+    };
+    const stops = (): LiqState => this.#triggers.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(this.#triggers);
+    if (v.kind === 'liq') { this.state = fresh(liqState()); return; }
+    if (v.kind === 'stops') { this.state = stops(); return; }
+    // Both: the first part not ready says why nothing is drawn.
+    const a = fresh(liqState()), b = stops();
+    this.state = a !== 'ready' ? a : b;
   }
 
   /**
@@ -447,14 +857,9 @@ export class LiqLevelsSource {
    * so those go at once, whatever the candles say yet (and if they cannot be read); later highs and lows take levels as they come.
    */
   observe(price: number): void {
-    const levels = this.levels;
-    if (!levels || !(price > 0) || !Number.isFinite(price)) return;
-    const margin = Math.max(levels.step, price * SEEN_MARGIN);
-    const low = Math.min(levels.mark, price + margin), high = Math.max(levels.mark, price - margin), seen = this.#seen;
-    if (!seen) { this.#seen = { low, high, lowAt: levels.asOf, highAt: levels.asOf }; return; }
-    const now = this.now();
-    if (low < seen.low) { seen.low = low; seen.lowAt = now; }
-    if (high > seen.high) { seen.high = high; seen.highAt = now; }
+    if (!(price > 0) || !Number.isFinite(price)) return;
+    const now = this.now(), g = this.#groups.held, o = this.#triggers.held;
+    for (const layer of [this.#free, g?.profitable, g?.proven, o?.stops, o?.takes]) layer?.observe(price, now);
   }
 
   /** Hyperliquid's price as last read (the newest candle's close), or the snapshot's mark before any candle came. */
@@ -471,26 +876,17 @@ export class LiqLevelsSource {
   }
 
   /** Changes whenever what is drawn from the levels can change, for the pane's caches. */
-  key(): string {
-    const l = this.levels, s = this.#seen;
-    return l ? `${l.asOf}|${l.fetchedAt}|${this.candles.version}|${this.candles.bars.length}|${s?.low}|${s?.high}` : '';
-  }
+  key(): string { const main = this.#main(); return main ? `${viewKey(this.#view)}|${main.key(this.candles)}` : ''; }
+  /** The same for the take profits. */
+  takesKey(): string { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.key(this.candles) : ''; }
 
   /** How far price has traded through each bin, worked out again only when the levels, the candles or the prices seen changed. */
-  taken(): { long: Taken; short: Taken } | null { return this.#derive()?.taken ?? null; }
+  taken(): { long: Taken; short: Taken } | null { return this.#main()?.derive(this.candles).taken ?? null; }
   /** What stands of each side, added up, for the profile column. */
-  standing(): LiqStanding | null { return this.#derive()?.standing ?? null; }
-
-  #derive(): { taken: { long: Taken; short: Taken }; standing: LiqStanding } | null {
-    const levels = this.levels;
-    if (!levels) return null;
-    const key = this.key();
-    if (this.#derived?.key !== key) {
-      const taken = takenByCandles(levels, this.candles.bars, this.#seen);
-      this.#derived = { key, taken, standing: liqStanding(levels, taken) };
-    }
-    return this.#derived;
-  }
+  standing(): LiqStanding | null { return this.#main()?.derive(this.candles).standing ?? null; }
+  /** The same two for the take profits. */
+  takesTaken(): { long: Taken; short: Taken } | null { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).taken : null; }
+  takesStanding(): LiqStanding | null { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).standing : null; }
 }
 
 /** One side of what the seam between the liquidation column and the profile column weighs: the book against the liquidations. */
