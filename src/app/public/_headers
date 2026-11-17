@@ -7,3 +7,9 @@
 # this one (src/app/handover.ts reads only what the page was loaded with; this is the second guard).
 /*
   Cross-Origin-Opener-Policy: same-origin
+
+# The Plus page is the exception: its checkout (Paddle's) may open a window of a payment method (PayPal, a bank's confirmation) that has to
+# answer back to the window that opened it, which same-origin above would cut. The rule above is taken off here and the looser one set.
+/plus/*
+  ! Cross-Origin-Opener-Policy
+  Cross-Origin-Opener-Policy: same-origin-allow-popups

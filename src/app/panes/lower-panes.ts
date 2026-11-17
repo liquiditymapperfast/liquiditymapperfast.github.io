@@ -23,7 +23,7 @@ import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, type LiqRow } from '../liq-history.ts';
-import { FREE_DAYS, freeFrom } from '../plus/config.ts';
+import { FREE_DAYS, freeFrom, plusOnSale } from '../plus/config.ts';
 import { plus } from '../plus/pass.ts';
 import { togglePlus } from '../plus/panel.ts';
 import type { StatOptions } from '../stat-options.ts';
@@ -361,7 +361,8 @@ export class DepthPane extends TimePane {
   readonly #venues: BookVenues;
   #panel: Panel | null = null;
   /** The liquidation levels' history (liq-history.ts), read a UTC day at a time while the pane shows Liquidation levels. */
-  readonly #history = new LiqHistory(undefined, { freeFrom, pass: now => plus().pass(now), refused: () => plus().refused() });
+  // While Plus is not on sale the page closes nothing by itself: every day is asked for, and only the gate's own refusal closes one.
+  readonly #history = new LiqHistory(undefined, { freeFrom: now => plusOnSale() ? freeFrom(now) : -Infinity, pass: now => plus().pass(now), refused: pass => plus().refused(pass) });
   /** The Liquidation levels series last built, with the row in force in each pixel column, kept until the history, the view or the bands change. */
   #liq: LiqSeries | null = null;
   /**
@@ -517,7 +518,9 @@ export class DepthPane extends TimePane {
     const w = depthColumns(pw), k = radii.length, t0 = v.t0, t1 = v.t1, until = replaying() ? pageNow() : now;
     // Plus: the history before the free days is closed to a visitor without a pass, from where the recording begins.
     const closedTo = this.#history.closedBefore(now), closedFrom = Math.max(t0, index.first);
-    const closed = closedTo !== null && closedTo > closedFrom ? { from: closedFrom, to: Math.min(closedTo, t1) } : null;
+    // Only where something was recorded and is in view: a view wholly before the recording began has nothing closed in it.
+    const closedEnd = closedTo === null ? -Infinity : Math.min(closedTo, t1);
+    const closed = closedEnd > closedFrom ? { from: closedFrom, to: closedEnd } : null;
     const key = `${this.#history.version}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}|${closed ? closed.to : ''}`;
     if (this.#liq?.key === key) return this.#liq;
     const rows = this.#history.rows(t0, t1), idx = radii.map(r => bandIndex(index.edges, r));
@@ -594,7 +597,7 @@ export class DepthPane extends TimePane {
         this.#publish({ key: depthHeldKey(liqHeld ? 'liq' : 'book', ids, s.radii), source: liqHeld ? 'liq' : 'book', ids, t0: s.t0, t1: s.t1, w: s.w, radii: s.radii,
           bid: s.answer.bid, ask: s.answer.ask, bidCoin: s.answer.bidCoin, askCoin: s.answer.askCoin, present: liqHeld ? null : s.answer.present ?? null,
           centred: liqHeld ? null : s.answer.centred ?? null, stepMs: liqHeld ? 0 : s.answer.stepMs ?? MINUTE, answeredAt: liqHeld ? Infinity : this.#series?.answeredAt ?? 0,
-          rows, buckets: liqHeld ? liqHeld.idx : null, omitted: liqHeld ? liqHeld.omitted : [], coins, coin, focus: top });
+          rows, buckets: liqHeld ? liqHeld.idx : null, omitted: liqHeld ? liqHeld.omitted : [], coins, coin, focus: top, ...(liqHeld?.closed ? { closedTo: liqHeld.closed.to } : {}) });
       }
     }
     // A column holds something where the book had depth, or (liquidation levels) where a snapshot is in force, money in its bands or not.

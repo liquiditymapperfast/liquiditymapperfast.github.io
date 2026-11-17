@@ -76,6 +76,15 @@ test('tracked liquidation levels: the snapshots actually in force, their expiry,
   const empty = new DepthRangeSummary().lines(sel(0, 20), liq([], T + 10 * M), true, LKEY, NOW);
   assert.ok(text(empty, 'dp-empty'));
   assert.equal(text(empty, 'dp-cover'), 'Snapshots in force for 0 min of 20 min · no snapshot in force: 10 min · outside the columns drawn: 10 min');
+  // Plus: the pane holds the history before minute 6 closed. Nothing of that stretch is counted (a snapshot fetched in it still counts for the
+  // time it is in force after it, as the pane draws it), and it is called what it is, not a time without a snapshot.
+  const shut = { ...liq([row(0, 10, 20), row(8, 30, 10)]), closedTo: T + 6 * M };
+  const part = depthLiqStretch(shut, sel(0, 10), NOW);
+  assert.deepEqual([part.rows.length, part.closed / M, part.inForce / M, part.none / M, part.outside / M], [2, 6, 4, 0, 0]);
+  assert.equal(text(new DepthRangeSummary().lines(sel(0, 10), shut, true, LKEY, NOW), 'dp-cover'), 'Snapshots in force for 4 min of 10 min · part of Plus: 6 min');
+  const whole = new DepthRangeSummary().lines(sel(0, 5), shut, true, LKEY, NOW);
+  assert.equal(text(whole, 'dp-empty'), "This stretch of the liquidation levels' history is part of Plus.");
+  assert.equal(text(whole, 'dp-cover'), 'Snapshots in force for 0 min of 5 min · part of Plus: 5 min');
   // The memo is never older than a second: a replay stepping back before a fetch drops the snapshot again.
   const summary = new DepthRangeSummary(), mid = liq([row(0, 1, 1), { ...row(0, 2, 2), fetchedAt: T + 31_500 }]);
   const at34 = summary.lines({ t0: T, t1: T + M, p0: null, p1: null, live: false, draft: false }, mid, true, LKEY, T + 34_000);

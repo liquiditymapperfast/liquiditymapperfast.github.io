@@ -21,6 +21,7 @@
     "tests/**/*.mts",
     "scripts/**/*.mts",
     "vite.config.mts",
+    "vite.plus.config.mts",
     "src/server/ws-runtime.d.ts"
   ],
   "exclude": []

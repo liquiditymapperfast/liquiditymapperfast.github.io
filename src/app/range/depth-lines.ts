@@ -35,6 +35,8 @@ export interface DepthPaneHeld {
   answeredAt: number;
   /** Liquidation levels: the snapshots (oldest first), the bucket each band reads (-1: none), and the bands asked beyond the history's reach. */
   rows: readonly DepthLiqRow[] | null; buckets: readonly number[] | null; omitted: readonly number[];
+  /** Liquidation levels: the history before this is part of Plus and closed to this visitor (the pane draws none of it); absent: all open. */
+  closedTo?: number;
   /** The units the pane draws in (coins: the chart coin), and the band it watches (its index). */
   coins: boolean; coin: string; focus: number;
 }
@@ -112,12 +114,16 @@ export function depthStretch(held: DepthPaneHeld, sel: Pick<RangeSelection, 't0'
  */
 export interface DepthLiqStretch {
   span: number; inForce: number; none: number; outside: number;
+  /** The part of the selection the pane holds closed (Plus): not a time without a snapshot, and nothing of it is counted. */
+  closed: number;
   rows: DepthLiqRow[];
   bands: { r: number; firstLong: number | null; firstShort: number | null; lastLong: number | null; lastShort: number | null }[];
 }
 export function depthLiqStretch(held: DepthPaneHeld, sel: Pick<RangeSelection, 't0' | 't1'>, now: number): DepthLiqStretch {
   const end = Math.min(sel.t1, Math.max(sel.t0, now)), span = Math.max(0, end - sel.t0);
-  const a = Math.max(sel.t0, held.t0), b = Math.min(end, held.t1), known = Math.max(0, b - a), all = held.rows ?? [];
+  const drawn = Math.max(sel.t0, held.t0), b = Math.min(end, held.t1), all = held.rows ?? [];
+  // What is closed (Plus) is left out whole, the snapshots a lapsed membership may still hold included: the pane draws none of it.
+  const a = Math.max(drawn, held.closedTo ?? -Infinity), closed = Math.max(0, Math.min(a, b) - drawn), known = Math.max(0, b - a);
   let inForce = 0;
   const rows: DepthLiqRow[] = [];
   all.forEach((row, i) => {
@@ -132,7 +138,7 @@ export function depthLiqStretch(held: DepthPaneHeld, sel: Pick<RangeSelection, '
     return v === undefined || !Number.isFinite(v) ? null : v;
   };
   const bands = rows.length ? held.radii.map((r, j) => ({ r, firstLong: at(fst, 'long', j), firstShort: at(fst, 'short', j), lastLong: at(lst, 'long', j), lastShort: at(lst, 'short', j) })) : [];
-  return { span, inForce, none: Math.max(0, known - inForce), outside: Math.max(0, span - known), rows, bands };
+  return { span, inForce, none: Math.max(0, known - inForce), outside: Math.max(0, span - known - closed), closed, rows, bands };
 }
 
 const band = (r: number): string => `±${bandText(r)} %`;
@@ -236,7 +242,7 @@ export class DepthRangeSummary {
     const s = depthLiqStretch(held, sel, now), c = held.coins, coin = held.coin;
     lines.push(note('dp-status', [t('Tracked liquidation levels'), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
     if (held.omitted.length) lines.push(note('dp-omitted', t('Beyond the liquidation history\'s reach, left out: {bands}.', { bands: held.omitted.map(band).join(', ') })));
-    if (!s.rows.length) lines.push(note('dp-empty', t('No liquidation levels snapshot was in force in this selection.')));
+    if (!s.rows.length) lines.push(note('dp-empty', s.closed > 0 && s.none <= 0 ? t('This stretch of the liquidation levels\' history is part of Plus.') : t('No liquidation levels snapshot was in force in this selection.')));
     else {
       const first = s.rows[0]!, lastRow = s.rows[s.rows.length - 1]!;
       lines.push(note('dp-when', s.rows.length > 1
@@ -262,6 +268,7 @@ export class DepthRangeSummary {
     }
     // Coverage, whatever was found: time with no snapshot in force, and time outside the columns drawn (unknown).
     const parts = [
+      ...(s.closed > 0 ? [t('part of Plus: {time}', { time: shortDuration(s.closed) })] : []),
       ...(s.none > 0 ? [t('no snapshot in force: {time}', { time: shortDuration(s.none) })] : []),
       ...(s.outside > 0 ? [t('outside the columns drawn: {time}', { time: shortDuration(s.outside) })] : []),
     ];

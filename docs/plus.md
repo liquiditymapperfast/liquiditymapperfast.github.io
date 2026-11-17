@@ -25,10 +25,31 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   subscription's state from Paddle's notifications.
 - **The page**: `src/app/plus/`.
   - `config.ts`: the free days, the Worker's address, Paddle's client-side token, price ids, prices and portal link.
-  - `pass.ts`: the membership as the browser holds it (`localStorage` `lmf.plus`: `{ v, key, pass, until }`), and its renewal.
+  - `pass.ts`: the membership as the browser holds it (`localStorage` `lmf.plus`: `{ v, key, pass, until, ended, renews, skew, next }`),
+    and its renewal.
   - `panel.ts`: the Plus panel (the Plus button, the lock).
   - `page.ts`, `index.html`, `page.css`, `boot.ts`: the Plus page (`plus/`), the only page with a form or another site's script.
   - `liq-history.ts` asks for a paid day only with a pass (`LiqAccess`); `panes/lower-panes.ts` draws the closed stretch and its lock.
+
+## How the page behaves
+
+- **Renewal.** A pass with under six hours left is renewed with the key. No two renewals are asked for within a minute, whatever the
+  last one answered and whichever tab asked (`next`, kept beside the membership, is every tab's wait); after a refusal, or a pass that
+  came already near its end (the last hours of a membership), the wait is an hour; a busy server's `Retry-After` is kept.
+- **The server's clock.** A grant carries the server's time; where the device's clock is more than five minutes off, a pass's end is
+  judged by the server's (`skew`).
+- **States** (`Plus.state`): `none`, `on`, `checking` (a key is held, no pass in force yet: the pass ran out or the server was not
+  reached) and `ended` (the server refused to renew). Only `ended` is told as an end, and only `none` and `ended` are offered a
+  checkout: a member whose pass merely ran out is never sold a second subscription.
+- **Refusals.** Only the gate's own answer (HTTP 403 with `{"error":"plus_required"}`) says anything about Plus; any other 403 is a
+  failed read. With a pass, that pass is dropped and renewed. Without one (the page's clock called the day free, the server's did not),
+  the days up to it are closed for ten minutes, then asked again, and only a day within two days of the page's own boundary is believed.
+- **Not on sale.** While `config.ts` holds no token, the page closes no day by itself: it asks for every day, and only the gate's
+  refusal closes one. The Plus page still takes a key (one given as a gift).
+- **The Range summary** counts nothing of the closed stretch and calls it part of Plus, not a time without a snapshot.
+- **The Plus page's window rule.** `public/_headers` gives `plus/` `Cross-Origin-Opener-Policy: same-origin-allow-popups` (every other
+  page: `same-origin`), since a payment method's window has to answer the checkout that opened it. Not yet proved on the live site:
+  make a sandbox purchase with PayPal there before selling.
 
 ## Putting Plus on sale
 

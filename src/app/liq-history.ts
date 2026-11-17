@@ -13,21 +13,36 @@ import { liqLevelsUrl } from './liq-url.ts';
  * Who may read which days (Plus, `plus/config.ts`): the days from `freeFrom` on are everyone's; an older one is asked for only with a
  * pass, which the server checks. `refused` is told when the server would not take the pass it was sent.
  */
-export interface LiqAccess { freeFrom(now: number): number; pass(now: number): string | null; refused(): void }
+export interface LiqAccess { freeFrom(now: number): number; pass(now: number): string | null; refused(pass: string): void }
 /** Everything open: a service with no paid part (and the tests of what does not depend on one). */
 const OPEN: LiqAccess = { freeFrom: () => -Infinity, pass: () => null, refused: () => {} };
-/** The answer a read is refused with (HTTP 403), as the reader throws it. */
-const REFUSED = '403';
+/**
+ * What the gate says when it refuses a Plus day (HTTP 403 with `{"error":"plus_required"}`), as the reader throws it. Any other 403 (a
+ * firewall's, a rate limit's) is a failed read like the rest: it says nothing about Plus.
+ */
+export const LIQ_REFUSED = 'plus_required';
 /** A read: the address, and the pass to send with it when the day is a Plus one. */
 export type LiqGet = (url: string, pass?: string | null) => Promise<unknown>;
-const webRead: LiqGet = (url, pass) => fetch(url, { cache: 'no-cache', ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) })
-  .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))));
+const webRead: LiqGet = async (url, pass) => {
+  const answer = await fetch(url, { cache: 'no-cache', ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) });
+  if (answer.ok) return answer.json() as Promise<unknown>;
+  let why = String(answer.status);
+  if (answer.status === 403) { try { if (((await answer.json()) as { error?: unknown } | null)?.error === LIQ_REFUSED) why = LIQ_REFUSED; } catch { /* not the gate's answer */ } }
+  throw new Error(why);
+};
 
-export const DAY_MS = 86_400_000;
+const DAY_MS_ = 86_400_000;
+export const DAY_MS = DAY_MS_;
 /** How often the index (what the service holds) is asked again; a day still being written is asked when its next snapshot can be there (`liq-schedule.ts`). */
 const INDEX_EVERY_MS = 5 * 60_000;
 /** A failed read waits this long before it is asked again. */
 const RETRY_MS = 60_000;
+/**
+ * A free day the gate refused (the page's clock and the server's disagree about which days are free) closes the days up to it for this
+ * long, then is asked again; and only a day within this much of the page's own boundary is believed: a clock is off by hours or a day,
+ * so a refusal of a day far inside the free week is the server's fault, not a boundary.
+ */
+const REFUSAL_HOLDS_MS = 10 * 60_000, REFUSAL_REACH_MS = 2 * DAY_MS_;
 /** At most this many days are held: a view wider than that shows the newest of them. */
 export const MAX_DAYS = 120;
 
@@ -105,6 +120,8 @@ export class LiqHistory {
   #days = new Map<number, { rows: LiqRow[]; at: number; busy: boolean; failed: number; newest: number; created: number; lead: number; due: number }>();
   /** Days before this were refused without a pass although the page's clock called them free (a clock that is off): closed, like the rest. */
   #refusedBefore = -Infinity;
+  /** When that was last learned: it holds for a while (`REFUSAL_HOLDS_MS`), then the days are asked again. */
+  #refusedAt = -Infinity;
   /** The page's clock minus HyperTracker's, once a snapshot was seen appear (`placeSnapshot`). */
   #offset: number | null = null;
   /** Goes up whenever something new has come. */
@@ -118,11 +135,23 @@ export class LiqHistory {
    */
   closedBefore(now: number): number | null {
     if (this.access.pass(now) !== null) return null;
-    const free = Math.max(this.access.freeFrom(now), this.#refusedBefore);
+    const free = this.#freeFrom(now);
     return Number.isFinite(free) ? free : null;
   }
-  /** Who may read what changed (a pass came or went): what is held stays, and the days now open are asked for as the view needs them. */
-  accessChanged(): void { this.#refusedBefore = -Infinity; this.version++; }
+  /** The first moment open without a pass: the page's own rule, or later where the gate refused a day the page called free (for a while). */
+  #freeFrom(now: number): number {
+    if (this.#refusedBefore > -Infinity && (now - this.#refusedAt > REFUSAL_HOLDS_MS || now < this.#refusedAt)) { this.#refusedBefore = -Infinity; this.version++; }
+    return Math.max(this.access.freeFrom(now), this.#refusedBefore);
+  }
+  /**
+   * Who may read what changed (a pass came or went): what is held stays, and the days now open are asked for as the view needs them, at
+   * once: a day that was refused a moment ago does not wait out a failed read's minute. What the gate refused although the page called it
+   * free stays known (it is about the two clocks, not about the pass): such a day is then asked for with the pass.
+   */
+  accessChanged(): void {
+    for (const entry of this.#days.values()) entry.failed = -Infinity;
+    this.version++;
+  }
 
   /** Ask for what [t0, t1] needs that is not held (or is due again); `changed` is called when an answer lands. Times are kept as of `now`, when they were asked. */
   ensure(t0: number, t1: number, now: number, changed: () => void): void {
@@ -149,7 +178,7 @@ export class LiqHistory {
     const lastDay = Math.floor(Math.min(t1, Math.max(index.last, now)) / DAY_MS) * DAY_MS;
     // The day before the view as well: the row in force at its left edge may have come the evening before.
     const firstDay = Math.max(Math.floor(index.first / DAY_MS) * DAY_MS, Math.floor(t0 / DAY_MS) * DAY_MS - DAY_MS, lastDay - (MAX_DAYS - 1) * DAY_MS);
-    const free = Math.max(this.access.freeFrom(now), this.#refusedBefore);
+    const free = this.#freeFrom(now);
     for (let day = firstDay; day <= lastDay; day += DAY_MS) {
       // A Plus day is asked for with a pass or not at all: the pane says it is closed (`closedBefore`).
       const pass = day < free ? this.access.pass(now) : null;
@@ -176,10 +205,16 @@ export class LiqHistory {
         changed();
       }, (error: unknown) => {
         entry.failed = now;
-        if (!(error instanceof Error) || error.message !== REFUSED) return;
-        // Refused. With a pass: the pass is no good any more (it is asked for again, and the day with it). Without one: the server's clock
-        // calls the day a Plus one where the page's called it free, so it and the days before it are closed.
-        if (pass !== null) this.access.refused(); else this.#refusedBefore = Math.max(this.#refusedBefore, day + DAY_MS);
+        if (!(error instanceof Error) || error.message !== LIQ_REFUSED) return;
+        // Refused by the gate. With a pass: that pass is no good any more (it is asked for again, and the day with it). Without one: the
+        // server's clock calls the day a Plus one where the page's called it free, so it and the days before it are closed for a while;
+        // believed only near the page's own boundary.
+        if (pass !== null) this.access.refused(pass);
+        else if (day < this.access.freeFrom(now) + REFUSAL_REACH_MS) {
+          this.#refusedBefore = Math.max(this.#refusedBefore, day + DAY_MS); this.#refusedAt = now;
+          // A member's page asks again at once, now with the pass (the day counts as a Plus one from here on).
+          if (this.access.pass(now) !== null) entry.failed = -Infinity;
+        } else return;
         this.version++; changed();
       }).finally(() => { entry.busy = false; });
     }

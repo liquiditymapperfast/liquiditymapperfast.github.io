@@ -153,7 +153,7 @@ function begin(restore: () => void): void {
     // button lives in the sheet (a compact bar), not the top of the page. (A bar that `restore` folds again is laid out a moment later: the toolbar then moves the
     // focus from the Tour button to the arrow that unfolds it, `setCollapsed`.)
     const held = document.activeElement;
-    if (!held || held === document.body) [...document.querySelectorAll<HTMLElement>('.tour-btn, .more-btn, .bar-expand')].find(node => node.getClientRects().length > 0)?.focus({ preventScroll: true });
+    if (!held || held === document.body) [...document.querySelectorAll<HTMLElement>('.tour-btn, .guide-btn, .more-btn, .bar-expand')].find(node => node.getClientRects().length > 0)?.focus({ preventScroll: true });
     record(how === 'done' ? 'done' : 'dismissed');
   }
 

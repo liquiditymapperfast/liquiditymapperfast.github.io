@@ -15,6 +15,8 @@ function memory(initial: Record<string, string> = {}): { store: Pick<Storage, 'g
   return { data, store: { getItem: key => data.get(key) ?? null, setItem: (key, value) => { data.set(key, value); }, removeItem: key => { data.delete(key); } } };
 }
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
+/** The answers already resolved are handed on (no timer: many steps stay quick). */
+const flush = async (): Promise<void> => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
 
 test('the free days are today and the seven UTC days before it, whatever the hour', () => {
   const day = Date.UTC(2026, 10, 17);
@@ -41,12 +43,16 @@ test('a pass says whose it is and when it runs out; anything else is no pass', (
 
 test('what the browser keeps and what the server answers are checked before they are believed', () => {
   const pass = passFor('sub_1', 9);
-  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass, until: 77 })), { key: KEY, pass, until: 77 });
-  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass: 'junk' })), { key: KEY, pass: '', until: 0 }, 'a pass that is none reads as none');
+  const rest = { ended: false, renews: null, skew: 0, next: 0 };
+  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass, until: 77 })), { key: KEY, pass, until: 77, ...rest });
+  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass, until: 77, ended: true, renews: false, skew: -5, next: 9 })), { key: KEY, pass, until: 77, ended: true, renews: false, skew: -5, next: 9 });
+  assert.deepEqual(readHeld(JSON.stringify({ v: 1, key: KEY, pass: 'junk' })), { key: KEY, pass: '', until: 0, ...rest }, 'a pass that is none reads as none');
   for (const bad of [null, '', 'x', '{}', JSON.stringify({ v: 2, key: KEY }), JSON.stringify({ v: 1, key: 'short' })]) assert.equal(readHeld(bad), null);
   assert.deepEqual(readGrant({ pass, until: 5, key: KEY }), { pass, until: 5, key: KEY });
   assert.deepEqual(readGrant({ pass, until: 5 }), { pass, until: 5 }, 'a renewal carries no key');
   assert.deepEqual(readGrant({ pass, until: 5, paidUntil: 900 }), { pass, until: 900 }, 'the end of the paid period, where the server says it, not the expiry of the pass');
+  assert.deepEqual(readGrant({ pass, until: 5, renews: false, now: 1234, gift: true }), { pass, until: 5, renews: false, now: 1234 }, 'whether it renews, and the clock of the server');
+  assert.deepEqual(readGrant({ pass, until: 5, renews: 'yes', now: 'soon' }), { pass, until: 5 });
   for (const bad of [null, {}, { pass: 'junk', until: 5 }, { pass, until: 'soon' }]) assert.equal(readGrant(bad), null);
 });
 
@@ -61,7 +67,7 @@ test('a membership is in force while its pass has time to run, and is kept where
   plus.accept({ key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS });
   assert.equal(told, 1);
   assert.equal(plus.on, true); assert.equal(plus.key, KEY); assert.equal(plus.until, now + 20 * DAY_MS);
-  assert.deepEqual(JSON.parse(data.get(PLUS_STORE)!), { v: 1, key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS });
+  assert.deepEqual(JSON.parse(data.get(PLUS_STORE)!), { v: 1, key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS, ended: false, renews: null, skew: 0, next: 0 });
   assert.equal(calls.length, 0, 'a fresh pass is not renewed');
   // Another tab reads the same storage.
   const other = new Plus(store, post, () => now, () => 'https://plus.test/v1');
@@ -147,4 +153,114 @@ test('what another tab stored is taken over, and only a change is told', () => {
   plus.reload(); assert.equal(told, 1, 'the same again is no news');
   data.delete(PLUS_STORE); plus.reload();
   assert.equal(told, 2); assert.equal(plus.known, false);
+});
+
+test('two tabs do not take turns asking: one renewal a minute between them, however often the pass is refused', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  let renewals = 0;
+  const post: Post = () => { renewals++; return Promise.resolve({ status: 200, body: { pass: passFor('sub_1', now + 24 * HOUR + renewals), until: now + DAY_MS } }); };
+  const a = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  const b = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  a.accept({ key: KEY, pass: passFor('sub_1', now + 20 * HOUR), until: now + DAY_MS }); b.reload();
+  // Each tab's request is refused; what one tab stores reaches the other as a storage event before the other's next step.
+  for (let frame = 0; frame < 600; frame++) {
+    const [one, other] = frame % 2 ? [b, a] : [a, b];
+    one.refused(); other.reload(); await flush(); other.reload(); one.reload();
+    one.pass(); other.pass(); await flush(); one.reload(); other.reload();
+    now += 100;
+  }
+  assert.equal(renewals, 1, 'sixty seconds, two tabs, one renewal');
+  now += 1_000;
+  a.pass(); await flush(); b.reload(); b.pass(); await flush();
+  assert.equal(renewals, 2, 'and one more a minute after the first');
+});
+
+test('a pass the server gives already near its end is not asked for again each frame', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  let renewals = 0, told = 0;
+  // The last hours of a membership: the server gives no pass past its end.
+  const end = now + 3 * HOUR;
+  const post: Post = () => { renewals++; return Promise.resolve({ status: 200, body: { pass: passFor('sub_1', end), until: end, renews: false } }); };
+  const plus = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  plus.accept({ key: KEY, pass: passFor('sub_1', end), until: end });
+  plus.subscribe(() => { told++; });
+  for (let frame = 0; frame < 20; frame++) { assert.ok(plus.pass()); await settle(); now += 16; }
+  assert.equal(renewals, 1); assert.equal(told, 1);
+  assert.equal(plus.renews, false);
+  now += HOUR;
+  plus.pass(); await settle();
+  assert.equal(renewals, 2, 'again an hour later');
+});
+
+test('a pass is judged by the clock of the server where the device is off', async () => {
+  // The device's clock runs 25 hours ahead of the server's.
+  const server = 1_000_000_000_000; let now = server + 25 * HOUR;
+  const { store } = memory();
+  let withClock = true, renewals = 0;
+  const post: Post = () => { renewals++; return Promise.resolve({ status: 200, body: { pass: passFor('sub_1', server + 24 * HOUR), until: server + 20 * DAY_MS, ...(withClock ? { now: server } : {}) } }); };
+  const plus = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  assert.equal(plus.accept({ key: KEY, pass: passFor('sub_1', server + 24 * HOUR), until: server + 20 * DAY_MS, now: server }), true);
+  assert.equal(plus.state, 'on', 'the server said what time it is');
+  assert.equal(renewals, 0, 'and a day-long pass is not renewed');
+  // A copy in another tab reads the same correction.
+  assert.equal(new Plus(store, post, () => now, () => 'https://plus.test/v1').on, true);
+  // A server that does not say: the pass looks run out; the membership is being checked, never called ended, and is asked for once an hour.
+  withClock = false;
+  plus.accept({ key: KEY, pass: passFor('sub_1', server + 24 * HOUR), until: server + 20 * DAY_MS });
+  assert.equal(plus.state, 'checking'); await settle();
+  for (let i = 0; i < 10; i++) { plus.pass(); await settle(); now += 1_000; }
+  assert.equal(renewals, 1); assert.equal(plus.state, 'checking');
+  // Agreeing clocks leave no correction (an answer's travel time is not a clock error).
+  now = server + 2_000;
+  plus.accept({ key: KEY, pass: passFor('sub_1', server + 24 * HOUR), until: server + 20 * DAY_MS, now: server });
+  assert.equal((JSON.parse(store.getItem(PLUS_STORE)!) as { skew: number }).skew, 0);
+});
+
+test('only a refusal by the server ends a membership: a pass that ran out, or a busy server, is being checked', async () => {
+  let now = 1_000_000_000_000;
+  const { store } = memory();
+  const calls: number[] = [];
+  let answer: { status: number; body: unknown; retryAfter?: number } = { status: 429, body: { error: 'slow_down' }, retryAfter: 600 };
+  const post: Post = () => { calls.push(now); return Promise.resolve(answer); };
+  const plus = new Plus(store, post, () => now, () => 'https://plus.test/v1');
+  assert.equal(plus.state, 'none');
+  plus.accept({ key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + 20 * DAY_MS, renews: true });
+  assert.equal(plus.state, 'on'); assert.equal(plus.renews, true);
+  // Back after thirty hours: the pass ran out, the server is busy and says to wait ten minutes.
+  now += 30 * HOUR;
+  assert.equal(plus.state, 'checking'); await settle();
+  assert.equal(calls.length, 1);
+  now += 5 * 60_000; plus.pass(); await settle();
+  assert.equal(calls.length, 1, 'not before the server said');
+  now += 5 * 60_000 + 1; answer = { status: 403, body: { error: 'not_active' } };
+  plus.pass(); await settle();
+  assert.equal(calls.length, 2); assert.equal(plus.state, 'ended'); assert.equal(plus.key, KEY);
+  assert.equal(new Plus(store, post, () => now, () => 'https://plus.test/v1').state, 'ended', 'kept: another tab reads it');
+});
+
+test('a late refusal of a pass since replaced does not drop the new one', () => {
+  const now = 1_000_000_000_000;
+  const { store } = memory();
+  const plus = new Plus(store, () => Promise.resolve({ status: 500, body: null }), () => now, () => 'https://plus.test/v1');
+  const fresh = passFor('sub_1', now + 24 * HOUR), old = passFor('sub_1', now + 7 * HOUR);
+  plus.accept({ key: KEY, pass: fresh, until: now + DAY_MS });
+  plus.refused(old);
+  assert.equal(plus.pass(), fresh);
+  plus.refused(fresh);
+  assert.equal(plus.pass(), null);
+});
+
+test('a browser that will not keep the membership says so, and a pass that runs out in an open tab is told', () => {
+  let now = 1_000_000_000_000;
+  const full: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = { getItem: () => null, setItem: () => { throw new Error('quota'); }, removeItem: () => {} };
+  const plus = new Plus(full, () => new Promise(() => {}), () => now, () => 'https://plus.test/v1');
+  assert.equal(plus.accept({ key: KEY, pass: passFor('sub_1', now + 24 * HOUR), until: now + DAY_MS }), false);
+  assert.equal(plus.on, true, 'on for as long as this tab lives');
+  let told = 0; plus.subscribe(() => { told++; });
+  plus.tick(); assert.equal(told, 0, 'nothing changed, nothing told');
+  now += 25 * HOUR;
+  plus.tick(); assert.equal(told, 1, 'the pass ran out');
+  plus.tick(); assert.equal(told, 1);
 });

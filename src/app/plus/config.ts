@@ -24,8 +24,8 @@ export const PADDLE: { readonly environment: 'sandbox' | 'production'; readonly 
   environment: 'sandbox', token: '', portal: '', monthly: { id: '', usd: 0 }, yearly: { id: '', usd: 0 },
 };
 export const plusOnSale = (): boolean => PADDLE.token !== '' && PADDLE.monthly.id !== '';
-/** How many devices one membership's key works on (the server's limit, said on the Plus page). */
-export const PLUS_DEVICES = 5;
+/** How many keys a subscription holds at most (the server's limit): a newer one replaces the oldest, and no more are given within a day. */
+export const PLUS_KEYS = 5;
 /** Where a buyer writes about the page itself (billing questions go to Paddle, the seller of record). */
 export const PLUS_CONTACT = 'support@liquiditymapper.com';
 

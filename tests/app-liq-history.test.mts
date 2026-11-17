@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DAY_MS, LiqHistory, bandIndex, dayText, historyUrls, readDay, readIndex } from '../src/app/liq-history.ts';
+import { DAY_MS, LiqHistory, bandIndex, dayText, historyUrls, readDay, readIndex, LIQ_REFUSED } from '../src/app/liq-history.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
 import { FIRST_LEAD_MS, SNAPSHOT_DUE_MS } from '../src/app/liq-schedule.ts';
 
@@ -136,16 +136,16 @@ test('a long session lets go of the days farthest from the view, never one the v
 });
 
 /** A history whose every day answers with no rows, with who may read what given (Plus): what was asked, and with which pass. */
-function gated(access: { free: number; pass: string | null; refuse?: (day: string, pass: string | null | undefined) => boolean }, index: { first: number; last: number }) {
+function gated(access: { free: number; pass: string | null; refuse?: (day: string, pass: string | null | undefined) => boolean; why?: string }, index: { first: number; last: number }) {
   const asked: { day: string; pass: string | null | undefined }[] = [];
-  let refused = 0;
+  const refused: string[] = [];
   const h = new LiqHistory((url, pass) => {
     if (url.endsWith('liquidation-history.json')) return Promise.resolve({ edges: EDGES, ...index });
     const day = url.slice(url.lastIndexOf('/') + 1, -'.json'.length);
     asked.push({ day, pass });
-    return access.refuse?.(day, pass) ? Promise.reject(new Error('403')) : Promise.resolve({ rows: [] });
-  }, { freeFrom: () => access.free, pass: () => access.pass, refused: () => { refused++; } });
-  return { h, asked, refusals: () => refused };
+    return access.refuse?.(day, pass) ? Promise.reject(new Error(access.why ?? LIQ_REFUSED)) : Promise.resolve({ rows: [] });
+  }, { freeFrom: () => access.free, pass: () => access.pass, refused: pass => { refused.push(pass); } });
+  return { h, asked, refusals: () => refused.length, refused };
 }
 const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -178,6 +178,7 @@ test('Plus: a pass the server refuses is reported and asked for again; a free da
   a.h.ensure(from, now, now, () => { changed++; }); await tick();
   a.h.ensure(from, now, now, () => { changed++; }); await tick();
   assert.ok(a.refusals() >= 1, 'told that the pass was refused');
+  assert.ok(a.refused.every(pass => pass === 'v1.old.sig'), 'and which one');
   assert.ok(changed >= 1, 'and the pane draws again');
   // The page's clock runs a day behind the server's: the day it calls free is a Plus day there.
   const skewed = { free, pass: null as string | null, refuse: (day: string) => day === dayText(free) };
@@ -186,10 +187,41 @@ test('Plus: a pass the server refuses is reported and asked for again; a free da
   b.h.ensure(from, now, now, () => {}); await tick();
   assert.equal(b.refusals(), 0, 'no pass was sent, so none is blamed');
   assert.equal(b.h.closedBefore(now), free + DAY_MS, 'the refused day is closed too');
-  const before = b.asked.length;
   b.h.ensure(from, now, now + 120_000, () => {}); await tick();
-  assert.equal(b.asked.filter(x => x.day === dayText(free)).length, 1, 'and is not asked for again');
-  assert.ok(b.asked.length >= before);
+  assert.equal(b.asked.filter(x => x.day === dayText(free)).length, 1, 'and is not asked for again while that holds');
+  // It holds for ten minutes, then the day is asked once more (the clock may have been set right, the server's rule changed).
+  b.h.ensure(from, now, now + 11 * 60_000, () => {}); await tick();
+  assert.equal(b.asked.filter(x => x.day === dayText(free)).length, 2, 'asked again after ten minutes');
+  assert.equal(b.h.closedBefore(now + 11 * 60_000 + 1), free + DAY_MS, 'and closed again when refused again');
+  // A pass comes: the refused day is asked for with it at once, not after a failed read's minute.
+  skewed.pass = 'v1.new.sig'; b.h.accessChanged();
+  b.asked.length = 0;
+  b.h.ensure(from, now, now + 11 * 60_000 + 2, () => {}); await tick();
+  assert.ok(b.asked.some(x => x.day === dayText(free) && x.pass === 'v1.new.sig'));
+});
+
+test('Plus: only the gate\'s own refusal near the free boundary closes anything', async () => {
+  const today = Date.UTC(2026, 10, 17), now = today + 10 * 3_600_000, free = today - 7 * DAY_MS, from = today - 9 * DAY_MS;
+  const index = { first: today - 20 * DAY_MS, last: now - 600_000 };
+  // Some other 403 (a firewall's, a rate limit's) on every day, with and without a pass.
+  const other = gated({ free, pass: null, refuse: () => true, why: '403' }, index);
+  other.h.ensure(from, now, now, () => {}); await tick();
+  other.h.ensure(from, now, now, () => {}); await tick();
+  assert.equal(other.h.closedBefore(now), free, 'nothing more is closed than the page\'s own rule says');
+  const withPass = gated({ free, pass: 'v1.good.sig', refuse: () => true, why: '403' }, index);
+  withPass.h.ensure(from, now, now, () => {}); await tick();
+  withPass.h.ensure(from, now, now, () => {}); await tick();
+  assert.equal(withPass.refusals(), 0, 'and the pass is not blamed');
+  // The gate refusing today's file: no clock is a week off, so the history is not closed for it.
+  const broken = gated({ free, pass: null, refuse: day => day === dayText(today) }, index);
+  broken.h.ensure(from, now, now, () => {}); await tick();
+  broken.h.ensure(from, now, now, () => {}); await tick();
+  assert.equal(broken.h.closedBefore(now), free);
+  // Two days inside the boundary is still a clock's doing.
+  const near = gated({ free, pass: null, refuse: day => day <= dayText(free + DAY_MS) }, index);
+  near.h.ensure(from, now, now, () => {}); await tick();
+  near.h.ensure(from, now, now, () => {}); await tick();
+  assert.equal(near.h.closedBefore(now), free + 2 * DAY_MS);
 });
 
 test('Plus: a service with no paid part closes nothing', () => {

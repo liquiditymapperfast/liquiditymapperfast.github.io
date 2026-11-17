@@ -682,7 +682,7 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
    and the chrome, over it. Here, last of all the style sheets, so a phone's own backgrounds (the dock, a compact panel) give way to it. The
    controls keep most of their face, so their text keeps its contrast; a control whose hover, held or lit state is its own background (the "?",
    a menu row, a chip, the Install mark under the pointer, any button while it is pressed: the text-mode frame inverts it) keeps that, and so
-   do the two filled buttons of the tour (`.tour-btn` in a phone's Settings, `.tour-invite-go`; the bar's Tour is lit, `.on`, since 2026-11-13): the accent is their fill and what their label is written on, so
+   do the two filled buttons of the tour (`.tour-btn` in a phone's Settings, `.tour-invite-go`; the full bar has had no Tour button since 2026-11-17, when Plus took its place): the accent is their fill and what their label is written on, so
    a pale glass face under it was white on white in the light themes and near-black on near-black in the dark ones (Karl, 2026-11-01). A
    new control that is filled with a colour of its own is named in the list below, or the glass takes the fill and its label is lost.
    A panel or menu lying over the bars is solid (`glass-over`, set by the canvas): the bars' controls sit above the canvas, so they would
