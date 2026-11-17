@@ -23,6 +23,8 @@ export interface Palette {
   level: string;
   /** The VWAP lines: a hue of their own, away from the buy and sell colours, the profile's and the amber marks (cyan on a light page, yellow on a dark one). */
   vwap: string;
+  /** Its buy and sell are the colour-blind safe pair (blue and orange): the TPO's ramps, which end in amber, change for it (tpo/paint.ts). */
+  colourSafe?: true;
 }
 
 /**
@@ -53,7 +55,7 @@ export const PALETTES: Record<string, Palette> = {
     bid: '#73daca', bidSoft: '#1c4a45', ask: '#f7768e', askSoft: '#5a2a3a', candleUp: '#9ece6a', candleDown: '#f7768e', poc: '#bb9af7', level: '#a9b1d6', vwap: '#e6d36a' },
   mocha: { label: 'Mocha', dark: true, frame: 'editor', bg: '#1e1e2e', panel: '#181825', text: '#cdd6f4', muted: '#a6adc8', line: '#313244', accent: '#cba6f7', ui: '#89b4fa',
     bid: '#a6e3a1', bidSoft: '#2f4a35', ask: '#f38ba8', askSoft: '#5a2c3c', candleUp: '#a6e3a1', candleDown: '#f38ba8', poc: '#cba6f7', level: '#bac2de', vwap: '#f9e2af' },
-  colorblind: { label: t('Colour-blind safe'), dark: true, frame: 'editor', bg: '#12151c', panel: '#171b24', text: '#e8ecf4', muted: '#9aa3b5', line: '#2a3140', accent: '#e69f00', ui: '#56b4e9',
+  colorblind: { label: t('Colour-blind safe'), dark: true, frame: 'editor', colourSafe: true, bg: '#12151c', panel: '#171b24', text: '#e8ecf4', muted: '#9aa3b5', line: '#2a3140', accent: '#e69f00', ui: '#56b4e9',
     bid: '#56b4e9', bidSoft: '#16405c', ask: '#e69f00', askSoft: '#5c3f00', candleUp: '#56b4e9', candleDown: '#e69f00', poc: '#cc79a7', level: '#d6dbe6', vwap: '#f0e442' },
   terminal: { label: 'Terminal', dark: true, frame: 'textmode', bg: '#000000', panel: '#050805', text: '#00ff00', muted: '#51b85c', line: '#134b16', accent: '#00ff00', ui: '#00ff00',
     bid: '#00ff00', bidSoft: '#0a4d00', ask: '#ff0000', askSoft: '#5a0000', candleUp: '#11af00', candleDown: '#ff6363', poc: '#00e5ff', level: '#e6e6e6', vwap: '#ffff66' },
@@ -63,7 +65,7 @@ export const PALETTES: Record<string, Palette> = {
     bid: '#24837b', bidSoft: '#d3e4d9', ask: '#af3029', askSoft: '#efd3c8', candleUp: '#66800b', candleDown: '#af3029', poc: '#5e409d', level: '#6f6e69', vwap: '#205ea6' },
   blush: { label: 'Blush', dark: false, frame: 'paper', bg: '#faf4ed', panel: '#fffaf3', text: '#464261', muted: '#716d8b', line: '#dfdad9', accent: '#907aa9', ui: '#286983',
     bid: '#286983', bidSoft: '#d0d8d8', ask: '#b4637a', askSoft: '#ecd7d6', candleUp: '#286983', candleDown: '#b4637a', poc: '#907aa9', level: '#797593', vwap: '#56949f' },
-  daylight: { label: t('Colour-blind safe, light'), dark: false, frame: 'editor', bg: '#ffffff', panel: '#f6f8fa', text: '#1f2328', muted: '#59636e', line: '#d1d9e0', accent: '#0969da', ui: '#9a6700',
+  daylight: { label: t('Colour-blind safe, light'), dark: false, frame: 'editor', colourSafe: true, bg: '#ffffff', panel: '#f6f8fa', text: '#1f2328', muted: '#59636e', line: '#d1d9e0', accent: '#0969da', ui: '#9a6700',
     bid: '#0969da', bidSoft: '#cee1f8', ask: '#bc4c00', askSoft: '#f2dbcc', candleUp: '#0969da', candleDown: '#bc4c00', poc: '#8250df', level: '#59636e', vwap: '#1b7c83' },
   maxlight: { label: t('High contrast, light'), dark: false, frame: 'editor', bg: '#ffffff', panel: '#f2f2f2', text: '#000000', muted: '#595959', line: '#9f9f9f', accent: '#0031a9', ui: '#0031a9',
     bid: '#00663f', bidSoft: '#cce0d9', ask: '#d00000', askSoft: '#f6cccc', candleUp: '#006800', candleDown: '#a60000', poc: '#531ab6', level: '#595959', vwap: '#005e8b' },
@@ -92,9 +94,24 @@ export const THEME_ORDER = ['light', 'classic', 'latte', 'parchment', 'newsprint
 
 /** Ids written by earlier builds, mapped to the current ones so a saved choice survives the rename. */
 const THEME_ALIASES: Readonly<Record<string, string>> = { legacyLight: 'light', darkSurf: 'dark', darkTerminal: 'terminal', darkerDark: 'darker' };
+/**
+ * The themes a person made (custom-themes.ts), by id, as palettes: set before the page reads its saved theme and again whenever one is made,
+ * changed or deleted. Their ids begin with `custom-`, so they never meet a built-in id or an alias.
+ */
+let CUSTOM: Readonly<Record<string, Palette>> = {}, customRevision = 0;
+export function setCustomPalettes(palettes: Readonly<Record<string, Palette>>): void { CUSTOM = palettes; customRevision++; }
+/** A key that changes whenever what theme `id` looks like may have changed: what is drawn from a palette is remembered by it, not by the id alone. */
+export const themeKey = (id: string): string => Object.hasOwn(CUSTOM, id) ? `${id}#${customRevision}` : id;
+/** Whether `id` names a theme there is, built-in or the person's own (own keys only: `toString` is no theme). */
+export const isThemeId = (id: unknown): id is string => typeof id === 'string' && (Object.hasOwn(PALETTES, id) || Object.hasOwn(CUSTOM, id));
 export function resolveThemeId(name: unknown): string {
-  const id = typeof name === 'string' ? THEME_ALIASES[name] ?? name : '';
-  return id in PALETTES ? id : 'light';
+  const id = typeof name === 'string' ? (Object.hasOwn(THEME_ALIASES, name) ? THEME_ALIASES[name]! : name) : '';
+  return isThemeId(id) ? id : 'light';
+}
+/** The palette of a theme id, built-in or the person's own; Light for one that is not (or no longer) there. Every reader of a theme goes through it. */
+export function paletteOf(name: unknown): Palette {
+  const id = resolveThemeId(name);
+  return (Object.hasOwn(CUSTOM, id) ? CUSTOM[id] : PALETTES[id]) ?? PALETTES.light!;
 }
 /** `a` moved `amount` (0 to 1) of the way to `b`, both as #rrggbb. */
 export function mixHex(a: string, b: string, amount: number): string {
@@ -135,7 +152,7 @@ export interface Chrome {
 }
 
 const channelLight = (c: number): number => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-const lightness = (hex: string): number => { const [r, g, b] = rgb(hex); return 0.2126 * channelLight(r) + 0.7152 * channelLight(g) + 0.0722 * channelLight(b); };
+export const lightness = (hex: string): number => { const [r, g, b] = rgb(hex); return 0.2126 * channelLight(r) + 0.7152 * channelLight(g) + 0.0722 * channelLight(b); };
 /** WCAG contrast ratio between two #rrggbb colours. */
 export function contrastRatio(a: string, b: string): number { const [hi, lo] = [lightness(a), lightness(b)].sort((x, y) => y - x) as [number, number]; return (hi + 0.05) / (lo + 0.05); }
 
@@ -208,7 +225,7 @@ export function themeVars(palette: Palette): Record<string, string> {
 export function themeColorOf(palette: Palette): string { return palette.frame === 'bevel' ? chromeFor(palette).face : palette.bg; }
 
 export function applyTheme(name: string): Palette {
-  const palette = PALETTES[resolveThemeId(name)]!;
+  const palette = paletteOf(name);
   const root = document.documentElement;
   for (const [key, value] of Object.entries(themeVars(palette))) root.style.setProperty(`--${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}`, value);
   root.dataset.theme = palette.dark ? 'dark' : 'light';

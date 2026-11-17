@@ -16,7 +16,7 @@ import { LABEL_FLOOR, ageAlpha, ageRanks, carriedLines, runPieces, type CarriedL
 import { LabelBoard } from '../labels.ts';
 import type { ProfileWindow, SessionDef } from '../traded/sessions.ts';
 import type { Kernels } from '../kernels.ts';
-import { PALETTES, rgb, textOn, type Palette } from '../theme.ts';
+import { PALETTES, rgb, textOn, type Palette, paletteOf } from '../theme.ts';
 import { View, niceStep, type Bounds } from '../view.ts';
 import { anchorDate, anchorDay, clock, clockYear, price as fmtPrice, startOfDay, usd, zoneName } from '../format.ts';
 import { timeAxis } from '../time-axis.ts';
@@ -729,7 +729,7 @@ export class HeatPane {
   get plotW(): number { return Math.max(1, this.#w - gutter(this.store.state)); }
   get plotH(): number { return Math.max(1, this.#h - TIME_H); }
   setPalette(name: string): void {
-    this.#palette = PALETTES[name] ?? PALETTES.light!;
+    this.#palette = paletteOf(name);
     this.#radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--radius')) || 0;
     this.gl.setLut(buildLut(this.#palette.dark)); this.invalidate();
   }

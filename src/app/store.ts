@@ -4,7 +4,7 @@ import type { TimeZone } from './format.ts';
 import { HEAT_STYLES, type HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
 import { LT_DEFAULTS, LT_REV4_HALF_LIFE_BP, type LtParams } from './lt.ts';
-import { PALETTES, resolveThemeId } from './theme.ts';
+import { resolveThemeId, paletteOf } from './theme.ts';
 import { readStatOptions, type StatOptions } from './stat-options.ts';
 import { readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
@@ -377,15 +377,15 @@ export function autoTheme(phone: boolean, dark: boolean): string { return phone 
 export const prefersDark = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
 /** The change that shows theme `id`, picked or not; it is remembered as the theme of its kind, for the light-or-dark key. */
 export function themeChange(state: Pick<AppState, 'themeSlots'>, id: string, picked: boolean): Pick<AppState, 'theme' | 'themePicked' | 'themeSlots'> {
-  return { theme: id, themePicked: picked, themeSlots: { ...state.themeSlots, [PALETTES[id]?.dark ? 'dark' : 'light']: id } };
+  return { theme: id, themePicked: picked, themeSlots: { ...state.themeSlots, [paletteOf(id).dark ? 'dark' : 'light']: id } };
 }
 /** The theme the light-or-dark key brings: the one of the other kind last shown. */
-export function flippedTheme(state: Pick<AppState, 'theme' | 'themeSlots'>): string { return PALETTES[state.theme]?.dark ? state.themeSlots.light : state.themeSlots.dark; }
+export function flippedTheme(state: Pick<AppState, 'theme' | 'themeSlots'>): string { return paletteOf(state.theme).dark ? state.themeSlots.light : state.themeSlots.dark; }
 /** A remembered theme of the given kind, or null for a name that is not one (or not of that kind). */
 function slotTheme(v: unknown, dark: boolean): string | null {
   if (typeof v !== 'string') return null;
   const id = resolveThemeId(v);
-  return PALETTES[id]?.dark === dark ? id : null;
+  return paletteOf(id).dark === dark ? id : null;
 }
 /**
  * The revision of the first-visit defaults. The page saves its whole settings on any change, so a default is written down whether chosen
@@ -468,7 +468,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   // on 2026-10-17), so it counts as picked, and the device's setting never replaces it.
   if (!state.themePicked && typeof saved.theme === 'string' && savedTheme !== DEFAULT_THEME && savedTheme !== PHONE_DARK_THEME) state.themePicked = true;
   state.theme = state.themePicked ? savedTheme : autoTheme(phone && touch, prefersDark());
-  state.themeSlots = { ...state.themeSlots, [PALETTES[state.theme]?.dark ? 'dark' : 'light']: state.theme };
+  state.themeSlots = { ...state.themeSlots, [paletteOf(state.theme).dark ? 'dark' : 'light']: state.theme };
   state.material = saved.material === 'glass' ? 'glass' : 'solid';
   // New on 2026-11-06, so no save holds a strength that was not chosen: it needs no revision of the defaults.
   state.waveStrength = readWaveStrength(saved.waveStrength);

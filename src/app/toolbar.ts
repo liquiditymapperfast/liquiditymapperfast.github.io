@@ -1,5 +1,8 @@
 import { TIMEFRAMES } from './hub.ts';
-import { PALETTES, THEME_ORDER } from './theme.ts';
+import { PALETTES, THEME_ORDER, paletteOf, themeKey } from './theme.ts';
+import { loadCustomThemes } from './custom-themes.ts';
+import { buildThemeEditor, newThemeEditorState } from './theme-editor.ts';
+import { buildBackup, newBackupState } from './backup-panel.ts';
 import { AVAILABLE_LAYERS, autoTheme, flippedTheme, prefersDark, themeChange, type Store, type AppState, type Layer, type PhoneTape } from './store.ts';
 import { VPN_HINT, VenueNotice, blockedVenues, idleText, idleVenues } from './venue-notice.ts';
 import type { VenueEntry } from './source.ts';
@@ -137,6 +140,9 @@ function deck(id: string, title: string, ...rows: HTMLElement[][]): HTMLElement 
 }
 
 /** Top bar: market, timeframe, layer, pane toggles, heatmap colour, venues, theme. */
+/** The id of the theme menu's last row (it opens the Theme panel rather than choosing a theme). */
+const EDIT_THEMES = 'edit-themes';
+
 export class Toolbar {
   readonly root = el('header', { class: 'toolbar' });
   /** The coin every view shows; choosing another loads the page again for it (app/coin.ts). */
@@ -683,10 +689,17 @@ export class Toolbar {
     const actions = this.layouts; if (!actions) return;
     const ui = newGalleryState();
     // A redraw after the panel was closed (a toast's Undo, a frame later) leaves it closed.
-    const build = (_tools: HTMLElement, body: HTMLElement): void => buildGallery(actions, body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui);
+    const build = (_tools: HTMLElement, body: HTMLElement): void => buildGallery(actions, body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui, () => this.#openBackup(anchor));
     const panel = togglePanel(anchor, { title: t('Layouts'), width: 560, align: 'right' }, build);
     // The toast of a deleted layout can outlive the panel it was deleted from: its Undo redraws the Layouts panel that is open then.
     actions.onListChanged = () => { if (panel && openedPanel() === panel) panel.render(build); };
+  }
+
+  /** The Back up and restore panel (backup-panel.ts), from the Layouts panel or a touch screen's Settings. */
+  #openBackup(anchor: HTMLElement): void {
+    const ui = newBackupState();
+    const build = (_tools: HTMLElement, body: HTMLElement): void => buildBackup(body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui);
+    const panel = togglePanel(anchor, { title: t('Back up and restore'), width: 420, align: 'right' }, build);
   }
 
   /** The list of keyboard shortcuts, made from the table itself so the two cannot disagree (the status bar's Keys button, and ?). */
@@ -964,7 +977,10 @@ export class Toolbar {
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
         section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
-        ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')))])]),
+        // Back up and restore on every touch screen: a phone has no Layouts panel to reach it from.
+        section(isPhone() ? t('Back up and restore') : t('Layouts'), [el('div', { class: 'sheet-tiles' },
+          ...(isPhone() ? [] : [button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own'))]),
+          button(t('Back up and restore'), () => { this.#sheet?.close(); this.#openBackup(this.#more); }, t('Everything the page keeps in this browser, to one file and back')))]),
         section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels'] as const : []), 'absorption', 'traded', 'tpo', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),
         // Only a phone has the Tape tab; a touch tablet keeps the desktop's panes and gets this sheet without it.
         ...(this.tapeFields && isPhone() ? [section(t('Tape'), this.tapeFields().map(([label, control]) => field(label, control)), helpButton('candlePane'))] : []),
@@ -1030,8 +1046,8 @@ export class Toolbar {
     if (this.#waveStrengthOut.textContent !== `${state.waveStrength}%`) this.#waveStrengthOut.textContent = `${state.waveStrength}%`;
     setValue(this.#heat.smooth, state.heat.smooth);
     setValue(this.#heat.style, state.heat.style); setValue(this.#heat.contrast, String(state.heat.contrast));
-    const legendKey = `${state.heat.style}|${state.theme}`;
-    if (this.#heat.legend.dataset.key !== legendKey) { this.#heat.legend.dataset.key = legendKey; this.#heat.legend.style.background = legendBackground(state.heat.style, PALETTES[state.theme] ?? PALETTES.light!); }
+    const legendKey = `${state.heat.style}|${themeKey(state.theme)}`;
+    if (this.#heat.legend.dataset.key !== legendKey) { this.#heat.legend.dataset.key = legendKey; this.#heat.legend.style.background = legendBackground(state.heat.style, paletteOf(state.theme)); }
     const lo = usd(window.lo), hi = usd(window.hi);
     if (this.#heat.lo.textContent !== lo) this.#heat.lo.textContent = lo;
     if (this.#heat.hi.textContent !== hi) this.#heat.hi.textContent = hi;
@@ -1134,18 +1150,18 @@ export class Toolbar {
   /** Redraw the parts of the toolbar that depend on the palette (the legend ramp) for a previewed theme. */
   previewTheme(id: string): void {
     this.#heat.legend.dataset.key = `${this.store.state.heat.style}|${id}`;
-    this.#heat.legend.style.background = legendBackground(this.store.state.heat.style, PALETTES[id] ?? PALETTES.light!);
+    this.#heat.legend.style.background = legendBackground(this.store.state.heat.style, paletteOf(id));
   }
   #showTheme(id: string): void {
-    const p = PALETTES[id] ?? PALETTES.light!;
-    if (this.#theme.dataset.theme === id) return;
-    this.#theme.dataset.theme = id;
+    const p = paletteOf(id), key = themeKey(id);
+    if (this.#theme.dataset.theme === key) return;
+    this.#theme.dataset.theme = key;
     const swatch = el('span', { class: 'swatch' }, ...[p.bg, p.panel, p.bid, p.ask].map(color => { const dot = el('i'); dot.style.background = color; return dot; }));
     this.#theme.replaceChildren(swatch, el('span', { textContent: p.label }));
   }
   /** The light-or-dark key shows what a tap brings: the sun on a dark theme, the moon on a light one. */
   #showFlip(id: string): void {
-    const to = PALETTES[id]?.dark ? 'light' : 'dark';
+    const to = paletteOf(id).dark ? 'light' : 'dark';
     if (this.#flip.dataset.to === to) return;
     this.#flip.dataset.to = to;
     this.#flip.setAttribute('aria-label', to === 'light' ? t('Light theme') : t('Dark theme'));
@@ -1181,13 +1197,23 @@ export class Toolbar {
   #openThemes(): void {
     // Automatic first, as in the language menu: the page's own choice for this screen (on a phone, its light or dark setting), followed while kept.
     const auto = autoTheme(isPhone() && isCoarse(), prefersDark()), ap = PALETTES[auto]!;
-    const items = [{ id: 'auto', label: `${t('Automatic')} · ${ap.label}`, swatch: [ap.bg, ap.panel, ap.text, ap.bid, ap.ask] },
-      ...THEME_ORDER.map(id => { const p = PALETTES[id]!; return { id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; })];
-    const s = this.store.state;
+    const items: MenuItem[] = [{ id: 'auto', label: `${t('Automatic')} · ${ap.label}`, swatch: [ap.bg, ap.panel, ap.text, ap.bid, ap.ask] },
+      ...THEME_ORDER.map(id => { const p = PALETTES[id]!; return { id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; }),
+      // The person's own themes after the built-in ones, then the row that makes or edits one.
+      ...loadCustomThemes().map(theme => { const p = paletteOf(theme.id); return { id: theme.id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; })];
+    const s = this.store.state, own = s.theme.startsWith('custom-') && items.some(item => item.id === s.theme);
+    items.push({ id: EDIT_THEMES, label: own ? t('Edit this theme…') : t('Make your own…'), action: true });
     openMenu(this.#theme, items, s.themePicked ? s.theme : 'auto', {
-      onPreview: id => this.onPreviewTheme(id === 'auto' ? auto : id),
-      onSelect: id => this.store.set(themeChange(this.store.state, id === 'auto' ? auto : id, id !== 'auto')),
+      onPreview: id => this.onPreviewTheme(id === EDIT_THEMES ? null : id === 'auto' ? auto : id),
+      onSelect: id => { if (id === EDIT_THEMES) this.#openThemeEditor(); else this.store.set(themeChange(this.store.state, id === 'auto' ? auto : id, id !== 'auto')); },
     });
+  }
+
+  /** The Theme panel (the theme menu's last row): start a theme of one's own, or edit the one on the screen. */
+  #openThemeEditor(): void {
+    const ui = newThemeEditorState();
+    const build = (_tools: HTMLElement, body: HTMLElement): void => buildThemeEditor(this.store, body, () => { if (panel && openedPanel() === panel) panel.render(build); }, ui);
+    const panel = togglePanel(this.#theme, { title: t('Your own theme'), width: 400, align: 'right' }, build);
   }
 
   #buildHighlights(_tools: HTMLElement, body: HTMLElement): void {

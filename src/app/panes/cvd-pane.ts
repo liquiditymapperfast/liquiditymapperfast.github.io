@@ -1,4 +1,4 @@
-import { PALETTES, type Palette } from '../theme.ts';
+import { PALETTES, type Palette, paletteOf } from '../theme.ts';
 import { el } from '../dom.ts';
 import { helpButton } from '../help.ts';
 import { clock, clockSeconds, price as fmtPrice, startOfDay } from '../format.ts';
@@ -263,7 +263,7 @@ export class CvdPane {
   /** The span the column draws: the setting, except that a phone's Flow view fills the area with no map to follow, so the map's span reads as an hour there. */
   #span(): CvdSpan { const span = this.store.state.cvd.span; return isPhone() ? spanOnPhone(span) : span; }
   setPalette(name: string): void {
-    this.#palette = PALETTES[name] ?? PALETTES.light!; this.#strip.setPalette(this.#palette); this.trades.setPalette(this.#palette);
+    this.#palette = paletteOf(name); this.#strip.setPalette(this.#palette); this.trades.setPalette(this.#palette);
     // A theme's frame changes the buttons' padding and borders, and so what fits beside the name.
     this.#fitName();
     // The readout and the chips under the header speak in the lines' colours.

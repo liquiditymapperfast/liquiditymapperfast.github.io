@@ -1,4 +1,4 @@
-import { PALETTES, mixHex, textOn, type Palette } from '../theme.ts';
+import { PALETTES, mixHex, textOn, type Palette, paletteOf } from '../theme.ts';
 import { setTip } from '../tip.ts';
 import { helpButton } from '../help.ts';
 import { TIMEFRAMES, type DepthAnswer, type Hub } from '../hub.ts';
@@ -195,7 +195,7 @@ export abstract class TimePane {
   /** Header element, the grip target for drag-reordering. */
   get header(): HTMLElement { return this.head; }
   get plotW(): number { return Math.max(1, this.w - gutter(this.store.state)); }
-  setPalette(name: string): void { this.palette = PALETTES[name] ?? PALETTES.light!; this.invalidate(); }
+  setPalette(name: string): void { this.palette = paletteOf(name); this.invalidate(); }
   /**
    * Draw again at the next frame, unless the canvas has no width: a pane not on screen asks for nothing (on a phone the panes under the map
    * sit in tabs, and the shown tab's data changes asked the hidden ones for frames several times a second, each only to find it had no

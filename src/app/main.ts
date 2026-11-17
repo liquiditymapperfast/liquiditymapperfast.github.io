@@ -13,7 +13,9 @@ import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/ancho
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
 import { Store, autoTheme, initialState, themeChange } from './store.ts';
-import { applyTheme } from './theme.ts';
+import { applyTheme, paletteOf } from './theme.ts';
+import { loadCustomThemes, registerCustomThemes } from './custom-themes.ts';
+import { restoreResult } from './backup.ts';
 import { UiGlass } from './glass/ui-glass.ts';
 import { Sounds } from './sound/sounds.ts';
 import { Alerts } from './sound/alerts.ts';
@@ -56,7 +58,6 @@ import { pageNow, replaying } from './replay/clock.ts';
 import { DrawController } from './draw/controller.ts';
 import { DrawBar } from './draw/bar.ts';
 import { browserStore } from './draw/storage.ts';
-import { PALETTES } from './theme.ts';
 import { openedSheet } from './sheet.ts';
 import { dismissToast, toast } from './toast.ts';
 import { topShown } from './measures/strip.ts';
@@ -108,6 +109,8 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
   // The coin first: everything after it is built for that coin (BTC needs no list, so a BTC page does not wait for one).
   const choice = await chooseCoin(params);
+  // The person's own themes before the saved settings are read: a saved theme of their own must be one the page knows.
+  registerCustomThemes(loadCustomThemes());
   const store = new Store(forCoin(initialState(), choice.coin, choice.from));
   useMarkets(() => store.state.markets);
   setTimeZone(store.state.timeZone);
@@ -364,7 +367,7 @@ async function main(): Promise<void> {
   heat.draw = draw;
   const drawBar = new DrawBar(draw, {
     settings: () => store.state.draw, setSettings: patch => store.set({ draw: { ...store.state.draw, ...patch } }),
-    palette: () => PALETTES[store.state.theme] ?? PALETTES.light!, mark: () => store.state.mark.price, restingAt: price => heat.restingAt(price), replaying, redraw: () => heat.invalidate(),
+    palette: () => paletteOf(store.state.theme), mark: () => store.state.mark.price, restingAt: price => heat.restingAt(price), replaying, redraw: () => heat.invalidate(),
   });
   heat.root.append(drawBar.rail, drawBar.editor, drawBar.say, drawBar.phoneButton);
   heat.onDrawFrame = f => drawBar.place(f);
@@ -499,6 +502,9 @@ async function main(): Promise<void> {
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
   toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; glass.setPalette(applyTheme(name)); for (const p of themed) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
+  // A backup restored as this page started (backup.ts): said once.
+  const restored = restoreResult();
+  if (restored) toast(restored === 'ok' ? t('The backup was restored.') : t('This browser did not let the page restore the backup: nothing was changed.'), { ms: 8_000 });
 
   // An address like #guide/mirror opens the guide there.
   const fromAddress = (): void => { if (/^#guide/.test(location.hash)) void lazy(() => import('./guide/guide.ts')).then(m => m?.openFromAddress()); };

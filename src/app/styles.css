@@ -1185,6 +1185,13 @@ html[data-frame="textmode"] .toolbar.cockpit .split > .split-cfg { width: 14px; 
 .layout-row:has(> button:not(:disabled):is(:hover, :focus-visible)) { background: color-mix(in srgb, var(--ui) 14%, transparent); }
 :where(:root[data-theme="dark"]) .layout-row:has(> button:not(:disabled):is(:hover, :focus-visible)) { background: color-mix(in srgb, var(--ui) 22%, transparent); }
 .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.layout-backup { margin-top: 2px; }
+/* The Theme panel (theme-editor.ts): the name, then each colour as a swatch and its name, two to a row. */
+.theme-name { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 12px; }
+.theme-name > input { flex: 1; min-width: 0; }
+.theme-colors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; margin: 2px 0 6px; }
+.theme-color { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 0; font-size: 12px; cursor: pointer; }
+.theme-color > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The Scripts panel (script/panel.ts): a row per script with its switch, and the text box a script is written in. */
 .script-row > .script-on { display: inline-flex; flex: none; }
 .script-row > button:nth-child(2) { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

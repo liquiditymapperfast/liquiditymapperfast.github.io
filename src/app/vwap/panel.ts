@@ -5,7 +5,7 @@ import { helpButton } from '../help.ts';
 import { t, tn } from '../i18n.ts';
 import { anchorDate, clock, clockYear, usd } from '../format.ts';
 import { toast } from '../toast.ts';
-import { PALETTES, resolveThemeId, type Palette } from '../theme.ts';
+import { type Palette, paletteOf } from '../theme.ts';
 import { ruleCode, ruleKey, ruleName, type Anchor, type AnchorRule, type Resolved } from '../anchors/anchors.ts';
 import { anchorWhen, dateField, forgetDraft, lineSwatch, lowContrast, periodZoneName, ruleGrid } from '../anchors/controls.ts';
 import { anchorDefault, rollingDefault } from './colours.ts';
@@ -43,7 +43,7 @@ const marketName = (target: HistoryTarget): string => `${venueLabel(target.id)} 
  * one); the whale VWAP (its size, and since when the large orders are recorded); labels and axis tags.
  */
 export function buildVwapPanel(store: Store, tools: HTMLElement, body: HTMLElement, rebuild: () => void, whale: () => WhaleInfo | null = () => null, rollingReach: RollingReach = () => 'coming', markets: VwapMarkets = () => [], ruleStart: RuleStart = () => ({ state: 'coming' }), drawnFrom: DrawnFrom = () => null): void {
-  const s = store.state.vwap, coin = currentCoin().coin, p = PALETTES[resolveThemeId(store.state.theme)] ?? PALETTES.dark!;
+  const s = store.state.vwap, coin = currentCoin().coin, p = paletteOf(store.state.theme);
   const set = (change: Partial<VwapSettings>, again = false): void => { store.set({ vwap: { ...store.state.vwap, ...change } }); if (again) rebuild(); };
   const setColors = (change: (c: VwapColors) => VwapColors): void => store.set({ vwap: { ...store.state.vwap, colors: change(store.state.vwap.colors) } });
   tools.append(helpButton('vwap'));
