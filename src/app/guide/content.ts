@@ -23,7 +23,7 @@ export const SECTIONS: readonly Section[] = [
     id: 'start', title: 'Start here', part: 'The basics',
     blocks: [
       { t: 'p', text: 'LiquidityMapperFast shows you where the orders are. An exchange keeps a list of everyone waiting to buy below the price and everyone waiting to sell above it: the **order book**. This page reads that list from the largest exchanges, adds them together and draws it as a map that moves with the price. Where a lot of size is waiting, the map lights up: those are the **walls** price tends to react to.' },
-      { t: 'p', text: 'It is free to use: no account, nothing to sign up for, and open source. Your browser connects to the exchanges itself. It also asks this site\'s history and levels services for files (the recorded days before you came, and where Hyperliquid\'s positions would be liquidated), and it only asks: nothing you do here is sent anywhere. **Plus**, an optional paid part, opens the older history those services store; it has a section of its own near the end.' },
+      { t: 'p', text: 'It is free to use: no account, nothing to sign up for, and open source. Your browser connects to the exchanges itself. It also asks this site\'s history and levels services for files (the recorded days before you came, and where Hyperliquid\'s positions would be liquidated), and it only asks: nothing you do here is sent anywhere, except that with Plus your browser sends its key to this site\'s Plus server to renew its pass. **Plus**, an optional paid part, opens the older history those services store; it has a section of its own near the end.' },
       { t: 'fig', id: 'anatomy', caption: 'The page at a glance, with two of the panes under the map switched on. Point at a part (hover with a mouse, tap on a touch screen) to see what it is.' },
       { t: 'list', items: [
         '**The chart**: price runs up the side, time runs left to right. The candles show what price did; the coloured map behind them is the order book through time.',
@@ -152,6 +152,19 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: 'Point at the seam between the liquidation column and the profile to weigh the book against the liquidations on each side: what rests against what would be liquidated. The Depth pane can add up the same levels in its bands, and [[Q]] switches them on and off.' },
       { t: 'p', text: '**History**, under the column\'s heading, opens the Depth pane on these levels through time: how much stood within each distance of the price, snapshot after snapshot. The last 7 days are free; older history is part of **Plus**.' },
       { t: 'note', kind: 'warn', text: 'Only Hyperliquid\'s positions are in the snapshots, and only BTC for now. A level is where forced orders *could* start, not a promise: a position can be closed or topped up first, and a trade can reach a level a little before the mark price that liquidates it does.' },
+    ],
+  },
+  {
+    id: 'liq-kinds', title: 'Liquidations, stops and take profits',
+    blocks: [
+      { t: 'p', text: '**What the levels show** is one choice for the whole page: the button at the top of the liquidation column, the Liq levels settings and the title of the phone\'s Liq tab all make it, and the stripe, the column, the Liq tab and the Depth pane all follow it. Liquidations of all traders are free; the other choices are part of **Plus**, and wear a small lock without it.' },
+      { t: 'p', text: '**Liquidation levels** are the prices where the exchange would close positions because their margin has run out: a long is closed with a sell below the price, a short with a buy above it.' },
+      { t: 'p', text: '**Stops** are orders traders set themselves to close a position when price goes against it. A stop that closes a long sells below the price; one that closes a short buys above it. That is the same way round as liquidations, so *Liq + stops* adds the two up row by row: what would be sold below the price and bought above it if price got there.' },
+      { t: 'p', text: '**Take profits** close a position once price has gone its way: a long takes its profit with a sell above the price, a short with a buy below it. That is the other way round, so they are never added to the rest. They are a layer of their own: a lane at the stripe\'s right, lighter bars from the liquidation column\'s right edge, outlines on the phone, and a dashed line in the Depth pane. Their colour says what they do: sells in the falling colour, buys in the rising one.' },
+      { t: 'p', text: 'An order counts for its own size, except a stop or take profit set to close the whole position: that one takes its size from the position at the snapshot. A wallet\'s stops never count for more than its position: the ones nearest the price count first, and what would go past the position is left out. Its take profits are capped the same way.' },
+      { t: 'p', text: '**Traders** chooses whose liquidations are shown: everyone\'s, the **profitable traders** (the wallets HyperTracker counts as profitable), or the **proven traders** (this site\'s own list of wallets whose profit has held week after week, renewed each night). A snapshot taken when no proven list was in force has none, and the column says so. Stops and take profits have no groups.' },
+      { t: 'p', text: 'The orders are read with a snapshot of the positions, but not every snapshot gets its orders read: they come about once an hour. When the orders drawn are more than about two hours older than the liquidations beside them, the note under the legend says when they are from. In the Depth pane *Liq + stops* draws only the snapshots that have both, so it has about half as many.' },
+      { t: 'note', kind: 'warn', text: 'An order can be moved or cancelled at any moment. These levels say where orders rest and where positions would be closed, not where price will go.' },
     ],
   },
   {
@@ -508,9 +521,10 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
-    id: 'plus', title: 'Plus: the older history',
+    id: 'plus', title: 'Plus: what it opens',
     blocks: [
-      { t: 'p', text: '**Plus** is the paid part of this page. It pays for the servers behind it and opens what they store: for now, the whole history of the liquidation levels in the Depth pane. Everything else on the page is free and stays free, the live liquidation levels and the last 7 days of their history included.' },
+      { t: 'p', text: '**Plus** is the paid part of this page. It pays for the servers behind it and opens what they store: the whole history of the liquidation levels in the Depth pane, the liquidations of profitable and proven traders, and the stop and take-profit levels (see “Liquidations, stops and take profits”). Everything else on the page is free and stays free, the live liquidation levels of all traders and the last 7 days of their history included.' },
+      { t: 'p', text: 'Without Plus the choices that are part of it wear a small lock, and pressing one shows what Plus is. A choice made with Plus is kept, and comes back with it.' },
       { t: 'p', text: 'Without Plus the Depth pane draws the last 7 days of that history; the days before are hatched, and a lock stands where they end. With Plus it draws them all, back to the first snapshot recorded, a new one about every half hour.' },
       { t: 'p', text: 'There is no account. The checkout is on a page of its own, the **Plus page**, and is run by Paddle, the seller of record. After it this browser holds a **key**. The Plus page shows the key, and entering it there on another device brings Plus to that device too; if the key is lost, the email you paid with and the invoice number on the receipt bring it back.' },
       { t: 'p', text: 'You can end Plus at any time, from the receipt or the Plus page; it then runs to the end of the period paid for.' },
