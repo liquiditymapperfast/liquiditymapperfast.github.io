@@ -3300,5 +3300,6 @@
  "Back up and restore": "Резервное копирование и восстановление",
  "Edit this theme…": "Изменить эту тему…",
  "Make your own…": "Создать свою…",
- "Your own theme": "Ваша собственная тема"
+ "Your own theme": "Ваша собственная тема",
+ "Your setup was restored in another tab. Reload this one to use it.": "Ваши настройки восстановлены в другой вкладке. Перезагрузите эту, чтобы ими пользоваться."
 }

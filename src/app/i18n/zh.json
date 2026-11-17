@@ -3027,5 +3027,6 @@
  "Back up and restore": "备份与恢复",
  "Edit this theme…": "编辑此主题…",
  "Make your own…": "创建你自己的…",
- "Your own theme": "你自己的主题"
+ "Your own theme": "你自己的主题",
+ "Your setup was restored in another tab. Reload this one to use it.": "你的设置已在另一个标签页中恢复。重新加载此页即可使用。"
 }

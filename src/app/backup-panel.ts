@@ -7,7 +7,7 @@ import { readScripts, SCRIPTS_KEY } from './script/records.ts';
 import { readDoc } from './draw/model.ts';
 import { DRAW_KEY } from './draw/storage.ts';
 import { CUSTOM_THEMES_KEY, readCustomThemes } from './custom-themes.ts';
-import { backupFile, collectItems, queueRestore, readBackup, replaceAll } from './backup.ts';
+import { MAX_BACKUP_CHARS, backupFile, collectItems, queueRestore, readBackup } from './backup.ts';
 
 /**
  * The Back up and restore panel (from the Layouts panel, and a phone's or tablet's Settings): one file with everything the page keeps in this
@@ -46,8 +46,11 @@ export function buildBackup(body: HTMLElement, redraw: () => void, ui: BackupSta
       note(t('Restoring replaces what this browser keeps for the page (settings, layouts, scripts, drawings and themes), then reloads the page. Save a backup first if you may want what is here now.')),
       el('div', { class: 'layout-tools' },
         button(t('Restore'), () => {
-          // Left for the reload, so nothing of this page can write over it; written now only where this tab would not hold it.
-          if (!queueRestore(window.sessionStorage, p.text) && !replaceAll(window.localStorage, p.items)) { ui.pending = null; say(t('This browser did not let the page keep it.'), true); return; }
+          // Left for the reload, so nothing of this page can write over it. A tab that will not hold it restores nothing: written while this page
+          // runs, the page could write its own settings back over part of it.
+          let queued = false;
+          try { queued = queueRestore(window.sessionStorage, p.text); } catch { queued = false; }
+          if (!queued) { ui.pending = null; say(t('This browser did not let the page keep it.'), true); return; }
           window.location.reload();
         }, t('Replace what is here with the backup and reload the page')),
         button(t('Cancel'), () => { ui.pending = null; ui.message = null; redraw(); })));
@@ -57,6 +60,8 @@ export function buildBackup(body: HTMLElement, redraw: () => void, ui: BackupSta
   const file = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
   file.onchange = () => {
     const chosen = file.files?.[0]; if (!chosen) return;
+    // A file far larger than a backup is something else: not read at all (a character is at most four bytes).
+    if (chosen.size > MAX_BACKUP_CHARS * 4) { say(t('This is not a backup file.'), true); return; }
     void chosen.text().then(text => {
       const read = readBackup(text);
       if ('items' in read) { ui.pending = { text, items: read.items, savedAt: read.savedAt }; ui.message = null; redraw(); return; }
@@ -65,7 +70,9 @@ export function buildBackup(body: HTMLElement, redraw: () => void, ui: BackupSta
     }, () => say(t('This is not a backup file.'), true));
   };
   const save = (): void => {
-    const items = collectItems(window.localStorage), now = Date.now();
+    let items: Record<string, string>;
+    try { items = collectItems(window.localStorage); } catch { say(t('This browser did not let the page keep it.'), true); return; }
+    const now = Date.now();
     const url = URL.createObjectURL(new Blob([backupFile(items, now)], { type: 'application/json' }));
     el('a', { href: url, download: `liquiditymapperfast-backup-${new Date(now).toISOString().slice(0, 10)}.json` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);

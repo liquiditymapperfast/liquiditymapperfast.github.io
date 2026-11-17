@@ -3190,5 +3190,6 @@
  "Back up and restore": "Yedekle ve geri yükle",
  "Edit this theme…": "Bu temayı düzenle…",
  "Make your own…": "Kendi temanızı oluşturun…",
- "Your own theme": "Kendi temanız"
+ "Your own theme": "Kendi temanız",
+ "Your setup was restored in another tab. Reload this one to use it.": "Ayarlarınız başka bir sekmede geri yüklendi. Kullanmak için bu sekmeyi yeniden yükleyin."
 }

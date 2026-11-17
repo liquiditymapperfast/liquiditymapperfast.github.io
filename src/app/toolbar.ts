@@ -1,6 +1,6 @@
 import { TIMEFRAMES } from './hub.ts';
 import { PALETTES, THEME_ORDER, paletteOf, themeKey } from './theme.ts';
-import { loadCustomThemes } from './custom-themes.ts';
+import { loadCustomThemes, registerCustomThemes } from './custom-themes.ts';
 import { buildThemeEditor, newThemeEditorState } from './theme-editor.ts';
 import { buildBackup, newBackupState } from './backup-panel.ts';
 import { AVAILABLE_LAYERS, autoTheme, flippedTheme, prefersDark, themeChange, type Store, type AppState, type Layer, type PhoneTape } from './store.ts';
@@ -1195,12 +1195,15 @@ export class Toolbar {
   }
 
   #openThemes(): void {
+    // As this browser holds them now: another tab may have made or changed one.
+    const ownThemes = loadCustomThemes();
+    registerCustomThemes(ownThemes);
     // Automatic first, as in the language menu: the page's own choice for this screen (on a phone, its light or dark setting), followed while kept.
     const auto = autoTheme(isPhone() && isCoarse(), prefersDark()), ap = PALETTES[auto]!;
     const items: MenuItem[] = [{ id: 'auto', label: `${t('Automatic')} · ${ap.label}`, swatch: [ap.bg, ap.panel, ap.text, ap.bid, ap.ask] },
       ...THEME_ORDER.map(id => { const p = PALETTES[id]!; return { id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; }),
       // The person's own themes after the built-in ones, then the row that makes or edits one.
-      ...loadCustomThemes().map(theme => { const p = paletteOf(theme.id); return { id: theme.id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; })];
+      ...ownThemes.map(theme => { const p = paletteOf(theme.id); return { id: theme.id, label: p.label, swatch: [p.bg, p.panel, p.text, p.bid, p.ask] }; })];
     const s = this.store.state, own = s.theme.startsWith('custom-') && items.some(item => item.id === s.theme);
     items.push({ id: EDIT_THEMES, label: own ? t('Edit this theme…') : t('Make your own…'), action: true });
     openMenu(this.#theme, items, s.themePicked ? s.theme : 'auto', {

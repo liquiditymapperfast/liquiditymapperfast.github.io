@@ -5,7 +5,11 @@ import { COLOR_KEYS, MAX_FILE_CHARS, MAX_THEMES, MUTED_RATIO, TEXT_RATIO, custom
 import { BACKUP_FORMAT, MAX_BACKUP_CHARS, PENDING_KEY, backupFile, collectItems, queueRestore, readBackup, replaceAll, restoreResult, takeRestore } from '../src/app/backup.ts';
 import { flippedTheme, initialState, themeChange } from '../src/app/store.ts';
 import { laneColors } from '../src/app/cvd/colors.ts';
-import { newGalleryState, keepsSettings } from '../src/app/layouts/gallery.ts';
+import { newGalleryState } from '../src/app/layouts/gallery.ts';
+import { keepsSettings } from '../src/app/layouts/layouts.ts';
+import { savedFields } from '../src/app/store.ts';
+import { textSurfaces, surfacesClash } from '../src/app/custom-themes.ts';
+import { RESTORED_KEY, backedKey } from '../src/app/backup.ts';
 
 /** A seeded random source, so a failure can be run again. */
 function rng(seed: number): () => number { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; }; }
@@ -88,13 +92,16 @@ test('any colours at all give a palette the page can draw: valid tones, readable
   for (let i = 0; i < 400; i++) {
     const colors = Object.fromEntries(COLOR_KEYS.map(key => [key, hex(r)]));
     const frame = (['editor', 'paper', 'bevel', 'textmode'] as const)[Math.floor(r() * 4)]!;
-    const theme = readCustomTheme({ id: 'custom-fuzz1', name: `t${i}`, frame, colors })!;
+    // A third with frame tones of their own (a copy of Classic 95 whose colours were changed).
+    const chrome = r() < 0.33 ? { face: hex(r), title: hex(r), well: hex(r) } : undefined;
+    const theme = readCustomTheme({ id: 'custom-fuzz1', name: `t${i}`, frame, colors, chrome })!;
     const { palette } = customPalette(theme);
     for (const [key, value] of Object.entries(themeVars(palette))) assert.match(value, tone, `case ${i}: ${key} = ${value}`);
     const lanes = laneColors(palette);
     for (const value of Object.values(lanes)) assert.match(String(value), /^#[0-9a-f]{6}$/i, `case ${i}: lane colour`);
-    // Readable on both surfaces wherever black or white would be, and never less readable than chosen.
-    const worst = (c: string): number => Math.min(contrastRatio(c, palette.bg), contrastRatio(c, palette.panel));
+    // Readable wherever black or white would be, and never less readable than chosen.
+    // On every surface words are written on, as the colours were chosen (the frame's faces follow the chosen colours).
+    const worst = (c: string): number => Math.min(...textSurfaces({ ...palette, text: theme.colors.text, muted: theme.colors.muted }).map(s => contrastRatio(c, s)));
     if (Math.max(worst('#000000'), worst('#ffffff')) >= TEXT_RATIO) assert.ok(worst(palette.text) >= TEXT_RATIO, `case ${i}: text`);
     if (Math.max(worst('#000000'), worst('#ffffff')) >= MUTED_RATIO) assert.ok(worst(palette.muted) >= MUTED_RATIO, `case ${i}: muted`);
     assert.ok(worst(palette.text) >= worst(theme.colors.text) - 1e-9);
@@ -202,7 +209,7 @@ test('themes are kept in storage and made the page\'s; a refusing browser change
 });
 
 test('a backup holds the page\'s own keys only, and reads back only a backup', () => {
-  const store = new MemoryStorage({ 'hlm-app-v2': '{"theme":"dark"}', 'hlm-layouts-v1': '[]', 'lmf.coin': '"ETH"', 'lmf.coins': '[huge]', 'hlm-stale': '1', 'hlm-handover-v1': '1', 'other-site': 'x' });
+  const store = new MemoryStorage({ 'hlm-app-v2': '{"theme":"dark"}', 'hlm-layouts-v1': '[]', 'lmf.coin': '"ETH"', 'lmf.coins': '[huge]', 'lmf.coins.opened': '{"ETH":1}', 'hlm-stale': '1', 'hlm-handover-v1': '1', [RESTORED_KEY]: '1', 'other-site': 'x' });
   const items = collectItems(store);
   assert.deepEqual(Object.keys(items).sort(), ['hlm-app-v2', 'hlm-layouts-v1', 'lmf.coin']);
   const text = backupFile(items, 1_700_000_000_000);
@@ -217,13 +224,16 @@ test('a backup holds the page\'s own keys only, and reads back only a backup', (
   assert.deepEqual(readBackup(JSON.stringify({ format: 'liquiditymapperfast-themes', themes: [] })), { error: 'other', kind: 'themes' });
   assert.deepEqual(readBackup(JSON.stringify({ format: 'liquiditymapperfast-scripts', scripts: [] })), { error: 'other', kind: 'scripts' });
   assert.deepEqual(readBackup(' '.repeat(MAX_BACKUP_CHARS + 1)), { error: 'too-large' });
+  // Another browser's recording dates are never read from a file (they would delete this browser's recordings).
+  assert.deepEqual(readBackup(JSON.stringify({ format: BACKUP_FORMAT, version: 1, items: { ...items, 'lmf.coins.opened': '{"SOL":1}' } })), { items, savedAt: 0 });
+  assert.equal(backedKey('lmf.coins.opened'), false); assert.equal(backedKey(RESTORED_KEY), false); assert.equal(backedKey('hlm-app-v2'), true);
 });
 
 test('a restore replaces the page\'s keys exactly, all or none, and leaves other keys alone', () => {
-  const here = { 'hlm-app-v2': 'old', 'hlm-scripts-v1': 'mine', 'lmf.coins': 'cache', 'other-site': 'x' };
+  const here = { 'hlm-app-v2': 'old', 'hlm-scripts-v1': 'mine', 'lmf.coins': 'cache', 'lmf.coins.opened': 'mine', 'other-site': 'x' };
   const ok = new MemoryStorage(here);
   assert.equal(replaceAll(ok, { 'hlm-app-v2': 'new', 'hlm-layouts-v1': '[1]' }), true);
-  assert.deepEqual(ok.obj(), { 'lmf.coins': 'cache', 'other-site': 'x', 'hlm-app-v2': 'new', 'hlm-layouts-v1': '[1]' });
+  assert.deepEqual(ok.obj(), { 'lmf.coins': 'cache', 'lmf.coins.opened': 'mine', 'other-site': 'x', 'hlm-app-v2': 'new', 'hlm-layouts-v1': '[1]' });
   // A backup larger than the room there is: refused part way, everything as it was.
   const room = new MemoryStorage(here).size() + 40, full = new MemoryStorage(here, room);
   assert.equal(replaceAll(full, { 'hlm-app-v2': 'x'.repeat(30), 'hlm-layouts-v1': 'y'.repeat(60) }), false);
@@ -235,21 +245,59 @@ test('a restore waits for the reload and is written before the page reads anythi
   const local = new MemoryStorage({ 'hlm-app-v2': 'old', 'hlm-drawings-v1': 'mine' }), session = new MemoryStorage();
   assert.equal(queueRestore(session, backupFile(items, 1)), true);
   assert.equal(takeRestore(local, session), true);
-  assert.deepEqual(local.obj(), items);
+  const { [RESTORED_KEY]: mark, 'hlm-handover-v1': handed, ...restoredItems } = local.obj();
+  assert.deepEqual(restoredItems, items);
+  assert.ok(Number(mark) > 0, 'other tabs hear of it'); assert.ok(Number(handed) > 0, 'the old address hands nothing over it later');
   assert.equal(session.getItem(PENDING_KEY), null);
   assert.equal(restoreResult(session), 'ok'); assert.equal(restoreResult(session), null, 'said once');
   assert.equal(takeRestore(local, session), false, 'nothing waits now');
   // A broken waiting restore changes nothing and says so.
   session.setItem(PENDING_KEY, '{"format":"liquiditymapperfast-backup","version":1,"items":{"bad key":"x"}}');
+  const before = local.obj();
   assert.equal(takeRestore(local, session), false);
-  assert.deepEqual(local.obj(), items);
+  assert.deepEqual(local.obj(), before);
   assert.equal(restoreResult(session), 'failed');
   assert.equal(queueRestore(new MemoryStorage({}, 5), 'too long'), false);
 });
 
 test('a layout keeps the chart\'s settings unless the box is cleared, and its card says which it keeps', () => {
   assert.equal(newGalleryState().withSettings, true);
-  const panes = { order: [], heights: {}, sideW: 400, flowW: 300 };
-  assert.equal(keepsSettings({ name: 'a', savedAt: 1, panes, settings: { show: {} as never } }), false);
-  assert.equal(keepsSettings({ name: 'a', savedAt: 1, panes, settings: { show: {} as never, timeframe: '1h' } }), true);
+  assert.equal(keepsSettings({ settings: { show: {} as never } }), false);
+  assert.equal(keepsSettings({ settings: { show: {} as never, timeframe: '1h' } }), true);
+});
+
+test('a copy of Classic 95 made dark keeps its words readable on the grey buttons, or says it cannot', () => {
+  const classic = newTheme('classic', [], copyWord, 1)!;
+  const dark = customPalette({ ...classic, colors: { ...classic.colors, bg: '#101010', panel: '#141414', text: '#adadad' } }).palette;
+  const surfaces = textSurfaces(dark);
+  const worst = Math.min(...surfaces.map(x => contrastRatio(dark.text, x)));
+  assert.ok(worst >= 4.5 || themeWarnings(dark).clash, `text ${dark.text} reads ${worst.toFixed(2)} at worst`);
+  assert.equal(surfacesClash(textSurfaces(PALETTES.classic!)), false);
+});
+
+test('copies of the colour-blind themes are drawn as they are while their buy and sell stay the safe pair', () => {
+  for (const id of ['colorblind', 'daylight']) {
+    const made = newTheme(id, [], copyWord, 1)!;
+    assert.equal(customPalette(made).palette.colourSafe, true, id);
+    assert.equal(customPalette({ ...made, colors: { ...made.colors, ask: '#ff0000' } }).palette.colourSafe, undefined, `${id}: another sell colour`);
+  }
+  assert.equal(customPalette(newTheme('dark', [], copyWord, 1)!).palette.colourSafe, undefined);
+});
+
+test('saved settings of any shape open the page: only saved keys, from an object, the unread ones of their type', () => {
+  for (const raw of [null, 5, 'x', [], [1, 2], true]) assert.deepEqual(savedFields(raw), {});
+  assert.deepEqual(savedFields({ markets: 'x', layers: null, candles: 'zz', theme: 'dark' }), { theme: 'dark' }, 'what is not saved is never read');
+  assert.deepEqual(savedFields({ heatmapSource: 5, disabledVenues: 'okx', ladderVenues: [1], keepAwake: 'yes', ladderVenue: null }), {});
+  assert.deepEqual(savedFields({ heatmapSource: 'aggregated', disabledVenues: ['okx'], keepAwake: true }), { heatmapSource: 'aggregated', disabledVenues: ['okx'], keepAwake: true });
+  const real = (globalThis as { window?: unknown }).window;
+  try {
+    for (const text of ['null', '5', '"x"', '[]', '{"show":null,"heat":null,"lt":7,"sounds":"x","draw":[],"themeSlots":5,"cvd":null,"traded":"x","tpo":null,"vwap":1}']) {
+      (globalThis as { window?: unknown }).window = { innerWidth: 1600, localStorage: { getItem: () => text, setItem: () => {} } };
+      const state = initialState(false, false);
+      assert.equal(typeof state.heat.contrast, 'number', text);
+      assert.equal(state.theme, 'light', text);
+    }
+  } finally {
+    if (real === undefined) delete (globalThis as { window?: unknown }).window; else (globalThis as { window?: unknown }).window = real;
+  }
 });

@@ -4,7 +4,7 @@ import { button, heading, note, selectRow } from './ui.ts';
 import { toast } from './toast.ts';
 import { DEFAULT_THEME, PHONE_DARK_THEME, themeChange, type Store } from './store.ts';
 import { paletteOf, type Frame } from './theme.ts';
-import { COLOR_KEYS, MAX_THEMES, cleanThemeName, customPalette, exportThemes, importThemes, loadCustomThemes, mergeThemes, newTheme, putTheme, registerCustomThemes, storeCustomThemes, themeWarnings, type ColorKey, type CustomTheme } from './custom-themes.ts';
+import { MAX_FILE_CHARS, MAX_THEMES, cleanThemeName, customPalette, exportThemes, importThemes, loadCustomThemes, mergeThemes, newTheme, putTheme, registerCustomThemes, storeCustomThemes, themeWarnings, type ColorKey, type CustomTheme } from './custom-themes.ts';
 
 /**
  * The Theme panel (the theme menu's last row): on a built-in theme, a way to start a theme of one's own from it, and to read a themes file; on
@@ -47,15 +47,27 @@ function saveFile(name: string, text: string): void {
 /** A file name from a theme's name: letters, digits and dashes. */
 const fileName = (name: string): string => `liquiditymapperfast-theme-${name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'theme'}.json`;
 
-/** The page drawn again in the theme it shows, after that theme's colours changed (the store tells every themed part, as for a new theme). */
-const repaint = (store: Store): void => store.set({ theme: store.state.theme });
+/**
+ * The page drawn again in the theme it shows, after that theme's colours changed (the store tells every themed part, as for a new theme). A
+ * background moved from light to dark (or back) moves the theme to the other kind's slot of the light-or-dark key, and the slot it left goes
+ * back to its default, or the key would bring the theme itself.
+ */
+const repaint = (store: Store): void => {
+  const s = store.state, id = s.theme, kind = paletteOf(id).dark ? 'dark' : 'light', other = kind === 'dark' ? 'light' : 'dark';
+  const themeSlots = { ...s.themeSlots, [kind]: id, ...(s.themeSlots[other] === id ? { [other]: other === 'dark' ? PHONE_DARK_THEME : DEFAULT_THEME } : {}) };
+  store.set({ theme: id, themeSlots });
+};
 
 export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => void, ui: ThemeEditorState): void {
   const say = (text: string, error = false): void => { ui.message = { text, error }; redraw(); };
+  // As this browser holds them now: another tab may have made, changed or deleted one.
   const list = loadCustomThemes(), current = list.find(x => x.id === store.state.theme) ?? null;
+  registerCustomThemes(list);
   const fileInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
   fileInput.onchange = () => {
     const chosen = fileInput.files?.[0]; if (!chosen) return;
+    // A file far larger than a themes file is something else: not read at all (a character is at most four bytes).
+    if (chosen.size > MAX_FILE_CHARS * 4) { say(t('This is not a themes file.'), true); return; }
     void chosen.text().then(text => {
       const read = importThemes(text);
       if ('error' in read) { say(read.error === 'newer' ? t('This themes file is from a newer version of the page: reload the page and try again.') : read.error === 'empty' ? t('The file holds no theme this page can read.') : t('This is not a themes file.'), true); return; }
@@ -93,15 +105,15 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
   }
 
   // One's own theme: everything about it, kept as it changes.
-  const keep = (next: CustomTheme, store_ = true): boolean => {
+  const keep = (next: CustomTheme): boolean => {
     const updated = putTheme(loadCustomThemes(), next);
-    if (!updated) return false;
-    if (store_) { if (!storeCustomThemes(updated)) return false; } else registerCustomThemes(updated);
+    if (!updated || !storeCustomThemes(updated)) return false;
     repaint(store);
     return true;
   };
   let theme = current;
-  body.append(note(t('Your own theme: every change shows at once and is kept in this browser.')), ...message());
+  // What an action said comes under the colours, beside the buttons that do them (`sayAbout`).
+  body.append(note(t('Your own theme: every change shows at once and is kept in this browser.')));
 
   const name = el('input', { type: 'text', class: 'layout-name-field', maxLength: 40, value: theme.name, ariaLabel: t('Name') });
   name.addEventListener('change', () => {
@@ -115,7 +127,8 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
   name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
   body.append(el('label', { class: 'theme-name' }, el('span', { textContent: t('Name') }), name));
   body.append(selectRow(t('Shape'), t('How the bars, buttons and panels are drawn: flat, softer paper, raised edges and title bars, or a terminal\'s double lines.'), FRAME_CHOICES(), theme.frame, v => {
-    const next = { ...theme, frame: v as Frame, savedAt: Date.now() };
+    // A palette's own frame tones (Classic 95's grey) belong to the raised frame: another shape draws from the colours alone.
+    const { chrome: _pins, ...rest } = theme, next = { ...(v === 'bevel' ? theme : rest), frame: v as Frame, savedAt: Date.now() };
     if (keep(next)) { theme = next; redraw(); } else say(t('This browser did not let the page keep it.'), true);
   }));
 
@@ -125,21 +138,35 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
     for (const key of keys) {
       const input = el('input', { type: 'color', value: theme.colors[key], class: 'line-swatch', ariaLabel: COLOR_NAME[key](), tip: COLOR_TIP[key]() });
       input.dataset.focus = `theme-${key}`;
-      // While the picker is open the page follows it (a few times a second); the choice is kept when the picker closes.
+      // While the picker is open the page follows it, and keeps it, a few times a second. The panel is not rebuilt (the picker belongs to
+      // this input): only what it says about the colours is.
       let timer = 0;
-      const show = (store_: boolean): void => { const next = { ...theme, colors: { ...theme.colors, [key]: input.value.toLowerCase() }, savedAt: Date.now() }; if (keep(next, store_)) theme = next; };
-      input.oninput = () => { if (!timer) timer = window.setTimeout(() => { timer = 0; show(false); }, 80); };
-      input.onchange = () => { window.clearTimeout(timer); timer = 0; show(true); redraw(); };
+      const show = (): void => {
+        const value = input.value.toLowerCase();
+        if (value === theme.colors[key]) return;
+        const next = { ...theme, colors: { ...theme.colors, [key]: value }, savedAt: Date.now() };
+        if (keep(next)) { theme = next; ui.message = null; } else ui.message = { text: t('This browser did not let the page keep it.'), error: true };
+        sayAbout();
+      };
+      input.oninput = () => { if (!timer) timer = window.setTimeout(() => { timer = 0; show(); }, 80); };
+      input.onchange = () => { window.clearTimeout(timer); timer = 0; show(); };
       grid.append(el('label', { class: 'theme-color', tip: COLOR_TIP[key]() }, input, el('span', { textContent: COLOR_NAME[key]() })));
     }
     body.append(grid);
   }
 
-  const { palette, adjusted } = customPalette(theme), warn = themeWarnings(palette);
-  if (warn.clash) body.append(note(t('The background and the panels are too far apart for any text to read well on both: bring one closer to the other.')));
-  else if (adjusted.length) body.append(note(t('So that every word reads, the page draws {names} a little lighter or darker than chosen.', { names: adjusted.map(k => COLOR_NAME[k]()).join(', ') })));
-  if (warn.faint.length) body.append(note(t('Hard to see on this background: {names}.', { names: warn.faint.map(k => COLOR_NAME[k]()).join(', ') })));
-  if (warn.alike) body.append(note(t('Buy and sell look alike: the book and the flow will be hard to read.')));
+  const notes = el('div');
+  /** What the panel says about the colours as they are now (and a message), redrawn in place as a colour changes. */
+  const sayAbout = (): void => {
+    const { palette, adjusted } = customPalette(theme), warn = themeWarnings(palette), out: HTMLElement[] = message();
+    if (warn.clash) out.push(note(t('The background and the panels are too far apart for any text to read well on both: bring one closer to the other.')));
+    else if (adjusted.length) out.push(note(t('So that every word reads, the page draws {names} a little lighter or darker than chosen.', { names: adjusted.map(k => COLOR_NAME[k]()).join(', ') })));
+    if (warn.faint.length) out.push(note(t('Hard to see on this background: {names}.', { names: warn.faint.map(k => COLOR_NAME[k]()).join(', ') })));
+    if (warn.alike) out.push(note(t('Buy and sell look alike: the book and the flow will be hard to read.')));
+    notes.replaceChildren(...out);
+  };
+  sayAbout();
+  body.append(notes);
 
   const duplicate = button(t('Duplicate'), () => {
     const made = newTheme(theme.id, loadCustomThemes(), shown => t('{name} copy', { name: shown }), Date.now());
@@ -153,7 +180,7 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
     const before = loadCustomThemes(), at = before.findIndex(x => x.id === theme.id), gone = before[at];
     if (!gone || !storeCustomThemes(before.filter(x => x.id !== gone.id))) { say(t('This browser did not let the page keep it.'), true); return; }
     // The page goes to the built-in theme of its kind; the light-or-dark key forgets the deleted one.
-    const dark = palette.dark, s = store.state;
+    const dark = customPalette(gone).palette.dark, s = store.state;
     const slots = { light: s.themeSlots.light === gone.id ? DEFAULT_THEME : s.themeSlots.light, dark: s.themeSlots.dark === gone.id ? PHONE_DARK_THEME : s.themeSlots.dark };
     store.set({ ...themeChange({ themeSlots: slots }, dark ? 'dark' : 'light', true) });
     ui.message = null; redraw();

@@ -3196,5 +3196,6 @@
  "Back up and restore": "Sichern und Wiederherstellen",
  "Edit this theme…": "Dieses Design bearbeiten…",
  "Make your own…": "Eigenes erstellen…",
- "Your own theme": "Dein eigenes Design"
+ "Your own theme": "Dein eigenes Design",
+ "Your setup was restored in another tab. Reload this one to use it.": "Deine Einrichtung wurde in einem anderen Tab wiederhergestellt. Lade diesen neu, um sie zu verwenden."
 }

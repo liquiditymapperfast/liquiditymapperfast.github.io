@@ -3305,5 +3305,6 @@
  "Back up and restore": "Резервне копіювання та відновлення",
  "Edit this theme…": "Змінити цю тему…",
  "Make your own…": "Створити власну…",
- "Your own theme": "Ваша власна тема"
+ "Your own theme": "Ваша власна тема",
+ "Your setup was restored in another tab. Reload this one to use it.": "Ваші налаштування відновлено в іншій вкладці. Перезавантажте цю, щоб ними користуватися."
 }

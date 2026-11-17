@@ -3253,5 +3253,6 @@
  "Back up and restore": "Backup e ripristino",
  "Edit this theme…": "Modifica questo tema…",
  "Make your own…": "Creane uno tuo…",
- "Your own theme": "Il tuo tema"
+ "Your own theme": "Il tuo tema",
+ "Your setup was restored in another tab. Reload this one to use it.": "La tua configurazione è stata ripristinata in un’altra scheda. Ricarica questa per usarla."
 }

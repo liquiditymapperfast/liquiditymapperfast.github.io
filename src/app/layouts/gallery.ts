@@ -3,7 +3,7 @@ import { t, tn } from '../i18n.ts';
 import { clock } from '../format.ts';
 import { openMenu, type MenuItem } from '../menu.ts';
 import { button, heading, note } from '../ui.ts';
-import { MAX_LAYOUTS, exportFile, importFile, loadLayouts, mergeLayouts, storeLayouts, type SavedLayout } from './layouts.ts';
+import { MAX_LAYOUTS, keepsSettings, exportFile, importFile, loadLayouts, mergeLayouts, storeLayouts, type SavedLayout } from './layouts.ts';
 import { PRESETS, buildPreset, type PresetDef } from './presets.ts';
 import { PANE_SHOW_KEY } from './dock-model.ts';
 import { thumbBoxes, type ThumbBox } from './thumb.ts';
@@ -16,9 +16,6 @@ export const newGalleryState = (): GalleryState => ({ message: null, renaming: n
 
 const NS = 'http://www.w3.org/2000/svg';
 const mark = (tag: string, attrs: Record<string, string | number>): SVGElement => { const node = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v)); return node; };
-
-/** Whether a saved layout carries the chart's settings, or only which panels are open. */
-export const keepsSettings = (layout: SavedLayout): boolean => Object.keys(layout.settings).some(key => key !== 'show');
 
 /** A layout as a small picture of its panes (`thumb.ts` has the arithmetic; this draws it in the page's own colours). */
 export function thumbSvg(boxes: readonly ThumbBox[]): SVGSVGElement {

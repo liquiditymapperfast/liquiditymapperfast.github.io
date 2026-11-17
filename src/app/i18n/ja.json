@@ -3027,5 +3027,6 @@
  "Back up and restore": "バックアップと復元",
  "Edit this theme…": "このテーマを編集…",
  "Make your own…": "自分用を作る…",
- "Your own theme": "自分のテーマ"
+ "Your own theme": "自分のテーマ",
+ "Your setup was restored in another tab. Reload this one to use it.": "別のタブで設定が復元されました。使うにはこのタブを再読み込みしてください。"
 }

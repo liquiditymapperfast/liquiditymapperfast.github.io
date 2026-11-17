@@ -1,4 +1,4 @@
-import { FRAMES, PALETTES, contrastRatio, lightness, mixHex, paletteOf, rgb, setCustomPalettes, type Chrome, type Frame, type Palette } from './theme.ts';
+import { FRAMES, PALETTES, chromeFor, contrastRatio, lightness, mixHex, paletteOf, rgb, setCustomPalettes, type Chrome, type Frame, type Palette } from './theme.ts';
 import { copyName } from './layouts/layouts.ts';
 
 /**
@@ -115,13 +115,26 @@ export const surfacesClash = (surfaces: readonly string[], ratio = 4.5): boolean
 /** The text and quiet text are held to what every built-in theme meets on its background and panels (tests/app-theme.test.mts): 7:1 and 4.5:1. */
 export const TEXT_RATIO = 7, MUTED_RATIO = 4.5;
 
+/**
+ * What words are written on: the background, the panels, and the frame's own surfaces drawn from them (the buttons' face, the title strips, the
+ * fields' well), which a palette's pinned tones (Classic 95's grey) can set far from the panels.
+ */
+export function textSurfaces(p: Palette): string[] {
+  const chrome = chromeFor(p);
+  return [p.bg, p.panel, chrome.face, chrome.title, chrome.well];
+}
+
+/** The built-in palettes whose buy and sell are the colour-blind safe pair: a theme with the same pair is drawn as they are (tpo/paint.ts). */
+const SAFE_PAIRS = Object.values(PALETTES).filter(p => p.colourSafe).map(p => `${p.bid}|${p.ask}`);
+
 /** A theme as the page draws it: its colours, the text and muted text made readable where they were not (`adjusted` says which). */
 export function customPalette(theme: CustomTheme): { palette: Palette; adjusted: ColorKey[] } {
-  const c = theme.colors, surfaces = [c.bg, c.panel];
+  const c = theme.colors, safe = SAFE_PAIRS.includes(`${c.bid}|${c.ask}`);
+  const chosen: Palette = { label: theme.name, dark: isDarkBackground(c.bg), frame: theme.frame, ...c, ...(theme.chrome ? { chrome: theme.chrome as Partial<Chrome> } : {}), ...(safe ? { colourSafe: true as const } : {}) };
+  const surfaces = textSurfaces(chosen);
   const text = readable(c.text, surfaces, TEXT_RATIO), muted = readable(c.muted, surfaces, MUTED_RATIO);
   const adjusted = [...(text !== c.text ? ['text' as const] : []), ...(muted !== c.muted ? ['muted' as const] : [])];
-  const palette: Palette = { label: theme.name, dark: isDarkBackground(c.bg), frame: theme.frame, ...c, text, muted, ...(theme.chrome ? { chrome: theme.chrome as Partial<Chrome> } : {}) };
-  return { palette, adjusted };
+  return { palette: { ...chosen, text, muted }, adjusted };
 }
 
 /**
@@ -131,7 +144,7 @@ export function customPalette(theme: CustomTheme): { palette: Palette; adjusted:
 export function themeWarnings(p: Palette): { faint: ColorKey[]; alike: boolean; clash: boolean } {
   const faint = (['accent', 'ui', 'bid', 'ask', 'candleUp', 'candleDown', 'poc', 'level', 'vwap'] as const).filter(key => contrastRatio(p[key], p.bg) < 3);
   const [ar, ag, ab] = rgb(p.bid), [br, bg, bb] = rgb(p.ask);
-  return { faint, alike: Math.hypot(ar - br, ag - bg, ab - bb) < 0.2, clash: surfacesClash([p.bg, p.panel]) };
+  return { faint, alike: Math.hypot(ar - br, ag - bg, ab - bb) < 0.2, clash: surfacesClash(textSurfaces(p)) };
 }
 
 /** A new theme copied from the theme `fromId` (built-in or the person's own), under a name that is free. */

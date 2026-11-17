@@ -277,8 +277,24 @@ export type PhoneTape = 'list' | 'chart';
 export const readPhoneTape = (saved: unknown): PhoneTape => saved === 'chart' ? 'chart' : 'list';
 
 const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'phoneTape', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'flowView', 'trades', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'bookMarkets', 'bookPicks', 'draw', 'chartType', 'candleColors'];
+/**
+ * The saved settings: the saved keys only, from an object (a backup can bring any text here, backup.ts). The keys spread into the state as
+ * they are, without a reader of their own below, are checked for their type here; every other one is read field by field further on.
+ */
 function readSaved(): Partial<AppState> {
-  try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
+  let raw: unknown;
+  try { const text = window.localStorage.getItem('hlm-app-v2'); raw = text ? JSON.parse(text) : null; } catch { return {}; }
+  return savedFields(raw);
+}
+export function savedFields(raw: unknown): Partial<AppState> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const r = raw as Record<string, unknown>, out: Record<string, unknown> = {};
+  const strings = (v: unknown): boolean => Array.isArray(v) && v.every(x => typeof x === 'string');
+  const typed: Partial<Record<keyof AppState, (v: unknown) => boolean>> = {
+    keepAwake: v => typeof v === 'boolean', heatmapSource: v => typeof v === 'string', ladderVenue: v => typeof v === 'string', disabledVenues: strings, ladderVenues: strings,
+  };
+  for (const key of PERSISTED) if (Object.hasOwn(r, key) && (typed[key]?.(r[key]) ?? true)) out[key] = r[key];
+  return out as Partial<AppState>;
 }
 
 /** How many venue lines the Compact book may draw. */
@@ -488,7 +504,10 @@ export class Store {
   #listeners = new Set<Listener>();
   #pending = new Set<keyof AppState>();
   #scheduled = false;
+  /** Set once another tab restored a backup (main.ts): this page's settings are from before it and are no longer written. */
+  #saving = true;
   constructor(state: AppState) { this.state = state; }
+  stopSaving(): void { this.#saving = false; }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
   set(patch: Partial<AppState>): void {
     for (const key of Object.keys(patch) as (keyof AppState)[]) { (this.state as unknown as Record<string, unknown>)[key] = patch[key]; this.#pending.add(key); }
@@ -498,7 +517,7 @@ export class Store {
       this.#scheduled = false;
       const changed = this.#pending; this.#pending = new Set();
       for (const listener of this.#listeners) listener(this.state, changed);
-      if ([...changed].some(key => PERSISTED.includes(key))) {
+      if (this.#saving && [...changed].some(key => PERSISTED.includes(key))) {
         try { window.localStorage.setItem('hlm-app-v2', JSON.stringify(Object.fromEntries(PERSISTED.map(key => [key, this.state[key]])))); } catch { /* storage unavailable */ }
       }
     });

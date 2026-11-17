@@ -1,7 +1,7 @@
 import type { AppState, Settings, Store } from '../store.ts';
 import { t } from '../i18n.ts';
 import { toast } from '../toast.ts';
-import { LAYOUTS_KEY, MAX_LAYOUTS, changedSettings, cleanName, completeSettings, copyName, loadLayouts, paneSettings, samePanes, settingsOf, settingsToApply, storeLayouts, undoPatch, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
+import { LAYOUTS_KEY, MAX_LAYOUTS, keepsSettings, changedSettings, cleanName, completeSettings, copyName, loadLayouts, paneSettings, samePanes, settingsOf, settingsToApply, storeLayouts, undoPatch, upsert, type PaneArrangement, type SavedLayout } from './layouts.ts';
 import { PRESETS, buildPreset, type PresetDef, type PresetEnv } from './presets.ts';
 import { readActive, sameShot, shotOf, type Active } from './active.ts';
 import { PANE_SHOW_KEY, type Side, type SidePaneId } from './dock-model.ts';
@@ -122,7 +122,7 @@ export class LayoutActions {
   update(name: string): boolean {
     const list = loadLayouts(), at = list.find(l => sameName(l.name, name));
     if (!at) return false;
-    const next = upsert(list, this.#capture(at.name, Object.keys(at.settings).some(k => k !== 'show')));
+    const next = upsert(list, this.#capture(at.name, keepsSettings(at)));
     if (!next || !storeLayouts(next)) return false;
     this.#remember('saved', at.name);
     return true;

@@ -1,4 +1,4 @@
-import { handedKey } from './handover.ts';
+import { DONE_KEY, handedKey } from './handover.ts';
 
 /**
  * A backup: everything this page keeps in this browser's storage, in one file a person can keep or carry to another browser or computer:
@@ -17,6 +17,15 @@ export const BACKUP_FORMAT = 'liquiditymapperfast-backup', BACKUP_VERSION = 1;
 export const PENDING_KEY = 'hlm-restore-pending', RESULT_KEY = 'hlm-restore-result';
 /** A browser lets a site keep about 5 MB; a file far larger is something else. */
 export const MAX_BACKUP_CHARS = 6_000_000;
+/** Set when a restore was written (its time): another tab of the page holds the setup from before and must not write it back (main.ts). */
+export const RESTORED_KEY = 'hlm-restored-at';
+/**
+ * Keys that belong to this browser and never travel: when this browser opened each coin's recordings, by which it deletes the old ones
+ * (coin.ts `keepCoinRecordings`; another browser's dates would delete recordings made here), and the restore's own mark.
+ */
+const LOCAL_ONLY: readonly string[] = ['lmf.coins.opened', RESTORED_KEY];
+/** A key a backup holds and a restore replaces: one of the page's own (`handedKey`) that is not this browser's alone. */
+export const backedKey = (key: string): boolean => handedKey(key) && !LOCAL_ONLY.includes(key);
 
 type Readable = Pick<Storage, 'length' | 'key' | 'getItem'>;
 type Writable = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
@@ -26,7 +35,7 @@ export function collectItems(storage: Readable): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < storage.length; i++) {
     const key = storage.key(i);
-    if (key === null || !handedKey(key)) continue;
+    if (key === null || !backedKey(key)) continue;
     const value = storage.getItem(key);
     if (value !== null) out[key] = value;
   }
@@ -62,6 +71,8 @@ export function readBackup(text: string): BackupRead {
   const items: Record<string, string> = {};
   for (const [key, value] of Object.entries(r.items)) {
     if (!handedKey(key) || typeof value !== 'string') return { error: 'not-backup' };
+    // This browser's own bookkeeping in a file from another one is left out, never written.
+    if (!backedKey(key)) continue;
     items[key] = value;
   }
   if (!Object.keys(items).length) return { error: 'empty' };
@@ -107,6 +118,10 @@ export function takeRestore(local: Writable | null = safe('localStorage'), sessi
   if (text === null) return false;
   const read = readBackup(text), ok = 'items' in read && replaceAll(local, read.items);
   try { session.setItem(RESULT_KEY, ok ? 'ok' : 'failed'); } catch { /* the page then says nothing */ }
+  if (ok) {
+    // Other tabs of the page hear of it (a `storage` event), and a later visit from the old address hands nothing over this setup (handover.ts).
+    try { local.setItem(RESTORED_KEY, String(Date.now())); if (local.getItem(DONE_KEY) === null) local.setItem(DONE_KEY, String(Date.now())); } catch { /* storage full: the restore stands */ }
+  }
   return ok;
 }
 /** How a restore at this page's start went, once (null: there was none). */
