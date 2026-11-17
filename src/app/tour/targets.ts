@@ -15,7 +15,6 @@ export const SELECTORS: Readonly<Record<TargetId, readonly string[]>> = {
   flow: ['.pane.cvd', '.edge-tab[data-pane="cvd"]'],
   book: ['.pane.ladder', '.edge-tab[data-pane="book"]'],
   layouts: ['.map-layout'],
-  tour: ['.tour-btn'],
   guide: ['.guide-btn'],
   coin: ['.coin-btn'],
   settings: ['.more-btn'],

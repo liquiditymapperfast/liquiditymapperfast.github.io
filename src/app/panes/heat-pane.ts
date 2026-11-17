@@ -49,6 +49,7 @@ import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, typ
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, focusWindow, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
 import { t, tn } from '../i18n.ts';
 import { el } from '../dom.ts';
+import { FREE_DAYS } from '../plus/config.ts';
 import { openMenu, type MenuItem } from '../menu.ts';
 import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
@@ -267,6 +268,8 @@ const priceTimeframeName = (ms: number): string => Object.entries(PRICE_TIMEFRAM
 const NARROW_PLOT = 420;
 /** The wide liquidation column's heading band (LIQ LEVELS, LEVEL MAX, CUM MAX), drawn over its rows. */
 const LIQ_HEAD_H = 40;
+/** The History link's line under that heading (the link is 16 px tall), where it shows. */
+const LIQ_LINK_H = 20;
 /** The most room the legend's title and prices ask beside the map's corner tools before these drop their names (px): about a candle's line of figures. */
 const LEGEND_NEED_PX = 272;
 /** The least room beside the corner tools the legend takes (px): with less (a narrow map) it stands under them, as wide as the plot. */
@@ -459,6 +462,13 @@ export class HeatPane {
   #handled = false;
   /** Back to the live candle at the zoom the map has, shown while the map stays where it was left in time or a hand holds the price (`jumpToNow`). */
   readonly #liveButton = el('button', { class: 'map-live', type: 'button', tip: t('Back to the live candle at this zoom (keyboard: End). While the live candle is on screen the chart follows it.') }, t('Live'));
+  /**
+   * The liquidation column's History link (Karl, 2026-11-17: few visitors knew the levels have a history): under the column's heading, it
+   * opens the Depth pane on Liquidation levels, and is out of sight while that is what the pane shows. A page element over the drawing,
+   * placed where the column is drawn (`#paintLiqColumn`); the heading's band is as tall as what it holds (`#liqHeadH`).
+   */
+  readonly #liqHistory = el('button', { class: 'liq-history', type: 'button', hidden: true, tip: t('How these levels changed over time: opens the Depth pane on Liquidation levels. The last {n} days are free; older history is part of Plus.', { n: FREE_DAYS }) }, t('History'));
+  #liqHeadH = LIQ_HEAD_H;
   #palette = PALETTES.light!;
   /** The palette the volume profile is drawn in (`#tradedPalette`), kept while neither the theme nor the colours chosen change. */
   #tradedPal: { key: string; base: Palette; p: Palette } | null = null;
@@ -703,8 +713,9 @@ export class HeatPane {
     this.#hoverCanvas.className = 'hover';
     this.#liveButton.hidden = true;
     this.#liveButton.addEventListener('click', () => this.jumpToNow());
+    this.#liqHistory.addEventListener('click', () => this.store.set({ show: { ...this.store.state.show, depth: true }, depthSource: 'liq' }));
     // The pointer's layer right after the overlay: over it and under what is stacked over it, as when it was drawn into the overlay.
-    this.root.append(this.#glCanvas, this.#dustCanvas, this.#pulse, this.#drawEdit, this.overlay, this.#hoverCanvas, this.#liveButton);
+    this.root.append(this.#glCanvas, this.#dustCanvas, this.#pulse, this.#drawEdit, this.overlay, this.#hoverCanvas, this.#liveButton, this.#liqHistory);
     host.append(this.root);
     // WebGL2, or a 2D canvas where the browser gives none; the 2D picture may need a fresh element in the canvas's place, so the pane takes the renderer's.
     this.gl = heatRenderer(this.#glCanvas);
@@ -1329,7 +1340,7 @@ export class HeatPane {
     }
     // profile column, traded-volume column and price axis
     // The liquidation column, then the profile column: the book as it is now, not shown in replay, which has no book of its moment.
-    if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph); else this.#liqScale = null;
+    if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph); else { this.#liqScale = null; this.#placeLiqHistory(null); }
     if (state.show.profile && !replaying()) this.#paintProfile(ctx, state, pw, ph);
     if (this.#profileHover?.column === 'seam' && !replaying()) this.#paintSeam(ctx, state, pw, ph);
     if (tradedShown(state)) this.#paintTraded(ctx, state, pw, ph);
@@ -1425,8 +1436,8 @@ export class HeatPane {
     const pct = Math.abs(at - price) / price * 100, arrow = way.side === 'long' ? '▼' : '▲', money = `$${usd(way.usd)}`;
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
     const full = `${arrow} ${pct < 1 ? pct.toFixed(2) : pct.toFixed(1)}% · ${money}`, text = ctx.measureText(full).width <= W - 14 ? full : `${arrow} ${money}`;
-    // Above the line, or below it near the top, and never on the column's heading (its 40 px band hides the curve there anyway).
-    const tw = ctx.measureText(text).width, right = x0 + W - 4, ty = y - 12 < LIQ_HEAD_H + 8 ? Math.max(y + 12, LIQ_HEAD_H + 8) : y - 12;
+    // Above the line, or below it near the top, and never on the column's heading (its band hides the curve there anyway).
+    const tw = ctx.measureText(text).width, right = x0 + W - 4, ty = y - 12 < this.#liqHeadH + 8 ? Math.max(y + 12, this.#liqHeadH + 8) : y - 12;
     ctx.globalAlpha = 0.94; ctx.fillStyle = p.panel; ctx.fillRect(right - tw - 5, ty - 7, tw + 9, 14);
     ctx.globalAlpha = 1; ctx.lineWidth = 1; ctx.strokeStyle = color; ctx.strokeRect(right - tw - 4.5, ty - 6.5, tw + 8, 13);
     ctx.fillStyle = p.text; ctx.fillText(text, right, ty);
@@ -3874,10 +3885,23 @@ export class HeatPane {
    * bars, which reads "this much goes if price gets here" (and the pointer reads it at its price: `#paintLiqReadout`). Until the levels are
    * there, or in a replay, it says why it is empty.
    */
+  /** The History link at the column's left edge under its heading (`x`, a plot x), or out of sight (null). */
+  #placeLiqHistory(x: number | null): void {
+    const link = this.#liqHistory;
+    this.#liqHeadH = x === null ? LIQ_HEAD_H : LIQ_HEAD_H + LIQ_LINK_H;
+    if (x === null) { if (!link.hidden) link.hidden = true; return; }
+    const left = `${Math.round(this.#left + x + 4)}px`, top = `${LIQ_HEAD_H}px`;
+    if (link.style.left !== left) link.style.left = left;
+    if (link.style.top !== top) link.style.top = top;
+    if (link.hidden) link.hidden = false;
+  }
+
   #paintLiqColumn(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#liqScale = null;
     const p = this.#palette, v = this.view, src = this.hub.liqLevels, x0 = pw, W = liqColumnW(state), strip = W < PROFILE_W;
     const s = src.levels && src.state === 'ready' && !replaying() ? src.standing() : null;
+    // The History link: on the wide column while it has levels, unless the Depth pane already shows their history.
+    this.#placeLiqHistory(s && !strip && !(state.show.depth && state.depthSource === 'liq') ? x0 : null);
     ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, W, ph); ctx.clip();
     ctx.fillStyle = p.panel; ctx.fillRect(x0, 0, W, ph);
     ctx.font = `${pw < NARROW_PLOT ? 9.5 : 10}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -3938,7 +3962,7 @@ export class HeatPane {
     // The pointer's layer reads the curve where the pointer is (`#paintLiqReadout`), on this scale.
     this.#liqScale = curves ? { x0, width, maxCum, W } : null;
     if (!strip) {
-      ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, LIQ_HEAD_H); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, this.#liqHeadH); ctx.globalAlpha = 1;
       ctx.fillStyle = p.text; ctx.fillText(fitText(wide, t('LIQ LEVELS'), W - 8), x0 + 4, 4);
       ctx.fillStyle = p.muted; ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 16); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 28);
     }

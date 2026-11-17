@@ -76,7 +76,7 @@ export const MIN_TIER_USD = 25_000;
 export const DEFAULT_SOUNDS: Readonly<SoundSettings> = Object.freeze({
   on: false, volume: 0.35, scope: 'all' as Scope, barChime: false, panels: DEFAULT_PANEL_SOUNDS,
   tiers: [
-    { id: 'signal', name: 'Signal', usd: 50_000, on: false },
+    { id: 'signal', name: 'Splash', usd: 50_000, on: false },
     { id: 'surge', name: 'Surge', usd: 150_000, on: false },
     { id: 'whale', name: 'Whale', usd: 400_000, on: true },
     { id: 'leviathan', name: 'Leviathan', usd: 1_500_000, on: true },

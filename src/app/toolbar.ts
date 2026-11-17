@@ -12,6 +12,8 @@ import { alignRows } from './ui/fit-grid.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
+import { PLUS_NAME, togglePlus } from './plus/panel.ts';
+import { plus } from './plus/pass.ts';
 import { HELP, helpButton, setTourStarter, showGuide, showTour, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
 import type { VenueControl } from './source.ts';
@@ -156,11 +158,17 @@ export class Toolbar {
   /** The quick tour (tour/tour.ts), which lights the page a part at a time; beside the Guide, which is the whole story. */
   #tour = el('button', { type: 'button', class: 'tour-btn', textContent: t('Tour'), tip: t('A one-minute tour of the page: what the map shows and where everything is. The Guide goes deeper.'), onclick: () => { this.#sheet?.close(); this.startTour(); } });
   /** Offers the tour once to a visitor who has never been offered it (a notice under the bar). */
-  readonly #invite = new TourInvite(() => this.startTour(), () => compactBar() ? t('You can take the tour any time from Settings.') : t('You can take the tour any time with the Tour button at the top right.'));
+  readonly #invite = new TourInvite(() => this.startTour(), () => compactBar() ? t('You can take the tour any time from Settings.') : t('You can take the tour any time from the Guide.'));
+  /**
+   * Plus, the paid tier (`plus/`): in the bar where the Tour stood (Karl, 2026-11-17: the bar has no room for one more button without
+   * breaking into two rows on a 1,366 px screen; the Tour is the Guide's first button and the first visit's invitation). Lit while this
+   * browser has Plus; it opens what Plus is, and the way to it.
+   */
+  #plus = el('button', { type: 'button', class: 'plus-btn', textContent: PLUS_NAME, tip: t('Plus: the liquidation levels\' whole history, for a monthly price that pays for the servers behind this page. Everything else stays free.'), onclick: () => { togglePlus(this.#plus); } });
   /** Says when the site serves a newer build than this tab runs (update-notice.ts): in the status bar on a computer, under the bar otherwise. */
   readonly #update = new UpdateNotice();
   #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Screenshot'), tip: t('Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.'), onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
-  #author = el('button', { type: 'button', textContent: t('Author'), tip: t('Who made this, and where to find the code. Free, no sign-ups, open source.') });
+  #author = el('button', { type: 'button', textContent: t('Author'), tip: t('Who made this, and where to find the code. Free to use, no account, open source.') });
   #scope = el('div', { class: 'seg scope', tip: t('Which markets the liquidity views draw. A filter on the enabled venues: it never switches a venue on or off.') });
   #soundButton = el('button', { class: 'led-btn sound-btn', textContent: t('Sounds'), tip: t('Sound notifications') });
   #soundPanel: Panel | null = null;
@@ -402,6 +410,8 @@ export class Toolbar {
     for (const end of ['pointerup', 'pointercancel'] as const) window.addEventListener(end, () => { this.#pressing = false; }, true);
     // The Guide's link to the tour starts it as the Tour button does (the bar unfolded for it).
     setTourStarter(() => this.startTour());
+    const lit = (): void => { this.#plus.classList.toggle('on', plus().on); };
+    lit(); plus().subscribe(lit);
     // A notice that comes, goes, or wraps differently moves the ones under it.
     if (typeof ResizeObserver === 'function') {
       const stack = new ResizeObserver(() => this.#stackNotices());
@@ -792,8 +802,6 @@ export class Toolbar {
 
   #arrange(): void {
     this.#recenter.classList.toggle('map-recenter', !compactBar() && this.#mapHost !== null);
-    // In the bar the Tour wears the lit look of the bar's chosen buttons, in the theme's own way (Karl, 2026-11-13); in a phone's Settings it is a filled tile.
-    this.#tour.classList.toggle('on', !compactBar());
     if (!compactBar()) {
       this.#sheet?.close();
       this.#fillHeatControls();
@@ -813,7 +821,7 @@ export class Toolbar {
       // arrow that folds the bar away sits on that deck's bottom edge, taking no width: room kept for it at the bar's end wrapped this deck
       // onto a second row at 1,600 px, doubling the bar, and the top edge holds the title.
       // Install stands before the screenshot mark, so that the mark keeps its place whether the browser offers installing or not (Install comes in beside Author).
-      const tools = deck('tools', 'LiquidityMapperFast', [this.#tour, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#tab, this.#zone, this.#language, this.#theme, this.#status])]);
+      const tools = deck('tools', 'LiquidityMapperFast', [this.#plus, this.#guide], [this.#author, this.#install.root, this.#shot, ...(host ? [] : [this.#tab, this.#zone, this.#language, this.#theme, this.#status])]);
       tools.append(this.#collapse);
       this.#deckBreaks = []; this.#fitted = null; this.#fittedOrder = '';
       this.#decks = [
@@ -961,7 +969,7 @@ export class Toolbar {
     this.#sheet = openSheet(t('Settings'), body => {
       this.#heatctl.replaceChildren();
       body.append(
-        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
+        section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#plus, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root)]),
         section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
         ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')))])]),

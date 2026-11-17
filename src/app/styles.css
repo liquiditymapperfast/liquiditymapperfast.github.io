@@ -103,7 +103,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .toolbar.cockpit .deck-tools .deck-row > button { width: 100%; min-width: 0; justify-content: center; text-align: center; }
 .toolbar.cockpit .deck-tools .deck-row > button.install { position: relative; font-size: 0; padding: 0; }
 .toolbar.cockpit .deck-tools .deck-row > button.install::before { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v11M7.5 10L12 14.5 16.5 10M4.5 15.5v4h15v-4'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v11M7.5 10L12 14.5 16.5 10M4.5 15.5v4h15v-4'/%3E%3C/svg%3E") center / contain no-repeat; }
-.toolbar.cockpit .deck-tools .deck-row:has(> button.install[hidden]) > :first-child:not(.tour-btn) { grid-column: 1 / 3; }
+.toolbar.cockpit .deck-tools .deck-row:has(> button.install[hidden]) > :first-child:not(.plus-btn) { grid-column: 1 / 3; }
 /* A monospaced face is wider: the text-mode bar a size smaller, so its decks fit as the others do. */
 html[data-frame="textmode"] .toolbar.cockpit { font-size: 10.5px; }
 html[data-frame="textmode"] .toolbar.cockpit :is(button, select) { padding: 2px 4px; }
@@ -757,17 +757,25 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
 /* A field of 16 px or more is not zoomed in on by an iPhone. */
 @media (max-width: 860px), (pointer: coarse) { .guide-q { height: 36px; font-size: 16px; } .guide-q-x { top: 17px; } }
 @media (prefers-reduced-motion: reduce) { .guide-scroll { scroll-behavior: auto; } .guide-article .flash { animation: none; background: color-mix(in srgb, var(--ui) 20%, transparent); } }
-/* The tour's button, with a play mark (the invitation's Take the tour is the same). The bar's Tour wears the lit look of the bar's chosen buttons (`on`, set
-   while it is in the bar: Toolbar #arrange), in the theme's own way, not a fill of the accent that stayed the same blue in every theme (Karl, 2026-11-13); a
-   phone's Settings tile stays filled and bold, the one such tile there. */
+/* The tour's button, with a play mark (the invitation's and the Guide's Take the tour are the same). It is a tile of a phone's Settings, filled and bold,
+   the one such tile there; the full bar has none since 2026-11-17 (Plus stands in its place, and the Guide's first button takes the tour). */
 .sheet-tiles > button.tour-btn { font-weight: 700; background: var(--ui); border-color: var(--ui); color: var(--on-ui, #fff); }
 :is(button.tour-btn, button.guide-tour, .tour-invite-go) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 :is(button.tour-btn, button.guide-tour, .tour-invite-go)::before { content: ""; flex: none; width: 8px; height: 10px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
-/* In the top bar the button has no mark: the bar is fitted to the pixel, and the mark was 14 px of width that took Russian and Japanese past the bar's smallest zoom at 1,500 px (it is lit, the one button of the bar that is lit and acts). */
-.toolbar.cockpit .deck-tools button.tour-btn::before { display: none; }
 .sheet-tiles > button.tour-btn:hover { background: color-mix(in srgb, var(--ui) 86%, var(--text)); border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); }
-/* A lit button does not change under the pointer or while held, and the Tour is lit always: held, it fades a little, so that a press answers in every frame. */
-.toolbar .tour-btn.on:active:not(:disabled) { opacity: .75; }
+/* Plus (plus/): its button in the bar is lit (`on`) while this browser has Plus, and a lit button does not change under the pointer or while held: held, it
+   fades a little, so that a press answers in every frame. */
+.toolbar .plus-btn.on:active:not(:disabled) { opacity: .75; }
+/* The lock on a pane whose older history is Plus (the Depth pane's Liquidation levels), and the History link over the liquidation column: small page
+   elements over the drawing, so that they can be pressed and read like any button. */
+.pane .plus-lock, .pane.heat .liq-history { position: absolute; z-index: 4; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; font-size: 11px; white-space: nowrap; }
+.pane .plus-lock[hidden], .pane.heat .liq-history[hidden] { display: none; }
+.pane .plus-lock::before { content: ""; flex: none; width: 11px; height: 11px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat; }
+.pane.heat .liq-history { height: 16px; padding: 0 5px; font-size: 10px; }
+/* The Plus panel's second tile is a button where it opens the Guide: it looks like the link beside it. */
+button.author-link.plus-tile { align-items: flex-start; height: auto; background: none; text-align: left; font: inherit; cursor: pointer; }
 /* The invitation to the tour (tour/invite.ts), a notice: its text takes the room, the buttons wrap under it on a narrow screen. */
 .toolbar .tour-invite { flex-wrap: wrap; row-gap: 6px; }
 .tour-invite-text { flex: 1 1 220px; min-width: 0; }

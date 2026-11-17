@@ -23,7 +23,7 @@ export const SECTIONS: readonly Section[] = [
     id: 'start', title: 'Start here', part: 'The basics',
     blocks: [
       { t: 'p', text: 'LiquidityMapperFast shows you where the orders are. An exchange keeps a list of everyone waiting to buy below the price and everyone waiting to sell above it: the **order book**. This page reads that list from the largest exchanges, adds them together and draws it as a map that moves with the price. Where a lot of size is waiting, the map lights up: those are the **walls** price tends to react to.' },
-      { t: 'p', text: 'It is free: nothing to sign up for, and open source. Your browser connects to the exchanges itself. It also asks this site\'s history and levels services for files (the recorded days before you came, and where Hyperliquid\'s positions would be liquidated), and it only asks: nothing you do here is sent anywhere.' },
+      { t: 'p', text: 'It is free to use: no account, nothing to sign up for, and open source. Your browser connects to the exchanges itself. It also asks this site\'s history and levels services for files (the recorded days before you came, and where Hyperliquid\'s positions would be liquidated), and it only asks: nothing you do here is sent anywhere. **Plus**, an optional paid part, opens the older history those services store; it has a section of its own near the end.' },
       { t: 'fig', id: 'anatomy', caption: 'The page at a glance, with two of the panes under the map switched on. Point at a part (hover with a mouse, tap on a touch screen) to see what it is.' },
       { t: 'list', items: [
         '**The chart**: price runs up the side, time runs left to right. The candles show what price did; the coloured map behind them is the order book through time.',
@@ -32,11 +32,11 @@ export const SECTIONS: readonly Section[] = [
         '**The order book** on the far right is the same book as a ladder of prices.',
         '**The panes underneath** (Depth, Open Interest, Delta, Liquidity Tracker, Long/Short, Funding and Bar stats) share the chart\'s time axis. You switch them on with the **Panels** buttons of the toolbar; your own Scripts switch on in the Chart deck.',
         '**The map\'s corner**, on a computer, holds Layouts, Go to, Select (a range), Draw and Recenter. On a phone or tablet Layouts and Range are in Settings, Recenter sits beside the timeframes, Draw is a button at the map\'s top right, and Go to is not offered.',
-        '**The toolbar** at the top chooses what to show and how. It is a row of boxes, called decks here: Market, Time, Heatmap, Panels, Chart, Alerts, and the page\'s own (Tour, Guide, Author, Install, Screenshot).',
+        '**The toolbar** at the top chooses what to show and how. It is a row of boxes, called decks here: Market, Time, Heatmap, Panels, Chart, Alerts, and the page\'s own (Plus, Guide, Author, Install, Screenshot).',
         'Most buttons of the Chart and Alerts decks are **split buttons**: the button switches the feature on or off, its lamp says which, and the small key joined to its right opens its settings.',
         '**The status bar** along the bottom of a computer\'s window shows the connection, how many exchanges are live, the price, since when the page records, and the **Keys**, clock (Local or UTC), **Language** and **Theme** buttons. On a phone they are in Settings.',
       ] },
-      { t: 'note', kind: 'tip', text: 'Short on time? The **Tour** takes a minute: its button is in the toolbar (under Settings on a phone) and at the top of this window. Or read “Reading the map”, “Where the map\'s history comes from” and “Moving around”. Looking for one thing? Type it in the search box at the top of this window.' },
+      { t: 'note', kind: 'tip', text: 'Short on time? The **Tour** takes a minute: its button is at the top of this window (and under Settings on a phone). Or read “Reading the map”, “Where the map\'s history comes from” and “Moving around”. Looking for one thing? Type it in the search box at the top of this window.' },
     ],
   },
   {
@@ -150,6 +150,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: 'A snapshot describes the positions about 40 minutes before it can be read. A level that price has traded through since then is gone, whether that happened before you opened the page or while you watch. Positions opened since come with the next snapshot.' },
       { t: 'p', text: 'They sit as a stripe right of the newest candle, so the heatmap keeps its own colours, and the **liquidation column** beside the profile adds them up: in each row what still stands, and a **cumulative curve** of everything from the price out to each price, which is what would be liquidated if price got there (the longs below the price, the shorts above it). On a computer, point anywhere on the map and the column reads the curve at your price: a dot on it, the dollars, and how far away that price is. Point at the column itself to compare the longs below with the shorts as far above, as **Mirror** does for the book. A switch in the button\'s settings hides the column.' },
       { t: 'p', text: 'Point at the seam between the liquidation column and the profile to weigh the book against the liquidations on each side: what rests against what would be liquidated. The Depth pane can add up the same levels in its bands, and [[Q]] switches them on and off.' },
+      { t: 'p', text: '**History**, under the column\'s heading, opens the Depth pane on these levels through time: how much stood within each distance of the price, snapshot after snapshot. The last 7 days are free; older history is part of **Plus**.' },
       { t: 'note', kind: 'warn', text: 'Only Hyperliquid\'s positions are in the snapshots, and only BTC for now. A level is where forced orders *could* start, not a promise: a position can be closed or topped up first, and a trade can reach a level a little before the mark price that liquidates it does.' },
     ],
   },
@@ -352,6 +353,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: 'For every moment, **Depth** adds up the bids and the asks within several distances of the price and draws them as nested rings: asks up in pink, bids down in green, the narrowest band strongest at the centre and the widest lightest. Each band holds the ones inside it. **Bands** chooses the distances (Balanced doubles from ±0.31% to ±5%; Near, Wide or your own); *Detail* draws the square root of the money so a thin inner band shows, and *Units* counts the coin instead of dollars.' },
       { t: 'p', text: '**Venues** chooses whose order books it adds up: the exchanges switched on inside the Spot / Perp filter (the default), the chart market\'s own book, or markets you tick, whatever the chips and the filter say. The Depth pane and the Liquidity Tracker share the choice, and their sounds count the same books.' },
       { t: 'p', text: 'Click a row of the table to bring that band forward at its own scale. When one side of it is unusually larger than the other over a candle (see “What stands out”), that side\'s edge is drawn thick across the candle: is there more resting liquidity above or below, and is that changing? Its **Source** can also be the liquidation levels, which adds up the same bands for Hyperliquid\'s BTC positions.' },
+      { t: 'p', text: 'With liquidation levels as the source the pane goes back as far as they are recorded. The last 7 days are free; the days before them are part of **Plus**: without it they are hatched, and a lock stands where they end.' },
     ],
   },
   {
@@ -408,7 +410,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'sounds', title: 'Sounds and Waves',
     blocks: [
-      { t: 'p', text: '**Sounds** turn trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. They start switched off: press **Sounds** in the Alerts deck. Four tiers set the sizes (Signal $50k, Surge $150k, Whale $400k, Leviathan $1.5M); Whale and Leviathan are ticked at first. Browsers keep audio locked until you click or press a key on the page once.' },
+      { t: 'p', text: '**Sounds** turn trades into chimes: rising for buys, falling for sells, richer for bigger sweeps. They start switched off: press **Sounds** in the Alerts deck. Four tiers set the sizes (Splash $50k, Surge $150k, Whale $400k, Leviathan $1.5M); Whale and Leviathan are ticked at first. Browsers keep audio locked until you click or press a key on the page once.' },
       { t: 'p', text: 'Under **Per panel** in the Sounds panel, each pane can sound one rare event: a burst of taker flow, a candle closing on a big net delta, a large wall appearing or being pulled, the balance of the book tipping, or an unusual open-interest change. All off until chosen. The same panel has a **Chime on unusual volume**, for a candle that closes on unusually large volume (also off until chosen).' },
       { t: 'p', text: '**Waves** turns the bars and panels around the chart to glass, in any theme, and lets large orders light it: the glass nearest where an order traded lights up and a wave runs across the screen, slowing in the glass and turning back at the splitters. Large changes in the flow column start waves of their own. A busy market holds its waves back, so a cascade never floods the screen, and **Strength**, in the settings key beside the Waves button (Wave strength in a phone\'s Settings), sets how strongly they are drawn.' },
     ],
@@ -487,7 +489,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'tools', title: 'Tools, themes and keys',
     blocks: [
-      { t: 'p', text: '**Tour** replays the one-minute tour of the page, and **Guide** opens this one; **Author** says who made the page and where the code is. They sit together at the top right of the toolbar, and in Settings on a phone.' },
+      { t: 'p', text: '**Guide** opens this window, and its first button, **Take the tour**, replays the one-minute tour of the page; **Author** says who made the page and where the code is, and **Plus** what the paid part adds. They sit together at the top right of the toolbar, and in Settings on a phone, where the Tour has a button of its own.' },
       { t: 'p', text: '**Search** this guide with the box at its top. It finds sections as you type, forgives a typo, and takes you to the paragraph. Press [[/]] to reach the box.' },
       { t: 'p', text: '**Screenshot** (or [[S]]) freezes the page under a dim layer that says “Select an area”. Drag a region, or click or tap a pane to take all of it (the top bar takes the whole page). Draw on it with the pen, line, arrow, rectangle, highlighter or text, and hide anything private with **pixelate** or **blur**. **Copy** puts the picture on the clipboard; the arrow beside it saves a PNG, and on a phone the share arrow opens the phone\'s own share sheet.' },
       { t: 'p', text: 'The picture is saved with at least two pixels to each pixel of the page (more on a sharper screen), so it stays crisp. **GIF** records the same area for 1 to 15 seconds instead.' },
@@ -503,6 +505,16 @@ export const SECTIONS: readonly Section[] = [
         ['[[[]], [[]]]', 'Hide or show the left and the right column'],
         ['[[Esc]]', 'Close a panel, the guide or the screenshot tool'],
       ] },
+    ],
+  },
+  {
+    id: 'plus', title: 'Plus: the older history',
+    blocks: [
+      { t: 'p', text: '**Plus** is the paid part of this page. It pays for the servers behind it and opens what they store: for now, the whole history of the liquidation levels in the Depth pane. Everything else on the page is free and stays free, the live liquidation levels and the last 7 days of their history included.' },
+      { t: 'p', text: 'Without Plus the Depth pane draws the last 7 days of that history; the days before are hatched, and a lock stands where they end. With Plus it draws them all, back to the first snapshot recorded, a new one about every half hour.' },
+      { t: 'p', text: 'There is no account. The checkout is on a page of its own, the **Plus page**, and is run by Paddle, the seller of record. After it this browser holds a **key**. The Plus page shows the key, and entering it there on another device brings Plus to that device too; if the key is lost, the email you paid with and the invoice number on the receipt bring it back.' },
+      { t: 'p', text: 'You can end Plus at any time, from the receipt or the Plus page; it then runs to the end of the period paid for.' },
+      { t: 'note', kind: 'tip', text: 'The **Plus** button at the top right of the toolbar (in Settings on a phone) says whether this browser has Plus, and leads to the Plus page. It is lit while Plus is on.' },
     ],
   },
   {

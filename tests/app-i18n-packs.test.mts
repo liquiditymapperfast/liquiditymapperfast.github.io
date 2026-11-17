@@ -81,7 +81,7 @@ test('a count that changes the wording has the forms its language needs', () => 
 /** ---- text the page shows that is not going through t() ---------------------------------------------------------------------------- */
 
 const proseLike = (s: string): boolean => /[A-Za-z]{2}/.test(s) && (/\s/.test(s.trim()) ? /[a-z]{2}/i.test(s) : /^[A-Z][a-z]{2,}/.test(s));
-const EXCLUDE = new Set(['chip blocked faulty', 'chip blocked', 'muted blocked', 'LiquidityMapperFast', 'Karl']);
+const EXCLUDE = new Set(['chip blocked faulty', 'chip blocked', 'muted blocked', 'LiquidityMapperFast', 'Karl', 'Plus']);
 // A KeyboardEvent.code (BracketLeft, Digit1, KeyF) is the name of a place on the keyboard: the shortcuts table matches by it, and no one reads it.
 const KEY_CODE = /^(Bracket|Digit|Key|Numpad|Arrow|Shift|Control|Alt|Meta)([A-Z]|d)/;
 const notText = (s: string): boolean => EXCLUDE.has(s) || KEY_CODE.test(s) && !/s/.test(s) || /[<>{}]|;[^ ]|^[^ ]*;|=>|^[.#[]|https?:|\.(png|svg|css|json|ts)$|^\d+(\.\d+)?px |monospace|sans-serif|^[a-z]+(-[a-z0-9]+)+( [a-z0-9-]+)*$|^[a-z]+ [a-z]$|^(M|L|C|A|Z)[\d\s.,-]/.test(s) || /^[a-z]+(-[a-z]+)* (current|on|off|v|h|in|open|plain)$/.test(s);

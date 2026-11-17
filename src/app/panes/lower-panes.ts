@@ -23,6 +23,9 @@ import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, type LiqRow } from '../liq-history.ts';
+import { FREE_DAYS, freeFrom } from '../plus/config.ts';
+import { plus } from '../plus/pass.ts';
+import { togglePlus } from '../plus/panel.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { addTune } from '../pane-tune.ts';
@@ -284,7 +287,7 @@ export function oiSourceText(state: Pick<AppState, 'oiParts' | 'oiInstrument' | 
 }
 
 /** The Depth pane's Liquidation levels series: the Depth series' shape, the rows it was built from and the row in force in each pixel column (-1: none), and what it was built for. */
-type LiqSeries = { key: string; series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer }; rowAt: Int32Array; rows: LiqRow[]; /** The history bucket each band reads (-1: none), and the bands asked beyond its reach. */ idx: number[]; omitted: number[] };
+type LiqSeries = { key: string; series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer }; rowAt: Int32Array; rows: LiqRow[]; /** The history bucket each band reads (-1: none), and the bands asked beyond its reach. */ idx: number[]; omitted: number[]; /** The stretch of the view whose history is Plus and closed to this visitor (`LiqHistory.closedBefore`), or null. */ closed: { from: number; to: number } | null };
 /** How long a liquidation levels snapshot stands for in the Depth pane: about three of their periods (one comes every ~29 minutes); after that, a gap. */
 const LIQ_HOLD_MS = 90 * 60_000;
 /** A difference as the Depth pane writes it, with its sign (a minus sign, not a hyphen). */
@@ -358,9 +361,15 @@ export class DepthPane extends TimePane {
   readonly #venues: BookVenues;
   #panel: Panel | null = null;
   /** The liquidation levels' history (liq-history.ts), read a UTC day at a time while the pane shows Liquidation levels. */
-  readonly #history = new LiqHistory();
+  readonly #history = new LiqHistory(undefined, { freeFrom, pass: now => plus().pass(now), refused: () => plus().refused() });
   /** The Liquidation levels series last built, with the row in force in each pixel column, kept until the history, the view or the bands change. */
   #liq: LiqSeries | null = null;
+  /**
+   * Where the history is closed to this visitor (Plus), a button on the pane says so and opens what Plus is: a page element, so that it
+   * can be pressed and read like any other. Placed by each drawing at the closed stretch's near end (`#lockAt`, a plot x, or null: none).
+   */
+  readonly #lock = el('button', { type: 'button', class: 'plus-lock', hidden: true });
+  #lockAt: number | null = null;
   constructor(host: HTMLElement, store: Store, view: View, private hub: Hub) {
     super(host, store, view, 'depth');
     this.#bars = new DepthBars((ids, from, to, stepMs) => hub.source.columns(ids, from, to, stepMs));
@@ -407,6 +416,25 @@ export class DepthPane extends TimePane {
     this.syncSound(); this.#sync();
     // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts); on a desktop the venues fold last.
     addTune(this.head, [this.#venues.root, group, scale, units, bell, table], t('Depth'), { fold: true });
+    this.#lock.onclick = () => { togglePlus(this.#lock); };
+    this.root.append(this.#lock);
+    // A pass that comes or goes opens or closes the older days: the series is built again from what may now be read.
+    plus().subscribe(() => { this.#history.accessChanged(); this.#liq = null; this.invalidate(); this.rangeStale(); });
+  }
+  /** The lock at the near end of the closed stretch, under the header and inside the plot; out of sight when nothing in view is closed. */
+  #placeLock(): void {
+    const at = this.#lockAt, lock = this.#lock;
+    if (at === null) { if (!lock.hidden) lock.hidden = true; return; }
+    const text = t('Earlier history: Plus');
+    if (lock.textContent !== text) {
+      lock.textContent = text;
+      setTip(lock, t('The liquidation levels\' history is free for the last {n} days. What is older is part of Plus, which pays for the servers that record it. Press for what Plus is.', { n: FREE_DAYS }));
+    }
+    if (lock.hidden) lock.hidden = false;
+    const w = lock.offsetWidth, x = Math.max(4, Math.min(this.plotW - w - 4, at - w - 8));
+    const left = `${Math.round(leftGutter(this.store.state) + x)}px`, top = `${this.head.offsetHeight + 6}px`;
+    if (lock.style.left !== left) lock.style.left = left;
+    if (lock.style.top !== top) lock.style.top = top;
   }
   /** The venues or the source changed: the bands are asked again. */
   refresh(): void { this.#sync(); this.#key = ''; this.invalidate(); this.rangeStale(); }
@@ -458,11 +486,13 @@ export class DepthPane extends TimePane {
   protected draw(): void {
     this.#lines = null;
     this.#table.clear();
+    this.#lockAt = null;
     this.#paint();
+    this.#placeLock();
     const at = this.pointer;
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
-  protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
+  protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); this.#lockAt = null; this.#placeLock(); }
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
   protected override claimTap(p: Pt): boolean { return this.#table.tap(p); }
   #clickRow(row: number): void { const s = this.#settings(); this.#set({ focus: s.focus === row ? null : row }); }
@@ -485,13 +515,17 @@ export class DepthPane extends TimePane {
     if (!inReach.length) return t('Liquidation levels reach ±{pct} % at most.', { pct: reach * 100 });
     radii = inReach;
     const w = depthColumns(pw), k = radii.length, t0 = v.t0, t1 = v.t1, until = replaying() ? pageNow() : now;
-    const key = `${this.#history.version}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}`;
+    // Plus: the history before the free days is closed to a visitor without a pass, from where the recording begins.
+    const closedTo = this.#history.closedBefore(now), closedFrom = Math.max(t0, index.first);
+    const closed = closedTo !== null && closedTo > closedFrom ? { from: closedFrom, to: Math.min(closedTo, t1) } : null;
+    const key = `${this.#history.version}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}|${closed ? closed.to : ''}`;
     if (this.#liq?.key === key) return this.#liq;
     const rows = this.#history.rows(t0, t1), idx = radii.map(r => bandIndex(index.edges, r));
     const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k), rowAt = new Int32Array(w).fill(-1);
     for (let x = 0, i = 0; x < w; x++) {
       const time = t0 + (x + 0.5) / w * (t1 - t0);
       if (time > until) break;
+      if (closed && time < closed.to) continue;
       while (i + 1 < rows.length && rows[i + 1]!.fetchedAt <= time) i++;
       const row = rows[i];
       if (!row || row.fetchedAt > time || time - row.fetchedAt > LIQ_HOLD_MS) continue;
@@ -501,7 +535,7 @@ export class DepthPane extends TimePane {
         bid[x * k + j] = row.long[b]!; ask[x * k + j] = row.short[b]!; bidCoin[x * k + j] = row.longCoin[b]!; askCoin[x * k + j] = row.shortCoin[b]!;
       }
     }
-    this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid, ask, bidCoin, askCoin } }, rowAt, rows, idx, omitted };
+    this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid, ask, bidCoin, askCoin } }, rowAt, rows, idx, omitted, closed };
     return this.#liq;
   }
 
@@ -573,7 +607,12 @@ export class DepthPane extends TimePane {
     const colT = (x: number): number => s.t0 + x / s.w * (s.t1 - s.t0);
     const unit = coins ? ` ${coin}` : '';
     const rowOf = (x: number): LiqRow | null => { const i = liqHeld && x >= 0 ? liqHeld.rowAt[x]! : -1; return liqHeld && i >= 0 ? liqHeld.rows[i] ?? null : null; };
-    if (liq && lastX < 0) { say(t('No liquidation levels recorded for this stretch of time.')); return; }
+    // Plus: the stretch of the view whose history is closed to this visitor; the lock stands at its near end.
+    const closed = liqHeld?.closed ?? null, closedX = closed ? Math.min(pw, v.xOf(closed.to, pw)) : 0;
+    if (liq && lastX < 0) {
+      if (closed) { say(t('This stretch of the liquidation levels\' history is part of Plus.')); this.#lockAt = closedX; return; }
+      say(t('No liquidation levels recorded for this stretch of time.')); return;
+    }
     // The header reads the watched band at the newest column (Liquidation levels: longs and shorts, and when those positions stood).
     if (liq) {
       const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX);
@@ -631,6 +670,19 @@ export class DepthPane extends TimePane {
         const w = xs[x + 1]! - xs[x]! + 0.6;
         if (mark === ASKS) { const h = yOf(ask[at(x, top)]!); ctx.fillStyle = edge(p.ask); ctx.fillRect(xs[x]!, mid - h - 1, w, 3); }
         if (mark === BIDS) { const h = yOf(bid[at(x, top)]!); ctx.fillStyle = edge(p.bid); ctx.fillRect(xs[x]!, mid + h - 2, w, 3); }
+      }
+    }
+    // The closed stretch (Plus) is hatched, faintly, so that it does not read as a time with nothing recorded, and ends on a dashed line.
+    if (closed) {
+      const from = Math.max(0, v.xOf(closed.from, pw));
+      if (closedX > from + 1) {
+        ctx.save(); ctx.beginPath(); ctx.rect(from, 0, closedX - from, ph); ctx.clip();
+        ctx.strokeStyle = p.line; ctx.beginPath();
+        for (let x = from - ph; x < closedX; x += 12) { ctx.moveTo(x, ph); ctx.lineTo(x + ph, 0); }
+        ctx.stroke(); ctx.restore();
+        const edgeX = Math.round(closedX) + 0.5;
+        ctx.strokeStyle = p.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(edgeX, 0); ctx.lineTo(edgeX, ph); ctx.stroke(); ctx.setLineDash([]);
+        this.#lockAt = closedX;
       }
     }
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, mid + 0.5); ctx.lineTo(pw, mid + 0.5); ctx.stroke();

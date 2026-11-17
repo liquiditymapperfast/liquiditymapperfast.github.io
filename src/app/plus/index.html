@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Plus · LiquidityMapperFast</title>
+  <meta name="description" content="Plus is the paid part of LiquidityMapperFast: it pays for the servers behind the page and opens the whole history of Hyperliquid's BTC liquidation levels. Everything else stays free.">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+</head>
+<body>
+  <div id="plus"></div>
+  <!-- The page's words wait for its language, as the app's do (boot.ts). Paddle's checkout script is fetched only when a visitor presses a
+       price: nothing of another site's is loaded before that. -->
+  <script type="module" src="./boot.ts"></script>
+  <noscript>This page needs JavaScript: the checkout and the key are handled in your browser.</noscript>
+</body>
+</html>

@@ -89,6 +89,9 @@ test('Both / Spot / Perp and the Tour are filled with the accent only in a phone
     const selectors = line.slice(0, line.indexOf('{')).split(',').map(s => s.trim()).filter(s => /\.(scope|tour-btn)\b/.test(s));
     for (const s of selectors) assert.ok(/^(:where\(\.sheet\)|\.sheet|\.sheet-tiles)[\s>]/.test(s), `${s} fills with the accent outside a phone's Settings`);
   }
+  // Since 2026-11-17 the Tour is no button of the full bar (Plus stands in its place, the Guide's first button takes the tour): it is only
+  // the filled tile of a phone's Settings, and nothing lights it in the bar. Plus is lit there while the browser has Plus, as chosen buttons are.
   const toolbar = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'toolbar.ts'), 'utf8');
-  assert.ok(toolbar.includes("this.#tour.classList.toggle('on', !compactBar());"), 'the Tour is lit while it is in the bar, and a filled tile in the Settings sheet');
+  assert.ok(!toolbar.includes("this.#tour.classList.toggle('on'"), 'the Tour is not lit: it is not in the bar');
+  assert.ok(toolbar.includes("this.#plus.classList.toggle('on', plus().on)"), 'Plus is lit while this browser has Plus');
 });

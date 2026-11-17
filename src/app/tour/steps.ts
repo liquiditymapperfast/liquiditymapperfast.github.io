@@ -8,7 +8,7 @@ import type { Prefer } from './place.ts';
  */
 export type Arrangement = 'desktop' | 'compact' | 'phone';
 /** What a step points at: names that `targets.ts` turns into the elements of the page that is on the screen. */
-export type TargetId = 'map' | 'market' | 'time' | 'panels' | 'chart' | 'liqLevels' | 'flow' | 'book' | 'layouts' | 'tour' | 'guide' | 'coin' | 'settings' | 'tabs' | 'mapTab';
+export type TargetId = 'map' | 'market' | 'time' | 'panels' | 'chart' | 'liqLevels' | 'flow' | 'book' | 'layouts' | 'guide' | 'coin' | 'settings' | 'tabs' | 'mapTab';
 
 export interface Step {
   id: string;
@@ -110,8 +110,8 @@ export function stepsFor(arrangement: Arrangement, coarse: boolean): Step[] {
       body: () => t('Drag a panel by its grip, close one with ×, or pick a ready-made layout here. Save your own to come back to.'),
     },
     {
-      id: 'finish', targets: ['tour', 'guide'], side: 'below', guide: true, title: () => t('That is the quick version'),
-      body: () => t('The Guide tells the whole story, with moving pictures. Press ? for the keys. The Tour button plays this again.'),
+      id: 'finish', targets: ['guide'], side: 'below', guide: true, title: () => t('That is the quick version'),
+      body: () => t('The Guide tells the whole story, with moving pictures, and its first button plays this tour again. Press ? for the keys.'),
     },
   ];
 }
