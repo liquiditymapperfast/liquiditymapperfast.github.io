@@ -1,4 +1,4 @@
-import type { PlotOut } from './protocol.ts';
+import { levelEnd, levelsAt, type PlotOut } from './protocol.ts';
 import type { OptionValue } from './records.ts';
 import { parseColor, safeColor, withAlpha } from './lang/colors.ts';
 
@@ -46,6 +46,12 @@ export function visibleRange(time: Float64Array, t0: number, t1: number, tf: num
 /** The values of a plot that set its scale: a histogram and a baseline include their base, so the bars stand on it. */
 export function plotExtent(plot: PlotOut, from: number, to: number): [number, number] | null {
   let lo = Infinity, hi = -Infinity;
+  // Levels count where they cross the candles in view, wherever they start.
+  if (plot.kind === 'level') {
+    const v = plot.fields.value!, n = v.length;
+    for (let s = 0; s <= to && s < n; s++) { const x = v[s]!; if (Number.isFinite(x) && levelEnd(plot, s, n) >= from) { if (x < lo) lo = x; if (x > hi) hi = x; } }
+    return lo === Infinity ? null : [lo, hi];
+  }
   for (const f of Object.values(plot.fields)) for (let i = from; i <= to && i < f.length; i++) { const v = f[i]!; if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } }
   if (lo === Infinity) return null;
   if (plot.kind === 'histogram' || plot.kind === 'baseline') { const base = styleNum(plot.style.base ?? plot.style.baseValue, 0); if (base < lo) lo = base; if (base > hi) hi = base; }
@@ -161,6 +167,7 @@ export function plotColorAt(plot: PlotOut, i: number, fallback: string, up: stri
   switch (plot.kind) {
     case 'line': case 'area': return pointColor(plot, i, color(plot.style.color ?? plot.style.lineColor, fallback));
     case 'mark': return pointColor(plot, i, color(plot.style.color, fallback));
+    case 'level': { const v = plot.fields.value!; for (let s = Math.min(i, v.length - 1); s >= 0; s--) if (Number.isFinite(v[s]!) && levelEnd(plot, s, v.length) >= i) return pointColor(plot, s, color(plot.style.color, fallback)); return color(plot.style.color, fallback); }
     case 'baseline': return pointColor(plot, i, v >= styleNum(plot.style.baseValue ?? plot.style.base, 0) ? color(plot.style.topLineColor, up) : color(plot.style.bottomLineColor, down));
     case 'histogram': return pointColor(plot, i, color(plot.style.color, fallback));
     case 'candlestick': case 'bar': { const o = plot.fields.open?.[i] ?? NaN, c = plot.fields.close?.[i] ?? NaN; return pointColor(plot, i, c >= o ? color(plot.style.upColor, up) : color(plot.style.downColor, down)); }
@@ -188,6 +195,7 @@ export function paintPlot(f: Frame, plot: PlotOut, s: Scale): void {
       break;
     }
     case 'mark': paintMarks(f, plot, y); break;
+    case 'level': paintLevels(f, plot, y); break;
     case 'histogram': {
       const v = plot.fields.value!, base = styleNum(plot.style.base, 0), y0 = y(base), fallback = color(plot.style.color, f.color);
       const w = Math.max(1, f.barW * 0.72);
@@ -281,6 +289,46 @@ function strokeLine(f: Frame, v: Float64Array, y: (v: number) => number, colorAt
   }
   if (prev >= 0) ctx.stroke();
   ctx.setLineDash([]);
+}
+
+/** The dashes of a line style (0 solid, 1 dotted, 2 dashed, 3 long dashes, 4 sparse dots). */
+const dashes = (lineStyle: number): number[] => lineStyle === 1 ? [1, 2] : lineStyle === 2 ? [4, 3] : lineStyle === 3 ? [8, 4] : lineStyle === 4 ? [1, 5] : [];
+
+/**
+ * Levels: each from the middle of the candle it starts at to the middle of the one it ends at, or on to the plot's right edge, every level
+ * that crosses the candles in view (wherever it starts). Each is named at its right end on a plate of its colour (or the plot's textColor);
+ * a name that would cover one already placed is left out, those that run on placed first and the newer first among them.
+ */
+function paintLevels(f: Frame, plot: PlotOut, y: (v: number) => number): void {
+  const { ctx } = f, v = plot.fields.value!, n = v.length, texts = plot.texts ?? null, base = color(plot.style.color, f.color);
+  const width = Math.max(1, Math.min(6, styleNum(plot.style.lineWidth, 1))), ownText = typeof plot.style.textColor === 'string' ? safeColor(plot.style.textColor, '') : '';
+  const cx = (i: number): number => f.x(f.time[i]!) + f.barW / 2;
+  const names: { text: string; x: number; y: number; color: string; on: boolean; s: number }[] = [];
+  ctx.lineWidth = width; ctx.setLineDash(dashes(styleNum(plot.style.lineStyle, 0)));
+  for (let s = 0; s <= f.to && s < n; s++) {
+    const val = v[s]!; if (!Number.isFinite(val)) continue;
+    const e = levelEnd(plot, s, n), on = !Number.isFinite(plot.ends?.[s] ?? NaN);
+    if (e < f.from && !on) continue;
+    const x0 = cx(s), x1 = on ? f.w : cx(e), yy = Math.round(y(val)) + (width % 2 ? 0.5 : 0);
+    if (x1 < 0 || x0 > f.w || yy < f.top - width || yy > f.top + f.height + width) continue;
+    const c = pointColor(plot, s, base);
+    ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(Math.max(x0 + 1, x1), yy); ctx.stroke();
+    const label = texts?.[s] ?? '';
+    if (label) names.push({ text: label, x: x1, y: yy, color: ownText || c, on, s });
+  }
+  ctx.setLineDash([]);
+  if (!names.length) return;
+  ctx.font = markFont(1); ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  names.sort((a, b) => Number(b.on) - Number(a.on) || b.s - a.s);
+  for (const l of names) {
+    const w = ctx.measureText(l.text).width + 8, right = Math.min(f.w - 2, l.x - 2), box = { x0: right - w, x1: right, y0: l.y - 7, y1: l.y + 7 };
+    if (box.x0 < 0 || box.y0 < f.top || box.y1 > f.top + f.height) continue;
+    if (placed.some(b => b.x0 < box.x1 + 2 && box.x0 < b.x1 + 2 && b.y0 < box.y1 + 1 && box.y0 < b.y1 + 1)) continue;
+    placed.push(box);
+    ctx.fillStyle = l.color; ctx.fillRect(box.x0, box.y0, w, 14);
+    ctx.fillStyle = textOn(l.color); ctx.fillText(l.text, box.x0 + w / 2, l.y + 0.5);
+  }
 }
 
 /** The face of a mark's text, at a size (1 is 10 px). */
@@ -436,5 +484,6 @@ export function onPlot(plot: PlotOut, s: Scale, f: Pick<Frame, 'x' | 'barW' | 't
       return Number.isFinite(a) && Number.isFinite(b) && inside(y(a), y(b));
     }
     case 'mark': return false;
+    case 'level': return levelsAt(plot, i).some(v => near(y(v)));
   }
 }

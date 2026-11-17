@@ -128,6 +128,8 @@ export function scriptStretch(row: Extract<ScriptRowHeld, { state: 'drawn' }>, s
       out.marks.push({ j, label, count });
       return;
     }
+    // Levels are prices held across candles, not a value a candle: a range has no summary of them.
+    if (plot.kind === 'level') return;
     if (!SCALAR.has(plot.kind)) { out.compound.push(label); return; }
     const v = plot.fields.value, p: PlotStretch = { j, label, values: 0, first: null, last: null, low: Infinity, high: -Infinity };
     if (v) for (let i = i0; i < i1 && i < v.length; i++) {

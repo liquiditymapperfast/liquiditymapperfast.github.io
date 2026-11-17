@@ -13,14 +13,14 @@ import type { OptionValue } from '../records.ts';
  * `engine.ts`, in the worker.
  */
 
-export const API_VERSION = 2;
+export const API_VERSION = 3;
 
 /** The plot functions and the kind each draws. */
 export const PLOTS: Readonly<Record<string, PlotKind>> = {
   plotline: 'line', line: 'line', plotarea: 'area', area: 'area', plothistogram: 'histogram', histogram: 'histogram',
   plotbaseline: 'baseline', baseline: 'baseline', plotcandlestick: 'candlestick', candlestick: 'candlestick', plotbar: 'bar', bar_plot: 'bar',
   plotcloudarea: 'cloudarea', cloudarea: 'cloudarea', plotbrokenarea: 'brokenarea', brokenarea: 'brokenarea',
-  mark: 'mark', plotmark: 'mark',
+  mark: 'mark', plotmark: 'mark', level: 'level', plotlevel: 'level',
 };
 
 /** The most plots a script may make, and the most named sets of markets it may read. */

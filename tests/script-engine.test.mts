@@ -242,9 +242,8 @@ test('JavaScript as it is: do-while, a binding per turn of a for with let, one e
   assert.deepEqual(values(run('line(([1] == 1 ? 1 : 0) + ([2] < "10" ? 10 : 0))')), [1, 1, 1, 1, 1, 1]);
 });
 
-test('a script that keeps arrays, functions or writes its options runs every candle, so an update gives what a full run gives', () => {
+test('a script that keeps functions or writes its options runs every candle, so an update gives what a full run gives', () => {
   const cases = [
-    'if (renderer.length === 1) { a = []; b = a }\na.push(vbuy)\nline(b.length)',
     'if (renderer.length === 1) counter = (function () { var n = 0; return function () { return ++n } })()\nline(counter())',
     'options.n = nz(options.n) + 1\nline(options.n)',
   ];
@@ -258,6 +257,29 @@ test('a script that keeps arrays, functions or writes its options runs every can
   const simple = createRunner('t', 'x = x + vbuy\nline(x)', {});
   simple.run(inputs(3)); simple.run(inputs(3, i => i === 2 ? { vbuy: 1 } : {}));
   assert.equal(simple.startedAt, 2, 'a script that keeps numbers alone still runs only the candle under way');
+});
+
+test('a script that keeps arrays and objects of plain values is put back, and an array two names share is still one array after it', () => {
+  const cases = [
+    'if (renderer.length === 1) { a = []; b = a }\na.push(vbuy)\nline(b.length)\nhistogram(a === b ? 1 : 0)',
+    'if (renderer.length === 1) { list = [] }\nlist.push({ v: vbuy, at: time })\nhistory = list\nline(history[1].length)\nhistogram(list[list.length - 1].v)',
+    'if (renderer.length === 1) { o = { n: 0, seen: [] } }\no.n += vbuy\no.seen.push(o.n)\nline(o.seen.length > 1 ? o.seen[o.seen.length - 2] : 0)',
+  ];
+  for (const src of cases) {
+    const runner = createRunner('t', src, {});
+    ok(runner.run(inputs(4)));
+    const live = ok(runner.run(inputs(4, i => i === 3 ? { vbuy: 999 } : {})));
+    assert.equal(runner.startedAt, 3, `only the candle under way runs: ${src}`);
+    const full = ok(runScript('t', src, {}, inputs(4, i => i === 3 ? { vbuy: 999 } : {})));
+    assert.deepEqual(live.plots.map(p => [...p.fields.value!]), full.plots.map(p => [...p.fields.value!]), src);
+    // A second update from the same snapshot: what the first one did to the arrays did not reach it.
+    const again = ok(runner.run(inputs(4, i => i === 3 ? { vbuy: 5 } : {})));
+    assert.equal(runner.startedAt, 3, src);
+    assert.deepEqual(again.plots.map(p => [...p.fields.value!]), ok(runScript('t', src, {}, inputs(4, i => i === 3 ? { vbuy: 5 } : {}))).plots.map(p => [...p.fields.value!]), src);
+  }
+  const big = createRunner('t', 'if (renderer.length === 1) { big = new Array(30000) }\nline(big.length)', {});
+  ok(big.run(inputs(3))); ok(big.run(inputs(3, i => i === 2 ? { vbuy: 1 } : {})));
+  assert.equal(big.startedAt, 0, 'more than the limit kept: every candle runs, as a copy at every update would cost more');
 });
 
 test('an option written, or a plot styled, on the candle under way does not outlive that candle\'s run', () => {

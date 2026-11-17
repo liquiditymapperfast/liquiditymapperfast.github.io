@@ -20,7 +20,7 @@ import { ScriptSyntaxError, type ScriptError } from '../script/lang/lexer.ts';
 import { ROW_DEFAULT, SCRIPT_API, loadScripts, storeScripts, type OptionValue, type ScriptRecord } from '../script/records.ts';
 import { starterScripts, updateStarters } from '../script/starter.ts';
 import { exampleHeight, examples } from '../script/examples.ts';
-import { PLOT_FIELDS, type PlotOut, type ScriptResult, type Warning } from '../script/protocol.ts';
+import { valuesAt, type PlotOut, type ScriptResult, type Warning } from '../script/protocol.ts';
 import { MARK_SLOP, MARK_SLOP_TOUCH, markAt, markLines, markText, type DrawnMark } from '../script/marks.ts';
 import { AlertNews, fingerprint, type ScriptAlert } from '../script/alert-news.ts';
 import { onPlot, paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf, type Frame, type Scale } from '../script/paint.ts';
@@ -325,7 +325,7 @@ export class ScriptPane extends TimePane {
     const line = (id: string, name: string, options: Readonly<Record<string, OptionValue>>, res: Extract<ScriptResult, { ok: true }>, time: Float64Array, withValues: boolean, tools: number): ScriptLegendLine => {
       const shown = shownCount(time, tf), i = at === null ? shown - 1 : indexAt(time, tf, at, shown);
       const band = (plot: PlotOut): boolean => (plot.kind === 'brokenarea' || plot.kind === 'cloudarea') && plot.colors !== null;
-      const finiteAt = (plot: PlotOut): boolean => i >= 0 && PLOT_FIELDS[plot.kind].some(f => Number.isFinite(plot.fields[f]![i]!));
+      const finiteAt = (plot: PlotOut): boolean => i >= 0 && valuesAt(plot, i).some(Number.isFinite);
       // Lines first (they are what a legend reads), then the other plots; bands coloured point by point only when there is nothing else.
       const plots = res.plots.map((plot, j) => ({ plot, j })).filter(({ plot }) => plot.style.visible !== false).sort((a, b) => Number(b.plot.kind === 'line') - Number(a.plot.kind === 'line'));
       const read = plots.filter(({ plot }) => !band(plot) && finiteAt(plot)), from = read.length ? read : plots.filter(({ plot }) => finiteAt(plot));
@@ -337,7 +337,7 @@ export class ScriptPane extends TimePane {
         const texts = from.slice(0, 3).map(({ plot }) => {
           if (plot.kind === 'mark') return markText(plot, i);
           const fmt = scaleIdOf(plot, options) === 'right' ? (v: number) => fmtPrice(v) : shortNumber;
-          return PLOT_FIELDS[plot.kind].map(f => plot.fields[f]![i]!).filter(Number.isFinite).map(fmt).join(' – ');
+          return valuesAt(plot, i).filter(Number.isFinite).map(fmt).join(plot.kind === 'level' ? ' · ' : ' – ');
         });
         text = texts.join(' · ') + (from.length > 3 ? ' …' : '');
       }
@@ -1117,7 +1117,7 @@ export class ScriptPane extends TimePane {
     // carry values. At most a few plots are listed; the others are counted.
     const band = (plot: PlotOut): boolean => (plot.kind === 'brokenarea' || plot.kind === 'cloudarea') && plot.colors !== null;
     // A plot carries values only where it has one here: a line an option left unrun does not hide the bands.
-    const valued = res.plots.some(plot => plot.style.visible !== false && !band(plot) && PLOT_FIELDS[plot.kind].some(f => Number.isFinite(plot.fields[f]![i]!)));
+    const valued = res.plots.some(plot => plot.style.visible !== false && !band(plot) && valuesAt(plot, i).some(Number.isFinite));
     let listed = 0, more = 0;
     res.plots.forEach((plot, j) => {
       if (plot.style.visible === false || (valued && band(plot))) return;
@@ -1130,14 +1130,15 @@ export class ScriptPane extends TimePane {
         out.push({ label: plot.title || `${plot.kind} ${j + 1}`, text: said });
         return;
       }
-      const values = PLOT_FIELDS[plot.kind].map(f => plot.fields[f]![i]!);
+      // Levels read as the prices of those standing at this candle, the newest first.
+      const values = plot.kind === 'level' ? valuesAt(plot, i).slice(0, 4) : valuesAt(plot, i);
       if (!values.some(Number.isFinite)) return;
       // On the map a plot on the price scale is a price, written as the price axis writes one; the others are amounts.
       const fmt = onMap && scaleIdOf(plot, r.options) === 'right' ? (v: number) => fmtPrice(v) : shortNumber;
-      const text = values.length === 1 ? fmt(values[0]!) : values.map(fmt).join(plot.kind === 'cloudarea' || plot.kind === 'brokenarea' ? ' – ' : ' / ');
+      const text = values.length === 1 ? fmt(values[0]!) : values.map(fmt).join(plot.kind === 'cloudarea' || plot.kind === 'brokenarea' ? ' – ' : plot.kind === 'level' ? ' · ' : ' / ');
       if (listed >= CARD_PLOTS) { more++; return; }
       listed++;
-      out.push({ label: plot.title || `${plot.kind} ${j + 1}`, text, color: values.length === 1 && values[0]! < 0 ? 'sell' : 'text' });
+      out.push({ label: plot.title || `${plot.kind} ${j + 1}`, text, color: plot.kind !== 'level' && values.length === 1 && values[0]! < 0 ? 'sell' : 'text' });
     });
     if (more) out.push({ text: tn(more, '+{n} more plot', '+{n} more plots'), color: 'muted' });
   }

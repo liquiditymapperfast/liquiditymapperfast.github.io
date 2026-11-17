@@ -1,16 +1,17 @@
 import { t } from '../i18n.ts';
 import type { ScriptRecord } from './records.ts';
-import { CVD_ID, CVD_SOURCE, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, VWAP_SOURCE } from './starter.ts';
+import { CVD_ID, CVD_SOURCE, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, SWING_ID, SWING_SOURCE, VWAP_SOURCE } from './starter.ts';
 
 /** Each example's key, the same in every language: the starters' ids, and the start of the id of a script added from an example (about.ts). */
-export type ExampleKey = typeof STARTER_ID | typeof HEATMAP_ID | typeof CVD_ID | 'depth-bands' | 'bar-patterns' | 'buyer-and-seller-vwaps' | 'liquidations' | 'volume-anomalies' | 'cumulative-delta' | 'delta-histogram' | 'buy-share';
+export type ExampleKey = typeof STARTER_ID | typeof HEATMAP_ID | typeof CVD_ID | typeof SWING_ID | 'depth-bands' | 'bar-patterns' | 'buyer-and-seller-vwaps' | 'liquidations' | 'volume-anomalies' | 'cumulative-delta' | 'delta-histogram' | 'buy-share';
 
-/** Scripts to start from, written for this page: the three a page starts with first, then the others. */
+/** Scripts to start from, written for this page: the four a page starts with first, then the others. */
 export function examples(): { key: ExampleKey; name: string; source: string; place?: ScriptRecord['place'] }[] {
   return [
     { key: STARTER_ID, name: t('VWAP with bands'), source: VWAP_SOURCE, place: 'map' },
     { key: HEATMAP_ID, name: t('Stochastic heat map'), source: HEATMAP_SOURCE },
     { key: CVD_ID, name: t('Spot and perpetual CVD'), source: CVD_SOURCE },
+    { key: SWING_ID, name: t('Strong and weak highs and lows'), source: SWING_SOURCE, place: 'map' },
     // How far a size of the recorded order books reaches from the close, up and down: the asks above it and the bids below it.
     { key: 'depth-bands', name: t('Depth bands'), place: 'map', source: `// Depth bands: how far a given number of dollars of the order book reaches from the close, on the books the page recorded.
 // Above the close, the price at which that many dollars of the book are passed going up; below it, going down. It shows

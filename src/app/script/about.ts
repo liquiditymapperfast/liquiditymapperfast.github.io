@@ -64,6 +64,12 @@ const about = (): Readonly<Record<ExampleKey, { tip: string; body: readonly stri
       t('Only the markets of the exchanges switched on count, from when the page recorded their trades; as with any CVD, its level depends on where the chart starts.'),
       t('A label at each line\'s newest value gives its move over the lookback (20 candles) and calls it rising, falling or flat: flat when the move is under a quarter of the line\'s path, candle by candle.')],
   },
+  'strong-and-weak-highs-and-lows': {
+    tip: t('The swing highs and lows as levels on the map, named strong or weak as traders of market structure read them.'),
+    body: [t('A swing high is a candle whose high is above those of the five candles each side of it; a swing low, likewise below. Each one\'s level is drawn from its own candle once the five after it have closed, so it appears five candles late and never moves.'),
+      t('A low is strong once the rise away from it breaks the swing high it fell from (buyers took over there), and weak until then; a high, likewise, once the fall from it breaks the low it rose from. A level runs on to the right edge with its name and price until the price trades at it again; a tested one ends there, hidden unless Tested levels shows it, with a cross.'),
+      t('The swing size, whether a break counts by the close or the wick, the colours and the names are settings. It maps where the structure stands, not where price goes: whether a weak level draws price back or a strong one holds has not been tested here.')],
+  },
   'delta-histogram': {
     tip: t('Each candle\'s delta, what was bought at market less what was sold, as a bar: up in green where buyers led, down in red where sellers did.'),
     body: [t('Unlike the cumulative delta, each bar stands on its own, so it shows the moments rather than the running total: a tall bar is a candle where one side\'s market orders, the ones that trade at once, clearly outweighed the other\'s.'),

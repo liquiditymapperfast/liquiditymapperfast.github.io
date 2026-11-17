@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyze, runScript } from '../src/app/script/lang/engine.ts';
 import { SCRIPTS_KEY, SCRIPT_API, loadScripts, storeScripts } from '../src/app/script/records.ts';
-import { CVD_ID, CVD_SOURCE, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, VWAP_SOURCE, starterScripts, updateStarters } from '../src/app/script/starter.ts';
+import { CVD_ID, CVD_SOURCE, HEATMAP_ID, HEATMAP_SOURCE, STARTER_ID, SWING_ID, VWAP_SOURCE, starterScripts, updateStarters } from '../src/app/script/starter.ts';
 import { PREVIOUS_CVD_SOURCES } from '../src/app/script/starter-previous.ts';
 import { PREVIOUS_HEATMAP_SOURCES, PREVIOUS_VWAP_SOURCES } from '../src/app/script/starter-previous.ts';
 import { createRunner, sameCandles } from '../src/app/script/lang/engine.ts';
@@ -21,11 +21,11 @@ function inputs(n = 8): BarInputs {
   };
 }
 
-test('a browser that never kept scripts starts with the VWAP on and the heat map and the CVD off; one that kept a list, an empty one too, keeps it', () => {
+test('a browser that never kept scripts starts with the VWAP on and the heat map, the CVD and the highs and lows off; one that kept a list, an empty one too, keeps it', () => {
   const kept = new Map<string, string>();
   const storage = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => { kept.set(k, v); } };
   const first = loadScripts(storage, starterScripts);
-  assert.deepEqual(first.map(r => [r.id, r.on, r.place]), [[STARTER_ID, true, 'map'], [HEATMAP_ID, false, 'pane'], [CVD_ID, false, 'pane']], 'the VWAP on the map, on; the heat map and the spot and perpetual CVD in rows, off');
+  assert.deepEqual(first.map(r => [r.id, r.on, r.place]), [[STARTER_ID, true, 'map'], [HEATMAP_ID, false, 'pane'], [CVD_ID, false, 'pane'], [SWING_ID, false, 'map']], 'the VWAP on the map, on; the heat map and the spot and perpetual CVD in rows, off; the strong and weak highs and lows on the map, off');
   assert.equal(first[1]!.height, 160, "the heat map's row has room for its sixteen bands");
   assert.equal(first[0]!.source, VWAP_SOURCE);
   assert.equal(kept.size, 0, 'nothing is written until the person changes the list');
@@ -33,7 +33,7 @@ test('a browser that never kept scripts starts with the VWAP on and the heat map
   assert.deepEqual(loadScripts(storage, starterScripts), [], 'a deleted starter stays deleted');
   kept.set(SCRIPTS_KEY, '{broken');
   assert.deepEqual(loadScripts(storage, starterScripts), [], 'something unreadable is not replaced by the starter');
-  assert.equal(loadScripts({ getItem: () => { throw new Error('blocked'); } }, starterScripts).length, 3, 'storage the page cannot reach: the starters, for this visit');
+  assert.equal(loadScripts({ getItem: () => { throw new Error('blocked'); } }, starterScripts).length, 4, 'storage the page cannot reach: the starters, for this visit');
   assert.deepEqual(loadScripts(storage), [], 'without a starter, none');
 });
 

@@ -233,9 +233,9 @@ test('a rerun because an older candle\'s order book changed has the full run\'s 
 });
 
 test('a script that cannot be put back between runs has the short time at a live update too, not ten seconds at every update', () => {
-  // It keeps an array from candle to candle (a name assigned without a declaration is kept), so every run starts from the first candle; only
-  // the first of these is a run over new candles.
-  const src = 'if (once == 0) { once = 1; kept = [] }\nvar s = 0\nfor (var i = 0; i < 18000; i++) s += i\nline(s)';
+  // It keeps a function from candle to candle (a name assigned without a declaration is kept), so every run starts from the first candle;
+  // only the first of these is a run over new candles.
+  const src = 'if (once == 0) { once = 1; kept = function () { return 1 } }\nvar s = 0\nfor (var i = 0; i < 18000; i++) s += i\nline(s)';
   let t = 0;
   const runner = createRunner('t', src, {}, () => (t += 3_000));
   const full = runner.run(candles(5));

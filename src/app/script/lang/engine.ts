@@ -64,7 +64,7 @@ function styleData(v: OptionValue | undefined): OptionValue | undefined {
 }
 
 /** What a run of a script keeps per plot while it goes from candle to candle. */
-interface PlotBuild { kind: PlotKind; title: string; style: Record<string, OptionValue>; fields: Record<string, Float64Array>; colors: string[] | null; texts: string[] | null; tips: string[] | null }
+interface PlotBuild { kind: PlotKind; title: string; style: Record<string, OptionValue>; fields: Record<string, Float64Array>; colors: string[] | null; texts: string[] | null; tips: string[] | null; ends: Float64Array | null }
 
 /**
  * Run a script over every candle of `inputs`. `optionValues` are the values set for its options (a declared option not set reads its default).
@@ -111,6 +111,9 @@ export function sameDepth(a: BarInputs, b: BarInputs, m: number): boolean {
 }
 
 /** A copy of a script value deep enough that a later run cannot change it: the script's own arrays and objects copied, the rest shared (they do not change). */
+/** The most elements (arrays' and objects' members, counted with them) a script may keep from candle to candle and still be put back. */
+const KEPT_NODES = 20_000;
+
 function cloneValue(v: Value, seen = new Map<object, Value>()): Value {
   if (v === null || typeof v !== 'object') return v;
   const had = seen.get(v); if (had !== undefined) return had;
@@ -358,7 +361,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
     const style: Record<string, OptionValue> = {};
     for (const nm of node.named) { const v = styleData(staticValue(nm.value, opt, scriptNames)); if (v !== undefined) style[nm.name] = v; }
     const title = typeof style.title === 'string' ? style.title.slice(0, MAX_TITLE) : typeof style.title === 'number' ? String(style.title) : '';
-    plots.set(site, { kind, title, style, fields, colors: null, texts: null, tips: null });
+    plots.set(site, { kind, title, style, fields, colors: null, texts: null, tips: null, ends: null });
     initialStyles.set(site, { title, style: { ...style } });
     plotOrder.push(site);
   }
@@ -388,6 +391,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       setColor(p, o ? o.color : args[3]);
       return;
     }
+    if (kind === 'level') { levelAt(p, args, point); return; }
     if (isPlain(point)) {
       for (const f of PLOT_FIELDS[kind]) { const v = point[f]; p.fields[f]![i] = typeof v === 'number' ? v : v === undefined || v === null ? NaN : num(v); }
       if (kind === 'line' || kind === 'area' || kind === 'histogram' || kind === 'baseline') { if (point.value === undefined && typeof point.close === 'number') p.fields.value![i] = point.close; }
@@ -397,6 +401,43 @@ export function createRunner(id: string, source: string, optionValues: Record<st
     const fields = PLOT_FIELDS[kind];
     for (let f = 0; f < fields.length; f++) { const v = args[f]; p.fields[fields[f]!]![i] = typeof v === 'number' ? v : v === undefined || v === null ? NaN : num(v); }
     if (named && typeof named.color === 'string' && kind === 'histogram') setColor(p, named.color);
+  }
+  /**
+   * The candle a level's `from` or `to` names (a candle's start in seconds, as `time` reads): the last candle of this run up to the one under
+   * way that starts at or before it; -1 before the first. A time that is not a number names none (NaN).
+   */
+  function candleOf(v: Value | undefined): number {
+    const t = v === undefined || v === null ? NaN : num(v) * 1000;
+    if (!Number.isFinite(t)) return NaN;
+    if (t >= inputs.time[i]!) return i;
+    let lo = 0, hi = i;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (inputs.time[m]! <= t) lo = m; else hi = m - 1; }
+    return inputs.time[lo]! <= t ? lo : -1;
+  }
+  /**
+   * A level: level(value, from, to, text, colour) or level({value, from, to, text, color}). It is held at the candle `from` names (this one
+   * when it names none), so a later call naming the same candle replaces it: moves it, ends it, renames or recolours it, or (a value that is
+   * not a number) takes it away. `to` is the candle it ends at, none for one that runs on to the right edge. A `from` before the first
+   * candle draws nothing.
+   */
+  function levelAt(p: PlotBuild, args: Value[], point: Value | undefined): void {
+    const o = isPlain(point) ? point : null, v = o ? o.value : point;
+    const value = typeof v === 'number' ? v : v === undefined || v === null ? NaN : num(v);
+    const named = candleOf(o ? o.from : args[1]), s = Number.isNaN(named) ? i : named;
+    charge(budget, 2 + Math.ceil(Math.log2(i + 2)));
+    if (s < 0) return;
+    p.fields.value![s] = value;
+    const ends = p.ends ??= new Float64Array(n).fill(NaN);
+    if (!Number.isFinite(value)) { ends[s] = NaN; if (p.texts) p.texts[s] = ''; if (p.colors) p.colors[s] = ''; return; }
+    const e = candleOf(o ? o.to : args[2]);
+    ends[s] = Number.isNaN(e) ? NaN : Math.max(s, e);
+    const t = o ? o.text : args[3], label = t === undefined || t === null ? '' : text(t).slice(0, MARK_TEXT);
+    charge(budget, label.length >> 4);
+    if (label) (p.texts ??= new Array<string>(n).fill(''))[s] = label;
+    else if (p.texts) p.texts[s] = '';
+    if (p.colors) p.colors[s] = '';
+    const c = o ? o.color : args[4];
+    if (typeof c === 'string' && c) { const color = c.length <= 64 ? safeColor(c, '') : ''; if (color) (p.colors ??= new Array<string>(n).fill(''))[s] = color; }
   }
   /** A point's own colour, when it reads as one. */
   function setColor(p: PlotBuild, c: Value): void {
@@ -449,28 +490,52 @@ export function createRunner(id: string, source: string, optionValues: Record<st
   const interp = new Interpreter(a.program, host, budget);
 
   /** What the script held after candle `at` of `inputs` had closed, and what it had drawn by then. */
-  interface Snapshot { at: number; inputs: BarInputs; kept: Map<string, { v: Value; past: Value[] }>; states: Map<number, unknown>; fields: Map<number, Record<string, Float64Array>>; colors: Map<number, string[] | null>; texts: Map<number, [string[] | null, string[] | null]>; candleColors: string[]; styles: Map<number, { title: string; style: Record<string, OptionValue> }>; styled: Set<number>; widest: { asked: number; n: number; line: number } }
+  interface Snapshot { at: number; inputs: BarInputs; kept: Map<string, { v: Value; past: Value[] }>; states: Map<number, unknown>; fields: Map<number, Record<string, Float64Array>>; colors: Map<number, string[] | null>; texts: Map<number, [string[] | null, string[] | null]>; ends: Map<number, Float64Array | null>; candleColors: string[]; styles: Map<number, { title: string; style: Record<string, OptionValue> }>; styled: Set<number>; widest: { asked: number; n: number; line: number } }
   let snap: Snapshot | null = null;
   /**
-   * Whether what the script holds can be put back exactly: kept names holding plain values (numbers, texts, true/false, dates) and options it
-   * never wrote. An array, an object or a function kept from candle to candle can be shared or hold state a copy would not, so a script that
-   * keeps one always runs every candle.
+   * Whether what the script holds can be put back exactly: kept names holding plain values (numbers, texts, true/false, dates), or arrays and
+   * objects of them (a list of levels), of at most `KEPT_NODES` elements in all, and options it never wrote. They are copied all together
+   * (`keptCopy`), so an array two names share, or one a name's past values hold, is still one array after it is put back. A function kept
+   * from candle to candle holds state a copy would not (what it closed over), so a script that keeps one always runs every candle; so does
+   * one that keeps more than the limit, which a copy at every update would cost more than it saves.
    */
   const restorable = (): boolean => {
     if (optionsWritten) return false;
     const simple = (v: Value): boolean => v === null || v === undefined || typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean' || v instanceof DateValue;
     // An option that is an array or an object can be changed in place, which the options' setter does not see.
     for (const v of Object.values(opt)) if (!simple(v)) return false;
-    for (const k of kept.values()) { if (!simple(k.v)) return false; for (const x of k.past) if (!simple(x)) return false; }
+    const seen = new Set<object>();
+    let nodes = 0;
+    const data = (v: Value): boolean => {
+      if (simple(v)) return true;
+      if (typeof v !== 'object' || v === null) return false;
+      if (seen.has(v)) return true;
+      if (!Array.isArray(v) && !isPlain(v)) return false;
+      seen.add(v);
+      const xs = Array.isArray(v) ? v : Object.values(v);
+      nodes += 1 + xs.length;
+      if (nodes > KEPT_NODES) return false;
+      for (const x of xs) if (!data(x)) return false;
+      return true;
+    };
+    for (const k of kept.values()) { if (!data(k.v)) return false; for (const x of k.past) if (!data(x)) return false; }
     return true;
+  };
+  /** The kept names and their past values copied as one: an array or object reached twice is copied once and shared again in the copy. */
+  const keptCopy = (from: ReadonlyMap<string, { v: Value; past: Value[] }>): Map<string, { v: Value; past: Value[] }> => {
+    const seen = new Map<object, Value>();
+    return new Map([...from].map(([name, k]) => [name, { v: cloneValue(k.v, seen), past: k.past.map(x => cloneValue(x, seen)) }]));
   };
   const take = (at: number): Snapshot => ({
     at, inputs,
-    kept: new Map([...kept].map(([name, k]) => [name, { v: cloneValue(k.v), past: k.past.map(x => cloneValue(x)) }])),
+    kept: keptCopy(kept),
     states: new Map([...instances].map(([site, inst]) => [site, cloneState(inst.state)])),
-    fields: new Map([...plots].map(([site, p]) => [site, p.fields])),
-    colors: new Map([...plots].map(([site, p]) => [site, p.colors])),
-    texts: new Map([...plots].map(([site, p]) => [site, [p.texts, p.tips]])),
+    // A level's arrays are copied: the candle under way can still write into the closed candles' (where its levels start), and the next run
+    // must start from them as they were when the last closed candle had run. Other plots write only their own candle.
+    fields: new Map([...plots].map(([site, p]) => [site, p.kind === 'level' ? { value: p.fields.value!.slice() } : p.fields])),
+    colors: new Map([...plots].map(([site, p]) => [site, p.kind === 'level' && p.colors ? p.colors.slice() : p.colors])),
+    texts: new Map([...plots].map(([site, p]) => [site, [p.kind === 'level' && p.texts ? p.texts.slice() : p.texts, p.tips]])),
+    ends: new Map([...plots].map(([site, p]) => [site, p.ends ? p.ends.slice() : null])),
     candleColors,
     styles: new Map([...plots].map(([site, p]) => [site, { title: p.title, style: JSON.parse(JSON.stringify(p.style)) as Record<string, OptionValue> }])),
     styled: new Set(styled),
@@ -478,7 +543,8 @@ export function createRunner(id: string, source: string, optionValues: Record<st
   });
   /** Put back what the script held after candle `snap.at`. */
   const restore = (from: Snapshot): void => {
-    for (const [name, k] of kept) { const was = from.kept.get(name); k.v = was ? cloneValue(was.v) : 0; k.past = was ? was.past.map(x => cloneValue(x)) : []; }
+    const copy = keptCopy(from.kept);
+    for (const [name, k] of kept) { const was = copy.get(name); k.v = was ? was.v : 0; k.past = was ? was.past : []; }
     for (const [site, inst] of instances) { inst.pending = null; inst.touched = false; inst.state = from.states.has(site) ? cloneState(from.states.get(site)) as Record<string, unknown> : {}; }
     // A plot first styled on a candle after the snapshot is styled again by the run that takes that candle over.
     styled.clear(); for (const site of from.styled) styled.add(site);
@@ -513,7 +579,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       if (from) restore(from); else { fresh(); snap = null; }
       runner.startedAt = start;
       // A live update (the newest candles alone) has RUN_MS, and so does a run from the first candle over the candles the run before had, its
-      // newest changed or new ones after them: a script that keeps an array or writes its options cannot be put back, so it runs every candle
+      // newest changed or new ones after them: a script that keeps a function or writes its options cannot be put back, so it runs every candle
       // at every update, and FULL_RUN_MS would let each update take ten seconds (Sol, 2026-11-10). Other candles (a chart opened, more history,
       // a setting, a script changed) have FULL_RUN_MS, as the worker host allows (`host.ts`).
       // Fewer candles than the run before (a replay stepped back) is not one, nor are closed candles whose order book changed (a window settled):
@@ -532,6 +598,9 @@ export function createRunner(id: string, source: string, optionValues: Record<st
         const [oldTexts, oldTips] = from?.texts.get(site) ?? [null, null];
         p.texts = oldTexts ? [...oldTexts.slice(0, start), ...new Array<string>(n - start).fill('')] : null;
         p.tips = oldTips ? [...oldTips.slice(0, start), ...new Array<string>(n - start).fill('')] : null;
+        // A level's ends, as its prices are.
+        const oldEnds = from?.ends.get(site) ?? null;
+        if (oldEnds) { p.ends = new Float64Array(n).fill(NaN); p.ends.set(oldEnds.subarray(0, start)); } else p.ends = null;
       }
       alerts = []; alertsFrom = Math.max(0, inputs.forming ? n - 2 : n - 1);
       candleColors = from ? from.candleColors.slice(0, start) : [];
@@ -560,7 +629,7 @@ export function createRunner(id: string, source: string, optionValues: Record<st
       // "line|asked|window|candles": a window that never fills here, or one asked longer than any window can be (the window is then MAX_WINDOW).
       if (n > 0 && (widest.n > n || widest.asked > widest.n)) warnings.push({ code: 'long-window', detail: `${widest.line}|${widest.asked}|${widest.n}|${n}` });
       dropZeros();
-      const out: PlotOut[] = plotOrder.map(site => { const p = plots.get(site)!; return { kind: p.kind, title: p.title, style: p.style, fields: p.fields, colors: p.colors, ...(p.kind === 'mark' ? { texts: p.texts, tips: p.tips } : {}) }; });
+      const out: PlotOut[] = plotOrder.map(site => { const p = plots.get(site)!; return { kind: p.kind, title: p.title, style: p.style, fields: p.fields, colors: p.colors, ...(p.kind === 'mark' ? { texts: p.texts, tips: p.tips } : {}), ...(p.kind === 'level' ? { texts: p.texts, ends: p.ends } : {}) }; });
       if (!out.length && !colored && !alertSites) warnings.push({ code: 'no-plots' });
       return { id, ok: true, plots: out, warnings, steps: budget.steps, ms: now() - started, ...(colored ? { candleColors: Array.from({ length: n }, (_, k) => candleColors[k] ?? '') } : {}), ...(alerts.length ? { alerts } : {}) };
     },

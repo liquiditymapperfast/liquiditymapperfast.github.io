@@ -11,7 +11,7 @@ export const FILE_FORMAT = 'liquiditymapperfast-scripts', FILE_VERSION = 1;
  * The version of the language and of the data a script reads (its words, its functions, the units of its inputs). Each script records the one
  * it was written for, so a later version that changes a meaning can read an older script as it was meant.
  */
-export const SCRIPT_API = 2;
+export const SCRIPT_API = 3;
 export const MAX_SCRIPTS = 20, MAX_NAME = 40, MAX_SOURCE_CHARS = 60_000, MAX_FILE_CHARS = 2_000_000;
 /** The tallest and the shortest a script's row in the pane may be (px), and where it starts. */
 export const ROW_MIN = 40, ROW_MAX = 600, ROW_DEFAULT = 110;

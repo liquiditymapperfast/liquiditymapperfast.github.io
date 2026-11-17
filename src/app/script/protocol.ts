@@ -18,17 +18,18 @@ export type WorkerMessage = RunRequest | DepthMessage;
 export type RunResponse = { t: 'result'; seq: number; results: ScriptResult[]; depthBehind?: boolean } | { t: 'ready' };
 
 /**
- * What a plot draws: a line, an area under a line, bars, a line with a baseline, candles or bars of four prices, a band between two lines, or
- * marks (a label or a shape at a value, with a text to read when the pointer is on it).
+ * What a plot draws: a line, an area under a line, bars, a line with a baseline, candles or bars of four prices, a band between two lines,
+ * marks (a label or a shape at a value, with a text to read when the pointer is on it), or levels (a price held from one candle on, to a
+ * later one or to the right edge, named at its right end).
  */
-export type PlotKind = 'line' | 'area' | 'histogram' | 'baseline' | 'candlestick' | 'bar' | 'cloudarea' | 'brokenarea' | 'mark';
+export type PlotKind = 'line' | 'area' | 'histogram' | 'baseline' | 'candlestick' | 'bar' | 'cloudarea' | 'brokenarea' | 'mark' | 'level';
 
 /** The numbers each kind of plot holds per candle. */
 export const PLOT_FIELDS: Readonly<Record<PlotKind, readonly string[]>> = {
   line: ['value'], area: ['value'], histogram: ['value'], baseline: ['value'],
   candlestick: ['open', 'high', 'low', 'close'], bar: ['open', 'high', 'low', 'close'],
   cloudarea: ['lowerValue', 'higherValue'], brokenarea: ['lowerValue', 'higherValue'],
-  mark: ['value'],
+  mark: ['value'], level: ['value'],
 };
 
 /** The longest text a mark shows on the chart, and the longest it says when the pointer is on it. */
@@ -47,7 +48,27 @@ export interface PlotOut {
   colors: string[] | null;
   texts?: string[] | null;
   tips?: string[] | null;
+  /**
+   * A level's: each level is held at the candle it starts from (`fields.value[s]` its price, `texts[s]` its name, `colors[s]` its colour),
+   * and `ends[s]` is the candle it ends at, NaN for one that runs on to the right edge.
+   */
+  ends?: Float64Array | null;
 }
+
+/** The candle a level starting at `s` ends at: its own end, or the newest of `n` candles for one that runs on. */
+export const levelEnd = (p: PlotOut, s: number, n: number): number => { const e = p.ends?.[s] ?? NaN; return Number.isFinite(e) ? e : n - 1; };
+
+/** The prices of the levels of `p` standing at candle `i` (started at or before it, not ended before it), the newest first; at most `most`. */
+export function levelsAt(p: PlotOut, i: number, most = Infinity): number[] {
+  const v = p.fields.value, out: number[] = [];
+  if (!v || i < 0) return out;
+  const n = v.length;
+  for (let s = Math.min(i, n - 1); s >= 0 && out.length < most; s--) if (Number.isFinite(v[s]!) && levelEnd(p, s, n) >= i) out.push(v[s]!);
+  return out;
+}
+
+/** What a plot reads at candle `i`: its fields there, or for levels the prices of those standing at it. */
+export const valuesAt = (p: PlotOut, i: number): number[] => p.kind === 'level' ? levelsAt(p, i, 8) : PLOT_FIELDS[p.kind].map(f => p.fields[f]?.[i] ?? NaN);
 
 /** The sounds a script's alert can make (`alert(text, sound=...)`); `none` is an alert with no sound, kept in the list. */
 export const ALERT_SOUNDS = ['chime', 'rise', 'fall', 'tick', 'none'] as const;
@@ -73,6 +94,7 @@ export type ScriptResult =
 
 /** A plot's newest values: its fields at the last of its first `upTo` candles where any of them is a number ([NaN] for a plot that drew none). */
 export function newestOf(p: PlotOut, upTo = Infinity): number[] {
+  if (p.kind === 'level') { const at = Math.min(p.fields.value?.length ?? 0, upTo) - 1, standing = levelsAt(p, at, 8); return standing.length ? standing : [NaN]; }
   const fields = PLOT_FIELDS[p.kind];
   let i = Math.min(p.fields[fields[0]!]?.length ?? 0, upTo) - 1;
   while (i >= 0 && !fields.some(f => Number.isFinite(p.fields[f]?.[i] ?? NaN))) i--;
