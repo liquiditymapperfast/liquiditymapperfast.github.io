@@ -85,8 +85,8 @@ export class Layout {
   #max: string | null = null;
   /** The panes the column showed when one was maximized: another pane opened or closed since gives the column back (`rebuild`). */
   #maxKey = '';
-  /** The pane of the map's column the pointer is over (the Z key maximizes it). */
-  #pointed: string | null = null;
+  /** Where the pointer last was (the Z key maximizes the pane of the map's column under it, `pointed`), or null for a finger. */
+  #pointer: { x: number; y: number } | null = null;
   /** Each pane-under-the-map's maximize button, shown lit while it is maximized. */
   readonly #maxButtons = new Map<string, HTMLButtonElement>();
   /** Whether a double click may maximize a pane now: not while a tool that clicks on the panes is armed (set by the page). */
@@ -114,15 +114,18 @@ export class Layout {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);
       if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id, closable: pane.closable !== false });
-      pane.root.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') this.#pointed = pane.id; });
-      pane.root.addEventListener('pointerleave', () => { if (this.#pointed === pane.id) this.#pointed = null; });
-      // A double click on a pane under the map maximizes it, or gives the column back: on its plot or its header, never on one of its controls.
-      // The map has its own (heat-pane.ts): its axes recentre it.
-      if (pane.height !== undefined) pane.root.addEventListener('dblclick', e => {
-        if (!(e.target instanceof Element) || e.target.closest('button, select, input, textarea, a, label') || !this.canMaximize()) return;
-        if (this.toggleMax(pane.id)) window.getSelection()?.removeAllRanges();
-      });
+      // A double click on a pane under the map maximizes it, or gives the column back: on its plot or its header, never on one of its controls,
+      // and not from a finger (a double tap is the pane's own gesture). The map has its own (heat-pane.ts): its axes recentre it.
+      if (pane.height !== undefined) {
+        let finger = false;
+        pane.root.addEventListener('pointerdown', e => { finger = e.pointerType === 'touch'; }, { capture: true });
+        pane.root.addEventListener('dblclick', e => {
+          if (finger || !(e.target instanceof Element) || e.target.closest('button, select, input, textarea, a, label') || !this.canMaximize()) return;
+          if (this.toggleMax(pane.id)) window.getSelection()?.removeAllRanges();
+        });
+      }
     }
+    window.addEventListener('pointermove', e => { this.#pointer = e.pointerType === 'touch' ? null : { x: e.clientX, y: e.clientY }; }, { passive: true });
     // The splitters between the map and each column; a drag sets that column's width, a double click gives it back to the window.
     for (const side of SIDES) {
       const bar = this.#vsplit[side] = el('div', { class: 'splitter v', tip: t('Drag to resize') });
@@ -343,7 +346,7 @@ export class Layout {
   /** Recreate the horizontal splitters between visible panes (call after panes are shown, hidden or reordered). */
   rebuild(): void {
     // A pane opened or closed (the maximized one too) gives the column back, so that what was asked for is seen; a change of anything else does not.
-    if (this.#max !== null && !staysMaximized(this.#max, this.#maxKey, this.#visibleKey())) this.#setMax(null);
+    if (this.#max !== null && (isPhone() || !staysMaximized(this.#max, this.#maxKey, this.#visibleKey()))) this.#setMax(null);
     for (const s of this.#splitters.splice(0)) s.remove();
     const visible = this.#panes.filter(p => !p.root.hidden);
     visible.forEach((below, i) => {
@@ -372,7 +375,8 @@ export class Layout {
     const fixed = this.#panes.filter(p => !p.root.hidden && p.height !== undefined);
     const avail = this.chart.clientHeight - this.#splitters.length * 6;
     if (!fixed.length || avail <= 0) return;
-    const flexible = this.#panes.filter(p => !p.root.hidden && p.height === undefined), mapMin = flexible.reduce((sum, p) => sum + (parseFloat(getComputedStyle(p.root).minHeight) || 0), 0);
+    // The map's floor is its own (`min`), not read from the page while a pane is maximized: that rule sets the maximized pane's, and the map's, to 0.
+    const flexible = this.#panes.filter(p => !p.root.hidden && p.height === undefined), mapMin = flexible.reduce((sum, p) => sum + (this.#max !== null ? p.min ?? 0 : parseFloat(getComputedStyle(p.root).minHeight) || 0), 0);
     const want = fixed.map(p => this.#saved.heights?.[p.id] ?? p.height!), heights = fitHeights(want, fixed.map(p => p.min ?? 70), avail, Math.max(mapMin, 1));
     this.#fitted.clear();
     fixed.forEach((p, i) => { this.#setHeight(p, heights[i]!); if (heights[i] !== want[i]) this.#fitted.set(p.id, heights[i]!); });
@@ -437,6 +441,8 @@ export class Layout {
   setPaneHeight(id: string, h: number): void {
     const pane = this.#panes.find(candidate => candidate.id === id);
     if (!pane || pane.height === undefined) return;
+    // A maximized pane is saved at its own height (`savedHeight`), not measured: the new one is written as its own.
+    if (id === this.#max) this.#saved = { ...this.#saved, heights: { ...this.#saved.heights, [id]: Math.round(Math.max(pane.min ?? 70, h)) } };
     this.#setHeight(pane, h); this.#persist();
   }
 
@@ -556,8 +562,9 @@ export class Layout {
    * along the edge where a column is not there); letting go moves it there, Escape or a drop anywhere else leaves it.
    */
   #startDrag(m: Mover, down: PointerEvent): void {
-    if (down.button !== 0 || isPhone() || (m.kind === 'strip' && this.#max !== null)) return;
+    if (down.button !== 0 || isPhone()) return;
     down.preventDefault();
+    if (m.kind === 'strip' && this.#max !== null) return;
     const grip = down.currentTarget as HTMLElement;
     try { grip.setPointerCapture(down.pointerId); } catch { /* the drag does not need it */ }
     const drag = m.kind === 'side' ? { kind: 'side' as const, id: m.id as SidePaneId } : { kind: 'strip' as const, id: m.id };
@@ -595,8 +602,11 @@ export class Layout {
 
   /** The pane of the map's column maximized now, or null. */
   get maximized(): string | null { return this.#max; }
-  /** The pane of the map's column the pointer is over, or null. */
-  get pointed(): string | null { return this.#pointed; }
+  /** The pane of the map's column under the pointer now (where a mouse last was), or null. */
+  get pointed(): string | null {
+    const at = this.#pointer, hit = at ? document.elementFromPoint(at.x, at.y) : null;
+    return hit ? this.#panes.find(p => p.root.contains(hit))?.id ?? null : null;
+  }
   #column(): { id: string; open: boolean }[] { return this.#panes.map(p => ({ id: p.id, open: !p.root.hidden })); }
   #visibleKey(): string { return columnKey(this.#column()); }
   /** Whether maximizing `id` would change anything (`canMaximize`): a desktop, the pane open, and another pane open in the column for it to cover. */
@@ -608,9 +618,6 @@ export class Layout {
     this.#setMax(id);
     return true;
   }
-  /** Give the column back to all its panes (nothing when none is maximized). */
-  restore(): void { this.#setMax(null); }
-
   /**
    * Show `id` alone over the map's column (null: every pane again). The pane stands over the column and the others are hidden from sight, not
    * from the layout: their sizes and the map's frames go on. A pane under the map leaves the map's time axis in sight under it (it has none of its
@@ -626,6 +633,8 @@ export class Layout {
     this.chart.classList.toggle('max-lower', lower);
     this.#max = id; this.#maxKey = id === null ? '' : this.#visibleKey();
     for (const [pid, button] of this.#maxButtons) this.#paintMax(button, pid === id);
+    // Given back: the panes fitted to the column again (a fit made meanwhile may have left them too tall for it).
+    if (id === null) this.#fit();
     this.onMaximized(id);
   }
   /** A maximize button as its pane is: lit, saying it gives the column back, while the pane is maximized. */

@@ -78,6 +78,20 @@ export abstract class TimePane {
   #canvasW = 0;
   /** The canvas has no width (the pane is closed, or on a phone its tab is not the one shown): nothing it would draw could be seen. */
   #hidden = false;
+  /**
+   * Covered by a maximized pane of the map's column (layout.ts #setMax): laid out still, but out of sight, so it draws nothing and its cards
+   * (hover, pinned) are put away, as a hidden pane's are; uncovered, it draws again. Its cards are top-layer popovers: drawn, they floated over
+   * the maximized chart (review r1).
+   */
+  #covered = false;
+  cover(on: boolean): void {
+    if (on === this.#covered) return;
+    this.#covered = on;
+    if (!on) { this.invalidate(); return; }
+    if (this.#frame) { cancelAnimationFrame(this.#frame); this.#frame = 0; }
+    if (this.#pinned) this.#unpin();
+    this.undrawn();
+  }
   get #left(): number { return leftGutter(this.store.state); }
   protected palette = PALETTES.light!;
   #frame = 0;
@@ -98,7 +112,7 @@ export abstract class TimePane {
     this.ctx = this.canvas.getContext('2d')!;
     new ResizeObserver(() => this.#resize()).observe(this.canvas);
     // A pane that is not shown keeps its canvas of no size: drawing it would draw nothing.
-    sharpens({ resize: () => this.#resize(), paint: () => { if (this.canvas.getBoundingClientRect().width > 0) this.#prepare(); } });
+    sharpens({ resize: () => this.#resize(), paint: () => { if (!this.#covered && this.canvas.getBoundingClientRect().width > 0) this.#prepare(); } });
     const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
     // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held.
     this.canvas.addEventListener('pointerdown', e => {
@@ -201,7 +215,7 @@ export abstract class TimePane {
    * sit in tabs, and the shown tab's data changes asked the hidden ones for frames several times a second, each only to find it had no
    * room). Its canvas getting a width again (the resize) draws it.
    */
-  invalidate(): void { if (!this.#frame && !this.#hidden) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#prepare(); }); }
+  invalidate(): void { if (!this.#frame && !this.#hidden && !this.#covered) this.#frame = requestAnimationFrame(() => { this.#frame = 0; this.#prepare(); }); }
   #resize(): void {
     // Hidden is no width (closed, or a phone tab not shown); a pane squeezed to no height still draws its header's readout and its marks.
     const r = this.canvas.getBoundingClientRect(), hidden = r.width < 1, was = this.#hidden;
