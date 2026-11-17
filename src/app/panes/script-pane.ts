@@ -470,8 +470,10 @@ export class ScriptPane extends TimePane {
     this.#timer = window.setTimeout(() => { this.#timer = 0; this.#wakeAt = 0; this.refresh(); }, at - Date.now());
   }
 
-  /** The theme this pane draws in (the one picked, or one previewed from the menu): its scripts read its colours (`theme`). */
-  /** The theme drawn in (its name), and `themeKey` of it, which also changes when a theme of one's own is edited: what is kept by theme is kept by the key. */
+  /**
+   * The theme this pane draws in (the one picked, or one previewed from the menu), whose colours its scripts read (`theme`), and `themeKey` of it,
+   * which also changes when a theme of one's own is edited: what is kept by theme is kept by the key.
+   */
   #themeName = 'light';
   #theme = 'light';
   override setPalette(name: string): void { this.#themeName = name; this.#theme = themeKey(name); super.setPalette(name); }

@@ -112,8 +112,8 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
     return true;
   };
   let theme = current;
-  // What an action said comes under the colours, beside the buttons that do them (`sayAbout`).
-  body.append(note(t('Your own theme: every change shows at once and is kept in this browser.')));
+  const top = el('div');
+  body.append(note(t('Your own theme: every change shows at once and is kept in this browser.')), top);
 
   const name = el('input', { type: 'text', class: 'layout-name-field', maxLength: 40, value: theme.name, ariaLabel: t('Name') });
   name.addEventListener('change', () => {
@@ -158,8 +158,11 @@ export function buildThemeEditor(store: Store, body: HTMLElement, redraw: () => 
   const notes = el('div');
   /** What the panel says about the colours as they are now (and a message), redrawn in place as a colour changes. */
   const sayAbout = (): void => {
-    const { palette, adjusted } = customPalette(theme), warn = themeWarnings(palette), out: HTMLElement[] = message();
-    if (warn.clash) out.push(note(t('The background and the panels are too far apart for any text to read well on both: bring one closer to the other.')));
+    top.replaceChildren(...message());
+    const { palette, adjusted } = customPalette(theme), warn = themeWarnings(palette), out: HTMLElement[] = [];
+    // A copy of Classic 95 keeps its grey buttons in the raised shape: they, not the panels, are what the text cannot read on.
+    if (warn.clash && theme.chrome && theme.frame === 'bevel') out.push(note(t('The raised shape keeps the grey buttons of the theme this one was copied from, and no text reads on them and on your colours both: choose another Shape.')));
+    else if (warn.clash) out.push(note(t('The background and the panels are too far apart for any text to read well on both: bring one closer to the other.')));
     else if (adjusted.length) out.push(note(t('So that every word reads, the page draws {names} a little lighter or darker than chosen.', { names: adjusted.map(k => COLOR_NAME[k]()).join(', ') })));
     if (warn.faint.length) out.push(note(t('Hard to see on this background: {names}.', { names: warn.faint.map(k => COLOR_NAME[k]()).join(', ') })));
     if (warn.alike) out.push(note(t('Buy and sell look alike: the book and the flow will be hard to read.')));

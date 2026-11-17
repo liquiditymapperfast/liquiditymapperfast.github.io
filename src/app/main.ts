@@ -12,7 +12,7 @@ import { withProfileAnchor } from './traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/anchor.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
-import { Store, autoTheme, initialState, themeChange } from './store.ts';
+import { DEFAULT_THEME, PHONE_DARK_THEME, Store, autoTheme, initialState, themeChange } from './store.ts';
 import { applyTheme, paletteOf, resolveThemeId } from './theme.ts';
 import { CUSTOM_THEMES_KEY, loadCustomThemes, registerCustomThemes } from './custom-themes.ts';
 import { RESTORED_KEY, restoreResult } from './backup.ts';
@@ -506,10 +506,17 @@ async function main(): Promise<void> {
   const restored = restoreResult();
   if (restored) toast(restored === 'ok' ? t('The backup was restored.') : t('This browser did not let the page restore the backup: nothing was changed.'), { ms: 8_000 });
   window.addEventListener('storage', e => {
-    // Another tab restored a backup: this one holds the setup from before, so it stops writing its settings and offers to reload.
-    if (e.key === RESTORED_KEY) { store.stopSaving(); toast(t('Your setup was restored in another tab. Reload this one to use it.'), { ms: 600_000, action: { label: t('Reload'), run: () => window.location.reload() } }); }
-    // Another tab made, changed or deleted a theme of one's own: known here too, and drawn again where it is the one on the screen.
-    if (e.key === CUSTOM_THEMES_KEY) { registerCustomThemes(loadCustomThemes()); if (store.state.theme.startsWith('custom-')) store.set({ theme: resolveThemeId(store.state.theme) === store.state.theme ? store.state.theme : 'light' }); }
+    // Another tab restored a backup: this one holds the setup from before in memory, and anything it wrote (its settings, its scripts, the panes'
+    // sizes) would undo part of the restore. Nothing but memory is lost by starting again, so it reloads, and opens with the restored setup.
+    if (e.key === RESTORED_KEY) { store.stopSaving(); window.location.reload(); return; }
+    // Another tab made, changed or deleted a theme of one's own: known here too, and drawn again where it is the one on the screen; a deleted one
+    // leaves the page, and the light-or-dark key, for the built-in themes (as Delete does in the tab it was deleted in).
+    if (e.key === CUSTOM_THEMES_KEY && store.saving) {
+      registerCustomThemes(loadCustomThemes());
+      const s = store.state, alive = (id: string): boolean => resolveThemeId(id) === id;
+      const themeSlots = { light: alive(s.themeSlots.light) ? s.themeSlots.light : DEFAULT_THEME, dark: alive(s.themeSlots.dark) ? s.themeSlots.dark : PHONE_DARK_THEME };
+      if (s.theme.startsWith('custom-') || themeSlots.light !== s.themeSlots.light || themeSlots.dark !== s.themeSlots.dark) store.set({ theme: alive(s.theme) ? s.theme : s.themeSlots.dark === s.theme ? themeSlots.dark : themeSlots.light, themeSlots });
+    }
   });
 
   // An address like #guide/mirror opens the guide there.

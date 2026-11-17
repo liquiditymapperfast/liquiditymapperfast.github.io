@@ -116,12 +116,15 @@ export function takeRestore(local: Writable | null = safe('localStorage'), sessi
   let text: string | null = null;
   try { text = session.getItem(PENDING_KEY); session.removeItem(PENDING_KEY); } catch { return false; }
   if (text === null) return false;
-  const read = readBackup(text), ok = 'items' in read && replaceAll(local, read.items);
+  const read = readBackup(text);
+  if (!('items' in read)) { try { session.setItem(RESULT_KEY, 'failed'); } catch { /* the page then says nothing */ } return false; }
+  // Other tabs of the page hear of it first (`storage` events come in the order of the writes): they stop writing before they see any key change,
+  // or one reacting to a key the restore removed (a theme of one's own gone) would write its settings back over the restore (main.ts).
+  try { local.setItem(RESTORED_KEY, String(Date.now())); } catch { /* storage full: the replacement below says so */ }
+  const ok = replaceAll(local, read.items);
   try { session.setItem(RESULT_KEY, ok ? 'ok' : 'failed'); } catch { /* the page then says nothing */ }
-  if (ok) {
-    // Other tabs of the page hear of it (a `storage` event), and a later visit from the old address hands nothing over this setup (handover.ts).
-    try { local.setItem(RESTORED_KEY, String(Date.now())); if (local.getItem(DONE_KEY) === null) local.setItem(DONE_KEY, String(Date.now())); } catch { /* storage full: the restore stands */ }
-  }
+  // A later visit from the old address hands nothing over this setup (handover.ts).
+  if (ok) try { if (local.getItem(DONE_KEY) === null) local.setItem(DONE_KEY, String(Date.now())); } catch { /* storage full: the restore stands */ }
   return ok;
 }
 /** How a restore at this page's start went, once (null: there was none). */

@@ -510,6 +510,7 @@ export class Store {
   #saving = true;
   constructor(state: AppState) { this.state = state; }
   stopSaving(): void { this.#saving = false; }
+  get saving(): boolean { return this.#saving; }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
   set(patch: Partial<AppState>): void {
     for (const key of Object.keys(patch) as (keyof AppState)[]) { (this.state as unknown as Record<string, unknown>)[key] = patch[key]; this.#pending.add(key); }
