@@ -134,7 +134,7 @@ test('a script alert makes the page\'s own sounds, or none', () => {
   assert.ok(scriptNotes('chime', 1).length > 0 && scriptNotes('rise', 1).length > 0 && scriptNotes('fall', 1).length > 0 && scriptNotes('tick', 1).length > 0);
   assert.deepEqual(scriptNotes('none', 1), []);
   assert.ok(scriptNotes('rise', 1)[0]!.freq < scriptNotes('rise', 1)[1]!.freq && scriptNotes('fall', 1)[0]!.freq > scriptNotes('fall', 1)[1]!.freq, 'rise climbs, fall drops');
-  assert.equal(SCRIPT_API, 2, 'marks and alerts are language version 2');
+  assert.ok(SCRIPT_API >= 2, 'marks and alerts came with language version 2');
 });
 
 /** A canvas context that records the paths stroked and the texts and boxes drawn. */

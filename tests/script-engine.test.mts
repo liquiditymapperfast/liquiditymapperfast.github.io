@@ -262,7 +262,7 @@ test('a script that keeps functions or writes its options runs every candle, so 
 test('a script that keeps arrays and objects of plain values is put back, and an array two names share is still one array after it', () => {
   const cases = [
     'if (renderer.length === 1) { a = []; b = a }\na.push(vbuy)\nline(b.length)\nhistogram(a === b ? 1 : 0)',
-    'if (renderer.length === 1) { list = [] }\nlist.push({ v: vbuy, at: time })\nhistory = list\nline(history[1].length)\nhistogram(list[list.length - 1].v)',
+    'if (renderer.length === 1) { list = [] }\nlist.push({ v: vbuy, at: time })\nhistory = list\nline(renderer.length > 1 ? history[1].length : 0)\nhistogram(list[list.length - 1].v)',
     'if (renderer.length === 1) { o = { n: 0, seen: [] } }\no.n += vbuy\no.seen.push(o.n)\nline(o.seen.length > 1 ? o.seen[o.seen.length - 2] : 0)',
   ];
   for (const src of cases) {

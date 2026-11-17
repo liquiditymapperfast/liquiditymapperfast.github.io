@@ -5,6 +5,8 @@ import type { BarInputs } from '../src/app/script/inputs.ts';
 import { levelsAt, newestOf, type PlotOut, type ScriptResult } from '../src/app/script/protocol.ts';
 import { onPlot, plotExtent } from '../src/app/script/paint.ts';
 import { SWING_SOURCE } from '../src/app/script/starter.ts';
+import { SCRIPT_API } from '../src/app/script/records.ts';
+import { API_VERSION } from '../src/app/script/lang/analysis.ts';
 
 const MIN = 60_000;
 /** Candles of the given highs and lows (close halfway), one a minute from `t0`; `gapAfter` leaves a gap of five minutes after that index. */
@@ -27,6 +29,10 @@ const levels = (p: PlotOut): [number, number, number | null, string, string][] =
   p.fields.value!.forEach((v, s) => { if (Number.isFinite(v)) { const e = p.ends?.[s] ?? NaN; out.push([s, v, Number.isFinite(e) ? e : null, p.texts?.[s] ?? '', p.colors?.[s] ?? '']); } });
   return out;
 };
+
+test('levels are language version 3: a page older than that says so rather than run a script that draws them', () => {
+  assert.deepEqual([SCRIPT_API, API_VERSION], [3, 3]);
+});
 
 test('a level is kept at the candle its from names and drawn to the one its to names, or on to the right edge', () => {
   // One call: on candle 3 a level from candle 1 to candle 2; on candle 4 one from candle 4 itself (no from), running on.
