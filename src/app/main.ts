@@ -75,6 +75,7 @@ import './styles.css';
 import './mobile.css';
 import './chrome.css';
 import { t } from './i18n.ts';
+import { plus } from './plus/pass.ts';
 import { useMarkets } from './venue-marks.ts';
 import { historyHours, isHandheldPhone, savesData, type PhoneHistory } from './history-window.ts';
 
@@ -193,6 +194,8 @@ async function main(): Promise<void> {
   const candle = new CandlePane(main, store, hub, kernels, s => heat.footprintMarkets(s));
   // The phone's Liq tab: the liquidation ladder, next to the Book (panes/liq-pane.ts).
   const liq = new LiqPane(main, store, hub);
+  // Plus coming or going changes what the levels show (the free view without it, `liq-view.ts`): the map, the Liq tab and the Depth pane draw again.
+  plus().subscribe(() => { heat.invalidate(); liq.invalidate(); depth.refresh(); });
   // Every pane drawn in the page's palette: a theme picked, or previewed by hover, repaints them all (one list, so none is left in the old one).
   const themed = [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq];
   // A phone's Settings has the Tape tab's own rows: what it shows first (the list, or the chart), then the chart's rows, there only while the
@@ -618,7 +621,8 @@ async function main(): Promise<void> {
     else if (changed.has('levels') || changed.has('markets') || changed.has('bookGone')) hub.refreshOiMarkets();
     if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
     if (changed.has('depthBands') || changed.has('liqBands')) depth.settingsChanged();
-    if (changed.has('depthSource')) depth.refresh();
+    // What the levels show (liquidations, stops, both; whose; take profits) is the Depth pane's Liquidation levels too.
+    if (changed.has('depthSource') || changed.has('liqLevels')) depth.refresh();
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('keyLevels') || changed.has('traded') || changed.has('vwap') || changed.has('tpo') || changed.has('vwapAnchoring') || changed.has('profileAnchoring') || changed.has('footprint') || changed.has('customMarkets') || changed.has('barStatOptions')) heat.invalidate();
     // Placing a VWAP anchor, selecting a Range and placing a drawing all take the next press on the map: arming one ends the others.
     if (changed.has('rangeTool') && state.rangeTool && state.vwapAnchoring) store.set({ vwapAnchoring: false });
@@ -647,7 +651,7 @@ async function main(): Promise<void> {
     // A pane's summary is read again when what it stands for changes (a hidden pane draws nothing to say so; its old snapshot is then stale).
     if (changed.has('absorption') || changed.has('tradeBubbles') || changed.has('liquidations') || changed.has('show') || changed.has('timeZone')
       || changed.has('timeframe') || changed.has('marketId') || changed.has('seriesInstrument') || changed.has('replay')
-      || changed.has('lt') || changed.has('disabledVenues') || changed.has('scope') || changed.has('bookMarkets') || changed.has('bookPicks') || changed.has('depthSource') || changed.has('depthBands') || changed.has('liqBands')) range.refreshHeld();
+      || changed.has('lt') || changed.has('disabledVenues') || changed.has('scope') || changed.has('bookMarkets') || changed.has('bookPicks') || changed.has('depthSource') || changed.has('depthBands') || changed.has('liqBands') || changed.has('liqLevels')) range.refreshHeld();
     if (changed.has('tradeBubbles') || changed.has('show')) hub.setTape(tapeWanted());
     if (changed.has('sounds')) heat.invalidate();
     if (changed.has('mark') && state.show.book) ladder.markMoved();

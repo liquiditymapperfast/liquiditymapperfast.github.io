@@ -307,3 +307,28 @@ test('the history asks for each choice\'s files (with the pass for every Plus on
   const freeWide = await ask(FREE_VIEW, wideFrom, now);
   assert.ok(freeWide.every(u => !u.includes('/plus/')));
 });
+
+test('the menu shows the saved choice, tags every Plus choice (locked without Plus), and greys the traders while stops alone are shown', async () => {
+  const { liqMenuItems, changeOf, isPlusChange } = await import('../src/app/liq-menu.ts');
+  const rows = (s: Parameters<typeof liqMenuItems>[0], member: boolean) => Object.fromEntries(liqMenuItems(s, member).map(i => [i.id, i]));
+  const free = rows({ kind: 'both', takes: true, group: 'proven' }, false);
+  assert.equal(free['kind:both']!.checked, true, 'the saved choice is ticked even without Plus');
+  assert.equal(free['kind:both']!.tag, 'Plus'); assert.equal(free['kind:both']!.locked, true);
+  assert.equal(free['kind:liq']!.tag, undefined, 'the free choices carry no tag');
+  assert.equal(free['group:all']!.tag, undefined);
+  assert.equal(free.takes!.checked, true); assert.equal(free.takes!.locked, true);
+  assert.equal(free['group:proven']!.checked, true); assert.ok(!free['group:proven']!.disabled);
+  assert.ok(free['h:show']!.heading && free['h:traders']!.heading, 'group headings are not choices');
+  const member = rows({ kind: 'stops', takes: false, group: 'proven' }, true);
+  assert.equal(member['kind:stops']!.locked, false, 'with Plus the tag has no lock');
+  assert.ok(member['group:proven']!.disabled && member['group:all']!.disabled, 'stops have no groups: the traders are greyed');
+  assert.ok(member['h:no-groups'], 'and a line says why');
+  assert.ok(liqMenuItems({ kind: 'stops', takes: false, group: 'all' }, true).at(-1)!.action, 'the last line opens the Guide');
+  assert.deepEqual(changeOf('kind:both', { takes: false }), { kind: 'both' });
+  assert.deepEqual(changeOf('group:profitable', { takes: false }), { group: 'profitable' });
+  assert.deepEqual(changeOf('takes', { takes: true }), { takes: false }, 'the switch flips');
+  assert.equal(changeOf('h:show', { takes: false }), null);
+  assert.equal(changeOf('kind:rich', { takes: false }), null);
+  assert.ok(isPlusChange({ kind: 'stops' }) && isPlusChange({ group: 'proven' }) && isPlusChange({ takes: true }));
+  assert.ok(!isPlusChange({ kind: 'liq' }) && !isPlusChange({ group: 'all' }) && !isPlusChange({ takes: false }), 'back towards the free view is never Plus');
+});

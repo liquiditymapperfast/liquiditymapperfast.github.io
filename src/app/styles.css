@@ -11,6 +11,8 @@
   --mark-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E");
   /* A list's arrow, as heavy as the settings key's sliders (the same stroke in the same box), so the two read as one column of marks. */
   --mark-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 9l6.5 6.5L18.5 9'/%3E%3C/svg%3E");
+  /* A padlock: a Plus choice this browser cannot make yet. */
+  --mark-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
   /* The phone bar's light-or-dark key: the sun where a tap brings the light theme, the moon where it brings the dark one. */
   --mark-sun: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4.2'/%3E%3Cpath d='M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.6 1.6M17.05 17.05l1.6 1.6M5.35 18.65l1.6-1.6M17.05 6.95l1.6-1.6'/%3E%3C/svg%3E");
   --mark-moon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linejoin='round'%3E%3Cpath d='M19.8 14.6A8 8 0 1 1 9.4 4.2a6.6 6.6 0 0 0 10.4 10.4z'/%3E%3C/svg%3E");
@@ -774,6 +776,23 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat; }
 .pane.heat .liq-history { height: 16px; padding: 0 5px; font-size: 10px; }
+/* What the liquidation column shows (liq-menu.ts): a small button at the top of the column that opens its menu, an arrow at its right, a lock
+   at its left while a Plus choice is held back; its words never run past the column (the script fits them, the rest is cut). */
+.pane.heat .liq-kind { position: absolute; z-index: 4; display: block; box-sizing: border-box; height: 16px; padding: 0 16px 0 5px; font-size: 10px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.pane.heat .liq-kind[hidden] { display: none; }
+.pane.heat .liq-kind::after { content: ""; position: absolute; right: 4px; top: 50%; width: 8px; height: 8px; margin-top: -4px; background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat; }
+.pane.heat .liq-kind.locked { padding-left: 17px; }
+.pane.heat .liq-kind.locked::before, .plus-tag.locked::before, .menu-item .tag.locked::before { content: ""; background: currentColor; -webkit-mask: var(--mark-lock) center / contain no-repeat; mask: var(--mark-lock) center / contain no-repeat; }
+.pane.heat .liq-kind.locked::before { position: absolute; left: 4px; top: 50%; width: 10px; height: 10px; margin-top: -5px; }
+/* The paid part's name on a choice that is part of it, small, after the choice's words; with a lock while this browser has no Plus. */
+.plus-tag, .menu-item .tag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 4px; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); border-radius: 3px; font-size: 9px; font-weight: 600; line-height: 12px; letter-spacing: .02em; vertical-align: 1px; opacity: .85; }
+.plus-tag.locked::before, .menu-item .tag.locked::before { flex: none; width: 8px; height: 8px; }
+/* A menu's group heading (liq-menu.ts: Show, Traders), or a word about the rows under it: not a choice, the keys pass over it. */
+.menu-heading { padding: 6px 10px 2px; font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.menu-heading + .menu-heading { padding-top: 0; font-weight: 400; letter-spacing: 0; text-transform: none; }
+/* The Liq levels panel's choices: each segment as wide as its words and tag, the row wrapping on a narrow panel. */
+.panel .seg.liq-choice { display: flex; flex-wrap: wrap; margin: 2px 0 8px; }
+.panel .seg.liq-choice button { flex: 1 1 auto; white-space: nowrap; }
 /* The Plus panel's second tile is a button where it opens the Guide: it looks like the link beside it. */
 button.author-link.plus-tile { align-items: flex-start; height: auto; background: none; text-align: left; font: inherit; cursor: pointer; }
 /* The invitation to the tour (tour/invite.ts), a notice: its text takes the room, the buttons wrap under it on a narrow screen. */

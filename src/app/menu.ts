@@ -3,7 +3,17 @@ import { closePanel } from './ui.ts';
 import { compactBar, onLayoutMode } from './device.ts';
 import { scrimFor } from './sheet.ts';
 
-export interface MenuItem { id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[]; /** Shown but not choosable. */ disabled?: boolean; /** Something to do rather than a choice (it opens a panel): after a line, never ticked. */ action?: boolean }
+export interface MenuItem {
+  id: string; label: string; /** Colours drawn as a small swatch beside the label. */ swatch?: readonly string[]; /** Shown but not choosable. */ disabled?: boolean; /** Something to do rather than a choice (it opens a panel): after a line, never ticked. */ action?: boolean;
+  /** Ticked or not whatever `current` is: a menu of several choices at once (each group ticks its own, a switch ticks while on). */
+  checked?: boolean;
+  /** Not a choice: the name of the group of rows after it (or a word about them), which the keys pass over. */
+  heading?: boolean;
+  /** A small tag after the label (the paid part's name on a choice that is part of it), drawn with a lock while it is not open here. */
+  tag?: string; locked?: boolean;
+  /** What the row does, for its tooltip. */
+  tip?: string;
+}
 export interface MenuOptions {
   /** A heading for the menu where it is a sheet (a phone). */
   title?: string;
@@ -34,10 +44,14 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   if (options.title) root.setAttribute('aria-label', options.title);
   if (options.list) { root.classList.add('list'); if (!compactBar()) root.style.minWidth = `${Math.round(anchor.getBoundingClientRect().width)}px`; }
   if (options.title) root.append(el('div', { class: 'menu-title', textContent: options.title }));
-  const rows = items.map(item => {
-    const isCurrent = item.id === current;
+  const rows: HTMLButtonElement[] = [];
+  for (const item of items) {
+    if (item.heading) { root.append(el('div', { class: 'menu-heading', textContent: item.label, ...(item.tip ? { tip: item.tip } : {}) })); continue; }
+    const isCurrent = item.checked ?? item.id === current;
     const swatch = item.swatch ? [el('span', { class: 'swatch' }, ...item.swatch.map(color => { const dot = el('i'); dot.style.background = color; return dot; }))] : [];
-    const row = el('button', { type: 'button', class: (isCurrent ? 'menu-item current' : 'menu-item') + (swatch.length ? '' : ' plain') + (item.action ? ' action' : ''), role: 'option', disabled: item.disabled === true }, ...swatch, el('span', { class: 'label', textContent: item.label }), el('span', { class: 'tick' }));
+    const tag = item.tag ? [el('span', { class: 'tag', textContent: item.tag })] : [];
+    if (item.locked) tag[0]?.classList.add('locked');
+    const row = el('button', { type: 'button', class: (isCurrent ? 'menu-item current' : 'menu-item') + (swatch.length ? '' : ' plain') + (item.action ? ' action' : ''), role: 'option', disabled: item.disabled === true, ...(item.tip ? { tip: item.tip } : {}) }, ...swatch, el('span', { class: 'label' }, item.label, ...tag), el('span', { class: 'tick' }));
     row.setAttribute('aria-selected', String(isCurrent)); row.dataset.id = item.id;
     // With a mouse the row under the pointer takes the focus too: the pointer and the keyboard move one place, so the keys go on from where
     // the pointer is, and a row the keys have left is not lit for the pointer still resting on it (the frames light the focused row).
@@ -45,8 +59,8 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
     row.onfocus = () => handlers.onPreview(item.id);
     row.onclick = () => { done = true; handlers.onSelect(item.id); close(); };
     root.append(row);
-    return row;
-  });
+    rows.push(row);
+  }
   document.body.append(root);
   const place = (): void => {
     // On a phone the stylesheet makes the menu a bottom sheet.
@@ -106,7 +120,7 @@ export function openMenu(anchor: HTMLElement, items: readonly MenuItem[], curren
   for (const row of rows) { const h = `${row.offsetHeight}px`; Object.assign(row.style, { height: h, minHeight: h, maxHeight: h, paddingTop: '0', paddingBottom: '0' }); }
   if (!compactBar()) Object.assign(root.style, { boxSizing: 'border-box', width: `${root.offsetWidth}px`, height: `${root.offsetHeight}px` });
   document.addEventListener('pointerdown', onPointer, true); document.addEventListener('keydown', onKey, true); window.addEventListener('resize', place);
-  const chosen = rows[Math.max(0, items.findIndex(item => item.id === current))];
+  const chosen = rows.find(row => row.dataset.id === current) ?? rows.find(row => !row.disabled) ?? rows[0];
   chosen?.focus({ preventScroll: true });
   // A list cut to the window (the theme list is taller than a short one) scrolls to the chosen row, so a person can see where they are.
   chosen?.scrollIntoView({ block: 'nearest' });

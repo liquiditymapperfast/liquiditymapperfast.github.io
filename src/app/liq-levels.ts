@@ -627,6 +627,8 @@ export class LiqLevelsSource {
   #triggers: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
   #both: SumLayer | null = null;
   #target: HistoryTarget | null = null;
+  /** Which part of the view the state is about: the liquidations' or the orders' (`#settle`). */
+  #blame: 'liq' | 'orders' = 'liq';
 
   constructor(private get: Fetcher = webGet, private now: () => number = Date.now, private url: () => string = () => liqLevelsUrl(),
     private read: LiqFetch = webFetch, private access: LiqPlusAccess = MEMBER) {
@@ -688,6 +690,9 @@ export class LiqLevelsSource {
     }
     return 'orders';
   }
+
+  /** Which part of the view the state is about (a view of both: the first part that is not ready). */
+  blame(): 'liq' | 'orders' { return this.#blame; }
 
   /** Keep the levels of `coin` fresh for `view` (the effective one: the free view without Plus); `onChange` runs when anything drawn changes. */
   ensure(coin: Coin, onChange: () => void, view: LiqView = FREE_VIEW): void {
@@ -845,11 +850,11 @@ export class LiqLevelsSource {
       return s === 'ready' && liq && this.now() - liq.levels.asOf > STALE_MS ? 'stale' : s;
     };
     const stops = (): LiqState => this.#triggers.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(this.#triggers);
-    if (v.kind === 'liq') { this.state = fresh(liqState()); return; }
-    if (v.kind === 'stops') { this.state = stops(); return; }
+    if (v.kind === 'liq') { this.state = fresh(liqState()); this.#blame = 'liq'; return; }
+    if (v.kind === 'stops') { this.state = stops(); this.#blame = 'orders'; return; }
     // Both: the first part not ready says why nothing is drawn.
     const a = fresh(liqState()), b = stops();
-    this.state = a !== 'ready' ? a : b;
+    this.state = a !== 'ready' ? a : b; this.#blame = a !== 'ready' ? 'liq' : 'orders';
   }
 
   /**

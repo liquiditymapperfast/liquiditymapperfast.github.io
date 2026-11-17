@@ -354,6 +354,10 @@ html[data-layout="phone"] main[data-tab="liq"] > .pane.liq { display: flex; flex
 html[data-layout="phone-landscape"] main[data-tab="liq"] > .pane.liq { display: flex; flex-direction: column; grid-column: 3; grid-row: 1; flex: none !important; min-height: 0; }
 .pane.liq .liq-head { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; padding: 4px var(--ph-edge, 10px) 2px; min-height: 0; }
 .pane.liq .liq-head strong { font-size: 15px; letter-spacing: -.01em; }
+/* The title says what the levels show and opens the menu that chooses it (liq-menu.ts): words with an arrow, a lock while a Plus choice is held back. */
+.pane.liq .liq-head button.liq-title { position: relative; flex: none; display: inline-flex; align-items: center; gap: 5px; height: auto; padding: 2px 18px 2px 0; border: 0; background: none; color: var(--text); font-size: 15px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.pane.liq .liq-head button.liq-title::after { content: ""; position: absolute; right: 2px; top: 50%; width: 11px; height: 11px; margin-top: -5px; background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat; }
+.pane.liq .liq-head button.liq-title.locked::before { content: ""; flex: none; width: 12px; height: 12px; background: currentColor; -webkit-mask: var(--mark-lock) center / contain no-repeat; mask: var(--mark-lock) center / contain no-repeat; }
 .pane.liq .liq-head .liq-sub { flex: 1 1 auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane.liq .liq-head button.help { align-self: center; flex: none; }
 .liq-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 4px 12px 8px; }

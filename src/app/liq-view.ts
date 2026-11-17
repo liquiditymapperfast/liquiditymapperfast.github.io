@@ -39,7 +39,8 @@ export function kindTitle(kind: LiqKind): string {
 }
 /** A group's short name, for a button and a menu. */
 export function groupName(group: LiqGroup): string {
-  return group === 'profitable' ? t('Profitable') : group === 'proven' ? t('Proven') : t('All');
+  // Everyone, not All: the word for all traders agrees with the traders in every language (French Tous, not the feminine Toutes of All).
+  return group === 'profitable' ? t('Profitable') : group === 'proven' ? t('Proven') : t('Everyone');
 }
 /** A group's name in a readout or a note. */
 export function groupTitle(group: LiqGroup): string {

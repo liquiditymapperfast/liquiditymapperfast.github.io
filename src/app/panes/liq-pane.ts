@@ -12,6 +12,9 @@ import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { distanceText } from './ladder-info.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
+import { groupApplies, groupTitle, heldBack, kindTitle, liveView, plusOn } from '../liq-view.ts';
+import { countLabel, liqNote, liqWhy, sideTitle, topLabel } from '../liq-words.ts';
+import { openLiqMenu } from '../liq-menu.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
 /** How far either side of the price the ladder reaches: the chips under the summary. */
@@ -56,6 +59,9 @@ export class LiqPane {
   #canvas = el('canvas');
   #pulse = el('i', { class: 'liq-pulse', ariaHidden: 'true' });
   #foot = el('div', { class: 'liq-foot' });
+  /** The title, which says what is shown and opens the menu that chooses it (`liq-menu.ts`), and the line beside it (whose, where). */
+  #title = el('button', { type: 'button', class: 'liq-title' });
+  #sub = el('span', { class: 'liq-sub' });
   #ctx: CanvasRenderingContext2D;
   #palette: Palette = PALETTES.dark!;
   #range: number = RANGES[1];
@@ -79,10 +85,9 @@ export class LiqPane {
       this.#ranges.append(button);
     }
     this.#markRange();
-    const head = el('div', { class: 'pane-head liq-head' },
-      el('strong', { textContent: t('Liquidation levels') }),
-      el('span', { class: 'liq-sub', textContent: t('BTC · Hyperliquid') }),
-      helpButton('liqLevels'));
+    this.#title.onclick = () => { openLiqMenu(this.#title, this.store, 'left'); };
+    const head = el('div', { class: 'pane-head liq-head' }, this.#title, this.#sub, helpButton('liqLevels'));
+    this.#syncHead();
     this.#summary = el('div', { class: 'liq-sum' },
       el('div', { class: 'liq-side long' }, el('small', { textContent: t('Longs') }), this.#longUsd),
       el('div', { class: 'liq-side short' }, el('small', { textContent: t('Shorts') }), this.#shortUsd),
@@ -117,9 +122,18 @@ export class LiqPane {
     this.#paintTimer = window.setTimeout(() => { this.#paintTimer = 0; this.#lastPaint = performance.now(); this.#paint(); }, wait);
   }
 
+  /** The title says what is shown (a lock while a Plus choice is held back), the line beside it whose levels and where. */
+  #syncHead(): void {
+    const s = this.store.state.liqLevels, view = liveView(s), title = kindTitle(view.kind);
+    if (this.#title.textContent !== title) this.#title.textContent = title;
+    this.#title.classList.toggle('locked', heldBack(s, plusOn()));
+    const sub = groupApplies(view.kind) && view.group !== 'all' ? `${groupTitle(view.group)} · ${t('BTC · Hyperliquid')}` : t('BTC · Hyperliquid');
+    if (this.#sub.textContent !== sub) this.#sub.textContent = sub;
+  }
+
   #tick(): void {
     const src = this.hub.liqLevels;
-    src.ensure(currentCoin(), () => this.invalidate());
+    src.ensure(currentCoin(), () => this.invalidate(), liveView(this.store.state.liqLevels));
     if (src.levels && !replaying()) src.observe(dollarPriceOf(this.store.state));
     this.invalidate();
   }
@@ -169,9 +183,9 @@ export class LiqPane {
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.fillStyle = p.bg; ctx.fillRect(0, 0, W, H);
     const src = this.hub.liqLevels, levels = src.levels, state = this.store.state;
+    this.#syncHead();
     const why = replaying() ? t('Liquidation levels show the live market only.') : src.state === 'other-coin' ? t('Liquidation levels are for BTC only for now.')
-      : !levels ? (src.state === 'unavailable' ? t('Liquidation levels could not be read.') : t('Liquidation levels are loading.'))
-      : src.state === 'stale' ? t('Liquidation levels are out of date: the newest are from {time}.', { time: clock(levels.asOf) }) : '';
+      : !levels || src.state !== 'ready' ? liqWhy(src, src.asOfs().liq) || t('Liquidation levels are loading.') : '';
     const s = why ? null : src.standing();
     if (!s || !levels) { this.#empty(why || t('Liquidation levels are loading.')); return; }
     const live = dollarPriceOf(state), price = live > 0 ? live : src.lastPrice();
@@ -182,13 +196,15 @@ export class LiqPane {
     const yOf = (pr: number): number => mid - (pr - price) / span * half;
     const lo = price - span, hi = price + span, step = niceStep(2 * span, Math.max(24, (H - 2 * PAD) / ROW_PX));
     const prof = liqProfile(s, step, lo, hi, price);
+    // The take profits, where shown: outlined bars on the same scale, never added to the levels (they sit on the other side of the price).
+    const ts = src.takesState === 'ready' ? src.takesStanding() : null, tprof = ts ? liqProfile(ts, step, lo, hi, price) : null;
     this.#frame = { price, span };
 
     this.#paintSummary(s, levels, price, lo, hi);
     this.#paintGrid(ctx, p, price, lo, hi, span, yOf, xR, W);
     this.#paintMountains(ctx, p, prof, step, price, yOf, xR, plotW, mid);
     const placed = this.#paintMilestones(ctx, p, s, price, yOf, plotW);
-    this.#paintBars(ctx, p, prof, step, levels, yOf, xR, plotW, H, placed);
+    this.#paintBars(ctx, p, prof, step, levels, yOf, xR, plotW, H, placed, tprof);
     this.#paintPrice(ctx, p, price, mid, xR, W);
     if (this.#probe !== null) this.#paintProbe(ctx, p, s, levels, prof, step, price, yOf, xR, W, H);
   }
@@ -204,8 +220,8 @@ export class LiqPane {
     const big = Math.max(longs, shorts), small = Math.min(longs, shorts);
     this.#ratio.textContent = big > 0 ? `${longs >= shorts ? t('Longs') : t('Shorts')} ${ratioText(small > 0 ? big / small : Infinity)}` : '';
     this.#ratio.className = `liq-ratio ${longs >= shorts ? 'long' : 'short'}`;
-    const late = this.hub.liqLevels.candlesLate() ? ` · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}` : '';
-    this.#foot.textContent = `${t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time: clock(levels.asOf) })}${late}`;
+    const src = this.hub.liqLevels, late = src.candlesLate() ? ` · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}` : '';
+    this.#foot.textContent = `${liqNote(src, liveView(this.store.state.liqLevels), levels.asOf)}${late}`;
   }
 
   /** Nothing to draw: the reason, in the middle, and no summary. */
@@ -303,8 +319,8 @@ export class LiqPane {
   }
 
   /** The levels: a bar per row out of the price axis, the strongest brighter at their tips; the three largest each side named. */
-  #paintBars(ctx: CanvasRenderingContext2D, p: Palette, prof: LiqProfile, step: number, levels: LiqLevels, yOf: (pr: number) => number, xR: number, plotW: number, H: number, placed: { y0: number; y1: number; x1: number }[]): void {
-    const maxLevel = Math.max(prof.maxLevel, 1), reach = plotW * 0.6;
+  #paintBars(ctx: CanvasRenderingContext2D, p: Palette, prof: LiqProfile, step: number, levels: LiqLevels, yOf: (pr: number) => number, xR: number, plotW: number, H: number, placed: { y0: number; y1: number; x1: number }[], takes: LiqProfile | null = null): void {
+    const maxLevel = Math.max(prof.maxLevel, takes?.maxLevel ?? 0, 1), reach = plotW * 0.6;
     const lenOf = (v: number): number => Math.max(1.5, Math.pow(v / maxLevel, 0.75) * reach);
     const grads = {
       long: this.#barGradient(ctx, p.candleDown, xR, reach), short: this.#barGradient(ctx, p.candleUp, xR, reach),
@@ -322,6 +338,20 @@ export class LiqPane {
         ctx.fillStyle = grads[side]; ctx.globalAlpha = 1;
         this.#pill(ctx, xR - len, y0, len, h, Math.min(2, h / 2)); ctx.fill();
         best[side].push({ r, v });
+      }
+    }
+    // The take profits: outlines on the same scale, by what the orders do (those of shorts are buys, the rising colour; those of longs sells).
+    if (takes) {
+      ctx.lineWidth = 1.2; ctx.globalAlpha = 0.95;
+      for (let r = 0; r < takes.long.length; r++) {
+        const a = (takes.row0 + r) * step, y0 = yOf(a + step), y1 = yOf(a);
+        if (y1 < 0 || y0 > H) continue;
+        const h = Math.max(1, y1 - y0 - 1);
+        for (const [v, color] of [[takes.long[r]!, p.candleUp], [takes.short[r]!, p.candleDown]] as const) {
+          if (!(v > 0)) continue;
+          const len = lenOf(v);
+          ctx.strokeStyle = color; this.#pill(ctx, xR - len + 0.5, y0 + 0.5, len - 1, Math.max(1, h - 1), Math.min(2, h / 2)); ctx.stroke();
+        }
       }
     }
     // The largest levels, named beside their bars' tips (and marked when one position holds at least half of the level).
@@ -381,13 +411,13 @@ export class LiqPane {
     ctx.fillText(fmtPrice(at), xR + (W - xR) / 2, y + 0.5);
     ctx.restore();
     const lines: InfoLine[] = [
-      { text: side === 'long' ? t('Long liquidations') : t('Short liquidations'), color: side === 'long' ? 'sell' : 'buy', bold: true },
+      { text: sideTitle(levels.kind, side), color: side === 'long' ? 'sell' : 'buy', bold: true },
       { label: t('Distance'), text: distanceText(at, price) },
       { label: t('If price gets here'), text: `$${usd(Math.max(0, way))}`, bold: true },
       { label: t('At this level'), text: `$${usd(level)}` },
     ];
-    if (positions > 0) lines.push({ label: t('Positions'), text: String(positions) });
-    if (top > 0 && level > 0) lines.push({ label: t('Largest position'), text: `$${usd(top)}` });
+    if (positions > 0) lines.push({ label: countLabel(levels.kind), text: String(positions) });
+    if (top > 0 && level > 0) lines.push({ label: topLabel(levels.kind), text: `$${usd(top)}` });
     lines.push({ label: t('Same distance, other side'), text: `$${usd(Math.max(0, other))}`, color: side === 'long' ? 'buy' : 'sell' });
     // The box on the side away from the finger's line, so the line and its bars stay in sight.
     paintInfoBox(ctx, lines, 8, y, { x0: 0, y0: 0, x1: xR, y1: H }, p, { gap: 0, placement: y < H / 2 ? 'down' : 'up', edge: color });
