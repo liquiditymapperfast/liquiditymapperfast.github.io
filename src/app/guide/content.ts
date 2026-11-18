@@ -340,6 +340,7 @@ export const SECTIONS: readonly Section[] = [
         'A script runs on a thread of its own and can read nothing but those inputs: no page, no network, no storage. One that loops for too long is stopped, and says where.',
         'Scripts read 10,000 of the chart market\'s own candles (2,000 on a phone). *Candles per script* offers 2,000 to 100,000, and more take longer the first time.',
         '**Copy for AI**, in a script\'s editor, puts on the clipboard what an AI assistant needs to write or fix one: the language\'s rules, the script, its errors and what it last drew. The whole language is published as `script-reference.md` at the site\'s root.',
+        'Under the map, each script drawn there has a row of its own, with its name, an eye that hides it and a key that opens it at the top left. The **×** at the top right switches those scripts off (*Undo* brings them back; the ones on the map go on); with several rows, each also has a **×** at its right end. On a phone, each row\'s **×** stays beside its name. A script can name its lines\' newest values in tags at the right edge, each in its line\'s colour and moved apart where they would cover each other.',
       ] },
       { t: 'note', kind: 'tip', text: 'Scripts stay in this browser. Export writes them to a file and Import reads it back, which is how they move to another browser or device. Where the page has no flow for a candle, a script reads NaN there and nothing is drawn.' },
     ],

@@ -1828,6 +1828,13 @@
  "Your own indicators, written as scripts over the candles and the taker flow: on the map, or in rows of their own under it.": "Ваші власні індикатори, написані скриптами за свічками та потоком тейкерів: на карті або в окремих рядках під нею.",
  "“{name}” stopped with an error: open Scripts to see it.": "«{name}» зупинено з помилкою: відкрийте Скрипти, щоб її побачити.",
  "Switch this script off (it stays in Scripts…)": "Вимкнути цей скрипт (він залишиться в «Скрипти…»)",
+ "Switch off the scripts in this panel (they stay in Scripts…)": "Вимкнути скрипти на цій панелі (вони залишаться в «Скрипти…»)",
+ "Switched off {n} scripts in this panel.": {
+  "few": "{n} скрипти на цій панелі вимкнено.",
+  "many": "{n} скриптів на цій панелі вимкнено.",
+  "one": "{n} скрипт на цій панелі вимкнено.",
+  "other": "{n} скрипта на цій панелі вимкнено."
+ },
  "Stochastic heat map": "Теплова карта стохастика",
  "Buyer and seller VWAPs": "VWAP покупців і продавців",
  "Volume anomalies": "Аномалії обсягу",

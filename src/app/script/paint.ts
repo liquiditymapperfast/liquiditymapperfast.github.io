@@ -108,10 +108,18 @@ export interface Frame {
   color: string; up: string; down: string;
   /** Told where each mark was drawn, so the pane can say what it is when the pointer is on it. */
   marks?: (box: MarkBox) => void;
+  /**
+   * Told of each tag a plot asks for (a mark of shape tag: its newest point in view), so the pane can stand all its tags at the right edge
+   * together (`placeTags`, `drawTags`). A frame without it draws a tag as a label at its candle.
+   */
+  tags?: (tag: TagAsk) => void;
 }
 
-/** The shapes a mark can take: a plate with its text (the default), the text alone, or a shape with the text beyond it. */
-export const MARK_SHAPES = ['label', 'text', 'dot', 'circle', 'square', 'diamond', 'triangleUp', 'triangleDown', 'arrowUp', 'arrowDown', 'cross'] as const;
+/**
+ * The shapes a mark can take: a plate with its text (the default), the text alone, a shape with the text beyond it, or a tag: a plate at the
+ * right edge, at the height of the plot's newest mark in view, as a chart names its lines' newest values on its price axis.
+ */
+export const MARK_SHAPES = ['label', 'text', 'tag', 'dot', 'circle', 'square', 'diamond', 'triangleUp', 'triangleDown', 'arrowUp', 'arrowDown', 'cross'] as const;
 export type MarkShape = typeof MARK_SHAPES[number];
 export const markShape = (v: OptionValue | undefined): MarkShape => typeof v === 'string' && (MARK_SHAPES as readonly string[]).includes(v) ? v as MarkShape : 'label';
 /** Where a mark stands against its value: above it, below it (a gap away, so a mark at a candle's high or low stands clear of it), or on it. */
@@ -151,6 +159,103 @@ export function markPlace(cx: number, y: number, w: number, h: number, at: 'abov
   if (!fits(box) && at !== 'at') { const other = markBox(cx, y, w, h, at === 'above' ? 'below' : 'above', gap); if (fits(other)) out = other; }
   const x = w <= row.width ? Math.min(Math.max(out.x, 0), row.width - w) : out.x, top = h <= row.height ? Math.min(Math.max(out.y, row.top), bottom - h) : out.y;
   return { x, y: top, w, h };
+}
+
+/**
+ * A tag a plot asks for: its value's height (the pane's pixels), its text (the script's, or its value written short where it gave none:
+ * `named` says which), its plate's and its text's colours, its candle and its value.
+ */
+export interface TagAsk { y: number; text: string; named: boolean; color: string; textColor: string; i: number; value: number }
+/** A tag's height, and the least room between two tags (px). */
+export const TAG_H = 15, TAG_GAP = 2;
+
+/**
+ * Where each of a row's tags stands (the top of each, null for one left out), from the heights its values ask for (`want`, each a tag
+ * `h` tall), between `top` and `bottom`. A tag stands centred on its value unless that would cover another: then the tags that would touch
+ * are moved apart as a block, centred where their values are on average, kept inside the row. Their order top to bottom is their values'
+ * order (ties by their order in `want`), so two lines that end close together keep their tags in the order the lines are in. Where the row
+ * cannot hold them all, the last asked for are left out (the plots a script draws later), never moved off the row. Pure, for the tests.
+ */
+export function placeTags(want: readonly number[], h: number, top: number, bottom: number, gap = TAG_GAP): (number | null)[] {
+  const out: (number | null)[] = want.map(() => null);
+  const room = Math.max(0, bottom - top), fits = Math.max(0, Math.floor((room + gap) / (h + gap)));
+  // The tags kept: the first asked for, as many as the row holds; a value that is not a number asks for none.
+  const kept = want.map((y, k) => ({ y, k })).filter(t => Number.isFinite(t.y)).slice(0, fits).sort((a, b) => a.y - b.y || a.k - b.k);
+  // Blocks of tags that touch, top to bottom: each the tags it holds, at the top that centres it on its values' mean, inside the row.
+  interface Block { items: { y: number; k: number }[]; top: number }
+  const size = (b: Block): number => b.items.length * h + (b.items.length - 1) * gap;
+  const settle = (b: Block): void => {
+    const mean = b.items.reduce((s, t) => s + t.y, 0) / b.items.length;
+    b.top = Math.min(Math.max(mean - size(b) / 2, top), bottom - size(b));
+  };
+  const blocks: Block[] = [];
+  for (const t of kept) {
+    const b: Block = { items: [t], top: 0 }; settle(b); blocks.push(b);
+    // Merged with the block above while they would touch: the merged block is centred again, and may now touch the one above it.
+    while (blocks.length > 1) {
+      const up = blocks[blocks.length - 2]!, last = blocks[blocks.length - 1]!;
+      if (up.top + size(up) + gap <= last.top) break;
+      up.items.push(...last.items); blocks.pop(); settle(up);
+    }
+  }
+  for (const b of blocks) b.items.forEach((t, j) => { out[t.k] = Math.round(b.top + j * (h + gap)); });
+  return out;
+}
+
+/** A tag where it is drawn: its plate (the pane's pixels). */
+export interface TagBox { x: number; y: number; w: number; h: number }
+
+/** The width of a tag's plate for its text (its face's width and a little room each side); the canvas keeps the face it had. */
+export function tagWidth(ctx: CanvasRenderingContext2D, text: string): number {
+  const font = markFont(1), key = `${font}|${text}`;
+  let w = MARK_WIDTHS.get(key);
+  if (w === undefined) {
+    const was = ctx.font; ctx.font = font;
+    if (MARK_WIDTHS.size >= 2_048) MARK_WIDTHS.clear();
+    w = ctx.measureText(text).width; MARK_WIDTHS.set(key, w); ctx.font = was;
+  }
+  return Math.ceil(w) + 10;
+}
+
+/**
+ * Lay out a row's tags (`asks`, in the order the plots asked) between `top` and `bottom`: each plate at its height from `placeTags`, all
+ * with their left edges at `left` when the widest of those kept fits between it and `right`, else all with their right edges at `edge`
+ * (`right` unless given: over the plot, where the room right of it is too narrow; a replay gives its moment, past which the plot is
+ * covered; one that would reach past the plot's left end there is left out). One left out is null.
+ */
+export function layoutTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[], area: { left: number; right: number; top: number; bottom: number; edge?: number }): (TagBox | null)[] {
+  if (!asks.length) return [];
+  const tops = placeTags(asks.map(a => a.y), TAG_H, area.top, area.bottom);
+  const widths = asks.map((a, k) => tops[k] === null ? 0 : tagWidth(ctx, a.text)), widest = Math.max(...widths);
+  const flush = area.left + widest <= area.right, edge = area.edge ?? area.right;
+  return asks.map((a, k) => {
+    const y = tops[k]; if (y === null || y === undefined) return null;
+    // At the edge, one that would reach past the plot's left end is left out (a replay's moment at the plot's start: it would stand
+    // under the cover).
+    const w = widths[k]!, x = flush ? area.left : edge - w;
+    return x < 0 ? null : { x, y, w, h: TAG_H };
+  });
+}
+
+/**
+ * Draw tags where `layoutTags` put them: a plate of each one's colour with its text, and, for one moved off its value's height, a short
+ * leader in its colour from that height at its left edge (none where the value is off the row, `top` to `bottom`).
+ */
+export function drawTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[], boxes: readonly (TagBox | null)[], top: number, bottom: number): void {
+  if (!boxes.some(b => b)) return;
+  ctx.save();
+  ctx.font = markFont(1); ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  asks.forEach((a, k) => {
+    const b = boxes[k]; if (!b) return;
+    if ((a.y < b.y + 2 || a.y > b.y + b.h - 2) && a.y >= top && a.y <= bottom) {
+      const y = Math.round(a.y) + 0.5, edge = Math.min(Math.max(a.y, b.y + 3), b.y + b.h - 3);
+      ctx.strokeStyle = a.color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(b.x - 7, y); ctx.lineTo(b.x - 4, y); ctx.lineTo(b.x, edge); ctx.stroke();
+    }
+    ctx.fillStyle = a.color; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 2); ctx.fill();
+    ctx.fillStyle = a.textColor; ctx.fillText(a.text, b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+  });
+  ctx.restore();
 }
 
 const color = (raw: OptionValue | undefined, fallback: string): string => safeColor(raw, fallback);
@@ -365,7 +470,20 @@ const MARK_WIDTHS = new Map<string, number>();
  */
 function paintMarks(f: Frame, plot: PlotOut, y: (v: number) => number): void {
   const { ctx } = f, v = plot.fields.value!, texts = plot.texts ?? null, base = color(plot.style.color, f.color);
-  const shape = markShape(plot.style.shape), at = markPosition(plot.style.position);
+  const asked = markShape(plot.style.shape), at = markPosition(plot.style.position);
+  // A tag names the plot's newest point in view: told to the pane, which stands the tags at the right edge; drawn as a label at its candle
+  // where the pane takes none.
+  let tagAt = -1;
+  if (asked === 'tag') {
+    for (let i = f.to; i >= f.from; i--) if (Number.isFinite(v[i]!)) { tagAt = i; break; }
+    if (tagAt < 0) return;
+    if (f.tags) {
+      const val = v[tagAt]!, c = pointColor(plot, tagAt, base), own = typeof plot.style.textColor === 'string' ? safeColor(plot.style.textColor, '') : '';
+      f.tags({ y: y(val), text: texts?.[tagAt] || shortNumber(val), named: !!texts?.[tagAt], color: c, textColor: own || textOn(c), i: tagAt, value: val });
+      return;
+    }
+  }
+  const shape: MarkShape = asked === 'tag' ? 'label' : asked;
   // `offset` stands a mark further off its value (px), so marks of two plots at one candle can stack.
   const size = Math.max(0.6, Math.min(2.5, styleNum(plot.style.size, 1))), gap = 3 + Math.max(0, Math.min(200, styleNum(plot.style.offset, 0))), lineH = Math.round(14 * size);
   const ownText = typeof plot.style.textColor === 'string' ? safeColor(plot.style.textColor, '') : '';
@@ -383,10 +501,10 @@ function paintMarks(f: Frame, plot: PlotOut, y: (v: number) => number): void {
     const x0 = Math.max(0, b.x), x1 = Math.min(f.w, b.x + b.w), y0 = Math.max(f.top, b.y), y1 = Math.min(f.top + f.height, b.y + b.h);
     if (x1 > x0 && y1 > y0) f.marks?.({ x: x0, y: y0, w: x1 - x0, h: y1 - y0, i });
   };
-  for (let i = f.from; i <= f.to; i++) {
+  for (let i = tagAt >= 0 ? tagAt : f.from; i <= f.to; i++) {
     const val = v[i]!;
     if (!Number.isFinite(val)) continue;
-    const cx = f.x(f.time[i]!) + f.barW / 2, yy = y(val), c = pointColor(plot, i, base), label = texts?.[i] ?? '';
+    const cx = f.x(f.time[i]!) + f.barW / 2, yy = y(val), c = pointColor(plot, i, base), label = texts?.[i] || (tagAt >= 0 ? shortNumber(val) : '');
     const r = Math.max(2, 4 * size);
     const asShape = shape !== 'label' && shape !== 'text';
     // The box the whole mark takes: the shape, and its text beyond it.

@@ -1720,6 +1720,8 @@
  "Your own indicators, written as scripts over the candles and the taker flow: on the map, or in rows of their own under it.": "캔들과 테이커 플로우를 바탕으로 스크립트로 작성하는 나만의 지표. 지도 위나 그 아래 별도 행에 그립니다.",
  "“{name}” stopped with an error: open Scripts to see it.": "“{name}”이(가) 오류로 멈췄습니다. 스크립트를 열어 확인하세요.",
  "Switch this script off (it stays in Scripts…)": "이 스크립트 끄기 (스크립트…에 남아 있음)",
+ "Switch off the scripts in this panel (they stay in Scripts…)": "이 창의 스크립트 끄기 (스크립트…에 남아 있음)",
+ "Switched off {n} scripts in this panel.": "이 창의 스크립트 {n}개를 껐습니다.",
  "Stochastic heat map": "스토캐스틱 히트맵",
  "Buyer and seller VWAPs": "매수자·매도자 VWAP",
  "Volume anomalies": "거래량 이상치",

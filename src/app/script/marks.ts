@@ -23,6 +23,23 @@ export function markAt(marks: readonly DrawnMark[], x: number, y: number, slop: 
 }
 
 /**
+ * The mark under `x`, `y`: one whose box holds the point (the one drawn last, as `markAt`), else the nearest whose box grown by `slop` does.
+ * Tags stand a few pixels apart, closer than a finger's slop: the first test alone gave a tap on one tag the tip of the tag under it.
+ */
+export function markNearest(marks: readonly DrawnMark[], x: number, y: number, slop: number): DrawnMark | null {
+  const on = markAt(marks, x, y, 0);
+  if (on || slop <= 0) return on;
+  let best: DrawnMark | null = null, far = Infinity;
+  for (const m of marks) {
+    const b = m.box, dx = Math.max(b.x - x, 0, x - b.x - b.w), dy = Math.max(b.y - y, 0, y - b.y - b.h);
+    if (dx > slop || dy > slop) continue;
+    const d = Math.hypot(dx, dy);
+    if (d <= far) { best = m; far = d; }
+  }
+  return best;
+}
+
+/**
  * A mark's popup: its text (in `tone`: on the map `above`, which the map paints in the mark's colour), what it says (`tip`, each line of it
  * wrapped), then the script's name. A mark with neither text nor tip says its plot's title, or the script's name alone.
  */

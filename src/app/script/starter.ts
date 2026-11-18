@@ -120,11 +120,12 @@ if (colorCandles) $price.color = shade(average)
 /**
  * The cumulative delta of the spot markets and of the perpetuals, apart, with a label at each line's newest value: how far it moved over the
  * lookback and whether that move was straight enough to call rising or falling (a user's script, 2026-11-11, from the example of this name;
- * `renderer.last` keeps its labels when the newest candle has closed, `$` and a Labels switch added).
+ * `renderer.last` keeps its labels when the newest candle has closed, `$` and a Labels switch added). Its labels are tags at the right edge
+ * since 2026-11-18 (Karl: plates at the lines' ends covered each other where the lines crossed).
  */
 export const CVD_SOURCE = `// Spot and perpetual CVD: the cumulative delta (what was bought at market less what was sold) of the spot markets and of
-// the perpetuals, apart, each on a scale of its own. A label at each line's newest value says which it is, how far it has
-// moved over the last candles (the lookback) and where it is heading: rising, falling or flat.
+// the perpetuals, apart, each on a scale of its own. A tag at the right edge, at each line's newest value and in its colour,
+// says which it is, how far it has moved over the last candles (the lookback) and where it is heading: rising, falling or flat.
 spotColor = option(type=color, default=#2e9bff, label=Spot)
 perpColor = option(type=color, default=#ff9f1c, label=Perpetual)
 trendLength = option(type=number, default=20, min=2, max=500, step=1, label="Lookback (candles)")
@@ -165,11 +166,13 @@ function tipOf(name, cvd, move, path, word) {
 line(spotCvd, title=Spot, color=spotColor)
 line(perpCvd, title=Perp, color=perpColor, priceScaleId=perp)
 
-// The labels stand on the newest candle only (renderer.last), under way or closed: a value that is not a number draws none.
+// The labels are tags (shape=tag): each stands at the right edge at its line's newest value, and tags that would cover each
+// other are moved apart, in the lines' order, with a short leader to the value. They are given on the newest candle only
+// (renderer.last), under way or closed: a value that is not a number draws none.
 var newest = showLabels && renderer.last
 var spotWord = trendOf(spotMove, spotPath), perpWord = trendOf(perpMove, perpPath)
-mark({value: newest ? spotCvd : NaN, text: "Spot " + money(spotMove) + " " + arrowOf(spotWord) + " " + spotWord, tip: tipOf("Spot", spotCvd, spotMove, spotPath, spotWord), color: spotColor}, title="Spot label", shape=label, position=above)
-mark({value: newest ? perpCvd : NaN, text: "Perp " + money(perpMove) + " " + arrowOf(perpWord) + " " + perpWord, tip: tipOf("Perp", perpCvd, perpMove, perpPath, perpWord), color: perpColor}, title="Perp label", shape=label, position=below, priceScaleId=perp)
+mark({value: newest ? spotCvd : NaN, text: "Spot " + money(spotMove) + " " + arrowOf(spotWord) + " " + spotWord, tip: tipOf("Spot", spotCvd, spotMove, spotPath, spotWord), color: spotColor}, title="Spot label", shape=tag)
+mark({value: newest ? perpCvd : NaN, text: "Perp " + money(perpMove) + " " + arrowOf(perpWord) + " " + perpWord, tip: tipOf("Perp", perpCvd, perpMove, perpPath, perpWord), color: perpColor}, title="Perp label", shape=tag, priceScaleId=perp)
 `;
 
 /**
@@ -303,7 +306,7 @@ export const STARTER_ID = 'vwap-with-bands', HEATMAP_ID = 'stochastic-heat-map',
 /**
  * The scripts a page starts with before it has kept any: the rolling VWAP with its bands on the map, on (Karl, 2026-10-28: shown to every
  * visitor), and the stochastic heat map in a row under the map, off until switched on (it was on from 2026-10-27; a row under the map takes
- * height from it), and the spot and perpetual CVD with its labels in a row, off (a user's, 2026-11-11), and the strong and weak highs and lows
+ * height from it), and the spot and perpetual CVD with its tags in a row, off (a user's, 2026-11-11), and the strong and weak highs and lows
  * on the map, off (a user's, 2026-11-17), so the Scripts panel opens on four to read, change and learn from.
  * Deleting one keeps the list as it is left; its example brings it back. A browser that already kept a list keeps it as it is, but for an
  * untouched heat map of an earlier version (`updateStarters`).
@@ -332,7 +335,8 @@ export function updateStarters(list: ScriptRecord[]): ScriptRecord[] {
   return list.map(r => {
     // An untouched VWAP with bands, the starter or a copy added from the examples: the current text, its settings as they were.
     if (PREVIOUS_VWAP_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return { ...r, source: VWAP_SOURCE, api: Math.max(r.api, SCRIPT_API) };
-    // An untouched spot and perpetual CVD from before its labels: the labelled one, its colours kept (its "?" describes the labels by its id).
+    // An untouched spot and perpetual CVD from before its tags (without labels, or with labels at the lines' ends): the current one, its
+    // colours and switches kept (its "?" describes the labels by its id).
     if (PREVIOUS_CVD_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return { ...r, source: CVD_SOURCE, api: Math.max(r.api, SCRIPT_API) };
     if (r.id !== HEATMAP_ID || !PREVIOUS_HEATMAP_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return r;
     const old = Object.keys(r.options).filter(k => Object.prototype.hasOwnProperty.call(OLD_HEATMAP_OPTIONS, k));

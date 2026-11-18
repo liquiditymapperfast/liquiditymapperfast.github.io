@@ -1720,6 +1720,8 @@
  "Your own indicators, written as scripts over the candles and the taker flow: on the map, or in rows of their own under it.": "ローソク足とテイカーフローをもとにスクリプトで書く、自分だけのインジケーター。マップ上か、その下の専用の行に描きます。",
  "“{name}” stopped with an error: open Scripts to see it.": "「{name}」はエラーで停止しました。スクリプトを開いて確認してください。",
  "Switch this script off (it stays in Scripts…)": "このスクリプトをオフにする（スクリプト…に残ります）",
+ "Switch off the scripts in this panel (they stay in Scripts…)": "このペインのスクリプトをオフにする（スクリプト…に残ります）",
+ "Switched off {n} scripts in this panel.": "このペインのスクリプト {n} 個をオフにしました。",
  "Stochastic heat map": "ストキャスティクス・ヒートマップ",
  "Buyer and seller VWAPs": "買い手と売り手の VWAP",
  "Volume anomalies": "出来高の異常",
