@@ -6,7 +6,7 @@ import { once } from 'node:events';
 import { IncomingMessage } from 'node:http';
 import { Socket } from 'node:net';
 import { Writable } from 'node:stream';
-import { createLocalServer, sendUiStaticResponse, type UiStaticRoots } from '../src/server/http.mts';
+import { RETIRED_SERVICE_WORKER, createLocalServer, sendUiStaticResponse, type UiStaticRoots } from '../src/server/http.mts';
 import { HistoryStore } from '../src/server/history.mts';
 import { QuotaLedger } from '../src/core/quota.mts';
 
@@ -142,5 +142,23 @@ test('API health dispatch remains usable on an unlistening server without UI ini
     const payload: unknown = JSON.parse(response.body);
     assert.ok(payload !== null && typeof payload === 'object' && 'ok' in payload && payload.ok === true);
     assert.equal(app.server.listening, false);
+  } finally { socket.destroy(); await app.close(); }
+});
+
+test('the old service worker is retired: /sw.js answers a worker that empties the caches, unregisters itself and reloads its pages, never cached', async () => {
+  const app = createLocalServer({ history: new HistoryStore({ filePath: ':memory:' }), quota: new QuotaLedger({ filePath: ':memory:' }), persistFixture: false });
+  const socket = new Socket();
+  try {
+    const request = new IncomingMessage(socket);
+    request.method = 'GET'; request.url = '/sw.js';
+    const response = new CapturedResponse();
+    const completed = once(response, 'finish');
+    app.server.emit('request', request, response);
+    await completed;
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers['content-type'], 'text/javascript; charset=utf-8');
+    assert.equal(response.headers['cache-control'], 'no-store', 'a browser checks it afresh');
+    assert.equal(response.body, RETIRED_SERVICE_WORKER);
+    for (const step of ['skipWaiting()', 'caches.delete(key)', 'registration.unregister()', 'client.navigate(client.url)']) assert.ok(response.body.includes(step), step);
   } finally { socket.destroy(); await app.close(); }
 });

@@ -403,6 +403,26 @@ function sse(res: StateStreamResponse, event: string, payload: unknown, processM
   }
 }
 const mergeMarkFrames = (previous: ServerStreamFrame, next: ServerStreamFrame): ServerStreamFrame => ({ ...mergeMarkPayload(previous, next, MARK_CROSSING_LIMIT), event: next.event });
+/**
+ * What this server answers for `/sw.js`. The page has no service worker; an early version registered one here (`sw.js`, the shell cache), and
+ * a browser that still has it is served old files from its cache for good, since its update check met a 404 (seen 2026-11-05 on 8787: old
+ * liquidation levels and thousands of cached exchange answers). The browser checks that file again on a visit, finds this one, and installs
+ * it: it empties every cache, unregisters itself and reloads the pages it held, which then come from the server. A browser that never had
+ * the old worker never asks for this file.
+ */
+export const RETIRED_SERVICE_WORKER = [
+  "self.addEventListener('install', () => { self.skipWaiting(); });",
+  "self.addEventListener('activate', event => { event.waitUntil((async () => {",
+  '  for (const key of await caches.keys()) await caches.delete(key);',
+  '  await self.registration.unregister();',
+  "  for (const client of await self.clients.matchAll({ type: 'window' })) client.navigate(client.url);",
+  '})()); });',
+  '',
+].join('\n');
+export function sendRetiredServiceWorker(res: JsonResponseSink & NodeJS.WritableStream): void {
+  res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(RETIRED_SERVICE_WORKER);
+}
 export interface UiStaticRoots { builtRoot?: string; sourceRoot?: string; }
 type UiStaticResponse = JsonResponseSink & NodeJS.WritableStream;
 /** Resolve local UI assets without treating authored TypeScript as a browser bundle. */
@@ -987,6 +1007,7 @@ async function route(req: IncomingMessage, res: ServerResponse, state: RuntimeSt
     services.publishState?.();
     return json(res, { error: 'HyperTracker is disabled; configure a verified provider before refreshing', kind: requestedKind, quota: quota.snapshot() }, 503);
   }
+  if (req.method === 'GET' && url.pathname === '/sw.js') return sendRetiredServiceWorker(res);
   if (req.method === 'GET') return sendUiStaticResponse(res, url.pathname);
   return json(res, { error: 'method not allowed' }, 405);
 }
