@@ -1,9 +1,9 @@
 /**
  * The confirmation the Plus page shows right after Plus came on in this browser by the visitor's own doing (a key entered, a checkout claimed,
- * the receipt's email and invoice number): that it is on and until when, and the way back to the map, taken by itself after a few seconds
- * unless the visitor stays (Karl, 2026-11-18: the page swapped a section near its foot, out of sight, and said nothing). Never when the page
- * simply opens with Plus on, or when another tab turned it on: only the page's own success paths start it. The clock and the timer are
- * handed in, so the countdown is tested with a fake clock (`page.ts` draws it).
+ * the receipt's email and invoice number; Karl, 2026-11-18: the page swapped a section near its foot, out of sight, and said nothing): that
+ * it is on and until when, and the way back to the map, which a typed key takes by itself after a few seconds unless the visitor stays
+ * (`countsDown`). Never when the page simply opens with Plus on, or when another tab turned it on: only the page's own success paths start
+ * it. The clock and the timer are handed in, so the countdown is tested with a fake clock (`page.ts` draws it).
  */
 
 /** How long before the page goes back to the map by itself. */
@@ -14,6 +14,16 @@ export interface ArrivalClock {
   /** Run `run` every `ms` until the returned function is called. */
   every(ms: number, run: () => void): () => void;
 }
+
+/** How Plus came on here: a key typed or pasted into the key box, a checkout just paid, or the receipt's email and invoice number. */
+export type ArrivalVia = 'key' | 'checkout' | 'restore';
+
+/**
+ * Whether the confirmation counts down to the map (Karl, 2026-11-18): only after a key typed or pasted into the key box. After a checkout, and
+ * wherever the page shows the key (a restore shows it), the visitor must first see and copy the new key: the confirmation then offers the map
+ * and waits. Nor where the browser would not keep Plus (`kept` false): it lasts only as long as this page.
+ */
+export const countsDown = (via: ArrivalVia, keyShown: boolean, kept: boolean): boolean => via === 'key' && !keyShown && kept;
 
 /** What the confirmation says: until when Plus runs (null: not known), the whole seconds left, and whether it is counting down to the map. */
 export interface ArrivalState { until: number | null; left: number; counting: boolean }

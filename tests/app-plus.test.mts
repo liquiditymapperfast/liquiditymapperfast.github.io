@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, FREE_DAYS, freeFrom, plusApi, PLUS_API } from '../src/app/plus/config.ts';
 import { PLUS_STORE, Plus, parsePass, readGrant, readHeld, type Post } from '../src/app/plus/pass.ts';
-import { ARRIVAL_SECONDS, Arrival, type ArrivalState } from '../src/app/plus/arrival.ts';
+import { ARRIVAL_SECONDS, Arrival, countsDown, type ArrivalState } from '../src/app/plus/arrival.ts';
 
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 /** A pass as the server writes one (the signature is the server's business: the page reads only the middle part). */
@@ -444,4 +444,13 @@ test('right after Plus came on, the confirmation counts down to the map, which "
   assert.equal(went.length, 1);
   a.stay();
   assert.equal(st()!.counting, false);
+});
+
+test('the return to the map counts down only after a key typed into the key box: after a checkout or a restore the new key is shown, to be copied first', () => {
+  assert.equal(countsDown('key', false, true), true, 'a key typed or pasted: back to the map in five seconds');
+  assert.equal(countsDown('checkout', true, true), false, 'a checkout: the page shows the new key, and waits');
+  assert.equal(countsDown('checkout', false, true), false, 'a checkout never counts down, the key shown or not');
+  assert.equal(countsDown('restore', true, true), false, 'a restore shows the key too');
+  assert.equal(countsDown('key', true, true), false, 'a key typed while the page shows the key (revealed before): it waits');
+  assert.equal(countsDown('key', false, false), false, 'a browser that would not keep Plus: leaving would lose it');
 });

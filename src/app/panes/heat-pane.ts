@@ -55,7 +55,7 @@ import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { groupName, heldBack, kindName, liveView, plusOn, viewParts, type LiqView } from '../liq-view.ts';
-import { countLabel, curveSentence, liqNote, liqWhy, sideTitle, splitLabel, splitText, takesLeftOut, topLabel } from '../liq-words.ts';
+import { columnNotes, countLabel, curveSentence, liqNote, liqWhy, sideTitle, splitLabel, splitText, topLabel } from '../liq-words.ts';
 import { openLiqMenu } from '../liq-menu.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
@@ -490,6 +490,8 @@ export class HeatPane {
   readonly #liqKind = el('button', { class: 'liq-kind', type: 'button', hidden: true });
   /** The button's words as last fitted (`#placeLiqKind`): what they were made for, and the width they had. */
   #liqKindFit = '';
+  /** Whether the button had no room for the group it shows (it then says the kind alone, and the group goes under it: `columnNotes`). */
+  #liqKindGroupOff = false;
   /** The take profits' rows in view (their own lane of the stripe), as `#liqRows`; and where the stripe's lanes were drawn this frame. */
   #liqTakeRows: { key: string; rows: LiqRow[]; heat: (usd: number) => number } | null = null;
   #liqLanes: { levels: Lane; takes: Lane | null } | null = null;
@@ -3989,8 +3991,8 @@ export class HeatPane {
 
   /**
    * The button that says what the column shows and chooses it, at the top of the wide column (`x`, a plot x, `W` its width), or out of sight
-   * (null). It names what is drawn: the kind, then the group where one is shown and it fits (else in its tip, which says everything drawn);
-   * without Plus, a saved Plus choice is held back and a lock says so.
+   * (null). It names what is drawn: the kind, then the group where one is shown and it fits (else the group goes on a line under it, and its
+   * tip says everything drawn); without Plus, a saved Plus choice is held back and a lock says so.
    */
   #placeLiqKind(x: number | null, W: number, state: AppState): void {
     const button = this.#liqKind;
@@ -4011,6 +4013,7 @@ export class HeatPane {
       if (button.hidden) button.hidden = false;
       button.textContent = group ? `${kind} · ${group}` : kind;
       if (group && button.scrollWidth > button.clientWidth) button.textContent = kind;
+      this.#liqKindGroupOff = !!group && button.textContent === kind;
     }
     const left = `${Math.round(this.#left + x + LIQ_PAD)}px`, top = `${LIQ_KIND_TOP}px`;
     if (button.style.left !== left) button.style.left = left;
@@ -4023,8 +4026,9 @@ export class HeatPane {
    * (longs in the falling colour, shorts in the rising one) and a curve of everything from the price out to each price, lightly filled behind
    * the bars, which reads "this much goes if price gets here" (and the pointer reads it at its price: `#paintLiqReadout`). Take profits,
    * where shown, are dashed bars from the column's right edge (`TAKE_DASH`), never added to the rest. The heading's button names what the
-   * curve adds up (it is the curve's caption), and a note under it says the take profits are not in it while they are shown, without pointing
-   * at anything (2026-11-18). Until the levels are there, or in a replay, it says why it is empty.
+   * curve adds up (it is the curve's caption); under it, the group where the button has no room for it, and a note that the take profits are
+   * not in the curve while they are shown, without pointing at anything (2026-11-18). Until the levels are there, or in a replay, it says why
+   * it is empty.
    */
   #paintLiqColumn(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     this.#liqScale = null;
@@ -4038,8 +4042,10 @@ export class HeatPane {
     const size = pw < NARROW_PLOT ? 9.5 : 10, takesShown = !strip && src.takesState === 'ready' && !!src.takesStanding();
     ctx.font = `${size}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     const wide = (words: string): number => ctx.measureText(words).width;
-    // Under the button, which names what the curve adds up: that the take profits are not in it, at most two lines.
-    const left = s && takesShown ? wrapText(wide, takesLeftOut(), liqRoom(W), 2) : [];
+    // Under the button, which names what the curve adds up, as part of its caption: the group where the button had no room for it, then that
+    // the take profits are not in the curve while they show; at most two lines each.
+    const notes = s && !strip ? columnNotes(liveView(state.liqLevels), !this.#liqKindGroupOff, takesShown) : [];
+    const left = notes.flatMap(note => wrapText(wide, note, liqRoom(W), 2));
     const head = LIQ_HEAD_H + 12 * left.length;
     this.#placeLiqHistory(s && !strip && !(state.show.depth && state.depthSource === 'liq') ? x0 : null, head);
     // The strip has no room for words: until the levels are there it is empty (the Liq tab says why).
@@ -4108,7 +4114,7 @@ export class HeatPane {
     // The pointer's layer reads the curve where the pointer is (`#paintLiqReadout`), on this scale.
     this.#liqScale = curves ? { x0, width, maxCum, W } : null;
     if (!strip) {
-      // The heading: its button (a page element), what the curve leaves out while take profits show, then the two scales.
+      // The heading: its button (a page element), the lines under it (whose; what the curve leaves out), then the two scales.
       ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, this.#liqHeadH); ctx.globalAlpha = 1;
       let y = LIQ_KIND_TOP + LIQ_KIND_H + 3;
       ctx.fillStyle = p.text;

@@ -6,7 +6,7 @@ import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, effectiveView, heldBack, isFreeChoice, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
 import { changeOf, isPlusChange, liqMenuItems } from '../src/app/liq-menu.ts';
-import { liqNote, liqWhy, splitText, takesLeftOut } from '../src/app/liq-words.ts';
+import { columnNotes, liqNote, liqWhy, splitText, takesLeftOut } from '../src/app/liq-words.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -390,6 +390,12 @@ test('Liq + stops apart: each part what still stands of it, the two always addin
   assert.equal(splitText({ liq: 200_500_000, stops: 130_100_000 }), 'Total $330.6M = liquidations $200.5M + stops $130.1M', 'the total is the parts added');
 });
 
-test('the column says under its button that the take profits are not in the curve', () => {
+test('under the column\'s button: the group where the button had no room for it, first, then that the take profits are not in the curve', () => {
   assert.equal(takesLeftOut(), 'Take profits not included');
+  const proven = { kind: 'liq', takes: true, group: 'proven' } as const;
+  assert.deepEqual(columnNotes(proven, false, true), ['Proven traders', 'Take profits not included'], 'both: the group line first');
+  assert.deepEqual(columnNotes(proven, true, true), ['Take profits not included'], 'the group already on the button: not said twice');
+  assert.deepEqual(columnNotes({ kind: 'both', takes: false, group: 'profitable' }, false, false), ['Profitable traders']);
+  assert.deepEqual(columnNotes({ kind: 'liq', takes: false, group: 'all' }, false, false), [], 'everyone: nothing to add');
+  assert.deepEqual(columnNotes({ kind: 'stops', takes: false, group: 'proven' }, false, true), ['Take profits not included'], 'stops have no group');
 });

@@ -14,7 +14,7 @@ import { applyTheme } from '../theme.ts';
 import { FREE_DAYS, LEGAL, PADDLE, PLUS_CONTACT, PLUS_KEYS, plusApi, plusOnSale, type PlusPrice } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, readGrant, webPost, type Grant } from './pass.ts';
-import { ARRIVAL_SECONDS, Arrival } from './arrival.ts';
+import { ARRIVAL_SECONDS, Arrival, countsDown, type ArrivalVia } from './arrival.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
 interface PaddleEvent { name?: string; data?: { transaction_id?: string } }
@@ -140,8 +140,11 @@ function drawArrival(): void {
 }
 // A page the browser kept and shows again (Back from the map) does not count down a second time.
 window.addEventListener('pageshow', event => { if (event.persisted) arrival.stay(); });
-/** Plus came on here by the visitor's own doing: the confirmation, counting down to the map unless the browser would not keep Plus. */
-const arrived = (): void => { arrival.start(member.until, !state.unkept); };
+/**
+ * Plus came on here by the visitor's own doing: the confirmation, counting down to the map only after a key typed into the key box (after a
+ * checkout or a restore the page shows the new key, to be copied first; and never where the browser would not keep Plus).
+ */
+const arrived = (via: ArrivalVia): void => { arrival.start(member.until, countsDown(via, state.shown, !state.unkept)); };
 
 let paddle: Promise<PaddleApi | null> | null = null;
 /** Paddle's script, fetched once, when a price is first pressed. */
@@ -196,7 +199,7 @@ async function completed(transactionId: string): Promise<void> {
       state.busy = ''; state.fresh = true; state.shown = true;
       state.said = { where: 'buy', text: t('Thank you. Plus is on in this browser.'), good: true };
       try { window.Paddle?.Checkout.close(); } catch { /* the overlay closes itself */ }
-      render(); arrived(); return;
+      render(); arrived('checkout'); return;
     }
     // Asked again while the subscription may still be on its way (not there yet, the server busy or not reached); an answer that will
     // not change (the server looked and refused) ends the wait at once.
@@ -224,7 +227,7 @@ async function useKey(key: string): Promise<void> {
   if (grant) { take(text, grant); state.typed.key = ''; state.said = { where: 'key', text: t('Plus is on in this browser.'), good: true }; }
   else state.said = { where: 'key', text: problem(answer, t('That key is not known, or its subscription has ended.')) };
   render();
-  if (grant) arrived();
+  if (grant) arrived('key');
 }
 
 async function restore(email: string, invoice: string): Promise<void> {
@@ -237,7 +240,7 @@ async function restore(email: string, invoice: string): Promise<void> {
   if (grant?.key) { take(grant.key, grant); state.shown = true; state.said = { where: 'restore', text: t('Found. Plus is on in this browser.'), good: true }; }
   else state.said = { where: 'restore', text: problem(answer, t('No subscription in good standing was found for that email and invoice number.')) };
   render();
-  if (grant?.key) arrived();
+  if (grant?.key) arrived('restore');
 }
 
 const said = (where: 'buy' | 'key' | 'restore'): HTMLElement[] => state.said?.where === where ? [el('p', { class: state.said.good ? 'said-good' : 'said-bad', role: 'status', textContent: state.said.text })] : [];

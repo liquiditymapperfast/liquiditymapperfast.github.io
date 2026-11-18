@@ -6,7 +6,7 @@
 import { t } from './i18n.ts';
 import { clock, usd } from './format.ts';
 import type { LevelsKind, LiqLevelsSource } from './liq-levels.ts';
-import type { LiqView } from './liq-view.ts';
+import { groupApplies, groupTitle, type LiqView } from './liq-view.ts';
 
 /** What a side of a set of levels is called. Take profits are held with their sides swapped: the long side is the take profits of shorts. */
 export function sideTitle(kind: LevelsKind, side: 'long' | 'short'): string {
@@ -39,6 +39,15 @@ export function splitText(parts: { liq: number; stops: number }): string {
 
 /** Said under the liquidation column's button (which names what its curve adds up) while take profits are shown. */
 export const takesLeftOut = (): string => t('Take profits not included');
+
+/**
+ * The lines under the liquidation column's button, as part of its caption: whose liquidations, where a group is shown and the button had no
+ * room for it (`groupOnButton` false: at 11 px the column's 128 px hold "Liquidations" but not "Liquidations · Proven"), then that the take
+ * profits are not in the curve while they show.
+ */
+export function columnNotes(view: LiqView, groupOnButton: boolean, takesShown: boolean): string[] {
+  return [...(groupApplies(view.kind) && view.group !== 'all' && !groupOnButton ? [groupTitle(view.group)] : []), ...(takesShown ? [takesLeftOut()] : [])];
+}
 /** The same for a newcomer, in the help, the Guide and the column's tip. */
 export const curveSentence = (): string => t('The curve totals the selected liquidations and/or stops. Take profits are shown separately.');
 
