@@ -223,7 +223,8 @@ async function main(): Promise<void> {
     { id: 'ls', root: ls.root, height: 120, min: 60, head: ls.header },
     { id: 'funding', root: funding.root, height: 140, min: 70, head: funding.header },
     { id: 'lt', root: lt.root, height: 128, min: 70, head: lt.header },
-    { id: 'script', root: script.root, height: 220, min: 60, head: script.header, closable: false },
+    // The Scripts pane's close switches off the scripts drawn in it, not Scripts: the scripts on the map go on (`ScriptPane.switchOffPane`).
+    { id: 'script', root: script.root, height: 220, min: 60, head: script.header, closeLabel: t('Switch off the scripts in this panel (they stay in Scripts…)') },
   ];
   const arrange = new Layout(main, chart, { left: flowCol, right: side }, strip, [
     { id: 'cvd', root: cvd.root, head: cvd.controls, title: t('Flow'), views: [{ id: 'flow', title: t('Flow') }, { id: 'trades', title: t('Tape') }] },
@@ -234,7 +235,7 @@ async function main(): Promise<void> {
     arrangement: () => arrange.arrangement(), apply: a => arrange.apply(a), defaults: () => arrange.defaults(), swapSides: () => arrange.swapSides(),
     env: () => ({ width: window.innerWidth, height: chart.clientHeight || Math.max(400, window.innerHeight - 200), held: scriptRows(store.state) ? ['script' as const] : [] }),
   });
-  arrange.onClose = id => layouts.hide(id, arrange.title(id)); arrange.onOpen = id => layouts.setPane(id, true);
+  arrange.onClose = id => { if (id === 'script') script.switchOffPane(); else layouts.hide(id, arrange.title(id)); }; arrange.onOpen = id => layouts.setPane(id, true);
   arrange.onView = (id, view) => { if (id === 'cvd' && (view === 'flow' || view === 'trades') && store.state.flowView !== view) store.set({ flowView: view }); };
   // Trades reads the tape ring (blocks and each order), the per-second flow the Flow lines hold (any size before the tape) and the recording's
   // large orders (the browser's memory or the local server: free, never an exchange); a click takes the map to an order or a block's time.

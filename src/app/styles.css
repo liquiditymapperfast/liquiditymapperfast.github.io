@@ -1256,6 +1256,8 @@ html[data-frame="textmode"] .toolbar.cockpit .split > .split-cfg { width: 14px; 
 .panel-body .script-about { margin: 2px 0 8px; border: 1px solid var(--line); border-radius: var(--radius); }
 /* The Scripts pane's row buttons (script-pane.ts #placeRowTools): open the script, switch it off; after the row's name, over the canvas. */
 .script-row-tool { position: absolute; z-index: 2; display: inline-flex; gap: 2px; }
+/* A row's switch-off button apart from the others, at the row's right end under the pane's close (a pane of several rows), or not shown. */
+.script-row-tool[hidden] { display: none; }
 .script-row-tool > button { position: relative; width: 18px; height: 16px; min-height: 0; padding: 0; font-size: 13px; line-height: 14px; opacity: .6; }
 .script-row-tool > button:hover, .script-row-tool > button:focus-visible { opacity: 1; }
 .script-row-open::before { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%); background: currentColor; -webkit-mask: var(--mark-settings) center / contain no-repeat; mask: var(--mark-settings) center / contain no-repeat; }

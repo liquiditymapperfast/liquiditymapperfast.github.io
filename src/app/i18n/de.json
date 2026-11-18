@@ -1781,6 +1781,11 @@
  "Your own indicators, written as scripts over the candles and the taker flow: on the map, or in rows of their own under it.": "Eigene Indikatoren, als Skripte über die Kerzen und den Taker-Flow geschrieben: auf der Karte oder in eigenen Zeilen darunter.",
  "“{name}” stopped with an error: open Scripts to see it.": "„{name}“ wurde mit einem Fehler angehalten: Öffne Skripte, um ihn zu sehen.",
  "Switch this script off (it stays in Scripts…)": "Dieses Skript ausschalten (es bleibt unter Skripte…)",
+ "Switch off the scripts in this panel (they stay in Scripts…)": "Die Skripte in diesem Bereich ausschalten (sie bleiben unter Skripte…)",
+ "Switched off {n} scripts in this panel.": {
+  "one": "{n} Skript in diesem Bereich ausgeschaltet.",
+  "other": "{n} Skripte in diesem Bereich ausgeschaltet."
+ },
  "Stochastic heat map": "Stochastik-Heatmap",
  "Buyer and seller VWAPs": "VWAP der Käufer und Verkäufer",
  "Volume anomalies": "Volumen-Anomalien",

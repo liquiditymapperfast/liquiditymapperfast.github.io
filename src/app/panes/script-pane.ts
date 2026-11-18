@@ -10,6 +10,8 @@ import { clock, price as fmtPrice } from '../format.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { togglePanel, type Panel } from '../ui.ts';
+import { toast } from '../toast.ts';
+import { isPhone } from '../device.ts';
 import { TimePane, setText } from './lower-panes.ts';
 import { leftGutter, type ScriptLegendLine } from './heat-pane.ts';
 import { el } from '../dom.ts';
@@ -23,7 +25,7 @@ import { exampleHeight, examples } from '../script/examples.ts';
 import { valuesAt, type PlotOut, type ScriptResult, type Warning } from '../script/protocol.ts';
 import { MARK_SLOP, MARK_SLOP_TOUCH, markAt, markLines, markText, type DrawnMark } from '../script/marks.ts';
 import { AlertNews, fingerprint, type ScriptAlert } from '../script/alert-news.ts';
-import { onPlot, paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf, type Frame, type Scale } from '../script/paint.ts';
+import { drawTags, layoutTags, onPlot, paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf, type Frame, type Scale, type TagAsk } from '../script/paint.ts';
 import { errorText } from '../script/messages.ts';
 import { safeColor } from '../script/lang/colors.ts';
 import type { BarInputs, SourceFilter } from '../script/inputs.ts';
@@ -52,6 +54,13 @@ interface PreviewTarget { key: string; name: string; source: string; options: Re
  * took in the worker (ms).
  */
 interface PreviewHeld extends Held { theme: string; scope: string; markets: unknown; data: number; ranAt: number; took: number }
+
+/**
+ * Where a script's buttons go: beside its name, at `x`, `y`; its switch-off button with them (`off` not given: the map's legend, a phone's
+ * rows), at a place of its own (a row of a pane of several, under the pane's close), or nowhere (null: a pane's one row, whose close is the
+ * pane's own).
+ */
+interface ToolPlace { id: string; x: number; y: number; off?: { x: number; y: number } | null }
 
 /** A script worker: the pane's own runs have one, an agent's trials another. */
 const spawnScriptWorker = (): WorkerLike => new Worker(new URL('../script/script.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
@@ -146,6 +155,8 @@ export class ScriptPane extends TimePane {
   /** The marks drawn on the map at its last drawing, and in the pane's rows at theirs: what the pointer finds. */
   #mapMarks: DrawnMark[] = [];
   #rowMarks: DrawnMark[] = [];
+  /** The tags drawn at the rows' right edge at their last drawing (`shape=tag`), found by the pointer itself: they stand past the plot. */
+  #rowTags: DrawnMark[] = [];
   /** The alerts already seen, per chart (`AlertNews`). */
   readonly #alertNews = new AlertNews();
   /** Called with each new alert of a script that is on (the page sounds it through its alerts). */
@@ -250,10 +261,29 @@ export class ScriptPane extends TimePane {
     if (this.#panel && !this.#ui.editing) this.#panel.render(this.#build);
   }
 
+  /**
+   * The pane's close button: switch off the scripts drawn in its rows (they stay in Scripts…, and those on the map go on), with an Undo in
+   * the toast that switches the same scripts on again, those still there and still off.
+   */
+  switchOffPane(): void {
+    const ids = this.#records.filter(r => r.on && r.place === 'pane').map(r => r.id);
+    if (!ids.length) return;
+    const gone = new Set(ids);
+    this.setRecords(this.#records.map(r => gone.has(r.id) ? { ...r, on: false } : r));
+    if (this.#panel && !this.#ui.editing) this.#panel.render(this.#build);
+    toast(tn(ids.length, 'Switched off {n} script in this panel.', 'Switched off {n} scripts in this panel.'), { action: { label: t('Undo'), run: () => {
+      if (!this.#records.some(r => gone.has(r.id) && !r.on)) return;
+      this.setRecords(this.#records.map(r => gone.has(r.id) ? { ...r, on: true } : r));
+      this.showScripts();
+      if (this.#panel && !this.#ui.editing) this.#panel.render(this.#build);
+    } } });
+  }
+
   /** Put each row's buttons beside its name (`places` in the plot's coordinates); nothing changes while no row moved. */
-  #placeRowTools(places: readonly { id: string; x: number; y: number }[]): void {
+  #placeRowTools(places: readonly ToolPlace[]): void {
     const dx = this.canvas.offsetLeft + leftGutter(this.store.state), dy = this.canvas.offsetTop;
-    const key = `${dx},${dy}|${places.map(p => `${p.id}:${Math.round(p.x)},${Math.round(p.y)}:${this.#hiddenOf(p.id)}:${this.#toolsOf(p.id)}`).join('|')}`;
+    const off = (p: ToolPlace): string => p.off === undefined ? '' : p.off === null ? ':-' : `:${Math.round(p.off.x)},${Math.round(p.off.y)}`;
+    const key = `${dx},${dy}|${places.map(p => `${p.id}:${Math.round(p.x)},${Math.round(p.y)}:${this.#hiddenOf(p.id)}:${this.#toolsOf(p.id)}${off(p)}`).join('|')}`;
     if (key === this.#rowToolsKey) return;
     this.#rowToolsKey = key;
     this.#syncTools(this.#rowTools, this.#rowButtons, places, dx, dy);
@@ -283,9 +313,9 @@ export class ScriptPane extends TimePane {
    * focus; a script no longer listed loses its buttons. The eye says whether the script is hidden. The "?" opens the script's description in a
    * panel of its own, as every "?" outside a panel does; it is added or taken away only when a script's text makes it the page's or not.
    */
-  #syncTools(layer: HTMLElement, made: Map<string, HTMLElement>, places: readonly { id: string; x: number; y: number }[], dx: number, dy: number): void {
+  #syncTools(layer: HTMLElement, made: Map<string, HTMLElement>, places: readonly ToolPlace[], dx: number, dy: number): void {
     const wanted = new Set(places.map(p => p.id));
-    for (const [id, box] of made) if (!wanted.has(id)) { box.remove(); made.delete(id); }
+    for (const [id, box] of made) if (!wanted.has(id)) { box.remove(); this.#offApart.get(box)?.remove(); this.#offApart.delete(box); made.delete(id); }
     for (const place of places) {
       let box = made.get(place.id);
       if (!box) {
@@ -312,8 +342,19 @@ export class ScriptPane extends TimePane {
         hide.setAttribute('aria-label', words); hide.setAttribute('aria-pressed', String(hidden)); setTip(hide, words);
       }
       box.style.left = `${Math.round(dx + place.x)}px`; box.style.top = `${Math.round(dy + place.y)}px`;
+      // The switch-off button: beside the name (`off` not given), at a place of its own in the layer, or not shown (null).
+      const off = (box.querySelector<HTMLButtonElement>(':scope > .script-row-off') ?? this.#offApart.get(box)?.firstElementChild) as HTMLButtonElement | null;
+      if (!off) continue;
+      if (place.off === undefined) { if (off.parentElement !== box) { box.append(off); this.#offApart.get(box)?.remove(); this.#offApart.delete(box); } continue; }
+      let apart = this.#offApart.get(box);
+      if (!apart) { apart = el('span', { class: 'script-row-tool script-row-tool-off' }); this.#offApart.set(box, apart); layer.append(apart); }
+      if (off.parentElement !== apart) apart.append(off);
+      apart.hidden = place.off === null;
+      if (place.off) { apart.style.left = `${Math.round(dx + place.off.x)}px`; apart.style.top = `${Math.round(dy + place.off.y)}px`; }
     }
   }
+  /** A script's switch-off button where it stands apart from the others (`ToolPlace.off`), by the box of its other buttons. */
+  #offApart = new Map<HTMLElement, HTMLElement>();
 
   /**
    * The map legend's lines for the scripts drawn on the map: each one's name, the colour of its first plot, and its values at the candle
@@ -678,14 +719,17 @@ export class ScriptPane extends TimePane {
     this.#publishRange(on, TIMEFRAMES[state.timeframe] ?? 3_600_000);
     // The pane is laid out only while a script that is on draws in it (`hasRows`): for a moment after one is switched off it has none.
     if (!on.length) { this.#placeRowTools([]); return; }
-    const places: { id: string; x: number; y: number }[] = [];
+    const places: ToolPlace[] = [];
     const total = on.reduce((s, r) => s + r.height, 0), least = Math.max(1, Math.min(24, Math.floor(ph / on.length)));
     let top = 0;
     const tf = TIMEFRAMES[state.timeframe] ?? 3_600_000;
     const hv = state.hover;
     const card: InfoLine[] = [];
     const fallbacks = [p.vwap, p.poc, p.level, p.accent, p.bid, p.ask];
-    this.#rowMarks = [];
+    this.#rowMarks = []; this.#rowTags = [];
+    // A row's own switch-off button: with one row the pane's close does what it would, so it has none; with more, each row has one at its
+    // right end, under the pane's (`#placeRowTools`). A phone has no pane buttons, and keeps it beside the name.
+    const offApart = !isPhone(), rowOff = offApart && on.length > 1;
     on.forEach((r, k) => {
       const left = on.length - 1 - k, rowH = left === 0 ? Math.max(least, ph - top) : Math.max(least, Math.min(ph - top - left * least, Math.round(ph * r.height / total)));
       const kept = this.#held.get(r.id), held = kept && this.#fresh(kept) ? kept : undefined;
@@ -699,7 +743,7 @@ export class ScriptPane extends TimePane {
         return w;
       };
       // The row's buttons stand after its name's plate (the name is drawn last, over the plots, so it is measured where it is drawn).
-      const tools = (w: number): void => { places.push({ id: r.id, x: Math.min(pw - 44, 2 + w + 4), y: top + 1 }); };
+      const tools = (w: number): void => { places.push({ id: r.id, x: Math.min(pw - 44, 2 + w + 4), y: top + 1, ...(offApart ? { off: rowOff ? { x: this.w - 22, y: top + 2 } : null } : {}) }); };
       if (r.hidden) tools(label(`${r.name} · ${t('hidden')}`, p.muted, top + 9));
       else if (!held) tools(label(`${r.name} · ${t('running…')}`, p.muted, top + 9));
       else if (!held.result.ok) { tools(label(r.name, p.text, top + 9)); ctx.save(); ctx.beginPath(); ctx.rect(0, top, pw, rowH); ctx.clip(); label(errorText(held.result.error), p.ask, top + 24); ctx.restore(); }
@@ -710,17 +754,27 @@ export class ScriptPane extends TimePane {
         if (this.#current(held, tf) && to >= from) {
           const scales = scalesOf(res.plots, r.options, from, to);
           const frame: Frame = { ctx, x: tt => v.xOf(tt, pw), barW: Math.max(1, v.xOf(tf, pw) - v.xOf(0, pw)), tf, time, from, to, top, height: rowH, w: pw, color: p.text, up: p.candleUp, down: p.candleDown };
+          const tags: { ask: TagAsk; plot: PlotOut }[] = [];
           res.plots.forEach((plot, j) => {
             const s = scales.get(scaleIdOf(plot, r.options)), fallback = fallbacks[j % fallbacks.length]!;
-            if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#rowMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); } } : {}) }, plot, s);
+            if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#rowMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); }, tags: ask => { tags.push({ ask, plot }); } } : {}) }, plot, s);
           });
-          // The tags of the row's first scale at its right edge: the highest and the lowest in view.
+          // The row's tags (`shape=tag`) at its right edge, next to the plot where the room past it holds them, else over the scale and the
+          // plot's end; under the row's own switch-off button where it has one.
+          const asks = tags.map(x => x.ask), boxes = layoutTags(ctx, asks, { left: pw + 6, right: this.w - 2, top: top + (rowOff ? 20 : 2), bottom: top + rowH - 2 });
+          // The highest and the lowest in view of the row's first scale, at its right edge, where no tag stands on them.
           const first = scales.values().next().value;
           if (first) {
             ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'right'; ctx.fillStyle = p.muted;
-            ctx.fillText(shortNumber(first.max), this.w - 4, Math.max(top + 8, yOf(first.max, first, top, rowH)));
-            ctx.fillText(shortNumber(first.min), this.w - 4, Math.min(top + rowH - 8, yOf(first.min, first, top, rowH)));
+            const number = (value: number, y: number): void => {
+              const text = shortNumber(value), w = ctx.measureText(text).width;
+              if (!boxes.some(b => b && b.x < this.w - 4 && b.x + b.w > this.w - 4 - w && b.y < y + 6 && b.y + b.h > y - 6)) ctx.fillText(text, this.w - 4, y);
+            };
+            number(first.max, Math.max(top + (rowOff ? 26 : 8), yOf(first.max, first, top, rowH)));
+            number(first.min, Math.min(top + rowH - 8, yOf(first.min, first, top, rowH)));
           }
+          drawTags(ctx, asks, boxes, top, top + rowH);
+          boxes.forEach((b, k) => { if (b) this.#rowTags.push({ box: { x: b.x, y: b.y, w: b.w, h: b.h, i: asks[k]!.i }, id: r.id, name: r.name, plot: tags[k]!.plot, color: asks[k]!.color }); });
           if (hv) this.#cardLines(card, r, res, time, tf, hv.t, shown);
         }
         const notes = this.warningsOf(r.id).length + res.warnings.length;
@@ -729,10 +783,32 @@ export class ScriptPane extends TimePane {
       top += rowH;
     });
     this.#placeRowTools(places);
-    // A mark under the pointer says what it is, in place of the candle's readout.
-    const marked = hv?.source === 'script' ? markAt(this.#rowMarks, v.xOf(hv.t, pw), hv.y, hv.touch ? MARK_SLOP_TOUCH : MARK_SLOP) : null;
+    // A tag under the pointer, then a mark, says what it is, in place of the candle's readout.
+    const tagged = this.#tagAt(), marked = tagged ?? (hv?.source === 'script' ? markAt(this.#rowMarks, v.xOf(hv.t, pw), hv.y, hv.touch ? MARK_SLOP_TOUCH : MARK_SLOP) : null);
     if (marked) this.#lines = markLines(marked, 'text');
     else if (card.length) this.#lines = card;
+  }
+
+  /** The pointer where the pane last saw it, in the plot's coordinates (a finger's, where a tap left it), or null. */
+  #pointerAt(): { x: number; y: number } | null {
+    const at = this.pointer; if (!at) return null;
+    const box = this.canvas.getBoundingClientRect();
+    return { x: at.x - box.left - leftGutter(this.store.state), y: at.y - box.top };
+  }
+  /** The tag under the pointer, as the rows were last drawn (a finger's a little wider). */
+  #tagAt(p = this.#pointerAt()): DrawnMark | null {
+    return p ? markAt(this.#rowTags, p.x, p.y, this.store.state.hover?.touch ? MARK_SLOP_TOUCH : MARK_SLOP) : null;
+  }
+  /** The rows' tags answer the pointer themselves, past the plot as over it: the shared time is left alone over one. */
+  protected override ownsPoint(x: number): boolean { const p = this.#pointerAt(); return !!p && this.#tagAt({ x, y: p.y }) !== null; }
+  /** A tap on a tag shows what it says (another tap elsewhere goes on as a tap does). */
+  protected override claimTap(p: { x: number; y: number }): boolean {
+    const tag = markAt(this.#rowTags, p.x, p.y, MARK_SLOP_TOUCH); if (!tag) return false;
+    // The pointer stands in the tag's middle, where the next drawing finds it without a finger's slop.
+    const box = this.canvas.getBoundingClientRect();
+    this.pointer = { x: box.left + leftGutter(this.store.state) + tag.box.x + tag.box.w / 2, y: box.top + tag.box.y + tag.box.h / 2 };
+    if (this.store.state.hover) this.store.set({ hover: null }); else this.invalidate();
+    return true;
   }
 
   /** Called when what the scripts draw on the map changed (the map draws again). */
@@ -781,6 +857,9 @@ export class ScriptPane extends TimePane {
     const fallbacks = [p.vwap, p.poc, p.level, p.accent, p.bid, p.ask];
     this.#mapMarks = [];
     this.#mapDrawn = { pw, ph, scripts: new Map() };
+    // The tags of every script on the map (`shape=tag`), stood together at the plot's right edge once all are drawn: the map's scale and its
+    // columns past the plot are the map's own.
+    const tags: { ask: TagAsk; plot: PlotOut; id: string; name: string }[] = [];
     for (const r of this.#records) {
       if (!r.on || r.hidden || r.place !== 'map') continue;
       const held = this.#held.get(r.id);
@@ -793,9 +872,12 @@ export class ScriptPane extends TimePane {
       const frame: Frame = { ctx, x: tt => v.xOf(tt, pw), barW: Math.max(1, v.xOf(tf, pw) - v.xOf(0, pw)), tf, time, from, to, top: 0, height: ph, w: pw, color: p.text, up: p.candleUp, down: p.candleDown };
       res.plots.forEach((plot, j) => {
         const s = scales.get(scaleIdOf(plot, r.options)), fallback = fallbacks[j % fallbacks.length]!;
-        if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#mapMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); } } : {}) }, plot, s);
+        if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#mapMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); }, tags: ask => { tags.push({ ask: !ask.named && scaleIdOf(plot, r.options) === 'right' ? { ...ask, text: fmtPrice(ask.value) } : ask, plot, id: r.id, name: r.name }); } } : {}) }, plot, s);
       });
     }
+    const asks = tags.map(x => x.ask), boxes = layoutTags(ctx, asks, { left: Infinity, right: pw - 2, top: 2, bottom: ph - 2 });
+    drawTags(ctx, asks, boxes, 0, ph);
+    boxes.forEach((b, k) => { if (b) this.#mapMarks.push({ box: { x: b.x, y: b.y, w: b.w, h: b.h, i: asks[k]!.i }, id: tags[k]!.id, name: tags[k]!.name, plot: tags[k]!.plot, color: asks[k]!.color }); });
   }
 
   // ---- Previews: a row of the Scripts panel's list, pointed at, shows its script on the map -----------------------------------------------
@@ -1059,7 +1141,11 @@ export class ScriptPane extends TimePane {
       // In a band each scale is fitted to what is in view, as in a row; on the map the price scale is the map's.
       const scales = scalesOf(band ? res.plots : res.plots.filter(pl => scaleIdOf(pl, target.options) !== 'right'), target.options, from, to);
       if (!band) scales.set('right', { min: v.p0, max: v.p1, margins: { top: 0, bottom: 0 } });
-      res.plots.forEach((plot, j) => { const s = scales.get(scaleIdOf(plot, target.options)); if (s) paintPlot({ ...frame, color: fallbacks[j % fallbacks.length]! }, plot, s); });
+      const asks: TagAsk[] = [];
+      res.plots.forEach((plot, j) => { const s = scales.get(scaleIdOf(plot, target.options)); if (s) paintPlot({ ...frame, color: fallbacks[j % fallbacks.length]!, tags: ask => { asks.push(!band && !ask.named && scaleIdOf(plot, target.options) === 'right' ? { ...ask, text: fmtPrice(ask.value) } : ask); } }, plot, s); });
+      // Its tags at the right edge, as where it is drawn for good.
+      const area = { left: Infinity, right: pw - 2, top: top + 2, bottom: top + (band || ph) - 2 };
+      drawTags(ctx, asks, layoutTags(ctx, asks, area), top, top + (band || ph));
       // A band's highest and lowest in view at its right edge, as a row has them.
       const first = band ? scales.values().next().value : undefined;
       if (first) {

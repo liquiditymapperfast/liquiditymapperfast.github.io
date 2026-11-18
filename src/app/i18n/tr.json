@@ -1781,6 +1781,11 @@
  "Your own indicators, written as scripts over the candles and the taker flow: on the map, or in rows of their own under it.": "Mumlar ve taker akışı üzerine betik olarak yazılan kendi göstergeleriniz: haritada ya da altında kendi satırlarında.",
  "“{name}” stopped with an error: open Scripts to see it.": "“{name}” bir hatayla durdu: görmek için Betikler’i açın.",
  "Switch this script off (it stays in Scripts…)": "Bu betiği kapat (Betikler… içinde kalır)",
+ "Switch off the scripts in this panel (they stay in Scripts…)": "Bu bölmedeki betikleri kapat (Betikler… içinde kalırlar)",
+ "Switched off {n} scripts in this panel.": {
+  "one": "Bu bölmedeki {n} betik kapatıldı.",
+  "other": "Bu bölmedeki {n} betik kapatıldı."
+ },
  "Stochastic heat map": "Stokastik ısı haritası",
  "Buyer and seller VWAPs": "Alıcı ve satıcı VWAP’ları",
  "Volume anomalies": "Hacim anomalileri",

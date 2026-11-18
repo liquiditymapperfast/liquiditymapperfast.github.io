@@ -33,8 +33,13 @@ function write(saved: Saved): void { try { window.localStorage.setItem(KEY, JSON
 
 export interface LayoutPane {
   id: string; root: HTMLElement; /** Initial height in px for fixed-height panes; the flexible pane has none. */ height?: number; min?: number; head?: HTMLElement | null;
-  /** False for a pane whose switch is more than the pane's (the Scripts pane: its switch is the Scripts feature, which draws on the map too): it has no close button. */
+  /** False for a pane with no close button. */
   closable?: boolean;
+  /**
+   * What the close button (and its menu's item) says, for a pane whose close is not its switch: the Scripts pane's switches off the scripts
+   * drawn in it, as its switch is the Scripts feature, which draws on the map too (the page's `onClose` does it). Else "Hide this panel".
+   */
+  closeLabel?: string;
 }
 /**
  * A pane that stands beside the map: its header (the controls it has), and the name its edge tab and its buttons give it. A pane with `views`
@@ -43,7 +48,7 @@ export interface LayoutPane {
 export interface SidePane { id: SidePaneId; root: HTMLElement; head: HTMLElement; title: string; views?: readonly { id: string; title: string }[] }
 
 /** A pane that can be moved by its header: a side pane or a pane under the map. */
-interface Mover { id: string; kind: 'side' | 'strip'; root: HTMLElement; head: HTMLElement; title: () => string; closable: boolean }
+interface Mover { id: string; kind: 'side' | 'strip'; root: HTMLElement; head: HTMLElement; title: () => string; closable: boolean; closeLabel?: string }
 
 /** The width of a column's splitter (px; the stylesheet's `.splitter` says the same). */
 const SPLIT_W = 6;
@@ -115,7 +120,7 @@ export class Layout {
     for (const pane of this.#panes) {
       if (pane.height !== undefined) this.#setHeight(pane, this.#saved.heights?.[pane.id] ?? pane.height);
       this.chart.append(pane.root);
-      if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id, closable: pane.closable !== false });
+      if (pane.head) this.#mover({ id: pane.id, kind: 'strip', root: pane.root, head: pane.head, title: () => pane.head!.querySelector('strong')?.textContent ?? pane.id, closable: pane.closable !== false, ...(pane.closeLabel ? { closeLabel: pane.closeLabel } : {}) });
       // A double click on a pane under the map maximizes it, or gives the column back: on its plot or its header, never on one of its controls,
       // and not from a finger (a double tap is the pane's own gesture). The map has its own (heat-pane.ts): its axes recentre it.
       if (pane.height !== undefined) {
@@ -469,7 +474,8 @@ export class Layout {
   #mover(m: Mover): void {
     this.#movers.set(m.id, m);
     const more = el('button', { type: 'button', class: 'pane-more', tip: t('Move, resize or hide this panel'), ariaLabel: t('Move, resize or hide this panel'), onclick: () => this.#menu(m, more) });
-    const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: t('Hide this panel'), ariaLabel: t('Hide this panel'), onclick: () => this.onClose(m.id) });
+    const closeLabel = m.closeLabel ?? t('Hide this panel');
+    const close = el('button', { type: 'button', class: 'panel-x pane-x', tip: closeLabel, ariaLabel: closeLabel, onclick: () => this.onClose(m.id) });
     close.dataset.pane = m.id;
     // A pane under the map can be maximized over the map's column (TradingView's button; a double click on the pane does the same).
     const max = m.kind === 'strip' ? el('button', { type: 'button', class: 'pane-max', onclick: () => this.toggleMax(m.id) }) : null;
@@ -510,7 +516,7 @@ export class Layout {
       if (i >= 0 && i < fixed.length - 1) items.push({ id: 'down', label: t('Move down') });
     }
     items.push({ id: 'reset', label: t('Reset the size') });
-    if (m.closable) items.push({ id: 'hide', label: t('Hide this panel') });
+    if (m.closable) items.push({ id: 'hide', label: m.closeLabel ?? t('Hide this panel') });
     openMenu(anchor, items, '', { onPreview: () => {}, onSelect: action => this.#act(m, action) });
   }
 

@@ -1823,6 +1823,13 @@
  "Your own indicators, written as scripts over the candles and the taker flow: on the map, or in rows of their own under it.": "Ваши собственные индикаторы, написанные скриптами по свечам и потоку тейкеров: на карте или в отдельных строках под ней.",
  "“{name}” stopped with an error: open Scripts to see it.": "«{name}» остановлен с ошибкой: откройте Скрипты, чтобы её увидеть.",
  "Switch this script off (it stays in Scripts…)": "Выключить этот скрипт (он останется в «Скрипты…»)",
+ "Switch off the scripts in this panel (they stay in Scripts…)": "Выключить скрипты на этой панели (они останутся в «Скрипты…»)",
+ "Switched off {n} scripts in this panel.": {
+  "few": "{n} скрипта на этой панели выключены.",
+  "many": "{n} скриптов на этой панели выключены.",
+  "one": "{n} скрипт на этой панели выключен.",
+  "other": "{n} скрипта на этой панели выключены."
+ },
  "Stochastic heat map": "Тепловая карта стохастика",
  "Buyer and seller VWAPs": "VWAP покупателей и продавцов",
  "Volume anomalies": "Аномалии объёма",

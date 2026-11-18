@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyze, createRunner, runScript } from '../src/app/script/lang/engine.ts';
 import type { BarInputs } from '../src/app/script/inputs.ts';
 import { MARK_TEXT, MARK_TIP, MAX_ALERTS, type PlotOut, type ScriptResult } from '../src/app/script/protocol.ts';
-import { markBox, markPlace, markPosition, markShape, paintPlot, textOn, type Frame, type MarkBox } from '../src/app/script/paint.ts';
+import { TAG_GAP, TAG_H, drawTags, layoutTags, markBox, markPlace, markPosition, markShape, paintPlot, placeTags, textOn, type Frame, type MarkBox, type TagAsk } from '../src/app/script/paint.ts';
 import { markAt, markLines, markText, type DrawnMark } from '../src/app/script/marks.ts';
 import { ALERT_FRESH_MS, AlertNews, fingerprint } from '../src/app/script/alert-news.ts';
 import { scriptNotes } from '../src/app/sound/rules.ts';
@@ -245,4 +245,58 @@ test('a plate moved inside the row at its right edge is judged where it stands: 
   paintPlot(f, { kind: 'mark', title: '', style: { shape: 'label', position: 'above' }, fields: { value: Float64Array.from([NaN, NaN, 50, NaN, 50]) }, colors: null, texts: ['', '', 'abcdefghij', '', 'abcdefghij'], tips: null }, scale);
   assert.equal(rec.texts.length, 1, 'one plate written, the other a dot');
   assert.ok(boxes.length === 2 && boxes[1]!.x >= boxes[0]!.x + boxes[0]!.w, `no overlap: ${JSON.stringify(boxes)}`);
+});
+
+test('tags stand at their values, and those that would touch are moved apart as a block, in their values\' order, inside the row', () => {
+  const h = TAG_H, g = TAG_GAP;
+  // Far apart: each centred on its value.
+  assert.deepEqual(placeTags([20, 80], h, 0, 100), [Math.round(20 - h / 2), Math.round(80 - h / 2)]);
+  // Two values 4 px apart: a block of two centred on their mean, the higher value's tag above.
+  const [a, b] = placeTags([52, 48], h, 0, 100) as [number, number];
+  assert.equal(b + h + g, a, 'the second value is higher on the screen: its tag is above, touching the gap');
+  assert.ok(Math.abs((b + a + h) / 2 - 50) <= 1, 'the block is centred on the values');
+  // The same value twice: the order they were asked in.
+  const [c, d] = placeTags([50, 50], h, 0, 100) as [number, number];
+  assert.ok(c < d, 'ties keep their order');
+  // At the row's edges: kept inside it.
+  assert.deepEqual(placeTags([1, 2], h, 0, 100), [0, h + g]);
+  assert.deepEqual(placeTags([99], h, 0, 100), [100 - h]);
+  // A block pushed into the one above joins it.
+  const three = placeTags([10, 30, 40], h, 0, 100) as number[];
+  for (let k = 1; k < 3; k++) assert.ok(three[k]! >= three[k - 1]! + h + g, `no overlap: ${three}`);
+  // A row too short: the last asked for left out; a value that is not a number asks for none.
+  assert.deepEqual(placeTags([10, 20, 30], h, 0, 2 * h + g), [0, h + g, null]);
+  assert.deepEqual(placeTags([NaN, 50], h, 0, 100), [null, Math.round(50 - h / 2)]);
+});
+
+test('a tag plot tells the pane its newest point in view, and draws a label there where the pane takes no tags', () => {
+  const plot: PlotOut = { kind: 'mark', title: '', style: { shape: 'tag' }, fields: { value: Float64Array.from([10, NaN, 60, 40, NaN]) }, colors: null, texts: ['a', '', 'b', '', ''], tips: null };
+  const rec = recorder(), asked: TagAsk[] = [];
+  paintPlot({ ...frame(rec.ctx, 5, 20), tags: t => asked.push(t) }, plot, scale);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0]!.i, 3, 'the newest point that is a number');
+  assert.equal(asked[0]!.y, 60);
+  assert.equal(asked[0]!.text, '40.00', 'a point with no text names its value');
+  assert.equal(asked[0]!.named, false); assert.equal(asked[0]!.value, 40);
+  assert.deepEqual(rec.texts, [], 'nothing drawn at the candle');
+  const scrolled: TagAsk[] = [];
+  paintPlot({ ...frame(recorder().ctx, 5, 20), to: 2, tags: t => scrolled.push(t) }, plot, scale);
+  assert.equal(scrolled[0]!.text, 'b', 'the newest point in view');
+  const alone = recorder(), boxes: MarkBox[] = [];
+  paintPlot(frame(alone.ctx, 5, 20, b => boxes.push(b)), plot, scale);
+  assert.deepEqual(alone.texts, ['40.00'], 'without the pane\'s tags, one label at the newest point');
+  assert.deepEqual(boxes.map(b => b.i), [3]);
+});
+
+test('tags line up next to the plot where the room past it holds the widest, else at the right edge; a moved tag has a leader', () => {
+  const rec = recorder();
+  const asks: TagAsk[] = [{ y: 50, text: 'Spot +$1M', named: true, color: '#2e9bff', textColor: '#fff', i: 9, value: 1 }, { y: 51, text: 'Perp −$2M', named: true, color: '#ff9f1c', textColor: '#111', i: 9, value: -2 }];
+  const roomy = layoutTags(rec.ctx, asks, { left: 806, right: 1_000, top: 0, bottom: 100 });
+  assert.ok(roomy.every(b => b && b.x === 806), 'next to the plot');
+  const tight = layoutTags(rec.ctx, asks, { left: 806, right: 860, top: 0, bottom: 100 });
+  assert.ok(tight.every(b => b && b.x + b.w === 860), 'right-aligned at the edge, over the plot\'s end');
+  assert.ok(tight[0]!.y + TAG_H <= tight[1]!.y, 'the higher value above, apart');
+  drawTags(rec.ctx, asks, roomy, 0, 100);
+  assert.deepEqual(rec.texts, ['Spot +$1M', 'Perp −$2M']);
+  assert.ok(rec.segments.some(([x0, y0]) => x0 === 806 - 7 && Math.abs(y0 - 50.5) < 1), 'a leader from the moved tag\'s value');
 });

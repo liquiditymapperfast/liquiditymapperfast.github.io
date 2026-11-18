@@ -117,4 +117,57 @@ perpDelta = source(vbuy, type=perp) - source(vsell, type=perp)
 line(cum(spotDelta), title=Spot, color=spotColor)
 line(cum(perpDelta), title=Perp, color=perpColor, priceScaleId=perp)
 ` };
-export const PREVIOUS_CVD_SOURCES: readonly string[] = [PLAIN_CVD.source];
+/**
+ * The labelled one as the page wrote it into a browser from 2026-11-11 to 2026-11-18 (master edf8da37 to 0bb64d85): its labels plates at the
+ * lines' newest candle, above and below them, where crossing lines put them over each other. Kept as written, never edited.
+ */
+const LABELLED_CVD = { source: `// Spot and perpetual CVD: the cumulative delta (what was bought at market less what was sold) of the spot markets and of
+// the perpetuals, apart, each on a scale of its own. A label at each line's newest value says which it is, how far it has
+// moved over the last candles (the lookback) and where it is heading: rising, falling or flat.
+spotColor = option(type=color, default=#2e9bff, label=Spot)
+perpColor = option(type=color, default=#ff9f1c, label=Perpetual)
+trendLength = option(type=number, default=20, min=2, max=500, step=1, label="Lookback (candles)")
+showLabels = option(type=checkbox, default=true, label="Labels")
+
+spotDelta = source(vbuy, type=spot) - source(vsell, type=spot)
+perpDelta = source(vbuy, type=perp) - source(vsell, type=perp)
+spotCvd = cum(spotDelta)
+perpCvd = cum(perpDelta)
+
+// The move: how far each line has come over the lookback, which its label says. The path: how far it travelled candle
+// by candle to get there. A line that went straight has a move as long as its path; one that went back and forth, a
+// long path and a short move. A move under a quarter of its path counts as flat.
+spotMove = spotCvd - last(spotCvd, trendLength + 1)
+perpMove = perpCvd - last(perpCvd, trendLength + 1)
+spotPath = sum(Math.abs(nz(spotDelta)), trendLength)
+perpPath = sum(Math.abs(nz(perpDelta)), trendLength)
+
+// Dollars, short: +$12.3M, -$850K.
+function money(x) {
+  var a = Math.abs(x), sign = x < 0 ? "-" : "+"
+  if (a >= 1e12) return sign + "$" + (a / 1e12).toFixed(2) + "T"
+  if (a >= 1e9) return sign + "$" + (a / 1e9).toFixed(2) + "B"
+  if (a >= 1e6) return sign + "$" + (a / 1e6).toFixed(1) + "M"
+  if (a >= 1e3) return sign + "$" + (a / 1e3).toFixed(0) + "K"
+  return sign + "$" + a.toFixed(0)
+}
+function trendOf(move, path) {
+  if (!(path > 0) || Math.abs(move) < 0.25 * path) return "flat"
+  return move > 0 ? "rising" : "falling"
+}
+function arrowOf(word) { return word == "rising" ? "▲" : word == "falling" ? "▼" : "▶" }
+function tipOf(name, cvd, move, path, word) {
+  var straight = path > 0 ? Math.round(100 * Math.abs(move) / path) : 0
+  return name + " CVD over the last " + trendLength + " candles: " + money(move) + ", " + word + "\\nIt travelled " + money(path).slice(1) + " candle by candle, so the move is " + straight + " % straight (under 25 % counts as flat).\\nSince the first candle read: " + money(cvd)
+}
+
+line(spotCvd, title=Spot, color=spotColor)
+line(perpCvd, title=Perp, color=perpColor, priceScaleId=perp)
+
+// The labels stand on the newest candle only (renderer.last), under way or closed: a value that is not a number draws none.
+var newest = showLabels && renderer.last
+var spotWord = trendOf(spotMove, spotPath), perpWord = trendOf(perpMove, perpPath)
+mark({value: newest ? spotCvd : NaN, text: "Spot " + money(spotMove) + " " + arrowOf(spotWord) + " " + spotWord, tip: tipOf("Spot", spotCvd, spotMove, spotPath, spotWord), color: spotColor}, title="Spot label", shape=label, position=above)
+mark({value: newest ? perpCvd : NaN, text: "Perp " + money(perpMove) + " " + arrowOf(perpWord) + " " + perpWord, tip: tipOf("Perp", perpCvd, perpMove, perpPath, perpWord), color: perpColor}, title="Perp label", shape=label, position=below, priceScaleId=perp)
+` };
+export const PREVIOUS_CVD_SOURCES: readonly string[] = [PLAIN_CVD.source, LABELLED_CVD.source];

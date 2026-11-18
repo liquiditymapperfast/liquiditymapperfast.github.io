@@ -120,11 +120,12 @@ if (colorCandles) $price.color = shade(average)
 /**
  * The cumulative delta of the spot markets and of the perpetuals, apart, with a label at each line's newest value: how far it moved over the
  * lookback and whether that move was straight enough to call rising or falling (a user's script, 2026-11-11, from the example of this name;
- * `renderer.last` keeps its labels when the newest candle has closed, `$` and a Labels switch added).
+ * `renderer.last` keeps its labels when the newest candle has closed, `$` and a Labels switch added). Its labels are tags at the right edge
+ * since 2026-11-18 (Karl: plates at the lines' ends covered each other where the lines crossed).
  */
 export const CVD_SOURCE = `// Spot and perpetual CVD: the cumulative delta (what was bought at market less what was sold) of the spot markets and of
-// the perpetuals, apart, each on a scale of its own. A label at each line's newest value says which it is, how far it has
-// moved over the last candles (the lookback) and where it is heading: rising, falling or flat.
+// the perpetuals, apart, each on a scale of its own. A tag at the right edge, at each line's newest value and in its colour,
+// says which it is, how far it has moved over the last candles (the lookback) and where it is heading: rising, falling or flat.
 spotColor = option(type=color, default=#2e9bff, label=Spot)
 perpColor = option(type=color, default=#ff9f1c, label=Perpetual)
 trendLength = option(type=number, default=20, min=2, max=500, step=1, label="Lookback (candles)")
@@ -165,11 +166,13 @@ function tipOf(name, cvd, move, path, word) {
 line(spotCvd, title=Spot, color=spotColor)
 line(perpCvd, title=Perp, color=perpColor, priceScaleId=perp)
 
-// The labels stand on the newest candle only (renderer.last), under way or closed: a value that is not a number draws none.
+// The labels are tags (shape=tag): each stands at the right edge at its line's newest value, and tags that would cover each
+// other are moved apart, in the lines' order, with a short leader to the value. They are given on the newest candle only
+// (renderer.last), under way or closed: a value that is not a number draws none.
 var newest = showLabels && renderer.last
 var spotWord = trendOf(spotMove, spotPath), perpWord = trendOf(perpMove, perpPath)
-mark({value: newest ? spotCvd : NaN, text: "Spot " + money(spotMove) + " " + arrowOf(spotWord) + " " + spotWord, tip: tipOf("Spot", spotCvd, spotMove, spotPath, spotWord), color: spotColor}, title="Spot label", shape=label, position=above)
-mark({value: newest ? perpCvd : NaN, text: "Perp " + money(perpMove) + " " + arrowOf(perpWord) + " " + perpWord, tip: tipOf("Perp", perpCvd, perpMove, perpPath, perpWord), color: perpColor}, title="Perp label", shape=label, position=below, priceScaleId=perp)
+mark({value: newest ? spotCvd : NaN, text: "Spot " + money(spotMove) + " " + arrowOf(spotWord) + " " + spotWord, tip: tipOf("Spot", spotCvd, spotMove, spotPath, spotWord), color: spotColor}, title="Spot label", shape=tag)
+mark({value: newest ? perpCvd : NaN, text: "Perp " + money(perpMove) + " " + arrowOf(perpWord) + " " + perpWord, tip: tipOf("Perp", perpCvd, perpMove, perpPath, perpWord), color: perpColor}, title="Perp label", shape=tag, priceScaleId=perp)
 `;
 
 /**
