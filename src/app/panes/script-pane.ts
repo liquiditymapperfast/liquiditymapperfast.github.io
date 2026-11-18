@@ -809,10 +809,12 @@ export class ScriptPane extends TimePane {
   protected override ownsPoint(x: number): boolean { const p = this.#pointerAt(); return !!p && this.#tagAt({ x, y: p.y }) !== null; }
   /**
    * A tap on a tag shows what it says, pinned in the tag's middle (where the next drawing finds it without a finger's slop) as a pin of the
-   * pane's: a tap on it again or near it, or the pane hidden, lets it go (`pinPoint`).
+   * pane's: the same tag tapped again, or the pane hidden, lets it go; another tag, even one stacked against it, takes its place.
    */
   protected override claimTap(p: { x: number; y: number }): boolean {
     const tag = markNearest(this.#rowTags, p.x, p.y, MARK_SLOP_TOUCH); if (!tag) return false;
+    const held = this.#tagAt();
+    if (held && held.plot === tag.plot && held.box.i === tag.box.i) { this.unpinPoint(); return true; }
     this.pinPoint({ x: tag.box.x + tag.box.w / 2, y: tag.box.y + tag.box.h / 2 });
     return true;
   }
