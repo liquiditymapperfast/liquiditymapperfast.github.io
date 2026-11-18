@@ -103,6 +103,30 @@ test('static UI routing keeps traversal, missing files, and directories blocked'
   } finally { fixture.close(); }
 });
 
+test('an address ending in a slash serves that folder\'s index.html (the Plus and legal pages), and still never leaves the root', async () => {
+  const fixture = assetFixture();
+  try {
+    fs.writeFileSync(path.join(fixture.roots.builtRoot, 'index.html'), '<p>map</p>');
+    for (const folder of ['plus', 'privacy']) {
+      fs.mkdirSync(path.join(fixture.roots.builtRoot, folder));
+      fs.writeFileSync(path.join(fixture.roots.builtRoot, folder, 'index.html'), `<p>${folder} page</p>`);
+    }
+    fs.writeFileSync(path.join(fixture.directory, 'index.html'), 'private sibling');
+    const plus = await uiResponse('/plus/', fixture.roots);
+    assert.equal(plus.statusCode, 200);
+    assert.equal(plus.headers['content-type'], 'text/html; charset=utf-8');
+    assert.equal(plus.body, '<p>plus page</p>');
+    assert.equal((await uiResponse('/privacy/', fixture.roots)).body, '<p>privacy page</p>');
+    assert.equal((await uiResponse('/plus/index.html', fixture.roots)).body, '<p>plus page</p>', 'the file itself as before');
+    assert.equal((await uiResponse('/', fixture.roots)).body, '<p>map</p>', 'the root as before');
+    for (const pathname of ['/../', '/plus/../../', '/terms/', '/plus']) {
+      const response = await uiResponse(pathname, fixture.roots);
+      assert.equal(response.statusCode, 404, pathname);
+      assert.doesNotMatch(response.body, /private sibling/);
+    }
+  } finally { fixture.close(); }
+});
+
 test('API health dispatch remains usable on an unlistening server without UI initialization', async () => {
   const app = createLocalServer({ history: new HistoryStore({ filePath: ':memory:' }), quota: new QuotaLedger({ filePath: ':memory:' }), persistFixture: false });
   const socket = new Socket();

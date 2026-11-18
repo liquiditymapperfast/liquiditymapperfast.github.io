@@ -425,7 +425,9 @@ export function sendUiStaticResponse(res: UiStaticResponse, pathname: string, {
   res.writeHead(200, { 'content-type': contentTypes[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' });
   fs.createReadStream(file).pipe(res);
 }
-function safeStaticPath(root: string, pathname: string) { const requested = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, ''); const resolved = path.resolve(root, requested); const relative = path.relative(root, resolved); return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? resolved : null; }
+// An address ending in '/' is that folder's index.html (`/plus/`, `/privacy/`: the site's other pages, as GitHub Pages serves them), under the
+// same guard against leaving the root.
+function safeStaticPath(root: string, pathname: string) { const requested = `${pathname.replace(/^\/+/, '')}${pathname.endsWith('/') ? 'index.html' : ''}`; const resolved = path.resolve(root, requested); const relative = path.relative(root, resolved); return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? resolved : null; }
 function providerKindFor(kind: string) {
   const value = String(kind || 'manual');
   return ({ liquidity: 'liquidity', liquidation: 'liquidation', stops: 'stopLoss', 'take-profits': 'takeProfit' })[value] ?? value;
