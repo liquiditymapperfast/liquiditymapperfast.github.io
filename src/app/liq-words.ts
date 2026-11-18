@@ -65,7 +65,7 @@ export const takesLeftOut = (): string => t('Take profits not included');
 
 /**
  * The lines under the liquidation column's button, as part of its caption: whose liquidations, where a group is shown and the button had no
- * room for it (`groupOnButton` false: at 11 px the column's 128 px hold "Liquidations" but not "Liquidations · Proven"), then that the take
+ * room for it (`groupOnButton` false: at 11 px the column's 128 px hold "Liquidations" but not "Liquidations · Profitable"), then that the take
  * profits are not in the curve while they show.
  */
 export function columnNotes(view: LiqView, groupOnButton: boolean, takesShown: boolean): string[] {
@@ -76,7 +76,7 @@ export const curveSentence = (): string => t('The curve totals the selected liqu
 
 /**
  * Why nothing of the view is drawn (the column, the Liq tab), or '' when it is: loading, not read, out of date, or not in the snapshot (no
- * proven list, no groups or stops there yet). A view of both says which part is missing.
+ * groups or stops there yet). A view of both says which part is missing.
  */
 export function liqWhy(src: Pick<LiqLevelsSource, 'state' | 'view' | 'levels' | 'missing' | 'blame'>, newest: number | null): string {
   const orders = src.blame() === 'orders';
@@ -87,7 +87,7 @@ export function liqWhy(src: Pick<LiqLevelsSource, 'state' | 'view' | 'levels' | 
     case 'stale': return newest !== null ? t('Liquidation levels are out of date: the newest are from {time}.', { time: clock(newest) }) : t('Liquidation levels are loading.');
     case 'missing': {
       const why = src.missing();
-      return why === 'proven' ? t('No proven traders list for this snapshot.') : why === 'groups' ? t('No trader groups for this snapshot yet.') : t('Stop levels are not ready yet.');
+      return why === 'groups' ? t('No trader groups for this snapshot yet.') : t('Stop levels are not ready yet.');
     }
     default: return orders ? t('Stop levels are loading.') : t('Liquidation levels are loading.');
   }
@@ -102,11 +102,9 @@ export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOf
   const head = view.kind === 'stops' ? t('Hyperliquid stop orders at {time} · Powered by HyperTracker', { time })
     : view.kind === 'both'
       ? group === 'profitable' ? t('Profitable traders\' liquidations and all stops at {time} · Powered by HyperTracker', { time })
-        : group === 'proven' ? t('Proven traders\' liquidations and all stops at {time} · Powered by HyperTracker', { time })
-          : t('Hyperliquid liquidations and stops at {time} · Powered by HyperTracker', { time })
+        : t('Hyperliquid liquidations and stops at {time} · Powered by HyperTracker', { time })
       : group === 'profitable' ? t('Profitable traders\' liquidation levels at {time} · Powered by HyperTracker', { time })
-        : group === 'proven' ? t('Proven traders\' liquidation levels at {time} · Powered by HyperTracker', { time })
-          : t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time });
+        : t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time });
   const parts = [head], orders = src.asOfs().orders;
   // The orders come from the newest snapshot an order file was read with: said when that is well behind the liquidations (or old).
   const old = orders !== null && view.kind !== 'stops' && src.ordersOld();

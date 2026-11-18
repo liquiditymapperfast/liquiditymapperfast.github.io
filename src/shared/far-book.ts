@@ -114,7 +114,7 @@ export class FarPoller {
     this.#busy = true;
     // One deadline for the whole read, body included, and the read given up a second after it whatever it does: a read that never
     // settled would keep `#busy` set for good, so no further read was made (the live server went hours without OKX's and Aster's deep
-    // books, 2026-10-15, while a fresh one read them; the cause was not proven). The request is aborted however the read ends, so an
+    // books, 2026-10-15, while a fresh one read them; the cause was never established). The request is aborted however the read ends, so an
     // error answer whose body is never read does not hold its connection.
     const abort = new AbortController();
     let deadline: ReturnType<typeof setTimeout> | undefined, giveUp: ReturnType<typeof setTimeout> | undefined, end: (v: null) => void = () => {};

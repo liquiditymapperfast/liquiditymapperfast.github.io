@@ -6,12 +6,12 @@
 /**
  * What the levels show (one choice for the whole page: the map's stripe and column, the phone's Liq tab, the Depth pane's history): the
  * liquidation levels, the stop orders, or both added together; the take profits as a layer of their own beside them; and whose liquidations
- * (every position, the profitable traders', or the proven traders'). Everything but liquidations of all traders without take profits is Plus.
+ * (every position, or HyperTracker's profitable traders'). Everything but liquidations of all traders without take profits is Plus.
  */
 export type LiqKind = 'liq' | 'stops' | 'both';
-export type LiqGroup = 'all' | 'profitable' | 'proven';
+export type LiqGroup = 'all' | 'profitable';
 export const LIQ_KINDS: readonly LiqKind[] = ['liq', 'stops', 'both'];
-export const LIQ_GROUPS: readonly LiqGroup[] = ['all', 'profitable', 'proven'];
+export const LIQ_GROUPS: readonly LiqGroup[] = ['all', 'profitable'];
 
 /**
  * The Chart deck's Liquidation levels: whether they are drawn on the map, whether their own column stands beside the profile column, and what
@@ -20,7 +20,7 @@ export const LIQ_GROUPS: readonly LiqGroup[] = ['all', 'profitable', 'proven'];
 export interface LiqLevelSettings { on: boolean; column: boolean; kind: LiqKind; takes: boolean; group: LiqGroup }
 /**
  * A saved setting, checked; what a save from before the feature lacks reads as on (new features start on), and a save from before the
- * Plus choices reads as the free view: liquidations of all traders, no take profits.
+ * Plus choices reads as the free view: liquidations of all traders, no take profits. A group the page no longer offers reads as everyone's.
  */
 export function readLiqLevels(saved: unknown): LiqLevelSettings {
   const s = saved && typeof saved === 'object' ? saved as { on?: unknown; column?: unknown; kind?: unknown; takes?: unknown; group?: unknown } : {};

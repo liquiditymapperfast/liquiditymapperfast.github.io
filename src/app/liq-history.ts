@@ -4,8 +4,8 @@
  * the Depth pane's Liquidations view. A snapshot comes about every 29 minutes and describes positions some 35 minutes older than it; a row
  * is placed at the moment the service fetched it (`fetchedAt`), when the page could first have shown it.
  *
- * Plus (2026-11-17) adds three families of files beside the free one, read the same way: the same days by trader group (profitable and
- * proven traders), the stop and take-profit orders' days (only snapshots an order file was read with have a row, about one of two), and
+ * Plus (2026-11-17) adds three families of files beside the free one, read the same way: the same days of HyperTracker's profitable
+ * traders, the stop and take-profit orders' days (only snapshots an order file was read with have a row, about one of two), and
  * for views wider than `MAX_DAYS` days one file a family holding a row per four hours over the whole history (the rollups). A view of
  * liquidations and stops ("both") joins a family's row to the orders' by the snapshot (`createdAt`), so it has a row only where the
  * snapshot has both.
@@ -103,7 +103,7 @@ export interface LiqRow { asOf: number; createdAt: number; fetchedAt: number; ma
 
 /** One part of a history row as the service writes it: its dollars in each bucket (not added up), below the mark (long) and above (short). */
 export interface HistPart { long: Float64Array; short: Float64Array }
-/** A history row of any family: its snapshot's times and mark, and its parts (free: all positions; groups: profitable, proven; orders: stops, takes). */
+/** A history row of any family: its snapshot's times and mark, and its parts (free: all positions; groups: the profitable traders; orders: stops, takes). */
 export interface HistRow { asOf: number; createdAt: number; fetchedAt: number; mark: number; parts: (HistPart | null)[] }
 /** The families of files: all positions (free days, paid before the free week), by group, and the stop and take-profit orders. */
 export type LiqFamily = 'free' | 'groups' | 'orders';
@@ -143,22 +143,27 @@ function readPart(long: unknown, short: unknown, n: number): HistPart | null {
 
 /**
  * A day's (or a rollup's) rows of a family, checked against the buckets (`n` of them): a row of the wrong shape is left out, never drawn.
- * Free: `[asOf, createdAt, fetchedAt, mark, beyondLong, beyondShort, long[n], short[n]]`. Groups and orders: `[asOf, createdAt, fetchedAt,
- * mark, a, b]`, a part `[beyondLong, beyondShort, long[n], short[n]]` or null (a group without a list in force). Ordered by fetch time.
+ * Free: `[asOf, createdAt, fetchedAt, mark, beyondLong, beyondShort, long[n], short[n]]`. Orders: `[asOf, createdAt, fetchedAt, mark, stops,
+ * takes]`, a part `[beyondLong, beyondShort, long[n], short[n]]` or null. Groups: the same times and mark, then a part a group, of which only
+ * HyperTracker's profitable traders' is read, at its place among the file's `groups` names where it names them (none of them it: no rows),
+ * else the first; whatever else a row holds is left unread and never kept. Ordered by fetch time.
  */
 export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] {
-  const rows = raw && typeof raw === 'object' ? (raw as { rows?: unknown }).rows : null;
+  const doc = raw && typeof raw === 'object' ? raw as { rows?: unknown; groups?: unknown } : null, rows = doc?.rows;
   if (!Array.isArray(rows)) return [];
+  const names = family === 'groups' && Array.isArray(doc?.groups) ? doc.groups as unknown[] : null, named = names ? names.indexOf('profitable') : 0;
+  if (named < 0) return [];
+  const at = 4 + named;
   const out: HistRow[] = [];
   for (const row of rows) {
-    if (!Array.isArray(row) || row.length < (family === 'free' ? 8 : 6)) continue;
+    if (!Array.isArray(row) || row.length < (family === 'free' ? 8 : family === 'groups' ? at + 1 : 6)) continue;
     const [asOf, createdAt, fetchedAt, mark] = row as unknown[];
     if (![asOf, createdAt, fetchedAt, mark].every(v => typeof v === 'number' && Number.isFinite(v)) || !((mark as number) > 0)) continue;
     let parts: (HistPart | null)[] | null;
     if (family === 'free') { const p = readPart(row[6], row[7], n); parts = p ? [p] : null; }
     else {
       parts = [];
-      for (const raw of [row[4], row[5]]) {
+      for (const raw of family === 'groups' ? [row[at]] : [row[4], row[5]]) {
         if (raw === null) { parts.push(null); continue; }
         const p = Array.isArray(raw) && raw.length === 4 ? readPart(raw[2], raw[3], n) : null;
         if (!p) { parts = null; break; }
@@ -500,15 +505,15 @@ export class LiqHistory {
   }
 
   /**
-   * A view's rows from one set of history rows of each family it reads (a day's, or a rollup's): its liquidations (all positions or a
-   * group's; a group without a list in force has no row), its stops, or both added where the snapshot has both (joined by `createdAt`, or
-   * within a rollup by its four-hour block); and the take profits, sides swapped.
+   * A view's rows from one set of history rows of each family it reads (a day's, or a rollup's): its liquidations (all positions or the
+   * profitable traders'; a row without that part has no row), its stops, or both added where the snapshot has both (joined by `createdAt`,
+   * or within a rollup by its four-hour block); and the take profits, sides swapped.
    */
   #viewRows(view: LiqView, by: Partial<Record<LiqFamily, HistRow[]>>, edges: readonly number[], block: number | null): { rows: LiqRow[]; takes: LiqRow[] } {
     const liq: { row: HistRow; part: HistPart }[] = [];
     if (view.kind !== 'stops') {
-      const fam = groupApplies(view.kind) && view.group !== 'all' ? 'groups' : 'free', at = fam === 'groups' && view.group === 'proven' ? 1 : 0;
-      for (const row of by[fam] ?? []) { const part = row.parts[at]; if (part) liq.push({ row, part }); }
+      const fam = groupApplies(view.kind) && view.group !== 'all' ? 'groups' : 'free';
+      for (const row of by[fam] ?? []) { const part = row.parts[0]; if (part) liq.push({ row, part }); }
     }
     const orders = by.orders ?? [];
     let main: { row: HistRow; part: HistPart }[];

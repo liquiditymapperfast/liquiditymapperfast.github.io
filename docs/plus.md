@@ -11,7 +11,7 @@ store or buy can be (a copy of the code cannot remove a lock the server keeps).
 | The live liquidation levels of all traders (the stripe, the column, the phone's Liq tab) | free |
 | The levels' history in the Depth pane, today and the 7 UTC days before it | free |
 | The levels' history before that | Plus |
-| The liquidations of profitable and of proven traders, live and in the history (`/v1/plus/btc/liquidations-groups.json`, `liquidation-history-groups/<day>.json`) | Plus |
+| The liquidations of HyperTracker's profitable traders, live and in the history (`/v1/plus/btc/liquidations-groups.json`, `liquidation-history-groups/<day>.json`) | Plus |
 | Stop and take-profit levels, live and in the history (`/v1/plus/btc/triggers.json`, `trigger-history/<day>.json`) | Plus |
 | The four-hour rollups a Depth view wider than 120 days reads (`/v1/plus/btc/*-4h.json`) | Plus |
 
@@ -19,9 +19,9 @@ Every path under `/v1/plus/` is paid, whatever the day.
 
 ## What the levels show (one choice for the page)
 
-`LiqLevelSettings` (`src/app/liq-url.ts`, saved) holds `kind` (`liq`, `stops`, `both`), `takes` and `group` (`all`, `profitable`,
-`proven`). The free view is liquidations of all traders without take profits; anything else is Plus. A save from before reads as the
-free view. Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView` in
+`LiqLevelSettings` (`src/app/liq-url.ts`, saved) holds `kind` (`liq`, `stops`, `both`), `takes` and `group` (`all`, `profitable`).
+The free view is liquidations of all traders without take profits; anything else is Plus. A save from before reads as the free view, and
+a group the page does not offer as everyone's. Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView` in
 `src/app/liq-view.ts`); the controls show the saved choice with a lock, and pressing a Plus choice opens the Plus panel without changing
 it (`liq-menu.ts`).
 
@@ -29,8 +29,9 @@ it (`liq-menu.ts`).
   has only the 16 px strip and no heading, so there it is chosen in the panel or on the Liq tab), the Liq levels panel, and the title of
   the phone's Liq tab. The stripe, the column, the Liq tab and the Depth pane's Liquidation levels follow it, and the Range summary says
   which kind and group it sums.
-- **Groups** are for liquidations only: the stop and take-profit files have none. `proven` is null for a snapshot taken while no proven
-  list was in force: the column says so and draws nothing under that name.
+- **Groups** are for liquidations only: the stop and take-profit files have none. The one group is HyperTracker's profitable traders:
+  the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. The page reads that group alone from the groups files (by its name in a history file's `groups`, else
+  the first part) and leaves whatever else they hold unread.
 - **Both** adds liquidations and stops bin by bin (`sumLevels`); each part is taken away by price from its own snapshot
   (`combineTaken`: the orders' snapshot is often an earlier one). Stops come about one snapshot in two, so in the history a snapshot is
   drawn for both only when it has both parts (joined by `createdAt`; the rollups by their four-hour block), about one an hour.

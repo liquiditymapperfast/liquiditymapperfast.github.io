@@ -41,7 +41,7 @@ export function buildLiqLevelPanel(store: Store, tools: HTMLElement, body: HTMLE
   groups.classList.add('liq-choice');
   if (stopsOnly) groups.dataset.tip = noGroupsTip();
   body.append(heading(t('Show')), kinds, takes, heading(t('Traders')), groups,
-    note(stopsOnly ? noGroupsTip() : t('Profitable traders: the wallets HyperTracker counts as profitable. Proven traders: this site\'s own list of wallets whose profit has held week after week, renewed each night.')));
+    note(stopsOnly ? noGroupsTip() : t('Profitable traders: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.')));
   if (heldBack(s, member)) body.append(note(t('Without Plus the page shows liquidations of all traders. Your choice is kept and comes back with Plus.')));
   // What the map leaves unsaid, it being on by default: why nothing shows.
   const view = liveView(s);

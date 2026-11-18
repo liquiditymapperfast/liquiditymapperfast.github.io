@@ -40,16 +40,16 @@ export function kindTitle(kind: LiqKind): string {
 /** A group's short name, for a button and a menu. */
 export function groupName(group: LiqGroup): string {
   // Everyone, not All: the word for all traders agrees with the traders in every language (French Tous, not the feminine Toutes of All).
-  return group === 'profitable' ? t('Profitable') : group === 'proven' ? t('Proven') : t('Everyone');
+  return group === 'profitable' ? t('Profitable') : t('Everyone');
 }
 /** A group's name in a readout or a note. */
 export function groupTitle(group: LiqGroup): string {
-  return group === 'profitable' ? t('Profitable traders') : group === 'proven' ? t('Proven traders') : t('All traders');
+  return group === 'profitable' ? t('Profitable traders') : t('All traders');
 }
 
 /**
  * What a view is called in a readout: its kind, then its group where one applies and is not everyone, then the take profits where they are
- * on ("Liquidation levels · Proven traders · Take profits"), as parts joined by a middle dot.
+ * on ("Liquidation levels · Profitable traders · Take profits"), as parts joined by a middle dot.
  */
 export function viewParts(v: LiqView): string[] {
   return [kindTitle(v.kind), ...(groupApplies(v.kind) && v.group !== 'all' ? [groupTitle(v.group)] : []), ...(v.takes ? [t('Take profits')] : [])];

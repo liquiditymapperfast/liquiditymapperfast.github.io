@@ -46,7 +46,7 @@ export function togglePlus(anchor: HTMLElement): Panel | null {
       return;
     }
     body.append(
-      el('p', { class: 'lead', textContent: stands === 'ended' ? t('Plus has ended in this browser.') : t('Plus opens what this site\'s servers store: the liquidation levels\' whole history (without Plus, the last {n} days), the levels of profitable and proven traders, and the stop and take-profit levels.', { n: FREE_DAYS }) }),
+      el('p', { class: 'lead', textContent: stands === 'ended' ? t('Plus has ended in this browser.') : t('Plus opens what this site\'s servers store: the liquidation levels\' whole history (without Plus, the last {n} days), the levels of HyperTracker\'s profitable traders, and the stop and take-profit levels.', { n: FREE_DAYS }) }),
       el('p', { class: 'fine', textContent: t('Everything the page does today stays free. Plus pays for the servers behind it.') }),
       el('p', { class: 'fine', textContent: t('There is no account: after the checkout this browser holds a key, which you can take to another device.') }),
       el('div', { class: 'author-links' }, guide,

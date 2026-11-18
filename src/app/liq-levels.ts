@@ -122,11 +122,11 @@ export function parseLiqLevels(raw: unknown, coin: string): LiqLevels | null {
 }
 
 /**
- * The newest snapshot by trader group (Plus, `liquidations-groups.json` format 1): the profitable traders' liquidation levels and the
- * proven traders' (null when no proven list was in force for the snapshot; `night` names the list used), each shaped as the levels file's,
- * on its snapshot, mark and grid. Checked field by field; anything malformed is refused whole.
+ * The newest snapshot of HyperTracker's profitable traders (Plus, `liquidations-groups.json` format 1): their liquidation levels, shaped as
+ * the levels file's, on its snapshot, mark and grid. That group alone is read: whatever else the file's `groups` holds is left unread and
+ * never kept. Checked field by field; anything malformed is refused whole.
  */
-export interface LiqGroups extends Snap { mark: number; step: number; profitable: LiqLevels; proven: LiqLevels | null; night: string | null }
+export interface LiqGroups extends Snap { mark: number; step: number; profitable: LiqLevels }
 export function parseLiqGroups(raw: unknown, coin: string): LiqGroups | null {
   if (!raw || typeof raw !== 'object') return null;
   const d = raw as Record<string, unknown>, snap = readSnap(d.snapshot), groups = d.groups as Record<string, unknown> | null | undefined;
@@ -140,14 +140,7 @@ export function parseLiqGroups(raw: unknown, coin: string): LiqGroups | null {
   };
   const profitable = group(groups.profitable);
   if (!profitable) return null;
-  let proven: LiqLevels | null = null, night: string | null = null;
-  if (groups.proven !== null) {
-    proven = group(groups.proven);
-    if (!proven) return null;
-    const n = (groups.proven as Record<string, unknown>).night;
-    night = typeof n === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(n) ? n : null;
-  }
-  return { ...snap, mark, step, profitable, proven, night };
+  return { ...snap, mark, step, profitable };
 }
 
 /**
@@ -680,7 +673,7 @@ export class LiqLevelsSource {
   /** Counts the clock's steps back: an answer to an ask made before one carries the old clock's times and is dropped (it is asked again). */
   #steps = 0;
   #free: Layer | null = null;
-  #groups: PlusPart<{ data: LiqGroups; profitable: Layer; proven: Layer | null }> = plusPart();
+  #groups: PlusPart<{ data: LiqGroups; profitable: Layer }> = plusPart();
   #triggers: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
   #both: SumLayer | null = null;
   #target: HistoryTarget | null = null;
@@ -700,7 +693,7 @@ export class LiqLevelsSource {
     const v = this.#view;
     if (v.group === 'all') return this.#free;
     const g = this.#groups.held;
-    return g ? (v.group === 'proven' ? g.proven : g.profitable) : null;
+    return g ? g.profitable : null;
   }
   /** What the view draws as its levels (the take profits apart). */
   #main(): Layer | SumLayer | null {
@@ -738,16 +731,11 @@ export class LiqLevelsSource {
     const { liq, orders } = this.asOfs();
     return orders !== null && (this.now() - orders > STALE_MS || (liq !== null && liq - orders > ORDERS_BEHIND_MS));
   }
-  /** Why nothing of the view is drawn where the state is `missing`: no proven list for the snapshot, no groups or stops there yet. */
-  missing(): 'proven' | 'groups' | 'orders' | null {
+  /** Why nothing of the view is drawn where the state is `missing`: no groups or stops there yet. */
+  missing(): 'groups' | 'orders' | null {
     if (this.state !== 'missing') return null;
     const v = this.#view;
-    if (v.kind !== 'stops' && v.group !== 'all') {
-      const g = this.#groups.held;
-      if (g && v.group === 'proven' && !g.proven) return 'proven';
-      if (!g) return 'groups';
-    }
-    return 'orders';
+    return v.kind !== 'stops' && v.group !== 'all' && !this.#groups.held ? 'groups' : 'orders';
   }
 
   /** Which part of the view the state is about (a view of both: the first part that is not ready). */
@@ -866,7 +854,7 @@ export class LiqLevelsSource {
     if (!g) return null;
     const held = this.#groups.held?.data;
     if (!held || g.asOf > held.asOf || (g.asOf === held.asOf && g.fetchedAt > held.fetchedAt)) {
-      this.#groups.held = { data: g, profitable: new Layer(g.profitable), proven: g.proven ? new Layer(g.proven) : null }; this.version++;
+      this.#groups.held = { data: g, profitable: new Layer(g.profitable) }; this.version++;
     }
     return g.createdAt;
   }
@@ -893,7 +881,7 @@ export class LiqLevelsSource {
 
   /**
    * The state from what is held, for the view: levels too old to draw are stale; none yet is loading, or unavailable once a read failed; a
-   * Plus part that holds nothing for the view (no proven list for the snapshot, a 503) is missing. Stops are never stale: an old order file is
+   * Plus part that holds nothing for the view yet (a 503) is missing. Stops are never stale: an old order file is
    * said (`ordersOld`), not hidden.
    */
   #settle(): void {
@@ -903,7 +891,7 @@ export class LiqLevelsSource {
       if (v.group === 'all') return freeState;
       const g = this.#groups.held;
       if (!g) return freeState !== 'ready' ? freeState : this.#partState(this.#groups);
-      return v.group === 'proven' && !g.proven ? 'missing' : 'ready';
+      return 'ready';
     };
     const fresh = (s: LiqState): LiqState => {
       const liq = this.#liqLayer();
@@ -926,7 +914,7 @@ export class LiqLevelsSource {
   observe(price: number): void {
     if (!(price > 0) || !Number.isFinite(price)) return;
     const now = this.now(), g = this.#groups.held, o = this.#triggers.held;
-    for (const layer of [this.#free, g?.profitable, g?.proven, o?.stops, o?.takes]) layer?.observe(price, now);
+    for (const layer of [this.#free, g?.profitable, o?.stops, o?.takes]) layer?.observe(price, now);
   }
 
   /** Hyperliquid's price as last read (the newest candle's close), or the snapshot's mark before any candle came. */

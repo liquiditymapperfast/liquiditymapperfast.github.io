@@ -353,7 +353,7 @@ function render(): void {
           el('li', { textContent: first ? t('The whole history of the liquidation levels, back to {date}. Without Plus the pane draws the last {n} days.', { date: day(first), n: FREE_DAYS })
             : t('The whole history of the liquidation levels, as far back as it is recorded. Without Plus the pane draws the last {n} days.', { n: FREE_DAYS }) }),
           el('li', { textContent: t('A new snapshot about every half hour, kept for good: the history grows by a day every day.') }),
-          el('li', { textContent: t('The liquidation levels of profitable and proven traders, live and through time: the wallets HyperTracker counts as profitable, and this site\'s own list of wallets whose profit has held week after week.') }),
+          el('li', { textContent: t('The liquidation levels of the profitable traders, live and through time: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.') }),
           el('li', { textContent: t('The stop and take-profit levels: where open orders would close positions, live and through time, on their own or together with the liquidations.') }))),
       el('div', {}, el('h2', { textContent: t('What stays free') }),
         el('p', { textContent: t('Everything the page does today: the map, the order book, the flow, every pane and tool, the live liquidation levels of all traders and the last {n} days of their history.', { n: FREE_DAYS }) }),

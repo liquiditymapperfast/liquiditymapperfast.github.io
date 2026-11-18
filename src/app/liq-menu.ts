@@ -1,6 +1,6 @@
 /**
  * What the levels show, as a menu (the map's liquidation column heading, the phone's Liq tab) and as the Liq levels panel's rows: Show
- * (liquidations, stops, both), Take profits, and Traders (all, profitable, proven: liquidations only). Every choice but the free view is
+ * (liquidations, stops, both), Take profits, and Traders (all, or the profitable traders: liquidations only). Every choice but the free view is
  * Plus: without Plus such a choice is marked with a lock and pressing it opens the Plus panel, the setting unchanged; the saved choice is
  * shown (it comes back with Plus) while the page draws the free view.
  */
