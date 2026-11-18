@@ -87,8 +87,9 @@ export class Arrival {
 
 /** What the visitor can do that stops the countdown: press, type, turn the wheel, touch, scroll. */
 export const STOPPING_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
-/** The keys that scroll the page: they count as activity wherever the focus is, the confirmation included. */
-export const SCROLLING_KEYS: ReadonlySet<string> = new Set(['PageDown', 'PageUp', 'Home', 'End', 'ArrowDown', 'ArrowUp', ' ', 'Spacebar']);
+/** Whether a key scrolls the page: such a key counts as activity wherever the focus is, the confirmation included. */
+export const scrollingKey = (key: string): boolean =>
+  key === 'PageDown' || key === 'PageUp' || key === 'Home' || key === 'End' || key === 'ArrowDown' || key === 'ArrowUp' || key === ' ' || key === 'Spacebar';
 
 /** Where an event happened: on the page, on the confirmation, or on one of its buttons or links (which do what they say). */
 export type ArrivalPlace = 'page' | 'confirmation' | 'control';
@@ -119,7 +120,7 @@ export function stopOnActivity(doc: ArrivalDocument, arrival: Arrival, place: (t
         if (event.target === doc && scrollY() === own) { own = NaN; return false; }
         return true;
       }
-      case 'keydown': return where === 'page' || (SCROLLING_KEYS.has(event.key ?? '') && !(where === 'control' && (event.key === ' ' || event.key === 'Spacebar')));
+      case 'keydown': return where === 'page' || (scrollingKey(event.key ?? '') && !(where === 'control' && (event.key === ' ' || event.key === 'Spacebar')));
       default: return where === 'page';
     }
   };
