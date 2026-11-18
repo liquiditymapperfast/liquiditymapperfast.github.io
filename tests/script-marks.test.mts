@@ -310,6 +310,10 @@ test('a finger on one of two stacked tags gets that tag, not the one drawn after
   assert.equal(markNearest(tags, 130, 15, 10)!.name, 'upper', 'above both: the nearer');
   assert.equal(markNearest(tags, 130, 20 + 2 * TAG_H + TAG_GAP + 4, 10)!.name, 'lower', 'below both: the nearer');
   assert.equal(markNearest(tags, 300, 30, 10), null, 'too far from either');
+  // In the gap between two tags 10 px apart, within the slop of both: the nearer, whichever was drawn last.
+  const apart = [tag(20, 'upper'), tag(20 + TAG_H + 10, 'lower')];
+  assert.equal(markNearest(apart, 130, 20 + TAG_H + 2, 10)!.name, 'upper');
+  assert.equal(markNearest(apart, 130, 20 + TAG_H + 8, 10)!.name, 'lower');
 });
 
 test('tags that do not fit past the plot stand at the edge given (a replay\'s moment); one left out does not decide it', () => {
@@ -321,4 +325,6 @@ test('tags that do not fit past the plot stand at the edge given (a replay\'s mo
   const kept = layoutTags(rec.ctx, [ask('ab', 50), ask('a much wider text here', 52)], { left: 806, right: 860, top: 40, bottom: 40 + TAG_H + 1 });
   assert.equal(kept[1], null);
   assert.equal(kept[0]!.x, 806);
+  // A replay's moment at the plot's start: a tag that would reach past its left end is left out, not drawn under the cover.
+  assert.deepEqual(layoutTags(rec.ctx, [ask('wide tag text', 50)], { left: 806, right: 860, top: 0, bottom: 100, edge: 20 }), [null]);
 });

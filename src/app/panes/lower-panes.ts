@@ -259,9 +259,10 @@ export abstract class TimePane {
   }
   /**
    * Pin the pointer at `p` (plot coordinates) for what the pane itself answers there (a script's tag, past the plot): no time is pinned, and
-   * the pin goes as any does, with a tap near it or the pane hidden.
+   * the pin goes as any does, with a tap near it or the pane hidden; asked again at the pin, it lets it go.
    */
   protected pinPoint(p: Pt): void {
+    if (this.#pinned && Math.hypot(this.#pinned.x - p.x, this.#pinned.y - p.y) < 28) { this.#unpin(); return; }
     const box = this.canvas.getBoundingClientRect();
     this.#pinned = p; this.pointer = { x: box.left + this.#left + p.x, y: box.top + p.y };
     if (this.store.state.hover) this.store.set({ hover: null }); else this.invalidate();

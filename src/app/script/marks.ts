@@ -31,8 +31,10 @@ export function markNearest(marks: readonly DrawnMark[], x: number, y: number, s
   if (on || slop <= 0) return on;
   let best: DrawnMark | null = null, far = Infinity;
   for (const m of marks) {
-    const b = m.box, dx = Math.max(b.x - x, 0, x - b.x - b.w), dy = Math.max(b.y - y, 0, y - b.y - b.h), d = Math.hypot(dx, dy);
-    if (dx <= slop && dy <= slop && d <= far) { best = m; far = d; }
+    const b = m.box, dx = Math.max(b.x - x, 0, x - b.x - b.w), dy = Math.max(b.y - y, 0, y - b.y - b.h);
+    if (dx > slop || dy > slop) continue;
+    const d = Math.hypot(dx, dy);
+    if (d <= far) { best = m; far = d; }
   }
   return best;
 }

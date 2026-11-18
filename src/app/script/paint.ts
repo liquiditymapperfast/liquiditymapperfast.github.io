@@ -221,7 +221,7 @@ export function tagWidth(ctx: CanvasRenderingContext2D, text: string): number {
  * Lay out a row's tags (`asks`, in the order the plots asked) between `top` and `bottom`: each plate at its height from `placeTags`, all
  * with their left edges at `left` when the widest of those kept fits between it and `right`, else all with their right edges at `edge`
  * (`right` unless given: over the plot, where the room right of it is too narrow; a replay gives its moment, past which the plot is
- * covered). One left out is null.
+ * covered; one that would reach past the plot's left end there is left out). One left out is null.
  */
 export function layoutTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[], area: { left: number; right: number; top: number; bottom: number; edge?: number }): (TagBox | null)[] {
   if (!asks.length) return [];
@@ -230,8 +230,10 @@ export function layoutTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[
   const flush = area.left + widest <= area.right, edge = area.edge ?? area.right;
   return asks.map((a, k) => {
     const y = tops[k]; if (y === null || y === undefined) return null;
-    const w = widths[k]!, x = Math.max(0, flush ? area.left : edge - w);
-    return { x, y, w, h: TAG_H };
+    // At the edge, one that would reach past the plot's left end is left out (a replay's moment at the plot's start: it would stand
+    // under the cover).
+    const w = widths[k]!, x = flush ? area.left : edge - w;
+    return x < 0 ? null : { x, y, w, h: TAG_H };
   });
 }
 

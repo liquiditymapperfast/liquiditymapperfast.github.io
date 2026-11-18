@@ -801,7 +801,7 @@ export class ScriptPane extends TimePane {
     const box = this.canvas.getBoundingClientRect();
     return { x: at.x - box.left - leftGutter(this.store.state), y: at.y - box.top };
   }
-  /** The tag under the pointer, as the rows were last drawn (a finger's a little wider). */
+  /** The tag under the pointer, as the rows were last drawn (a tapped one is pinned at its middle: `claimTap`). */
   #tagAt(p = this.#pointerAt()): DrawnMark | null {
     return p ? markNearest(this.#rowTags, p.x, p.y, MARK_SLOP) : null;
   }
@@ -809,7 +809,7 @@ export class ScriptPane extends TimePane {
   protected override ownsPoint(x: number): boolean { const p = this.#pointerAt(); return !!p && this.#tagAt({ x, y: p.y }) !== null; }
   /**
    * A tap on a tag shows what it says, pinned in the tag's middle (where the next drawing finds it without a finger's slop) as a pin of the
-   * pane's: a tap near it, or the pane hidden, lets it go.
+   * pane's: a tap on it again or near it, or the pane hidden, lets it go (`pinPoint`).
    */
   protected override claimTap(p: { x: number; y: number }): boolean {
     const tag = markNearest(this.#rowTags, p.x, p.y, MARK_SLOP_TOUCH); if (!tag) return false;
@@ -1152,7 +1152,9 @@ export class ScriptPane extends TimePane {
       const asks: TagAsk[] = [];
       res.plots.forEach((plot, j) => { const s = scales.get(scaleIdOf(plot, target.options)); if (s) paintPlot({ ...frame, color: fallbacks[j % fallbacks.length]!, tags: ask => { asks.push(!band && !ask.named && scaleIdOf(plot, target.options) === 'right' ? { ...ask, text: fmtPrice(ask.value) } : ask); } }, plot, s); });
       // Its tags at the right edge, as where it is drawn for good.
-      const area = { left: Infinity, right: pw - 2, top: top + 2, bottom: top + (band || ph) - 2 }, boxes = layoutTags(ctx, asks, area);
+      // In a replay the map is covered past its moment: the tags stand at it.
+      const replayX = replaying() ? v.xOf(pageNow(), pw) : Infinity;
+      const area = { left: Infinity, right: Math.max(0, Math.min(pw, replayX)) - 2, top: top + 2, bottom: top + (band || ph) - 2 }, boxes = layoutTags(ctx, asks, area);
       // A band's highest and lowest in view at its right edge, as a row has them, where no tag stands on them.
       const first = band ? scales.values().next().value : undefined;
       if (first) {
